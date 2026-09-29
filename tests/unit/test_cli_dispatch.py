@@ -115,6 +115,7 @@ def _run_cli(
     argumentOverrides: dict[str, object] | None = None,
     rawPaths: list[str] | None = None,
     currentSession: str | None = None,
+    allowSleep: bool = False,
 ) -> tuple[CliLogger, list[dict[str, object]]]:
     clUtils = import_module("soxspipe.cl_utils")
     commonutilsModule = import_module("soxspipe.commonutils")
@@ -182,7 +183,7 @@ def _run_cli(
     monkeypatch.setattr(
         clUtils.time,
         "sleep",
-        lambda seconds: pytest.fail("CLI attempted to sleep"),
+        (lambda seconds: None) if allowSleep else (lambda seconds: pytest.fail("CLI attempted to sleep")),
     )
 
     clUtils.main(arguments=suppliedArguments)
@@ -197,9 +198,7 @@ def test_tab_complete_returns_matching_path_then_sentinel(
     prefix = tmp_path / "calibration"
     (tmp_path / "calibration-file.fits").touch()
 
-    assert clUtils.tab_complete(str(prefix), 0) == str(
-        tmp_path / "calibration-file.fits"
-    )
+    assert clUtils.tab_complete(str(prefix), 0) == str(tmp_path / "calibration-file.fits")
     assert clUtils.tab_complete(str(prefix), 1) is None
 
 
@@ -266,9 +265,7 @@ def test_main_dispatches_recipe_commands_to_recording_adapters(
         "debug": False,
         **extraArguments,
     }
-    assert not any(
-        call[0] in {"start", "stop", "status"} for call in RecordingDaemon.calls
-    )
+    assert not any(call[0] in {"start", "stop", "status"} for call in RecordingDaemon.calls)
 
 
 def test_main_ignores_supplied_arguments_and_reparses_process_argv(
@@ -357,6 +354,7 @@ def test_main_reduce_returns_before_dispatch_when_workspace_is_unprepared(
     ("argv", "expectedCall"),
     [
         (["soxspipe", "prep"], ("prepare", {"refresh": False})),
+        (["soxspipe", "prep", "--refresh"], ("prepare", {"refresh": True})),
         (["soxspipe", "session", "ls"], ("session_list", {})),
         (["soxspipe", "session", "new", "night1"], ("session_create", "night1")),
         (["soxspipe", "session", "night1"], ("session_switch", "night1")),
@@ -600,13 +598,10 @@ def test_main_recipe_failure_exits_with_error_without_success_output(
     assert str(error.value.__cause__) == "recipe failed"
     logger = CliLogger.instances[-1]
     assert ("error", "recipe failed\nsoxspipe mbias frames") in logger.messages
-    errorIndex = logger.messages.index(
-        ("error", "recipe failed\nsoxspipe mbias frames")
-    )
+    errorIndex = logger.messages.index(("error", "recipe failed\nsoxspipe mbias frames"))
     assert logger.keywordArguments[errorIndex] == {"exc_info": True}
     assert not any(
-        level == "print"
-        and ("Recipe Command:" in message or "Recipe Run Time:" in message)
+        level == "print" and ("Recipe Command:" in message or "Recipe Run Time:" in message)
         for level, message in logger.messages
     )
     assert RecordingDaemon.calls == []
@@ -641,7 +636,105 @@ def test_main_workspace_command_failure_logs_and_exits_with_error(
     assert str(error.value.__cause__) == "organizer failed"
     logger = CliLogger.instances[-1]
     assert any(
-        level == "error" and f"organizer failed\n{' '.join(argv)}" in message
-        for level, message in logger.messages
+        level == "error" and f"organizer failed\n{' '.join(argv)}" in message for level, message in logger.messages
     )
     assert RecordingDaemon.calls == []
+
+
+def test_main_prep_exits_non_zero_when_a_refresh_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A refresh that could not preserve the database must fail loudly, on stderr and with exit 1."""
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    def refuse_refresh(self: object, **kwargs: object) -> None:
+        raise DatabasePreservationError("could not preserve `/workspace/soxspipe.db`")
+
+    monkeypatch.setattr(RecordingOrganiser, "prepare", refuse_refresh)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "prep", "--refresh"])
+
+    assert error.value.code == 1
+    assert "could not preserve `/workspace/soxspipe.db`" in capsys.readouterr().err
+
+
+def test_main_exits_non_zero_when_the_session_lookup_cannot_rebuild_the_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A refused automatic rebuild while reading the current session exits 1 with the message on stderr."""
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    def refuse_rebuild(self: object, **kwargs: object) -> None:
+        raise DatabasePreservationError("the database `/workspace/soxspipe.db` is locked or busy")
+
+    monkeypatch.setattr(RecordingOrganiser, "__init__", refuse_rebuild)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "prep"])
+
+    assert error.value.code == 1
+    assert "is locked or busy" in capsys.readouterr().err
+
+
+def test_watch_daemon_exits_non_zero_when_its_prepare_refuses_a_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The watch daemon's automatic prepare stops with exit 1 and the reason on stderr."""
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    def refuse_rebuild(self: object, **kwargs: object) -> None:
+        raise DatabasePreservationError("could not preserve `/workspace/soxspipe.db`")
+
+    monkeypatch.setattr(RecordingOrganiser, "prepare", refuse_rebuild)
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", "watch", "start"])
+    daemon = RecordingDaemon.instances[0]
+
+    with pytest.raises(SystemExit) as error:
+        daemon.action(pwd=str(tmp_path))
+
+    assert error.value.code == 1
+    assert "could not preserve `/workspace/soxspipe.db`" in capsys.readouterr().err
+    assert RecordingOrganiser.calls[-1] == ("init", {"log": daemon.log, "rootDir": str(tmp_path), "vlt": False})
+    assert ("error", "could not preserve `/workspace/soxspipe.db`") in daemon.log.messages
+
+
+def test_reduce_watch_exits_non_zero_when_its_re_prepare_refuses_a_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`reduce --watch` re-prepares the workspace between passes; a refused rebuild there exits 1 on stderr."""
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    commonutilsModule = import_module("soxspipe.commonutils")
+    (tmp_path / "soxspipe.db").touch()
+
+    class RecordingReducer:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def reduce(self, **kwargs: object) -> None:
+            pass
+
+    def refuse_rebuild(self: object, **kwargs: object) -> None:
+        raise DatabasePreservationError("could not preserve `/workspace/soxspipe.db`")
+
+    monkeypatch.setattr(commonutilsModule, "reducer", RecordingReducer)
+    monkeypatch.setattr(RecordingOrganiser, "prepare", refuse_rebuild)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "reduce", "all", "--watch"], allowSleep=True)
+
+    assert error.value.code == 1
+    assert "could not preserve `/workspace/soxspipe.db`" in capsys.readouterr().err
+    initKwargs = RecordingOrganiser.calls[-1][1]
+    assert set(initKwargs) == {"log", "rootDir", "vlt"}
+    assert initKwargs["rootDir"] == "."
+    assert initKwargs["vlt"] is False
