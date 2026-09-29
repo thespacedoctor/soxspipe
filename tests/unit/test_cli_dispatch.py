@@ -677,3 +677,25 @@ def test_main_exits_non_zero_when_the_session_lookup_cannot_rebuild_the_database
 
     assert error.value.code == 1
     assert "is locked or busy" in capsys.readouterr().err
+
+
+def test_watch_daemon_exits_non_zero_when_its_prepare_refuses_a_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The watch daemon's automatic prepare stops with exit 1 and the reason on stderr."""
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    def refuse_rebuild(self: object, **kwargs: object) -> None:
+        raise DatabasePreservationError("could not preserve `/workspace/soxspipe.db`")
+
+    monkeypatch.setattr(RecordingOrganiser, "prepare", refuse_rebuild)
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", "watch", "start"])
+    daemon = RecordingDaemon.instances[0]
+
+    with pytest.raises(SystemExit) as error:
+        daemon.action(pwd=str(tmp_path))
+
+    assert error.value.code == 1
+    assert "could not preserve `/workspace/soxspipe.db`" in capsys.readouterr().err

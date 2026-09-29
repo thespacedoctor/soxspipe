@@ -640,10 +640,15 @@ def _sqlite_error(errorClass, message, errorCode):
     return error
 
 
-def test_automatic_rebuild_refuses_a_locked_database(science_workspace) -> None:
+# SQLITE_BUSY_SNAPSHOT IS AN EXTENDED CODE WHOSE PRIMARY CODE (LOW 8 BITS) IS SQLITE_BUSY
+SQLITE_BUSY_SNAPSHOT = 517
+
+
+@pytest.mark.parametrize("errorCode", [sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED, SQLITE_BUSY_SNAPSHOT])
+def test_automatic_rebuild_refuses_a_locked_database(science_workspace, errorCode) -> None:
     # ARRANGE
     organiser = science_workspace
-    lockedError = _sqlite_error(sqlite3.OperationalError, "database is locked", sqlite3.SQLITE_BUSY)
+    lockedError = _sqlite_error(sqlite3.OperationalError, "database is locked", errorCode)
 
     # ACT
     with pytest.raises(DatabasePreservationError, match="locked"):
@@ -671,3 +676,54 @@ def test_automatic_rebuild_snapshots_a_database_that_is_not_known_to_be_unreadab
     assert "_refresh_" in backups[0].name
     rebuilt = open_sqlite(organiser.rootDbPath)
     assert rebuilt.execute("SELECT count(*) FROM quality_control").fetchone() == (2,)
+
+
+@pytest.mark.parametrize(
+    ("message", "errorCode"),
+    [("file is not a database", sqlite3.SQLITE_NOTADB), ("database disk image is malformed", sqlite3.SQLITE_CORRUPT)],
+)
+def test_automatic_rebuild_keeps_a_raw_copy_of_an_unreadable_database(
+    science_workspace, message, errorCode, open_sqlite
+) -> None:
+    # ARRANGE
+    organiser = science_workspace
+    originalBytes = Path(organiser.rootDbPath).read_bytes()
+    unreadableError = _sqlite_error(sqlite3.DatabaseError, message, errorCode)
+
+    # ACT
+    organiser._rebuild_database_that_failed_to_open(unreadableError)
+
+    # ASSERT
+    backups = _backup_files(organiser)
+    assert len(backups) == 1
+    assert "_corrupt_" in backups[0].name
+    assert backups[0].read_bytes() == originalBytes
+    assert open_sqlite(organiser.rootDbPath).execute("SELECT count(*) FROM quality_control").fetchone() == (2,)
+
+
+def test_connection_retry_loop_refuses_a_database_locked_by_another_connection(
+    science_workspace, monkeypatch, open_sqlite
+) -> None:
+    # ARRANGE
+    organiser = science_workspace
+    organiser.conn.close()
+    organiser.conn = None
+    rootDb = Path(organiser.rootDbPath)
+    originalBytes = rootDb.read_bytes()
+    holder = open_sqlite(rootDb)
+    holder.execute("BEGIN EXCLUSIVE")
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    monkeypatch.setattr(organiser, "_DB_OPEN_ATTEMPTS", 2)
+    monkeypatch.setattr(organiser, "_DB_BUSY_TIMEOUT_SECONDS", 0.05)
+
+    # ACT
+    with pytest.raises(DatabasePreservationError, match="locked or busy"):
+        organiser._get_or_create_db_connection()
+
+    # ASSERT
+    holder.rollback()
+    assert organiser.syncCalls == []
+    assert rootDb.read_bytes() == originalBytes
+    assert _read_qc(open_sqlite(rootDb)) == sorted(SEEDED_QC_ROWS, key=repr)
+    assert _backup_files(organiser) == []
+    assert not Path(organiser.dbBackupsDir).exists() or list(Path(organiser.dbBackupsDir).iterdir()) == []
