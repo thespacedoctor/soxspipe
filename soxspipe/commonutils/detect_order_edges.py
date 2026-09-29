@@ -969,7 +969,7 @@ class detect_order_edges(_base_detect):
             y = axisAcoords[index]
             x = axisBcoords[index]
 
-        slice, slice_length_offset, slice_width_centre = cut_image_slice(
+        sliceOut, slice_length_offset, slice_width_centre = cut_image_slice(
             log=self.log,
             frame=self.flatFrame,
             width=sliceWidth,
@@ -981,11 +981,11 @@ class detect_order_edges(_base_detect):
             debug=self.debug,
         )
 
-        if slice is None:
+        if sliceOut is None:
             return orderData
 
         # SMOOTH WITH A MEDIAN FILTER
-        medSlide = medfilt(slice, 9)
+        medSlide = medfilt(sliceOut, 9)
         # DETERMINE THRESHOLD FLUX VALUE
         maxvalue = np.max(medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)])
         minvalue = np.min(medSlide)
@@ -1000,17 +1000,17 @@ class detect_order_edges(_base_detect):
 
             # CHECK THE SLICE POINTS IF NEEDED
             self.log.print(order)
-            x = np.arange(0, len(slice))
+            x = np.arange(0, len(sliceOut))
             plt.figure(figsize=(8, 5))
-            plt.plot(x, slice, "ko", alpha=0.5)
+            plt.plot(x, sliceOut, "ko", alpha=0.5)
             plt.plot(x, medSlide, "rx", alpha=0.8)
-            plt.hlines(maxvalue, 0, len(slice), label="max")
-            plt.hlines(minvalue, 0, len(slice), label="min")
+            plt.hlines(maxvalue, 0, len(sliceOut), label="max")
+            plt.hlines(minvalue, 0, len(sliceOut), label="min")
             order = orderData["order"]
             plt.hlines(
                 orderData["minThreshold"],
                 0,
-                len(slice),
+                len(sliceOut),
                 label=f'threshold {orderData["minThreshold"]:0.3f},  {orderData["maxThreshold"]:0.3f}',
                 colors="red",
             )
@@ -1063,7 +1063,7 @@ class detect_order_edges(_base_detect):
             axisBCoord = x
 
         # CUT A MEDIAN COLLAPSED SLICE
-        slice, slice_length_offset, slice_width_centre = cut_image_slice(
+        sliceOut, slice_length_offset, slice_width_centre = cut_image_slice(
             log=self.log,
             frame=self.flatFrame,
             width=sliceWidth,
@@ -1074,11 +1074,11 @@ class detect_order_edges(_base_detect):
             sliceAxis=self.axisA,
             debug=self.debug,
         )
-        if slice is None:
+        if sliceOut is None:
             return orderData
 
         # SMOOTH WITH A MEDIAN FILTER
-        medSlide = medfilt(slice, 9)
+        medSlide = medfilt(sliceOut, 9)
 
         # DETERMINE THRESHOLD FLUX VALUE
         maxvalue = np.max(medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)])
@@ -1142,16 +1142,16 @@ class detect_order_edges(_base_detect):
                 print(minThreshold, middle)
                 print(axisAminguess, axisAmaxguess, threshold)
                 print(axisAmin, axisAmax)
-                print(len(slice))
-                x = np.arange(0, len(slice))
+                print(len(sliceOut))
+                x = np.arange(0, len(sliceOut))
                 plt.figure(figsize=(8, 5))
-                plt.plot(x, slice, "ko", alpha=0.5)
+                plt.plot(x, sliceOut, "ko", alpha=0.5)
                 plt.plot(x, medSlide, "rx", alpha=0.8)
                 plt.plot(axisAmin, threshold, "ro", alpha=0.8, label="order edge")
                 plt.plot(axisAmax, threshold, "ro", alpha=0.8)
                 # plt.hlines(maxvalue, 0, len(slice), label='max')
                 # plt.hlines(minvalue, 0, len(slice), label='min')
-                plt.hlines(threshold, 0, len(slice), label="threshold", colors="red")
+                plt.hlines(threshold, 0, len(sliceOut), label="threshold", colors="red")
                 plt.xlabel("Position")
                 plt.ylabel("Flux")
                 order = orderData["order"]
@@ -1167,15 +1167,15 @@ class detect_order_edges(_base_detect):
             import matplotlib.pyplot as plt
 
             # CHECK THE SLICE POINTS IF NEEDED
-            x = np.arange(0, len(slice))
+            x = np.arange(0, len(sliceOut))
             plt.figure(figsize=(8, 5))
-            plt.plot(x, slice, "ko", alpha=0.5)
+            plt.plot(x, sliceOut, "ko", alpha=0.5)
             plt.plot(x, medSlide, "rx", alpha=0.8)
             plt.plot(axisAmin, threshold, "ro", alpha=0.8, label="order edge")
             plt.plot(axisAmax, threshold, "ro", alpha=0.8)
             # plt.hlines(maxvalue, 0, len(slice), label='max')
             # plt.hlines(minvalue, 0, len(slice), label='min')
-            plt.hlines(threshold, 0, len(slice), label="threshold", colors="red")
+            plt.hlines(threshold, 0, len(sliceOut), label="threshold", colors="red")
             order = orderData["order"]
             plt.title(f"Order {order}, {self.axisB} = {axisBCoord}")
             plt.xlabel("Position")
