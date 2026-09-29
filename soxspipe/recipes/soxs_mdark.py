@@ -158,7 +158,7 @@ class soxs_mdark(base_recipe):
                 error = "Input frames are a mix of %(imageTypes)s" % locals()
             # NON-BIAS INPUT IMAGE TYPES ARE BAD
             elif imageTypes[0] != "DARK":
-                error = "Input frames not DARK frames" % locals()
+                error = "Input frames not DARK frames"
 
         if not error:
             exptimes = self.inputFrames.values(keyword=kw("EXPTIME"), unique=True)

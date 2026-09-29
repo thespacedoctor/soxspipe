@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: DY-222, removed the dead `% locals()` from five input-frame verification messages in `base_recipe._verify_single_binning`, `soxs_mbias`, `soxs_mdark` and `soxs_mflat` (two); message text and exception type are unchanged, and the exact messages are now pinned by tests
 * **FIXED**: the `Basic Python Checks` workflow failed to start on every push (`python-version is not defined in the referenced workflow`), because `basics.yml` passed a `python-version` input that the reusable `_basics.yml` does not declare; `integration-tests.yml` had the same undeclared input, so both lose the input and their Python-version matrix.
 * **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order
 * **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
