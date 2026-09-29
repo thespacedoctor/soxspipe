@@ -57,7 +57,7 @@ Options:
     -o, --output <outputDirectory>         the output directory for the recipe product
     -p, --prep                             prepare a workspace before reducing data
     -q, --quitOnFail                       stop the pipeline if a recipe fails
-    -r, --refresh                          trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
+    -r, --refresh                          full workspace refresh, backing up database and restoring QC history
     -s, --settings <pathToSettingsFile>    the settings file
     -v, --version                          show version
     -V, --verbose                          more verbose output
@@ -85,6 +85,39 @@ def tab_complete(text, state):
     return (glob.glob(text + "*") + [None])[state]
 
 
+def _prepared_organiser(log, rootDir, vlt=False, **prepareArguments):
+    """*build a `data_organiser` and prepare its workspace, exiting with status 1 if a database rebuild is refused*
+
+    A refused rebuild (`DatabasePreservationError`) leaves the database in place; its message, naming the
+    database file, is printed to stderr.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``rootDir`` -- the workspace root directory
+    - ``vlt`` -- prepare the workspace using the standard vlt /data directory
+    - ``prepareArguments`` -- keyword arguments for `data_organiser.prepare`
+
+    **Return:**
+
+    - ``do`` -- the prepared `data_organiser`
+
+    **Raises:**
+
+    - `SystemExit` (status 1), chained from the `DatabasePreservationError`, when a database rebuild is refused
+    """
+    from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    try:
+        do = data_organiser(log=log, rootDir=rootDir, vlt=vlt)
+        do.prepare(**prepareArguments)
+    except DatabasePreservationError as error:
+        print(error, file=sys.stderr)
+        raise SystemExit(1) from error
+    return do
+
+
 def main(arguments=None):
     """
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
@@ -93,7 +126,7 @@ def main(arguments=None):
     from fundamentals.logs import emptyLogger
 
     from soxspipe.commonutils import data_organiser
-    from soxspipe.commonutils.data_organiser import _UnsafePathError
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError, _UnsafePathError
 
     arguments = docopt(__doc__)
     if arguments["<workspaceDirectory>"]:
@@ -124,6 +157,9 @@ def main(arguments=None):
             currentSession, allSessions = do.session_list(silent=True)
         except _UnsafePathError as error:
             eLog.error(error)
+            raise SystemExit(1) from error
+        except DatabasePreservationError as error:
+            print(error, file=sys.stderr)
             raise SystemExit(1) from error
 
         clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
@@ -354,8 +390,7 @@ def main(arguments=None):
             reducedOffset = recipe.produce_product()
 
         if a["prep"]:
-            do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
-            do.prepare(refresh=a["refreshFlag"])
+            _prepared_organiser(log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"], refresh=a["refreshFlag"])
 
         if a["session"] and a["ls"]:
             from soxspipe.commonutils import data_organiser
@@ -496,10 +531,7 @@ def main(arguments=None):
                 print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
                 time.sleep(xsec)
 
-                from soxspipe.commonutils import data_organiser
-
-                do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
-                do.prepare()
+                do = _prepared_organiser(log, rootDir=a["workspaceDirectory"])
                 do.close()
                 del do
             else:
@@ -530,10 +562,12 @@ def main(arguments=None):
                 else:
                     thisLog = self.log
 
-                from soxspipe.commonutils import data_organiser
-
-                do = data_organiser(log=thisLog, rootDir=pwd)
-                do.prepare()
+                try:
+                    do = _prepared_organiser(thisLog, rootDir=pwd)
+                except SystemExit as refusal:
+                    # A REFUSED REBUILD STOPS THE DAEMON; RECORD THE REASON IN ITS LOG AS WELL AS ON STDERR
+                    thisLog.error(refusal.__cause__)
+                    raise
 
                 if not currentSession:
                     currentSession, allSessions = do.session_list(silent=True)
