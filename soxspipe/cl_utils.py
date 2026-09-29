@@ -93,7 +93,7 @@ def main(arguments=None):
     from fundamentals.logs import emptyLogger
 
     from soxspipe.commonutils import data_organiser
-    from soxspipe.commonutils.data_organiser import _UnsafePathError
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError, _UnsafePathError
 
     arguments = docopt(__doc__)
     if arguments["<workspaceDirectory>"]:
@@ -355,7 +355,11 @@ def main(arguments=None):
 
         if a["prep"]:
             do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
-            do.prepare(refresh=a["refreshFlag"])
+            try:
+                do.prepare(refresh=a["refreshFlag"])
+            except DatabasePreservationError as error:
+                print(error, file=sys.stderr)
+                sys.exit(1)
 
         if a["session"] and a["ls"]:
             from soxspipe.commonutils import data_organiser

@@ -10,8 +10,10 @@ Date Created
 """
 
 import os
+import shutil
 import sqlite3
 import sys
+import traceback
 from pathlib import Path
 
 from fundamentals import tools
@@ -73,6 +75,38 @@ def print_incomplete_sets_report(incompleteSets, blockingSets=None):
 
 class _UnsafePathError(ValueError):
     """Report an unsafe path or workspace identifier at a trust boundary."""
+
+
+class DatabasePreservationError(sqlite3.DatabaseError):
+    """The workspace database could not be copied into `backups/`, so it was left in place and not rebuilt."""
+
+
+class _UnreadableDatabaseError(sqlite3.DatabaseError):
+    """A database that opens but whose SQLite snapshot fails its `quick_check`."""
+
+
+# LABEL IN THE NAME OF A RAW, BYTE-FOR-BYTE BACKUP OF A DATABASE THAT FAILED TO OPEN
+_RAW_BACKUP_LABEL = "corrupt"
+# SQLITE PRIMARY RESULT CODES THAT MEAN THE FILE ITSELF IS DAMAGED (NOT LOCKED OR BUSY)
+_UNREADABLE_DATABASE_CODES = {sqlite3.SQLITE_NOTADB, sqlite3.SQLITE_CORRUPT}
+_SQLITE_PRIMARY_CODE_MASK = 0xFF
+
+
+def _is_unreadable_database_error(error):
+    """Return True when a SQLite error says the file is not a database or is malformed."""
+    if isinstance(error, _UnreadableDatabaseError):
+        return True
+    errorCode = getattr(error, "sqlite_errorcode", None)
+    return errorCode is not None and (errorCode & _SQLITE_PRIMARY_CODE_MASK) in _UNREADABLE_DATABASE_CODES
+
+
+def _fsync_path(path):
+    """Flush a file or directory to disk."""
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _validate_owned_path(path, owner, label):
@@ -177,9 +211,6 @@ class data_organiser:
         self.dbBackupsDir = str(_validate_owned_path(Path(rootDir) / "backups", rootDir, "database backups directory"))
         # PATH OF THE BACKUP MADE BY THE MOST RECENT DATABASE REBUILD, IF ANY
         self.databaseBackupPath = None
-        self._databaseFailedToOpen = False
-        # SET BY `prepare` WHEN IT LEAVES A DATABASE IN PLACE BECAUSE IT COULD NOT BE PRESERVED
-        self._databaseRebuildRefused = False
 
         # RETURN HERE: add these to yaml file
         # A LIST OF FITS HEADER KEYWORDS LOOKUP KEYS. THESE KEYWORDS WILL BE LIFTED FROM ALL FITS FILES
@@ -407,25 +438,31 @@ class data_organiser:
 
         return
 
-    def prepare(self, refresh=False, report=True):
+    def prepare(self, refresh=False, report=True, *, _failedToOpen=False):
         """*Prepare the workspace for data reduction by generating all SOF files and reduction scripts.*
 
         **Key Arguments:**
         - ``refresh`` -- trigger a complete refresh the workspace during preparation (rebuild the database and do a
           complete prepare). The old database is first copied into `backups/` in the workspace root, and its
-          `quality_control` rows are restored into the rebuilt database. If the copy fails, the database is left
-          in place and nothing is rebuilt.
+          `quality_control` rows are restored into the rebuilt database.
+        - ``_failedToOpen`` -- private, set only by `_rebuild_database_that_failed_to_open`: keep a raw copy of the
+          database instead of a SQLite snapshot.
+
+        **Raises:**
+
+        - `DatabasePreservationError` when ``refresh`` is set and the database cannot be copied into `backups/`.
+          The database is then left in place and nothing is rebuilt.
         """
         self.log.debug("starting the ``prepare`` method")
         import codecs
 
         backupPath = None
         if refresh:
-            # PRESERVE THE DATABASE BEFORE REMOVING IT. A DATABASE THAT COULD NOT BE PRESERVED IS NEVER DELETED.
-            backupPath = self._preserve_database(failedToOpen=self._databaseFailedToOpen)
-            if backupPath is None and os.path.exists(self.rootDbPath):
-                self._databaseRebuildRefused = True
-                return
+            # PRESERVE THE DATABASE BEFORE REMOVING IT; RAISES, LEAVING IT IN PLACE, IF IT CANNOT BE PRESERVED
+            backupPath = self._preserve_database(failedToOpen=_failedToOpen)
+            # THE AUTOMATIC-REBUILD ROUTE HAS ALREADY DELETED `self.conn`
+            if getattr(self, "conn", None):
+                self.conn.close()
             self.conn = None
             self._remove_database_files()
             # DELETE ALL ERROR LOG AND SOF FILES
@@ -1823,15 +1860,16 @@ class data_organiser:
         return fitsExist
 
     def _preserve_database(self, failedToOpen=False):
-        """*keep a complete copy of the workspace database in the backups directory before it is rebuilt*
+        """*keep a complete, durable copy of the workspace database in the backups directory before it is rebuilt*
 
         The `quality_control` table exists nowhere but the database, so the database is never deleted until a
-        verified copy of it is safe in `backups/` inside the workspace root. Backups are never pruned. The caller
-        deletes the original (see `_remove_database_files`) only after this method returns a path.
+        verified copy of it is safe on disk in `backups/` inside the workspace root. Backups are never pruned. The
+        caller deletes the original (see `_remove_database_files`) only after this method returns.
 
-        A readable database is copied as a verified SQLite snapshot named `<stem>_refresh_<UTC stamp>.db`. A
-        database that failed to open, or that SQLite cannot snapshot, is copied byte for byte (with any
-        `-wal`/`-shm` sidecar files) as `<stem>_corrupt_<UTC stamp>.db`.
+        A readable database is copied as a single-file SQLite snapshot named `<stem>_refresh_<UTC stamp>.db`. A
+        database that failed to open, or that SQLite reports is not a database or is malformed, is copied byte
+        for byte (with any `-wal`/`-shm` sidecar files) as `<stem>_corrupt_<UTC stamp>.db`. Any other failure,
+        such as a locked or busy database, refuses the rebuild.
 
         **Key Arguments:**
 
@@ -1839,8 +1877,11 @@ class data_organiser:
 
         **Return:**
 
-        - ``backupPath`` -- path of the preserved database file. None when there is no database to preserve, or
-          when it could not be preserved, in which case a warning naming the database path is printed.
+        - ``backupPath`` -- path of the preserved database file, or None when there is no database to preserve.
+
+        **Raises:**
+
+        - `DatabasePreservationError` when the database cannot be preserved. Nothing in the workspace is changed.
         """
         from datetime import UTC, datetime
 
@@ -1857,18 +1898,23 @@ class data_organiser:
                 try:
                     self._snapshot_database(backupPath)
                 except sqlite3.DatabaseError as error:
+                    if not _is_unreadable_database_error(error):
+                        raise
                     self.log.warning(f"cannot snapshot `{self.rootDbPath}` ({error}); keeping a raw copy instead")
                     failedToOpen = True
             if failedToOpen:
-                backupPath = self._backup_path(dbPath, "corrupt", stamp)
+                backupPath = self._backup_path(dbPath, _RAW_BACKUP_LABEL, stamp)
                 self._copy_database_files(backupPath)
+            _fsync_path(self.dbBackupsDir)
         except (OSError, sqlite3.Error, _UnsafePathError) as error:
-            self.log.warning(f"could not preserve the database `{self.rootDbPath}` as `{backupPath}`: {error}")
-            print(
-                f"WARNING: could not preserve the database `{self.rootDbPath}` in `{self.dbBackupsDir}` ({error}). "
-                "The database has been kept in place and has not been rebuilt."
+            message = (
+                f"Could not preserve the database `{self.rootDbPath}` in `{self.dbBackupsDir}` ({error}). "
+                "It has been left in place and the workspace has not been rebuilt. Fix the cause (for example "
+                "free disk space, or stop any other soxspipe process using the workspace), then run "
+                "`soxspipe prep --refresh` again."
             )
-            return None
+            self.log.error(message)
+            raise DatabasePreservationError(message) from error
 
         self.databaseBackupPath = str(backupPath)
         return self.databaseBackupPath
@@ -1882,11 +1928,12 @@ class data_organiser:
         )
 
     def _snapshot_database(self, backupPath):
-        """*write a consistent SQLite snapshot of the workspace database to `backupPath` and verify it*
+        """*write a consistent, single-file SQLite snapshot of the workspace database to `backupPath`*
 
-        Uses the SQLite online-backup API, so the copy is transactionally consistent even while other
-        connections hold the database open, and includes any content still in the `-wal` file. A partial or
-        unverifiable snapshot is removed and the error re-raised.
+        Uses the SQLite online-backup API from a read-only source, so the copy is transactionally consistent
+        even while other connections hold the database open, and includes any content still in the `-wal` file.
+        The snapshot is switched to `DELETE` journal mode so it is one self-contained file, checked with
+        `quick_check`, and flushed to disk. A partial or unverifiable snapshot is removed and the error re-raised.
         """
         if os.path.exists(backupPath):
             raise FileExistsError(f"database backup `{backupPath}` already exists")
@@ -1897,13 +1944,15 @@ class data_organiser:
                 target = sqlite3.connect(backupPath)
                 try:
                     source.backup(target)
+                    target.execute("PRAGMA journal_mode=DELETE;")
                     check = target.execute("PRAGMA quick_check;").fetchall()
                 finally:
                     target.close()
             finally:
                 source.close()
             if check != [("ok",)]:
-                raise sqlite3.DatabaseError(f"database backup `{backupPath}` failed its quick check: {check}")
+                raise _UnreadableDatabaseError(f"database snapshot `{backupPath}` failed its quick check: {check}")
+            _fsync_path(backupPath)
         except (OSError, sqlite3.Error):
             self._remove_partial_backup(backupPath)
             raise
@@ -1911,18 +1960,24 @@ class data_organiser:
     def _copy_database_files(self, backupPath):
         """*copy the raw database file and any `-wal`/`-shm` sidecar files to `backupPath`, byte for byte*
 
-        Used for a database that will not open, so no SQLite call is made on it. Nothing is removed from the
-        workspace here; on a partial failure the copies already made are removed and the error re-raised.
+        Used for a database that will not open, so no SQLite call is made on it. Each copy must match its
+        source's size and is flushed to disk. Nothing is removed from the workspace here; on a partial failure
+        the copies already made are removed and the error re-raised.
         """
-        import shutil
-
         if os.path.exists(backupPath):
             raise FileExistsError(f"database backup `{backupPath}` already exists")
         try:
             for suffix in ("", "-wal", "-shm"):
                 source = self.rootDbPath + suffix
-                if os.path.exists(source):
-                    shutil.copy2(source, f"{backupPath}{suffix}")
+                if not os.path.exists(source):
+                    continue
+                target = f"{backupPath}{suffix}"
+                shutil.copy2(source, target)
+                sourceSize = os.path.getsize(source)
+                targetSize = os.path.getsize(target)
+                if sourceSize != targetSize:
+                    raise OSError(f"copy of `{source}` has size {targetSize}, expected {sourceSize}")
+                _fsync_path(target)
         except OSError:
             self._remove_partial_backup(backupPath)
             raise
@@ -1957,7 +2012,8 @@ class data_organiser:
     def _read_preserved_quality_control(self, backupPath):
         """*read the `quality_control` rows from a preserved copy of the database*
 
-        The copy is opened read-only, so reading it never changes the preserved file.
+        The copy is opened read-only, so reading it never changes the preserved file, and it must pass
+        `PRAGMA quick_check` before any row is read.
 
         **Key Arguments:**
 
@@ -1966,21 +2022,30 @@ class data_organiser:
         **Return:**
 
         - ``qcRows`` -- pandas DataFrame of every `quality_control` row in the preserved database
+
+        **Raises:**
+
+        - `sqlite3.DatabaseError` when the preserved file fails its `quick_check`
         """
         import pandas as pd
 
         source = sqlite3.connect(Path(backupPath).resolve().as_uri() + "?mode=ro", uri=True)
         try:
+            check = source.execute("PRAGMA quick_check;").fetchall()
+            if check != [("ok",)]:
+                raise sqlite3.DatabaseError(f"the preserved database failed its quick check: {check}")
             return pd.read_sql_query("select * from quality_control;", source)
         finally:
             source.close()
 
     def _write_quality_control_rows(self, qcRows):
-        """*append preserved `quality_control` rows to the current database*
+        """*append preserved `quality_control` rows to the current database, skipping rows already present*
 
-        Only the columns the current schema knows are written, so a backup made by an older schema still
-        restores; any column dropped this way is named in a log warning. Rows that are already present are
-        skipped by the table's `UNIQUE (qc_name, sof_name, qc_order) ON CONFLICT IGNORE` constraint.
+        A row is skipped when a row with the same `(qc_name, sof_name, qc_order)` key already exists, with
+        NULL matching NULL (the table's `UNIQUE ... ON CONFLICT IGNORE` constraint treats NULLs as distinct,
+        so it alone would duplicate rows whose `qc_order` is NULL). Only the columns the current schema knows
+        are written, so a backup made by an older schema still restores; any column dropped this way is named
+        in a log warning.
 
         The values pass unchanged through `_dataframe_to_sqlite`: its `"--"`/`-99.99` to NULL substitution
         cannot match, because every QC writer already applied it before the rows were stored, and the text
@@ -2001,16 +2066,27 @@ class data_organiser:
         droppedColumns = sorted(set(qcRows.columns) - currentColumns)
         if droppedColumns:
             self.log.warning(f"quality-control columns not in the current schema were not restored: {droppedColumns}")
+
+        keyColumns = ["qc_name", "sof_name", "qc_order"]
+        existingKeys = set(self.conn.execute("select qc_name, sof_name, qc_order from quality_control;"))
+        rowKeys = qcRows.reindex(columns=keyColumns).astype(object)
+        rowKeys = rowKeys.where(rowKeys.notna(), None)
+        isNew = [key not in existingKeys for key in rowKeys.itertuples(index=False, name=None)]
+        newRows = qcRows.loc[isNew, keptColumns]
+        if newRows.empty:
+            return 0
+
         countQuery = "select count(*) from quality_control;"
         before = self.conn.execute(countQuery).fetchone()[0]
-        self._dataframe_to_sqlite(qcRows[keptColumns], "quality_control", replace=False)
+        self._dataframe_to_sqlite(newRows, "quality_control", replace=False)
         return self.conn.execute(countQuery).fetchone()[0] - before
 
     def _restore_quality_control_history(self, backupPath):
         """*restore `quality_control` rows from a preserved database into the rebuilt one, best effort*
 
-        Never raises. When the preserved file cannot be read (for example, a database that failed to open), a
-        warning naming the preserved path is printed and the rebuild continues without QC history.
+        Never raises for a source it cannot read. When the preserved file cannot be read or fails its
+        `quick_check` (for example, a raw copy of a database that failed to open), a warning naming the
+        preserved path is printed and the rebuild continues without QC history.
 
         **Key Arguments:**
 
@@ -2020,49 +2096,35 @@ class data_organiser:
 
         - ``restoredCount`` -- the number of rows added to the rebuilt database (0 on failure)
         """
+        import pandas as pd
+
+        source = f"the preserved database `{backupPath}`"
+        if f"_{_RAW_BACKUP_LABEL}_" in Path(backupPath).name:
+            source += " (a raw copy of a database that failed to open)"
         try:
             qcRows = self._read_preserved_quality_control(backupPath)
             restoredCount = self._write_quality_control_rows(qcRows)
-        # BROAD BY DESIGN: `_dataframe_to_sqlite` RAISES A BARE `Exception`,
-        # AND A RESTORE FAILURE MUST NEVER STOP A REBUILD
-        except Exception as error:
-            import traceback
-
+        except (sqlite3.Error, pd.errors.DatabaseError, OSError, ValueError) as error:
             self.log.warning(f"could not restore quality-control history from `{backupPath}`: {error}")
             self.log.debug(traceback.format_exc())
             print(
-                f"WARNING: could not restore quality-control history from the preserved database `{backupPath}` "
-                f"({error}). The preserved file has been kept."
+                f"WARNING: could not restore quality-control history from {source} ({error}). "
+                "The preserved file has been kept."
             )
             return 0
 
-        print(
-            f"Restored {restoredCount} of {len(qcRows)} quality-control rows "
-            f"from the preserved database `{backupPath}`."
-        )
+        print(f"Restored {restoredCount} of {len(qcRows)} quality-control rows from {source}.")
         return restoredCount
 
     def _rebuild_database_that_failed_to_open(self):
-        """*rebuild the workspace database after it failed to open, keeping the failed file in `backups/`*
+        """*rebuild the workspace database after it failed to open, keeping a raw copy of it in `backups/`*
 
         **Raises:**
 
-        - `sqlite3.DatabaseError` when the failed database could not be copied into `backups/`. It is then
+        - `DatabasePreservationError` when the failed database could not be copied into `backups/`. It is then
           left in place, never deleted, and there is no usable database to continue with.
         """
-        # TELL `prepare` TO KEEP A RAW COPY OF THE FAILED DATABASE RATHER THAN A SQLITE SNAPSHOT
-        self._databaseFailedToOpen = True
-        self._databaseRebuildRefused = False
-        try:
-            self.prepare(refresh=True)
-        finally:
-            self._databaseFailedToOpen = False
-        if self._databaseRebuildRefused:
-            raise sqlite3.DatabaseError(
-                f"The database `{self.rootDbPath}` will not open and could not be copied into "
-                f"`{self.dbBackupsDir}`, so it has been left in place. Move it aside by hand, then run "
-                "`soxspipe prep` again."
-            )
+        self.prepare(refresh=True, _failedToOpen=True)
 
     def _get_or_create_db_connection(self):
         """Private method to get or create the SQLite database connection, copying the template if missing."""
@@ -3125,9 +3187,9 @@ class data_organiser:
                     table_name, con=self.conn, index=False, if_exists="append"
                 )
                 keepTrying = 10
-            except Exception as e:
+            except Exception:
                 if keepTrying > 5:
-                    raise Exception(e)
+                    raise
                 time.sleep(1)
                 keepTrying += 1
 
