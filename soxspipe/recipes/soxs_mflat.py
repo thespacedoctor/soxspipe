@@ -29,6 +29,10 @@ from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
+# NIR IMAGE TYPES ACCEPTED AS LAMP-ON FLATS, AND THE TYPE LAMP-OFF FLATS CAN ARRIVE AS
+NIR_FLAT_LAMP_TYPES = ("LAMP,FLAT", "FLAT,LAMP")
+NIR_LAMP_OFF_TYPE = "DARK"
+
 
 class soxs_mflat(base_recipe):
     """
@@ -223,18 +227,14 @@ class soxs_mflat(base_recipe):
         """
         error = False
 
-        # WANT ON AND OFF PINHOLE FRAMES
-        # MIXED INPUT IMAGE TYPES ARE BAD
-        if not error and len(imageTypes) > 1:
-            # FIX ME
-            if len(imageTypes) == 2 and ("DARK" in imageTypes):
-                pass
-            else:
-                pass
-                # imageTypes = " and ".join(imageTypes)
-                # error = "Input frames are a mix of %(imageTypes)s" % locals()
+        # MIXED INPUT IMAGE TYPES ARE BAD, UNLESS A FLAT-LAMP TYPE IS PAIRED WITH LAMP-OFF DARK FRAMES
+        if len(imageTypes) > 1:
+            lampTypes = [i for i in imageTypes if i in NIR_FLAT_LAMP_TYPES]
+            others = [i for i in imageTypes if i not in NIR_FLAT_LAMP_TYPES]
+            if not lampTypes or any(i != NIR_LAMP_OFF_TYPE for i in others):
+                error = f"Input frames are a mix of {' and '.join(imageTypes)}"
 
-        if not error and "LAMP,FLAT" not in imageTypes and "FLAT,LAMP" not in imageTypes:
+        if not error and not any(i in NIR_FLAT_LAMP_TYPES for i in imageTypes):
             error = "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR"
 
         if not error:
