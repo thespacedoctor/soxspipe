@@ -466,7 +466,6 @@ class data_organiser:
           The database is then left in place and nothing is rebuilt.
         """
         self.log.debug("starting the ``prepare`` method")
-        import codecs
 
         backupPath = None
         if refresh:
@@ -527,20 +526,7 @@ class data_organiser:
 
         # IF SESSION ID FILE DOES NOT EXIST, CREATE A NEW SESSION
         # OTHERWISE USE CURRENT SESSION
-        exists = os.path.exists(self.sessionIdFile)
-        if not exists:
-            sessionId = self.session_create(sessionId="base")
-            self.sessionId = sessionId
-        else:
-            with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
-                sessionId = _validate_session_id(readFile.read())
-                self.sessionPath = str(
-                    _validate_owned_path(
-                        Path(self.sessionsDir) / sessionId,
-                        self.sessionsDir,
-                        "session path",
-                    )
-                )
+        self._select_session()
 
         # GET SETTINGS
         settingsPath = self.sessionPath + "/soxspipe.yaml"
@@ -568,26 +554,46 @@ class data_organiser:
         self.build_sof_files()
 
         if report:
-
-            rawDirStr = self.rawDir.replace("./", "")
-
-            print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
-            print("In this workspace you will find:\n")
-            print("   - `backups/`: copies of `soxspipe.db` kept each time the database is rebuilt")
-            print("   - `misc/`: a lost-and-found archive of non-fits files")
-            print("   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
-            print(f"   - `{rawDirStr}/`: nested folders, ordered by date, containing raw-frames.")
-            print("   - `sessions/`: directory of data-reduction sessions")
-            print("   - `sof/`: the set-of-files (sof) files required for each reduction step")
-            print("   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
-            print("   - `reduced/`: nested folders, ordered by date, containing reduced data.\n")
-
-            incompleteSets, blockingSets = self.get_incomplete_sets_report()
-            print_incomplete_sets_report(incompleteSets, blockingSets)
-
-            self.conn.close()
+            self._print_prepare_report(basename)
 
         self.log.debug("completed the ``prepare`` method")
+        return
+
+    def _select_session(self):
+        import codecs
+
+        if not os.path.exists(self.sessionIdFile):
+            self.sessionId = self.session_create(sessionId="base")
+        else:
+            with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
+                sessionId = _validate_session_id(readFile.read())
+                self.sessionPath = str(
+                    _validate_owned_path(
+                        Path(self.sessionsDir) / sessionId,
+                        self.sessionsDir,
+                        "session path",
+                    )
+                )
+        return
+
+    def _print_prepare_report(self, basename):
+        rawDirStr = self.rawDir.replace("./", "")
+
+        print(f"\nTHE `{basename}` WORKSPACE FOR HAS BEEN PREPARED FOR DATA-REDUCTION\n")
+        print("In this workspace you will find:\n")
+        print("   - `backups/`: copies of `soxspipe.db` kept each time the database is rebuilt")
+        print("   - `misc/`: a lost-and-found archive of non-fits files")
+        print("   - `qc/`: nested folders, ordered by date, containing quality-control plots and tables.")
+        print(f"   - `{rawDirStr}/`: nested folders, ordered by date, containing raw-frames.")
+        print("   - `sessions/`: directory of data-reduction sessions")
+        print("   - `sof/`: the set-of-files (sof) files required for each reduction step")
+        print("   - `soxspipe.db`: a sqlite database needed by the data-organiser, please do not delete")
+        print("   - `reduced/`: nested folders, ordered by date, containing reduced data.\n")
+
+        incompleteSets, blockingSets = self.get_incomplete_sets_report()
+        print_incomplete_sets_report(incompleteSets, blockingSets)
+
+        self.conn.close()
         return
 
     def _qc_acceptable_range_queries(self):
