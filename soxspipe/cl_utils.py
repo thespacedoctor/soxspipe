@@ -433,16 +433,10 @@ def main(arguments=None):
                     if not os.path.exists(exportDir):
                         os.makedirs(exportDir)
                     for rawFramePath in rawFramePaths:
-                        rawFramePath = str(
-                            _validate_owned_path(
-                                rawFramePath, rawDir, "raw frame path"
-                            )
-                        )
+                        rawFramePath = str(_validate_owned_path(rawFramePath, rawDir, "raw frame path"))
                         basename = os.path.basename(rawFramePath)
                         exportPath = exportDir + "/" + basename
-                        exportPath = str(
-                            _validate_owned_path(exportPath, exportDir, "export path")
-                        )
+                        exportPath = str(_validate_owned_path(exportPath, exportDir, "export path"))
                         if not os.path.exists(exportPath):
                             shutil.copy(rawFramePath, exportPath)
                     print(
