@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: DY-268, a workspace database locked or busy in another process now makes `data_organiser._get_or_create_db_connection` refuse with `DatabasePreservationError` after the first failed attempt, instead of retrying 50 times (up to about four hours with the 300 s busy timeout)
 * **FIXED**: DY-220, `cut_image_slice` and its two callers in `detect_order_edges` no longer name a local `slice`, which shadowed Python's builtin `slice` for the whole function body; the value is now `sliceOut`, and behaviour is unchanged
 * **FIXED**: DY-262, `soxs_mflat` NIR verification now rejects mixed input image types, which had been disabled behind a `# FIX ME`; only a single type, or a flat-lamp type (`LAMP,FLAT` or `FLAT,LAMP`) with `DARK` lamp-off frames, passes, and any other mix raises `TypeError` naming the types found
 * **FIXED**: DY-222, removed the dead `% locals()` from five input-frame verification messages in `base_recipe._verify_single_binning`, `soxs_mbias`, `soxs_mdark` and `soxs_mflat` (two); message text and exception type are unchanged, and the exact messages are now pinned by tests

@@ -2220,6 +2220,10 @@ class data_organiser:
                 except (AttributeError, NameError, UnboundLocalError) as e:
                     self.log.debug(f"_get_or_create_db_connection: `del conn` failed, continuing: {e}")
 
+                # ANOTHER CONNECTION HOLDS THE DATABASE, SO REFUSE AT ONCE INSTEAD OF RETRYING
+                if _is_locked_database_error(lastError):
+                    self._rebuild_database_that_failed_to_open(lastError)
+
                 time.sleep(1)
 
                 if i > tries - 1:
