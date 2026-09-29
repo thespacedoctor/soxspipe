@@ -727,3 +727,35 @@ def test_connection_retry_loop_refuses_a_database_locked_by_another_connection(
     assert _read_qc(open_sqlite(rootDb)) == sorted(SEEDED_QC_ROWS, key=repr)
     assert _backup_files(organiser) == []
     assert not Path(organiser.dbBackupsDir).exists() or list(Path(organiser.dbBackupsDir).iterdir()) == []
+
+
+def test_connection_retry_loop_refuses_a_locked_database_without_retrying(
+    science_workspace, monkeypatch, open_sqlite
+) -> None:
+    # ARRANGE
+    import time
+
+    organiser = science_workspace
+    organiser.conn.close()
+    organiser.conn = None
+    holder = open_sqlite(organiser.rootDbPath)
+    holder.execute("BEGIN EXCLUSIVE")
+    sleptSeconds = []
+    monkeypatch.setattr("time.sleep", sleptSeconds.append)
+    monkeypatch.setattr(organiser, "_DB_BUSY_TIMEOUT_SECONDS", 0.05)
+
+    # ACT
+    started = time.monotonic()
+    with pytest.raises(DatabasePreservationError, match="locked or busy") as refusal:
+        organiser._get_or_create_db_connection()
+    # WALL TIME THE USER WOULD WAIT: TIME SPENT PLUS THE RETRY SLEEPS THAT WERE SKIPPED
+    waitedSeconds = time.monotonic() - started + sum(sleptSeconds)
+
+    # ASSERT
+    holder.rollback()
+    assert organiser._DB_OPEN_ATTEMPTS == 50
+    assert sleptSeconds == []
+    assert waitedSeconds < 5
+    assert "Stop any other soxspipe process using this workspace" in str(refusal.value)
+    assert organiser.syncCalls == []
+    assert _backup_files(organiser) == []
