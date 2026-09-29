@@ -723,35 +723,49 @@ def test_verification_logs_its_own_entry_and_exit(
 # ---------------------------------------------------------------------------
 
 
-def test_the_tuning_worker_writes_both_degrees_then_fails_on_an_undefined_self(
+class RecordingDetector:
+    """Stands in for `detect_continuum`: records its keywords and returns an empty fit."""
+
+    built: list[dict[str, Any]] = []
+
+    def __init__(self, **kwargs: Any) -> None:
+        RecordingDetector.built.append(kwargs)
+
+    def get(self) -> tuple[None, ...]:
+        return (None,) * 6
+
+
+def test_the_tuning_worker_writes_both_degrees_and_forwards_the_start_night_date(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """DY-61: the worker reads `self.startNightDate` at module level and raises `NameError`.
-
-    The two degree writes land first, and the detector is never built.
-    """
+    """DY-61: the worker builds the detector with the `startNightDate` it is passed, not one read from `self`."""
     # ARRANGE
     recipeSettings: dict[str, Any] = {"detect-continuum": {}}
-    built: list[object] = []
-    monkeypatch.setattr(ORDER_MODULE, "detect_continuum", lambda **kwargs: built.append(kwargs))
+    monkeypatch.setattr(RecordingDetector, "built", [])
+    monkeypatch.setattr(ORDER_MODULE, "detect_continuum", RecordingDetector)
 
-    # ACT / ASSERT
-    with pytest.raises(NameError, match="self"):
-        ORDER_MODULE.parameterTuning(
-            (3, 5),
-            log=log,
-            recipeSettings=recipeSettings,
-            settings={},
-            orderFrame=None,
-            disp_map_table="DISP_TAB",
-            orderPixelTable=None,
-            qc=None,
-            products=None,
-            sofName="sof",
-            binx=1,
-            biny=1,
-        )
+    # ACT
+    returned = ORDER_MODULE.parameterTuning(
+        (3, 5),
+        log=log,
+        recipeSettings=recipeSettings,
+        settings={},
+        orderFrame=None,
+        disp_map_table="DISP_TAB",
+        orderPixelTable="ORDER-PIXEL-TABLE",
+        qc=None,
+        products=None,
+        sofName="sof",
+        binx=1,
+        biny=1,
+        startNightDate="2024-01-02",
+    )
 
+    # ASSERT
+    assert returned is None
     assert recipeSettings == {"detect-continuum": {"order-deg": 3, "disp-axis-deg": 5}}
-    assert built == []
+    (detector,) = RecordingDetector.built
+    assert detector["startNightDate"] == "2024-01-02"
+    assert detector["orderPixelTable"] == "ORDER-PIXEL-TABLE"
+    assert detector["recipeSettings"] is recipeSettings

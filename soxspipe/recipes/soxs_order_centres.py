@@ -548,6 +548,7 @@ class soxs_order_centres(base_recipe):
             sofName=self.sofName,
             binx=binx,
             biny=biny,
+            startNightDate=self.startNightDate,
             turnOffMP=self.debug,
             mute=True,
             progressBar=True,
@@ -648,6 +649,7 @@ def parameterTuning(  # noqa: N802
     sofName,
     binx,
     biny,
+    startNightDate,
 ):
     """*tuning the spatial solution*
 
@@ -665,8 +667,9 @@ def parameterTuning(  # noqa: N802
     - ``sofName`` -- the name of the set-of-files this reduction came from
     - ``binx`` -- the x binning of the calibrated frame
     - ``biny`` -- the y binning of the calibrated frame
+    - ``startNightDate`` -- the start-of-night date to pass to the continuum detector
 
-    The fit's own outputs are discarded.
+    The fit's own outputs are discarded. A failed fit propagates.
 
     **Usage:**
 
@@ -684,6 +687,7 @@ def parameterTuning(  # noqa: N802
         sofName=sofName,
         binx=binx,
         biny=biny,
+        startNightDate=startNightDate,
     )
     ```
     """
@@ -704,19 +708,16 @@ def parameterTuning(  # noqa: N802
         binx=binx,
         biny=biny,
         orderPixelTable=orderPixelTable,
-        startNightDate=self.startNightDate,
+        startNightDate=startNightDate,
     )
-    try:
-        (
-            productPath,
-            qcTable,
-            productsTable,
-            orderPolyTable,
-            orderPixelTable,
-            orderMetaTable,
-        ) = detector.get()
-    except Exception as e:
-        log.warning(f"parameterTuning: this tuning iteration failed and records nothing in the grid, continuing: {e}")
+    (
+        productPath,
+        qcTable,
+        productsTable,
+        orderPolyTable,
+        orderPixelTable,
+        orderMetaTable,
+    ) = detector.get()
 
     return
 

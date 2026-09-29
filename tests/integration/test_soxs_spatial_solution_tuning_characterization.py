@@ -122,6 +122,26 @@ def test_tuning_fits_the_line_list_once_then_sweeps_the_polynomial_grid(
     assert tuningArguments["lineDetectionTable"] == "LINE-DETECTION-TABLE"
 
 
+@pytest.mark.parametrize("debug", [True, False])
+def test_tuning_forwards_the_debug_switch_to_every_worker(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    debug: bool,
+) -> None:
+    """DY-61: the worker has no `self`, so the recipe passes `debug` through `fmultiprocess`."""
+    # ARRANGE
+    _in_fresh_directory(tmp_path, monkeypatch, f"tuning-debug-{debug}")
+    recipe, _, _, tuningArguments = _tuning_recipe(log, tmp_path, monkeypatch, debug=debug)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert tuningArguments["function"] is SPATIAL_MODULE.parameterTuning
+    assert tuningArguments["debug"] is debug
+
+
 def test_tuning_skips_the_overrides_the_quicklook_and_the_tables(
     log: Any,
     tmp_path: Path,
