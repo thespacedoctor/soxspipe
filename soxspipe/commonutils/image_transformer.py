@@ -29,11 +29,10 @@ class image_transformer(base_util):
 
     1. Define the slit-position (s) and wavelength (w) bounds of the order.
 
-    2. Indexes into the zoomed arrays using sub-pixel slit bounds derived from the
-       order-pixel table, producing a 2D block of shape
-       ``(nSlices, slitHalfLength * 2 * zoomFactor)``.
-    3. Rebins that block back to ``(nSlices, slitHalfLength * 2)`` by block-averaging,
-       giving finer effective slit sampling.
+    2. Resamples the frame onto an oversampled (slit, wavelength) grid, with the slit axis
+       sub-sampled by ``zoomFactorSlit`` and the wavelength axis by ``zoomFactorWavelength``.
+    3. Rebins that grid back to detector-pixel resolution by summing each
+       ``zoomFactorSlit`` x ``zoomFactorWavelength`` block.
     4. Optionally sigma-clips the rebinned raw flux to catch additional outlier pixels before extraction.
 
     **Key Arguments:**
@@ -63,8 +62,7 @@ class image_transformer(base_util):
         twoDMapPath=twoDMapPath,
         dispersionMap=dispersionMap,
         associatedFrame=skySubtractedFrame,
-        slitHalfLength=slitHalfLength,
-        zoomFactor=11
+        slitHalfLength=slitHalfLength
     )
     transformer.cache_image(
         imageName="fluxRaw",
@@ -95,7 +93,9 @@ class image_transformer(base_util):
         # NUMBER OF BOUNDARY SAMPLE POINTS PER CELL EDGE — FIXED FOR THE LIFE OF THE INSTANCE SO THE
         # RESAMPLING GEOMETRY CAN BE PRECOMPUTED ONCE AND SHARED ACROSS ALL cache_image CALLS
         self.edgeSamples = edgeSamples
-        self.zoomFactor = 5
+        # SUB-PIXEL SAMPLING FACTORS FOR THE SLIT (Y-AXIS) AND WAVELENGTH (X-AXIS) OF THE RECTIFIED IMAGE
+        self.zoomFactorSlit = 5
+        self.zoomFactorWavelength = 5
         self.pixelScale = 0.28  # arcsec/pixel
 
         ## TYPICAL 11" SLIT LENGTH COVERS ~30-40 PIXELS - 1 pixel ~ 0.3
@@ -216,16 +216,18 @@ class image_transformer(base_util):
         return orderCoverage
 
     def _unzoom(self, arr2d, operation="sum"):
-        """Flux-conserving NxN binning (sum within each zoomFactor block)."""
-        by = arr2d.shape[0] // self.zoomFactor
-        bx = arr2d.shape[1] // self.zoomFactor
+        """Flux-conserving NxM binning (slit rows by zoomFactorSlit, wavelength columns by zoomFactorWavelength)."""
+        zs = self.zoomFactorSlit
+        zw = self.zoomFactorWavelength
+        by = arr2d.shape[0] // zs
+        bx = arr2d.shape[1] // zw
         if by == 0 or bx == 0:
             return arr2d
-        trimmed = arr2d[:by * self.zoomFactor, :bx * self.zoomFactor]
+        trimmed = arr2d[:by * zs, :bx * zw]
         if operation == "sum":
-            return trimmed.reshape(by, self.zoomFactor, bx, self.zoomFactor).sum(axis=(1, 3))
+            return trimmed.reshape(by, zs, bx, zw).sum(axis=(1, 3))
         if operation == "mean":
-            return trimmed.reshape(by, self.zoomFactor, bx, self.zoomFactor).mean(axis=(1, 3))
+            return trimmed.reshape(by, zs, bx, zw).mean(axis=(1, 3))
         raise ValueError("Invalid operation. Use 'sum' or 'mean'.")
 
     def _cache_true_wavelength_slit_images(self):
@@ -446,7 +448,7 @@ class image_transformer(base_util):
         # t.write("/tmp/table.fits", overwrite=True)
         
 
-        subPixelSize = self.pixelScale / self.zoomFactor
+        subPixelSize = self.pixelScale / self.zoomFactorSlit
         slitStart = slitCentreArcsec - self.slitLengthArcsec/2 - 1*slitStdArcsec
         slitStop = slitCentreArcsec + self.slitLengthArcsec/2 + 1*slitStdArcsec
         slitEdges = np.arange(slitStart, slitStop, subPixelSize)
@@ -462,7 +464,7 @@ class image_transformer(base_util):
             if order not in self.uniqueOrders:
                 continue
             pixelRange = amax - amin
-            wlIncrement = ((wlmax - wlmin) / pixelRange) / self.zoomFactor
+            wlIncrement = ((wlmax - wlmin) / pixelRange) / self.zoomFactorWavelength
             wl_edges = np.arange(wlmin, wlmax, wlIncrement)
             orderSlitEdges.append(slitEdges)
             orderWlEdges.append(wl_edges)

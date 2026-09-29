@@ -21,11 +21,17 @@ from soxspipe.commonutils.image_transformer import (
 pytestmark = pytest.mark.unit
 
 
-def _transformer(log: object, *, zoomFactor: int = 1) -> image_transformer:
+def _transformer(
+    log: object,
+    *,
+    zoomFactorSlit: int = 1,
+    zoomFactorWavelength: int = 1,
+) -> image_transformer:
     """Return a minimal transformer without invoking detector-sized setup."""
     transformer = image_transformer.__new__(image_transformer)
     transformer.log = log
-    transformer.zoomFactor = zoomFactor
+    transformer.zoomFactorSlit = zoomFactorSlit
+    transformer.zoomFactorWavelength = zoomFactorWavelength
     transformer._cache_image_names = set()
     return transformer
 
@@ -42,7 +48,7 @@ def test_unzoom_rebins_complete_blocks(
     operation: str,
     expected: np.ndarray,
 ) -> None:
-    transformer = _transformer(log, zoomFactor=2)
+    transformer = _transformer(log, zoomFactorSlit=2, zoomFactorWavelength=2)
     values = np.arange(16.0).reshape(4, 4)
 
     result = transformer._unzoom(values, operation=operation)
@@ -51,13 +57,34 @@ def test_unzoom_rebins_complete_blocks(
 
 
 def test_unzoom_returns_small_array_and_rejects_unknown_operation(log: object) -> None:
-    transformer = _transformer(log, zoomFactor=5)
+    transformer = _transformer(log, zoomFactorSlit=5, zoomFactorWavelength=5)
     values = np.ones((2, 2))
 
     assert transformer._unzoom(values) is values
-    transformer.zoomFactor = 1
+    transformer.zoomFactorSlit = 1
+    transformer.zoomFactorWavelength = 1
     with pytest.raises(ValueError, match="Invalid operation"):
         transformer._unzoom(values, operation="median")
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("sum", np.array([[24.0, 42.0], [96.0, 114.0]])),
+        ("mean", np.array([[4.0, 7.0], [16.0, 19.0]])),
+    ],
+)
+def test_unzoom_bins_slit_rows_and_wavelength_columns_independently(
+    log: object,
+    operation: str,
+    expected: np.ndarray,
+) -> None:
+    transformer = _transformer(log, zoomFactorSlit=2, zoomFactorWavelength=3)
+    values = np.arange(24.0).reshape(4, 6)
+
+    result = transformer._unzoom(values, operation=operation)
+
+    np.testing.assert_array_equal(result, expected)
 
 
 def test_pixel_boundary_grid_traces_each_cell_counter_clockwise() -> None:
@@ -269,6 +296,39 @@ def test_rectified_boundaries_follow_map_orientation_and_skip_absent_orders(
     assert len(slitEdges) == len(wavelengthEdges) == 1
     assert transformer.wlMinMax == [(500.0, 504.0)]
     assert len(transformer.orderSlices) == 1
+
+
+def test_rectified_boundaries_use_separate_slit_and_wavelength_zoom(
+    log: object,
+) -> None:
+    transformer = _transformer(log, zoomFactorSlit=4, zoomFactorWavelength=2)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.pixelScale = 1.0
+    transformer.slitLengthArcsec = 2.0
+    transformer.orderPixelTable = pd.DataFrame(
+        {"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]}
+    )
+    transformer.mapDF = pd.DataFrame(
+        {
+            "x": [0, 1],
+            "y": [0, 0],
+            "slit_position": [-0.5, 0.5],
+            "wavelength": [500.0, 502.0],
+        }
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+
+    slitEdges, wavelengthEdges = transformer._determine_rectified_image_boundaries()
+
+    np.testing.assert_allclose(np.diff(slitEdges[0]), 0.25)
+    np.testing.assert_allclose(np.diff(wavelengthEdges[0]), 1.0)
 
 
 def test_sigma_clip_bpm_preserves_existing_bad_pixels(log: object) -> None:
