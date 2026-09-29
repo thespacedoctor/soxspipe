@@ -26,6 +26,13 @@ from .base_util import base_util
 # AN ORDER HAS FEWER TRACE POINTS THAN THIS DEGREE REQUIRES)
 SLIT_CENTRE_POLY_DEGREE = 3
 
+# DENSITY OF WAVELENGTH SAMPLES (PER DETECTOR PIXEL ALONG THE ORDER) USED TO TRACE EACH ORDER'S
+# PATH ACROSS THE DETECTOR WHEN BUILDING PIXEL-UNIFORM WAVELENGTH BIN EDGES
+TRACE_SAMPLES_PER_PIXEL = 4
+
+# SLIT OFFSET (ARCSEC) FROM THE TRACE CENTRE USED TO MEASURE EACH ORDER'S ARCSEC-PER-PIXEL SCALE
+SLIT_SCALE_PROBE_ARCSEC = 1.0
+
 
 class image_transformer(base_util):
     """*rectify frame arrays, order-by-order, into cross-dispersion slices ready for spectral extraction*
@@ -36,10 +43,14 @@ class image_transformer(base_util):
        object trace: the slit centre at each wavelength is a per-order polynomial fit of
        slit position vs wavelength through that order's own trace points.
 
+       The wavelength bin edges are spaced evenly in detector pixels along the trace (so they
+       are not evenly spaced in wavelength), and the slit bin edges use that order's own
+       arcsec-per-pixel scale, both measured from the dispersion map.
     2. Resamples the frame onto an oversampled (slit, wavelength) grid, with the slit axis
        sub-sampled by ``zoomFactorSlit`` and the wavelength axis by ``zoomFactorWavelength``.
     3. Rebins that grid back to detector-pixel resolution by summing each
-       ``zoomFactorSlit`` x ``zoomFactorWavelength`` block.
+       ``zoomFactorSlit`` x ``zoomFactorWavelength`` block, so each rectified pixel holds the
+       counts of about one detector pixel.
     4. Optionally sigma-clips the rebinned raw flux to catch additional outlier pixels before extraction.
 
     **Key Arguments:**
@@ -50,7 +61,7 @@ class image_transformer(base_util):
     - ``twoDMapPath`` -- path to the 2D map FITS file (pixel wavelength and slit position values needed for rectification)
     - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
     - ``associatedFrame`` -- an example 2D frame to be rectified. This frame is used to determine detector binning, arm etc.
-    - ``slitHalfLength`` -- half-length of the slit in pixels (sets extraction aperture)
+    - ``slitHalfLength`` -- half-length of the slit in detector pixels (sets extraction aperture)
 
     **Return:**
 
@@ -103,22 +114,18 @@ class image_transformer(base_util):
         # SUB-PIXEL SAMPLING FACTORS FOR THE SLIT (Y-AXIS) AND WAVELENGTH (X-AXIS) OF THE RECTIFIED IMAGE
         self.zoomFactorSlit = 5
         self.zoomFactorWavelength = 5
-        self.pixelScale = 0.28  # arcsec/pixel
-
-        ## TYPICAL 11" SLIT LENGTH COVERS ~30-40 PIXELS - 1 pixel ~ 0.3
-        self.slitLengthArcsec = self.slitHalfLength * 2 * self.pixelScale 
 
         # ORDERS PRESENT IN THE TRACE TABLE — USED TO SKIP ORDERS WITH NO DETECTED TRACE
         # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]        
         self.uniqueOrders = self.orderPixelTable["order"].unique()
 
+        # DETECTOR SHAPE — SAME FOR EVERY NDARRAY EVER PASSED TO cache_image, SO ONLY DERIVED ONCE
+        self.ny, self.nx = self.twoDMap["WAVELENGTH"].data.shape
+
         # DETERMINE THE BOUNDS OF EACH ORDER IN WS-PIXEL SPACE
         t0 = perf_counter()
         self.orderSlitEdges, self.orderWlEdges = self._determine_rectified_image_boundaries()
         self.log.print(f"_determine_rectified_image_boundaries took {perf_counter() - t0:.3f}s")
-
-        # DETECTOR SHAPE — SAME FOR EVERY NDARRAY EVER PASSED TO cache_image, SO ONLY DERIVED ONCE
-        self.ny, self.nx = self.twoDMap["WAVELENGTH"].data.shape
 
         self._cache_image_names = set()
 
@@ -159,7 +166,6 @@ class image_transformer(base_util):
         """
         self.log.debug('starting the ``cache_image`` method')
 
-        import numpy as np
         bpmArray = associatedMask
 
         orderCoverage = [] if returnCoverage else None
@@ -169,11 +175,8 @@ class image_transformer(base_util):
             n_wl = len(wl_edges) - 1
             weights = self._resamplingWeights[order]
 
-            # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED PIXEL/POLYGON-AREA WEIGHTS
-            t0 = perf_counter()
-            weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
-            flux = np.bincount(weights["flatIdx"], weights=weighted, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
-            flux = self._unzoom(flux)
+            # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED (ALREADY REBINNED) PIXEL-OVERLAP WEIGHTS
+            flux = _apply_weights(ndarray, weights)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -184,14 +187,10 @@ class image_transformer(base_util):
                 orderCoverage.append(weights["coverage"])
 
             if bpmArray is not None:
-                # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED PIXEL/POLYGON-AREA WEIGHTS
-                weightedBpm = bpmArray[weights["py"], weights["px"]] * weights["area"]
-                bpm = np.bincount(weights["flatIdx"], weights=weightedBpm, minlength=n_sp * n_wl).reshape(n_sp, n_wl)
-                bpm = self._unzoom(bpm)
+                bpm = _apply_weights(bpmArray, weights)
                 bpm = bpm > 0.2
                 orderTable["bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
-            # self.log.print(f"Rectified image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl}) in {perf_counter() - t0:.3f}s")
 
             if debug:
                 print(f"Rectifying image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl})")
@@ -291,7 +290,8 @@ class image_transformer(base_util):
 
         **Return:**
 
-        - ``resamplingWeights`` -- dict keyed by order number, each value a dict of numpy arrays ``i``, ``j``, ``px``, ``py``, ``area``, ``flatIdx`` and a per-cell ``coverage`` grid
+        - ``resamplingWeights`` -- dict keyed by order number. Each value holds the rebinned-grid weights
+          (``px``, ``py``, ``area``, ``flatIdx``, ``shape``) and the zoomed-grid ``coverage`` array
         """
         self.log.debug('starting the ``_precompute_resampling_weights`` method')
 
@@ -391,15 +391,14 @@ class image_transformer(base_util):
                 iOut, jOut, pxOut, pyOut, areaOut, coverage,
             )
 
-            iArr = iOut[:nOut]
-            jArr = jOut[:nOut]
+            # MERGE THE SUB-CELL OVERLAPS INTO THE REBINNED (DETECTOR-RESOLUTION) GRID, SO EACH CACHED IMAGE
+            # IS A SINGLE WEIGHTED SUM OF DETECTOR PIXELS
             resamplingWeights[order] = {
-                "i": iArr,
-                "j": jArr,
-                "px": pxOut[:nOut],
-                "py": pyOut[:nOut],
-                "area": areaOut[:nOut],
-                "flatIdx": iArr * n_wl + jArr,
+                **_rebin_resampling_weights(
+                    iOut[:nOut], jOut[:nOut], pxOut[:nOut], pyOut[:nOut], areaOut[:nOut],
+                    nSp=n_sp, nWl=n_wl, zoomSlit=self.zoomFactorSlit, zoomWavelength=self.zoomFactorWavelength,
+                    nx=self.nx, ny=self.ny,
+                ),
                 "coverage": coverage,
             }
 
@@ -514,25 +513,13 @@ class image_transformer(base_util):
         # t = Table.from_pandas(self.orderPixelTable)
         # t.write("/tmp/table.fits", overwrite=True)
 
-        # SHARED OFFSET-EDGE ARRAY, CENTRED ON ZERO — THE ABSOLUTE SLIT POSITION OF ANY POINT
-        # IS THIS OFFSET PLUS THE PER-ORDER, PER-WAVELENGTH TRACE CENTRE (SEE orderSlitCentreCoeffs)
-        subPixelSize = self.pixelScale / self.zoomFactorSlit
-        slitEdges = np.arange(-self.slitLengthArcsec / 2, self.slitLengthArcsec / 2, subPixelSize)
-
-        orderSlitEdges, orderWlEdges = [], []
-        orderSlitCentreCoeffs = []
-        sliceOrders = []
-        orderSliceTables = []
+        orderTraces = []
 
         # ITERATE OVER EACH ORDER, CLIPPING TO THE PIXEL BOUNDS (AMIN/AMAX) DEFINED FOR THAT ORDER
-        wlMinMax = []
-
         for order, amin, amax, wlmin, wlmax in zip(self.orderNums, self.amins, self.amaxs, self.waveLengthMin, self.waveLengthMax):
             if order not in self.uniqueOrders:
                 continue
             pixelRange = amax - amin
-            wlIncrement = ((wlmax - wlmin) / pixelRange) / self.zoomFactorWavelength
-            wl_edges = np.arange(wlmin, wlmax, wlIncrement)
 
             # FIT THIS ORDER'S OWN TRACE POINTS: SLIT POSITION AS A POLYNOMIAL FUNCTION OF WAVELENGTH
             orderMask = self.orderPixelTable["order"] == order
@@ -562,21 +549,96 @@ class image_transformer(base_util):
                     globalSlitCentreArcsec,
                 )
 
-            orderSlitEdges.append(slitEdges)
-            orderWlEdges.append(wl_edges)
-            orderSlitCentreCoeffs.append(centreCoeffs)
-            sliceOrders.append(order)
-            wlMinMax.append((wlmin, wlmax))
-            orderSliceTables.append(pd.DataFrame())
+            orderTraces.append((order, wlmin, wlmax, pixelRange, centreCoeffs))
 
-        self.orderSlices = orderSliceTables
-        self.uniqueOrders = sliceOrders
-        self.wlMinMax = wlMinMax
-        self.orderSlitCentreCoeffs = orderSlitCentreCoeffs
+        # WAVELENGTH EDGES EVENLY SPACED IN DETECTOR PIXELS ALONG EACH TRACE, PLUS EACH ORDER'S ARCSEC/PIXEL
+        orderGeometry = self._measure_order_trace_geometry(orderTraces)
+
+        # SLIT OFFSET EDGES, CENTRED ON ZERO — THE ABSOLUTE SLIT POSITION OF ANY POINT IS THIS OFFSET
+        # PLUS THE PER-ORDER, PER-WAVELENGTH TRACE CENTRE (SEE orderSlitCentreCoeffs)
+        slitPixelOffsets = np.arange(-self.slitHalfLength, self.slitHalfLength, 1.0 / self.zoomFactorSlit)
+        orderSlitEdges = [slitPixelOffsets * arcsecPerPixel for _, arcsecPerPixel in orderGeometry]
+        orderWlEdges = [wlEdges for wlEdges, _ in orderGeometry]
+
+        self.orderSlices = [pd.DataFrame() for _ in orderTraces]
+        self.uniqueOrders = [trace[0] for trace in orderTraces]
+        self.wlMinMax = [(trace[1], trace[2]) for trace in orderTraces]
+        self.orderSlitCentreCoeffs = [trace[4] for trace in orderTraces]
 
         self.log.debug('completed the ``_determine_rectified_image_boundaries`` method')
         return orderSlitEdges, orderWlEdges
 
+
+    def _measure_order_trace_geometry(self, orderTraces):
+        """*Measure each order's pixel-uniform wavelength edges and arcsec-per-pixel scale from the dispersion map*
+
+        The trace centre (and a point ``SLIT_SCALE_PROBE_ARCSEC`` along the slit from it) is sampled on a dense
+        wavelength grid and converted to detector pixels in a single ``dispersion_map_to_pixel_arrays`` call.
+
+        **Key Arguments:**
+
+        - ``orderTraces`` -- list of ``(order, wlmin, wlmax, pixelRange, centreCoeffs)`` tuples
+
+        **Return:**
+
+        - ``orderGeometry`` -- list of ``(wlEdges, arcsecPerPixel)`` tuples, in the same order as ``orderTraces``
+        """
+        self.log.debug('starting the ``_measure_order_trace_geometry`` method')
+
+        import numpy as np
+        import pandas as pd
+
+        from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+
+        # EACH ORDER CONTRIBUTES ITS DENSE TRACE SAMPLES FOLLOWED BY THE SAME WAVELENGTHS AT THE SLIT PROBE
+        chunks = []
+        sampleCounts = []
+        for order, wlmin, wlmax, pixelRange, centreCoeffs in orderTraces:
+            nSamples = max(int(np.ceil(pixelRange * TRACE_SAMPLES_PER_PIXEL)), 2)
+            wavelengths = np.linspace(wlmin, wlmax, nSamples)
+            centre = np.polyval(centreCoeffs, wavelengths)
+            chunks.append(pd.DataFrame({
+                "order": order,
+                "wavelength": np.concatenate([wavelengths, wavelengths]),
+                "slit_position": np.concatenate([centre, centre + SLIT_SCALE_PROBE_ARCSEC]),
+            }))
+            sampleCounts.append(nSamples)
+
+        samplesDF = pd.concat(chunks, ignore_index=True).astype(
+            {"order": int, "wavelength": float, "slit_position": float}
+        )
+        resultDF = dispersion_map_to_pixel_arrays(
+            log=self.log,
+            dispersionMapPath=self.dispersionMap,
+            orderPixelTable=samplesDF,
+            removeOffDetectorLocation=False,
+            trimColumns=True,
+        )
+        # FLOAT64 SO THE CUMULATIVE PATH LENGTH DOES NOT INHERIT THE CONVERTER'S FLOAT32 ROUNDING
+        wavelength = resultDF["wavelength"].to_numpy(dtype=float)
+        fitX = resultDF["fit_x"].to_numpy(dtype=float)
+        fitY = resultDF["fit_y"].to_numpy(dtype=float)
+        # SAMPLES OFF THE DETECTOR MUST NOT CONTRIBUTE TO THE TRACE PATH OR THE SLIT SCALE
+        offDetector = (fitX < -0.5) | (fitX >= self.nx - 0.5) | (fitY < -0.5) | (fitY >= self.ny - 0.5)
+        fitX[offDetector] = np.nan
+        fitY[offDetector] = np.nan
+
+        orderGeometry = []
+        start = 0
+        for nSamples in sampleCounts:
+            trace = slice(start, start + nSamples)
+            probe = slice(start + nSamples, start + 2 * nSamples)
+            start += 2 * nSamples
+            wlEdges = _pixel_uniform_wavelength_edges(
+                wavelength[trace], fitX[trace], fitY[trace], samplesPerPixel=self.zoomFactorWavelength
+            )
+            arcsecPerPixel = _arcsec_per_pixel(
+                SLIT_SCALE_PROBE_ARCSEC, fitX[trace], fitY[trace], fitX[probe], fitY[probe]
+            )
+            orderGeometry.append((wlEdges, arcsecPerPixel))
+
+        self.log.debug('completed the ``_measure_order_trace_geometry`` method')
+        return orderGeometry
 
     def get_order_slices(self):
         return self.orderSlices
@@ -808,3 +870,125 @@ def _pixel_boundaries_grid(sp_edges, wl_edges, edge_samples):
     spBlock = np.concatenate([bottom_sp, right_sp, top_sp, left_sp], axis=2)
     wlBlock = np.concatenate([bottom_wl, right_wl, top_wl, left_wl], axis=2)
     return spBlock, wlBlock
+
+
+def _pixel_uniform_wavelength_edges(wavelengths, pixelX, pixelY, samplesPerPixel):
+    """*Wavelength bin edges spaced evenly in detector pixels along an order's trace*
+
+    **Key Arguments:**
+
+    - ``wavelengths`` -- 1D wavelengths sampled densely along the trace, in increasing order
+    - ``pixelX``, ``pixelY`` -- detector position of the trace at each wavelength
+    - ``samplesPerPixel`` -- number of bins per detector pixel of path length
+
+    **Return:**
+
+    - ``wlEdges`` -- 1D array of wavelength edges, starting at the first usable wavelength
+    """
+    import numpy as np
+
+    # KEEP THE LONGEST CONTIGUOUS RUN OF FINITE SAMPLES, SO THE PATH NEVER JUMPS ACROSS A GAP
+    finite = np.isfinite(wavelengths) & np.isfinite(pixelX) & np.isfinite(pixelY)
+    bounds = np.flatnonzero(np.diff(np.concatenate([[0], finite.astype(np.int8), [0]])))
+    runStarts, runEnds = bounds[::2], bounds[1::2]
+    if len(runStarts) == 0:
+        raise ValueError("Cannot build wavelength edges: no finite trace samples on the detector.")
+    longest = np.argmax(runEnds - runStarts)
+    run = slice(runStarts[longest], runEnds[longest])
+    wavelengths, pixelX, pixelY = wavelengths[run], pixelX[run], pixelY[run]
+    if len(wavelengths) < 2:
+        raise ValueError("Cannot build wavelength edges: fewer than 2 finite trace samples on the detector.")
+
+    pathLength = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(pixelX), np.diff(pixelY)))])
+    # np.interp NEEDS A STRICTLY INCREASING PATH — DROP REPEATED DETECTOR POSITIONS
+    keep = np.concatenate([[True], np.diff(pathLength) > 0])
+    if keep.sum() < 2:
+        raise ValueError("Cannot build wavelength edges: the trace has zero length on the detector.")
+
+    targets = np.arange(0.0, pathLength[keep][-1], 1.0 / samplesPerPixel)
+    return np.interp(targets, pathLength[keep], wavelengths[keep])
+
+
+def _arcsec_per_pixel(slitProbeArcsec, centreX, centreY, offsetX, offsetY):
+    """*Median slit scale (arcsec per detector pixel) from trace points and points offset along the slit*
+
+    **Key Arguments:**
+
+    - ``slitProbeArcsec`` -- slit offset (arcsec) between each centre point and its offset point
+    - ``centreX``, ``centreY`` -- detector positions of the trace centre
+    - ``offsetX``, ``offsetY`` -- detector positions of the same wavelengths offset along the slit
+
+    **Return:**
+
+    - ``arcsecPerPixel`` -- median arcsec per detector pixel along the slit
+    """
+    import numpy as np
+
+    distance = np.hypot(offsetX - centreX, offsetY - centreY)
+    usable = np.isfinite(distance) & (distance > 0)
+    if not usable.any():
+        raise ValueError("Cannot measure the slit scale (arcsec per pixel): no slit probe landed on the detector.")
+    return slitProbeArcsec / np.median(distance[usable])
+
+
+def _rebin_resampling_weights(i, j, px, py, area, nSp, nWl, zoomSlit, zoomWavelength, nx, ny):
+    """*Merge zoomed-grid pixel-overlap weights into the rebinned (detector-resolution) output grid*
+
+    Matches ``image_transformer._unzoom``: sub-cells beyond the last whole zoom block are dropped, and a grid
+    smaller than one zoom block is not rebinned. Overlaps of the same detector pixel within one output cell
+    are summed into a single weight.
+
+    **Key Arguments:**
+
+    - ``i``, ``j`` -- zoomed-grid slit and wavelength indices of each overlap
+    - ``px``, ``py`` -- detector pixel of each overlap
+    - ``area`` -- overlap area of each entry (in detector pixels)
+    - ``nSp``, ``nWl`` -- zoomed-grid shape
+    - ``zoomSlit``, ``zoomWavelength`` -- zoom factors along the slit and wavelength axes
+    - ``nx``, ``ny`` -- detector shape
+
+    **Return:**
+
+    - ``rebinned`` -- dict of ``flatIdx``, ``px``, ``py``, ``area`` arrays and the output grid ``shape``
+    """
+    import numpy as np
+
+    nSpOut, nWlOut = nSp // zoomSlit, nWl // zoomWavelength
+    if nSpOut == 0 or nWlOut == 0:
+        zoomSlit, zoomWavelength, nSpOut, nWlOut = 1, 1, nSp, nWl
+
+    iOut, jOut = i // zoomSlit, j // zoomWavelength
+    keep = (iOut < nSpOut) & (jOut < nWlOut)
+    cellIdx = iOut[keep].astype(np.int64) * nWlOut + jOut[keep]
+    pixelIdx = py[keep].astype(np.int64) * nx + px[keep]
+
+    uniqueKeys, inverse = np.unique(cellIdx * (nx * ny) + pixelIdx, return_inverse=True)
+    summedArea = np.bincount(inverse, weights=area[keep], minlength=len(uniqueKeys))
+    uniquePixels = uniqueKeys % (nx * ny)
+
+    return {
+        "flatIdx": uniqueKeys // (nx * ny),
+        "px": uniquePixels % nx,
+        "py": uniquePixels // nx,
+        "area": summedArea,
+        "shape": (nSpOut, nWlOut),
+    }
+
+
+def _apply_weights(ndarray, weights):
+    """*Weighted sum of detector pixels into the rebinned output grid*
+
+    **Key Arguments:**
+
+    - ``ndarray`` -- 2D detector-space image
+    - ``weights`` -- rebinned weights dict from ``_rebin_resampling_weights``
+
+    **Return:**
+
+    - ``rectified`` -- 2D array of shape ``weights["shape"]``
+    """
+    import numpy as np
+
+    nSpOut, nWlOut = weights["shape"]
+    weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
+    return np.bincount(weights["flatIdx"], weights=weighted, minlength=nSpOut * nWlOut).reshape(nSpOut, nWlOut)
