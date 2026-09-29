@@ -115,6 +115,7 @@ def _run_cli(
     argumentOverrides: dict[str, object] | None = None,
     rawPaths: list[str] | None = None,
     currentSession: str | None = None,
+    allowSleep: bool = False,
 ) -> tuple[CliLogger, list[dict[str, object]]]:
     clUtils = import_module("soxspipe.cl_utils")
     commonutilsModule = import_module("soxspipe.commonutils")
@@ -182,7 +183,7 @@ def _run_cli(
     monkeypatch.setattr(
         clUtils.time,
         "sleep",
-        lambda seconds: pytest.fail("CLI attempted to sleep"),
+        (lambda seconds: None) if allowSleep else (lambda seconds: pytest.fail("CLI attempted to sleep")),
     )
 
     clUtils.main(arguments=suppliedArguments)
@@ -353,6 +354,7 @@ def test_main_reduce_returns_before_dispatch_when_workspace_is_unprepared(
     ("argv", "expectedCall"),
     [
         (["soxspipe", "prep"], ("prepare", {"refresh": False})),
+        (["soxspipe", "prep", "--refresh"], ("prepare", {"refresh": True})),
         (["soxspipe", "session", "ls"], ("session_list", {})),
         (["soxspipe", "session", "new", "night1"], ("session_create", "night1")),
         (["soxspipe", "session", "night1"], ("session_switch", "night1")),
@@ -699,3 +701,40 @@ def test_watch_daemon_exits_non_zero_when_its_prepare_refuses_a_rebuild(
 
     assert error.value.code == 1
     assert "could not preserve `/workspace/soxspipe.db`" in capsys.readouterr().err
+    assert RecordingOrganiser.calls[-1] == ("init", {"log": daemon.log, "rootDir": str(tmp_path), "vlt": False})
+    assert ("error", "could not preserve `/workspace/soxspipe.db`") in daemon.log.messages
+
+
+def test_reduce_watch_exits_non_zero_when_its_re_prepare_refuses_a_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`reduce --watch` re-prepares the workspace between passes; a refused rebuild there exits 1 on stderr."""
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    commonutilsModule = import_module("soxspipe.commonutils")
+    (tmp_path / "soxspipe.db").touch()
+
+    class RecordingReducer:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def reduce(self, **kwargs: object) -> None:
+            pass
+
+    def refuse_rebuild(self: object, **kwargs: object) -> None:
+        raise DatabasePreservationError("could not preserve `/workspace/soxspipe.db`")
+
+    monkeypatch.setattr(commonutilsModule, "reducer", RecordingReducer)
+    monkeypatch.setattr(RecordingOrganiser, "prepare", refuse_rebuild)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "reduce", "all", "--watch"], allowSleep=True)
+
+    assert error.value.code == 1
+    assert "could not preserve `/workspace/soxspipe.db`" in capsys.readouterr().err
+    initKwargs = RecordingOrganiser.calls[-1][1]
+    assert set(initKwargs) == {"log", "rootDir", "vlt"}
+    assert initKwargs["rootDir"] == "."
+    assert initKwargs["vlt"] is False

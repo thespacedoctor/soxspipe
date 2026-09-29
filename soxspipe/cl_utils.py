@@ -85,7 +85,7 @@ def tab_complete(text, state):
     return (glob.glob(text + "*") + [None])[state]
 
 
-def _prepared_organiser(log, rootDir, **prepareArguments):
+def _prepared_organiser(log, rootDir, vlt=False, **prepareArguments):
     """*build a `data_organiser` and prepare its workspace, exiting with status 1 if a database rebuild is refused*
 
     A refused rebuild (`DatabasePreservationError`) leaves the database in place; its message, naming the
@@ -95,12 +95,20 @@ def _prepared_organiser(log, rootDir, **prepareArguments):
 
     - ``log`` -- logger
     - ``rootDir`` -- the workspace root directory
-    - ``prepareArguments`` -- `vlt` for the constructor, and any keyword arguments for `data_organiser.prepare`
+    - ``vlt`` -- prepare the workspace using the standard vlt /data directory
+    - ``prepareArguments`` -- keyword arguments for `data_organiser.prepare`
+
+    **Return:**
+
+    - ``do`` -- the prepared `data_organiser`
+
+    **Raises:**
+
+    - `SystemExit` (status 1), chained from the `DatabasePreservationError`, when a database rebuild is refused
     """
     from soxspipe.commonutils import data_organiser
     from soxspipe.commonutils.data_organiser import DatabasePreservationError
 
-    vlt = prepareArguments.pop("vlt", False)
     try:
         do = data_organiser(log=log, rootDir=rootDir, vlt=vlt)
         do.prepare(**prepareArguments)
@@ -554,7 +562,12 @@ def main(arguments=None):
                 else:
                     thisLog = self.log
 
-                do = _prepared_organiser(thisLog, rootDir=pwd)
+                try:
+                    do = _prepared_organiser(thisLog, rootDir=pwd)
+                except SystemExit as refusal:
+                    # A REFUSED REBUILD STOPS THE DAEMON; RECORD THE REASON IN ITS LOG AS WELL AS ON STDERR
+                    thisLog.error(refusal.__cause__)
+                    raise
 
                 if not currentSession:
                     currentSession, allSessions = do.session_list(silent=True)
