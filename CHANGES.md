@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order
 * **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
 
 * **ENHANCEMENT**: Widen `structx` and `structy` acceptance limits for SOXS master-bias quality checks.

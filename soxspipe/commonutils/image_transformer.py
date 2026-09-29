@@ -21,13 +21,20 @@ import numpy as np
 
 from .base_util import base_util
 
+# DEGREE OF THE PER-ORDER POLYNOMIAL FIT OF SLIT POSITION VS WAVELENGTH USED TO
+# CENTRE THE RECTIFIED SLIT GRID ON THE OBJECT TRACE (CAPPED TO nValid - 1 WHEN
+# AN ORDER HAS FEWER TRACE POINTS THAN THIS DEGREE REQUIRES)
+SLIT_CENTRE_POLY_DEGREE = 3
+
 
 class image_transformer(base_util):
     """*rectify frame arrays, order-by-order, into cross-dispersion slices ready for spectral extraction*
 
     For each order:
 
-    1. Define the slit-position (s) and wavelength (w) bounds of the order.
+    1. Define the slit-position (s) and wavelength (w) bounds of the order, centred on the
+       object trace: the slit centre at each wavelength is a per-order polynomial fit of
+       slit position vs wavelength through that order's own trace points.
 
     2. Resamples the frame onto an oversampled (slit, wavelength) grid, with the slit axis
        sub-sampled by ``zoomFactorSlit`` and the wavelength axis by ``zoomFactorWavelength``.
@@ -209,7 +216,7 @@ class image_transformer(base_util):
                     extent=[wl_edges[0], wl_edges[-1], sp_edges[0], sp_edges[-1]],
                 )
                 plt.xlabel("Wavelength (Å)")
-                plt.ylabel("Slit Position (arcsec)")
+                plt.ylabel("Slit offset from trace (arcsec)")
                 plt.show()
 
         self.log.debug('completed the ``cache_image`` method')
@@ -236,8 +243,9 @@ class image_transformer(base_util):
         Unlike ``cache_image``, this does not resample any detector-pixel-space ndarray. Instead it
         directly computes, for every output (slit, wavelength) cell, the true centre wavelength/slit
         value implied by that order's own ``sp_edges``/``wl_edges`` bin boundaries. The wavelength
-        image is constant along each row (varies only with the wavelength bin); the slit image is
-        constant along each column (varies only with the slit bin).
+        image is constant along each row (varies only with the wavelength bin); the slit image
+        varies along both axes, since it is the bin's slit offset plus that order's trace centre
+        at the bin's wavelength (``offset + np.polyval(orderSlitCentreCoeffs, wavelength)``).
         """
         self.log.debug('starting the ``_cache_true_wavelength_slit_images`` method')
 
@@ -245,7 +253,9 @@ class image_transformer(base_util):
 
         cache_image_names = self._cache_image_names
 
-        for order, sp_edges, wl_edges, orderTable in zip(self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlices):
+        for order, sp_edges, wl_edges, centreCoeffs, orderTable in zip(
+            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs, self.orderSlices
+        ):
             n_sp = len(sp_edges) - 1
             n_wl = len(wl_edges) - 1
 
@@ -253,9 +263,9 @@ class image_transformer(base_util):
             wl_centers = (wl_edges[:-1] + wl_edges[1:]) / 2.0
             sp_centers = (sp_edges[:-1] + sp_edges[1:]) / 2.0
 
-            # BROADCAST VIEWS INSTEAD OF MATERIALISING FULL TILED ARRAYS
             wavelengthImage = np.broadcast_to(wl_centers, (n_sp, n_wl))
-            slitImage = np.broadcast_to(sp_centers[:, None], (n_sp, n_wl))
+            # SLIT OFFSET PLUS THE PER-WAVELENGTH TRACE CENTRE — A REAL 2D ARRAY, NOT A BROADCAST VIEW
+            slitImage = sp_centers[:, None] + np.polyval(centreCoeffs, wl_centers)[None, :]
 
             wavelengthImage = self._unzoom(wavelengthImage, operation="mean")
             slitImage = self._unzoom(slitImage, operation="mean")
@@ -295,10 +305,15 @@ class image_transformer(base_util):
         orderChunks, wlChunks, spChunks = [], [], []
         records = []
 
-        for order, sp_edges, wl_edges in zip(self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges):
+        for order, sp_edges, wl_edges, centreCoeffs in zip(
+            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs
+        ):
             n_sp = len(sp_edges) - 1
             n_wl = len(wl_edges) - 1
             spBlock, wlBlock = _pixel_boundaries_grid(sp_edges, wl_edges, self.edgeSamples)
+            # CONVERT SLIT OFFSETS FROM THE TRACE TO ABSOLUTE SLIT POSITIONS BEFORE THEY ARE
+            # HANDED TO THE WAVELENGTH/SLIT -> DETECTOR-PIXEL CONVERTER
+            spBlock = spBlock + np.polyval(centreCoeffs, wlBlock)
             nrows = n_sp * n_wl * ncorners
             spChunks.append(spBlock.reshape(-1))
             wlChunks.append(wlBlock.reshape(-1))
@@ -421,6 +436,46 @@ class image_transformer(base_util):
 
         return newBpm
 
+    def _fit_slit_centre_polynomial(self, wavelength, slitPosition, degree, order, fallbackCentreArcsec):
+        """*Fit slit position as a polynomial function of wavelength, degrading the degree on a rank-deficient fit*
+
+        **Key Arguments:**
+
+        - ``wavelength`` -- 1D array of finite wavelength values for this order's trace points
+        - ``slitPosition`` -- 1D array of finite slit-position values, same length as ``wavelength``
+        - ``degree`` -- requested polynomial degree (already capped by the number of distinct wavelengths)
+        - ``order`` -- the order number, used only for logging
+        - ``fallbackCentreArcsec`` -- constant centre to use if every degree down to 0 is degenerate
+
+        **Return:**
+
+        - ``centreCoeffs`` -- polynomial coefficients (``numpy.polyfit`` convention), highest power first
+        """
+        self.log.debug("starting the ``_fit_slit_centre_polynomial`` method")
+
+        import warnings
+
+        import numpy as np
+        from numpy.exceptions import RankWarning
+
+        # STEP THE DEGREE DOWN ON A RANK-DEFICIENT FIT (E.G. REPEATED/NEAR-IDENTICAL WAVELENGTHS)
+        # RATHER THAN SILENTLY TRUSTING numpy's LEAST-SQUARES SOLUTION TO AN ILL-POSED SYSTEM
+        for candidateDegree in range(degree, -1, -1):
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RankWarning)
+                    return np.polyfit(wavelength, slitPosition, candidateDegree)
+            except (RankWarning, np.linalg.LinAlgError):
+                continue
+
+        # EVERY DEGREE DOWN TO A CONSTANT WAS DEGENERATE — FALL BACK TO THE GLOBAL MEAN
+        self.log.warning(
+            f"Slit-centre trace fit for order {order} was rank-deficient at every degree down to 0 "
+            f"(likely duplicate wavelengths); falling back to the global mean slit position "
+            f"({fallbackCentreArcsec:.3f} arcsec) as a constant centre."
+        )
+        return np.array([fallbackCentreArcsec])
+
     def _determine_rectified_image_boundaries(self):
         """*Setup the individual order dataframes for each order in the order pixel table*
         """
@@ -428,7 +483,7 @@ class image_transformer(base_util):
         import numpy as np
         import pandas as pd
 
-        # FOR EACH CONTINUUM-FITTED DATA-POINT, RETURN THE SLIT POSITION 
+        # FOR EACH CONTINUUM-FITTED DATA-POINT, RETURN THE SLIT POSITION
         aArray = self.orderPixelTable[f"{self.axisA}coord_centre"].round().astype(int)
         bArray = self.orderPixelTable[f"{self.axisB}coord"]
 
@@ -438,22 +493,32 @@ class image_transformer(base_util):
         else:
             mapLookup = self.mapDF.set_index([f"{self.axisB}", f"{self.axisA}"])[["slit_position","wavelength"]]
             self.orderPixelTable[["slit_position","wavelength"]] = mapLookup.reindex(list(zip(bArray,aArray))).to_numpy()
-            
-        slitCentreArcsec = np.nanmean(self.orderPixelTable["slit_position"])
-        slitStdArcsec = np.nanstd(self.orderPixelTable["slit_position"])
 
+        # GLOBAL FALLBACK CENTRE — ONLY USED FOR AN ORDER WITH NO VALID TRACE POINTS OF ITS OWN.
+        # ISFINITE (NOT JUST NOTNA) SO A STRAY +/-INF IN THE MAP CAN'T SNEAK THROUGH THE MEAN
+        finiteSlitPosition = self.orderPixelTable["slit_position"][
+            np.isfinite(self.orderPixelTable["slit_position"])
+        ]
+        globalSlitCentreArcsec = (
+            finiteSlitPosition.mean() if len(finiteSlitPosition) else np.nan
+        )
+        if not np.isfinite(globalSlitCentreArcsec):
+            raise ValueError(
+                "Cannot determine any slit centre: every trace point's slit_position is missing "
+                "or non-finite across all orders. Check the 2D map / orderPixelTable inputs."
+            )
 
         # from astropy.table import Table
         # t = Table.from_pandas(self.orderPixelTable)
         # t.write("/tmp/table.fits", overwrite=True)
-        
 
+        # SHARED OFFSET-EDGE ARRAY, CENTRED ON ZERO — THE ABSOLUTE SLIT POSITION OF ANY POINT
+        # IS THIS OFFSET PLUS THE PER-ORDER, PER-WAVELENGTH TRACE CENTRE (SEE orderSlitCentreCoeffs)
         subPixelSize = self.pixelScale / self.zoomFactorSlit
-        slitStart = slitCentreArcsec - self.slitLengthArcsec/2 - 1*slitStdArcsec
-        slitStop = slitCentreArcsec + self.slitLengthArcsec/2 + 1*slitStdArcsec
-        slitEdges = np.arange(slitStart, slitStop, subPixelSize)
+        slitEdges = np.arange(-self.slitLengthArcsec / 2, self.slitLengthArcsec / 2, subPixelSize)
 
         orderSlitEdges, orderWlEdges = [], []
+        orderSlitCentreCoeffs = []
         sliceOrders = []
         orderSliceTables = []
 
@@ -466,16 +531,46 @@ class image_transformer(base_util):
             pixelRange = amax - amin
             wlIncrement = ((wlmax - wlmin) / pixelRange) / self.zoomFactorWavelength
             wl_edges = np.arange(wlmin, wlmax, wlIncrement)
+
+            # FIT THIS ORDER'S OWN TRACE POINTS: SLIT POSITION AS A POLYNOMIAL FUNCTION OF WAVELENGTH
+            orderMask = self.orderPixelTable["order"] == order
+            orderTrace = self.orderPixelTable.loc[orderMask, ["slit_position", "wavelength"]]
+            # "VALID" MEANS FINITE ON BOTH COLUMNS — dropna() ALONE WOULD LET +/-INF THROUGH
+            finiteMask = np.isfinite(orderTrace["slit_position"]) & np.isfinite(orderTrace["wavelength"])
+            validTrace = orderTrace.loc[finiteMask]
+            nValid = len(validTrace)
+
+            if nValid == 0:
+                self.log.warning(
+                    f"No valid trace points found for order {order}; falling back to the global "
+                    f"mean slit position ({globalSlitCentreArcsec:.3f} arcsec) as a constant centre."
+                )
+                centreCoeffs = np.array([globalSlitCentreArcsec])
+            else:
+                # DEGREE IS CAPPED BY THE NUMBER OF *DISTINCT* WAVELENGTHS, NOT JUST THE POINT
+                # COUNT — REPEATED WAVELENGTHS AT DIFFERENT SLIT POSITIONS MAKE THE FIT
+                # RANK-DEFICIENT EVEN WHEN nValid IS LARGE
+                nUniqueWl = validTrace["wavelength"].nunique()
+                degree = min(SLIT_CENTRE_POLY_DEGREE, nUniqueWl - 1)
+                centreCoeffs = self._fit_slit_centre_polynomial(
+                    validTrace["wavelength"].to_numpy(),
+                    validTrace["slit_position"].to_numpy(),
+                    degree,
+                    order,
+                    globalSlitCentreArcsec,
+                )
+
             orderSlitEdges.append(slitEdges)
             orderWlEdges.append(wl_edges)
+            orderSlitCentreCoeffs.append(centreCoeffs)
             sliceOrders.append(order)
             wlMinMax.append((wlmin, wlmax))
-            # print(f"Order {order}: Wavelength range: {wlmin:.2f} - {wlmax:.2f} Angstroms, Slit range: {slitStart/10:.1f} - {slitStop/10:.1f} arcsec")
             orderSliceTables.append(pd.DataFrame())
 
         self.orderSlices = orderSliceTables
         self.uniqueOrders = sliceOrders
         self.wlMinMax = wlMinMax
+        self.orderSlitCentreCoeffs = orderSlitCentreCoeffs
 
         self.log.debug('completed the ``_determine_rectified_image_boundaries`` method')
         return orderSlitEdges, orderWlEdges
@@ -535,7 +630,7 @@ class image_transformer(base_util):
                         vmax=clipped_mean + 7* clipped_std
                     )
                     plt.xlabel("Wavelength (Å)")
-                    plt.ylabel("Slit Position (arcsec)")
+                    plt.ylabel("Slit offset from trace (arcsec)")
                     plt.show()
 
             orderRectifiedImages.append(rectifiedImageDict)
