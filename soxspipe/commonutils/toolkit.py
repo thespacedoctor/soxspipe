@@ -43,7 +43,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     **Return:**
 
-    - ``slice`` -- the median-collapsed slice when ``median`` is True, otherwise the full uncollapsed cut
+    - ``sliceOut`` -- the median-collapsed slice when ``median`` is True, otherwise the full uncollapsed cut
     - ``slice_length_offset`` -- the pixel offset of the slice start along its length
     - ``slice_width_centre`` -- the pixel coordinate of the slice centre across its width
 
@@ -53,10 +53,10 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     ```python
     from soxspipe.commonutils.toolkit import cut_image_slice
-    slice, slice_length_offset, slice_width_centre = cut_image_slice(
+    sliceOut, slice_length_offset, slice_width_centre = cut_image_slice(
         log=self.log, frame=self.pinholeFlat.data, width=1, length=sliceLength, x=x_fit, y=y_fit, median=True
     )
-    if slice is None:
+    if sliceOut is None:
         return None
     ```
     """
@@ -109,9 +109,9 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     #     pass
 
     if median:
-        slice = ma.median(sliceFull, axis=1) if sliceAxis == "y" else ma.median(sliceFull, axis=0)
+        sliceOut = ma.median(sliceFull, axis=1) if sliceAxis == "y" else ma.median(sliceFull, axis=0)
     else:
-        slice = sliceFull
+        sliceOut = sliceFull
 
     # DELIBERATELY DISABLED DEBUG PLOT: THE LEADING `False` SHORT-CIRCUITS, SO `random` NEVER RUNS
     if False and debug and random.randint(1, 101) < 5:  # noqa: SIM223, S311
@@ -121,19 +121,19 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
         sliceImg = np.rot90(sliceFull, 1) if sliceAxis == "y" else sliceFull
         plt.imshow(sliceImg)
         plt.show()
-        xx = np.arange(0, len(slice))
+        xx = np.arange(0, len(sliceOut))
         plt.figure(figsize=(8, 5))
         if sliceAxis == "y":
-            plt.plot(xx, slice, "ko", label=f"x={axisB}, y={axisA}, sliceAxis={sliceAxis}")
+            plt.plot(xx, sliceOut, "ko", label=f"x={axisB}, y={axisA}, sliceAxis={sliceAxis}")
         if sliceAxis == "x":
-            plt.plot(xx, slice, "ko", label=f"x={axisA}, y={axisB}, sliceAxis={sliceAxis}")
+            plt.plot(xx, sliceOut, "ko", label=f"x={axisA}, y={axisB}, sliceAxis={sliceAxis}")
         plt.xlabel("Position")
         plt.ylabel("Flux")
         plt.legend()
         plt.show()
 
     log.debug("completed the ``cut_image_slice`` function")
-    return slice, slice_length_offset, slice_width_centre
+    return sliceOut, slice_length_offset, slice_width_centre
 
 
 def quicklook_image(
