@@ -300,15 +300,14 @@ def test_refresh_does_not_delete_the_database_when_it_cannot_be_preserved(
     # ARRANGE
     organiser = science_workspace
     rootDb = Path(organiser.rootDbPath)
-    backupDir = Path(organiser.dbBackupsDir)
-    backupDir.mkdir()
-    backupDir.chmod(0o500)
+
+    def failing_snapshot(backupPath):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(organiser, "_snapshot_database", failing_snapshot)
 
     # ACT
-    try:
-        organiser.prepare(refresh=True, report=False)
-    finally:
-        backupDir.chmod(0o700)
+    organiser.prepare(refresh=True, report=False)
 
     # ASSERT
     assert rootDb.is_file()
