@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
 
 * **ENHANCEMENT**: Widen `structx` and `structy` acceptance limits for SOXS master-bias quality checks.
 * **FIXED**: Leave unset polynomial orders to use the settings default and include invalid values in validation errors.
