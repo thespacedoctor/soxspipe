@@ -165,6 +165,10 @@ class data_organiser:
     ```
     """
 
+    # ATTEMPTS TO OPEN AND CHECK THE DATABASE BEFORE IT IS REBUILT, AND SECONDS EACH ATTEMPT WAITS ON A LOCK
+    _DB_OPEN_ATTEMPTS = 50
+    _DB_BUSY_TIMEOUT_SECONDS = 300
+
     def __init__(self, log, rootDir, vlt=False, dbConnect=True):
         import codecs
         import warnings
@@ -2162,7 +2166,7 @@ class data_organiser:
         conn = None
         i = 0
 
-        tries = 50
+        tries = self._DB_OPEN_ATTEMPTS
 
         while i < tries:
             if not conn:
@@ -2183,7 +2187,7 @@ class data_organiser:
                     shutil.copyfile(emptyDb, self.rootDbPath)
                 conn = sql.connect(
                     self.rootDbPath,
-                    timeout=300,
+                    timeout=self._DB_BUSY_TIMEOUT_SECONDS,
                     autocommit=True,
                     check_same_thread=False,
                 )
@@ -2218,7 +2222,7 @@ class data_organiser:
                         reset = True
                 conn = sql.connect(
                     self.rootDbPath,
-                    timeout=300,
+                    timeout=self._DB_BUSY_TIMEOUT_SECONDS,
                     autocommit=True,
                     check_same_thread=False,
                 )

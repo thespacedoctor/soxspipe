@@ -85,6 +85,31 @@ def tab_complete(text, state):
     return (glob.glob(text + "*") + [None])[state]
 
 
+def _prepared_organiser(log, rootDir, **prepareArguments):
+    """*build a `data_organiser` and prepare its workspace, exiting with status 1 if a database rebuild is refused*
+
+    A refused rebuild (`DatabasePreservationError`) leaves the database in place; its message, naming the
+    database file, is printed to stderr.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``rootDir`` -- the workspace root directory
+    - ``prepareArguments`` -- `vlt` for the constructor, and any keyword arguments for `data_organiser.prepare`
+    """
+    from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    vlt = prepareArguments.pop("vlt", False)
+    try:
+        do = data_organiser(log=log, rootDir=rootDir, vlt=vlt)
+        do.prepare(**prepareArguments)
+    except DatabasePreservationError as error:
+        print(error, file=sys.stderr)
+        raise SystemExit(1) from error
+    return do
+
+
 def main(arguments=None):
     """
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
@@ -357,12 +382,7 @@ def main(arguments=None):
             reducedOffset = recipe.produce_product()
 
         if a["prep"]:
-            try:
-                do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
-                do.prepare(refresh=a["refreshFlag"])
-            except DatabasePreservationError as error:
-                print(error, file=sys.stderr)
-                sys.exit(1)
+            _prepared_organiser(log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"], refresh=a["refreshFlag"])
 
         if a["session"] and a["ls"]:
             from soxspipe.commonutils import data_organiser
@@ -503,10 +523,7 @@ def main(arguments=None):
                 print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
                 time.sleep(xsec)
 
-                from soxspipe.commonutils import data_organiser
-
-                do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
-                do.prepare()
+                do = _prepared_organiser(log, rootDir=a["workspaceDirectory"])
                 do.close()
                 del do
             else:
@@ -537,10 +554,7 @@ def main(arguments=None):
                 else:
                     thisLog = self.log
 
-                from soxspipe.commonutils import data_organiser
-
-                do = data_organiser(log=thisLog, rootDir=pwd)
-                do.prepare()
+                do = _prepared_organiser(thisLog, rootDir=pwd)
 
                 if not currentSession:
                     currentSession, allSessions = do.session_list(silent=True)
