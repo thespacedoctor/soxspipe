@@ -1,6 +1,7 @@
 # Release Notes
 
 * **FIXED**: `soxspipe prep --refresh` and the automatic rebuild of a database that will not open no longer lose quality-control history: the old `soxspipe.db` is first saved to a new `backups/` directory in the workspace root (a verified single-file snapshot, or a byte-for-byte copy if it will not open), and its `quality_control` rows are restored into the rebuilt database before the QC acceptable-range checks run; if the database cannot be saved it is left in place, nothing is rebuilt, and `soxspipe prep` exits with status 1 (DY-59)
+* **FIXED**: the `Basic Python Checks` workflow failed to start on every push (`python-version is not defined in the referenced workflow`), because `basics.yml` passed a `python-version` input that the reusable `_basics.yml` does not declare; `integration-tests.yml` had the same undeclared input, so both lose the input and their Python-version matrix.
 * **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order
 * **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
 
