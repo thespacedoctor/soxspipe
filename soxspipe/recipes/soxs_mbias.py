@@ -127,7 +127,7 @@ class soxs_mbias(base_recipe):
             error = "Input frames are a mix of %(imageTypes)s" % locals()
         # NON-BIAS INPUT IMAGE TYPES ARE BAD
         elif imageTypes[0] != "BIAS":
-            error = "Input frames not BIAS frames" % locals()
+            error = "Input frames not BIAS frames"
 
         if error:
             sys.stdout.flush()

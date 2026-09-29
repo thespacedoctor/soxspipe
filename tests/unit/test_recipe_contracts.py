@@ -338,6 +338,15 @@ def test_verify_input_frames_rejects_invalid_recipe_inventory(
         recipe.verify_input_frames()
 
 
+def test_mbias_rejects_a_non_bias_image_type_with_the_exact_message(log: Any) -> None:
+    """A single non-`BIAS` image type raises `TypeError` with the plain message."""
+    recipe = _validation_recipe(soxs_mbias, log, "soxs-mbias", ["DARK"], [], [], {})
+
+    with pytest.raises(TypeError) as excinfo:
+        recipe.verify_input_frames()
+    assert str(excinfo.value) == "Input frames not BIAS frames"
+
+
 MISSING_CALIBRATION_INPUTS = (
     (*VALID_INPUTS[2][:4], ["ORDER_TAB_VIS"], {}, "master-bias frame"),
     (*VALID_INPUTS[3][:4], [], {}, "a master-bias"),

@@ -242,7 +242,7 @@ class soxs_mflat(base_recipe):
                 if i not in ["ECHELLE,SLIT", "IMAGE"]:
                     error = (
                         "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. "
-                        f"You have provided {i}" % locals()
+                        f"You have provided {i}"
                     )
 
         if not error:
@@ -250,7 +250,7 @@ class soxs_mflat(base_recipe):
                 if i not in imageTech:
                     error = (
                         "Input frames for soxspipe mflat need to be flat-lamp on and lamp off frames for NIR. "
-                        f"You have are missing TECH={i}" % locals()
+                        f"You have are missing TECH={i}"
                     )
 
         return error
