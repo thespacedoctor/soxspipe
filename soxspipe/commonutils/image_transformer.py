@@ -8,10 +8,9 @@
 :Date Created:
     June 22, 2026
 """
-
 import os
 
-os.environ["TERM"] = "vt100"
+os.environ['TERM'] = 'vt100'
 from time import perf_counter
 
 import numba
@@ -22,13 +21,20 @@ import numpy as np
 
 from .base_util import base_util
 
+# DEGREE OF THE PER-ORDER POLYNOMIAL FIT OF SLIT POSITION VS WAVELENGTH USED TO
+# CENTRE THE RECTIFIED SLIT GRID ON THE OBJECT TRACE (CAPPED TO nValid - 1 WHEN
+# AN ORDER HAS FEWER TRACE POINTS THAN THIS DEGREE REQUIRES)
+SLIT_CENTRE_POLY_DEGREE = 3
+
 
 class image_transformer(base_util):
     """*rectify frame arrays, order-by-order, into cross-dispersion slices ready for spectral extraction*
 
     For each order:
 
-    1. Define the slit-position (s) and wavelength (w) bounds of the order.
+    1. Define the slit-position (s) and wavelength (w) bounds of the order, centred on the
+       object trace: the slit centre at each wavelength is a per-order polynomial fit of
+       slit position vs wavelength through that order's own trace points.
 
     2. Resamples the frame onto an oversampled (slit, wavelength) grid, with the slit axis
        sub-sampled by ``zoomFactorSlit`` and the wavelength axis by ``zoomFactorWavelength``.
@@ -73,13 +79,18 @@ class image_transformer(base_util):
     slices, wlMinMax = transformer.get_order_slices()
     ```
     """
-
     def __init__(
-        self, log, settings, orderPixelTable, twoDMapPath, dispersionMap, associatedFrame, slitHalfLength, edgeSamples=1
+            self,
+            log,
+            settings,
+            orderPixelTable,
+            twoDMapPath,
+            dispersionMap,
+            associatedFrame,
+            slitHalfLength,
+            edgeSamples=1
     ):
-        super().__init__(
-            log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath
-        )
+        super().__init__(log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath)
 
         self.log.debug("Starting the image_transformer object")
         self.orderPixelTable = orderPixelTable
@@ -95,10 +106,10 @@ class image_transformer(base_util):
         self.pixelScale = 0.28  # arcsec/pixel
 
         ## TYPICAL 11" SLIT LENGTH COVERS ~30-40 PIXELS - 1 pixel ~ 0.3
-        self.slitLengthArcsec = self.slitHalfLength * 2 * self.pixelScale
+        self.slitLengthArcsec = self.slitHalfLength * 2 * self.pixelScale 
 
         # ORDERS PRESENT IN THE TRACE TABLE — USED TO SKIP ORDERS WITH NO DETECTED TRACE
-        # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]
+        # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]        
         self.uniqueOrders = self.orderPixelTable["order"].unique()
 
         # DETERMINE THE BOUNDS OF EACH ORDER IN WS-PIXEL SPACE
@@ -124,7 +135,13 @@ class image_transformer(base_util):
 
         return
 
-    def cache_image(self, imageName, ndarray, associatedMask=None, returnCoverage=False, debug=False):
+    def cache_image(
+            self,
+            imageName,
+            ndarray,
+            associatedMask=None,
+            returnCoverage=False,
+            debug=False):
         """
         *Place an image in the transformer's cache. These images can be acted on later.*
 
@@ -140,17 +157,14 @@ class image_transformer(base_util):
 
             - ``orderCoverage`` -- list of per-order coverage maps if ``returnCoverage`` is True, else None
         """
-        self.log.debug("starting the ``cache_image`` method")
+        self.log.debug('starting the ``cache_image`` method')
 
         import numpy as np
-
         bpmArray = associatedMask
 
         orderCoverage = [] if returnCoverage else None
 
-        for order, sp_edges, wl_edges, orderTable in zip(
-            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlices
-        ):
+        for order, sp_edges, wl_edges, orderTable in zip(self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlices):
             n_sp = len(sp_edges) - 1
             n_wl = len(wl_edges) - 1
             weights = self._resamplingWeights[order]
@@ -180,14 +194,10 @@ class image_transformer(base_util):
             # self.log.print(f"Rectified image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl}) in {perf_counter() - t0:.3f}s")
 
             if debug:
-                print(
-                    f"Rectifying image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl})"
-                )
+                print(f"Rectifying image '{imageName}' for order {order} with shape {ndarray.shape} into ({n_sp}, {n_wl})")
                 import matplotlib
-
                 matplotlib.use("MacOSX")
                 import matplotlib.pyplot as plt
-
                 fig = plt.figure(
                     num=None,
                     figsize=(135, 1),
@@ -206,10 +216,10 @@ class image_transformer(base_util):
                     extent=[wl_edges[0], wl_edges[-1], sp_edges[0], sp_edges[-1]],
                 )
                 plt.xlabel("Wavelength (Å)")
-                plt.ylabel("Slit Position (arcsec)")
+                plt.ylabel("Slit offset from trace (arcsec)")
                 plt.show()
 
-        self.log.debug("completed the ``cache_image`` method")
+        self.log.debug('completed the ``cache_image`` method')
         return orderCoverage
 
     def _unzoom(self, arr2d, operation="sum"):
@@ -220,7 +230,7 @@ class image_transformer(base_util):
         bx = arr2d.shape[1] // zw
         if by == 0 or bx == 0:
             return arr2d
-        trimmed = arr2d[: by * zs, : bx * zw]
+        trimmed = arr2d[:by * zs, :bx * zw]
         if operation == "sum":
             return trimmed.reshape(by, zs, bx, zw).sum(axis=(1, 3))
         if operation == "mean":
@@ -233,17 +243,19 @@ class image_transformer(base_util):
         Unlike ``cache_image``, this does not resample any detector-pixel-space ndarray. Instead it
         directly computes, for every output (slit, wavelength) cell, the true centre wavelength/slit
         value implied by that order's own ``sp_edges``/``wl_edges`` bin boundaries. The wavelength
-        image is constant along each row (varies only with the wavelength bin); the slit image is
-        constant along each column (varies only with the slit bin).
+        image is constant along each row (varies only with the wavelength bin); the slit image
+        varies along both axes, since it is the bin's slit offset plus that order's trace centre
+        at the bin's wavelength (``offset + np.polyval(orderSlitCentreCoeffs, wavelength)``).
         """
-        self.log.debug("starting the ``_cache_true_wavelength_slit_images`` method")
+        self.log.debug('starting the ``_cache_true_wavelength_slit_images`` method')
 
         import numpy as np
 
         cache_image_names = self._cache_image_names
 
-        for order, sp_edges, wl_edges, orderTable in zip(
-            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlices
+        for order, sp_edges, wl_edges, centreCoeffs, orderTable in zip(
+            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs, self.orderSlices,
+            strict=True,
         ):
             n_sp = len(sp_edges) - 1
             n_wl = len(wl_edges) - 1
@@ -252,9 +264,9 @@ class image_transformer(base_util):
             wl_centers = (wl_edges[:-1] + wl_edges[1:]) / 2.0
             sp_centers = (sp_edges[:-1] + sp_edges[1:]) / 2.0
 
-            # BROADCAST VIEWS INSTEAD OF MATERIALISING FULL TILED ARRAYS
             wavelengthImage = np.broadcast_to(wl_centers, (n_sp, n_wl))
-            slitImage = np.broadcast_to(sp_centers[:, None], (n_sp, n_wl))
+            # SLIT OFFSET PLUS THE PER-WAVELENGTH TRACE CENTRE — A REAL 2D ARRAY, NOT A BROADCAST VIEW
+            slitImage = sp_centers[:, None] + np.polyval(centreCoeffs, wl_centers)[None, :]
 
             wavelengthImage = self._unzoom(wavelengthImage, operation="mean")
             slitImage = self._unzoom(slitImage, operation="mean")
@@ -266,7 +278,7 @@ class image_transformer(base_util):
         cache_image_names.add("wavelength")
         cache_image_names.add("slit")
 
-        self.log.debug("completed the ``_cache_true_wavelength_slit_images`` method")
+        self.log.debug('completed the ``_cache_true_wavelength_slit_images`` method')
         return
 
     def _precompute_resampling_weights(self):
@@ -281,7 +293,7 @@ class image_transformer(base_util):
 
         - ``resamplingWeights`` -- dict keyed by order number, each value a dict of numpy arrays ``i``, ``j``, ``px``, ``py``, ``area``, ``flatIdx`` and a per-cell ``coverage`` grid
         """
-        self.log.debug("starting the ``_precompute_resampling_weights`` method")
+        self.log.debug('starting the ``_precompute_resampling_weights`` method')
 
         import numpy as np
         import pandas as pd
@@ -294,23 +306,27 @@ class image_transformer(base_util):
         orderChunks, wlChunks, spChunks = [], [], []
         records = []
 
-        for order, sp_edges, wl_edges in zip(self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges):
+        for order, sp_edges, wl_edges, centreCoeffs in zip(
+            self.uniqueOrders, self.orderSlitEdges, self.orderWlEdges, self.orderSlitCentreCoeffs,
+            strict=True,
+        ):
             n_sp = len(sp_edges) - 1
             n_wl = len(wl_edges) - 1
             spBlock, wlBlock = _pixel_boundaries_grid(sp_edges, wl_edges, self.edgeSamples)
+            # CONVERT SLIT OFFSETS FROM THE TRACE TO ABSOLUTE SLIT POSITIONS BEFORE THEY ARE
+            # HANDED TO THE WAVELENGTH/SLIT -> DETECTOR-PIXEL CONVERTER
+            spBlock = spBlock + np.polyval(centreCoeffs, wlBlock)
             nrows = n_sp * n_wl * ncorners
             spChunks.append(spBlock.reshape(-1))
             wlChunks.append(wlBlock.reshape(-1))
             orderChunks.append(np.full(nrows, order))
             records.append({"order": order, "n_sp": n_sp, "n_wl": n_wl, "nrows": nrows})
 
-        cornersDF = pd.DataFrame(
-            {
-                "order": np.concatenate(orderChunks),
-                "wavelength": np.concatenate(wlChunks),
-                "slit_position": np.concatenate(spChunks),
-            }
-        )
+        cornersDF = pd.DataFrame({
+            "order": np.concatenate(orderChunks),
+            "wavelength": np.concatenate(wlChunks),
+            "slit_position": np.concatenate(spChunks),
+        })
 
         cornersDF = cornersDF.astype({"order": int, "wavelength": float, "slit_position": float})
 
@@ -338,8 +354,8 @@ class image_transformer(base_util):
             n_wl = record["n_wl"]
             nrows = record["nrows"]
 
-            xb = np.ascontiguousarray(fit_x[offset : offset + nrows].reshape(n_sp, n_wl, ncorners))
-            yb = np.ascontiguousarray(fit_y[offset : offset + nrows].reshape(n_sp, n_wl, ncorners))
+            xb = np.ascontiguousarray(fit_x[offset:offset + nrows].reshape(n_sp, n_wl, ncorners))
+            yb = np.ascontiguousarray(fit_y[offset:offset + nrows].reshape(n_sp, n_wl, ncorners))
             offset += nrows
 
             # VECTORIZED PER-CELL CANDIDATE-PIXEL BOUNDING BOX (REPLACES THE OLD PER-CELL
@@ -371,18 +387,8 @@ class image_transformer(base_util):
             coverage = np.zeros((n_sp, n_wl))
 
             nOut = _resample_weights_kernel(
-                xb,
-                yb,
-                px_lo,
-                px_hi,
-                py_lo,
-                py_hi,
-                iOut,
-                jOut,
-                pxOut,
-                pyOut,
-                areaOut,
-                coverage,
+                xb, yb, px_lo, px_hi, py_lo, py_hi,
+                iOut, jOut, pxOut, pyOut, areaOut, coverage,
             )
 
             iArr = iOut[:nOut]
@@ -397,8 +403,9 @@ class image_transformer(base_util):
                 "coverage": coverage,
             }
 
-        self.log.debug("completed the ``_precompute_resampling_weights`` method")
+        self.log.debug('completed the ``_precompute_resampling_weights`` method')
         return resamplingWeights
+
 
     def _sigma_clip_bpm(self, rawFluxArray, bpmArray, order=None):
         """Sigma-clip a rebinned raw flux array to flag additional outlier pixels.
@@ -431,9 +438,50 @@ class image_transformer(base_util):
 
         return newBpm
 
+    def _fit_slit_centre_polynomial(self, wavelength, slitPosition, degree, order, fallbackCentreArcsec):
+        """*Fit slit position as a polynomial function of wavelength, degrading the degree on a rank-deficient fit*
+
+        **Key Arguments:**
+
+        - ``wavelength`` -- 1D array of finite wavelength values for this order's trace points
+        - ``slitPosition`` -- 1D array of finite slit-position values, same length as ``wavelength``
+        - ``degree`` -- requested polynomial degree (already capped by the number of distinct wavelengths)
+        - ``order`` -- the order number, used only for logging
+        - ``fallbackCentreArcsec`` -- constant centre to use if every degree down to 0 is degenerate
+
+        **Return:**
+
+        - ``centreCoeffs`` -- polynomial coefficients (``numpy.polyfit`` convention), highest power first
+        """
+        self.log.debug("starting the ``_fit_slit_centre_polynomial`` method")
+
+        import warnings
+
+        import numpy as np
+        from numpy.exceptions import RankWarning
+
+        # STEP THE DEGREE DOWN ON A RANK-DEFICIENT FIT (E.G. REPEATED/NEAR-IDENTICAL WAVELENGTHS)
+        # RATHER THAN SILENTLY TRUSTING numpy's LEAST-SQUARES SOLUTION TO AN ILL-POSED SYSTEM
+        for candidateDegree in range(degree, -1, -1):
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RankWarning)
+                    return np.polyfit(wavelength, slitPosition, candidateDegree)
+            except (RankWarning, np.linalg.LinAlgError):
+                continue
+
+        # EVERY DEGREE DOWN TO A CONSTANT WAS DEGENERATE — FALL BACK TO THE GLOBAL MEAN
+        self.log.warning(
+            f"Slit-centre trace fit for order {order} was rank-deficient at every degree down to 0 "
+            f"(likely duplicate wavelengths); falling back to the global mean slit position "
+            f"({fallbackCentreArcsec:.3f} arcsec) as a constant centre."
+        )
+        return np.array([fallbackCentreArcsec])
+
     def _determine_rectified_image_boundaries(self):
-        """*Setup the individual order dataframes for each order in the order pixel table*"""
-        self.log.debug("starting the ``_determine_rectified_image_boundaries`` method")
+        """*Setup the individual order dataframes for each order in the order pixel table*
+        """
+        self.log.debug('starting the ``_determine_rectified_image_boundaries`` method')
         import numpy as np
         import pandas as pd
 
@@ -442,60 +490,97 @@ class image_transformer(base_util):
         bArray = self.orderPixelTable[f"{self.axisB}coord"]
 
         if self.dispersionAxis == "x":
-            mapLookup = self.mapDF.set_index([f"{self.axisA}", f"{self.axisB}"])[["slit_position", "wavelength"]]
-            self.orderPixelTable[["slit_position", "wavelength"]] = mapLookup.reindex(
-                list(zip(aArray, bArray))
-            ).to_numpy()
+            mapLookup = self.mapDF.set_index([f"{self.axisA}", f"{self.axisB}"])[["slit_position","wavelength"]]
+            self.orderPixelTable[["slit_position","wavelength"]] = mapLookup.reindex(list(zip(aArray,bArray))).to_numpy()
         else:
-            mapLookup = self.mapDF.set_index([f"{self.axisB}", f"{self.axisA}"])[["slit_position", "wavelength"]]
-            self.orderPixelTable[["slit_position", "wavelength"]] = mapLookup.reindex(
-                list(zip(bArray, aArray))
-            ).to_numpy()
+            mapLookup = self.mapDF.set_index([f"{self.axisB}", f"{self.axisA}"])[["slit_position","wavelength"]]
+            self.orderPixelTable[["slit_position","wavelength"]] = mapLookup.reindex(list(zip(bArray,aArray))).to_numpy()
 
-        slitCentreArcsec = np.nanmean(self.orderPixelTable["slit_position"])
-        slitStdArcsec = np.nanstd(self.orderPixelTable["slit_position"])
+        # GLOBAL FALLBACK CENTRE — ONLY USED FOR AN ORDER WITH NO VALID TRACE POINTS OF ITS OWN.
+        # ISFINITE (NOT JUST NOTNA) SO A STRAY +/-INF IN THE MAP CAN'T SNEAK THROUGH THE MEAN
+        finiteSlitPosition = self.orderPixelTable["slit_position"][
+            np.isfinite(self.orderPixelTable["slit_position"])
+        ]
+        globalSlitCentreArcsec = (
+            finiteSlitPosition.mean() if len(finiteSlitPosition) else np.nan
+        )
+        if not np.isfinite(globalSlitCentreArcsec):
+            raise ValueError(
+                "Cannot determine any slit centre: every trace point's slit_position is missing "
+                "or non-finite across all orders. Check the 2D map / orderPixelTable inputs."
+            )
 
         # from astropy.table import Table
         # t = Table.from_pandas(self.orderPixelTable)
         # t.write("/tmp/table.fits", overwrite=True)
 
+        # SHARED OFFSET-EDGE ARRAY, CENTRED ON ZERO — THE ABSOLUTE SLIT POSITION OF ANY POINT
+        # IS THIS OFFSET PLUS THE PER-ORDER, PER-WAVELENGTH TRACE CENTRE (SEE orderSlitCentreCoeffs)
         subPixelSize = self.pixelScale / self.zoomFactorSlit
-        slitStart = slitCentreArcsec - self.slitLengthArcsec / 2 - 1 * slitStdArcsec
-        slitStop = slitCentreArcsec + self.slitLengthArcsec / 2 + 1 * slitStdArcsec
-        slitEdges = np.arange(slitStart, slitStop, subPixelSize)
+        slitEdges = np.arange(-self.slitLengthArcsec / 2, self.slitLengthArcsec / 2, subPixelSize)
 
         orderSlitEdges, orderWlEdges = [], []
+        orderSlitCentreCoeffs = []
         sliceOrders = []
         orderSliceTables = []
 
         # ITERATE OVER EACH ORDER, CLIPPING TO THE PIXEL BOUNDS (AMIN/AMAX) DEFINED FOR THAT ORDER
         wlMinMax = []
 
-        for order, amin, amax, wlmin, wlmax in zip(
-            self.orderNums, self.amins, self.amaxs, self.waveLengthMin, self.waveLengthMax
-        ):
+        for order, amin, amax, wlmin, wlmax in zip(self.orderNums, self.amins, self.amaxs, self.waveLengthMin, self.waveLengthMax):
             if order not in self.uniqueOrders:
                 continue
             pixelRange = amax - amin
             wlIncrement = ((wlmax - wlmin) / pixelRange) / self.zoomFactorWavelength
             wl_edges = np.arange(wlmin, wlmax, wlIncrement)
+
+            # FIT THIS ORDER'S OWN TRACE POINTS: SLIT POSITION AS A POLYNOMIAL FUNCTION OF WAVELENGTH
+            orderMask = self.orderPixelTable["order"] == order
+            orderTrace = self.orderPixelTable.loc[orderMask, ["slit_position", "wavelength"]]
+            # "VALID" MEANS FINITE ON BOTH COLUMNS — dropna() ALONE WOULD LET +/-INF THROUGH
+            finiteMask = np.isfinite(orderTrace["slit_position"]) & np.isfinite(orderTrace["wavelength"])
+            validTrace = orderTrace.loc[finiteMask]
+            nValid = len(validTrace)
+
+            if nValid == 0:
+                self.log.warning(
+                    f"No valid trace points found for order {order}; falling back to the global "
+                    f"mean slit position ({globalSlitCentreArcsec:.3f} arcsec) as a constant centre."
+                )
+                centreCoeffs = np.array([globalSlitCentreArcsec])
+            else:
+                # DEGREE IS CAPPED BY THE NUMBER OF *DISTINCT* WAVELENGTHS, NOT JUST THE POINT
+                # COUNT — REPEATED WAVELENGTHS AT DIFFERENT SLIT POSITIONS MAKE THE FIT
+                # RANK-DEFICIENT EVEN WHEN nValid IS LARGE
+                nUniqueWl = validTrace["wavelength"].nunique()
+                degree = min(SLIT_CENTRE_POLY_DEGREE, nUniqueWl - 1)
+                centreCoeffs = self._fit_slit_centre_polynomial(
+                    validTrace["wavelength"].to_numpy(),
+                    validTrace["slit_position"].to_numpy(),
+                    degree,
+                    order,
+                    globalSlitCentreArcsec,
+                )
+
             orderSlitEdges.append(slitEdges)
             orderWlEdges.append(wl_edges)
+            orderSlitCentreCoeffs.append(centreCoeffs)
             sliceOrders.append(order)
             wlMinMax.append((wlmin, wlmax))
-            # print(f"Order {order}: Wavelength range: {wlmin:.2f} - {wlmax:.2f} Angstroms, Slit range: {slitStart/10:.1f} - {slitStop/10:.1f} arcsec")
             orderSliceTables.append(pd.DataFrame())
 
         self.orderSlices = orderSliceTables
         self.uniqueOrders = sliceOrders
         self.wlMinMax = wlMinMax
+        self.orderSlitCentreCoeffs = orderSlitCentreCoeffs
 
-        self.log.debug("completed the ``_determine_rectified_image_boundaries`` method")
+        self.log.debug('completed the ``_determine_rectified_image_boundaries`` method')
         return orderSlitEdges, orderWlEdges
+
 
     def get_order_slices(self):
         return self.orderSlices
-
+    
     def get_order_wavelength_ranges(self):
         return self.wlMinMax
 
@@ -507,8 +592,7 @@ class image_transformer(base_util):
             - ``orderRectifiedImages`` -- list of tuples of the form ``(wlImage, slitImage)`` for each order in ``self.orderSlices``
         """
         import numpy as np
-
-        self.log.debug("starting the ``get_order_rectified`` method")
+        self.log.debug('starting the ``get_order_rectified`` method')
 
         orderRectifiedImages = []
         for orderTable, sp_edges, wl_edges in zip(self.orderSlices, self.orderSlitEdges, self.orderWlEdges):
@@ -519,10 +603,8 @@ class image_transformer(base_util):
 
                 if False:
                     import matplotlib
-
                     matplotlib.use("MacOSX")
                     import matplotlib.pyplot as plt
-
                     fig = plt.figure(
                         num=None,
                         figsize=(135, 1),
@@ -536,37 +618,34 @@ class image_transformer(base_util):
 
                     # Calculate sigma-clipped mean and std
                     from astropy.stats import sigma_clip
-
                     clipped_data = sigma_clip(rectifiedImageDict[imageName], sigma=3, maxiters=5)
                     clipped_mean = clipped_data.mean()
                     clipped_std = clipped_data.std()
-
+                    
                     plt.imshow(
                         rectifiedImageDict[imageName],
                         interpolation="none",
                         aspect="auto",
                         origin="lower",
                         extent=[wl_edges[0], wl_edges[-1], sp_edges[0], sp_edges[-1]],
-                        vmin=clipped_mean - clipped_std,
-                        vmax=clipped_mean + 7 * clipped_std,
+                        vmin=clipped_mean-clipped_std,
+                        vmax=clipped_mean + 7* clipped_std
                     )
                     plt.xlabel("Wavelength (Å)")
-                    plt.ylabel("Slit Position (arcsec)")
+                    plt.ylabel("Slit offset from trace (arcsec)")
                     plt.show()
 
             orderRectifiedImages.append(rectifiedImageDict)
 
-        self.log.debug("completed the ``get_order_rectified`` method")
+        self.log.debug('completed the ``get_order_rectified`` method')
         return orderRectifiedImages
-
-
+    
 # ----------------------------------------------------------------------
 # Geometry kernels: Sutherland-Hodgman clipping against a unit pixel,
 # NUMBA-JIT-COMPILED — SEE _precompute_resampling_weights FOR THE HOT
 # LOOP THESE ARE CALLED FROM (MILLIONS OF CELLS PER image_transformer
 # INSTANTIATION, SO THIS MUST RUN AT COMPILED SPEED, NOT PURE PYTHON)
 # ----------------------------------------------------------------------
-
 
 @numba.njit(cache=True, inline="always")
 def _clip_halfplane_nb(xs_in, ys_in, n_in, axis, value, keep_below, xs_out, ys_out):
@@ -638,19 +717,12 @@ def _clip_to_pixel_area_nb(xs, ys, ncorners, px, py, bufA_x, bufA_y, bufB_x, buf
 
 @numba.njit(cache=True)
 def _resample_weights_kernel(
-    xb,
-    yb,
-    px_lo,
-    px_hi,
-    py_lo,
-    py_hi,
-    iOut,
-    jOut,
-    pxOut,
-    pyOut,
-    areaOut,
-    coverage,
-):
+        xb, yb,
+        px_lo, px_hi, py_lo, py_hi,
+        iOut, jOut, pxOut, pyOut,
+        areaOut,
+        coverage,
+    ):
     """FOR EVERY (i, j) OUTPUT CELL, CLIP ITS BOUNDARY POLYGON AGAINST EVERY
     CANDIDATE DETECTOR PIXEL IN ITS [px_lo, px_hi] x [py_lo, py_hi] BOUNDING
     BOX AND RECORD THE OVERLAP AREA. CELLS WITH px_hi < px_lo ARE SKIPPED
@@ -680,7 +752,9 @@ def _resample_weights_kernel(
 
             for py in range(qlo, qhi + 1):
                 for px in range(plo, phi + 1):
-                    a = _clip_to_pixel_area_nb(xs, ys, ncorners, px, py, bufA_x, bufA_y, bufB_x, bufB_y)
+                    a = _clip_to_pixel_area_nb(
+                        xs, ys, ncorners, px, py, bufA_x, bufA_y, bufB_x, bufB_y
+                    )
                     if a > 0.0:
                         iOut[nOut] = i
                         jOut[nOut] = j
@@ -708,10 +782,10 @@ def _pixel_boundaries_grid(sp_edges, wl_edges, edge_samples):
     """
     import numpy as np
 
-    sp0, sp1 = sp_edges[:-1, None], sp_edges[1:, None]  # (n_sp, 1)
-    wl0, wl1 = wl_edges[None, :-1], wl_edges[None, 1:]  # (1, n_wl)
+    sp0, sp1 = sp_edges[:-1, None], sp_edges[1:, None]   # (n_sp, 1)
+    wl0, wl1 = wl_edges[None, :-1], wl_edges[None, 1:]     # (1, n_wl)
 
-    t = np.linspace(0.0, 1.0, edge_samples + 1)[:-1]  # exclude endpoint, (edge_samples,)
+    t = np.linspace(0.0, 1.0, edge_samples + 1)[:-1]      # exclude endpoint, (edge_samples,)
 
     n_sp = sp_edges.shape[0] - 1
     n_wl = wl_edges.shape[0] - 1
@@ -719,16 +793,16 @@ def _pixel_boundaries_grid(sp_edges, wl_edges, edge_samples):
     shape = (n_sp, n_wl, edge_samples)
 
     # BROADCAST EACH EDGE OF THE CELL BOUNDARY TO SHAPE (n_sp, n_wl, edge_samples)
-    bottom_sp = np.broadcast_to(sp0[:, :, None] + t * (sp1 - sp0)[:, :, None], shape)  # wl = wl0
+    bottom_sp = np.broadcast_to(sp0[:, :, None] + t * (sp1 - sp0)[:, :, None], shape)   # wl = wl0
     bottom_wl = np.broadcast_to(wl0[:, :, None], shape)
 
-    right_sp = np.broadcast_to(sp1[:, :, None], shape)  # sp = sp1
+    right_sp = np.broadcast_to(sp1[:, :, None], shape)                                  # sp = sp1
     right_wl = np.broadcast_to(wl0[:, :, None] + t * (wl1 - wl0)[:, :, None], shape)
 
-    top_sp = np.broadcast_to(sp1[:, :, None] + t * (sp0 - sp1)[:, :, None], shape)  # wl = wl1
+    top_sp = np.broadcast_to(sp1[:, :, None] + t * (sp0 - sp1)[:, :, None], shape)      # wl = wl1
     top_wl = np.broadcast_to(wl1[:, :, None], shape)
 
-    left_sp = np.broadcast_to(sp0[:, :, None], shape)  # sp = sp0
+    left_sp = np.broadcast_to(sp0[:, :, None], shape)                                   # sp = sp0
     left_wl = np.broadcast_to(wl1[:, :, None] + t * (wl0 - wl1)[:, :, None], shape)
 
     spBlock = np.concatenate([bottom_sp, right_sp, top_sp, left_sp], axis=2)
