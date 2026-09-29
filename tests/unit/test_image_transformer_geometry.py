@@ -251,6 +251,7 @@ def test_true_coordinate_cache_uses_bin_centres(log: object) -> None:
     transformer.orderSlitEdges = [np.array([-1.0, 0.0, 1.0])]
     transformer.orderWlEdges = [np.array([500.0, 502.0, 504.0])]
     transformer.orderSlices = [pd.DataFrame()]
+    transformer.orderSlitCentreCoeffs = [np.array([0.0])]
     transformer.wlMinMax = [(500.0, 504.0)]
 
     transformer._cache_true_wavelength_slit_images()
@@ -259,6 +260,25 @@ def test_true_coordinate_cache_uses_bin_centres(log: object) -> None:
     np.testing.assert_array_equal(rectified["wavelength"], [[501.0, 503.0]] * 2)
     np.testing.assert_array_equal(rectified["slit"], [[-0.5, -0.5], [0.5, 0.5]])
     assert transformer.get_order_wavelength_ranges() == [(500.0, 504.0)]
+
+
+def test_true_coordinate_cache_adds_slit_centre_per_column(log: object) -> None:
+    transformer = _transformer(log)
+    transformer.uniqueOrders = [12]
+    transformer.orderSlitEdges = [np.array([-1.0, 0.0, 1.0])]
+    transformer.orderWlEdges = [np.array([500.0, 502.0, 504.0])]
+    transformer.orderSlices = [pd.DataFrame()]
+    # SLIT CENTRE COEFFICIENTS FOR np.polyval: centre(wavelength) == wavelength
+    transformer.orderSlitCentreCoeffs = [np.array([1.0, 0.0])]
+    transformer.wlMinMax = [(500.0, 504.0)]
+
+    transformer._cache_true_wavelength_slit_images()
+    rectified = transformer.get_order_rectified()[0]
+
+    # BIN-CENTRE SLIT OFFSETS (-0.5, 0.5) SHIFTED BY THE PER-COLUMN TRACE CENTRE (501.0, 503.0)
+    np.testing.assert_array_equal(
+        rectified["slit"], [[500.5, 502.5], [501.5, 503.5]]
+    )
 
 
 @pytest.mark.parametrize("dispersionAxis", ["x", "y"])
@@ -329,6 +349,188 @@ def test_rectified_boundaries_use_separate_slit_and_wavelength_zoom(
 
     np.testing.assert_allclose(np.diff(slitEdges[0]), 0.25)
     np.testing.assert_allclose(np.diff(wavelengthEdges[0]), 1.0)
+
+
+def test_rectified_boundaries_centre_slit_on_trace_per_order(log: object) -> None:
+    transformer = _transformer(log)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.pixelScale = 1.0
+    transformer.slitLengthArcsec = 2.0
+    transformer.orderPixelTable = pd.DataFrame(
+        {
+            "order": [10, 10, 11, 11],
+            "xcoord_centre": [0.0, 1.0, 0.0, 1.0],
+            "ycoord": [0, 0, 1, 1],
+        }
+    )
+    # ORDER 10 SITS AT A CONSTANT SLIT POSITION OF -0.5, ORDER 11 AT A CONSTANT +1.5
+    transformer.mapDF = pd.DataFrame(
+        {
+            "x": [0, 1, 0, 1],
+            "y": [0, 0, 1, 1],
+            "slit_position": [-0.5, -0.5, 1.5, 1.5],
+            "wavelength": [500.0, 502.0, 600.0, 602.0],
+        }
+    )
+    transformer.orderNums = np.array([10, 11])
+    transformer.amins = np.array([0.0, 0.0])
+    transformer.amaxs = np.array([2.0, 2.0])
+    transformer.waveLengthMin = np.array([500.0, 600.0])
+    transformer.waveLengthMax = np.array([504.0, 604.0])
+    transformer.uniqueOrders = np.array([10, 11])
+
+    transformer._determine_rectified_image_boundaries()
+
+    assert len(transformer.orderSlitCentreCoeffs) == 2
+    order10Centre = np.polyval(transformer.orderSlitCentreCoeffs[0], 501.0)
+    order11Centre = np.polyval(transformer.orderSlitCentreCoeffs[1], 601.0)
+    assert order10Centre == pytest.approx(-0.5)
+    assert order11Centre == pytest.approx(1.5)
+
+
+def test_rectified_boundaries_centre_follows_trace_along_wavelength(
+    log: object,
+) -> None:
+    transformer = _transformer(log)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.pixelScale = 1.0
+    transformer.slitLengthArcsec = 2.0
+    transformer.orderPixelTable = pd.DataFrame(
+        {"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]}
+    )
+    # SLIT POSITION RISES LINEARLY WITH WAVELENGTH ALONG THE TRACE
+    transformer.mapDF = pd.DataFrame(
+        {
+            "x": [0, 1],
+            "y": [0, 0],
+            "slit_position": [0.0, 2.0],
+            "wavelength": [500.0, 502.0],
+        }
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+
+    transformer._determine_rectified_image_boundaries()
+
+    fittedCentre = np.polyval(transformer.orderSlitCentreCoeffs[0], 501.0)
+    assert fittedCentre == pytest.approx(1.0)
+
+
+def test_rectified_boundaries_fall_back_to_global_mean_for_order_without_valid_trace(
+    log: object,
+) -> None:
+    transformer = _transformer(log)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.pixelScale = 1.0
+    transformer.slitLengthArcsec = 2.0
+    transformer.orderPixelTable = pd.DataFrame(
+        {
+            # ORDER 11's PIXEL COORDINATES ARE ABSENT FROM mapDF, SO ITS LOOKUP IS ALL-NaN
+            "order": [10, 10, 11, 11],
+            "xcoord_centre": [0.0, 1.0, 99.0, 98.0],
+            "ycoord": [0, 0, 0, 0],
+        }
+    )
+    transformer.mapDF = pd.DataFrame(
+        {
+            "x": [0, 1],
+            "y": [0, 0],
+            "slit_position": [-0.5, 0.5],
+            "wavelength": [500.0, 502.0],
+        }
+    )
+    transformer.orderNums = np.array([10, 11])
+    transformer.amins = np.array([0.0, 0.0])
+    transformer.amaxs = np.array([2.0, 2.0])
+    transformer.waveLengthMin = np.array([500.0, 600.0])
+    transformer.waveLengthMax = np.array([504.0, 604.0])
+    transformer.uniqueOrders = np.array([10, 11])
+
+    transformer._determine_rectified_image_boundaries()
+
+    # GLOBAL nanmean OF THE ONLY VALID (ORDER 10) SLIT POSITIONS IS 0.0
+    fallbackCentre = np.polyval(transformer.orderSlitCentreCoeffs[1], 601.0)
+    assert fallbackCentre == pytest.approx(0.0)
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("11" in message for message in warnings)
+
+
+def test_rectified_boundaries_degrade_degree_on_rank_deficient_trace(
+    log: object,
+) -> None:
+    transformer = _transformer(log)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.pixelScale = 1.0
+    transformer.slitLengthArcsec = 2.0
+    # TWO PIXELS SHARE THE SAME MAPPED WAVELENGTH (500.0) BUT DISAGREE ON SLIT POSITION —
+    # A DEGREE >= 1 FIT ON THESE THREE POINTS IS RANK-DEFICIENT AT THE REQUESTED DEGREE
+    transformer.orderPixelTable = pd.DataFrame(
+        {"order": [10, 10, 10], "xcoord_centre": [0.0, 0.0, 1.0], "ycoord": [0, 1, 0]}
+    )
+    transformer.mapDF = pd.DataFrame(
+        {
+            "x": [0, 0, 1],
+            "y": [0, 1, 0],
+            "slit_position": [-0.5, 0.5, 0.0],
+            "wavelength": [500.0, 500.0, 502.0],
+        }
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+
+    transformer._determine_rectified_image_boundaries()
+
+    # THE FIT MUST DEGRADE TO SOMETHING WELL-POSED RATHER THAN RETURNING GARBAGE/NaN COEFFICIENTS
+    coeffs = transformer.orderSlitCentreCoeffs[0]
+    assert np.all(np.isfinite(coeffs))
+
+
+def test_rectified_boundaries_raise_when_every_order_trace_is_invalid(
+    log: object,
+) -> None:
+    transformer = _transformer(log)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.pixelScale = 1.0
+    transformer.slitLengthArcsec = 2.0
+    # NONE OF THESE PIXEL COORDINATES EXIST IN mapDF, SO EVERY LOOKUP IS NaN
+    transformer.orderPixelTable = pd.DataFrame(
+        {"order": [10, 10], "xcoord_centre": [99.0, 98.0], "ycoord": [0, 0]}
+    )
+    transformer.mapDF = pd.DataFrame(
+        {
+            "x": [0, 1],
+            "y": [0, 0],
+            "slit_position": [-0.5, 0.5],
+            "wavelength": [500.0, 502.0],
+        }
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+
+    with pytest.raises(ValueError, match="non-finite"):
+        transformer._determine_rectified_image_boundaries()
 
 
 def test_sigma_clip_bpm_preserves_existing_bad_pixels(log: object) -> None:
@@ -421,6 +623,7 @@ def test_precomputed_weights_convert_boundaries_once_and_preserve_area(
     transformer.uniqueOrders = [10]
     transformer.orderSlitEdges = [np.array([0.0, 1.0])]
     transformer.orderWlEdges = [np.array([0.0, 1.0])]
+    transformer.orderSlitCentreCoeffs = [np.array([0.0])]
     transformer.dispersionMap = "coefficients.fits"
     transformer.nx = 3
     transformer.ny = 3
@@ -455,3 +658,49 @@ def test_precomputed_weights_convert_boundaries_once_and_preserve_area(
     assert weights["area"].sum() == pytest.approx(1.0)
     assert weights["coverage"][0, 0] == pytest.approx(1.0)
     np.testing.assert_array_equal(weights["flatIdx"], np.zeros(4, dtype=int))
+
+
+def test_precomputed_weights_shift_corners_by_slit_centre(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transformer = _transformer(log)
+    transformer.edgeSamples = 1
+    transformer.uniqueOrders = [10]
+    transformer.orderSlitEdges = [np.array([0.0, 1.0])]
+    transformer.orderWlEdges = [np.array([0.0, 1.0])]
+    # CONSTANT SLIT CENTRE OFFSET OF 2.0 ARCSEC, INDEPENDENT OF WAVELENGTH
+    transformer.orderSlitCentreCoeffs = [np.array([2.0])]
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 3
+    transformer.ny = 3
+    received: list[pd.DataFrame] = []
+
+    def fake_conversion(
+        *,
+        log: object,
+        dispersionMapPath: str,
+        orderPixelTable: pd.DataFrame,
+        removeOffDetectorLocation: bool,
+        trimColumns: bool,
+    ) -> pd.DataFrame:
+        received.append(orderPixelTable.copy(deep=True))
+        return orderPixelTable.assign(
+            fit_x=orderPixelTable["wavelength"],
+            fit_y=orderPixelTable["slit_position"],
+        )
+
+    dispersionModule = importlib.import_module(
+        "soxspipe.commonutils.dispersion_map_to_pixel_arrays"
+    )
+    monkeypatch.setattr(
+        dispersionModule, "dispersion_map_to_pixel_arrays", fake_conversion
+    )
+
+    transformer._precompute_resampling_weights()
+
+    # RAW SLIT OFFSET CORNERS FOR A SINGLE CELL (BOTTOM, RIGHT, TOP, LEFT) ARE 0, 1, 1, 0 —
+    # THE CONSTANT +2.0 CENTRE MUST BE ADDED BEFORE THE CORNERS ARE HANDED TO THE CONVERTER
+    np.testing.assert_array_equal(
+        received[0]["slit_position"].to_numpy(), [2.0, 3.0, 3.0, 2.0]
+    )
