@@ -36,7 +36,7 @@ DISPLAY_COLUMNS = [
 ]
 
 
-QC_FAILURE_MESSAGE = "The following QC values are outside of acceptable limits: FOO."
+QC_FAILURE_MESSAGE = "QC values outside of acceptable limits: FOO."
 
 
 def _connection(calibrationTypes: tuple[str, ...] = CALIBRATION_TYPES) -> sqlite3.Connection:
