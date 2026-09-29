@@ -927,18 +927,20 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     qcTable = pd.concat(
         [
             qcTable,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "qc_name": qcName,
-                    "qc_value": percent,
-                    "qc_comment": qcComment,
-                    "qc_unit": "",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "to_header": True,
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": qcName,
+                        "qc_value": percent,
+                        "qc_comment": qcComment,
+                        "qc_unit": "",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -1358,9 +1360,7 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
 
     hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny)
 
-    mapDF = pd.DataFrame.from_dict(
-        _disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame)
-    )
+    mapDF = pd.DataFrame.from_dict(_disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame))
     if removeMaskedPixels:
         mask = mapDF["mask"].eq(False)
         mapDF = mapDF.loc[mask]
@@ -2171,23 +2171,25 @@ def plot_merged_spectrum_qc(
     products = pd.concat(
         [
             products,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "product_label": (
-                        f"EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}"
-                        if fluxCalibrated
-                        else f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}"
-                    ),
-                    "file_name": filename,
-                    "file_type": "PDF",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "product_desc": "QC plot of extracted order-merged source",
-                    "file_path": filePath,
-                    "label": "QC",
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "product_label": (
+                            f"EXTRACTED_MERGED_FLUXCALIBRATED_QC_PLOT{noddingSequence}"
+                            if fluxCalibrated
+                            else f"EXTRACTED_MERGED_QC_PLOT{noddingSequence}"
+                        ),
+                        "file_name": filename,
+                        "file_type": "PDF",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "product_desc": "QC plot of extracted order-merged source",
+                        "file_path": filePath,
+                        "label": "QC",
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -2428,7 +2430,7 @@ def _draw_sky_panel(fig, gs, merged_orders, fluxCalibrated):
 
     sky_panel.set_yscale("log")
 
-    if "SKY_COUNTS" in merged_orders.columns and merged_orders["SKY_COUNTS"].max()  > 0:
+    if "SKY_COUNTS" in merged_orders.columns and merged_orders["SKY_COUNTS"].max() > 0:
         sky_panel.plot(
             merged_orders["WAVE"],
             merged_orders["SKY_COUNTS"],
@@ -2704,18 +2706,20 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
         qcTable = pd.concat(
             [
                 qcTable,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": recipeName,
-                        "qc_name": "EFF MEDIAN",
-                        "qc_value": float(f"{medianEfficiency:0.4f}"),
-                        "qc_comment": "Median efficiency across all orders",
-                        "qc_unit": None,
-                        "obs_date_utc": dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": recipeName,
+                            "qc_name": "EFF MEDIAN",
+                            "qc_value": float(f"{medianEfficiency:0.4f}"),
+                            "qc_comment": "Median efficiency across all orders",
+                            "qc_unit": None,
+                            "obs_date_utc": dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -2727,19 +2731,21 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
             qcTable = pd.concat(
                 [
                     qcTable,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": recipeName,
-                            "qc_name": "EFF MEDIAN",
-                            "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.4f}"),
-                            "qc_comment": f"Median efficiency in order {row['ORDER']}",
-                            "qc_order": row["ORDER"],
-                            "qc_unit": None,
-                            "obs_date_utc": dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": recipeName,
+                                "qc_name": "EFF MEDIAN",
+                                "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.4f}"),
+                                "qc_comment": f"Median efficiency in order {row['ORDER']}",
+                                "qc_order": row["ORDER"],
+                                "qc_unit": None,
+                                "obs_date_utc": dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -2749,18 +2755,20 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
         qcTable = pd.concat(
             [
                 qcTable,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": recipeName,
-                        "qc_name": "SNR MEDIAN",
-                        "qc_value": float(f"{medianSNR:0.3f}"),
-                        "qc_comment": "Median SNR across all orders",
-                        "qc_unit": None,
-                        "obs_date_utc": dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": recipeName,
+                            "qc_name": "SNR MEDIAN",
+                            "qc_value": float(f"{medianSNR:0.3f}"),
+                            "qc_comment": "Median SNR across all orders",
+                            "qc_unit": None,
+                            "obs_date_utc": dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -2771,19 +2779,21 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
             qcTable = pd.concat(
                 [
                     qcTable,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": recipeName,
-                            "qc_name": "SNR MEDIAN",
-                            "qc_value": float(f"{row['MEDIAN_SNR']:0.3f}"),
-                            "qc_comment": f"Median SNR in order {row['ORDER']}",
-                            "qc_order": row["ORDER"],
-                            "qc_unit": None,
-                            "obs_date_utc": dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": recipeName,
+                                "qc_name": "SNR MEDIAN",
+                                "qc_value": float(f"{row['MEDIAN_SNR']:0.3f}"),
+                                "qc_comment": f"Median SNR in order {row['ORDER']}",
+                                "qc_order": row["ORDER"],
+                                "qc_unit": None,
+                                "obs_date_utc": dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )

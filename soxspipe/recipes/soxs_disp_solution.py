@@ -98,7 +98,7 @@ class soxs_disp_solution(base_recipe):
         Sets ``self.polyOrders``. A false value is left alone, so the recipe
         falls back to the degrees in the settings file.
         """
-        if self.polyOrders is not False:
+        if self.polyOrders is not False and self.polyOrders is not None:
             value = self.polyOrders
             if (
                 isinstance(value, bool)
@@ -107,7 +107,7 @@ class soxs_disp_solution(base_recipe):
                 or not str(value).isascii()
                 or not str(value).isdigit()
             ):
-                raise TypeError("THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER")
+                raise TypeError(f"THE poly VALUE NEEDS TO BE A 4 DIGIT INTEGER, IT WAS: {value}")
             self.polyOrders = int(value)
 
     def _collect_input_frames(self):
