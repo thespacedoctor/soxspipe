@@ -76,9 +76,6 @@ def _configure_synthetic_orchestration(
         def cache_image(self, name: str, image: np.ndarray, **kwargs: object) -> None:
             captured.setdefault("cached", []).append(name)
 
-        def cache_variance(self, name: str, varianceArray: np.ndarray) -> None:
-            captured.setdefault("cached", []).append(name)
-
         def get_order_slices(self) -> list[pd.DataFrame]:
             return [orderSlice]
 

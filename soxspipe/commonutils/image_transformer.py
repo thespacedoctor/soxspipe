@@ -50,8 +50,7 @@ class image_transformer(base_util):
        sub-sampled by ``zoomFactorSlit`` and the wavelength axis by ``zoomFactorWavelength``.
     3. Rebins that grid back to detector-pixel resolution by summing each
        ``zoomFactorSlit`` x ``zoomFactorWavelength`` block, so each rectified pixel holds the
-       counts of about one detector pixel. Variance images are propagated with
-       ``cache_variance``.
+       counts of about one detector pixel.
     4. Optionally sigma-clips the rebinned raw flux to catch additional outlier pixels before extraction.
 
     **Key Arguments:**
@@ -88,7 +87,6 @@ class image_transformer(base_util):
         ndarray=skySubtractedFrame,
         associatedMask=badPixelMask
     )
-    transformer.cache_variance(imageName="variance", varianceArray=varianceFrame)
     slices, wlMinMax = transformer.get_order_slices()
     ```
     """
@@ -178,7 +176,7 @@ class image_transformer(base_util):
             weights = self._resamplingWeights[order]
 
             # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED (ALREADY REBINNED) PIXEL-OVERLAP WEIGHTS
-            flux = _apply_weights(ndarray, weights, weights["area"])
+            flux = _apply_weights(ndarray, weights)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -189,7 +187,7 @@ class image_transformer(base_util):
                 orderCoverage.append(weights["coverage"])
 
             if bpmArray is not None:
-                bpm = _apply_weights(bpmArray, weights, weights["area"])
+                bpm = _apply_weights(bpmArray, weights)
                 bpm = bpm > 0.2
                 orderTable["bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
@@ -222,45 +220,6 @@ class image_transformer(base_util):
 
         self.log.debug('completed the ``cache_image`` method')
         return orderCoverage
-
-    def cache_variance(
-            self,
-            imageName,
-            varianceArray):
-        """*Rectify a per-pixel variance image and place it in the transformer's cache*
-
-        Each rectified pixel is a weighted sum of detector pixels, ``F = sum(w_p * f_p)``, where ``w_p`` is the
-        fraction of detector pixel ``p`` that falls inside the rectified pixel. For independent detector pixels
-        the variance is ``sum(w_p**2 * var_p)``. The weights are merged per detector pixel before they are
-        squared, because sub-cells cut from the same detector pixel are fully correlated. Covariance between
-        neighbouring rectified pixels that share a detector pixel is not recorded.
-
-        **Key Arguments:**
-
-        - ``imageName`` -- the unique name to give to the rectified variance image
-        - ``varianceArray`` -- 2D per-pixel variance frame (e.g. the uncertainty array squared)
-
-        **Return:**
-
-        - None
-
-        **Usage:**
-
-        ```python
-        transformer.cache_variance("variance", frame.uncertainty.array ** 2)
-        ```
-        """
-        self.log.debug('starting the ``cache_variance`` method')
-
-        for order, orderTable in zip(self.uniqueOrders, self.orderSlices, strict=True):
-            weights = self._resamplingWeights[order]
-            variance = _apply_weights(varianceArray, weights, weights["area"] ** 2)
-            orderTable[imageName] = list(variance.T)
-            orderTable["order"] = order
-            self._cache_image_names.add(imageName)
-
-        self.log.debug('completed the ``cache_variance`` method')
-        return
 
     def _unzoom(self, arr2d, operation="sum"):
         """Flux-conserving NxM binning (slit rows by zoomFactorSlit, wavelength columns by zoomFactorWavelength)."""
@@ -432,8 +391,8 @@ class image_transformer(base_util):
                 iOut, jOut, pxOut, pyOut, areaOut, coverage,
             )
 
-            # MERGE THE SUB-CELL OVERLAPS INTO THE REBINNED (DETECTOR-RESOLUTION) GRID, SO FLUX IS A SINGLE
-            # WEIGHTED SUM AND VARIANCE CAN BE PROPAGATED WITH THE SQUARE OF EACH DETECTOR PIXEL'S TOTAL WEIGHT
+            # MERGE THE SUB-CELL OVERLAPS INTO THE REBINNED (DETECTOR-RESOLUTION) GRID, SO EACH CACHED IMAGE
+            # IS A SINGLE WEIGHTED SUM OF DETECTOR PIXELS
             resamplingWeights[order] = {
                 **_rebin_resampling_weights(
                     iOut[:nOut], jOut[:nOut], pxOut[:nOut], pyOut[:nOut], areaOut[:nOut],
@@ -1016,14 +975,13 @@ def _rebin_resampling_weights(i, j, px, py, area, nSp, nWl, zoomSlit, zoomWavele
     }
 
 
-def _apply_weights(ndarray, weights, pixelWeights):
+def _apply_weights(ndarray, weights):
     """*Weighted sum of detector pixels into the rebinned output grid*
 
     **Key Arguments:**
 
     - ``ndarray`` -- 2D detector-space image
     - ``weights`` -- rebinned weights dict from ``_rebin_resampling_weights``
-    - ``pixelWeights`` -- per-entry weights to apply (the overlap areas, or their squares for variance)
 
     **Return:**
 
@@ -1032,5 +990,5 @@ def _apply_weights(ndarray, weights, pixelWeights):
     import numpy as np
 
     nSpOut, nWlOut = weights["shape"]
-    weighted = ndarray[weights["py"], weights["px"]] * pixelWeights
+    weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
     return np.bincount(weights["flatIdx"], weights=weighted, minlength=nSpOut * nWlOut).reshape(nSpOut, nWlOut)

@@ -317,7 +317,11 @@ class horne_extraction(base_util):
             slitHalfLength=self.slitHalfLength,
         )
         transformer.cache_image("fluxRaw", self.skySubtractedFrame.data, associatedMask=self.skySubtractedFrame.mask)
-        transformer.cache_variance("variance", self.skySubtractedFrame.uncertainty.array ** 2)
+        # VARIANCE IS RECTIFIED WITH THE SAME LINEAR AREA WEIGHTS AS FLUX, NOT THEIR SQUARES. NEIGHBOURING
+        # RECTIFIED PIXELS SHARE DETECTOR PIXELS, AND THE EXTRACTION SUMS ACROSS THEM: LINEAR WEIGHTS APPROXIMATE
+        # THAT SUM'S VARIANCE BY COUNTING EACH DETECTOR PIXEL'S VARIANCE ABOUT ONCE, WHEREAS SQUARED WEIGHTS
+        # DROP THE COVARIANCE AND UNDERESTIMATE THE NOISE (~1.55x INFLATED SNR ON REAL DATA)
+        transformer.cache_image("variance", self.skySubtractedFrame.uncertainty.array ** 2)
         if self.subtractedFrame:
             transformer.cache_image("fluxSky", self.subtractedFrame.data)
 

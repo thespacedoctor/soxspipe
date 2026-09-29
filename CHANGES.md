@@ -2,7 +2,6 @@
 
 * **FIXED**: `image_transformer` wavelength bins are now evenly spaced in detector pixels along each order's trace instead of evenly spaced in nm, removing an 11–21% blue-to-red flux ramp within every order
 * **FIXED**: `image_transformer` slit bins now use each order's arcsec-per-pixel scale measured from the dispersion map instead of a hardcoded 0.28 arcsec/pixel, so the Horne aperture set by `horne-extraction-slit-length` is now that many detector pixels (about 1.7x narrower in arcsec than before on X-Shooter VIS)
-* **FIXED**: variance images are rectified with the new `image_transformer.cache_variance`, which propagates the square of each detector pixel's weight instead of weighting variance linearly like flux
 * **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order
 * **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
 

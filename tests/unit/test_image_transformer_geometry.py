@@ -806,30 +806,6 @@ def test_rebin_resampling_weights_pass_through_when_grid_is_smaller_than_zoom() 
     np.testing.assert_allclose(weights["area"], [0.3])
 
 
-def test_cache_variance_propagates_with_squared_merged_weights(log: object) -> None:
-    transformer = _transformer(log)
-    transformer.uniqueOrders = [3]
-    transformer.orderSlitEdges = [np.array([0.0, 1.0])]
-    transformer.orderWlEdges = [np.array([0.0, 1.0, 2.0])]
-    transformer.orderSlices = [pd.DataFrame()]
-    # CELL 0: HALF OF PIXEL (0,0) SPLIT OVER TWO SUB-CELLS (MERGED TO 0.5 BEFORE SQUARING)
-    # CELL 1: HALF OF PIXEL (1,0) AND HALF OF PIXEL (2,0), INDEPENDENT
-    rebinned = _rebin_resampling_weights(
-        i=np.zeros(4, dtype=int), j=np.array([0, 0, 1, 1]),
-        px=np.array([0, 0, 1, 2]), py=np.zeros(4, dtype=int),
-        area=np.array([0.25, 0.25, 0.5, 0.5]),
-        nSp=1, nWl=2, zoomSlit=1, zoomWavelength=1, nx=8, ny=8,
-    )
-    transformer._resamplingWeights = {3: {**rebinned, "coverage": np.ones((1, 2))}}
-    variance = np.full((1, 8), 4.0)
-
-    transformer.cache_variance("variance", variance)
-
-    np.testing.assert_allclose(
-        transformer.get_order_rectified()[0]["variance"], [[0.5**2 * 4.0, 2 * 0.5**2 * 4.0]]
-    )
-
-
 def test_rectified_boundaries_size_slit_bins_from_measured_arcsec_per_pixel(
     log: object,
 ) -> None:
