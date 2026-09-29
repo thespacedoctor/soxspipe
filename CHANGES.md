@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: `soxspipe prep --refresh` and the automatic rebuild of a database that will not open no longer lose quality-control history: the old `soxspipe.db` is first copied (or, if it failed to open, moved) into a new `backups/` directory in the workspace root, and its `quality_control` rows are restored into the rebuilt database before the QC acceptable-range checks run; if the database cannot be preserved it is left in place and not rebuilt (DY-59)
 * **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order
 * **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently (both default to 5, so output is unchanged)
 
