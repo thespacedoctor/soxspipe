@@ -11,9 +11,12 @@ import pytest
 
 from soxspipe.commonutils.base_util import base_util
 from soxspipe.commonutils.image_transformer import (
+    _arcsec_per_pixel,
     _clip_halfplane_nb,
     _clip_to_pixel_area_nb,
     _pixel_boundaries_grid,
+    _pixel_uniform_wavelength_edges,
+    _rebin_resampling_weights,
     _resample_weights_kernel,
     image_transformer,
 )
@@ -33,7 +36,37 @@ def _transformer(
     transformer.zoomFactorSlit = zoomFactorSlit
     transformer.zoomFactorWavelength = zoomFactorWavelength
     transformer._cache_image_names = set()
+    transformer.slitHalfLength = 1
+    transformer._measure_order_trace_geometry = _linear_trace_geometry(transformer)
     return transformer
+
+
+def _linear_trace_geometry(transformer: image_transformer):
+    """Stub the dispersion-map trace sampling with linear wavelength edges and 1 arcsec/pixel."""
+
+    def measure(orderTraces: list[tuple]) -> list[tuple[np.ndarray, float]]:
+        results = []
+        for _order, wlmin, wlmax, pixelRange, _centreCoeffs in orderTraces:
+            step = (wlmax - wlmin) / pixelRange / transformer.zoomFactorWavelength
+            results.append((np.arange(wlmin, wlmax, step), 1.0))
+        return results
+
+    return measure
+
+
+def _rebinned(
+    i: list[int],
+    j: list[int],
+    px: list[int],
+    py: list[int],
+    area: list[float],
+    shape: tuple[int, int],
+) -> dict[str, np.ndarray]:
+    """Build a rebinned-weights dict the way _precompute_resampling_weights stores it."""
+    return _rebin_resampling_weights(
+        np.array(i), np.array(j), np.array(px), np.array(py), np.array(area, dtype=float),
+        nSp=shape[0], nWl=shape[1], zoomSlit=1, zoomWavelength=1, nx=8, ny=8,
+    )
 
 
 @pytest.mark.parametrize(
@@ -197,6 +230,7 @@ def test_cache_image_records_flux_mask_coverage_and_rectified_views(
             "px": np.array([0, 1, 0, 1]),
             "area": np.ones(4),
             "flatIdx": np.arange(4),
+            "shape": (2, 2),
             "coverage": np.ones((2, 2)),
         }
     }
@@ -231,6 +265,7 @@ def test_cache_image_without_mask_or_coverage_preserves_optional_contract(
             "px": np.array([0]),
             "area": np.array([0.5]),
             "flatIdx": np.array([0]),
+            "shape": (1, 1),
             "coverage": np.array([[0.5]]),
         }
     }
@@ -290,8 +325,6 @@ def test_rectified_boundaries_follow_map_orientation_and_skip_absent_orders(
     transformer.axisA = "x"
     transformer.axisB = "y"
     transformer.dispersionAxis = dispersionAxis
-    transformer.pixelScale = 1.0
-    transformer.slitLengthArcsec = 2.0
     transformer.orderPixelTable = pd.DataFrame(
         {"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]}
     )
@@ -325,8 +358,6 @@ def test_rectified_boundaries_use_separate_slit_and_wavelength_zoom(
     transformer.axisA = "x"
     transformer.axisB = "y"
     transformer.dispersionAxis = "x"
-    transformer.pixelScale = 1.0
-    transformer.slitLengthArcsec = 2.0
     transformer.orderPixelTable = pd.DataFrame(
         {"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]}
     )
@@ -356,8 +387,6 @@ def test_rectified_boundaries_centre_slit_on_trace_per_order(log: object) -> Non
     transformer.axisA = "x"
     transformer.axisB = "y"
     transformer.dispersionAxis = "x"
-    transformer.pixelScale = 1.0
-    transformer.slitLengthArcsec = 2.0
     transformer.orderPixelTable = pd.DataFrame(
         {
             "order": [10, 10, 11, 11],
@@ -397,8 +426,6 @@ def test_rectified_boundaries_centre_follows_trace_along_wavelength(
     transformer.axisA = "x"
     transformer.axisB = "y"
     transformer.dispersionAxis = "x"
-    transformer.pixelScale = 1.0
-    transformer.slitLengthArcsec = 2.0
     transformer.orderPixelTable = pd.DataFrame(
         {"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]}
     )
@@ -431,8 +458,6 @@ def test_rectified_boundaries_fall_back_to_global_mean_for_order_without_valid_t
     transformer.axisA = "x"
     transformer.axisB = "y"
     transformer.dispersionAxis = "x"
-    transformer.pixelScale = 1.0
-    transformer.slitLengthArcsec = 2.0
     transformer.orderPixelTable = pd.DataFrame(
         {
             # ORDER 11's PIXEL COORDINATES ARE ABSENT FROM mapDF, SO ITS LOOKUP IS ALL-NaN
@@ -472,8 +497,6 @@ def test_rectified_boundaries_degrade_degree_on_rank_deficient_trace(
     transformer.axisA = "x"
     transformer.axisB = "y"
     transformer.dispersionAxis = "x"
-    transformer.pixelScale = 1.0
-    transformer.slitLengthArcsec = 2.0
     # TWO PIXELS SHARE THE SAME MAPPED WAVELENGTH (500.0) BUT DISAGREE ON SLIT POSITION —
     # A DEGREE >= 1 FIT ON THESE THREE POINTS IS RANK-DEFICIENT AT THE REQUESTED DEGREE
     transformer.orderPixelTable = pd.DataFrame(
@@ -508,8 +531,6 @@ def test_rectified_boundaries_raise_when_every_order_trace_is_invalid(
     transformer.axisA = "x"
     transformer.axisB = "y"
     transformer.dispersionAxis = "x"
-    transformer.pixelScale = 1.0
-    transformer.slitLengthArcsec = 2.0
     # NONE OF THESE PIXEL COORDINATES EXIST IN mapDF, SO EVERY LOOKUP IS NaN
     transformer.orderPixelTable = pd.DataFrame(
         {"order": [10, 10], "xcoord_centre": [99.0, 98.0], "ycoord": [0, 0]}
@@ -610,7 +631,6 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
     assert calls == ["boundaries", "weights", "coordinates"]
     assert (transformer.ny, transformer.nx) == (3, 4)
     assert transformer.uniqueOrders.tolist() == [10]
-    assert transformer.slitLengthArcsec == pytest.approx(2.8)
     assert transformer._resamplingWeights == {10: {}}
 
 
@@ -704,3 +724,218 @@ def test_precomputed_weights_shift_corners_by_slit_centre(
     np.testing.assert_array_equal(
         received[0]["slit_position"].to_numpy(), [2.0, 3.0, 3.0, 2.0]
     )
+
+
+def test_pixel_uniform_wavelength_edges_step_evenly_along_the_detector_trace() -> None:
+    # NON-LINEAR DISPERSION: DETECTOR PATH LENGTH GROWS QUADRATICALLY WITH WAVELENGTH
+    wavelengths = np.linspace(500.0, 510.0, 2001)
+    pixelX = 100.0 * (wavelengths - 500.0) + 3.0 * (wavelengths - 500.0) ** 2
+    pixelY = 0.1 * pixelX
+
+    edges = _pixel_uniform_wavelength_edges(wavelengths, pixelX, pixelY, samplesPerPixel=2)
+
+    pathAtEdges = np.interp(edges, wavelengths, np.hypot(pixelX, pixelY))
+    assert edges[0] == pytest.approx(500.0)
+    np.testing.assert_allclose(np.diff(pathAtEdges), 0.5, rtol=1e-3)
+    # EDGES MUST BE NON-UNIFORM IN WAVELENGTH FOR A NON-LINEAR DISPERSION
+    assert np.ptp(np.diff(edges)) > 1e-4
+
+
+def test_pixel_uniform_wavelength_edges_use_longest_finite_run_without_bridging_gaps() -> None:
+    wavelengths = np.array([500.0, 501.0, 502.0, 503.0, 504.0])
+    pixelX = np.array([0.0, np.nan, 20.0, 30.0, 40.0])
+    pixelY = np.zeros(5)
+
+    edges = _pixel_uniform_wavelength_edges(wavelengths, pixelX, pixelY, samplesPerPixel=1)
+
+    # THE ISOLATED SAMPLE AT 500 nm IS DISCARDED RATHER THAN JOINED ACROSS THE NaN GAP
+    assert edges[0] == pytest.approx(502.0)
+    assert np.all(np.isfinite(edges))
+    assert len(edges) == 20
+
+
+def test_pixel_uniform_wavelength_edges_raise_without_a_usable_trace() -> None:
+    with pytest.raises(ValueError, match="trace"):
+        _pixel_uniform_wavelength_edges(
+            np.array([500.0, 501.0]), np.array([np.nan, 1.0]), np.zeros(2), samplesPerPixel=1
+        )
+
+
+def test_arcsec_per_pixel_divides_the_slit_probe_by_detector_distance() -> None:
+    centreX = np.array([0.0, 10.0, 20.0])
+    centreY = np.zeros(3)
+    offsetX = centreX + np.array([0.0, 0.0, np.nan])
+    offsetY = np.array([5.0, 5.0, 5.0])
+
+    scale = _arcsec_per_pixel(1.0, centreX, centreY, offsetX, offsetY)
+
+    assert scale == pytest.approx(0.2)
+
+
+def test_arcsec_per_pixel_raises_when_no_probe_lands_on_the_detector() -> None:
+    with pytest.raises(ValueError, match="arcsec"):
+        _arcsec_per_pixel(1.0, np.zeros(2), np.zeros(2), np.full(2, np.nan), np.zeros(2))
+
+
+def test_rebin_resampling_weights_merges_repeat_pixels_and_drops_trimmed_cells() -> None:
+    # 2 x 5 ZOOMED GRID REBINNED 2 x 2 -> 1 x 2 OUTPUT; COLUMN j=4 IS TRIMMED BY _unzoom
+    weights = _rebin_resampling_weights(
+        i=np.array([0, 1, 0, 1, 0]),
+        j=np.array([0, 1, 2, 3, 4]),
+        px=np.array([0, 0, 1, 2, 3]),
+        py=np.zeros(5, dtype=int),
+        area=np.array([0.25, 0.25, 0.5, 0.5, 0.9]),
+        nSp=2, nWl=5, zoomSlit=2, zoomWavelength=2, nx=8, ny=8,
+    )
+
+    assert weights["shape"] == (1, 2)
+    order = np.lexsort((weights["px"], weights["flatIdx"]))
+    np.testing.assert_array_equal(weights["flatIdx"][order], [0, 1, 1])
+    np.testing.assert_array_equal(weights["px"][order], [0, 1, 2])
+    np.testing.assert_allclose(weights["area"][order], [0.5, 0.5, 0.5])
+
+
+def test_rebin_resampling_weights_pass_through_when_grid_is_smaller_than_zoom() -> None:
+    weights = _rebin_resampling_weights(
+        i=np.array([0]), j=np.array([0]), px=np.array([1]), py=np.array([2]),
+        area=np.array([0.3]), nSp=1, nWl=1, zoomSlit=5, zoomWavelength=5, nx=8, ny=8,
+    )
+
+    assert weights["shape"] == (1, 1)
+    np.testing.assert_array_equal(weights["py"], [2])
+    np.testing.assert_allclose(weights["area"], [0.3])
+
+
+def test_cache_variance_propagates_with_squared_merged_weights(log: object) -> None:
+    transformer = _transformer(log)
+    transformer.uniqueOrders = [3]
+    transformer.orderSlitEdges = [np.array([0.0, 1.0])]
+    transformer.orderWlEdges = [np.array([0.0, 1.0, 2.0])]
+    transformer.orderSlices = [pd.DataFrame()]
+    # CELL 0: HALF OF PIXEL (0,0) SPLIT OVER TWO SUB-CELLS (MERGED TO 0.5 BEFORE SQUARING)
+    # CELL 1: HALF OF PIXEL (1,0) AND HALF OF PIXEL (2,0), INDEPENDENT
+    rebinned = _rebin_resampling_weights(
+        i=np.zeros(4, dtype=int), j=np.array([0, 0, 1, 1]),
+        px=np.array([0, 0, 1, 2]), py=np.zeros(4, dtype=int),
+        area=np.array([0.25, 0.25, 0.5, 0.5]),
+        nSp=1, nWl=2, zoomSlit=1, zoomWavelength=1, nx=8, ny=8,
+    )
+    transformer._resamplingWeights = {3: {**rebinned, "coverage": np.ones((1, 2))}}
+    variance = np.full((1, 8), 4.0)
+
+    transformer.cache_variance("variance", variance)
+
+    np.testing.assert_allclose(
+        transformer.get_order_rectified()[0]["variance"], [[0.5**2 * 4.0, 2 * 0.5**2 * 4.0]]
+    )
+
+
+def test_rectified_boundaries_size_slit_bins_from_measured_arcsec_per_pixel(
+    log: object,
+) -> None:
+    transformer = _transformer(log, zoomFactorSlit=4)
+    transformer.slitHalfLength = 2
+    measuredEdges = np.array([500.0, 500.5, 501.5, 503.0])
+    transformer._measure_order_trace_geometry = lambda orderTraces: [(measuredEdges, 0.5)]
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.orderPixelTable = pd.DataFrame(
+        {"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]}
+    )
+    transformer.mapDF = pd.DataFrame(
+        {"x": [0, 1], "y": [0, 0], "slit_position": [-0.5, 0.5], "wavelength": [500.0, 502.0]}
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+
+    slitEdges, wavelengthEdges = transformer._determine_rectified_image_boundaries()
+
+    # 2 PIXELS EITHER SIDE OF THE TRACE AT 0.5 ARCSEC/PIXEL, 4 SUB-SAMPLES PER PIXEL
+    assert slitEdges[0][0] == pytest.approx(-1.0)
+    np.testing.assert_allclose(np.diff(slitEdges[0]), 0.125)
+    np.testing.assert_array_equal(wavelengthEdges[0], measuredEdges)
+
+
+def test_measure_order_trace_geometry_samples_trace_and_slit_probe_in_one_conversion(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.zoomFactorWavelength = 1
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 10000
+    transformer.ny = 10000
+    received: list[pd.DataFrame] = []
+
+    def fake_conversion(
+        *,
+        log: object,
+        dispersionMapPath: str,
+        orderPixelTable: pd.DataFrame,
+        removeOffDetectorLocation: bool,
+        trimColumns: bool,
+    ) -> pd.DataFrame:
+        received.append(orderPixelTable.copy(deep=True))
+        # 10 PIXELS PER nm ALONG X, 4 PIXELS PER ARCSEC ALONG Y
+        return orderPixelTable.assign(
+            fit_x=10.0 * orderPixelTable["wavelength"],
+            fit_y=4.0 * orderPixelTable["slit_position"],
+        )
+
+    dispersionModule = importlib.import_module(
+        "soxspipe.commonutils.dispersion_map_to_pixel_arrays"
+    )
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", fake_conversion)
+
+    results = transformer._measure_order_trace_geometry(
+        [(10, 500.0, 502.0, 20, np.array([0.0])), (11, 600.0, 601.0, 10, np.array([1.0]))]
+    )
+
+    assert len(received) == 1
+    assert set(received[0]["order"]) == {10, 11}
+    (edges10, scale10), (edges11, scale11) = results
+    np.testing.assert_allclose(np.diff(edges10), 0.1)
+    assert edges10[0] == pytest.approx(500.0)
+    assert edges11[0] == pytest.approx(600.0)
+    assert scale10 == pytest.approx(0.25)
+    assert scale11 == pytest.approx(0.25)
+
+
+def test_measure_order_trace_geometry_trims_trace_samples_that_fall_off_the_detector(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.zoomFactorWavelength = 1
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 50
+    transformer.ny = 50
+
+    def fake_conversion(**kwargs: object) -> pd.DataFrame:
+        table = kwargs["orderPixelTable"]
+        # 10 PIXELS PER nm FROM x = 0 AT 500 nm: EVERYTHING REDWARD OF ~505 nm IS OFF A 50-PIXEL DETECTOR
+        return table.assign(
+            fit_x=10.0 * (table["wavelength"] - 500.0),
+            fit_y=10.0 + 4.0 * table["slit_position"],
+        )
+
+    dispersionModule = importlib.import_module(
+        "soxspipe.commonutils.dispersion_map_to_pixel_arrays"
+    )
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", fake_conversion)
+
+    ((edges, scale),) = transformer._measure_order_trace_geometry(
+        [(10, 500.0, 510.0, 100, np.array([0.0]))]
+    )
+
+    assert edges[0] == pytest.approx(500.0)
+    assert edges[-1] < 505.0
+    np.testing.assert_allclose(np.diff(edges), 0.1)
+    assert scale == pytest.approx(0.25)

@@ -317,7 +317,7 @@ class horne_extraction(base_util):
             slitHalfLength=self.slitHalfLength,
         )
         transformer.cache_image("fluxRaw", self.skySubtractedFrame.data, associatedMask=self.skySubtractedFrame.mask)
-        transformer.cache_image("variance", self.skySubtractedFrame.uncertainty.array ** 2)
+        transformer.cache_variance("variance", self.skySubtractedFrame.uncertainty.array ** 2)
         if self.subtractedFrame:
             transformer.cache_image("fluxSky", self.subtractedFrame.data)
 
