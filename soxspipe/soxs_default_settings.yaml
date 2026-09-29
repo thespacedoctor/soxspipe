@@ -23,8 +23,8 @@ soxs-mbias:
         fpn-fracmax: [0,3]
         mbias-median: [0, 2000]
         raw-ron: [0,15]
-        structx: [-4,+4]
-        structy: [-0.6,0.6]
+        structx: [-5,+5]
+        structy: [-0.8,0.8]
         detector-temp: [0,165]
         
 
