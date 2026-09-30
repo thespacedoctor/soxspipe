@@ -344,7 +344,7 @@ class _base_detect:
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MIN",
-                            "qc_value": f"{res.min():0.3f}",
+                            "qc_value": round(float(res.min()), 3),
                             "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
@@ -362,7 +362,7 @@ class _base_detect:
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MAX",
-                            "qc_value": f"{res.max():0.3f}",
+                            "qc_value": round(float(res.max()), 3),
                             "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
@@ -380,7 +380,7 @@ class _base_detect:
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES SD",
-                            "qc_value": f"{res_std:0.3f}",
+                            "qc_value": round(float(res_std), 3),
                             "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
@@ -399,7 +399,7 @@ class _base_detect:
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": f"{self.axisA.upper()} RES MEDIAN",
-                            "qc_value": f"{res_mean:0.3f}",
+                            "qc_value": round(float(res_mean), 3),
                             "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
                             "qc_unit": "px",
                             "obs_date_utc": self.dateObs,
@@ -812,7 +812,7 @@ class detect_continuum(_base_detect):
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES CLIP FRAC",
-                        "qc_value": f"{pclip:0.3f}",
+                        "qc_value": round(float(pclip), 3),
                         "qc_comment": "Fraction of detected continuum samples clipped during solution fitting",
                         "qc_unit": None,
                         "obs_date_utc": self.dateObs,
@@ -1891,7 +1891,7 @@ class detect_continuum(_base_detect):
                     {
                         "soxspipe_recipe": self.recipeName,
                         "qc_name": "SAMPLES DET FRAC",
-                        "qc_value": f"{self.psamp:0.3f}",
+                        "qc_value": round(float(self.psamp), 3),
                         "qc_comment": "Proportion of samples where a continuum is detected",
                         "qc_unit": None,
                         "obs_date_utc": self.dateObs,

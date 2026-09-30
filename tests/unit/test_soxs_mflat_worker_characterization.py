@@ -180,7 +180,7 @@ def test_first_pass_appends_ordexp_rows_onto_the_declared_qc_table(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """ORDEXP10, ORDEXP50 and ORDEXP90 are appended in that order, with distinct value formats.
+    """ORDEXP10, ORDEXP50 and ORDEXP90 are appended in that order, with values rounded to three decimal places.
 
     The declared QC table uses object-typed columns, so the first row preserves
     `to_header=True` as a Python boolean, just like the next two rows.
@@ -210,10 +210,11 @@ def test_first_pass_appends_ordexp_rows_onto_the_declared_qc_table(
     ]
     assert list(recipe.qc["qc_name"]) == ["ORDEXP10", "ORDEXP50", "ORDEXP90"]
     assert recipe.qc["qc_value"].tolist() == [
-        "958.67519208595945201523136",
-        "997.655",
-        "1027.085",
+        958.675,
+        997.655,
+        1027.085,
     ]
+    assert recipe.qc["qc_value"].map(type).eq(float).all()
     assert list(recipe.qc["qc_unit"]) == ["electrons"] * 3
     assert list(recipe.qc["qc_comment"]) == [
         "[e-] 10th percentile inter-order flux",
@@ -388,9 +389,9 @@ def test_first_pass_subsamples_chunks_above_ten_thousand_valid_pixels(
         atol=0,
     )
     assert recipe.qc["qc_value"].tolist() == [
-        "980.80125993991350696887821",
-        "1000.156",
-        "1019.592",
+        980.801,
+        1000.156,
+        1019.592,
     ]
 
 

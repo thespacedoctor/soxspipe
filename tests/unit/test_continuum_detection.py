@@ -65,6 +65,31 @@ def test_calculate_residuals_matches_exact_global_trace(log: object) -> None:
     assert median == pytest.approx(1.0)
 
 
+def test_calculate_residuals_records_numeric_rounded_qcs(log: object) -> None:
+    detector = _detector(log, orderDeg=0, axisBDeg=0)
+    detector.recipeName = "soxs-order-centres"
+    detector.dateObs = "2024-01-01T00:00:00"
+    detector.qc = pd.DataFrame()
+    pixels = pd.DataFrame({"order": [10.0] * 3, "cont_y": [0.0, 1.0, 2.0]})
+    offsets = np.array([0.1234567, -0.2, 0.0])
+    pixels["cont_x"] = 5.0 - offsets
+
+    detector.calculate_residuals(
+        orderPixelTable=pixels,
+        coeff=[5.0],
+        axisACol="cont_x",
+        axisBCol="cont_y",
+        orderCol="order",
+        writeQCs=True,
+    )
+
+    resQc = detector.qc[detector.qc["qc_name"].str.contains("RES")]
+    assert resQc["qc_name"].tolist() == ["X RES MIN", "X RES MAX", "X RES SD", "X RES MEDIAN"]
+    assert resQc["qc_value"].tolist() == [-0.2, 0.123, round(float(np.std(offsets)), 3), 0.108]
+    assert pd.api.types.is_numeric_dtype(detector.qc["qc_value"])
+    assert resQc["to_header"].all()
+
+
 def test_global_fit_removes_nan_and_outlier_rows(log: object) -> None:
     detector = _detector(log)
     yValues = np.arange(12, dtype=float)
@@ -200,7 +225,8 @@ def test_get_records_fitted_trace_qc_product_and_order_table(
     assert orderPath == "/products/orders.fits"
     assert fittedCalls == ["cont_x", "gauss_stddev"]
     assert qc["qc_name"].tolist() == ["SAMPLES CLIP NUM", "SAMPLES CLIP FRAC"]
-    assert qc["qc_value"].tolist() == [1, "0.500"]
+    assert qc["qc_value"].tolist() == [1, 0.5]
+    assert pd.api.types.is_numeric_dtype(qc["qc_value"])
     assert products["product_label"].tolist() == ["ORDER_CENTRES_RES"]
     assert products["file_name"].tolist() == ["continuum.pdf"]
     assert orderPoly.loc[0, "cent_11"] == 4.0
@@ -367,7 +393,8 @@ def test_sample_trace_records_detection_qc_for_analytic_trace(
         "SAMPLES DET NUM",
         "SAMPLES DET FRAC",
     ]
-    assert detector.qc["qc_value"].tolist() == [50, 50, "1.000"]
+    assert detector.qc["qc_value"].tolist() == [50, 50, 1.0]
+    assert pd.api.types.is_numeric_dtype(detector.qc["qc_value"])
 
 
 def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(

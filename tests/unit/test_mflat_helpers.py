@@ -14,6 +14,8 @@ from astropy.io import fits
 from astropy.nddata import CCDData, StdDevUncertainty
 
 from soxspipe.recipes.soxs_mflat import soxs_mflat
+from tests.unit.test_base_recipe_output_characterization import _frame as _output_frame
+from tests.unit.test_base_recipe_output_characterization import _write_recipe
 
 pytestmark = pytest.mark.unit
 mflatModule = importlib.import_module("soxspipe.recipes.soxs_mflat")
@@ -245,6 +247,37 @@ def test_normalise_flats_scales_each_frame_to_its_order_centre_mean(
     np.testing.assert_allclose(frames[1].data, 20.0)
     assert "ORDEXP10" in recipe.qc["qc_name"].tolist()
     assert (recipe.binRatioX, recipe.binRatioY) == (1, 1)
+    ordexp = recipe.qc[recipe.qc["qc_name"].str.startswith("ORDEXP")]
+    assert ordexp["qc_name"].tolist() == ["ORDEXP10", "ORDEXP50", "ORDEXP90"]
+    assert all(isinstance(v, float) for v in ordexp["qc_value"])
+    assert all(v == round(v, 3) for v in ordexp["qc_value"])
+    assert pd.api.types.is_numeric_dtype(recipe.qc["qc_value"])
+
+
+def test_ordexp_qc_reaches_the_fits_header_as_numeric_cards(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """Header-flagged ORDEXP QCs are written as numbers, not quoted strings."""
+    recipe = _recipe(log)
+    orderTable = tmp_path / "orders.fits"
+    fits.PrimaryHDU().writeto(orderTable)
+    monkeypatch.setattr(
+        mflatModule,
+        "unpack_order_table",
+        lambda **kwargs: (None, _centre_pixels(), None),
+    )
+    monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
+    recipe.normalise_flats([_frame(np.full((5, 5), 10.123456)), _frame(np.full((5, 5), 20.0))], str(orderTable))
+    writer = _write_recipe(tmp_path, log)
+    writer.qc = recipe.qc
+
+    filepath = writer._write(_output_frame(np.full((4, 4), 7.0)), str(tmp_path))
+
+    header = CCDData.read(filepath, hdu_uncertainty="ERRS", hdu_mask="QUAL").header
+    for name in ("ORDEXP10", "ORDEXP50", "ORDEXP90"):
+        assert isinstance(header[f"ESO QC {name}"], float)
 
 
 def test_mask_low_sensitivity_pixels_returns_order_medians(

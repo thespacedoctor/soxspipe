@@ -173,25 +173,25 @@ def test_nir_missing_tech_reports_only_the_last_missing_value(
     )
 
 
+@pytest.mark.parametrize("inst", ["SOXS", "XSHOOTER"])
 @pytest.mark.parametrize(
     "imageTypes",
     [
-        pytest.param(["LAMP,FLAT", "DARK"], id="dark_mix_of_length_two"),
-        pytest.param(["LAMP,FLAT", "OTHER"], id="non_dark_mix_of_length_two"),
+        pytest.param(["LAMP,FLAT"], id="single_lamp_flat_type"),
+        pytest.param(["LAMP,FLAT", "DARK"], id="lamp_flat_with_dark"),
+        pytest.param(["FLAT,LAMP", "DARK"], id="flat_lamp_with_dark"),
+        pytest.param(["DARK", "FLAT,LAMP"], id="dark_first"),
+        pytest.param(["LAMP,FLAT", "FLAT,LAMP"], id="both_lamp_spellings"),
+        pytest.param(["LAMP,FLAT", "FLAT,LAMP", "DARK"], id="both_lamp_spellings_with_dark"),
     ],
 )
-def test_nir_mixed_image_types_of_length_two_pass_verification_either_way(
+def test_nir_accepts_a_flat_lamp_type_alone_or_with_dark(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     imageTypes: list[str],
+    inst: str,
 ) -> None:
-    """The mixed-type rejection is commented out in the source, so both mixes pass silently.
-
-    Pinned as found, not as intended: a length-two mix that is not `DARK`
-    should, by the surrounding comment's own logic, be rejected, but the
-    `error = "Input frames are a mix of %(imageTypes)s" % locals()` line is
-    dead code, so neither mix ever raises.
-    """
+    """A flat-lamp type, optionally with lamp-off `DARK` frames, passes the NIR mix check for both instruments."""
     # ARRANGE
     _stub_basics(
         monkeypatch,
@@ -199,6 +199,7 @@ def test_nir_mixed_image_types_of_length_two_pass_verification_either_way(
         imageTech=["ECHELLE,SLIT", "IMAGE"],
         imageCategories=["ORDER_TAB_NIR"],
         arm="NIR",
+        inst=inst,
     )
     recipe = _bare_recipe(log, _VerificationInventory())
 
@@ -207,6 +208,52 @@ def test_nir_mixed_image_types_of_length_two_pass_verification_either_way(
 
     # ASSERT
     assert recipe.imageType == imageTypes[0]
+
+
+@pytest.mark.parametrize("inst", ["SOXS", "XSHOOTER"])
+@pytest.mark.parametrize(
+    ("imageTypes", "expected"),
+    [
+        pytest.param(
+            ["LAMP,FLAT", "OTHER"],
+            "Input frames are a mix of LAMP,FLAT and OTHER",
+            id="flat_lamp_with_other",
+        ),
+        pytest.param(
+            ["LAMP,FLAT", "DARK", "OTHER"],
+            "Input frames are a mix of LAMP,FLAT and DARK and OTHER",
+            id="three_types",
+        ),
+        pytest.param(
+            ["DARK", "OTHER"],
+            "Input frames are a mix of DARK and OTHER",
+            id="dark_with_other",
+        ),
+    ],
+)
+def test_nir_rejects_any_other_mix_of_image_types(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    imageTypes: list[str],
+    expected: str,
+    inst: str,
+) -> None:
+    """Any NIR mix beyond a flat-lamp type plus `DARK` raises a message naming the types found."""
+    # ARRANGE
+    _stub_basics(
+        monkeypatch,
+        imageTypes=imageTypes,
+        imageTech=["ECHELLE,SLIT", "IMAGE"],
+        imageCategories=["ORDER_TAB_NIR"],
+        arm="NIR",
+        inst=inst,
+    )
+    recipe = _bare_recipe(log, _VerificationInventory())
+
+    # ACT / ASSERT
+    with pytest.raises(TypeError) as excinfo:
+        recipe.verify_input_frames()
+    assert str(excinfo.value) == expected
 
 
 def test_uvb_vis_rejects_a_non_lamp_image_type(
