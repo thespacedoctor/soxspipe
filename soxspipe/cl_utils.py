@@ -57,7 +57,7 @@ Options:
     -o, --output <outputDirectory>         the output directory for the recipe product
     -p, --prep                             prepare a workspace before reducing data
     -q, --quitOnFail                       stop the pipeline if a recipe fails
-    -r, --refresh                          full workspace refresh, backing up database and restoring QC history and SOF pass/fail status
+    -r, --refresh                          full refresh, backing up the database and restoring QC history and SOF status
     -s, --settings <pathToSettingsFile>    the settings file
     -v, --version                          show version
     -V, --verbose                          more verbose output
