@@ -1647,6 +1647,8 @@ class data_organiser:
                 self.sessionsDir,
                 "session path",
             )
+            # POINT THE SHARED SOF_MAP VIEW AT THIS SESSION BEFORE MAKING IT ACTIVE
+            self._ensure_session_database_objects(sessionId)
             # WRITE THE SESSION ID FILE
             sessionIdFile = _validate_owned_path(self.sessionIdFile, self.sessionsDir, "session ID path")
             with codecs.open(sessionIdFile, encoding="utf-8", mode="w") as writeFile:
