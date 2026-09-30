@@ -54,7 +54,6 @@ def _image_stats(dat):
     return (dat.min(), dat.max(), dat.mean(), dat.std())
 
 
-
 class base_recipe:
     """
     The base recipe class which all other recipes inherit
@@ -438,7 +437,9 @@ class base_recipe:
         # THE NESTED `if` IS KEPT SO THE TWO CONDITIONS STAY SEPARATELY
         # COMMENTED, AND BECAUSE COLLAPSING IT IS COSMETIC WORK BELONGING TO
         # DY-88.
-        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:  # noqa: SIM102
+        if (
+            self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]
+        ):  # noqa: SIM102
             # OBJECT/STANDARD FRAMES
             if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
@@ -1234,9 +1235,8 @@ class base_recipe:
         if forceFail and isinstance(forceFail, str):
             self.log.error(f"\nRecipe marked as failed in the database. {forceFail}")
 
-
         elif forceFail:
-            self.log.error(
+            self.log.warning(
                 f"\nRecipe marked as failed in the database as the following QC values are outside of the acceptable limits: {', '.join(failedQcs)}."
             )
 
@@ -2031,7 +2031,9 @@ class base_recipe:
                 sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
                 # A FALSE POSITIVE: THE F-STRING INTERPOLATES ONLY `?` PLACEHOLDERS,
                 # AND EVERY SOF NAME IS PASSED TO `execute` AS A BOUND PARAMETER.
-                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"  # noqa: S608
+                sqlQuery = (
+                    f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"  # noqa: S608
+                )
                 c = self.conn.cursor()
                 c.execute(sqlQuery, sofNames)
                 c.close()

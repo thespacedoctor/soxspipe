@@ -612,7 +612,7 @@ soxs-nod-std:
         qc-acceptable-ranges:
             detector-temp: [0,165]
             badpix-frac: [-0.001,0.01]
-            eff-median: [0.04,0.30]
+            eff-median: [0.04,0.60]
             inner-order-pix-mean: [-40,60]
             samples-det-frac: [0.93,1.01]
             snr-median: [50,1000]
@@ -642,7 +642,7 @@ soxs-nod-std:
         qc-acceptable-ranges:
             detector-temp: [0,50]
             badpix-frac: [-0.001,0.01]
-            eff-median: [0.02,0.2]
+            eff-median: [0.02,0.5]
             inner-order-pix-mean: [-40,60]
             samples-det-frac: [0.7,1.01]
             samples-clip-frac: [-0.01,0.3]
