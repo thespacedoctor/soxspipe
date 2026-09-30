@@ -151,3 +151,91 @@ def test_session_build_sof_files_creates_complete_bias_inventory(tmp_path, log) 
         ["./raw/2024-01-01/bias-1.fits", "BIAS_VIS"],
         ["./raw/2024-01-01/bias-2.fits", "BIAS_VIS"],
     ]
+
+
+def _sof_map_view_sql(connection) -> str:
+    """Return the stored definition of the shared `sof_map` view."""
+    return connection.execute("SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'sof_map'").fetchone()[0]
+
+
+@pytest.fixture
+def two_session_workspace(tmp_path, log):
+    """Create session `alpha` and then session `beta`, which leaves `beta` active."""
+    organiser = workspace_organiser(tmp_path, log=log)
+    connection, _ = organiser._get_or_create_db_connection()
+    organiser.conn = connection
+    _insert_complete_raw_frame(connection)
+    organiser.session_create("alpha")
+    organiser.session_create("beta")
+    return organiser
+
+
+def test_session_switch_points_the_sof_map_view_at_the_session_switched_to(two_session_workspace, capsys) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    assert _sof_map_view_sql(organiser.conn) == "CREATE VIEW sof_map as select * from sof_map_beta"
+    organiser.conn.execute("INSERT INTO sof_map_alpha (filepath, tag, sof) VALUES ('a.fits', 'BIAS', 'alpha.sof')")
+
+    # ACT
+    organiser.session_switch("alpha")
+
+    # ASSERT
+    assert Path(organiser.sessionIdFile).read_text(encoding="utf-8") == "alpha"
+    assert _sof_map_view_sql(organiser.conn) == "CREATE VIEW sof_map as select * from sof_map_alpha"
+    assert organiser.conn.execute("SELECT sof FROM sof_map").fetchall() == [("alpha.sof",)]
+    assert "Session successfully switched to 'alpha'." in capsys.readouterr().out
+
+
+def test_session_switch_back_points_the_sof_map_view_at_the_original_session(two_session_workspace) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    organiser.session_switch("alpha")
+
+    # ACT
+    organiser.session_switch("beta")
+
+    # ASSERT
+    assert Path(organiser.sessionIdFile).read_text(encoding="utf-8") == "beta"
+    assert _sof_map_view_sql(organiser.conn) == "CREATE VIEW sof_map as select * from sof_map_beta"
+
+
+@pytest.mark.parametrize(
+    ("sessionId", "expectedMessage"),
+    [
+        ("beta", "Session 'beta' is already in use."),
+        ("gamma", "There is no session with the ID 'gamma'. List existing sessions with `soxspipe session ls`."),
+    ],
+)
+def test_refused_session_switch_leaves_the_sof_map_view_unchanged(
+    two_session_workspace, capsys, sessionId, expectedMessage
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    viewBefore = _sof_map_view_sql(organiser.conn)
+    capsys.readouterr()
+
+    # ACT
+    result = organiser.session_switch(sessionId)
+
+    # ASSERT
+    assert result is None
+    assert _sof_map_view_sql(organiser.conn) == viewBefore
+    assert Path(organiser.sessionIdFile).read_text(encoding="utf-8") == "beta"
+    assert capsys.readouterr().out.strip() == expectedMessage
+
+
+def test_the_sof_map_view_is_created_in_exactly_one_place_in_the_package() -> None:
+    # ARRANGE
+    packageDir = Path(__file__).resolve().parents[2] / "soxspipe"
+
+    # ACT
+    creators = [
+        f"{path.relative_to(packageDir)}:{lineNumber}"
+        for path in sorted(packageDir.rglob("*.py"))
+        if "tests" not in path.relative_to(packageDir).parts
+        for lineNumber, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1)
+        if "create view sof_map" in line.lower()
+    ]
+
+    # ASSERT
+    assert len(creators) == 1, creators
