@@ -3044,7 +3044,8 @@ class data_organiser:
         **Return:**
 
         - ``rejoined`` -- SOF name to (recipe, frozenset of raw frame filepaths) for the sets that gained a frame in
-          this call, empty when none did. Their names stay pinned in `self.pinnedSofNames` for the rest of this instance's life
+          this call, empty when none did. Their names stay pinned in `self.pinnedSofNames` for the rest of this
+          instance's life
 
         The pin lives only on this instance. A rejoined set that is still unprocessed after both `prepare()` passes
         (for example, while a calibration is missing) loses its pin when the process exits, and a later `prepare()`
