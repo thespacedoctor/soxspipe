@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 Documentation for soxspipe can be found here: http://soxspipe.readthedocs.org
 
@@ -27,7 +26,7 @@ Options:
     list sof                               list all science object SOF files within the workspace
     prep                                   prepare a folder of raw data (workspace) for data reduction
     session ls                             list all available data-reduction sessions in the workspace
-    session new [<sessionId>]              start a new data-reduction session, optionally give a name up to 16 characters A-Z, a-z, 0-9 and/or _-
+    session new [<sessionId>]              start a new session, name it (A-Z, a-z, 0-9 and/or _; 16 chars max)
     session <sessionId>                    use an existing data-reduction session (use `session ls` to see all IDs)
     reduce all                             reduce all of the data in a workspace.
     reduce sof                             reduce a single science object SOF file.
@@ -58,7 +57,7 @@ Options:
     -o, --output <outputDirectory>         the output directory for the recipe product
     -p, --prep                             prepare a workspace before reducing data
     -q, --quitOnFail                       stop the pipeline if a recipe fails
-    -r, --refresh                          trigger a complete refresh the workspace during preparation (delete database and do a complete prepare)
+    -r, --refresh                          full refresh, backing up the database and restoring QC history and SOF status
     -s, --settings <pathToSettingsFile>    the settings file
     -v, --version                          show version
     -V, --verbose                          more verbose output
@@ -69,15 +68,15 @@ Options:
 """
 
 ################# GLOBAL IMPORTS ####################
-import time
-import os
-import sys
-import readline
 import glob
-from docopt import docopt
-from fundamentals import tools, times
-from subprocess import Popen, PIPE, STDOUT
+import os
 import pickle
+import readline
+import sys
+import time
+
+from docopt import docopt
+from fundamentals import times, tools
 
 os.environ["TERM"] = "vt100"
 
@@ -86,13 +85,48 @@ def tab_complete(text, state):
     return (glob.glob(text + "*") + [None])[state]
 
 
+def _prepared_organiser(log, rootDir, vlt=False, **prepareArguments):
+    """*build a `data_organiser` and prepare its workspace, exiting with status 1 if a database rebuild is refused*
+
+    A refused rebuild (`DatabasePreservationError`) leaves the database in place; its message, naming the
+    database file, is printed to stderr.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``rootDir`` -- the workspace root directory
+    - ``vlt`` -- prepare the workspace using the standard vlt /data directory
+    - ``prepareArguments`` -- keyword arguments for `data_organiser.prepare`
+
+    **Return:**
+
+    - ``do`` -- the prepared `data_organiser`
+
+    **Raises:**
+
+    - `SystemExit` (status 1), chained from the `DatabasePreservationError`, when a database rebuild is refused
+    """
+    from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+
+    try:
+        do = data_organiser(log=log, rootDir=rootDir, vlt=vlt)
+        do.prepare(**prepareArguments)
+    except DatabasePreservationError as error:
+        print(error, file=sys.stderr)
+        raise SystemExit(1) from error
+    return do
+
+
 def main(arguments=None):
     """
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
     """
     # DETERMINE CURRENT DATA-REDUCTION SESSION
     from fundamentals.logs import emptyLogger
+
     from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError, _UnsafePathError
 
     arguments = docopt(__doc__)
     if arguments["<workspaceDirectory>"]:
@@ -118,8 +152,15 @@ def main(arguments=None):
 
     if "-v" not in sys.argv:
         eLog = emptyLogger()
-        do = data_organiser(log=eLog, rootDir=".")
-        currentSession, allSessions = do.session_list(silent=True)
+        try:
+            do = data_organiser(log=eLog, rootDir=".")
+            currentSession, allSessions = do.session_list(silent=True)
+        except _UnsafePathError as error:
+            eLog.error(error)
+            raise SystemExit(1) from error
+        except DatabasePreservationError as error:
+            print(error, file=sys.stderr)
+            raise SystemExit(1) from error
 
         clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
@@ -152,8 +193,8 @@ def main(arguments=None):
         from astropy import log as astrolog
 
         astrolog.setLevel("WARNING")
-    except:
-        pass
+    except (ImportError, AttributeError) as e:
+        log.debug(f"main: `from astropy import log as astrolog` failed, continuing: {e}")
 
     # tab completion for raw_input
     readline.set_completer_delims(" \t\n;")
@@ -194,7 +235,8 @@ def main(arguments=None):
             with open(pathToPickleFile):
                 pass
             previousSettingsExist = True
-        except:
+        except OSError as e:
+            log.debug(f"main: `with open(pathToPickleFile): pass` failed, continuing: {e}")
             previousSettingsExist = False
         previousSettings = {}
         if previousSettingsExist:
@@ -348,8 +390,7 @@ def main(arguments=None):
             reducedOffset = recipe.produce_product()
 
         if a["prep"]:
-            do = data_organiser(log=log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"])
-            do.prepare(refresh=a["refreshFlag"])
+            _prepared_organiser(log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"], refresh=a["refreshFlag"])
 
         if a["session"] and a["ls"]:
             from soxspipe.commonutils import data_organiser
@@ -381,8 +422,9 @@ def main(arguments=None):
         if a["raw"]:
 
             # EXPORT THE RAW FRAMES NEEDED TO REDUCE A SOF FILE TO AN `exported` DIRECTORY IN THE WORKSPACE DIRECTORY
-            from soxspipe.commonutils import data_organiser
             import shutil
+
+            from soxspipe.commonutils import data_organiser
 
             do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
             if a["sof"]:
@@ -405,11 +447,31 @@ def main(arguments=None):
                     )
                 else:
                     exportDir = a["workspaceDirectory"] + "/exported"
+                    from pathlib import Path
+
+                    from soxspipe.commonutils.data_organiser import (
+                        _validate_owned_path,
+                    )
+
+                    exportDir = str(
+                        _validate_owned_path(
+                            exportDir,
+                            a["workspaceDirectory"],
+                            "export directory",
+                        )
+                    )
+                    rawDir = _validate_owned_path(
+                        Path(a["workspaceDirectory"]) / "raw",
+                        a["workspaceDirectory"],
+                        "raw directory",
+                    )
                     if not os.path.exists(exportDir):
                         os.makedirs(exportDir)
                     for rawFramePath in rawFramePaths:
+                        rawFramePath = str(_validate_owned_path(rawFramePath, rawDir, "raw frame path"))
                         basename = os.path.basename(rawFramePath)
                         exportPath = exportDir + "/" + basename
+                        exportPath = str(_validate_owned_path(exportPath, exportDir, "export path"))
                         if not os.path.exists(exportPath):
                             shutil.copy(rawFramePath, exportPath)
                     print(
@@ -417,11 +479,16 @@ def main(arguments=None):
                     )
                 return
 
-    except FileExistsError as e:
+    except FileExistsError:
         sys.exit(0)
+
+    except _UnsafePathError as error:
+        log.error(f"{error}\n{clCommand}", exc_info=True)
+        raise SystemExit(1) from error
 
     except Exception as e:
         log.error(f"{e}\n{clCommand}", exc_info=True)
+        raise SystemExit(1) from e
 
     if a["reduce"]:
 
@@ -464,10 +531,7 @@ def main(arguments=None):
                 print(f"\nWaiting for {xsec} seconds before next reduction attempt\n")
                 time.sleep(xsec)
 
-                from soxspipe.commonutils import data_organiser
-
-                do = data_organiser(log=log, rootDir=a["workspaceDirectory"])
-                do.prepare()
+                do = _prepared_organiser(log, rootDir=a["workspaceDirectory"])
                 do.close()
                 del do
             else:
@@ -498,17 +562,19 @@ def main(arguments=None):
                 else:
                     thisLog = self.log
 
-                from soxspipe.commonutils import data_organiser
-
-                do = data_organiser(log=thisLog, rootDir=pwd)
-                do.prepare()
+                try:
+                    do = _prepared_organiser(thisLog, rootDir=pwd)
+                except SystemExit as refusal:
+                    # A REFUSED REBUILD STOPS THE DAEMON; RECORD THE REASON IN ITS LOG AS WELL AS ON STDERR
+                    thisLog.error(refusal.__cause__)
+                    raise
 
                 if not currentSession:
                     currentSession, allSessions = do.session_list(silent=True)
 
                     if currentSession:
-                        from importlib import reload
                         import logging
+                        from importlib import reload
 
                         logging.shutdown()
                         reload(logging)
@@ -549,7 +615,7 @@ def main(arguments=None):
                 time.sleep(xsec)
 
             self.log.info("completed the ``action`` method")
-            return None
+            return
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
     from os.path import expanduser
@@ -567,8 +633,8 @@ def main(arguments=None):
     arguments, settings, log, dbConn = su.setup()
 
     d = myDaemon(log=log, name="soxspipe", pwd=os.getcwd())
-    d.errLog = home + f"/.config/soxspipe/daemon.log"
-    d.rootDir = home + f"/.config/soxspipe/"
+    d.errLog = home + "/.config/soxspipe/daemon.log"
+    d.rootDir = home + "/.config/soxspipe/"
 
     if a["start"]:
         d.start()

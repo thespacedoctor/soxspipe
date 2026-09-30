@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# encoding: utf-8
 """
 *using a fully-illuminated slit flat frame detect and record the order-edges*
 
@@ -10,19 +9,13 @@ Date Created
 : September 18, 2020
 """
 
-from datetime import datetime, date, time
-from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.toolkit import unpack_order_table, get_calibration_lamp
-from soxspipe.commonutils import detector_lookup
-from soxspipe.commonutils import keyword_lookup
-from os.path import expanduser
-from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
-from soxspipe.commonutils import _base_detect
-from soxspipe.commonutils.toolkit import cut_image_slice
-from fundamentals import tools
-from builtins import object
-import sys
 import os
+from datetime import datetime
+
+from soxspipe.commonutils import _base_detect, detector_lookup, keyword_lookup
+from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
+from soxspipe.commonutils.toolkit import cut_image_slice, unpack_order_table
 
 os.environ["TERM"] = "vt100"
 
@@ -118,7 +111,7 @@ class detect_order_edges(_base_detect):
         self.exptime = flatFrame.header[kw("EXPTIME")]
         try:
             self.slit = flatFrame.header[kw(f"SLIT_{self.arm}".upper())]
-        except:
+        except KeyError:
             self.log.warning(kw(f"SLIT_{self.arm}".upper()) + " keyword not found")
             self.slit = ""
 
@@ -176,7 +169,7 @@ class detect_order_edges(_base_detect):
             surfacePlot=True,
         )
 
-        return None
+        return
 
     def get(self):
         """
@@ -191,7 +184,7 @@ class detect_order_edges(_base_detect):
         import numpy as np
         import pandas as pd
         from astropy.stats import mad_std
-        from soxspipe.commonutils.toolkit import read_spectral_format
+
 
         self.log.print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
@@ -420,60 +413,54 @@ class detect_order_edges(_base_detect):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MIN",
-                            "qc_value": f"{min_res:0.3f}",
+                            "qc_value": round(float(min_res), 5),
                             "qc_comment": "[px] Minimum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES MAX",
-                            "qc_value": f"{max_res:0.3f}",
+                            "qc_value": round(float(max_res), 5),
                             "qc_comment": "[px] Maximum residual in order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "qc_name": "X RES SD",
-                            "qc_value": f"{std_res:0.3f}",
+                            "qc_value": round(float(std_res), 5),
                             "qc_comment": "[px] Std-dev of residual order edge fit along x-axis",
                             "qc_unit": "pixels",
                             "obs_date_utc": self.dateObs,
                             "reduction_date_utc": utcnow,
                             "to_header": True,
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -500,7 +487,7 @@ class detect_order_edges(_base_detect):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"ORDER_LOC{self.tag}",
@@ -512,16 +499,14 @@ class detect_order_edges(_base_detect):
                             "file_path": orderTablePath,
                             "label": "PROD",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.Series(
+                    pd.DataFrame([
                         {
                             "soxspipe_recipe": self.recipeName,
                             "product_label": f"ORDER_LOC_RES{self.tag}",
@@ -533,9 +518,7 @@ class detect_order_edges(_base_detect):
                             "file_path": plotPath,
                             "label": "QC",
                         }
-                    )
-                    .to_frame()
-                    .T,
+                    ]),
                 ],
                 ignore_index=True,
             )
@@ -570,9 +553,9 @@ class detect_order_edges(_base_detect):
         """
         self.log.debug("starting the ``plot_results`` method")
 
+        import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
-        import matplotlib.pyplot as plt
 
         allResiduals = np.concatenate(
             (
@@ -761,7 +744,8 @@ class detect_order_edges(_base_detect):
                 axisAfitlow, axisBfitlow = zip(
                     *[(a, b) for a, b in zip(axisAfitlowStart, axisBlinelist) if a > 0 and a < (axisALength) - 10]
                 )
-            except:
+            except ValueError as e:
+                self.log.debug(f"plot_results: `axisAfitup, axisBfitup = zip( *[(a, b) for...` failed, continuing: {e}")
                 continue
 
             if len(axisBfitlow) < len(axisBfitup):
@@ -776,8 +760,8 @@ class detect_order_edges(_base_detect):
                     )
                     axisAfitlow = axisAfitlowExtra + axisAfitlow
                     axisBfitlow = axisBfitlowExtra + axisBfitlow
-                except:
-                    pass
+                except ValueError as e:
+                    self.log.debug(f"plot_results: `axisAfitlowExtra, axisBfitlowExtra = z...` failed, continuing: {e}")
                 try:
                     axisAfitlowExtra, axisBfitlowExtra = zip(
                         *[
@@ -788,8 +772,8 @@ class detect_order_edges(_base_detect):
                     )
                     axisAfitlow += axisAfitlowExtra
                     axisBfitlow += axisBfitlowExtra
-                except:
-                    pass
+                except ValueError as e:
+                    self.log.debug(f"plot_results: `axisAfitlowExtra, axisBfitlowExtra = z...` failed, continuing: {e}")
 
             if self.axisAbin > 1:
                 axisAfitup = np.array(axisAfitup) / self.axisAbin
@@ -819,8 +803,8 @@ class detect_order_edges(_base_detect):
                     fc=l[0].get_color(),
                     label=label2,
                 )
-            except:
-                pass
+            except (ValueError, IndexError) as e:
+                self.log.debug(f"plot_results: `midrow.fill_between( axisBfitlow, axisAfit...` failed, continuing: {e}")
             midrow.text(
                 axisBfitlow[10],
                 axisAfitlow[10] + 5,
@@ -879,8 +863,8 @@ class detect_order_edges(_base_detect):
                         c=c,
                         verticalalignment="bottom",
                     )
-                except:
-                    pass
+                except IndexError as e:
+                    self.log.debug(f"plot_results: `bottomleft.text( orderAxisACoords[10],...` failed, continuing: {e}")
                 bottomright.scatter(orderAxisBCoords, orderResiduals, alpha=0.6, s=0.2, c=c)
                 try:
                     bottomright.text(
@@ -891,8 +875,8 @@ class detect_order_edges(_base_detect):
                         c=c,
                         verticalalignment="bottom",
                     )
-                except:
-                    pass
+                except IndexError as e:
+                    self.log.debug(f"plot_results: `bottomright.text( orderAxisBCoords[10]...` failed, continuing: {e}")
 
             bottomleft.set_xlabel(f"{self.axisA} pixel position")
             bottomleft.set_ylabel(f"{self.axisA} residual")
@@ -931,7 +915,7 @@ class detect_order_edges(_base_detect):
         )
 
         if self.sofName:
-            filename = self.sofName + f"_ORD_LOC.pdf"
+            filename = self.sofName + "_ORD_LOC.pdf"
         else:
             filename = filenamer(log=self.log, frame=self.flatFrame, settings=self.settings)
             filename = filename.split("SLIT")[0] + "ORDER_EDGES_residuals.pdf"
@@ -985,7 +969,7 @@ class detect_order_edges(_base_detect):
             y = axisAcoords[index]
             x = axisBcoords[index]
 
-        slice, slice_length_offset, slice_width_centre = cut_image_slice(
+        sliceOut, slice_length_offset, slice_width_centre = cut_image_slice(
             log=self.log,
             frame=self.flatFrame,
             width=sliceWidth,
@@ -997,11 +981,11 @@ class detect_order_edges(_base_detect):
             debug=self.debug,
         )
 
-        if slice is None:
+        if sliceOut is None:
             return orderData
 
         # SMOOTH WITH A MEDIAN FILTER
-        medSlide = medfilt(slice, 9)
+        medSlide = medfilt(sliceOut, 9)
         # DETERMINE THRESHOLD FLUX VALUE
         maxvalue = np.max(medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)])
         minvalue = np.min(medSlide)
@@ -1016,17 +1000,17 @@ class detect_order_edges(_base_detect):
 
             # CHECK THE SLICE POINTS IF NEEDED
             self.log.print(order)
-            x = np.arange(0, len(slice))
+            x = np.arange(0, len(sliceOut))
             plt.figure(figsize=(8, 5))
-            plt.plot(x, slice, "ko", alpha=0.5)
+            plt.plot(x, sliceOut, "ko", alpha=0.5)
             plt.plot(x, medSlide, "rx", alpha=0.8)
-            plt.hlines(maxvalue, 0, len(slice), label="max")
-            plt.hlines(minvalue, 0, len(slice), label="min")
+            plt.hlines(maxvalue, 0, len(sliceOut), label="max")
+            plt.hlines(minvalue, 0, len(sliceOut), label="min")
             order = orderData["order"]
             plt.hlines(
                 orderData["minThreshold"],
                 0,
-                len(slice),
+                len(sliceOut),
                 label=f'threshold {orderData["minThreshold"]:0.3f},  {orderData["maxThreshold"]:0.3f}',
                 colors="red",
             )
@@ -1055,9 +1039,10 @@ class detect_order_edges(_base_detect):
         minThresholdPercenage = self.minThresholdPercenage
         maxThresholdPercenage = self.maxThresholdPercenage
 
+        import random
+
         import numpy as np
         from scipy.signal import medfilt
-        import random
 
         sliceWidth = self.sliceWidth
         sliceLength = self.sliceLength
@@ -1078,7 +1063,7 @@ class detect_order_edges(_base_detect):
             axisBCoord = x
 
         # CUT A MEDIAN COLLAPSED SLICE
-        slice, slice_length_offset, slice_width_centre = cut_image_slice(
+        sliceOut, slice_length_offset, slice_width_centre = cut_image_slice(
             log=self.log,
             frame=self.flatFrame,
             width=sliceWidth,
@@ -1089,11 +1074,11 @@ class detect_order_edges(_base_detect):
             sliceAxis=self.axisA,
             debug=self.debug,
         )
-        if slice is None:
+        if sliceOut is None:
             return orderData
 
         # SMOOTH WITH A MEDIAN FILTER
-        medSlide = medfilt(slice, 9)
+        medSlide = medfilt(sliceOut, 9)
 
         # DETERMINE THRESHOLD FLUX VALUE
         maxvalue = np.max(medSlide[int(len(medSlide) / 2 - 8) : int(len(medSlide) / 2 + 8)])
@@ -1120,7 +1105,8 @@ class detect_order_edges(_base_detect):
                 axisAmaxguess = np.where(secondHalf < threshold)[0][0] + middle
                 axisAminguess = np.where(firstHalf < threshold)[0][-1]
                 hit = True
-            except:
+            except IndexError as e:
+                self.log.debug(f"determine_lower_upper_edge_pixel_positions: `axisAmaxgues...` failed, continuing: {e}")
                 threshold = threshold + thresholdRange * 0.1
 
         # IF WE STILL DIDN'T GET A HIT THEN REJECT
@@ -1156,16 +1142,16 @@ class detect_order_edges(_base_detect):
                 print(minThreshold, middle)
                 print(axisAminguess, axisAmaxguess, threshold)
                 print(axisAmin, axisAmax)
-                print(len(slice))
-                x = np.arange(0, len(slice))
+                print(len(sliceOut))
+                x = np.arange(0, len(sliceOut))
                 plt.figure(figsize=(8, 5))
-                plt.plot(x, slice, "ko", alpha=0.5)
+                plt.plot(x, sliceOut, "ko", alpha=0.5)
                 plt.plot(x, medSlide, "rx", alpha=0.8)
                 plt.plot(axisAmin, threshold, "ro", alpha=0.8, label="order edge")
                 plt.plot(axisAmax, threshold, "ro", alpha=0.8)
                 # plt.hlines(maxvalue, 0, len(slice), label='max')
                 # plt.hlines(minvalue, 0, len(slice), label='min')
-                plt.hlines(threshold, 0, len(slice), label="threshold", colors="red")
+                plt.hlines(threshold, 0, len(sliceOut), label="threshold", colors="red")
                 plt.xlabel("Position")
                 plt.ylabel("Flux")
                 order = orderData["order"]
@@ -1173,24 +1159,23 @@ class detect_order_edges(_base_detect):
                 plt.legend()
                 plt.show()
             return orderData
-        else:
-            orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
-            orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
+        orderData[f"{self.axisA}coord_upper"] = axisAmax + int(axisACoord - halfSlice) + 1
+        orderData[f"{self.axisA}coord_lower"] = axisAmin + int(axisACoord - halfSlice) - 1
 
         # SANITY CHECK PLOT OF CROSS-SECTION
         if False and random.randint(1, 5001) < 2000:
             import matplotlib.pyplot as plt
 
             # CHECK THE SLICE POINTS IF NEEDED
-            x = np.arange(0, len(slice))
+            x = np.arange(0, len(sliceOut))
             plt.figure(figsize=(8, 5))
-            plt.plot(x, slice, "ko", alpha=0.5)
+            plt.plot(x, sliceOut, "ko", alpha=0.5)
             plt.plot(x, medSlide, "rx", alpha=0.8)
             plt.plot(axisAmin, threshold, "ro", alpha=0.8, label="order edge")
             plt.plot(axisAmax, threshold, "ro", alpha=0.8)
             # plt.hlines(maxvalue, 0, len(slice), label='max')
             # plt.hlines(minvalue, 0, len(slice), label='min')
-            plt.hlines(threshold, 0, len(slice), label="threshold", colors="red")
+            plt.hlines(threshold, 0, len(sliceOut), label="threshold", colors="red")
             order = orderData["order"]
             plt.title(f"Order {order}, {self.axisB} = {axisBCoord}")
             plt.xlabel("Position")

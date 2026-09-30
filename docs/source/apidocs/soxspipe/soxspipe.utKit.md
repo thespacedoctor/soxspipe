@@ -45,14 +45,6 @@ Bases: {py:obj}`soxspipe.utKit.utKit`
 
 ````
 
-````{py:method} refresh_database()
-:canonical: soxspipe.utKit.utKit.refresh_database
-
-```{autodoc2-docstring} soxspipe.utKit.utKit.refresh_database
-```
-
-````
-
 ````{py:method} setupModule()
 :canonical: soxspipe.utKit.utKit.setupModule
 

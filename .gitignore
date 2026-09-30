@@ -8,6 +8,7 @@
 _git*
 *.orig
 .coverage
+.coverage.*
 .noseids
 cover/
 html_test_coverage_report/
@@ -64,3 +65,6 @@ soxspipe/resources/static_calibrations/soxs/SOXS_SPH_TAB_NIR_Xe_ORIG.fits
 
 __pycache__
 /cl_utils.py.lprof
+/.claude
+/real-data-cache/
+/real-data-workspace/

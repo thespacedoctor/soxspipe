@@ -1,0 +1,582 @@
+{
+  "dataset_version": "2026-01-11-minimum-pre-release",
+  "archive_url": "https://www.dropbox.com/scl/fo/6io4fkryrx13la2z9p33q/ALN6daExPQ8E0zWbBEgaM0U?rlkey=qw4i648kkw494poyo41ewkyrz&dl=1",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "b5a07900dab04a8dde47fd6221708939599b7bd0afd64c1162bccc30e34d1be1"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:02:38.213.fits",
+      "sha256": "117390080954c8317f6fda8efab9cc48500d3578db7fcaa2a30fc0a900fd8c2d"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:03:11.831.fits",
+      "sha256": "652141aa7063ffb6c34d6ece1d86220ab46253fdcc70e63dcf793fc82eb37162"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:08:13.629.fits",
+      "sha256": "cef0e58b33e4beb968d2f96009ace4f3c8512cee79b3a7068cf866469855c417"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:08:47.248.fits",
+      "sha256": "2a227cbd53f6ea925478ee2e738b46bd9f7fba1fb2988e5a6af90377ee70aca3"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:13:47.944.fits",
+      "sha256": "ed4fead743c01119b607aca30d9401cd49c5e870b852043c9b371afab06218db"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:14:21.554.fits",
+      "sha256": "b226164b65ddcbca1abedfa4575324e70d4a8a9a3730f5acd0d53fcc404d68b6"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:19:24.078.fits",
+      "sha256": "e05e982bb0f4421793ce09772945c81199f0162b55a7377c5ec03736b546e42e"
+    },
+    {
+      "path": "SOXS.2025-05-14T04:19:57.675.fits",
+      "sha256": "6ff5199d4b6d4bef178e2f67ec6309cea56750a61445d5d438d2b5bda5ce354f"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:47:24.105.fits",
+      "sha256": "277a13b1c92bd06998c33e3fac95b3847524c2e151b20f5f8bc0d0892e2bc118"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:47:51.751.fits",
+      "sha256": "83a44552bbb2a19fb2866420127aaa82c66b688e8edcb8199278f57639d5602b"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:48:19.410.fits",
+      "sha256": "7383b78fffda3e35182b68810721252f7282f6bea72264b3d5845a1380dfb14f"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:48:47.230.fits",
+      "sha256": "52e14e91f8417efedeabeb7edb7a9a358f45a3456a2ea35560a14bcbd37641ed"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:49:14.811.fits",
+      "sha256": "027e09b2bf3a39688c039e7bc6f1a929ecd915255861dba972ed007a7aea3c22"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:58:54.533.fits",
+      "sha256": "9adb0720e5ab3247e6b791cbc618b79f12de4cdfd28a29a3e371102b7a303b4b"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:59:27.908.fits",
+      "sha256": "ba1a2e035e7e256da00dbee24cb90095a57e5a845e614a524846677c8197305f"
+    },
+    {
+      "path": "SOXS.2025-05-14T08:59:33.201.fits",
+      "sha256": "2c97bdae7f00c17ce7e25596931adf781905cf4fc5210fb729955f7412ec3eba"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:00:05.985.fits",
+      "sha256": "634a2047e94c6e5f71cbc184a58afe8dd28d443c5e0a42c232753aaeb7d8d64f"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:00:11.257.fits",
+      "sha256": "ecdf40eef5aa31ef137d53d98e3ea6da334e145c22d83b4e1b5f5b59f135ff2c"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:00:44.641.fits",
+      "sha256": "403ece3f2bebe15ec56e6055a61aae48ec2b7854916d90fb02d7d5622612518a"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:00:49.374.fits",
+      "sha256": "2971536b515de8a9bc8b7782c811c3dcc2181dc97cfa5621cea8b5710db61765"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:01:22.754.fits",
+      "sha256": "eff6681f8013211c2bf2e3e05fb389f7159513f80aa78cc3593510a172bcb021"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:01:27.312.fits",
+      "sha256": "4a33fd032693734a6117431cd48db72ce7313e858577f43786a97eeb7c0f7a1e"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:02:00.685.fits",
+      "sha256": "7c1c676ad04ca3c9e88b92e0801fc645454486cf1356562e162ba28307efee9b"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:02:38.689.fits",
+      "sha256": "ed766444109e1597b16c8239dbb3d1b73f67b33ca1493297864de84993e22901"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:02:50.122.fits",
+      "sha256": "bd692820e85e64154c5a1550768c9959e4f289016910fca2aa3ddf512064ae3d"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:03:00.662.fits",
+      "sha256": "12bd919b39134aec6aff0f81a8c5951218adbdf242a49eadbbbfdf1d753fc602"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:03:11.203.fits",
+      "sha256": "a8e7420257b2c035b6e9fd8b194051be37d54bb949e8cedae8e356a192bf962e"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:03:27.034.fits",
+      "sha256": "47c638dbb67bfee80b5c15d86803a9a6fd9468eae1b8bf2dfc3635944b6d1a96"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:03:40.111.fits",
+      "sha256": "0f37a7a36848e2fe0a71ce0851497ce5696a187375f5d17eb42d9b89ee024513"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:03:50.644.fits",
+      "sha256": "4697ad304a3dbcb064ec37f78d12877c741b71ea0c1a71267c099672b3956cdb"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:04:01.206.fits",
+      "sha256": "a84cf426841690bad4abc318ff8eee86d559cf36a17afcd22a2d922713458ad8"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:04:17.054.fits",
+      "sha256": "36fb82aee00cd95c17f4aea9996d4091c95df75694a093ee7f70cfd3b133aaa7"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:04:30.134.fits",
+      "sha256": "dd7214158a2fda7685d61f8f2ffe4762a93ef73444ed14e1e87124be2bddf226"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:04:40.666.fits",
+      "sha256": "3c3c24336ffdde5e8607290607a8ef077124cf924fd5c90e1bc767710df71319"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:04:51.201.fits",
+      "sha256": "15e01977ea979c12d77d85873c77e808fdbcdea699d4009f588ae16def7e6707"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:05:07.040.fits",
+      "sha256": "ee96b88ae0cfa441b5779bb57c5b77fe0bceceb35519ca1954d65b70adbdfd53"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:05:20.123.fits",
+      "sha256": "1072773b883b1b16bd2f08fb68e9e983d78bb8c4b06bb73ca9f1f9a68f72487a"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:05:30.888.fits",
+      "sha256": "78fe456646ce5dc0c177a97ac7cf2ea0a5a9d910fbef7caa5f24d41ded77a928"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:10:55.858.fits",
+      "sha256": "8cfd3ea278fe8e15a7dcb91b0942ce84c233f454b3d6e6360d67fc5736d44d9c"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:11:25.546.fits",
+      "sha256": "4cefa51a7180200329230fc092fd6d81fce6ff76f3b39fc18a2253547f8cf5e9"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:11:55.498.fits",
+      "sha256": "0c7c9cca9507e00cbfcec2961b06de5762ec3244eaeab2aad563486470f1a5dc"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:12:25.792.fits",
+      "sha256": "743f19f2cda79f04f220380e60eb050fb74fc18e871782ec60ee7b5316b57f71"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:12:56.098.fits",
+      "sha256": "31eac5eb1aa038005c4ebd3343a91500121bb0b089801deb60ac3fa7d981e0e8"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:13:37.560.fits",
+      "sha256": "143c8847f9aabc197d270ab747d19ab861d8bfa47910dcd17acf513a403a51e8"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:14:10.924.fits",
+      "sha256": "9fbf3fc4234c88b2834a4151828aebfd513f2beca3c5502cba694c043b4abbc9"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:35:15.175.fits",
+      "sha256": "812f352707e711677d74bc92c14fcdcf4939873ef5788cbbd3903129af1527db"
+    },
+    {
+      "path": "SOXS.2025-05-14T09:36:23.249.fits",
+      "sha256": "6697d9c9607611b11f172e8ba35f763679301562b04799fcc1e2defe1208f945"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:03:01.108.fits",
+      "sha256": "69a96b89b90ba18670ffb99f627c554daf63dbf315ceb2f73995f63f1145ec5a"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:03:18.030.fits",
+      "sha256": "38ebf9cb5803ba62768513112138034997ef2b3878c232e110ff48c9fb11709f"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:03:30.111.fits",
+      "sha256": "982054bd9b28b120e782b1e6e6eadaf79f345004637693abe2671250eee1996b"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:03:47.044.fits",
+      "sha256": "117019958e375914f2290f738e3e6146083730c84ce27ea7ef3cff90fdb8ad15"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:04:00.146.fits",
+      "sha256": "c44985a95ec0a89a09d3a8c10eefa740b35d84a4d443c47ae5e2e1e1cb409185"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:04:22.929.fits",
+      "sha256": "e49c84eb377888761f5129acf04f55709d89536c321f9d3464d13ad290a51de8"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:04:40.567.fits",
+      "sha256": "13ccfca36c6b7a25e11ce21df5d29a859c01121c1ddfdda2dd1fc493a49d7595"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:05:00.860.fits",
+      "sha256": "b6129df651af8a97206a90e3639eeceb0e413b251763f2a5a8b0e5d7329d7800"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:05:21.153.fits",
+      "sha256": "4f24b9b473ef6393d8e8fa1986b4d4ef5d6b85ba9e1b9379ae36060c98f51a88"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:05:40.152.fits",
+      "sha256": "6e635e6f52771006b3754a05f556d04b61ed4a19c2e1324fa280cf03ff536c06"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:06:11.116.fits",
+      "sha256": "19f300867942c2ed24784df73c3745538ca146157a9bc6f8a850ae1edb40e963"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:06:38.012.fits",
+      "sha256": "98665fc22c085441aa7300d4a3b9bee998e92d7951997eaac056c7bbd3b2c7b0"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:07:00.117.fits",
+      "sha256": "3cc5d2344b1830880867f28ec20cc9be6f0113bd0cdf51e59c67d271500b0aec"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:07:27.941.fits",
+      "sha256": "0f888c66649a4abd1861f8bef9c4451c0aac7faac3757ad58dcf1c3c4f43a082"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:07:50.125.fits",
+      "sha256": "e0eb993d247b2d3041ce83e77877ceab83f76243740e2f567cc676707fce71a1"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:11:50.115.fits",
+      "sha256": "12afbab0e06b5fd9e869feacf85be7cd5262172f87f5bee5f2e52f7999a3ca2d"
+    },
+    {
+      "path": "SOXS.2025-05-14T12:12:27.971.fits",
+      "sha256": "6ef75b350ca59817a08df77e2ccfd8adb764698b84c839f0405f0e44b48d8959"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:10:35.819.fits",
+      "sha256": "1d178709c68eeb305a011f41261aa83f698d93724410306f1f393187bcaa72d5"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:11:03.070.fits",
+      "sha256": "d59af7c438d3a49c2c379e912391c44455f50b44179223df102722c1a7989e6b"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:11:30.221.fits",
+      "sha256": "938af3dd7d8ebf167e92df2eb2547ed902e33376ace3dda815954c0930092a38"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:11:57.475.fits",
+      "sha256": "1cec44baf7b2d6104367f6e72882679938d0f6eee729eda573e8816db16a8f57"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:12:24.730.fits",
+      "sha256": "bf535fd3a8221efe89b73b3d6bd6a860c0ab2a119ae8db02dd5151b77c9d4f7c"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:38:07.721.fits",
+      "sha256": "5ca39d8808779d90e98f7ce9c99b121c109bec8edd36bae1823985d10f1fe08a"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:38:37.008.fits",
+      "sha256": "dfd5abc58439d43ae8dc7ab3c2b226bc18b4b3d7cd42aab5d760d3d2ec92dd44"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:39:06.293.fits",
+      "sha256": "98c1f1db73ea1ed7127903faa2cd1db3ed2870db84f53918e4fbc6faae7a0fda"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:39:35.578.fits",
+      "sha256": "1cbe68f517343e5943eca050e8ae4be35f20d028a94827efadb8099de13fcee0"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:40:04.869.fits",
+      "sha256": "50f7a625317777f98aa6fc2b4b917fc20ddc727af518b57ef3f712074ef73ae7"
+    },
+    {
+      "path": "SOXS.2025-08-31T02:40:46.492.fits",
+      "sha256": "4fa62da2fa0a261d1cf7feedc388040c2a8f765d2d7a2193beb1ef1fe0c05b34"
+    },
+    {
+      "path": "SOXS.2025-08-31T03:03:13.524.fits",
+      "sha256": "662fefa9f11615950b7201f3f1e7e4ae77b531e6027b23e874e1a029db922f12"
+    },
+    {
+      "path": "SOXS.2025-08-31T03:04:21.963.fits",
+      "sha256": "059e01ad235cd4f87a2672d7bfb776def92ec422898b0895170325a454b00575"
+    },
+    {
+      "path": "SOXS.2025-09-01T03:01:44.420.fits",
+      "sha256": "add28ac402e0005e98aed1c93c5476adac44f79a15608685668aa37e3847d10d"
+    },
+    {
+      "path": "SOXS.2025-09-01T03:07:11.749.fits",
+      "sha256": "754fe7303e38118f132b66ac30fce13448afcaf739e9ae641fbccddaacaf99e5"
+    },
+    {
+      "path": "SOXS.2025-09-01T03:12:47.786.fits",
+      "sha256": "622f17ea3a9b03f122c0ad852225b98fb483d986f8a7486e026804b8e6334a3a"
+    },
+    {
+      "path": "SOXS.2025-09-01T03:18:15.157.fits",
+      "sha256": "4b7a571ecfb9d71600307f48bd5242b35f06f5652167c6bd7614f1249e977fea"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:04:31.155.fits",
+      "sha256": "61376a1ff85c0ae7a221b2c2c7d19485542549182f3926ae7f5dbe4c72125d85"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:04:58.333.fits",
+      "sha256": "e42079dd951e29597d417c5c3c9747eb6810746740bd6e028deefcdac470bdcd"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:05:25.587.fits",
+      "sha256": "e5c1e17af7d4fd4771bb4bb27d116c2b687bd4ec4c257b249814f44115c65ef1"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:05:52.841.fits",
+      "sha256": "835f079c674d593c52491c91b304c84d84ea89fef4fd261960ea3de69a0c69d4"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:06:20.095.fits",
+      "sha256": "f16c0e61c4dbce64f56fe0737e6391f7f9c1f429e93c3000a3d9357c84299306"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:32:45.998.fits",
+      "sha256": "8b98f1cedd7e76a186cf109a0b8b7e1b9c913083e8c8428d3d4f361fe6ccc72c"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:33:15.280.fits",
+      "sha256": "47ffd06ef383a017f16729b303cf89a8b5686f62ba913b4ac7d0dd99ebee0a9c"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:33:44.431.fits",
+      "sha256": "c5c0f032c383a334d02bb6055f74be38a7a06f2f08bb090b3d9483c5e6c59fee"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:34:13.722.fits",
+      "sha256": "e4f6ad1acc86604fc5e5122a18d05dbadcf1ef8f387cfe3defa94c32ecc00300"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:34:43.008.fits",
+      "sha256": "a0e4766d42a70d487a5ec17baf0b0230216e661b9f110cd6f0335ae601636221"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:35:24.647.fits",
+      "sha256": "b1a9e494ecda3ba00deb111843e5d45b4a31064d2accf739f03ceda82c4eda1f"
+    },
+    {
+      "path": "SOXS.2025-09-01T10:58:05.985.fits",
+      "sha256": "16c60f7f4221d50420cb9b5afdcbfd65a1b335d46057bfc0f2eda20753d5b68c"
+    },
+    {
+      "path": "SOXS.2025-10-13T04:35:11.440.fits",
+      "sha256": "a320d7a7fa6815e2d2ec5fa1c0204edbc7ac61f2c05772abe7d6aa850c36531d"
+    },
+    {
+      "path": "SOXS.2025-10-13T04:52:20.129.fits",
+      "sha256": "95092d2ed6df86c5149c8e0902d4dabc4532e826b9d83db8e652d68f3d0bd59b"
+    },
+    {
+      "path": "SOXS.2025-10-13T04:57:56.303.fits",
+      "sha256": "7c1bfac0fb5486be2378eac29a10d7ab050899dbcb8da05604aad57e90c268ac"
+    },
+    {
+      "path": "SOXS.2025-11-28T03:03:28.450.fits",
+      "sha256": "f33bf3d79fe66bebc24eaff98d170cd41f0bd7f5d3c7c4d372e731d99fd935d6"
+    },
+    {
+      "path": "SOXS.2025-11-28T03:09:03.893.fits",
+      "sha256": "e43a71d2e18e91a05dd3d546910d8e7bae4e81d7bdabadd7a71937a994b69c3b"
+    },
+    {
+      "path": "SOXS.2025-11-28T03:15:06.991.fits",
+      "sha256": "7aa696913f55d770bbdd6d6c4f38be2a666678ee4b2fae69ba0792efc196cb1f"
+    },
+    {
+      "path": "SOXS.2025-11-28T03:20:42.213.fits",
+      "sha256": "379ca91ecf486a36505250cdfb36647d8723e54435856536eb07414d85e12c51"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:54:14.833.fits",
+      "sha256": "9525419f8e6a7b8e0a025f543f181804969f98bc745bf361dc0a1899aa304198"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:54:26.243.fits",
+      "sha256": "e6efc0b70726eb92b72a5e89ea4e30ce94a0be2e3debd880246847eed9016a83"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:54:36.241.fits",
+      "sha256": "3493df2a14897956675a68bf8fa6084b93c5e061abdc211af6cb273d00dbed6e"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:54:46.244.fits",
+      "sha256": "962422b8c43ee3528e357f69102e196d5f60cbd05c06baf9645c6531e8120202"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:54:56.263.fits",
+      "sha256": "9dc98cd7fa5b93b98eaf4a6757e1b6c0e34dc6c4479bc3316b86a3cf3e008e6f"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:56:37.453.fits",
+      "sha256": "c4371e7d5503991556a4734f400bf5e6ee7acdf21d016eb76b06b28641d7294c"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:56:56.260.fits",
+      "sha256": "34ece7ca9f1b2bffbf8309cbcd5b711784deaa6946e79c560bdf04832970d9e5"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:57:16.249.fits",
+      "sha256": "2f25525db4144c1c74437f5c65ee00a77f7689cb771c65029da5b906f0eba87e"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:57:36.220.fits",
+      "sha256": "682cc37785c9c6af4bcf456ba85ec0290b218a4a6592b860bee7ed0d8214dab7"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:57:56.220.fits",
+      "sha256": "52e0ff17a06ab0447c6bd83f02a8dbd8023db361fd91e92d12e29250902a9226"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:58:27.367.fits",
+      "sha256": "fb9caf957807bb73afa646524c8b8dda09b22381b4ed4d3a99998361123e418d"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:58:53.938.fits",
+      "sha256": "060cd3e9fda2185d367136c696b3b692d1ff7105968f0978282581632898bbe5"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:59:16.248.fits",
+      "sha256": "44145c11b1fc0ef94af45de135b1e6b5f0b78e59bf35df150d3404b8b7d96256"
+    },
+    {
+      "path": "SOXS.2025-11-28T10:59:37.667.fits",
+      "sha256": "cdb27d5a2fb6c62959d0be297e5060b42fa8975e5d1734071e5c3b86a6310942"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:00:04.244.fits",
+      "sha256": "f65ff4e47ca9224e7774ad2badb863e145a107e5cecb2e8634af696e9ccc4c9b"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:49:19.585.fits",
+      "sha256": "65098d30887d4e1ff0b6b752eebd6b58d7000e55874fd21bacf8a5e9368d99c0"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:49:53.957.fits",
+      "sha256": "91e57a805f7bd0541ca654016138840731e97abe2efc4a12cdf62e47947cff91"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:50:28.957.fits",
+      "sha256": "76e7a3f257d02d0fda7964f19320de81684a8233d1b5566f3acf1e5ec84ef4f0"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:51:03.957.fits",
+      "sha256": "00ee5e90a4d61fcb9c27df0c69cd958f1742ee74d0a9966ab7051d0e2d03a0e2"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:51:38.956.fits",
+      "sha256": "75dec907458e3478bc5847daab2d370a8bf629b916d969add3be050282c4fbc0"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:52:13.958.fits",
+      "sha256": "1c5c289a941c02f462321261fb1ed1f90b1e86ada1358e4c7f5623883545fc03"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:52:48.956.fits",
+      "sha256": "e5da27b1faf30dcaf93748efa7c1d9e4e4d3ad4d4000e037468336bc41ae244a"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:53:23.958.fits",
+      "sha256": "9b4dbead437b1bf26de49ac1f12d7dabc581e0d461240d4c2daa6585ffaa1ffb"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:53:58.956.fits",
+      "sha256": "5329f2023f3e1c371cf650307eb87a034ff6572c4a9fc6cf3776e8e354844f94"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:54:33.957.fits",
+      "sha256": "dd88a59076c3c72308e609e166965ef7555f438a21b9c4ebd002395cec94967d"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:55:08.957.fits",
+      "sha256": "08feb7332108855b6ae4b53773501fe37d6137cd856809ef8049f7a95361cb29"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:55:43.959.fits",
+      "sha256": "aeb663ccff2a4b9d883b28bfbafee377b846dfba69f9cca59353ef2a9dc1e158"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:56:18.958.fits",
+      "sha256": "7919ab35fe4899d2c85ef930ae5b6a2e32ff14a7f20533946717d7030591df1e"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:56:53.957.fits",
+      "sha256": "f5aadafc4a993e75e978ba030a5aedae6b0822b6e5bbe7df14c8e4819687fec8"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:57:28.958.fits",
+      "sha256": "5b4e189c8291d431a765f752e2108b0f10901eeb86d10480fbb7d22605413bd5"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:58:03.960.fits",
+      "sha256": "7da7522525564e528ff8a0549ef7e60ef6a6cfb998683afffc23049a69d1f48b"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:58:38.957.fits",
+      "sha256": "826402cade4352d121cd5c48f7c1a20c5538366543b0b4d6c7829a003db82d53"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:59:13.959.fits",
+      "sha256": "084f7dba615ac62c70884adcd49c40a6f55cd11ae52a7afcdee25077eb3962ac"
+    },
+    {
+      "path": "SOXS.2025-11-28T11:59:48.957.fits",
+      "sha256": "fbcc921c5786514b849c7ea087b360d3a1227e9928d4d1c7fec1794e31c34fff"
+    },
+    {
+      "path": "SOXS.2025-11-28T12:00:23.956.fits",
+      "sha256": "86dc7dca31c106e73f56f557930045ee10e26dfcef1e6fc760f1ce788642efb7"
+    },
+    {
+      "path": "SOXS.2025-11-28T12:11:39.629.fits",
+      "sha256": "c192bc64c419825abb4bb1f6b40376eb76a9edbe3fdb54247b5eac51d1fd9f57"
+    },
+    {
+      "path": "SOXS.2025-11-28T12:21:46.255.fits",
+      "sha256": "59d2f217fc8396ed02fe3b4ae6170eda7291e2c652c1666ed2c28397d4217184"
+    },
+    {
+      "path": "SOXS.2025-11-28T12:22:17.854.fits",
+      "sha256": "208deeba5d05e5a91faa042ee8d1e265cda55292a24a141514fce6d606f422e0"
+    },
+    {
+      "path": "SOXS.2026-01-11T08:03:47.636.fits",
+      "sha256": "387a192889989ffcba3fd4edffd45efbd40dd58aec4262dce495cbe689bdc874"
+    },
+    {
+      "path": "SOXS.2026-01-11T08:08:03.715.fits",
+      "sha256": "9f3d0d9fef889ced04b90cdfc29258a6549e6509967da9959bc097e998ff9960"
+    },
+    {
+      "path": "SOXS.2026-01-11T08:11:07.955.fits",
+      "sha256": "bcd3b4d2ce3158a2881df7c9b7eaa5152f133ff76af27f48a9e79d01c2dbaba6"
+    },
+    {
+      "path": "SOXS.2026-01-11T08:15:23.354.fits",
+      "sha256": "25d6ebb719469f440c192a3b9d5587b2681b543aa27a858d58f7316d8dcc5017"
+    },
+    {
+      "path": "SOXS.2026-01-11T08:19:31.077.fits",
+      "sha256": "20e20435e5728a682e6dcc395ec4f7de2e03f11fd1d51b851c46daee97723056"
+    }
+  ]
+}
