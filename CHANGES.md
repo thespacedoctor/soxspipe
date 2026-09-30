@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FIXED**: a raw frame added after `prep` grouped its set now rejoins that set on the next plain `prep`: the set keeps its SOF name, its status is reset in every session, and its stale product is deleted (DY-263).
+
 ## v0.18.0 - September 30, 2026
 
 * **FEATURE**: added the shared QC, product, timestamp and plot helpers — `utcnow_string`, `append_qc`, `append_product` and `save_qc_plot` in `soxspipe/commonutils/toolkit.py`, plus thin `add_qc`/`add_product` delegators on `base_recipe` that add nothing but a fallback to `self.recipeName` and `self.dateObs`.

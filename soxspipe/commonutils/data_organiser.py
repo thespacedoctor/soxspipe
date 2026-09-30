@@ -19,6 +19,13 @@ from pathlib import Path
 
 from fundamentals import tools
 
+from soxspipe.commonutils.late_frame_rejoin import (
+    delete_stale_files,
+    find_rejoined_sofs,
+    format_rejoin_summary,
+    pin_rejoined_sof_names,
+    reset_rejoined_sofs,
+)
 from soxspipe.commonutils.missing_calibrations import (
     CALIBRATION_RECIPES,
     FAILED_QC,
@@ -191,6 +198,8 @@ class data_organiser:
         self.PAE = False
         log.debug("instantiating a new 'data_organiser' object")
         self.log = log
+        # NAMES PINNED FOR REJOINED SETS LIVE ONLY ON THIS INSTANCE; THEY ARE LOST WHEN THE PROCESS EXITS
+        self.pinnedSofNames = {}
 
         # MAKE RELATIVE HOME PATH ABSOLUTE
         if rootDir[0] == "~":
@@ -555,8 +564,8 @@ class data_organiser:
         self._apply_qc_acceptable_ranges()
 
         self._flag_files_to_ignore()
-        self.build_sof_files()
-        self.build_sof_files()
+        self.build_sof_files(rejoinLateFrames=True)
+        self.build_sof_files(rejoinLateFrames=True)
 
         if backupPath:
             self._restore_session_statuses(backupPath)
@@ -2802,8 +2811,13 @@ class data_organiser:
             f"where product_frames.complete = -1 and product_frames.sof={calTable}.sof;"
         )
 
-    def build_sof_files(self):
+    def build_sof_files(self, rejoinLateFrames=False):  # noqa: PLR0915
         """*scan the raw frame table to generate the listing of products that are expected to be created and then write out all of the needed SOF files*
+
+        **Key Arguments:**
+
+        - ``rejoinLateFrames`` -- when True, a raw frame added after its set was grouped rejoins that set, which is
+          reset to be grouped and reduced again. Only `prepare` asks for this; `session_refresh` does not
 
         **Usage:**
 
@@ -2898,13 +2912,19 @@ class data_organiser:
             c.execute(sqlQuery)
             c.close()
 
+        # A FRAME ADDED AFTER ITS SET WAS GROUPED REJOINS THAT SET, WHICH IS THEN GROUPED AND REDUCED AGAIN
+        rejoined = self._rejoin_late_frames(sofMapTableName) if rejoinLateFrames else {}
+        compromisedSofs = compromisedSofs + sorted(rejoined)
+
         # DELETE COMPROMISED SOF FILES
+        sofDir = Path(self.sessionPath) / "sof"
         for sof in compromisedSofs:
-            sofPath = self.sessionPath + "/sof/" + sof
             try:
-                os.remove(sofPath)
+                os.remove(_validate_owned_path(sofDir / sof, sofDir, "SOF path"))
+            except _UnsafePathError as e:
+                self.log.warning(f"build_sof_files: the SOF name `{sof}` is not a safe path, not deleted: {e}")
             except OSError as e:
-                self.log.debug(f"build_sof_files: `os.remove(sofPath)` failed, continuing: {e}")
+                self.log.debug(f"build_sof_files: the SOF file `{sof}` could not be deleted, continuing: {e}")
 
         # RESET ALL PRODUCTS TO INCOMPLETE
         c = self.conn.cursor()
@@ -2932,6 +2952,7 @@ class data_organiser:
                     filterName=name,
                     unprocessedOnly=True,
                 )
+                rawGroups = pin_rejoined_sof_names(rawGroups, self.pinnedSofNames)
 
                 # ADD PREDICTED PRODUCT TO PRODUCT TABLE - DETERMINE IF COMPLETE LATER
                 incompleteProducts = self.predict_product_frames(productTypes, rawGroups, recipe)
@@ -3012,6 +3033,39 @@ class data_organiser:
         self._write_sof_files()
 
         return
+
+    def _rejoin_late_frames(self, sofMapTableName):
+        """*reset every set that a late-arriving raw frame belongs to, so it is grouped and reduced again*
+
+        **Key Arguments:**
+
+        - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
+
+        **Return:**
+
+        - ``rejoined`` -- SOF name to (recipe, frozenset of raw frame filepaths) for the sets that gained a frame in
+          this call, empty when none did. Their names stay pinned in `self.pinnedSofNames` for the rest of this
+          instance's life
+
+        The pin lives only on this instance. A rejoined set that is still unprocessed after both `prepare()` passes
+        (for example, while a calibration is missing) loses its pin when the process exits, and a later `prepare()`
+        then names the set after its earliest frame.
+        """
+        groupingKeys = [key for key in self.filterKeywords if key not in self.proKeywords]
+        rejoined = find_rejoined_sofs(self.conn, sofMapTableName, groupingKeys)
+        if not rejoined:
+            return rejoined
+        self.pinnedSofNames = {**self.pinnedSofNames, **rejoined}
+
+        stalePaths = reset_rejoined_sofs(
+            self.conn, sofMapTableName, rejoined, self.rootDir, _validate_owned_path, self.log
+        )
+        self.conn.commit()
+        # DELETE ONLY AFTER THE COMMIT, SO A FAILED COMMIT NEVER LEAVES A PRODUCT THE DATABASE STILL EXPECTS DELETED
+        delete_stale_files(stalePaths, self.log)
+        self.log.debug(f"_rejoin_late_frames: reset {len(rejoined)} SOF(s) that gained late frames")
+        print(format_rejoin_summary(rejoined))
+        return rejoined
 
     def get_raw_frames_and_groups(
         self,

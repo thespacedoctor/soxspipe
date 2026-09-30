@@ -88,7 +88,7 @@ def test_prepare_refresh_restores_every_session_database_object(
     )
     monkeypatch.setattr(organiser, "_move_misc_files", lambda: None)
     monkeypatch.setattr(organiser, "_flag_files_to_ignore", lambda: None)
-    monkeypatch.setattr(organiser, "build_sof_files", lambda: None)
+    monkeypatch.setattr(organiser, "build_sof_files", lambda **_: None)
 
     organiser.prepare(refresh=True, report=False)
 

@@ -6,6 +6,7 @@ from .dataframes import (
     product_table,
     qc_row,
     qc_table,
+    raw_flat_run_table,
     raw_frame_table,
     raw_group_table,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "qc_row",
     "qc_table",
     "raw_fits",
+    "raw_flat_run_table",
     "raw_frame_table",
     "raw_group_table",
     "sof_file",
