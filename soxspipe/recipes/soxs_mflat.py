@@ -1570,16 +1570,16 @@ class soxs_mflat(base_recipe):
 
         return frame
 
-    def _valid_order_flux_samples(self, frame, b, l, u):
+    def _valid_order_flux_samples(self, frame, b, lowerBound, upperBound):
         """Return the unmasked flux samples for one order-table row."""
         import numpy as np
 
         if self.axisA == "x":
-            samples = frame.data[b, l:u]
-            sampleMask = None if frame.mask is None else frame.mask[b, l:u]
+            samples = frame.data[b, lowerBound:upperBound]
+            sampleMask = None if frame.mask is None else frame.mask[b, lowerBound:upperBound]
         else:
-            samples = frame.data[l:u, b]
-            sampleMask = None if frame.mask is None else frame.mask[l:u, b]
+            samples = frame.data[lowerBound:upperBound, b]
+            sampleMask = None if frame.mask is None else frame.mask[lowerBound:upperBound, b]
 
         if sampleMask is None:
             return samples
