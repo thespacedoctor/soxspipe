@@ -24,6 +24,37 @@ Finally, all SOF files from the `sof_map` table are written to a sof directory i
 
 During the running of each pipeline recipe, Quality Control (QC) metrics are generated, and within the pipeline settings file, there are `qc-acceptable-ranges` for each recipe. These acceptable ranges act as guardrails for the pipeline, so that if a QC metric falls outside an acceptable range, the pipeline forces a 'fail' on this data, preventing it from cascading into further data-reduction stages.
 
+### Late-arriving frames
+
+A raw frame can reach the workspace after its set was grouped, for example when the last exposures of a template run are downloaded later. On a plain `soxspipe prep`, the DO adds such a frame to the existing set instead of creating a second set.
+
+A late frame is a raw frame that is not yet processed and is in no SOF. It joins an existing set when both of these are true:
+
+- It has the same value as the set's frames for every grouping key.
+- It has the same `eso tpl start` value, so it comes from the same template run.
+
+When a late frame joins a set, the DO does these things in the same `prep` run:
+
+1. The set keeps its SOF name. The new SOF file is written under the old name.
+2. The status of the set's products is reset to NULL in every session, so each session queues the set to run again.
+3. The set's stale product file and its `_ERROR.log` file are deleted. This happens at `prep`, not at `reduce`.
+4. The DO prints a line that names the SOFs that gained late frames.
+
+A frame from a different template run has a different `eso tpl start` value. It does not join the set and forms a new SOF.
+
+The DO does not add a late frame to a set in these cases:
+
+- The frame has no `eso tpl start` value.
+- The frame comes from a technique that the DO groups one exposure at a time (`ECHELLE,SLIT,STARE`, `ECHELLE,PINHOLE` and `ECHELLE,MULTI-PINHOLE`).
+- The frame is an NIR `IMAGE` frame that is not a `DARK`. The grouping leaves these frames out.
+
+#### Limits
+
+- Only the current session's `sof_map` rows for the set are removed. The other sessions keep their own `sof_map` rows for the set, although their statuses are reset.
+- Products that are downstream of the rejoined set are not queued again. This is tracked as DY-264.
+- The SOF name is kept for one `prep` run only. The name is held in memory. If the set is still unprocessed when the run ends (for example, while a calibration is missing), a later `prep` names the set after its earliest frame.
+- `soxspipe prep --refresh` rebuilds the database and groups all frames again. It does not keep the old SOF names in this way.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.data_organiser.data_organiser

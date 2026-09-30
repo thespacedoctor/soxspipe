@@ -167,7 +167,7 @@ def science_workspace(tmp_path, log, monkeypatch):
     monkeypatch.setattr(organiser, "_sync_raw_frames", fake_sync_raw_frames)
     monkeypatch.setattr(organiser, "_move_misc_files", lambda: None)
     monkeypatch.setattr(organiser, "_flag_files_to_ignore", lambda: None)
-    monkeypatch.setattr(organiser, "build_sof_files", lambda: None)
+    monkeypatch.setattr(organiser, "build_sof_files", lambda **_: None)
     monkeypatch.setattr(organiser, "get_incomplete_sets_report", lambda: (None, None))
     yield organiser
     if getattr(organiser, "conn", None) is not None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pandas as pd
 
 
@@ -191,4 +193,54 @@ def raw_frame_table() -> pd.DataFrame:
                 "eso tpl expno": index,
             }
         )
+    return pd.DataFrame(rows)
+
+
+FLAT_RUN_DEFAULT_TPL_START = "2024-01-02T06:04:00"
+SECONDS_PER_DAY = 86400.0
+
+
+def raw_flat_run_table(
+    expnos: Sequence[int],
+    tplStart: str = FLAT_RUN_DEFAULT_TPL_START,
+    *,
+    namePrefix: str = "flat",
+    slit: str = "1.0",
+    nightOffset: int = 0,
+    nexp: int = 10,
+) -> pd.DataFrame:
+    """Return the slit-flat exposures ``expnos`` of one template run, with the complete organizer schema.
+
+    Exposure ``n`` is taken ``10 + n`` seconds after ``tplStart``, so a run started at 06:04:00 has exposure 1 at
+    06:04:11. Passing only some of the exposures models a run that has not fully arrived yet.
+    """
+    template = raw_frame_table()
+    startTime = pd.Timestamp(tplStart)
+    rows = []
+    for expno in expnos:
+        obsTime = startTime + pd.Timedelta(seconds=10 + expno)
+        secondsIntoDay = obsTime.hour * 3600 + obsTime.minute * 60 + obsTime.second
+        row = template.iloc[0].to_dict()
+        row.update(
+            {
+                "file": f"{namePrefix}-{expno}.fits",
+                "filepath": f"./raw/2024-01-01/{namePrefix}-{expno}.fits",
+                "eso dpr type": "LAMP,FLAT",
+                "eso dpr tech": "ECHELLE,SLIT",
+                "eso tpl name": "SOXS_flat",
+                "template": "SOXS_flat",
+                "object": "FLAT",
+                "eso tpl nexp": nexp,
+                "eso tpl expno": expno,
+                "exptime": 10.0,
+                "slit": slit,
+                "date-obs": obsTime.strftime("%Y-%m-%dT%H:%M:%S.000"),
+                "mjd-obs": 60311 + nightOffset + secondsIntoDay / SECONDS_PER_DAY,
+                "eso tpl start": tplStart,
+                "night start date": (pd.Timestamp("2024-01-01") + pd.Timedelta(days=nightOffset)).strftime("%Y-%m-%d"),
+                "night start mjd": 60310 + nightOffset,
+                "set_first_file": f"{namePrefix}-{expnos[0]}.fits",
+            }
+        )
+        rows.append(row)
     return pd.DataFrame(rows)
