@@ -409,7 +409,11 @@ def test_automatic_rebuild_keeps_the_failed_database_and_survives_unreadable_sou
     assert organiser.conn.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
     assert organiser.conn.execute("SELECT count(*) FROM quality_control").fetchone() == (0,)
     output = capsys.readouterr().out
-    warnings = [line for line in output.splitlines() if "WARNING" in line and str(backups[0]) in line]
+    warnings = [
+        line
+        for line in output.splitlines()
+        if "WARNING" in line and "quality-control history" in line and str(backups[0]) in line
+    ]
     assert len(warnings) == 1
     assert "failed to open" in warnings[0]
 
