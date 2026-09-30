@@ -172,7 +172,7 @@ def test_get_records_edge_fits_qc_and_product_contracts(
     ) -> tuple[list[float], pd.DataFrame, pd.DataFrame]:
         fitted = pixelList.copy()
         fitted["x_fit"] = fitted[axisACol]
-        fitted["x_fit_res"] = [-0.25, 0.25]
+        fitted["x_fit_res"] = [-0.123456789, 0.123456789]
         return [3.0], fitted, fitted.iloc[:0].copy()
 
     detector.fit_global_polynomial = fit_edge
@@ -183,6 +183,8 @@ def test_get_records_edge_fits_qc_and_product_contracts(
 
     assert detectionCounts.loc[10, "count"] == 2
     assert qc["qc_name"].tolist() == ["X RES MIN", "X RES MAX", "X RES SD"]
+    assert qc["qc_value"].tolist() == [0.12346, 0.12346, 0.0]
+    assert pd.api.types.is_numeric_dtype(qc["qc_value"])
     assert products["product_label"].tolist() == ["ORDER_LOC", "ORDER_LOC_RES"]
     assert products["file_name"].tolist() == ["edges.fits", "edges.pdf"]
 

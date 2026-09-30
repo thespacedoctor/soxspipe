@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: twelve QC metrics in `detect_continuum`, `detect_order_edges` and `soxs_mflat` now store a rounded number in `qc_value` instead of a formatted string, so QC tables keep a numeric dtype and the values reach product FITS headers as numeric cards; `ORDEXP10` is now rounded to 3 decimal places rather than 23 (DY-44)
 * **FIXED**: DY-261, `session_switch` now points the shared `sof_map` database view at the session being switched to, through the same `_ensure_session_database_objects` step that `session_create` uses; before, the view kept selecting from the most recently created session, so `list_raw`, the failed-SOF cleanup and the post-grouping updates in `prepare` silently read another session's SOF map. A refused switch (unknown or already-active session) leaves the view unchanged
 * **FIXED**: DY-268, a workspace database locked or busy in another process now makes `data_organiser._get_or_create_db_connection` refuse with `DatabasePreservationError` after the first failed attempt, instead of retrying 50 times (up to about four hours with the 300 s busy timeout)
 * **FIXED**: DY-220, `cut_image_slice` and its two callers in `detect_order_edges` no longer name a local `slice`, which shadowed Python's builtin `slice` for the whole function body; the value is now `sliceOut`, and behaviour is unchanged
