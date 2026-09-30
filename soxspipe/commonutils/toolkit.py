@@ -994,14 +994,13 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     arm = frame.header[kw("SEQ_ARM")]
     dateObs = frame.header[kw("DATE_OBS")]
 
-    try:
-        binx = frame.header[kw("WIN_BINX")]
-        biny = frame.header[kw("WIN_BINY")]
-    except KeyError as e:
-        log.debug(f"spectroscopic_image_quality_checks: `binx = frame.header[kw('WIN_BINX')]` failed, continuing: {e}")
-        if arm.lower() == "nir":
-            binx = 1
-            biny = 1
+    binx = 1
+    biny = 1
+    if arm.lower() != "nir":
+        if kw("WIN_BINX") in frame.header:
+            binx = int(frame.header[kw("WIN_BINX")])
+        if kw("WIN_BINY") in frame.header:
+            biny = int(frame.header[kw("WIN_BINY")])
 
     # UNUSED, BUT THE LOOKUP RAISES KeyError FOR A MISSING KEYWORD; DELETING IT REMOVES THAT FAILURE
     inst = frame.header[kw("INSTRUME")]  # noqa: F841

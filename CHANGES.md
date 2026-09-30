@@ -1,6 +1,26 @@
 # Release Notes
 
+## v0.18.0 - September 30, 2026
+
+* **FEATURE**: added the shared QC, product, timestamp and plot helpers — `utcnow_string`, `append_qc`, `append_product` and `save_qc_plot` in `soxspipe/commonutils/toolkit.py`, plus thin `add_qc`/`add_product` delegators on `base_recipe` that add nothing but a fallback to `self.recipeName` and `self.dateObs`.
+* **FEATURE**: added a `[tool.ruff]` house-rule configuration to `pyproject.toml` (line length 120, camelCase-friendly naming ignores, `max-statements = 50`) and applied the 705 safe ruff fixes ahead of it. Import sorting is deliberately withheld from the three package `__init__.py` files, whose import order works around a circular import.
 * **ENHANCEMENT**: widened the `eff-median` QC acceptable ranges for `soxs-nod-std` in `soxs_default_settings.yaml` (upper limits 0.30 to 0.60 and 0.2 to 0.5).
+* **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently.
+* **ENHANCEMENT**: the missing-calibrations report now says why each calibration is missing (`failed QC`, `failed run`, `not yet reduced`, `not observed` or `no match`), and `get_blocking_calibration_sets` names the raw sof and failure message responsible, printed as a second table by `soxspipe prep` and `soxspipe reduce all`; for `mbias`/`mflat` the reason and blocking sof are scoped to the science set's own binning and readout speed, matching the real `cal_mbias`/`cal_mflat`.
+* **ENHANCEMENT**: Raise the whole-package branch-coverage threshold to 70% and add broad deterministic unit and integration coverage for pipeline utilities and recipes.
+* **ENHANCEMENT**: refine skyline-based wavelength-shift calibration
+* **ENHANCEMENT**: tune skyline detection, iterative matching, clipping, and VIS-order shift fallback behavior.
+* **ENHANCEMENT**: update calibration data and default dispersion, spatial, and sky-subtraction thresholds.
+* **ENHANCEMENT**: using numba JIT to speed up image rectification
+* **REFACTOR**: Widen `structx` and `structy` acceptance limits for SOXS master-bias quality checks.
+* **REFACTOR**: Raised the supported Python version floor from 3.11 to 3.12.
+* **REFACTOR**: huge refactor of entire code-base. Unit-test coverage is now approaching 90%.
+* **REFACTOR**: Limit multiprocessing pool size for stare, nod, and offset recipes to avoid memory issues.
+* **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
+* **REFACTOR**: correct rectified-image diagnostic orientation and add local CodeGraph metadata exclusions.
+* **REFACTOR**: optimising converting dispersion map to pixel arrays
+* **REFACTOR**: vectorising calculation of rectification weights
+* **DOCS**: adding to doc FAQs
 * **FIXED**: a recipe marked as failed because QC values are outside the acceptable limits is now logged as a warning instead of an error.
 * **FIXED**: `session_switch` now points the shared `sof_map` database view at the session being switched to.
 * **FIXED**: a workspace database locked or busy in another process now makes `data_organiser._get_or_create_db_connection` refuse with `DatabasePreservationError` after the first failed attempt, instead of retrying 50 times (up to about four hours with the 300 s busy timeout)
@@ -10,33 +30,14 @@
 * **FIXED**: `image_transformer` wavelength bins are now evenly spaced in detector pixels along each order's trace instead of evenly spaced in nm, removing an 11–21% blue-to-red flux ramp within every order
 * **FIXED**: `image_transformer` slit bins now use each order's arcsec-per-pixel scale measured from the dispersion map instead of a hardcoded value, so the Horne aperture set by `horne-extraction-slit-length` is now that many detector pixels.
 * **FIXED**: `image_transformer._determine_rectified_image_boundaries` now fits per-order polynomials of slit position vs wavelength from trace points, so the rectified window follows the object trace along each order (the object trace seems to drift through slit-positions as wavelength increases).
-* **ENHANCEMENT**: `image_transformer` now has separate `zoomFactorSlit` and `zoomFactorWavelength` sub-sampling factors in place of a single `zoomFactor`, so the slit and wavelength axes of the rectified image can be oversampled independently.
-* **REFACTOR**: Widen `structx` and `structy` acceptance limits for SOXS master-bias quality checks.
-* **ENHANCEMENT**: the missing-calibrations report now says why each calibration is missing (`failed QC`, `failed run`, `not yet reduced`, `not observed` or `no match`), and `get_blocking_calibration_sets` names the raw sof and failure message responsible, printed as a second table by `soxspipe prep` and `soxspipe reduce all`; for `mbias`/`mflat` the reason and blocking sof are scoped to the science set's own binning and readout speed, matching the real `cal_mbias`/`cal_mflat`.
-* **REFACTOR**: Raised the supported Python version floor from 3.11 to 3.12.
 * **FIXED**: `base_recipe._write(..., maskToZero=True)` wrote `1` into masked pixels instead of `0`, contradicting its argument name, docstring and log message, all of which already said `0`.
 * **FIXED**: `soxspipe/commonutils/detect_continuum.py`'s `get()` reports a failed continuum fit by returning `None` as its product path, both when the sampled trace detects under 10% of the order and after five failed fitting attempts, and `soxs_order_centres._fit_order_centres` did not check for this, passing the `None` straight to `os.path.basename` so a user whose data could not be fitted saw a bare `TypeError: expected str, bytes or os.PathLike object, not NoneType` traceback instead of a recipe failure.
 * **FIXED**: `soxs_order_centres.verify_input_frames` had two rejection messages that never fired as written. The NIR mixed-image-type message was assigned to `erorr`, a misspelling, so it was never raised.
 * **FIXED**: `soxs_mflat.mask_low_sens_pixels` sampled the median order flux from the wrong axis when the dispersion axis is y. The `axisA == "y"` branch unmasked the vertical band `interOrderMask[l:u, b]` but then read the flux with `frame.data[b, l:u]`, the horizontal band the `x` branch reads, so the returned `medianOrderFluxDF` came from a different region from the one just unmasked, and the read raised `IndexError` whenever a sampled `b` fell outside the frame's row range, which a frame with more columns than rows can reach. The read is now `frame.data[l:u, b]`, matching the mask.
-* **REFACTOR**: huge refactor of entire code-base. Unit-test coverage is now approaching 90%.
 * **FIXED**: `fit_bspline_curve_to_sky` no longer recomputes the knot-quantile expression that just failed, which had both lost the original traceback and silently retried a transient failure. A failed tuning iteration in `soxs_disp_solution` now propagates rather than leaving the tuning grid quietly recording nothing.
-* **FEATURE**: added the shared QC, product, timestamp and plot helpers — `utcnow_string`, `append_qc`, `append_product` and `save_qc_plot` in `soxspipe/commonutils/toolkit.py`, plus thin `add_qc`/`add_product` delegators on `base_recipe` that add nothing but a fallback to `self.recipeName` and `self.dateObs`.
-* **FEATURE**: added a `[tool.ruff]` house-rule configuration to `pyproject.toml` (line length 120, camelCase-friendly naming ignores, `max-statements = 50`) and applied the 705 safe ruff fixes ahead of it. Import sorting is deliberately withheld from the three package `__init__.py` files, whose import order works around a circular import.
 * **FIXED**: the reduction is no longer order-dependent on the CPU it runs on. `create_dispersion_map` sorted its line table on `wavelength` alone, which is not a total key because wavelength repeats across orders and slit positions. Pandas defaults to an unstable quicksort and NumPy dispatches float sorts to SIMD kernels whose permutation of tied rows varies by CPU microarchitecture, so the same input produced different row orders on different runners, changing summation order in the polynomial fits. The sort now uses the full `(wavelength, order, slit_index)` key with `kind="stable"`, and all 20 `sort_values` call sites in the reduction path were made stable.
 * **FIXED**: the sigma-clipping decision in `create_dispersion_map.fit_polynomials` no longer flips on last-bit floating-point noise. A residual a fraction of an ULP either side of the threshold changed which lines survived, which changed the next `curve_fit`, which moved the merged spectrum's red end by 12 bins. Residuals are now quantised to 9 decimals as they are computed, well below any physically meaningful difference and well above the noise floor.
 * **FIXED**: QC and product rows are now built with `pd.DataFrame([row])` instead of `pd.Series(row).to_frame().T`, so appending a row no longer upcasts the whole `qc_value` column to `object` and numeric QC values keep their dtype through to the FITS headers.
-* **TEST**: Add a verified, opt-in real-data NIR-offset acceptance workflow with immutable archive inventory checks and approved scalar baselines.
-* **ENHANCEMENT**: Raise the whole-package branch-coverage threshold to 70% and add broad deterministic unit and integration coverage for pipeline utilities and recipes.
-* **ENHANCEMENT**: refine skyline-based wavelength-shift calibration
-* **ENHANCEMENT**: tune skyline detection, iterative matching, clipping, and VIS-order shift fallback behavior.
-* **ENHANCEMENT**: update calibration data and default dispersion, spatial, and sky-subtraction thresholds.
-* **ENHANCEMENT**: using numba JIT to speed up image rectification
-* **REFACTOR**: Limit multiprocessing pool size for stare, nod, and offset recipes to avoid memory issues.
-* **REFACTOR**: Update predicted paths for standard response products (now looks for RESP function instead of merge spectra when deciding if the data has been reduced yet).
-* **REFACTOR**: correct rectified-image diagnostic orientation and add local CodeGraph metadata exclusions.
-* **REFACTOR**: optimising converting dispersion map to pixel arrays
-* **REFACTOR**: vectorising calculation of rectification weights
-* **DOCS**: adding to doc FAQs
 * **FIXED**: the "['skyFlux'] not in index" reduction fails.
 * **FIXED**: Detrend master-dark flat frames once, preserve slit-position data in dispersion-map images, and skip optional efficiency products when no estimate is available.
 * **FIXED**: Guard merged spectrum QC sky plotting against non-positive sky counts
@@ -47,6 +48,9 @@
 * **FIXED**: fixing database to collect the correct response curves
 * **FIXED**: pinning the normalisation factor using by ccdproc for flat correction
 * **FIXED**: prevent dispersion-map transformations from running outside debug mode and handle invalid sky-plot statistics.
+* **FIXED**: `soxs_mflat` order median fluxes now ignore masked pixels, and a fully masked order raises a `ValueError` naming the order (#527).
+* **FIXED**: `toolkit.spectroscopic_image_quality_checks` now defaults a missing `WIN_BINX` or `WIN_BINY` header to 1 binning for non-NIR arms instead of failing with an unbound variable, and always uses 1 for NIR arms (DY-78, #523).
+* **TEST**: Add a verified, opt-in real-data NIR-offset acceptance workflow with immutable archive inventory checks and approved scalar baselines.
 * **TEST**: Add an isolated synthetic test foundation, branch-coverage ratchet, and repository-owned required CI workflow.
 * **TEST**: Add synthetic file-contract coverage for SOF inputs, FITS frame preparation, and Phase 3 products.
 * **TEST**: Add synthetic master-flat, order-edge, and response workflow coverage, and raise the branch-coverage ratchet to 46%.

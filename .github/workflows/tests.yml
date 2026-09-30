@@ -3,6 +3,7 @@ name: Required tests
 on:
   pull_request:
     branches:
+      - main
       - develop
   push:
     branches:
