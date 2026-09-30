@@ -1,6 +1,7 @@
 # Release Notes
 
-
+* **ENHANCEMENT**: widened the `eff-median` QC acceptable ranges for `soxs-nod-std` in `soxs_default_settings.yaml` (upper limits 0.30 to 0.60 and 0.2 to 0.5).
+* **FIXED**: a recipe marked as failed because QC values are outside the acceptable limits is now logged as a warning instead of an error.
 * **FIXED**: `session_switch` now points the shared `sof_map` database view at the session being switched to.
 * **FIXED**: a workspace database locked or busy in another process now makes `data_organiser._get_or_create_db_connection` refuse with `DatabasePreservationError` after the first failed attempt, instead of retrying 50 times (up to about four hours with the 300 s busy timeout)
 * **FIXED**: `soxs_mflat` NIR verification now rejects mixed input image types.
