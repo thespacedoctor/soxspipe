@@ -374,25 +374,81 @@ def test_spectroscopic_image_quality_checks_falls_back_to_unbinned_pixels_for_ni
     assert result["qc_value"].tolist() == ["8.800", "44.000"]
 
 
-def test_spectroscopic_image_quality_checks_raises_for_non_nir_arm_missing_win_binx(
-    monkeypatch: pytest.MonkeyPatch, log: object, frozen_clock: object
-) -> None:
-    """BUG-LIKE: `binx`/`biny` are only defaulted to *1* in the `except KeyError`
-    branch when `arm.lower() == "nir"`. Any other arm whose header omits
-    `WIN_BINX`/`WIN_BINY` leaves both names unbound, so the function raises
-    `UnboundLocalError` instead of falling back -- pinned here, not fixed."""
-    _identity_keyword_lookup(monkeypatch)
-    monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub("x"))
+def _run_binning_check(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+    *,
+    arm: str,
+    headerBinning: dict[str, int],
+) -> tuple[dict[str, object], pd.DataFrame]:
+    """Run the quality check and return the binning handed to `unpack_order_table`.
+
+    **Key Arguments:**
+
+    - ``arm`` -- value of the `SEQ_ARM` header keyword
+    - ``headerBinning`` -- `WIN_BINX`/`WIN_BINY` values to place in the header
+
+    **Return:**
+
+    - the keyword arguments received by `unpack_order_table`, and the QC table
+    """
+    observed: dict[str, object] = {}
     pixelsFrame = pd.DataFrame(
         {"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]}
     )
-    monkeypatch.setattr(toolkit, "unpack_order_table", _unpack_order_table_stub(pixelsFrame))
-    frame = _order_frame(badPixel=(2, 0), winBin=False, arm="VIS")
 
-    with pytest.raises(UnboundLocalError):
-        toolkit.spectroscopic_image_quality_checks(
-            log, frame, "unused-order-table.fits", {}, "soxs-stare", pd.DataFrame()
-        )
+    def _recording_unpack(**kwargs: object) -> tuple[None, pd.DataFrame, None]:
+        observed.update(kwargs)
+        return None, pixelsFrame, None
+
+    _identity_keyword_lookup(monkeypatch)
+    monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub("x"))
+    monkeypatch.setattr(toolkit, "unpack_order_table", _recording_unpack)
+    frame = _order_frame(badPixel=(2, 0), winBin=False, arm=arm)
+    frame.header.update(headerBinning)
+
+    qcTable = toolkit.spectroscopic_image_quality_checks(
+        log, frame, "unused-order-table.fits", {}, "soxs-stare", pd.DataFrame()
+    )
+    return observed, qcTable
+
+
+@pytest.mark.parametrize(
+    ("headerBinning", "expectedBinx", "expectedBiny"),
+    [
+        ({}, 1, 1),
+        ({"WIN_BINX": 2}, 2, 1),
+        ({"WIN_BINY": 4}, 1, 4),
+        ({"WIN_BINX": 2, "WIN_BINY": 4}, 2, 4),
+    ],
+)
+def test_spectroscopic_image_quality_checks_defaults_missing_binning_headers_to_one_for_non_nir_arm(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+    frozen_clock: object,
+    headerBinning: dict[str, int],
+    expectedBinx: int,
+    expectedBiny: int,
+) -> None:
+    observed, qcTable = _run_binning_check(
+        monkeypatch, log, arm="VIS", headerBinning=headerBinning
+    )
+
+    assert observed["binx"] == expectedBinx
+    assert observed["biny"] == expectedBiny
+    assert observed["prebinned"] is True
+    assert qcTable["qc_name"].tolist() == ["INNER ORDER PIX MEAN", "INNER ORDER PIX SUM"]
+
+
+def test_spectroscopic_image_quality_checks_ignores_binning_headers_for_nir_arm(
+    monkeypatch: pytest.MonkeyPatch, log: object, frozen_clock: object
+) -> None:
+    observed, _ = _run_binning_check(
+        monkeypatch, log, arm="NIR", headerBinning={"WIN_BINX": 2, "WIN_BINY": 4}
+    )
+
+    assert observed["binx"] == 1
+    assert observed["biny"] == 1
 
 
 # ---------------------------------------------------------------------------
