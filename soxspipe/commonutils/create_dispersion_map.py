@@ -523,18 +523,20 @@ class create_dispersion_map:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": qc_name,
-                            "qc_value": qc_value,
-                            "qc_comment": qc_comment,
-                            "qc_unit": qc_unit,
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": qc_name,
+                                "qc_value": qc_value,
+                                "qc_comment": qc_comment,
+                                "qc_unit": qc_unit,
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -679,7 +681,6 @@ class create_dispersion_map:
 
             # DEBUG PLOTS IF ENABLED
             if self.debug:
-                print("ERERERE")
                 _plot_slit_index_comparisons(orderPixelTable.loc[(mask & (orderPixelTable["slit_index"] == 8))])
                 _plot_slit_index_comparisons(orderPixelTable.loc[(mask & (orderPixelTable["slit_index"] == 0))])
         elif self.debug:
@@ -1039,18 +1040,20 @@ class create_dispersion_map:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "PINHOLE COUNT MIN",
-                            "qc_value": self.minpin,
-                            "qc_comment": "[pinholes] Minimum number of pinholes detected in any order",
-                            "qc_unit": "pinholes",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": "PINHOLE COUNT MIN",
+                                "qc_value": self.minpin,
+                                "qc_comment": "[pinholes] Minimum number of pinholes detected in any order",
+                                "qc_unit": "pinholes",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -1112,7 +1115,6 @@ class create_dispersion_map:
         - ``orderPixelTable`` -- a panda's data-frame containing wavelength,order,slit_index,slit_position,detector_x,detector_y
         """
         self.log.debug("starting the ``get_predicted_line_list`` method")
-
 
         # DETERMINE FRAME TYPE (SINGLE OR MULTI-PINHOLE)
         frameTech = self._determine_frame_tech()
@@ -1385,18 +1387,20 @@ class create_dispersion_map:
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "DETLINES CLIP NUM",
-                        "qc_value": self.CLINE,
-                        "qc_comment": "Total number of detected lines clipped during solution fitting",
-                        "qc_unit": "lines",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "DETLINES CLIP NUM",
+                            "qc_value": self.CLINE,
+                            "qc_comment": "Total number of detected lines clipped during solution fitting",
+                            "qc_unit": "lines",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -1479,19 +1483,21 @@ class create_dispersion_map:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "DISP_MAP_LINES",
-                        "file_name": goodLinesFN,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} dispersion solution fitted lines",
-                        "file_path": filePath,
-                        "label": "QC",
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": "DISP_MAP_LINES",
+                            "file_name": goodLinesFN,
+                            "file_type": "FITS",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "product_desc": f"{self.arm} dispersion solution fitted lines",
+                            "file_path": filePath,
+                            "label": "QC",
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -1521,19 +1527,21 @@ class create_dispersion_map:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "DISP_MAP_LINES_MISSING",
-                        "file_name": missingLinesFN,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} undetected arc lines",
-                        "file_path": filePath,
-                        "label": "QC",
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": "DISP_MAP_LINES_MISSING",
+                            "file_name": missingLinesFN,
+                            "file_type": "FITS",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "product_desc": f"{self.arm} undetected arc lines",
+                            "file_path": filePath,
+                            "label": "QC",
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -1942,12 +1950,8 @@ class create_dispersion_map:
         # RESIDUALS ARE QUANTISED AS THEY ARE CALCULATED, SO EVERY CONSUMER — THE
         # SIGMA-CLIPPING BELOW ABOVE ALL — SEES A VALUE THAT DOES NOT MOVE WITH THE
         # LAST BITS OF THE SOLVE. SEE quantise_residuals
-        orderPixelTable["residuals_x"] = quantise_residuals(
-            orderPixelTable["fit_x"] - orderPixelTable["observed_x"]
-        )
-        orderPixelTable["residuals_y"] = quantise_residuals(
-            orderPixelTable["fit_y"] - orderPixelTable["observed_y"]
-        )
+        orderPixelTable["residuals_x"] = quantise_residuals(orderPixelTable["fit_x"] - orderPixelTable["observed_x"])
+        orderPixelTable["residuals_y"] = quantise_residuals(orderPixelTable["fit_y"] - orderPixelTable["observed_y"])
 
         # CALCULATE COMBINED RESIDUALS AND STATS
         orderPixelTable["residuals_xy"] = quantise_residuals(
@@ -2169,19 +2173,21 @@ class create_dispersion_map:
                 self.qc = pd.concat(
                     [
                         self.qc,
-                        pd.DataFrame([
-                            {
-                                "soxspipe_recipe": self.recipeName,
-                                "qc_name": name,
-                                "qc_value": value,
-                                "qc_order": order,
-                                "qc_comment": comment,
-                                "qc_unit": unit,
-                                "obs_date_utc": self.dateObs,
-                                "reduction_date_utc": utcnow,
-                                "to_header": True,
-                            }
-                        ]),
+                        pd.DataFrame(
+                            [
+                                {
+                                    "soxspipe_recipe": self.recipeName,
+                                    "qc_name": name,
+                                    "qc_value": value,
+                                    "qc_order": order,
+                                    "qc_comment": comment,
+                                    "qc_unit": unit,
+                                    "obs_date_utc": self.dateObs,
+                                    "reduction_date_utc": utcnow,
+                                    "to_header": True,
+                                }
+                            ]
+                        ),
                     ],
                     ignore_index=True,
                 )
@@ -2952,6 +2958,7 @@ class create_dispersion_map:
 
         if self.debug:
             from soxspipe.commonutils.image_transformer import image_transformer
+
             # ZOOM AND REBIN ALL ARRAYS ORDER-BY-ORDER, ALSO SIGMA-CLIPPING THE BAD-PIXEL MASK
             transformer = image_transformer(
                 log=self.log,
@@ -3167,8 +3174,6 @@ class create_dispersion_map:
                 # PIXELS OUTSIDE OF DETECTOR EDGES - IGNORE
                 self.log.debug(f"convert_and_fit: `wlMap.data[yy, xx] = np.where(np.isnan(...` failed, continuing: {e}")
 
-        sys.stdout.flush()
-        sys.stdout.write("\x1b[1A\x1b[2K")
         percentageFound = (1 - (np.count_nonzero(np.isnan(wlMap.data)) / np.count_nonzero(wlMap.data))) * 100
         try:
             sys.stdout.flush()
@@ -3946,19 +3951,21 @@ class create_dispersion_map:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "DISP_MAP_RES",
-                        "file_name": res_plots,
-                        "file_type": "PDF",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": f"{self.arm} dispersion solution QC plots",
-                        "file_path": filePath,
-                        "label": "QC",
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": "DISP_MAP_RES",
+                            "file_name": res_plots,
+                            "file_type": "PDF",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "product_desc": f"{self.arm} dispersion solution QC plots",
+                            "file_path": filePath,
+                            "label": "QC",
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
