@@ -48,6 +48,8 @@
 * **FIXED**: fixing database to collect the correct response curves
 * **FIXED**: pinning the normalisation factor using by ccdproc for flat correction
 * **FIXED**: prevent dispersion-map transformations from running outside debug mode and handle invalid sky-plot statistics.
+* **FIXED**: `soxs_mflat` order median fluxes now ignore masked pixels, and a fully masked order raises a `ValueError` naming the order (#527).
+* **FIXED**: `toolkit.spectroscopic_image_quality_checks` now defaults a missing `WIN_BINX` or `WIN_BINY` header to 1 binning for non-NIR arms instead of failing with an unbound variable, and always uses 1 for NIR arms (DY-78, #523).
 * **TEST**: Add a verified, opt-in real-data NIR-offset acceptance workflow with immutable archive inventory checks and approved scalar baselines.
 * **TEST**: Add an isolated synthetic test foundation, branch-coverage ratchet, and repository-owned required CI workflow.
 * **TEST**: Add synthetic file-contract coverage for SOF inputs, FITS frame preparation, and Phase 3 products.
