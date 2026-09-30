@@ -14,6 +14,7 @@ import shutil
 import sqlite3
 import sys
 import traceback
+from contextlib import closing
 from pathlib import Path
 
 from fundamentals import tools
@@ -28,6 +29,12 @@ from soxspipe.commonutils.missing_calibrations import (
     describe_missing,
     find_missing_calibrations,
     missing_reasons,
+)
+from soxspipe.commonutils.session_status_restore import (
+    classify_session_sofs,
+    format_session_summary,
+    read_frame_sets,
+    read_session_snapshots,
 )
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
@@ -168,6 +175,8 @@ class data_organiser:
     # ATTEMPTS TO OPEN AND CHECK THE DATABASE BEFORE IT IS REBUILT, AND SECONDS EACH ATTEMPT WAITS ON A LOCK
     _DB_OPEN_ATTEMPTS = 50
     _DB_BUSY_TIMEOUT_SECONDS = 300
+    # MOST RESTORE-AND-REBUILD PASSES TO RUN WHILE RESTORED FAILURES KEEP RE-MATCHING DOWNSTREAM CALIBRATIONS
+    _STATUS_RESTORE_MAX_PASSES = 10
 
     def __init__(self, log, rootDir, vlt=False, dbConnect=True):
         import codecs
@@ -455,8 +464,9 @@ class data_organiser:
 
         **Key Arguments:**
         - ``refresh`` -- trigger a complete refresh the workspace during preparation (rebuild the database and do a
-          complete prepare). The old database is first copied into `backups/` in the workspace root, and its
-          `quality_control` rows are restored into the rebuilt database.
+          complete prepare). The old database is first copied into `backups/` in the workspace root, its
+          `quality_control` rows are restored into the rebuilt database, and so are the pass/fail statuses of every
+          SOF that still holds the same frames (see `_restore_session_statuses`).
         - ``_failedToOpen`` -- private, set only by `_rebuild_database_that_failed_to_open`: keep a raw copy of the
           database instead of a SQLite snapshot.
 
@@ -515,8 +525,7 @@ class data_organiser:
         # BEFORE THE QC GUARDRAIL QUERIES BELOW RECOMPUTE PRODUCT STATUS FROM THEM
         if backupPath:
             self._restore_quality_control_history(backupPath)
-            # DY-218 SEAM: RESTORE THE PER-SESSION `status_<id>` COLUMNS FROM `backupPath` HERE,
-            # AFTER THE QC RESTORE AND BEFORE `_qc_acceptable_range_queries`
+            # THE PER-SESSION STATUSES ARE RESTORED AFTER THE SOF BUILDS BELOW (SEE `_restore_session_statuses`)
 
         basename = os.path.basename(self.rootDir)
         print(f"PREPARING THE `{basename}` WORKSPACE FOR DATA-REDUCTION")
@@ -543,15 +552,14 @@ class data_organiser:
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
-        c = self.conn.cursor()
-        for sqlQuery, sqlParams in self._qc_acceptable_range_queries():
-            c.execute(sqlQuery, sqlParams)
-        self.conn.commit()
-        c.close()
+        self._apply_qc_acceptable_ranges()
 
         self._flag_files_to_ignore()
         self.build_sof_files()
         self.build_sof_files()
+
+        if backupPath:
+            self._restore_session_statuses(backupPath)
 
         if report:
             self._print_prepare_report(basename)
@@ -595,6 +603,13 @@ class data_organiser:
 
         self.conn.close()
         return
+
+    def _apply_qc_acceptable_ranges(self):
+        """*apply this session's QC-acceptable-range settings to the QC rows and product statuses*"""
+        with closing(self.conn.cursor()) as c:
+            for sqlQuery, sqlParams in self._qc_acceptable_range_queries():
+                c.execute(sqlQuery, sqlParams)
+            self.conn.commit()
 
     def _qc_acceptable_range_queries(self):
         """*build the `(sql, params)` pairs that apply this session's QC-acceptable-range settings*
@@ -1535,8 +1550,13 @@ class data_organiser:
 
         c.close()
 
-    def _restore_session_database_objects(self):
-        """Restore schema objects for session directories after a database rebuild."""
+    def _session_ids_on_disk(self):
+        """*list the valid session directories in the sessions directory*
+
+        **Return:**
+
+        - ``sessionIds`` -- the session IDs, in directory order; entries that are not valid sessions are skipped
+        """
         sessionIds = []
         for entry in Path(self.sessionsDir).iterdir():
             if not entry.is_dir():
@@ -1546,6 +1566,11 @@ class data_organiser:
                 sessionIds.append(_validate_session_id(entry.name))
             except _UnsafePathError:
                 self.log.debug(f"Skipping invalid session directory while rebuilding database: {entry.name}")
+        return sessionIds
+
+    def _restore_session_database_objects(self):
+        """Restore schema objects for session directories after a database rebuild."""
+        sessionIds = self._session_ids_on_disk()
 
         currentSession = None
         if Path(self.sessionIdFile).is_file():
@@ -2101,6 +2126,23 @@ class data_organiser:
         self._dataframe_to_sqlite(newRows, "quality_control", replace=False)
         return self.conn.execute(countQuery).fetchone()[0] - before
 
+    @staticmethod
+    def _describe_preserved_database(backupPath):
+        """*return the phrase that names a preserved database in messages to the user*
+
+        **Key Arguments:**
+
+        - ``backupPath`` -- path of the preserved database file
+
+        **Return:**
+
+        - ``source`` -- the phrase, marking a raw copy of a database that failed to open
+        """
+        source = f"the preserved database `{backupPath}`"
+        if f"_{_RAW_BACKUP_LABEL}_" in Path(backupPath).name:
+            source += " (a raw copy of a database that failed to open)"
+        return source
+
     def _restore_quality_control_history(self, backupPath):
         """*restore `quality_control` rows from a preserved database into the rebuilt one, best effort*
 
@@ -2118,9 +2160,7 @@ class data_organiser:
         """
         import pandas as pd
 
-        source = f"the preserved database `{backupPath}`"
-        if f"_{_RAW_BACKUP_LABEL}_" in Path(backupPath).name:
-            source += " (a raw copy of a database that failed to open)"
+        source = self._describe_preserved_database(backupPath)
         try:
             qcRows = self._read_preserved_quality_control(backupPath)
             restoredCount = self._write_quality_control_rows(qcRows)
@@ -2135,6 +2175,147 @@ class data_organiser:
 
         print(f"Restored {restoredCount} of {len(qcRows)} quality-control rows from {source}.")
         return restoredCount
+
+    def _restore_session_statuses(self, backupPath):
+        """*restore the per-session `status_<id>` columns from a preserved database and print a summary per session*
+
+        **Key Arguments:**
+
+        - ``backupPath`` -- path of the preserved database file
+
+        **Return:**
+
+        - ``counts`` -- session ID to the `(restored, changed, dropped)` counts, or an empty dict when the preserved
+          file cannot be read. Never raises for the preserved file: a warning naming it is printed and the rebuild
+          continues with empty statuses.
+        """
+        sessionIds = self._session_ids_on_disk()
+        try:
+            snapshots = read_session_snapshots(backupPath, sessionIds, self.log)
+        except (sqlite3.Error, OSError, ValueError) as error:
+            self.log.warning(f"could not restore session statuses from `{backupPath}`: {error}")
+            self.log.debug(traceback.format_exc())
+            print(
+                "WARNING: could not restore session statuses from "
+                f"{self._describe_preserved_database(backupPath)} ({error}). "
+                "Status columns are left empty; the preserved file has been kept."
+            )
+            return {}
+        counts = self._converge_session_statuses(snapshots)
+        for sessionId in sorted(counts):
+            print(format_session_summary(sessionId, *counts[sessionId], backupPath))
+        return counts
+
+    def _converge_session_statuses(self, snapshots):
+        """*restore statuses until no restored failure changes what the remaining SOFs are built from*
+
+        The SOF maps are built with every status empty, so a SOF downstream of a failed calibration may hold a
+        different calibration than it did before the rebuild. Each pass writes the statuses of the SOFs that now
+        hold the frames they held before, re-applies the QC ranges, and, when that adds a failure, rebuilds the SOF
+        maps so downstream SOFs are re-matched away from the failed product. SOFs still differing afterwards are
+        counted as changed.
+
+        **Key Arguments:**
+
+        - ``snapshots`` -- session ID to `session_status_snapshot`
+
+        **Return:**
+
+        - ``counts`` -- session ID to the `(restored, changed, dropped)` counts
+        """
+        candidates = {sessionId: frozenset(snapshot.statuses) for sessionId, snapshot in snapshots.items()}
+        counts = dict.fromkeys(snapshots, (0, 0, 0))
+        for _ in range(self._STATUS_RESTORE_MAX_PASSES):
+            failuresBefore = self._current_session_failures()
+            results = self._restore_status_pass(snapshots, candidates)
+            for sessionId, result in results.items():
+                self._write_session_statuses(sessionId, result.toRestore)
+            counts = self._add_pass_counts(counts, results)
+            candidates = {sessionId: result.pending for sessionId, result in results.items()}
+            # A RESTORED FAIL CAN BE OVERTURNED BY QC ROWS THAT NOW PASS, AND QC FAILURES MARK THEIR PRODUCTS AGAIN
+            self._apply_qc_acceptable_ranges()
+            hasNewFailures = not self._current_session_failures() <= failuresBefore
+            if hasNewFailures:
+                self.build_sof_files()
+            if not hasNewFailures or not any(candidates.values()):
+                break
+        else:
+            self.log.debug("_converge_session_statuses: stopped at the pass limit with SOFs still differing")
+        return {
+            sessionId: (restored, changed + len(candidates[sessionId]), dropped)
+            for sessionId, (restored, changed, dropped) in counts.items()
+        }
+
+    @staticmethod
+    def _add_pass_counts(counts, results):
+        """*add one pass's results to the running `(restored, changed, dropped)` counts*
+
+        **Key Arguments:**
+
+        - ``counts`` -- session ID to the counts so far
+        - ``results`` -- session ID to the `status_pass_result` of the latest pass
+
+        **Return:**
+
+        - ``counts`` -- new session ID to counts mapping; the inputs are not changed
+        """
+        return {
+            sessionId: (
+                counts[sessionId][0] + len(result.toRestore),
+                counts[sessionId][1] + len(result.changed),
+                counts[sessionId][2] + len(result.dropped),
+            )
+            for sessionId, result in results.items()
+        }
+
+    def _current_session_failures(self):
+        """*list the SOFs the current session has marked `fail`*
+
+        **Return:**
+
+        - ``failures`` -- frozenset of SOF names
+        """
+        statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
+        # COLUMN NAME CANNOT BE BOUND; COMPOSED FROM A VALIDATED SESSION ID AND CHECKED BY validate_sql_identifier
+        sqlQuery = f"SELECT DISTINCT sof FROM product_frames WHERE {statusColumn} = 'fail';"  # noqa: S608
+        return frozenset(row[0] for row in self.conn.execute(sqlQuery))
+
+    def _restore_status_pass(self, snapshots, candidates):
+        """*classify each session's candidate SOFs against the rebuilt database*
+
+        The frames are compared with the current session's `sof_map_<id>` table, not the shared `sof_map` view.
+
+        **Key Arguments:**
+
+        - ``snapshots`` -- session ID to `session_status_snapshot`
+        - ``candidates`` -- session ID to the SOF names still to classify
+
+        **Return:**
+
+        - ``results`` -- session ID to `status_pass_result`
+        """
+        rebuiltSofs = frozenset(row[0] for row in self.conn.execute("SELECT DISTINCT sof FROM product_frames;"))
+        sofMapTable = validate_sql_identifier(f"sof_map_{self.sessionId}", "sof map table name")
+        rebuiltFrameSets = read_frame_sets(self.conn, sofMapTable)
+        return {
+            sessionId: classify_session_sofs(snapshot, candidates[sessionId], rebuiltSofs, rebuiltFrameSets)
+            for sessionId, snapshot in snapshots.items()
+        }
+
+    def _write_session_statuses(self, sessionId, sofStatuses):
+        """*write SOF statuses into one session's `status_<id>` column*
+
+        **Key Arguments:**
+
+        - ``sessionId`` -- the session whose column is written
+        - ``sofStatuses`` -- SOF name to ``pass`` or ``fail``
+        """
+        statusColumn = validate_sql_identifier(f"status_{_validate_session_id(sessionId)}", "status column")
+        # COLUMN NAME CANNOT BE BOUND; COMPOSED FROM A VALIDATED SESSION ID AND CHECKED BY validate_sql_identifier;
+        # SOF VALUES ARE BOUND
+        sqlQuery = f"UPDATE product_frames SET {statusColumn} = ? WHERE sof = ?;"  # noqa: S608
+        self.conn.executemany(sqlQuery, [(status, sof) for sof, status in sofStatuses.items()])
+        self.conn.commit()
 
     def _rebuild_database_that_failed_to_open(self, error):
         """*rebuild the workspace database after it repeatedly failed to open or pass its integrity check*
