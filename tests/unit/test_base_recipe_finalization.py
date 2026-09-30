@@ -130,7 +130,7 @@ def test_clean_up_refreshes_session_when_failed_qc_reverses_passing_status(
         ("session_refresh", True),
         ("close", None),
     ]
-    assert ("error", "\nRecipe marked as failed in the database as the following QC values are outside of the acceptable limits: TRACE RMS.") in log.messages
+    assert ("warning", "\nRecipe marked as failed in the database as the following QC values are outside of the acceptable limits: TRACE RMS.") in log.messages
     assert not Path(recipe.outDir).exists()
 
 
