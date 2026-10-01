@@ -199,9 +199,9 @@ def quicklook_image(
 
     skylinesDF = get_skylines_dataframe(log, settings, arm) if skylines else False
 
-    # COMBINE MASK WITH THE BAD PIXEL MASK
+    # MASK THE INTER-ORDER PIXELS, KEEPING ANY MASK THE FRAME ALREADY CARRIES
     if not isinstance(dispMapImage, bool):
-        gridLinePixelTable = _apply_inter_order_mask(
+        gridLinePixelTable, frame = _apply_inter_order_mask(
             log=log,
             frame=frame,
             CCDObject=CCDObject,
@@ -308,7 +308,7 @@ def _apply_inter_order_mask(log, frame, CCDObject, dispMap, dispMapImage, kw, sk
     **Key Arguments:**
 
     - ``log`` -- logger
-    - ``frame`` -- the array being plotted, masked in place where it supports a mask
+    - ``frame`` -- the array being plotted. It is not modified
     - ``CCDObject`` -- the CCDObject the frame came from
     - ``dispMap`` -- path to dispersion map
     - ``dispMapImage`` -- the 2D dispersion map image
@@ -318,7 +318,14 @@ def _apply_inter_order_mask(log, frame, CCDObject, dispMap, dispMapImage, kw, sk
     **Return:**
 
     - ``gridLinePixelTable`` -- the pixel coordinates of the dispersion solution grid lines
+    - ``maskedFrame`` -- a masked array of the frame, with the inter-order pixels added to any existing mask
+
+    The inter-order mask must have the same shape as the frame. If it does not, a warning is logged, the
+    inter-order pixels are not masked, and ``maskedFrame`` carries only the frame's existing mask. The grid lines are
+    still returned, so a cosmetic overlay never aborts a reduction.
     """
+    import numpy as np
+
     gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
         log=log,
         dispMap=dispMap,
@@ -328,17 +335,16 @@ def _apply_inter_order_mask(log, frame, CCDObject, dispMap, dispMapImage, kw, sk
         skylines=skylinesDF,
     )
 
-    try:
-        mask = (frame.mask == 1) | (interOrderMask == 1)
-    except (AttributeError, ValueError) as e:
-        log.debug(f"quicklook_image: `mask = (frame.mask == 1) | (interOrderMask == 1)` failed, continuing: {e}")
-        mask = interOrderMask == 1
-    try:
-        frame.mask = mask
-    except AttributeError as e:
-        log.debug(f"quicklook_image: `frame.mask = mask` failed, continuing: {e}")
+    if np.shape(interOrderMask) != np.shape(frame):
+        log.warning(
+            f"quicklook_image: inter-order mask shape {np.shape(interOrderMask)} does not match "
+            f"frame shape {np.shape(frame)}, so the inter-order pixels are not masked"
+        )
+        return gridLinePixelTable, np.ma.masked_array(frame, mask=np.ma.getmaskarray(frame))
 
-    return gridLinePixelTable
+    maskedFrame = np.ma.masked_array(frame, mask=np.ma.getmaskarray(frame) | (interOrderMask == 1))
+
+    return gridLinePixelTable, maskedFrame
 
 
 def _draw_detector_image(fig, ax2, rotatedImg, vmin, vmax, palette, mean, surfacePlot, title, inst):
