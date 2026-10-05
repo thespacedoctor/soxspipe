@@ -333,3 +333,36 @@ def test_a_noisy_line_free_order_collapses_to_a_constant_median_sky(log: Any) ->
         "peak": 207,
         "line": 60,
     }
+
+
+def test_blue_end_noise_prunes_the_reddest_knot(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Noise bluer than the first knot maps to index -1, so knot pruning removes the last knot."""
+    # SUSPICIOUS (WRONG SCIENCE): PRUNING DROPS THE REDDEST KNOT, NOT THE ONE IN THE NOISE, FILED AS DY-601
+    pixels = _skyline_order()
+    pixels.loc[200:599, "residual_windowed_long_median"] = 50.0
+    subtractor = _subtractor(log, noiseSigma=3)
+    # THE PRUNED KNOT SETS ARE LOCAL; RECORD THE BINS EACH np.digitize CALL RECEIVES
+    realDigitize = np.digitize
+    knotSets: list[list[float]] = []
+
+    def record_digitize(values: Any, bins: Any, *args: Any, **kwargs: Any) -> Any:
+        knotSets.append(np.asarray(bins).tolist())
+        return realDigitize(values, bins, *args, **kwargs)
+
+    monkeypatch.setattr(np, "digitize", record_digitize)
+
+    modelled, spline, knots, fluxErrorRatio, _ = subtractor.fit_bspline_curve_to_sky(pixels)
+
+    noisyWavelengths = modelled.loc[modelled["flagged_noisy_region"], "wavelength"]
+    assert int(modelled["flagged_noisy_region"].sum()) == 400
+    assert [noisyWavelengths.min(), noisyWavelengths.max()] == _approx_list([500.6668889629877, 501.99733244414807])
+    # FIRST PRUNING PASS: THE STARTER KNOTS, THEN THE KNOTS LEFT AFTER REMOVAL
+    assert knotSets[0] == [502.5, 505.0, 507.5]
+    assert knotSets[1] == [502.5, 505.0]
+    assert knots.size == 21
+    assert knots[[0, -1]].tolist() == _approx_list([499.9479254917661, 509.4736600214474])
+    assert float(fluxErrorRatio.sum()) == pytest.approx(-2644.833214674917, rel=1e-12, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(693026.6083934802, rel=1e-12, abs=0)
+    assert modelled["sky_model"].iloc[[0, 400, 1500, 2999]].tolist() == _approx_list(
+        [200.49679154663622, 321.9571447708863, 200.46468124773114, 200.49817069183024]
+    )
