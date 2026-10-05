@@ -166,3 +166,33 @@ def test_the_same_red_edge_object_is_promoted_without_aggressive_masking(
 
     assert masked_ranges == []
     assert [int(order["flagged_all_clipped"].sum()) for order in result] == [367, 349]
+
+
+def test_an_object_running_into_the_red_margin_is_closed_after_the_loop(
+    log: Any, masked_ranges: list[tuple[Any, Any]]
+) -> None:
+    """A positive run still open at the last examined bin is recorded once the loop ends.
+
+    The range stops at 4.83, the left edge of the last examined positive bin, though
+    the object continues to the slit end.
+    """
+    # SUSPICIOUS (WRONG SCIENCE): RANGE TRIMS THE LAST OBJECT BIN, FILED AS DY-596
+    orders = _orders(3.8, 5.5)
+    flaggedBefore = [int(order["flagged_object_clipped"].sum()) for order in orders]
+
+    result = _subtractor(log).clip_object_slit_positions(orders, aggressive=True)
+
+    expectedRange = (
+        pytest.approx(3.611432132809103, rel=1e-12, abs=0),
+        pytest.approx(4.831932183303529, rel=1e-12, abs=0),
+    )
+    assert masked_ranges == [expectedRange] * 4
+    assert flaggedBefore == [527, 532]
+    assert [int(order["flagged_object_clipped"].sum()) for order in result] == [677, 698]
+    assert [int(order["flagged_all_clipped"].sum()) for order in result] == [677, 698]
+    assert _noise_summary(result[0]) == _expected_noise(
+        [(6202.940726273984, 677), (141.38808434002067, 690), (330964.8055288905, 690)]
+    )
+    assert _noise_summary(result[1]) == _expected_noise(
+        [(6124.854407351182, 698), (4.581223971237684, 711), (328843.1036817604, 711)]
+    )
