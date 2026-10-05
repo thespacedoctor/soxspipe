@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: the Read the Docs build installs the package with `pip` instead of `python setup.py install`, as the repository no longer has a `setup.py`.
 * **FIXED**: a raw frame added after `prep` grouped its set now rejoins that set on the next plain `prep`: the set keeps its SOF name, its status is reset in every session, and its stale product is deleted (DY-263).
 * **FIXED**: `quicklook_image` now shows the inter-order mask from a dispersion map instead of silently dropping it, and no longer modifies the caller's frame (DY-81).
 
