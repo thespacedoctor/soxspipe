@@ -612,6 +612,61 @@ def test_quicklook_image_skylines_true_forwards_dataframe_to_grid_lines_helper(
     assert captured["skylines"] is skylinesDF
 
 
+def test_quicklook_image_dispmap_without_settings_skips_the_overlay_and_warns(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """Without `settings` there is no keyword lookup, so the dispersion-map
+    overlay is skipped, a warning names the missing `settings`, and the frame is
+    still drawn unmasked. It never raises."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    captured = _stub_grid_lines(monkeypatch)
+    ccd = _ccd("SOXS")
+
+    toolkit.quicklook_image(log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits")
+
+    assert "dispMapImage" not in captured
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "settings" in warnings[0]
+    axis = _image_axis(figures[-1])
+    assert len(axis.lines) == 0
+    assert not np.ma.getmaskarray(axis.images[0].get_array()).any()
+
+
+def test_quicklook_image_skylines_without_settings_skips_the_lookup_and_warns(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """Without `settings` there is no arm, so `skylines=True` skips the skyline
+    lookup, a warning names the missing `settings`, and the frame is still drawn."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    skylineCalls: list[tuple] = []
+    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda *args, **kwargs: skylineCalls.append(args))
+    ccd = _ccd("SOXS")
+
+    toolkit.quicklook_image(log, ccd, show=True, skylines=True)
+
+    assert skylineCalls == []
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "settings" in warnings[0]
+    assert len(_image_axis(figures[-1]).images) == 1
+
+
+def test_quicklook_image_without_settings_and_without_overlays_does_not_warn(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """The warning is only for a request that needs `settings`: a plain
+    quicklook without `settings` stays silent."""
+    spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+
+    toolkit.quicklook_image(log, _ccd("SOXS"), show=True)
+
+    assert [message for level, message in log.messages if level == "warning"] == []
+
+
 def test_quicklook_image_show_true_calls_plt_show(
     monkeypatch: pytest.MonkeyPatch, log: object
 ) -> None:

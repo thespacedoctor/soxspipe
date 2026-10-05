@@ -163,10 +163,12 @@ def quicklook_image(
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
     - ``dispMap`` -- path to dispersion map. Default *False*
-    - ``dispMapImage`` -- the 2D dispersion map image
+    - ``dispMapImage`` -- the 2D dispersion map image. Needs ``settings``. Without it the overlay is skipped with a
+      warning and no error is raised
     - ``inst`` -- provide instrument name if no header exists
     - ``settings`` -- the soxspipe settings dictionary, used to look up the arm and skylines. Default *False*
-    - ``skylines`` -- mark skylines on image
+    - ``skylines`` -- mark skylines on image. Needs ``settings``. Without it the overlay is skipped with a warning
+      and no error is raised
     - ``saveToPath`` -- path to save the plot to. Default *False*
 
     **Usage:**
@@ -197,10 +199,21 @@ def quicklook_image(
     if inst is False:
         inst = _quicklook_instrument(log, CCDObject)
 
+    # THE OVERLAYS NEED THE KEYWORD LOOKUP AND ARM, WHICH ONLY `settings` PROVIDES. A COSMETIC OVERLAY MUST NOT ABORT A
+    # REDUCTION, SO SKIP IT AND WARN INSTEAD OF RAISING
+    drawDispMap = not isinstance(dispMapImage, bool)
+    if (drawDispMap or skylines) and not settings:
+        log.warning(
+            "quicklook_image: the dispersion map overlay and skylines need the `settings` argument, "
+            "so they are not drawn"
+        )
+        drawDispMap = False
+        skylines = False
+
     skylinesDF = get_skylines_dataframe(log, settings, arm) if skylines else False
 
     # MASK THE INTER-ORDER PIXELS, KEEPING ANY MASK THE FRAME ALREADY CARRIES
-    if not isinstance(dispMapImage, bool):
+    if drawDispMap:
         gridLinePixelTable, frame = _apply_inter_order_mask(
             log=log,
             frame=frame,
@@ -236,7 +249,7 @@ def quicklook_image(
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
 
-    if not isinstance(dispMapImage, bool):
+    if drawDispMap:
         _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst)
 
     _draw_detector_image(
