@@ -412,9 +412,8 @@ def test_a_noisy_line_free_order_collapses_to_a_constant_median_sky(log: Any) ->
     }
 
 
-def test_blue_end_noise_prunes_the_reddest_knot(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Noise bluer than the first knot maps to index -1, so knot pruning removes the last knot."""
-    # SUSPICIOUS (WRONG SCIENCE): PRUNING DROPS THE REDDEST KNOT, NOT THE ONE IN THE NOISE, FILED AS DY-601
+def test_blue_end_noise_prunes_only_the_first_knot(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Noise bluer than the first knot removes that knot and keeps the reddest knot (DY-601)."""
     pixels = _skyline_order()
     pixels.loc[200:599, "residual_windowed_long_median"] = 50.0
     subtractor = _subtractor(log, noiseSigma=3)
@@ -435,13 +434,85 @@ def test_blue_end_noise_prunes_the_reddest_knot(log: Any, monkeypatch: pytest.Mo
     assert [noisyWavelengths.min(), noisyWavelengths.max()] == _approx_list([500.6668889629877, 501.99733244414807])
     # FIRST PRUNING PASS: THE STARTER KNOTS, THEN THE KNOTS LEFT AFTER REMOVAL
     assert knotSets[0] == [502.5, 505.0, 507.5]
-    assert knotSets[1] == [502.5, 505.0]
-    # A POOR FIT ON ITERATION 3 REVERTS, SO THE KNOTS ARE THOSE OF THE RETURNED SPLINE (DY-602)
-    assert knots.size == 8
+    assert knotSets[1] == [505.0, 507.5]
+    # THE STARTER KNOT AT 502.5 IS GONE, SO THE ILL-CONDITIONED FIT DIVERGES AND A POOR FIT ON
+    # ITERATION 8 REVERTS; THE KNOTS ARE THOSE OF THE RETURNED SPLINE (DY-602)
+    assert _info_messages(log) == ["\t\tpoor fit on iteration 8 for order 10. Reverting to last iteration.\n"]
+    assert knots.size == 220
     assert np.array_equal(spline[0][4:-4], knots)
-    assert knots[[0, -1]].tolist() == _approx_list([500.18754107053394, 508.9451717752903])
-    assert float(fluxErrorRatio.sum()) == pytest.approx(-2644.833214674917, rel=1e-12, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(693026.6083934802, rel=1e-12, abs=0)
-    assert modelled["sky_model"].iloc[[0, 400, 1500, 2999]].tolist() == _approx_list(
-        [200.49679154663622, 321.9571447708863, 200.46468124773114, 200.49817069183024]
-    )
+    assert knots[[0, -1]].tolist() == _approx_list([500.0662038828806, 509.9788914298195])
+    # THE DIVERGING FIT IS ILL-CONDITIONED, SO THESE NUMBERS ARE PINNED AT 1e-6, NOT 1e-12
+    assert float(fluxErrorRatio.sum()) == pytest.approx(-1293.9401646676386, rel=1e-6, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(1060134.0281819338, rel=1e-6, abs=0)
+    assert modelled["sky_model"].iloc[[0, 400, 1500, 2999]].tolist() == [
+        pytest.approx(value, rel=1e-6, abs=0)
+        for value in [200.49691760163222, 1515.667357310756, 195.99985563512843, 200.49698520083263]
+    ]
+
+
+@pytest.mark.parametrize(
+    ("knots", "noisyWavelengths", "expected"),
+    [
+        pytest.param([502.5, 505.0, 507.5], [509.0], [502.5, 505.0], id="red-of-the-last-knot-removes-only-the-last"),
+        pytest.param(
+            [502.5, 505.0, 507.5], [506.0], [502.5], id="red-end-interval-removes-both-bounding-knots"
+        ),
+        pytest.param(
+            [501.0, 503.0, 505.0, 507.0, 509.0],
+            [504.0],
+            [501.0, 507.0, 509.0],
+            id="middle-noise-keeps-every-distant-knot",
+        ),
+        pytest.param(
+            [502.5, 505.0, 507.5], [500.0], [505.0, 507.5], id="blue-of-the-first-knot-removes-only-the-first"
+        ),
+        pytest.param(
+            [501.0, 503.0, 505.0, 507.0, 509.0],
+            [500.0, 504.0, 510.0],
+            [507.0],
+            id="noise-at-both-ends-and-the-middle",
+        ),
+        pytest.param([502.5, 505.0, 507.5], [], [502.5, 505.0, 507.5], id="no-noise-keeps-every-knot"),
+    ],
+)
+def test_pruning_removes_only_the_knots_bounding_noisy_pixels(
+    log: Any, knots: list[float], noisyWavelengths: list[float], expected: list[float]
+) -> None:
+    """Each noisy pixel removes the knots of its knot interval; no index wraps to the other end (DY-601)."""
+    subtractor = _subtractor(log)
+
+    pruned = subtractor._prune_knots_in_noise(np.array(knots), np.array(noisyWavelengths), order=10)
+
+    assert pruned.tolist() == expected
+    assert log.messages == []
+
+
+def test_pruning_never_mutates_the_knots_it_is_given(log: Any) -> None:
+    """The caller's knot array is left intact; pruning returns a new array."""
+    subtractor = _subtractor(log)
+    knots = np.array([502.5, 505.0, 507.5])
+
+    subtractor._prune_knots_in_noise(knots, np.array([503.0]), order=10)
+
+    assert knots.tolist() == [502.5, 505.0, 507.5]
+
+
+@pytest.mark.parametrize(
+    ("knots", "noisyWavelengths"),
+    [
+        pytest.param([502.5], [503.0], id="one-knot-and-noise-redward-of-it"),
+        pytest.param([502.5, 505.0], [501.0, 506.0], id="noise-either-side-of-every-knot"),
+    ],
+)
+def test_pruning_that_would_remove_every_knot_leaves_the_knots_and_names_the_order(
+    log: Any, knots: list[float], noisyWavelengths: list[float]
+) -> None:
+    """An empty knot vector would break splrep, so the knots stay and the order is logged (DY-601)."""
+    subtractor = _subtractor(log)
+
+    pruned = subtractor._prune_knots_in_noise(np.array(knots), np.array(noisyWavelengths), order=13)
+
+    assert pruned.tolist() == knots
+    assert log.messages == [
+        ("warning", "\t\tNoisy-region pruning would remove every knot for order 13. Keeping the knots unchanged.\n")
+    ]

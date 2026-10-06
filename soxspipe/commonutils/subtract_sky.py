@@ -1415,15 +1415,7 @@ class subtract_sky:
                 # FIND ALL EXISTING KNOTS THAT ARE IN THE NOISE
                 nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
                 df = imageMapOrder.loc[~mask_all_clipped & nosiyRegionMask]
-                ind = np.digitize(df["wavelength"], allKnots)
-                if len(ind):
-                    ind = np.insert(ind, 0, 0)
-                    ind = np.append(ind, len(allKnots))
-
-                # REMOVE THE KNOTS FOUND WITH INDEX IND
-                knotsToRemove = allKnots[ind - 1]
-
-                allKnots = np.array([k for k in allKnots if k not in knotsToRemove])
+                allKnots = self._prune_knots_in_noise(allKnots, df["wavelength"].values, order)
 
                 # GROUP ALL DATA POINTS BETWEEN KNOTS
                 nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
@@ -1658,6 +1650,44 @@ class subtract_sky:
 
         self.log.debug("completed the ``fit_bspline_curve_to_sky`` method")
         return imageMapOrder, tck, allKnots, flux_error_ratio, residualFloor
+
+    def _prune_knots_in_noise(self, allKnots, noisyWavelengths, order):
+        """*remove the knots that bound a knot interval containing noisy pixels*
+
+        **Key Arguments:**
+
+        - ``allKnots`` -- sorted array of the current interior knot wavelengths
+        - ``noisyWavelengths`` -- wavelengths of the unclipped pixels in noisy regions
+        - ``order`` -- the order number, used in the log message
+
+        **Return:**
+
+        - ``allKnots`` -- a new array without the knots bounding a noisy pixel
+            - a pixel bluer than the first knot or redder than the last knot removes only that end knot
+            - the knots are returned unchanged if no pixel is noisy or if every knot would be removed
+
+        **Usage:**
+
+        ```python
+        allKnots = self._prune_knots_in_noise(allKnots, noisyWavelengths, order)
+        ```
+
+        """
+        import numpy as np
+
+        # KNOT INTERVAL i IS BOUNDED BY KNOTS i - 1 AND i; THE TWO END INTERVALS HAVE ONE BOUNDING KNOT
+        intervalIndex = np.unique(np.digitize(noisyWavelengths, allKnots))
+        boundingIndex = np.concatenate((intervalIndex - 1, intervalIndex))
+        boundingIndex = boundingIndex[(boundingIndex >= 0) & (boundingIndex < len(allKnots))]
+        keepMask = np.ones(len(allKnots), dtype=bool)
+        keepMask[boundingIndex] = False
+
+        if len(allKnots) and not keepMask.any():
+            self.log.warning(
+                f"\t\tNoisy-region pruning would remove every knot for order {order}. Keeping the knots unchanged.\n"
+            )
+            return allKnots.copy()
+        return allKnots[keepMask]
 
     def create_placeholder_images(self):
         """*create placeholder images for the sky model and sky-subtracted frame*
