@@ -86,9 +86,7 @@ def _subtractor(tmp_path: Path, log: object) -> subtract_background:
     return worker
 
 
-def test_mask_order_locations_masks_expanded_orders(
-    tmp_path: Path, log: object
-) -> None:
+def test_mask_order_locations_masks_expanded_orders(tmp_path: Path, log: object) -> None:
     worker = _subtractor(tmp_path, log)
     orderPixels = pd.DataFrame(
         {
@@ -106,6 +104,71 @@ def test_mask_order_locations_masks_expanded_orders(
     assert not worker.frame.mask[5, 5]
     assert not worker.frame.mask[5, 14:18].any()
     assert not worker.frame.mask[4].any()
+
+
+def test_mask_order_locations_handles_a_single_order(tmp_path: Path, log: object) -> None:
+    worker = _subtractor(tmp_path, log)
+    orderPixels = pd.DataFrame(
+        {
+            "order": [10],
+            "ycoord": [5],
+            "xcoord_edgeup": [24.0],
+            "xcoord_edgelow": [20.0],
+        }
+    )
+
+    worker.mask_order_locations(orderPixels)
+
+    expectedMask = np.zeros((32, 32), dtype=bool)
+    expectedMask[5, 18:26] = True
+    np.testing.assert_array_equal(worker.frame.mask, expectedMask)
+
+
+@pytest.mark.parametrize(
+    ("edgeup", "edgelow", "maskedSlices"),
+    [
+        (
+            [50.0, 34.0, 18.0],
+            [46.0, 30.0, 14.0],
+            [
+                (slice(0, 18), slice(43, 53)),
+                (slice(27, 37),),
+                (slice(11, 21), slice(46, 64)),
+            ],
+        ),
+        (
+            [18.0, 34.0, 50.0],
+            [14.0, 30.0, 46.0],
+            [(slice(12, 20),), (slice(28, 36),), (slice(44, 52),)],
+        ),
+    ],
+    ids=["orders-toward-lower-axis-a", "orders-toward-higher-axis-a"],
+)
+def test_mask_order_locations_preserves_multi_order_geometry(
+    tmp_path: Path,
+    log: object,
+    edgeup: list[float],
+    edgelow: list[float],
+    maskedSlices: list[tuple[slice, ...]],
+) -> None:
+    worker = _subtractor(tmp_path, log)
+    worker.frame = _frame(shape=(16, 64))
+    orderPixels = pd.DataFrame(
+        {
+            "order": [10, 11, 12],
+            "ycoord": [5, 6, 7],
+            "xcoord_edgeup": edgeup,
+            "xcoord_edgelow": edgelow,
+        }
+    )
+
+    worker.mask_order_locations(orderPixels)
+
+    expectedMask = np.zeros((16, 64), dtype=bool)
+    for row, rowSlices in zip((5, 6, 7), maskedSlices, strict=True):
+        for maskedSlice in rowSlices:
+            expectedMask[row, maskedSlice] = True
+    np.testing.assert_array_equal(worker.frame.mask, expectedMask)
 
 
 def test_subtract_restores_input_mask_and_subtracts_background(
