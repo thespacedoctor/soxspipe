@@ -201,10 +201,8 @@ class data_organiser:
         # NAMES PINNED FOR REJOINED SETS LIVE ONLY ON THIS INSTANCE; THEY ARE LOST WHEN THE PROCESS EXITS
         self.pinnedSofNames = {}
 
-        # MAKE RELATIVE HOME PATH ABSOLUTE
-        if rootDir[0] == "~":
-            home = expanduser("~")
-            directory = directory.replace("~", home)
+        # EXPAND HOME PATHS BEFORE DERIVING ANY WORKSPACE LOCATIONS
+        rootDir = expanduser(rootDir)
 
         self.rootDir = rootDir
         self.rawDir = str(_validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory"))
