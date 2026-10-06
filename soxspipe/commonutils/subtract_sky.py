@@ -2615,7 +2615,7 @@ class subtract_sky:
 
         # SET PLOT LIMITS
         mean, median, std = sigma_clipped_stats(
-            imageMapOrder.loc[~mask_all_clipped & imageMapOrder["flux"] > -50, "flux"].values,
+            imageMapOrder.loc[~mask_all_clipped & (imageMapOrder["flux"] > -50), "flux"].values,
             sigma=7.0,
             maxiters=3,
         )
@@ -2658,7 +2658,7 @@ class subtract_sky:
         if True and not tck:
             mean, median, std = sigma_clipped_stats(
                 imageMapOrder.loc[
-                    ~mask_all_clipped & imageMapOrder["flux_minus_smoothed_residual"] > -50,
+                    ~mask_all_clipped & (imageMapOrder["flux_minus_smoothed_residual"] > -50),
                     "flux_minus_smoothed_residual",
                 ].values,
                 sigma=3.0,
@@ -2689,7 +2689,7 @@ class subtract_sky:
         elif True:
             mean, median, std = sigma_clipped_stats(
                 imageMapOrder.loc[
-                    ~mask_all_clipped & imageMapOrder["sky_residuals"] > -50,
+                    ~mask_all_clipped & (imageMapOrder["sky_residuals"] > -50),
                     "sky_residuals",
                 ].values,
                 sigma=5.0,
