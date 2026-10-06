@@ -20,6 +20,8 @@ SAMPLED_ROWS = [0, 750, 1500, 2999]
 # THE ORDER-END ANCHORS (DY-593) ARE WEIGHTED 1e5 AGAINST ~0.1 FOR EVERY OTHER SAMPLE, WHICH MAKES THE
 # FIT SENSITIVE TO LAST-BIT DIFFERENCES BETWEEN CPU KERNELS; THE PINS BELOW THAT MOVED USE THIS TOLERANCE
 ANCHORED_FIT_REL = 1e-9
+# THE SKY-SUBTRACTED FLUX AT THE ENDS OF A NOISELESS SLOPE IS ZERO TO WITHIN THIS ABSOLUTE FLUX TOLERANCE (DY-593)
+END_RESIDUAL_ABS = 1e-6
 
 
 def _subtractor(
@@ -115,11 +117,11 @@ def _approx_list(values: list[float], rel: float = 1e-12) -> list[Any]:
                 "coefficientKnots": 314,
                 "ratioSum": -667.792329091481,
                 "ratioEnds": [-5.895442715411719, 6.615463372189216],
-                "modelSum": 690144.1277918734,
-                "model": [181.47918841589285, 192.89184103037647, 197.07661758171722, 219.3557670208693],
-                "subtractedSum": -1111.9485865555116,
-                "subtracted": [-2.448160349572561, -5.23086796251323, -5.077067868990042, 0.6324219784260663],
-                "skyLineCounts": {"line": 2869, "False": 131},
+                "modelSum": 690033.0290994355,
+                "model": [143.25256495999687, 192.89184103037647, 197.07661758171722, 225.86933158141503],
+                "subtractedSum": -1000.8498941175413,
+                "subtracted": [35.778463106323414, -5.23086796251323, -5.077067868990042, -5.881142582119651],
+                "skyLineCounts": {"line": 2887, "False": 113},
             },
         ),
         (
@@ -130,11 +132,11 @@ def _approx_list(values: list[float], rel: float = 1e-12) -> list[Any]:
                 "coefficientKnots": 250,
                 "ratioSum": 976.3504193849684,
                 "ratioEnds": [-0.01088411500870891, 4.824839506859096],
-                "modelSum": 689028.870441182,
-                "model": [176.38496700679926, 191.87741473173514, 196.5475479190557, 223.53277490103235],
-                "subtractedSum": 3.308764135955556,
-                "subtracted": [2.646061059521031, -4.216441663871905, -4.547998206328515, -3.54458590173698],
-                "skyLineCounts": {"line": 2767, "False": 233},
+                "modelSum": 689028.675045624,
+                "model": [174.65987457006395, 191.87741473173514, 196.5475479190557, 226.43588573954196],
+                "subtractedSum": 3.5041596939449846,
+                "subtracted": [4.3711534962563405, -4.216441663871905, -4.547998206328515, -6.447696740246585],
+                "skyLineCounts": {"line": 2762, "False": 238},
             },
         ),
     ],
@@ -200,9 +202,9 @@ def test_debug_binned_order_twelve_prints_knot_budgets_and_plots_every_fit(
     assert knots.size == 426
     assert spline[0].size == 434
     assert float(fluxErrorRatio.sum()) == pytest.approx(7279.523402021855, rel=ANCHORED_FIT_REL, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(690110.1266760889, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(690111.7693327602, rel=ANCHORED_FIT_REL, abs=0)
     assert modelled["sky_model"].iloc[SAMPLED_ROWS].tolist() == _approx_list(
-        [176.384954207771, 193.79577636769778, 197.2806186774191, 223.78008548487955], ANCHORED_FIT_REL
+        [174.45188652684575, 193.79577636769778, 197.2806186774191, 226.28340470007237], ANCHORED_FIT_REL
     )
 
 
@@ -212,12 +214,12 @@ def test_zero_points_per_knot_drops_the_default_knots_from_iteration_five(log: A
 
     modelled, spline, knots, fluxErrorRatio, _ = subtractor.fit_bspline_curve_to_sky(_skyline_order())
 
-    assert knots.size == 276
-    assert spline[0].size == 284
+    assert knots.size == 274
+    assert spline[0].size == 282
     assert float(fluxErrorRatio.sum()) == pytest.approx(3416.0518439631187, rel=ANCHORED_FIT_REL, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(690175.1515871296, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(690057.5607420385, rel=ANCHORED_FIT_REL, abs=0)
     assert modelled["sky_model"].iloc[SAMPLED_ROWS].tolist() == _approx_list(
-        [181.47918541493337, 192.1263418789959, 197.89248454496473, 219.3557605646449], ANCHORED_FIT_REL
+        [143.25256458339757, 192.1263418789959, 197.89248454496473, 225.86932744033976], ANCHORED_FIT_REL
     )
     assert _info_messages(log) == ["\t\tNo new knots added on iteration 8. Stopping iterations.\n"]
 
@@ -237,10 +239,10 @@ def test_a_poor_fitpack_fit_reverts_the_spline_and_returns_the_knots_of_the_reve
     # FITPACK PADS THE INTERIOR KNOTS WITH k + 1 BOUNDARY KNOTS AT EACH END
     assert np.array_equal(spline[0][4:-4], knots)
     assert spline[0].size == 85
-    assert float(fluxErrorRatio.sum()) == pytest.approx(-198301.6063265963, rel=ANCHORED_FIT_REL, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(691794.689850013, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(fluxErrorRatio.sum()) == pytest.approx(-198301.6062916628, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(691675.4412841188, rel=ANCHORED_FIT_REL, abs=0)
     assert modelled["sky_model"].iloc[SAMPLED_ROWS].tolist() == _approx_list(
-        [181.47918088999978, 189.76482928909078, 196.26624567904318, 219.35577899789283], ANCHORED_FIT_REL
+        [143.2525650084555, 189.76484784187775, 196.26624493330596, 225.86934259537745], ANCHORED_FIT_REL
     )
 
 
@@ -358,22 +360,22 @@ def test_a_raising_fitpack_call_becomes_a_value_error_naming_the_knot_budget(
     ) in log.messages
 
 
-def test_a_clean_sloped_sky_is_anchored_to_the_local_window_medians_at_both_order_ends(log: Any) -> None:
-    """The end anchors are medians of the end windows, not the order median (DY-593).
+def test_a_clean_sloped_sky_is_anchored_to_extrapolated_end_values_at_both_order_ends(log: Any) -> None:
+    """The end anchors are line fits to the end windows, evaluated at the end samples (DY-593).
 
-    On a noiseless sky rising from 175 to 225 the end windows are the outer
-    quarters of the order, whose median sits 6.25 along the slope from the end
-    sample. The sky-subtracted flux at the ends is therefore -6.24 and +6.24,
-    down from -25 and +25 with the order median, but not zero.
+    On a noiseless sky rising from 175 to 225 each end window is a straight
+    line, so its fit extrapolates exactly to the end sample and the sky-subtracted
+    flux at both ends is zero. The order median would leave -25 and +25 and the
+    window medians -6.24 and +6.24.
     """
     subtractor = _default_like_subtractor(log)
 
     modelled, _, _, _, _ = subtractor.fit_bspline_curve_to_sky(_sloped_order(noisy=False))
 
     endResiduals = modelled["sky_subtracted_flux"].iloc[[0, -1]].tolist()
-    assert endResiduals == _approx_list([-6.2437298154563905, 6.243733102558366], ANCHORED_FIT_REL)
+    assert endResiduals == pytest.approx([0.0, 0.0], abs=END_RESIDUAL_ABS)
     assert modelled["sky_model"].iloc[SAMPLED_ROWS].tolist() == _approx_list(
-        [181.2437298154564, 187.49971539379843, 200.00820302128014, 218.75626689744163], ANCHORED_FIT_REL
+        [175.00000000000585, 187.504168056021, 200.00833611203913, 224.99999999999952], ANCHORED_FIT_REL
     )
 
 
@@ -384,7 +386,7 @@ def test_a_noisy_line_free_order_follows_the_fitted_sloped_sky(log: Any) -> None
     modelled, spline, knots, fluxErrorRatio, _ = subtractor.fit_bspline_curve_to_sky(_sloped_order(noisy=True))
 
     assert knots.tolist() == _approx_list([502.5, 505.0, 507.5])
-    assert modelled["sky_model"].iloc[-1] - modelled["sky_model"].iloc[0] > 35
+    assert modelled["sky_model"].iloc[-1] - modelled["sky_model"].iloc[0] > 40
     assert modelled["sky_subtracted_flux_weighted"].nunique() > 1
     assert np.unique(fluxErrorRatio).size > 1
     np.testing.assert_allclose(modelled["sky_model"], modelled["sky_model_wl"])
@@ -396,38 +398,62 @@ def test_a_noisy_line_free_order_follows_the_fitted_sloped_sky(log: Any) -> None
 STARTER_KNOTS = np.array([502.5, 505.0, 507.5])
 
 
-def test_end_anchors_are_the_medians_of_the_windows_outside_the_outer_starter_knots(log: Any) -> None:
-    """Blue is the median bluer than the first starter knot; red is the median redder than the last (DY-593)."""
+def test_end_anchors_are_line_fits_to_the_windows_outside_the_outer_starter_knots(log: Any) -> None:
+    """Each anchor is the straight line fitted to its end window, evaluated at the end sample (DY-593)."""
     subtractor = _subtractor(log)
     wavelength = np.array([500.0, 501.0, 502.0, 503.0, 506.0, 508.0, 509.0, 510.0])
     flux = np.array([10.0, 30.0, 20.0, 99.0, 99.0, 60.0, 80.0, 70.0])
 
     blueAnchor, redAnchor = subtractor._end_anchor_values(wavelength, flux, STARTER_KNOTS)
 
-    assert (blueAnchor, redAnchor) == (20.0, 70.0)
+    # BLUE WINDOW: SLOPE 5 THROUGH MEAN 20 AT 501, SO 15 AT 500
+    # RED WINDOW: SLOPE 5 THROUGH MEAN 70 AT 509, SO 75 AT 510
+    assert (blueAnchor, redAnchor) == pytest.approx((15.0, 75.0))
+
+
+def test_an_end_anchor_is_the_window_median_when_the_window_has_one_distinct_wavelength(log: Any) -> None:
+    """No line fits samples at a single wavelength, so the anchor is their median (DY-593)."""
+    subtractor = _subtractor(log)
+    wavelength = np.array([500.0, 500.0, 500.0, 503.0, 506.0, 509.0, 509.0])
+    flux = np.array([10.0, 50.0, 30.0, 99.0, 99.0, 60.0, 80.0])
+
+    blueAnchor, redAnchor = subtractor._end_anchor_values(wavelength, flux, STARTER_KNOTS)
+
+    assert (blueAnchor, redAnchor) == (30.0, 70.0)
+
+
+def test_an_end_anchor_is_the_sample_flux_when_the_window_holds_one_sample(log: Any) -> None:
+    """A window with a single unclipped sample anchors the end at that sample (DY-593)."""
+    subtractor = _subtractor(log)
+    wavelength = np.array([501.0, 503.0, 506.0, 509.0])
+    flux = np.array([12.0, 99.0, 99.0, 88.0])
+
+    blueAnchor, redAnchor = subtractor._end_anchor_values(wavelength, flux, STARTER_KNOTS)
+
+    assert (blueAnchor, redAnchor) == (12.0, 88.0)
 
 
 def test_an_end_anchor_falls_back_to_the_nearest_unclipped_sample_when_its_window_is_empty(log: Any) -> None:
     """No unclipped sample is bluer than the first knot, so the bluest sample sets the blue anchor (DY-593)."""
     subtractor = _subtractor(log)
-    wavelength = np.array([503.0, 504.0, 506.0, 508.0, 509.0])
-    flux = np.array([41.0, 99.0, 99.0, 60.0, 80.0])
+    wavelength = np.array([503.0, 504.0, 506.0, 508.0, 509.0, 510.0])
+    flux = np.array([41.0, 99.0, 99.0, 60.0, 80.0, 70.0])
 
     blueAnchor, redAnchor = subtractor._end_anchor_values(wavelength, flux, STARTER_KNOTS)
 
     assert blueAnchor == 41.0
-    assert redAnchor == 70.0
+    assert redAnchor == pytest.approx(75.0)
 
 
 def test_an_end_anchor_falls_back_to_the_end_sample_when_the_red_window_is_empty(log: Any) -> None:
     """No unclipped sample is redder than the last knot, so the reddest sample sets the red anchor (DY-593)."""
     subtractor = _subtractor(log)
-    wavelength = np.array([500.0, 501.0, 504.0, 506.0, 507.0])
-    flux = np.array([10.0, 30.0, 99.0, 99.0, 55.0])
+    wavelength = np.array([500.0, 501.0, 502.0, 504.0, 506.0, 507.0])
+    flux = np.array([10.0, 30.0, 20.0, 99.0, 99.0, 55.0])
 
     blueAnchor, redAnchor = subtractor._end_anchor_values(wavelength, flux, STARTER_KNOTS)
 
-    assert blueAnchor == 20.0
+    assert blueAnchor == pytest.approx(15.0)
     assert redAnchor == 55.0
 
 
@@ -468,15 +494,15 @@ def test_blue_end_noise_keeps_the_outer_knots(log: Any, monkeypatch: pytest.Monk
     # THE FIT STILL DIVERGES NEAR THE NOISE (SKY_MODEL AT ROW 400 IS FAR FROM THE TRUE SKY OF ~200) AND A POOR FIT
     # ON ITERATION 7 REVERTS; THE KNOTS ARE THOSE OF THE RETURNED SPLINE (DY-602)
     assert _info_messages(log) == ["\t\tpoor fit on iteration 7 for order 10. Reverting to last iteration.\n"]
-    assert knots.size == 215
+    assert knots.size == 213
     assert np.array_equal(spline[0][4:-4], knots)
     assert knots[[0, -1]].tolist() == _approx_list([500.0380186973237, 509.6774193548387])
     # THE DIVERGING FIT IS ILL-CONDITIONED, SO THESE NUMBERS ARE PINNED AT 1e-6, NOT 1e-12
-    assert float(fluxErrorRatio.sum()) == pytest.approx(53.269657450077666, rel=1e-6, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(5231859.226163958, rel=1e-6, abs=0)
+    assert float(fluxErrorRatio.sum()) == pytest.approx(40.154900729274864, rel=1e-6, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(5231841.12290064, rel=1e-6, abs=0)
     assert modelled["sky_model"].iloc[[0, 400, 1500, 2999]].tolist() == [
         pytest.approx(value, rel=1e-6, abs=0)
-        for value in [181.47921196660621, 18827.265386092327, 197.2484818577353, 219.35582013969054]
+        for value in [143.25253034017328, 18827.234231085687, 197.2484818577353, 225.86936185522728]
     ]
 
 

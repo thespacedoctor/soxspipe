@@ -1671,7 +1671,9 @@ class subtract_sky:
 
         **Return:**
 
-        - ``blueAnchor``, ``redAnchor`` -- the median flux bluer than the first starter knot and redder than the last
+        - ``blueAnchor``, ``redAnchor`` -- the value at the bluest and at the reddest sample of a fitted line
+            - the line is fitted to the samples bluer than the first starter knot (blue) or redder than the last (red)
+            - a window with fewer than two distinct wavelengths cannot be fitted, so its anchor is its median flux
             - an end window with no samples falls back to the flux of the bluest or reddest unclipped sample
             - with no starter knots both ends fall back in the same way
 
@@ -1689,10 +1691,18 @@ class subtract_sky:
         if len(starterKnots) == 0:
             return flux[0], flux[-1]
 
-        blueFlux = flux[wavelength < starterKnots[0]]
-        redFlux = flux[wavelength > starterKnots[-1]]
-        blueAnchor = np.median(blueFlux) if blueFlux.size else flux[0]
-        redAnchor = np.median(redFlux) if redFlux.size else flux[-1]
+        def window_anchor(isInWindow, endWavelength, endFlux):
+            windowWavelength = wavelength[isInWindow]
+            windowFlux = flux[isInWindow]
+            if windowFlux.size == 0:
+                return endFlux
+            if np.unique(windowWavelength).size < 2:
+                return np.median(windowFlux)
+            slope, intercept = np.polyfit(windowWavelength, windowFlux, 1)
+            return slope * endWavelength + intercept
+
+        blueAnchor = window_anchor(wavelength < starterKnots[0], wavelength[0], flux[0])
+        redAnchor = window_anchor(wavelength > starterKnots[-1], wavelength[-1], flux[-1])
         return blueAnchor, redAnchor
 
     def _prune_knots_in_noise(self, allKnots, noisyWavelengths):
