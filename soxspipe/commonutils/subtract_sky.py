@@ -24,6 +24,9 @@ from soxspipe.commonutils.toolkit import quicklook_image, read_spectral_format, 
 
 os.environ["TERM"] = "vt100"
 
+# FITPACK RETURNS ier >= 10 (10, 30, 50 ...) WHEN THE FIT FAILED OR THE KNOT VECTOR IS INVALID
+POOR_FITPACK_IER = 10
+
 
 class subtract_sky:
     """
@@ -1337,6 +1340,8 @@ class subtract_sky:
         mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
 
         lastExtraKnotCount = -1
+        tck_previous = None
+        allKnotsPrevious = None
         while iterationCount < bsplineIterations:
             iterationCount += 1
 
@@ -1482,13 +1487,19 @@ class subtract_sky:
                 )
             t, c, k = tck
 
-            if ier in (10, 30):
+            if ier >= POOR_FITPACK_IER:
+                if tck_previous is None:
+                    raise ValueError(
+                        f"BSpline fit failed for order {order} on iteration {iterationCount}. FITPACK reported ier={ier}: {msg}"
+                    )
                 self.log.info(
                     f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n"
                 )
                 tck = tck_previous
+                allKnots = allKnotsPrevious
                 break
             tck_previous = tck
+            allKnotsPrevious = allKnots
 
             if iterationCount >= -1:
                 # FIRST PASS SIGMA CLIPPING OF BSPLINE

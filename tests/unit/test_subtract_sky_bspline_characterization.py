@@ -215,19 +215,20 @@ def test_zero_points_per_knot_drops_the_default_knots_from_iteration_five(log: A
     assert _info_messages(log) == ["\t\tNo new knots added on iteration 8. Stopping iterations.\n"]
 
 
-def test_a_poor_fitpack_fit_reverts_the_spline_but_returns_the_rejected_knots(log: Any) -> None:
+def test_a_poor_fitpack_fit_reverts_the_spline_and_returns_the_knots_of_the_reverted_spline(log: Any) -> None:
     """One default knot per pixel makes FITPACK report ier=10 on iteration 5.
 
-    The spline reverts to iteration 4, but the returned knot array is the
-    3078-knot set from the rejected fit, not the knots of the returned spline.
+    The spline reverts to iteration 4 and the returned knots are the 81 interior
+    knots of that spline, not the 3078 knots of the rejected fit (DY-594).
     """
-    # SUSPICIOUS: RETURNED KNOTS DO NOT MATCH THE REVERTED SPLINE, FILED AS DY-594
     subtractor = _subtractor(log, pointsPerKnot=1)
 
     modelled, spline, knots, fluxErrorRatio, _ = subtractor.fit_bspline_curve_to_sky(_skyline_order())
 
     assert _info_messages(log) == ["\t\tpoor fit on iteration 5 for order 10. Reverting to last iteration.\n"]
-    assert knots.size == 3078
+    assert knots.size == 81
+    # FITPACK PADS THE INTERIOR KNOTS WITH k + 1 BOUNDARY KNOTS AT EACH END
+    assert np.array_equal(spline[0][4:-4], knots)
     assert spline[0].size == 89
     assert float(fluxErrorRatio.sum()) == pytest.approx(-198301.60632865055, rel=1e-12, abs=0)
     assert float(modelled["sky_model"].sum()) == pytest.approx(691899.9408698891, rel=1e-12, abs=0)
@@ -236,24 +237,93 @@ def test_a_poor_fitpack_fit_reverts_the_spline_but_returns_the_rejected_knots(lo
     )
 
 
-def test_a_poor_fitpack_fit_on_the_first_iteration_has_no_spline_to_revert_to(
-    log: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """ier=10 before any accepted fit raises UnboundLocalError, not a pipeline error."""
-    # SUSPICIOUS: CRASHES ON AN UNSET tck_previous, FILED AS DY-594
+def _stub_splrep_poor_from_call(monkeypatch: pytest.MonkeyPatch, *, poorCall: int, ier: int) -> list[np.ndarray]:
+    """Make the real splrep report ``ier`` from call number ``poorCall``; return the knots of every call."""
     realSplrep = scipy.interpolate.splrep
+    knotsPerCall: list[np.ndarray] = []
 
-    def invalid_input(*args: Any, **kwargs: Any) -> tuple:
+    def stubbed(*args: Any, **kwargs: Any) -> tuple:
+        knotsPerCall.append(np.array(kwargs["t"]))
         spline, residual, _, message = realSplrep(*args, **kwargs)
-        return spline, residual, 10, message
+        if len(knotsPerCall) >= poorCall:
+            return spline, residual, ier, "stubbed poor fit"
+        return spline, residual, 0, message
 
-    monkeypatch.setattr(scipy.interpolate, "splrep", invalid_input)
+    monkeypatch.setattr(scipy.interpolate, "splrep", stubbed)
+    return knotsPerCall
+
+
+@pytest.mark.parametrize("ier", [10, 30, 50, 99])
+def test_a_poor_fitpack_fit_on_the_first_iteration_raises_a_value_error_naming_the_fit(
+    log: Any, monkeypatch: pytest.MonkeyPatch, ier: int
+) -> None:
+    """Any ier >= 10 before an accepted fit leaves nothing to revert to, so it is a named pipeline error."""
+    _stub_splrep_poor_from_call(monkeypatch, poorCall=1, ier=ier)
     subtractor = _subtractor(log)
 
-    with pytest.raises(UnboundLocalError, match="tck_previous"):
+    with pytest.raises(ValueError) as raised:
         subtractor.fit_bspline_curve_to_sky(_skyline_order())
 
-    assert _info_messages(log) == ["\t\tpoor fit on iteration -2 for order 10. Reverting to last iteration.\n"]
+    assert str(raised.value) == (
+        f"BSpline fit failed for order 10 on iteration -2. FITPACK reported ier={ier}: stubbed poor fit"
+    )
+    assert _info_messages(log) == []
+
+
+@pytest.mark.parametrize("ier", [10, 30, 50])
+def test_a_poor_fitpack_fit_on_a_later_iteration_reverts_to_the_previous_spline_and_knots(
+    log: Any, monkeypatch: pytest.MonkeyPatch, ier: int
+) -> None:
+    """A poor fit on iteration 3 logs, keeps the iteration 2 spline and its knots, and returns normally."""
+    knotsPerCall = _stub_splrep_poor_from_call(monkeypatch, poorCall=6, ier=ier)
+    subtractor = _subtractor(log)
+
+    modelled, spline, knots, _, _ = subtractor.fit_bspline_curve_to_sky(_skyline_order())
+
+    assert len(knotsPerCall) == 6
+    # THE REJECTED FIT USED A DIFFERENT KNOT SET, SO MATCHING THE PREVIOUS ONE IS NOT VACUOUS
+    assert knotsPerCall[4].size != knotsPerCall[5].size
+    assert _info_messages(log) == ["\t\tpoor fit on iteration 3 for order 10. Reverting to last iteration.\n"]
+    assert np.array_equal(knots, knotsPerCall[4])
+    assert np.array_equal(spline[0][4:-4], knotsPerCall[4])
+    assert int(modelled["sky_model"].isna().sum()) == 0
+
+
+def test_a_fitpack_fit_below_ier_ten_is_accepted(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """FITPACK warnings below 10 (here ier=2) do not stop the iterations."""
+    realSplrep = scipy.interpolate.splrep
+
+    def warning_only(*args: Any, **kwargs: Any) -> tuple:
+        spline, residual, _, message = realSplrep(*args, **kwargs)
+        return spline, residual, 2, message
+
+    monkeypatch.setattr(scipy.interpolate, "splrep", warning_only)
+    subtractor = _subtractor(log)
+
+    subtractor.fit_bspline_curve_to_sky(_skyline_order())
+
+    assert _info_messages(log) == ["\t\tNo new knots added on iteration 8. Stopping iterations.\n"]
+
+
+def test_poor_first_bspline_fit_is_reported_not_crashed(log: Any) -> None:
+    """Coincident starter knots make the unmocked splrep return ier=30 on the first fit (DY-602)."""
+    worker = _subtractor(log, arm="NIR", iterationLimit=7, pointsPerKnot=25)
+    worker.recipeSettings["sky-subtraction"]["min_points_per_knot"] = 5
+    rng = np.random.default_rng(1)
+    wavelength = np.concatenate([np.full(900, 1000.0), np.linspace(1000.1, 1010.0, 300)])
+    imageMapOrder = pd.DataFrame(
+        {
+            "order": 12,
+            "wavelength": wavelength,
+            "flux": rng.normal(100.0, 5.0, wavelength.size),
+            "residual_windowed_std": np.full(wavelength.size, 5.0),
+            "flagged_all_clipped": False,
+            "flagged_noisy_region": False,
+        }
+    )
+
+    with pytest.raises(ValueError, match=r"order 12 on iteration -2.*ier=30"):
+        worker.fit_bspline_curve_to_sky(imageMapOrder)
 
 
 @pytest.mark.parametrize("failure", [ValueError, TypeError, RuntimeError])
@@ -366,8 +436,10 @@ def test_blue_end_noise_prunes_the_reddest_knot(log: Any, monkeypatch: pytest.Mo
     # FIRST PRUNING PASS: THE STARTER KNOTS, THEN THE KNOTS LEFT AFTER REMOVAL
     assert knotSets[0] == [502.5, 505.0, 507.5]
     assert knotSets[1] == [502.5, 505.0]
-    assert knots.size == 21
-    assert knots[[0, -1]].tolist() == _approx_list([499.9479254917661, 509.4736600214474])
+    # A POOR FIT ON ITERATION 3 REVERTS, SO THE KNOTS ARE THOSE OF THE RETURNED SPLINE (DY-602)
+    assert knots.size == 8
+    assert np.array_equal(spline[0][4:-4], knots)
+    assert knots[[0, -1]].tolist() == _approx_list([500.18754107053394, 508.9451717752903])
     assert float(fluxErrorRatio.sum()) == pytest.approx(-2644.833214674917, rel=1e-12, abs=0)
     assert float(modelled["sky_model"].sum()) == pytest.approx(693026.6083934802, rel=1e-12, abs=0)
     assert modelled["sky_model"].iloc[[0, 400, 1500, 2999]].tolist() == _approx_list(
