@@ -27,6 +27,12 @@ os.environ["TERM"] = "vt100"
 # FITPACK RETURNS ier >= 10 (10, 30, 50 ...) WHEN THE FIT FAILED OR THE KNOT VECTOR IS INVALID
 POOR_FITPACK_IER = 10
 
+# THE SIGMA LIMIT AND THE MAXIMUM NUMBER OF CLIP-AND-REFIT PASSES OF THE ORDER-END ANCHOR LINE FITS (DY-593)
+ANCHOR_CLIP_SIGMA = 3
+ANCHOR_CLIP_MAX_PASSES = 5
+# A CLIP PASS THAT WOULD LEAVE FEWER SAMPLES THAN THIS, OR FEWER THAN TWO DISTINCT WAVELENGTHS, IS NOT APPLIED
+ANCHOR_MIN_FIT_SAMPLES = 3
+
 
 class subtract_sky:
     """
@@ -1673,6 +1679,7 @@ class subtract_sky:
 
         - ``blueAnchor``, ``redAnchor`` -- the value at the bluest and at the reddest sample of a fitted line
             - the line is fitted to the samples bluer than the first starter knot (blue) or redder than the last (red)
+            - the fit is sigma-clipped and refitted so that skylines inside an end window do not pull the anchor
             - a window with fewer than two distinct wavelengths cannot be fitted, so its anchor is its median flux
             - an end window with no samples falls back to the flux of the bluest or reddest unclipped sample
             - with no starter knots both ends fall back in the same way
@@ -1698,12 +1705,55 @@ class subtract_sky:
                 return endFlux
             if np.unique(windowWavelength).size < 2:
                 return np.median(windowFlux)
-            slope, intercept = np.polyfit(windowWavelength, windowFlux, 1)
-            return slope * endWavelength + intercept
+            return self._clipped_line_value(windowWavelength, windowFlux, endWavelength)
 
         blueAnchor = window_anchor(wavelength < starterKnots[0], wavelength[0], flux[0])
         redAnchor = window_anchor(wavelength > starterKnots[-1], wavelength[-1], flux[-1])
         return blueAnchor, redAnchor
+
+    def _clipped_line_value(self, wavelength, flux, evaluationWavelength):
+        """*the value of a sigma-clipped straight-line fit at one wavelength*
+
+        **Key Arguments:**
+
+        - ``wavelength`` -- wavelengths of the samples, at least two of them distinct
+        - ``flux`` -- the flux of those samples
+        - ``evaluationWavelength`` -- the wavelength at which to evaluate the fitted line
+
+        **Return:**
+
+        - ``value`` -- the fitted line at ``evaluationWavelength``
+            - the line is fitted to the samples that survive iterated residual clipping
+            - a clip pass leaving fewer than three samples, or fewer than two distinct wavelengths, is not applied
+
+        **Usage:**
+
+        ```python
+        value = self._clipped_line_value(wavelength, flux, endWavelength)
+        ```
+
+        """
+        import numpy as np
+        from astropy.stats import mad_std, sigma_clip
+
+        keep = np.ones(wavelength.size, dtype=bool)
+        coefficients = np.polyfit(wavelength, flux, 1)
+        for _ in range(ANCHOR_CLIP_MAX_PASSES):
+            residuals = flux - np.polyval(coefficients, wavelength)
+            clipped = sigma_clip(
+                residuals,
+                sigma=ANCHOR_CLIP_SIGMA,
+                maxiters=1,
+                cenfunc="median",
+                stdfunc=mad_std,
+            )
+            newKeep = ~np.ma.getmaskarray(clipped)
+            isFittable = newKeep.sum() >= ANCHOR_MIN_FIT_SAMPLES and np.unique(wavelength[newKeep]).size >= 2
+            if np.array_equal(newKeep, keep) or not isFittable:
+                break
+            keep = newKeep
+            coefficients = np.polyfit(wavelength[keep], flux[keep], 1)
+        return np.polyval(coefficients, evaluationWavelength)
 
     def _prune_knots_in_noise(self, allKnots, noisyWavelengths, order):
         """*remove the knots that bound a knot interval containing noisy pixels*
