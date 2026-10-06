@@ -33,6 +33,11 @@ ANCHOR_CLIP_MAX_PASSES = 5
 # A CLIP PASS THAT WOULD LEAVE FEWER SAMPLES THAN THIS, OR FEWER THAN TWO DISTINCT WAVELENGTHS, IS NOT APPLIED
 ANCHOR_MIN_FIT_SAMPLES = 3
 
+# A RUN OF POSITIVE SLIT-POSITION BINS IS AN OBJECT ONLY WITH MORE THAN OBJECT_MIN_RUN_BINS BINS
+# AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
+OBJECT_MIN_RUN_BINS = 4
+OBJECT_PEAK_COUNT = 0.05
+
 
 class subtract_sky:
     """
@@ -2200,6 +2205,50 @@ class subtract_sky:
         self.log.debug("completed the ``calculate_residuals`` method")
         return res_mean, res_std, res_median, skyPixelsDF
 
+    def _object_slit_ranges(self, counts, binEdges, edgeMargin):
+        """*the slit-position ranges of the runs of positive bins that are objects*
+
+        **Key Arguments:**
+
+        - ``counts`` -- the background-subtracted counts of object-flagged pixels in each slit-position bin
+        - ``binEdges`` -- the edges of those bins, one more than the counts
+        - ``edgeMargin`` -- the number of bins at each end of the slit that are not examined
+
+        **Return:**
+
+        - ``objectRanges`` -- a ``[lower, upper]`` slit-position pair for each object
+            - ``lower`` is the left edge of the run's first positive bin and ``upper`` the right edge of its last
+            - an object run has more than ``OBJECT_MIN_RUN_BINS`` positive bins and a count above ``OBJECT_PEAK_COUNT``
+            - a run that reaches the last examined bin is judged by the same rules
+
+        **Usage:**
+
+        ```python
+        object_ranges = self._object_slit_ranges(
+            result.to_numpy(), bins, edges
+        )
+        ```
+
+        """
+        objectRanges = []
+        runStart = None
+        runPeak = 0.0
+        lastExamined = len(counts) - edgeMargin
+        # A NON-POSITIVE SENTINEL BIN AFTER THE LAST EXAMINED BIN CLOSES A RUN THAT REACHES IT
+        for binIndex in range(edgeMargin, lastExamined + 1):
+            count = counts[binIndex] if binIndex < lastExamined else 0
+            if count > 0:
+                if runStart is None:
+                    runStart = binIndex
+                runPeak = max(runPeak, count)
+                continue
+            isLongRun = runStart is not None and binIndex - runStart > OBJECT_MIN_RUN_BINS
+            if isLongRun and runPeak > OBJECT_PEAK_COUNT:
+                objectRanges.append([binEdges[runStart], binEdges[binIndex]])
+            runStart = None
+            runPeak = 0.0
+        return objectRanges
+
     def clip_object_slit_positions(self, order_dataframes, aggressive=False):
         """*clip out pixels flagged as an object*
 
@@ -2248,28 +2297,9 @@ class subtract_sky:
             result -= result.abs().median()
             # result -= result.abs().median()
 
-            # NEED 3 POSITIVE BINS IN A ROW TO BE SELECTED AS AN OBJECT
-            object_ranges = []
-            postiveCount = 0
             # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
             edges = int(nbins / 20)
-            lower = False
-            record_range = False
-            for sp, count in zip(bins[edges:-edges], result[edges:-edges]):
-                if count > 0:
-                    postiveCount += 1
-                    upper = sp
-                    if count > 0.05:
-                        record_range = True
-                else:
-                    if postiveCount > 4 and record_range:
-                        object_ranges.append([lower, upper])
-                    postiveCount = 0
-                    lower = sp
-                    upper = False
-                    record_range = False
-            if postiveCount > 4:
-                object_ranges.append([lower, upper])
+            object_ranges = self._object_slit_ranges(result.to_numpy(), bins, edges)
 
             if 1 == 0:
                 import matplotlib.pyplot as plt
