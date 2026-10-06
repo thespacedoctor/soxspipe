@@ -184,9 +184,7 @@ class flux_calibration:
         )
 
         if self.debug:
-            import matplotlib
 
-            matplotlib.use("TkAgg")
             from matplotlib import pyplot as plt
 
             plt.plot(self.extractedSpectrum["WAVE"], flux_calibration * 10**-17)
@@ -226,19 +224,21 @@ class flux_calibration:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "EXTRACTED_FLUXCAL_SPECTRUM",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "reduction_date_utc": utcnow,
-                        "product_desc": "Flux calibrated extracted spectrum",
-                        "file_path": filePath,
-                        "obs_date_utc": header["DATE-OBS"],
-                        "label": "PROD",
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": "EXTRACTED_FLUXCAL_SPECTRUM",
+                            "file_name": filename,
+                            "file_type": "FITS",
+                            "reduction_date_utc": utcnow,
+                            "product_desc": "Flux calibrated extracted spectrum",
+                            "file_path": filePath,
+                            "obs_date_utc": header["DATE-OBS"],
+                            "label": "PROD",
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )

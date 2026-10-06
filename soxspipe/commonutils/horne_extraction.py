@@ -250,7 +250,7 @@ class horne_extraction(base_util):
         # CHECK DIFFERENCE IN TIME BETWEEN OBJECT AND MPH FRAME
         mjdDispMap = self.twoDMap["WAVELENGTH"].header[self.kw("MJDOBS")]
         mjdObject = self.skySubtractedFrame.header[self.kw("MJDOBS")]
-        print(f"Time difference between object and dispersion map: {mjdObject - mjdDispMap:.4f} days")
+        self.log.print(f"\nTime difference between object and dispersion map: {mjdObject - mjdDispMap:.4f} days")
 
         # xpd-update-filter-dataframe-column-values
 
