@@ -159,6 +159,31 @@ def test_a_y_dispersion_order_on_a_non_square_frame_renders_its_panels(log: Any,
     assert skyModelPanel.data[3, 19] == 179.0
 
 
+def test_a_rotated_clipped_pixel_panel_draws_every_layer_on_the_rotated_order(
+    log: Any, tmp_path: Path, figures: list
+) -> None:
+    """With `rotate-qc-plot` set, every clipped-pixel panel layer is transposed like the raw frame.
+
+    The rotation `flipud(rot90(image, 1))` is a transpose, so detector pixel
+    (row, column) lands at (column, row). The order-outline layer must follow,
+    or it whites out the order wherever the untransposed outline misses it.
+    """
+    outputPath = tmp_path / "rotated_clipped_pixel_panel"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=90, shape=(16, 24))
+    strip = _order_strip()
+    transposedStrip = {(column, row) for row, column in _strip_positions(strip)}
+
+    subtractor.plot_sky_sampling(order=11, imageMapOrderDF=strip, knotLocations=np.array([502.0, 508.0]))
+
+    [figure] = figures
+    clippedPixelPanel = figure.axes[3]
+    # RAW FRAME, FOUR FLAG OVERLAYS, THEN THE ORDER OUTLINE LAST
+    assert [image.get_array().shape for image in clippedPixelPanel.images] == [(24, 16)] * 6
+    orderOutline = clippedPixelPanel.images[-1].get_array()
+    assert _positions(np.ma.getmaskarray(orderOutline)) == transposedStrip
+
+
 def test_a_rotated_spline_plot_without_clipped_rows_falls_back_on_every_limit(
     log: Any, tmp_path: Path, figures: list, capsys: pytest.CaptureFixture[str]
 ) -> None:

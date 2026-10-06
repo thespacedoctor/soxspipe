@@ -756,7 +756,7 @@ class subtract_sky:
         nonOrderMask = nonOrderMask == 0
         imageMask = np.ma.array(np.ones_like(frame.data), mask=nonOrderMask)
         if rotateImage:
-            imageMask = np.flipud(imageMask)
+            imageMask = np.flipud(np.rot90(imageMask, 1))
         cmap = copy(cm.gray)
         cmap.set_bad("green", 0.0)
         fourrow.imshow(imageMask, vmin=-10, vmax=-9, cmap=cmap, alpha=1.0)
