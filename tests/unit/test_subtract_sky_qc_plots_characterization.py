@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,13 @@ FLAG_COLUMNS = (
 
 
 def _subtractor(
-    log: Any, outputPath: Path, *, dispersionAxis: str, rotate: int | bool, shape: tuple[int, int] = (16, 16)
+    log: Any,
+    outputPath: Path,
+    *,
+    dispersionAxis: str,
+    rotate: int | bool,
+    flip: int | bool = False,
+    shape: tuple[int, int] = (16, 16),
 ) -> subtract_sky:
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
@@ -38,7 +45,7 @@ def _subtractor(
     subtractor.qcDir = str(outputPath)
     subtractor.detectorParams = {
         "dispersion-axis": dispersionAxis,
-        "flip-qc-plot": False,
+        "flip-qc-plot": flip,
         "rotate-qc-plot": rotate,
     }
     subtractor.objectFrame = CCDData(
@@ -159,29 +166,92 @@ def test_a_y_dispersion_order_on_a_non_square_frame_renders_its_panels(log: Any,
     assert skyModelPanel.data[3, 19] == 179.0
 
 
-def test_a_rotated_clipped_pixel_panel_draws_every_layer_on_the_rotated_order(
-    log: Any, tmp_path: Path, figures: list
-) -> None:
-    """With `rotate-qc-plot` set, every clipped-pixel panel layer is transposed like the raw frame.
+IMAGE_PANELS = (0, 3, 5, 6)
 
-    The rotation `flipud(rot90(image, 1))` is a transpose, so detector pixel
-    (row, column) lands at (column, row). The order-outline layer must follow,
-    or it whites out the order wherever the untransposed outline misses it.
+
+def _vis_display(row: int, column: int, shape: tuple[int, int]) -> tuple[int, int]:
+    """Rotating 90 degrees then flipping up-down is a transpose."""
+    return column, row
+
+
+def _rotate_only_display(row: int, column: int, shape: tuple[int, int]) -> tuple[int, int]:
+    """`rot90(image, 1)` moves detector (row, column) to (columns - 1 - column, row)."""
+    return shape[1] - 1 - column, row
+
+
+def _nir_display(row: int, column: int, shape: tuple[int, int]) -> tuple[int, int]:
+    """Flipping up-down without rotating moves detector (row, column) to (rows - 1 - row, column)."""
+    return shape[0] - 1 - row, column
+
+
+@pytest.mark.parametrize(
+    ("dispersionAxis", "rotate", "flip", "display", "displayShape", "labels"),
+    [
+        pytest.param("x", 90, 1, _vis_display, (24, 16), ("y-axis", "x-axis"), id="vis-rotate-and-flip"),
+        pytest.param("x", 90, 0, _rotate_only_display, (24, 16), ("y-axis", "x-axis"), id="rotate-only"),
+        pytest.param("y", 0, 1, _nir_display, (16, 24), ("x-axis", "y-axis"), id="nir-flip-only"),
+    ],
+)
+def test_every_image_panel_layer_follows_the_rotate_and_flip_qc_plot_settings(
+    log: Any,
+    tmp_path: Path,
+    figures: list,
+    dispersionAxis: str,
+    rotate: int,
+    flip: int,
+    display: Callable[[int, int, tuple[int, int]], tuple[int, int]],
+    displayShape: tuple[int, int],
+    labels: tuple[str, str],
+) -> None:
+    """Every image panel and overlay is rotated by `rotate-qc-plot`, then flipped up-down by `flip-qc-plot`.
+
+    This is the convention of the other QC plots (`detect_continuum`,
+    `detect_order_edges`). The axis limits frame the order where it lands
+    after the transform, and the axis labels name the detector axis each
+    display axis shows.
     """
-    outputPath = tmp_path / "rotated_clipped_pixel_panel"
+    shape = (16, 24)
+    outputPath = tmp_path / "oriented_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=90, shape=(16, 24))
+    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=rotate, flip=flip, shape=shape)
     strip = _order_strip()
-    transposedStrip = {(column, row) for row, column in _strip_positions(strip)}
+    displayedStrip = {display(row, column, shape) for row, column in _strip_positions(strip)}
+    flaggedPixels = _strip_positions(strip.loc[strip["flagged_object_clipped"]])
+    displayedFlaggedPixels = {display(row, column, shape) for row, column in flaggedPixels}
 
     subtractor.plot_sky_sampling(order=11, imageMapOrderDF=strip, knotLocations=np.array([502.0, 508.0]))
 
     [figure] = figures
-    clippedPixelPanel = figure.axes[3]
+    displayedRows = sorted({row for row, _ in displayedStrip})
+    displayedColumns = sorted({column for _, column in displayedStrip})
+    for panelIndex in IMAGE_PANELS:
+        panel = figure.axes[panelIndex]
+        assert {image.get_array().shape for image in panel.images} == {displayShape}
+        assert panel.get_ylabel() == labels[1]
+        # THE SKY-MODEL PANEL HIDES ITS X-AXIS
+        assert panel.get_xlabel() == ("" if panelIndex == 5 else labels[0])
+        assert panel.get_ylim() == (displayedRows[0] - 10, displayedRows[-1] + 10)
+        assert panel.get_xlim() == (displayedColumns[0] - 10, displayedColumns[-1] + 10)
     # RAW FRAME, FOUR FLAG OVERLAYS, THEN THE ORDER OUTLINE LAST
-    assert [image.get_array().shape for image in clippedPixelPanel.images] == [(24, 16)] * 6
+    clippedPixelPanel = figure.axes[3]
+    assert len(clippedPixelPanel.images) == 6
+    # EVERY FLAG COLUMN OF THE STRIP MARKS THE SAME PIXELS
+    for flagOverlay in clippedPixelPanel.images[1:5]:
+        assert _positions(~np.ma.getmaskarray(flagOverlay.get_array())) == displayedFlaggedPixels
     orderOutline = clippedPixelPanel.images[-1].get_array()
-    assert _positions(np.ma.getmaskarray(orderOutline)) == transposedStrip
+    assert _positions(np.ma.getmaskarray(orderOutline)) == displayedStrip
+    skyModelPanel = figure.axes[5].images[0].get_array()
+    assert _positions(~np.ma.getmaskarray(skyModelPanel)) == displayedStrip
+    assert skyModelPanel[display(0, 0, shape)] == 100.0
+    assert skyModelPanel[display(15, 3, shape)] == 163.0
+
+
+def test_a_rotate_qc_plot_that_is_not_a_multiple_of_90_degrees_is_rejected(log: Any, tmp_path: Path) -> None:
+    """A 45-degree rotation cannot be drawn as quarter turns, so the plot raises instead of truncating it."""
+    subtractor = _subtractor(log, tmp_path, dispersionAxis="x", rotate=45)
+
+    with pytest.raises(ValueError, match="multiple of 90 degrees, not 45"):
+        subtractor._qc_display_image(np.zeros((2, 3)))
 
 
 def test_a_rotated_spline_plot_without_clipped_rows_falls_back_on_every_limit(
