@@ -260,6 +260,7 @@ class subtract_background:
 
         oTop = orderPixelTable["order"].min()
         oBot = orderPixelTable["order"].max()
+        minimumExpansion = 2
 
         for o in uniqueOrders:
 
@@ -267,16 +268,17 @@ class subtract_background:
             axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgeup"]
             axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgelow"]
 
+            expandBottom = None
+            expandTop = None
+
             if o != oBot:
                 next_axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o + 1)][
                     f"{self.axisA}coord_edgeup"
                 ]
                 bottomGap = axisAcoord_edgelow.values - next_axisAcoord_edgeup.values
                 expandBottom = np.median(bottomGap) / 2 - 3
-                if expandBottom < 2:
-                    expandBottom = 2
-            else:
-                expandBottom = expandTop
+                if expandBottom < minimumExpansion:
+                    expandBottom = minimumExpansion
 
             if o != oTop:
                 previous_axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o - 1)][
@@ -284,9 +286,14 @@ class subtract_background:
                 ]
                 topGap = previous_axisAcoord_edgelow.values - axisAcoord_edgeup.values
                 expandTop = np.median(topGap) / 2 - 3
-                if expandTop < 2:
-                    expandTop = 2
-            else:
+                if expandTop < minimumExpansion:
+                    expandTop = minimumExpansion
+
+            if expandBottom is None and expandTop is None:
+                expandBottom = expandTop = minimumExpansion
+            elif expandBottom is None:
+                expandBottom = expandTop
+            elif expandTop is None:
                 expandTop = expandBottom
 
             axisAcoord_edgeup += expandTop
