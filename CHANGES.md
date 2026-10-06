@@ -1,5 +1,11 @@
 # Release Notes
 
+* **FIXED**: a poor b-spline sky fit (FITPACK `ier` of 10 or more, including 50) on the first iteration now raises a named `ValueError` instead of `UnboundLocalError`, and after a revert the returned knots match the reverted spline (DY-602).
+* **FIXED**: noisy-region knot pruning in `subtract_sky` removes only the knots that bound noisy pixels, where it always dropped the reddest knot as well (DY-601).
+* **FIXED**: `subtract_sky` anchors the order ends with sigma-clipped, clamped straight-line fits over each end window instead of the whole-order median, and always uses the fitted spline, so the flux-error ratio on a perfectly flat sky is now 0 (DY-593).
+* **FIXED**: pixels released when object clipping is reset (more than 85% clipped, or the VIS retry) now rejoin the sky fit (DY-595).
+* **FIXED**: aggressive object masking in `subtract_sky` records the full slit range of each object, including objects that start at the slit edge (DY-596).
+* **FIXED**: sky QC plots place pixels correctly for y-dispersion arms such as SOXS NIR and no longer crash on non-square frames (DY-597).
 * **FIXED**: the Read the Docs build installs the package with `pip` instead of `python setup.py install`, as the repository no longer has a `setup.py`.
 * **FIXED**: a raw frame added after `prep` grouped its set now rejoins that set on the next plain `prep`: the set keeps its SOF name, its status is reset in every session, and its stale product is deleted (DY-263).
 * **FIXED**: `quicklook_image` now shows the inter-order mask from a dispersion map instead of silently dropping it, and no longer modifies the caller's frame (DY-81).

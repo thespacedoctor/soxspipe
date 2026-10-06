@@ -1226,6 +1226,12 @@ class subtract_sky:
         - ``imageMapOrder`` -- same `imageMapOrder` as input but now with `sky_model` (bspline fit of the sky) and `sky_subtracted_flux` columns
         - ``tck`` -- the fitted bspline components. t for knots, c of coefficients, k for order
 
+        **Raises:**
+
+        - ``ValueError`` -- if FITPACK cannot fit the spline (for example, too many knots for the number of data points)
+        - ``ValueError`` -- if FITPACK reports a poor fit (``ier`` of 10 or more, which includes 50) on the first iteration, as there is no earlier fit to revert to
+            - on a later iteration a poor fit does not raise: the last good spline and its knots are returned
+
         **Usage:**
 
         ```python
