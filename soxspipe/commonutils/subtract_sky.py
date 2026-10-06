@@ -1203,6 +1203,7 @@ class subtract_sky:
 
         - ``imageMapOrderDF`` -- order dataframe carrying the component flag columns. Updated in place.
             - an absent ``flagged_edge_clipped`` or ``flagged_bad_pixel_clipped`` column counts as all ``False``
+            - ``flagged_object_clipped`` is required; the reset that calls this method always sets it
         """
         import pandas as pd
 
