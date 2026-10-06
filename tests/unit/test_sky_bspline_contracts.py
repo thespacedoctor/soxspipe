@@ -73,9 +73,10 @@ def test_fit_bspline_curve_models_constant_sky_for_both_weighting_paths(
     assert knots.size == 0
     assert residualFloor == 5
     np.testing.assert_allclose(modelled["sky_model"], 12.0)
-    np.testing.assert_allclose(modelled["sky_subtracted_flux"], 0.0)
+    np.testing.assert_allclose(modelled["sky_subtracted_flux"], 0.0, atol=1e-9)
     np.testing.assert_allclose(modelled["residual_windowed_std"], 1.0)
-    np.testing.assert_allclose(fluxErrorRatio, 1.0)
+    # THE RATIO WEIGHTS THE RESIDUAL BY THE SPLINE DERIVATIVE, WHICH IS ZERO FOR A FLAT SKY (DY-593)
+    np.testing.assert_allclose(fluxErrorRatio, 0.0, atol=1e-9)
 
 
 def test_fit_bspline_curve_propagates_knot_quantile_failures(
@@ -117,7 +118,7 @@ def test_fit_bspline_curve_excludes_nan_flux_from_model_quality_metrics(
     assert modelled.iloc[-1]["sky_model"] == pytest.approx(12.0)
     assert np.isnan(modelled.iloc[-1]["sky_subtracted_flux"])
     assert fluxErrorRatio.shape == (63,)
-    np.testing.assert_allclose(fluxErrorRatio, 1.0)
+    np.testing.assert_allclose(fluxErrorRatio, 0.0, atol=1e-9)
 
 
 def test_cross_dispersion_normaliser_retains_flux_and_adds_unity_ratio(

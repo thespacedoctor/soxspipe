@@ -1365,11 +1365,9 @@ class subtract_sky:
             else:
                 goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights2"]
 
-            baseFlux = np.median(goodFlux.values)
             goodFlux = goodFlux.values
             goodWeights = goodWeights.values
-            goodFlux[0] = baseFlux
-            goodFlux[-1] = baseFlux
+            goodFlux[0], goodFlux[-1] = self._end_anchor_values(goodWl.values, goodFlux, starterKnots)
             goodWeights[0] = 10e4
             goodWeights[-1] = 10e4
 
@@ -1618,27 +1616,18 @@ class subtract_sky:
 
             lastExtraKnotCount = len(extraKnots)
 
-        if not lastExtraKnotCount:
-            imageMapOrder["sky_model_wl"] = baseFlux
-            imageMapOrder["sky_model_wl_derivative"] = 1
-            imageMapOrder["sky_model"] = baseFlux
+        imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
+        imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
+        imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
+        # REPLACE VALUES LESS THAN ZERO IN COLUMN WITH ZERO
+        imageMapOrder["sky_model"] = imageMapOrder["sky_model"].apply(lambda x: max(0, x))
 
-            imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
-            imageMapOrder["sky_subtracted_flux_weighted"] = 1
-            imageMapOrder["sky_subtracted_flux_weighted_abs"] = imageMapOrder["sky_subtracted_flux_weighted"].abs()
-        else:
-            imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
-            imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
-            imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
-            # REPLACE VALUES LESS THAN ZERO IN COLUMN WITH ZERO
-            imageMapOrder["sky_model"] = imageMapOrder["sky_model"].apply(lambda x: max(0, x))
-
-            imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
-            imageMapOrder["sky_subtracted_flux_weighted"] = (
-                imageMapOrder["sky_subtracted_flux"]
-                * imageMapOrder["sky_model_wl_derivative"].abs()
-                / (imageMapOrder["residual_windowed_std"] * 10)
-            )
+        imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
+        imageMapOrder["sky_subtracted_flux_weighted"] = (
+            imageMapOrder["sky_subtracted_flux"]
+            * imageMapOrder["sky_model_wl_derivative"].abs()
+            / (imageMapOrder["residual_windowed_std"] * 10)
+        )
 
         imageMapOrder["sky_subtracted_flux_weighted_abs"] = imageMapOrder["sky_subtracted_flux_weighted"].abs()
         flux_error_ratio = imageMapOrder.loc[
@@ -1650,6 +1639,41 @@ class subtract_sky:
 
         self.log.debug("completed the ``fit_bspline_curve_to_sky`` method")
         return imageMapOrder, tck, allKnots, flux_error_ratio, residualFloor
+
+    def _end_anchor_values(self, wavelength, flux, starterKnots):
+        """*the local flux values that anchor the blue and red ends of the sky fit*
+
+        **Key Arguments:**
+
+        - ``wavelength`` -- sorted wavelengths of the unclipped sky samples
+        - ``flux`` -- the flux of those samples
+        - ``starterKnots`` -- sorted starter knot wavelengths that bound the two end windows
+
+        **Return:**
+
+        - ``blueAnchor``, ``redAnchor`` -- the median flux bluer than the first starter knot and redder than the last
+            - an end window with no samples falls back to the flux of the bluest or reddest unclipped sample
+            - with no starter knots both ends fall back in the same way
+
+        **Usage:**
+
+        ```python
+        blueAnchor, redAnchor = self._end_anchor_values(
+            goodWl, goodFlux, starterKnots
+        )
+        ```
+
+        """
+        import numpy as np
+
+        if len(starterKnots) == 0:
+            return flux[0], flux[-1]
+
+        blueFlux = flux[wavelength < starterKnots[0]]
+        redFlux = flux[wavelength > starterKnots[-1]]
+        blueAnchor = np.median(blueFlux) if blueFlux.size else flux[0]
+        redAnchor = np.median(redFlux) if redFlux.size else flux[-1]
+        return blueAnchor, redAnchor
 
     def _prune_knots_in_noise(self, allKnots, noisyWavelengths, order):
         """*remove the knots that bound a knot interval containing noisy pixels*
