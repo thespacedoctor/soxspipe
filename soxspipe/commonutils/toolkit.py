@@ -406,21 +406,28 @@ def _quicklook_frame_array(CCDObject, ext):
     **Key Arguments:**
 
     - ``CCDObject`` -- the CCDObject (or plain array) to plot
-    - ``ext`` -- the extension name: "data", "mask" or "uncertainty". Anything else treats
-      ``CCDObject`` as a plain array
+    - ``ext`` -- the extension name: "data", "mask" or "uncertainty". Anything else plots the whole
+      ``CCDObject``: a CCDData becomes a masked view of its data with a copy of its mask, and a plain array
+      is returned unchanged
 
     **Return:**
 
     - ``frame`` -- the array to plot
     """
+    import numpy as np
+    from astropy.nddata import NDData
+
     if ext == "data":
         frame = CCDObject.data
     elif ext == "mask":
         frame = CCDObject.mask
     elif ext == "uncertainty":
         frame = CCDObject.uncertainty.array
+    elif isinstance(CCDObject, NDData):
+        # A CCDDATA IS NOT AN NDARRAY. WRAPPED IN np.ma.masked_array, IT RECURSES FOREVER ON INDEXING
+        mask = np.ma.nomask if CCDObject.mask is None else np.array(CCDObject.mask, dtype=bool)
+        frame = np.ma.masked_array(CCDObject.data, mask=mask)
     else:
-        # ASSUME ONLY NDARRAY
         frame = CCDObject
     return frame
 
