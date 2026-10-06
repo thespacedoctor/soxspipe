@@ -1433,7 +1433,7 @@ class subtract_sky:
                 # FIND ALL EXISTING KNOTS THAT ARE IN THE NOISE
                 nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
                 df = imageMapOrder.loc[~mask_all_clipped & nosiyRegionMask]
-                allKnots = self._prune_knots_in_noise(allKnots, df["wavelength"].values, order)
+                allKnots = self._prune_knots_in_noise(allKnots, df["wavelength"].values)
 
                 # GROUP ALL DATA POINTS BETWEEN KNOTS
                 nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
@@ -1695,42 +1695,36 @@ class subtract_sky:
         redAnchor = np.median(redFlux) if redFlux.size else flux[-1]
         return blueAnchor, redAnchor
 
-    def _prune_knots_in_noise(self, allKnots, noisyWavelengths, order):
-        """*remove the knots that bound a knot interval containing noisy pixels*
+    def _prune_knots_in_noise(self, allKnots, noisyWavelengths):
+        """*remove the interior knots that bound a knot interval containing noisy pixels*
 
         **Key Arguments:**
 
         - ``allKnots`` -- sorted array of the current interior knot wavelengths
         - ``noisyWavelengths`` -- wavelengths of the unclipped pixels in noisy regions
-        - ``order`` -- the order number, used in the log message
 
         **Return:**
 
-        - ``allKnots`` -- a new array without the knots bounding a noisy pixel
-            - a pixel bluer than the first knot or redder than the last knot removes only that end knot
-            - the knots are returned unchanged if no pixel is noisy or if every knot would be removed
+        - ``allKnots`` -- a new array without the interior knots bounding a noisy pixel
+            - the first and the last knot are never removed, so noise cannot leave an end of the order without a knot
+            - the knots are returned unchanged if no pixel is noisy
 
         **Usage:**
 
         ```python
-        allKnots = self._prune_knots_in_noise(allKnots, noisyWavelengths, order)
+        allKnots = self._prune_knots_in_noise(allKnots, noisyWavelengths)
         ```
 
         """
         import numpy as np
 
-        # KNOT INTERVAL i IS BOUNDED BY KNOTS i - 1 AND i; THE TWO END INTERVALS HAVE ONE BOUNDING KNOT
+        # KNOT INTERVAL i IS BOUNDED BY KNOTS i - 1 AND i
         intervalIndex = np.unique(np.digitize(noisyWavelengths, allKnots))
         boundingIndex = np.concatenate((intervalIndex - 1, intervalIndex))
-        boundingIndex = boundingIndex[(boundingIndex >= 0) & (boundingIndex < len(allKnots))]
+        # THE OUTER KNOTS ANCHOR THE ENDS OF THE ORDER AND ARE NEVER REMOVED
+        boundingIndex = boundingIndex[(boundingIndex > 0) & (boundingIndex < len(allKnots) - 1)]
         keepMask = np.ones(len(allKnots), dtype=bool)
         keepMask[boundingIndex] = False
-
-        if len(allKnots) and not keepMask.any():
-            self.log.warning(
-                f"\t\tNoisy-region pruning would remove every knot for order {order}. Keeping the knots unchanged.\n"
-            )
-            return allKnots.copy()
         return allKnots[keepMask]
 
     def create_placeholder_images(self):
