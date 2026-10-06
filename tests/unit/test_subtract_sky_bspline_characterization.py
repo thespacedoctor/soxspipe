@@ -620,3 +620,65 @@ def test_an_end_anchor_is_clamped_to_the_flux_range_of_its_surviving_window_samp
     # THE UNCLAMPED BLUE LINE IS -1/6 AT 500, BELOW EVERY SAMPLE IN THE WINDOW (MINIMUM 0)
     assert blueAnchor == 0.0
     assert redAnchor == pytest.approx(75.0)
+
+
+def test_the_clamp_uses_the_flux_range_of_the_survivors_and_not_of_the_whole_window(log: Any) -> None:
+    """A clipped low outlier must not widen the clamp, or the line could fall below every survivor (DY-593)."""
+    subtractor = _subtractor(log)
+    wavelength = np.arange(10.0)
+    # A RISING SKY WITH ONE CLIPPED OUTLIER AT -40, WELL BELOW EVERY SURVIVOR (MINIMUM 5)
+    flux = np.array([5.0, 6.0, 5.5, 7.0, 6.5, -40.0, 8.0, 7.5, 9.0, 8.5])
+
+    value = subtractor._clipped_line_value(wavelength, flux, -10.0)
+
+    # THE UNCLAMPED LINE IS 1.2 AT -10: INSIDE THE WHOLE-WINDOW RANGE (-40 TO 9) BUT BELOW THE SURVIVORS' MINIMUM
+    assert value == 5.0
+
+
+def test_the_clamp_stops_a_line_that_rises_above_the_maximum_surviving_flux(log: Any) -> None:
+    """The upper bound binds as well as the lower one (DY-593)."""
+    subtractor = _subtractor(log)
+    wavelength = np.arange(8.0)
+    flux = np.array([0.0, 1.2, 1.9, 3.1, 4.0, 4.9, 6.1, 7.0])
+
+    value = subtractor._clipped_line_value(wavelength, flux, 11.0)
+
+    # NO SAMPLE IS CLIPPED AND THE UNCLAMPED LINE IS 10.97 AT 11, ABOVE THE MAXIMUM SAMPLE FLUX OF 7
+    assert value == 7.0
+
+
+@pytest.mark.parametrize(
+    ("wavelength", "flux", "survivors", "evaluationWavelength"),
+    [
+        pytest.param(
+            [0.0, 1.0, 2.0, 3.0, 4.0],
+            [1.0, 55.0, 3.0, 35.0, -2.0],
+            [0, 2, 4],
+            2.0,
+            id="second-pass-would-leave-two-samples",
+        ),
+        pytest.param(
+            [1.0, 1.0, 1.0, 2.0, 2.0, 2.0],
+            [0.1, 0.0, -0.2, 2.0, -6.6, -0.1],
+            [0, 1, 2, 3, 5],
+            1.5,
+            id="second-pass-would-leave-one-distinct-wavelength",
+        ),
+    ],
+)
+def test_a_refused_second_clip_pass_keeps_the_fit_of_the_first_applied_pass(
+    log: Any,
+    wavelength: list[float],
+    flux: list[float],
+    survivors: list[int],
+    evaluationWavelength: float,
+) -> None:
+    """Pass one clips and is applied; pass two is refused as unfittable, so the pass-one line is the result (DY-593)."""
+    subtractor = _subtractor(log)
+    wavelengths = np.array(wavelength)
+    fluxes = np.array(flux)
+    expectedLine = np.polyfit(wavelengths[survivors], fluxes[survivors], 1)
+
+    value = subtractor._clipped_line_value(wavelengths, fluxes, evaluationWavelength)
+
+    assert value == pytest.approx(np.polyval(expectedLine, evaluationWavelength), abs=1e-9)

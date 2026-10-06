@@ -1202,15 +1202,12 @@ class subtract_sky:
         **Key Arguments:**
 
         - ``imageMapOrderDF`` -- order dataframe carrying the component flag columns. Updated in place.
-            - an absent ``flagged_edge_clipped`` or ``flagged_bad_pixel_clipped`` column counts as all ``False``
-            - ``flagged_object_clipped`` is required; the reset that calls this method always sets it
+            - ``flagged_edge_clipped``, ``flagged_bad_pixel_clipped`` and ``flagged_object_clipped`` are all required
+                - a missing column raises a ``KeyError``
         """
-        import pandas as pd
-
-        noneClipped = pd.Series(False, index=imageMapOrderDF.index)
         imageMapOrderDF["flagged_all_clipped"] = (
-            imageMapOrderDF.get("flagged_edge_clipped", noneClipped)
-            | imageMapOrderDF.get("flagged_bad_pixel_clipped", noneClipped)
+            imageMapOrderDF["flagged_edge_clipped"]
+            | imageMapOrderDF["flagged_bad_pixel_clipped"]
             | imageMapOrderDF["flagged_object_clipped"]
         )
 
@@ -1729,7 +1726,8 @@ class subtract_sky:
             - the line is fitted to the samples that survive iterated residual clipping
             - each pass clips only the samples still kept, so a rejected sample is never re-admitted
             - a clip pass leaving fewer than three samples, or fewer than two distinct wavelengths, is not applied
-            - the value is clamped to the flux range of the surviving samples, so a noisy window cannot extrapolate
+            - the line is evaluated at a sample inside the window
+            - the value is clamped to the flux range of the surviving samples, so a noisy window's fit cannot overshoot that range
 
         **Usage:**
 
