@@ -50,7 +50,12 @@ jobs:
     env:
       CACHE_ROOT: ${{ github.workspace }}/.real-data-cache
       WORKSPACE: ${{ github.workspace }}/.real-data-workspace
-      SOF_NAME: 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof
+      # THE OFFSET SOF IS THE ORIGINAL REPRESENTATIVE REDUCTION. THE TWO STARE SOFS ARE THE
+      # ONLY REDUCTIONS THAT RUN THE B-SPLINE SKY MODEL IN subtract_sky (DY-696)
+      SOF_NAMES: >-
+        20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof
+        20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_Feige110.sof
+        20260111T080347_NIR_3_STARE_OBJ_SLIT5_0_30_0S_SOXS_CD-325613.sof
       REDUCTION_LOG: ${{ github.workspace }}/reduction-log/reduction.log
       # GITHUB HANDS OUT RUNNERS ON DIFFERENT CPUs. numpy PICKS ITS SIMD KERNELS FROM
       # WHAT THE CPU OFFERS, SO AN AVX512 RUNNER REDUCES THE SAME RAW FRAMES DOWN A
@@ -106,7 +111,7 @@ jobs:
             --cache-root "$CACHE_ROOT" \
             --workspace "$WORKSPACE"
 
-      - name: Prepare representative NIR offset reduction
+      - name: Prepare the representative offset and stare reductions
         run: |
           # EVERY COMMAND HERE IS PIPED INTO tee, SO WITHOUT THIS A FAILING PIPELINE
           # WOULD REPORT tee'S EXIT STATUS AND THE STEP WOULD PASS
@@ -118,11 +123,13 @@ jobs:
           # AGAINST soxspipe.db, NOT A PATH IN THE WORKING DIRECTORY, SO THE DATASET IS
           # CHECKED BY LOOKING FOR THE NAME IN THE LISTING RATHER THAN ON DISK
           python -m soxspipe.cl_utils list sof | tee "$RUNNER_TEMP/sof-listing.txt"
-          grep -qF "$SOF_NAME" "$RUNNER_TEMP/sof-listing.txt"
-          python -m soxspipe.cl_utils raw sof "$SOF_NAME"
-          # THE REDUCTION PRINTS PER-RECIPE RUN TIMES, SO ITS OUTPUT IS KEPT AS AN
-          # ARTIFACT FOR A COARSE PERFORMANCE TREND THE RUN LOG WOULD OTHERWISE LOSE
-          python -m soxspipe.cl_utils -q reduce sof "$SOF_NAME" 2>&1 | tee -a "$REDUCTION_LOG"
+          for sof_name in $SOF_NAMES; do
+            grep -qF "$sof_name" "$RUNNER_TEMP/sof-listing.txt"
+            python -m soxspipe.cl_utils raw sof "$sof_name"
+            # THE REDUCTION PRINTS PER-RECIPE RUN TIMES, SO ITS OUTPUT IS KEPT AS AN
+            # ARTIFACT FOR A COARSE PERFORMANCE TREND THE RUN LOG WOULD OTHERWISE LOSE
+            python -m soxspipe.cl_utils -q reduce sof "$sof_name" 2>&1 | tee -a "$REDUCTION_LOG"
+          done
 
       - name: Run real-data acceptance tests
         env:

@@ -47,7 +47,7 @@ python -m pip install -e ".[tests]"
 python -m pytest tests/unit tests/integration -m "not slow"
 ```
 
-The real-data acceptance test is opt-in. The scheduled GitHub Actions workflow downloads the immutable archive named by `tests/real_data/manifest.json`, verifies it, creates a disposable workspace, and runs the representative NIR-offset reduction. To run the acceptance assertions locally after preparing that workspace, set `SOXSPIPE_REAL_DATA_DIR` to its absolute path:
+The real-data acceptance test is opt-in. The scheduled GitHub Actions workflow downloads the immutable archive named by `tests/real_data/manifest.json`, verifies it, creates a disposable workspace, and runs the NIR offset reduction and the VIS and NIR stare reductions. To run the acceptance assertions locally after preparing that workspace, set `SOXSPIPE_REAL_DATA_DIR` to its absolute path:
 
 ```bash
 SOXSPIPE_REAL_DATA_DIR=/absolute/path/to/workspace python -m pytest tests/real_data
