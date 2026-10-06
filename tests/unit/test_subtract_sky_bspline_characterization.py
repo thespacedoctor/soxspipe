@@ -201,12 +201,13 @@ def test_debug_binned_order_twelve_prints_knot_budgets_and_plots_every_fit(
         ("Fitting the sky model for order 12\niteration 1. #knots: 12. \ninfo", 12),
         ("Fitting the sky model for order 12\niteration 2. #knots: 28. \ninfo", 28),
     ]
-    assert knots.size == 426
-    assert spline[0].size == 434
-    assert float(fluxErrorRatio.sum()) == pytest.approx(7279.523402021855, rel=ANCHORED_FIT_REL, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(690111.5805554278, rel=ANCHORED_FIT_REL, abs=0)
+    # THREE PROPOSED KNOTS BOUND AN INTERVAL WITH NO SAMPLE AND ARE DROPPED BEFORE THE FIT (DY-697)
+    assert knots.size == 423
+    assert spline[0].size == 431
+    assert float(fluxErrorRatio.sum()) == pytest.approx(7398.83659145686, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(690112.8772945863, rel=ANCHORED_FIT_REL, abs=0)
     assert modelled["sky_model"].iloc[SAMPLED_ROWS].tolist() == _approx_list(
-        [174.3872543237898, 193.79577636769778, 197.2806186774191, 226.28340470007237], ANCHORED_FIT_REL
+        [174.3872543237898, 192.2996782789385, 197.28061867741914, 226.28340470007237], ANCHORED_FIT_REL
     )
 
 
@@ -316,8 +317,13 @@ def test_a_fitpack_fit_below_ier_ten_is_accepted(log: Any, monkeypatch: pytest.M
     assert _info_messages(log) == ["\t\tNo new knots added on iteration 8. Stopping iterations.\n"]
 
 
-def test_poor_first_bspline_fit_is_reported_not_crashed(log: Any) -> None:
-    """Coincident starter knots make the unmocked splrep return ier=30 on the first fit (DY-602)."""
+def test_coincident_starter_knots_are_collapsed_so_the_first_fit_succeeds(log: Any) -> None:
+    """Coincident starter knots once made the unmocked splrep return ier=30 on the first fit (DY-602).
+
+    The duplicates are now dropped before the fit (DY-697), so the fit runs. The named error for a
+    poor first fit is pinned with a stubbed splrep in
+    ``test_a_poor_fitpack_fit_on_the_first_iteration_raises_a_value_error_naming_the_fit``.
+    """
     worker = _subtractor(log, arm="NIR", iterationLimit=7, pointsPerKnot=25)
     worker.recipeSettings["sky-subtraction"]["min_points_per_knot"] = 5
     rng = np.random.default_rng(1)
@@ -327,14 +333,23 @@ def test_poor_first_bspline_fit_is_reported_not_crashed(log: Any) -> None:
             "order": 12,
             "wavelength": wavelength,
             "flux": rng.normal(100.0, 5.0, wavelength.size),
+            "error": np.full(wavelength.size, 5.0),
             "residual_windowed_std": np.full(wavelength.size, 5.0),
             "flagged_all_clipped": False,
             "flagged_noisy_region": False,
+            "residual_windowed_long_median": np.zeros(wavelength.size),
+            "flux_windowed_long_median": np.full(wavelength.size, 100.0),
         }
     )
 
-    with pytest.raises(ValueError, match=r"order 12 on iteration -2.*ier=30"):
-        worker.fit_bspline_curve_to_sky(imageMapOrder)
+    modelled, spline, knots, _, _ = worker.fit_bspline_curve_to_sky(imageMapOrder)
+
+    # ALL FOUR STARTER KNOTS FALL ON THE 900 SAMPLES AT 1000.0 NM, BELOW EVERY OTHER SAMPLE, SO NONE SURVIVES
+    assert not np.any(knots == 1000.0)
+    assert np.all(np.diff(knots) > 0)
+    assert np.all(knots > 1000.0)
+    assert np.array_equal(spline[0][4:-4], knots)
+    assert int(modelled["sky_model"].isna().sum()) == 0
 
 
 @pytest.mark.parametrize("failure", [ValueError, TypeError, RuntimeError])
@@ -509,20 +524,23 @@ def test_blue_end_noise_prunes_only_the_first_knot(log: Any, monkeypatch: pytest
     # FIRST PRUNING PASS: THE STARTER KNOTS, THEN THE KNOTS LEFT AFTER REMOVAL
     assert knotSets[0] == [502.5, 505.0, 507.5]
     assert knotSets[1] == [505.0, 507.5]
-    # THE STARTER KNOT AT 502.5 IS GONE, SO THE ILL-CONDITIONED FIT DIVERGES AND A POOR FIT ON
-    # ITERATION 8 REVERTS; THE KNOTS ARE THOSE OF THE RETURNED SPLINE (DY-602)
-    assert _info_messages(log) == ["\t\tpoor fit on iteration 8 for order 10. Reverting to last iteration.\n"]
-    assert knots.size == 216
+    # THE STARTER KNOT AT 502.5 IS GONE, SO THE FIT IS ILL-CONDITIONED. ITERATION 8 ONCE PROPOSED A
+    # DUPLICATE KNOT, FITPACK REJECTED IT (ier=30) AND THE FIT REVERTED; THAT KNOT IS NOW DROPPED BEFORE
+    # THE FIT (DY-697), SO NO ITERATION IS REJECTED AND THE KNOTS ARE THOSE OF THE RETURNED SPLINE
+    assert _info_messages(log) == []
+    assert knots.size == 223
     assert np.array_equal(spline[0][4:-4], knots)
     assert knots[[0, -1]].tolist() == _approx_list([500.0662038828806, 509.6774193548387])
     # THE DIVERGING FIT IS ILL-CONDITIONED, SO THESE NUMBERS ARE PINNED AT 1e-6, NOT 1e-12
-    # THE SKY MODEL NEAR THE NOISE DIVERGES FAR FROM THE TRUE ~200 SKY BECAUSE OF A SEPARATE KNOT-ADDITION AND
-    # WEIGHTING DEFECT, DY-695; THESE VALUES CHARACTERISE THAT KNOWN-BAD FIT AND MUST FLIP WHEN DY-695 IS FIXED
-    assert float(fluxErrorRatio.sum()) == pytest.approx(-1293.9401646850342, rel=1e-6, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(1060238.960597313, rel=1e-6, abs=0)
+    # THE SKY MODEL INSIDE THE DOWN-WEIGHTED NOISY BLOCK STILL HUMPS FAR ABOVE THE TRUE ~200 SKY, BECAUSE THE
+    # BLOCK SHARES A KNOT INTERVAL WITH THE BRIGHT 502.0 NM SKYLINE (DY-695). THE HUMP IS HIGHER THAN BEFORE
+    # THE KNOT FIX ONLY BECAUSE THE ITERATION-8 FIT IS NO LONGER REJECTED. THE REAL VIS AND NIR STARE FRAMES
+    # SHOW NO SUCH HUMP, SO THESE VALUES CHARACTERISE A SYNTHETIC-ONLY FIT AND MUST FLIP IF THE HUMP IS FIXED
+    assert float(fluxErrorRatio.sum()) == pytest.approx(-1293.940961304414, rel=1e-6, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(1300539.7029378437, rel=1e-6, abs=0)
     assert modelled["sky_model"].iloc[[0, 400, 1500, 2999]].tolist() == [
         pytest.approx(value, rel=1e-6, abs=0)
-        for value in [174.7460735000429, 1516.3666114913553, 195.99985563512843, 225.86936119293233]
+        for value in [174.74607314171362, 2379.2515818826296, 195.99985563512843, 225.86936119293233]
     ]
 
 
@@ -592,6 +610,149 @@ def test_pruning_that_would_remove_every_knot_leaves_the_knots_and_names_the_ord
     assert log.messages == [
         ("warning", "\t\tNoisy-region pruning would remove every knot for order 13. Keeping the knots unchanged.\n")
     ]
+
+
+@pytest.mark.parametrize(
+    ("knots", "expected"),
+    [
+        pytest.param([502.0, 505.0, 508.0], [502.0, 505.0, 508.0], id="valid-knots-are-kept"),
+        pytest.param([502.0, 505.0, 505.0, 508.0], [502.0, 505.0, 508.0], id="an-exact-duplicate-is-dropped"),
+        pytest.param([505.0, 502.0, 508.0], [502.0, 505.0, 508.0], id="knots-are-returned-sorted"),
+        pytest.param([499.9, 500.0, 505.0], [505.0], id="knots-at-or-below-the-first-sample-are-dropped"),
+        pytest.param([505.0, 510.0, 510.1], [505.0], id="knots-at-or-above-the-last-sample-are-dropped"),
+        pytest.param([502.0, 502.05, 502.4, 508.0], [502.0, 502.4, 508.0], id="a-knot-with-no-sample-since-the-last-is-dropped"),
+        pytest.param([502.3, 503.0, 508.0], [502.3, 508.0], id="a-sample-on-a-knot-counts-for-neither-interval"),
+        pytest.param([502.0, np.nan, 508.0], [502.0, 508.0], id="a-nan-knot-is-dropped"),
+        pytest.param([], [], id="no-knots"),
+    ],
+)
+def test_knots_without_samples_in_their_interval_are_dropped(
+    log: Any, knots: list[float], expected: list[float]
+) -> None:
+    """Every kept knot has a sample between it and the previous kept knot, and a sample after it (DY-697)."""
+    subtractor = _subtractor(log)
+    # NO SAMPLE LIES BETWEEN 502.0 AND 502.05 NM, SO A KNOT AT 502.05 AFTER ONE AT 502.0 BOUNDS AN EMPTY INTERVAL
+    wavelength = np.array([500.0, 501.0, 501.5, 502.1, 502.3, 503.0, 505.5, 507.0, 509.0, 510.0])
+
+    kept = subtractor._drop_knots_without_samples(np.array(knots), wavelength, order=10)
+
+    assert kept.tolist() == expected
+    assert log.messages == []
+
+
+def test_dropping_knots_never_mutates_the_knots_it_is_given(log: Any) -> None:
+    """The caller's knot array is left intact; a new array is returned."""
+    subtractor = _subtractor(log)
+    knots = np.array([505.0, 505.0, 499.0])
+
+    subtractor._drop_knots_without_samples(knots, np.linspace(500.0, 510.0, 11), order=10)
+
+    assert knots.tolist() == [505.0, 505.0, 499.0]
+
+
+def test_tied_sample_wavelengths_keep_only_one_knot_among_them(log: Any) -> None:
+    """Samples sharing one wavelength support no interval between knots placed on and among them (DY-697)."""
+    subtractor = _subtractor(log)
+    wavelength = np.concatenate([np.full(5, 1000.0), [1001.0, 1002.0, 1003.0]])
+
+    kept = subtractor._drop_knots_without_samples(np.array([1000.0, 1000.0, 1000.5, 1001.5]), wavelength, order=10)
+
+    # 1000.0 HAS NO SAMPLE BLUEWARD OF IT; 1000.5 HAS THE TIED SAMPLES; 1001.5 HAS THE SAMPLE AT 1001.0
+    assert kept.tolist() == [1000.5, 1001.5]
+
+
+def test_dropping_every_knot_warns_and_names_the_order(log: Any) -> None:
+    """With no knot left the spline is one cubic across the order, so the loss is logged (DY-697)."""
+    subtractor = _subtractor(log)
+
+    kept = subtractor._drop_knots_without_samples(np.array([499.0, 510.0, 511.0]), np.linspace(500.0, 510.0, 11), order=13)
+
+    assert kept.tolist() == []
+    assert log.messages == [
+        ("warning", "\t\tEvery proposed b-spline knot for order 13 lacks samples in its interval. Fitting without knots.\n")
+    ]
+
+
+def test_a_fit_left_with_no_knots_is_one_cubic_across_the_order(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When every knot is dropped the fit still runs, as a single cubic with only boundary knots (DY-697)."""
+    subtractor = _subtractor(log)
+    monkeypatch.setattr(subtractor, "_drop_knots_without_samples", lambda knots, wavelength, order: np.array([]))
+
+    modelled, spline, knots, _, _ = subtractor.fit_bspline_curve_to_sky(_sloped_order(noisy=False))
+
+    assert knots.size == 0
+    # FITPACK PADS AN EMPTY INTERIOR KNOT VECTOR WITH k + 1 BOUNDARY KNOTS AT EACH END
+    assert spline[0].size == 8
+    assert int(modelled["sky_model"].isna().sum()) == 0
+
+
+def test_an_empty_sample_list_keeps_no_knot(log: Any) -> None:
+    """With no samples no knot interval can hold one."""
+    subtractor = _subtractor(log)
+
+    kept = subtractor._drop_knots_without_samples(np.array([505.0]), np.array([]), order=10)
+
+    assert kept.tolist() == []
+
+
+@pytest.mark.parametrize(
+    ("subtractorFactory", "stopIteration"),
+    [
+        pytest.param(lambda log: _subtractor(log, noiseSigma=3, iterationLimit=25), 11, id="test-settings"),
+        pytest.param(_default_like_subtractor, 9, id="default-like-settings"),
+    ],
+)
+def test_a_dropped_proposal_leaves_the_extra_knots_so_knot_addition_stops_sooner(
+    log: Any, subtractorFactory: Any, stopIteration: int
+) -> None:
+    """A dropped proposal is removed from the extra knots, so re-proposing it is not counted as a new
+    knot. Keeping it made the "no new knots" stop fire on iterations 15 and 12 instead (DY-697)."""
+    pixels = _skyline_order()
+    pixels.loc[200:599, "residual_windowed_long_median"] = 50.0
+    subtractor = subtractorFactory(log)
+
+    subtractor.fit_bspline_curve_to_sky(pixels)
+
+    assert _info_messages(log) == [f"\t\tNo new knots added on iteration {stopIteration}. Stopping iterations.\n"]
+
+
+@pytest.mark.parametrize(
+    "subtractorFactory",
+    [
+        pytest.param(lambda log: _subtractor(log, noiseSigma=3), id="test-settings"),
+        pytest.param(_default_like_subtractor, id="default-like-settings"),
+    ],
+)
+def test_knot_addition_next_to_noise_never_hands_fitpack_a_knot_without_samples(
+    log: Any, monkeypatch: pytest.MonkeyPatch, subtractorFactory: Any
+) -> None:
+    """Knot addition beside a noisy block once made duplicate knots and empty intervals, so FITPACK
+    returned ier=30 and the fit reverted (DY-697). Every knot vector FITPACK sees now has a sample in
+    every interval, and no fit is rejected."""
+    pixels = _skyline_order()
+    pixels.loc[200:599, "residual_windowed_long_median"] = 50.0
+    subtractor = subtractorFactory(log)
+    realSplrep = scipy.interpolate.splrep
+    calls: list[tuple[np.ndarray, np.ndarray, int]] = []
+
+    def recording_splrep(*args: Any, **kwargs: Any) -> tuple:
+        result = realSplrep(*args, **kwargs)
+        calls.append((np.asarray(args[0]), np.asarray(kwargs["t"]), result[2]))
+        return result
+
+    monkeypatch.setattr(scipy.interpolate, "splrep", recording_splrep)
+
+    subtractor.fit_bspline_curve_to_sky(pixels)
+
+    assert len(calls) > 3
+    for wavelength, knots, _ in calls:
+        edges = np.concatenate(([-np.inf], knots, [np.inf]))
+        samplesPerInterval = np.histogram(wavelength, bins=edges)[0]
+        assert np.all(np.diff(knots) > 0)
+        assert knots.size == 0 or (knots[0] > wavelength[0] and knots[-1] < wavelength[-1])
+        assert np.all(samplesPerInterval > 0)
+    assert [ier for _, _, ier in calls if ier >= 10] == []
+    assert not any("poor fit" in message for message in _info_messages(log))
 
 
 def test_a_rejected_anchor_sample_stays_rejected_in_later_clip_passes(log: Any) -> None:
