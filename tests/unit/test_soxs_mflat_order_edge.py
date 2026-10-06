@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -262,3 +263,83 @@ def test_logged_edge_count_excludes_pixels_already_counted_as_low_sensitivity(
     assert lowSens > 0
     assert newlyAdded < _expected_dimmed_mask("x").sum()
     assert f"        {newlyAdded} order-edge pixels added to bad-pixel mask" in printed
+
+
+def _qc_row(recipe: soxs_mflat, qcName: str) -> pd.Series:
+    return recipe.qc.loc[recipe.qc["qc_name"] == qcName].iloc[0]
+
+
+@pytest.mark.parametrize("axis", ["x", "y"])
+def test_edge_only_mask_is_stored_and_counted_as_n_order_edge_qc(
+    monkeypatch: pytest.MonkeyPatch, log: Any, axis: str
+) -> None:
+    # ARRANGE
+    frame = _frame(axis)
+
+    # ACT
+    _, recipe = _run(monkeypatch, log, axis, frame)
+
+    # ASSERT
+    np.testing.assert_array_equal(recipe.orderEdgeOnlyMask, _expected_dimmed_mask(axis))
+    row = _qc_row(recipe, "N ORDER EDGE")
+    assert row["qc_value"] == float(_expected_dimmed_mask(axis).sum())
+    assert row["qc_unit"] == "pixels"
+    assert row["qc_comment"] == "Number of partly illuminated order-edge pixels masked in master flat"
+    assert row["obs_date_utc"] == recipe.dateObs
+
+
+def test_edge_only_mask_excludes_low_sensitivity_and_already_masked_pixels(
+    monkeypatch: pytest.MonkeyPatch, log: Any
+) -> None:
+    # ARRANGE: A SIGMA OF 0.5 MAKES THE CLIP FLAG SOME DIMMED EDGES, AND ONE MORE IS MASKED BEFORE THE CALL
+    frame = _frame("x")
+    frame.mask[0, SEGMENT_LOW] = True
+
+    # ACT
+    masked, recipe = _run(monkeypatch, log, "x", frame, {"low-sensitivity-clipping-sigma": 0.5})
+
+    # ASSERT
+    lowSens = int(_qc_row(recipe, "N LOW SENS")["qc_value"])
+    edgeOnly = recipe.orderEdgeOnlyMask
+    assert lowSens > 0
+    assert not edgeOnly[0, SEGMENT_LOW]
+    assert edgeOnly.sum() < _expected_dimmed_mask("x").sum() - 1
+    assert not (edgeOnly & ~masked.mask).any()
+    assert int(_qc_row(recipe, "N ORDER EDGE")["qc_value"]) == edgeOnly.sum()
+
+
+def test_edge_qc_is_not_recorded_when_write_qc_is_off(monkeypatch: pytest.MonkeyPatch, log: Any) -> None:
+    # ARRANGE
+    monkeypatch.setattr(mflatModule, "unpack_order_table", lambda **kwargs: (None, _order_table("x"), None))
+    monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
+    recipe = _recipe(log, "x")
+
+    # ACT
+    recipe.mask_low_sens_pixels(_frame("x"), "orders.fits", writeQC=False)
+
+    # ASSERT
+    assert recipe.qc.empty
+    np.testing.assert_array_equal(recipe.orderEdgeOnlyMask, _expected_dimmed_mask("x"))
+
+
+def test_coldpix_qc_excludes_the_edge_flags_but_keeps_detector_defects(
+    monkeypatch: pytest.MonkeyPatch, log: Any
+) -> None:
+    # ARRANGE: ONE DETECTOR DEFECT OUTSIDE THE ORDER SEGMENTS, PLUS THE DIMMED EDGE PIXELS
+    from soxspipe.commonutils import toolkit
+
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    frame = _frame("x")
+    frame.mask[0, 0] = True
+    frame.header["SEQ_ARM"] = "VIS"
+    frame.header["DATE_OBS"] = "2024-01-01T00:00:00"
+    masked, recipe = _run(monkeypatch, log, "x", frame)
+
+    # ACT
+    counted = toolkit.generic_quality_checks(
+        log, masked, {}, "soxs-mflat", pd.DataFrame(), excludeMask=recipe.orderEdgeOnlyMask
+    )
+
+    # ASSERT
+    assert masked.mask.sum() == _expected_dimmed_mask("x").sum() + 1
+    assert counted["qc_value"].tolist() == [1, round(1 / masked.mask.size, 6)]

@@ -866,7 +866,7 @@ def _rescale_order_tables_for_binning(orderPixelTable, orderMetaTable, axisA, ax
     return orderPixelTable, orderMetaTable
 
 
-def generic_quality_checks(log, frame, settings, recipeName, qcTable):
+def generic_quality_checks(log, frame, settings, recipeName, qcTable, excludeMask=None):
     """*measure very basic quality checks on a frame and return the QC table with results appended*
 
     **Key Arguments:**
@@ -876,6 +876,9 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     - ``settings`` -- soxspipe settings
     - ``recipeName`` -- the name of the recipe
     - ``qcTable`` -- the QC pandas data-frame to save the QC measurements
+    - ``excludeMask`` -- boolean array, the same shape as the frame mask. The pixels flagged in it are not counted
+      as bad pixels, even when they are masked in the frame. A ``ValueError`` is raised if its shape differs
+      from the frame mask. Default *None* (count every masked pixel)
 
     **Return:**
 
@@ -906,7 +909,14 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     utcnow = utcnow_string()
 
     # COUNT BAD-PIXELS
-    badCount = frame.mask.sum()
+    countedMask = frame.mask
+    if excludeMask is not None:
+        if np.shape(excludeMask) != np.shape(frame.mask):
+            raise ValueError(
+                f"excludeMask has shape {np.shape(excludeMask)} but the frame mask has shape {np.shape(frame.mask)}"
+            )
+        countedMask = frame.mask & ~np.asarray(excludeMask, dtype=bool)
+    badCount = countedMask.sum()
     totalPixels = np.size(frame.mask)
     percent = float(badCount) / float(totalPixels)
     percent = float(f"{percent:.6f}")

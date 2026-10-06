@@ -1,7 +1,7 @@
 # Release Notes
 
 * **FIXED**: optimal (Horne) extraction no longer inflates the flux by up to 1e6x when the object trace sits on an order edge; the object profile now gives no weight to pixels off the order (DY-752).
-* **FIXED**: the master flat now flags partly illuminated order-edge pixels, which flat-fielding amplified about 6x; set `order-edge-min-flat-fraction` (default 0.5, 0 turns it off) and re-make existing master flats to gain the flags (DY-753).
+* **FIXED**: the master flat now flags partly illuminated order-edge pixels, which flat-fielding amplified about 6x; set `order-edge-min-flat-fraction` (default 0.5, 0 turns it off) and re-make existing master flats to gain the flags; these pixels are reported as `N ORDER EDGE` and are not counted in the `COLDPIX` QC (DY-753).
 * **FIXED**: `soxs_stare` now shows the raw-stack surface plot only in debug mode (`-d`), where before it opened a window on every run and waited until the window was closed.
 * **FIXED**: a poor b-spline sky fit (FITPACK `ier` of 10 or more, including 50) on the first iteration now raises a named `ValueError` instead of `UnboundLocalError`, and after a revert the returned knots match the reverted spline (DY-602).
 * **FIXED**: noisy-region knot pruning in `subtract_sky` removes only the knots that bound noisy pixels, where it always dropped the reddest knot as well (DY-601).

@@ -70,6 +70,9 @@ class soxs_mflat(base_recipe):
     ```
     """
 
+    # THE PARTLY ILLUMINATED ORDER-EDGE PIXELS THE LAST MASKING ADDED TO THE MASTER-FLAT MASK (NONE UNTIL MASKING RUNS)
+    orderEdgeOnlyMask = None
+
     def __init__(
         self,
         log,
@@ -361,6 +364,7 @@ class soxs_mflat(base_recipe):
         normalisedFlatSet = []
         self.combinedNormalisedFlatSet = []
         self.masterFlatSet = []
+        self.orderEdgeMaskSet = []
         self.orderTableSet = []
         self.detectionCountSet = []
         medianOrderFluxDFExists = False
@@ -374,6 +378,7 @@ class soxs_mflat(base_recipe):
                 normalisedFlatSet.append(None)
                 self.combinedNormalisedFlatSet.append(None)
                 self.masterFlatSet.append(None)
+                self.orderEdgeMaskSet.append(None)
                 continue
 
             if tag and self.inst.upper() != "SOXS":
@@ -426,6 +431,7 @@ class soxs_mflat(base_recipe):
             )
 
             self.masterFlatSet.append(mflat)
+            self.orderEdgeMaskSet.append(None if self.orderEdgeOnlyMask is None else self.orderEdgeOnlyMask.copy())
 
             productPath = self._write_lamp_master_flat(mflat, outDir, tag)
 
@@ -485,6 +491,7 @@ class soxs_mflat(base_recipe):
             settings=self.settings,
             recipeName=self.recipeName,
             qcTable=self.qc,
+            excludeMask=self._order_edge_exclude_mask(mflat),
         )
         self.qc = spectroscopic_image_quality_checks(
             log=self.log,
@@ -500,6 +507,28 @@ class soxs_mflat(base_recipe):
 
         self.log.debug("completed the ``produce_product`` method")
         return productPath, qcTable
+
+    def _order_edge_exclude_mask(self, mflat):
+        """*return the edge-only mask to leave out of the cold-pixel count, or None if it does not fit the master flat*
+
+        **Key Arguments:**
+
+        - ``mflat`` -- the master flat frame the QC is measured on
+
+        **Return:**
+
+        - ``excludeMask`` -- the edge-only mask of the last masking, or *None* when masking never ran or the mask
+          does not have the shape of the master-flat mask
+        """
+        if self.orderEdgeOnlyMask is None:
+            return None
+        if self.orderEdgeOnlyMask.shape != mflat.mask.shape:
+            self.log.warning(
+                f"The order-edge mask has shape {self.orderEdgeOnlyMask.shape} but the master flat mask has shape "
+                f"{mflat.mask.shape}; order-edge pixels will be counted in the cold-pixel QC"
+            )
+            return None
+        return self.orderEdgeOnlyMask
 
     def _normalise_and_stack_lamp_flats(self, cf, orderTablePath, tag, frameNames=None):
         """*normalise and stack one lamp's flats, then renormalise against that first-pass stack and stack again*
@@ -1539,7 +1568,9 @@ class soxs_mflat(base_recipe):
 
         # LOW-FLAT ORDER-EDGE PIXELS ARE MASKED BUT NOT COUNTED AS LOW-SENSITIVITY PIXELS
         orderEdgePixelMask = self._order_edge_pixel_mask(frame, orderSegments, originalBPM)
-        orderEdgePixelCount = (orderEdgePixelMask & ~lowSensitivityPixelMask & ~(originalBPM == 1)).sum()
+        orderEdgeOnlyMask = orderEdgePixelMask & ~lowSensitivityPixelMask & ~(originalBPM == 1)
+        orderEdgePixelCount = orderEdgeOnlyMask.sum()
+        self.orderEdgeOnlyMask = orderEdgeOnlyMask
 
         if writeQC:
             utcnow = utcnow_string()
@@ -1549,6 +1580,16 @@ class soxs_mflat(base_recipe):
                 qcName="N LOW SENS",
                 qcValue=float(lowSensPixelCount),
                 qcComment="Number of low-sensitivity pixels found in master flat",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit="pixels",
+            )
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="N ORDER EDGE",
+                qcValue=float(orderEdgePixelCount),
+                qcComment="Number of partly illuminated order-edge pixels masked in master flat",
                 obsDateUtc=self.dateObs,
                 reductionDateUtc=utcnow,
                 qcUnit="pixels",
@@ -1719,6 +1760,8 @@ class soxs_mflat(base_recipe):
                 stitchedFlat.mask[y, x:] = dmflatScaled.mask[y, x:]
                 stitchedFlat.uncertainty.array[y, x:] = dmflatScaled.uncertainty.array[y, x:]
 
+        stitchedEdgeMask = self._stitch_order_edge_masks(axisAStitchCoords, axisBStitchCoords, stitchedFlat.mask.shape)
+
         stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
 
         from soxspipe.commonutils.toolkit import quicklook_image
@@ -1756,6 +1799,13 @@ class soxs_mflat(base_recipe):
 
         stitchedFlat = self.mask_low_sens_pixels(frame=stitchedFlat, orderTablePath=orderTablePath)
 
+        # THE FINAL MASKING TREATS THE STITCHED LAMP EDGE FLAGS AS BAD PIXELS, SO ADD THEM BACK TO THE EDGE-ONLY MASK.
+        # THE LAMP EDGE FLAGS SIT IN beforeMask, SO THEY CAN NEVER BE COUNTED AS LOW-SENSITIVITY IN THE FINAL PASS
+        if self.orderEdgeOnlyMask is not None:
+            stitchedEdgeMask = stitchedEdgeMask | self.orderEdgeOnlyMask
+        self.orderEdgeOnlyMask = stitchedEdgeMask
+        self._set_order_edge_qc_count(int(stitchedEdgeMask.sum()))
+
         from soxspipe.commonutils.toolkit import quicklook_image
 
         quicklook_image(
@@ -1770,6 +1820,53 @@ class soxs_mflat(base_recipe):
 
         self.log.debug("completed the ``stitch_uv_mflats`` method")
         return stitchedFlat
+
+    def _set_order_edge_qc_count(self, count):
+        """*overwrite the value of the last ``N ORDER EDGE`` QC row, if there is one*
+
+        **Key Arguments:**
+
+        - ``count`` -- the number of order-edge pixels excluded from the cold-pixel count
+        """
+        if "qc_name" not in self.qc:
+            return
+        edgeRows = self.qc.index[self.qc["qc_name"] == "N ORDER EDGE"]
+        if len(edgeRows) == 0:
+            return
+        qc = self.qc.copy()
+        qc.loc[edgeRows[-1], "qc_value"] = float(count)
+        self.qc = qc
+
+    def _stitch_order_edge_masks(self, axisAStitchCoords, axisBStitchCoords, shape):
+        """*stitch the D and QTH lamp edge-only masks along the line used to stitch the master flats*
+
+        **Key Arguments:**
+
+        - ``axisAStitchCoords`` -- the stitch position along the dispersion axis for each row
+        - ``axisBStitchCoords`` -- the row (or column) each stitch position belongs to
+        - ``shape`` -- the shape of the stitched master flat
+
+        **Return:**
+
+        - ``stitchedEdgeMask`` -- boolean array, the Q-lamp edge flags with the D-lamp flags on the D-lamp side of the
+          stitch line (before it when ``axisA`` is x, from it onward when ``axisA`` is y), as in the flat stitch
+        """
+        import numpy as np
+
+        noEdges = np.zeros(shape, dtype=bool)
+        dEdgeMask = self.orderEdgeMaskSet[1] if self.orderEdgeMaskSet[1] is not None else noEdges
+        stitchedEdgeMask = (self.orderEdgeMaskSet[2] if self.orderEdgeMaskSet[2] is not None else noEdges).copy()
+
+        # SAME SLICES AS THE FLAT, MASK AND UNCERTAINTY STITCH IN stitch_uv_mflats
+        if self.axisA == "x":
+            for x, y in zip(axisAStitchCoords, axisBStitchCoords, strict=False):
+                if y < shape[0] and x < shape[1]:
+                    stitchedEdgeMask[y, :x] = dEdgeMask[y, :x]
+        else:
+            for y, x in zip(axisAStitchCoords, axisBStitchCoords, strict=False):
+                stitchedEdgeMask[y, x:] = dEdgeMask[y, x:]
+
+        return stitchedEdgeMask
 
     def find_uvb_overlap_order_and_scale(self, dcalibratedFlats, qcalibratedFlats):
         """*find uvb order where both lamps produce a similar flux. This is the order at which the 2 lamp flats will be
