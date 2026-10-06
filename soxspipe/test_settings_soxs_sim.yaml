@@ -93,6 +93,8 @@ soxs-mflat:
     poly-fitting-residual-clipping-sigma: 5
     poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
+    # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+    order-edge-min-flat-fraction: 0.5
     # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
     scale-d2-to-qth: True
     

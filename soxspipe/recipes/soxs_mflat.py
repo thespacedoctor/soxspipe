@@ -33,6 +33,12 @@ os.environ["TERM"] = "vt100"
 NIR_FLAT_LAMP_TYPES = ("LAMP,FLAT", "FLAT,LAMP")
 NIR_LAMP_OFF_TYPE = "DARK"
 
+# IN-ORDER PIXELS BELOW THIS FRACTION OF THEIR ORDER-ROW MEDIAN ARE PARTLY ILLUMINATED ORDER-EDGE PIXELS
+# (OVERRIDE WITH THE ORDER-EDGE-MIN-FLAT-FRACTION SETTING)
+ORDER_EDGE_MIN_FLAT_FRACTION = 0.5
+# FEWEST USABLE PIXELS AN ORDER-ROW SEGMENT NEEDS FOR ITS MEDIAN TO BE TRUSTED
+ORDER_EDGE_MIN_SEGMENT_PIXELS = 3
+
 
 class soxs_mflat(base_recipe):
     """
@@ -1452,6 +1458,7 @@ class soxs_mflat(base_recipe):
         originalBPM = np.copy(frame.mask)
 
         interOrderMask = np.ones_like(frame.data)
+        orderSegments = []
         orders = orderTablePixels["order"].values
         axisAcoords_up = orderTablePixels[f"{self.axisA}coord_edgeup"].values.round().astype(int)
         axisAcoords_low = orderTablePixels[f"{self.axisA}coord_edgelow"].values.round().astype(int)
@@ -1475,6 +1482,7 @@ class soxs_mflat(base_recipe):
                 l = 0
             if u < 0:
                 u = 0
+            orderSegments.append((b, l, u))
             if self.axisA == "x":
                 interOrderMask[b, l:u] = 0
                 if returnMedianOrderFlux and b > bAxisMiddles[o] - 3 and b < bAxisMiddles[o] + 3:
@@ -1529,6 +1537,10 @@ class soxs_mflat(base_recipe):
         lowSensitivityPixelMask = (frameClipped.mask == 1) & (beforeMask != 1)
         lowSensPixelCount = lowSensitivityPixelMask.sum()
 
+        # LOW-FLAT ORDER-EDGE PIXELS ARE MASKED BUT NOT COUNTED AS LOW-SENSITIVITY PIXELS
+        orderEdgePixelMask = self._order_edge_pixel_mask(frame, orderSegments, originalBPM)
+        orderEdgePixelCount = (orderEdgePixelMask & ~lowSensitivityPixelMask & ~(originalBPM == 1)).sum()
+
         if writeQC:
             utcnow = utcnow_string()
             self.qc = append_qc(
@@ -1542,8 +1554,9 @@ class soxs_mflat(base_recipe):
                 qcUnit="pixels",
             )
             self.log.print(f"        {lowSensPixelCount} low-sensitivity pixels added to bad-pixel mask")
+            self.log.print(f"        {orderEdgePixelCount} order-edge pixels added to bad-pixel mask")
 
-        frame.mask = (lowSensitivityPixelMask == 1) | (originalBPM == 1)
+        frame.mask = (lowSensitivityPixelMask == 1) | (originalBPM == 1) | orderEdgePixelMask
 
         # SET INTRA-ORDER TO 1 OR ZERO
         if False:
@@ -1569,6 +1582,50 @@ class soxs_mflat(base_recipe):
             return frame, medianOrderFluxDF
 
         return frame
+
+    def _order_edge_pixel_mask(self, frame, orderSegments, badPixelMask):
+        """*mask in-order pixels that are low relative to their order-row segment*
+
+        This is a relative-low-flat rule aimed at partly illuminated order-edge pixels. It also catches any
+        in-order pixel whose flat value is below ``order-edge-min-flat-fraction`` times the median of its
+        order-row segment. The median uses only finite pixels that are not already in the bad-pixel mask. A
+        fraction of zero (or less) turns the rule off and a blank setting uses the default.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the master flat frame (not modified)
+        - ``orderSegments`` -- ``(b, lower, upper)`` tuples: the span ``lower:upper`` along ``axisA`` at
+          coordinate ``b`` along ``axisB``
+        - ``badPixelMask`` -- pixels that are already masked
+
+        **Return:**
+
+        - ``edgeMask`` -- boolean array, True for the pixels to mask
+        """
+        import numpy as np
+
+        minFraction = self.recipeSettings.get("order-edge-min-flat-fraction")
+        if minFraction is None:
+            minFraction = ORDER_EDGE_MIN_FLAT_FRACTION
+        edgeMask = np.zeros(frame.data.shape, dtype=bool)
+        if minFraction <= 0:
+            return edgeMask
+
+        badPixelMask = np.asarray(badPixelMask, dtype=bool)
+
+        for b, lowerBound, upperBound in orderSegments:
+            span = slice(lowerBound, upperBound)
+            segment = (b, span) if self.axisA == "x" else (span, b)
+            flat = frame.data[segment]
+            isUsable = np.isfinite(flat) & ~badPixelMask[segment]
+            if isUsable.sum() < ORDER_EDGE_MIN_SEGMENT_PIXELS:
+                continue
+            segmentMedian = np.median(flat[isUsable])
+            if not segmentMedian > 0:
+                continue
+            edgeMask[segment] |= isUsable & (flat < minFraction * segmentMedian)
+
+        return edgeMask
 
     def _valid_order_flux_samples(self, frame, b, lowerBound, upperBound):
         """Return the unmasked flux samples for one order-table row."""

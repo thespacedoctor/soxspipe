@@ -170,6 +170,8 @@ soxs-mflat:
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
         low-sensitivity-clipping-sigma: 2
+        # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+        order-edge-min-flat-fraction: 0.5
         qc-acceptable-ranges:
             detector-temp: [0,165]
             inner-order-pix-mean: [0.9,1.1]
@@ -198,6 +200,8 @@ soxs-mflat:
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
         low-sensitivity-clipping-sigma: 2
+        # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+        order-edge-min-flat-fraction: 0.5
         qc-acceptable-ranges:
             detector-temp: [0,50]
             inner-order-pix-mean: [0.9,1.1]
