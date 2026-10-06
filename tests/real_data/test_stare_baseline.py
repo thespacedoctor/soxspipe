@@ -4,7 +4,8 @@ The stare recipe is the only recipe that models the sky with the b-spline fit in
 `subtract_sky`, so these checks are the end-to-end guard on that fit. As with the offset
 check, the reduction is not bit-reproducible across hardware, so each value is asserted
 within a band. The sky bands are narrow enough that a sky model of zero, or one doubled,
-fails them.
+fails them. The centres were recorded from six bit-identical CI runs on 2026-10-06; a local
+arm64 reduction lands up to 5% away, so expect local runs to sit near the band edges.
 """
 
 from __future__ import annotations
@@ -58,17 +59,17 @@ BASELINES = [
             obsDate="2025-10-13T04:35:11.440",
             nOrders=4,
             # 0.02 NM STEPS, SO ±50 ROWS IS ±1 NM OF SPECTRAL COVERAGE
-            rows=25_099,
+            rows=25_100,
             rowsAbs=50,
             waveMin=347.98,
             waveMinAbs=0.04,
-            waveMax=849.94,
+            waveMax=849.96,
             waveStep=0.02,
-            snrMedian=139.02,
-            fluxcalMedian=6.370679346191575e-14,
-            skyCountsMedian=35.1476936340332,
-            skyModelMedian=64.41172790527344,
-            skyModelP90=948.6133483886781,
+            snrMedian=139.025,
+            fluxcalMedian=6.386052088819475e-14,
+            skyCountsMedian=33.6558837890625,
+            skyModelMedian=64.44049835205078,
+            skyModelP90=902.874633789063,
             detectedFraction=0.982,
             objtraceStem="20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_FEIGE110",
         ),
@@ -80,18 +81,18 @@ BASELINES = [
             obsDate="2026-01-11T08:03:47.6362",
             nOrders=15,
             # 0.06 NM STEPS, SO ±25 ROWS IS ±1.5 NM OF SPECTRAL COVERAGE
-            rows=20_616,
+            rows=20_613,
             rowsAbs=25,
-            waveMin=795.12,
+            waveMin=795.18,
             waveMinAbs=0.12,
-            waveMax=2032.02,
+            waveMax=2031.9,
             waveStep=0.06,
             snrMedian=15.45,
-            fluxcalMedian=2.959752408734343e-15,
-            skyCountsMedian=20.359426498413086,
-            skyModelMedian=24.02316665649414,
-            skyModelP90=138.79025268554688,
-            detectedFraction=0.919,
+            fluxcalMedian=2.9996393436259736e-15,
+            skyCountsMedian=20.160707473754883,
+            skyModelMedian=24.65569496154785,
+            skyModelP90=141.05848693847656,
+            detectedFraction=0.916,
             objtraceStem="20260111T080347_NIR_3_STARE_OBJ_SLIT5_0_30_0S_SOXS_CD-325613",
         ),
         id="nir",
