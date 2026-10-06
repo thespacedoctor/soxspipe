@@ -514,11 +514,8 @@ class subtract_sky:
 
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(frame.data)
-        for x, y in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB]):
-            if self.detectorParams["dispersion-axis"] == "x":
-                nonOrderMask[y][x] = 0
-            else:
-                nonOrderMask[x][y] = 0
+        orderRows, orderColumns = self._detector_rows_and_columns(imageMapOrderDF)
+        nonOrderMask[orderRows, orderColumns] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
         nonOrderMask = ma.make_mask(nonOrderMask)
@@ -729,11 +726,9 @@ class subtract_sky:
         for cn, cl, lb, al in zip(columnName, colours, labels, alphas):
             clippedMask = nonOrderMask
             clippedMask = np.zeros_like(frame.data)
-            for x, y in zip(
-                imageMapOrderDF.loc[imageMapOrderDF[cn] == True, self.axisA].values,
-                imageMapOrderDF.loc[imageMapOrderDF[cn] == True, self.axisB].values,
-            ):
-                clippedMask[y][x] = 1
+            clippedPixels = imageMapOrderDF.loc[imageMapOrderDF[cn] == True]
+            clippedRows, clippedColumns = self._detector_rows_and_columns(clippedPixels)
+            clippedMask[clippedRows, clippedColumns] = 1
             clippedMask = ma.make_mask(clippedMask)
             imageMask = np.ma.array(np.ones_like(frame.data), mask=~clippedMask)
             # MAKE A COLOR MAP OF FIXED COLORS
@@ -840,12 +835,7 @@ class subtract_sky:
 
         # BUILD IMAGE OF SKY MODEL
         skyModelImage = np.zeros_like(frame.data)
-        for x, y, skypixel in zip(
-            imageMapOrderDF[self.axisA],
-            imageMapOrderDF[self.axisB],
-            imageMapOrderDF["sky_model"],
-        ):
-            skyModelImage[y][x] = skypixel
+        skyModelImage[orderRows, orderColumns] = imageMapOrderDF["sky_model"].to_numpy()
         nonOrderMask = nonOrderMask == 0
         skyModelImage = np.ma.array(skyModelImage, mask=nonOrderMask)
         cmap = copy(cm.gray)
@@ -878,12 +868,7 @@ class subtract_sky:
 
         # BUILD SKY-SUBTRACTED IMAGE
         skySubImage = np.zeros_like(frame.data)
-        for x, y, skypixel in zip(
-            imageMapOrderDF[self.axisA],
-            imageMapOrderDF[self.axisB],
-            imageMapOrderDF["sky_subtracted_flux"],
-        ):
-            skySubImage[y][x] = skypixel
+        skySubImage[orderRows, orderColumns] = imageMapOrderDF["sky_subtracted_flux"].to_numpy()
         skySubMask = nonOrderMask == 1
         skySubImage = np.ma.array(skySubImage, mask=skySubMask)
         cmap = copy(cm.gray)
@@ -1825,6 +1810,32 @@ class subtract_sky:
         self.log.debug("completed the ``create_placeholder_images`` method")
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData
 
+    def _detector_rows_and_columns(self, pixelsDF):
+        """*the detector (row, column) index arrays of a dataframe's pixels*
+
+        The dataframe holds each pixel's position in the ``axisA`` and ``axisB`` columns. For an x-dispersion arm ``axisA`` is the detector column, for a y-dispersion arm it is the detector row.
+
+        **Key Arguments:**
+
+        - ``pixelsDF`` -- dataframe with ``axisA`` and ``axisB`` pixel-position columns
+
+        **Return:**
+
+        - ``rows``, ``columns`` -- numpy index arrays giving each pixel's detector row and column
+
+        **Usage:**
+
+        ```python
+        rows, columns = self._detector_rows_and_columns(imageMapOrderDF)
+        image[rows, columns] = imageMapOrderDF["sky_model"].to_numpy()
+        ```
+        """
+        axisAPositions = pixelsDF[self.axisA].to_numpy()
+        axisBPositions = pixelsDF[self.axisB].to_numpy()
+        if self.axisA == "x":
+            return axisBPositions, axisAPositions
+        return axisAPositions, axisBPositions
+
     def add_data_to_placeholder_images(
         self,
         imageMapOrderDF,
@@ -1915,8 +1926,8 @@ class subtract_sky:
 
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(objectFrame.data)
-        for x, y in zip(self.mapDF[self.axisA], self.mapDF[self.axisB]):
-            nonOrderMask[y][x] = 0
+        mapRows, mapColumns = self._detector_rows_and_columns(self.mapDF)
+        nonOrderMask[mapRows, mapColumns] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
         nonOrderMask = ma.make_mask(nonOrderMask)
