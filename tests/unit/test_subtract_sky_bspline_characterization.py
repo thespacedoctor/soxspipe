@@ -119,10 +119,10 @@ def _approx_list(values: list[float], rel: float = 1e-12) -> list[Any]:
                 "coefficientKnots": 312,
                 "ratioSum": -667.792329091481,
                 "ratioEnds": [-5.895442715411719, 6.615463372189216],
-                "modelSum": 690158.3867762263,
-                "model": [175.0061065841532, 192.89184103037647, 197.07661758171722, 225.8693315814219],
-                "subtractedSum": -1126.2075709083797,
-                "subtracted": [4.024921482167088, -5.23086796251323, -5.077067868990042, -5.881142582126529],
+                "modelSum": 690156.4271830036,
+                "model": [174.74606062860119, 192.89184103037647, 197.07661758171722, 225.8693315814219],
+                "subtractedSum": -1124.2479776855848,
+                "subtracted": [4.284967437719104, -5.23086796251323, -5.077067868990042, -5.881142582126529],
                 "skyLineCounts": {"line": 2838, "False": 162},
             },
         ),
@@ -219,9 +219,9 @@ def test_zero_points_per_knot_drops_the_default_knots_from_iteration_five(log: A
     assert knots.size == 274
     assert spline[0].size == 282
     assert float(fluxErrorRatio.sum()) == pytest.approx(3416.0518439631187, rel=ANCHORED_FIT_REL, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(690175.5293163446, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(690174.4422460035, rel=ANCHORED_FIT_REL, abs=0)
     assert modelled["sky_model"].iloc[SAMPLED_ROWS].tolist() == _approx_list(
-        [175.00611346617447, 192.1263418789959, 197.89248454496473, 225.8693274403997], ANCHORED_FIT_REL
+        [174.7460667297997, 192.1263418789959, 197.89248454496473, 225.8693274403997], ANCHORED_FIT_REL
     )
     assert _info_messages(log) == ["\t\tNo new knots added on iteration 8. Stopping iterations.\n"]
 
@@ -241,10 +241,10 @@ def test_a_poor_fitpack_fit_reverts_the_spline_and_returns_the_knots_of_the_reve
     # FITPACK PADS THE INTERIOR KNOTS WITH k + 1 BOUNDARY KNOTS AT EACH END
     assert np.array_equal(spline[0][4:-4], knots)
     assert spline[0].size == 83
-    assert float(fluxErrorRatio.sum()) == pytest.approx(-198301.60632220478, rel=ANCHORED_FIT_REL, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(691778.6365634529, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(fluxErrorRatio.sum()) == pytest.approx(-198301.60632199858, rel=ANCHORED_FIT_REL, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(691775.5579021351, rel=ANCHORED_FIT_REL, abs=0)
     assert modelled["sky_model"].iloc[SAMPLED_ROWS].tolist() == _approx_list(
-        [175.00612716318068, 189.764838544493, 196.26624567905822, 225.8693425945859], ANCHORED_FIT_REL
+        [174.74608222469203, 189.76483897934492, 196.2662456790578, 225.8693425945859], ANCHORED_FIT_REL
     )
 
 
@@ -518,11 +518,11 @@ def test_blue_end_noise_prunes_only_the_first_knot(log: Any, monkeypatch: pytest
     # THE DIVERGING FIT IS ILL-CONDITIONED, SO THESE NUMBERS ARE PINNED AT 1e-6, NOT 1e-12
     # THE SKY MODEL NEAR THE NOISE DIVERGES FAR FROM THE TRUE ~200 SKY BECAUSE OF A SEPARATE KNOT-ADDITION AND
     # WEIGHTING DEFECT, DY-695; THESE VALUES CHARACTERISE THAT KNOWN-BAD FIT AND MUST FLIP WHEN DY-695 IS FIXED
-    assert float(fluxErrorRatio.sum()) == pytest.approx(-1293.9401646848582, rel=1e-6, abs=0)
-    assert float(modelled["sky_model"].sum()) == pytest.approx(1060237.6602902445, rel=1e-6, abs=0)
+    assert float(fluxErrorRatio.sum()) == pytest.approx(-1293.9401646850342, rel=1e-6, abs=0)
+    assert float(modelled["sky_model"].sum()) == pytest.approx(1060238.960597313, rel=1e-6, abs=0)
     assert modelled["sky_model"].iloc[[0, 400, 1500, 2999]].tolist() == [
         pytest.approx(value, rel=1e-6, abs=0)
-        for value in [175.0061205598143, 1516.359550014342, 195.99985563512843, 225.86936119293233]
+        for value in [174.7460735000429, 1516.3666114913553, 195.99985563512843, 225.86936119293233]
     ]
 
 
@@ -592,3 +592,31 @@ def test_pruning_that_would_remove_every_knot_leaves_the_knots_and_names_the_ord
     assert log.messages == [
         ("warning", "\t\tNoisy-region pruning would remove every knot for order 13. Keeping the knots unchanged.\n")
     ]
+
+
+def test_a_rejected_anchor_sample_stays_rejected_in_later_clip_passes(log: Any) -> None:
+    """Rejections accumulate across passes, so a refit line cannot re-admit a rejected sample (DY-593)."""
+    subtractor = _subtractor(log)
+    wavelength = np.arange(20.0)
+    # A FLAT SKY OF +-1 NOISE WITH A BRIGHT OUTLIER AT 3 AND A FAINTER ONE AT 0
+    flux = np.tile([1.0, -1.0], 10)
+    flux[3] += 40.0
+    flux[0] += 8.0
+
+    value = subtractor._clipped_line_value(wavelength, flux, wavelength[0])
+
+    # BOTH OUTLIERS REJECTED LEAVES THE FLAT SKY, SO THE LINE IS NEAR 0 (RE-ADMITTING THE ONE AT 0 GIVES 1.99)
+    assert value == pytest.approx(0.0, abs=0.5)
+
+
+def test_an_end_anchor_is_clamped_to_the_flux_range_of_its_surviving_window_samples(log: Any) -> None:
+    """A noisy short window whose line extrapolates beyond its data cannot set a wilder anchor (DY-593)."""
+    subtractor = _subtractor(log)
+    wavelength = np.array([500.0, 501.0, 502.0, 503.0, 506.0, 508.0, 509.0, 510.0])
+    flux = np.array([1.0, 0.0, 6.0, 8.0, 99.0, 60.0, 80.0, 70.0])
+
+    blueAnchor, redAnchor = subtractor._end_anchor_values(wavelength, flux, STARTER_KNOTS)
+
+    # THE UNCLAMPED BLUE LINE IS -1/6 AT 500, BELOW EVERY SAMPLE IN THE WINDOW (MINIMUM 0)
+    assert blueAnchor == 0.0
+    assert redAnchor == pytest.approx(75.0)

@@ -204,6 +204,25 @@ def test_more_than_85_percent_clipped_keeps_only_the_edge_and_bad_pixels_exclude
     ).all()
 
 
+@pytest.mark.parametrize(
+    "missingColumns",
+    [
+        pytest.param(["flagged_edge_clipped"], id="no-edge-column"),
+        pytest.param(["flagged_bad_pixel_clipped"], id="no-bad-pixel-column"),
+        pytest.param(["flagged_edge_clipped", "flagged_bad_pixel_clipped"], id="neither-column"),
+    ],
+)
+def test_a_reset_treats_an_absent_edge_or_bad_pixel_column_as_all_false(log: Any, missingColumns: list[str]) -> None:
+    """A frame without the edge or bad-pixel flags still resets: the missing flags exclude nothing (DY-595)."""
+    subtractor, _ = _subtractor(log, arm="UVB")
+    pixels = _object_order(100.0).drop(columns=missingColumns)
+
+    clipped = _clip(subtractor, pixels, sigma=-3.0, iterations=3)
+
+    assert int(clipped["flagged_object_clipped"].sum()) == 0
+    assert int(clipped["flagged_all_clipped"].sum()) == 0
+
+
 def test_a_vis_retry_keeps_the_edge_and_bad_pixels_excluded_and_leaves_no_unexplained_exclusions(log: Any) -> None:
     """After a retry every excluded pixel carries a component flag and the edge and bad pixels are still excluded."""
     subtractor, iterations = _subtractor(log, arm="VIS")

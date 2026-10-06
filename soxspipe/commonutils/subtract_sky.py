@@ -32,6 +32,8 @@ ANCHOR_CLIP_SIGMA = 3
 ANCHOR_CLIP_MAX_PASSES = 5
 # A CLIP PASS THAT WOULD LEAVE FEWER SAMPLES THAN THIS, OR FEWER THAN TWO DISTINCT WAVELENGTHS, IS NOT APPLIED
 ANCHOR_MIN_FIT_SAMPLES = 3
+# THE FIT WEIGHT OF THE FIRST AND LAST SAMPLES, WHICH CARRY THE ORDER-END ANCHOR VALUES
+ANCHOR_WEIGHT = 1e5
 
 # A RUN OF POSITIVE SLIT-POSITION BINS IS AN OBJECT ONLY WITH MORE THAN OBJECT_MIN_RUN_BINS BINS
 # AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
@@ -1200,10 +1202,14 @@ class subtract_sky:
         **Key Arguments:**
 
         - ``imageMapOrderDF`` -- order dataframe carrying the component flag columns. Updated in place.
+            - an absent ``flagged_edge_clipped`` or ``flagged_bad_pixel_clipped`` column counts as all ``False``
         """
+        import pandas as pd
+
+        noneClipped = pd.Series(False, index=imageMapOrderDF.index)
         imageMapOrderDF["flagged_all_clipped"] = (
-            imageMapOrderDF["flagged_edge_clipped"]
-            | imageMapOrderDF["flagged_bad_pixel_clipped"]
+            imageMapOrderDF.get("flagged_edge_clipped", noneClipped)
+            | imageMapOrderDF.get("flagged_bad_pixel_clipped", noneClipped)
             | imageMapOrderDF["flagged_object_clipped"]
         )
 
@@ -1384,8 +1390,8 @@ class subtract_sky:
             goodFlux = goodFlux.values
             goodWeights = goodWeights.values
             goodFlux[0], goodFlux[-1] = self._end_anchor_values(goodWl.values, goodFlux, starterKnots)
-            goodWeights[0] = 10e4
-            goodWeights[-1] = 10e4
+            goodWeights[0] = ANCHOR_WEIGHT
+            goodWeights[-1] = ANCHOR_WEIGHT
 
             if iterationCount < 5:
                 baseKnots = starterKnots
@@ -1702,7 +1708,7 @@ class subtract_sky:
         return blueAnchor, redAnchor
 
     def _clipped_line_value(self, wavelength, flux, evaluationWavelength):
-        """*the value of a sigma-clipped straight-line fit at one wavelength*
+        """*the value of a sigma-clipped straight-line fit at one wavelength, kept within the surviving flux range*
 
         **Key Arguments:**
 
@@ -1714,7 +1720,9 @@ class subtract_sky:
 
         - ``value`` -- the fitted line at ``evaluationWavelength``
             - the line is fitted to the samples that survive iterated residual clipping
+            - each pass clips only the samples still kept, so a rejected sample is never re-admitted
             - a clip pass leaving fewer than three samples, or fewer than two distinct wavelengths, is not applied
+            - the value is clamped to the flux range of the surviving samples, so a noisy window cannot extrapolate
 
         **Usage:**
 
@@ -1729,7 +1737,7 @@ class subtract_sky:
         keep = np.ones(wavelength.size, dtype=bool)
         coefficients = np.polyfit(wavelength, flux, 1)
         for _ in range(ANCHOR_CLIP_MAX_PASSES):
-            residuals = flux - np.polyval(coefficients, wavelength)
+            residuals = flux[keep] - np.polyval(coefficients, wavelength[keep])
             clipped = sigma_clip(
                 residuals,
                 sigma=ANCHOR_CLIP_SIGMA,
@@ -1737,13 +1745,16 @@ class subtract_sky:
                 cenfunc="median",
                 stdfunc=mad_std,
             )
-            newKeep = ~np.ma.getmaskarray(clipped)
+            # MAP THE PASS BACK ONTO THE FULL SAMPLE ARRAY SO EARLIER REJECTIONS ARE KEPT
+            newKeep = keep.copy()
+            newKeep[np.flatnonzero(keep)] = ~np.ma.getmaskarray(clipped)
             isFittable = newKeep.sum() >= ANCHOR_MIN_FIT_SAMPLES and np.unique(wavelength[newKeep]).size >= 2
             if np.array_equal(newKeep, keep) or not isFittable:
                 break
             keep = newKeep
             coefficients = np.polyfit(wavelength[keep], flux[keep], 1)
-        return np.polyval(coefficients, evaluationWavelength)
+        value = np.polyval(coefficients, evaluationWavelength)
+        return np.clip(value, flux[keep].min(), flux[keep].max())
 
     def _prune_knots_in_noise(self, allKnots, noisyWavelengths, order):
         """*remove the knots that bound a knot interval containing noisy pixels*
