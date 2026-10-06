@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from astropy import units as u
-from astropy.nddata import CCDData, StdDevUncertainty
+from astropy.nddata import CCDData, NDData, StdDevUncertainty
 from astropy.stats import sigma_clipped_stats
 from matplotlib.figure import Figure
 
@@ -575,6 +575,92 @@ def test_apply_inter_order_mask_keeps_the_mask_the_frame_already_carries(
     assert gridLinePixelTable is captured["gridLinePixelTable"]
     np.testing.assert_array_equal(np.ma.getmaskarray(maskedFrame), existingMask | captured["interOrderMask"])
     np.testing.assert_array_equal(np.ma.getmaskarray(frame), existingMask)
+
+
+def test_quicklook_frame_array_returns_masked_copy_of_ccddata_when_ext_is_false() -> None:
+    """With ``ext=False`` a CCDData is returned as a masked view of its data
+    that carries a copy of its mask, not as the CCDData object itself."""
+    ccd = _ccd("SOXS")
+    ccd.mask[3, 4] = True
+
+    frame = toolkit._quicklook_frame_array(ccd, False)
+
+    assert isinstance(frame, np.ma.MaskedArray)
+    np.testing.assert_array_equal(frame.data, ccd.data)
+    np.testing.assert_array_equal(np.ma.getmaskarray(frame), ccd.mask)
+    assert np.shares_memory(frame.data, ccd.data)  # A VIEW, SO LARGE FRAMES ARE NOT COPIED FOR A PLOT
+    frame.mask[0, 0] = True
+    assert not ccd.mask[0, 0]
+
+
+def test_quicklook_frame_array_returns_masked_array_for_ccddata_without_a_mask() -> None:
+    """A CCDData with no mask gives a masked array with nothing masked."""
+    ccd = CCDData(np.ones((4, 5)), unit=u.electron)
+
+    frame = toolkit._quicklook_frame_array(ccd, False)
+
+    assert isinstance(frame, np.ma.MaskedArray)
+    assert not np.ma.getmaskarray(frame).any()
+
+
+def test_quicklook_frame_array_masks_flagged_pixels_of_a_bare_nddata() -> None:
+    """Any NDData is converted, and a non-zero flag value in its mask counts as masked."""
+    flags = np.zeros((4, 5), dtype=np.int16)
+    flags[1, 2] = 4
+
+    frame = toolkit._quicklook_frame_array(NDData(np.ones((4, 5)), mask=flags), False)
+
+    assert isinstance(frame, np.ma.MaskedArray)
+    np.testing.assert_array_equal(np.ma.getmaskarray(frame), flags != 0)
+
+
+def test_quicklook_frame_array_passes_a_masked_array_through_when_ext_is_false() -> None:
+    """A masked array is returned unchanged, keeping its own mask."""
+    array = np.ma.masked_array(np.ones((4, 5)), mask=np.eye(4, 5, dtype=bool))
+
+    frame = toolkit._quicklook_frame_array(array, False)
+
+    assert frame is array
+    np.testing.assert_array_equal(np.ma.getmaskarray(frame), np.eye(4, 5, dtype=bool))
+
+
+def test_quicklook_frame_array_passes_a_plain_array_through_when_ext_is_false() -> None:
+    """A plain ndarray is returned unchanged when ``ext`` names no extension."""
+    array = np.ones((4, 5))
+
+    assert toolkit._quicklook_frame_array(array, False) is array
+
+
+def test_quicklook_image_dispmap_branch_plots_a_ccddata_passed_with_ext_false(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """A CCDData passed with ``ext=False`` and a dispersion-map overlay plots
+    without a RecursionError. Both the frame's own mask and the inter-order
+    pixels are masked, and the caller's CCDData is not changed."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    _stub_header_lookups(monkeypatch)
+    captured = _stub_grid_lines(monkeypatch)
+    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd.mask[7, 7] = True
+    dataBefore = ccd.data.copy()
+    maskBefore = ccd.mask.copy()
+
+    toolkit.quicklook_image(
+        log,
+        ccd,
+        show=True,
+        ext=False,
+        dispMap="disp.fits",
+        dispMapImage="disp_image.fits",
+        settings={"instrument": "soxs"},
+    )
+
+    array = _image_axis(figures[-1]).images[0].get_array()
+    np.testing.assert_array_equal(np.ma.getmaskarray(array), maskBefore | captured["interOrderMask"])
+    np.testing.assert_array_equal(array.data, ccd.data)
+    np.testing.assert_array_equal(ccd.data, dataBefore)
+    np.testing.assert_array_equal(ccd.mask, maskBefore)
 
 
 def test_quicklook_image_skylines_true_forwards_dataframe_to_grid_lines_helper(
