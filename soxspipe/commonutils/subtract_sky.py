@@ -24,6 +24,22 @@ from soxspipe.commonutils.toolkit import quicklook_image, read_spectral_format, 
 
 os.environ["TERM"] = "vt100"
 
+# FITPACK RETURNS ier >= 10 (10, 30, 50 ...) WHEN THE FIT FAILED OR THE KNOT VECTOR IS INVALID
+POOR_FITPACK_IER = 10
+
+# THE SIGMA LIMIT AND THE MAXIMUM NUMBER OF CLIP-AND-REFIT PASSES OF THE ORDER-END ANCHOR LINE FITS (DY-593)
+ANCHOR_CLIP_SIGMA = 3
+ANCHOR_CLIP_MAX_PASSES = 5
+# A CLIP PASS THAT WOULD LEAVE FEWER SAMPLES THAN THIS, OR FEWER THAN TWO DISTINCT WAVELENGTHS, IS NOT APPLIED
+ANCHOR_MIN_FIT_SAMPLES = 3
+# THE FIT WEIGHT OF THE FIRST AND LAST SAMPLES, WHICH CARRY THE ORDER-END ANCHOR VALUES
+ANCHOR_WEIGHT = 1e5
+
+# A RUN OF POSITIVE SLIT-POSITION BINS IS AN OBJECT ONLY WITH MORE THAN OBJECT_MIN_RUN_BINS BINS
+# AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
+OBJECT_MIN_RUN_BINS = 4
+OBJECT_PEAK_COUNT = 0.05
+
 
 class subtract_sky:
     """
@@ -500,11 +516,8 @@ class subtract_sky:
 
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(frame.data)
-        for x, y in zip(imageMapOrderDF[self.axisA], imageMapOrderDF[self.axisB]):
-            if self.detectorParams["dispersion-axis"] == "x":
-                nonOrderMask[y][x] = 0
-            else:
-                nonOrderMask[x][y] = 0
+        orderRows, orderColumns = self._detector_rows_and_columns(imageMapOrderDF)
+        nonOrderMask[orderRows, orderColumns] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
         nonOrderMask = ma.make_mask(nonOrderMask)
@@ -715,11 +728,9 @@ class subtract_sky:
         for cn, cl, lb, al in zip(columnName, colours, labels, alphas):
             clippedMask = nonOrderMask
             clippedMask = np.zeros_like(frame.data)
-            for x, y in zip(
-                imageMapOrderDF.loc[imageMapOrderDF[cn] == True, self.axisA].values,
-                imageMapOrderDF.loc[imageMapOrderDF[cn] == True, self.axisB].values,
-            ):
-                clippedMask[y][x] = 1
+            clippedPixels = imageMapOrderDF.loc[imageMapOrderDF[cn].eq(True)]
+            clippedRows, clippedColumns = self._detector_rows_and_columns(clippedPixels)
+            clippedMask[clippedRows, clippedColumns] = 1
             clippedMask = ma.make_mask(clippedMask)
             imageMask = np.ma.array(np.ones_like(frame.data), mask=~clippedMask)
             # MAKE A COLOR MAP OF FIXED COLORS
@@ -826,12 +837,7 @@ class subtract_sky:
 
         # BUILD IMAGE OF SKY MODEL
         skyModelImage = np.zeros_like(frame.data)
-        for x, y, skypixel in zip(
-            imageMapOrderDF[self.axisA],
-            imageMapOrderDF[self.axisB],
-            imageMapOrderDF["sky_model"],
-        ):
-            skyModelImage[y][x] = skypixel
+        skyModelImage[orderRows, orderColumns] = imageMapOrderDF["sky_model"].to_numpy()
         nonOrderMask = nonOrderMask == 0
         skyModelImage = np.ma.array(skyModelImage, mask=nonOrderMask)
         cmap = copy(cm.gray)
@@ -864,12 +870,7 @@ class subtract_sky:
 
         # BUILD SKY-SUBTRACTED IMAGE
         skySubImage = np.zeros_like(frame.data)
-        for x, y, skypixel in zip(
-            imageMapOrderDF[self.axisA],
-            imageMapOrderDF[self.axisB],
-            imageMapOrderDF["sky_subtracted_flux"],
-        ):
-            skySubImage[y][x] = skypixel
+        skySubImage[orderRows, orderColumns] = imageMapOrderDF["sky_subtracted_flux"].to_numpy()
         skySubMask = nonOrderMask == 1
         skySubImage = np.ma.array(skySubImage, mask=skySubMask)
         cmap = copy(cm.gray)
@@ -1152,6 +1153,7 @@ class subtract_sky:
                             self.stopSubtraction = True
                             return None
                         imageMapOrderDF["flagged_object_clipped"] = False
+                        self._rebuild_all_clipped_flag(imageMapOrderDF)
                         sigma_clip_limit -= 0.1
                         if quantile > 0.1:
                             quantile -= 0.05
@@ -1175,6 +1177,7 @@ class subtract_sky:
 
         if percent > 85.0:
             imageMapOrderDF["flagged_object_clipped"] = False
+            self._rebuild_all_clipped_flag(imageMapOrderDF)
             self.log.warning(
                 f"ORDER {order}: More than 85% of pixels flagged to be clipped ({percent:1.1f}%). Clipping 0% instead."
             )
@@ -1188,6 +1191,26 @@ class subtract_sky:
         self.log.debug("completed the ``rolling_window_clipping`` method")
         return imageMapOrderDF
 
+    def _rebuild_all_clipped_flag(self, imageMapOrderDF):
+        """*recompute ``flagged_all_clipped`` as the union of the edge, bad-pixel and object clipping flags*
+
+        Call this after resetting ``flagged_object_clipped``.
+        Released pixels are then no longer excluded from the sky fit.
+        Before and during rolling-window clipping, ``flagged_all_clipped`` is set only from these three flags.
+        No other exclusion is lost.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- order dataframe carrying the component flag columns. Updated in place.
+            - ``flagged_edge_clipped``, ``flagged_bad_pixel_clipped`` and ``flagged_object_clipped`` are all required
+                - a missing column raises a ``KeyError``
+        """
+        imageMapOrderDF["flagged_all_clipped"] = (
+            imageMapOrderDF["flagged_edge_clipped"]
+            | imageMapOrderDF["flagged_bad_pixel_clipped"]
+            | imageMapOrderDF["flagged_object_clipped"]
+        )
+
     def fit_bspline_curve_to_sky(self, imageMapOrder):
         """*fit a single-order univariate bspline to the unclipped sky pixels (wavelength vs flux)*
 
@@ -1200,6 +1223,13 @@ class subtract_sky:
 
         - ``imageMapOrder`` -- same `imageMapOrder` as input but now with `sky_model` (bspline fit of the sky) and `sky_subtracted_flux` columns
         - ``tck`` -- the fitted bspline components. t for knots, c of coefficients, k for order
+
+        **Raises:**
+
+        - ``ValueError`` -- if FITPACK cannot fit the spline (for example, too many knots for the number of data points)
+        - ``ValueError`` -- if FITPACK reports a poor fit (``ier`` of 10 or more, which includes 50)
+          on the first iteration, as there is no earlier fit to revert to
+            - on a later iteration a poor fit does not raise: the last good spline and its knots are returned
 
         **Usage:**
 
@@ -1337,6 +1367,8 @@ class subtract_sky:
         mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
 
         lastExtraKnotCount = -1
+        tck_previous = None
+        allKnotsPrevious = None
         while iterationCount < bsplineIterations:
             iterationCount += 1
 
@@ -1360,13 +1392,11 @@ class subtract_sky:
             else:
                 goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights2"]
 
-            baseFlux = np.median(goodFlux.values)
             goodFlux = goodFlux.values
             goodWeights = goodWeights.values
-            goodFlux[0] = baseFlux
-            goodFlux[-1] = baseFlux
-            goodWeights[0] = 10e4
-            goodWeights[-1] = 10e4
+            goodFlux[0], goodFlux[-1] = self._end_anchor_values(goodWl.values, goodFlux, starterKnots)
+            goodWeights[0] = ANCHOR_WEIGHT
+            goodWeights[-1] = ANCHOR_WEIGHT
 
             if iterationCount < 5:
                 baseKnots = starterKnots
@@ -1410,15 +1440,7 @@ class subtract_sky:
                 # FIND ALL EXISTING KNOTS THAT ARE IN THE NOISE
                 nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
                 df = imageMapOrder.loc[~mask_all_clipped & nosiyRegionMask]
-                ind = np.digitize(df["wavelength"], allKnots)
-                if len(ind):
-                    ind = np.insert(ind, 0, 0)
-                    ind = np.append(ind, len(allKnots))
-
-                # REMOVE THE KNOTS FOUND WITH INDEX IND
-                knotsToRemove = allKnots[ind - 1]
-
-                allKnots = np.array([k for k in allKnots if k not in knotsToRemove])
+                allKnots = self._prune_knots_in_noise(allKnots, df["wavelength"].values, order)
 
                 # GROUP ALL DATA POINTS BETWEEN KNOTS
                 nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
@@ -1482,13 +1504,20 @@ class subtract_sky:
                 )
             t, c, k = tck
 
-            if ier in (10, 30):
+            if ier >= POOR_FITPACK_IER:
+                if tck_previous is None:
+                    raise ValueError(
+                        f"BSpline fit failed for order {order} on iteration {iterationCount}. "
+                        f"FITPACK reported ier={ier}: {msg}"
+                    )
                 self.log.info(
                     f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n"
                 )
                 tck = tck_previous
+                allKnots = allKnotsPrevious
                 break
             tck_previous = tck
+            allKnotsPrevious = allKnots
 
             if iterationCount >= -1:
                 # FIRST PASS SIGMA CLIPPING OF BSPLINE
@@ -1615,27 +1644,18 @@ class subtract_sky:
 
             lastExtraKnotCount = len(extraKnots)
 
-        if not lastExtraKnotCount:
-            imageMapOrder["sky_model_wl"] = baseFlux
-            imageMapOrder["sky_model_wl_derivative"] = 1
-            imageMapOrder["sky_model"] = baseFlux
+        imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
+        imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
+        imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
+        # REPLACE VALUES LESS THAN ZERO IN COLUMN WITH ZERO
+        imageMapOrder["sky_model"] = imageMapOrder["sky_model"].apply(lambda x: max(0, x))
 
-            imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
-            imageMapOrder["sky_subtracted_flux_weighted"] = 1
-            imageMapOrder["sky_subtracted_flux_weighted_abs"] = imageMapOrder["sky_subtracted_flux_weighted"].abs()
-        else:
-            imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
-            imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
-            imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
-            # REPLACE VALUES LESS THAN ZERO IN COLUMN WITH ZERO
-            imageMapOrder["sky_model"] = imageMapOrder["sky_model"].apply(lambda x: max(0, x))
-
-            imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
-            imageMapOrder["sky_subtracted_flux_weighted"] = (
-                imageMapOrder["sky_subtracted_flux"]
-                * imageMapOrder["sky_model_wl_derivative"].abs()
-                / (imageMapOrder["residual_windowed_std"] * 10)
-            )
+        imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
+        imageMapOrder["sky_subtracted_flux_weighted"] = (
+            imageMapOrder["sky_subtracted_flux"]
+            * imageMapOrder["sky_model_wl_derivative"].abs()
+            / (imageMapOrder["residual_windowed_std"] * 10)
+        )
 
         imageMapOrder["sky_subtracted_flux_weighted_abs"] = imageMapOrder["sky_subtracted_flux_weighted"].abs()
         flux_error_ratio = imageMapOrder.loc[
@@ -1647,6 +1667,140 @@ class subtract_sky:
 
         self.log.debug("completed the ``fit_bspline_curve_to_sky`` method")
         return imageMapOrder, tck, allKnots, flux_error_ratio, residualFloor
+
+    def _end_anchor_values(self, wavelength, flux, starterKnots):
+        """*the local flux values that anchor the blue and red ends of the sky fit*
+
+        **Key Arguments:**
+
+        - ``wavelength`` -- sorted wavelengths of the unclipped sky samples
+        - ``flux`` -- the flux of those samples
+        - ``starterKnots`` -- sorted starter knot wavelengths that bound the two end windows
+
+        **Return:**
+
+        - ``blueAnchor``, ``redAnchor`` -- the value at the bluest and at the reddest sample of a fitted line
+            - the line is fitted to the samples bluer than the first starter knot (blue) or redder than the last (red)
+            - the fit is sigma-clipped and refitted so that skylines inside an end window do not pull the anchor
+            - a window with fewer than two distinct wavelengths cannot be fitted, so its anchor is its median flux
+            - an end window with no samples falls back to the flux of the bluest or reddest unclipped sample
+            - with no starter knots both ends fall back in the same way
+
+        **Usage:**
+
+        ```python
+        blueAnchor, redAnchor = self._end_anchor_values(
+            goodWl, goodFlux, starterKnots
+        )
+        ```
+
+        """
+        import numpy as np
+
+        if len(starterKnots) == 0:
+            return flux[0], flux[-1]
+
+        def window_anchor(isInWindow, endWavelength, endFlux):
+            windowWavelength = wavelength[isInWindow]
+            windowFlux = flux[isInWindow]
+            if windowFlux.size == 0:
+                return endFlux
+            if np.unique(windowWavelength).size < 2:
+                return np.median(windowFlux)
+            return self._clipped_line_value(windowWavelength, windowFlux, endWavelength)
+
+        blueAnchor = window_anchor(wavelength < starterKnots[0], wavelength[0], flux[0])
+        redAnchor = window_anchor(wavelength > starterKnots[-1], wavelength[-1], flux[-1])
+        return blueAnchor, redAnchor
+
+    def _clipped_line_value(self, wavelength, flux, evaluationWavelength):
+        """*the value of a sigma-clipped straight-line fit at one wavelength, kept within the surviving flux range*
+
+        **Key Arguments:**
+
+        - ``wavelength`` -- wavelengths of the samples, at least two of them distinct
+        - ``flux`` -- the flux of those samples
+        - ``evaluationWavelength`` -- the wavelength at which to evaluate the fitted line
+
+        **Return:**
+
+        - ``value`` -- the fitted line at ``evaluationWavelength``
+            - the line is fitted to the samples that survive iterated residual clipping
+            - each pass clips only the samples still kept, so a rejected sample is never re-admitted
+            - a clip pass leaving fewer than three samples, or fewer than two distinct wavelengths, is not applied
+            - the line is evaluated at a sample inside the window
+            - the value is clamped to the flux range of the surviving samples,
+              so a noisy window's fit cannot overshoot that range
+
+        **Usage:**
+
+        ```python
+        value = self._clipped_line_value(wavelength, flux, endWavelength)
+        ```
+
+        """
+        import numpy as np
+        from astropy.stats import mad_std, sigma_clip
+
+        keep = np.ones(wavelength.size, dtype=bool)
+        coefficients = np.polyfit(wavelength, flux, 1)
+        for _ in range(ANCHOR_CLIP_MAX_PASSES):
+            residuals = flux[keep] - np.polyval(coefficients, wavelength[keep])
+            clipped = sigma_clip(
+                residuals,
+                sigma=ANCHOR_CLIP_SIGMA,
+                maxiters=1,
+                cenfunc="median",
+                stdfunc=mad_std,
+            )
+            # MAP THE PASS BACK ONTO THE FULL SAMPLE ARRAY SO EARLIER REJECTIONS ARE KEPT
+            newKeep = keep.copy()
+            newKeep[np.flatnonzero(keep)] = ~np.ma.getmaskarray(clipped)
+            isFittable = newKeep.sum() >= ANCHOR_MIN_FIT_SAMPLES and np.unique(wavelength[newKeep]).size >= 2
+            if np.array_equal(newKeep, keep) or not isFittable:
+                break
+            keep = newKeep
+            coefficients = np.polyfit(wavelength[keep], flux[keep], 1)
+        value = np.polyval(coefficients, evaluationWavelength)
+        return np.clip(value, flux[keep].min(), flux[keep].max())
+
+    def _prune_knots_in_noise(self, allKnots, noisyWavelengths, order):
+        """*remove the knots that bound a knot interval containing noisy pixels*
+
+        **Key Arguments:**
+
+        - ``allKnots`` -- sorted array of the current interior knot wavelengths
+        - ``noisyWavelengths`` -- wavelengths of the unclipped pixels in noisy regions
+        - ``order`` -- the order number, used in the log message
+
+        **Return:**
+
+        - ``allKnots`` -- a new array without the knots bounding a noisy pixel
+            - a pixel bluer than the first knot or redder than the last knot removes only that end knot
+            - the knots are returned unchanged if no pixel is noisy or if every knot would be removed
+
+        **Usage:**
+
+        ```python
+        allKnots = self._prune_knots_in_noise(allKnots, noisyWavelengths, order)
+        ```
+
+        """
+        import numpy as np
+
+        # KNOT INTERVAL i IS BOUNDED BY KNOTS i - 1 AND i; THE TWO END INTERVALS HAVE ONE BOUNDING KNOT
+        intervalIndex = np.unique(np.digitize(noisyWavelengths, allKnots))
+        boundingIndex = np.concatenate((intervalIndex - 1, intervalIndex))
+        boundingIndex = boundingIndex[(boundingIndex >= 0) & (boundingIndex < len(allKnots))]
+        keepMask = np.ones(len(allKnots), dtype=bool)
+        keepMask[boundingIndex] = False
+
+        if len(allKnots) and not keepMask.any():
+            self.log.warning(
+                f"\t\tNoisy-region pruning would remove every knot for order {order}. Keeping the knots unchanged.\n"
+            )
+            return allKnots.copy()
+        return allKnots[keepMask]
 
     def create_placeholder_images(self):
         """*create placeholder images for the sky model and sky-subtracted frame*
@@ -1674,6 +1828,33 @@ class subtract_sky:
 
         self.log.debug("completed the ``create_placeholder_images`` method")
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData
+
+    def _detector_rows_and_columns(self, pixelsDF):
+        """*the detector (row, column) index arrays of a dataframe's pixels*
+
+        The dataframe holds each pixel's position in the ``axisA`` and ``axisB`` columns.
+        For an x-dispersion arm ``axisA`` is the detector column, for a y-dispersion arm it is the detector row.
+
+        **Key Arguments:**
+
+        - ``pixelsDF`` -- dataframe with ``axisA`` and ``axisB`` pixel-position columns
+
+        **Return:**
+
+        - ``rows``, ``columns`` -- numpy index arrays giving each pixel's detector row and column
+
+        **Usage:**
+
+        ```python
+        rows, columns = self._detector_rows_and_columns(imageMapOrderDF)
+        image[rows, columns] = imageMapOrderDF["sky_model"].to_numpy()
+        ```
+        """
+        axisAPositions = pixelsDF[self.axisA].to_numpy()
+        axisBPositions = pixelsDF[self.axisB].to_numpy()
+        if self.axisA == "x":
+            return axisBPositions, axisAPositions
+        return axisAPositions, axisBPositions
 
     def add_data_to_placeholder_images(
         self,
@@ -1765,8 +1946,8 @@ class subtract_sky:
 
         # FIND ORDER PIXELS - MASK THE REST
         nonOrderMask = np.ones_like(objectFrame.data)
-        for x, y in zip(self.mapDF[self.axisA], self.mapDF[self.axisB]):
-            nonOrderMask[y][x] = 0
+        mapRows, mapColumns = self._detector_rows_and_columns(self.mapDF)
+        nonOrderMask[mapRows, mapColumns] = 0
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
         nonOrderMask = ma.make_mask(nonOrderMask)
@@ -2055,6 +2236,50 @@ class subtract_sky:
         self.log.debug("completed the ``calculate_residuals`` method")
         return res_mean, res_std, res_median, skyPixelsDF
 
+    def _object_slit_ranges(self, counts, binEdges, edgeMargin):
+        """*the slit-position ranges of the runs of positive bins that are objects*
+
+        **Key Arguments:**
+
+        - ``counts`` -- the background-subtracted counts of object-flagged pixels in each slit-position bin
+        - ``binEdges`` -- the edges of those bins, one more than the counts
+        - ``edgeMargin`` -- the number of bins at each end of the slit that are not examined
+
+        **Return:**
+
+        - ``objectRanges`` -- a ``[lower, upper]`` slit-position pair for each object
+            - ``lower`` is the left edge of the run's first positive bin and ``upper`` the right edge of its last
+            - an object run has more than ``OBJECT_MIN_RUN_BINS`` positive bins and a count above ``OBJECT_PEAK_COUNT``
+            - a run that reaches the last examined bin is judged by the same rules
+
+        **Usage:**
+
+        ```python
+        object_ranges = self._object_slit_ranges(
+            result.to_numpy(), bins, edges
+        )
+        ```
+
+        """
+        objectRanges = []
+        runStart = None
+        runPeak = 0.0
+        lastExamined = len(counts) - edgeMargin
+        # A NON-POSITIVE SENTINEL BIN AFTER THE LAST EXAMINED BIN CLOSES A RUN THAT REACHES IT
+        for binIndex in range(edgeMargin, lastExamined + 1):
+            count = counts[binIndex] if binIndex < lastExamined else 0
+            if count > 0:
+                if runStart is None:
+                    runStart = binIndex
+                runPeak = max(runPeak, count)
+                continue
+            isLongRun = runStart is not None and binIndex - runStart > OBJECT_MIN_RUN_BINS
+            if isLongRun and runPeak > OBJECT_PEAK_COUNT:
+                objectRanges.append([binEdges[runStart], binEdges[binIndex]])
+            runStart = None
+            runPeak = 0.0
+        return objectRanges
+
     def clip_object_slit_positions(self, order_dataframes, aggressive=False):
         """*clip out pixels flagged as an object*
 
@@ -2103,28 +2328,9 @@ class subtract_sky:
             result -= result.abs().median()
             # result -= result.abs().median()
 
-            # NEED 3 POSITIVE BINS IN A ROW TO BE SELECTED AS AN OBJECT
-            object_ranges = []
-            postiveCount = 0
             # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
             edges = int(nbins / 20)
-            lower = False
-            record_range = False
-            for sp, count in zip(bins[edges:-edges], result[edges:-edges]):
-                if count > 0:
-                    postiveCount += 1
-                    upper = sp
-                    if count > 0.05:
-                        record_range = True
-                else:
-                    if postiveCount > 4 and record_range:
-                        object_ranges.append([lower, upper])
-                    postiveCount = 0
-                    lower = sp
-                    upper = False
-                    record_range = False
-            if postiveCount > 4:
-                object_ranges.append([lower, upper])
+            object_ranges = self._object_slit_ranges(result.to_numpy(), bins, edges)
 
             if 1 == 0:
                 import matplotlib.pyplot as plt

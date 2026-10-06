@@ -13,6 +13,7 @@ from soxspipe.commonutils.subtract_sky import subtract_sky
 pytestmark = pytest.mark.unit
 
 PIXELS_PER_ORDER = 4000
+BIN_WIDTH = 11.0 / 99
 NOISE_COLUMNS = ("residual_windowed_std", "residual_windowed_long_median", "flux_windowed_long_median")
 
 
@@ -83,53 +84,57 @@ def test_a_central_object_masks_its_slit_range_in_every_order(
 ) -> None:
     """One range is found from both orders combined and applied twice per order.
 
-    The range ends at the left edge of the last positive bin, 1.586, short of
-    the object's 1.6 arcsec edge.
+    The range runs from the left edge of the first positive bin to the right edge
+    of the last one, so it covers the whole 1.0 to 1.6 arcsec object.
     """
-    # SUSPICIOUS (WRONG SCIENCE): RANGE TRIMS THE LAST OBJECT BIN, FILED AS DY-596
     orders = _orders(1.0, 1.6)
 
     result = _subtractor(log).clip_object_slit_positions(orders, aggressive=True)
 
     assert result is orders
-    expectedRange = (
-        pytest.approx(0.8123144206467865, rel=1e-12, abs=0),
-        pytest.approx(1.5858949073251, rel=1e-12, abs=0),
-    )
-    assert masked_ranges == [expectedRange] * 4
-    assert [int(order["flagged_object_clipped"].sum()) for order in result] == [406, 336]
-    assert [int(order["flagged_all_clipped"].sum()) for order in result] == [406, 336]
+    assert len(masked_ranges) == 4
+    assert len(set(masked_ranges)) == 1
+    lower, upper = masked_ranges[0]
+    assert upper >= 1.6
+    assert 1.0 - BIN_WIDTH <= lower <= 1.0
+    assert lower == pytest.approx(0.9228259187436887, rel=1e-12, abs=0)
+    assert upper == pytest.approx(1.6964064054220023, rel=1e-12, abs=0)
+    assert [int(order["flagged_object_clipped"].sum()) for order in result] == [392, 338]
+    assert [int(order["flagged_all_clipped"].sum()) for order in result] == [392, 338]
     for order in result:
-        insideRange = order["slit_position"].between(0.8123144206467865, 1.5858949073251)
+        insideRange = order["slit_position"].between(lower, upper)
         assert order.loc[insideRange, "flagged_object_clipped"].all()
     assert _noise_summary(result[0]) == _expected_noise(
-        [(6371.956674832487, 406), (88.6669295593187, 419), (358063.37340630684, 419)]
+        [(6385.0131472153225, 392), (137.46062579534546, 405), (359471.17853026406, 405)]
     )
     assert _noise_summary(result[1]) == _expected_noise(
-        [(6422.569136110474, 336), (-115.92489730639494, 349), (365026.1278999605, 349)]
+        [(6428.201453266465, 338), (-67.38329929430459, 351), (364825.4955009001, 351)]
     )
 
 
-def test_an_object_at_the_blue_slit_edge_is_recorded_from_false_and_masks_nothing(
+def test_an_object_at_the_blue_slit_edge_is_masked_from_the_first_examined_bin(
     log: Any, masked_ranges: list[tuple[Any, Any]]
 ) -> None:
-    """A positive run starting at the first examined bin keeps `lower = False`, an empty range."""
-    # SUSPICIOUS (WRONG SCIENCE): EDGE OBJECT RANGE STARTS AT False AND SELECTS NOTHING, FILED AS DY-596
+    """A positive run starting at the first examined bin is recorded from that bin's left edge."""
     orders = _orders(-5.5, -4.0)
     flaggedBefore = [int(order["flagged_object_clipped"].sum()) for order in orders]
 
     result = _subtractor(log).clip_object_slit_positions(orders, aggressive=True)
 
-    assert masked_ranges == [(False, pytest.approx(-4.061178202375266, rel=1e-12, abs=0))] * 4
-    assert masked_ranges[0][0] is False
     assert flaggedBefore == [501, 482]
-    assert [int(order["flagged_object_clipped"].sum()) for order in result] == [501, 482]
-    assert [int(order["flagged_all_clipped"].sum()) for order in result] == [501, 482]
+    assert len(masked_ranges) == 4
+    assert len(set(masked_ranges)) == 1
+    lower, upper = masked_ranges[0]
+    assert lower is not False
+    assert lower == pytest.approx(-4.946292206383818, rel=1e-12, abs=0)
+    assert upper == pytest.approx(-3.9505389518741967, rel=1e-12, abs=0)
+    assert [int(order["flagged_object_clipped"].sum()) for order in result] == [631, 600]
+    assert [int(order["flagged_all_clipped"].sum()) for order in result] == [631, 600]
     assert _noise_summary(result[0]) == _expected_noise(
-        [(6322.006763896867, 501), (17.233931234827608, 514), (348574.90063246945, 514)]
+        [(6242.460744138139, 631), (19.521000344039592, 644), (335582.05770925974, 644)]
     )
     assert _noise_summary(result[1]) == _expected_noise(
-        [(6316.503674671294, 482), (259.5343562330326, 495), (350454.6068999977, 495)]
+        [(6226.8607221658385, 600), (231.64411541533178, 613), (338658.9684423819, 613)]
     )
 
 
@@ -173,26 +178,81 @@ def test_an_object_running_into_the_red_margin_is_closed_after_the_loop(
 ) -> None:
     """A positive run still open at the last examined bin is recorded once the loop ends.
 
-    The range stops at 4.83, the left edge of the last examined positive bin, though
-    the object continues to the slit end.
+    The range stops at 4.94, the right edge of the last examined bin, though the
+    object continues to the slit end inside the edge margin.
     """
-    # SUSPICIOUS (WRONG SCIENCE): RANGE TRIMS THE LAST OBJECT BIN, FILED AS DY-596
     orders = _orders(3.8, 5.5)
     flaggedBefore = [int(order["flagged_object_clipped"].sum()) for order in orders]
 
     result = _subtractor(log).clip_object_slit_positions(orders, aggressive=True)
 
     expectedRange = (
-        pytest.approx(3.611432132809103, rel=1e-12, abs=0),
-        pytest.approx(4.831932183303529, rel=1e-12, abs=0),
+        pytest.approx(3.722386682854049, rel=1e-12, abs=0),
+        pytest.approx(4.942886733348475, rel=1e-12, abs=0),
     )
     assert masked_ranges == [expectedRange] * 4
     assert flaggedBefore == [527, 532]
-    assert [int(order["flagged_object_clipped"].sum()) for order in result] == [677, 698]
-    assert [int(order["flagged_all_clipped"].sum()) for order in result] == [677, 698]
+    assert [int(order["flagged_object_clipped"].sum()) for order in result] == [654, 672]
+    assert [int(order["flagged_all_clipped"].sum()) for order in result] == [654, 672]
     assert _noise_summary(result[0]) == _expected_noise(
-        [(6202.940726273984, 677), (141.38808434002067, 690), (330964.8055288905, 690)]
+        [(6212.313468960861, 654), (127.97333372969166, 667), (333259.15392645646, 667)]
     )
     assert _noise_summary(result[1]) == _expected_noise(
-        [(6124.854407351182, 698), (4.581223971237684, 711), (328843.1036817604, 711)]
+        [(6143.968166835047, 672), (43.69186079400444, 685), (331434.72029450943, 685)]
     )
+
+
+def _ranges(log: Any, counts: list[float], edgeMargin: int = 0) -> list[list[float]]:
+    """Run detection on unit-width bins, so bin `i` spans `i` to `i + 1`."""
+    binEdges = np.arange(len(counts) + 1, dtype=float)
+    return _subtractor(log)._object_slit_ranges(np.array(counts), binEdges, edgeMargin)
+
+
+def test_a_run_ends_at_the_right_edge_of_its_last_positive_bin(log: Any) -> None:
+    ranges = _ranges(log, [0.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.0, 0.0])
+
+    assert ranges == [[1.0, 6.0]]
+
+
+def test_a_run_starting_at_the_first_examined_bin_starts_at_that_bins_left_edge(log: Any) -> None:
+    ranges = _ranges(log, [0.2, 0.2, 0.2, 0.2, 0.2, 0.0, 0.0])
+
+    assert ranges == [[0.0, 5.0]]
+
+
+def test_a_run_of_four_positive_bins_is_not_recorded_but_five_are(log: Any) -> None:
+    fourBins = _ranges(log, [0.0, 0.2, 0.2, 0.2, 0.2, 0.0])
+    fiveBins = _ranges(log, [0.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.0])
+
+    assert fourBins == []
+    assert fiveBins == [[1.0, 6.0]]
+
+
+def test_a_run_whose_peak_does_not_exceed_the_threshold_is_not_recorded_inside_the_loop(log: Any) -> None:
+    ranges = _ranges(log, [0.0, 0.05, 0.01, 0.01, 0.01, 0.01, 0.0, 0.0])
+
+    assert ranges == []
+
+
+def test_a_final_run_whose_peak_does_not_exceed_the_threshold_is_not_recorded(log: Any) -> None:
+    ranges = _ranges(log, [0.0, 0.0, 0.05, 0.01, 0.01, 0.01, 0.01])
+
+    assert ranges == []
+
+
+def test_a_final_run_with_a_peak_is_closed_at_the_right_edge_of_the_last_examined_bin(log: Any) -> None:
+    ranges = _ranges(log, [0.0, 0.0, 0.01, 0.01, 0.2, 0.01, 0.01])
+
+    assert ranges == [[2.0, 7.0]]
+
+
+def test_the_peak_of_one_run_does_not_carry_over_to_the_next_run(log: Any) -> None:
+    ranges = _ranges(log, [0.2, 0.2, 0.2, 0.2, 0.2, 0.0, 0.01, 0.01, 0.01, 0.01, 0.01, 0.0])
+
+    assert ranges == [[0.0, 5.0]]
+
+
+def test_bins_inside_the_edge_margin_are_not_examined(log: Any) -> None:
+    ranges = _ranges(log, [0.2, 0.2, 0.0, 0.0, 0.2, 0.2, 0.2, 0.2, 0.2, 0.0, 0.2, 0.2], edgeMargin=2)
+
+    assert ranges == [[4.0, 9.0]]

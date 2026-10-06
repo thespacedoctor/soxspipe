@@ -87,50 +87,76 @@ def _unmasked_rows_and_columns(image: np.ma.MaskedArray) -> tuple[list[int], lis
     return sorted(set(rows.tolist())), sorted(set(columns.tolist()))
 
 
-def test_a_y_dispersion_order_draws_its_sky_model_panel_transposed(
-    log: Any, tmp_path: Path, figures: list, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """The order mask follows columns 0-3, but the sky-model values are written into rows 0-3."""
-    # SUSPICIOUS: SKY-MODEL PANEL IS TRANSPOSED FOR Y-DISPERSION ARMS, FILED AS DY-597
-    outputPath = tmp_path / "y_dispersion_plots"
-    outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis="y", rotate=False)
+def _positions(pixels: np.ndarray) -> set[tuple[int, int]]:
+    """The (row, column) positions of the True entries of a boolean array."""
+    return {(int(row), int(column)) for row, column in np.argwhere(pixels)}
 
-    filePath = subtractor.plot_sky_sampling(
-        order=11, imageMapOrderDF=_order_strip(), knotLocations=np.array([502.0, 508.0])
+
+def _strip_positions(strip: pd.DataFrame) -> set[tuple[int, int]]:
+    """The (row, column) detector positions of a strip's pixels."""
+    return {(int(row), int(column)) for row, column in strip[["y", "x"]].to_numpy()}
+
+
+def _assert_every_panel_follows_the_order(figure: Any, strip: pd.DataFrame) -> None:
+    """Each image panel holds its data on the order's own (row, column) pixels."""
+    rows, columns = sorted(set(strip["y"])), sorted(set(strip["x"]))
+    assert _unmasked_rows_and_columns(figure.axes[0].images[0].get_array()) == (rows, columns)
+    # IMAGES 1-4 OF THE CLIPPED-PIXEL PANEL ARE THE OBJECT, BAD-PIXEL, EDGE AND B-SPLINE OVERLAYS
+    objectOverlay = figure.axes[3].images[1].get_array()
+    assert _positions(~np.ma.getmaskarray(objectOverlay)) == _strip_positions(
+        strip.loc[strip["flagged_object_clipped"]]
     )
+    # THE LAST CLIPPED-PIXEL IMAGE MASKS THE ORDER ITSELF, LEAVING EVERYTHING ELSE VISIBLE
+    orderOutline = figure.axes[3].images[-1].get_array()
+    assert _positions(np.ma.getmaskarray(orderOutline)) == _strip_positions(strip)
+    for panel in (figure.axes[5].images[0], figure.axes[6].images[0]):
+        assert _unmasked_rows_and_columns(panel.get_array()) == (rows, columns)
+    skyModelPanel = figure.axes[5].images[0].get_array()
+    dataRows, dataColumns = np.nonzero(skyModelPanel.data)
+    assert sorted(set(dataRows.tolist())) == rows
+    assert sorted(set(dataColumns.tolist())) == columns
+    assert skyModelPanel.data[0, :4].tolist() == [100.0, 101.0, 102.0, 103.0]
+    assert skyModelPanel.data[:4, 0].tolist() == [100.0, 104.0, 108.0, 112.0]
+    assert float(skyModelPanel.data.sum()) == 8416.0
+    skySubPanel = figure.axes[6].images[0].get_array()
+    assert skySubPanel.data[3, 2] == pytest.approx(np.sin(14 / 3.0))
+
+
+@pytest.mark.parametrize("dispersionAxis", ["x", "y"])
+def test_every_sky_qc_panel_places_its_pixels_on_the_true_detector_rows_and_columns(
+    log: Any, tmp_path: Path, figures: list, capsys: pytest.CaptureFixture[str], dispersionAxis: str
+) -> None:
+    """An order in columns 0-3 fills columns 0-3 of every panel, whichever way the arm disperses."""
+    outputPath = tmp_path / f"{dispersionAxis}_dispersion_plots"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=False)
+    strip = _order_strip()
+
+    filePath = subtractor.plot_sky_sampling(order=11, imageMapOrderDF=strip, knotLocations=np.array([502.0, 508.0]))
 
     assert filePath == f"{outputPath}/science_SKYMODEL_QC_PLOTS_ORDER_11.pdf"
     assert Path(filePath).read_bytes().startswith(b"%PDF")
     assert capsys.readouterr().out == "DEBUG: median 0.19867914959516253, std 0.7723658536192702\n"
     [figure] = figures
     assert len(figure.axes) == 9
-    assert _unmasked_rows_and_columns(figure.axes[0].images[0].get_array()) == (list(range(16)), [0, 1, 2, 3])
-    skyModelPanel = figure.axes[5].images[0].get_array()
-    assert _unmasked_rows_and_columns(skyModelPanel) == (list(range(16)), [0, 1, 2, 3])
-    dataRows, dataColumns = np.nonzero(skyModelPanel.data)
-    assert sorted(set(dataRows.tolist())) == [0, 1, 2, 3]
-    assert sorted(set(dataColumns.tolist())) == list(range(16))
-    assert skyModelPanel.data[0, :4].tolist() == [100.0, 104.0, 108.0, 112.0]
-    assert skyModelPanel.data[:4, 0].tolist() == [100.0, 101.0, 102.0, 103.0]
-    assert float(skyModelPanel.data.sum()) == 8416.0
+    _assert_every_panel_follows_the_order(figure, strip)
 
 
-def test_a_y_dispersion_order_on_a_non_square_frame_raises_index_error(
-    log: Any, tmp_path: Path, figures: list
-) -> None:
-    """A 20-pixel-wide order on a 16-row frame indexes past the last row once transposed."""
-    # SUSPICIOUS: NON-SQUARE Y-DISPERSION FRAMES CRASH THE QC PLOT, FILED AS DY-597
+def test_a_y_dispersion_order_on_a_non_square_frame_renders_its_panels(log: Any, tmp_path: Path, figures: list) -> None:
+    """A 20-pixel-wide order on a 16-row, 24-column y-dispersion frame plots without error."""
     outputPath = tmp_path / "non_square_plots"
     outputPath.mkdir()
     subtractor = _subtractor(log, outputPath, dispersionAxis="y", rotate=False, shape=(16, 24))
+    strip = _order_strip(pixelCount=80, columns=20)
 
-    with pytest.raises(IndexError, match="index 18 is out of bounds for axis 0 with size 16"):
-        subtractor.plot_sky_sampling(
-            order=11, imageMapOrderDF=_order_strip(pixelCount=80, columns=20), knotLocations=np.array([502.0])
-        )
+    filePath = subtractor.plot_sky_sampling(order=11, imageMapOrderDF=strip, knotLocations=np.array([502.0]))
 
-    assert list(outputPath.iterdir()) == []
+    assert Path(filePath).read_bytes().startswith(b"%PDF")
+    [figure] = figures
+    skyModelPanel = figure.axes[5].images[0].get_array()
+    assert skyModelPanel.shape == (16, 24)
+    assert _unmasked_rows_and_columns(skyModelPanel) == (list(range(4)), list(range(20)))
+    assert skyModelPanel.data[3, 19] == 179.0
 
 
 def test_a_rotated_spline_plot_without_clipped_rows_falls_back_on_every_limit(
@@ -210,3 +236,27 @@ def test_image_comparison_falls_back_to_plain_statistics_when_nan_statistics_fai
         "plot_image_comparison: `std = np.nanstd(maskedDataValues)` failed, continuing: statistics unavailable",
     )
     assert log.messages.count(fallbackMessage) == 2
+
+
+@pytest.mark.parametrize("dispersionAxis", ["x", "y"])
+def test_image_comparison_order_mask_covers_the_true_detector_pixels_of_the_order(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dispersionAxis: str
+) -> None:
+    """The statistics of the object panel are taken over the order's own (row, column) pixels."""
+    outputPath = tmp_path / f"{dispersionAxis}_comparison_plots"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=False, shape=(6, 8))
+    subtractor.mapDF = pd.DataFrame({"x": [7, 6], "y": [1, 4]})
+    frame = subtractor.objectFrame
+    realNanstd = np.nanstd
+    objectPanelValues: list[np.ndarray] = []
+
+    def record_object_panel_values(values: Any, *args: Any, **kwargs: Any) -> Any:
+        objectPanelValues.append(np.array(values, dtype=float))
+        return realNanstd(values, *args, **kwargs)
+
+    monkeypatch.setattr(np, "nanstd", record_object_panel_values)
+
+    subtractor.plot_image_comparison(frame, frame.copy(), frame.copy())
+
+    assert _positions(~np.isnan(objectPanelValues[0])) == {(1, 7), (4, 6)}
