@@ -114,16 +114,16 @@ def test_clipping_view_without_a_spline_pauses_and_returns_before_the_model(
     fluxAxis, residualAxis = figure.axes
     assert fluxAxis.get_title() == "clipping"
     assert fluxAxis.get_ylim() == (
-        pytest.approx(62.120070369577114, rel=1e-12, abs=0),
-        pytest.approx(468.6839615657885, rel=1e-12, abs=0),
+        pytest.approx(88.00143995810838, rel=1e-12, abs=0),
+        pytest.approx(254.50353330762323, rel=1e-12, abs=0),
     )
     assert fluxAxis.get_xlim() == (
         pytest.approx(500.0502512562814, rel=1e-12, abs=0),
         pytest.approx(510.0, rel=1e-12, abs=0),
     )
     assert residualAxis.get_ylim() == (
-        pytest.approx(-13.954749320084819, rel=1e-12, abs=0),
-        pytest.approx(14.177863274050068, rel=1e-12, abs=0),
+        pytest.approx(-13.959204742696885, rel=1e-12, abs=0),
+        pytest.approx(14.151629608944601, rel=1e-12, abs=0),
     )
     assert [collection.get_label() for collection in fluxAxis.collections] == [
         "unclipped",
@@ -157,7 +157,7 @@ def test_fitting_view_with_a_spline_draws_the_model_and_shows_the_figure(
     assert fluxAxis.get_title() == ""
     assert residualAxis.get_ylim() == (
         pytest.approx(0.0, rel=1e-12, abs=0),
-        pytest.approx(8.364539674772445, rel=1e-12, abs=0),
+        pytest.approx(8.345956191113675, rel=1e-12, abs=0),
     )
     assert [collection.get_label() for collection in fluxAxis.collections] == [
         "unclipped",
@@ -227,19 +227,13 @@ def test_an_empty_skyline_table_adds_no_skyline_legend_entries(
     ]
 
 
-def test_limit_statistics_receive_every_pixel_not_only_unclipped_ones(
+def test_limit_statistics_receive_only_unclipped_values_above_floor(
     log: Any,
     plot_recorders: dict[str, list],
     skylines: list[tuple],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Both limit statistics see all 200 pixels, clipped and deeply negative ones included.
-
-    `~mask_all_clipped & imageMapOrder["flux"] > -50` parses as
-    `(~mask_all_clipped & flux) > -50`, which is always True, so the mask keeps
-    every row instead of the 189 unclipped ones.
-    """
-    # SUSPICIOUS: THE PLOT-LIMIT MASK IS ALWAYS TRUE, FILED AS DY-592
+    """Limit statistics exclude both clipped pixels and values at or below -50."""
     import astropy.stats
 
     realStats = astropy.stats.sigma_clipped_stats
@@ -252,10 +246,14 @@ def test_limit_statistics_receive_every_pixel_not_only_unclipped_ones(
     monkeypatch.setattr(astropy.stats, "sigma_clipped_stats", record_stats)
     subtractor = _subtractor(log)
     pixels = _order_pixels()
+    # Include an explicitly unclipped value below the floor in each panel.
+    assert not pixels.loc[1, ["flagged_all_clipped", "flagged_object_clipped"]].any()
+    pixels.loc[1, ["flux", "flux_minus_smoothed_residual", "sky_residuals"]] = -50.0
     # THE PLOT'S OWN CLIPPED MASK IS ALL-CLIPPED OR OBJECT-CLIPPED
     assert int((~(pixels["flagged_all_clipped"] | pixels["flagged_object_clipped"])).sum()) == 189
 
     subtractor.plot_order_skymodel_fitting_quicklook(pixels, None)
     subtractor.plot_order_skymodel_fitting_quicklook(pixels, _spline())
 
-    assert sampleSizes == [200, 200, 200, 200]
+    # Five other unclipped flux rows are below the floor in the synthetic data.
+    assert sampleSizes == [183, 188, 183, 188]
