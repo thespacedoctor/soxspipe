@@ -1824,7 +1824,7 @@ class subtract_sky:
 
         **Return:**
 
-        - ``keptKnots`` -- a new sorted array holding only the knots that have a sample between them and the previous kept knot, and a sample after them
+        - ``keptKnots`` -- a new sorted array of the knots with a sample since the previous kept knot and one after
             - of two knots with no sample between them, the bluer knot is kept
             - a sample exactly on a knot counts for neither neighbouring interval
             - a warning is logged when knots were proposed and none is kept
@@ -1855,7 +1855,8 @@ class subtract_sky:
 
         if len(proposedKnots) and not keptKnots:
             self.log.warning(
-                f"\t\tEvery proposed b-spline knot for order {order} lacks samples in its interval. Fitting without knots.\n"
+                f"\t\tEvery proposed b-spline knot for order {order} lacks samples in its interval. "
+                "Fitting without knots.\n"
             )
         return np.array(keptKnots, dtype=float)
 

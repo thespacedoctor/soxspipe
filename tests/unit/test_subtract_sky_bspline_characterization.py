@@ -620,7 +620,9 @@ def test_pruning_that_would_remove_every_knot_leaves_the_knots_and_names_the_ord
         pytest.param([505.0, 502.0, 508.0], [502.0, 505.0, 508.0], id="knots-are-returned-sorted"),
         pytest.param([499.9, 500.0, 505.0], [505.0], id="knots-at-or-below-the-first-sample-are-dropped"),
         pytest.param([505.0, 510.0, 510.1], [505.0], id="knots-at-or-above-the-last-sample-are-dropped"),
-        pytest.param([502.0, 502.05, 502.4, 508.0], [502.0, 502.4, 508.0], id="a-knot-with-no-sample-since-the-last-is-dropped"),
+        pytest.param(
+            [502.0, 502.05, 502.4, 508.0], [502.0, 502.4, 508.0], id="a-knot-with-no-sample-since-the-last-is-dropped"
+        ),
         pytest.param([502.3, 503.0, 508.0], [502.3, 508.0], id="a-sample-on-a-knot-counts-for-neither-interval"),
         pytest.param([502.0, np.nan, 508.0], [502.0, 508.0], id="a-nan-knot-is-dropped"),
         pytest.param([], [], id="no-knots"),
@@ -665,11 +667,16 @@ def test_dropping_every_knot_warns_and_names_the_order(log: Any) -> None:
     """With no knot left the spline is one cubic across the order, so the loss is logged (DY-697)."""
     subtractor = _subtractor(log)
 
-    kept = subtractor._drop_knots_without_samples(np.array([499.0, 510.0, 511.0]), np.linspace(500.0, 510.0, 11), order=13)
+    wavelength = np.linspace(500.0, 510.0, 11)
+
+    kept = subtractor._drop_knots_without_samples(np.array([499.0, 510.0, 511.0]), wavelength, order=13)
 
     assert kept.tolist() == []
     assert log.messages == [
-        ("warning", "\t\tEvery proposed b-spline knot for order 13 lacks samples in its interval. Fitting without knots.\n")
+        (
+            "warning",
+            "\t\tEvery proposed b-spline knot for order 13 lacks samples in its interval. Fitting without knots.\n",
+        )
     ]
 
 
