@@ -1155,6 +1155,7 @@ class subtract_sky:
                             self.stopSubtraction = True
                             return None
                         imageMapOrderDF["flagged_object_clipped"] = False
+                        self._rebuild_all_clipped_flag(imageMapOrderDF)
                         sigma_clip_limit -= 0.1
                         if quantile > 0.1:
                             quantile -= 0.05
@@ -1178,6 +1179,7 @@ class subtract_sky:
 
         if percent > 85.0:
             imageMapOrderDF["flagged_object_clipped"] = False
+            self._rebuild_all_clipped_flag(imageMapOrderDF)
             self.log.warning(
                 f"ORDER {order}: More than 85% of pixels flagged to be clipped ({percent:1.1f}%). Clipping 0% instead."
             )
@@ -1190,6 +1192,24 @@ class subtract_sky:
 
         self.log.debug("completed the ``rolling_window_clipping`` method")
         return imageMapOrderDF
+
+    def _rebuild_all_clipped_flag(self, imageMapOrderDF):
+        """*recompute ``flagged_all_clipped`` as the union of the edge, bad-pixel and object clipping flags*
+
+        Call this after resetting ``flagged_object_clipped``.
+        Released pixels are then no longer excluded from the sky fit.
+        Before and during rolling-window clipping, ``flagged_all_clipped`` is set only from these three flags.
+        No other exclusion is lost.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- order dataframe carrying the component flag columns. Updated in place.
+        """
+        imageMapOrderDF["flagged_all_clipped"] = (
+            imageMapOrderDF["flagged_edge_clipped"]
+            | imageMapOrderDF["flagged_bad_pixel_clipped"]
+            | imageMapOrderDF["flagged_object_clipped"]
+        )
 
     def fit_bspline_curve_to_sky(self, imageMapOrder):
         """*fit a single-order univariate bspline to the unclipped sky pixels (wavelength vs flux)*
