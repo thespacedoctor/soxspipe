@@ -289,6 +289,79 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert captured["locationSetIndex"] == 2
 
 
+def test_constructor_names_products_without_a_sof_name(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Use the input frame to name products when no SOF name is available."""
+    import soxspipe.commonutils as commonutils
+    import soxspipe.commonutils.toolkit as toolkit
+    from soxspipe.commonutils.base_util import base_util
+
+    extraction_module = importlib.import_module(
+        "soxspipe.commonutils.horne_extraction"
+    )
+
+    frame = CCDData(
+        np.ones((3, 3)),
+        unit=u.electron,
+        meta=instrument_header(),
+        mask=np.zeros((3, 3), dtype=bool),
+        uncertainty=StdDevUncertainty(np.ones((3, 3)), unit=u.electron),
+    )
+    named_frames: list[CCDData] = []
+
+    def initialize_base(
+        self: horne_extraction,
+        receivedLog: object,
+        settings: dict[str, object],
+        **_: object,
+    ) -> None:
+        self.log = receivedLog
+        self.settings = settings
+        self.dispersionMap = None
+        self.binx = 1
+        self.biny = 1
+        self.detectorParams = {"dispersion-axis": "x"}
+        self.imageMap = pd.DataFrame(
+            {"wavelength": [500.0], "slit_position": [0.0]}
+        )
+
+    def name_frame(**kwargs: object) -> str:
+        named_frames.append(kwargs["frame"])
+        return "OBJECT_STARE.fits"
+
+    class MissingTrace:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def get(self) -> tuple[None, None, None, None, None, None]:
+            return (None, None, None, None, None, None)
+
+    monkeypatch.setattr(base_util, "__init__", initialize_base)
+    monkeypatch.setattr(extraction_module, "filenamer", name_frame)
+    monkeypatch.setattr(commonutils, "detect_continuum", MissingTrace)
+    monkeypatch.setattr(toolkit, "utility_setup", lambda **_: ("products/qc", "products"))
+
+    extractor = horne_extraction(
+        log=log,
+        settings={},
+        recipeSettings={
+            "horne-extraction-slit-length": 20,
+            "horne-extraction-profile-clipping-sigma": 3,
+            "horne-extraction-profile-clipping-iteration-count": 5,
+            "horne-extraction-profile-global-clipping-sigma": 25,
+        },
+        skySubtractedFrame=frame,
+        unflattenedFrame=frame,
+        twoDMapPath=None,
+        sofName=False,
+    )
+
+    assert extractor.filenameTemplate == "OBJECT_STARE.fits"
+    assert named_frames == [frame]
+
+
 def test_extract_writes_order_and_merged_product_contracts(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
