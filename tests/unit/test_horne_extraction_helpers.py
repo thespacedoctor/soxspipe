@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -694,6 +695,115 @@ def test_profile_fitting_normalises_a_symmetric_slit_profile() -> None:
 
     np.testing.assert_allclose(resultImages["objectProfile"], 0.5)
     np.testing.assert_allclose(np.stack(resultSlices["objectProfile"]), 0.5)
+
+
+def _fit_profile(images: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Fit a constant-in-dispersion object profile to rectified order images."""
+    slices = pd.DataFrame(index=range(images["fluxRaw"].shape[1]))
+    _, fitted = fit_object_profile(
+        slices,
+        images,
+        slitHalfLength=images["fluxRaw"].shape[0] // 2,
+        clippingSigma=3.0,
+        clippingIterationLimit=5,
+        hornePolyOrder=0,
+        axisB="x",
+        order=10,
+        debug=False,
+        plt=None,
+    )
+    return fitted
+
+
+def _edge_order_images(
+    onOrderColumns: int, columns: int = 40, rows: int = 13, offOrderRows: int = 7
+) -> tuple[dict[str, np.ndarray], np.ndarray]:
+    """Build an order whose Gaussian object leaves the order after `onOrderColumns`.
+
+    Returns the rectified images and the true on-slit flux per column.
+    """
+    rowIndex = np.arange(rows)[:, np.newaxis]
+    shape = np.exp(-0.5 * ((rowIndex - 3.0) / 1.5) ** 2)
+    columnFlux = 1000.0 + 10.0 * np.arange(columns)
+    flux = shape * columnFlux[np.newaxis, :]
+    offOrder = np.zeros((rows, columns), dtype=bool)
+    offOrder[:offOrderRows, onOrderColumns:] = True
+    flux[offOrder] = np.nan
+    visibleFlux = shape[offOrderRows:, 0].sum() * columnFlux
+    images = {
+        "fluxRaw": flux,
+        "mask": offOrder.copy(),
+        "variance": np.where(offOrder, 1e12, 1.0),
+        "wavelength": np.tile(np.arange(columns, dtype=float) + 500.0, (rows, 1)),
+    }
+    return images, visibleFlux
+
+
+def test_profile_fitting_excludes_off_order_pixels_from_the_extracted_flux() -> None:
+    images, visibleFlux = _edge_order_images(onOrderColumns=2)
+    slices = pd.DataFrame({"pixelScaleNm": np.ones(40)})
+
+    fitted = _fit_profile(images)
+    result = compute_extractions(slices, fitted, order=10)
+
+    edgeColumns = result["wavelengthMean"] >= 502.0
+    assert edgeColumns.sum() == 38
+    assert np.isfinite(result["extractedFluxOptimal"]).all()
+    np.testing.assert_allclose(
+        result.loc[edgeColumns, "extractedFluxOptimal"],
+        visibleFlux[2:],
+        rtol=1e-2,
+    )
+
+
+def test_profile_fitting_gives_zero_weight_to_off_order_pixels() -> None:
+    images, _ = _edge_order_images(onOrderColumns=2)
+
+    fitted = _fit_profile(images)
+
+    assert (fitted["objectProfile"][images["mask"]] == 0).all()
+    np.testing.assert_allclose(fitted["objectProfile"].sum(axis=0), 1.0)
+
+
+def test_profile_fitting_drops_a_column_with_no_on_order_pixels() -> None:
+    images, _ = _edge_order_images(onOrderColumns=2, offOrderRows=13)
+    slices = pd.DataFrame({"pixelScaleNm": np.ones(40)})
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        fitted = _fit_profile(images)
+    result = compute_extractions(slices, fitted, order=10)
+
+    assert np.isnan(fitted["objectProfile"][:, 2:]).all()
+    assert result["wavelengthMean"].tolist() == [500.0, 501.0]
+
+
+def test_profile_fitting_keeps_weight_on_a_masked_pixel_with_finite_flux() -> None:
+    rowIndex = np.arange(7)[:, np.newaxis]
+    shape = np.exp(-0.5 * ((rowIndex - 3.0) / 1.0) ** 2)
+    flux = shape * (100.0 + np.arange(10.0))[np.newaxis, :]
+    mask = np.zeros(flux.shape, dtype=bool)
+    mask[3, 4] = True
+    images = {"fluxRaw": flux, "mask": mask}
+
+    fitted = _fit_profile(images)
+
+    profile = fitted["objectProfile"]
+    assert profile[3, 4] > 0
+    assert profile[3, 4] == pytest.approx(profile[3, 5])
+    np.testing.assert_allclose(profile.sum(axis=0), 1.0)
+
+
+def test_profile_fitting_is_unchanged_when_every_pixel_is_on_order() -> None:
+    rowFractions = np.array([[0.25], [0.5], [0.25]])
+    images = {
+        "fluxRaw": rowFractions * (10.0 + np.arange(6.0))[np.newaxis, :],
+        "mask": np.zeros((3, 6), dtype=bool),
+    }
+
+    fitted = _fit_profile(images)
+
+    np.testing.assert_allclose(fitted["objectProfile"], np.tile(rowFractions, (1, 6)))
 
 
 def test_single_order_extraction_returns_sorted_science_columns(log: object) -> None:

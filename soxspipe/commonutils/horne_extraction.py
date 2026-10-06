@@ -1771,8 +1771,17 @@ def fit_object_profile(
     transposedProfiles = crossSlitProfiles.tolist()
     crossDispersionProfile = np.array([np.array(t) for t in transposedProfiles])
 
+    # OFF-ORDER PIXELS (NON-FINITE FLUX) CANNOT HOLD OBJECT FLUX, BUT THEIR EXTRAPOLATED
+    # ROW POLYNOMIALS WOULD TAKE PROFILE WEIGHT FROM THE ON-ORDER ROWS
+    # PIXELS MASKED FOR OTHER REASONS (BAD PIXELS, CRHs, CLIPPING) KEEP THEIR WEIGHT
+    # SO HORNE CORRECTS FOR THEIR MISSING FLUX. THIS ASSUMES ON-ORDER BAD PIXELS ARRIVE
+    # FINITE AND FLAGGED IN THE MASK, NOT AS NaN
+    crossDispersionProfile[~np.isfinite(orderRectifiedImages["fluxRaw"])] = 0
+
     crossDispersionProfileSums = np.array([x.sum() for x in crossDispersionProfile.T])
-    orderRectifiedImages["objectProfile"] = crossDispersionProfile / crossDispersionProfileSums[np.newaxis :]
+    # A COLUMN WITH NO ON-ORDER WEIGHT NORMALISES TO NaN AND IS DROPPED BY compute_extractions
+    with np.errstate(divide="ignore", invalid="ignore"):
+        orderRectifiedImages["objectProfile"] = crossDispersionProfile / crossDispersionProfileSums[np.newaxis :]
     crossDispersionSlicesDF["objectProfile"] = [x for x in orderRectifiedImages["objectProfile"].T]
 
     return crossDispersionSlicesDF, orderRectifiedImages
