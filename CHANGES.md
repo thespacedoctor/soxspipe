@@ -5,6 +5,7 @@
 * **FIXED**: `subtract_sky` anchors the order ends with sigma-clipped, clamped straight-line fits over each end window instead of the whole-order median, and always uses the fitted spline, so the flux-error ratio on a perfectly flat sky is now 0 (DY-593).
 * **FIXED**: pixels released when object clipping is reset (more than 85% clipped, or the VIS retry) now rejoin the sky fit (DY-595).
 * **FIXED**: aggressive object masking in `subtract_sky` records the full slit range of each object, including objects that start at the slit edge (DY-596).
+* **FIXED**: the clipped-pixel panel of the sky QC plot no longer hides parts of the order on rotated arms such as SOXS VIS; the order-outline layer is now rotated like the other layers.
 * **FIXED**: sky QC plots place pixels correctly for y-dispersion arms such as SOXS NIR and no longer crash on non-square frames (DY-597).
 * **FIXED**: the Read the Docs build installs the package with `pip` instead of `python setup.py install`, as the repository no longer has a `setup.py`.
 * **FIXED**: a raw frame added after `prep` grouped its set now rejoins that set on the next plain `prep`: the set keeps its SOF name, its status is reset in every session, and its stale product is deleted (DY-263).
