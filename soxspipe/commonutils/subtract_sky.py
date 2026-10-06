@@ -728,7 +728,7 @@ class subtract_sky:
         for cn, cl, lb, al in zip(columnName, colours, labels, alphas):
             clippedMask = nonOrderMask
             clippedMask = np.zeros_like(frame.data)
-            clippedPixels = imageMapOrderDF.loc[imageMapOrderDF[cn] == True]
+            clippedPixels = imageMapOrderDF.loc[imageMapOrderDF[cn].eq(True)]
             clippedRows, clippedColumns = self._detector_rows_and_columns(clippedPixels)
             clippedMask[clippedRows, clippedColumns] = 1
             clippedMask = ma.make_mask(clippedMask)
@@ -1227,7 +1227,8 @@ class subtract_sky:
         **Raises:**
 
         - ``ValueError`` -- if FITPACK cannot fit the spline (for example, too many knots for the number of data points)
-        - ``ValueError`` -- if FITPACK reports a poor fit (``ier`` of 10 or more, which includes 50) on the first iteration, as there is no earlier fit to revert to
+        - ``ValueError`` -- if FITPACK reports a poor fit (``ier`` of 10 or more, which includes 50)
+          on the first iteration, as there is no earlier fit to revert to
             - on a later iteration a poor fit does not raise: the last good spline and its knots are returned
 
         **Usage:**
@@ -1506,7 +1507,8 @@ class subtract_sky:
             if ier >= POOR_FITPACK_IER:
                 if tck_previous is None:
                     raise ValueError(
-                        f"BSpline fit failed for order {order} on iteration {iterationCount}. FITPACK reported ier={ier}: {msg}"
+                        f"BSpline fit failed for order {order} on iteration {iterationCount}. "
+                        f"FITPACK reported ier={ier}: {msg}"
                     )
                 self.log.info(
                     f"\t\tpoor fit on iteration {iterationCount} for order {imageMapOrder['order'].values[0]}. Reverting to last iteration.\n"
@@ -1727,7 +1729,8 @@ class subtract_sky:
             - each pass clips only the samples still kept, so a rejected sample is never re-admitted
             - a clip pass leaving fewer than three samples, or fewer than two distinct wavelengths, is not applied
             - the line is evaluated at a sample inside the window
-            - the value is clamped to the flux range of the surviving samples, so a noisy window's fit cannot overshoot that range
+            - the value is clamped to the flux range of the surviving samples,
+              so a noisy window's fit cannot overshoot that range
 
         **Usage:**
 
@@ -1829,7 +1832,8 @@ class subtract_sky:
     def _detector_rows_and_columns(self, pixelsDF):
         """*the detector (row, column) index arrays of a dataframe's pixels*
 
-        The dataframe holds each pixel's position in the ``axisA`` and ``axisB`` columns. For an x-dispersion arm ``axisA`` is the detector column, for a y-dispersion arm it is the detector row.
+        The dataframe holds each pixel's position in the ``axisA`` and ``axisB`` columns.
+        For an x-dispersion arm ``axisA`` is the detector column, for a y-dispersion arm it is the detector row.
 
         **Key Arguments:**
 
