@@ -12,6 +12,7 @@ Date Created
 import os
 
 from .base_util import base_util
+from .filenamer import filenamer
 
 os.environ["TERM"] = "vt100"
 

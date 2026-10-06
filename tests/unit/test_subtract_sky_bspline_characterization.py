@@ -301,9 +301,16 @@ def test_a_clean_sloped_sky_is_pinned_to_the_median_flux_at_both_order_ends(log:
         [-24.99992780248533, 0.00524880681069817, 0.0001492227738708607, 24.99994091403363]
     )
     assert float(modelled["sky_model"].sum()) == pytest.approx(599999.9075715989, rel=1e-12, abs=0)
-    # CPU-SENSITIVE: THE RATIO CANCELS ALMOST COMPLETELY, SO ONE-ULP MODEL DIFFERENCES REACH 1.3e-9
-    # RELATIVE IN THE SUM. PINNED TO THE AVX2 VALUE; THE AVX512 VALUE IS -0.0005019052654203701
-    assert float(fluxErrorRatio.sum()) == pytest.approx(-0.000501905266075315, rel=1e-12, abs=0)
+    # THE FLUX-ERROR RATIO IS NOT PINNED HERE: ON A NOISELESS SKY flux - model CANCELS ALMOST
+    # COMPLETELY, SO ONE-ULP MODEL DIFFERENCES BETWEEN AVX2 AND AVX512 KERNELS REACH 1e-8 RELATIVE
+    # PER ELEMENT. THE SPLINE DERIVATIVE, THE RATIO'S WELL-CONDITIONED FACTOR, IS PINNED INSTEAD
+    assert fluxErrorRatio.shape == (1000,)
+    # THE ANCHORED ENDS BEND THE MODEL TO A SLOPE NEAR -914 AGAINST THE TRUE 5
+    derivative = modelled["sky_model_wl_derivative"]
+    assert float(derivative.sum()) == pytest.approx(-924.4792655367355, rel=1e-12, abs=0)
+    assert derivative.iloc[SAMPLED_ROWS].tolist() == _approx_list(
+        [-914.3521645395814, 5.012344495402127, 4.997269334412489, -913.7477076561321]
+    )
 
 
 def test_a_noisy_line_free_order_collapses_to_a_constant_median_sky(log: Any) -> None:

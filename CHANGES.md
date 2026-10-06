@@ -3,8 +3,11 @@
 * **FIXED**: the Read the Docs build installs the package with `pip` instead of `python setup.py install`, as the repository no longer has a `setup.py`.
 * **FIXED**: a raw frame added after `prep` grouped its set now rejoins that set on the next plain `prep`: the set keeps its SOF name, its status is reset in every session, and its stale product is deleted (DY-263).
 * **FIXED**: `quicklook_image` now shows the inter-order mask from a dispersion map instead of silently dropping it, and no longer modifies the caller's frame (DY-81).
+* **FIXED**: `quicklook_image` no longer crashes with `RecursionError` when it is given a `CCDData` with `ext=False` and a dispersion map overlay, as in `soxspipe stare -xd`.
 * **FIXED**: `quicklook_image` called without `settings` now skips the dispersion map and skyline overlays with a warning instead of raising (DY-290).
 * **TEST**: characterization tests raise subtract_sky.py coverage from 67.7% to 95.4% (DY-40)
+* **TEST**: the subtract_sky end-anchoring characterization test pins the spline derivative instead of a flux-error-ratio sum that differed between AVX2 and AVX512 CPUs (DY-40)
+* **FIXED**: the real-data workflow's `NPY_DISABLE_CPU_FEATURES` now names numpy's `AVX512_*` dispatch groups, so AVX512 runners no longer run the AVX512_SKX/CLX kernels (DY-40)
 
 ## v0.18.0 - September 30, 2026
 
