@@ -474,10 +474,6 @@ class subtract_sky:
         violet = "#6c71c4"
         purple = "purple"
 
-        # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotateImage = self.detectorParams["rotate-qc-plot"]
-        flipImage = self.detectorParams["flip-qc-plot"]
-
         # MAKE A COPY OF THE FRAME TO NOT ALTER ORIGINAL DATA
         frame = self.objectFrame.copy()
 
@@ -524,12 +520,16 @@ class subtract_sky:
         combinedMask = (nonOrderMask == 1) | (frame.mask == 1)
         frame.mask = nonOrderMask == 1
 
+        # ORIENT EVERY IMAGE PANEL LIKE THE OTHER QC PLOTS, AND FRAME THE ORDER WHERE IT LANDS
+        xLabel, yLabel = self._qc_display_axis_labels()
+        orderPixels = np.zeros(frame.data.shape, dtype=bool)
+        orderPixels[orderRows, orderColumns] = True
+        displayRows, displayColumns = np.nonzero(self._qc_display_image(orderPixels))
+        imageYLimits = (displayRows.min() - 10, displayRows.max() + 10)
+        imageXLimits = (displayColumns.min() - 10, displayColumns.max() + 10)
+
         # RAW IMAGE PANEL
-        # ROTATE THE IMAGE FOR BETTER LAYOUT
-        if rotateImage:
-            rotatedImg = np.flipud(np.rot90(frame, 1))
-        else:
-            rotatedImg = frame
+        rotatedImg = self._qc_display_image(frame)
         # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
         maskedDataArray = np.ma.array(frame.data, mask=combinedMask)
         maskedDataValues = np.array(maskedDataArray.filled(np.nan), dtype=float, copy=True)
@@ -538,20 +538,15 @@ class subtract_sky:
         vmax = mean + 2 * std
         vmin = mean - 1 * std
         im = onerow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1)
-        medianValue = np.median(rotatedImg.data.ravel())
+        medianValue = np.median(np.ma.getdata(rotatedImg).ravel())
         color = im.cmap(im.norm(medianValue))
         patches = [mpatches.Patch(color=color, label="unprocessed frame")]
 
         onerow.set_title("Object & Sky Frame", fontsize=10)
-        onerow.set_xlabel("y-axis", fontsize=10)
-        onerow.set_ylabel("x-axis", fontsize=10)
-        ylimMinImage = imageMapOrderDF[self.axisB].min() - 10
-        ylimMaxImage = imageMapOrderDF[self.axisB].max() + 10
-        onerow.set_ylim(
-            imageMapOrderDF[self.axisA].min() - 10,
-            imageMapOrderDF[self.axisA].max() + 10,
-        )
-        onerow.set_xlim(ylimMinImage, ylimMaxImage)
+        onerow.set_xlabel(xLabel, fontsize=10)
+        onerow.set_ylabel(yLabel, fontsize=10)
+        onerow.set_ylim(*imageYLimits)
+        onerow.set_xlim(*imageXLimits)
 
         # ORIGINAL DATA AND PERCENTILE SMOOTHED WAVELENGTH VS FLUX
         tworow.plot(
@@ -738,8 +733,7 @@ class subtract_sky:
             bounds = [0, 5, 10]
             norm = colors.BoundaryNorm(bounds, cmap.N)
             cmap.set_bad(cl, 0.0)
-            if rotateImage:
-                imageMask = np.flipud(np.rot90(imageMask, 1))
+            imageMask = self._qc_display_image(imageMask)
 
             fourrow.imshow(
                 imageMask,
@@ -754,19 +748,14 @@ class subtract_sky:
         fourrow.legend(handles=patches, bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.0)
 
         nonOrderMask = nonOrderMask == 0
-        imageMask = np.ma.array(np.ones_like(frame.data), mask=nonOrderMask)
-        if rotateImage:
-            imageMask = np.flipud(np.rot90(imageMask, 1))
+        imageMask = self._qc_display_image(np.ma.array(np.ones_like(frame.data), mask=nonOrderMask))
         cmap = copy(cm.gray)
         cmap.set_bad("green", 0.0)
         fourrow.imshow(imageMask, vmin=-10, vmax=-9, cmap=cmap, alpha=1.0)
-        fourrow.set_xlabel("y-axis", fontsize=10)
-        fourrow.set_ylabel("x-axis", fontsize=10)
-        fourrow.set_ylim(
-            imageMapOrderDF[self.axisA].min() - 10,
-            imageMapOrderDF[self.axisA].max() + 10,
-        )
-        fourrow.set_xlim(ylimMinImage, ylimMaxImage)
+        fourrow.set_xlabel(xLabel, fontsize=10)
+        fourrow.set_ylabel(yLabel, fontsize=10)
+        fourrow.set_ylim(*imageYLimits)
+        fourrow.set_xlim(*imageXLimits)
         # fourrow.invert_xaxis()
 
         # PLOT WAVELENGTH VS FLUX SKY MODEL
@@ -845,8 +834,7 @@ class subtract_sky:
         mean = np.nanmean(skyModelImage)
         vmax = mean + 2 * std
         vmin = mean - 1 * std
-        if rotateImage:
-            skyModelImage = np.flipud(np.rot90(skyModelImage, 1))
+        skyModelImage = self._qc_display_image(skyModelImage)
 
         im = sixrow.imshow(
             skyModelImage,
@@ -855,12 +843,9 @@ class subtract_sky:
             cmap=cmap,
             alpha=1.0,
         )
-        sixrow.set_ylabel("x-axis", fontsize=10)
-        sixrow.set_ylim(
-            imageMapOrderDF[self.axisA].min() - 10,
-            imageMapOrderDF[self.axisA].max() + 10,
-        )
-        sixrow.set_xlim(ylimMinImage, ylimMaxImage)
+        sixrow.set_ylabel(yLabel, fontsize=10)
+        sixrow.set_ylim(*imageYLimits)
+        sixrow.set_xlim(*imageXLimits)
         # sixrow.invert_xaxis()
         medianValue = np.median(skyModelImage.ravel())
         color = im.cmap(im.norm(medianValue))
@@ -878,19 +863,13 @@ class subtract_sky:
         mean = np.nanmedian(skySubImage)
         vmax = mean + 0.2 * std
         vmin = mean - 0.2 * std
-        if rotateImage:
-            skySubImageTmp = np.flipud(np.rot90(skySubImage, 1))
-        else:
-            skySubImageTmp = skySubImage
+        skySubImageTmp = self._qc_display_image(skySubImage)
         im = sevenrow.imshow(skySubImageTmp, vmin=0, vmax=50, cmap=cmap, alpha=1.0)
         sevenrow.set_title("STEP 3. Subtract the sky-model from the original data.", fontsize=10)
-        sevenrow.set_xlabel("y-axis", fontsize=10)
-        sevenrow.set_ylabel("x-axis", fontsize=10)
-        sevenrow.set_ylim(
-            imageMapOrderDF[self.axisA].min() - 10,
-            imageMapOrderDF[self.axisA].max() + 10,
-        )
-        sevenrow.set_xlim(ylimMinImage, ylimMaxImage)
+        sevenrow.set_xlabel(xLabel, fontsize=10)
+        sevenrow.set_ylabel(yLabel, fontsize=10)
+        sevenrow.set_ylim(*imageYLimits)
+        sevenrow.set_xlim(*imageXLimits)
         # sevenrow.invert_xaxis()
         medianValue = np.median(skySubImage.data.ravel())
         color = im.cmap(im.norm(medianValue))
@@ -1886,6 +1865,77 @@ class subtract_sky:
 
         self.log.debug("completed the ``create_placeholder_images`` method")
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData
+
+    def _qc_quarter_turns(self):
+        """*the number of anticlockwise quarter turns the QC plots apply to a detector image*
+
+        **Return:**
+
+        - ``quarterTurns`` -- ``rotate-qc-plot`` (in degrees) divided by 90
+
+        **Usage:**
+
+        ```python
+        quarterTurns = self._qc_quarter_turns()
+        ```
+        """
+        rotateImage = self.detectorParams["rotate-qc-plot"]
+        if not rotateImage:
+            return 0
+        if rotateImage % 90:
+            raise ValueError(
+                f"the rotate-qc-plot detector parameter must be a multiple of 90 degrees, not {rotateImage}"
+            )
+        return int(rotateImage) // 90
+
+    def _qc_display_image(self, image):
+        """*orient a detector image the way the QC plots show it*
+
+        The image is rotated by the ``rotate-qc-plot`` detector parameter (in degrees),
+        then flipped up-down if ``flip-qc-plot`` is set. This matches the other QC plots,
+        such as those of ``detect_continuum`` and ``detect_order_edges``.
+
+        **Key Arguments:**
+
+        - ``image`` -- a 2D array (or masked array) in detector (row, column) layout
+
+        **Return:**
+
+        - ``displayImage`` -- the image as it is drawn on the QC plot
+
+        **Usage:**
+
+        ```python
+        displayImage = self._qc_display_image(skyModelImage)
+        ```
+        """
+        import numpy as np
+
+        quarterTurns = self._qc_quarter_turns()
+        if quarterTurns:
+            image = np.rot90(image, quarterTurns)
+        if self.detectorParams["flip-qc-plot"]:
+            image = np.flipud(image)
+        return image
+
+    def _qc_display_axis_labels(self):
+        """*the detector axis that each axis of an oriented QC image shows*
+
+        **Return:**
+
+        - ``xLabel``, ``yLabel`` -- labels for the horizontal and vertical axes of an image
+          drawn with ``_qc_display_image``
+
+        **Usage:**
+
+        ```python
+        xLabel, yLabel = self._qc_display_axis_labels()
+        ```
+        """
+        # AN ODD NUMBER OF QUARTER TURNS PUTS THE DETECTOR COLUMNS (X) DOWN THE DISPLAY ROWS
+        if self._qc_quarter_turns() % 2:
+            return "y-axis", "x-axis"
+        return "x-axis", "y-axis"
 
     def _detector_rows_and_columns(self, pixelsDF):
         """*the detector (row, column) index arrays of a dataframe's pixels*
