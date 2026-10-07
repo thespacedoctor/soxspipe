@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FEATURE**: `soxs_mbias` writes `<product>_BIAS_DISTRIBUTION_QC_PLOT.pdf`, which compares the pixel flux histograms of the earliest raw bias frame and the master bias, with the RON values (DY-267).
 * **ENHANCEMENT**: optimal extraction logs an ERROR naming each order where the object spills over the slit edge, and adds the `N ORDERS SLIT EDGE` QC; when a flux standard spills, `soxs-stare` fails the recipe so its response curve is not used to flux-calibrate other frames (DY-802).
 * **FIXED**: optimal (Horne) extraction no longer inflates the flux up to about 2.6x when the object core sits on masked slit-edge rows; masked pixels in slit rows with sparse local support now get no profile weight (DY-802).
 * **FIXED**: optimal (Horne) extraction no longer inflates the flux by up to 1e6x when the object trace sits on an order edge; the object profile now gives no weight to pixels off the order (DY-752).
