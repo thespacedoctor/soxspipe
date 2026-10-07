@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: astropy is upgraded from 6.1.2 to 7.2.2 and `uncompresspy` 0.4.1 is added, so astropy can open LZW-compressed `.fits.Z` frames (DY-694).
 * **FIXED**: optimal (Horne) extraction no longer inflates the flux by up to 1e6x when the object trace sits on an order edge; the object profile now gives no weight to pixels off the order (DY-752).
 * **FIXED**: the master flat now flags partly illuminated order-edge pixels, which flat-fielding amplified about 6x; set `order-edge-min-flat-fraction` (default 0.5, 0 turns it off) and re-make existing master flats to gain the flags; these pixels are reported as `N ORDER EDGE` and are not counted in the `COLDPIX` QC (DY-753).
 * **FIXED**: `soxs_stare` now shows the raw-stack surface plot only in debug mode (`-d`), where before it opened a window on every run and waited until the window was closed.
