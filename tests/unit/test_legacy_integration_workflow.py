@@ -10,11 +10,10 @@ pytestmark = pytest.mark.unit
 
 def test_legacy_integration_runs_for_main_prs_and_weekly_schedule() -> None:
     """Keep the expensive legacy suite off routine feature pull requests."""
-    workflowPath = (
-        Path(__file__).parents[2] / ".github" / "workflows" / "integration-tests.yml"
-    )
+    workflowPath = Path(__file__).parents[2] / ".github" / "workflows" / "integration-tests.yml"
 
-    workflow = yaml.load(workflowPath.read_text(), Loader=yaml.BaseLoader)
+    # BASELOADER BUILDS ONLY str/list/dict; safe_load WOULD TURN THE `on` KEY INTO True
+    workflow = yaml.load(workflowPath.read_text(), Loader=yaml.BaseLoader)  # noqa: S506
 
     assert workflow["on"] == {
         "pull_request": {"branches": ["main"]},
