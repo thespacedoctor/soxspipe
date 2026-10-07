@@ -105,9 +105,6 @@ def _summary(**overrides: object) -> dict[str, object]:
         "masterPixels": random.normal(loc=100.0, scale=0.5, size=5000),
         "rawRon": 2.5,
         "masterRon": 0.5,
-        "frameCount": 7,
-        "clipSigma": 3,
-        "clipIterations": 4,
     }
     arguments.update(overrides)
     return mbiasModule.bias_distribution_summary(**arguments)
@@ -128,8 +125,20 @@ def test_bias_distribution_summary_bins_span_five_sigma_around_raw_mean() -> Non
     assert binEdges[-1] == pytest.approx(100.0 + 5 * 2.0)
 
 
+def _row(summary: dict[str, object], label: str) -> list[str]:
+    """Return the stats-table row whose first cell is `label`."""
+    rows = [row for row in summary["statsTable"]["rows"] if row[0] == label]
+    assert len(rows) == 1
+    return rows[0]
+
+
+def _column(summary: dict[str, object], header: str) -> int:
+    """Return the index of the stats-table column titled `header`."""
+    return summary["statsTable"]["columns"].index(header)
+
+
 def test_bias_distribution_summary_reports_distinct_mean_and_median_for_skewed_pixels() -> None:
-    """A skewed pixel population gives different mean and median levels."""
+    """A skewed pixel population gives different mean and median levels in the right table cells."""
     # ARRANGE
     rawPixels = np.array([100.0, 100.0, 100.0, 100.0, 110.0])
     masterPixels = np.array([50.0, 60.0, 60.0, 60.0, 60.0])
@@ -142,34 +151,117 @@ def test_bias_distribution_summary_reports_distinct_mean_and_median_for_skewed_p
     assert summary["rawMedian"] == pytest.approx(100.0)
     assert summary["masterMean"] == pytest.approx(58.0)
     assert summary["masterMedian"] == pytest.approx(60.0)
-    annotation = "\n".join(summary["annotation"])
-    assert "102.00" in annotation
-    assert "58.00" in annotation
+    meanColumn, medianColumn = _column(summary, "mean (e-)"), _column(summary, "median (e-)")
+    rawRow, masterRow = _row(summary, "raw frame"), _row(summary, "master bias")
+    assert rawRow[meanColumn] == "102.00"
+    assert rawRow[medianColumn] == "100.00"
+    assert masterRow[meanColumn] == "58.00"
+    assert masterRow[medianColumn] == "60.00"
 
 
 def test_bias_distribution_summary_labels_three_ron_values_distinctly() -> None:
-    """The plotted-frame RON, the mean raw RON and the master RON each get their own line."""
-    # ARRANGE
-    expectedFrameRon = "2.13"
-    expectedRawRon = "3.57"
-    expectedMasterRon = "0.41"
-
+    """The plotted-frame RON, the mean raw RON and the master RON each sit in the RON column of their own row."""
     # ACT
-    summary = _summary(frameRon=2.134, rawRon=3.568, masterRon=0.413, frameCount=7, clipSigma=3, clipIterations=4)
+    summary = _summary(frameRon=2.134, rawRon=3.568, masterRon=0.413)
 
     # ASSERT
-    lines = summary["annotation"]
-    frameLines = [line for line in lines if "plotted raw frame" in line]
-    rawLines = [line for line in lines if "RAW RON (QC)" in line]
-    masterLines = [line for line in lines if "MASTER RON (QC)" in line]
-    assert len(frameLines) == len(rawLines) == len(masterLines) == 1
-    assert expectedFrameRon in frameLines[0]
-    assert "RAW RON" not in frameLines[0]
-    assert "3" in frameLines[0]
-    assert "4 iterations" in frameLines[0]
-    assert expectedRawRon in rawLines[0]
-    assert "7" in rawLines[0]
-    assert expectedMasterRon in masterLines[0]
+    ronColumn = _column(summary, "RON (e-)")
+    assert _row(summary, "raw frame")[ronColumn] == "2.13"
+    assert _row(summary, "master bias")[ronColumn] == "0.41"
+    assert _row(summary, "RAW RON (QC)")[ronColumn] == "3.57"
+
+
+def test_bias_distribution_summary_table_has_expected_columns_and_dashed_qc_cells() -> None:
+    """The table has the four documented columns and the QC row marks mean and median not applicable with a dash."""
+    # ACT
+    summary = _summary()
+
+    # ASSERT
+    statsTable = summary["statsTable"]
+    assert statsTable["columns"] == ["", "mean (e-)", "median (e-)", "RON (e-)"]
+    assert [row[0] for row in statsTable["rows"]] == ["raw frame", "master bias", "RAW RON (QC)"]
+    qcRow = _row(summary, "RAW RON (QC)")
+    assert qcRow[1] == qcRow[2] == "\u2014"
+    assert "annotation" not in summary
+
+
+def test_bias_distribution_summary_table_has_no_bracketed_definitions() -> None:
+    """No row label or cell carries a bracketed definition; only the fixed "(QC)" tag is allowed."""
+    # ACT
+    summary = _summary()
+
+    # ASSERT
+    cells = [cell for row in summary["statsTable"]["rows"] for cell in row]
+    assert cells
+    assert [cell for cell in cells if "(" in cell.replace("(QC)", "")] == []
+
+
+def _drawn_axes(summary: dict[str, object] | None = None) -> tuple[plt.Figure, plt.Axes, dict[str, object]]:
+    """Draw the bias distribution onto fresh axes and return the figure, axes and summary used."""
+    random = np.random.default_rng(11)
+    rawPixels = random.normal(loc=100.0, scale=2.0, size=20000)
+    masterPixels = random.normal(loc=100.0, scale=0.5, size=20000)
+    summary = summary or _summary(rawPixels=rawPixels, masterPixels=masterPixels)
+    fig, ax = plt.subplots()
+    mbiasModule._draw_bias_distribution(ax, rawPixels, masterPixels, summary, "VIS")
+    return fig, ax, summary
+
+
+def test_draw_bias_distribution_fills_bars_without_outline() -> None:
+    """Histogram bars are translucent filled polygons with no stroked outline."""
+    # ARRANGE / ACT
+    fig, ax, _summary_used = _drawn_axes()
+
+    # ASSERT
+    try:
+        patches = [patch for patch in ax.patches if patch.get_fill()]
+        assert len(patches) == 2
+        for patch in patches:
+            assert patch.get_linewidth() == 0
+            assert patch.get_alpha() == pytest.approx(0.4)
+    finally:
+        plt.close(fig)
+
+
+def test_draw_bias_distribution_adds_stats_table_and_no_free_text() -> None:
+    """The statistics are drawn as one axes table whose cells match the summary, with no free text."""
+    # ARRANGE / ACT
+    fig, ax, summary = _drawn_axes()
+
+    # ASSERT
+    try:
+        assert len(ax.tables) == 1
+        assert len(ax.texts) == 0
+        table = ax.tables[0]
+        statsTable = summary["statsTable"]
+        for columnIndex, header in enumerate(statsTable["columns"]):
+            assert table[0, columnIndex].get_text().get_text() == header
+        for rowIndex, row in enumerate(statsTable["rows"], start=1):
+            for columnIndex, cell in enumerate(row):
+                assert table[rowIndex, columnIndex].get_text().get_text() == cell
+    finally:
+        plt.close(fig)
+
+
+def test_draw_bias_distribution_places_table_below_xlabel_inside_saved_area() -> None:
+    """The stats table sits below the x-axis label and inside the tight bounding box used when saving."""
+    # ARRANGE
+    fig, ax, _summary_used = _drawn_axes()
+
+    # ACT
+    try:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        tableBox = ax.tables[0].get_window_extent(renderer)
+        xlabelBox = ax.xaxis.label.get_window_extent(renderer)
+        savedBox = fig.get_tightbbox(renderer).transformed(fig.dpi_scale_trans)
+
+        # ASSERT
+        assert tableBox.y1 < xlabelBox.y0
+        assert savedBox.x0 <= tableBox.x0 and tableBox.x1 <= savedBox.x1
+        assert savedBox.y0 <= tableBox.y0 and tableBox.y1 <= savedBox.y1
+    finally:
+        plt.close(fig)
 
 
 def test_unclipped_raw_pixels_excludes_both_masks_and_restores_bias_level() -> None:
@@ -337,7 +429,7 @@ def test_combine_bias_frames_keeps_mean_raw_ron_as_third_value(
     # ASSERT
     assert result[2] == pytest.approx(3.0)
     assert result[4]["frameRon"] == pytest.approx(2.0)
-    assert result[4]["frameCount"] == 2
+    assert "frameCount" not in result[4]
 
 
 def _plot_recipe(log: object, tmp_path: Path) -> soxs_mbias:
@@ -356,7 +448,6 @@ def _plot_inputs() -> tuple[dict[str, object], CCDData]:
     rawFrameSample = {
         "pixels": random.normal(loc=100.0, scale=2.0, size=4000),
         "frameRon": 2.0,
-        "frameCount": 5,
     }
     masterFrame = CCDData(random.normal(loc=100.0, scale=0.5, size=(20, 20)), unit=u.electron)
     masterFrame.mask = np.zeros((20, 20), dtype=bool)

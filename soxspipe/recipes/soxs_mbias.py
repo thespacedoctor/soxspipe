@@ -26,6 +26,17 @@ BIAS_HISTOGRAM_BINS = 100
 BIAS_HISTOGRAM_FLAT_HALF_WIDTH = 0.5
 RAW_SERIES_COLOUR = "C0"
 MASTER_SERIES_COLOUR = "C1"
+# OPACITY OF THE FILLED HISTOGRAMS, LOW ENOUGH FOR THE OVERLAP OF THE TWO SERIES TO SHOW
+HISTOGRAM_FILL_ALPHA = 0.4
+STATS_TABLE_FONT_SIZE = 7
+STATS_TABLE_EDGE_COLOUR = "0.8"
+STATS_TABLE_EDGE_WIDTH = 0.4
+# LEFT PADDING OF THE LABEL COLUMN, AS A FRACTION OF THE CELL WIDTH
+STATS_TABLE_LABEL_PAD = 0.04
+# TABLE POSITION IN AXES COORDINATES (LEFT, BOTTOM, WIDTH, HEIGHT): BELOW THE AXES AND THE X-AXIS LABEL
+STATS_TABLE_BBOX = (0.0, -0.45, 1.0, 0.28)
+STATS_TABLE_COLUMNS = ("", "mean (e-)", "median (e-)", "RON (e-)")
+STATS_TABLE_NOT_APPLICABLE = "\u2014"
 
 
 def _finite_unmasked_pixels(data, *masks):
@@ -115,9 +126,6 @@ def bias_distribution_summary(
     masterPixels,
     rawRon,
     masterRon,
-    frameCount,
-    clipSigma,
-    clipIterations,
 ):
     """*summarise the raw and master bias pixel distributions for the QC plot*
 
@@ -128,14 +136,14 @@ def bias_distribution_summary(
     - ``masterPixels`` -- the flux (e-) of the unmasked master-bias pixels
     - ``rawRon`` -- the mean of the per-frame RON values (the RAW RON QC)
     - ``masterRon`` -- the standard deviation (e-) of the stacked, mean-subtracted frame (the MASTER RON QC)
-    - ``frameCount`` -- the number of raw frames that were stacked
-    - ``clipSigma`` -- the sigma-clipping threshold used for each raw frame
-    - ``clipIterations`` -- the maximum number of sigma-clipping iterations used for each raw frame
 
     **Return:**
 
     - ``summary`` -- dictionary with the keys `rawMean`, `rawMedian`, `masterMean`, `masterMedian`, `binEdges`
-      and `annotation` (a list of text lines)
+      and `statsTable`. `statsTable` is a dictionary with `columns` (the four column headers) and `rows` (one list
+      of cell strings per row: the plotted raw frame, the master bias and the RAW RON QC). Numbers are formatted
+      to two decimal places. The mean and median cells of the RAW RON QC row hold a dash because that value is
+      a mean of per-frame RONs and not a pixel statistic. `masterRon` is carried by the master bias row
 
     Raises `ValueError` if either sample has no finite, unmasked pixels. A bias frame with every pixel masked is
     unusable, so the recipe stops rather than writing a plot of NaN values.
@@ -143,9 +151,7 @@ def bias_distribution_summary(
     **Usage:**
 
     ```python
-    summary = bias_distribution_summary(
-        rawPixels, frameRon, masterPixels, rawRon, masterRon, frameCount, clipSigma, clipIterations
-    )
+    summary = bias_distribution_summary(rawPixels, frameRon, masterPixels, rawRon, masterRon)
     ```
     """
     import numpy as np
@@ -160,16 +166,14 @@ def bias_distribution_summary(
     masterMedian = float(np.median(masterPixels))
     binEdges = _histogram_bin_edges(rawPixels, masterPixels, rawMean, frameRon)
 
-    annotation = [
-        f"raw frame: mean = {rawMean:.2f} e-, median = {rawMedian:.2f} e-",
-        f"master bias: mean = {masterMean:.2f} e-, median = {masterMedian:.2f} e-",
-        (
-            f"RON of plotted raw frame = {frameRon:.2f} e- "
-            f"(sigma-clipped std of this frame, {clipSigma}\u03c3, {clipIterations} iterations)"
-        ),
-        f"RAW RON (QC) = {rawRon:.2f} e- (mean of the {frameCount} per-frame RONs)",
-        f"MASTER RON (QC) = {masterRon:.2f} e- (std of the stacked, mean-subtracted frame)",
-    ]
+    statsTable = {
+        "columns": list(STATS_TABLE_COLUMNS),
+        "rows": [
+            ["raw frame", f"{rawMean:.2f}", f"{rawMedian:.2f}", f"{frameRon:.2f}"],
+            ["master bias", f"{masterMean:.2f}", f"{masterMedian:.2f}", f"{masterRon:.2f}"],
+            ["RAW RON (QC)", STATS_TABLE_NOT_APPLICABLE, STATS_TABLE_NOT_APPLICABLE, f"{rawRon:.2f}"],
+        ],
+    }
 
     return {
         "rawMean": rawMean,
@@ -177,29 +181,63 @@ def bias_distribution_summary(
         "masterMean": masterMean,
         "masterMedian": masterMedian,
         "binEdges": binEdges,
-        "annotation": annotation,
+        "statsTable": statsTable,
     }
 
 
+def _style_stats_table(table):
+    """*apply the house style to the statistics table: thin grey edges, a bold header and a left-aligned label column*
+
+    **Key Arguments:**
+
+    - ``table`` -- the `matplotlib.table.Table` to style in place
+    """
+    table.auto_set_font_size(False)
+    for (rowIndex, columnIndex), cell in table.get_celld().items():
+        cell.set_fontsize(STATS_TABLE_FONT_SIZE)
+        cell.set_edgecolor(STATS_TABLE_EDGE_COLOUR)
+        cell.set_linewidth(STATS_TABLE_EDGE_WIDTH)
+        if rowIndex == 0:
+            cell.set_text_props(fontweight="bold")
+        if columnIndex == 0:
+            cell.set_text_props(ha="left")
+            cell.PAD = STATS_TABLE_LABEL_PAD
+
+
 def _draw_bias_distribution(ax, rawPixels, masterPixels, summary, arm):
-    """*draw the raw and master bias histograms, their mean and median lines, and the RON notes onto `ax`*
+    """*draw the filled raw and master bias histograms, their mean and median lines, and the statistics table onto `ax`*
+
+    Each histogram is a translucent fill in the series colour with no outline. The statistics table sits below the
+    x-axis label, in axes coordinates, so it stays inside a figure saved with `bbox_inches="tight"`.
 
     **Key Arguments:**
 
     - ``ax`` -- the matplotlib axes to draw on
     - ``rawPixels`` -- the plotted raw-frame pixel values (e-)
     - ``masterPixels`` -- the plotted master-bias pixel values (e-)
-    - ``summary`` -- the dictionary returned by `bias_distribution_summary`
+    - ``summary`` -- the dictionary returned by `bias_distribution_summary`; its `statsTable` fills the table
     - ``arm`` -- the arm name, used in the title
-    """
-    # DISTANCE BELOW THE AXES (IN AXES FRACTION) WHERE THE RON NOTES START
-    annotationOffset = -0.15
 
+    **Usage:**
+
+    ```python
+    fig, ax = plt.subplots()
+    _draw_bias_distribution(ax, rawPixels, masterPixels, summary, "VIS")
+    ```
+    """
     for label, pixels, mean, median, colour in (
         ("raw frame (earliest by MJD-OBS)", rawPixels, summary["rawMean"], summary["rawMedian"], RAW_SERIES_COLOUR),
         ("master bias", masterPixels, summary["masterMean"], summary["masterMedian"], MASTER_SERIES_COLOUR),
     ):
-        ax.hist(pixels, bins=summary["binEdges"], histtype="step", color=colour, label=label)
+        ax.hist(
+            pixels,
+            bins=summary["binEdges"],
+            histtype="stepfilled",
+            color=colour,
+            alpha=HISTOGRAM_FILL_ALPHA,
+            linewidth=0,
+            label=label,
+        )
         ax.axvline(mean, color=colour, linestyle="-", linewidth=0.8)
         ax.axvline(median, color=colour, linestyle=":", linewidth=0.8)
 
@@ -208,7 +246,16 @@ def _draw_bias_distribution(ax, rawPixels, masterPixels, summary, arm):
     ax.set_ylabel("pixel count")
     ax.set_title(f"{arm} bias pixel-flux distribution (solid: mean, dotted: median)", fontsize=9)
     ax.legend(fontsize=8, loc="upper right")
-    ax.text(0.0, annotationOffset, "\n".join(summary["annotation"]), transform=ax.transAxes, va="top", fontsize=7)
+
+    statsTable = summary["statsTable"]
+    table = ax.table(
+        cellText=statsTable["rows"],
+        colLabels=statsTable["columns"],
+        cellLoc="right",
+        colLoc="right",
+        bbox=STATS_TABLE_BBOX,
+    )
+    _style_stats_table(table)
 
 
 class soxs_mbias(base_recipe):
@@ -435,7 +482,7 @@ class soxs_mbias(base_recipe):
         - ``rawRon`` -- the mean of the per-frame read-out noise values
         - ``masterRon`` -- the standard deviation of the stacked noise frame
         - ``rawFrameSample`` -- the earliest raw frame (by MJD-OBS) for the QC plot, a dictionary with the keys
-          `pixels` (flux of its unclipped, unflagged pixels), `frameRon` (its RON) and `frameCount` (frames stacked)
+          `pixels` (flux of its unclipped, unflagged pixels) and `frameRon` (its RON)
 
         **Usage:**
 
@@ -472,7 +519,6 @@ class soxs_mbias(base_recipe):
         rawFrameSample = {
             "pixels": _unclipped_raw_pixels(noiseFrames[0], badPixelMask, meanBiasLevels[0]),
             "frameRon": float(rons[0]),
-            "frameCount": len(rons),
         }
 
         # OPTIMISE: 19%
@@ -504,7 +550,7 @@ class soxs_mbias(base_recipe):
 
         **Key Arguments:**
 
-        - ``rawFrameSample`` -- the earliest raw frame's `pixels`, `frameRon` and `frameCount`
+        - ``rawFrameSample`` -- the earliest raw frame's `pixels` and `frameRon`
           (see `_combine_bias_frames`)
         - ``masterFrame`` -- the master bias frame
         - ``rawRon`` -- the mean of the per-frame RON values (the RAW RON QC)
@@ -533,9 +579,6 @@ class soxs_mbias(base_recipe):
             masterPixels=masterPixels,
             rawRon=rawRon,
             masterRon=masterRon,
-            frameCount=rawFrameSample["frameCount"],
-            clipSigma=self.recipeSettings["frame-clipping-sigma"],
-            clipIterations=self.recipeSettings["frame-clipping-iterations"],
         )
 
         filename = os.path.basename(productPath).replace(".fits", "_BIAS_DISTRIBUTION_QC_PLOT.pdf")
