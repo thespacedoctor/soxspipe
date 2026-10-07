@@ -376,7 +376,6 @@ class soxs_nod(base_recipe):
         allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
         for t in types:
-
             add_filters = {kw("DPR_TYPE"): t, kw("DPR_TECH"): "ECHELLE,SLIT,NODDING"}
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 if t == "STD,FLUX" and "-std" not in self.recipeName:
@@ -585,7 +584,6 @@ class soxs_nod(base_recipe):
         for frameA, frameB, frameAName, frameBName in zip(
             allFrameA, allFrameB, allFrameANames, allFrameBNames, strict=False
         ):
-
             self.log.print(f"Processing AB Nodding Sequence {sequenceCount}")
             if False:
                 import matplotlib

@@ -38,11 +38,10 @@ def _write_zip(path: Path, members: dict[str, bytes], symlinks: tuple[str, ...] 
 
 
 def _write_manifest(path: Path, archive_url: str, members: dict[str, bytes]) -> None:
-    files = [
-        {"path": name, "sha256": hashlib.sha256(content).hexdigest()}
-        for name, content in sorted(members.items())
-    ]
-    path.write_text(json.dumps({"dataset_version": "test-v1", "archive_url": archive_url, "files": files}), encoding="utf-8")
+    files = [{"path": name, "sha256": hashlib.sha256(content).hexdigest()} for name, content in sorted(members.items())]
+    path.write_text(
+        json.dumps({"dataset_version": "test-v1", "archive_url": archive_url, "files": files}), encoding="utf-8"
+    )
 
 
 def test_prepare_snapshot_verifies_archive_and_copies_disposable_workspace(cache_root: Path, tmp_path: Path) -> None:
@@ -213,7 +212,13 @@ def test_prepare_snapshot_rejects_manifest_with_duplicate_paths(cache_root: Path
     manifest_path = tmp_path / "manifest.json"
     _write_zip(archive_path, {"frame.fits": b"fits"})
     manifest_path.write_text(
-        json.dumps({"dataset_version": "test-v1", "archive_url": "https://example.test/dataset.zip", "files": [{"path": "frame.fits", "sha256": "0" * 64}, {"path": "frame.fits", "sha256": "0" * 64}]}),
+        json.dumps(
+            {
+                "dataset_version": "test-v1",
+                "archive_url": "https://example.test/dataset.zip",
+                "files": [{"path": "frame.fits", "sha256": "0" * 64}, {"path": "frame.fits", "sha256": "0" * 64}],
+            }
+        ),
         encoding="utf-8",
     )
 

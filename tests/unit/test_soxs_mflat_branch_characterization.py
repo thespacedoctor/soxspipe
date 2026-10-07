@@ -547,21 +547,11 @@ def test_soxs_dark_detrends_and_records_every_flat_set(
 
     recipe.inputFrames = _Collections(
         {
-            _filters(PRO_CATG="MASTER_DARK_NIR"): _Collection(
-                ["dark-a.fits", "dark-b.fits"], [darkEarly, darkLate]
-            ),
-            _filters(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["flat_pre.fits"], [flat]
-            ),
-            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["dflat_pre.fits"], [dflat]
-            ),
-            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["qflat_pre.fits"], [qflat]
-            ),
-            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["dome_pre.fits"], [domeflat]
-            ),
+            _filters(PRO_CATG="MASTER_DARK_NIR"): _Collection(["dark-a.fits", "dark-b.fits"], [darkEarly, darkLate]),
+            _filters(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,SLIT"): _Collection(["flat_pre.fits"], [flat]),
+            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(["dflat_pre.fits"], [dflat]),
+            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(["qflat_pre.fits"], [qflat]),
+            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(["dome_pre.fits"], [domeflat]),
         }
     )
     detrendCalls: list[dict[str, Any]] = []

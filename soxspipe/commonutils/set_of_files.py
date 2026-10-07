@@ -19,9 +19,7 @@ from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
 
 class ImageFileCollection(ImageFileCollection):
-    def _dict_from_fits_header(
-        self, file_name, input_summary=None, missing_marker=None
-    ):
+    def _dict_from_fits_header(self, file_name, input_summary=None, missing_marker=None):
         """*summarise one file's header, keeping keyword case (overrides the ccdproc method)*
 
         **Key Arguments:**
@@ -197,11 +195,7 @@ def _supplementary_files_in_directory(directory):
     supplementaryFilepaths = []
     for d in os.listdir(directory):
         filepath = os.path.join(directory, d)
-        if (
-            os.path.isfile(filepath)
-            and ".fits" not in d.lower()
-            and d[0] != "."
-        ):
+        if os.path.isfile(filepath) and ".fits" not in d.lower() and d[0] != ".":
             supplementaryFilepaths.append(filepath)
     return supplementaryFilepaths
 
@@ -355,9 +349,7 @@ class set_of_files:
 
         content = ""
         for d in sorted(os.listdir(directory)):
-            if os.path.isfile(os.path.join(directory, d)) and (
-                os.path.splitext(d)[-1].lower() == ".fits"
-            ):
+            if os.path.isfile(os.path.join(directory, d)) and (os.path.splitext(d)[-1].lower() == ".fits"):
                 fitsPath = os.path.abspath(os.path.join(directory, d))
                 # OPEN FITS FILE AT HDULIST - HDU (HEADER DATA UNIT) CONTAINS A HEADER AND A DATA ARRAY (IMAGE) OR
                 # TABLE.
@@ -431,11 +423,7 @@ class set_of_files:
             sof = self._collection_from_frames(location=self.inputFrames)
             supplementaryFilepaths = _supplementary_files_in_directory(self.inputFrames)
 
-        elif (
-            isinstance(self.inputFrames, str)
-            and os.path.isfile(self.inputFrames)
-            and ".sof" in self.inputFrames
-        ):
+        elif isinstance(self.inputFrames, str) and os.path.isfile(self.inputFrames) and ".sof" in self.inputFrames:
             fitsFiles, supplementaryFilepaths = self._frames_from_sof_file(home)
             location, fitsFiles = _common_location(fitsFiles)
             sof = self._collection_from_frames(location=location, filenames=fitsFiles)
@@ -449,10 +437,7 @@ class set_of_files:
             sof._summary["filename"] = fitsFiles
             self.keys = ["filename"] + self.keys
             supplementaryFilepaths = [
-                f
-                for f in self.inputFrames
-                if ".fits" not in f.lower()
-                and not os.path.basename(f).startswith(".")
+                f for f in self.inputFrames if ".fits" not in f.lower() and not os.path.basename(f).startswith(".")
             ]
 
         else:
@@ -460,9 +445,7 @@ class set_of_files:
                 "'inputFrames' should be the path to a directory of files, an SOF file or a list of FITS frame paths"
             )
 
-        supplementary_sof = self.create_supplementary_file_dictionary(
-            supplementaryFilepaths
-        )
+        supplementary_sof = self.create_supplementary_file_dictionary(supplementaryFilepaths)
 
         self.log.debug("completed the ``get`` method")
         return sof, supplementary_sof
@@ -491,9 +474,7 @@ class set_of_files:
 
         fitsFiles = []
         fitsFiles[:] = [
-            sofLine.split(".fits")[0].replace("~/", home + "/") + ".fits"
-            for sofLine in lines
-            if ".fits" in sofLine
+            sofLine.split(".fits")[0].replace("~/", home + "/") + ".fits" for sofLine in lines if ".fits" in sofLine
         ]
 
         supplementaryFilepaths = [
@@ -504,22 +485,16 @@ class set_of_files:
 
         # PREPEND SESSION PATHS
         if self.currentSession:
-            fitsFiles[:] = [
-                f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
-                for f in fitsFiles
-            ]
+            fitsFiles[:] = [f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in fitsFiles]
             supplementaryFilepaths[:] = [
-                f.replace("./reduced", f"./sessions/{self.currentSession}/reduced")
-                for f in supplementaryFilepaths
+                f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in supplementaryFilepaths
             ]
 
         # MAKE SURE FILES EXIST
         for f in fitsFiles + supplementaryFilepaths:
             exists = os.path.exists(f)
             if not exists:
-                raise FileNotFoundError(
-                    f"the input file `{f}` does not appear to exist"
-                )
+                raise FileNotFoundError(f"the input file `{f}` does not appear to exist")
 
         return fitsFiles, supplementaryFilepaths
 
@@ -536,16 +511,9 @@ class set_of_files:
         - ``sof`` -- a ccdproc ImageFileCollection of the frames
         """
         if self.ext > 0:
-            sofSeed = ImageFileCollection(
-                filenames=filenames, location=location, ext=self.ext
-            )
+            sofSeed = ImageFileCollection(filenames=filenames, location=location, ext=self.ext)
             foundKeys = [
-                k
-                for k in self.keys
-                if (
-                    k.lower() in sofSeed.summary.colnames
-                    or k in sofSeed.summary.colnames
-                )
+                k for k in self.keys if (k.lower() in sofSeed.summary.colnames or k in sofSeed.summary.colnames)
             ]
             sof = ImageFileCollection(
                 filenames=filenames,
@@ -556,10 +524,7 @@ class set_of_files:
             missingKeys = [
                 k
                 for k in self.keys
-                if (
-                    k.lower() not in sofSeed.summary.colnames
-                    and k not in sofSeed.summary.colnames
-                )
+                if (k.lower() not in sofSeed.summary.colnames and k not in sofSeed.summary.colnames)
             ]
             if len(missingKeys):
                 primExt = ImageFileCollection(

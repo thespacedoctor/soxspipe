@@ -121,9 +121,7 @@ def test_fits_coefficients_preserve_axes_degrees_and_nan_padding(
     }
 
 
-def test_zero_degree_maps_use_one_coefficient_per_axis(
-    tmp_path: Path, log: object
-) -> None:
+def test_zero_degree_maps_use_one_coefficient_per_axis(tmp_path: Path, log: object) -> None:
     coefficients = pd.DataFrame(
         {
             "axis": ["x", "y"],
@@ -141,9 +139,7 @@ def test_zero_degree_maps_use_one_coefficient_per_axis(
     assert_allclose(result["fit_y"], [7.25])
 
 
-def test_missing_fit_cache_uses_axis_specific_degree_lengths(
-    tmp_path: Path, log: object
-) -> None:
+def test_missing_fit_cache_uses_axis_specific_degree_lengths(tmp_path: Path, log: object) -> None:
     settings = {"workspace-root-dir": str(tmp_path)}
 
     xCoefficients, yCoefficients = get_cached_coeffs(
@@ -160,9 +156,7 @@ def test_missing_fit_cache_uses_axis_specific_degree_lengths(
     assert_array_equal(yCoefficients, np.ones(6))
 
 
-def test_fit_cache_reads_fits_coefficients_unless_reset(
-    tmp_path: Path, log: object
-) -> None:
+def test_fit_cache_reads_fits_coefficients_unless_reset(tmp_path: Path, log: object) -> None:
     cachePath = tmp_path / ".cache"
     cachePath.mkdir()
     coefficientPath = cachePath / "soxs-disp-solution_VIS_100.fits"
@@ -197,9 +191,7 @@ def test_fit_cache_reads_fits_coefficients_unless_reset(
     assert_array_equal(resetY, np.ones(2))
 
 
-def test_fit_cache_rejects_a_malformed_degree_column(
-    tmp_path: Path, log: object
-) -> None:
+def test_fit_cache_rejects_a_malformed_degree_column(tmp_path: Path, log: object) -> None:
     cachePath = tmp_path / ".cache"
     cachePath.mkdir()
     coefficientPath = cachePath / "soxs-disp-solution_VIS_100.fits"

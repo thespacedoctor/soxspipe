@@ -49,9 +49,7 @@ def test_select_query_binds_recipe_and_arm_as_parameters() -> None:
     hostileRecipe = "mflat' OR '1'='1' -- "
     hostileArm = "UVB' OR '1'='1' -- "
 
-    sqlQuery, sqlParams = organiser._calibration_completeness_select_query(
-        hostileRecipe, hostileArm, "FLAT", ["bias"]
-    )
+    sqlQuery, sqlParams = organiser._calibration_completeness_select_query(hostileRecipe, hostileArm, "FLAT", ["bias"])
 
     assert hostileRecipe not in sqlQuery
     assert hostileArm not in sqlQuery
@@ -62,16 +60,12 @@ def test_select_query_adds_a_bound_dpr_type_filter_only_for_std_types() -> None:
     """The extra `eso dpr type` filter, and its parameter, only appear for a `STD` type."""
     organiser = _organiser()
 
-    sqlQuery, sqlParams = organiser._calibration_completeness_select_query(
-        "mbias", "UVB", "STD,FLUX", ["bias"]
-    )
+    sqlQuery, sqlParams = organiser._calibration_completeness_select_query("mbias", "UVB", "STD,FLUX", ["bias"])
 
     assert '"eso dpr type" = ?' in sqlQuery
     assert sqlParams == ("mbias", "UVB", "STD,FLUX")
 
-    sqlQueryNonStd, sqlParamsNonStd = organiser._calibration_completeness_select_query(
-        "mbias", "UVB", "BIAS", ["bias"]
-    )
+    sqlQueryNonStd, sqlParamsNonStd = organiser._calibration_completeness_select_query("mbias", "UVB", "BIAS", ["bias"])
 
     assert '"eso dpr type"' not in sqlQueryNonStd
     assert sqlParamsNonStd == ("mbias", "UVB")
@@ -87,7 +81,7 @@ def test_select_query_matches_only_the_real_row_against_a_real_database() -> Non
     """
     connection = sqlite3.connect(":memory:")
     connection.execute(
-        'CREATE TABLE product_frames_plus (sof TEXT, recipe TEXT, complete INTEGER, '
+        "CREATE TABLE product_frames_plus (sof TEXT, recipe TEXT, complete INTEGER, "
         '"eso seq arm" TEXT, "eso dpr type" TEXT)'
     )
     connection.execute("CREATE TABLE cal_bias (sof TEXT, upstream_status TEXT)")
@@ -106,9 +100,7 @@ def test_select_query_matches_only_the_real_row_against_a_real_database() -> Non
     organiser = _organiser()
 
     hostileRecipe = "mflat' OR '1'='1' -- "
-    sqlQuery, sqlParams = organiser._calibration_completeness_select_query(
-        hostileRecipe, "UVB", "FLAT", ["bias"]
-    )
+    sqlQuery, sqlParams = organiser._calibration_completeness_select_query(hostileRecipe, "UVB", "FLAT", ["bias"])
     matches = connection.execute(sqlQuery, sqlParams).fetchall()
     connection.close()
 
@@ -135,9 +127,7 @@ def test_update_query_binds_one_placeholder_per_sof_in_call_order() -> None:
     """Each `containerSofs` entry gets its own `?` placeholder, bound in the same order it was given."""
     organiser = _organiser()
 
-    sqlQuery, sqlParams = organiser._calibration_completeness_update_query(
-        ["first.sof", "second.sof", "third.sof"]
-    )
+    sqlQuery, sqlParams = organiser._calibration_completeness_update_query(["first.sof", "second.sof", "third.sof"])
 
     assert sqlQuery.count("?") == 3
     assert "sof in (?, ?, ?)" in sqlQuery
@@ -169,9 +159,7 @@ def test_update_query_marks_only_the_hostile_sof_itself_complete_in_a_real_datab
     connection.execute(sqlQuery, sqlParams)
     connection.commit()
 
-    rows = connection.execute(
-        "select sof, complete from product_frames order by sof"
-    ).fetchall()
+    rows = connection.execute("select sof, complete from product_frames order by sof").fetchall()
     connection.close()
 
     assert rows == [("one.sof", 0), ("two.sof", 0)]
@@ -194,16 +182,10 @@ def test_raw_frames_query_rejects_a_hostile_calibration_type() -> None:
 def test_raw_frames_query_reads_from_the_composed_calibration_table_in_a_real_database() -> None:
     """A valid calibration type composes the expected `cal_<type>` table reference."""
     connection = sqlite3.connect(":memory:")
-    connection.execute(
-        "CREATE TABLE product_frames (sof TEXT, complete INTEGER)"
-    )
-    connection.execute(
-        "CREATE TABLE cal_bias (sof TEXT, file TEXT, upstream_tag TEXT, filepath TEXT)"
-    )
+    connection.execute("CREATE TABLE product_frames (sof TEXT, complete INTEGER)")
+    connection.execute("CREATE TABLE cal_bias (sof TEXT, file TEXT, upstream_tag TEXT, filepath TEXT)")
     connection.execute("INSERT INTO product_frames VALUES ('one.sof', -1)")
-    connection.execute(
-        "INSERT INTO cal_bias VALUES ('one.sof', 'one.fits', 'MASTER_BIAS', './cal/one.fits')"
-    )
+    connection.execute("INSERT INTO cal_bias VALUES ('one.sof', 'one.fits', 'MASTER_BIAS', './cal/one.fits')")
     connection.commit()
     organiser = _organiser()
 

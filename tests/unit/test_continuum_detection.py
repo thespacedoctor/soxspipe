@@ -42,12 +42,7 @@ def test_calculate_residuals_matches_exact_global_trace(log: object) -> None:
             "cont_y": [0.0, 1.0, 2.0],
         }
     )
-    expectedFit = (
-        1.0
-        + 2.0 * pixels["cont_y"]
-        + 3.0 * pixels["order"]
-        + 4.0 * pixels["order"] * pixels["cont_y"]
-    )
+    expectedFit = 1.0 + 2.0 * pixels["cont_y"] + 3.0 * pixels["order"] + 4.0 * pixels["order"] * pixels["cont_y"]
     pixels["cont_x"] = expectedFit - np.array([1.0, -2.0, 0.0])
 
     residuals, mean, std, median, fitted = detector.calculate_residuals(
@@ -319,9 +314,7 @@ def test_create_pixel_arrays_samples_each_spectral_order(
     detector.dispersion_map = str(tmp_path / "dispersion.fits")
     detector.recipeSettings["order-sample-count"] = 5
     detector.kw = lambda key: {"WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
-    fits.PrimaryHDU(header=fits.Header({"BINX": 2, "BINY": 3})).writeto(
-        detector.dispersion_map
-    )
+    fits.PrimaryHDU(header=fits.Header({"BINX": 2, "BINY": 3})).writeto(detector.dispersion_map)
     monkeypatch.setattr(
         continuumModule,
         "read_spectral_format",
@@ -352,9 +345,7 @@ def test_sample_trace_records_detection_qc_for_analytic_trace(
     detector.recipeName = "soxs-stare"
     detector.traceFrame = CCDData(np.ones((32, 32)), unit=u.electron)
     detector.kw = lambda key: {"DPR_TYPE": "DPR TYPE", "WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
-    detector.recipeSettings.update(
-        {"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5}
-    )
+    detector.recipeSettings.update({"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5})
     detector.debug = False
     detector.qc = pd.DataFrame()
     detector.dateObs = "2024-01-02T03:04:05"
@@ -408,9 +399,7 @@ def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(
     detector.recipeName = "soxs-mflat"
     detector.traceFrame = CCDData(np.ones((32, 32)), unit=u.electron)
     detector.kw = lambda key: {"DPR_TYPE": "DPR TYPE", "WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
-    detector.recipeSettings.update(
-        {"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5}
-    )
+    detector.recipeSettings.update({"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5})
     detector.debug = False
     detector.qc = pd.DataFrame()
     detector.dateObs = "2024-01-02T03:04:05"
@@ -483,9 +472,7 @@ def test_plot_results_writes_continuum_diagnostic_and_order_limits(
             "fit_y": [10.0],
         }
     )
-    coefficients = pd.DataFrame(
-        [{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}]
-    )
+    coefficients = pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
     monkeypatch.setattr(
         "soxspipe.commonutils.toolkit.qc_settings_plot_tables",
         lambda **_: None,

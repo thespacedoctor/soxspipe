@@ -146,17 +146,13 @@ def test_quicklook_image_orients_pixels_and_sets_clim_per_instrument(
     image = axis.images[0]
     np.testing.assert_array_equal(image.get_array().data, expectedRotation(ccd.data))
 
-    mean, median, std = sigma_clipped_stats(
-        ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3
-    )
+    mean, median, std = sigma_clipped_stats(ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
     vmin, vmax = image.get_clim()
     assert vmin == pytest.approx(median - 3 * 0.5 * std, rel=1e-12)
     assert vmax == pytest.approx(median + 3 * 0.5 * std, rel=1e-12)
 
 
-def test_quicklook_image_clim_respects_custom_std_window(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_clim_respects_custom_std_window(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     """A non-default `stdWindow` scales the colour-limit half-width."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
@@ -165,9 +161,7 @@ def test_quicklook_image_clim_respects_custom_std_window(
     toolkit.quicklook_image(log, ccd, show=True, stdWindow=7)
 
     image = _image_axis(figures[-1]).images[0]
-    mean, median, std = sigma_clipped_stats(
-        ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3
-    )
+    mean, median, std = sigma_clipped_stats(ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
     vmin, vmax = image.get_clim()
     assert vmin == pytest.approx(median - 7 * 0.5 * std, rel=1e-12)
     assert vmax == pytest.approx(median + 7 * 0.5 * std, rel=1e-12)
@@ -223,9 +217,7 @@ def test_quicklook_image_colorbar_formatter_switches_on_mean_threshold(
         assert formatter.fmt == expectedFmt
 
 
-def test_quicklook_image_title_sets_suptitle_with_fixed_fontsize(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_title_sets_suptitle_with_fixed_fontsize(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
 
@@ -236,9 +228,7 @@ def test_quicklook_image_title_sets_suptitle_with_fixed_fontsize(
     assert suptitle.get_fontsize() == 20
 
 
-def test_quicklook_image_without_title_has_no_suptitle(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_without_title_has_no_suptitle(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
 
@@ -294,9 +284,7 @@ def test_quicklook_image_ext_none_plain_array_falls_back_to_xshooter_orientation
     np.testing.assert_array_equal(image.get_array().data, np.flipud(np.rot90(frame, 1)))
 
 
-def test_quicklook_image_inst_argument_overrides_header_instrume(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_inst_argument_overrides_header_instrume(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     """An explicit `inst=` argument takes precedence over `header['INSTRUME']`."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
@@ -329,9 +317,7 @@ def test_quicklook_image_surface_plot_axes_and_orientation(
     assert axis3d.azim == (70 if instrument == "SOXS" else -120)
     assert axis3d.elev == 30
 
-    mean, median, std = sigma_clipped_stats(
-        frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3
-    )
+    mean, median, std = sigma_clipped_stats(frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
     vmax = median + 3 * 0.5 * std
     vmin = median - 3 * 0.5 * std
     zlo, zhi = axis3d.get_zlim()
@@ -387,9 +373,7 @@ def test_quicklook_image_dispmap_branch_forwards_arguments_and_draws_grid_lines(
     ccd = _ccd(instrument, extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     settings = {"instrument": "soxs"}
 
-    toolkit.quicklook_image(
-        log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings=settings
-    )
+    toolkit.quicklook_image(log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings=settings)
 
     assert captured["dispMap"] == "disp.fits"
     assert captured["dispMapImage"] == "disp_image.fits"
@@ -753,9 +737,7 @@ def test_quicklook_image_without_settings_and_without_overlays_does_not_warn(
     assert [message for level, message in log.messages if level == "warning"] == []
 
 
-def test_quicklook_image_show_true_calls_plt_show(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_show_true_calls_plt_show(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     spy_figures(monkeypatch)
     showCalls = quiet_show(monkeypatch)
 

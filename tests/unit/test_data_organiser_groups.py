@@ -12,9 +12,7 @@ from tests.factories import raw_group_table, workspace_organiser
 pytestmark = pytest.mark.unit
 
 
-def test_group_raw_frames_preserves_members_and_uses_earliest_timestamp(
-    tmp_path, log
-) -> None:
+def test_group_raw_frames_preserves_members_and_uses_earliest_timestamp(tmp_path, log) -> None:
     """Group equivalent frames without losing their ordered source paths."""
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.filterKeywordsExtras = ["mjd-obs", "vis temp c"]
@@ -48,9 +46,7 @@ def test_group_raw_frames_preserves_members_and_uses_earliest_timestamp(
     assert grouped.loc[0, "vis temp c"] == pytest.approx(11.0)
 
 
-def test_group_raw_frames_can_omit_member_paths_and_start_timestamp(
-    tmp_path, log
-) -> None:
+def test_group_raw_frames_can_omit_member_paths_and_start_timestamp(tmp_path, log) -> None:
     """Allow callers to request aggregation metadata without member details."""
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.filterKeywordsExtras = ["mjd-obs"]
@@ -101,23 +97,16 @@ def test_predict_product_frames_builds_stable_reduced_fits_path(tmp_path, log) -
     product = pd.read_sql("SELECT * FROM product_frames", organiser.conn).iloc[0]
     assert result == 1
     assert product["file"] == ("20240102T030405_VIS_1X1_FAST_MASTER_BIAS_SOXS.fits")
-    assert product["filepath"] == (
-        "./reduced/2024-01-01/soxs-mbias/"
-        "20240102T030405_VIS_1X1_FAST_MASTER_BIAS_SOXS.fits"
-    )
+    assert product["filepath"] == ("./reduced/2024-01-01/soxs-mbias/20240102T030405_VIS_1X1_FAST_MASTER_BIAS_SOXS.fits")
     assert product["eso pro catg"] == "MASTER_BIAS_VIS"
     pd.testing.assert_frame_equal(rawGroups, originalGroups)
 
 
-def test_predict_product_frames_reports_existing_incomplete_products(
-    tmp_path, log
-) -> None:
+def test_predict_product_frames_reports_existing_incomplete_products(tmp_path, log) -> None:
     """Report outstanding products when no new raw groups are available."""
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.conn = sqlite3.connect(":memory:")
-    organiser.conn.execute(
-        "CREATE TABLE product_frames (recipe TEXT, complete INTEGER)"
-    )
+    organiser.conn.execute("CREATE TABLE product_frames (recipe TEXT, complete INTEGER)")
     organiser.conn.executemany(
         "INSERT INTO product_frames VALUES (?, ?)",
         [("mflat", 0), ("mflat", 1), ("mbias", 0)],
@@ -128,18 +117,14 @@ def test_predict_product_frames_reports_existing_incomplete_products(
     assert incompleteCount == 1
 
 
-def test_predict_product_frames_binds_a_hostile_recipe_as_a_parameter(
-    tmp_path, log
-) -> None:
+def test_predict_product_frames_binds_a_hostile_recipe_as_a_parameter(tmp_path, log) -> None:
     """A hostile recipe name matches no real row in a real database, rather than counting every row.
 
     DY-254: `recipe` was interpolated directly into the `count(*)` query text.
     """
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.conn = sqlite3.connect(":memory:")
-    organiser.conn.execute(
-        "CREATE TABLE product_frames (recipe TEXT, complete INTEGER)"
-    )
+    organiser.conn.execute("CREATE TABLE product_frames (recipe TEXT, complete INTEGER)")
     organiser.conn.executemany(
         "INSERT INTO product_frames VALUES (?, ?)",
         [("mflat", 0), ("mflat", 1), ("mbias", 0)],
@@ -150,8 +135,6 @@ def test_predict_product_frames_binds_a_hostile_recipe_as_a_parameter(
     # HOSTILE STRING.
     hostileRecipe = "mflat' OR '1'='1' -- "
 
-    incompleteCount = organiser.predict_product_frames(
-        [], pd.DataFrame(), hostileRecipe
-    )
+    incompleteCount = organiser.predict_product_frames([], pd.DataFrame(), hostileRecipe)
 
     assert incompleteCount == 0

@@ -861,9 +861,7 @@ def test_final_coldpix_qc_gets_no_exclude_mask_when_its_shape_differs_from_the_m
 ) -> None:
     """An edge mask that does not fit the written mflat is dropped rather than broadcast."""
     # ACT
-    _, excludeMask = _run_single_lamp_and_capture_exclude_mask(
-        log, tmp_path, monkeypatch, np.zeros((2, 2), dtype=bool)
-    )
+    _, excludeMask = _run_single_lamp_and_capture_exclude_mask(log, tmp_path, monkeypatch, np.zeros((2, 2), dtype=bool))
 
     # ASSERT
     assert excludeMask is None

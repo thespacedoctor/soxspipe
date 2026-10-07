@@ -75,9 +75,7 @@ class detector_lookup:
         arm = arm.upper()
 
         if arm not in self.dectDict:
-            raise LookupError(
-                f"the detector '{arm}' cannot be found in the detector parameters lookup file"
-            )
+            raise LookupError(f"the detector '{arm}' cannot be found in the detector parameters lookup file")
 
         self.log.debug("completed the ``get`` method")
         return self.dectDict[arm]
@@ -104,10 +102,7 @@ class detector_lookup:
 
         # GENERATE PATH TO YAML DICTIONARY
         yamlFilePath = (
-            os.path.dirname(os.path.dirname(__file__))
-            + "/resources/"
-            + self.instrument
-            + "_detector_parameters.yaml"
+            os.path.dirname(os.path.dirname(__file__)) + "/resources/" + self.instrument + "_detector_parameters.yaml"
         )
 
         # YAML CONTENT TO DICTIONARY

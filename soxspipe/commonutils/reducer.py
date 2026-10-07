@@ -164,9 +164,7 @@ class reducer:
 
         batchCount = 0
         for rootRecipe in self.recipeList:
-
             while True and batchCount < batch:
-
                 # rawGroups WILL CONTAIN ONE RECIPE COMMAND PER ENTRY
                 rawGroups = self.select_sof_files_to_process(
                     recipe=rootRecipe, reductionTarget=self.reductionTarget, arm=False
@@ -246,7 +244,7 @@ class reducer:
                         # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
                         self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
                         self.log.error(
-                            f'\nRecipe Command: {row["command"].replace("-obj ", " ").replace("-std ", " ")}\n\n'
+                            f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
                         )
                         fail = True
 
@@ -257,17 +255,17 @@ class reducer:
                             self.overwrite = False
 
                         if not self.daemon:
-                            print(f"{'='*70}\n")
+                            print(f"{'=' * 70}\n")
 
                     ## FINISH LOGGING ##
                     endTime = times.get_now_sql_datetime()
                     runningTime = times.calculate_time_difference(startTime, endTime)
                     sys.argv[0] = os.path.basename(sys.argv[0])
 
-                    self.log.print(f'\nRecipe Command: {row["command"].replace("_obj ", " ")} ')
+                    self.log.print(f"\nRecipe Command: {row['command'].replace('_obj ', ' ')} ")
                     self.log.print(f"Recipe Run Time: {runningTime}\n\n")
                     if not self.daemon:
-                        print(f"{'='*70}\n")
+                        print(f"{'=' * 70}\n")
 
                 if fail:
                     do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
@@ -320,9 +318,7 @@ class reducer:
 
         from soxspipe.commonutils.data_organiser import _validate_owned_path
 
-        databasePath = _validate_owned_path(
-            self.sessionDB, self.workspaceDirectory, "database path"
-        )
+        databasePath = _validate_owned_path(self.sessionDB, self.workspaceDirectory, "database path")
         conn = sql.connect(databasePath, timeout=300, autocommit=True, check_same_thread=False)
         c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
@@ -376,9 +372,7 @@ class reducer:
                 "order by recipe_order, sof"
             )
 
-            rawGroups = pd.read_sql(
-                sqlQuery, con=conn, params={"reductionTarget": reductionTarget}
-            )
+            rawGroups = pd.read_sql(sqlQuery, con=conn, params={"reductionTarget": reductionTarget})
 
         if not len(rawGroups.index):
             if reductionTarget != "all":
@@ -639,7 +633,7 @@ def run_recipe_bulk(
         except Exception as e:
             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
             log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-            log.error(f'\nRecipe Command: {inputDict["command"].replace("-obj ", " ").replace("_obj ", " ")}\n\n')
+            log.error(f"\nRecipe Command: {inputDict['command'].replace('-obj ', ' ').replace('_obj ', ' ')}\n\n")
             returnDict["status"] = "fail"
             returnDict["error_message"] = e
 

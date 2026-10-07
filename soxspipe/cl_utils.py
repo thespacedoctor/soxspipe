@@ -227,7 +227,6 @@ def main(arguments=None):
 
     # set options interactively if user requests
     if "interactiveFlag" in a and a["interactiveFlag"]:
-
         # load previous settings
         moduleDirectory = os.path.dirname(__file__) + "/resources"
         pathToPickleFile = "%(moduleDirectory)s/previousSettings.p" % locals()
@@ -420,7 +419,6 @@ def main(arguments=None):
                 do.list_sofs()
 
         if a["raw"]:
-
             # EXPORT THE RAW FRAMES NEEDED TO REDUCE A SOF FILE TO AN `exported` DIRECTORY IN THE WORKSPACE DIRECTORY
             import shutil
 
@@ -491,7 +489,6 @@ def main(arguments=None):
         raise SystemExit(1) from e
 
     if a["reduce"]:
-
         exists = os.path.exists(a["workspaceDirectory"] + "/soxspipe.db")
         if not exists:
             print(
@@ -540,7 +537,6 @@ def main(arguments=None):
     from fundamentals import daemonise
 
     class myDaemon(daemonise):
-
         def action(self, **kwargs):
             import time
 
@@ -653,13 +649,12 @@ def main(arguments=None):
     sys.argv[0] = os.path.basename(sys.argv[0])
 
     if not a["prep"] and not a["session"] and not a["reduce"] and not a["watch"] and not a["list"]:
-        log.print(f'\nRecipe Command: {(" ").join(sys.argv)}')
+        log.print(f"\nRecipe Command: {(' ').join(sys.argv)}")
         log.print(f"Recipe Run Time: {runningTime}\n\n")
-        print(f"{'='*70}\n")
+        print(f"{'=' * 70}\n")
 
     return
 
 
 if __name__ == "__main__":
-
     main()

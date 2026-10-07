@@ -106,15 +106,9 @@ def test_calibrate_frame_set_bias_corrects_each_soxs_lamp_collection(
     recipe.inputFrames = _Collections(
         {
             _filters(PRO_CATG="MASTER_BIAS_VIS"): _Collection(["bias_pre.fits"], [bias]),
-            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["dflat_pre.fits"], [dflat]
-            ),
-            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["qflat_pre.fits"], [qflat]
-            ),
-            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["dome_pre.fits"], [domeflat]
-            ),
+            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(["dflat_pre.fits"], [dflat]),
+            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(["qflat_pre.fits"], [qflat]),
+            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(["dome_pre.fits"], [domeflat]),
         }
     )
     detrendCalls: list[dict[str, Any]] = []
@@ -164,15 +158,12 @@ def test_calibrate_frame_set_selects_the_nearest_master_dark_for_nir_flats(
     flat.header["MJDOBS"] = 18.0
     recipe.inputFrames = _Collections(
         {
-            _filters(PRO_CATG="MASTER_DARK_NIR"): _Collection(
-                ["dark-a.fits", "dark-b.fits"], [darkEarly, darkLate]
-            ),
-            _filters(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["flat_pre.fits"], [flat]
-            ),
+            _filters(PRO_CATG="MASTER_DARK_NIR"): _Collection(["dark-a.fits", "dark-b.fits"], [darkEarly, darkLate]),
+            _filters(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,SLIT"): _Collection(["flat_pre.fits"], [flat]),
         }
     )
     detrendCalls: list[dict[str, Any]] = []
+
     def detrend(**kwargs: Any) -> CCDData:
         detrendCalls.append(kwargs)
         return kwargs["inputFrame"].subtract(kwargs["dark"])
@@ -331,9 +322,7 @@ def test_stitch_uv_mflats_scales_d_lamp_and_uses_the_selected_order_edge(
         _frame(np.full((4, 6), 10.0)),
     ]
     recipe.orderEdgeMaskSet = [None, None, None]
-    edgePixels = pd.DataFrame(
-        {"order": [11], "xcoord_edgeup": [1], "ycoord": [1]}
-    )
+    edgePixels = pd.DataFrame({"order": [11], "xcoord_edgeup": [1], "ycoord": [1]})
     monkeypatch.setattr(
         mflatModule,
         "unpack_order_table",
@@ -349,9 +338,7 @@ def test_stitch_uv_mflats_scales_d_lamp_and_uses_the_selected_order_edge(
             self.qc = kwargs["qcTable"]
 
         def get(self) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
-            products = pd.DataFrame(
-                {"product_label": ["ORDER_LOC"], "file_path": ["edges.fits"]}
-            )
+            products = pd.DataFrame({"product_label": ["ORDER_LOC"], "file_path": ["edges.fits"]})
             return products, self.qc, {"detected": 1}
 
     monkeypatch.setattr(mflatModule, "detect_order_edges", FakeEdges)
@@ -359,9 +346,7 @@ def test_stitch_uv_mflats_scales_d_lamp_and_uses_the_selected_order_edge(
     recipe.mask_low_sens_pixels = lambda frame, orderTablePath: (
         captured.update({"orderTablePath": orderTablePath}) or frame
     )
-    orderFluxes = pd.DataFrame(
-        {"order": [10, 11], "_QLAMP": [10.0, 5.0], "_DLAMP": [9.0, 10.0]}
-    )
+    orderFluxes = pd.DataFrame({"order": [10, 11], "_QLAMP": [10.0, 5.0], "_DLAMP": [9.0, 10.0]})
 
     stitched = recipe.stitch_uv_mflats(orderFluxes, "original.fits")
 

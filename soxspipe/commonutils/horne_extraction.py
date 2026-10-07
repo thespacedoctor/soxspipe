@@ -410,7 +410,6 @@ class horne_extraction(base_util):
         )
 
         if not isinstance(self.products, bool):
-
             # CONVERT TO FITS BINARY TABLE
             header = copy.deepcopy(self.skySubtractedFrame.header)
             with suppress(KeyError):
@@ -1082,9 +1081,9 @@ class horne_extraction(base_util):
             mask = extractedOrdersDF["order"] == o
             if lastOrderMin:
                 order_join_wl = (extractedOrdersDF.loc[mask]["wavelengthMean"].max() + lastOrderMin) / 2.0
-                orderJoins[f"{o-1}{o}"] = order_join_wl
+                orderJoins[f"{o - 1}{o}"] = order_join_wl
                 gap = extractedOrdersDF.loc[mask]["wavelengthMean"].max() - lastOrderMin
-                orderGaps[f"{o-1}{o}"] = gap
+                orderGaps[f"{o - 1}{o}"] = gap
                 # print(f"ORDER: {o}, JOIN: {order_join_wl}, GAP: {gap}")
             lastOrderMin = extractedOrdersDF.loc[mask]["wavelengthMean"].min()
 
@@ -1097,10 +1096,10 @@ class horne_extraction(base_util):
 
         for o in uniqueOrders:
             o = int(o)
-            thisKey = f"{o-1}{o}"
+            thisKey = f"{o - 1}{o}"
             if thisKey in orderJoins:
                 mask = extractedOrdersDF["order"] == o - 1
-                gap = orderGaps[f"{o-1}{o}"]
+                gap = orderGaps[f"{o - 1}{o}"]
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
                     maxwl = orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio
                     mask = (extractedOrdersDF["order"] == o - 1) & (
@@ -1109,8 +1108,8 @@ class horne_extraction(base_util):
                     )
                     extractedOrdersDF = extractedOrdersDF.loc[~mask]
 
-                if f"{o}{o+1}" in orderGaps:
-                    gap = orderGaps[f"{o-1}{o}"]
+                if f"{o}{o + 1}" in orderGaps:
+                    gap = orderGaps[f"{o - 1}{o}"]
                 if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
                     minwl = orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
                     mask = (extractedOrdersDF["order"] == o) & (
@@ -1310,7 +1309,6 @@ class horne_extraction(base_util):
         maxFlux = arrayMask.max() + 0.5 * std
 
         for df in extractions:
-
             if not len(df["order"].values):
                 continue
             o = df["order"].values[0]
@@ -1666,7 +1664,6 @@ def plot_rectified_images(orderRectifiedImages, order):
     matplotlib.use("MacOSX")
 
     for key, value in orderRectifiedImages.items():
-
         mean, median, std = sigma_clipped_stats(value, sigma=5.0, stdfunc="std", cenfunc="mean", maxiters=3)
         fig = plt.figure(
             num=None,
@@ -1781,7 +1778,6 @@ def fit_object_profile(
 
     # DETERMINE LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS
     for slitPixelIndex in range(0, ss):
-
         iteration = 1
         clipped_count = 1
 

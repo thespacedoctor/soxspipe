@@ -524,9 +524,7 @@ def test_stack_extractions_sets_the_reduced_header_keywords_and_date_obs(
     """The written header carries PRO_TYPE REDUCED and PRO_CATG SCI_SLIT_FLUX_<ARM>, and dateObs comes from it."""
     recipe = _stack_recipe(log, tmp_path)
     keywordCalls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        recipe, "update_fits_keywords", lambda **kwargs: keywordCalls.append(kwargs)
-    )
+    monkeypatch.setattr(recipe, "update_fits_keywords", lambda **kwargs: keywordCalls.append(kwargs))
     first, second = _spectrum_frames()
 
     _, fitsPath = recipe.stack_extractions([first, second], orderJoins={10: 1})

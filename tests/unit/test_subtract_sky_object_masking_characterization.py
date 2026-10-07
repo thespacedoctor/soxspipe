@@ -79,9 +79,7 @@ def _expected_noise(values: list[tuple[float, int]]) -> list[tuple[Any, int]]:
     return [(pytest.approx(total, rel=1e-12, abs=0), nanCount) for total, nanCount in values]
 
 
-def test_a_central_object_masks_its_slit_range_in_every_order(
-    log: Any, masked_ranges: list[tuple[Any, Any]]
-) -> None:
+def test_a_central_object_masks_its_slit_range_in_every_order(log: Any, masked_ranges: list[tuple[Any, Any]]) -> None:
     """One range is found from both orders combined and applied twice per order.
 
     The range runs from the left edge of the first positive bin to the right edge

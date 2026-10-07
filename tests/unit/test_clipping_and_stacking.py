@@ -72,9 +72,7 @@ def test_clip_and_stack_rejects_outlier_and_propagates_mask_and_uncertainty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     recipe = _recipe(tmp_path, log)
-    monkeypatch.setattr(
-        "soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None
-    )
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None)
     commonMask = np.zeros((8, 8), dtype=bool)
     commonMask[0, 0] = True
     firstOnlyMask = commonMask.copy()
@@ -107,9 +105,7 @@ def test_clip_and_stack_can_disable_post_stack_clipping(
         "stacked-clipping-sigma": 3.0,
         "stacked-clipping-iterations": 2,
     }
-    monkeypatch.setattr(
-        "soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None
-    )
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None)
     data = np.zeros((8, 8), dtype=np.float32)
     data[4, 4] = 100.0
     frames = [_frame(data) for _ in range(3)]

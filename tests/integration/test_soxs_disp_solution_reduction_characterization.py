@@ -228,9 +228,7 @@ def test_the_nir_lamp_off_frame_overrides_a_master_dark(
 
     # ASSERT
     assert captured["detrend"]["master_bias"] is False
-    assert captured["detrend"]["dark"].data[0][0] == pytest.approx(
-        _read_first_pixel(lampOffPath), rel=1e-12
-    )
+    assert captured["detrend"]["dark"].data[0][0] == pytest.approx(_read_first_pixel(lampOffPath), rel=1e-12)
     assert "create_dispersion_map" in calls
 
 
@@ -266,9 +264,7 @@ def test_the_last_matching_pinhole_frame_is_the_one_reduced(
     recipe.produce_product()
 
     # ASSERT
-    assert captured["detrend"]["inputFrame"].data[0][0] == pytest.approx(
-        _read_first_pixel(secondPath), rel=1e-12
-    )
+    assert captured["detrend"]["inputFrame"].data[0][0] == pytest.approx(_read_first_pixel(secondPath), rel=1e-12)
 
 
 def test_an_xshooter_reduction_routes_the_fmtchk_filters(
@@ -303,12 +299,8 @@ def test_an_xshooter_reduction_routes_the_fmtchk_filters(
     recipe.produce_product()
 
     # ASSERT
-    assert captured["detrend"]["inputFrame"].data[0][0] == pytest.approx(
-        _read_first_pixel(pinholePath), rel=1e-12
-    )
-    assert captured["detrend"]["dark"].data[0][0] == pytest.approx(
-        _read_first_pixel(lampOffPath), rel=1e-12
-    )
+    assert captured["detrend"]["inputFrame"].data[0][0] == pytest.approx(_read_first_pixel(pinholePath), rel=1e-12)
+    assert captured["detrend"]["dark"].data[0][0] == pytest.approx(_read_first_pixel(lampOffPath), rel=1e-12)
     routedFilters = [filters for name, filters in recipe.inputFrames.calls if name == "files_filtered"]
     assert {"DPR_TYPE": "LAMP,FMTCHK", "DPR_TECH": "IMAGE"} in routedFilters
     assert {"DPR_TYPE": "LAMP,FMTCHK", "DPR_TECH": "ECHELLE,PINHOLE"} in routedFilters

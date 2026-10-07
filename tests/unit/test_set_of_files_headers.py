@@ -171,9 +171,7 @@ def test_dict_from_fits_header_skips_a_blank_keyword(tmp_path: Path) -> None:
     header.add_blank("free text")
     fits.PrimaryHDU(data=np.zeros((2, 2)), header=header).writeto(filePath)
 
-    collection = ImageFileCollection(
-        filenames=[str(filePath)], location=str(tmp_path), keywords=["DPR_TYPE"]
-    )
+    collection = ImageFileCollection(filenames=[str(filePath)], location=str(tmp_path), keywords=["DPR_TYPE"])
 
     assert list(collection.summary["DPR_TYPE"]) == ["BIAS"]
 
@@ -208,9 +206,7 @@ def test_dict_from_fits_header_rejects_a_header_containing_a_file_keyword(
     # HEADER `in` MEMBERSHIP IS CASE-INSENSITIVE, SO EVEN AN UPPERCASE "FILE"
     # KEYWORD TRIPS THE `assert "file" not in h` GUARD
     with pytest.raises(AssertionError):
-        ImageFileCollection(
-            filenames=[str(filePath)], location=str(tmp_path), keywords=["FILE"]
-        )
+        ImageFileCollection(filenames=[str(filePath)], location=str(tmp_path), keywords=["FILE"])
 
 
 def test_dict_from_fits_header_joins_real_duplicate_comment_and_history_cards(
@@ -265,9 +261,7 @@ def test_dict_from_fits_header_joins_comment_and_history_when_keys_are_lowercase
 
     filePath = tmp_path / "one.fits"
     filePath.touch()
-    monkeypatch.setattr(
-        astropy_fits, "getheader", lambda *_args, **_kwargs: _LowercaseCommentHeader()
-    )
+    monkeypatch.setattr(astropy_fits, "getheader", lambda *_args, **_kwargs: _LowercaseCommentHeader())
 
     collection = ImageFileCollection(
         filenames=[str(filePath)],
