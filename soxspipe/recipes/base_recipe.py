@@ -2587,9 +2587,8 @@ class base_recipe:
                 self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
             c.close()
 
-        keepTrying = 0
         keepTryingMax = 7
-        while keepTrying < keepTryingMax:
+        for attempt in range(1, keepTryingMax + 1):
             try:
                 dataframe.replace(["--"], None).to_sql(
                     table_name,
@@ -2598,12 +2597,12 @@ class base_recipe:
                     if_exists="append",
                     method="multi",
                 )
-                keepTrying = keepTryingMax
-            except Exception as e:
-                if keepTrying > keepTryingMax - 1:
-                    raise Exception(e)
+                return
+            except Exception:
+                # RE-RAISE THE ORIGINAL ERROR AFTER THE FINAL ATTEMPT SO A LOST QC WRITE FAILS THE RECIPE (DY-603)
+                if attempt == keepTryingMax:
+                    raise
                 time.sleep(1)
-                keepTrying += 1
 
     def add_qc(
         self,
