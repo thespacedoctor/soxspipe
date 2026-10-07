@@ -11,3 +11,9 @@ repos:
         pass_filenames: false
         types: [python]
         require_serial: true
+      - id: changelog-duplicates
+        name: changelog duplicate bullets
+        entry: python tools/check_changelog.py CHANGES.md
+        language: system
+        files: ^CHANGES\.md$
+        pass_filenames: false

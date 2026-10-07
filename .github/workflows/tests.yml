@@ -56,6 +56,9 @@ jobs:
       - name: Enforce changed-line lint
         run: python tools/lint_ratchet.py --compare-branch origin/develop
 
+      - name: Reject duplicate changelog entries
+        run: python tools/check_changelog.py CHANGES.md
+
       - name: Run required suite
         run: |
           mkdir -p reports
