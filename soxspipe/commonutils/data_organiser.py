@@ -686,8 +686,9 @@ class data_organiser:
                 'and qc_flag != "fail" and qc_order = "-1";',
                 (),
             ),
+            # A QC FAILURE MARKS ONLY THE CURRENT SESSION'S STATUS COLUMN (DY-272)
             (
-                'update product_frames set status_base = "fail" '
+                f'update product_frames set {statusColumn} = "fail" '  # noqa: S608
                 'where sof in (select sof_name from quality_control where qc_flag = "fail");',
                 (),
             ),
