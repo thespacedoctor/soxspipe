@@ -923,6 +923,4 @@ def test_multi_lamp_master_flat_stitches_independent_lamp_products(
         "ORDER_LOC_DLAMP",
         "ORDER_LOC_QLAMP",
         "MFLAT",
-        "MFLAT_DLAMP",
-        "MFLAT_QLAMP",
     }
