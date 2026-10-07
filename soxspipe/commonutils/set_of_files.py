@@ -19,8 +19,8 @@ from ccdproc import ImageFileCollection
 from soxspipe.commonutils.fits_frame_names import is_fits_frame
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
-# A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits OR .fits.Z
-SOF_FITS_PATH = re.compile(r"(.*?\.fits(?:\.Z)?)(?=\s|$)")
+# A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits (ANY CASE) OR .fits.Z
+SOF_FITS_PATH = re.compile(r"(.*?\.(?i:fits)(?:\.Z)?)(?=\s|$)")
 
 
 class ImageFileCollection(ImageFileCollection):
@@ -153,7 +153,7 @@ def _fits_path_from_sof_line(line, home):
     - ``fitsPath`` -- the frame path
     """
     match = SOF_FITS_PATH.match(line)
-    fitsPath = match.group(1) if match else line.split(".fits")[0] + ".fits"
+    fitsPath = match.group(1) if match else line[: line.lower().index(".fits")] + ".fits"
     return fitsPath.replace("~/", home + "/")
 
 
@@ -501,7 +501,7 @@ class set_of_files:
         fitsFiles = [
             _fits_path_from_sof_line(sofLine, home)
             for sofLine in lines
-            if ".fits" in sofLine
+            if ".fits" in sofLine.lower()
         ]
 
         supplementaryFilepaths = [

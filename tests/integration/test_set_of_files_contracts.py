@@ -160,6 +160,31 @@ def test_sof_input_reads_the_compressed_member_not_its_uncompressed_twin(
     assert list(collection.summary["file"]) == ["frame.fits.Z"]
 
 
+@pytest.mark.parametrize("name", ["FRAME.FITS", "frame.Fits.Z"])
+def test_sof_input_reads_members_whatever_the_case_of_the_fits_suffix(
+    tmp_path: Path,
+    log: object,
+    name: str,
+) -> None:
+    sourcePath = raw_fits(tmp_path / "source.fits", seed=1)
+    memberPath = tmp_path / name
+    if name.endswith(".Z"):
+        lzw_compressed_fits(sourcePath, memberPath)
+    else:
+        memberPath.write_bytes(sourcePath.read_bytes())
+    inputPath = sof_file(tmp_path / "input.sof", [(memberPath, "BIAS_VIS")])
+
+    collection, supplementary = set_of_files(
+        log=log,
+        settings=_settings(tmp_path),
+        inputFrames=str(inputPath),
+        verbose=False,
+    ).get()
+
+    assert list(collection.summary["file"]) == [name]
+    assert supplementary == {}
+
+
 def test_sof_input_rejects_a_missing_member(tmp_path: Path, log: object) -> None:
     missingPath = tmp_path / "missing.fits"
     inputPath = sof_file(tmp_path / "input.sof", [(missingPath, "BIAS_VIS")])
