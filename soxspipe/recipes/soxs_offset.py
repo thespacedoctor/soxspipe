@@ -81,7 +81,6 @@ class soxs_offset(soxs_nod):
         self.inputFrames = inputFrames
         self.verbose = verbose
 
-
         # INITIAL ACTIONS
         self._collect_input_frames()
         self._verify_and_announce_input_frames()
@@ -139,7 +138,6 @@ class soxs_offset(soxs_nod):
 
         return
 
-
     def produce_product(self):
         """*The code to generate the product of the soxs_offset recipe*
 
@@ -161,7 +159,6 @@ class soxs_offset(soxs_nod):
         ```
         """
         self.log.debug("starting the ``produce_product`` method")
-
 
         from soxspipe.commonutils.toolkit import quicklook_image
 
@@ -250,7 +247,6 @@ class soxs_offset(soxs_nod):
         allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
         for t in types:
-
             add_filters = {kw("DPR_TYPE"): t, kw("DPR_TECH"): "ECHELLE,SLIT,OFFSET"}
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 if t == "STD,FLUX" and "-std" not in self.recipeName:
@@ -365,7 +361,6 @@ class soxs_offset(soxs_nod):
 
         # SPLIT FRAMES INTO ON (NEGATIVE NET OFFSET: OFFSETRA + OFFSETDEC < 0) AND OFF (ZERO OR POSITIVE NET OFFSET)
         for frame, filename in zip(allObjectFrames, allFilenames):
-
             offsetRA = frame.header[kw("OFFSET_RA")]
             offsetDec = frame.header[kw("OFFSET_DEC")]
 
@@ -464,7 +459,6 @@ class soxs_offset(soxs_nod):
         for frameON, frameOFF, frameONName, frameOFFName in zip(
             allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, strict=False
         ):
-
             self.log.print(f"Processing ON-OFF Offset Sequence {sequenceCount}")
             if False:
                 quicklook_image(

@@ -47,9 +47,7 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     header["ESO DET BINX"] = 2
     header["ESO DET BINY"] = 1
     frame = CCDData(np.ones((3, 3)), unit=u.electron, meta=header)
-    mapTable = pd.DataFrame(
-        {"order": [10, 10], "wavelength": [500.0, 501.0], "slit_position": [0.0, 0.1]}
-    )
+    mapTable = pd.DataFrame({"order": [10, 10], "wavelength": [500.0, 501.0], "slit_position": [0.0, 0.1]})
 
     class DetectorLookup:
         def __init__(self, **_: object) -> None:
@@ -95,9 +93,7 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
 
 
 @pytest.mark.parametrize("dispersionAxis", ["x", "y"])
-def test_placeholder_images_receive_model_flux_and_normalised_residuals(
-    log: object, dispersionAxis: str
-) -> None:
+def test_placeholder_images_receive_model_flux_and_normalised_residuals(log: object, dispersionAxis: str) -> None:
     subtractor = _subtractor(log)
     subtractor.objectFrame = CCDData(
         np.arange(9, dtype=float).reshape(3, 3),
@@ -118,9 +114,7 @@ def test_placeholder_images_receive_model_flux_and_normalised_residuals(
     )
 
     model, subtracted, residuals = subtractor.create_placeholder_images()
-    model, subtracted, residuals = subtractor.add_data_to_placeholder_images(
-        pixels, model, subtracted, residuals
-    )
+    model, subtracted, residuals = subtractor.add_data_to_placeholder_images(pixels, model, subtracted, residuals)
 
     indices = (2, 1) if dispersionAxis == "x" else (1, 2)
     assert model.data[indices] == 4.0
@@ -370,9 +364,7 @@ def test_cross_dispersion_normaliser_keeps_the_current_unity_flux_contract(log: 
 
 
 @pytest.mark.parametrize("arm", ["UVB", "VIS"])
-def test_image_comparison_writes_recipe_named_pdf(
-    tmp_path: Path, log: object, arm: str
-) -> None:
+def test_image_comparison_writes_recipe_named_pdf(tmp_path: Path, log: object, arm: str) -> None:
     subtractor = _subtractor(log)
     subtractor.arm = arm
     subtractor.axisA = "x"
@@ -434,9 +426,7 @@ def test_sky_sampling_plot_writes_a_complete_order_diagnostic(
             "flagged_bspline_clipped": flags,
         }
     )
-    monkeypatch.setattr(
-        "soxspipe.commonutils.toolkit.quicklook_image", lambda **_: None
-    )
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **_: None)
 
     outputPath = subtractor.plot_sky_sampling(
         order=10,
@@ -744,9 +734,7 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
         mask=np.zeros((3, 3), dtype=bool),
         uncertainty=StdDevUncertainty(np.ones((3, 3)), unit=u.electron),
     )
-    subtractor.mapDF = pd.DataFrame(
-        {"order": [10], "x": [1], "y": [2], "mask": [False]}
-    )
+    subtractor.mapDF = pd.DataFrame({"order": [10], "x": [1], "y": [2], "mask": [False]})
     subtractor.qc = pd.DataFrame({"qc_name": []})
     subtractor.products = pd.DataFrame({"product_label": []})
     subtractor.stopSubtraction = False
@@ -786,9 +774,7 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
     monkeypatch.setattr(
         subtractor,
         "plot_image_comparison",
-        lambda original, model, subtracted: (
-            plotCalls.append((original, model, subtracted)) or "/qc/sky-model.pdf"
-        ),
+        lambda original, model, subtracted: plotCalls.append((original, model, subtracted)) or "/qc/sky-model.pdf",
     )
 
     model, subtracted, residuals, qc, products = subtractor.subtract()
@@ -798,9 +784,7 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
     assert residuals.data[2, 1] == 3.0
     assert np.count_nonzero(model.data) == 1
     assert qc.empty
-    assert products["product_label"].tolist() == (
-        ["SKY SUBTRACTION QUICKLOOK"] if writeQCPlot else []
-    )
+    assert products["product_label"].tolist() == (["SKY SUBTRACTION QUICKLOOK"] if writeQCPlot else [])
     assert len(plotCalls) == int(writeQCPlot)
 
 
@@ -834,6 +818,4 @@ def test_object_clipping_marks_object_pixels_and_updates_local_noise(
         False,
     ]
     assert np.isnan(result[0].loc[2, "residual_windowed_std"])
-    assert result[0].loc[1, "residual_windowed_std"] == pytest.approx(
-        np.sqrt(7 / 3)
-    )
+    assert result[0].loc[1, "residual_windowed_std"] == pytest.approx(np.sqrt(7 / 3))

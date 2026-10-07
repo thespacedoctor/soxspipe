@@ -59,9 +59,7 @@ def instrument_header(
         "SEQ_ARM": arm.upper(),
     }
     semanticValues = {**semanticValues, **(overrides or {})}
-    return Header(
-        {keywordMap.get(key, key): value for key, value in semanticValues.items()}
-    )
+    return Header({keywordMap.get(key, key): value for key, value in semanticValues.items()})
 
 
 def synthetic_ccd(

@@ -218,19 +218,21 @@ class subtract_background:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": f"BKGROUND{self.lamp}",
-                            "file_name": backgroundQCImage,
-                            "file_type": "PDF",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": f"Fitted intra-order image background{self.lamp.replace('_', ' ')}",
-                            "file_path": saveToPath,
-                            "label": "QC",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "product_label": f"BKGROUND{self.lamp}",
+                                "file_name": backgroundQCImage,
+                                "file_type": "PDF",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "product_desc": f"Fitted intra-order image background{self.lamp.replace('_', ' ')}",
+                                "file_path": saveToPath,
+                                "label": "QC",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -263,7 +265,6 @@ class subtract_background:
         minimumExpansion = 2
 
         for o in uniqueOrders:
-
             axisBcoord = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisB}coord"]
             axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgeup"]
             axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgelow"]
@@ -372,7 +373,6 @@ class subtract_background:
         from astropy.stats import sigma_clip
         from scipy.interpolate import splev, splrep
 
-
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
         clippedDataMask = sigma_clip(
@@ -422,7 +422,6 @@ class subtract_background:
         backgroundMap = np.zeros_like(self.frame)
 
         for idx, row in enumerate(maskedImage):
-
             # SET X TO A MASKED RANGE ... BLANK DATA BUT WITH MASK FROM IMAGE
             xunmasked = ma.masked_array(np.linspace(0, len(row), len(row), dtype=int), mask=row.mask)
 

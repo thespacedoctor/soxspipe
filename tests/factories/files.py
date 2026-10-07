@@ -52,9 +52,7 @@ def raw_fits(
 ) -> Path:
     """Write a deterministic primary-HDU raw frame and return its path."""
     frame = synthetic_ccd(shape=shape, seed=seed, instrument=instrument)
-    fits.PrimaryHDU(data=np.asarray(frame.data), header=frame.header).writeto(
-        destination
-    )
+    fits.PrimaryHDU(data=np.asarray(frame.data), header=frame.header).writeto(destination)
     return destination
 
 

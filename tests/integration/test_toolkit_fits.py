@@ -33,9 +33,7 @@ def _write_2d_map(path: Path) -> Path:
     return path
 
 
-def test_two_d_map_dataframe_preserves_associated_frame_arrays(
-    tmp_path: Path, log: object
-) -> None:
+def test_two_d_map_dataframe_preserves_associated_frame_arrays(tmp_path: Path, log: object) -> None:
     mapPath = _write_2d_map(tmp_path / "map.fits")
     frame = CCDData(
         np.array([[1.0, 2.0], [3.0, 4.0]]),
@@ -66,13 +64,9 @@ def test_extinction_correction_reads_fits_table_and_uses_next_sample(
     tmp_path: Path,
 ) -> None:
     extinctionPath = tmp_path / "extinction.fits"
-    Table({"WAVE": [4000.0, 5000.0, 6000.0], "MAG_AIRMASS": [0.1, 0.2, 0.3]}).write(
-        extinctionPath
-    )
+    Table({"WAVE": [4000.0, 5000.0, 6000.0], "MAG_AIRMASS": [0.1, 0.2, 0.3]}).write(extinctionPath)
 
-    factors = toolkit.extinction_correction_factor(
-        np.array([400.0, 450.0, 600.0]), str(extinctionPath), airmass=2.0
-    )
+    factors = toolkit.extinction_correction_factor(np.array([400.0, 450.0, 600.0]), str(extinctionPath), airmass=2.0)
 
     assert_allclose(factors, 10 ** (0.8 * np.array([0.1, 0.2, 0.3])))
 
@@ -102,12 +96,8 @@ def test_read_spectral_format_selects_full_or_reduced_wavelengths(
         "detector_lookup",
         lambda **kwargs: SimpleNamespace(get=lambda arm: detector),
     )
-    monkeypatch.setattr(
-        toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key)
-    )
-    monkeypatch.setattr(
-        toolkit, "get_calibrations_path", lambda **kwargs: str(tmp_path)
-    )
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    monkeypatch.setattr(toolkit, "get_calibrations_path", lambda **kwargs: str(tmp_path))
 
     full = toolkit.read_spectral_format(log, {}, "VIS")
     reduced = toolkit.read_spectral_format(log, {}, "VIS", extended=False)
@@ -144,9 +134,7 @@ def test_get_skylines_dataframe_filters_real_fits_table(
         "detector_lookup",
         lambda **kwargs: SimpleNamespace(get=lambda value: {"skylines": skyPath.name}),
     )
-    monkeypatch.setattr(
-        toolkit, "get_calibrations_path", lambda **kwargs: str(tmp_path)
-    )
+    monkeypatch.setattr(toolkit, "get_calibrations_path", lambda **kwargs: str(tmp_path))
 
     result = toolkit.get_skylines_dataframe(
         log,

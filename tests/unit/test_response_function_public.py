@@ -36,18 +36,10 @@ def test_response_constructor_reads_and_normalizes_synthetic_standard(
             "HIERARCH ESO TEL AIRM END": 1.3,
         }
     )
-    extractedTable = Table(
-        {"WAVE": [600.0, 500.0], "FLUX_COUNTS": [20.0, 10.0]}
-    )
-    unflattenedTable = Table(
-        {"WAVE": [500.0, 600.0], "FLUX_DENSITY_COUNTS": [10.0, 20.0]}
-    )
-    fits.HDUList(
-        [fits.PrimaryHDU(header=header), fits.BinTableHDU(extractedTable)]
-    ).writeto(extractedPath)
-    fits.HDUList(
-        [fits.PrimaryHDU(header=header), fits.BinTableHDU(unflattenedTable)]
-    ).writeto(unflattenedPath)
+    extractedTable = Table({"WAVE": [600.0, 500.0], "FLUX_COUNTS": [20.0, 10.0]})
+    unflattenedTable = Table({"WAVE": [500.0, 600.0], "FLUX_DENSITY_COUNTS": [10.0, 20.0]})
+    fits.HDUList([fits.PrimaryHDU(header=header), fits.BinTableHDU(extractedTable)]).writeto(extractedPath)
+    fits.HDUList([fits.PrimaryHDU(header=header), fits.BinTableHDU(unflattenedTable)]).writeto(unflattenedPath)
     Table({"WAVE": [500.0, 600.0], "LTT7987": [1.0, 2.0]}).write(standardsPath)
 
     import soxspipe.commonutils as commonutils
@@ -151,9 +143,7 @@ def test_plot_response_curve_writes_qc_pdf_and_product_row(
     wavelengths = np.array([500.0, 550.0, 600.0])
     response = object.__new__(response_function)
     response.log = log
-    response.std_wavelength_to_abs_flux = lambda wave: np.full_like(
-        wave, 2.0e17, dtype=float
-    )
+    response.std_wavelength_to_abs_flux = lambda wave: np.full_like(wave, 2.0e17, dtype=float)
     response.std_objName = "SYNTHETIC_STAR"
     response.sofName = "SYNTHETIC"
     response.qcDir = str(tmp_path)
@@ -198,15 +188,9 @@ def test_get_writes_response_when_optional_efficiency_is_unavailable(
     wavelengths = np.array([900.0, 1000.0, 1100.0])
     response = object.__new__(response_function)
     response.log = log
-    response.stdExtractionDF = pd.DataFrame(
-        {"WAVE": wavelengths, "FLUX_COUNTS": np.full(3, 10.0)}
-    )
-    response.stdExtractionNotFlatDF = pd.DataFrame(
-        {"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(3, 10.0)}
-    )
-    response.stdAbsFluxDF = pd.DataFrame(
-        {"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(3, 2.0)}
-    )
+    response.stdExtractionDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_COUNTS": np.full(3, 10.0)})
+    response.stdExtractionNotFlatDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(3, 10.0)})
+    response.stdAbsFluxDF = pd.DataFrame({"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(3, 2.0)})
     response.std_objName = "SYNTHETIC_STAR"
     response.arm = "NIR"
     response.instrument = "soxs"
@@ -219,9 +203,7 @@ def test_get_writes_response_when_optional_efficiency_is_unavailable(
     response.products = pd.DataFrame()
     response.orderJoins = []
     captured: dict[str, object] = {}
-    response.write_response_function_to_file = lambda **kwargs: captured.update(
-        {"response_write": kwargs}
-    )
+    response.write_response_function_to_file = lambda **kwargs: captured.update({"response_write": kwargs})
     response.plot_response_curve = lambda **kwargs: captured.update({"plot": kwargs})
 
     qc, products, recipeError = response.get()
@@ -229,8 +211,6 @@ def test_get_writes_response_when_optional_efficiency_is_unavailable(
     assert recipeError is False
     assert qc.empty
     assert products.empty
-    np.testing.assert_allclose(
-        captured["response_write"]["responseFuncCoeffs"], [2.0e17]
-    )
+    np.testing.assert_allclose(captured["response_write"]["responseFuncCoeffs"], [2.0e17])
     assert captured["response_write"]["polyOrder"] == 0
     assert captured["plot"]["stdEfficiencyEstimate"] is None

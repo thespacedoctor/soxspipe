@@ -184,7 +184,6 @@ class flux_calibration:
         )
 
         if self.debug:
-
             from matplotlib import pyplot as plt
 
             plt.plot(self.extractedSpectrum["WAVE"], flux_calibration * 10**-17)

@@ -42,9 +42,7 @@ def _configure_synthetic_orchestration(
 
     import soxspipe.commonutils.toolkit as toolkit
 
-    transformerModule = importlib.import_module(
-        "soxspipe.commonutils.image_transformer"
-    )
+    transformerModule = importlib.import_module("soxspipe.commonutils.image_transformer")
     frame = CCDData(
         np.full((2, 3), 10.0),
         unit=u.electron,
@@ -153,9 +151,7 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Extract synthetic order slices while leaving product writing disabled."""
-    extractor, extraction, captured = _configure_synthetic_orchestration(
-        log, monkeypatch, products=False
-    )
+    extractor, extraction, captured = _configure_synthetic_orchestration(log, monkeypatch, products=False)
 
     qc, products, mergedSpectrum, joins, filePath = extractor.extract()
 
@@ -225,14 +221,8 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
         self.binx = 1
         self.biny = 1
         self.detectorParams = {"dispersion-axis": "x"}
-        self.imageMap = pd.DataFrame(
-            {"wavelength": [500.0, 0.0], "slit_position": [0.0, 0.0]}
-        )
-        self.twoDMap = {
-            "WAVELENGTH": CCDData(
-                np.ones((3, 3)), unit=u.nm, meta={"MJDOBS": 60310.5}
-            )
-        }
+        self.imageMap = pd.DataFrame({"wavelength": [500.0, 0.0], "slit_position": [0.0, 0.0]})
+        self.twoDMap = {"WAVELENGTH": CCDData(np.ones((3, 3)), unit=u.nm, meta={"MJDOBS": 60310.5})}
         self.kw = lambda name: name
         self.arm = "VIS"
         self.axisA = "x"
@@ -306,9 +296,7 @@ def test_constructor_names_products_without_a_sof_name(
     import soxspipe.commonutils.toolkit as toolkit
     from soxspipe.commonutils.base_util import base_util
 
-    extraction_module = importlib.import_module(
-        "soxspipe.commonutils.horne_extraction"
-    )
+    extraction_module = importlib.import_module("soxspipe.commonutils.horne_extraction")
 
     frame = CCDData(
         np.ones((3, 3)),
@@ -331,9 +319,7 @@ def test_constructor_names_products_without_a_sof_name(
         self.binx = 1
         self.biny = 1
         self.detectorParams = {"dispersion-axis": "x"}
-        self.imageMap = pd.DataFrame(
-            {"wavelength": [500.0], "slit_position": [0.0]}
-        )
+        self.imageMap = pd.DataFrame({"wavelength": [500.0], "slit_position": [0.0]})
 
     def name_frame(**kwargs: object) -> str:
         named_frames.append(kwargs["frame"])
@@ -378,9 +364,7 @@ def test_extract_writes_order_and_merged_product_contracts(
     """Write stable extracted-spectrum product metadata and an ASCII companion file."""
     import soxspipe.commonutils.phase3 as phase3
 
-    extractor, _, _ = _configure_synthetic_orchestration(
-        log, monkeypatch, products=product_table().iloc[0:0]
-    )
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
     extractor.filenameTemplate = "SYNTHETIC.fits"
     extractor.productDir = str(tmp_path)
     extractor.noddingSequence = ""
@@ -441,9 +425,7 @@ def test_plot_extracted_spectrum_qc_writes_pdf_and_product_record(
     assert result is None
     assert expectedPath.is_file()
     assert expectedPath.read_bytes().startswith(b"%PDF")
-    assert extractor.products["product_label"].tolist() == [
-        "EXTRACTED_ORDERS_QC_PLOT_AB"
-    ]
+    assert extractor.products["product_label"].tolist() == ["EXTRACTED_ORDERS_QC_PLOT_AB"]
     assert extractor.products.loc[0, "file_path"] == str(expectedPath)
 
 
@@ -491,12 +473,8 @@ def test_local_skylines_filters_wavelengths_and_projects_single_order(
 
     monkeypatch.setattr(commonutils, "dispersion_map_to_pixel_arrays", project_skylines)
 
-    allSkylines, allCalibration = extractor._get_local_skylines_for_order(
-        500.0, 501.0, "all", "wavelength"
-    )
-    orderSkylines, orderCalibration = extractor._get_local_skylines_for_order(
-        500.0, 501.0, 12, "fit_x"
-    )
+    allSkylines, allCalibration = extractor._get_local_skylines_for_order(500.0, 501.0, "all", "wavelength")
+    orderSkylines, orderCalibration = extractor._get_local_skylines_for_order(500.0, 501.0, 12, "fit_x")
 
     assert allSkylines.tolist() == [500.0, 501.0]
     assert allCalibration.tolist() == [501.0]
@@ -530,8 +508,8 @@ def test_sky_peak_detection_retains_original_flux_and_peak_coordinates(
     sky.iloc[10] = 20.0
     objectFlux = pd.Series(np.arange(21.0))
 
-    originalSky, normalisedSky, peaks, peakWavelengths, peakObjectFlux = (
-        extractor._detect_sky_peaks(wavelength, sky, objectFlux, sky.notna())
+    originalSky, normalisedSky, peaks, peakWavelengths, peakObjectFlux = extractor._detect_sky_peaks(
+        wavelength, sky, objectFlux, sky.notna()
     )
 
     np.testing.assert_allclose(originalSky, sky)
@@ -653,9 +631,7 @@ def test_wavelength_tuning_uses_order_four_shift_for_unmatched_vis_order(
         np.array([]),
         next(measuredShifts),
     )
-    extractor._record_order_shift_qc = lambda order, shift: recordedOrders.append(
-        (order, shift)
-    )
+    extractor._record_order_shift_qc = lambda order, shift: recordedOrders.append((order, shift))
 
     result = extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
 
@@ -697,9 +673,7 @@ def test_mask_generation_calculates_pixel_scale_and_propagates_bad_pixels() -> N
 
     resultSlices, resultImages = generate_masks(slices, images)
 
-    np.testing.assert_allclose(
-        resultSlices["pixelScaleNm"], [np.nan, 1.0, np.nan], equal_nan=True
-    )
+    np.testing.assert_allclose(resultSlices["pixelScaleNm"], [np.nan, 1.0, np.nan], equal_nan=True)
     assert resultImages["mask"].tolist() == [
         [False, True, False],
         [False, False, False],
@@ -710,9 +684,7 @@ def test_mask_generation_calculates_pixel_scale_and_propagates_bad_pixels() -> N
 def test_profile_fitting_normalises_a_symmetric_slit_profile() -> None:
     slices = pd.DataFrame(index=range(5))
     images = {
-        "fluxRaw": np.array(
-            [[1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]]
-        ),
+        "fluxRaw": np.array([[1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]]),
         "mask": np.zeros((2, 5), dtype=bool),
     }
 
@@ -981,13 +953,9 @@ def test_single_order_extraction_returns_sorted_science_columns(log: object) -> 
     slices = pd.DataFrame({"order": [10] * 5})
     images = {
         "bpMask": np.zeros((2, 5), dtype=bool),
-        "fluxRaw": np.array(
-            [[1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]]
-        ),
+        "fluxRaw": np.array([[1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]]),
         "variance": np.ones((2, 5)),
-        "wavelength": np.array(
-            [[504.0, 503.0, 502.0, 501.0, 500.0], [504.0, 503.0, 502.0, 501.0, 500.0]]
-        ),
+        "wavelength": np.array([[504.0, 503.0, 502.0, 501.0, 500.0], [504.0, 503.0, 502.0, 501.0, 500.0]]),
     }
 
     result = extract_single_order(

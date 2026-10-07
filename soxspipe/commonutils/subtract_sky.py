@@ -313,19 +313,21 @@ class subtract_sky:
                     self.products = pd.concat(
                         [
                             self.products,
-                            pd.DataFrame([
-                                {
-                                    "soxspipe_recipe": "soxs-stare",
-                                    "product_label": "SKY_MODEL_QC_PLOTS",
-                                    "file_name": basename,
-                                    "file_type": "PDF",
-                                    "obs_date_utc": self.dateObs,
-                                    "reduction_date_utc": utcnow,
-                                    "product_desc": "QC plots for the sky-background modelling",
-                                    "file_path": qc_plot_path,
-                                    "label": "QC",
-                                }
-                            ]),
+                            pd.DataFrame(
+                                [
+                                    {
+                                        "soxspipe_recipe": "soxs-stare",
+                                        "product_label": "SKY_MODEL_QC_PLOTS",
+                                        "file_name": basename,
+                                        "file_type": "PDF",
+                                        "obs_date_utc": self.dateObs,
+                                        "reduction_date_utc": utcnow,
+                                        "product_desc": "QC plots for the sky-background modelling",
+                                        "file_path": qc_plot_path,
+                                        "label": "QC",
+                                    }
+                                ]
+                            ),
                         ],
                         ignore_index=True,
                     )
@@ -343,19 +345,21 @@ class subtract_sky:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": "soxs-stare",
-                            "product_label": "SKY SUBTRACTION QUICKLOOK",
-                            "file_name": filename,
-                            "file_type": "PDF",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": "Sky-subtraction quicklook",
-                            "file_path": comparisonPdf,
-                            "label": "QC",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": "soxs-stare",
+                                "product_label": "SKY SUBTRACTION QUICKLOOK",
+                                "file_name": filename,
+                                "file_type": "PDF",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "product_desc": "Sky-subtraction quicklook",
+                                "file_path": comparisonPdf,
+                                "label": "QC",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -389,7 +393,6 @@ class subtract_sky:
         ```
         """
         self.log.debug("starting the ``get_over_sampled_sky_from_order`` method")
-
 
         # COLLECT SETTINGS
         percentile_clipping_sigma = self.recipeSettings["sky-subtraction"]["percentile_clipping_sigma"]
@@ -693,7 +696,6 @@ class subtract_sky:
 
         if np.isnan(median):
             median = 0
-
 
         threerow.set_ylim(median - 3 * std, median + 7 * std)
         threerow.set_xlabel("slit-position relative to slit centre (arcsec)", fontsize=10)
@@ -1124,7 +1126,6 @@ class subtract_sky:
                     percent = (float(totalClipped) / float(allPixels)) * 100.0
 
                     if percent < 5:
-
                         if imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"].mean() > 2500:
                             self.log.warning(
                                 "OBJECT IS LIKELY VERY BRIGHT - STOPPING SKY-SUBTRACTION TO AVOID CLIPPING TOO MANY PIXELS"
@@ -1393,7 +1394,6 @@ class subtract_sky:
                 print("total knot count", len(allKnots), iterationCount)
 
             if slitCorrectIterations < slitCorrectIterationLimit:
-
                 # SLIT CORRECT ACTUALLY HELPS
                 if iterationCount == slitIlluminationCorrectionIteration and False:
                     # FIT SLIT-ILLUMINATION PROFILE
@@ -1473,7 +1473,6 @@ class subtract_sky:
             extraKnots = np.setdiff1d(np.unique(extraKnots[np.isfinite(extraKnots)]), droppedKnots)
 
             try:
-
                 tck, fp, ier, msg = ip.splrep(
                     goodWl,
                     goodFlux,
@@ -2423,7 +2422,6 @@ class subtract_sky:
         noise_rolling_window_size = self.recipeSettings["sky-subtraction"]["noise_rolling_window_size"]
 
         if aggressive:
-
             # BIN FLAGGED PIXEL COUNTS INTO DISCRETE SLIT-POSITION RANGES
             nbins = 100
             minsp = allimageMapOrder["slit_position"].min()
@@ -2455,7 +2453,6 @@ class subtract_sky:
         for df in order_dataframes:
             if aggressive:
                 for objectt in object_ranges:
-
                     df.loc[
                         (df["slit_position"].between(objectt[0], objectt[1])),
                         "flagged_all_clipped",
@@ -2569,7 +2566,6 @@ class subtract_sky:
         starterPointsPerKnot = 500
 
         if self.binx > 1:
-
             starterPointsPerKnot /= self.binx
         if self.biny > 1:
             starterPointsPerKnot /= self.biny
@@ -2938,9 +2934,7 @@ class subtract_sky:
 
         # PLOT SKY LINES AS VERTICAL LINES ON SKY PANEL
         mask = skylinesDF["ISOLATED"] == True
-        calibrationSkylines = (
-            pd.to_numeric(skylinesDF.loc[mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
-        )
+        calibrationSkylines = pd.to_numeric(skylinesDF.loc[mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
         otherSkylines = pd.to_numeric(skylinesDF.loc[~mask, "WAVELENGTH"], errors="coerce").dropna().to_numpy()
 
         for ww in calibrationSkylines:
@@ -3183,7 +3177,6 @@ class subtract_sky:
 
         # NOISY DATA REGION
         if True:
-
             ax.scatter(
                 imageMapOrder.loc[(mask_noisy), "wavelength"].values,
                 imageMapOrder.loc[(mask_noisy), "flux"].values,

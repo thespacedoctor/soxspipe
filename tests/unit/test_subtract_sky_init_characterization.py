@@ -114,9 +114,7 @@ def test_a_nir_jh_frame_keeps_orders_above_12_swaps_axes_and_names_from_the_head
     ]
 
 
-def test_a_vis_frame_without_binning_keywords_defaults_to_unbinned(
-    log: Any, collaborators: dict[str, list]
-) -> None:
+def test_a_vis_frame_without_binning_keywords_defaults_to_unbinned(log: Any, collaborators: dict[str, list]) -> None:
     """Without `ESO DET BINX` the binning falls back to 1x1 and every order is kept."""
     header = instrument_header(arm="VIS", overrides={"ESO INS VISE NAME": "SLIT1.0"})
     frame = CCDData(np.ones((3, 3)), unit=u.electron, meta=header)

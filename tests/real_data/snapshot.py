@@ -84,11 +84,7 @@ def _is_root_directory_metadata(member: zipfile.ZipInfo) -> bool:
     if member.filename != "/":
         return False
     mode = member.external_attr >> 16
-    if (
-        member.file_size != 0
-        or not member.is_dir()
-        or stat.S_IFMT(mode) == stat.S_IFLNK
-    ):
+    if member.file_size != 0 or not member.is_dir() or stat.S_IFMT(mode) == stat.S_IFLNK:
         raise ValueError("invalid root directory metadata entry")
     return True
 

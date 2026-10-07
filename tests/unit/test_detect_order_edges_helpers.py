@@ -83,9 +83,7 @@ def test_flux_threshold_leaves_order_unchanged_when_slice_is_out_of_bounds(
         lambda **kwargs: (None, None, None),
     )
     order = pd.Series({"order": 10})
-    pixels = pd.DataFrame(
-        {"order": [10], "xcoord_centre": [1.0], "ycoord": [2.0]}
-    )
+    pixels = pd.DataFrame({"order": [10], "xcoord_centre": [1.0], "ycoord": [2.0]})
 
     result = detector.determine_order_flux_threshold(order, pixels)
 
@@ -103,9 +101,7 @@ def test_edge_positions_interpolate_threshold_crossings(
         "cut_image_slice",
         lambda **kwargs: (crossSection, 0, 0),
     )
-    order = pd.Series(
-        {"order": 10, "xcoord_centre": 50.0, "ycoord": 30.0}
-    )
+    order = pd.Series({"order": 10, "xcoord_centre": 50.0, "ycoord": 30.0})
 
     result = detector.determine_lower_upper_edge_pixel_positions(order)
 

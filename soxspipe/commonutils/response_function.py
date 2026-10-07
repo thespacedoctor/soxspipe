@@ -39,9 +39,7 @@ def _fit_response_polynomial(
     fittedWavelength = np.asarray(wavelength).copy()
     fittedResponse = np.asarray(rawResponse).copy()
     for lowerBound, upperBound in excludedRegions:
-        excluded = np.where(
-            (fittedWavelength >= lowerBound) & (fittedWavelength <= upperBound)
-        )[0]
+        excluded = np.where((fittedWavelength >= lowerBound) & (fittedWavelength <= upperBound))[0]
         fittedWavelength = np.delete(fittedWavelength, excluded)
         fittedResponse = np.delete(fittedResponse, excluded)
 
@@ -74,11 +72,8 @@ def _fit_response_polynomial(
             modelResponse = np.polyval(responseCoefficients, fittedWavelength)
             deletedPoints = [
                 index
-                for index, (responseValue, modelValue) in enumerate(
-                    zip(fittedResponse, modelResponse)
-                )
-                if responseValue < 0
-                or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
+                for index, (responseValue, modelValue) in enumerate(zip(fittedResponse, modelResponse, strict=True))
+                if responseValue < 0 or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
             ]
             fittedWavelength = np.delete(fittedWavelength, deletedPoints)
             fittedResponse = np.delete(fittedResponse, deletedPoints)
@@ -183,10 +178,6 @@ class response_function:
 
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
-        
-
-        
-
         # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
         stdAbsFluxDF = Table.read(
             self.calibrationRootPath + "/" + self.detectorParams["flux-standards"],
@@ -209,10 +200,10 @@ class response_function:
             if ii in self.header:
                 self.std_objName += self.header[ii].strip().upper().replace(" ", "").replace("-", "").replace("_", "")
 
-        for k,v in stdAkas.items():
+        for k, v in stdAkas.items():
             if v in self.std_objName:
                 self.std_objName = k
-                break   
+                break
 
         for ii in self.stdAbsFluxDF.columns:
             if ii in self.std_objName:
@@ -234,7 +225,6 @@ class response_function:
             airmass_start = float(self.header[kw("AIRM_START")])
             airmass_end = float(self.header[kw("AIRM_END")])
         self.airmass = (airmass_start + airmass_end) / 2
-        
 
         from soxspipe.commonutils.toolkit import utility_setup
 
@@ -273,10 +263,12 @@ class response_function:
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF["FLUX_DENSITY_COUNTS"].values
 
         if self.std_objName not in self.stdAbsFluxDF.columns:
-            self.log.error(
-                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
-            )            
-            raise LookupError(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}")
+            message = (
+                f"Standard star {self.std_objName} not found in the static calibration database. "
+                f"The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
+            )
+            self.log.error(message)
+            raise LookupError(message)
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
         stdAbsFluxDF = self.stdAbsFluxDF
@@ -469,19 +461,21 @@ class response_function:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": "EFFICIENCY",
-                            "file_name": filename,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": "SOXS efficiency estimate",
-                            "file_path": filepath,
-                            "label": "QC",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "product_label": "EFFICIENCY",
+                                "file_name": filename,
+                                "file_type": "FITS",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "product_desc": "SOXS efficiency estimate",
+                                "file_path": filepath,
+                                "label": "QC",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -637,19 +631,21 @@ class response_function:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "RESPONSE_QC_PLOT",
-                        "file_name": plotFilename,
-                        "file_type": "PDF",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": "Response curve QC plot.",
-                        "file_path": plotFilePath,
-                        "label": "QC",
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": "RESPONSE_QC_PLOT",
+                            "file_name": plotFilename,
+                            "file_type": "PDF",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "product_desc": "Response curve QC plot.",
+                            "file_path": plotFilePath,
+                            "label": "QC",
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -726,19 +722,21 @@ class response_function:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "RESPONSE_FUNC",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": "Response function coeffs.",
-                        "file_path": filePath,
-                        "label": "PROD",
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": "RESPONSE_FUNC",
+                            "file_name": filename,
+                            "file_type": "FITS",
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "product_desc": "Response function coeffs.",
+                            "file_path": filePath,
+                            "label": "PROD",
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )

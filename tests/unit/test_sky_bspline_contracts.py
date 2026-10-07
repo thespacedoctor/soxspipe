@@ -65,9 +65,7 @@ def test_fit_bspline_curve_models_constant_sky_for_both_weighting_paths(
     """A flat analytic sky remains flat after the public fitting workflow."""
     subtractor = _subtractor(log, arm=arm)
 
-    modelled, spline, knots, fluxErrorRatio, residualFloor = (
-        subtractor.fit_bspline_curve_to_sky(_constant_sky_pixels())
-    )
+    modelled, spline, knots, fluxErrorRatio, residualFloor = subtractor.fit_bspline_curve_to_sky(_constant_sky_pixels())
 
     assert spline[2] == 1
     assert knots.size == 0
@@ -111,9 +109,7 @@ def test_fit_bspline_curve_excludes_nan_flux_from_model_quality_metrics(
     """Invalid flux is clipped while the remaining analytic sky is modelled."""
     subtractor = _subtractor(log, arm="VIS")
 
-    modelled, _, _, fluxErrorRatio, _ = subtractor.fit_bspline_curve_to_sky(
-        _constant_sky_pixels(include_nan_flux=True)
-    )
+    modelled, _, _, fluxErrorRatio, _ = subtractor.fit_bspline_curve_to_sky(_constant_sky_pixels(include_nan_flux=True))
 
     assert modelled.iloc[-1]["flagged_all_clipped"]
     assert modelled.iloc[-1]["sky_model"] == pytest.approx(12.0)

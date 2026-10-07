@@ -200,9 +200,7 @@ def test_update_static_line_list_projects_each_unique_line_at_each_slit_position
     )
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
 
-    def project_lines(
-        *, orderPixelTable: pd.DataFrame, **_: object
-    ) -> pd.DataFrame:
+    def project_lines(*, orderPixelTable: pd.DataFrame, **_: object) -> pd.DataFrame:
         return orderPixelTable.assign(
             fit_x=orderPixelTable["order"] * 10 + orderPixelTable["slit_index"],
             fit_y=orderPixelTable["wavelength"] + orderPixelTable["slit_position"],
@@ -317,9 +315,7 @@ def test_write_map_to_file_serializes_per_axis_coefficients_and_metadata(
     )()
     mapper.productDir = "/products"
     mapper.settings = {}
-    mapper.qc = pd.DataFrame(
-        columns=["qc_name", "qc_value", "qc_unit", "qc_comment"]
-    )
+    mapper.qc = pd.DataFrame(columns=["qc_name", "qc_value", "qc_unit", "qc_comment"])
     phase3Module = importlib.import_module("soxspipe.commonutils.phase3")
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -392,7 +388,9 @@ def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
     optimiseModule = importlib.import_module("scipy.optimize")
     monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
-    monkeypatch.setattr(optimiseModule, "curve_fit", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("fit failed")))
+    monkeypatch.setattr(
+        optimiseModule, "curve_fit", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("fit failed"))
+    )
 
     result = mapper.fit_polynomials(
         _synthetic_fitted_lines(),
@@ -449,10 +447,15 @@ def test_fit_polynomials_retains_dropped_lines_and_runs_final_qc_fit(
     def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
         qcCalls.append(bool(kwargs["writeQCs"]))
         table = kwargs["orderPixelTable"].copy()
-        return 0.0, 0.0, 0.0, table.assign(
-            residuals_x=0.0,
-            residuals_y=0.0,
-            residuals_xy=0.0,
+        return (
+            0.0,
+            0.0,
+            0.0,
+            table.assign(
+                residuals_x=0.0,
+                residuals_y=0.0,
+                residuals_xy=0.0,
+            ),
         )
 
     mapper.calculate_residuals = calculate_residuals
@@ -884,9 +887,7 @@ def test_predicted_line_list_loads_cleans_and_selects_the_mid_slit(
     mapper.firstGuessMap = False
     mapper.settings = {"instrument": "soxs"}
     mapper.kw = lambda name: name
-    mapper.pinholeFrame = SimpleNamespace(
-        header={"DPR_TECH": "ECHELLE,PINHOLE", "WIN_BINX": 1, "WIN_BINY": 1}
-    )
+    mapper.pinholeFrame = SimpleNamespace(header={"DPR_TECH": "ECHELLE,PINHOLE", "WIN_BINX": 1, "WIN_BINY": 1})
     mapper.detectorParams = {
         "mid_slit_index": 1,
         "science-pixels": {
@@ -995,9 +996,7 @@ def test_qc_plot_writes_single_pinhole_residual_product(
     mapper.products = pd.DataFrame()
     mapper.recipeName = "soxs-disp-solution"
     mapper.dateObs = "2025-01-01T00:00:00"
-    mapper.qc = pd.DataFrame(
-        columns=["qc_name", "qc_value", "qc_unit", "qc_comment"]
-    )
+    mapper.qc = pd.DataFrame(columns=["qc_name", "qc_value", "qc_unit", "qc_comment"])
     mapper.recipeSettings = {"sample_setting": 1}
     mapper.exptime = 1.0
     mapper.settings = {"tune-pipeline": False}
@@ -1167,9 +1166,7 @@ def test_qc_plot_with_an_arc_frame_measures_slit_geometry(
         unit=u.adu,
         mask=np.zeros((6, 12), dtype=bool),
     )
-    mapper.arcFrame = CCDData(
-        np.ones((6, 12)), unit=u.adu, meta={"SLIT_VIS": "SLIT0.5x11"}
-    )
+    mapper.arcFrame = CCDData(np.ones((6, 12)), unit=u.adu, meta={"SLIT_VIS": "SLIT0.5x11"})
     mapper.firstGuessMap = False
     mapper.debug = False
     mapper.axisA = "x"
@@ -1182,9 +1179,7 @@ def test_qc_plot_with_an_arc_frame_measures_slit_geometry(
     mapper.products = pd.DataFrame()
     mapper.recipeName = "soxs-disp-solution"
     mapper.dateObs = "2025-01-01T00:00:00"
-    mapper.qc = pd.DataFrame(
-        columns=["qc_name", "qc_value", "qc_unit", "qc_comment"]
-    )
+    mapper.qc = pd.DataFrame(columns=["qc_name", "qc_value", "qc_unit", "qc_comment"])
     mapper.recipeSettings = {"sample_setting": 1}
     mapper.exptime = 1.0
     mapper.settings = {"tune-pipeline": False}

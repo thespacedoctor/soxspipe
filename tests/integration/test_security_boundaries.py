@@ -18,9 +18,7 @@ from tests.factories import workspace_organiser
 pytestmark = pytest.mark.integration
 
 
-@pytest.mark.parametrize(
-    "sessionId", ["../escape", "nested/session", "x" * 17, "my-session"]
-)
+@pytest.mark.parametrize("sessionId", ["../escape", "nested/session", "x" * 17, "my-session"])
 def test_session_create_rejects_invalid_identifier_before_writing(
     tmp_path: Path,
     log: object,
@@ -111,9 +109,7 @@ def test_constructor_rejects_workspace_asset_symlink_outside_workspace(
         outsidePath.mkdir()
     else:
         sqlite3.connect(outsidePath).close()
-    (workspacePath / workspaceName).symlink_to(
-        outsidePath, target_is_directory=targetIsDirectory
-    )
+    (workspacePath / workspaceName).symlink_to(outsidePath, target_is_directory=targetIsDirectory)
 
     with pytest.raises(_UnsafePathError, match=label):
         data_organiser(log=log, rootDir=str(workspacePath), dbConnect=False)
@@ -151,9 +147,9 @@ def test_sof_writer_rejects_non_leaf_output_names(
     organiser.sessionPath = str(Path(organiser.sessionsDir) / "base")
     Path(organiser.sessionPath).mkdir()
     organiser.conn = sqlite3.connect(":memory:")
-    pd.DataFrame(
-        [{"sof": sofName, "filepath": "./raw/a.fits", "tag": "BIAS_VIS", "complete": 1}]
-    ).to_sql("sof_map_base", organiser.conn, index=False)
+    pd.DataFrame([{"sof": sofName, "filepath": "./raw/a.fits", "tag": "BIAS_VIS", "complete": 1}]).to_sql(
+        "sof_map_base", organiser.conn, index=False
+    )
 
     with pytest.raises(_UnsafePathError, match="SOF filename"):
         organiser._write_sof_files()
@@ -229,9 +225,7 @@ def test_sof_writer_rejects_directory_symlink_outside_session(
     Path(organiser.sessionPath).mkdir()
     outsidePath = tmp_path / "outside-sofs"
     outsidePath.mkdir()
-    (Path(organiser.sessionPath) / "sof").symlink_to(
-        outsidePath, target_is_directory=True
-    )
+    (Path(organiser.sessionPath) / "sof").symlink_to(outsidePath, target_is_directory=True)
     organiser.conn = sqlite3.connect(":memory:")
     pd.DataFrame(
         [

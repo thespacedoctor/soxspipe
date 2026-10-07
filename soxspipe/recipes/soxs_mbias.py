@@ -258,9 +258,7 @@ class soxs_mbias(base_recipe):
 
         # OPTIMISE: 33%
         # `strict=False` IS THE CURRENT BEHAVIOUR MADE EXPLICIT, NOT A CHANGE
-        meanBiasLevels, rons, noiseFrames = zip(
-            *[self.subtract_mean_flux_level(c) for c in ccds], strict=False
-        )
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds], strict=False)
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)

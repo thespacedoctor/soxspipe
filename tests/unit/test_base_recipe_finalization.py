@@ -83,9 +83,7 @@ def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     result = recipe.clean_up()
 
     assert result is None
-    assert connection.statements == [
-        "update product_frames set status_20240102 = 'pass' where sof = ?"
-    ]
+    assert connection.statements == ["update product_frames set status_20240102 = 'pass' where sof = ?"]
     assert connection.params == [("synthetic.sof",)]
     assert connection.cursors[0].wasClosed
     assert connection.wasClosed
@@ -151,9 +149,7 @@ def test_clean_up_records_an_explicit_failure_reason(log: Any, tmp_path: Path) -
 
     recipe.clean_up(forceFail="synthetic calibration mismatch")
 
-    assert connection.statements == [
-        "update product_frames set error_message = ? where sof = ?"
-    ]
+    assert connection.statements == ["update product_frames set error_message = ? where sof = ?"]
     assert connection.params == [("synthetic calibration mismatch", "synthetic.sof")]
     assert connection.wasClosed
     assert not Path(recipe.outDir).exists()
@@ -219,9 +215,7 @@ def test_constructor_initializes_a_sof_recipe_in_an_isolated_workspace(
     assert recipe.qc.empty
     assert recipe.products.empty
     assert recipe.kw("INSTRUME") == "INSTRUME"
-    assert organiserCalls == [
-        {"log": log, "rootDir": str(tmp_path), "dbConnect": False}
-    ]
+    assert organiserCalls == [{"log": log, "rootDir": str(tmp_path), "dbConnect": False}]
 
 
 def test_input_frame_validation_records_consistent_vis_detector_metadata(

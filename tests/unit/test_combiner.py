@@ -30,9 +30,7 @@ def test_average_combine_returns_nan_ignoring_mean_per_pixel() -> None:
     combined = _stack().average_combine()
 
     expected = np.array([[3.0, 4.0], [NAN, 6.0]])
-    np.testing.assert_allclose(
-        combined.data, expected, rtol=STACK_RTOL, atol=0, equal_nan=True
-    )
+    np.testing.assert_allclose(combined.data, expected, rtol=STACK_RTOL, atol=0, equal_nan=True)
 
 
 def test_average_combine_masks_only_pixels_blank_in_every_frame() -> None:

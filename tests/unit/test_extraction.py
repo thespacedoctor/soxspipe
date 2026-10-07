@@ -38,25 +38,17 @@ def test_compute_extractions_recovers_a_known_profile_and_sorts_wavelengths() ->
     result = compute_extractions(slices, orderImages, order=12)
 
     np.testing.assert_array_equal(result["wavelengthMean"], [501.0, 502.0, 503.0])
-    np.testing.assert_allclose(
-        result["extractedFluxOptimal"], [80.0, 60.0, 40.0], rtol=1e-12, atol=1e-12
-    )
-    np.testing.assert_allclose(
-        result["extractedFluxBoxcar"], [80.0, 60.0, 40.0], rtol=1e-12, atol=1e-12
-    )
+    np.testing.assert_allclose(result["extractedFluxOptimal"], [80.0, 60.0, 40.0], rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(result["extractedFluxBoxcar"], [80.0, 60.0, 40.0], rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(
         result["extractedFluxBoxcarRobust"],
         [60.0, 60.0, 40.0],
         rtol=1e-12,
         atol=1e-12,
     )
-    np.testing.assert_allclose(
-        result["skyFlux"], [2.0, 4.0, 1.0], rtol=1e-12, atol=1e-12
-    )
+    np.testing.assert_allclose(result["skyFlux"], [2.0, 4.0, 1.0], rtol=1e-12, atol=1e-12)
     expectedVariance = np.array([12.8, 32.0 / 3.0, 32.0 / 3.0])
-    np.testing.assert_allclose(
-        result["varianceSpectrum"], expectedVariance, rtol=1e-12, atol=1e-12
-    )
+    np.testing.assert_allclose(result["varianceSpectrum"], expectedVariance, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(
         result["snr"],
         result["extractedFluxOptimal"] / np.sqrt(expectedVariance),

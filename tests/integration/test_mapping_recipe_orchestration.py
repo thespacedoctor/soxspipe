@@ -111,9 +111,7 @@ def test_dispersion_solution_produce_product_calibrates_maps_and_reports(
     recipe.inputFrames = RoutedFrameCollection(
         filePathsByFilters={
             _route(PRO_CATG="MASTER_BIAS_VIS"): (str(biasPath),),
-            _route(DPR_TYPE="LAMP,WAVE", DPR_TECH="ECHELLE,PINHOLE"): (
-                str(pinholePath),
-            ),
+            _route(DPR_TYPE="LAMP,WAVE", DPR_TECH="ECHELLE,PINHOLE"): (str(pinholePath),),
         }
     )
     recipe.recipeName = "soxs-disp-solution"
@@ -214,9 +212,7 @@ def test_order_centres_produce_product_preserves_qc_and_records_order_table(
     inputFrames = RoutedFrameCollection(
         filePathsByFilters={
             _route(PRO_CATG="MASTER_BIAS_VIS"): (str(masterBiasPath),),
-            _route(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,PINHOLE"): (
-                str(orderFramePath),
-            ),
+            _route(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,PINHOLE"): (str(orderFramePath),),
             _route(PRO_CATG="DISP_TAB_VIS"): (str(dispersionPath),),
         }
     )
@@ -333,9 +329,7 @@ def test_spatial_solution_produce_product_preserves_qc_and_records_maps(
         filePathsByFilters={
             _route(PRO_CATG="MASTER_BIAS_VIS"): (str(masterBiasPath),),
             _route(PRO_CATG="MASTER_FLAT_VIS"): (str(masterFlatPath),),
-            _route(DPR_TYPE="WAVE,LAMP", DPR_TECH="ECHELLE,MULTI-PINHOLE"): (
-                str(pinholePath),
-            ),
+            _route(DPR_TYPE="WAVE,LAMP", DPR_TECH="ECHELLE,MULTI-PINHOLE"): (str(pinholePath),),
             _route(PRO_CATG="ORDER_TAB_VIS"): (str(orderTablePath),),
             _route(PRO_CATG="DISP_TAB_VIS"): (str(dispersionPath),),
         }

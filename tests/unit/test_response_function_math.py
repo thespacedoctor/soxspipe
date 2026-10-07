@@ -38,10 +38,7 @@ def _legacy_fit_response_polynomial(
             ]
         )
         sampledResponse = np.array(
-            [
-                np.median(fittedResponse[max(0, index - 5) : index + 6])
-                for index in range(0, len(fittedResponse), 100)
-            ]
+            [np.median(fittedResponse[max(0, index - 5) : index + 6]) for index in range(0, len(fittedResponse), 100)]
         )
         coefficients = np.polyfit(
             sampledWavelength,
@@ -51,11 +48,8 @@ def _legacy_fit_response_polynomial(
         modelResponse = np.polyval(coefficients, fittedWavelength)
         deletedPoints = [
             index
-            for index, (responseValue, modelValue) in enumerate(
-                zip(fittedResponse, modelResponse)
-            )
-            if responseValue < 0
-            or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
+            for index, (responseValue, modelValue) in enumerate(zip(fittedResponse, modelResponse, strict=True))
+            if responseValue < 0 or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
         ]
         fittedWavelength = np.delete(fittedWavelength, deletedPoints)
         fittedResponse = np.delete(fittedResponse, deletedPoints)
@@ -146,9 +140,7 @@ def test_response_fit_smooths_a_constant_nir_response() -> None:
     np.testing.assert_allclose(fittedResponse, rawResponse, rtol=1e-14, atol=1e-14)
 
 
-def test_response_fit_preserves_native_preprocessing_and_zero_iteration_errors() -> (
-    None
-):
+def test_response_fit_preserves_native_preprocessing_and_zero_iteration_errors() -> None:
     wavelengths = np.array([500.0, 600.0])
     rawResponse = np.array([5.0, 6.0])
 
@@ -186,9 +178,7 @@ def test_response_get_rejects_an_unknown_standard_star(log: object) -> None:
     response = object.__new__(response_function)
     response.log = log
     response.stdExtractionDF = pd.DataFrame({"WAVE": [500.0], "FLUX_COUNTS": [10.0]})
-    response.stdExtractionNotFlatDF = pd.DataFrame(
-        {"WAVE": [500.0], "FLUX_DENSITY_COUNTS": [10.0]}
-    )
+    response.stdExtractionNotFlatDF = pd.DataFrame({"WAVE": [500.0], "FLUX_DENSITY_COUNTS": [10.0]})
     response.stdAbsFluxDF = pd.DataFrame({"WAVE": [500.0], "KNOWN_STAR": [1.0]})
     response.std_objName = "UNKNOWN_STAR"
 
@@ -206,15 +196,9 @@ def test_response_get_writes_response_and_efficiency_products(
     wavelengths = np.linspace(500.0, 520.0, 21)
     response = object.__new__(response_function)
     response.log = log
-    response.stdExtractionDF = pd.DataFrame(
-        {"WAVE": wavelengths, "FLUX_COUNTS": np.full(21, 10.0)}
-    )
-    response.stdExtractionNotFlatDF = pd.DataFrame(
-        {"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(21, 10.0)}
-    )
-    response.stdAbsFluxDF = pd.DataFrame(
-        {"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(21, 2.0)}
-    )
+    response.stdExtractionDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_COUNTS": np.full(21, 10.0)})
+    response.stdExtractionNotFlatDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(21, 10.0)})
+    response.stdAbsFluxDF = pd.DataFrame({"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(21, 2.0)})
     response.std_objName = "SYNTHETIC_STAR"
     response.arm = "VIS"
     response.instrument = "soxs"
@@ -250,9 +234,7 @@ def test_response_get_writes_response_and_efficiency_products(
         "write_fits_table_to_disk",
         lambda **kwargs: captured.update({"efficiencyWrite": kwargs}),
     )
-    response.write_response_function_to_file = lambda **kwargs: captured.update(
-        {"responseWrite": kwargs}
-    )
+    response.write_response_function_to_file = lambda **kwargs: captured.update({"responseWrite": kwargs})
     response.plot_response_curve = lambda **kwargs: captured.update({"plot": kwargs})
 
     qc, products, recipeError = response.get()
