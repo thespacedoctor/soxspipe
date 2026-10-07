@@ -55,6 +55,19 @@ def _recipe(log: object) -> soxs_mflat:
     return recipe
 
 
+def _stitch_lamps(*, dEdges: np.ndarray | None, qEdges: np.ndarray | None) -> dict[str, Any]:
+    """Return the plain, D and QTH lamp products a UV stitch reads, with the D-lamp order table at `centres.fits`."""
+    return {
+        "": mflatModule.lamp_products(orderTablePath="unused.fits", masterFlat=_frame(np.zeros((4, 6)))),
+        "_DLAMP": mflatModule.lamp_products(
+            orderTablePath="centres.fits", masterFlat=_frame(np.full((4, 6), 2.0)), orderEdgeMask=dEdges
+        ),
+        "_QLAMP": mflatModule.lamp_products(
+            orderTablePath="unused.fits", masterFlat=_frame(np.full((4, 6), 10.0)), orderEdgeMask=qEdges
+        ),
+    }
+
+
 def _centre_pixels() -> pd.DataFrame:
     """Return a five-row vertical order-centre trace."""
     return pd.DataFrame({"xcoord_centre": [2] * 5, "ycoord": range(5)})
@@ -315,13 +328,7 @@ def test_stitch_uv_mflats_scales_d_lamp_and_uses_the_selected_order_edge(
     recipe.startNightDate = "2024-01-01"
     recipe.binRatioX = 1
     recipe.binRatioY = 1
-    recipe.orderTableSet = ["unused.fits", "centres.fits"]
-    recipe.masterFlatSet = [
-        _frame(np.zeros((4, 6))),
-        _frame(np.full((4, 6), 2.0)),
-        _frame(np.full((4, 6), 10.0)),
-    ]
-    recipe.orderEdgeMaskSet = [None, None, None]
+    recipe.lampProducts = _stitch_lamps(dEdges=None, qEdges=None)
     edgePixels = pd.DataFrame({"order": [11], "xcoord_edgeup": [1], "ycoord": [1]})
     monkeypatch.setattr(
         mflatModule,
@@ -368,12 +375,6 @@ def test_stitch_uv_mflats_stitches_the_lamp_edge_masks_and_keeps_the_final_edge_
     recipe.startNightDate = "2024-01-01"
     recipe.binRatioX = 1
     recipe.binRatioY = 1
-    recipe.orderTableSet = ["unused.fits", "centres.fits"]
-    recipe.masterFlatSet = [
-        _frame(np.zeros((4, 6))),
-        _frame(np.full((4, 6), 2.0)),
-        _frame(np.full((4, 6), 10.0)),
-    ]
     dEdges = np.zeros((4, 6), dtype=bool)
     dEdges[1, 0] = True
     dEdges[1, 5] = True
@@ -381,7 +382,7 @@ def test_stitch_uv_mflats_stitches_the_lamp_edge_masks_and_keeps_the_final_edge_
     qEdges[1, 1] = True
     qEdges[1, 5] = True
     qEdges[2, 3] = True
-    recipe.orderEdgeMaskSet = [None, dEdges, qEdges]
+    recipe.lampProducts = _stitch_lamps(dEdges=dEdges, qEdges=qEdges)
     finalEdges = np.zeros((4, 6), dtype=bool)
     finalEdges[3, 3] = True
     edgePixels = pd.DataFrame({"order": [11], "xcoord_edgeup": [1], "ycoord": [1]})
@@ -429,3 +430,29 @@ def test_stitch_uv_mflats_stitches_the_lamp_edge_masks_and_keeps_the_final_edge_
     edgeRows = recipe.qc.loc[recipe.qc["qc_name"] == "N ORDER EDGE"]
     assert len(edgeRows) == 1
     assert edgeRows["qc_value"].iloc[0] == float(expected.sum())
+
+
+@pytest.mark.parametrize(
+    ("presentTag", "missingLampName"),
+    [("_QLAMP", "D-lamp"), ("_DLAMP", "QTH-lamp")],
+)
+def test_stitch_uv_mflats_names_the_missing_lamp(
+    log: object,
+    presentTag: str,
+    missingLampName: str,
+) -> None:
+    """Asking for a stitch without the D or the QTH lamp raises an error naming that lamp, not a failure on None."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.lampProducts = {
+        presentTag: mflatModule.lamp_products(
+            orderTablePath="orders.fits",
+            masterFlat=_frame(np.full((4, 6), 2.0)),
+            orderEdgeMask=None,
+        )
+    }
+    orderFluxes = pd.DataFrame({"order": [10, 11], "_QLAMP": [10.0, 5.0], "_DLAMP": [9.0, 10.0]})
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=missingLampName):
+        recipe.stitch_uv_mflats(orderFluxes, "original.fits")
