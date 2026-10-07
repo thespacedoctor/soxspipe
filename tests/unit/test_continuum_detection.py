@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -430,11 +431,9 @@ def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(
     assert result.groupby("order").size().to_dict() == {1.0: 50, 2.0: 50, 3.0: 50, 4.0: 50}
 
 
-def test_plot_results_writes_continuum_diagnostic_and_order_limits(
-    tmp_path, log: object, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Render the fitted trace diagnostic from a compact analytic order table."""
-    detector = _detector(log)
+def _plot_ready_detector(tmp_path: Path, log: object, *, orderDeg: int = 0, axisBDeg: int = 1) -> detect_continuum:
+    """Return a detector carrying just the state `plot_results` reads, on a 32x32 trace frame."""
+    detector = _detector(log, orderDeg=orderDeg, axisBDeg=axisBDeg)
     detector.recipeName = "soxs-order-centres"
     detector.sofName = "synthetic"
     detector.qcDir = str(tmp_path)
@@ -450,21 +449,27 @@ def test_plot_results_writes_continuum_diagnostic_and_order_limits(
         "rotate-qc-plot": False,
     }
     detector.traceFrame = CCDData(np.full((32, 32), 20.0), unit=u.electron)
+    return detector
+
+
+def _trace_pixels(orders: list[float], slope: float, intercept: float) -> pd.DataFrame:
+    """Return a residual-free pixel table with one straight trace per order."""
     yValues = np.arange(4.0, 28.0)
-    orders = np.repeat([10.0, 11.0], len(yValues))
-    traceY = np.tile(yValues, 2)
-    traceX = 8.0 + 0.2 * traceY
-    pixels = pd.DataFrame(
+    traceY = np.tile(yValues, len(orders))
+    return pd.DataFrame(
         {
-            "order": orders,
-            "cont_x": traceX,
+            "order": np.repeat(orders, len(yValues)),
+            "cont_x": intercept + slope * traceY,
             "cont_y": traceY,
-            "cont_x_fit_res": np.zeros(len(orders)),
-            "gauss_stddev_fit": np.full(len(orders), 1.5),
+            "cont_x_fit_res": np.zeros(len(traceY)),
+            "gauss_stddev_fit": np.full(len(traceY), 1.5),
             "wavelength": 500.0 + traceY,
         }
     )
-    clipped = pd.DataFrame(
+
+
+def _no_continuum_clipped() -> pd.DataFrame:
+    return pd.DataFrame(
         {
             "cont_x": [np.nan],
             "cont_y": [10.0],
@@ -472,14 +477,93 @@ def test_plot_results_writes_continuum_diagnostic_and_order_limits(
             "fit_y": [10.0],
         }
     )
+
+
+@pytest.fixture
+def savefig_text_colours(monkeypatch: pytest.MonkeyPatch):
+    """Record `{label: colour}` for every axis of the current figure each time `plt.savefig` is called.
+
+    `plot_results` clears every axis after saving, so the labels must be captured at save time.
+    """
+    snapshots = []
+    realSavefig = plt.savefig
+
+    def recorder(*args, **kwargs):
+        snapshots.append([{t.get_text(): t.get_color() for t in ax.texts} for ax in plt.gcf().axes])
+        return realSavefig(*args, **kwargs)
+
+    monkeypatch.setattr(plt, "savefig", recorder)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+    yield snapshots
+    plt.close("all")
+
+
+def test_plot_results_writes_continuum_diagnostic_and_order_limits(
+    tmp_path, log: object, savefig_text_colours: list
+) -> None:
+    """Render the fitted trace diagnostic from a compact analytic order table."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _trace_pixels([10.0, 11.0], slope=0.2, intercept=8.0)
     coefficients = pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
-    monkeypatch.setattr(
-        "soxspipe.commonutils.toolkit.qc_settings_plot_tables",
-        lambda **_: None,
-    )
 
-    outputPath, orderMetadata = detector.plot_results(pixels, coefficients, clipped)
+    # ACT
+    outputPath, orderMetadata = detector.plot_results(pixels, coefficients, _no_continuum_clipped())
 
+    # ASSERT
     assert Path(outputPath).read_bytes().startswith(b"%PDF")
     assert orderMetadata["order"].tolist() == [10.0, 11.0]
     assert (orderMetadata["xmax"] > orderMetadata["xmin"]).all()
+
+
+def test_plot_results_pairs_each_order_with_its_own_colour_when_an_earlier_fit_is_off_detector(
+    tmp_path, log: object, savefig_text_colours: list
+) -> None:
+    """Order 10 is fitted at x=-2 (off-detector) so the middle panel skips it; orders 11 and 12 keep their colours."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    pixels = _trace_pixels([10.0, 11.0, 12.0], slope=0.0, intercept=16.0)
+    coefficients = pd.DataFrame(
+        [
+            {
+                "cent_00": -82.0,
+                "cent_01": 0.0,
+                "cent_10": 8.0,
+                "cent_11": 0.0,
+                "std_00": 1.5,
+                "std_01": 0.0,
+                "std_10": 0.0,
+                "std_11": 0.0,
+            }
+        ]
+    )
+
+    # ACT
+    _, orderMetadata = detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+
+    # ASSERT
+    midrow, bottomleft, bottomright, fwhmaxis = savefig_text_colours[0][1:5]
+    assert orderMetadata["order"].tolist() == [11.0, 12.0]
+    assert set(midrow) == {"11", "12"}
+    for panel in (bottomleft, bottomright, fwhmaxis):
+        assert {"10", "11", "12"} <= set(panel)
+        assert panel["11"] == midrow["11"]
+        assert panel["12"] == midrow["12"]
+    assert len({midrow["11"], midrow["12"]}) == 2
+
+
+def test_order_colours_assigns_a_stable_distinct_colour_per_order_and_wraps_after_the_cycle() -> None:
+    # ARRANGE
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    orders = [float(o) for o in range(10, 10 + len(cycle) + 2)]
+
+    # ACT
+    colours = continuumModule._order_colours(orders)
+
+    # ASSERT
+    assert list(colours) == orders
+    assert [colours[o] for o in orders[: len(cycle)]] == cycle
+    assert len({colours[o] for o in orders[: len(cycle)]}) == len(cycle)
+    assert colours[orders[len(cycle)]] == cycle[0]
+    assert colours[orders[len(cycle) + 1]] == cycle[1]
+    assert colours == continuumModule._order_colours(orders)
