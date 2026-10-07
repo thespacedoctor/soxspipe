@@ -56,6 +56,8 @@ jobs:
       - name: Enforce changed-line lint
         run: python tools/lint_ratchet.py --compare-branch origin/develop
 
+      - name: Reject duplicate changelog entries
+        run: python tools/check_changelog.py CHANGES.md
       # UNLIKE THE LINT RATCHET THIS GATE IS ABSOLUTE: THE WHOLE TREE WAS REFORMATTED
       # IN DY-850, SO ANY UNFORMATTED FILE IS NEW. THE ruff VERSION IS THE ONE PINNED IN
       # pyproject.toml, WHICH A LOCAL ruff MAY NOT MATCH; REFORMAT WITH THAT VERSION

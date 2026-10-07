@@ -11,6 +11,12 @@ repos:
         pass_filenames: false
         types: [python]
         require_serial: true
+      - id: changelog-duplicates
+        name: changelog duplicate bullets
+        entry: python tools/check_changelog.py CHANGES.md
+        language: system
+        files: ^CHANGES\.md$
+        pass_filenames: false
   # SAME RUFF VERSION AS THE tests EXTRA IN pyproject.toml, SO THE HOOK AND THE CI
   # "Enforce ruff format" STEP NEVER DISAGREE. BUMP BOTH TOGETHER
   - repo: https://github.com/astral-sh/ruff-pre-commit

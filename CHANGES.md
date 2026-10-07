@@ -22,10 +22,9 @@
 * **FIXED**: before each b-spline sky fit, `subtract_sky` drops knots that would leave a knot interval with no sample (duplicate knots, knots outside the sampled wavelength range, and knots with no sample since the previous knot), which used to make FITPACK reject the fit (`ier=30`) and revert (or raise on the first iteration); dropped and duplicate knots no longer count as new knots in the stop check (DY-697).
 * **TEST**: characterization tests raise subtract_sky.py coverage from 67.7% to 95.4% (DY-40)
 * **TEST**: the subtract_sky end-anchoring characterization test pins the spline derivative instead of a flux-error-ratio sum that differed between AVX2 and AVX512 CPUs (DY-40)
-* **TEST**: characterization tests raise subtract_sky.py coverage from 67.7% to 95.4% (DY-40)
-* **TEST**: the subtract_sky end-anchoring characterization test pins the spline derivative instead of a flux-error-ratio sum that differed between AVX2 and AVX512 CPUs (DY-40)
 * **TEST**: the real-data workflow now also reduces a VIS and an NIR stare SOF, and `tests/real_data/test_stare_baseline.py` checks the stare product set, merged and flux-calibrated spectra, sky model levels and QC values within bands (DY-696)
 * **TEST**: the real-data workflow now runs only on pull requests into `main` and on manual dispatch; it no longer runs on pull requests into `develop` or on a weekly schedule (DY-840)
+* **TEST**: `tools/check_changelog.py` rejects a bullet repeated within one release block, in pre-commit and CI (DY-851)
 * **TEST**: CI now fails when any file is not formatted with the pinned `ruff format`; the whole repository was reformatted once to start clean (DY-850)
 
 ## v0.18.0 - September 30, 2026
@@ -594,7 +593,6 @@
 * **REFACTOR:** updated workflow for master dark combination  
 * **REFACTOR:** QC PDF plots now added to their own directory separate from the products    
 * **REFACTOR:** products now sub-divided into recipe directories (e.g. `./products/soxs-mbias/`)    
-* **DOCS:** mflat docs brought up-to-date    
 * **DOCS:** mflat docs brought up-to-date    
 * **FIXED:** mflat recipe now exits if flat frames are not of a consistent exptime.    
 
