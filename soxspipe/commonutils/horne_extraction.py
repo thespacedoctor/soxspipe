@@ -328,6 +328,7 @@ class horne_extraction(base_util):
             associatedFrame=self.skySubtractedFrame,
             slitHalfLength=self.slitHalfLength,
         )
+        self.plot_slit_drift_qc(transformer=transformer)
         transformer.cache_image("fluxRaw", self.skySubtractedFrame.data, associatedMask=self.skySubtractedFrame.mask)
         # VARIANCE IS RECTIFIED WITH THE SAME LINEAR AREA WEIGHTS AS FLUX, NOT THEIR SQUARES. NEIGHBOURING
         # RECTIFIED PIXELS SHARE DETECTOR PIXELS, AND THE EXTRACTION SUMS ACROSS THEM: LINEAR WEIGHTS APPROXIMATE
@@ -1254,6 +1255,62 @@ class horne_extraction(base_util):
             )
 
         return merged_orders, orderJoins
+
+    def plot_slit_drift_qc(self, transformer):
+        """*plot the object trace's slit position against wavelength, before rectification*
+
+        Nothing is written for the not-flattened re-extraction.
+
+        **Key Arguments:**
+
+        - ``transformer`` -- the image transformer holding the per-order slit-centre fits
+
+        **Usage:**
+
+        ```python
+        optimalExtractor.plot_slit_drift_qc(transformer=transformer)
+        ```
+
+        """
+        self.log.debug("starting the ``plot_slit_drift_qc`` method")
+
+        if self.notFlattened:
+            return
+
+        from soxspipe.commonutils.slit_drift_qc import plot_slit_drift_qc, slit_drift_series
+        from soxspipe.commonutils.toolkit import append_product, utcnow_string
+
+        series = slit_drift_series(
+            transformer.orderPixelTable,
+            transformer.uniqueOrders,
+            transformer.orderSlitCentreCoeffs,
+            transformer.wlMinMax,
+            transformer.orderSlitCentreFallback,
+        )
+        filename = self.filenameTemplate.replace(".fits", f"_SLIT_DRIFT_QC_PLOT{self.noddingSequence}.pdf")
+        filePath = f"{self.qcDir}/{filename}"
+        plot_slit_drift_qc(
+            series,
+            transformer.globalSlitCentreArcsec,
+            f"Slit position of the object trace before rectification ({self.arm.upper()})",
+            filePath,
+        )
+
+        if not isinstance(self.products, bool):
+            self.products = append_product(
+                self.products,
+                recipeName=self.recipeName,
+                productLabel=f"SLIT_DRIFT_QC_PLOT{self.noddingSequence}",
+                fileName=filename,
+                filePath=filePath,
+                productDesc="Slit position of the object trace vs wavelength before rectification",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow_string(),
+                fileType="PDF",
+                label="QC",
+            )
+
+        self.log.debug("completed the ``plot_slit_drift_qc`` method")
 
     def plot_extracted_spectrum_qc(self, extractions):
         """*plot extracted spectrum QC plot*

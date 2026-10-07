@@ -31,6 +31,23 @@ from soxspipe.commonutils.toolkit import cut_image_slice, get_calibration_lamp, 
 os.environ["TERM"] = "vt100"
 
 
+def _order_colours(orders):
+    """*assign each order a colour from the matplotlib property cycle, keyed by the order itself*
+
+    **Key Arguments:**
+
+    - ``orders`` -- the orders to colour, in plotting order
+
+    **Return:**
+
+    - ``orderColours`` -- dictionary of order to colour, wrapping around once the cycle is exhausted
+    """
+    import matplotlib.pyplot as plt
+
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    return {order: cycle[i % len(cycle)] for i, order in enumerate(orders)}
+
+
 class _base_detect:
     def fit_order_polynomial(self, pixelList, order, axisBDeg, axisACol, axisBCol, exponentsIncluded=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
@@ -1245,7 +1262,7 @@ class detect_continuum(_base_detect):
         xmin = []
         xmax = []
         foundOrders = []
-        colors = []
+        orderColours = _order_colours(uniqueOrders)
         labelAdded = None
 
         for o in uniqueOrders:
@@ -1278,10 +1295,9 @@ class detect_continuum(_base_detect):
             else:
                 label1 = None
                 label2 = None
-            c = midrow.plot(yfit, xfit, linewidth=0.7, label=label2)
+            midrow.plot(yfit, xfit, linewidth=0.7, label=label2, color=orderColours[o])
 
-            midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3, label=label1)
-            colors.append(c[0].get_color())
+            midrow.fill_between(yfit, lower, upper, color=orderColours[o], alpha=0.3, label=label1)
             ymin.append(min(yfit))
             ymax.append(max(yfit))
             xmin.append(axisALength - max(xfit))
@@ -1292,7 +1308,7 @@ class detect_continuum(_base_detect):
                     xfit[10] + 10,
                     int(o),
                     fontsize=6,
-                    c=c[0].get_color(),
+                    c=orderColours[o],
                     verticalalignment="bottom",
                 )
             except (IndexError, KeyError) as e:
@@ -1324,7 +1340,8 @@ class detect_continuum(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             bottomleft.scatter(
                 orderPixelTable.loc[mask][f"cont_{self.axisA}"].values,
@@ -1355,7 +1372,8 @@ class detect_continuum(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             bottomright.scatter(
                 orderPixelTable.loc[mask][f"cont_{self.axisB}"].values,
@@ -1386,7 +1404,8 @@ class detect_continuum(_base_detect):
         bottomright.set_yticklabels([])
 
         stdToFwhm = 2 * (2 * math.log(2)) ** 0.5
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             fwhmaxis.scatter(
                 orderPixelTable.loc[mask]["wavelength"].values,
