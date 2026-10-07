@@ -3,9 +3,12 @@
 The reduction is not bit-reproducible across hardware, so each value is asserted
 within a band rather than exactly. The bands absorb the variation seen across CI
 runner architectures and stay narrow enough that a real regression in extraction,
-wavelength calibration or flux calibration still trips them. The centres were
-recorded from eight agreeing CI runs on 2026-09-16, after the deterministic-sort
-and residual-quantisation fixes.
+wavelength calibration or flux calibration still trips them. The merged-spectrum
+centres were re-recorded from four bit-identical CI runs on 2026-10-07, after the
+astropy 7.2.2 upgrade (DY-694). astropy 7 stopped running `sigma_clip` through
+bottleneck for float32 data, which had lost precision, so every product moved. The
+flux-calibrated and QC centres were not logged by those runs, because the test
+stopped at the moved blue end, so they still date from 2026-09-16.
 """
 
 from __future__ import annotations
@@ -56,7 +59,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
         # OF SPECTRAL COVERAGE
         report("merged rows", len(merged_table))
-        assert len(merged_table) == pytest.approx(20_609, abs=25)
+        assert len(merged_table) == pytest.approx(20_608, abs=25)
         assert set(merged_table.names) == {
             "WAVE",
             "FLUX_COUNTS",
@@ -71,15 +74,15 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         report("wave max", float(np.nanmax(mergedWave)))
         report("wave step median", float(np.nanmedian(np.diff(mergedWave))))
         report("snr median", float(np.nanmedian(merged_table["SNR"])))
-        assert float(np.nanmin(mergedWave)) == pytest.approx(794.76, abs=0.12)
-        assert float(np.nanmax(mergedWave)) == pytest.approx(2031.24, abs=1.0)
+        assert float(np.nanmin(mergedWave)) == pytest.approx(795.06, abs=0.12)
+        assert float(np.nanmax(mergedWave)) == pytest.approx(2031.48, abs=1.0)
         assert float(np.nanmedian(np.diff(mergedWave))) == pytest.approx(0.06, abs=1e-6)
-        assert float(np.nanmedian(merged_table["SNR"])) == pytest.approx(104.56, abs=2.0)
+        assert float(np.nanmedian(merged_table["SNR"])) == pytest.approx(103.505, abs=2.0)
 
     with fits.open(fluxcal_path) as fluxcal_hdus:
         assert len(fluxcal_hdus) == 2
         fluxcal_table = fluxcal_hdus[1].data
-        assert len(fluxcal_table) == pytest.approx(20_609, abs=25)
+        assert len(fluxcal_table) == pytest.approx(20_608, abs=25)
         assert len(fluxcal_table) == len(merged_table)
         assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
         report("fluxcal rows", len(fluxcal_table))

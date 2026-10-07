@@ -1,6 +1,6 @@
 # Release Notes
 
-* **ENHANCEMENT**: astropy is upgraded from 6.1.2 to 7.2.2 and `uncompresspy` 0.4.1 is added, so astropy can open LZW-compressed `.fits.Z` frames (DY-694).
+* **ENHANCEMENT**: astropy is upgraded from 6.1.2 to 7.2.2 and `uncompresspy` 0.4.1 is added, so astropy can open LZW-compressed `.fits.Z` frames. Reduction output changes slightly, because astropy 7 no longer computes float32 sigma-clipping statistics with bottleneck, which lost precision (DY-694).
 * **FEATURE**: `soxs_mbias` writes `<product>_BIAS_DISTRIBUTION_QC_PLOT.pdf`, which compares the pixel flux histograms of the earliest raw bias frame and the master bias, with the RON values (DY-267).
 * **FEATURE**: extraction (stare, nod, offset) writes `<template>_SLIT_DRIFT_QC_PLOT<nodding sequence>.pdf`, which plots the object slit position against wavelength before rectification, with per-order fits and residuals; it is not written for the `_NOTFLAT` re-extraction (DY-270).
 * **ENHANCEMENT**: optimal extraction logs an ERROR naming each order where the object spills over the slit edge, and adds the `N ORDERS SLIT EDGE` QC; when a flux standard spills, `soxs-stare` fails the recipe so its response curve is not used to flux-calibrate other frames (DY-802).
@@ -29,6 +29,7 @@
 * **FIXED**: the order-centre QC plot from `detect_continuum` keeps each order's own colour in every panel and no longer drops the last order from the lower panels when an earlier order's fitted trace is off the detector (DY-604).
 * **FIXED**: a recipe whose QC rows still fail to write to the database after seven attempts now raises the original error, so the SOF is marked `fail`, where before the rows were dropped silently (DY-603).
 * **FIXED**: in a named session, an out-of-range QC value now marks the SOF `fail` in that session's status, where before the session showed `pass` and the failure was written to the `base` session instead (DY-272).
+* **TEST**: the real-data NIR offset and stare baselines are re-recorded from CI after the astropy 7.2.2 upgrade (DY-694)
 * **TEST**: characterization tests raise subtract_sky.py coverage from 67.7% to 95.4% (DY-40)
 * **TEST**: the subtract_sky end-anchoring characterization test pins the spline derivative instead of a flux-error-ratio sum that differed between AVX2 and AVX512 CPUs (DY-40)
 * **TEST**: the real-data workflow now also reduces a VIS and an NIR stare SOF, and `tests/real_data/test_stare_baseline.py` checks the stare product set, merged and flux-calibrated spectra, sky model levels and QC values within bands (DY-696)
