@@ -465,6 +465,7 @@ class image_transformer(base_util):
         **Return:**
 
         - ``centreCoeffs`` -- polynomial coefficients (``numpy.polyfit`` convention), highest power first
+        - ``isFallback`` -- True if every degree was degenerate and ``centreCoeffs`` is the constant fallback centre
         """
         self.log.debug("starting the ``_fit_slit_centre_polynomial`` method")
 
@@ -479,7 +480,7 @@ class image_transformer(base_util):
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", RankWarning)
-                    return np.polyfit(wavelength, slitPosition, candidateDegree)
+                    return np.polyfit(wavelength, slitPosition, candidateDegree), False
             except (RankWarning, np.linalg.LinAlgError):
                 continue
 
@@ -489,7 +490,7 @@ class image_transformer(base_util):
             f"(likely duplicate wavelengths); falling back to the global mean slit position "
             f"({fallbackCentreArcsec:.3f} arcsec) as a constant centre."
         )
-        return np.array([fallbackCentreArcsec])
+        return np.array([fallbackCentreArcsec]), True
 
     def _determine_rectified_image_boundaries(self):
         """*Setup the individual order dataframes for each order in the order pixel table*"""
@@ -521,12 +522,15 @@ class image_transformer(base_util):
                 "Cannot determine any slit centre: every trace point's slit_position is missing "
                 "or non-finite across all orders. Check the 2D map / orderPixelTable inputs."
             )
+        # KEPT FOR THE SLIT-DRIFT QC PLOT (THE SINGLE CENTRE USED BEFORE PER-ORDER TRACES)
+        self.globalSlitCentreArcsec = globalSlitCentreArcsec
 
         # from astropy.table import Table
         # t = Table.from_pandas(self.orderPixelTable)
         # t.write("/tmp/table.fits", overwrite=True)
 
         orderTraces = []
+        fallbackFlags = []
 
         # ITERATE OVER EACH ORDER, CLIPPING TO THE PIXEL BOUNDS (AMIN/AMAX) DEFINED FOR THAT ORDER
         for order, amin, amax, wlmin, wlmax in zip(
@@ -550,13 +554,14 @@ class image_transformer(base_util):
                     f"mean slit position ({globalSlitCentreArcsec:.3f} arcsec) as a constant centre."
                 )
                 centreCoeffs = np.array([globalSlitCentreArcsec])
+                isFallback = True
             else:
                 # DEGREE IS CAPPED BY THE NUMBER OF *DISTINCT* WAVELENGTHS, NOT JUST THE POINT
                 # COUNT — REPEATED WAVELENGTHS AT DIFFERENT SLIT POSITIONS MAKE THE FIT
                 # RANK-DEFICIENT EVEN WHEN nValid IS LARGE
                 nUniqueWl = validTrace["wavelength"].nunique()
                 degree = min(SLIT_CENTRE_POLY_DEGREE, nUniqueWl - 1)
-                centreCoeffs = self._fit_slit_centre_polynomial(
+                centreCoeffs, isFallback = self._fit_slit_centre_polynomial(
                     validTrace["wavelength"].to_numpy(),
                     validTrace["slit_position"].to_numpy(),
                     degree,
@@ -564,6 +569,7 @@ class image_transformer(base_util):
                     globalSlitCentreArcsec,
                 )
 
+            fallbackFlags.append(isFallback)
             orderTraces.append((order, wlmin, wlmax, pixelRange, centreCoeffs))
 
         # WAVELENGTH EDGES EVENLY SPACED IN DETECTOR PIXELS ALONG EACH TRACE, PLUS EACH ORDER'S ARCSEC/PIXEL
@@ -579,6 +585,7 @@ class image_transformer(base_util):
         self.uniqueOrders = [trace[0] for trace in orderTraces]
         self.wlMinMax = [(trace[1], trace[2]) for trace in orderTraces]
         self.orderSlitCentreCoeffs = [trace[4] for trace in orderTraces]
+        self.orderSlitCentreFallback = fallbackFlags
 
         self.log.debug("completed the ``_determine_rectified_image_boundaries`` method")
         return orderSlitEdges, orderWlEdges

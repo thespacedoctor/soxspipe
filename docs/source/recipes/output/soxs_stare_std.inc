@@ -19,6 +19,7 @@
 | `SKY SUBTRACTION QUICKLOOK` | Sky-subtraction quicklook                    | PDF       |     -       |    -       |     -      |
 | `OBJECT TRACE RES`          | Residuals of the object trace polynomial fit | PDF       |     -       |    -       |     -      |
 | `EXTRACTED ORDERS QC PLOT`  | QC plot of extracted source                  | PDF       |     -       |    -       |     -      |
+| `SLIT DRIFT QC PLOT`      | QC plot of the object slit position against wavelength before rectification | PDF       |     -       |    -       |     -      |
 | `EXTRACTED MERGED QC PLOT`  | QC plot of extracted order-merged source     | PDF       |     -       |    -       |     -      |
 | `EXTRACTED MERGED FLUXCALIBRATED QC PLOT` | QC plot of extracted order-merged, flux-calibrated source | PDF | - | - | - |
 | `RESPONSE QC PLOT` | Response curve QC plot. | PDF | - | - | - |

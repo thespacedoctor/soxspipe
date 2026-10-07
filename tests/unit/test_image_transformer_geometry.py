@@ -487,6 +487,80 @@ def test_rectified_boundaries_fall_back_to_global_mean_for_order_without_valid_t
     assert any("11" in message for message in warnings)
 
 
+def test_rectified_boundaries_record_fallback_flags_and_global_slit_centre(
+    log: object,
+) -> None:
+    # ARRANGE
+    transformer = _transformer(log)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.orderPixelTable = pd.DataFrame(
+        {
+            # ORDER 11'S PIXEL COORDINATES ARE ABSENT FROM mapDF, SO IT HAS NO VALID TRACE POINT
+            "order": [10, 10, 11, 11],
+            "xcoord_centre": [0.0, 1.0, 99.0, 98.0],
+            "ycoord": [0, 0, 0, 0],
+        }
+    )
+    transformer.mapDF = pd.DataFrame(
+        {
+            "x": [0, 1],
+            "y": [0, 0],
+            "slit_position": [-0.5, 1.5],
+            "wavelength": [500.0, 502.0],
+        }
+    )
+    transformer.orderNums = np.array([10, 11])
+    transformer.amins = np.array([0.0, 0.0])
+    transformer.amaxs = np.array([2.0, 2.0])
+    transformer.waveLengthMin = np.array([500.0, 600.0])
+    transformer.waveLengthMax = np.array([504.0, 604.0])
+    transformer.uniqueOrders = np.array([10, 11])
+
+    # ACT
+    transformer._determine_rectified_image_boundaries()
+
+    # ASSERT
+    assert transformer.orderSlitCentreFallback == [False, True]
+    assert transformer.globalSlitCentreArcsec == pytest.approx(0.5)
+
+
+def test_rectified_boundaries_flag_an_order_whose_fit_is_degenerate_at_every_degree(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    from numpy.exceptions import RankWarning
+
+    transformer = _transformer(log)
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.orderPixelTable = pd.DataFrame({"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]})
+    transformer.mapDF = pd.DataFrame(
+        {"x": [0, 1], "y": [0, 0], "slit_position": [-0.5, 1.5], "wavelength": [500.0, 502.0]}
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+
+    def always_rank_deficient(*args: object, **kwargs: object) -> None:
+        raise RankWarning("degenerate")
+
+    monkeypatch.setattr(np, "polyfit", always_rank_deficient)
+
+    # ACT
+    transformer._determine_rectified_image_boundaries()
+
+    # ASSERT
+    assert transformer.orderSlitCentreFallback == [True]
+    assert transformer.orderSlitCentreCoeffs[0].tolist() == [pytest.approx(0.5)]
+
+
 def test_rectified_boundaries_degrade_degree_on_rank_deficient_trace(
     log: object,
 ) -> None:

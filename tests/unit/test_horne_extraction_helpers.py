@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import warnings
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -75,6 +76,7 @@ def _configure_synthetic_orchestration(
 
         def __init__(self, **kwargs: object) -> None:
             captured["transformer"] = kwargs
+            captured["transformerInstance"] = self
 
         def cache_image(self, name: str, image: np.ndarray, **kwargs: object) -> None:
             captured.setdefault("cached", []).append(name)
@@ -123,6 +125,7 @@ def _configure_synthetic_orchestration(
         lambda **kwargs: kwargs["qcTable"],
     )
     extractor.plot_extracted_spectrum_qc = lambda **kwargs: captured.update(kwargs)
+    extractor.plot_slit_drift_qc = lambda transformer: captured.update(slitDriftTransformer=transformer)
     extractor.tune_wavelength_calibration_to_skylines = lambda orders, arm: orders
     extractor.merge_extracted_orders = lambda orders: (merged.copy(), {"1011": 501.0})
     return extractor, extraction, captured
@@ -163,6 +166,7 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
     assert captured["transformer"]
     assert captured["cached"] == ["fluxRaw", "variance"]
+    assert captured["slitDriftTransformer"] is captured["transformerInstance"]
     assert captured["extractions"][0].equals(extraction.drop(columns=["slitEdgeTruncated"]))
     assert extractor.slitEdgeOrders == []
 
@@ -427,6 +431,84 @@ def test_plot_extracted_spectrum_qc_writes_pdf_and_product_record(
     assert expectedPath.read_bytes().startswith(b"%PDF")
     assert extractor.products["product_label"].tolist() == ["EXTRACTED_ORDERS_QC_PLOT_AB"]
     assert extractor.products.loc[0, "file_path"] == str(expectedPath)
+
+
+def _slit_drift_extractor(
+    log: object,
+    tmp_path: Path,
+    products: bool | pd.DataFrame,
+    notFlattened: str = "",
+) -> tuple[horne_extraction, SimpleNamespace]:
+    """Build an extractor and a transformer stand-in carrying the slit-drift attributes."""
+    extractor = _extractor(log)
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.noddingSequence = "_A1"
+    extractor.notFlattened = notFlattened
+    extractor.qcDir = str(tmp_path)
+    extractor.dateObs = "2024-01-02T03:04:05"
+    extractor.recipeName = "soxs-nod"
+    extractor.products = products
+    extractor.arm = "VIS"
+    orderPixelTable = pd.DataFrame(
+        {
+            "order": [10, 10, 10, 11],
+            "wavelength": [600.0, 601.0, 602.0, 500.0],
+            "slit_position": [1.1, 1.9, 3.2, 0.5],
+        }
+    )
+    transformer = SimpleNamespace(
+        orderPixelTable=orderPixelTable,
+        uniqueOrders=[10, 11],
+        orderSlitCentreCoeffs=[np.array([1.0, -599.0]), np.array([0.25])],
+        wlMinMax=[(600.0, 602.0), (500.0, 501.0)],
+        orderSlitCentreFallback=[False, True],
+        globalSlitCentreArcsec=0.25,
+    )
+    return extractor, transformer
+
+
+def test_plot_slit_drift_qc_writes_pdf_and_product_record(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, product_table().iloc[0:0])
+
+    # ACT
+    result = extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    expectedPath = tmp_path / "SYNTHETIC_SLIT_DRIFT_QC_PLOT_A1.pdf"
+    assert result is None
+    assert expectedPath.read_bytes().startswith(b"%PDF")
+    assert extractor.products["product_label"].tolist() == ["SLIT_DRIFT_QC_PLOT_A1"]
+    assert extractor.products.loc[0, "file_path"] == str(expectedPath)
+    assert extractor.products.loc[0, "file_name"] == expectedPath.name
+    assert extractor.products.loc[0, "file_type"] == "PDF"
+    assert extractor.products.loc[0, "label"] == "QC"
+    assert extractor.products.loc[0, "soxspipe_recipe"] == "soxs-nod"
+
+
+def test_plot_slit_drift_qc_writes_file_but_no_row_when_products_disabled(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False)
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    assert (tmp_path / "SYNTHETIC_SLIT_DRIFT_QC_PLOT_A1.pdf").is_file()
+    assert extractor.products is False
+
+
+def test_plot_slit_drift_qc_writes_nothing_for_the_not_flattened_re_extraction(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    products = product_table().iloc[0:0]
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products, notFlattened="_NOTFLAT")
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    assert list(tmp_path.glob("*.pdf")) == []
+    assert extractor.products.empty
 
 
 def test_skyline_matching_and_clipped_shift_reject_outliers(log: object) -> None:
