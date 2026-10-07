@@ -13,6 +13,7 @@ from tests.factories import (
     harvestable_raw_fits,
     lzw_compressed_fits,
     pipeline_settings,
+    raw_frame_table,
     workspace_organiser,
 )
 
@@ -144,3 +145,32 @@ def test_a_later_prepare_deletes_an_uncompressed_copy_of_an_indexed_compressed_f
 
     assert _indexed_frames(organiser) == [{"file": "bias.fits.Z", "filepath": f"./raw/{NIGHT}/bias.fits.Z"}]
     assert list(rootPath.rglob("bias.fits")) == []
+
+
+def test_prepare_pairs_twins_across_the_root_and_the_raw_tree(tmp_path, organiser) -> None:
+    rootPath = Path(organiser.rootDir)
+    nestedPath = rootPath / "raw" / NIGHT
+    nestedPath.mkdir(parents=True)
+    _compressed_frame(tmp_path, rootPath / "bias.fits.Z")
+    harvestable_raw_fits(nestedPath / "bias.fits")
+
+    organiser.prepare(report=False)
+
+    assert _indexed_frames(organiser) == [{"file": "bias.fits.Z", "filepath": f"./raw/{NIGHT}/bias.fits.Z"}]
+    assert list(rootPath.rglob("bias.fits")) == []
+
+
+def test_a_database_row_alone_never_condemns_an_uncompressed_frame(tmp_path, organiser) -> None:
+    rootPath = Path(organiser.rootDir)
+    organiser.conn, _ = organiser._get_or_create_db_connection()
+    # THE ROW CLAIMS bias.fits.Z IS INDEXED, BUT NO SUCH FILE IS ON DISK
+    forgedRow = raw_frame_table().iloc[[0]].assign(file="bias.fits.Z", filepath=f"./raw/{NIGHT}/bias.fits.Z")
+    knownColumns = {row[1] for row in organiser.conn.execute("PRAGMA table_info(raw_frames);")}
+    forgedRow.loc[:, forgedRow.columns.isin(knownColumns)].to_sql(
+        "raw_frames", con=organiser.conn, index=False, if_exists="append"
+    )
+    keptPath = harvestable_raw_fits(rootPath / "bias.fits")
+
+    organiser._delete_superseded_frames()
+
+    assert keptPath.exists()

@@ -887,9 +887,11 @@ class data_organiser:
     def _delete_superseded_frames(self):
         """*delete each uncompressed frame whose compressed `.fits.Z` twin is in the workspace*
 
-        When ``X.fits`` and ``X.fits.Z`` hold the same frame, the compressed file is kept. A twin counts when it
-        sits in the same directory, or, for a frame at the workspace root, when it is already indexed in
-        ``raw_frames``. An uncompressed frame that is itself indexed is never deleted.
+        When ``X.fits`` and ``X.fits.Z`` hold the same frame, the compressed file is kept. Twins are paired by
+        file name across the workspace root and the whole ``raw/`` tree, because `prep` flattens frames into
+        ``raw/<night>/``. Only files on disk count as twins, so a database row alone never condemns a frame. An
+        uncompressed frame that is itself indexed in ``raw_frames`` is never deleted, and nothing outside the
+        workspace is touched: a symlink is unlinked, never followed.
 
         **Return:**
 
@@ -901,16 +903,25 @@ class data_organiser:
         if self.conn is not None:
             indexedNames = {row[0] for row in self.conn.execute("SELECT file FROM raw_frames")}
 
-        directories = [(self.rootDir, indexedNames)]
+        framePaths = [entry.path for entry in os.scandir(self.rootDir) if entry.is_file()]
         if os.path.isdir(self.rawDir):
-            directories += [(d, set()) for d, _, _ in sorted(os.walk(self.rawDir))]
+            # os.walk DOES NOT FOLLOW SYMLINKED DIRECTORIES, SO THE WALK STAYS INSIDE raw/
+            for directory, _, files in os.walk(self.rawDir):
+                framePaths += [os.path.join(directory, f) for f in files]
+        framePaths = sorted(p for p in framePaths if is_fits_frame(p))
 
-        for directory, present in directories:
-            names = sorted(d.name for d in os.scandir(directory) if d.is_file() and is_fits_frame(d.name))
-            for name in sorted(superseded_frame_names(names, present=present) - indexedNames):
-                filepath = os.path.join(directory, name)
-                self.log.info(f"deleting `{filepath}`: its compressed twin `{name}.Z` is kept")
-                os.remove(filepath)
+        losers = superseded_frame_names([os.path.basename(p) for p in framePaths]) - indexedNames
+        for filepath in framePaths:
+            name = os.path.basename(filepath)
+            if name not in losers:
+                continue
+            try:
+                _validate_owned_path(os.path.dirname(filepath), self.rootDir, "superseded frame")
+            except _UnsafePathError as error:
+                self.log.warning(f"not deleting `{filepath}`: {error}")
+                continue
+            self.log.info(f"deleting `{filepath}`: its compressed twin `{name}.Z` is kept")
+            os.remove(filepath)
 
         self.log.debug("completed the ``_delete_superseded_frames`` method")
         return
