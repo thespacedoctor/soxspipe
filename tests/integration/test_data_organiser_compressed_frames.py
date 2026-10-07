@@ -189,3 +189,26 @@ def test_twins_behind_a_symlinked_raw_directory_are_never_deleted(tmp_path, orga
     organiser._delete_superseded_frames()
 
     assert keptPath.exists()
+
+
+def test_frames_in_different_night_folders_never_pair(tmp_path, organiser) -> None:
+    rawPath = Path(organiser.rawDir)
+    (rawPath / "2024-01-01").mkdir()
+    (rawPath / NIGHT).mkdir()
+    _compressed_frame(tmp_path, rawPath / "2024-01-01" / "bias.fits.Z")
+    keptPath = harvestable_raw_fits(rawPath / NIGHT / "bias.fits")
+
+    organiser._delete_superseded_frames()
+
+    assert keptPath.exists()
+
+
+def test_a_dangling_compressed_link_never_condemns_a_frame(tmp_path, organiser) -> None:
+    nestedPath = Path(organiser.rawDir) / NIGHT
+    nestedPath.mkdir()
+    (nestedPath / "bias.fits.Z").symlink_to(tmp_path / "missing.fits.Z")
+    keptPath = harvestable_raw_fits(nestedPath / "bias.fits")
+
+    organiser._delete_superseded_frames()
+
+    assert keptPath.exists()

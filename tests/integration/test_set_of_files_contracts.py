@@ -185,14 +185,13 @@ def test_sof_input_reads_members_whatever_the_case_of_the_fits_suffix(
     assert supplementary == {}
 
 
-def test_sof_input_keeps_a_member_path_whose_directory_name_holds_fits_and_a_space(
+def test_sof_input_ignores_a_trailing_comment_that_names_another_frame(
     tmp_path: Path,
     log: object,
 ) -> None:
-    framesPath = tmp_path / "night.fits copy"
-    framesPath.mkdir()
-    memberPath = raw_fits(framesPath / "frame.fits", seed=1)
-    inputPath = sof_file(tmp_path / "input.sof", [(memberPath, "BIAS_VIS")])
+    memberPath = raw_fits(tmp_path / "frame.fits", seed=1)
+    inputPath = tmp_path / "input.sof"
+    inputPath.write_text(f"{memberPath} BIAS_VIS # was {tmp_path / 'old.fits'}\n", encoding="utf-8")
 
     collection, _ = set_of_files(
         log=log,
