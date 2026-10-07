@@ -12,6 +12,8 @@ from .dataframes import (
 )
 from .files import (
     dispersion_map_fits,
+    lzw_compress,
+    lzw_compressed_fits,
     order_table_fits,
     prepared_fits,
     raw_fits,
@@ -27,6 +29,8 @@ __all__ = [
     "dispersion_map_fits",
     "dispersion_table",
     "instrument_header",
+    "lzw_compress",
+    "lzw_compressed_fits",
     "order_table",
     "order_table_fits",
     "pipeline_settings",
