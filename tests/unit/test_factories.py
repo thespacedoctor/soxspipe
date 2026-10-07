@@ -79,15 +79,11 @@ def test_lzw_compress_matches_the_unix_compress_command_across_code_widths() -> 
     archive = lzw_compress(payload)
 
     assert len(archive) == 2091
-    assert hashlib.sha256(archive).hexdigest() == (
-        "0eaa1d7e42f4a60e7f291991ea9c32b55dbc6bb2f6377bd374df96efb04ddc2e"
-    )
+    assert hashlib.sha256(archive).hexdigest() == ("0eaa1d7e42f4a60e7f291991ea9c32b55dbc6bb2f6377bd374df96efb04ddc2e")
 
 
 @pytest.mark.parametrize("size", [0, 1, 300, 5000, 400_000])
-def test_lzw_compress_round_trips_across_code_width_changes(
-    tmp_path: Path, size: int
-) -> None:
+def test_lzw_compress_round_trips_across_code_width_changes(tmp_path: Path, size: int) -> None:
     # RANDOM BYTES FILL THE DICTIONARY FAST, SO THE LARGER SIZES CROSS EVERY
     # CODE WIDTH FROM 9 TO 16 BITS AND RUN ON PAST A FULL DICTIONARY
     payload = np.random.default_rng(11).integers(0, 256, size, dtype=np.uint8).tobytes()
