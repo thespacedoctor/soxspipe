@@ -19,6 +19,7 @@ from soxspipe.recipes.base_recipe import base_recipe
 pytestmark = pytest.mark.unit
 
 MAX_ATTEMPTS = 7
+FAILURES_BEFORE_SUCCESS = 3
 
 
 def _recipe(log: Any, connection: sqlite3.Connection) -> base_recipe:
@@ -30,7 +31,7 @@ def _recipe(log: Any, connection: sqlite3.Connection) -> base_recipe:
 
 
 @pytest.fixture
-def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+def sleep_calls(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     """Record every `time.sleep` call instead of waiting."""
     calls: list[float] = []
     monkeypatch.setattr(time, "sleep", calls.append)
@@ -53,7 +54,7 @@ def to_sql_calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return state
 
 
-def test_insert_that_fails_every_attempt_reraises_the_original_error(log, sleeps, to_sql_calls) -> None:
+def test_insert_that_fails_every_attempt_reraises_the_original_error(log, sleep_calls, to_sql_calls) -> None:
     # ARRANGE
     connection = sqlite3.connect(":memory:")
     recipe = _recipe(log, connection)
@@ -66,34 +67,36 @@ def test_insert_that_fails_every_attempt_reraises_the_original_error(log, sleeps
     # ASSERT
     assert to_sql_calls["attempts"] == MAX_ATTEMPTS
     # SLEEPS FALL BETWEEN ATTEMPTS ONLY, SO SEVEN ATTEMPTS MEAN SIX SLEEPS
-    assert len(sleeps) == MAX_ATTEMPTS - 1
+    assert len(sleep_calls) == MAX_ATTEMPTS - 1
     connection.close()
 
 
-def test_insert_on_a_closed_connection_raises_instead_of_returning(log, sleeps) -> None:
+def test_insert_on_a_closed_connection_raises_instead_of_returning(log, sleep_calls) -> None:
     # ARRANGE
     connection = sqlite3.connect(":memory:")
     connection.close()
     recipe = _recipe(log, connection)
 
-    # ACT / ASSERT
+    # ACT
     with pytest.raises(sqlite3.ProgrammingError):
         recipe._dataframe_to_sqlite(pd.DataFrame({"qc_name": ["RON"]}), "quality_control")
-    assert len(sleeps) == MAX_ATTEMPTS - 1
+
+    # ASSERT
+    assert len(sleep_calls) == MAX_ATTEMPTS - 1
 
 
-def test_insert_that_succeeds_after_failures_writes_rows_and_stops_retrying(log, sleeps, to_sql_calls) -> None:
+def test_insert_that_succeeds_after_failures_writes_rows_and_stops_retrying(log, sleep_calls, to_sql_calls) -> None:
     # ARRANGE
     connection = sqlite3.connect(":memory:")
     connection.execute("create table quality_control (qc_name text, qc_value text)")
     recipe = _recipe(log, connection)
-    to_sql_calls["failures"] = 3
+    to_sql_calls["failures"] = FAILURES_BEFORE_SUCCESS
 
     # ACT
     recipe._dataframe_to_sqlite(pd.DataFrame({"qc_name": ["RON"], "qc_value": ["5.0"]}), "quality_control")
 
     # ASSERT
     assert connection.execute("select qc_name, qc_value from quality_control").fetchall() == [("RON", "5.0")]
-    assert to_sql_calls["attempts"] == 4
-    assert len(sleeps) == 3
+    assert to_sql_calls["attempts"] == FAILURES_BEFORE_SUCCESS + 1
+    assert len(sleep_calls) == FAILURES_BEFORE_SUCCESS
     connection.close()
