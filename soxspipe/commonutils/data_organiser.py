@@ -19,6 +19,7 @@ from pathlib import Path
 
 from fundamentals import tools
 
+from soxspipe.commonutils.fits_frame_names import is_fits_frame, superseded_frame_names
 from soxspipe.commonutils.late_frame_rejoin import (
     delete_stale_files,
     find_rejoined_sofs,
@@ -785,6 +786,8 @@ class data_organiser:
 
         import pandas as pd
 
+        self._delete_superseded_frames()
+
         remainingFiles = 1
         firstPass = True
 
@@ -881,6 +884,37 @@ class data_organiser:
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return
 
+    def _delete_superseded_frames(self):
+        """*delete each uncompressed frame whose compressed `.fits.Z` twin is in the workspace*
+
+        When ``X.fits`` and ``X.fits.Z`` hold the same frame, the compressed file is kept. A twin counts when it
+        sits in the same directory, or, for a frame at the workspace root, when it is already indexed in
+        ``raw_frames``. An uncompressed frame that is itself indexed is never deleted.
+
+        **Return:**
+
+        - None
+        """
+        self.log.debug("starting the ``_delete_superseded_frames`` method")
+
+        indexedNames = set()
+        if self.conn is not None:
+            indexedNames = {row[0] for row in self.conn.execute("SELECT file FROM raw_frames")}
+
+        directories = [(self.rootDir, indexedNames)]
+        if os.path.isdir(self.rawDir):
+            directories += [(d, set()) for d, _, _ in sorted(os.walk(self.rawDir))]
+
+        for directory, present in directories:
+            names = sorted(d.name for d in os.scandir(directory) if d.is_file() and is_fits_frame(d.name))
+            for name in sorted(superseded_frame_names(names, present=present) - indexedNames):
+                filepath = os.path.join(directory, name)
+                self.log.info(f"deleting `{filepath}`: its compressed twin `{name}.Z` is kept")
+                os.remove(filepath)
+
+        self.log.debug("completed the ``_delete_superseded_frames`` method")
+        return
+
     def _create_directory_table(self, pathToDirectory, filterKeys, limit=10000):
         """*create an astropy table based on the contents of a directory*
 
@@ -924,7 +958,7 @@ class data_organiser:
             if (
                 not entry.name.startswith(".")
                 and entry.is_file()
-                and (os.path.splitext(entry.name)[1] == ".fits" or ".fits.Z" in entry.name)
+                and is_fits_frame(entry.name)
             ):
                 # fitsPaths.append(entry.path)
                 if os.path.islink(entry.path):
@@ -1120,8 +1154,7 @@ class data_organiser:
             for f in filesNotInDB:
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 basename = os.path.basename(f)
-                extension = os.path.splitext(basename)[1]
-                if extension.lower() != ".fits":
+                if not is_fits_frame(basename):
                     pass
                 elif self.rootDir in f:
                     exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
@@ -1891,15 +1924,13 @@ class data_organiser:
                 whatToList="files",  # all | files | dirs
             )
             for f in theseFiles:
-                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f):
+                if is_fits_frame(f):
                     fitsExist = True
                     break
         if not fitsExist:
             for d in os.listdir(self.rootDir):
                 filepath = os.path.join(self.rootDir, d)
-                if os.path.isfile(filepath) and (
-                    os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)
-                ):
+                if os.path.isfile(filepath) and is_fits_frame(filepath):
                     fitsExist = True
                     break
         return fitsExist
