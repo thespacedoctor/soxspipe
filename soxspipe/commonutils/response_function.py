@@ -72,7 +72,7 @@ def _fit_response_polynomial(
             modelResponse = np.polyval(responseCoefficients, fittedWavelength)
             deletedPoints = [
                 index
-                for index, (responseValue, modelValue) in enumerate(zip(fittedResponse, modelResponse))
+                for index, (responseValue, modelValue) in enumerate(zip(fittedResponse, modelResponse, strict=True))
                 if responseValue < 0 or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
             ]
             fittedWavelength = np.delete(fittedWavelength, deletedPoints)
@@ -263,12 +263,12 @@ class response_function:
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF["FLUX_DENSITY_COUNTS"].values
 
         if self.std_objName not in self.stdAbsFluxDF.columns:
-            self.log.error(
-                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
+            message = (
+                f"Standard star {self.std_objName} not found in the static calibration database. "
+                f"The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
             )
-            raise LookupError(
-                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
-            )
+            self.log.error(message)
+            raise LookupError(message)
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
         stdAbsFluxDF = self.stdAbsFluxDF

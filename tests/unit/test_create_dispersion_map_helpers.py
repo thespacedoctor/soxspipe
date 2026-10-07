@@ -884,7 +884,7 @@ def test_calculate_residuals_returns_analytic_pixel_scale_and_resolution(
     np.testing.assert_allclose(table["pixelScaleNm"], [0.5, 0.5])
     np.testing.assert_allclose(table["delta_wavelength"], [1.0, 1.0])
     np.testing.assert_allclose(table["R_pin"], [10.0, 20.0])
-    assert set(["fit_x_high", "fit_y_high", "fit_x_low", "fit_y_low"]).isdisjoint(table.columns)
+    assert {"fit_x_high", "fit_y_high", "fit_x_low", "fit_y_low"}.isdisjoint(table.columns)
     np.testing.assert_allclose(table["R_slit"], [0.0, 0.0])
     np.testing.assert_allclose(table["fwhm_slit_px"], [0.0, 0.0])
     assert len(mapper.qc.index) == 38

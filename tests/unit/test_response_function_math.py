@@ -48,7 +48,7 @@ def _legacy_fit_response_polynomial(
         modelResponse = np.polyval(coefficients, fittedWavelength)
         deletedPoints = [
             index
-            for index, (responseValue, modelValue) in enumerate(zip(fittedResponse, modelResponse))
+            for index, (responseValue, modelValue) in enumerate(zip(fittedResponse, modelResponse, strict=True))
             if responseValue < 0 or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
         ]
         fittedWavelength = np.delete(fittedWavelength, deletedPoints)

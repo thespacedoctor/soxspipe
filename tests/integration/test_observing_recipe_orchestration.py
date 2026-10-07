@@ -904,7 +904,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
         "label",
     ]
     reductionDates = []
-    for row, expected in zip(recipe.products.iloc[:3].to_dict("records"), expectedSkyProducts):
+    for row, expected in zip(recipe.products.iloc[:3].to_dict("records"), expectedSkyProducts, strict=True):
         reductionDates.append(row.pop("reduction_date_utc"))
         assert row == expected
     # THE THREE SKY PRODUCTS ARE STAMPED WITH ONE REDUCTION TIME, RENDERED TO
@@ -954,7 +954,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
         "OBJECT_VIS_SKYMODEL.fits",
         "OBJECT_VIS_SKYSUB_RESIDUALS.fits",
     ]
-    assert all(entry["frame"] is expected for entry, expected in zip(captured["write"], expectedFrames))
+    assert all(entry["frame"] is expected for entry, expected in zip(captured["write"], expectedFrames, strict=True))
     assert [entry["filename"] for entry in captured["write"]] == expectedFilenames
     assert all(entry["filedir"] == str(tmp_path) for entry in captured["write"])
     assert all(entry["overwrite"] is True for entry in captured["write"])
