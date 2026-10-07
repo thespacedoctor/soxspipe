@@ -453,11 +453,6 @@ class data_organiser:
             "offset",
         ]
 
-        # DECOMPRESS .Z FILES
-        from soxspipe.commonutils import uncompress
-
-        uncompress(log=self.log, directory=self.rootDir)
-
         exists = os.path.exists(self.rootDbPath)
         if exists and dbConnect:
             self.conn, reset = self._get_or_create_db_connection()

@@ -10,12 +10,18 @@ import pandas as pd
 import pytest
 from astropy.io import fits
 
-from soxspipe.commonutils import keyword_lookup
+import soxspipe.commonutils
+from soxspipe.commonutils import data_organiser, keyword_lookup
 from soxspipe.commonutils.data_organiser import (
     _harvest_fits_headers,
     _UnsafePathError,
 )
-from tests.factories import raw_fits, workspace_organiser
+from tests.factories import (
+    lzw_compressed_fits,
+    raw_fits,
+    workspace_layout,
+    workspace_organiser,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -542,3 +548,26 @@ def test_prepare_report_describes_the_completed_isolated_workspace(tmp_path, log
     assert "WORKSPACE FOR HAS BEEN PREPARED" in output
     assert "`misc/`: a lost-and-found archive" in output
     assert "`sessions/`: directory of data-reduction sessions" in output
+
+
+def test_organiser_leaves_compressed_frames_compressed_without_an_uncompress_command(
+    tmp_path, log, monkeypatch
+) -> None:
+    """Build the organiser over .fits.Z frames with no uncompress command on PATH."""
+    layout = workspace_layout(tmp_path)
+    nestedPath = layout.raw / "2024-01-01"
+    nestedPath.mkdir()
+    sourcePath = raw_fits(tmp_path / "source.fits")
+    rootFrame = lzw_compressed_fits(sourcePath, layout.root / "root.fits.Z")
+    nestedFrame = lzw_compressed_fits(sourcePath, nestedPath / "nested.fits.Z")
+    emptyBin = tmp_path / "empty-bin"
+    emptyBin.mkdir()
+    monkeypatch.setenv("PATH", str(emptyBin))
+
+    data_organiser(log=log, rootDir=str(layout.root), dbConnect=False)
+
+    assert rootFrame.read_bytes() == lzw_compressed_fits(sourcePath, tmp_path / "expected.fits.Z").read_bytes()
+    assert nestedFrame.exists()
+    assert not (layout.root / "root.fits").exists()
+    assert not (nestedPath / "nested.fits").exists()
+    assert not hasattr(soxspipe.commonutils, "uncompress")
