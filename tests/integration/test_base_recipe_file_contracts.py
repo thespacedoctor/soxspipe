@@ -15,7 +15,13 @@ from astropy.nddata import CCDData
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.recipes import base_recipe
-from tests.factories import pipeline_settings, prepared_fits, raw_fits, synthetic_ccd
+from tests.factories import (
+    lzw_compressed_fits,
+    pipeline_settings,
+    prepared_fits,
+    raw_fits,
+    synthetic_ccd,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -189,10 +195,7 @@ def test_write_round_trip_preserves_prepared_extensions(
     assert np.allclose(restored.uncertainty.array, 1.5)
 
 
-def test_prepare_single_frame_uses_shape_matched_bad_pixel_map(
-    tmp_path: Path,
-    log: object,
-) -> None:
+def _preparing_recipe(tmp_path: Path, log: object) -> base_recipe:
     recipe = _recipe(tmp_path, log)
     calibrationPath = tmp_path / "calibrations"
     calibrationPath.mkdir()
@@ -210,6 +213,14 @@ def test_prepare_single_frame_uses_shape_matched_bad_pixel_map(
     recipe.debug = False
     recipe.xsh2soxs = lambda frame: frame
     recipe._trim_frame = lambda frame: frame
+    return recipe
+
+
+def test_prepare_single_frame_uses_shape_matched_bad_pixel_map(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    recipe = _preparing_recipe(tmp_path, log)
     inputPath = raw_fits(tmp_path / "raw.fits")
 
     preparedPath = recipe._prepare_single_frame(str(inputPath))
@@ -234,6 +245,26 @@ def test_prepare_single_frame_uses_shape_matched_bad_pixel_map(
     assert prepared.uncertainty.array.dtype.itemsize == np.dtype(np.float32).itemsize
     np.testing.assert_allclose(prepared.uncertainty.array, 3.0)
     np.testing.assert_allclose(prepared.data, fits.getdata(inputPath) * 2.0)
+
+
+def test_prepare_single_frame_reads_a_compressed_frame_and_names_the_output_without_z(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    recipe = _preparing_recipe(tmp_path, log)
+    sourcePath = raw_fits(tmp_path / "source.fits")
+    inputPath = lzw_compressed_fits(sourcePath, tmp_path / "raw.fits.Z")
+    compressedBytes = inputPath.read_bytes()
+
+    preparedPath = recipe._prepare_single_frame(str(inputPath))
+
+    assert preparedPath == str(tmp_path / "prepared" / "raw_pre.fits")
+    np.testing.assert_allclose(
+        fits.getdata(preparedPath, extname="FLUX"), fits.getdata(sourcePath) * 2.0
+    )
+    assert inputPath.read_bytes() == compressedBytes
+    assert not (tmp_path / "raw.fits").exists()
+    assert [p.name for p in tmp_path.rglob("*.Z")] == ["raw.fits.Z"]
 
 
 def test_prepare_single_frame_leaves_existing_prepared_layout_unchanged(

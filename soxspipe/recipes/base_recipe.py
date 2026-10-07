@@ -635,6 +635,11 @@ class base_recipe:
         - ``filePath`` -- the path the prepared frame was written to
         """
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.fits_frame_names import (
+            FITS_SUFFIX,
+            fits_frame_stem,
+            is_fits_frame,
+        )
 
         if save:
             outDir = self.workspaceRootPath
@@ -655,9 +660,13 @@ class base_recipe:
                 self.log.debug(f"_prepare_single_frame: `os.makedirs(outDir)` failed, continuing: {e}")
         # CONVERT CCDData TO FITS HDU (INCLUDING HEADER) AND SAVE WITH PRE TAG
         # PREPENDED TO FILENAME
+        # A .fits.Z INPUT IS WRITTEN UNCOMPRESSED, SO ITS NAME DROPS THE .Z
         basename = os.path.basename(filepath)
-        filenameNoExtension = os.path.splitext(basename)[0]
-        extension = os.path.splitext(basename)[1]
+        if is_fits_frame(basename):
+            filenameNoExtension = fits_frame_stem(basename)
+            extension = FITS_SUFFIX
+        else:
+            filenameNoExtension, extension = os.path.splitext(basename)
         filePath = outDir + "/" + filenameNoExtension + "_pre" + extension
 
         # SAVE TO DISK
