@@ -13,6 +13,8 @@ from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 
 from soxspipe.commonutils.horne_extraction import (
+    _slit_edge_truncated_columns,
+    _unsupported_pixel_mask,
     compute_extractions,
     extract_single_order,
     fit_object_profile,
@@ -53,9 +55,11 @@ def _configure_synthetic_orchestration(
     orderSlice = pd.DataFrame({"order": [10, 10]})
     extraction = pd.DataFrame(
         {
+            "order": [10, 10, 10],
             "wavelengthMean": [500.0, 501.0, 502.0],
             "pixelScaleNm": [0.1, 4.0, 0.1],
             "extractedFluxOptimal": [1.0, 2.0, 3.0],
+            "slitEdgeTruncated": [False, False, False],
         }
     )
     merged = pd.DataFrame(
@@ -112,6 +116,7 @@ def _configure_synthetic_orchestration(
     extractor.recipeSettings = {"horne-extraction-profile-poly-order": 2}
     extractor.recipeName = "soxs-stare"
     extractor.dateObs = "2024-01-02T03:04:05"
+    extractor.notFlattened = ""
     monkeypatch.setattr(transformerModule, "image_transformer", FakeTransformer)
     monkeypatch.setattr(fundamentals, "fmultiprocess", lambda **kwargs: [extraction])
     monkeypatch.setattr(
@@ -154,14 +159,16 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
 
     qc, products, mergedSpectrum, joins, filePath = extractor.extract()
 
-    assert qc.empty
+    assert qc["qc_name"].tolist() == ["N ORDERS SLIT EDGE"]
+    assert qc.loc[0, "qc_value"] == 0
     assert products is False
     assert filePath is False
     assert joins == {"1011": 501.0}
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
     assert captured["transformer"]
     assert captured["cached"] == ["fluxRaw", "variance"]
-    assert captured["extractions"][0].equals(extraction)
+    assert captured["extractions"][0].equals(extraction.drop(columns=["slitEdgeTruncated"]))
+    assert extractor.slitEdgeOrders == []
 
 
 def test_extract_returns_empty_results_when_no_order_trace_exists(log: object) -> None:
@@ -377,7 +384,6 @@ def test_extract_writes_order_and_merged_product_contracts(
     extractor.filenameTemplate = "SYNTHETIC.fits"
     extractor.productDir = str(tmp_path)
     extractor.noddingSequence = ""
-    extractor.notFlattened = ""
     calls: list[dict[str, object]] = []
     monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
 
@@ -560,6 +566,36 @@ def test_order_merge_resamples_nir_flux_and_preserves_variance(log: object) -> N
     np.testing.assert_allclose(merged["SKY_COUNTS"].values.value, [4.0 / 3, 7.0 / 3])
     np.testing.assert_allclose(merged["SNR"].values.value, [6.0, 9.0])
     assert joins == {}
+
+
+def test_order_merge_renumbers_soxs_vis_orders_in_place_and_keeps_their_dtype(log: object) -> None:
+    extractor = _extractor(log)
+    extractor.arm = "VIS"
+    extractor.kw = lambda key: key
+    traceOrders = [1, 2, 3, 4]
+    starts = {4: 700.0, 1: 600.0, 3: 500.0, 2: 400.0}
+    rows = []
+    for order in traceOrders:
+        for step in range(3):
+            rows.append(
+                {
+                    "order": order,
+                    "wavelengthMean": starts[order] + 0.02 * step,
+                    "pixelScaleNm": 0.02,
+                    "extractedFluxOptimal": 10.0,
+                    "extractedFluxBoxcar": 10.0,
+                    "extractedFluxBoxcarRobust": 10.0,
+                    "varianceSpectrum": 1.0,
+                    "skyFlux": 1.0,
+                }
+            )
+    extractedOrders = pd.DataFrame(rows).astype({"order": np.int16})
+
+    extractor.merge_extracted_orders(extractedOrders)
+
+    assert extractedOrders["order"].dtype == np.int16
+    renumbered = extractedOrders.groupby("order")["wavelengthMean"].min().to_dict()
+    assert renumbered == {1: 700.0, 2: 600.0, 3: 500.0, 4: 400.0}
 
 
 def test_order_merge_helpers_weight_signal_and_choose_lower_residual(
@@ -794,6 +830,141 @@ def test_profile_fitting_keeps_weight_on_a_masked_pixel_with_finite_flux() -> No
     np.testing.assert_allclose(profile.sum(axis=0), 1.0)
 
 
+def _centred_window_images(
+    rows: int = 13, columns: int = 80, crhPixels: tuple[tuple[int, int], ...] = ()
+) -> tuple[dict[str, np.ndarray], np.ndarray]:
+    """Build a well-sampled, centred Gaussian object window with masked cosmic-ray hits.
+
+    Returns the rectified images and the true normalised cross-slit profile.
+    """
+    rowIndex = np.arange(rows)[:, np.newaxis]
+    shape = np.exp(-0.5 * ((rowIndex - rows // 2) / 1.5) ** 2)
+    flux = shape * (1000.0 + 5.0 * np.arange(columns))[np.newaxis, :]
+    mask = np.zeros((rows, columns), dtype=bool)
+    for row, column in crhPixels:
+        mask[row, column] = True
+        flux[row, column] *= 50.0
+    return {"fluxRaw": flux, "mask": mask}, shape[:, 0] / shape[:, 0].sum()
+
+
+def test_profile_fitting_keeps_weight_on_isolated_cosmic_ray_pixels_in_a_centred_window() -> None:
+    crhPixels = ((6, 10), (5, 30), (7, 31), (6, 55), (8, 70))
+    images, truth = _centred_window_images(crhPixels=crhPixels)
+
+    fitted = _fit_profile(images)
+
+    profile = fitted["objectProfile"]
+    for row, column in crhPixels:
+        assert profile[row, column] > 0
+        assert profile[row, column] == pytest.approx(truth[row], rel=5e-2)
+    np.testing.assert_allclose(profile.sum(axis=0), 1.0)
+    np.testing.assert_allclose(profile, np.tile(truth[:, np.newaxis], (1, 80)), rtol=5e-2, atol=1e-3)
+
+
+def _slit_edge_images(
+    columns: int = 80, rows: int = 13, offOrderRows: int = 4, sparseRows: tuple[int, ...] = (4, 5, 6)
+) -> dict[str, np.ndarray]:
+    """Build a window whose object sits on the slit edge.
+
+    The top rows are off the order (NaN). The next rows are finite but masked, apart from
+    one usable pixel in ten (none at either end), as order-edge flat flags leave them.
+    """
+    rowIndex = np.arange(rows)[:, np.newaxis]
+    shape = np.exp(-0.5 * ((rowIndex - 5.0) / 1.5) ** 2)
+    flux = shape * (1000.0 + 5.0 * np.arange(columns))[np.newaxis, :]
+    mask = np.zeros((rows, columns), dtype=bool)
+    mask[:offOrderRows, :] = True
+    flux[:offOrderRows, :] = np.nan
+    for row in sparseRows:
+        mask[row, :] = np.arange(columns) % 10 != 5
+    return {"fluxRaw": flux, "mask": mask}
+
+
+def test_profile_fitting_gives_no_weight_to_masked_pixels_in_rows_with_sparse_support() -> None:
+    images = _slit_edge_images()
+
+    fitted = _fit_profile(images)
+
+    profile = fitted["objectProfile"]
+    assert (profile[:4, :] == 0).all()
+    assert (profile[images["mask"]] == 0).all()
+    assert (profile[~images["mask"]] > 0).all()
+    np.testing.assert_allclose(profile.sum(axis=0), 1.0)
+
+
+def test_unsupported_pixel_mask_flags_off_order_and_masked_pixels_in_sparse_rows_only() -> None:
+    images = _slit_edge_images()
+    images["mask"][9, 20] = True
+
+    unsupported = _unsupported_pixel_mask(images["fluxRaw"], images["mask"])
+
+    assert unsupported[:4, :].all()
+    assert unsupported[4:7, :][images["mask"][4:7, :]].all()
+    assert not unsupported[9, 20]
+    assert not unsupported[~images["mask"]].any()
+
+
+def test_slit_edge_truncated_columns_flags_an_object_cut_off_by_the_slit_edge() -> None:
+    images = _slit_edge_images()
+    unsupported = _unsupported_pixel_mask(images["fluxRaw"], images["mask"])
+
+    truncated = _slit_edge_truncated_columns(images["fluxRaw"], images["mask"], unsupported)
+
+    assert truncated.shape == (80,)
+    assert truncated.all()
+
+
+def test_slit_edge_truncated_columns_ignores_a_centred_object_with_off_order_edge_rows() -> None:
+    images, _ = _centred_window_images()
+    images["fluxRaw"][:2, :] = np.nan
+    images["mask"][:2, :] = True
+    unsupported = _unsupported_pixel_mask(images["fluxRaw"], images["mask"])
+
+    truncated = _slit_edge_truncated_columns(images["fluxRaw"], images["mask"], unsupported)
+
+    assert unsupported[:2, :].all()
+    assert not truncated.any()
+
+
+def test_slit_edge_truncated_columns_ignores_isolated_cosmic_rays() -> None:
+    images, _ = _centred_window_images(crhPixels=((6, 10), (2, 30), (11, 31)))
+    unsupported = _unsupported_pixel_mask(images["fluxRaw"], images["mask"])
+
+    truncated = _slit_edge_truncated_columns(images["fluxRaw"], images["mask"], unsupported)
+
+    assert not unsupported.any()
+    assert not truncated.any()
+
+
+def test_slit_edge_truncated_columns_flags_the_bottom_edge_and_skips_fully_unsupported_columns() -> None:
+    images = _slit_edge_images()
+    images["fluxRaw"] = images["fluxRaw"][::-1].copy()
+    images["mask"] = images["mask"][::-1].copy()
+    images["fluxRaw"][:, 7] = np.nan
+    images["mask"][:, 7] = True
+    unsupported = _unsupported_pixel_mask(images["fluxRaw"], images["mask"])
+
+    truncated = _slit_edge_truncated_columns(images["fluxRaw"], images["mask"], unsupported)
+
+    assert not truncated[7]
+    assert np.delete(truncated, 7).all()
+
+
+@pytest.mark.parametrize("flipRows", [False, True], ids=["top-edge", "bottom-edge"])
+def test_slit_edge_truncated_columns_looks_past_a_cosmic_ray_on_the_row_next_to_the_slit_edge(flipRows: bool) -> None:
+    images = _slit_edge_images(sparseRows=())
+    images["mask"][4, 30] = True
+    if flipRows:
+        images = {key: value[::-1].copy() for key, value in images.items()}
+    unsupported = _unsupported_pixel_mask(images["fluxRaw"], images["mask"])
+
+    truncated = _slit_edge_truncated_columns(images["fluxRaw"], images["mask"], unsupported)
+
+    assert not unsupported[4 if not flipRows else 8, 30]
+    assert truncated[30]
+    assert truncated.all()
+
+
 def test_profile_fitting_is_unchanged_when_every_pixel_is_on_order() -> None:
     rowFractions = np.array([[0.25], [0.5], [0.25]])
     images = {
@@ -842,8 +1013,148 @@ def test_single_order_extraction_returns_sorted_science_columns(log: object) -> 
         "extractedFluxBoxcar",
         "extractedFluxBoxcarRobust",
         "skyFlux",
+        "slitEdgeTruncated",
     ]
+    assert result["slitEdgeTruncated"].tolist() == [False, False, False]
     assert result["wavelengthMean"].tolist() == [501.0, 502.0, 503.0]
     assert result["extractedFluxOptimal"].tolist() == [8.0, 6.0, 4.0]
     np.testing.assert_allclose(result["varianceSpectrum"], 2.0)
     assert result["skyFlux"].isna().all()
+
+
+def test_single_order_extraction_marks_slices_where_the_object_spills_over_the_slit_edge(
+    log: object,
+) -> None:
+    images = _slit_edge_images(columns=80)
+    bpMask = images["mask"].astype(int)
+    bpMask[:4, :] = 0
+    images["fluxRaw"][:4, :] = np.nan
+    images.update(
+        {
+            "bpMask": bpMask,
+            "variance": np.ones((13, 80)),
+            "wavelength": np.tile(600.0 - 0.1 * np.arange(80), (13, 1)),
+        }
+    )
+    slices = pd.DataFrame({"order": [10] * 80})
+
+    result = extract_single_order(
+        (slices, images),
+        log,
+        slitHalfLength=6,
+        clippingSigma=3.0,
+        clippingIterationLimit=5,
+        globalClippingSigma=3.0,
+        axisA="y",
+        axisB="x",
+        hornePolyOrder=0,
+    )
+
+    assert result is not None
+    assert result["slitEdgeTruncated"].dtype == bool
+    assert result["slitEdgeTruncated"].mean() > 0.9
+
+
+def _order_extraction(order: int, truncatedFraction: float, columns: int = 10, wlStart: float = 500.0) -> pd.DataFrame:
+    """Build an order's extraction frame with the given share of slit-edge-truncated slices."""
+    truncatedCount = round(truncatedFraction * columns)
+    return pd.DataFrame(
+        {
+            "order": [order] * columns,
+            "wavelengthMean": wlStart + np.arange(columns, dtype=float),
+            "slitEdgeTruncated": [True] * truncatedCount + [False] * (columns - truncatedCount),
+        }
+    )
+
+
+def _spill_extractor(log: object, notFlattened: str = "", qc: object = None) -> horne_extraction:
+    extractor = _extractor(log)
+    extractor.notFlattened = notFlattened
+    extractor.qc = pd.DataFrame() if qc is None else qc
+    extractor.recipeName = "soxs-stare"
+    extractor.dateObs = "2024-01-02T03:04:05"
+    extractor.arm = "NIR"
+    return extractor
+
+
+def test_slit_edge_summary_records_spilled_orders_logs_one_error_and_adds_the_qc_row(log: object) -> None:
+    extractor = _spill_extractor(log)
+    extractions = [
+        _order_extraction(11, 0.9, wlStart=538.04),
+        _order_extraction(12, 0.1, wlStart=600.0),
+        _order_extraction(13, 1.0, wlStart=671.0),
+    ]
+
+    cleaned = extractor._summarise_slit_edge_spill(extractions)
+
+    assert [o[0] for o in extractor.slitEdgeOrders] == [11, 13]
+    assert extractor.slitEdgeOrders[0] == (11, 538.04, 547.04, pytest.approx(0.9))
+    assert extractor.slitEdgeOrders[1][3] == pytest.approx(1.0)
+    assert all("slitEdgeTruncated" not in e.columns for e in cleaned)
+    errors = [message for level, message in log.messages if level == "error"]
+    assert len(errors) == 1
+    assert "slit edge" in errors[0]
+    assert "538.0-547.0 nm" in errors[0]
+    assert "671.0-680.0 nm" in errors[0]
+    assert "90%" in errors[0]
+    assert "unreliable" in errors[0]
+    row = extractor.qc.iloc[0]
+    assert (row["qc_name"], row["qc_value"]) == ("N ORDERS SLIT EDGE", 2)
+    assert row["qc_comment"] == "Number of orders where the object spills over the slit edge"
+
+
+def test_slit_edge_summary_names_soxs_vis_orders_as_the_products_number_them(log: object) -> None:
+    extractor = _spill_extractor(log)
+    extractor.arm = "VIS"
+    extractions = [_order_extraction(1, 1.0, wlStart=538.0), _order_extraction(4, 1.0, wlStart=671.0)]
+
+    extractor._summarise_slit_edge_spill(extractions)
+
+    assert [o[0] for o in extractor.slitEdgeOrders] == [2, 1]
+    errors = [message for level, message in log.messages if level == "error"]
+    assert "order(s) 2 (538.0-547.0 nm" in errors[0]
+    assert "1 (671.0-680.0 nm" in errors[0]
+
+
+def test_slit_edge_summary_reports_a_clean_extraction_with_a_zero_count_and_no_error(log: object) -> None:
+    extractor = _spill_extractor(log)
+    extractions = [_order_extraction(11, 0.2), _order_extraction(12, 0.0)]
+
+    extractor._summarise_slit_edge_spill(extractions)
+
+    assert extractor.slitEdgeOrders == []
+    assert [level for level, _ in log.messages if level == "error"] == []
+    assert extractor.qc["qc_value"].tolist() == [0]
+
+
+def test_slit_edge_summary_stays_silent_for_the_unflattened_re_extraction(log: object) -> None:
+    extractor = _spill_extractor(log, notFlattened="_NOTFLAT")
+
+    extractor._summarise_slit_edge_spill([_order_extraction(11, 1.0)])
+
+    assert [o[0] for o in extractor.slitEdgeOrders] == [11]
+    assert [level for level, _ in log.messages if level == "error"] == []
+    assert extractor.qc.empty
+
+
+def test_slit_edge_summary_leaves_a_missing_qc_table_alone(log: object) -> None:
+    extractor = _spill_extractor(log, qc=False)
+
+    extractor._summarise_slit_edge_spill([_order_extraction(11, 1.0)])
+
+    assert extractor.qc is False
+    assert len([level for level, _ in log.messages if level == "error"]) == 1
+
+
+def test_extract_reports_slit_edge_spill_from_the_per_order_extractions(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, extraction, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extraction["slitEdgeTruncated"] = True
+
+    qc, _, _, _, _ = extractor.extract()
+
+    assert extractor.slitEdgeOrders == [(10, 500.0, 502.0, 1.0)]
+    assert qc["qc_value"].tolist() == [1]
+    assert len([level for level, _ in log.messages if level == "error"]) == 1

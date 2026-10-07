@@ -436,6 +436,7 @@ class soxs_stare(base_recipe):
             turnOffMP=self.turnOffMP,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
+        slitEdgeSpill = bool(optimalExtractor.slitEdgeOrders)
 
         # CHECK IF FLUX CALIBRATION IS NEEDED
         filePath_fluxcal = None
@@ -445,14 +446,22 @@ class soxs_stare(base_recipe):
             filePath_fluxcal = self._flux_calibrate_spectrum(responseFunctionPath, mergedSpectumDF, combined_object)
 
         elif self.generateReponseCurve:
-            forceFailure = self._generate_response_curve(
-                unflattenedSkySubtractedCCDData,
-                skymodelCCDData,
-                twoDMap,
-                dispMap,
-                extractionPath,
-                orderJoins,
+            forceFailure = (
+                self._generate_response_curve(
+                    unflattenedSkySubtractedCCDData,
+                    skymodelCCDData,
+                    twoDMap,
+                    dispMap,
+                    extractionPath,
+                    orderJoins,
+                )
+                or slitEdgeSpill
             )
+            if slitEdgeSpill:
+                self.log.error(
+                    "The standard star spills over the slit edge, so this recipe and its response curve are flagged "
+                    "as failed and will not be used to flux-calibrate other frames."
+                )
 
         self._plot_merged_spectrum_qcs(mergedSpectumDF, orderJoins, filePath_fluxcal)
 

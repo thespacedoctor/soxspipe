@@ -796,6 +796,9 @@ def test_stare_success_returns_last_sky_path_and_records_products(
             return skyModel, skySubtracted, residuals, recipe.qc, recipe.products
 
     class FakeExtractor:
+        # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
+        slitEdgeOrders: list = []
+
         def __init__(self, **kwargs: object) -> None:
             calls.append("extractor")
             captured["extractor"].append(kwargs)
@@ -1150,6 +1153,9 @@ def test_stare_generates_a_response_from_a_flux_standard(
     )
 
     class FakeExtractor:
+        # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
+        slitEdgeOrders: list = []
+
         def __init__(self, **kwargs: object) -> None:
             extractionArguments.append(kwargs)
             calls.append("extractor")
@@ -1270,6 +1276,9 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     monkeypatch.setattr(recipe, "clean_up", lambda **kwargs: calls.append(f"clean_up:{kwargs['forceFail']}"))
 
     class FakeExtractor:
+        # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
+        slitEdgeOrders: list = []
+
         def __init__(self, **kwargs: object) -> None:
             calls.append("extractor")
 
