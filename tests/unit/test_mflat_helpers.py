@@ -330,6 +330,7 @@ def test_stitch_uv_mflats_scales_d_lamp_and_uses_the_selected_order_edge(
         _frame(np.full((4, 6), 2.0)),
         _frame(np.full((4, 6), 10.0)),
     ]
+    recipe.orderEdgeMaskSet = [None, None, None]
     edgePixels = pd.DataFrame(
         {"order": [11], "xcoord_edgeup": [1], "ycoord": [1]}
     )
@@ -368,3 +369,78 @@ def test_stitch_uv_mflats_scales_d_lamp_and_uses_the_selected_order_edge(
     np.testing.assert_allclose(stitched.data[1, 5:], 10.0)
     assert stitched.header["DPR_TYPE"] == "LAMP,,"
     assert captured == {"orderTablePath": "edges.fits"}
+
+
+def test_stitch_uv_mflats_stitches_the_lamp_edge_masks_and_keeps_the_final_edge_flags(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stored edge mask follows the stitched mflat: D-lamp left of the stitch, Q-lamp right, plus the final pass."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.settings = {}
+    recipe.sofName = "UVB"
+    recipe.startNightDate = "2024-01-01"
+    recipe.binRatioX = 1
+    recipe.binRatioY = 1
+    recipe.orderTableSet = ["unused.fits", "centres.fits"]
+    recipe.masterFlatSet = [
+        _frame(np.zeros((4, 6))),
+        _frame(np.full((4, 6), 2.0)),
+        _frame(np.full((4, 6), 10.0)),
+    ]
+    dEdges = np.zeros((4, 6), dtype=bool)
+    dEdges[1, 0] = True
+    dEdges[1, 5] = True
+    qEdges = np.zeros((4, 6), dtype=bool)
+    qEdges[1, 1] = True
+    qEdges[1, 5] = True
+    qEdges[2, 3] = True
+    recipe.orderEdgeMaskSet = [None, dEdges, qEdges]
+    finalEdges = np.zeros((4, 6), dtype=bool)
+    finalEdges[3, 3] = True
+    edgePixels = pd.DataFrame({"order": [11], "xcoord_edgeup": [1], "ycoord": [1]})
+    monkeypatch.setattr(mflatModule, "unpack_order_table", lambda **kwargs: (None, edgePixels, None))
+    monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
+
+    class FakeEdges:
+        def __init__(self, **kwargs: object) -> None:
+            self.products = kwargs["productsTable"]
+            self.qc = kwargs["qcTable"]
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, int]]:
+            products = pd.DataFrame({"product_label": ["ORDER_LOC"], "file_path": ["edges.fits"]})
+            return products, self.qc, {"detected": 1}
+
+    monkeypatch.setattr(mflatModule, "detect_order_edges", FakeEdges)
+
+    def fake_mask(frame: CCDData, orderTablePath: str) -> CCDData:
+        recipe.orderEdgeOnlyMask = finalEdges.copy()
+        recipe.qc = mflatModule.append_qc(
+            recipe.qc,
+            recipeName=recipe.recipeName,
+            qcName="N ORDER EDGE",
+            qcValue=float(finalEdges.sum()),
+            qcComment="Number of partly illuminated order-edge pixels masked in master flat",
+            obsDateUtc=recipe.dateObs,
+            reductionDateUtc="2024-01-01T00:00:00",
+            qcUnit="pixels",
+        )
+        return frame
+
+    recipe.mask_low_sens_pixels = fake_mask
+    orderFluxes = pd.DataFrame({"order": [10, 11], "_QLAMP": [10.0, 5.0], "_DLAMP": [9.0, 10.0]})
+
+    # ACT
+    recipe.stitch_uv_mflats(orderFluxes, "original.fits")
+
+    # ASSERT: ROW 1 TAKES THE D-LAMP FLAGS BEFORE COLUMN 5 AND THE Q-LAMP FLAGS FROM COLUMN 5, ROW 2 IS UNTOUCHED
+    expected = np.zeros((4, 6), dtype=bool)
+    expected[1, 0] = True
+    expected[1, 5] = True
+    expected[2, 3] = True
+    expected[3, 3] = True
+    np.testing.assert_array_equal(recipe.orderEdgeOnlyMask, expected)
+    edgeRows = recipe.qc.loc[recipe.qc["qc_name"] == "N ORDER EDGE"]
+    assert len(edgeRows) == 1
+    assert edgeRows["qc_value"].iloc[0] == float(expected.sum())

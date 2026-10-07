@@ -408,7 +408,7 @@ class soxs_stare(base_recipe):
         quicklook_image(
             log=self.log,
             CCDObject=combined_object_notflattened,
-            show=True,
+            show=self.debug,
             ext='data',
             stdWindow=3,
             title=False,

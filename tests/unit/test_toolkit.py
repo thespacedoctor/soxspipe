@@ -111,6 +111,81 @@ def test_generic_quality_checks_records_mask_count_and_fraction(
     assert result["to_header"].tolist() == [True, True]
 
 
+def _flat_frame_with_mask(mask: np.ndarray) -> SimpleNamespace:
+    return SimpleNamespace(mask=mask, header={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-02T03:04:05"})
+
+
+def test_generic_quality_checks_excludes_the_exclude_mask_from_count_and_fraction(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE: FOUR OF TEN PIXELS ARE MASKED, TWO OF THEM FLAGGED IN THE EXCLUDE MASK
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+    excludeMask = np.zeros((2, 5), dtype=bool)
+    excludeMask[0, 2:4] = True
+
+    # ACT
+    result = toolkit.generic_quality_checks(
+        log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame(), excludeMask=excludeMask
+    )
+
+    # ASSERT
+    assert result["qc_name"].tolist() == ["COLDPIX NUM", "COLDPIX FRAC"]
+    assert result["qc_value"].tolist() == [2, 0.2]
+
+
+def test_generic_quality_checks_without_exclude_mask_counts_every_masked_pixel(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+
+    # ACT
+    result = toolkit.generic_quality_checks(log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame())
+
+    # ASSERT
+    assert result["qc_value"].tolist() == [4, 0.4]
+
+
+def test_generic_quality_checks_exclude_mask_of_none_counts_every_masked_pixel(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+
+    # ACT
+    result = toolkit.generic_quality_checks(
+        log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame(), excludeMask=None
+    )
+
+    # ASSERT
+    assert result["qc_value"].tolist() == [4, 0.4]
+
+
+def test_generic_quality_checks_rejects_an_exclude_mask_of_the_wrong_shape(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE: A (5,) MASK BROADCASTS AGAINST A (2, 5) FRAME MASK, SO ONLY AN EXPLICIT SHAPE CHECK CATCHES IT
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"\(5,\).*\(2, 5\)"):
+        toolkit.generic_quality_checks(
+            log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame(), excludeMask=np.ones(5, dtype=bool)
+        )
+
+
 def test_calibration_path_honors_instrument_setting(log: object) -> None:
     defaultPath = toolkit.get_calibrations_path(log, {})
     customPath = toolkit.get_calibrations_path(log, {"instrument": "xshooter"})

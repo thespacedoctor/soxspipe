@@ -148,6 +148,8 @@ soxs-mflat:
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
         low-sensitivity-clipping-sigma: 2
+        # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+        order-edge-min-flat-fraction: 0.5
         # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
         scale-d2-to-qth: True
     vis:
@@ -171,6 +173,8 @@ soxs-mflat:
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
         low-sensitivity-clipping-sigma: 2
+        # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+        order-edge-min-flat-fraction: 0.5
     nir:
         # SIZE OF THE WINDOW (IN PIXELS) USED TO MEASURE FLUX IN THE CENTRAL BAND TO DETERMINE MEDIAN EXPOSURE 
         centre-order-window: 20
@@ -192,6 +196,8 @@ soxs-mflat:
         poly-clipping-iteration-limit: 2
         # PIXELS WITH A FLUX LESS THAN THIS MANY SIGMA (MAD) BELOW THE MEDIAN FLUX LEVEL ADDED TO THE BP MAP
         low-sensitivity-clipping-sigma: 2
+        # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+        order-edge-min-flat-fraction: 0.5
 
 
 soxs-spat-solution:

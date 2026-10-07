@@ -33,6 +33,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -757,3 +758,116 @@ def test_multi_lamp_master_flat_records_tagged_dlamp_and_qlamp_product_rows(
     _assert_multi_lamp_products(recipe)
     # ONE CLOCK READ PER LAMP ROW, THEN ONE FOR THE FINAL MFLAT ROW
     assert clockReads == ["read"] * 4
+
+
+def _run_single_lamp_and_capture_exclude_mask(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    storedEdgeMask: Any,
+) -> tuple[soxs_mflat, Any]:
+    """Run a single-lamp `produce_product`; return the recipe and the `excludeMask` its final QC received."""
+    orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=331)
+    flatFrame = synthetic_ccd(seed=332, prepared=True)
+    maskedFrame = synthetic_ccd(seed=333, prepared=True)
+    recipe = _new_bare_recipe(
+        log,
+        tmp_path,
+        orderPath,
+        subtractBackground=False,
+        calibratedFlatFiles=["flat-1.fits"],
+        dFlatFiles=[],
+        qFlatFiles=[],
+        domeFlatFiles=[],
+    )
+    medianFlux = pd.DataFrame({"order": [10], "medianFlux": [100.0]})
+
+    def fake_mask(**kwargs: Any) -> tuple[Any, pd.DataFrame]:
+        if storedEdgeMask is not None:
+            recipe.orderEdgeOnlyMask = storedEdgeMask
+        return maskedFrame, medianFlux
+
+    captured: dict[str, Any] = {}
+
+    def fake_generic_quality_checks(**kwargs: Any) -> pd.DataFrame:
+        captured.update(kwargs)
+        return kwargs["qcTable"]
+
+    monkeypatch.setattr(recipe, "calibrate_frame_set", lambda: ([flatFrame], [], [], []))
+    monkeypatch.setattr(recipe, "normalise_flats", lambda *a, **k: [flatFrame.copy()])
+    monkeypatch.setattr(recipe, "clip_and_stack", lambda **k: k["frames"][0].copy())
+    monkeypatch.setattr(recipe, "mask_low_sens_pixels", fake_mask)
+    monkeypatch.setattr(recipe, "_write", lambda *a, **k: str(tmp_path / "MASTER_FLAT_VIS.fits"))
+    _stub_shared_collaborators(recipe, monkeypatch, orderPath)
+    monkeypatch.setattr(soxs_mflat_module, "generic_quality_checks", fake_generic_quality_checks)
+
+    recipe.produce_product()
+
+    return recipe, captured["excludeMask"]
+
+
+def test_final_coldpix_qc_receives_the_stored_order_edge_mask(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The final `generic_quality_checks` call is handed the edge-only mask of the mflat's last masking."""
+    # ARRANGE
+    edgeMask = np.zeros(synthetic_ccd(seed=333, prepared=True).mask.shape, dtype=bool)
+    edgeMask[0, :2] = True
+
+    # ACT
+    recipe, excludeMask = _run_single_lamp_and_capture_exclude_mask(log, tmp_path, monkeypatch, edgeMask)
+
+    # ASSERT
+    np.testing.assert_array_equal(excludeMask, edgeMask)
+
+
+def test_lamp_edge_mask_is_stored_as_a_copy_not_a_reference(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later in-place change to the recipe's edge mask does not rewrite the stored lamp edge mask."""
+    # ARRANGE
+    edgeMask = np.zeros(synthetic_ccd(seed=333, prepared=True).mask.shape, dtype=bool)
+    edgeMask[0, :2] = True
+
+    # ACT
+    recipe, _ = _run_single_lamp_and_capture_exclude_mask(log, tmp_path, monkeypatch, edgeMask)
+
+    # ASSERT
+    assert recipe.orderEdgeMaskSet[0] is not edgeMask
+    np.testing.assert_array_equal(recipe.orderEdgeMaskSet[0], edgeMask)
+
+
+def test_final_coldpix_qc_gets_no_exclude_mask_when_masking_never_ran(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recipe whose masking was bypassed passes `None`, so QC counts every masked pixel."""
+    # ACT
+    _, excludeMask = _run_single_lamp_and_capture_exclude_mask(log, tmp_path, monkeypatch, None)
+
+    # ASSERT
+    assert excludeMask is None
+
+
+def test_final_coldpix_qc_gets_no_exclude_mask_when_its_shape_differs_from_the_mflat(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An edge mask that does not fit the written mflat is dropped rather than broadcast."""
+    # ACT
+    _, excludeMask = _run_single_lamp_and_capture_exclude_mask(
+        log, tmp_path, monkeypatch, np.zeros((2, 2), dtype=bool)
+    )
+
+    # ASSERT
+    assert excludeMask is None
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "(2, 2)" in warnings[0]
+    assert str(synthetic_ccd(seed=333, prepared=True).mask.shape) in warnings[0]

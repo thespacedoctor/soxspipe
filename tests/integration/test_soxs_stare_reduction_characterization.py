@@ -403,9 +403,10 @@ def test_both_quicklook_images_are_rendered_with_their_arguments(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`produce_product` renders the detrended frame, then the leftover debug surface plot of the raw stack (DY-112)."""
+    """`produce_product` renders the detrended frame, then the debug surface plot of the raw stack (DY-112)."""
     # ARRANGE
     recipe = _stare_recipe(log, tmp_path)
+    recipe.debug = False
     captured = _patch_stare(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -429,9 +430,27 @@ def test_both_quicklook_images_are_rendered_with_their_arguments(
     assert second == {
         "log": recipe.log,
         "CCDObject": captured["stack"][0]["result"],
-        "show": True,
+        "show": False,
         "ext": "data",
         "stdWindow": 3,
         "title": False,
         "surfacePlot": True,
     }
+
+
+def test_raw_stack_surface_plot_is_shown_only_in_debug_mode(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The raw-stack surface plot blocks on a window, so `produce_product` shows it only when debugging."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.debug = True
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["quicklook"][1]["show"] is True
