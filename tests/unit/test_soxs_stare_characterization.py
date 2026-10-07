@@ -722,3 +722,136 @@ def test_the_pae_setting_admits_the_nir_flat_lamp_pinhole_frame(
         with pytest.raises(TypeError) as raised:
             recipe.verify_input_frames()
         assert str(raised.value) == f"Found a FLAT,LAMP file. {NIR_EXPECTED_INPUT}"
+
+
+class SpillingExtractor:
+    """Stand-in for `horne_extraction` that reports a chosen slit-edge verdict."""
+
+    def __init__(self, slitEdgeOrders: list[tuple[int, float, float, float]], **_: object) -> None:
+        self.slitEdgeOrders = slitEdgeOrders
+
+    def extract(self) -> tuple[str, str, str, dict[str, float], str]:
+        return "qc", "products", "mergedSpectrum", {"1011": 501.0}, "extraction.fits"
+
+
+def _produce_product_recipe(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    slitEdgeOrders: list[tuple[int, float, float, float]],
+    generateResponseCurve: bool,
+    responseFailure: bool = False,
+) -> tuple[soxs_stare, dict[str, Any]]:
+    """Return a recipe whose `produce_product` runs for real over recorded collaborators.
+
+    **Return:**
+
+    - the recipe, and a dictionary recording the `clean_up` and `_generate_response_curve` calls.
+    """
+    calls: dict[str, Any] = {"clean_up": [], "response": 0}
+    frame = synthetic_ccd()
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
+    recipe.settings = {}
+    recipe.recipeSettings = {"sky-subtraction": {"subtract_sky": True}, "use_flat": True}
+    recipe.recipeName = "soxs-stare"
+    recipe.sofName = "stare"
+    recipe.startNightDate = "2024-01-02"
+    recipe.debug = False
+    recipe.turnOffMP = True
+    recipe.qc = "qc"
+    recipe.products = "products"
+    recipe.generateReponseCurve = generateResponseCurve
+    recipe._read_stare_object_frames = lambda kw: [frame]
+    recipe.clip_and_stack = lambda **_: frame
+    recipe._read_calibration_frames = lambda kw, arm: (frame, frame, frame)
+    recipe._locate_calibration_tables = lambda kw, arm: ("orders.fits", "disp.fits", "map.fits", None)
+    recipe.detrend = lambda **_: frame
+    recipe.update_fits_keywords = lambda **_: None
+    recipe._subtract_sky = lambda *_: (frame, frame, "product.fits")
+    recipe._unflatten_sky_subtracted_frame = lambda *_: frame
+    recipe._plot_merged_spectrum_qcs = lambda *_: None
+    recipe.report_output = lambda: "qcTable"
+    recipe.clean_up = lambda forceFail=False: calls["clean_up"].append(forceFail)
+
+    def generate_response_curve(*_: object) -> bool:
+        calls["response"] += 1
+        return responseFailure
+
+    recipe._generate_response_curve = generate_response_curve
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
+    monkeypatch.setattr(
+        commonutils,
+        "horne_extraction",
+        lambda **kwargs: SpillingExtractor(slitEdgeOrders, **kwargs),
+    )
+    return recipe, calls
+
+
+SPILLED_ORDERS = [(11, 538.0, 675.0, 0.96)]
+
+
+def test_a_standard_star_that_spills_over_the_slit_edge_fails_the_recipe_and_logs_why(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response-curve branch forces failure on a spill, even when the response itself passed."""
+    # ARRANGE
+    recipe, calls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=SPILLED_ORDERS, generateResponseCurve=True, responseFailure=False
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls["response"] == 1
+    assert calls["clean_up"] == [True]
+    errors = [message for level, message in log.messages if level == "error"]
+    assert len(errors) == 1
+    assert "standard star spills over the slit edge" in errors[0]
+    assert "will not be used to flux-calibrate" in errors[0]
+
+
+def test_a_centred_standard_star_keeps_the_response_verdict(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no spill, the recipe fails only when the response function says so."""
+    # ARRANGE
+    passing, passingCalls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=True, responseFailure=False
+    )
+    failing, failingCalls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=True, responseFailure=True
+    )
+
+    # ACT
+    passing.produce_product()
+    failing.produce_product()
+
+    # ASSERT
+    assert passingCalls["clean_up"] == [False]
+    assert failingCalls["clean_up"] == [True]
+    assert [message for level, message in log.messages if level == "error"] == []
+
+
+def test_a_science_frame_that_spills_over_the_slit_edge_is_not_failed(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only flux standards are failed on a spill; for a science frame the recipe adds no error of its own."""
+    # ARRANGE
+    recipe, calls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=SPILLED_ORDERS, generateResponseCurve=False
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls["response"] == 0
+    assert calls["clean_up"] == [False]
+    assert [message for level, message in log.messages if level == "error"] == []

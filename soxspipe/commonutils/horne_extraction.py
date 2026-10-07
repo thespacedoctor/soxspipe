@@ -16,6 +16,17 @@ from .filenamer import filenamer
 
 os.environ["TERM"] = "vt100"
 
+# WIDTH IN COLUMNS OVER WHICH THE LOCAL FRACTION OF USABLE PIXELS IS MEASURED IN EACH SLIT ROW
+PROFILE_SUPPORT_WINDOW = 51
+# A MASKED PIXEL IN A ROW WITH LESS LOCAL USABLE FRACTION THAN THIS HAS AN UNCONSTRAINED PROFILE
+PROFILE_MIN_LOCAL_SUPPORT = 0.5
+# A COLUMN SPILLS IF THE USABLE ROW NEXT TO THE UNSUPPORTED EDGE HOLDS THIS FRACTION OF THE COLUMN PEAK
+SLIT_EDGE_PEAK_FRACTION = 0.5
+# AN ORDER SPILLS IF MORE THAN THIS FRACTION OF ITS COLUMNS ARE TRUNCATED AT THE SLIT EDGE
+SLIT_EDGE_ORDER_FRACTION = 0.2
+# SOXS VIS TRACE ORDER NUMBERS RENUMBERED SO THE MERGED AND PRODUCT ORDERS SORT BY WAVELENGTH
+SOXS_VIS_ORDER_REMAP = {4: 1, 1: 2, 3: 3, 2: 4}
+
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
 
 
@@ -108,6 +119,7 @@ class horne_extraction(base_util):
         self.twoDMapPath = twoDMapPath
         self.products = productsTable
         self.qc = qcTable
+        self.slitEdgeOrders = []
         self.recipeName = recipeName
         self.sofName = sofName
         self.noddingSequence = ""
@@ -373,7 +385,7 @@ class horne_extraction(base_util):
                 e = e.loc[mask]
                 updatedExtractions.append(e)
 
-        extractions = updatedExtractions
+        extractions = self._summarise_slit_edge_spill(updatedExtractions)
 
         self.plot_extracted_spectrum_qc(extractions=extractions)
 
@@ -554,6 +566,72 @@ class horne_extraction(base_util):
 
         self.log.debug("completed the ``extract`` method")
         return self.qc, self.products, mergedSpectumDF, orderJoins, extractionFilepath
+
+    def _summarise_slit_edge_spill(self, extractions):
+        """*find the orders where the object spills over the slit edge, report them and drop the per-slice flag*
+
+        Sets ``self.slitEdgeOrders``. Unless this is the unflattened re-extraction, also logs one error naming
+        the spilled orders and adds the ``N ORDERS SLIT EDGE`` QC.
+
+        **Key Arguments:**
+
+        - ``extractions`` -- the list of per-order extraction data-frames, each with a ``slitEdgeTruncated`` column
+
+        **Return:**
+
+        - ``extractions`` -- the data-frames without the ``slitEdgeTruncated`` column
+        """
+        self.slitEdgeOrders = []
+        for e in extractions:
+            if e.empty:
+                continue
+            fraction = float(e["slitEdgeTruncated"].mean())
+            if fraction > SLIT_EDGE_ORDER_FRACTION:
+                order = int(e["order"].iloc[0])
+                # NAME THE ORDER AS THE PRODUCTS NUMBER IT
+                if self.arm.upper() == "VIS":
+                    order = SOXS_VIS_ORDER_REMAP.get(order, order)
+                self.slitEdgeOrders.append(
+                    (
+                        order,
+                        float(e["wavelengthMean"].min()),
+                        float(e["wavelengthMean"].max()),
+                        fraction,
+                    )
+                )
+
+        if not self.notFlattened:
+            self._report_slit_edge_spill()
+
+        return [e.drop(columns=["slitEdgeTruncated"]) for e in extractions]
+
+    def _report_slit_edge_spill(self):
+        """*log the slit-edge spill error and add the ``N ORDERS SLIT EDGE`` QC*"""
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        if self.slitEdgeOrders:
+            spilled = ", ".join(
+                f"{order} ({wlMin:0.1f}-{wlMax:0.1f} nm, {fraction:.0%} of slices)"
+                for order, wlMin, wlMax, fraction in self.slitEdgeOrders
+            )
+            self.log.error(
+                f"The object spills over the slit edge in order(s) {spilled}. "
+                "Flux beyond the slit edge is lost and the extraction in these orders is unreliable."
+            )
+
+        if isinstance(self.qc, bool):
+            return
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName="N ORDERS SLIT EDGE",
+            qcValue=len(self.slitEdgeOrders),
+            qcComment="Number of orders where the object spills over the slit edge",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
+        )
 
     def weighted_average(self, group):
         import numpy as np
@@ -992,15 +1070,7 @@ class horne_extraction(base_util):
 
         # A FIX FOR SORTING OF SOXS VIS ORDERS
         if self.arm.upper() in ["VIS"]:
-            mask = extractedOrdersDF["order"] == 4
-            extractedOrdersDF.loc[mask, "order"] = 11
-            mask = extractedOrdersDF["order"] == 3
-            extractedOrdersDF.loc[mask, "order"] = 13
-            mask = extractedOrdersDF["order"] == 2
-            extractedOrdersDF.loc[mask, "order"] = 14
-            mask = extractedOrdersDF["order"] == 1
-            extractedOrdersDF.loc[mask, "order"] = 12
-            extractedOrdersDF["order"] = extractedOrdersDF["order"] - 10
+            extractedOrdersDF["order"] = extractedOrdersDF["order"].replace(SOXS_VIS_ORDER_REMAP)
 
         uniqueOrders = np.sort(extractedOrdersDF["order"].unique())
 
@@ -1484,6 +1554,12 @@ def extract_single_order(
         plt=plt,
     )
 
+    # FLAG THE WAVELENGTH SLICES WHERE THE OBJECT IS CUT OFF BY THE SLIT EDGE
+    # (MUST BE SET BEFORE THE SLICES ARE SORTED AND FILTERED)
+    crossDispersionSlicesDF["slitEdgeTruncated"] = _slit_edge_truncated_columns(
+        orderRectifiedImages["fluxRaw"], orderRectifiedImages["mask"], orderRectifiedImages["unsupported"]
+    )
+
     # PLOT THE RECTIFIED IMAGES
     if debug:
         plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
@@ -1506,6 +1582,7 @@ def extract_single_order(
             "extractedFluxBoxcar",
             "extractedFluxBoxcarRobust",
             "skyFlux",
+            "slitEdgeTruncated",
         ]
     ]
 
@@ -1772,11 +1849,15 @@ def fit_object_profile(
     crossDispersionProfile = np.array([np.array(t) for t in transposedProfiles])
 
     # OFF-ORDER PIXELS (NON-FINITE FLUX) CANNOT HOLD OBJECT FLUX, BUT THEIR EXTRAPOLATED
-    # ROW POLYNOMIALS WOULD TAKE PROFILE WEIGHT FROM THE ON-ORDER ROWS
-    # PIXELS MASKED FOR OTHER REASONS (BAD PIXELS, CRHs, CLIPPING) KEEP THEIR WEIGHT
-    # SO HORNE CORRECTS FOR THEIR MISSING FLUX. THIS ASSUMES ON-ORDER BAD PIXELS ARRIVE
-    # FINITE AND FLAGGED IN THE MASK, NOT AS NaN
-    crossDispersionProfile[~np.isfinite(orderRectifiedImages["fluxRaw"])] = 0
+    # ROW POLYNOMIALS WOULD TAKE PROFILE WEIGHT FROM THE ON-ORDER ROWS.
+    # ISOLATED MASKED PIXELS (CRHs, BAD PIXELS) IN WELL-SAMPLED ROWS KEEP THEIR WEIGHT
+    # SO HORNE CORRECTS FOR THEIR MISSING FLUX. MASKED PIXELS IN ROWS WITH SPARSE LOCAL
+    # SUPPORT (E.G. OBJECT ON THE SLIT EDGE) GET NO WEIGHT: THEIR ROW POLYNOMIAL IS AN
+    # UNCONSTRAINED EXTRAPOLATION THAT WOULD INFLATE THE FLUX RESCALING.
+    # THIS ASSUMES ON-ORDER BAD PIXELS ARRIVE FINITE AND FLAGGED IN THE MASK, NOT AS NaN
+    unsupported = _unsupported_pixel_mask(orderRectifiedImages["fluxRaw"], orderRectifiedImages["mask"])
+    crossDispersionProfile[unsupported] = 0
+    orderRectifiedImages["unsupported"] = unsupported
 
     crossDispersionProfileSums = np.array([x.sum() for x in crossDispersionProfile.T])
     # A COLUMN WITH NO ON-ORDER WEIGHT NORMALISES TO NaN AND IS DROPPED BY compute_extractions
@@ -1785,6 +1866,68 @@ def fit_object_profile(
     crossDispersionSlicesDF["objectProfile"] = [x for x in orderRectifiedImages["objectProfile"].T]
 
     return crossDispersionSlicesDF, orderRectifiedImages
+
+
+def _unsupported_pixel_mask(fluxRaw, mask):
+    """*flag pixels that cannot hold object flux or whose row profile is an unconstrained extrapolation*
+
+    **Key Arguments:**
+
+    - ``fluxRaw`` -- the rectified flux array (rows are slit positions, columns are wavelength). Off-order pixels
+      are non-finite
+    - ``mask`` -- the boolean bad-pixel mask, True where a pixel is masked
+
+    **Return:**
+
+    - ``unsupported`` -- boolean array, True where the pixel is non-finite or is masked in a slit row with sparse
+      local usable pixels
+    """
+    import numpy as np
+    from scipy.ndimage import uniform_filter1d
+
+    isFinite = np.isfinite(fluxRaw)
+    usable = ~mask & isFinite
+    # FRACTION OF USABLE PIXELS IN A WINDOW ALONG THE DISPERSION AXIS, MEASURED IN EACH SLIT ROW
+    localSupport = uniform_filter1d(usable.astype(float), size=PROFILE_SUPPORT_WINDOW, axis=1, mode="nearest")
+    return ~isFinite | (mask & (localSupport < PROFILE_MIN_LOCAL_SUPPORT))
+
+
+def _slit_edge_truncated_columns(fluxRaw, mask, unsupported):
+    """*flag wavelength columns where the object is cut off by the slit edge*
+
+    A column is truncated when the unsupported rows touch the top or bottom of the window and the nearest supported
+    row still holds a large share of the column's peak flux, i.e. the object continues beyond the usable slit.
+
+    **Key Arguments:**
+
+    - ``fluxRaw`` -- the rectified flux array (rows are slit positions, columns are wavelength)
+    - ``mask`` -- the boolean bad-pixel mask, True where a pixel is masked
+    - ``unsupported`` -- boolean array from ``_unsupported_pixel_mask``
+
+    **Return:**
+
+    - ``truncated`` -- boolean array with one value per wavelength column
+    """
+    import numpy as np
+
+    rowCount = fluxRaw.shape[0]
+    columnIndex = np.arange(fluxRaw.shape[1])
+    usable = ~mask & np.isfinite(fluxRaw)
+    usableFlux = np.where(usable, fluxRaw, np.nan)
+    peak = np.max(np.where(usable, fluxRaw, -np.inf), axis=0)
+
+    # NEAREST ROW WITH USABLE FLUX TO THE TOP AND BOTTOM EDGES OF THE WINDOW (AN ISOLATED MASKED
+    # PIXEL IN A WELL-SAMPLED ROW IS SUPPORTED BUT HAS NO FLUX TO COMPARE, SO LOOK PAST IT)
+    supported = usable & ~unsupported
+    hasSupport = supported.any(axis=0)
+    firstSupported = np.argmax(supported, axis=0)
+    lastSupported = rowCount - 1 - np.argmax(supported[::-1], axis=0)
+
+    threshold = SLIT_EDGE_PEAK_FRACTION * peak
+    with np.errstate(invalid="ignore"):
+        topSpill = unsupported[0] & (usableFlux[firstSupported, columnIndex] >= threshold)
+        bottomSpill = unsupported[-1] & (usableFlux[lastSupported, columnIndex] >= threshold)
+    return hasSupport & (peak > 0) & (topSpill | bottomSpill)
 
 
 def _sigma_clip_and_mask(fluxRaw, bpMask):

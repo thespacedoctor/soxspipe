@@ -1,5 +1,7 @@
 # Release Notes
 
+* **ENHANCEMENT**: optimal extraction logs an ERROR naming each order where the object spills over the slit edge, and adds the `N ORDERS SLIT EDGE` QC; when a flux standard spills, `soxs-stare` fails the recipe so its response curve is not used to flux-calibrate other frames (DY-802).
+* **FIXED**: optimal (Horne) extraction no longer inflates the flux up to about 2.6x when the object core sits on masked slit-edge rows; masked pixels in slit rows with sparse local support now get no profile weight (DY-802).
 * **FIXED**: optimal (Horne) extraction no longer inflates the flux by up to 1e6x when the object trace sits on an order edge; the object profile now gives no weight to pixels off the order (DY-752).
 * **FIXED**: the master flat now flags partly illuminated order-edge pixels, which flat-fielding amplified about 6x; set `order-edge-min-flat-fraction` (default 0.5, 0 turns it off) and re-make existing master flats to gain the flags; these pixels are reported as `N ORDER EDGE` and are not counted in the `COLDPIX` QC (DY-753).
 * **FIXED**: `soxs_stare` now shows the raw-stack surface plot only in debug mode (`-d`), where before it opened a window on every run and waited until the window was closed.
