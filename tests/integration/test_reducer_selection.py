@@ -28,9 +28,7 @@ def _create_selection_database(databasePath: Path) -> None:
         connection.execute(
             'CREATE TABLE raw_frame_sets (recipe_order INTEGER, complete INTEGER, recipe TEXT, sof TEXT, "eso seq arm" TEXT)'
         )
-        connection.execute(
-            "CREATE TABLE product_frames (sof TEXT, file TEXT, complete INTEGER)"
-        )
+        connection.execute("CREATE TABLE product_frames (sof TEXT, file TEXT, complete INTEGER)")
         connection.execute("CREATE TABLE sof_map_base (sof TEXT, file TEXT)")
 
 
@@ -175,9 +173,7 @@ def test_select_sof_files_binds_a_hostile_recipe_as_a_parameter_in_all_branch(
     databasePath = tmp_path / "session.db"
     _create_selection_database(databasePath)
     with sqlite3.connect(databasePath) as connection:
-        connection.execute(
-            "INSERT INTO raw_frame_sets VALUES (1, 1, 'mflat', 'flat.sof', 'UVB')"
-        )
+        connection.execute("INSERT INTO raw_frame_sets VALUES (1, 1, 'mflat', 'flat.sof', 'UVB')")
     collection = _uninitialized_reducer(log, databasePath)
     hostileRecipe = "mflat' OR '1'='1' -- "
 
@@ -224,9 +220,7 @@ def test_select_sof_files_binds_a_hostile_arm_as_a_parameter_in_all_branch(
     # BOTH THE UVB AND VIS ROWS INSTEAD OF NEITHER.
     hostileArm = "UVB' OR '1'='1' -- "
 
-    selected = collection.select_sof_files_to_process(
-        reductionTarget="all", arm=hostileArm
-    )
+    selected = collection.select_sof_files_to_process(reductionTarget="all", arm=hostileArm)
 
     assert selected.empty
 
@@ -246,12 +240,8 @@ def test_select_sof_files_binds_a_hostile_sof_reduction_target_as_a_parameter(
     databasePath = tmp_path / "session.db"
     _create_selection_database(databasePath)
     with sqlite3.connect(databasePath) as connection:
-        connection.execute(
-            "INSERT INTO raw_frame_sets VALUES (1, 1, 'mbias', 'target.sof', 'UVB')"
-        )
-        connection.execute(
-            "INSERT INTO product_frames VALUES ('target.sof', 'target.fits', 1)"
-        )
+        connection.execute("INSERT INTO raw_frame_sets VALUES (1, 1, 'mbias', 'target.sof', 'UVB')")
+        connection.execute("INSERT INTO product_frames VALUES ('target.sof', 'target.fits', 1)")
     collection = _uninitialized_reducer(log, databasePath)
     # BALANCED QUOTES, NO COMMENT MARKER: THE RECURSIVE QUERY-BUILDING LOOP
     # RE-EMBEDS THIS SAME STRING FOUR MORE TIMES, SO AN UNBALANCED PAYLOAD (E.G.
@@ -262,9 +252,7 @@ def test_select_sof_files_binds_a_hostile_sof_reduction_target_as_a_parameter(
     # DISPATCHED EVEN THOUGH IT WAS NEVER REQUESTED.
     hostileReductionTarget = "x' OR sof = 'target.sof' OR sof = 'z.sof"
 
-    selected = collection.select_sof_files_to_process(
-        reductionTarget=hostileReductionTarget
-    )
+    selected = collection.select_sof_files_to_process(reductionTarget=hostileReductionTarget)
 
     assert selected.empty
 
@@ -361,10 +349,7 @@ def test_reduce_serial_dispatches_rows_and_refreshes_after_failure(
     assert collection.overwrite is False
     assert ("refresh", {}) in organiserCalls
     assert sum(call == ("refresh", {"failure": None}) for call in organiserCalls) == 2
-    assert any(
-        level == "error" and "Recipe failed" in message
-        for level, message in log.messages
-    )
+    assert any(level == "error" and "Recipe failed" in message for level, message in log.messages)
 
 
 def test_reduce_multiprocess_forwards_selected_group(
@@ -428,9 +413,7 @@ def test_reduce_multiprocess_forwards_selected_group(
 
     assert len(bulkCalls) == 1
     assert bulkCalls[0]["recipe"] == "mbias"
-    assert bulkCalls[0]["sofList"] == [
-        str(workspacePath / "sessions" / "night1" / "sof" / "bias.sof")
-    ]
+    assert bulkCalls[0]["sofList"] == [str(workspacePath / "sessions" / "night1" / "sof" / "bias.sof")]
     assert bulkCalls[0]["commandList"] == ["run bias"]
     assert bulkCalls[0]["settings"] == {"answer": 42}
     assert bulkCalls[0]["overwrite"] is True

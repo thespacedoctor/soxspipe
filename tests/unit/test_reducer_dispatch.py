@@ -186,9 +186,7 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
             organiserCalls.append(("refresh", kwargs))
             return False
 
-        def _dataframe_to_sqlite(
-            self, dataframe: pd.DataFrame, tableName: str, replace: bool
-        ) -> None:
+        def _dataframe_to_sqlite(self, dataframe: pd.DataFrame, tableName: str, replace: bool) -> None:
             organiserCalls.append(("sqlite", (dataframe.copy(), tableName, replace)))
 
         def close(self) -> None:
@@ -224,14 +222,8 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
     assert all(call["turnOffMP"] is True for call in workerCalls)
     assert connection.isClosed is True
     assert connection.recordingCursor.isClosed is True
-    assert any(
-        "status_night1 = 'pass'" in query
-        for query, _ in connection.recordingCursor.executed
-    )
-    assert any(
-        "status_night1 = 'fail'" in query
-        for query, _ in connection.recordingCursor.executed
-    )
+    assert any("status_night1 = 'pass'" in query for query, _ in connection.recordingCursor.executed)
+    assert any("status_night1 = 'fail'" in query for query, _ in connection.recordingCursor.executed)
     assert connection.recordingCursor.executedMany == [
         (
             "update product_frames set error_message = ? where sof = ?",
@@ -345,9 +337,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
         def session_refresh(self, **kwargs: object) -> bool:
             return False
 
-        def _dataframe_to_sqlite(
-            self, dataframe: pd.DataFrame, tableName: str, replace: bool
-        ) -> None:
+        def _dataframe_to_sqlite(self, dataframe: pd.DataFrame, tableName: str, replace: bool) -> None:
             pass
 
         def close(self) -> None:
@@ -363,9 +353,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     # CLOSES THE CONNECTION, MASKING THE BEHAVIOUR UNDER TEST.
     databasePath = tmp_path / "reducer.db"
     connection = sqlite3.connect(str(databasePath), autocommit=True)
-    connection.execute(
-        "create table product_frames (sof text, status_night1 text, error_message text)"
-    )
+    connection.execute("create table product_frames (sof text, status_night1 text, error_message text)")
     connection.executemany(
         "insert into product_frames values (?, ?, ?)",
         [
@@ -388,9 +376,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     )
 
     verifyConnection = sqlite3.connect(str(databasePath))
-    rows = verifyConnection.execute(
-        "select sof, status_night1 from product_frames order by sof"
-    ).fetchall()
+    rows = verifyConnection.execute("select sof, status_night1 from product_frames order by sof").fetchall()
     verifyConnection.close()
     # ONLY THE ROW THAT ACTUALLY REDUCED IS STAMPED 'pass'. IF THE PAYLOAD WERE
     # STILL INTERPOLATED, THE ALWAYS-TRUE CONDITION WOULD HAVE STAMPED THE

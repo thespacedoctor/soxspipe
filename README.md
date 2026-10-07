@@ -75,6 +75,25 @@ python -m pip install -e ".[dev]"
 pre-commit install
 ```
 
+## Format gate
+
+Unlike the changed-line gates, the format gate checks the whole repository. CI runs `ruff format --check .` on every pull request and fails if any file would be reformatted.
+
+The gate uses the ruff version pinned in the `tests` extra of `pyproject.toml`. Another ruff version can format some lines differently, so format with the pinned one:
+
+```bash
+python -m pip install -e ".[tests]"
+ruff format .
+```
+
+The pre-commit hook described above also runs `ruff format` at the same pinned version.
+
+To hide the one-off formatting commit from `git blame`, run this once in your clone:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
 ## How to cite soxspipe
 
 If you use `soxspipe` in your work, please cite using the following BibTeX entry: 

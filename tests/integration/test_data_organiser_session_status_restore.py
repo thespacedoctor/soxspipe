@@ -82,16 +82,15 @@ def _insert_all_frames(connection, replaceSecondBias=False):
     _insert_frames(connection, pd.concat(frames))
 
 
-@pytest.fixture
-def two_session_workspace(tmp_path, log, monkeypatch):
-    """A prepared workspace with an `archive` and a current `science` session and real SOF building."""
+def _prepared_workspace(tmp_path, log, monkeypatch, sessionIds):
+    """Prepare a workspace with real SOF building, creating ``sessionIds`` in order (the last is current)."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     organiser = workspace_organiser(tmp_path, log=log)
     connection, _ = organiser._get_or_create_db_connection()
     organiser.conn = connection
     _insert_all_frames(connection)
-    organiser.session_create("archive")
-    organiser.session_create("science")
+    for sessionId in sessionIds:
+        organiser.session_create(sessionId)
 
     organiser.replaceSecondBias = False
 
@@ -105,6 +104,22 @@ def two_session_workspace(tmp_path, log, monkeypatch):
     monkeypatch.setattr(organiser, "_sync_raw_frames", fake_sync_raw_frames)
     monkeypatch.setattr(organiser, "get_incomplete_sets_report", lambda: (None, None))
     organiser.prepare(report=False)
+    return organiser
+
+
+@pytest.fixture
+def two_session_workspace(tmp_path, log, monkeypatch):
+    """A prepared workspace with an `archive` and a current `science` session and real SOF building."""
+    organiser = _prepared_workspace(tmp_path, log, monkeypatch, ["archive", "science"])
+    yield organiser
+    if getattr(organiser, "conn", None) is not None:
+        organiser.conn.close()
+
+
+@pytest.fixture
+def base_session_workspace(tmp_path, log, monkeypatch):
+    """A prepared workspace whose only and current session is `base`."""
+    organiser = _prepared_workspace(tmp_path, log, monkeypatch, [])
     yield organiser
     if getattr(organiser, "conn", None) is not None:
         organiser.conn.close()
@@ -227,6 +242,66 @@ def test_pass_limit_counts_the_sofs_still_differing_as_changed(two_session_works
     assert scienceLine.startswith("session 'science': 1 statuses restored, 1 changed (frames differ, requeued)")
     assert _read_statuses(organiser, "science")[DISP_SOLUTION] is None
     assert any("pass limit" in message for message in _debug_messages(log))
+
+
+# QC FAILURES MARK THE CURRENT SESSION (DY-272)
+
+
+def _insert_master_ron(organiser, sof, value):
+    """Give ``sof`` a whole-frame MASTER RON QC row; the default acceptable range is [0, 10]."""
+    organiser.conn.execute(
+        "INSERT INTO quality_control (soxspipe_recipe, qc_name, qc_value, sof_name, qc_order, qc_flag) "
+        "VALUES ('soxs-mbias', 'MASTER RON', ?, ?, '-1', 'pass')",
+        (value, sof),
+    )
+
+
+def test_out_of_range_qc_fails_the_sof_in_the_named_session_and_leaves_status_base_alone(
+    two_session_workspace,
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    _seed_statuses(organiser, "science", {MBIAS_ONE: "pass"})
+    _seed_statuses(organiser, "base", {MBIAS_ONE: "pass"})
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, "science")[MBIAS_ONE] == "fail"
+    assert _read_statuses(organiser, "base")[MBIAS_ONE] == "pass"
+
+
+def test_out_of_range_qc_fails_the_sof_in_the_base_session(base_session_workspace) -> None:
+    # ARRANGE
+    organiser = base_session_workspace
+    _seed_statuses(organiser, "base", {MBIAS_ONE: "pass"})
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert organiser.sessionId == "base"
+    assert _read_statuses(organiser, "base")[MBIAS_ONE] == "fail"
+
+
+@pytest.mark.parametrize(
+    ("workspaceFixture", "sessionId"),
+    [("base_session_workspace", "base"), ("two_session_workspace", "science")],
+)
+def test_in_range_qc_ends_pass_in_the_current_session(request, workspaceFixture, sessionId) -> None:
+    # ARRANGE
+    organiser = request.getfixturevalue(workspaceFixture)
+    _seed_statuses(organiser, sessionId, {MBIAS_ONE: "fail"})
+    _insert_master_ron(organiser, MBIAS_ONE, "5.0")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, sessionId)[MBIAS_ONE] == "pass"
 
 
 # REPORTING

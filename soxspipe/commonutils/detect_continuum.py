@@ -31,8 +31,24 @@ from soxspipe.commonutils.toolkit import cut_image_slice, get_calibration_lamp, 
 os.environ["TERM"] = "vt100"
 
 
-class _base_detect:
+def _order_colours(orders):
+    """*assign each order a colour from the matplotlib property cycle, keyed by the order itself*
 
+    **Key Arguments:**
+
+    - ``orders`` -- the orders to colour, in plotting order
+
+    **Return:**
+
+    - ``orderColours`` -- dictionary of order to colour, wrapping around once the cycle is exhausted
+    """
+    import matplotlib.pyplot as plt
+
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    return {order: cycle[i % len(cycle)] for i, order in enumerate(orders)}
+
+
+class _base_detect:
     def fit_order_polynomial(self, pixelList, order, axisBDeg, axisACol, axisBCol, exponentsIncluded=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
@@ -340,54 +356,60 @@ class _base_detect:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES MIN",
-                            "qc_value": round(float(res.min()), 3),
-                            "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES MIN",
+                                "qc_value": round(float(res.min()), 3),
+                                "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES MAX",
-                            "qc_value": round(float(res.max()), 3),
-                            "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES MAX",
+                                "qc_value": round(float(res.max()), 3),
+                                "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES SD",
-                            "qc_value": round(float(res_std), 3),
-                            "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES SD",
+                                "qc_value": round(float(res_std), 3),
+                                "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -395,18 +417,20 @@ class _base_detect:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES MEDIAN",
-                            "qc_value": round(float(res_mean), 3),
-                            "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES MEDIAN",
+                                "qc_value": round(float(res_mean), 3),
+                                "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -419,18 +443,20 @@ class _base_detect:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "N ORDERS",
-                            "qc_value": uniqueorders,
-                            "qc_comment": c,
-                            "qc_unit": None,
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": "N ORDERS",
+                                "qc_value": uniqueorders,
+                                "qc_comment": c,
+                                "qc_unit": None,
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -720,7 +746,6 @@ class detect_continuum(_base_detect):
             for i in range(0, self.orderDeg + 1):
                 orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
             try:
-
                 coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
                     pixelList=orderPixelTable,
                     axisACol=f"cont_{self.axisA}",
@@ -788,18 +813,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES CLIP NUM",
-                        "qc_value": nclip,
-                        "qc_comment": "Number of continuum sample clipped during solution fitting",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES CLIP NUM",
+                            "qc_value": nclip,
+                            "qc_comment": "Number of continuum sample clipped during solution fitting",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -808,18 +835,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES CLIP FRAC",
-                        "qc_value": round(float(pclip), 3),
-                        "qc_comment": "Fraction of detected continuum samples clipped during solution fitting",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES CLIP FRAC",
+                            "qc_value": round(float(pclip), 3),
+                            "qc_comment": "Fraction of detected continuum samples clipped during solution fitting",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -861,19 +890,21 @@ class detect_continuum(_base_detect):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": label + self.noddingSequence,
-                            "file_name": basename,
-                            "file_type": "PDF",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": product_desc,
-                            "file_path": plotPath,
-                            "label": "QC",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "product_label": label + self.noddingSequence,
+                                "file_name": basename,
+                                "file_type": "PDF",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "product_desc": product_desc,
+                                "file_path": plotPath,
+                                "label": "QC",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -945,7 +976,6 @@ class detect_continuum(_base_detect):
         }
 
         for o, wmin, wmax, pixelRange in zip(orderNums, waveLengthMin, waveLengthMax, orderPixelRanges):
-
             orderSampleCount = int(pixelRange / samplePixelSep)
             wrange = wmax - wmin
 
@@ -1232,7 +1262,7 @@ class detect_continuum(_base_detect):
         xmin = []
         xmax = []
         foundOrders = []
-        colors = []
+        orderColours = _order_colours(uniqueOrders)
         labelAdded = None
 
         for o in uniqueOrders:
@@ -1265,10 +1295,9 @@ class detect_continuum(_base_detect):
             else:
                 label1 = None
                 label2 = None
-            c = midrow.plot(yfit, xfit, linewidth=0.7, label=label2)
+            midrow.plot(yfit, xfit, linewidth=0.7, label=label2, color=orderColours[o])
 
-            midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3, label=label1)
-            colors.append(c[0].get_color())
+            midrow.fill_between(yfit, lower, upper, color=orderColours[o], alpha=0.3, label=label1)
             ymin.append(min(yfit))
             ymax.append(max(yfit))
             xmin.append(axisALength - max(xfit))
@@ -1279,7 +1308,7 @@ class detect_continuum(_base_detect):
                     xfit[10] + 10,
                     int(o),
                     fontsize=6,
-                    c=c[0].get_color(),
+                    c=orderColours[o],
                     verticalalignment="bottom",
                 )
             except (IndexError, KeyError) as e:
@@ -1311,7 +1340,8 @@ class detect_continuum(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             bottomleft.scatter(
                 orderPixelTable.loc[mask][f"cont_{self.axisA}"].values,
@@ -1342,7 +1372,8 @@ class detect_continuum(_base_detect):
 
         # PLOT THE FINAL RESULTS:
         plt.subplots_adjust(top=0.92)
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             bottomright.scatter(
                 orderPixelTable.loc[mask][f"cont_{self.axisB}"].values,
@@ -1373,7 +1404,8 @@ class detect_continuum(_base_detect):
         bottomright.set_yticklabels([])
 
         stdToFwhm = 2 * (2 * math.log(2)) ** 0.5
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             fwhmaxis.scatter(
                 orderPixelTable.loc[mask]["wavelength"].values,
@@ -1742,7 +1774,6 @@ class detect_continuum(_base_detect):
         sanityCheck = False
 
         while not sanityCheck:
-
             if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
                 # TREAT ORDERS 2&3 SEPARATELY FROM 1&4 THEN RECOMBINE THE orderPixelTable AT THE END
                 mask_23 = tmpOrderPixelTable["order"].isin([2, 3])
@@ -1848,18 +1879,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES TOT NUM",
-                        "qc_value": allLines,
-                        "qc_comment": "Total number of samples along orders",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES TOT NUM",
+                            "qc_value": allLines,
+                            "qc_comment": "Total number of samples along orders",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -1867,18 +1900,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES DET NUM",
-                        "qc_value": foundLines,
-                        "qc_comment": "Number of samples where a continuum is detected",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES DET NUM",
+                            "qc_value": foundLines,
+                            "qc_comment": "Number of samples where a continuum is detected",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -1887,18 +1922,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES DET FRAC",
-                        "qc_value": round(float(self.psamp), 3),
-                        "qc_comment": "Proportion of samples where a continuum is detected",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES DET FRAC",
+                            "qc_value": round(float(self.psamp), 3),
+                            "qc_comment": "Proportion of samples where a continuum is detected",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )

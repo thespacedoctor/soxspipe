@@ -152,9 +152,7 @@ def test_sof_input_maps_tagged_supplementary_members(
         verbose=False,
     ).get()
 
-    assert supplementary == {
-        "VIS": {"ORDER_LOCATIONS": str(ordersPath)}
-    }
+    assert supplementary == {"VIS": {"ORDER_LOCATIONS": str(ordersPath)}}
 
 
 def test_sof_input_accepts_an_untagged_supplementary_path(
@@ -177,9 +175,7 @@ def test_sof_input_accepts_an_untagged_supplementary_path(
         verbose=False,
     ).get()
 
-    assert supplementary == {
-        "VIS": {"DISP_MAP": str(dispersionPath)}
-    }
+    assert supplementary == {"VIS": {"DISP_MAP": str(dispersionPath)}}
 
 
 def test_sof_input_does_not_redirect_a_missing_untagged_path(

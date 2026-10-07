@@ -43,11 +43,7 @@ def _build_batches(directory):
     batch = []
     for d in sorted(os.listdir(directory)):
         filepath = os.path.join(directory, d)
-        if (
-            os.path.isfile(filepath)
-            and "fits" in d
-            and os.path.splitext(filepath)[1] == ".Z"
-        ):
+        if os.path.isfile(filepath) and "fits" in d and os.path.splitext(filepath)[1] == ".Z":
             batch.append(filepath)
             count += 1
             if len(batch) == BATCH_SIZE:
@@ -82,9 +78,7 @@ def _run_batch(log, batch, uncompressedCount, count):
                 sys.stdout.flush()
                 sys.stdout.write("\x1b[1A\x1b[2K")
             percent = (float(uncompressedCount) / float(count)) * 100.0
-            print(
-                f"Decompressed {uncompressedCount}/{count} fits.Z files ({percent:.1f}%)"
-            )
+            print(f"Decompressed {uncompressedCount}/{count} fits.Z files ({percent:.1f}%)")
     except FileNotFoundError as error:
         raise UncompressCommandNotFoundError(MISSING_COMMAND_MESSAGE) from error
     except OSError as error:
@@ -93,14 +87,9 @@ def _run_batch(log, batch, uncompressedCount, count):
 
     stderrMessage = stderr.decode("ascii", errors="replace")
     if p.returncode == 127:
-        raise UncompressCommandNotFoundError(
-            f"{MISSING_COMMAND_MESSAGE}\n{stderrMessage}"
-        )
+        raise UncompressCommandNotFoundError(f"{MISSING_COMMAND_MESSAGE}\n{stderrMessage}")
     if p.returncode:
-        log.error(
-            f"Could not uncompress .Z files (exit code {p.returncode}): "
-            f"{stderrMessage}"
-        )
+        log.error(f"Could not uncompress .Z files (exit code {p.returncode}): {stderrMessage}")
 
 
 def uncompress(log, directory):

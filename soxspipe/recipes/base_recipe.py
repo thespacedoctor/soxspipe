@@ -109,7 +109,6 @@ class base_recipe:
         self.darkDetrendWarningIssued2 = False
 
         if isinstance(inputFrames, str) and "_STD_" in inputFrames:
-
             self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
             self.recipeName = self.recipeName.replace("soxs-stare", "soxs-stare-std")
             self.recipeName = self.recipeName.replace("soxs-offset", "soxs-offset-std")
@@ -437,9 +436,7 @@ class base_recipe:
         # THE NESTED `if` IS KEPT SO THE TWO CONDITIONS STAY SEPARATELY
         # COMMENTED, AND BECAUSE COLLAPSING IT IS COSMETIC WORK BELONGING TO
         # DY-88.
-        if (
-            self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]
-        ):  # noqa: SIM102
+        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:  # noqa: SIM102
             # OBJECT/STANDARD FRAMES
             if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
@@ -766,7 +763,7 @@ class base_recipe:
         columns = preframes.summary.colnames
 
         for i in range(7):
-            thisLamp = kw(f"LAMP{i+1}")
+            thisLamp = kw(f"LAMP{i + 1}")
             # FIRST FIND THE NAME OF THE LAMP
             newLamp = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
             if len(newLamp):
@@ -1190,7 +1187,6 @@ class base_recipe:
 
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
-
             if not passToFail and not forceFail:
                 c = self.conn.cursor()
                 # THE SESSION STATUS COLUMN NAME CANNOT BE A BOUND PARAMETER. THE
@@ -2031,9 +2027,7 @@ class base_recipe:
                 sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
                 # A FALSE POSITIVE: THE F-STRING INTERPOLATES ONLY `?` PLACEHOLDERS,
                 # AND EVERY SOF NAME IS PASSED TO `execute` AS A BOUND PARAMETER.
-                sqlQuery = (
-                    f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"  # noqa: S608
-                )
+                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?'] * len(sofNames))})"  # noqa: S608
                 c = self.conn.cursor()
                 c.execute(sqlQuery, sofNames)
                 c.close()
@@ -2593,9 +2587,8 @@ class base_recipe:
                 self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
             c.close()
 
-        keepTrying = 0
         keepTryingMax = 7
-        while keepTrying < keepTryingMax:
+        for attempt in range(1, keepTryingMax + 1):
             try:
                 dataframe.replace(["--"], None).to_sql(
                     table_name,
@@ -2604,12 +2597,12 @@ class base_recipe:
                     if_exists="append",
                     method="multi",
                 )
-                keepTrying = keepTryingMax
-            except Exception as e:
-                if keepTrying > keepTryingMax - 1:
-                    raise Exception(e)
+                return
+            except Exception:
+                # RE-RAISE THE ORIGINAL ERROR AFTER THE FINAL ATTEMPT SO A LOST QC WRITE FAILS THE RECIPE (DY-603)
+                if attempt == keepTryingMax:
+                    raise
                 time.sleep(1)
-                keepTrying += 1
 
     def add_qc(
         self,

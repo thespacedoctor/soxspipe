@@ -934,18 +934,20 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable, excludeMas
     qcTable = pd.concat(
         [
             qcTable,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "qc_name": qcName,
-                    "qc_value": int(badCount),
-                    "qc_comment": qcComment,
-                    "qc_unit": "",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "to_header": True,
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": qcName,
+                        "qc_value": int(badCount),
+                        "qc_comment": qcComment,
+                        "qc_unit": "",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -1077,18 +1079,20 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     qcTable = pd.concat(
         [
             qcTable,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "qc_name": "INNER ORDER PIX MEAN",
-                    "qc_value": mean,
-                    "qc_comment": "[e-] Mean inner-order pixel value",
-                    "qc_unit": "electrons",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "to_header": True,
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "INNER ORDER PIX MEAN",
+                        "qc_value": mean,
+                        "qc_comment": "[e-] Mean inner-order pixel value",
+                        "qc_unit": "electrons",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -1096,18 +1100,20 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     qcTable = pd.concat(
         [
             qcTable,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "qc_name": "INNER ORDER PIX SUM",
-                    "qc_value": flux,
-                    "qc_comment": "[e-] Sum of all inner-order pixel values",
-                    "qc_unit": "electrons",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "to_header": True,
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "INNER ORDER PIX SUM",
+                        "qc_value": flux,
+                        "qc_comment": "[e-] Sum of all inner-order pixel values",
+                        "qc_unit": "electrons",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -1631,7 +1637,6 @@ def predict_product_path(sofName, recipeName=False):
     sofName = sofName.replace(".sof", "")
 
     if not startNightDate:
-
         obsDate = sofName.split("_")[0]
 
         startNightDate = ""
@@ -2028,7 +2033,6 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
         t.auto_set_column_width(list(range(len(c))))
 
     for a in [qcAx, settingsAx]:
-
         # HIDE AXES
         a.get_xaxis().set_visible(False)
         a.get_yaxis().set_visible(False)

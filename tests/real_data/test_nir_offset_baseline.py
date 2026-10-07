@@ -58,7 +58,12 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         report("merged rows", len(merged_table))
         assert len(merged_table) == pytest.approx(20_609, abs=25)
         assert set(merged_table.names) == {
-            "WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR", "FLUX_DENSITY_COUNTS"
+            "WAVE",
+            "FLUX_COUNTS",
+            "VARIANCE",
+            "SKY_COUNTS",
+            "SNR",
+            "FLUX_DENSITY_COUNTS",
         }
         mergedWave = np.asarray(merged_table["WAVE"], dtype=float)
         # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO ONE GRID STEP
@@ -79,9 +84,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
         report("fluxcal rows", len(fluxcal_table))
         report("fluxcal median", float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])))
-        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(
-            8.704858750481978e-15, rel=0.05
-        )
+        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.704858750481978e-15, rel=0.05)
 
     with sqlite3.connect(reduced_workspace / "soxspipe.db") as connection:
         qc_values = dict(

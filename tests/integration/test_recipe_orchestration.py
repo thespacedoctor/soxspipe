@@ -54,11 +54,7 @@ class FakeFrameCollection:
     def filter(self, **filters: object) -> FakeFrameCollection:
         self.calls.append(("filter", filters))
         selectedPaths = next(
-            (
-                paths
-                for token, paths in self.filePathsByToken.items()
-                if token in filters.values()
-            ),
+            (paths for token, paths in self.filePathsByToken.items() if token in filters.values()),
             [],
         )
         return FakeFrameCollection(
@@ -131,6 +127,8 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     recipe.qc = qc_table()
     originalQc = recipe.qc.copy(deep=True)
     recipe.products = _empty_products()
+    recipe.qcDir = str(tmp_path)
+    recipe.recipeSettings = {"frame-clipping-sigma": 3, "frame-clipping-iterations": 3}
     productPath = tmp_path / "MASTER_BIAS_VIS.fits"
     calls: list[str] = []
     qcArguments: dict[str, object] = {}
@@ -189,9 +187,7 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     def append_qc(methodName: str, *args: object, **kwargs: object) -> None:
         calls.append(methodName)
         qcArguments[methodName] = {"args": args, **kwargs}
-        recipe.qc = pd.concat(
-            [recipe.qc, expectedAddedQc[methodName]], ignore_index=True
-        )
+        recipe.qc = pd.concat([recipe.qc, expectedAddedQc[methodName]], ignore_index=True)
 
     monkeypatch.setattr(
         recipe,
@@ -262,6 +258,13 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
         lambda: calls.append("report") or recipe.qc,
     )
     monkeypatch.setattr(recipe, "clean_up", lambda: calls.append("clean_up"))
+    realPlot = recipe.plot_bias_distribution_qc
+
+    def recording_plot(*args: object, **kwargs: object) -> str:
+        calls.append("plot_bias_distribution_qc")
+        return realPlot(*args, **kwargs)
+
+    monkeypatch.setattr(recipe, "plot_bias_distribution_qc", recording_plot)
 
     returnedPath, returnedQc = recipe.produce_product()
 
@@ -303,6 +306,11 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
         "frameName": "master bias",
         "medianFlux": pytest.approx(100.0),
     }
+    plotRow = recipe.products.iloc[-2]
+    assert plotRow["product_label"] == "BIAS_DISTRIBUTION_QC_PLOT"
+    assert plotRow["label"] == "QC"
+    assert plotRow["file_type"] == "PDF"
+    assert Path(plotRow["file_path"]).read_bytes().startswith(b"%PDF")
     _assert_product_row(
         recipe.products.iloc[-1],
         recipeName="soxs-mbias",
@@ -320,6 +328,7 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
         "qc_median_flux_level",
         "update_fits_keywords",
         "write",
+        "plot_bias_distribution_qc",
         "report",
         "clean_up",
     ]
@@ -510,9 +519,7 @@ def test_single_lamp_master_flat_records_stable_product_and_preserves_qc(
     recipe.arm = "VIS"
     recipe.inst = "SOXS"
     recipe.kw = lambda keyword: "DATE-OBS" if keyword == "DATE_OBS" else keyword
-    recipe.inputFrames = FakeFrameCollection(
-        filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]}
-    )
+    recipe.inputFrames = FakeFrameCollection(filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]})
     recipe.recipeName = "soxs-mflat"
     recipe.settings = pipeline_settings(tmp_path)
     recipe.recipeSettings = {"subtract_background": False}
@@ -779,9 +786,7 @@ def test_multi_lamp_master_flat_stitches_independent_lamp_products(
     recipe.arm = "VIS"
     recipe.inst = "SOXS"
     recipe.kw = lambda keyword: "DATE-OBS" if keyword == "DATE_OBS" else keyword
-    recipe.inputFrames = FakeFrameCollection(
-        filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]}
-    )
+    recipe.inputFrames = FakeFrameCollection(filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]})
     recipe.recipeName = "soxs-mflat"
     recipe.settings = pipeline_settings(tmp_path)
     recipe.recipeSettings = {"subtract_background": False}
@@ -918,6 +923,4 @@ def test_multi_lamp_master_flat_stitches_independent_lamp_products(
         "ORDER_LOC_DLAMP",
         "ORDER_LOC_QLAMP",
         "MFLAT",
-        "MFLAT_DLAMP",
-        "MFLAT_QLAMP",
     }

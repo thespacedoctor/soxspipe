@@ -40,9 +40,7 @@ _TICK_START = datetime_module.datetime(2025, 1, 1, 0, 0, 0)
 _TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$")
 
 
-def _build_controlled_datetime(
-    start: datetime_module.datetime, *, tick: bool
-) -> type[datetime_module.datetime]:
+def _build_controlled_datetime(start: datetime_module.datetime, *, tick: bool) -> type[datetime_module.datetime]:
     """Return a `datetime.datetime` subclass whose `utcnow()`/`now()` are controlled.
 
     **Key Arguments:**
@@ -115,9 +113,7 @@ def ticking_clock(
     return controlled
 
 
-def _record_calls(
-    monkeypatch: pytest.MonkeyPatch, attributeNames: list[str]
-) -> dict[str, list[tuple[tuple, dict]]]:
+def _record_calls(monkeypatch: pytest.MonkeyPatch, attributeNames: list[str]) -> dict[str, list[tuple[tuple, dict]]]:
     """Patch each named `matplotlib.pyplot` attribute, delegating to the real
     implementation while recording call order and arguments.
 
@@ -156,9 +152,7 @@ def _record_calls(
 
 
 def _identity_keyword_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key)
-    )
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
 
 
 def _bad_pixel_frame() -> SimpleNamespace:
@@ -269,9 +263,7 @@ def _unpack_order_table_stub(pixelsFrame: pd.DataFrame):
     return _stub
 
 
-def _order_frame(
-    *, badPixel: tuple[int, int], winBin: bool = True, arm: str = "VIS"
-) -> SimpleNamespace:
+def _order_frame(*, badPixel: tuple[int, int], winBin: bool = True, arm: str = "VIS") -> SimpleNamespace:
     header: dict[str, object] = {
         "SEQ_ARM": arm,
         "DATE_OBS": "2024-01-02T03:04:05",
@@ -317,9 +309,7 @@ def test_spectroscopic_image_quality_checks_pins_full_row_contract_per_dispersio
 ) -> None:
     _identity_keyword_lookup(monkeypatch)
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub(dispersionAxis))
-    monkeypatch.setattr(
-        toolkit, "unpack_order_table", _unpack_order_table_stub(pd.DataFrame(pixelColumns))
-    )
+    monkeypatch.setattr(toolkit, "unpack_order_table", _unpack_order_table_stub(pd.DataFrame(pixelColumns)))
     frame = _order_frame(badPixel=badPixel)
 
     result = toolkit.spectroscopic_image_quality_checks(
@@ -361,9 +351,7 @@ def test_spectroscopic_image_quality_checks_falls_back_to_unbinned_pixels_for_ni
 ) -> None:
     _identity_keyword_lookup(monkeypatch)
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub("y"))
-    pixelsFrame = pd.DataFrame(
-        {"ycoord_edgeup": [3, 4], "ycoord_edgelow": [1, 0], "xcoord": [1, 2]}
-    )
+    pixelsFrame = pd.DataFrame({"ycoord_edgeup": [3, 4], "ycoord_edgelow": [1, 0], "xcoord": [1, 2]})
     monkeypatch.setattr(toolkit, "unpack_order_table", _unpack_order_table_stub(pixelsFrame))
     frame = _order_frame(badPixel=(0, 2), winBin=False, arm="NIR")
 
@@ -393,9 +381,7 @@ def _run_binning_check(
     - the keyword arguments received by `unpack_order_table`, and the QC table
     """
     observed: dict[str, object] = {}
-    pixelsFrame = pd.DataFrame(
-        {"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]}
-    )
+    pixelsFrame = pd.DataFrame({"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]})
 
     def _recording_unpack(**kwargs: object) -> tuple[None, pd.DataFrame, None]:
         observed.update(kwargs)
@@ -430,9 +416,7 @@ def test_spectroscopic_image_quality_checks_defaults_missing_binning_headers_to_
     expectedBinx: int,
     expectedBiny: int,
 ) -> None:
-    observed, qcTable = _run_binning_check(
-        monkeypatch, log, arm="VIS", headerBinning=headerBinning
-    )
+    observed, qcTable = _run_binning_check(monkeypatch, log, arm="VIS", headerBinning=headerBinning)
 
     assert observed["binx"] == expectedBinx
     assert observed["biny"] == expectedBiny
@@ -443,9 +427,7 @@ def test_spectroscopic_image_quality_checks_defaults_missing_binning_headers_to_
 def test_spectroscopic_image_quality_checks_ignores_binning_headers_for_nir_arm(
     monkeypatch: pytest.MonkeyPatch, log: object, frozen_clock: object
 ) -> None:
-    observed, _ = _run_binning_check(
-        monkeypatch, log, arm="NIR", headerBinning={"WIN_BINX": 2, "WIN_BINY": 4}
-    )
+    observed, _ = _run_binning_check(monkeypatch, log, arm="NIR", headerBinning={"WIN_BINX": 2, "WIN_BINY": 4})
 
     assert observed["binx"] == 1
     assert observed["biny"] == 1
@@ -478,9 +460,7 @@ def _snr_efficiency_spectrum() -> pd.DataFrame:
     )
 
 
-def test_add_snr_efficiency_qcs_pins_full_row_contract_under_frozen_clock(
-    log: object, frozen_clock: object
-) -> None:
+def test_add_snr_efficiency_qcs_pins_full_row_contract_under_frozen_clock(log: object, frozen_clock: object) -> None:
     result = toolkit.add_snr_efficiency_qcs(
         log,
         _snr_efficiency_spectrum(),

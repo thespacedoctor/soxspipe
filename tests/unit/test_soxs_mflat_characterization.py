@@ -29,6 +29,7 @@ column, so the first row that carries one pushes it to the end of the table
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -553,12 +554,11 @@ def _assert_background_subtraction_products(
     recipe: soxs_mflat,
     *,
     backgroundProductPath: Path,
-    tagProductPath: Path,
     finalProductPath: Path,
 ) -> None:
-    """Pin the BKGROUND, tag-scoped MFLAT and final MFLAT rows and the table's column order."""
+    """Pin the BKGROUND row, the single final MFLAT row and the table's column order."""
     assert list(recipe.products.columns) == _PRODUCT_COLUMNS_WITH_DESC
-    assert list(recipe.products["product_label"]) == ["ORDER_LOC", "BKGROUND", "MFLAT", "MFLAT"]
+    assert list(recipe.products["product_label"]) == ["ORDER_LOC", "BKGROUND", "MFLAT"]
 
     bkgRow = recipe.products.iloc[1]
     assert bkgRow["soxspipe_recipe"] == "soxs-mflat"
@@ -570,13 +570,7 @@ def _assert_background_subtraction_products(
     assert bkgRow["file_path"] == str(backgroundProductPath)
     assert bkgRow["label"] == "QC"
 
-    tagRow = recipe.products.iloc[2]
-    assert tagRow["file_name"] == "MASTER_FLAT_VIS.fits"
-    assert tagRow["product_desc"] == "VIS master spectroscopic flat frame"
-    assert tagRow["file_path"] == str(tagProductPath)
-    assert tagRow["label"] == "PROD"
-
-    finalRow = recipe.products.iloc[3]
+    finalRow = recipe.products.iloc[2]
     assert finalRow["file_name"] == "MASTER_FLAT_VIS_final.fits"
     assert finalRow["product_desc"] == "VIS master spectroscopic flat frame"
     assert finalRow["file_path"] == str(finalProductPath)
@@ -588,16 +582,14 @@ def test_single_lamp_background_subtraction_records_bkground_and_mflat_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A background-subtracting single-lamp reduction records BKGROUND, then two MFLAT rows.
+    """A background-subtracting single-lamp reduction records BKGROUND, then exactly one MFLAT row.
 
     `product_desc` is not a column `base_recipe` declares, so the first row
     that carries one -- here the BKGROUND row -- is what pushes it to the end
-    of `recipe.products`, after `label`. The tag-scoped MFLAT row (written
-    from `self.sofName + ".fits"`) and the final MFLAT row (written with no
-    filename override) both carry the product label `"MFLAT"`, because a
-    single-lamp reduction never enters the multi-lamp UV-stitch branch that
-    would otherwise be the only consumer of the tag-scoped row: this is
-    pinned as found, not as intended.
+    of `recipe.products`, after `label`. The per-lamp master flat is still
+    written to `self.sofName + ".fits"`, but it is an intermediate, so only
+    the final master flat (written with no filename override) gets a row
+    (DY-117).
     """
     # ARRANGE
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=131)
@@ -636,10 +628,10 @@ def test_single_lamp_background_subtraction_records_bkground_and_mflat_rows(
     monkeypatch.setattr(soxs_mflat_module, "subtract_background", FakeSubtractBackground)
 
     backgroundProductPath = tmp_path / "MASTER_FLAT_VIS_BKGROUND.fits"
-    tagProductPath = tmp_path / "MASTER_FLAT_VIS.fits"
+    lampProductPath = tmp_path / "MASTER_FLAT_VIS.fits"
     finalProductPath = tmp_path / "MASTER_FLAT_VIS_final.fits"
     fake_write, writeCalls = _sequential_write_stub(
-        [str(backgroundProductPath), str(tagProductPath), str(finalProductPath)]
+        [str(backgroundProductPath), str(lampProductPath), str(finalProductPath)]
     )
     monkeypatch.setattr(recipe, "_write", fake_write)
     clockReads = _count_clock_reads(monkeypatch, soxs_mflat_module)
@@ -653,7 +645,6 @@ def test_single_lamp_background_subtraction_records_bkground_and_mflat_rows(
     _assert_background_subtraction_products(
         recipe,
         backgroundProductPath=backgroundProductPath,
-        tagProductPath=tagProductPath,
         finalProductPath=finalProductPath,
     )
 
@@ -672,47 +663,34 @@ def test_single_lamp_background_subtraction_records_bkground_and_mflat_rows(
     assert receivedKwargs["sofName"] == "MASTER_FLAT_VIS"
     assert receivedKwargs["recipeName"] == "soxs-mflat"
     assert receivedKwargs["lamp"] == ""
-    # EACH OF THE THREE ROWS READS THE CLOCK ONCE: BKGROUND, MFLAT, FINAL MFLAT
-    assert clockReads == ["read"] * 3
+    # EACH OF THE TWO ROWS READS THE CLOCK ONCE: BKGROUND, FINAL MFLAT
+    assert clockReads == ["read"] * 2
 
 
 def _assert_multi_lamp_products(recipe: soxs_mflat) -> None:
-    """Pin the tag-scoped product rows, their descriptions, and the table's column order."""
+    """Pin the per-lamp order-location rows, the single final MFLAT row, and the table's column order."""
     assert list(recipe.products.columns) == _PRODUCT_COLUMNS_WITH_DESC
     assert list(recipe.products["product_label"]) == [
         "ORDER_LOC",
-        "MFLAT",
         "ORDER_LOC_DLAMP",
-        "MFLAT_DLAMP",
         "ORDER_LOC_QLAMP",
-        "MFLAT_QLAMP",
         "MFLAT",
     ]
 
-    dlampRow = recipe.products.loc[recipe.products["product_label"] == "MFLAT_DLAMP"].iloc[0]
-    assert dlampRow["product_desc"] == "VIS master spectroscopic flat frame (DLAMP)"
-    assert dlampRow["label"] == "PROD"
-
-    qlampRow = recipe.products.loc[recipe.products["product_label"] == "MFLAT_QLAMP"].iloc[0]
-    assert qlampRow["product_desc"] == "VIS master spectroscopic flat frame (QLAMP)"
-    assert qlampRow["label"] == "PROD"
-
-    unTaggedRows = recipe.products.loc[recipe.products["product_label"] == "MFLAT"]
-    assert list(unTaggedRows["product_desc"]) == [
-        "VIS master spectroscopic flat frame",
-        "VIS master spectroscopic flat frame",
-    ]
+    mflatRow = recipe.products.loc[recipe.products["product_label"] == "MFLAT"].iloc[0]
+    assert mflatRow["product_desc"] == "VIS master spectroscopic flat frame"
+    assert mflatRow["label"] == "PROD"
 
     for reductionDate in recipe.products["reduction_date_utc"]:
         assert TIMESTAMP_PATTERN.fullmatch(reductionDate) or reductionDate == "2024-01-02T04:05:06"
 
 
-def test_multi_lamp_master_flat_records_tagged_dlamp_and_qlamp_product_rows(
+def test_multi_lamp_master_flat_records_one_mflat_row(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Three lamp sets each write a tagged product row before the UV stitch step."""
+    """Three lamp sets record their order-location rows, and only the final master flat gets an MFLAT row."""
     # ARRANGE
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=231)
     productPath = tmp_path / "MASTER_FLAT_VIS.fits"
@@ -744,7 +722,13 @@ def test_multi_lamp_master_flat_records_tagged_dlamp_and_qlamp_product_rows(
     monkeypatch.setattr(recipe, "normalise_flats", fake_normalise)
     monkeypatch.setattr(recipe, "clip_and_stack", lambda **k: k["frames"][0].copy())
     monkeypatch.setattr(recipe, "mask_low_sens_pixels", lambda **k: (k["frame"].copy(), medianFlux))
-    monkeypatch.setattr(recipe, "_write", lambda *a, **k: str(productPath))
+    writeCalls: list[dict[str, Any]] = []
+
+    def recording_write(*args: object, **kwargs: Any) -> str:
+        writeCalls.append(kwargs)
+        return str(productPath)
+
+    monkeypatch.setattr(recipe, "_write", recording_write)
     monkeypatch.setattr(recipe, "stitch_uv_mflats", lambda *a, **k: stitched)
     _stub_shared_collaborators(recipe, monkeypatch, orderPath)
     clockReads = _count_clock_reads(monkeypatch, soxs_mflat_module)
@@ -756,8 +740,10 @@ def test_multi_lamp_master_flat_records_tagged_dlamp_and_qlamp_product_rows(
     assert returnedPath == str(productPath)
     assert returnedQc is recipe.qc
     _assert_multi_lamp_products(recipe)
-    # ONE CLOCK READ PER LAMP ROW, THEN ONE FOR THE FINAL MFLAT ROW
-    assert clockReads == ["read"] * 4
+    # EACH LAMP'S INTERMEDIATE MASTER FLAT IS STILL WRITTEN TO THE SOF NAME, THEN THE FINAL FRAME WITH NO OVERRIDE
+    assert [call.get("filename") for call in writeCalls] == ["MASTER_FLAT_VIS.fits"] * 3 + [None]
+    # ONE CLOCK READ, FOR THE FINAL MFLAT ROW
+    assert clockReads == ["read"]
 
 
 def _run_single_lamp_and_capture_exclude_mask(
@@ -837,8 +823,8 @@ def test_lamp_edge_mask_is_stored_as_a_copy_not_a_reference(
     recipe, _ = _run_single_lamp_and_capture_exclude_mask(log, tmp_path, monkeypatch, edgeMask)
 
     # ASSERT
-    assert recipe.orderEdgeMaskSet[0] is not edgeMask
-    np.testing.assert_array_equal(recipe.orderEdgeMaskSet[0], edgeMask)
+    assert recipe.lampProducts[""].orderEdgeMask is not edgeMask
+    np.testing.assert_array_equal(recipe.lampProducts[""].orderEdgeMask, edgeMask)
 
 
 def test_final_coldpix_qc_gets_no_exclude_mask_when_masking_never_ran(
@@ -861,9 +847,7 @@ def test_final_coldpix_qc_gets_no_exclude_mask_when_its_shape_differs_from_the_m
 ) -> None:
     """An edge mask that does not fit the written mflat is dropped rather than broadcast."""
     # ACT
-    _, excludeMask = _run_single_lamp_and_capture_exclude_mask(
-        log, tmp_path, monkeypatch, np.zeros((2, 2), dtype=bool)
-    )
+    _, excludeMask = _run_single_lamp_and_capture_exclude_mask(log, tmp_path, monkeypatch, np.zeros((2, 2), dtype=bool))
 
     # ASSERT
     assert excludeMask is None
@@ -871,3 +855,139 @@ def test_final_coldpix_qc_gets_no_exclude_mask_when_its_shape_differs_from_the_m
     assert len(warnings) == 1
     assert "(2, 2)" in warnings[0]
     assert str(synthetic_ccd(seed=333, prepared=True).mask.shape) in warnings[0]
+
+
+def _run_lamp_sets(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    framesByTag: dict[str, Any],
+    fluxColumnsFor: Callable[[str], dict[str, list[float]]] = lambda tag: {"medianFlux": [100.0]},
+) -> tuple[soxs_mflat, list[str]]:
+    """Run `produce_product` over the lamp sets in `framesByTag`; return the recipe and the stitch calls.
+
+    Each lamp gets its own order table (`ORDER_TAB<tag>.fits`) and its own one-pixel edge mask, so a lookup that
+    reads the wrong lamp shows up in every field of its `lamp_products`.
+    """
+    orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=241)
+    tags = ["", "_DLAMP", "_QLAMP", "_DOME"]
+    recipe = _new_bare_recipe(
+        log,
+        tmp_path,
+        orderPath,
+        subtractBackground=False,
+        calibratedFlatFiles=["orderdef.fits"] if "" in framesByTag else [],
+        dFlatFiles=["dorderdef.fits"] if "_DLAMP" in framesByTag else [],
+        qFlatFiles=["qorderdef.fits"] if "_QLAMP" in framesByTag else [],
+        domeFlatFiles=["dome.fits"] if "_DOME" in framesByTag else [],
+    )
+
+    def fake_normalise(*args: object, **kwargs: object) -> list[object]:
+        return [framesByTag[str(kwargs["lamp"])].copy()]
+
+    def fake_mask(**kwargs: Any) -> tuple[Any, pd.DataFrame]:
+        tag = Path(kwargs["orderTablePath"]).stem.replace("ORDER_TAB", "")
+        edgeMask = np.zeros(kwargs["frame"].data.shape, dtype=bool)
+        edgeMask[0, tags.index(tag)] = True
+        recipe.orderEdgeOnlyMask = edgeMask
+        return kwargs["frame"].copy(), pd.DataFrame({"order": [10], **fluxColumnsFor(tag)})
+
+    class PerLampEdges:
+        def __init__(self, **kwargs: Any) -> None:
+            self._edges = _make_fake_edges(recipe, tmp_path / f"ORDER_TAB{kwargs['tag']}.fits")(**kwargs)
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            return self._edges.get()
+
+    stitchCalls: list[str] = []
+
+    def fake_stitch(*args: object, **kwargs: object) -> Any:
+        stitchCalls.append("stitch")
+        return framesByTag["_QLAMP"].copy()
+
+    monkeypatch.setattr(
+        recipe, "calibrate_frame_set", lambda: tuple([framesByTag[t]] if t in framesByTag else [] for t in tags)
+    )
+    monkeypatch.setattr(recipe, "normalise_flats", fake_normalise)
+    monkeypatch.setattr(recipe, "clip_and_stack", lambda **k: k["frames"][0].copy())
+    monkeypatch.setattr(recipe, "mask_low_sens_pixels", fake_mask)
+    monkeypatch.setattr(recipe, "_write", lambda *a, **k: str(tmp_path / "MASTER_FLAT_VIS.fits"))
+    monkeypatch.setattr(recipe, "stitch_uv_mflats", fake_stitch)
+    _stub_shared_collaborators(recipe, monkeypatch, orderPath)
+    monkeypatch.setattr(soxs_mflat_module, "detect_order_edges", PerLampEdges)
+
+    recipe.produce_product()
+    return recipe, stitchCalls
+
+
+def test_a_skipped_lamp_does_not_change_which_products_the_d_and_qth_entries_hold(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the plain lamp skipped, the D and QTH entries hold their own flat, order table and edge mask."""
+    # ARRANGE
+    dFrame = synthetic_ccd(seed=242, prepared=True)
+    qFrame = synthetic_ccd(seed=243, prepared=True)
+
+    # ACT
+    recipe, stitchCalls = _run_lamp_sets(log, tmp_path, monkeypatch, framesByTag={"_DLAMP": dFrame, "_QLAMP": qFrame})
+
+    # ASSERT
+    assert stitchCalls == ["stitch"]
+    assert list(recipe.lampProducts) == ["_DLAMP", "_QLAMP"]
+    dLamp, qLamp = recipe.lampProducts["_DLAMP"], recipe.lampProducts["_QLAMP"]
+    np.testing.assert_array_equal(dLamp.masterFlat.data, dFrame.data)
+    np.testing.assert_array_equal(qLamp.masterFlat.data, qFrame.data)
+    assert Path(dLamp.orderTablePath).name == "ORDER_TAB_DLAMP.fits"
+    assert Path(qLamp.orderTablePath).name == "ORDER_TAB_QLAMP.fits"
+    # THE EDGE-MASK FAKE FLAGS COLUMN 1 FOR THE D LAMP AND COLUMN 2 FOR THE QTH LAMP
+    assert list(np.argwhere(dLamp.orderEdgeMask)[0]) == [0, 1]
+    assert list(np.argwhere(qLamp.orderEdgeMask)[0]) == [0, 2]
+
+
+def test_uv_stitch_is_skipped_when_the_flux_columns_are_present_but_a_lamp_has_no_products(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stitch gate needs both lamp records, not just both median-flux columns."""
+    # ARRANGE
+    dFrame = synthetic_ccd(seed=245, prepared=True)
+
+    # ACT
+    recipe, stitchCalls = _run_lamp_sets(
+        log,
+        tmp_path,
+        monkeypatch,
+        framesByTag={"_DLAMP": dFrame},
+        fluxColumnsFor=lambda tag: {"medianFlux": [100.0], "_QLAMP": [90.0]},
+    )
+
+    # ASSERT
+    assert list(recipe.lampProducts) == ["_DLAMP"]
+    assert stitchCalls == []
+
+
+def test_uv_stitch_is_skipped_for_d_qth_and_dome_sets_as_found(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A D, QTH and dome reduction skips the stitch, because the dome fluxes are merged with the D fluxes only.
+
+    Pinned as found: `produce_product` merges each tagged lamp's median fluxes with the first tagged lamp's, so the
+    dome merge drops the `_QLAMP` column and the gate's column check fails.
+    """
+    # ARRANGE
+    framesByTag = {
+        tag: synthetic_ccd(seed=seed, prepared=True) for tag, seed in [("_DLAMP", 246), ("_QLAMP", 247), ("_DOME", 248)]
+    }
+
+    # ACT
+    recipe, stitchCalls = _run_lamp_sets(log, tmp_path, monkeypatch, framesByTag=framesByTag)
+
+    # ASSERT
+    assert list(recipe.lampProducts) == ["_DLAMP", "_QLAMP", "_DOME"]
+    assert stitchCalls == []

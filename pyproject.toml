@@ -103,7 +103,8 @@ exclude = ["tests", "tests.*"]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 write_to = "soxspipe/__version__.py"
-write_to_template = "__version__ = '{version}'\n"
+# DOUBLE QUOTES SO THE GENERATED FILE PASSES THE "Enforce ruff format" CI STEP
+write_to_template = "__version__ = \"{version}\"\n"
 
 [tool.ruff]
 line-length = 120

@@ -331,9 +331,7 @@ def test_mask_order_locations_handles_a_single_order_table():
         uncertainty=StdDevUncertainty(np.ones((32, 32)), unit=u.electron),
     )
     worker.axisA, worker.axisB = "x", "y"
-    orderPixels = pd.DataFrame(
-        {"order": [10], "ycoord": [5], "xcoord_edgeup": [24.0], "xcoord_edgelow": [20.0]}
-    )
+    orderPixels = pd.DataFrame({"order": [10], "ycoord": [5], "xcoord_edgeup": [24.0], "xcoord_edgelow": [20.0]})
 
     # ONE ORDER IS BOTH oTop AND oBot, SO THE "o == oBot" BRANCH READS expandTop BEFORE IT IS EVER ASSIGNED
     worker.mask_order_locations(orderPixels)

@@ -779,7 +779,6 @@ class create_dispersion_map:
                 self.log.print("\n# FINDING PINHOLE ARC-LINES ON IMAGE\n")
                 iraf = False
                 while iteration < 3:
-
                     # GET DETECTION PARAMETERS FOR CURRENT ITERATION
                     (
                         self.windowHalf,
@@ -947,7 +946,6 @@ class create_dispersion_map:
             fitFound = False
             tryCount = 0
             while not fitFound and tryCount < 5:
-
                 # ATTEMPT TO FIT POLYNOMIAL DISPERSION SOLUTION
                 popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
                     orderPixelTable=orderPixelTable,
@@ -2501,7 +2499,6 @@ class create_dispersion_map:
             self.log.info("""sigma_clip""" % locals())
 
             if clipOnMphSets:
-
                 columnsNoStrings = list(orderPixelTable.columns)
                 try:
                     columnsNoStrings.remove("ion")
@@ -3479,7 +3476,6 @@ class create_dispersion_map:
             )
 
         else:
-
             if isinstance(missingLines, pd.core.frame.DataFrame):
                 toprow.scatter(
                     missingLines[f"detector_{self.axisB}_shifted"],
@@ -3707,7 +3703,6 @@ class create_dispersion_map:
         upperR = mean_r + 3 * std_r
 
         if self.arcFrame:
-
             # UNPACK ORDER TABLE TO GET SLIT HEIGHT IN PX
             orderPolyTable, orderGeoTable, orderMetaTable = unpack_order_table(
                 log=self.log, orderTablePath=self.orderTable, extend=0.0
@@ -3787,11 +3782,9 @@ class create_dispersion_map:
             orderGeoTable["slitLengthArcsec"] = orderGeoTable["slitLengthPixels"] * orderGeoTable["pixelScale"]
 
         for name, group in orderPixelTable_groups:
-
             thisOrder = group["order"].values[0]
 
             if self.arcFrame:
-
                 slitWidth = self.arcFrame.header[kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
                 fwhmAx.set_title(
                     f'Line FWHM measured via {slitWidth}" slit arc-lamp frame',
@@ -3841,7 +3834,6 @@ class create_dispersion_map:
                 )
 
                 if thisOrder not in [24]:
-
                     # FILTER DATA FRAME
                     # FIRST CREATE THE MASK
                     mask = orderGeoTable["order"] == thisOrder
@@ -4040,7 +4032,6 @@ class create_dispersion_map:
             self.log.debug(f"_clip_on_measured_line_metrics: `columnsNoStrings.remove('ion')` failed, continuing: {e}")
 
         if self.firstGuessMap:
-
             # GROUP BY ARC LINES (MPH SETS)
 
             lineGroups = (
@@ -4439,7 +4430,6 @@ class create_dispersion_map:
         #     pass
         dfCollection = []
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
-
             wrange = wmax - wmin
             wmin -= wrange / 5
             wmax += wrange / 5
@@ -4614,7 +4604,6 @@ def measure_line_position(
 
     # PROCESS DETECTED SOURCES
     if sources:
-
         if returnAll:
             # RETURN ALL DETECTED SOURCES
             for source in sources:
@@ -4702,7 +4691,7 @@ def measure_line_position(
             plt.text(
                 windowHalf - 2,
                 windowHalf - 2,
-                f"{observed_x-xlow:0.2f},{observed_y - ylow:0.2f}",
+                f"{observed_x - xlow:0.2f},{observed_y - ylow:0.2f}",
                 fontsize=16,
                 c="black",
                 verticalalignment="bottom",

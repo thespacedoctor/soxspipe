@@ -363,9 +363,7 @@ class soxs_stare(base_recipe):
             if not self.recipeSettings["use_flat"]:
                 master_flat = False
         except KeyError as e:
-            self.log.debug(
-                f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}"
-            )
+            self.log.debug(f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}")
             master_flat = False
 
         combined_object = self.detrend(
@@ -403,18 +401,17 @@ class soxs_stare(base_recipe):
             skySubtractedCCDData, master_flat, combined_object, combined_object_notflattened
         )
 
-
         from soxspipe.commonutils.toolkit import quicklook_image
+
         quicklook_image(
             log=self.log,
             CCDObject=combined_object_notflattened,
             show=self.debug,
-            ext='data',
+            ext="data",
             stdWindow=3,
             title=False,
             surfacePlot=True,
         )
-
 
         from soxspipe.commonutils import horne_extraction
 
@@ -436,6 +433,7 @@ class soxs_stare(base_recipe):
             turnOffMP=self.turnOffMP,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
+        slitEdgeSpill = bool(optimalExtractor.slitEdgeOrders)
 
         # CHECK IF FLUX CALIBRATION IS NEEDED
         filePath_fluxcal = None
@@ -445,14 +443,22 @@ class soxs_stare(base_recipe):
             filePath_fluxcal = self._flux_calibrate_spectrum(responseFunctionPath, mergedSpectumDF, combined_object)
 
         elif self.generateReponseCurve:
-            forceFailure = self._generate_response_curve(
-                unflattenedSkySubtractedCCDData,
-                skymodelCCDData,
-                twoDMap,
-                dispMap,
-                extractionPath,
-                orderJoins,
+            forceFailure = (
+                self._generate_response_curve(
+                    unflattenedSkySubtractedCCDData,
+                    skymodelCCDData,
+                    twoDMap,
+                    dispMap,
+                    extractionPath,
+                    orderJoins,
+                )
+                or slitEdgeSpill
             )
+            if slitEdgeSpill:
+                self.log.error(
+                    "The standard star spills over the slit edge, so this recipe and its response curve are flagged "
+                    "as failed and will not be used to flux-calibrate other frames."
+                )
 
         self._plot_merged_spectrum_qcs(mergedSpectumDF, orderJoins, filePath_fluxcal)
 
@@ -729,7 +735,6 @@ class soxs_stare(base_recipe):
         productPath = None
 
         if self.subtractSky:
-
             skymodel = subtract_sky(
                 log=self.log,
                 settings=self.settings,

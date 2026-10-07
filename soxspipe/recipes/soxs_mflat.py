@@ -12,7 +12,10 @@ Date Created
 #
 import os
 import sys
+from dataclasses import dataclass
 from os.path import expanduser
+from types import MappingProxyType
+from typing import Any
 
 from soxspipe.commonutils import detect_order_edges, subtract_background
 from soxspipe.commonutils.toolkit import (
@@ -38,6 +41,29 @@ NIR_LAMP_OFF_TYPE = "DARK"
 ORDER_EDGE_MIN_FLAT_FRACTION = 0.5
 # FEWEST USABLE PIXELS AN ORDER-ROW SEGMENT NEEDS FOR ITS MEDIAN TO BE TRUSTED
 ORDER_EDGE_MIN_SEGMENT_PIXELS = 3
+
+# THE TWO LAMPS STITCHED INTO THE UV MASTER FLAT, AND THE NAMES ERROR MESSAGES USE FOR THEM
+D_LAMP_TAG = "_DLAMP"
+QTH_LAMP_TAG = "_QLAMP"
+STITCH_LAMP_NAMES = {D_LAMP_TAG: "D-lamp", QTH_LAMP_TAG: "QTH-lamp"}
+
+
+@dataclass(frozen=True)
+class lamp_products:
+    """
+    *the products one flat lamp contributes to a master-flat reduction*
+
+    **Key Arguments**
+
+    - ``orderTablePath`` -- path to the order locations table detected on this lamp's flat
+    - ``masterFlat`` -- this lamp's master flat frame (CCDData)
+    - ``orderEdgeMask`` -- boolean array of this lamp's partly illuminated order-edge pixels, or *None* if masking
+      recorded none
+    """
+
+    orderTablePath: str
+    masterFlat: Any
+    orderEdgeMask: Any = None
 
 
 class soxs_mflat(base_recipe):
@@ -72,6 +98,8 @@ class soxs_mflat(base_recipe):
 
     # THE PARTLY ILLUMINATED ORDER-EDGE PIXELS THE LAST MASKING ADDED TO THE MASTER-FLAT MASK (NONE UNTIL MASKING RUNS)
     orderEdgeOnlyMask = None
+    # EACH REDUCED LAMP'S PRODUCTS, KEYED BY LAMP TAG. EMPTY AND READ-ONLY UNTIL produce_product REBUILDS IT
+    lampProducts = MappingProxyType({})
 
     def __init__(
         self,
@@ -354,31 +382,21 @@ class soxs_mflat(base_recipe):
             "LAMP,QORDERDEF",
             "LAMP,QORDERDEF",
         ]
-        lampTag = ["", "_DLAMP", "_QLAMP", "_DOME"]
+        lampTag = ["", D_LAMP_TAG, QTH_LAMP_TAG, "_DOME"]
         filelists = [
             self.calibratedFlatFiles,
             self.dFlatFiles,
             self.qFlatFiles,
             self.domeFlatFiles,
         ]
-        normalisedFlatSet = []
-        self.combinedNormalisedFlatSet = []
-        self.masterFlatSet = []
-        self.orderEdgeMaskSet = []
-        self.orderTableSet = []
-        self.detectionCountSet = []
+        # EACH REDUCED LAMP'S PRODUCTS, KEYED BY LAMP TAG. A SKIPPED LAMP HAS NO ENTRY, SO IT SHIFTS NO OTHER LAMP
+        self.lampProducts = {}
         medianOrderFluxDFExists = False
 
         qcTable = self.qc
 
         for cf, fk, tag, files in zip(calibratedFlatSet, flatKeywords, lampTag, filelists):
-
             if len(cf) == 0:
-                self.orderTableSet.append(None)
-                normalisedFlatSet.append(None)
-                self.combinedNormalisedFlatSet.append(None)
-                self.masterFlatSet.append(None)
-                self.orderEdgeMaskSet.append(None)
                 continue
 
             if tag and self.inst.upper() != "SOXS":
@@ -400,8 +418,6 @@ class soxs_mflat(base_recipe):
 
             combined_normalised_flat = self._normalise_and_stack_lamp_flats(cf, orderTablePath, tag, frameNames=files)
 
-            self.combinedNormalisedFlatSet.append(combined_normalised_flat.copy())
-
             self.update_fits_keywords(frame=combined_normalised_flat, rawFrames=files)
 
             qcTable, orderTablePath = self._detect_lamp_order_edges(combined_normalised_flat, orderTablePath, tag)
@@ -413,10 +429,7 @@ class soxs_mflat(base_recipe):
                 log=self.log, orderTablePath=orderTablePath
             )
 
-            if tag in ("_DLAMP", "_QLAMP"):
-                writeQC = False
-            else:
-                writeQC = True
+            writeQC = tag not in (D_LAMP_TAG, QTH_LAMP_TAG)
 
             if self.recipeSettings["subtract_background"]:
                 backgroundFrame, combined_normalised_flat = self._subtract_lamp_background(
@@ -430,10 +443,16 @@ class soxs_mflat(base_recipe):
                 writeQC=writeQC,
             )
 
-            self.masterFlatSet.append(mflat)
-            self.orderEdgeMaskSet.append(None if self.orderEdgeOnlyMask is None else self.orderEdgeOnlyMask.copy())
+            self.lampProducts = {
+                **self.lampProducts,
+                tag: lamp_products(
+                    orderTablePath=orderTablePath,
+                    masterFlat=mflat,
+                    orderEdgeMask=None if self.orderEdgeOnlyMask is None else self.orderEdgeOnlyMask.copy(),
+                ),
+            }
 
-            productPath = self._write_lamp_master_flat(mflat, outDir, tag)
+            self._write_lamp_master_flat(mflat, outDir)
 
             if tag:
                 medianOrderFluxDF.rename(columns={"medianFlux": tag}, inplace=True)
@@ -444,11 +463,12 @@ class soxs_mflat(base_recipe):
             elif tag:
                 medianOrderFluxDF = pd.merge(medianOrderFluxDFFirst, medianOrderFluxDF)
 
-        # UV-STITCHING
-        canStitchUvFlats = (
-            len(self.detectionCountSet) > 1
-            and medianOrderFluxDFExists
-            and {"_DLAMP", "_QLAMP"}.issubset(medianOrderFluxDF.columns)
+        # UV-STITCHING NEEDS BOTH LAMPS AND BOTH OF THEIR MEDIAN ORDER FLUX COLUMNS. THE LOOP ABOVE MERGES EACH TAGGED
+        # LAMP'S FLUXES WITH THE FIRST TAGGED LAMP'S ONLY (medianOrderFluxDFFirst), SO A LATER DOME SET DROPS THE _QLAMP
+        # COLUMN AND THE STITCH IS SKIPPED EVEN WITH BOTH LAMPS PRESENT. THE COLUMN CHECK KEEPS THAT AS FOUND (DY-947)
+        stitchLampTags = {D_LAMP_TAG, QTH_LAMP_TAG}
+        canStitchUvFlats = stitchLampTags.issubset(self.lampProducts) and stitchLampTags.issubset(
+            medianOrderFluxDF.columns
         )
         if canStitchUvFlats:
             mflat = self.stitch_uv_mflats(medianOrderFluxDF, orderTablePath=thisPath)
@@ -620,7 +640,7 @@ class soxs_mflat(base_recipe):
     def _detect_lamp_order_edges(self, combined_normalised_flat, orderTablePath, tag):
         """*detect the order edges on one lamp's combined flat and record the updated order locations table*
 
-        Sets ``self.products`` and appends to ``self.detectionCountSet`` and ``self.orderTableSet``.
+        Sets ``self.products``.
 
         **Key Arguments:**
 
@@ -649,20 +669,10 @@ class soxs_mflat(base_recipe):
             lampTag=tag,
             startNightDate=self.startNightDate,
         )
-        self.products, qcTable, orderDetectionCounts = edges.get()
-
-        if tag:
-            # NEED TO TRY AND RENAME BOTH ORDER AND COUNT COLUMNS FOR PANDAS 1.X AND 2.X
-            orderDetectionCounts.rename(columns={"order": tag}, inplace=True)
-            orderDetectionCounts.rename(columns={"count": tag}, inplace=True)
-            orderDetectionCounts.index.names = ["order"]
-
-        self.detectionCountSet.append(orderDetectionCounts)
+        self.products, qcTable, _ = edges.get()
 
         mask = self.products["product_label"] == f"ORDER_LOC{tag}"
         orderTablePath = self.products.loc[mask]["file_path"].values[0]
-
-        self.orderTableSet.append(orderTablePath)
 
         return qcTable, orderTablePath
 
@@ -730,46 +740,23 @@ class soxs_mflat(base_recipe):
 
         return backgroundFrame, combined_normalised_flat
 
-    def _write_lamp_master_flat(self, mflat, outDir, tag):
-        """*write one lamp's master flat to file and record it in the products table*
+    def _write_lamp_master_flat(self, mflat, outDir):
+        """*write one lamp's master flat to file*
 
-        Sets ``self.products``.
+        The per-lamp master flat is an intermediate, not a product, so it gets no row in ``self.products``. A later
+        write of the final master flat may overwrite it.
 
         **Key Arguments:**
 
         - ``mflat`` -- the master flat frame of this lamp
         - ``outDir`` -- the directory the frame is written to
-        - ``tag`` -- the lamp tag
 
         **Return:**
 
         - ``productPath`` -- the path the master flat was written to
         """
         # WRITE MFLAT TO FILE
-        productPath = self._write(mflat.copy(), outDir, filename=self.sofName + ".fits", overwrite=True)
-
-        utcnow = utcnow_string()
-        basename = os.path.basename(productPath)
-
-        if len(tag):
-            product_desc = f"{self.arm} master spectroscopic flat frame ({tag.replace('_', '')})"
-        else:
-            product_desc = f"{self.arm} master spectroscopic flat frame"
-
-        self.products = append_product(
-            self.products,
-            recipeName=self.recipeName,
-            productLabel=f"MFLAT{tag}",
-            fileName=basename,
-            filePath=productPath,
-            productDesc=product_desc,
-            obsDateUtc=self.dateObs,
-            reductionDateUtc=utcnow,
-            fileType="FITS",
-            label="PROD",
-        )
-
-        return productPath
+        return self._write(mflat.copy(), outDir, filename=self.sofName + ".fits", overwrite=True)
 
     def calibrate_frame_set(self):
         """*given all of the input data calibrate the frames by subtracting bias and/or dark*
@@ -1052,7 +1039,6 @@ class soxs_mflat(base_recipe):
         mask = self._order_centre_mask(inputFlats, orderTablePath, window)
 
         if self.debug:
-
             this = inputFlats[0].copy()
             this.mask = mask
 
@@ -1404,7 +1390,6 @@ class soxs_mflat(base_recipe):
         frameCount = len(inputFlats)
 
         for frameIndex, frame in enumerate(inputFlats, start=1):
-
             nrows = frame.data.shape[0]
             # COMPUTE MEDIAN OF (FRAME / FIRSTPASSMASTERFLAT) IN CHUNKS
             # TO AVOID ALLOCATING A FULL-SIZE INTERMEDIATE ARRAY
@@ -1531,10 +1516,7 @@ class soxs_mflat(base_recipe):
         if returnMedianOrderFlux:
             for o in uniqueOrders:
                 if not len(orderFluxes[o]):
-                    raise ValueError(
-                        f"Cannot calculate median flux for order {o}: "
-                        "no valid sampled pixels"
-                    )
+                    raise ValueError(f"Cannot calculate median flux for order {o}: no valid sampled pixels")
                 medianFlux.append(np.median(orderFluxes[o]))
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM
@@ -1707,6 +1689,9 @@ class soxs_mflat(base_recipe):
 
         kw = self.kw
 
+        dLamp = self._stitch_lamp(D_LAMP_TAG)
+        qLamp = self._stitch_lamp(QTH_LAMP_TAG)
+
         medianOrderFluxDF["_QLAMP_PREVIOUS"] = np.insert(medianOrderFluxDF["_QLAMP"].values[:-1], 0, 999)
         medianOrderFluxDF["scale"] = medianOrderFluxDF["_DLAMP"] / medianOrderFluxDF["_QLAMP_PREVIOUS"]
         medianOrderFluxDF["closest"] = abs(1 - medianOrderFluxDF["scale"])
@@ -1717,7 +1702,7 @@ class soxs_mflat(base_recipe):
 
         # SCALE D FRAME TO QTH FRAME
         if self.recipeSettings["scale-d2-to-qth"]:
-            dmflatScaled = self.masterFlatSet[1].divide(DQscale)
+            dmflatScaled = dLamp.masterFlat.divide(DQscale)
             from soxspipe.commonutils.toolkit import quicklook_image
 
             quicklook_image(
@@ -1730,12 +1715,12 @@ class soxs_mflat(base_recipe):
                 title="D Flat scaled to Q-Flat",
             )
         else:
-            dmflatScaled = self.masterFlatSet[1]
+            dmflatScaled = dLamp.masterFlat
 
         # UNPACK THE ORDER TABLE
         orderTableMeta, orderTablePixels, orderMetaTable = unpack_order_table(
             log=self.log,
-            orderTablePath=self.orderTableSet[1],
+            orderTablePath=dLamp.orderTablePath,
             extend=3000,
             binx=self.binx,
             biny=self.biny,
@@ -1745,7 +1730,7 @@ class soxs_mflat(base_recipe):
         filteredDf = orderTablePixels.loc[(orderTablePixels["order"] == orderFlip)]
         axisAStitchCoords = filteredDf[f"{self.axisA}coord_edgeup"].values.astype(int) + 4
         axisBStitchCoords = filteredDf[f"{self.axisB}coord"].values
-        stitchedFlat = self.masterFlatSet[2].copy()
+        stitchedFlat = qLamp.masterFlat.copy()
 
         # STITCH FLAT FRAMES AND COMBINED NORMALISED FRAMES (NEEDED FOR BEST ORDER EDGE DETECTION) TOGETHER
         if self.axisA == "x":
@@ -1760,7 +1745,9 @@ class soxs_mflat(base_recipe):
                 stitchedFlat.mask[y, x:] = dmflatScaled.mask[y, x:]
                 stitchedFlat.uncertainty.array[y, x:] = dmflatScaled.uncertainty.array[y, x:]
 
-        stitchedEdgeMask = self._stitch_order_edge_masks(axisAStitchCoords, axisBStitchCoords, stitchedFlat.mask.shape)
+        stitchedEdgeMask = self._stitch_order_edge_masks(
+            dLamp, qLamp, axisAStitchCoords, axisBStitchCoords, stitchedFlat.mask.shape
+        )
 
         stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
 
@@ -1821,6 +1808,27 @@ class soxs_mflat(base_recipe):
         self.log.debug("completed the ``stitch_uv_mflats`` method")
         return stitchedFlat
 
+    def _stitch_lamp(self, tag):
+        """*return the products of one of the two lamps stitched into the UV master flat*
+
+        **Key Arguments:**
+
+        - ``tag`` -- the lamp tag, ``D_LAMP_TAG`` or ``QTH_LAMP_TAG``
+
+        **Return:**
+
+        - ``lamp`` -- the lamp's ``lamp_products``
+
+        Raises ``ValueError`` naming the lamp if it has no master flat and order table.
+        """
+        lamp = self.lampProducts.get(tag)
+        if lamp is None:
+            raise ValueError(
+                f"The mflat recipe cannot stitch the UV master flat: the {STITCH_LAMP_NAMES[tag]} has no master flat "
+                "and order table"
+            )
+        return lamp
+
     def _set_order_edge_qc_count(self, count):
         """*overwrite the value of the last ``N ORDER EDGE`` QC row, if there is one*
 
@@ -1837,11 +1845,13 @@ class soxs_mflat(base_recipe):
         qc.loc[edgeRows[-1], "qc_value"] = float(count)
         self.qc = qc
 
-    def _stitch_order_edge_masks(self, axisAStitchCoords, axisBStitchCoords, shape):
+    def _stitch_order_edge_masks(self, dLamp, qLamp, axisAStitchCoords, axisBStitchCoords, shape):
         """*stitch the D and QTH lamp edge-only masks along the line used to stitch the master flats*
 
         **Key Arguments:**
 
+        - ``dLamp`` -- the D lamp's ``lamp_products``
+        - ``qLamp`` -- the QTH lamp's ``lamp_products``
         - ``axisAStitchCoords`` -- the stitch position along the dispersion axis for each row
         - ``axisBStitchCoords`` -- the row (or column) each stitch position belongs to
         - ``shape`` -- the shape of the stitched master flat
@@ -1854,8 +1864,8 @@ class soxs_mflat(base_recipe):
         import numpy as np
 
         noEdges = np.zeros(shape, dtype=bool)
-        dEdgeMask = self.orderEdgeMaskSet[1] if self.orderEdgeMaskSet[1] is not None else noEdges
-        stitchedEdgeMask = (self.orderEdgeMaskSet[2] if self.orderEdgeMaskSet[2] is not None else noEdges).copy()
+        dEdgeMask = dLamp.orderEdgeMask if dLamp.orderEdgeMask is not None else noEdges
+        stitchedEdgeMask = (qLamp.orderEdgeMask if qLamp.orderEdgeMask is not None else noEdges).copy()
 
         # SAME SLICES AS THE FLAT, MASK AND UNCERTAINTY STITCH IN stitch_uv_mflats
         if self.axisA == "x":

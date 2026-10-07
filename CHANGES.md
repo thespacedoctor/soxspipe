@@ -1,6 +1,13 @@
 # Release Notes
 
 * **ENHANCEMENT**: astropy is upgraded from 6.1.2 to 7.2.2 and `uncompresspy` 0.4.1 is added, so astropy can open LZW-compressed `.fits.Z` frames (DY-694).
+* **FEATURE**: `soxs_mbias` writes `<product>_BIAS_DISTRIBUTION_QC_PLOT.pdf`, which compares the pixel flux histograms of the earliest raw bias frame and the master bias, with the RON values (DY-267).
+* **FEATURE**: extraction (stare, nod, offset) writes `<template>_SLIT_DRIFT_QC_PLOT<nodding sequence>.pdf`, which plots the object slit position against wavelength before rectification, with per-order fits and residuals; it is not written for the `_NOTFLAT` re-extraction (DY-270).
+* **ENHANCEMENT**: optimal extraction logs an ERROR naming each order where the object spills over the slit edge, and adds the `N ORDERS SLIT EDGE` QC; when a flux standard spills, `soxs-stare` fails the recipe so its response curve is not used to flux-calibrate other frames (DY-802).
+* **ENHANCEMENT**: the `soxs_mbias` bias-distribution QC plot now draws filled, translucent histogram bars with no outline, and shows its mean, median and RON values in a table under the plot instead of free text (DY-909).
+* **REFACTOR**: `soxs_mflat` keeps each lamp's products in one record keyed by lamp tag instead of parallel lists, and the UV stitch reads the D and QTH lamps by name; a stitch without one of them now raises a `ValueError` naming the missing lamp (DY-131).
+* **FIXED**: `soxs_mflat` records exactly one `MFLAT` product row, for the final master flat; the per-lamp master flats are still written but no longer get `MFLAT`, `MFLAT_DLAMP`, `MFLAT_QLAMP` or `MFLAT_DOME` rows (DY-117).
+* **FIXED**: optimal (Horne) extraction no longer inflates the flux up to about 2.6x when the object core sits on masked slit-edge rows; masked pixels in slit rows with sparse local support now get no profile weight (DY-802).
 * **FIXED**: optimal (Horne) extraction no longer inflates the flux by up to 1e6x when the object trace sits on an order edge; the object profile now gives no weight to pixels off the order (DY-752).
 * **FIXED**: the master flat now flags partly illuminated order-edge pixels, which flat-fielding amplified about 6x; set `order-edge-min-flat-fraction` (default 0.5, 0 turns it off) and re-make existing master flats to gain the flags; these pixels are reported as `N ORDER EDGE` and are not counted in the `COLDPIX` QC (DY-753).
 * **FIXED**: `soxs_stare` now shows the raw-stack surface plot only in debug mode (`-d`), where before it opened a window on every run and waited until the window was closed.
@@ -19,12 +26,15 @@
 * **FIXED**: `quicklook_image` called without `settings` now skips the dispersion map and skyline overlays with a warning instead of raising (DY-290).
 * **FIXED**: the real-data workflow's `NPY_DISABLE_CPU_FEATURES` now names numpy's `AVX512_*` dispatch groups, so AVX512 runners no longer run the AVX512_SKX/CLX kernels (DY-40)
 * **FIXED**: before each b-spline sky fit, `subtract_sky` drops knots that would leave a knot interval with no sample (duplicate knots, knots outside the sampled wavelength range, and knots with no sample since the previous knot), which used to make FITPACK reject the fit (`ier=30`) and revert (or raise on the first iteration); dropped and duplicate knots no longer count as new knots in the stop check (DY-697).
-* **TEST**: characterization tests raise subtract_sky.py coverage from 67.7% to 95.4% (DY-40)
-* **TEST**: the subtract_sky end-anchoring characterization test pins the spline derivative instead of a flux-error-ratio sum that differed between AVX2 and AVX512 CPUs (DY-40)
+* **FIXED**: the order-centre QC plot from `detect_continuum` keeps each order's own colour in every panel and no longer drops the last order from the lower panels when an earlier order's fitted trace is off the detector (DY-604).
+* **FIXED**: a recipe whose QC rows still fail to write to the database after seven attempts now raises the original error, so the SOF is marked `fail`, where before the rows were dropped silently (DY-603).
+* **FIXED**: in a named session, an out-of-range QC value now marks the SOF `fail` in that session's status, where before the session showed `pass` and the failure was written to the `base` session instead (DY-272).
 * **TEST**: characterization tests raise subtract_sky.py coverage from 67.7% to 95.4% (DY-40)
 * **TEST**: the subtract_sky end-anchoring characterization test pins the spline derivative instead of a flux-error-ratio sum that differed between AVX2 and AVX512 CPUs (DY-40)
 * **TEST**: the real-data workflow now also reduces a VIS and an NIR stare SOF, and `tests/real_data/test_stare_baseline.py` checks the stare product set, merged and flux-calibrated spectra, sky model levels and QC values within bands (DY-696)
 * **TEST**: the real-data workflow now runs only on pull requests into `main` and on manual dispatch; it no longer runs on pull requests into `develop` or on a weekly schedule (DY-840)
+* **TEST**: `tools/check_changelog.py` rejects a bullet repeated within one release block, in pre-commit and CI (DY-851)
+* **TEST**: CI now fails when any file is not formatted with the pinned `ruff format`; the whole repository was reformatted once to start clean (DY-850)
 
 ## v0.18.0 - September 30, 2026
 
@@ -592,7 +602,6 @@
 * **REFACTOR:** updated workflow for master dark combination  
 * **REFACTOR:** QC PDF plots now added to their own directory separate from the products    
 * **REFACTOR:** products now sub-divided into recipe directories (e.g. `./products/soxs-mbias/`)    
-* **DOCS:** mflat docs brought up-to-date    
 * **DOCS:** mflat docs brought up-to-date    
 * **FIXED:** mflat recipe now exits if flat frames are not of a consistent exptime.    
 

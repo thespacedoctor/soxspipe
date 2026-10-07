@@ -63,14 +63,10 @@ def _write_harvestable_fits(destination: Path, *, includeDprType: bool = True) -
     return destination
 
 
-def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(
-    tmp_path, log, capsys
-) -> None:
+def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(tmp_path, log, capsys) -> None:
     """Use real FITS headers and ignore frames missing mandatory DPR metadata."""
     validPath = _write_harvestable_fits(tmp_path / "valid.fits")
-    invalidPath = _write_harvestable_fits(
-        tmp_path / "invalid.fits", includeDprType=False
-    )
+    invalidPath = _write_harvestable_fits(tmp_path / "invalid.fits", includeDprType=False)
     kw, keywords = _organiser_header_keywords(log)
 
     harvested = _harvest_fits_headers(
@@ -99,15 +95,11 @@ def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(
     assert "missing DPR keywords" in capsys.readouterr().out
 
 
-def test_directory_table_returns_empty_contract_when_no_fits_exist(
-    tmp_path, log
-) -> None:
+def test_directory_table_returns_empty_contract_when_no_fits_exist(tmp_path, log) -> None:
     """Return the established all-None result for an empty workspace scan."""
     organiser = workspace_organiser(tmp_path, log=log)
 
-    result = organiser._create_directory_table(
-        str(Path(organiser.rootDir)), organiser.filterKeywords
-    )
+    result = organiser._create_directory_table(str(Path(organiser.rootDir)), organiser.filterKeywords)
 
     assert result == (None, None, None)
 
@@ -122,10 +114,7 @@ def test_directory_table_rejects_mixed_instruments(tmp_path, log) -> None:
     with pytest.raises(AssertionError):
         organiser._create_directory_table(str(rootPath), organiser.filterKeywords)
 
-    assert any(
-        level == "error" and "mix of instruments" in message
-        for level, message in log.messages
-    )
+    assert any(level == "error" and "mix of instruments" in message for level, message in log.messages)
 
 
 def test_fits_detection_checks_workspace_root_and_raw_tree(tmp_path, log) -> None:
@@ -164,9 +153,7 @@ def test_prepare_refresh_removes_only_workspace_database_before_empty_inventory_
     assert not any(databasePath.exists() for databasePath in databasePaths)
 
 
-def test_instrument_selection_normalises_xshooter_and_loads_sof_map(
-    tmp_path, log
-) -> None:
+def test_instrument_selection_normalises_xshooter_and_loads_sof_map(tmp_path, log) -> None:
     """Select the XSH configuration from the instrument stored in SQLite."""
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.conn = sqlite3.connect(":memory:")
@@ -256,9 +243,7 @@ def test_session_list_and_switch_retarget_workspace_symlinks(tmp_path, log) -> N
         assert Path(os.readlink(rootAsset)) == sessionsPath / "science" / assetName
 
 
-def test_session_list_and_switch_preserve_missing_and_active_session_contracts(
-    tmp_path, log, capsys
-) -> None:
+def test_session_list_and_switch_preserve_missing_and_active_session_contracts(tmp_path, log, capsys) -> None:
     """Session commands report absent, unknown, and already-active sessions safely."""
     organiser = workspace_organiser(tmp_path, log=log)
 
@@ -277,9 +262,7 @@ def test_session_list_and_switch_preserve_missing_and_active_session_contracts(
     assert "There is no session" in output
 
 
-def test_move_misc_files_keeps_workspace_metadata_and_moves_unrelated_files(
-    tmp_path, log
-) -> None:
+def test_move_misc_files_keeps_workspace_metadata_and_moves_unrelated_files(tmp_path, log) -> None:
     """Workspace preparation archives unrelated root files without moving metadata."""
     organiser = workspace_organiser(tmp_path, log=log)
     rootPath = Path(organiser.rootDir)
@@ -297,9 +280,7 @@ def test_move_misc_files_keeps_workspace_metadata_and_moves_unrelated_files(
 
 
 @pytest.mark.parametrize("failure", [True, False])
-def test_session_refresh_rebuilds_the_active_session_inventory(
-    tmp_path, log, monkeypatch, failure: bool
-) -> None:
+def test_session_refresh_rebuilds_the_active_session_inventory(tmp_path, log, monkeypatch, failure: bool) -> None:
     """Refreshing an active session rebuilds its SOFs for either status transition."""
     organiser = workspace_organiser(tmp_path, log=log)
     sessionPath = Path(organiser.sessionsDir) / "base"
@@ -383,9 +364,7 @@ def test_directory_sync_removes_stale_database_and_sof_rows(tmp_path, log) -> No
     organiser.conn.execute("CREATE TABLE raw_frames (filepath TEXT)")
     organiser.conn.execute("INSERT INTO raw_frames VALUES ('./raw/missing.fits')")
     organiser.conn.execute("CREATE TABLE sof_map_base (sof TEXT, filepath TEXT)")
-    organiser.conn.execute(
-        "INSERT INTO sof_map_base VALUES ('missing.sof', './raw/missing.fits')"
-    )
+    organiser.conn.execute("INSERT INTO sof_map_base VALUES ('missing.sof', './raw/missing.fits')")
 
     organiser._sync_sql_table_to_directory(organiser.rawDir, "raw_frames")
 
@@ -402,9 +381,7 @@ def test_directory_sync_removes_a_stale_absolute_database_path(tmp_path, log) ->
     organiser.conn.execute("CREATE TABLE raw_frames (filepath TEXT)")
     organiser.conn.execute("INSERT INTO raw_frames VALUES (?)", (stalePath,))
     organiser.conn.execute("CREATE TABLE sof_map_base (sof TEXT, filepath TEXT)")
-    organiser.conn.execute(
-        "INSERT INTO sof_map_base VALUES (?, ?)", ("missing.sof", stalePath)
-    )
+    organiser.conn.execute("INSERT INTO sof_map_base VALUES (?, ?)", ("missing.sof", stalePath))
 
     organiser._sync_sql_table_to_directory(organiser.rawDir, "raw_frames")
 
@@ -469,14 +446,10 @@ def test_raw_frame_sync_indexes_and_moves_a_new_root_frame(tmp_path, log, monkey
     assert not sourcePath.exists()
     assert destinationPath.read_text(encoding="utf-8") == "synthetic frame"
     indexed = pd.read_sql("SELECT file, filepath FROM raw_frames", organiser.conn)
-    assert indexed.to_dict("records") == [
-        {"file": "new-frame.fits", "filepath": str(destinationPath)}
-    ]
+    assert indexed.to_dict("records") == [{"file": "new-frame.fits", "filepath": str(destinationPath)}]
 
 
-def test_sync_raw_frames_binds_a_hostile_mismatch_delete_as_a_parameter(
-    tmp_path, log, monkeypatch
-) -> None:
+def test_sync_raw_frames_binds_a_hostile_mismatch_delete_as_a_parameter(tmp_path, log, monkeypatch) -> None:
     """A mismatched-location cleanup delete binds the filepath as a parameter.
 
     `_sync_raw_frames` joined the mismatched filepaths into `WHERE filepath IN
@@ -493,9 +466,7 @@ def test_sync_raw_frames_binds_a_hostile_mismatch_delete_as_a_parameter(
     os.makedirs(organiser.rootDir)
     sourcePath = Path(organiser.rootDir) / "dup.fits"
     sourcePath.write_text("synthetic frame", encoding="utf-8")
-    hostileDestination = str(
-        tmp_path / "raw" / "2024-01-03" / 'evil") OR 1=1 --.fits'
-    )
+    hostileDestination = str(tmp_path / "raw" / "2024-01-03" / 'evil") OR 1=1 --.fits')
     survivingPath = str(tmp_path / "raw" / "2024-01-01" / "keep.fits")
 
     knownFrames = pd.DataFrame(
@@ -541,9 +512,7 @@ def test_sync_raw_frames_binds_a_hostile_mismatch_delete_as_a_parameter(
     assert remaining["file"].tolist() == ["keep.fits"]
 
 
-def test_prepare_indexes_a_raw_frame_and_creates_a_base_session(
-    tmp_path, log, monkeypatch
-) -> None:
+def test_prepare_indexes_a_raw_frame_and_creates_a_base_session(tmp_path, log, monkeypatch) -> None:
     """Prepare a disposable workspace through its public setup workflow."""
     organiser = workspace_organiser(tmp_path, log=log)
     rootPath = Path(organiser.rootDir)
@@ -554,16 +523,12 @@ def test_prepare_indexes_a_raw_frame_and_creates_a_base_session(
 
     assert not rawPath.exists()
     indexedFrames = pd.read_sql("SELECT file, filepath FROM raw_frames", organiser.conn)
-    assert indexedFrames.to_dict("records") == [
-        {"file": "bias.fits", "filepath": "./raw/2024-01-02/bias.fits"}
-    ]
+    assert indexedFrames.to_dict("records") == [{"file": "bias.fits", "filepath": "./raw/2024-01-02/bias.fits"}]
     assert (rootPath / "sessions" / "base" / "soxspipe.yaml").is_file()
     assert (rootPath / "sof").is_symlink()
 
 
-def test_prepare_report_describes_the_completed_isolated_workspace(
-    tmp_path, log, monkeypatch, capsys
-) -> None:
+def test_prepare_report_describes_the_completed_isolated_workspace(tmp_path, log, monkeypatch, capsys) -> None:
     """A second public preparation run reports the established workspace inventory."""
     organiser = workspace_organiser(tmp_path, log=log)
     rootPath = Path(organiser.rootDir)

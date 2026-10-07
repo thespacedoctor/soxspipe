@@ -203,9 +203,7 @@ def test_filenamer_reads_a_float_one_as_the_xshooter_speed_one_mode(
 def test_filenamer_lower_cases_the_xshooter_readout_value_before_matching(
     log: object,
 ) -> None:
-    frame = synthetic_ccd(
-        instrument="xsh", headerOverrides={"DET_READ_SPEED": "Slow 100K"}
-    )
+    frame = synthetic_ccd(instrument="xsh", headerOverrides={"DET_READ_SPEED": "Slow 100K"})
 
     filename = _name(log, frame, settings={"instrument": "xsh"})
 
@@ -297,9 +295,7 @@ def test_filenamer_logs_the_header_values_before_rejecting_an_unnameable_frame(
     log: object,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    frame = synthetic_ccd(
-        headerOverrides={"DPR_TYPE": "LAMP,WAVE", "DPR_TECH": "ECHELLE,SLIT"}
-    )
+    frame = synthetic_ccd(headerOverrides={"DPR_TYPE": "LAMP,WAVE", "DPR_TECH": "ECHELLE,SLIT"})
 
     with pytest.raises(TypeError):
         _name(log, frame, settings=SOXS_SETTINGS)
@@ -321,9 +317,7 @@ def test_filenamer_logs_the_header_values_before_rejecting_an_unnameable_frame(
         ("ESO DPR TYPE", "ESO DPR TYPE"),
     ),
 )
-def test_filenamer_requires_the_obs_id_arm_and_type_keywords(
-    log: object, deleted: str, missing: str
-) -> None:
+def test_filenamer_requires_the_obs_id_arm_and_type_keywords(log: object, deleted: str, missing: str) -> None:
     """The observation ID is not in the name but must still be present."""
     frame = synthetic_ccd()
     del frame.header[deleted]
@@ -355,19 +349,11 @@ def test_filenamer_looks_up_detector_parameters_only_when_none_are_supplied(
 
 
 @pytest.mark.parametrize("supplied", ("keywords", "detector"))
-def test_filenamer_accepts_either_lookup_on_its_own(
-    log: object, supplied: str
-) -> None:
+def test_filenamer_accepts_either_lookup_on_its_own(log: object, supplied: str) -> None:
     frame = synthetic_ccd()
     lookups = {
-        "keywords": {
-            "keywordLookup": keyword_lookup(log=log, settings=SOXS_SETTINGS).get
-        },
-        "detector": {
-            "detectorLookup": detector_lookup(log=log, settings=SOXS_SETTINGS).get(
-                "VIS"
-            )
-        },
+        "keywords": {"keywordLookup": keyword_lookup(log=log, settings=SOXS_SETTINGS).get},
+        "detector": {"detectorLookup": detector_lookup(log=log, settings=SOXS_SETTINGS).get("VIS")},
     }
 
     filename = _name(log, frame, settings=SOXS_SETTINGS, **lookups[supplied])
@@ -399,9 +385,7 @@ def test_filenamer_reads_the_arm_before_the_obs_id_only_when_it_looks_up_the_det
     del frame.header["ESO SEQ ARM"]
     lookups = {}
     if supplyDetector:
-        lookups["detectorLookup"] = detector_lookup(
-            log=log, settings=SOXS_SETTINGS
-        ).get("VIS")
+        lookups["detectorLookup"] = detector_lookup(log=log, settings=SOXS_SETTINGS).get("VIS")
 
     with pytest.raises(KeyError, match=firstMissing):
         _name(log, frame, settings=SOXS_SETTINGS, **lookups)

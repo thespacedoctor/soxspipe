@@ -109,9 +109,7 @@ def _configure_nodding_recipe(
     technique: str,
 ) -> None:
     routes = {
-        _route(DPR_TYPE="OBJECT", DPR_TECH=technique): [
-            str(path) for path in objectPaths
-        ],
+        _route(DPR_TYPE="OBJECT", DPR_TECH=technique): [str(path) for path in objectPaths],
         _route(PRO_CATG="ORDER_TAB_VIS"): [str(tmp_path / "ORDER_TAB_VIS.fits")],
         _route(PRO_CATG="DISP_TAB_VIS"): [str(tmp_path / "DISP_TAB_VIS.fits")],
         _route(PRO_CATG="DISP_IMAGE_VIS"): [str(tmp_path / "DISP_IMAGE_VIS.fits")],
@@ -196,9 +194,7 @@ def _patch_nodding_collaborators(
         fake_extract_cycle,
     )
 
-    def fake_stack_extractions(
-        *args: object, **kwargs: object
-    ) -> tuple[pd.DataFrame, str]:
+    def fake_stack_extractions(*args: object, **kwargs: object) -> tuple[pd.DataFrame, str]:
         calls.append("stack_extractions")
         captured["stack_extractions"].append({"args": args, **kwargs})
         return spectrum.copy(), str(extractionPath)
@@ -260,6 +256,7 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
 ) -> None:
     """An AB cycle preserves its two directional difference-spectrum contracts."""
     import soxspipe.commonutils as commonutils
+
     nod_module = import_module("soxspipe.recipes.soxs_nod")
 
     recipe = soxs_nod.__new__(soxs_nod)
@@ -311,12 +308,8 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
     )
 
     assert len(calls) == 2
-    assert calls[0]["skySubtractedFrame"].data[0, 0] == pytest.approx(
-        aFrame.data[0, 0] - bFrame.data[0, 0]
-    )
-    assert calls[1]["skySubtractedFrame"].data[0, 0] == pytest.approx(
-        bFrame.data[0, 0] - aFrame.data[0, 0]
-    )
+    assert calls[0]["skySubtractedFrame"].data[0, 0] == pytest.approx(aFrame.data[0, 0] - bFrame.data[0, 0])
+    assert calls[1]["skySubtractedFrame"].data[0, 0] == pytest.approx(bFrame.data[0, 0] - aFrame.data[0, 0])
     assert spectrumA["WAVE"].tolist() == [500.0]
     assert spectrumB["WAVE"].tolist() == [500.0]
     assert joins == {10: 1}
@@ -510,9 +503,7 @@ def test_offset_success_returns_extraction_and_records_qc(
         "soxs_offset",
         "soxs_offset",
     ]
-    assert (
-        captured["stack"][0]["frames"][0].header["HIERARCH ESO SEQ FIXOFF RA"] == -2.0
-    )
+    assert captured["stack"][0]["frames"][0].header["HIERARCH ESO SEQ FIXOFF RA"] == -2.0
     assert captured["stack"][1]["frames"][0].header["HIERARCH ESO SEQ FIXOFF RA"] == 0.0
     extractArgs = captured["extract_cycle"][0]
     assert extractArgs["aFrame"] is captured["keywords"][0]["frame"]
@@ -524,9 +515,7 @@ def test_offset_success_returns_extraction_and_records_qc(
     assert len(stackArgs["args"][0]) == 1
     assert stackArgs["orderJoins"] == {10: 11}
     plotArgs = captured["plot"][0]
-    assert plotArgs["merged_orders"].equals(
-        pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]})
-    )
+    assert plotArgs["merged_orders"].equals(pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]}))
     assert plotArgs["filenameTemplate"] == "OBJECT_VIS.fits"
     assert plotArgs["settings"] is recipe.settings
     assert plotArgs["qcTable"] is recipe.qc
@@ -796,6 +785,9 @@ def test_stare_success_returns_last_sky_path_and_records_products(
             return skyModel, skySubtracted, residuals, recipe.qc, recipe.products
 
     class FakeExtractor:
+        # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
+        slitEdgeOrders: list = []
+
         def __init__(self, **kwargs: object) -> None:
             calls.append("extractor")
             captured["extractor"].append(kwargs)
@@ -912,9 +904,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
         "label",
     ]
     reductionDates = []
-    for row, expected in zip(
-        recipe.products.iloc[:3].to_dict("records"), expectedSkyProducts
-    ):
+    for row, expected in zip(recipe.products.iloc[:3].to_dict("records"), expectedSkyProducts, strict=True):
         reductionDates.append(row.pop("reduction_date_utc"))
         assert row == expected
     # THE THREE SKY PRODUCTS ARE STAMPED WITH ONE REDUCTION TIME, RENDERED TO
@@ -964,10 +954,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
         "OBJECT_VIS_SKYMODEL.fits",
         "OBJECT_VIS_SKYSUB_RESIDUALS.fits",
     ]
-    assert all(
-        entry["frame"] is expected
-        for entry, expected in zip(captured["write"], expectedFrames)
-    )
+    assert all(entry["frame"] is expected for entry, expected in zip(captured["write"], expectedFrames, strict=True))
     assert [entry["filename"] for entry in captured["write"]] == expectedFilenames
     assert all(entry["filedir"] == str(tmp_path) for entry in captured["write"])
     assert all(entry["overwrite"] is True for entry in captured["write"])
@@ -1150,6 +1137,9 @@ def test_stare_generates_a_response_from_a_flux_standard(
     )
 
     class FakeExtractor:
+        # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
+        slitEdgeOrders: list = []
+
         def __init__(self, **kwargs: object) -> None:
             extractionArguments.append(kwargs)
             calls.append("extractor")
@@ -1270,6 +1260,9 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     monkeypatch.setattr(recipe, "clean_up", lambda **kwargs: calls.append(f"clean_up:{kwargs['forceFail']}"))
 
     class FakeExtractor:
+        # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
+        slitEdgeOrders: list = []
+
         def __init__(self, **kwargs: object) -> None:
             calls.append("extractor")
 
@@ -1294,7 +1287,11 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     toolkit = import_module("soxspipe.commonutils.toolkit")
     monkeypatch.setattr(commonutils, "horne_extraction", FakeExtractor)
     monkeypatch.setattr(commonutils, "flux_calibration", FakeFluxCalibrator)
-    monkeypatch.setattr(stareModule, "detector_lookup", lambda **_: type("Lookup", (), {"get": lambda _, __: {"extinction": "extinction.dat"}})())
+    monkeypatch.setattr(
+        stareModule,
+        "detector_lookup",
+        lambda **_: type("Lookup", (), {"get": lambda _, __: {"extinction": "extinction.dat"}})(),
+    )
     monkeypatch.setattr(stareModule, "get_calibrations_path", lambda **_: str(tmp_path))
     monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
 

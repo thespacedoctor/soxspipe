@@ -20,6 +20,243 @@ from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
+BIAS_HISTOGRAM_HALF_WIDTH_SIGMA = 5
+BIAS_HISTOGRAM_BINS = 100
+# HALF-WIDTH (e-) OF THE HISTOGRAM RANGE WHEN EVERY PLOTTED PIXEL HAS THE SAME VALUE
+BIAS_HISTOGRAM_FLAT_HALF_WIDTH = 0.5
+RAW_SERIES_COLOUR = "C0"
+MASTER_SERIES_COLOUR = "C1"
+# OPACITY OF THE FILLED HISTOGRAMS, LOW ENOUGH FOR THE OVERLAP OF THE TWO SERIES TO SHOW
+HISTOGRAM_FILL_ALPHA = 0.4
+STATS_TABLE_FONT_SIZE = 7
+STATS_TABLE_EDGE_COLOUR = "0.8"
+STATS_TABLE_EDGE_WIDTH = 0.4
+# LEFT PADDING OF THE LABEL COLUMN, AS A FRACTION OF THE CELL WIDTH
+STATS_TABLE_LABEL_PAD = 0.04
+# TABLE POSITION IN AXES COORDINATES (LEFT, BOTTOM, WIDTH, HEIGHT): BELOW THE AXES AND THE X-AXIS LABEL
+STATS_TABLE_BBOX = (0.0, -0.45, 1.0, 0.28)
+STATS_TABLE_COLUMNS = ("", "mean (e-)", "median (e-)", "RON (e-)")
+STATS_TABLE_NOT_APPLICABLE = "\u2014"
+
+
+def _finite_unmasked_pixels(data, *masks):
+    """*return the finite pixel values that no mask flags*
+
+    **Key Arguments:**
+
+    - ``data`` -- the pixel array
+    - ``masks`` -- any number of boolean masks the same shape as `data` (`True` = exclude). `None` masks are skipped
+
+    **Return:**
+
+    - ``pixels`` -- 1D array of the finite, unmasked pixel values
+
+    **Usage:**
+
+    ```python
+    pixels = _finite_unmasked_pixels(frame.data, frame.mask, badPixelMask)
+    ```
+    """
+    import numpy as np
+
+    data = np.asarray(data)
+    keep = np.isfinite(data)
+    for mask in masks:
+        if mask is not None:
+            keep &= ~np.asarray(mask, dtype=bool)
+
+    return data[keep]
+
+
+def _histogram_bin_edges(rawPixels, masterPixels, centre, frameRon):
+    """*return the bias histogram bin edges: the centre plus or minus five frame RONs*
+
+    If the frame RON is zero or not finite, the edges span the range of all plotted pixels instead.
+
+    **Key Arguments:**
+
+    - ``rawPixels`` -- the plotted raw-frame pixel values
+    - ``masterPixels`` -- the plotted master-bias pixel values
+    - ``centre`` -- the bias level to centre the histogram on
+    - ``frameRon`` -- the RON of the plotted raw frame
+
+    **Return:**
+
+    - ``binEdges`` -- `BIAS_HISTOGRAM_BINS + 1` strictly increasing bin edges
+    """
+    import numpy as np
+
+    if np.isfinite(frameRon) and frameRon > 0:
+        low = centre - BIAS_HISTOGRAM_HALF_WIDTH_SIGMA * frameRon
+        high = centre + BIAS_HISTOGRAM_HALF_WIDTH_SIGMA * frameRon
+    else:
+        allPixels = np.concatenate([rawPixels, masterPixels])
+        low, high = float(np.min(allPixels)), float(np.max(allPixels))
+        if low == high:
+            low, high = low - BIAS_HISTOGRAM_FLAT_HALF_WIDTH, high + BIAS_HISTOGRAM_FLAT_HALF_WIDTH
+
+    return np.linspace(low, high, BIAS_HISTOGRAM_BINS + 1)
+
+
+def _unclipped_raw_pixels(noiseFrame, badPixelMask, meanLevel):
+    """*return the flux of the raw pixels that were neither sigma-clipped nor flagged bad*
+
+    **Key Arguments:**
+
+    - ``noiseFrame`` -- the mean-subtracted raw frame, whose mask is the sigma-clip mask
+    - ``badPixelMask`` -- the bad-pixel mask the raw frame had before it was sigma-clipped. `None` if it had none
+    - ``meanLevel`` -- the mean bias level that was subtracted from the frame
+
+    **Return:**
+
+    - ``pixels`` -- the flux (e-) of the surviving finite pixels with the mean bias level added back
+
+    **Usage:**
+
+    ```python
+    pixels = _unclipped_raw_pixels(noiseFrame, badPixelMask, meanLevel)
+    ```
+    """
+    return _finite_unmasked_pixels(noiseFrame.data, noiseFrame.mask, badPixelMask) + meanLevel
+
+
+def bias_distribution_summary(
+    rawPixels,
+    frameRon,
+    masterPixels,
+    rawRon,
+    masterRon,
+):
+    """*summarise the raw and master bias pixel distributions for the QC plot*
+
+    **Key Arguments:**
+
+    - ``rawPixels`` -- the flux (e-) of the unclipped pixels of the plotted raw frame
+    - ``frameRon`` -- the sigma-clipped standard deviation (e-) of the plotted raw frame
+    - ``masterPixels`` -- the flux (e-) of the unmasked master-bias pixels
+    - ``rawRon`` -- the mean of the per-frame RON values (the RAW RON QC)
+    - ``masterRon`` -- the standard deviation (e-) of the stacked, mean-subtracted frame (the MASTER RON QC)
+
+    **Return:**
+
+    - ``summary`` -- dictionary with the keys `rawMean`, `rawMedian`, `masterMean`, `masterMedian`, `binEdges`
+      and `statsTable`. `statsTable` is a dictionary with `columns` (the four column headers) and `rows` (one list
+      of cell strings per row: the plotted raw frame, the master bias and the RAW RON QC). Numbers are formatted
+      to two decimal places. The mean and median cells of the RAW RON QC row hold a dash because that value is
+      a mean of per-frame RONs and not a pixel statistic. `masterRon` is carried by the master bias row
+
+    Raises `ValueError` if either sample has no finite, unmasked pixels. A bias frame with every pixel masked is
+    unusable, so the recipe stops rather than writing a plot of NaN values.
+
+    **Usage:**
+
+    ```python
+    summary = bias_distribution_summary(rawPixels, frameRon, masterPixels, rawRon, masterRon)
+    ```
+    """
+    import numpy as np
+
+    for name, pixels in (("raw frame", rawPixels), ("master bias", masterPixels)):
+        if len(pixels) == 0:
+            raise ValueError(f"The {name} has no finite, unmasked pixels to plot in the bias distribution QC plot")
+
+    rawMean = float(np.mean(rawPixels))
+    rawMedian = float(np.median(rawPixels))
+    masterMean = float(np.mean(masterPixels))
+    masterMedian = float(np.median(masterPixels))
+    binEdges = _histogram_bin_edges(rawPixels, masterPixels, rawMean, frameRon)
+
+    statsTable = {
+        "columns": list(STATS_TABLE_COLUMNS),
+        "rows": [
+            ["raw frame", f"{rawMean:.2f}", f"{rawMedian:.2f}", f"{frameRon:.2f}"],
+            ["master bias", f"{masterMean:.2f}", f"{masterMedian:.2f}", f"{masterRon:.2f}"],
+            ["RAW RON (QC)", STATS_TABLE_NOT_APPLICABLE, STATS_TABLE_NOT_APPLICABLE, f"{rawRon:.2f}"],
+        ],
+    }
+
+    return {
+        "rawMean": rawMean,
+        "rawMedian": rawMedian,
+        "masterMean": masterMean,
+        "masterMedian": masterMedian,
+        "binEdges": binEdges,
+        "statsTable": statsTable,
+    }
+
+
+def _style_stats_table(table):
+    """*apply the house style to the statistics table: thin grey edges, a bold header and a left-aligned label column*
+
+    **Key Arguments:**
+
+    - ``table`` -- the `matplotlib.table.Table` to style in place
+    """
+    table.auto_set_font_size(False)
+    for (rowIndex, columnIndex), cell in table.get_celld().items():
+        cell.set_fontsize(STATS_TABLE_FONT_SIZE)
+        cell.set_edgecolor(STATS_TABLE_EDGE_COLOUR)
+        cell.set_linewidth(STATS_TABLE_EDGE_WIDTH)
+        if rowIndex == 0:
+            cell.set_text_props(fontweight="bold")
+        if columnIndex == 0:
+            cell.set_text_props(ha="left")
+            cell.PAD = STATS_TABLE_LABEL_PAD
+
+
+def _draw_bias_distribution(ax, rawPixels, masterPixels, summary, arm):
+    """*draw the filled raw and master bias histograms, their mean and median lines, and the statistics table onto `ax`*
+
+    Each histogram is a translucent fill in the series colour with no outline. The statistics table sits below the
+    x-axis label, in axes coordinates, so it stays inside a figure saved with `bbox_inches="tight"`.
+
+    **Key Arguments:**
+
+    - ``ax`` -- the matplotlib axes to draw on
+    - ``rawPixels`` -- the plotted raw-frame pixel values (e-)
+    - ``masterPixels`` -- the plotted master-bias pixel values (e-)
+    - ``summary`` -- the dictionary returned by `bias_distribution_summary`; its `statsTable` fills the table
+    - ``arm`` -- the arm name, used in the title
+
+    **Usage:**
+
+    ```python
+    fig, ax = plt.subplots()
+    _draw_bias_distribution(ax, rawPixels, masterPixels, summary, "VIS")
+    ```
+    """
+    for label, pixels, mean, median, colour in (
+        ("raw frame (earliest by MJD-OBS)", rawPixels, summary["rawMean"], summary["rawMedian"], RAW_SERIES_COLOUR),
+        ("master bias", masterPixels, summary["masterMean"], summary["masterMedian"], MASTER_SERIES_COLOUR),
+    ):
+        ax.hist(
+            pixels,
+            bins=summary["binEdges"],
+            histtype="stepfilled",
+            color=colour,
+            alpha=HISTOGRAM_FILL_ALPHA,
+            linewidth=0,
+            label=label,
+        )
+        ax.axvline(mean, color=colour, linestyle="-", linewidth=0.8)
+        ax.axvline(median, color=colour, linestyle=":", linewidth=0.8)
+
+    ax.set_yscale("log")
+    ax.set_xlabel("flux (e-)")
+    ax.set_ylabel("pixel count")
+    ax.set_title(f"{arm} bias pixel-flux distribution (solid: mean, dotted: median)", fontsize=9)
+    ax.legend(fontsize=8, loc="upper right")
+
+    statsTable = summary["statsTable"]
+    table = ax.table(
+        cellText=statsTable["rows"],
+        colLabels=statsTable["columns"],
+        cellLoc="right",
+        colLoc="right",
+        bbox=STATS_TABLE_BBOX,
+    )
+    _style_stats_table(table)
+
 
 class soxs_mbias(base_recipe):
     """
@@ -162,6 +399,7 @@ class soxs_mbias(base_recipe):
             masterMedianBiasLevel,
             rawRon,
             masterRon,
+            rawFrameSample,
         ) = self._combine_bias_frames()
 
         # OPTIMISE: 24%
@@ -209,6 +447,15 @@ class soxs_mbias(base_recipe):
 
         self.dateObs = combined_bias_mean.header[self.kw("DATE_OBS")]
 
+        # PLOT BEFORE THE MBIAS ROW SO THE MASTER BIAS STAYS THE LAST PRODUCT
+        self.plot_bias_distribution_qc(
+            rawFrameSample=rawFrameSample,
+            masterFrame=combined_bias_mean,
+            rawRon=rawRon,
+            masterRon=masterRon,
+            productPath=productPath,
+        )
+
         self.add_product(
             productLabel="MBIAS",
             fileName=filename,
@@ -234,11 +481,13 @@ class soxs_mbias(base_recipe):
         - ``masterMedianBiasLevel`` -- the median of the per-frame mean bias levels
         - ``rawRon`` -- the mean of the per-frame read-out noise values
         - ``masterRon`` -- the standard deviation of the stacked noise frame
+        - ``rawFrameSample`` -- the earliest raw frame (by MJD-OBS) for the QC plot, a dictionary with the keys
+          `pixels` (flux of its unclipped, unflagged pixels) and `frameRon` (its RON)
 
         **Usage:**
 
         ```python
-        combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon = self._combine_bias_frames()
+        combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon, rawFrameSample = self._combine_bias_frames()
         ```
         """
         import numpy as np
@@ -256,14 +505,21 @@ class soxs_mbias(base_recipe):
             )
         )
 
+        # COPY THE BAD-PIXEL MASK OF THE FIRST FRAME: subtract_mean_flux_level REPLACES IT WITH THE CLIP MASK
+        badPixelMask = None if ccds[0].mask is None else np.array(ccds[0].mask, dtype=bool)
+
         # OPTIMISE: 33%
         # `strict=False` IS THE CURRENT BEHAVIOUR MADE EXPLICIT, NOT A CHANGE
-        meanBiasLevels, rons, noiseFrames = zip(
-            *[self.subtract_mean_flux_level(c) for c in ccds], strict=False
-        )
+        meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds], strict=False)
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
         rawRon = np.mean(rons)
+
+        # SAMPLE BEFORE STACKING IN CASE THE STACK TOUCHES THE INPUT FRAMES
+        rawFrameSample = {
+            "pixels": _unclipped_raw_pixels(noiseFrames[0], badPixelMask, meanBiasLevels[0]),
+            "frameRon": float(rons[0]),
+        }
 
         # OPTIMISE: 19%
         combined_noise = self.clip_and_stack(
@@ -287,7 +543,66 @@ class soxs_mbias(base_recipe):
         combined_bias_mean = combined_noise
         combined_bias_mean.mask = combined_noise.mask
 
-        return combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon
+        return combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon, rawFrameSample
+
+    def plot_bias_distribution_qc(self, rawFrameSample, masterFrame, rawRon, masterRon, productPath):
+        """*plot the raw and master bias pixel-flux distributions and register the plot as a QC product*
+
+        **Key Arguments:**
+
+        - ``rawFrameSample`` -- the earliest raw frame's `pixels` and `frameRon`
+          (see `_combine_bias_frames`)
+        - ``masterFrame`` -- the master bias frame
+        - ``rawRon`` -- the mean of the per-frame RON values (the RAW RON QC)
+        - ``masterRon`` -- the MASTER RON QC value
+        - ``productPath`` -- the path of the master bias product, used to name the plot
+
+        **Return:**
+
+        - ``filePath`` -- the path to the PDF plot
+
+        **Usage:**
+
+        ```python
+        filePath = self.plot_bias_distribution_qc(rawFrameSample, masterFrame, rawRon, masterRon, productPath)
+        ```
+        """
+        self.log.debug("starting the ``plot_bias_distribution_qc`` method")
+
+        import matplotlib.pyplot as plt
+
+        masterPixels = _finite_unmasked_pixels(masterFrame.data, masterFrame.mask)
+
+        summary = bias_distribution_summary(
+            rawPixels=rawFrameSample["pixels"],
+            frameRon=rawFrameSample["frameRon"],
+            masterPixels=masterPixels,
+            rawRon=rawRon,
+            masterRon=masterRon,
+        )
+
+        filename = os.path.basename(productPath).replace(".fits", "_BIAS_DISTRIBUTION_QC_PLOT.pdf")
+        filePath = os.path.join(self.qcDir, filename)
+
+        fig, ax = plt.subplots()
+        try:
+            _draw_bias_distribution(ax, rawFrameSample["pixels"], masterPixels, summary, self.arm)
+            fig.savefig(filePath, format="pdf", bbox_inches="tight")
+        finally:
+            plt.close(fig)
+
+        self.add_product(
+            productLabel="BIAS_DISTRIBUTION_QC_PLOT",
+            fileName=filename,
+            filePath=filePath,
+            productDesc=f"{self.arm} raw vs master bias pixel-flux distribution",
+            reductionDateUtc=utcnow_string(),
+            fileType="PDF",
+            label="QC",
+        )
+
+        self.log.debug("completed the ``plot_bias_distribution_qc`` method")
+        return filePath
 
     def qc_bias_structure(self, combined_bias_mean):
         """*calculate the structure of the bias*

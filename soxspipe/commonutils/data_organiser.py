@@ -686,8 +686,9 @@ class data_organiser:
                 'and qc_flag != "fail" and qc_order = "-1";',
                 (),
             ),
+            # A QC FAILURE MARKS ONLY THE CURRENT SESSION'S STATUS COLUMN (DY-272)
             (
-                'update product_frames set status_base = "fail" '
+                f'update product_frames set {statusColumn} = "fail" '  # noqa: S608
                 'where sof in (select sof_name from quality_control where qc_flag = "fail");',
                 (),
             ),
@@ -809,7 +810,6 @@ class data_organiser:
                 print(remainingFiles, "FITS files remaining to be indexed")
 
             if fitsPaths:
-
                 conn = self.conn
                 knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
 
@@ -846,7 +846,6 @@ class data_organiser:
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
                 databaseDeletes = []
                 if len(rawFrames.index):
-
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
                     rawFrames.replace(["--", -99.99], None).to_sql(
                         "raw_frames", con=self.conn, index=False, if_exists="append"
@@ -1123,7 +1122,6 @@ class data_organiser:
             c.execute(sqlQuery, filesNotInFS)
 
         if len(filesNotInDB):
-
             for f in filesNotInDB:
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 basename = os.path.basename(f)
@@ -2929,7 +2927,6 @@ class data_organiser:
 
         allRawGroups = []
         for recipeOrder, (name, filters) in enumerate(self.sofMapLookup.items()):
-
             # READ FILTER VARIABLES
             ttypes = filters["eso dpr type"]
             tech = filters["eso dpr tech"]
@@ -2941,7 +2938,6 @@ class data_organiser:
                 calibrationTypes = []
 
             for ttype in ttypes:
-
                 rawFrames, rawGroups = self.get_raw_frames_and_groups(
                     ttype=ttype,
                     tech=tech,
@@ -2969,10 +2965,8 @@ class data_organiser:
                     c.execute(sqlQuery, (recipe,))
 
                 else:
-
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
-
                             sqlQuery, sqlParams = self._calibration_completeness_select_query(
                                 recipe, arm, ttype, calType
                             )
@@ -2987,7 +2981,6 @@ class data_organiser:
                             # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
                             # NEED TO ALSO ADD THE RAW FILES TOO ... ADD RAW FRAMES, SET COMPLETE = 1 WHERE PRODUCT FRAMES COMPLETE = 1
                             for ct in calType:
-
                                 sqlQuery = self._calibration_raw_frames_query(ct)
                                 newSof = pd.read_sql(sqlQuery, con=self.conn)
 
@@ -3229,11 +3222,9 @@ class data_organiser:
         rawGroups["recipe"] = recipe
 
         if "STD,FLUX" in ttype:
-
             recipe = recipe.replace("_std", "") + "_std_flux"
 
         if "STD,TELLURIC" in ttype:
-
             recipe = recipe.replace("_std", "") + "_std_tell"
 
         rawGroups["sof"] = (
@@ -3477,7 +3468,6 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:
         if fil in filterKeys and fil not in ["exptime"]:
-
             try:
                 masterTable[fil].fill_value = "--"
             except (TypeError, ValueError) as e:

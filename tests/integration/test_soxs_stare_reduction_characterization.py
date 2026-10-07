@@ -146,6 +146,9 @@ def _patch_stare(
             return (*skyResult, recipe.qc, recipe.products)
 
     class FakeExtractor:
+        # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
+        slitEdgeOrders: list = []
+
         def __init__(self, **kwargs: object) -> None:
             captured["extractor"].append(kwargs)
 
