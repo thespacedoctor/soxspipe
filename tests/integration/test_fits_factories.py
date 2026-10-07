@@ -11,7 +11,7 @@ from astropy.io import fits
 from astropy.nddata import CCDData, StdDevUncertainty
 from numpy.testing import assert_allclose, assert_array_equal
 
-from tests.factories import prepared_fits, raw_fits, sof_file
+from tests.factories import lzw_compressed_fits, prepared_fits, raw_fits, sof_file
 
 pytestmark = pytest.mark.integration
 
@@ -69,3 +69,18 @@ def test_sof_factory_preserves_member_order(tmp_path: Path) -> None:
         f"{secondPath} BIAS_VIS",
         f"{firstPath} BIAS_VIS",
     ]
+
+
+def test_lzw_compressed_raw_fits_reads_like_the_uncompressed_frame(
+    tmp_path: Path,
+) -> None:
+    sourcePath = raw_fits(tmp_path / "raw.fits", shape=(64, 64), seed=5)
+
+    compressedPath = lzw_compressed_fits(sourcePath, tmp_path / "raw.fits.Z")
+
+    assert compressedPath.read_bytes()[:2] == b"\x1f\x9d"
+    with fits.open(sourcePath) as sourceHdus, fits.open(compressedPath) as hdus:
+        assert_array_equal(hdus[0].data, sourceHdus[0].data)
+        assert hdus[0].header["ESO SEQ ARM"] == "VIS"
+    frame = CCDData.read(compressedPath, unit=u.electron)
+    assert frame.shape == (64, 64)
