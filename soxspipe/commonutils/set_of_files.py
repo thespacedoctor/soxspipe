@@ -499,11 +499,7 @@ class set_of_files:
         # REMOVE COMMENTED LINES
         lines = [sofLine for sofLine in lines if len(sofLine) and sofLine[0] != "#"]
 
-        fitsFiles = [
-            _fits_path_from_sof_line(sofLine, home)
-            for sofLine in lines
-            if ".fits" in sofLine.lower()
-        ]
+        fitsFiles = [_fits_path_from_sof_line(sofLine, home) for sofLine in lines if ".fits" in sofLine.lower()]
 
         supplementaryFilepaths = [
             _supplementary_path_from_sof_line(sofLine, home)

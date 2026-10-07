@@ -51,14 +51,10 @@ def _organiser_header_keywords(log) -> tuple[object, list[str]]:
     return kw, ["file", *(kw(alias).lower() for alias in aliases)]
 
 
-def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(
-    tmp_path, log, capsys
-) -> None:
+def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(tmp_path, log, capsys) -> None:
     """Use real FITS headers and ignore frames missing mandatory DPR metadata."""
     validPath = harvestable_raw_fits(tmp_path / "valid.fits")
-    invalidPath = harvestable_raw_fits(
-        tmp_path / "invalid.fits", includeDprType=False
-    )
+    invalidPath = harvestable_raw_fits(tmp_path / "invalid.fits", includeDprType=False)
     kw, keywords = _organiser_header_keywords(log)
 
     harvested = _harvest_fits_headers(

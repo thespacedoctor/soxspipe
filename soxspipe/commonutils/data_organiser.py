@@ -986,11 +986,7 @@ class data_organiser:
         fitsPathsRel = []
         fitsNames = []
         for entry in os.scandir(pathToDirectory):
-            if (
-                not entry.name.startswith(".")
-                and entry.is_file()
-                and is_fits_frame(entry.name)
-            ):
+            if not entry.name.startswith(".") and entry.is_file() and is_fits_frame(entry.name):
                 # fitsPaths.append(entry.path)
                 if os.path.islink(entry.path):
                     fp = "./" + os.path.relpath(os.path.realpath(entry.path), pathToDirectory)

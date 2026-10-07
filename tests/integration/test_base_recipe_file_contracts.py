@@ -259,9 +259,7 @@ def test_prepare_single_frame_reads_a_compressed_frame_and_names_the_output_with
     preparedPath = recipe._prepare_single_frame(str(inputPath))
 
     assert preparedPath == str(tmp_path / "prepared" / "raw_pre.fits")
-    np.testing.assert_allclose(
-        fits.getdata(preparedPath, extname="FLUX"), fits.getdata(sourcePath) * 2.0
-    )
+    np.testing.assert_allclose(fits.getdata(preparedPath, extname="FLUX"), fits.getdata(sourcePath) * 2.0)
     assert inputPath.read_bytes() == compressedBytes
     assert not (tmp_path / "raw.fits").exists()
     assert [p.name for p in tmp_path.rglob("*.Z")] == ["raw.fits.Z"]

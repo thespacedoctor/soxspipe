@@ -109,9 +109,7 @@ def test_prepare_writes_compressed_members_into_a_sof_a_recipe_can_read(tmp_path
     assert list(rootPath.rglob("*.fits")) == []
 
 
-def test_prepare_keeps_the_compressed_frame_and_deletes_its_uncompressed_twin_at_the_root(
-    tmp_path, organiser
-) -> None:
+def test_prepare_keeps_the_compressed_frame_and_deletes_its_uncompressed_twin_at_the_root(tmp_path, organiser) -> None:
     rootPath = Path(organiser.rootDir)
     _compressed_frame(tmp_path, rootPath / "bias.fits.Z")
     harvestable_raw_fits(rootPath / "bias.fits")

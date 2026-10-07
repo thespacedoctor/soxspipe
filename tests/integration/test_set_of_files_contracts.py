@@ -384,9 +384,7 @@ def test_generate_sof_from_directory_lists_lzw_compressed_frames(
     framesPath = tmp_path / "frames"
     framesPath.mkdir()
     plainPath = raw_fits(framesPath / "a.fits", seed=1)
-    compressedPath = lzw_compressed_fits(
-        raw_fits(tmp_path / "b.fits", seed=2), framesPath / "b.fits.Z"
-    )
+    compressedPath = lzw_compressed_fits(raw_fits(tmp_path / "b.fits", seed=2), framesPath / "b.fits.Z")
     outputPath = tmp_path / "inventory" / "frames.sof"
 
     set_of_files(
