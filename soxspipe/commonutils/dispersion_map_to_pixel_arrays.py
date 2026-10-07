@@ -54,8 +54,7 @@ def _read_dispersion_map_axes(resolvedPath, mtime):
             "coeff": tuple(
                 float(v)
                 for k, v in row.items()
-                if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"]
-                and not math.isnan(v)
+                if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)
             ),
         }
     return axesData
@@ -125,9 +124,7 @@ def dispersion_map_to_pixel_arrays(
     orderPixelTable["fit_x"] = orderPixelTable["fit_x"].astype(np.float32)
     orderPixelTable["fit_y"] = orderPixelTable["fit_y"].astype(np.float32)
 
-    orderPixelTable = _filter_and_trim_pixel_table(
-        orderPixelTable, removeOffDetectorLocation, trimColumns
-    )
+    orderPixelTable = _filter_and_trim_pixel_table(orderPixelTable, removeOffDetectorLocation, trimColumns)
 
     log.debug("completed the ``dispersion_map_to_pixel_arrays`` function")
     return orderPixelTable
@@ -196,16 +193,12 @@ def _filter_and_trim_pixel_table(orderPixelTable, removeOffDetectorLocation, tri
         orderPixelTable = orderPixelTable.loc[mask]
 
     if trimColumns:
-        orderPixelTable = orderPixelTable[
-            ["order", "wavelength", "slit_position", "fit_x", "fit_y"]
-        ]
+        orderPixelTable = orderPixelTable[["order", "wavelength", "slit_position", "fit_x", "fit_y"]]
 
     return orderPixelTable
 
 
-def get_cached_coeffs(
-    log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False
-):
+def get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False):
     """*find cached coefficients (if they exist)*
 
     Return a line-list with x,y fits given a first guess dispersion map.*
@@ -255,9 +248,7 @@ def get_cached_coeffs(
     # READ THE FILE
     home = expanduser("~")
     cache = settings["workspace-root-dir"].replace("~", home) + "/.cache"
-    filePath = _dispersion_cache_file_path(
-        cache, recipeName, arm, orderDeg, wavelengthDeg, slitDeg
-    )
+    filePath = _dispersion_cache_file_path(cache, recipeName, arm, orderDeg, wavelengthDeg, slitDeg)
 
     if os.path.exists(filePath) and not reset:
         coeff = _load_cached_coefficients(filePath)
@@ -340,8 +331,7 @@ def _load_cached_coefficients(filePath):
         coeff[axis] = [
             float(v)
             for k, v in row.items()
-            if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"]
-            and not math.isnan(v)
+            if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)
         ]
     return coeff
 
@@ -378,10 +368,6 @@ def _default_coefficients(orderDeg, wavelengthDeg, slitDeg):
             dtype=float,
         )
     else:
-        coeff["x"] = np.ones(
-            (orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float
-        )
-        coeff["y"] = np.ones(
-            (orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float
-        )
+        coeff["x"] = np.ones((orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
+        coeff["y"] = np.ones((orderDeg + 1) * (wavelengthDeg + 1) * (slitDeg + 1), dtype=float)
     return coeff

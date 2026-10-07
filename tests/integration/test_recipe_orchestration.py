@@ -54,11 +54,7 @@ class FakeFrameCollection:
     def filter(self, **filters: object) -> FakeFrameCollection:
         self.calls.append(("filter", filters))
         selectedPaths = next(
-            (
-                paths
-                for token, paths in self.filePathsByToken.items()
-                if token in filters.values()
-            ),
+            (paths for token, paths in self.filePathsByToken.items() if token in filters.values()),
             [],
         )
         return FakeFrameCollection(
@@ -189,9 +185,7 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     def append_qc(methodName: str, *args: object, **kwargs: object) -> None:
         calls.append(methodName)
         qcArguments[methodName] = {"args": args, **kwargs}
-        recipe.qc = pd.concat(
-            [recipe.qc, expectedAddedQc[methodName]], ignore_index=True
-        )
+        recipe.qc = pd.concat([recipe.qc, expectedAddedQc[methodName]], ignore_index=True)
 
     monkeypatch.setattr(
         recipe,
@@ -510,9 +504,7 @@ def test_single_lamp_master_flat_records_stable_product_and_preserves_qc(
     recipe.arm = "VIS"
     recipe.inst = "SOXS"
     recipe.kw = lambda keyword: "DATE-OBS" if keyword == "DATE_OBS" else keyword
-    recipe.inputFrames = FakeFrameCollection(
-        filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]}
-    )
+    recipe.inputFrames = FakeFrameCollection(filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]})
     recipe.recipeName = "soxs-mflat"
     recipe.settings = pipeline_settings(tmp_path)
     recipe.recipeSettings = {"subtract_background": False}
@@ -779,9 +771,7 @@ def test_multi_lamp_master_flat_stitches_independent_lamp_products(
     recipe.arm = "VIS"
     recipe.inst = "SOXS"
     recipe.kw = lambda keyword: "DATE-OBS" if keyword == "DATE_OBS" else keyword
-    recipe.inputFrames = FakeFrameCollection(
-        filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]}
-    )
+    recipe.inputFrames = FakeFrameCollection(filePathsByToken={"ORDER_TAB_VIS": [str(orderPath)]})
     recipe.recipeName = "soxs-mflat"
     recipe.settings = pipeline_settings(tmp_path)
     recipe.recipeSettings = {"subtract_background": False}

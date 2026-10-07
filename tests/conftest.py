@@ -27,9 +27,7 @@ _RESOLVER_NAMES = (
     "getnameinfo",
 )
 _ORIGINAL_RESOLVERS = {
-    resolverName: getattr(socket, resolverName)
-    for resolverName in _RESOLVER_NAMES
-    if hasattr(socket, resolverName)
+    resolverName: getattr(socket, resolverName) for resolverName in _RESOLVER_NAMES if hasattr(socket, resolverName)
 }
 _ENVIRONMENT_OVERRIDES = {
     "BLAS_NUM_THREADS": "1",
@@ -47,10 +45,7 @@ _ENVIRONMENT_OVERRIDES = {
     "XDG_CACHE_HOME": str(_SESSION_ROOT / "cache"),
     "XDG_CONFIG_HOME": str(_SESSION_ROOT / "config"),
 }
-_ORIGINAL_ENVIRONMENT = {
-    variableName: os.environ.get(variableName)
-    for variableName in _ENVIRONMENT_OVERRIDES
-}
+_ORIGINAL_ENVIRONMENT = {variableName: os.environ.get(variableName) for variableName in _ENVIRONMENT_OVERRIDES}
 
 
 def _deny_network(*args: object, **kwargs: object) -> NoReturn:
@@ -140,15 +135,9 @@ class RecordingLogger:
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Require one execution category on every collected test."""
     for item in items:
-        categories = {
-            marker.name
-            for marker in item.iter_markers()
-            if marker.name in _CATEGORY_MARKERS
-        }
+        categories = {marker.name for marker in item.iter_markers() if marker.name in _CATEGORY_MARKERS}
         if len(categories) != 1:
-            raise pytest.UsageError(
-                f"{item.nodeid} must declare exactly one execution category"
-            )
+            raise pytest.UsageError(f"{item.nodeid} must declare exactly one execution category")
 
 
 def pytest_unconfigure() -> None:

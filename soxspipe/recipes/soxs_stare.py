@@ -363,9 +363,7 @@ class soxs_stare(base_recipe):
             if not self.recipeSettings["use_flat"]:
                 master_flat = False
         except KeyError as e:
-            self.log.debug(
-                f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}"
-            )
+            self.log.debug(f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}")
             master_flat = False
 
         combined_object = self.detrend(
@@ -403,18 +401,17 @@ class soxs_stare(base_recipe):
             skySubtractedCCDData, master_flat, combined_object, combined_object_notflattened
         )
 
-
         from soxspipe.commonutils.toolkit import quicklook_image
+
         quicklook_image(
             log=self.log,
             CCDObject=combined_object_notflattened,
             show=self.debug,
-            ext='data',
+            ext="data",
             stdWindow=3,
             title=False,
             surfacePlot=True,
         )
-
 
         from soxspipe.commonutils import horne_extraction
 
@@ -738,7 +735,6 @@ class soxs_stare(base_recipe):
         productPath = None
 
         if self.subtractSky:
-
             skymodel = subtract_sky(
                 log=self.log,
                 settings=self.settings,

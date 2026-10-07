@@ -17,7 +17,6 @@ os.environ["TERM"] = "vt100"
 
 
 class Combiner(OriginalCombiner):
-
     def average_combine(self):
         """*average-combine the stack, ignoring NaN pixels*
 
@@ -31,17 +30,13 @@ class Combiner(OriginalCombiner):
         import numpy as np
         from astropy.nddata import CCDData
 
-        data, masked_values, scale_func = self._combination_setup(
-            None, bn.nanmean, None
-        )
+        data, masked_values, scale_func = self._combination_setup(None, bn.nanmean, None)
 
         mean = scale_func(data, axis=0)
         mask = masked_values == len(self.data_arr)
 
         # CREATE THE COMBINED IMAGE WITH A DTYPE THAT MATCHES THE COMBINER
-        combined_image = CCDData(
-            np.asarray(mean, dtype=self.dtype), mask=mask, unit=self.unit
-        )
+        combined_image = CCDData(np.asarray(mean, dtype=self.dtype), mask=mask, unit=self.unit)
 
         # UPDATE THE META DATA
         combined_image.meta["NCOMBINE"] = len(data)

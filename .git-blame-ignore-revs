@@ -1,0 +1,4 @@
+# Formatting-only commits. Use with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# DY-850: ruff format applied to the whole repository
+f0acbd5066835c0a097abcf7dfa48b3028f38ee0

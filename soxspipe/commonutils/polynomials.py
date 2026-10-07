@@ -38,9 +38,7 @@ class chebyshev_order_wavelength_polynomials:
     ```
     """
 
-    def __init__(
-        self, log, orderDeg, wavelengthDeg, slitDeg, exponentsIncluded=False, axis=False
-    ):
+    def __init__(self, log, orderDeg, wavelengthDeg, slitDeg, exponentsIncluded=False, axis=False):
         self.log = log
         self.orderDeg = orderDeg
         self.wavelengthDeg = wavelengthDeg
@@ -93,24 +91,18 @@ class chebyshev_order_wavelength_polynomials:
             spPow = np.power.outer(spVals, np.arange(slitDeg + 1))
         else:
             axis = self.axis
-            orderPow = orderPixelTable[
-                [f"order_pow_{axis}{i}" for i in range(orderDeg + 1)]
-            ].to_numpy(dtype=float)
-            wlPow = orderPixelTable[
-                [f"wavelength_pow_{axis}{j}" for j in range(wavelengthDeg + 1)]
-            ].to_numpy(dtype=float)
-            spPow = orderPixelTable[
-                [f"slit_position_pow_{axis}{k}" for k in range(slitDeg + 1)]
-            ].to_numpy(dtype=float)
+            orderPow = orderPixelTable[[f"order_pow_{axis}{i}" for i in range(orderDeg + 1)]].to_numpy(dtype=float)
+            wlPow = orderPixelTable[[f"wavelength_pow_{axis}{j}" for j in range(wavelengthDeg + 1)]].to_numpy(
+                dtype=float
+            )
+            spPow = orderPixelTable[[f"slit_position_pow_{axis}{k}" for k in range(slitDeg + 1)]].to_numpy(dtype=float)
 
         # RESHAPE THE FLAT COEFF TUPLE INTO (I, J, K); ROW-MAJOR MATCHES THE
         # I-OUTER/J-MIDDLE/K-INNER ORDER THE COEFFS WERE ORIGINALLY WRITTEN IN.
         # NOTE: THIS RELIES ON ALL POLY DEGREES BEING SINGLE-DIGIT (TRUE FOR
         # ALL CURRENT SETTINGS FILES), A PRE-EXISTING ASSUMPTION, NOT
         # INTRODUCED HERE.
-        coeffArr = np.asarray(coeff, dtype=float).reshape(
-            orderDeg + 1, wavelengthDeg + 1, slitDeg + 1
-        )
+        coeffArr = np.asarray(coeff, dtype=float).reshape(orderDeg + 1, wavelengthDeg + 1, slitDeg + 1)
 
         # CONTRACT ONE AXIS AT A TIME SO WE NEVER MATERIALISE AN
         # (N, I, J, K) INTERMEDIATE ARRAY
@@ -184,9 +176,7 @@ class chebyshev_xy_polynomial:
                 n_coeff += 1
         else:
             for i in range(0, self.y_deg + 1):
-                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype(
-                    "float"
-                )
+                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype("float")
                 n_coeff += 1
 
         self.log.info("completed the ``poly`` method")

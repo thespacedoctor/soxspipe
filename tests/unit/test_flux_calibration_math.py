@@ -24,13 +24,7 @@ def test_flux_calibration_applies_exposure_extinction_and_response() -> None:
         extinctionFactors=extinctionFactors,
     )
 
-    expected = (
-        counts
-        / 10.0
-        * extinctionFactors
-        * np.polyval(responseCoefficients, wavelengths)
-        * 1e-17
-    )
+    expected = counts / 10.0 * extinctionFactors * np.polyval(responseCoefficients, wavelengths) * 1e-17
     np.testing.assert_allclose(result, expected, rtol=1e-14, atol=0)
 
 

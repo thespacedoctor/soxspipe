@@ -211,8 +211,7 @@ class soxs_disp_solution(base_recipe):
         # FIX ME!
         if not error and imageTypes[0] not in ["LAMP,FMTCHK", "LAMP,WAVE", "WAVE,LAMP"]:
             error = (
-                "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
-                "and lamp off frames for NIR"
+                "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR"
             )
 
         if not error:

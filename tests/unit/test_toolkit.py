@@ -23,9 +23,7 @@ pytestmark = pytest.mark.unit
 def test_cut_image_slice_returns_centered_medians_and_coordinates(log: object) -> None:
     frame = np.arange(49, dtype=float).reshape(7, 7)
 
-    horizontal, xOffset, yCentre = toolkit.cut_image_slice(
-        log, frame, width=3, length=4, x=3, y=3, median=True
-    )
+    horizontal, xOffset, yCentre = toolkit.cut_image_slice(log, frame, width=3, length=4, x=3, y=3, median=True)
     vertical, yOffset, xCentre = toolkit.cut_image_slice(
         log, frame, width=3, length=4, x=3, y=3, sliceAxis="y", median=True
     )
@@ -39,9 +37,7 @@ def test_cut_image_slice_returns_centered_medians_and_coordinates(log: object) -
 def test_cut_image_slice_returns_raw_data_when_median_false(log: object) -> None:
     frame = np.arange(49, dtype=float).reshape(7, 7)
 
-    result, offset, centre = toolkit.cut_image_slice(
-        log, frame, width=3, length=4, x=3, y=3, median=False
-    )
+    result, offset, centre = toolkit.cut_image_slice(log, frame, width=3, length=4, x=3, y=3, median=False)
 
     assert_array_equal(
         result,
@@ -92,9 +88,7 @@ def test_generic_quality_checks_records_mask_count_and_fraction(
     fractionName: str,
     comment: str,
 ) -> None:
-    monkeypatch.setattr(
-        toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key)
-    )
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
     frame = SimpleNamespace(
         mask=np.array([[False, True], [True, False]]),
         header={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-02T03:04:05"},
@@ -223,8 +217,7 @@ def test_predict_product_path_uses_observation_night_and_cli_recipe(
 
     assert night == "2024-01-01"
     assert productPath == (
-        f"./sessions/session_01/reduced/2024-01-01/{expectedRecipe}/"
-        "20240102T030405_STARE_STD_RESP.fits"
+        f"./sessions/session_01/reduced/2024-01-01/{expectedRecipe}/20240102T030405_STARE_STD_RESP.fits"
     )
 
 
@@ -256,9 +249,7 @@ def test_predict_product_path_appends_resp_for_std_stare_and_nod(
     productPath, night = toolkit.predict_product_path(sofName)
 
     assert night == "2024-01-01"
-    assert productPath == (
-        f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
-    )
+    assert productPath == (f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}")
 
 
 @pytest.mark.parametrize(
@@ -289,9 +280,7 @@ def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod
     productPath, night = toolkit.predict_product_path(sofName)
 
     assert night == "2024-01-01"
-    assert productPath == (
-        f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
-    )
+    assert productPath == (f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}")
 
 
 def test_add_recipe_logger_replaces_handlers_and_separates_messages(
@@ -327,16 +316,8 @@ def test_add_recipe_logger_replaces_handlers_and_separates_messages(
 def test_max_filter_accepts_only_records_below_limit() -> None:
     filterObject = toolkit.MaxFilter(logging.WARNING)
 
-    assert (
-        filterObject.filter(logging.LogRecord("x", logging.INFO, "", 1, "", (), None))
-        is True
-    )
-    assert (
-        filterObject.filter(
-            logging.LogRecord("x", logging.WARNING, "", 1, "", (), None)
-        )
-        is None
-    )
+    assert filterObject.filter(logging.LogRecord("x", logging.INFO, "", 1, "", (), None)) is True
+    assert filterObject.filter(logging.LogRecord("x", logging.WARNING, "", 1, "", (), None)) is None
 
 
 def test_calibration_lamp_normalizes_and_concatenates_header_values(
@@ -355,17 +336,10 @@ def test_calibration_lamp_normalizes_and_concatenates_header_values(
     lamp = toolkit.get_calibration_lamp(log, frame, keywords.__getitem__)
 
     assert lamp == "QTHArNe"
-    assert (
-        toolkit.get_calibration_lamp(
-            log, SimpleNamespace(header={"INSTRUME": "SOXS"}), keywords.__getitem__
-        )
-        is None
-    )
+    assert toolkit.get_calibration_lamp(log, SimpleNamespace(header={"INSTRUME": "SOXS"}), keywords.__getitem__) is None
 
 
-def test_utility_setup_creates_recipe_directories_under_workspace(
-    tmp_path: Path, log: object
-) -> None:
+def test_utility_setup_creates_recipe_directories_under_workspace(tmp_path: Path, log: object) -> None:
     workspace = tmp_path / "workspace"
 
     qcDir, productDir = toolkit.utility_setup(

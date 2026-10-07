@@ -333,9 +333,7 @@ def test_plot_merged_spectrum_qc_skylines_isolated_vs_other_colour_and_label(
     monkeypatch.setattr(
         toolkit,
         "get_skylines_dataframe",
-        lambda log, settings, arm: pd.DataFrame(
-            {"WAVELENGTH": [520.0, 540.0], "ISOLATED": [True, False]}
-        ),
+        lambda log, settings, arm: pd.DataFrame({"WAVELENGTH": [520.0, 540.0], "ISOLATED": [True, False]}),
     )
     merged = _synthetic_merged_orders()
 
@@ -365,9 +363,7 @@ def test_plot_merged_spectrum_qc_skylines_drops_non_numeric_wavelengths(
     monkeypatch.setattr(
         toolkit,
         "get_skylines_dataframe",
-        lambda log, settings, arm: pd.DataFrame(
-            {"WAVELENGTH": [520.0, "not-a-number"], "ISOLATED": [True, True]}
-        ),
+        lambda log, settings, arm: pd.DataFrame({"WAVELENGTH": [520.0, "not-a-number"], "ISOLATED": [True, True]}),
     )
     merged = _synthetic_merged_orders()
 
@@ -410,8 +406,6 @@ def test_plot_merged_spectrum_qc_filename_suffix_reflects_nodding_sequence(
     _stub_skylines(monkeypatch)
     merged = _synthetic_merged_orders()
 
-    _, outputPath = _call_plot_merged_spectrum_qc(
-        monkeypatch, tmp_path, log, merged, noddingSequence=noddingSequence
-    )
+    _, outputPath = _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, noddingSequence=noddingSequence)
 
     assert outputPath == str(tmp_path / f"synthetic_EXTRACTED_MERGED_QC_PLOT{expectedSuffix}.pdf")

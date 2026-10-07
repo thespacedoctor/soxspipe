@@ -37,9 +37,7 @@ def test_quicklook_returns_before_importing_plotting_when_disabled(
 
 
 @pytest.mark.parametrize("extension", ["data", "mask", "uncertainty"])
-def test_quicklook_renders_each_ccd_extension_without_showing(
-    tmp_path: Path, log: object, extension: str
-) -> None:
+def test_quicklook_renders_each_ccd_extension_without_showing(tmp_path: Path, log: object, extension: str) -> None:
     outputPath = tmp_path / f"{extension}.pdf"
 
     result = toolkit.quicklook_image(
@@ -56,9 +54,7 @@ def test_quicklook_renders_each_ccd_extension_without_showing(
 
 
 @pytest.mark.parametrize("instrument", ["SOXS", "XSHOOTER", "OTHER"])
-def test_quicklook_surface_plot_supports_each_orientation(
-    tmp_path: Path, log: object, instrument: str
-) -> None:
+def test_quicklook_surface_plot_supports_each_orientation(tmp_path: Path, log: object, instrument: str) -> None:
     outputPath = tmp_path / f"surface-{instrument}.pdf"
 
     toolkit.quicklook_image(
@@ -73,9 +69,7 @@ def test_quicklook_surface_plot_supports_each_orientation(
     assert outputPath.is_file()
 
 
-def test_quicklook_uses_default_instrument_for_plain_array(
-    tmp_path: Path, log: object
-) -> None:
+def test_quicklook_uses_default_instrument_for_plain_array(tmp_path: Path, log: object) -> None:
     outputPath = tmp_path / "array.pdf"
 
     toolkit.quicklook_image(
@@ -119,9 +113,7 @@ def test_merged_spectrum_plot_writes_qc_pdf_and_product_record(
     monkeypatch.setattr(
         toolkit,
         "get_skylines_dataframe",
-        lambda *_: pd.DataFrame(
-            {"WAVELENGTH": [501.0, 503.0], "ISOLATED": [True, False]}
-        ),
+        lambda *_: pd.DataFrame({"WAVELENGTH": [501.0, 503.0], "ISOLATED": [True, False]}),
     )
     merged = pd.DataFrame(
         {

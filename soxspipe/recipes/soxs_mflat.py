@@ -372,7 +372,6 @@ class soxs_mflat(base_recipe):
         qcTable = self.qc
 
         for cf, fk, tag, files in zip(calibratedFlatSet, flatKeywords, lampTag, filelists):
-
             if len(cf) == 0:
                 self.orderTableSet.append(None)
                 normalisedFlatSet.append(None)
@@ -1052,7 +1051,6 @@ class soxs_mflat(base_recipe):
         mask = self._order_centre_mask(inputFlats, orderTablePath, window)
 
         if self.debug:
-
             this = inputFlats[0].copy()
             this.mask = mask
 
@@ -1404,7 +1402,6 @@ class soxs_mflat(base_recipe):
         frameCount = len(inputFlats)
 
         for frameIndex, frame in enumerate(inputFlats, start=1):
-
             nrows = frame.data.shape[0]
             # COMPUTE MEDIAN OF (FRAME / FIRSTPASSMASTERFLAT) IN CHUNKS
             # TO AVOID ALLOCATING A FULL-SIZE INTERMEDIATE ARRAY
@@ -1531,10 +1528,7 @@ class soxs_mflat(base_recipe):
         if returnMedianOrderFlux:
             for o in uniqueOrders:
                 if not len(orderFluxes[o]):
-                    raise ValueError(
-                        f"Cannot calculate median flux for order {o}: "
-                        "no valid sampled pixels"
-                    )
+                    raise ValueError(f"Cannot calculate median flux for order {o}: no valid sampled pixels")
                 medianFlux.append(np.median(orderFluxes[o]))
 
         # CONVERT TO BOOLEAN MASK AND MERGE WITH BPM

@@ -440,7 +440,7 @@ def _section_body(docstring: str, headerPattern: re.Pattern[str]) -> str | None:
     if not header:
         return None
 
-    remainder = docstring[header.end():]
+    remainder = docstring[header.end() :]
     nextHeader = ANY_HEADER_PATTERN.search(remainder)
 
     return remainder[: nextHeader.start()] if nextHeader else remainder

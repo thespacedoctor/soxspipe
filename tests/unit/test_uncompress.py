@@ -260,16 +260,12 @@ def test_uncompress_overwrites_the_progress_line_after_the_first_batch(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _make_archives(tmp_path, 30)
-    monkeypatch.setattr(
-        subprocess, "Popen", lambda *args, **kwargs: _CompletedProcess()
-    )
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: _CompletedProcess())
 
     uncompress(log=log, directory=tmp_path)
 
     assert capsys.readouterr().out == (
-        "Decompressed 25/30 fits.Z files (83.3%)\n"
-        + CURSOR_UP_AND_CLEAR
-        + "Decompressed 30/30 fits.Z files (100.0%)\n"
+        "Decompressed 25/30 fits.Z files (83.3%)\n" + CURSOR_UP_AND_CLEAR + "Decompressed 30/30 fits.Z files (100.0%)\n"
     )
 
 
@@ -295,9 +291,7 @@ def test_uncompress_carries_on_with_later_batches_after_an_os_error(
 
     assert callCount == 2
     assert ("error", "Could not uncompress .Z files: denied") in log.messages
-    assert capsys.readouterr().out == (
-        CURSOR_UP_AND_CLEAR + "Decompressed 30/30 fits.Z files (100.0%)\n"
-    )
+    assert capsys.readouterr().out == (CURSOR_UP_AND_CLEAR + "Decompressed 30/30 fits.Z files (100.0%)\n")
 
 
 def test_uncompress_carries_on_with_later_batches_after_a_nonzero_exit(
@@ -313,9 +307,7 @@ def test_uncompress_carries_on_with_later_batches_after_a_nonzero_exit(
     uncompress(log=log, directory=tmp_path)
 
     assert ("error", "Could not uncompress .Z files (exit code 2): bad") in log.messages
-    assert capsys.readouterr().out == (
-        CURSOR_UP_AND_CLEAR + "Decompressed 30/30 fits.Z files (100.0%)\n"
-    )
+    assert capsys.readouterr().out == (CURSOR_UP_AND_CLEAR + "Decompressed 30/30 fits.Z files (100.0%)\n")
 
 
 def test_uncompress_skips_directories_named_like_archives(

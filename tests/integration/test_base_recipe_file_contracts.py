@@ -25,9 +25,7 @@ def _recipe(tmp_path: Path, log: object) -> base_recipe:
     recipe.log = log
     recipe.settings = pipeline_settings(tmp_path)
     recipe.kw = keyword_lookup(log=log, settings=recipe.settings).get
-    recipe.qc = __import__("pandas").DataFrame(
-        columns=["qc_name", "qc_value", "qc_comment", "to_header"]
-    )
+    recipe.qc = __import__("pandas").DataFrame(columns=["qc_name", "qc_value", "qc_comment", "to_header"])
     recipe.sofName = False
     recipe.startNightDate = "2024-01-02"
     recipe.recipeName = "soxs-mbias"
@@ -140,9 +138,7 @@ def test_prepare_frames_preserves_processing_order_then_sorts_by_observation_tim
     fits.setval(laterPath, recipe.kw("MJDOBS"), value=60_001.0)
     fits.setval(earlierPath, recipe.kw("MJDOBS"), value=60_000.0)
     sourcePaths = [str(laterPath), str(earlierPath)]
-    recipe.inputFrames = SimpleNamespace(
-        files_filtered=lambda include_path: sourcePaths.copy()
-    )
+    recipe.inputFrames = SimpleNamespace(files_filtered=lambda include_path: sourcePaths.copy())
     recipe.recipeSettings = {"use_lacosmic": False}
     recipe.verbose = False
     recipe.arm = "VIS"

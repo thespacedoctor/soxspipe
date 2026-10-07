@@ -25,6 +25,7 @@
 * **TEST**: the real-data workflow now also reduces a VIS and an NIR stare SOF, and `tests/real_data/test_stare_baseline.py` checks the stare product set, merged and flux-calibrated spectra, sky model levels and QC values within bands (DY-696)
 * **TEST**: the real-data workflow now runs only on pull requests into `main` and on manual dispatch; it no longer runs on pull requests into `develop` or on a weekly schedule (DY-840)
 * **TEST**: `tools/check_changelog.py` rejects a bullet repeated within one release block, in pre-commit and CI (DY-851)
+* **TEST**: CI now fails when any file is not formatted with the pinned `ruff format`; the whole repository was reformatted once to start clean (DY-850)
 
 ## v0.18.0 - September 30, 2026
 

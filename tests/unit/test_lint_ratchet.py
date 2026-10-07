@@ -206,14 +206,7 @@ def test_a_hunk_header_without_a_length_covers_one_line():
 
 def test_several_hunks_in_one_file_accumulate():
     # ARRANGE
-    diffText = (
-        "+++ b/soxspipe/recipes/soxs_mbias.py\n"
-        "@@ -10,0 +11,2 @@\n"
-        "+x = 1\n"
-        "+y = 2\n"
-        "@@ -40,0 +43,1 @@\n"
-        "+z = 3\n"
-    )
+    diffText = "+++ b/soxspipe/recipes/soxs_mbias.py\n@@ -10,0 +11,2 @@\n+x = 1\n+y = 2\n@@ -40,0 +43,1 @@\n+z = 3\n"
 
     # ACT
     changedLines = lint_ratchet.parse_changed_lines(diffText)
@@ -385,7 +378,7 @@ def test_deletion_only_files_are_never_handed_to_ruff(monkeypatch):
         lint_ratchet,
         "run_git_diff",
         lambda compareBranch, repoRoot: (
-            "+++ b/soxspipe/kept.py\n@@ -20,3 +19,0 @@\n-x = 1\n" "+++ b/soxspipe/edited.py\n@@ -1,0 +2,1 @@\n+y = 2\n"
+            "+++ b/soxspipe/kept.py\n@@ -20,3 +19,0 @@\n-x = 1\n+++ b/soxspipe/edited.py\n@@ -1,0 +2,1 @@\n+y = 2\n"
         ),
     )
 

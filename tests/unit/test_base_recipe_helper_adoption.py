@@ -83,9 +83,7 @@ def test_init_builds_the_qc_table_in_the_expected_column_order() -> None:
     qcAssignments = [
         node
         for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and isinstance(node.targets[0], ast.Name)
-        and node.targets[0].id == "qc"
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "qc"
     ]
 
     # ASSERT

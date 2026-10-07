@@ -60,9 +60,7 @@ def test_unpack_order_table_evaluates_polynomial_and_rounds_even_delta(
     assert list(pixelTable["ycoord"]) == [0, 3, 6, 2, 5, 8]
     expectedCentres = 1 + 2 * pixelTable["ycoord"] + 3 * pixelTable["order"]
     expectedCentres += 4 * pixelTable["order"] * pixelTable["ycoord"]
-    np.testing.assert_allclose(
-        pixelTable["xcoord_centre"], expectedCentres, rtol=1e-12, atol=1e-12
-    )
+    np.testing.assert_allclose(pixelTable["xcoord_centre"], expectedCentres, rtol=1e-12, atol=1e-12)
     assert polynomialTable.iloc[0]["cent_11"] == 4.0
     assert list(metadataTable["order"]) == [10, 11]
 
@@ -86,9 +84,7 @@ def test_unpack_order_table_filters_order_and_applies_binning(
     assert list(pixelTable["ycoord"]) == [1, 2, 3, 4]
     unbinnedY = pixelTable["ycoord"] * 2
     expectedCentres = 1 + 2 * unbinnedY + 3 * 11 + 4 * 11 * unbinnedY
-    np.testing.assert_allclose(
-        pixelTable["xcoord_centre"], expectedCentres / 2, rtol=1e-12, atol=1e-12
-    )
+    np.testing.assert_allclose(pixelTable["xcoord_centre"], expectedCentres / 2, rtol=1e-12, atol=1e-12)
     np.testing.assert_allclose(pixelTable["std"], 1.0, rtol=1e-12, atol=1e-12)
     assert metadataTable.iloc[0]["ymin"] == 1.0
     assert metadataTable.iloc[0]["ymax"] == 5.0

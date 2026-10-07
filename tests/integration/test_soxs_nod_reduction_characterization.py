@@ -348,9 +348,7 @@ def test_an_unbalanced_nodding_sequence_is_rejected_by_count(
     headers = [_nod_header(3.0, 60000.0), _nod_header(5.0, 60000.1), _nod_header(-3.0, 60000.2)]
     recipe, _ = _nod_recipe(log, tmp_path, headers)
     calls, _ = _patch(recipe, monkeypatch, tmp_path)
-    expected = (
-        "Found 2 A frames and 1 B frames. The number of A and B frames must be the same for nodding reductions."
-    )
+    expected = "Found 2 A frames and 1 B frames. The number of A and B frames must be the same for nodding reductions."
 
     # ACT / ASSERT
     with pytest.raises(Exception) as raised:

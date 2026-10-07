@@ -60,9 +60,7 @@ def _subtractor(
 def _default_like_subtractor(log: Any) -> subtract_sky:
     # THE VIS DEFAULTS FROM soxs_default_settings.yaml FOR THE SETTINGS THAT DRIVE KNOT PLACEMENT
     subtractor = _subtractor(log, iterationLimit=25, pointsPerKnot=1000, noiseSigma=5)
-    subtractor.recipeSettings["sky-subtraction"].update(
-        {"min_points_per_knot": 155, "residual_floor_percentile": 90}
-    )
+    subtractor.recipeSettings["sky-subtraction"].update({"min_points_per_knot": 155, "residual_floor_percentile": 90})
     return subtractor
 
 
@@ -181,8 +179,8 @@ def test_debug_binned_order_twelve_prints_knot_budgets_and_plots_every_fit(
     """2x2 binning divides both knot budgets by four; debug prints them and plots order 12."""
     subtractor = _subtractor(log, debug=True, binning=2)
     plotCalls: list[tuple[str, int]] = []
-    subtractor.plot_order_skymodel_fitting_quicklook = lambda frame, spline, title=None, knots=False: (
-        plotCalls.append((title, len(knots)))
+    subtractor.plot_order_skymodel_fitting_quicklook = lambda frame, spline, title=None, knots=False: plotCalls.append(
+        (title, len(knots))
     )
 
     modelled, spline, knots, fluxErrorRatio, _ = subtractor.fit_bspline_curve_to_sky(_skyline_order(orderNumber=12))
@@ -407,9 +405,7 @@ def test_a_noisy_line_free_order_follows_the_fitted_sloped_sky(log: Any) -> None
     assert modelled["sky_subtracted_flux_weighted"].nunique() > 1
     assert np.unique(fluxErrorRatio).size > 1
     np.testing.assert_allclose(modelled["sky_model"], modelled["sky_model_wl"])
-    np.testing.assert_allclose(
-        modelled["sky_model_wl"], scipy.interpolate.splev(modelled["wavelength"].values, spline)
-    )
+    np.testing.assert_allclose(modelled["sky_model_wl"], scipy.interpolate.splev(modelled["wavelength"].values, spline))
 
 
 STARTER_KNOTS = np.array([502.5, 505.0, 507.5])
@@ -548,9 +544,7 @@ def test_blue_end_noise_prunes_only_the_first_knot(log: Any, monkeypatch: pytest
     ("knots", "noisyWavelengths", "expected"),
     [
         pytest.param([502.5, 505.0, 507.5], [509.0], [502.5, 505.0], id="red-of-the-last-knot-removes-only-the-last"),
-        pytest.param(
-            [502.5, 505.0, 507.5], [506.0], [502.5], id="red-end-interval-removes-both-bounding-knots"
-        ),
+        pytest.param([502.5, 505.0, 507.5], [506.0], [502.5], id="red-end-interval-removes-both-bounding-knots"),
         pytest.param(
             [501.0, 503.0, 505.0, 507.0, 509.0],
             [504.0],
