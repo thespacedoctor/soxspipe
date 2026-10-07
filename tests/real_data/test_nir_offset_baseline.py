@@ -3,12 +3,10 @@
 The reduction is not bit-reproducible across hardware, so each value is asserted
 within a band rather than exactly. The bands absorb the variation seen across CI
 runner architectures and stay narrow enough that a real regression in extraction,
-wavelength calibration or flux calibration still trips them. The merged-spectrum
-centres were re-recorded from four bit-identical CI runs on 2026-10-07, after the
-astropy 7.2.2 upgrade (DY-694). astropy 7 stopped running `sigma_clip` through
-bottleneck for float32 data, which had lost precision, so every product moved. The
-flux-calibrated and QC centres were not logged by those runs, because the test
-stopped at the moved blue end, so they still date from 2026-09-16.
+wavelength calibration or flux calibration still trips them. The centres were
+re-recorded from bit-identical CI runs on 2026-10-07, after the astropy 7.2.2 upgrade
+(DY-694). astropy 7 stopped running `sigma_clip` through bottleneck for float32 data,
+which had lost precision, so every product moved.
 """
 
 from __future__ import annotations
@@ -87,7 +85,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
         report("fluxcal rows", len(fluxcal_table))
         report("fluxcal median", float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])))
-        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.704858750481978e-15, rel=0.05)
+        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.425130566412588e-15, rel=0.05)
 
     with sqlite3.connect(reduced_workspace / "soxspipe.db") as connection:
         qc_values = dict(
@@ -102,4 +100,4 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     report("n orders", float(qc_values["N ORDERS"]))
     report("samples det frac", float(qc_values["SAMPLES DET FRAC"]))
     assert float(qc_values["N ORDERS"]) == 15
-    assert float(qc_values["SAMPLES DET FRAC"]) == pytest.approx(0.97, abs=0.02)
+    assert float(qc_values["SAMPLES DET FRAC"]) == pytest.approx(0.975, abs=0.02)
