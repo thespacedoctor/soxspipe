@@ -19,8 +19,9 @@ from ccdproc import ImageFileCollection
 from soxspipe.commonutils.fits_frame_names import is_fits_frame
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
-# A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits (ANY CASE) OR .fits.Z
-SOF_FITS_PATH = re.compile(r"(.*?\.(?i:fits)(?:\.Z)?)(?=\s|$)")
+# A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits (ANY CASE) OR .fits.Z. THE MATCH IS
+# GREEDY, SO IT ENDS AT THE LAST SUCH SUFFIX: A DIRECTORY NAMED "x.fits y" DOES NOT CUT THE PATH SHORT
+SOF_FITS_PATH = re.compile(r"(.*\.(?i:fits)(?:\.Z)?)(?=\s|$)")
 
 
 class ImageFileCollection(ImageFileCollection):

@@ -174,3 +174,18 @@ def test_a_database_row_alone_never_condemns_an_uncompressed_frame(tmp_path, org
     organiser._delete_superseded_frames()
 
     assert keptPath.exists()
+
+
+def test_twins_behind_a_symlinked_raw_directory_are_never_deleted(tmp_path, organiser) -> None:
+    # VLT MODE LINKS raw/ TO THE ARCHIVE, WHICH LIES OUTSIDE THE WORKSPACE
+    rawPath = Path(organiser.rawDir)
+    rawPath.rmdir()
+    archivePath = tmp_path / "archive"
+    archivePath.mkdir()
+    rawPath.symlink_to(archivePath, target_is_directory=True)
+    _compressed_frame(tmp_path, archivePath / "bias.fits.Z")
+    keptPath = harvestable_raw_fits(archivePath / "bias.fits")
+
+    organiser._delete_superseded_frames()
+
+    assert keptPath.exists()

@@ -905,7 +905,8 @@ class data_organiser:
 
         framePaths = [entry.path for entry in os.scandir(self.rootDir) if entry.is_file()]
         if os.path.isdir(self.rawDir):
-            # os.walk DOES NOT FOLLOW SYMLINKED DIRECTORIES, SO THE WALK STAYS INSIDE raw/
+            # os.walk FOLLOWS A SYMLINKED raw/ ITSELF (VLT MODE) BUT NO LINK BELOW IT; THE OWNERSHIP CHECK
+            # BELOW KEEPS DELETES INSIDE THE WORKSPACE
             for directory, _, files in os.walk(self.rawDir):
                 framePaths += [os.path.join(directory, f) for f in files]
         framePaths = sorted(p for p in framePaths if is_fits_frame(p))
@@ -921,7 +922,10 @@ class data_organiser:
                 self.log.warning(f"not deleting `{filepath}`: {error}")
                 continue
             self.log.info(f"deleting `{filepath}`: its compressed twin `{name}.Z` is kept")
-            os.remove(filepath)
+            try:
+                os.remove(filepath)
+            except OSError as error:
+                self.log.warning(f"could not delete `{filepath}`, its twin may also be indexed: {error}")
 
         self.log.debug("completed the ``_delete_superseded_frames`` method")
         return

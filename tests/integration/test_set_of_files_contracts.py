@@ -185,6 +185,25 @@ def test_sof_input_reads_members_whatever_the_case_of_the_fits_suffix(
     assert supplementary == {}
 
 
+def test_sof_input_keeps_a_member_path_whose_directory_name_holds_fits_and_a_space(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    framesPath = tmp_path / "night.fits copy"
+    framesPath.mkdir()
+    memberPath = raw_fits(framesPath / "frame.fits", seed=1)
+    inputPath = sof_file(tmp_path / "input.sof", [(memberPath, "BIAS_VIS")])
+
+    collection, _ = set_of_files(
+        log=log,
+        settings=_settings(tmp_path),
+        inputFrames=str(inputPath),
+        verbose=False,
+    ).get()
+
+    assert list(collection.summary["file"]) == ["frame.fits"]
+
+
 def test_sof_input_rejects_a_missing_member(tmp_path: Path, log: object) -> None:
     missingPath = tmp_path / "missing.fits"
     inputPath = sof_file(tmp_path / "input.sof", [(missingPath, "BIAS_VIS")])
