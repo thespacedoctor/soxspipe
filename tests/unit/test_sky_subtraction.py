@@ -372,6 +372,7 @@ def test_image_comparison_writes_recipe_named_pdf(tmp_path: Path, log: object, a
     subtractor.mapDF = pd.DataFrame({"x": [0, 1], "y": [0, 1]})
     subtractor.filenameTemplate = "science.fits"
     subtractor.qcDir = str(tmp_path)
+    subtractor.detectorParams = {"dispersion-axis": "x", "flip-qc-plot": True, "rotate-qc-plot": 90}
     frame = CCDData(
         np.arange(16, dtype=float).reshape(4, 4),
         unit="electron",
