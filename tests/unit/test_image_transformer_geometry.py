@@ -735,6 +735,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
+    ratioAtBoundaries: list[tuple[float, float]] = []
 
     def fake_base_init(
         transformer: image_transformer,
@@ -753,6 +754,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
         transformer: image_transformer,
     ) -> tuple[list[np.ndarray], list[np.ndarray]]:
         calls.append("boundaries")
+        ratioAtBoundaries.append(transformer.dispersionBinRatio)
         transformer.orderSlices = [pd.DataFrame()]
         return [np.array([0.0, 1.0])], [np.array([500.0, 501.0])]
 
@@ -764,6 +766,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
         calls.append("coordinates")
 
     monkeypatch.setattr(base_util, "__init__", fake_base_init)
+    monkeypatch.setattr(image_transformer, "_read_dispersion_bin_ratio", lambda transformer: (2.0, 1.0))
     monkeypatch.setattr(
         image_transformer,
         "_determine_rectified_image_boundaries",
@@ -792,6 +795,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
     )
 
     assert calls == ["boundaries", "weights", "coordinates"]
+    assert ratioAtBoundaries == [(2.0, 1.0)]
     assert (transformer.ny, transformer.nx) == (3, 4)
     assert transformer.uniqueOrders.tolist() == [10]
     assert transformer._resamplingWeights == {10: {}}
@@ -1122,3 +1126,145 @@ def test_measure_order_trace_geometry_trims_trace_samples_that_fall_off_the_dete
     assert edges[-1] < 505.0
     np.testing.assert_allclose(np.diff(edges), 0.1)
     assert scale == pytest.approx(0.25)
+
+
+def _unbinned_solution_conversion(received: list[pd.DataFrame] | None = None):
+    """Fake conversion: a 1x1 solution with 10 px per nm along x and 4 px per arcsec along y."""
+
+    def fake_conversion(**kwargs: object) -> pd.DataFrame:
+        table = kwargs["orderPixelTable"]
+        if received is not None:
+            received.append(table.copy(deep=True))
+        return table.assign(
+            fit_x=10.0 * (table["wavelength"] - 500.0),
+            fit_y=10.0 + 4.0 * table["slit_position"],
+        )
+
+    return fake_conversion
+
+
+def test_precomputed_weights_sample_binned_frame_pixels_from_an_unbinned_solution(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: A 2X2-BINNED FRAME, A 1X1 DISPERSION SOLUTION. ONE CELL SPANNING UNBINNED x 20 TO 40, y 10 TO 18
+    transformer = _transformer(log)
+    transformer.edgeSamples = 1
+    transformer.uniqueOrders = [10]
+    transformer.orderSlitEdges = [np.array([0.0, 2.0])]
+    transformer.orderWlEdges = [np.array([502.0, 504.0])]
+    transformer.orderSlitCentreCoeffs = [np.array([0.0])]
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 100
+    transformer.ny = 100
+    transformer.dispersionBinRatio = (2.0, 2.0)
+    dispersionModule = importlib.import_module("soxspipe.commonutils.dispersion_map_to_pixel_arrays")
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", _unbinned_solution_conversion())
+
+    # ACT
+    weights = transformer._precompute_resampling_weights()[10]
+
+    # ASSERT: BINNED POSITIONS ARE x 10 TO 20 AND y 5 TO 9, WHOLE-PIXEL CELL EDGES AT HALF-PIXEL OFFSETS
+    assert weights["px"].min() == 10
+    assert weights["px"].max() == 20
+    assert weights["py"].min() == 5
+    assert weights["py"].max() == 9
+    assert weights["area"].sum() == pytest.approx(10.0 * 4.0)
+
+
+def test_precomputed_weights_are_unchanged_when_frame_and_solution_binning_match(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THE SAME CELL, UNBINNED FRAME AND UNBINNED SOLUTION
+    transformer = _transformer(log)
+    transformer.edgeSamples = 1
+    transformer.uniqueOrders = [10]
+    transformer.orderSlitEdges = [np.array([0.0, 2.0])]
+    transformer.orderWlEdges = [np.array([502.0, 504.0])]
+    transformer.orderSlitCentreCoeffs = [np.array([0.0])]
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 100
+    transformer.ny = 100
+    dispersionModule = importlib.import_module("soxspipe.commonutils.dispersion_map_to_pixel_arrays")
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", _unbinned_solution_conversion())
+
+    # ACT
+    weights = transformer._precompute_resampling_weights()[10]
+
+    # ASSERT: x 20 TO 40, y 10 TO 18 — THE SOLUTION PIXELS ARE USED AS THEY ARE
+    assert weights["px"].min() == 20
+    assert weights["px"].max() == 40
+    assert weights["py"].min() == 10
+    assert weights["py"].max() == 18
+    assert weights["area"].sum() == pytest.approx(20.0 * 8.0)
+
+
+def test_trace_geometry_is_measured_in_binned_frame_pixels(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: 4 PIXELS PER ARCSEC ALONG y IN THE 1X1 SOLUTION, A 2X2-BINNED FRAME
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.zoomFactorWavelength = 1
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 10000
+    transformer.ny = 10000
+    transformer.dispersionBinRatio = (2.0, 2.0)
+    dispersionModule = importlib.import_module("soxspipe.commonutils.dispersion_map_to_pixel_arrays")
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", _unbinned_solution_conversion())
+
+    # ACT
+    ((edges, arcsecPerPixel),) = transformer._measure_order_trace_geometry([(10, 500.0, 502.0, 20, np.array([0.0]))])
+
+    # ASSERT: 10 UNBINNED = 5 BINNED PIXELS PER nm ALONG THE TRACE; 2 BINNED PIXELS PER ARCSEC ACROSS THE SLIT
+    np.testing.assert_allclose(np.diff(edges), 0.2)
+    assert arcsecPerPixel == pytest.approx(0.5)
+
+
+def test_dispersion_bin_ratio_divides_frame_binning_by_solution_binning(
+    log: object,
+    tmp_path: object,
+) -> None:
+    from astropy.io import fits
+
+    # ARRANGE: A SOLUTION FILE RECORDING 1X1 BINNING, AND A 2X2-BINNED FRAME
+    solutionPath = tmp_path / "solution.fits"
+    header = fits.Header({"WIN_BINX": 1, "WIN_BINY": 1})
+    fits.HDUList([fits.PrimaryHDU(header=header)]).writeto(solutionPath)
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.kw = lambda name: name
+    transformer.dispersionMap = str(solutionPath)
+    transformer.binx = 2
+    transformer.biny = 4
+
+    # ACT
+    ratio = transformer._read_dispersion_bin_ratio()
+
+    # ASSERT
+    assert ratio == (2.0, 4.0)
+
+
+def test_dispersion_bin_ratio_defaults_to_unbinned_when_the_solution_has_no_binning_keywords(
+    log: object,
+    tmp_path: object,
+) -> None:
+    from astropy.io import fits
+
+    # ARRANGE
+    solutionPath = tmp_path / "solution.fits"
+    fits.HDUList([fits.PrimaryHDU()]).writeto(solutionPath)
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.kw = lambda name: name
+    transformer.dispersionMap = str(solutionPath)
+    transformer.binx = 1
+    transformer.biny = 1
+
+    # ACT
+    ratio = transformer._read_dispersion_bin_ratio()
+
+    # ASSERT
+    assert ratio == (1.0, 1.0)

@@ -92,6 +92,10 @@ class image_transformer(base_util):
     ```
     """
 
+    # FRAME BINNING DIVIDED BY DISPERSION-SOLUTION BINNING, PER DETECTOR AXIS (X, Y). SET IN __init__;
+    # THE CLASS DEFAULT IS UNBINNED, SO THE SOLUTION'S PIXEL POSITIONS ARE USED AS THEY ARE
+    dispersionBinRatio = (1.0, 1.0)
+
     def __init__(
         self, log, settings, orderPixelTable, twoDMapPath, dispersionMap, associatedFrame, slitHalfLength, edgeSamples=1
     ):
@@ -115,6 +119,10 @@ class image_transformer(base_util):
         # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]
         self.uniqueOrders = self.orderPixelTable["order"].unique()
 
+        # THE DISPERSION SOLUTION GIVES PIXEL POSITIONS IN ITS OWN BINNING;
+        # THE FRAME (AND 2D MAP) MAY BE BINNED DIFFERENTLY
+        self.dispersionBinRatio = self._read_dispersion_bin_ratio()
+
         # DETECTOR SHAPE — SAME FOR EVERY NDARRAY EVER PASSED TO cache_image, SO ONLY DERIVED ONCE
         self.ny, self.nx = self.twoDMap["WAVELENGTH"].data.shape
 
@@ -130,6 +138,41 @@ class image_transformer(base_util):
         self._cache_true_wavelength_slit_images()
 
         return
+
+    def _read_dispersion_bin_ratio(self):
+        """*Frame binning divided by the dispersion solution's binning, per detector axis*
+
+        The solution's binning is read from its primary header (unbinned if the keywords are missing),
+        the same way ``detect_continuum.create_pixel_arrays`` reads it.
+
+        **Return:**
+
+        - ``binRatio`` -- ``(ratioX, ratioY)``; divide the solution's pixel positions by these to get frame pixels
+        """
+        from astropy.io import fits
+
+        try:
+            header = fits.getheader(os.path.expanduser(self.dispersionMap), 0)
+            dmBinx = header[self.kw("WIN_BINX")]
+            dmBiny = header[self.kw("WIN_BINY")]
+        except KeyError as e:
+            self.log.debug(f"_read_dispersion_bin_ratio: no binning in the dispersion solution header: {e}")
+            dmBinx = 1
+            dmBiny = 1
+
+        return self.binx / dmBinx, self.biny / dmBiny
+
+    def _to_frame_binning(self, fitX, fitY):
+        """*Convert dispersion-solution pixel positions to the frame's binning*
+
+        Unbinned-to-unbinned (ratio 1) returns the inputs untouched.
+        """
+        ratioX, ratioY = self.dispersionBinRatio
+        if ratioX != 1.0:
+            fitX = fitX / ratioX
+        if ratioY != 1.0:
+            fitY = fitY / ratioY
+        return fitX, fitY
 
     def cache_image(self, imageName, ndarray, associatedMask=None, returnCoverage=False, debug=False):
         """
@@ -340,8 +383,7 @@ class image_transformer(base_util):
             removeOffDetectorLocation=False,
             trimColumns=True,
         )
-        fit_x = resultDF["fit_x"].to_numpy()
-        fit_y = resultDF["fit_y"].to_numpy()
+        fit_x, fit_y = self._to_frame_binning(resultDF["fit_x"].to_numpy(), resultDF["fit_y"].to_numpy())
 
         # REBUILD THE PER-ORDER RESAMPLING WEIGHTS FROM THE FLAT BOUNDARY CORNER TABLE.
         # THE PER-CELL PIXEL-OVERLAP CLIP/AREA WORK ITSELF RUNS IN THE NUMBA-JIT-COMPILED
@@ -648,8 +690,9 @@ class image_transformer(base_util):
         )
         # FLOAT64 SO THE CUMULATIVE PATH LENGTH DOES NOT INHERIT THE CONVERTER'S FLOAT32 ROUNDING
         wavelength = resultDF["wavelength"].to_numpy(dtype=float)
-        fitX = resultDF["fit_x"].to_numpy(dtype=float)
-        fitY = resultDF["fit_y"].to_numpy(dtype=float)
+        fitX, fitY = self._to_frame_binning(
+            resultDF["fit_x"].to_numpy(dtype=float), resultDF["fit_y"].to_numpy(dtype=float)
+        )
         # SAMPLES OFF THE DETECTOR MUST NOT CONTRIBUTE TO THE TRACE PATH OR THE SLIT SCALE
         offDetector = (fitX < -0.5) | (fitX >= self.nx - 0.5) | (fitY < -0.5) | (fitY >= self.ny - 0.5)
         fitX[offDetector] = np.nan
