@@ -19,6 +19,13 @@ from soxspipe.commonutils.toolkit import cut_image_slice, unpack_order_table
 
 os.environ["TERM"] = "vt100"
 
+# ORDER-EDGE QC PLOT LAYOUT (INCHES)
+PLOT_PANEL_WIDTH_INCHES = 5.2
+TABLE_ROW_HEIGHT_INCHES = 0.25
+PLOT_DECORATION_HEIGHT_INCHES = 2.0
+# DROP THE LEGENDS BELOW THE TICK LABELS, BESIDE THE AXIS LABEL
+LEGEND_OFFSET_POINTS = 14
+
 
 class detect_order_edges(_base_detect):
     """
@@ -565,6 +572,7 @@ class detect_order_edges(_base_detect):
         import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
+        from matplotlib.transforms import offset_copy
 
         allResiduals = np.concatenate(
             (
@@ -616,33 +624,29 @@ class detect_order_edges(_base_detect):
         if flipImage:
             rotatedImg = np.flipud(rotatedImg)
             if not rotateImage:
+                # FLIPUD SENDS PIXEL ROW r TO ROW N-1-r
                 aLen = rotatedImg.shape[0]
-                aLen = rotatedImg.shape[0]
-                allAxisACoords = aLen - allAxisACoords
-                allAxisACoordsClipped = aLen - allAxisACoordsClipped
+                allAxisACoords = aLen - 1 - allAxisACoords
+                allAxisACoordsClipped = aLen - 1 - allAxisACoordsClipped
 
-        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(6, 12))
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            if False:
-                bottomleft = fig.add_subplot(gs[4:, 0:2])
-                bottomright = fig.add_subplot(gs[4:, 2:])
-            settingsAx = fig.add_subplot(gs[4:, 2:])
-            qcAx = fig.add_subplot(gs[4:, 0:2])
-        else:
-            fig = plt.figure(figsize=(6, 10))
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            if False:
-                bottomleft = fig.add_subplot(gs[4:, 0:2])
-                bottomright = fig.add_subplot(gs[4:, 2:])
-            settingsAx = fig.add_subplot(gs[4:, 2:])
-            qcAx = fig.add_subplot(gs[4:, 0:2])
+        # SIZE EACH IMAGE PANEL TO THE IMAGE ASPECT AND GIVE EACH TABLE ITS OWN FULL-WIDTH ROW SO THEY CANNOT OVERLAP
+        imagePanelHeight = PLOT_PANEL_WIDTH_INCHES * min(rotatedImg.shape[0] / rotatedImg.shape[1], 1.5)
+        qcTableHeight = TABLE_ROW_HEIGHT_INCHES * (min(len(self.qc.index), 10) + 1)
+        settingsTableHeight = TABLE_ROW_HEIGHT_INCHES * (len(self.recipeSettings) + 2)
+        heightRatios = [imagePanelHeight, imagePanelHeight, qcTableHeight, settingsTableHeight]
+        fig = plt.figure(
+            figsize=(6, sum(heightRatios) + PLOT_DECORATION_HEIGHT_INCHES),
+            constrained_layout=True,
+        )
+        gs = fig.add_gridspec(4, 1, height_ratios=heightRatios)
+        toprow = fig.add_subplot(gs[0])
+        midrow = fig.add_subplot(gs[1])
+        qcAx = fig.add_subplot(gs[2])
+        settingsAx = fig.add_subplot(gs[3])
+        # THE DISABLED RESIDUAL PANELS FURTHER DOWN STILL REFERENCE THESE NAMES
+        if False:
+            bottomleft = fig.add_subplot(gs[2])
+            bottomright = fig.add_subplot(gs[3])
 
         # rotatedImg = self.flatFrame.data
         std = np.nanstd(self.flatFrame.data)
@@ -650,8 +654,10 @@ class detect_order_edges(_base_detect):
         vmax = mean + 2 * std
         vmin = mean - 1 * std
 
-        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1)
-        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.9)
+        # INTERPOLATION "none" EMBEDS THE IMAGE AT NATIVE RESOLUTION IN THE PDF; RESAMPLING TO THE SAVE DPI
+        # SNAPS THE ORDER BANDS TO A COARSE GRID AND OFFSETS THEM FROM THE VECTOR EDGE MARKERS WHEN ZOOMED
+        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1, interpolation="none")
+        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.9, interpolation="none")
 
         toprow.set_title("upper and lower order edge detections", fontsize=10)
         toprow.scatter(
@@ -677,17 +683,13 @@ class detect_order_edges(_base_detect):
         # toprow.set_xticklabels([])
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        if arm.upper() == "UVB":
-            toprow.xaxis.set_label_coords(0.2, -0.13)
-        elif arm.upper() == "VIS":
-            toprow.xaxis.set_label_coords(0.5, -0.3)
-        else:
-            toprow.xaxis.set_label_coords(0.4, -0.13)
         toprow.tick_params(axis="both", which="major", labelsize=9)
-        if arm.upper() == "VIS":
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.3), fontsize=4)
-        else:
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.13), fontsize=4)
+        toprow.legend(
+            loc="upper right",
+            bbox_to_anchor=(1.0, 0.0),
+            bbox_transform=offset_copy(toprow.transAxes, fig=fig, y=-LEGEND_OFFSET_POINTS, units="points"),
+            fontsize=4,
+        )
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
@@ -741,8 +743,9 @@ class detect_order_edges(_base_detect):
             axisAfitlowStart = poly(df, *coefflower)
 
             if flipImage and not rotateImage:
-                axisAfitupStart = aLen - axisAfitupStart
-                axisAfitlowStart = aLen - axisAfitlowStart
+                # THE FITS ARE STILL UNBINNED HERE; AFTER THE LATER DIVISION BY THE BIN THEY LAND ON ROW aLen-1-fit/bin
+                axisAfitupStart = (aLen - 1) * self.axisAbin - axisAfitupStart
+                axisAfitlowStart = (aLen - 1) * self.axisAbin - axisAfitlowStart
 
             # xfit = np.ones(len(xfit)) * \
             #     self.flatFrame.data.shape[1] - xfit
@@ -830,12 +833,12 @@ class detect_order_edges(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        if arm.upper() == "VIS":
-            midrow.xaxis.set_label_coords(0.5, -0.3)
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.3), fontsize=4)
-        else:
-            midrow.xaxis.set_label_coords(0.5, -0.12)
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.12), fontsize=4)
+        midrow.legend(
+            loc="upper right",
+            bbox_to_anchor=(1.0, 0.0),
+            bbox_transform=offset_copy(midrow.transAxes, fig=fig, y=-LEGEND_OFFSET_POINTS, units="points"),
+            fontsize=4,
+        )
         midrow.tick_params(axis="both", which="major", labelsize=9)
 
         # PLOT THE FINAL RESULTS:

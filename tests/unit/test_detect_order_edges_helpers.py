@@ -12,6 +12,8 @@ import pytest
 from astropy import units as u
 from astropy.io import fits
 from astropy.nddata import CCDData
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 
 from soxspipe.commonutils.detect_order_edges import detect_order_edges
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
@@ -240,6 +242,170 @@ def test_plot_results_writes_order_edge_diagnostic(
 
     assert Path(outputPath).read_bytes().startswith(b"%PDF")
     assert Path(outputPath).name == "synthetic_ORD_LOC.pdf"
+
+
+def _plot_inputs(
+    *,
+    axisA: str,
+    lowerEdge: float,
+    upperEdge: float,
+    axisBLength: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Return constant-edge pixel tables, coefficients and order metadata for ``plot_results``."""
+    axisB = "y" if axisA == "x" else "x"
+    axisBValues = np.arange(3.0, axisBLength - 2.0, 3.0)
+    lower = pd.DataFrame(
+        {
+            "order": np.full(len(axisBValues), 10.0),
+            f"{axisA}coord_lower": np.full(len(axisBValues), lowerEdge),
+            f"{axisA}coord_lower_fit_res": np.zeros(len(axisBValues)),
+            f"{axisB}coord": axisBValues,
+        }
+    )
+    upper = pd.DataFrame(
+        {
+            "order": np.full(len(axisBValues), 10.0),
+            f"{axisA}coord_upper": np.full(len(axisBValues), upperEdge),
+            f"{axisA}coord_upper_fit_res": np.zeros(len(axisBValues)),
+            f"{axisB}coord": axisBValues,
+        }
+    )
+    coefficients = pd.DataFrame([{"edgeup_0": upperEdge, "edgelow_0": lowerEdge}])
+    metadata = pd.DataFrame({"order": [10], f"{axisB}min": [0.0], f"{axisB}max": [axisBLength - 1.0]})
+    return upper, lower, coefficients, metadata
+
+
+def _capture_saved_figure(monkeypatch: pytest.MonkeyPatch) -> dict[str, Figure]:
+    """Record the figure that ``plot_results`` saves, while still writing the PDF."""
+    import matplotlib.pyplot as plt
+
+    captured: dict[str, Figure] = {}
+    realSavefig = plt.savefig
+
+    def capture(*args: object, **kwargs: object) -> None:
+        captured["figure"] = plt.gcf()
+        realSavefig(*args, **kwargs)
+
+    monkeypatch.setattr(plt, "savefig", capture)
+    return captured
+
+
+def _plot_detector(
+    log: object, tmp_path: Path, *, shape: tuple[int, int], rotate: int, flip: int
+) -> detect_order_edges:
+    """Return a detector ready for ``plot_results`` on a flat of ``shape``."""
+    detector = _edge_detector(log)
+    detector.axisAbin = 1
+    detector.axisBbin = 1
+    detector.axisBDeg = 0
+    detector.orderDeg = 0
+    detector.exptime = 2.0
+    detector.slit = "5.0x11"
+    detector.tag = "QLAMP"
+    detector.sofName = "synthetic"
+    detector.qcDir = str(tmp_path)
+    detector.recipeSettings = {}
+    detector.qc = qc_table()
+    detector.detectorParams = {"rotate-qc-plot": rotate, "flip-qc-plot": flip}
+    detector.flatFrame = CCDData(np.full(shape, 20.0), unit=u.electron)
+    return detector
+
+
+def test_plot_results_embeds_image_without_resampling(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Embed the flat at native resolution so vector edge markers line up with its pixels when zoomed."""
+    detector = _plot_detector(log, tmp_path, shape=(32, 32), rotate=0, flip=0)
+    upper, lower, coefficients, metadata = _plot_inputs(axisA="x", lowerEdge=8.0, upperEdge=20.0, axisBLength=32)
+    captured = _capture_saved_figure(monkeypatch)
+
+    detector.plot_results(upper, lower, coefficients, metadata, upper.iloc[:1], lower.iloc[:1])
+
+    images = [image for ax in captured["figure"].axes for image in ax.get_images()]
+    assert len(images) == 2
+    assert [image.get_interpolation() for image in images] == ["none", "none"]
+
+
+@pytest.mark.parametrize("axisAbin", [1, 2])
+def test_flip_only_edges_map_to_flipped_pixel_rows(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    axisAbin: int,
+) -> None:
+    """A flip without rotation sends binned row ``r`` to row ``N - 1 - r``, for markers and fit lines alike."""
+    rows = 64
+    detector = _plot_detector(log, tmp_path, shape=(rows, 40), rotate=0, flip=1)
+    detector.axisA = "y"
+    detector.axisB = "x"
+    detector.arm = "NIR"
+    detector.axisAbin = axisAbin
+    upper, lower, coefficients, metadata = _plot_inputs(
+        axisA="y", lowerEdge=20.0 * axisAbin, upperEdge=40.0 * axisAbin, axisBLength=40
+    )
+    captured = _capture_saved_figure(monkeypatch)
+
+    detector.plot_results(upper, lower, coefficients, metadata, upper.iloc[:1], lower.iloc[:1])
+
+    topAxis, fitAxis = captured["figure"].axes[:2]
+    markerRows = np.unique(topAxis.collections[0].get_offsets()[:, 1])
+    assert markerRows.tolist() == [rows - 1 - 40.0, rows - 1 - 20.0]
+    fitRows = sorted({float(np.unique(line.get_ydata())[0]) for line in fitAxis.get_lines()})
+    assert fitRows == [rows - 1 - 40.0, rows - 1 - 20.0]
+
+
+def test_plot_results_tables_do_not_overlap(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Keep the QC table and the mflat settings table apart on a wide VIS-shaped flat."""
+    detector = _plot_detector(log, tmp_path, shape=(410, 82), rotate=90, flip=1)
+    detector.recipeSettings = {
+        "subtract_background": True,
+        "stacked-clipping-sigma": 15,
+        "stacked-clipping-iterations": 3,
+        "centre-order-window": 10,
+        "slice-length-for-edge-detection": 70,
+        "slice-width-for-edge-detection": 5,
+        "min-percentage-threshold-for-edge-detection": 20,
+        "max-percentage-threshold-for-edge-detection": 50,
+        "disp-axis-deg": 3,
+        "order-deg": 3,
+        "poly-fitting-residual-clipping-sigma": 5,
+        "poly-clipping-iteration-limit": 2,
+        "low-sensitivity-clipping-sigma": 2,
+        "order-edge-min-flat-fraction": 0.5,
+    }
+    detector.qc = pd.concat(
+        [
+            qc_table().assign(qc_name=name, qc_value=value, qc_unit=unit, qc_comment=comment)
+            for name, value, unit, comment in [
+                ("ORDEXP10", 234.3, "electrons", "[e-] 10th percentile inter-order flux"),
+                ("ORDEXP50", 5457.21, "electrons", "[e-] 50th percentile inter-order flux"),
+                ("ORDEXP90", 40640.352, "electrons", "[e-] 90th percentile inter-order flux"),
+                ("X RES MIN", 0.00206, "pixels", "[px] Minimum residual in order edge fit along x-axis"),
+                ("X RES MAX", 2.24219, "pixels", "[px] Maximum residual in order edge fit along x-axis"),
+                ("X RES SD", 0.3453, "pixels", "[px] Std-dev of residual order edge fit along x-axis"),
+            ]
+        ],
+        ignore_index=True,
+    )
+    upper, lower, coefficients, metadata = _plot_inputs(axisA="x", lowerEdge=30.0, upperEdge=50.0, axisBLength=410)
+    captured = _capture_saved_figure(monkeypatch)
+
+    detector.plot_results(upper, lower, coefficients, metadata, upper.iloc[:1], lower.iloc[:1])
+
+    figure = captured["figure"]
+    # PLOT_RESULTS CLOSES THE FIGURE, SO ATTACH AN AGG CANVAS RATHER THAN RELY ON THE ACTIVE BACKEND
+    renderer = FigureCanvasAgg(figure).get_renderer()
+    figure.draw(renderer)
+    tables = [table for ax in figure.axes for table in ax.tables]
+    assert len(tables) == 2
+    qcExtent, settingsExtent = (table.get_window_extent(renderer) for table in tables)
+    assert not qcExtent.overlaps(settingsExtent)
 
 
 def test_constructor_resolves_vis_metadata_and_qc_directories(
