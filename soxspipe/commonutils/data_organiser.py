@@ -41,6 +41,7 @@ from soxspipe.commonutils.missing_calibrations import (
 from soxspipe.commonutils.session_status_restore import (
     classify_session_sofs,
     format_session_summary,
+    open_backup_read_only,
     read_frame_sets,
     read_session_snapshots,
 )
@@ -2119,8 +2120,8 @@ class data_organiser:
     def _read_preserved_quality_control(self, backupPath):
         """*read the `quality_control` rows from a preserved copy of the database*
 
-        The copy is opened read-only, so reading it never changes the preserved file, and it must pass
-        `PRAGMA quick_check` before any row is read.
+        The file is read through a scratch copy (see `open_backup_read_only`), so reading never changes anything in
+        the backups directory, and it must pass `PRAGMA quick_check` before any row is read.
 
         **Key Arguments:**
 
@@ -2136,14 +2137,8 @@ class data_organiser:
         """
         import pandas as pd
 
-        source = sqlite3.connect(Path(backupPath).resolve().as_uri() + "?mode=ro", uri=True)
-        try:
-            check = source.execute("PRAGMA quick_check;").fetchall()
-            if check != [("ok",)]:
-                raise sqlite3.DatabaseError(f"the preserved database failed its quick check: {check}")
+        with open_backup_read_only(backupPath) as source:
             return pd.read_sql_query("select * from quality_control;", source)
-        finally:
-            source.close()
 
     def _write_quality_control_rows(self, qcRows):
         """*append preserved `quality_control` rows to the current database, skipping rows already present*
