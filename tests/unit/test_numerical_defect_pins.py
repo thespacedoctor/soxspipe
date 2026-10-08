@@ -6,8 +6,8 @@ the defect the test XPASSes, strict mode turns that into a suite failure, and th
 delete the ``xfail`` marker. If another test file pins the old (wrong) behaviour as a
 characterization, the fixer must update or delete that pin in the same change.
 
-The ``reason`` of each marker reads ``DY-35 <ID>: <defect>``. The IDs refer to
-``findings-DY-35.md``.
+The ``reason`` of each marker reads ``DY-<issue> (DY-35 <ID>): <defect>``, naming the Linear
+issue that tracks the defect and its ID in the DY-35 findings table.
 
 Each marker names the exception the defect produces today (``AssertionError`` for a wrong
 value), so a setup, import or fixture error fails the suite instead of hiding as an xfail.
@@ -83,7 +83,7 @@ def _bias_frame(rng: np.random.Generator, shape: tuple[int, int], hotPixels: dic
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 A1: MASTER RON is the std of the unmasked array, so clipped and masked pixels count",
+    reason="DY-1249 (DY-35 A1): MASTER RON is the std of the unmasked array, so clipped and masked pixels count",
 )
 def test_master_ron_excludes_masked_pixels(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
     # ARRANGE: FIVE BIAS FRAMES SHARING 20 HOT PIXELS (0.05% OF THE DETECTOR)
@@ -170,7 +170,7 @@ def _stack_with_one_masked_value(
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 A2: clip_and_stack discards pixels flagged in only some of the input frames",
+    reason="DY-1254 (DY-35 A2): clip_and_stack discards pixels flagged in only some of the input frames",
 )
 def test_clip_and_stack_excludes_pixel_masked_in_one_input_frame(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
@@ -185,7 +185,7 @@ def test_clip_and_stack_excludes_pixel_masked_in_one_input_frame(
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 A2: ignore_input_masks has no effect on the stacked value",
+    reason="DY-1254 (DY-35 A2): ignore_input_masks has no effect on the stacked value",
 )
 def test_clip_and_stack_ignore_input_masks_changes_the_stacked_value(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
@@ -229,7 +229,7 @@ def _merge_one_order(log: object, firstWavelength: float) -> tuple[np.ndarray, p
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 C1: merged spectrum fabricates a FLUX=0, VARIANCE=0, SNR=NaN bin below the first sample",
+    reason="DY-1248 (DY-35 C1): merged spectrum fabricates a FLUX=0, VARIANCE=0, SNR=NaN bin below the first sample",
 )
 def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: object) -> None:
     # ARRANGE AND ACT: THE FIRST SAMPLE (500.004 NM) ROUNDS DOWN TO 500.00 ON THE 0.02 NM OUTPUT GRID
@@ -251,7 +251,7 @@ def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: 
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 A4: response fit returns all-NaN coefficients from a non-finite raw response without raising",
+    reason="DY-1255 (DY-35 A4): response fit returns all-NaN coefficients from a non-finite response, no error",
 )
 def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_response() -> None:
     # ARRANGE: A ZERO-FLUX SAMPLE GIVES AN INFINITE RAW RESPONSE; THE SMOOTHING SPREADS IT OVER ABOUT 41 SAMPLES
@@ -274,7 +274,7 @@ def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_res
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 B1: response fit returns the coefficients from before the last rejection when it hits the cap",
+    reason="DY-1245 (DY-35 B1): response fit returns pre-rejection coefficients when it hits the cap",
 )
 def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> None:
     # ARRANGE: A BLOCK OF HIGH POINTS PULLS THE FIRST FIT, SO THE SINGLE ALLOWED PASS STILL DELETES POINTS
@@ -304,7 +304,7 @@ def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> Non
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 A5: rectification carries a masked pixel's value into an unmasked cell",
+    reason="DY-1252 (DY-35 A5): rectification carries a masked pixel's value into an unmasked cell",
 )
 def test_rectified_unmasked_cell_does_not_carry_the_masked_pixel_value(log: object) -> None:
     # ARRANGE: ONE RECTIFIED CELL, 85% FROM PIXEL (0,0) AND 15% FROM THE FLAGGED HOT PIXEL (0,1)
@@ -342,7 +342,7 @@ def test_rectified_unmasked_cell_does_not_carry_the_masked_pixel_value(log: obje
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 B2: fit_global_polynomial returns coefficients fitted before the last clipping pass on a cap exit",
+    reason="DY-1246 (DY-35 B2): fit_global_polynomial returns pre-clipping coefficients on a cap exit",
 )
 def test_global_polynomial_coefficients_match_a_refit_on_the_kept_rows(log: object) -> None:
     # ARRANGE: FIVE ORDERS WITH A BLOCK OF CORRUPTED MEASUREMENTS AND THE NIR MFLAT TWO-PASS CAP
@@ -383,7 +383,7 @@ def test_global_polynomial_coefficients_match_a_refit_on_the_kept_rows(log: obje
 @pytest.mark.xfail(
     strict=True,
     raises=TypeError,
-    reason="DY-35 B3: fit_polynomials raises TypeError instead of returning xerror when lines < coefficients",
+    reason="DY-1256 (DY-35 B3): fit_polynomials raises TypeError instead of returning xerror when lines < coefficients",
 )
 def test_fit_polynomials_returns_xerror_when_fewer_lines_than_coefficients(log: object) -> None:
     # ARRANGE: TEN LINES CANNOT CONSTRAIN THE 16 COEFFICIENTS OF A 3 x 3 x 0 POLYNOMIAL
@@ -419,7 +419,7 @@ def test_fit_polynomials_returns_xerror_when_fewer_lines_than_coefficients(log: 
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 B4: fit_object_profile keeps iterating after a pass that clips nothing",
+    reason="DY-1257 (DY-35 B4): fit_object_profile keeps iterating after a pass that clips nothing",
 )
 def test_object_profile_clipping_stops_once_a_pass_clips_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     # ARRANGE: PURE GAUSSIAN NOISE, SO CLIPPING SETTLES AFTER A FEW PASSES WELL BEFORE THE CAP OF TEN
@@ -472,7 +472,7 @@ def test_object_profile_clipping_stops_once_a_pass_clips_nothing(monkeypatch: py
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 C2: rectified slit grid has 2H-1 rows centred half a pixel below the trace",
+    reason="DY-1247 (DY-35 C2): rectified slit grid has 2H-1 rows centred half a pixel below the trace",
 )
 def test_rectified_slit_grid_has_two_h_rows_centred_on_the_trace(log: object) -> None:
     # ARRANGE: SLIT HALF LENGTH 3 AT 1 ARCSEC PER PIXEL, ONE ORDER ON A CONSTANT SLIT POSITION
@@ -512,7 +512,7 @@ def test_rectified_slit_grid_has_two_h_rows_centred_on_the_trace(log: object) ->
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-35 C4: cut_image_slice reports the slice centre 0.5 px above the rows it collapsed "
+        "DY-1250 (DY-35 C4): cut_image_slice reports the slice centre 0.5 px above the rows it collapsed "
         "(pixel-centre convention unconfirmed; delete this pin if the owner rules it deliberate)"
     ),
 )
@@ -538,7 +538,7 @@ def test_cut_image_slice_reports_the_centre_of_the_collapsed_rows(log: object) -
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 C5: qc_bias_structure fits against linspace(0, N, N, dtype=int), whose last point is N not N-1",
+    reason="DY-1258 (DY-35 C5): qc_bias_structure fits against a pixel axis ending at N, not N-1",
 )
 def test_bias_structure_slopes_use_a_zero_to_n_minus_one_pixel_axis() -> None:
     # ARRANGE: A SMALL FRAME MAKES THE AXIS ERROR LARGE; THE RAMP SLOPES ARE KNOWN EXACTLY
@@ -566,7 +566,7 @@ def test_bias_structure_slopes_use_a_zero_to_n_minus_one_pixel_axis() -> None:
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 C6: inner-order pixel QC values are stored as formatted strings, not numbers",
+    reason="DY-1259 (DY-35 C6): inner-order pixel QC values are stored as formatted strings, not numbers",
 )
 def test_inner_order_qc_values_are_numeric(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     # ARRANGE: THE SAME STUBS AS THE CHARACTERIZATION TEST THAT PINS THE STRING FORM
@@ -589,7 +589,7 @@ def test_inner_order_qc_values_are_numeric(monkeypatch: pytest.MonkeyPatch, log:
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-35 C6: dispersion-solution residual QC values are stored as formatted strings, not numbers",
+    reason="DY-1259 (DY-35 C6): dispersion-solution residual QC values are stored as formatted strings, not numbers",
 )
 def test_dispersion_residual_qc_values_are_numeric(log: object) -> None:
     # ARRANGE: THE TWO-LINE TABLE USED BY THE EXISTING calculate_residuals TESTS
@@ -641,7 +641,7 @@ def test_dispersion_residual_qc_values_are_numeric(log: object) -> None:
 @pytest.mark.xfail(
     strict=True,
     raises=ValueError,
-    reason="DY-35 C7: a 2x2-binned map with a 2x2-binned frame is block-reduced twice and raises ValueError",
+    reason="DY-1260 (DY-35 C7): a 2x2-binned map with a 2x2-binned frame is block-reduced twice and raises ValueError",
 )
 def test_binned_map_with_same_binned_frame_gives_one_row_per_pixel(tmp_path: Path) -> None:
     # ARRANGE: A MAP ALREADY AT THE FRAME'S 2x2 BINNING, WAVELENGTH INCREASING WITH X, ONE ORDER
