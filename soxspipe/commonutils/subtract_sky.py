@@ -1201,7 +1201,8 @@ class subtract_sky:
         share one bounded weight, instead of a weight that diverges at zero flux (DY-1253).
         The noise is the pixel ``error``. Where that is not a positive finite number (for example
         no dark subtraction gives 0) the local ``residual_windowed_std`` is used, as the sky
-        weights already divide by it.
+        weights already divide by it. If neither noise estimate is usable, ``abs(flux)`` alone
+        sets the scale, and a row with no usable flux either gets an infinite scale (zero weight).
 
         **Key Arguments:**
 
@@ -1210,14 +1211,18 @@ class subtract_sky:
 
         **Return:**
 
-        - ``fluxScale`` -- numpy array, strictly positive, one value per row of `noisyPixels`
+        - ``fluxScale`` -- numpy array, strictly positive (possibly ``inf``), one value per row of `noisyPixels`
         """
         import numpy as np
 
         errors = noisyPixels["error"].to_numpy(dtype=float)
         isUsableError = np.isfinite(errors) & (errors > 0)
         noise = np.where(isUsableError, errors, noisyPixels["residual_windowed_std"].to_numpy(dtype=float))
-        return np.maximum(np.abs(noisyPixels["flux"].to_numpy(dtype=float)), noise)
+        # AN UNUSABLE FALLBACK NOISE LEAVES abs(flux) ALONE TO SET THE SCALE
+        noise = np.where(np.isfinite(noise) & (noise > 0), noise, 0.0)
+        fluxScale = np.fmax(np.abs(noisyPixels["flux"].to_numpy(dtype=float)), noise)
+        # NOTHING BOUNDS THE SCALE: AN INFINITE SCALE GIVES THE ROW ZERO WEIGHT, NEVER AN INF OR NaN WEIGHT
+        return np.where(np.isfinite(fluxScale) & (fluxScale > 0), fluxScale, np.inf)
 
     def fit_bspline_curve_to_sky(self, imageMapOrder):
         """*fit a single-order univariate bspline to the unclipped sky pixels (wavelength vs flux)*

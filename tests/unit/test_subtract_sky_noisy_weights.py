@@ -114,3 +114,19 @@ def test_residual_floor_leaves_infinite_values_in_other_columns_alone(log: Any) 
     # ASSERT
     assert result.loc[7, "weights"] == np.inf
     assert result.loc[5, "sky_residuals"] == 1.0
+
+
+@pytest.mark.parametrize("badStd", [0.0, np.nan, np.inf])
+def test_flux_scale_uses_the_absolute_flux_when_no_noise_estimate_is_usable(badStd: float) -> None:
+    """With neither noise estimate usable, the scale falls back to abs(flux) alone."""
+    scale = _scale([3.0], [0.0], [badStd])
+
+    assert scale.tolist() == [3.0]
+
+
+@pytest.mark.parametrize("badFlux", [0.0, np.nan])
+def test_flux_scale_is_infinite_when_nothing_bounds_it(badFlux: float) -> None:
+    """A row with no usable noise and no usable flux gets zero weight (an infinite scale), never NaN or inf weight."""
+    scale = _scale([badFlux], [0.0], [np.nan])
+
+    assert scale.tolist() == [np.inf]

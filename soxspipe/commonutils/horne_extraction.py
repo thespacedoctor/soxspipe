@@ -145,7 +145,7 @@ class horne_extraction(base_util):
         )
 
         # COLLECT SETTINGS FROM SETTINGS FILE
-        # HALF LENGTH KEPT AS setting / 2 (MAY END IN .5) SO THE EXTRACTED SLIT IS AS LONG AS THE SETTING
+        # HALF LENGTH KEPT AS THE SETTING / 2 (MAY END IN .5) SO THE EXTRACTED SLIT IS AS LONG AS THE SETTING
         self.slitHalfLength = self.recipeSettings["horne-extraction-slit-length"] / 2
         self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
