@@ -6,6 +6,7 @@ import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,6 +19,8 @@ from soxspipe.commonutils.create_dispersion_map import (
     create_dispersion_map,
     measure_line_position,
 )
+from tests.factories import qc_table
+from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
 
 pytestmark = pytest.mark.unit
 
@@ -966,23 +969,24 @@ def test_first_guess_corrections_shift_complete_multi_pinhole_sets(
     assert "shift_x" not in result
 
 
-@pytest.mark.parametrize(("debug", "flip"), [(False, False), (True, False), (False, True)])
-def test_qc_plot_writes_single_pinhole_residual_product(
-    debug: bool,
-    flip: bool,
+def _qc_plot_mapper(
     log: object,
     tmp_path: Path,
-) -> None:
-    """A single-pinhole solution creates the established residual QC product."""
+    *,
+    debug: bool = False,
+    flip: bool = False,
+    rows: int = 6,
+) -> create_dispersion_map:
+    """Return a mapper carrying just the state `_create_dispersion_map_qc_plot` reads, for a single pinhole."""
     mapper = object.__new__(create_dispersion_map)
     mapper.log = log
     mapper.arm = "VIS"
     mapper.kw = lambda key: key
     mapper.detectorParams = {"rotate-qc-plot": 0, "flip-qc-plot": flip}
     mapper.pinholeFrameMasked = CCDData(
-        np.arange(72, dtype=float).reshape(6, 12),
+        np.arange(rows * 12, dtype=float).reshape(rows, 12),
         unit=u.adu,
-        mask=np.zeros((6, 12), dtype=bool),
+        mask=np.zeros((rows, 12), dtype=bool),
     )
     mapper.arcFrame = False
     mapper.firstGuessMap = False
@@ -1000,6 +1004,11 @@ def test_qc_plot_writes_single_pinhole_residual_product(
     mapper.recipeSettings = {"sample_setting": 1}
     mapper.exptime = 1.0
     mapper.settings = {"tune-pipeline": False}
+    return mapper
+
+
+def _qc_plot_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Return fresh fitted, clipped and missing line tables for `_create_dispersion_map_qc_plot`."""
     base = {
         "order": [10, 10, 11, 11],
         "wavelength": [500.0, 501.0, 600.0, 601.0],
@@ -1015,12 +1024,19 @@ def test_qc_plot_writes_single_pinhole_residual_product(
         "residuals_y": [0.05, -0.05, -0.1, 0.1],
         "fwhm_pin_px": [2.0, 2.1, 1.9, 2.0],
         "R_pin": [4000.0, 4100.0, 3900.0, 4050.0],
+        "fwhm_slit_px": [2.0, 2.1, 1.9, 2.0],
+        "R_slit": [4000.0, 4100.0, 3900.0, 4050.0],
     }
     fitted = pd.DataFrame(base)
     clipped = pd.DataFrame(base).assign(dropped=False)
     missing = pd.DataFrame(base).iloc[:1].copy()
+    return fitted, clipped, missing
 
-    result = mapper._create_dispersion_map_qc_plot(
+
+def _run_qc_plot(mapper: create_dispersion_map, **extra: object) -> str:
+    """Call `_create_dispersion_map_qc_plot` on fresh synthetic line tables."""
+    fitted, clipped, missing = _qc_plot_tables()
+    return mapper._create_dispersion_map_qc_plot(
         xcoeff=[1.0],
         ycoeff=[1.0],
         orderDeg=1,
@@ -1029,11 +1045,145 @@ def test_qc_plot_writes_single_pinhole_residual_product(
         orderPixelTable=fitted,
         missingLines=missing,
         allClippedLines=clipped,
+        **extra,
     )
+
+
+@pytest.mark.parametrize(("debug", "flip"), [(False, False), (True, False), (False, True)])
+def test_qc_plot_writes_single_pinhole_residual_product(
+    debug: bool,
+    flip: bool,
+    log: object,
+    tmp_path: Path,
+) -> None:
+    """A single-pinhole solution creates the established residual QC product."""
+    mapper = _qc_plot_mapper(log, tmp_path, debug=debug, flip=flip)
+
+    result = _run_qc_plot(mapper)
 
     assert result == "SYNTHETIC_RESIDUALS_110.pdf"
     assert (tmp_path / result).is_file()
     assert mapper.products.iloc[0]["product_label"] == "DISP_MAP_RES"
+
+
+def _arc_qc_plot_mapper(log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> create_dispersion_map:
+    """Return a mapper for an arc-lamp solution, with the order table and 2D map readers replaced by synthetic ones."""
+    mapper = _qc_plot_mapper(log, tmp_path, rows=32)
+    mapper.arcFrame = SimpleNamespace(header={"SLIT_VIS": "SLIT1.0x11"})
+    mapper.pinholeFrame = None
+    mapper.orderTable = "order-table.fits"
+    mapper.uniqueSlitPos = [-7.0, 7.0]
+    orderEdges = {10: (2, 6), 11: (10, 14)}
+    rows = np.arange(10)
+    geometry = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "order": order,
+                    "ycoord": rows,
+                    "xcoord_edgelow": low + 0.2,
+                    "xcoord_edgeup": up + 0.2,
+                    "xcoord_centre": (low + up) / 2 + 0.2,
+                }
+            )
+            for order, (low, up) in orderEdges.items()
+        ],
+        ignore_index=True,
+    )
+    dispersionMap = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "x": edge,
+                    "y": rows,
+                    "order": order,
+                    "wavelength": 500.0 + 100.0 * (order - 10) + rows,
+                    "slit_position": slitPosition,
+                    "flux": 1.0,
+                    "pixelScale": 0.25,
+                }
+            )
+            for order, edges in orderEdges.items()
+            for edge, slitPosition in zip(edges, (-7.0, 7.0), strict=True)
+        ],
+        ignore_index=True,
+    )
+    module = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
+    toolkitModule = importlib.import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(module, "unpack_order_table", lambda **_: (None, geometry.copy(), None))
+    monkeypatch.setattr(module, "twoD_disp_map_image_to_dataframe", lambda **_: (dispersionMap.copy(), None))
+    monkeypatch.setattr(toolkitModule, "create_dispersion_solution_grid_lines_for_plot", lambda **_: (False, None))
+    return mapper
+
+
+@pytest.fixture
+def savefig_table_probes(monkeypatch: pytest.MonkeyPatch):
+    """Record the interpolation of every image and the table extents of the figure each time `plt.savefig` runs."""
+    probes = probe_on_savefig(
+        monkeypatch,
+        lambda figure: {"interpolations": image_interpolations(figure), "tableExtents": table_extents(figure)},
+    )
+    yield probes
+    plt.close("all")
+
+
+def test_qc_plot_embeds_images_without_resampling(log: object, tmp_path: Path, savefig_table_probes: list) -> None:
+    """Embed the pinhole frame at native resolution so vector line markers line up with its pixels when zoomed."""
+    mapper = _qc_plot_mapper(log, tmp_path)
+
+    _run_qc_plot(mapper)
+
+    assert savefig_table_probes[0]["interpolations"] == ["none", "none"]
+
+
+@pytest.mark.parametrize("isArcFrame", [False, True])
+def test_qc_plot_tables_do_not_overlap(
+    isArcFrame: bool,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    savefig_table_probes: list,
+) -> None:
+    """Keep the QC table and the settings table apart, with and without the arc-lamp slit panels."""
+    mapper = _arc_qc_plot_mapper(log, tmp_path, monkeypatch) if isArcFrame else _qc_plot_mapper(log, tmp_path)
+    mapper.qc = pd.concat(
+        [qc_table().assign(qc_name=f"QC {i}", qc_comment=f"[px] synthetic QC number {i}") for i in range(8)],
+        ignore_index=True,
+    )
+    mapper.recipeSettings = {f"setting-number-{i}": i for i in range(14)}
+    extra = {"dispMapImage": "map.fits"} if isArcFrame else {}
+
+    _run_qc_plot(mapper, **extra)
+
+    qcExtent, settingsExtent = savefig_table_probes[0]["tableExtents"]
+    assert not qcExtent.overlaps(settingsExtent)
+
+
+def test_qc_plot_flip_only_sends_pixel_row_r_to_row_n_minus_one_minus_r(
+    log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flip without rotation maps observed and fitted rows to ``N - 1 - r`` on the flipped image."""
+    rows = 32
+    mapper = _qc_plot_mapper(log, tmp_path, flip=True, rows=rows)
+    mapper.axisA = "y"
+    mapper.axisB = "x"
+
+    def probe(figure: plt.Figure) -> dict[str, list[float]]:
+        panels = {ax.get_title(): ax for ax in figure.axes}
+        observed = panels["observed arc-line positions (post-clipping)"].collections[-1]
+        fitted = panels["global dispersion solution"].collections[0]
+        return {
+            "observedRows": sorted({float(r) for r in observed.get_offsets()[:, 1]}),
+            "fittedRows": sorted({float(r) for r in fitted.get_offsets()[:, 1]}),
+        }
+
+    probes = probe_on_savefig(monkeypatch, probe)
+
+    _run_qc_plot(mapper)
+    plt.close("all")
+
+    assert probes[0]["observedRows"] == [rows - 1 - 3.0, rows - 1 - 2.0, rows - 1 - 1.0]
+    assert probes[0]["fittedRows"] == pytest.approx([rows - 1 - 3.05, rows - 1 - 2.05, rows - 1 - 1.05])
 
 
 def test_fit_polynomials_clips_outliers_and_retains_previously_dropped_lines(

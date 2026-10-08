@@ -14,7 +14,7 @@ from scipy.interpolate import splrep
 
 import soxspipe.commonutils.toolkit as toolkit
 from soxspipe.commonutils.subtract_sky import subtract_sky
-from tests.unit._plot_spies import quiet_show, spy_figures
+from tests.unit._plot_spies import image_interpolations, probe_on_savefig, quiet_show, spy_figures
 
 pytestmark = pytest.mark.unit
 
@@ -246,6 +246,50 @@ def test_every_image_panel_layer_follows_the_rotate_and_flip_qc_plot_settings(
     assert skyModelPanel[display(15, 3, shape)] == 163.0
 
 
+@pytest.mark.parametrize(
+    ("dispersionAxis", "rotate", "flip", "expectedOrientation", "labels"),
+    [
+        pytest.param("x", 90, 1, lambda data: np.flipud(np.rot90(data, 1)), ("y-axis", "x-axis"), id="vis"),
+        pytest.param("y", 0, 1, np.flipud, ("x-axis", "y-axis"), id="nir"),
+        pytest.param("x", 90, 0, lambda data: np.rot90(data, 1), ("y-axis", "x-axis"), id="rotate-only"),
+        pytest.param("x", 180, 0, lambda data: np.rot90(data, 2), ("x-axis", "y-axis"), id="half-turn"),
+    ],
+)
+def test_every_image_comparison_panel_follows_the_rotate_and_flip_qc_plot_settings(
+    log: Any,
+    tmp_path: Path,
+    figures: list,
+    dispersionAxis: str,
+    rotate: int,
+    flip: int,
+    expectedOrientation: Callable[[np.ndarray], np.ndarray],
+    labels: tuple[str, str],
+) -> None:
+    """The object, sky-model and sky-subtracted panels are rotated by `rotate-qc-plot`, then flipped by `flip-qc-plot`.
+
+    The frames are non-square and asymmetric, so a wrong rotation or a missing
+    flip changes the displayed array. The axis labels name the detector axis
+    each display axis shows.
+    """
+    shape = (6, 8)
+    outputPath = tmp_path / "comparison_orientation"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=rotate, flip=flip, shape=shape)
+    subtractor.mapDF = pd.DataFrame({"x": [1, 2], "y": [1, 4]})
+    objectFrame = subtractor.objectFrame
+    skyModelFrame = CCDData(objectFrame.data * 2.0 + 0.5, unit="electron", mask=np.zeros(shape, dtype=bool))
+    skySubFrame = CCDData(objectFrame.data * -3.0 - 0.25, unit="electron", mask=np.zeros(shape, dtype=bool))
+
+    subtractor.plot_image_comparison(objectFrame, skyModelFrame, skySubFrame)
+
+    [figure] = figures
+    assert len(figure.axes) == 3
+    for panel, frame in zip(figure.axes, (objectFrame, skyModelFrame, skySubFrame), strict=True):
+        [image] = panel.images
+        np.testing.assert_array_equal(np.asarray(image.get_array()), expectedOrientation(frame.data))
+        assert (panel.get_xlabel(), panel.get_ylabel()) == labels
+
+
 def test_a_rotate_qc_plot_that_is_not_a_multiple_of_90_degrees_is_rejected(log: Any, tmp_path: Path) -> None:
     """A 45-degree rotation cannot be drawn as quarter turns, so the plot raises instead of truncating it."""
     subtractor = _subtractor(log, tmp_path, dispersionAxis="x", rotate=45)
@@ -355,3 +399,35 @@ def test_image_comparison_order_mask_covers_the_true_detector_pixels_of_the_orde
     subtractor.plot_image_comparison(frame, frame.copy(), frame.copy())
 
     assert _positions(~np.isnan(objectPanelValues[0])) == {(1, 7), (4, 6)}
+
+
+def test_sky_sampling_images_and_mask_overlays_are_embedded_without_resampling(
+    log: Any, tmp_path: Path, figures: list
+) -> None:
+    """Embed every panel and flag overlay at native resolution so vector markers line up with pixels when zoomed."""
+    outputPath = tmp_path / "interpolation_plots"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=False)
+
+    subtractor.plot_sky_sampling(order=11, imageMapOrderDF=_order_strip(), knotLocations=np.array([502.0, 508.0]))
+
+    [figure] = figures
+    interpolations = image_interpolations(figure)
+    assert len(interpolations) == 9
+    assert set(interpolations) == {"none"}
+
+
+def test_image_comparison_images_are_embedded_without_resampling(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Embed the object, sky-model and sky-subtracted panels at native resolution."""
+    outputPath = tmp_path / "comparison_interpolation_plots"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=False, shape=(4, 4))
+    subtractor.mapDF = pd.DataFrame({"x": [0, 1], "y": [0, 1]})
+    frame = subtractor.objectFrame
+    probes = probe_on_savefig(monkeypatch, image_interpolations)
+
+    subtractor.plot_image_comparison(frame, frame.copy(), frame.copy())
+
+    assert probes == [["none", "none", "none"]]

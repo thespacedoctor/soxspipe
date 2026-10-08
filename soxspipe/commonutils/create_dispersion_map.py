@@ -49,7 +49,13 @@ from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 from soxspipe.commonutils.toolkit import (
+    QC_PLOT_DECORATION_HEIGHT_INCHES,
+    QC_RESIDUAL_ROW_HEIGHT_INCHES,
+    QC_STRIP_ROW_HEIGHT_INCHES,
     get_calibrations_path,
+    legend_below_axis,
+    qc_image_panel_height,
+    qc_table_heights,
     read_spectral_format,
     twoD_disp_map_image_to_dataframe,
     unpack_order_table,
@@ -3332,58 +3338,44 @@ class create_dispersion_map:
                 # orderPixelTable[f"observed_{self.axisA}"] = aLen - orderPixelTable[f"observed_{self.axisA}"]
                 # orderPixelTable[f"observed_{self.axisA}"] = aLen - orderPixelTable[f"observed_{self.axisA}"]
 
-        # a = plt.figure(figsize=(40, 15))
+        tableSettings = {**self.recipeSettings, **{"exptime": self.exptime}}
 
-        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:  # SOXS NIR
-            fig = plt.figure(figsize=(6, 20), constrained_layout=True)
-            # CREATE THE GRID OF AXES
-            if self.arcFrame:
-                gs = fig.add_gridspec(12, 4)
-                sizeAx = fig.add_subplot(gs[8:9, :])
-                gapAx = fig.add_subplot(gs[9:10, :])
-                settingsAx = fig.add_subplot(gs[10:, 2:])
-                qcAx = fig.add_subplot(gs[11:, 0:2])
-            else:
-                gs = fig.add_gridspec(10, 4)
-                settingsAx = fig.add_subplot(gs[8:, 2:])
-                qcAx = fig.add_subplot(gs[8:, 0:2])
-
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:6, 0:2])
-            bottomright = fig.add_subplot(gs[4:6, 2:])
-            fwhmAx = fig.add_subplot(gs[6:7, :])
-            resAx = fig.add_subplot(gs[7:8, :])
-
-        else:  # SOXS VIS
-            if self.firstGuessMap:
-                fig = plt.figure(figsize=(6, 18), constrained_layout=True)
-            else:
-                fig = plt.figure(figsize=(6, 14), constrained_layout=True)
-            # CREATE THE GRID OF AXES
-            # CREATE THE GRID OF AXES
-            if self.arcFrame:
-                gs = fig.add_gridspec(12, 4)
-                sizeAx = fig.add_subplot(gs[8:9, :])
-                gapAx = fig.add_subplot(gs[9:10, :])
-                settingsAx = fig.add_subplot(gs[10:, 2:])
-                qcAx = fig.add_subplot(gs[11:, 0:2])
-            else:
-                gs = fig.add_gridspec(10, 4)
-                settingsAx = fig.add_subplot(gs[8:, 2:])
-                qcAx = fig.add_subplot(gs[8:, 0:2])
-
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:6, 0:2])
-            bottomright = fig.add_subplot(gs[4:6, 2:])
-            fwhmAx = fig.add_subplot(gs[6:7, :])
-            resAx = fig.add_subplot(gs[7:8, :])
+        # SIZE EACH IMAGE PANEL TO THE IMAGE ASPECT AND GIVE EACH TABLE ITS OWN FULL-WIDTH ROW SO THEY CANNOT OVERLAP
+        imagePanelHeight = qc_image_panel_height(rotatedImg)
+        qcTableHeight, settingsTableHeight = qc_table_heights(self.qc, tableSettings)
+        heightRatios = [
+            imagePanelHeight,
+            imagePanelHeight,
+            QC_RESIDUAL_ROW_HEIGHT_INCHES,
+            QC_STRIP_ROW_HEIGHT_INCHES,
+            QC_STRIP_ROW_HEIGHT_INCHES,
+        ]
+        if self.arcFrame:
+            heightRatios += [QC_STRIP_ROW_HEIGHT_INCHES, QC_STRIP_ROW_HEIGHT_INCHES]
+        heightRatios += [qcTableHeight, settingsTableHeight]
+        fig = plt.figure(
+            figsize=(6, sum(heightRatios) + QC_PLOT_DECORATION_HEIGHT_INCHES),
+            constrained_layout=True,
+        )
+        gs = fig.add_gridspec(len(heightRatios), 2, height_ratios=heightRatios)
+        toprow = fig.add_subplot(gs[0, :])
+        midrow = fig.add_subplot(gs[1, :])
+        bottomleft = fig.add_subplot(gs[2, 0])
+        bottomright = fig.add_subplot(gs[2, 1])
+        fwhmAx = fig.add_subplot(gs[3, :])
+        resAx = fig.add_subplot(gs[4, :])
+        if self.arcFrame:
+            sizeAx = fig.add_subplot(gs[5, :])
+            gapAx = fig.add_subplot(gs[6, :])
+        qcAx = fig.add_subplot(gs[-2, :])
+        settingsAx = fig.add_subplot(gs[-1, :])
 
         # TOP ROW - IMAGE WITH LINE POSITIONS OVERLAID
         vmax = self.meanFrameFlux + 25 * self.stdFrameFlux
         vmin = self.meanFrameFlux
-        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5)
+        # INTERPOLATION "none" EMBEDS THE IMAGE AT NATIVE RESOLUTION IN THE PDF; RESAMPLING TO THE SAVE DPI
+        # OFFSETS THE LINE MARKERS FROM THE IMAGE WHEN ZOOMED
+        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5, interpolation="none")
         toprow.set_title("observed arc-line positions (post-clipping)", fontsize=10)
 
         alphaBoost = 1.0
@@ -3553,17 +3545,14 @@ class create_dispersion_map:
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis="both", which="major", labelsize=9)
-        if self.arm == "VIS":
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.15), fontsize=4)
+        legend_below_axis(toprow, fig)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
             toprow.invert_yaxis()
         toprow.set_ylim([0, rotatedImg.shape[0]])
 
-        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5)
+        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5, interpolation="none")
         midrow.set_title("global dispersion solution", fontsize=10)
 
         # ADD FULL DISPERSION SOLUTION GRID-LINES TO PLOT
@@ -3625,13 +3614,9 @@ class create_dispersion_map:
             midrow.invert_yaxis()
         midrow.set_ylim([0, rotatedImg.shape[0]])
 
-        if self.arm == "VIS":
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.15), fontsize=4)
+        legend_below_axis(midrow, fig)
 
         # PLOT THE RESIDUALS
-        plt.subplots_adjust(top=0.92)
         bottomleft.scatter(
             orderPixelTable[f"residuals_{self.axisA}"],
             orderPixelTable[f"residuals_{self.axisB}"],
@@ -3656,13 +3641,11 @@ class create_dispersion_map:
             fig.suptitle(
                 f"residuals of global dispersion solution fitting - {arm} multi-pinhole\n{subtitle}",
                 fontsize=10,
-                y=0.99,
             )
         else:
             fig.suptitle(
                 f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}",
                 fontsize=10,
-                y=0.99,
             )
         orderPixelTable_groups = orderPixelTable.groupby(["order"])
 
@@ -3966,7 +3949,7 @@ class create_dispersion_map:
             log=self.log,
             qc=self.qc,
             qcAx=qcAx,
-            settings={**self.recipeSettings, **{"exptime": self.exptime}},
+            settings=tableSettings,
             settingsAx=settingsAx,
         )
 

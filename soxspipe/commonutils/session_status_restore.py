@@ -12,8 +12,11 @@ Date Created
 from __future__ import annotations
 
 import logging
+import shutil
 import sqlite3
-from collections.abc import Iterable, Mapping
+import tempfile
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -25,6 +28,12 @@ from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
 # THE ONLY STATUS VALUES THAT ARE WORTH CARRYING ACROSS A REBUILD (NULL MEANS "NOT REDUCED YET")
 RESTORABLE_STATUSES = frozenset({"pass", "fail"})
+
+# THE SQLITE FILES THAT MAKE UP ONE DATABASE: THE MAIN FILE AND ITS WRITE-AHEAD LOG AND SHARED-MEMORY SIDECARS
+DATABASE_FILE_SUFFIXES = ("", "-wal", "-shm")
+
+# NAME PREFIX OF THE TEMPORARY DIRECTORY A PRESERVED DATABASE IS COPIED TO FOR READING
+SCRATCH_DIRECTORY_PREFIX = "soxspipe-backup-read-"
 
 # THE LONGEST SLICE OF A VALUE FROM THE (UNTRUSTED) BACKUP THAT MAY REACH A LOG LINE OR AN EXCEPTION MESSAGE
 MAX_LOGGED_VALUE_LENGTH = 80
@@ -147,10 +156,14 @@ def classify_session_sofs(
     )
 
 
-def open_backup_read_only(backupPath: Path | str) -> sqlite3.Connection:
-    """*open a preserved database read-only, after checking that SQLite can trust it*
+@contextmanager
+def open_backup_read_only(backupPath: Path | str) -> Iterator[sqlite3.Connection]:
+    """*open a preserved database read-only through a scratch copy, after checking that SQLite can trust it*
 
-    Never opens with `immutable=1`, and never writes, so reading a backup cannot change it or leave a sidecar file.
+    The database and any `-wal`/`-shm` sidecar files are copied to a temporary directory outside the backups
+    directory, and the copy is opened. SQLite may create or rewrite sidecar files when it reads a WAL-mode
+    database, so reading the original could change `backups/`; reading the copy cannot. Never opens with
+    `immutable=1`. The scratch directory is removed when the block ends, including on error.
 
     **Key Arguments:**
 
@@ -158,22 +171,30 @@ def open_backup_read_only(backupPath: Path | str) -> sqlite3.Connection:
 
     **Return:**
 
-    - ``connection`` -- a read-only `sqlite3.Connection`; the caller closes it
+    - ``connection`` -- a read-only `sqlite3.Connection` to the scratch copy, closed when the block ends
 
     **Raises:**
 
     - `sqlite3.DatabaseError` when the file fails `PRAGMA quick_check`
     - `sqlite3.OperationalError` when the file cannot be opened
     """
-    connection = sqlite3.connect(Path(backupPath).resolve().as_uri() + "?mode=ro", uri=True)
-    try:
-        check = connection.execute("PRAGMA quick_check;").fetchall()
-        if check != [("ok",)]:
-            raise sqlite3.DatabaseError(f"the preserved database failed its quick check: {bounded_repr(check)}")
-    except sqlite3.Error:
-        connection.close()
-        raise
-    return connection
+    sourcePath = Path(backupPath).resolve()
+    if not sourcePath.is_file():
+        raise sqlite3.OperationalError(f"unable to open the preserved database `{sourcePath}`")
+    with tempfile.TemporaryDirectory(prefix=SCRATCH_DIRECTORY_PREFIX) as scratchDirectory:
+        scratchPath = Path(scratchDirectory) / sourcePath.name
+        for suffix in DATABASE_FILE_SUFFIXES:
+            sourceFile = Path(f"{sourcePath}{suffix}")
+            if sourceFile.exists():
+                shutil.copyfile(sourceFile, f"{scratchPath}{suffix}")
+        connection = sqlite3.connect(scratchPath.as_uri() + "?mode=ro", uri=True)
+        try:
+            check = connection.execute("PRAGMA quick_check;").fetchall()
+            if check != [("ok",)]:
+                raise sqlite3.DatabaseError(f"the preserved database failed its quick check: {bounded_repr(check)}")
+            yield connection
+        finally:
+            connection.close()
 
 
 def read_session_snapshots(
@@ -195,16 +216,13 @@ def read_session_snapshots(
 
     - `sqlite3.Error` when the backup cannot be opened or fails its `quick_check`
     """
-    connection = open_backup_read_only(backupPath)
-    try:
-        snapshots = {}
+    snapshots = {}
+    with open_backup_read_only(backupPath) as connection:
         for sessionId in sessionIds:
             snapshot = read_session_snapshot(connection, sessionId, log)
             if snapshot is not None:
                 snapshots[sessionId] = snapshot
-        return snapshots
-    finally:
-        connection.close()
+    return snapshots
 
 
 def read_session_snapshot(
