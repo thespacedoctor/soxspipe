@@ -105,6 +105,35 @@ def test_directory_table_rejects_mixed_instruments(tmp_path, log) -> None:
     assert any(level == "error" and "mix of instruments" in message for level, message in log.messages)
 
 
+@pytest.mark.parametrize("reverseListing", [False, True], ids=["forward", "reverse"])
+def test_directory_table_takes_the_frames_that_sort_first_whatever_the_listing_order(
+    tmp_path, log, monkeypatch, reverseListing
+) -> None:
+    """A capped scan always takes the same frames, so a run is reproducible across filesystems (DY-48)."""
+    # ARRANGE
+    organiser = workspace_organiser(tmp_path, log=log)
+    rootPath = Path(organiser.rootDir)
+    for name in ["c.fits", "a.fits", "b.fits"]:
+        harvestable_raw_fits(rootPath / name)
+    # THE TABLE HOLDS PATHS RELATIVE TO THE WORKSPACE ROOT, AS `prepare` RUNS FROM THERE
+    monkeypatch.chdir(rootPath)
+    realScandir = os.scandir
+    monkeypatch.setattr(
+        os,
+        "scandir",
+        lambda path: iter(sorted(realScandir(path), key=lambda entry: entry.name, reverse=reverseListing)),
+    )
+
+    # ACT
+    _rawFrames, fitsPaths, remainingFiles = organiser._create_directory_table(
+        str(rootPath), organiser.filterKeywords, limit=2
+    )
+
+    # ASSERT
+    assert fitsPaths == ["a.fits", "b.fits"]
+    assert remainingFiles == 1
+
+
 def test_fits_detection_checks_workspace_root_and_raw_tree(tmp_path, log) -> None:
     """Detect standard lowercase FITS files in either supported location."""
     organiser = workspace_organiser(tmp_path, log=log)

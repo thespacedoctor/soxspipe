@@ -391,24 +391,29 @@ def test_the_constructor_assigns_the_empty_qc_and_product_tables(
     assert set(recipe.products.dtypes.astype(str)) == {"object"}
 
 
-def test_the_scratch_directory_sits_under_the_workspace_tmp_directory(
+def test_each_recipe_gets_its_own_existing_scratch_directory_under_the_workspace_tmp_directory(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Each recipe gets its own randomly named scratch directory under `tmp`."""
+    """Two recipes in one workspace never share a scratch directory (DY-49)."""
     # ARRANGE
     _isolate(monkeypatch, tmp_path, productPath=tmp_path / "unused.fits")
 
     # ACT
-    recipe = base_recipe(
-        log=log,
-        settings=_settings(tmp_path),
-        inputFrames=str(tmp_path / "synthetic.sof"),
-        recipeName="soxs-mbias",
-        turnOffMP=True,
-    )
+    recipes = [
+        base_recipe(
+            log=log,
+            settings=_settings(tmp_path),
+            inputFrames=str(tmp_path / "synthetic.sof"),
+            recipeName="soxs-mbias",
+            turnOffMP=True,
+        )
+        for _ in range(2)
+    ]
 
     # ASSERT
-    assert Path(recipe.outDir).parent == tmp_path / "tmp"
-    assert Path(recipe.outDir).name.isdigit()
+    outDirs = [Path(recipe.outDir) for recipe in recipes]
+    assert all(outDir.parent == tmp_path / "tmp" for outDir in outDirs)
+    assert all(outDir.is_dir() for outDir in outDirs)
+    assert outDirs[0] != outDirs[1]

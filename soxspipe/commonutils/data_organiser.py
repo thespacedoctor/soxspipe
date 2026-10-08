@@ -985,7 +985,9 @@ class data_organiser:
         fitsPaths = []
         fitsPathsRel = []
         fitsNames = []
-        for entry in os.scandir(pathToDirectory):
+        # SORTED, BECAUSE THE FIRST FRAMES DECIDE THE INSTRUMENT CHECK AND THE `limit`
+        # CUT, AND RAW LISTING ORDER VARIES BETWEEN FILESYSTEMS (DY-48)
+        for entry in sorted(os.scandir(pathToDirectory), key=lambda entry: entry.name):
             if not entry.name.startswith(".") and entry.is_file() and is_fits_frame(entry.name):
                 # fitsPaths.append(entry.path)
                 if os.path.islink(entry.path):

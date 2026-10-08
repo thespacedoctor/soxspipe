@@ -88,7 +88,7 @@ class base_recipe:
         debug=False,
         turnOffMP=False,
     ):
-        import random
+        import tempfile
 
         import matplotlib
         import pandas as pd
@@ -128,11 +128,13 @@ class base_recipe:
         self.detectorParams = None
         self.dateObs = None
 
-        # `/tmp/` HERE IS A SUBDIRECTORY OF THE USER'S OWN WORKSPACE, NOT THE
-        # SYSTEM TEMPORARY DIRECTORY, AND THE RANDOM NAME ONLY HAS TO DIFFER
-        # BETWEEN CONCURRENT RECIPES, NOT RESIST AN ATTACKER. THE UNSEEDED
-        # DRAW ITSELF IS DY-49.
-        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))  # noqa: S108, S311
+        # `tmp` HERE IS A SUBDIRECTORY OF THE USER'S OWN WORKSPACE, NOT THE
+        # SYSTEM TEMPORARY DIRECTORY. `mkdtemp` CREATES A FRESH DIRECTORY, SO
+        # CONCURRENT RECIPES NEVER SHARE ONE AND ONE RECIPE'S `clean_up` CANNOT
+        # DELETE ANOTHER'S FRAMES (DY-49).
+        scratchRoot = os.path.join(self.workspaceRootPath, "tmp")
+        os.makedirs(scratchRoot, exist_ok=True)
+        self.outDir = tempfile.mkdtemp(dir=scratchRoot)
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
