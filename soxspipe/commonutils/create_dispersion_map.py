@@ -2326,6 +2326,72 @@ class create_dispersion_map:
 
         return orderPixelTable
 
+    def _fit_xy_coefficients(self, orderPixelTable, polyx, polyy, orderDeg, wavelengthDeg, slitDeg):
+        """*fit the x and y dispersion polynomials to a set of lines from fresh first-guess coefficients*
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- data frame of the lines to fit, with the polynomial exponent columns included
+        - ``polyx`` -- the x-axis polynomial function
+        - ``polyy`` -- the y-axis polynomial function
+        - ``orderDeg`` -- degree of the order fitting
+        - ``wavelengthDeg`` -- degree of wavelength fitting
+        - ``slitDeg`` -- degree of the slit fitting (0 for single pinhole)
+
+        **Return:**
+
+        - ``xcoeff`` -- the fitted x-coefficients (*None* if the fit failed)
+        - ``ycoeff`` -- the fitted y-coefficients (*None* if the fit failed)
+        - ``failure`` -- *None* on success, else the result tuple ``fit_polynomials`` returns on a fit failure
+        """
+        from scipy.optimize import curve_fit
+
+        from soxspipe.commonutils import get_cached_coeffs
+
+        # START FROM SCRATCH EACH TIME SO A PREVIOUS PASS DOES NOT INFLUENCE THE FINAL RESULT
+        # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
+        xcoeff, ycoeff = get_cached_coeffs(
+            log=self.log,
+            arm=self.arm,
+            settings=self.settings,
+            recipeName=self.recipeName,
+            orderDeg=orderDeg,
+            wavelengthDeg=wavelengthDeg,
+            slitDeg=slitDeg,
+            reset=True,
+        )
+
+        # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
+        # FIRST X
+        self.log.info("curvefit x")
+        try:
+            xcoeff, pcov_x = curve_fit(
+                polyx,
+                xdata=orderPixelTable,
+                ydata=orderPixelTable["observed_x"].to_numpy(),
+                p0=xcoeff,
+                maxfev=30000,
+            )
+        except (RuntimeError, ValueError) as e:
+            self.log.debug(f"fit_polynomials: `xcoeff, pcov_x = curve_fit( polyx, xdat...` failed, continuing: {e}")
+            return None, None, ("xerror", None, None, None)
+
+        # NOW Y
+        self.log.info("curvefit y")
+        try:
+            ycoeff, pcov_y = curve_fit(
+                polyy,
+                xdata=orderPixelTable,
+                ydata=orderPixelTable["observed_y"].to_numpy(),
+                p0=ycoeff,
+                maxfev=30000,
+            )
+        except (RuntimeError, ValueError) as e:
+            self.log.debug(f"fit_polynomials: `ycoeff, pcov_y = curve_fit( polyy, xdat...` failed, continuing: {e}")
+            return None, None, (None, "yerror", None, None)
+
+        return xcoeff, ycoeff, None
+
     def fit_polynomials(self, orderPixelTable, wavelengthDeg, orderDeg, slitDeg, missingLines=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
@@ -2353,9 +2419,6 @@ class create_dispersion_map:
         orderPixelTable = orderPixelTable.loc[~mask]
 
         import pandas as pd
-        from scipy.optimize import curve_fit
-
-        from soxspipe.commonutils import get_cached_coeffs
 
         arm = self.arm
         dp = self.detectorParams
@@ -2431,53 +2494,11 @@ class create_dispersion_map:
         orderPixelTable["sigma_clipped"] = False
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
-            observed_x = orderPixelTable["observed_x"].to_numpy()
-            observed_y = orderPixelTable["observed_y"].to_numpy()
-
-            # IF mean_res > 10 WE WANT TO START FROM SCRATCH AGAIN SO NOT TO INFLUENCE THE FINAL RESULT
-            if True or mean_res > 10:
-                # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
-                xcoeff, ycoeff = get_cached_coeffs(
-                    log=self.log,
-                    arm=arm,
-                    settings=self.settings,
-                    recipeName=self.recipeName,
-                    orderDeg=orderDeg,
-                    wavelengthDeg=wavelengthDeg,
-                    slitDeg=slitDeg,
-                    reset=True,
-                )
-
-            # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
-            # FIRST X
-            self.log.info("""curvefit x""" % locals())
-
-            try:
-                xcoeff, pcov_x = curve_fit(
-                    polyx,
-                    xdata=orderPixelTable,
-                    ydata=observed_x,
-                    p0=xcoeff,
-                    maxfev=30000,
-                )
-            except (RuntimeError, ValueError) as e:
-                self.log.debug(f"fit_polynomials: `xcoeff, pcov_x = curve_fit( polyx, xdat...` failed, continuing: {e}")
-                return "xerror", None, None, None
-
-            # NOW Y
-            self.log.info("""curvefit y""" % locals())
-
-            try:
-                ycoeff, pcov_y = curve_fit(
-                    polyy,
-                    xdata=orderPixelTable,
-                    ydata=observed_y,
-                    p0=ycoeff,
-                    maxfev=30000,
-                )
-            except (RuntimeError, ValueError) as e:
-                self.log.debug(f"fit_polynomials: `ycoeff, pcov_y = curve_fit( polyy, xdat...` failed, continuing: {e}")
-                return None, "yerror", None, None
+            xcoeff, ycoeff, fitFailure = self._fit_xy_coefficients(
+                orderPixelTable, polyx, polyy, orderDeg, wavelengthDeg, slitDeg
+            )
+            if fitFailure:
+                return fitFailure
 
             self.log.info("""calculate_residuals""" % locals())
             mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
@@ -2686,6 +2707,18 @@ class create_dispersion_map:
 
         if len(allClippedLines):
             allClippedLines = pd.concat(allClippedLines, ignore_index=True)
+
+        # A CAP EXIT WITH LINES STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE LINES JUST REJECTED
+        if iteration > 0 and clippedCount > 0:
+            self.log.info(
+                f"fit_polynomials: iteration limit of {clippingIterationLimit} reached with {clippedCount} lines "
+                "still being clipped; refitting to the surviving lines"
+            )
+            xcoeff, ycoeff, fitFailure = self._fit_xy_coefficients(
+                orderPixelTable, polyx, polyy, orderDeg, wavelengthDeg, slitDeg
+            )
+            if fitFailure:
+                return fitFailure
 
         mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
             orderPixelTable=orderPixelTable,

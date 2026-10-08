@@ -239,14 +239,14 @@ def test_series_equals_false_agrees_with_series_eq_false(label: str, series: pd.
     ("width", "expectedMedians", "expectedOffset", "expectedCentre"),
     [
         # ODD WIDTH: HALFWIDTH = (WIDTH - 1) / 2 = 1
-        (3, [22.0, 23.0, 24.0, 25.0], 1, 3.5),
+        (3, [22.0, 23.0, 24.0, 25.0], 1, 3.0),
         # EVEN WIDTH: HALFWIDTH = WIDTH / 2 = 2.0 -- SAME RESULT HERE BECAUSE
         # THE SYNTHETIC FRAME IS A LINEAR RAMP, SYMMETRIC AROUND THE CENTRE
-        (4, [22.0, 23.0, 24.0, 25.0], 1, 3.5),
+        (4, [22.0, 23.0, 24.0, 25.0], 1, 3.0),
         # FLOAT WIDTH (ODD BRANCH, SINCE 3.5 % 2 != 0): HALFWIDTH = 1.25 --
-        # THE INT() TRUNCATION IN `slice_width_centre` THEN SHIFTS THE
-        # REPORTED CENTRE TO 3.0 INSTEAD OF 3.5
-        (3.5, [18.5, 19.5, 20.5, 21.5], 1, 3.0),
+        # THE INT() TRUNCATION COLLAPSES ROWS 1 TO 4, SO THE REPORTED CENTRE
+        # IS THE CENTRE OF THOSE ROWS
+        (3.5, [18.5, 19.5, 20.5, 21.5], 1, 2.5),
     ],
 )
 def test_cut_image_slice_halfwidth_across_odd_even_and_float_widths(

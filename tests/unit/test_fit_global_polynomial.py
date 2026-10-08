@@ -205,3 +205,71 @@ def test_non_finite_values_raise_instead_of_returning_garbage(log: object) -> No
 
     with pytest.raises(ValueError, match="infs or NaNs"):
         detector.fit_global_polynomial(pixels, axisACol="stddev")
+
+
+def _line_with_outliers() -> tuple[pd.DataFrame, list[int]]:
+    """A noise-free straight line in one order with three gross outliers."""
+    yValues = np.arange(60, dtype=float)
+    pixels = pd.DataFrame(
+        {
+            "source": np.arange(60),
+            "order": np.full(60, 10.0),
+            "cont_y": yValues,
+            "cont_x": 1.0 + 2.0 * yValues,
+        }
+    )
+    outliers = [7, 31, 52]
+    pixels.loc[outliers, "cont_x"] += [60.0, -80.0, 70.0]
+    return pixels, outliers
+
+
+def test_cap_exit_refits_the_rows_that_survive_the_last_clip_and_logs_it(log: object) -> None:
+    # ARRANGE: ONE PASS ONLY, SO THE LOOP EXITS ON THE CAP WITH THE OUTLIERS JUST CLIPPED
+    detector = _detector(log, orderDeg=0, axisBDeg=1)
+    detector.recipeSettings["poly-clipping-iteration-limit"] = 1
+    pixels, outliers = _line_with_outliers()
+
+    # ACT
+    coefficients, fitted, clipped = detector.fit_global_polynomial(pixels.copy())
+
+    # ASSERT: THE COEFFICIENTS DESCRIBE THE SURVIVORS, THEIR RESIDUALS ARE CONSISTENT WITH THEM, AND THE CAP IS LOGGED
+    assert set(outliers).issubset(set(clipped["source"]))
+    np.testing.assert_allclose(coefficients, [1.0, 2.0], rtol=1e-8, atol=1e-8)
+    np.testing.assert_allclose(fitted["cont_x_fit_res"], 0.0, rtol=0, atol=1e-8)
+    capMessages = [message for level, message in log.messages if level == "info" and "iteration limit" in message]
+    assert len(capMessages) == 1
+    assert f"{len(clipped)} rows still being clipped" in capMessages[0]
+
+
+def test_converged_fit_does_not_report_a_cap_exit(log: object) -> None:
+    # ARRANGE: PLENTY OF PASSES, SO A PASS THAT CLIPS NOTHING ENDS THE LOOP
+    detector = _detector(log, orderDeg=0, axisBDeg=1)
+    detector.recipeSettings["poly-clipping-iteration-limit"] = 10
+    pixels, _ = _line_with_outliers()
+
+    # ACT
+    detector.fit_global_polynomial(pixels.copy())
+
+    # ASSERT
+    assert not [message for level, message in log.messages if "iteration limit" in message]
+
+
+def test_cap_exit_returns_no_solution_when_the_survivors_cannot_constrain_the_fit(log: object) -> None:
+    # ARRANGE: FOUR POINTS ON A LINE WITH ONE GROSS OUTLIER, ONE PASS, AND THREE COEFFICIENTS
+    detector = _detector(log, orderDeg=0, axisBDeg=2, clippingSigma=1.0)
+    detector.recipeSettings["poly-clipping-iteration-limit"] = 1
+    pixels = pd.DataFrame(
+        {
+            "order": np.full(4, 10.0),
+            "cont_y": [0.0, 1.0, 2.0, 3.0],
+            "cont_x": [1.0, 3.0, 5.0, 500.0],
+        }
+    )
+
+    # ACT
+    coefficients, kept, clipped = detector.fit_global_polynomial(pixels.copy())
+
+    # ASSERT: FEWER SURVIVORS THAN COEFFICIENTS MEANS NO SOLUTION, AS ON ANY OTHER PASS
+    assert len(clipped) > 0
+    assert coefficients is None
+    assert len(kept) < 3

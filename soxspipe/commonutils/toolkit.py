@@ -54,7 +54,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     - ``sliceOut`` -- the median-collapsed slice when ``median`` is True, otherwise the full uncollapsed cut
     - ``slice_length_offset`` -- the pixel offset of the slice start along its length
-    - ``slice_width_centre`` -- the pixel coordinate of the slice centre across its width
+    - ``slice_width_centre`` -- the pixel coordinate of the centre of the collapsed rows
 
     All three are *None* when the slice would fall outside the frame.
 
@@ -98,17 +98,14 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
         return None, None, None
 
     slice_length_offset = int(axisA - halfSlice)
+    widthStart = int(axisB - halfwidth)
+    widthStop = int(axisB + halfwidth + 1)
     if sliceAxis == "x":
-        sliceFull = frame[
-            int(axisB - halfwidth) : int(axisB + halfwidth + 1),
-            slice_length_offset : int(axisA + halfSlice),
-        ]
+        sliceFull = frame[widthStart:widthStop, slice_length_offset : int(axisA + halfSlice)]
     else:
-        sliceFull = frame[
-            slice_length_offset : int(axisA + halfSlice),
-            int(axisB - halfwidth) : int(axisB + halfwidth + 1),
-        ]
-    slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
+        sliceFull = frame[slice_length_offset : int(axisA + halfSlice), widthStart:widthStop]
+    # PIXEL CENTRES SIT AT INTEGER INDICES AND THE STOP INDEX IS EXCLUSIVE, SO THE LAST ROW COLLAPSED IS `widthStop - 1`
+    slice_width_centre = (widthStart + widthStop - 1) / 2
 
     # # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
     # maskedDataArray = np.ma.array(sliceFull.data, mask=sliceFull.mask)
