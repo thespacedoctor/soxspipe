@@ -540,7 +540,7 @@ class subtract_sky:
         mean = np.nanmean(maskedDataValues)
         vmax = mean + 2 * std
         vmin = mean - 1 * std
-        im = onerow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1)
+        im = onerow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1, interpolation="none")
         medianValue = np.median(np.ma.getdata(rotatedImg).ravel())
         color = im.cmap(im.norm(medianValue))
         patches = [mpatches.Patch(color=color, label="unprocessed frame")]
@@ -704,7 +704,7 @@ class subtract_sky:
         threerow.legend(loc=2, fontsize=8, bbox_to_anchor=(1.05, 1), borderaxespad=0.0)
 
         # IMAGE SHOWING CLIPPED PIXEL MASK
-        im = fourrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1)
+        im = fourrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1, interpolation="none")
 
         columnName = [
             "flagged_object_clipped",
@@ -742,7 +742,7 @@ class subtract_sky:
                 cmap=cmap,
                 norm=norm,
                 alpha=al,
-                interpolation="nearest",
+                interpolation="none",
             )
 
             patches.append(mpatches.Patch(color=cl, label=lb))
@@ -753,7 +753,7 @@ class subtract_sky:
         imageMask = self._qc_display_image(np.ma.array(np.ones_like(frame.data), mask=nonOrderMask))
         cmap = copy(cm.gray)
         cmap.set_bad("green", 0.0)
-        fourrow.imshow(imageMask, vmin=-10, vmax=-9, cmap=cmap, alpha=1.0)
+        fourrow.imshow(imageMask, vmin=-10, vmax=-9, cmap=cmap, alpha=1.0, interpolation="none")
         fourrow.set_xlabel(xLabel, fontsize=10)
         fourrow.set_ylabel(yLabel, fontsize=10)
         fourrow.set_ylim(*imageYLimits)
@@ -844,6 +844,7 @@ class subtract_sky:
             vmax=vmax,
             cmap=cmap,
             alpha=1.0,
+            interpolation="none",
         )
         sixrow.set_ylabel(yLabel, fontsize=10)
         sixrow.set_ylim(*imageYLimits)
@@ -866,7 +867,7 @@ class subtract_sky:
         vmax = mean + 0.2 * std
         vmin = mean - 0.2 * std
         skySubImageTmp = self._qc_display_image(skySubImage)
-        im = sevenrow.imshow(skySubImageTmp, vmin=0, vmax=50, cmap=cmap, alpha=1.0)
+        im = sevenrow.imshow(skySubImageTmp, vmin=0, vmax=50, cmap=cmap, alpha=1.0, interpolation="none")
         sevenrow.set_title("STEP 3. Subtract the sky-model from the original data.", fontsize=10)
         sevenrow.set_xlabel(xLabel, fontsize=10)
         sevenrow.set_ylabel(yLabel, fontsize=10)
@@ -2074,7 +2075,7 @@ class subtract_sky:
             mean = np.mean(maskedDataValues)
         vmax = mean + 1 * std
         vmin = mean - 0.1 * std
-        toprow.imshow(rotatedImg, vmin=0, vmax=100, cmap="gray", alpha=1.0)
+        toprow.imshow(rotatedImg, vmin=0, vmax=100, cmap="gray", alpha=1.0, interpolation="none")
         toprow.set_title(f"Original {arm} Frame", fontsize=10)
         toprow.set_ylabel("x-axis", fontsize=8)
         toprow.set_xlabel("y-axis", fontsize=8)
@@ -2087,7 +2088,7 @@ class subtract_sky:
         mean = np.nanmean(maskedDataValues)
         vmax = mean + 1 * std
         vmin = mean - 1 * std
-        midrow.imshow(rotatedImg, vmin=0, vmax=100, cmap="gray", alpha=1.0)
+        midrow.imshow(rotatedImg, vmin=0, vmax=100, cmap="gray", alpha=1.0, interpolation="none")
         midrow.set_title(f"Sky-model for {arm} Frame", fontsize=10)
         midrow.set_ylabel("x-axis", fontsize=8)
         midrow.set_xlabel("y-axis", fontsize=8)
@@ -2107,7 +2108,7 @@ class subtract_sky:
 
         vmax = 0 + std
         vmin = 0
-        bottomrow.imshow(rotatedImg, vmin=vmin, vmax=30, cmap="gray", alpha=1.0)
+        bottomrow.imshow(rotatedImg, vmin=vmin, vmax=30, cmap="gray", alpha=1.0, interpolation="none")
         bottomrow.set_title(f"Sky-subtracted {arm} Frame", fontsize=10)
         bottomrow.set_ylabel("x-axis", fontsize=8)
         bottomrow.set_xlabel("y-axis", fontsize=8)

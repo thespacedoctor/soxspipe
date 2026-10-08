@@ -14,7 +14,8 @@ from astropy.io import fits
 from astropy.nddata import CCDData
 
 from soxspipe.commonutils.detect_continuum import detect_continuum
-from tests.factories import instrument_header, pipeline_settings
+from tests.factories import instrument_header, pipeline_settings, qc_table
+from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
 
 pytestmark = pytest.mark.unit
 continuumModule = importlib.import_module("soxspipe.commonutils.detect_continuum")
@@ -550,6 +551,209 @@ def test_plot_results_pairs_each_order_with_its_own_colour_when_an_earlier_fit_i
         assert panel["11"] == midrow["11"]
         assert panel["12"] == midrow["12"]
     assert len({midrow["11"], midrow["12"]}) == 2
+
+
+# TWO ORDERS WHOSE CENTRES ARE -82 + 8 * ORDER, SO ORDERS 11 AND 12 SIT AT 6 AND 14 PIXELS, AND 12 AND 13 AT 14 AND 22
+FLIP_COEFFICIENTS = {
+    "cent_00": -82.0,
+    "cent_01": 0.0,
+    "cent_10": 8.0,
+    "cent_11": 0.0,
+    "std_00": 1.5,
+    "std_01": 0.0,
+    "std_10": 0.0,
+    "std_11": 0.0,
+}
+FLIP_ROWS = 64
+FLIP_COLUMNS = 40
+
+
+def _nir_flip_detector(tmp_path: Path, log: object) -> detect_continuum:
+    """Return a NIR-like detector (dispersion along y, flipped but not rotated) on a 64x40 trace frame."""
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    detector.arm = "NIR"
+    detector.axisA = "y"
+    detector.axisB = "x"
+    detector.detectorParams = {"dispersion-axis": "y", "flip-qc-plot": 1, "rotate-qc-plot": 0}
+    detector.traceFrame = CCDData(np.full((FLIP_ROWS, FLIP_COLUMNS), 20.0), unit=u.electron)
+    detector.qc = qc_table()
+    return detector
+
+
+def _nir_trace_pixels(orders: list[float], centres: list[float]) -> pd.DataFrame:
+    """Return a residual-free pixel table with one constant-row trace per order, dispersed along x."""
+    xValues = np.arange(4.0, 36.0)
+    return pd.DataFrame(
+        {
+            "order": np.repeat(orders, len(xValues)),
+            "cont_y": np.repeat(centres, len(xValues)),
+            "cont_x": np.tile(xValues, len(orders)),
+            "cont_y_fit_res": np.zeros(len(xValues) * len(orders)),
+            "gauss_stddev_fit": np.full(len(xValues) * len(orders), 1.5),
+            "wavelength": 500.0 + np.tile(xValues, len(orders)),
+        }
+    )
+
+
+def _nir_clipped_data() -> pd.DataFrame:
+    """Return one sample with no continuum found and one clipped peak."""
+    return pd.DataFrame(
+        {
+            "cont_x": [np.nan, 20.0],
+            "cont_y": [10.0, 30.0],
+            "fit_x": [10.0, 20.0],
+            "fit_y": [10.0, 25.0],
+        }
+    )
+
+
+def _finite_rows(collection: object) -> list[float]:
+    """Return the sorted distinct finite y-values of a scatter collection."""
+    rows = np.asarray(collection.get_offsets())[:, 1]
+    return sorted({float(row) for row in rows[np.isfinite(rows)]})
+
+
+def _probe_figure(fig: plt.Figure) -> dict[str, object]:
+    """Report the figure properties the continuum QC plot tests assert on."""
+    extents = table_extents(fig)
+    toprow, midrow = fig.axes[:2]
+    return {
+        "interpolations": image_interpolations(fig),
+        "tableExtents": extents,
+        "peakRows": [_finite_rows(collection) for collection in toprow.collections],
+        "notFoundRows": [list(line.get_ydata()) for line in toprow.get_lines()],
+        "fitRows": sorted({float(np.unique(line.get_ydata())[0]) for line in midrow.get_lines()}),
+        "bandRows": sorted(
+            (float(path.vertices[:, 1].min()), float(path.vertices[:, 1].max()))
+            for collection in midrow.collections
+            for path in collection.get_paths()
+        ),
+    }
+
+
+@pytest.fixture
+def savefig_probes(monkeypatch: pytest.MonkeyPatch):
+    """Probe the current figure each time `plt.savefig` is called, before `plot_results` clears its axes."""
+    probes = probe_on_savefig(monkeypatch, _probe_figure)
+    yield probes
+    plt.close("all")
+
+
+def test_plot_results_embeds_images_without_resampling(tmp_path, log: object, savefig_probes: list) -> None:
+    """Embed the trace frame at native resolution so vector markers line up with its pixels when zoomed."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+
+    # ACT
+    detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _nir_clipped_data())
+
+    # ASSERT
+    assert savefig_probes[0]["interpolations"] == ["none", "none"]
+
+
+def test_plot_results_flip_only_maps_markers_and_fit_lines_to_flipped_pixel_rows(
+    tmp_path, log: object, savefig_probes: list
+) -> None:
+    """A flip without rotation sends row ``r`` to ``N - 1 - r`` for peaks, missing-continuum bars, fits and bands."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+
+    # ACT
+    detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _nir_clipped_data())
+
+    # ASSERT
+    probe = savefig_probes[0]
+    last = FLIP_ROWS - 1
+    assert probe["peakRows"][0] == [last - 22.0, last - 14.0]
+    assert probe["peakRows"][1] == [last - 30.0, last - 10.0]
+    assert probe["notFoundRows"] == [[last - 10.0 - 2, last - 10.0 + 2]]
+    assert probe["fitRows"] == [last - 22.0, last - 14.0]
+    assert probe["bandRows"] == [
+        (last - 22.0 - 4.5, last - 22.0 + 4.5),
+        (last - 14.0 - 4.5, last - 14.0 + 4.5),
+    ]
+
+
+def test_plot_results_leaves_the_callers_pixel_and_clipped_tables_unflipped(tmp_path, log: object) -> None:
+    """Flip the plotted rows without rewriting the detector coordinates the caller passed in."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+    clipped = _nir_clipped_data()
+    pixelsBefore, clippedBefore = pixels.copy(), clipped.copy()
+
+    # ACT
+    detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), clipped)
+    plt.close("all")
+
+    # ASSERT
+    pd.testing.assert_frame_equal(pixels, pixelsBefore)
+    pd.testing.assert_frame_equal(clipped, clippedBefore)
+
+
+def test_plot_results_tables_do_not_overlap(tmp_path, log: object, savefig_probes: list) -> None:
+    """Keep the QC table and the settings table apart on a tall VIS-shaped trace frame."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    detector.detectorParams = {"dispersion-axis": "x", "flip-qc-plot": 1, "rotate-qc-plot": 90}
+    detector.traceFrame = CCDData(np.full((410, 82), 20.0), unit=u.electron)
+    detector.recipeSettings.update({f"setting-number-{i}": i for i in range(14)})
+    detector.qc = pd.concat(
+        [qc_table().assign(qc_name=f"QC {i}", qc_comment=f"[px] synthetic QC number {i}") for i in range(8)],
+        ignore_index=True,
+    )
+    pixels = _trace_pixels([10.0, 11.0], slope=0.2, intercept=8.0)
+    coefficients = pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
+
+    # ACT
+    detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+
+    # ASSERT
+    qcExtent, settingsExtent = savefig_probes[0]["tableExtents"]
+    assert not qcExtent.overlaps(settingsExtent)
+
+
+def test_plot_results_order_metadata_for_unflipped_frame_is_pinned(tmp_path, log: object) -> None:
+    """Pin the order limits written into the order-table product, including the legacy ``axisALength - xfit`` form."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    detector.qc = qc_table()
+    pixels = _trace_pixels([11.0, 12.0], slope=0.0, intercept=16.0)
+
+    # ACT
+    _, orderMetadata = detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT
+    assert orderMetadata.to_dict("list") == {
+        "order": [11.0, 12.0],
+        "ymin": [0, 0],
+        "ymax": [30, 30],
+        "xmin": [26.0, 18.0],
+        "xmax": [26.0, 18.0],
+    }
+
+
+def test_plot_results_order_metadata_for_flip_only_frame_is_pinned(tmp_path, log: object) -> None:
+    """Pin the order limits written into the order-table product for a flipped, unrotated frame."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+
+    # ACT
+    _, orderMetadata = detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _nir_clipped_data())
+    plt.close("all")
+
+    # ASSERT
+    assert orderMetadata.to_dict("list") == {
+        "order": [12.0, 13.0],
+        "xmin": [0, 0],
+        "xmax": [39, 39],
+        "ymin": [14.0, 22.0],
+        "ymax": [14.0, 22.0],
+    }
 
 
 def test_order_colours_assigns_a_stable_distinct_colour_per_order_and_wraps_after_the_cycle() -> None:

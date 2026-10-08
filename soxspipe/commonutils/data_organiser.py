@@ -1745,6 +1745,8 @@ class data_organiser:
             print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
             return
 
+        # THE SESSION ID FILE NOW NAMES THE NEW SESSION, SO THE INSTANCE MUST AGREE WITH IT
+        self.sessionId = sessionId
         self.sessionPath = str(sessionPath)
         self._symlink_session_assets_to_workspace_root()
         print(f"Session successfully switched to '{sessionId}'.")
