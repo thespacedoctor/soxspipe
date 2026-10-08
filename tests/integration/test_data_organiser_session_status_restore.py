@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.data_organiser import _UnsafePathError
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from tests.factories import raw_frame_table, workspace_organiser
 
@@ -516,3 +517,66 @@ def test_qc_acceptable_range_pass_closes_its_cursor_even_when_a_statement_fails(
 
     # ASSERT
     assert organiser.conn.cursorClosed
+
+
+# SWITCHING SESSION IN-PROCESS (DY-910)
+
+
+def test_session_switch_makes_the_switched_to_session_current(two_session_workspace) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+
+    # ACT
+    organiser.session_switch("archive")
+
+    # ASSERT
+    assert organiser.sessionId == "archive"
+    assert organiser.sessionPath == str(Path(organiser.sessionsDir) / "archive")
+
+
+def test_prepare_after_session_switch_fails_the_sof_in_the_switched_to_session_only(two_session_workspace) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    _seed_archive_session(organiser, {MBIAS_ONE: "pass"})
+    _seed_statuses(organiser, "science", {MBIAS_ONE: "pass"})
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0")
+    organiser.session_switch("archive")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, "archive")[MBIAS_ONE] == "fail"
+    assert _read_statuses(organiser, "science")[MBIAS_ONE] == "pass"
+
+
+@pytest.mark.parametrize("target", ["science", "missing"])
+def test_session_switch_that_does_not_happen_leaves_the_current_session_unchanged(
+    two_session_workspace, target
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    sessionPath = organiser.sessionPath
+
+    # ACT
+    organiser.session_switch(target)
+
+    # ASSERT
+    assert organiser.sessionId == "science"
+    assert organiser.sessionPath == sessionPath
+
+
+def test_session_switch_rejecting_an_invalid_session_id_leaves_the_current_session_unchanged(
+    two_session_workspace,
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    sessionPath = organiser.sessionPath
+
+    # ACT
+    with pytest.raises(_UnsafePathError, match="Session ID"):
+        organiser.session_switch("../archive")
+
+    # ASSERT
+    assert organiser.sessionId == "science"
+    assert organiser.sessionPath == sessionPath
