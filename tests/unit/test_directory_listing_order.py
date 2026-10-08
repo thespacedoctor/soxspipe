@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ pytestmark = pytest.mark.unit
     "listingOrder", [sorted, lambda names: sorted(names, reverse=True)], ids=["forward", "reverse"]
 )
 def test_directory_sof_picks_the_same_disp_map_whatever_the_listing_order(
-    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, listingOrder
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, listingOrder: Callable[[list[str]], list[str]]
 ) -> None:
     """When two dispersion maps exist for one arm, the one that sorts last wins on every filesystem."""
     # ARRANGE
