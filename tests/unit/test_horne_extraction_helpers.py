@@ -80,6 +80,7 @@ def _configure_synthetic_orchestration(
 
         def cache_image(self, name: str, image: np.ndarray, **kwargs: object) -> None:
             captured.setdefault("cached", []).append(name)
+            captured.setdefault("cacheKwargs", {})[name] = kwargs
 
         def get_order_slices(self) -> list[pd.DataFrame]:
             return [orderSlice]
@@ -166,6 +167,7 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
     assert captured["transformer"]
     assert captured["cached"] == ["fluxRaw", "variance"]
+    assert captured["cacheKwargs"]["variance"]["associatedMask"] is extractor.skySubtractedFrame.mask
     assert captured["slitDriftTransformer"] is captured["transformerInstance"]
     assert captured["extractions"][0].equals(extraction.drop(columns=["slitEdgeTruncated"]))
     assert extractor.slitEdgeOrders == []

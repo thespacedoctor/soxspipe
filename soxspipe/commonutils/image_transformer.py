@@ -139,7 +139,9 @@ class image_transformer(base_util):
 
             - ``imageName`` -- the unique name to give to the image
             - ``ndarray`` -- the 2D frame to rectify and cache
-            - ``associatedMask`` -- 2D bad-pixel mask. Currently accepted but not applied (no-op), matching the previous behaviour. Default *None*
+            - ``associatedMask`` -- 2D bad-pixel mask. Flagged pixels are left out of the cell sums and each cell is
+              renormalised by its good-pixel area.
+              A cell whose flagged area exceeds 0.2 is masked in ``bpMask``. Default *None*
             - ``returnCoverage`` -- if True, the method will return a list (one per order) of coverage maps of the rectified image. Default *False*
             - ``debug`` -- if True, print and plot the rectified image for each order. Default *False*
 
@@ -150,6 +152,7 @@ class image_transformer(base_util):
         self.log.debug("starting the ``cache_image`` method")
 
         bpmArray = associatedMask
+        badPixels = None if bpmArray is None else np.asarray(bpmArray).astype(bool)
 
         orderCoverage = [] if returnCoverage else None
 
@@ -160,8 +163,9 @@ class image_transformer(base_util):
             n_wl = len(wl_edges) - 1
             weights = self._resamplingWeights[order]
 
-            # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED (ALREADY REBINNED) PIXEL-OVERLAP WEIGHTS
-            flux = _apply_weights(ndarray, weights)
+            # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED (ALREADY REBINNED) PIXEL-OVERLAP WEIGHTS,
+            # LEAVING OUT FLAGGED PIXELS AND RENORMALISING EACH CELL BY ITS GOOD-PIXEL AREA
+            flux = _apply_weights(ndarray, weights, badPixels=badPixels)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -172,8 +176,7 @@ class image_transformer(base_util):
                 orderCoverage.append(weights["coverage"])
 
             if bpmArray is not None:
-                bpm = _apply_weights(bpmArray, weights)
-                bpm = bpm > 0.2
+                bpm = _apply_weights(badPixels, weights) > 0.2
                 orderTable["bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
 
@@ -1015,13 +1018,19 @@ def _rebin_resampling_weights(i, j, px, py, area, nSp, nWl, zoomSlit, zoomWavele
     }
 
 
-def _apply_weights(ndarray, weights):
-    """*Weighted sum of detector pixels into the rebinned output grid*
+def _apply_weights(ndarray, weights, badPixels=None):
+    """*Weighted sum of detector pixels into the rebinned output grid, leaving out flagged pixels*
+
+    Without ``badPixels`` every pixel is summed with its overlap area. With it, flagged pixels are left out of the
+    sum and the cell is scaled by (all overlap area) / (good overlap area), so a cell keeps the flux of one full
+    cell and does not carry a flagged pixel's value. A cell with no good pixel keeps its all-pixel sum (it is
+    masked by the caller). A cell with no flagged pixel is exactly the plain weighted sum.
 
     **Key Arguments:**
 
     - ``ndarray`` -- 2D detector-space image
     - ``weights`` -- rebinned weights dict from ``_rebin_resampling_weights``
+    - ``badPixels`` -- optional 2D boolean detector-space array, True where a pixel is flagged. Default *None*
 
     **Return:**
 
@@ -1030,5 +1039,23 @@ def _apply_weights(ndarray, weights):
     import numpy as np
 
     nSpOut, nWlOut = weights["shape"]
-    weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
-    return np.bincount(weights["flatIdx"], weights=weighted, minlength=nSpOut * nWlOut).reshape(nSpOut, nWlOut)
+    nCells = nSpOut * nWlOut
+    flatIdx, area = weights["flatIdx"], weights["area"]
+    weighted = ndarray[weights["py"], weights["px"]] * area
+    total = np.bincount(flatIdx, weights=weighted, minlength=nCells)
+    if badPixels is None:
+        return total.reshape(nSpOut, nWlOut)
+
+    isBad = badPixels[weights["py"], weights["px"]]
+    goodAreaEach = np.where(isBad, 0.0, area)
+    goodArea = np.bincount(flatIdx, weights=goodAreaEach, minlength=nCells)
+    allArea = np.bincount(flatIdx, weights=area, minlength=nCells)
+    # CELLS WITH NO FLAGGED PIXEL, OR NO GOOD PIXEL, KEEP THE PLAIN SUM
+    canRenormalise = (goodArea > 0) & (goodArea < allArea)
+    if not canRenormalise.any():
+        return total.reshape(nSpOut, nWlOut)
+
+    # WHERE, NOT MULTIPLICATION, SO A NON-FINITE VALUE UNDER THE MASK CANNOT POISON THE CELL
+    goodSum = np.bincount(flatIdx, weights=np.where(isBad, 0.0, weighted), minlength=nCells)
+    scale = np.divide(allArea, goodArea, out=np.ones_like(allArea), where=canRenormalise)
+    return np.where(canRenormalise, goodSum * scale, total).reshape(nSpOut, nWlOut)

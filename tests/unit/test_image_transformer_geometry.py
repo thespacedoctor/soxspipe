@@ -256,6 +256,100 @@ def test_cache_image_records_flux_mask_coverage_and_rectified_views(
     assert transformer.get_order_slices() is transformer.orderSlices
 
 
+def _two_pixel_cell_transformer(log: object, areas: tuple[float, float]) -> image_transformer:
+    """Return a transformer with one rectified cell built from detector pixels (0, 0) and (0, 1)."""
+    transformer = _transformer(log)
+    transformer.uniqueOrders = [10]
+    transformer.orderSlitEdges = [np.array([0.0, 1.0])]
+    transformer.orderWlEdges = [np.array([0.0, 1.0])]
+    transformer.orderSlices = [pd.DataFrame()]
+    transformer._resamplingWeights = {
+        10: {
+            "flatIdx": np.array([0, 0]),
+            "px": np.array([0, 1]),
+            "py": np.array([0, 0]),
+            "area": np.array(areas),
+            "shape": (1, 1),
+            "coverage": np.ones((1, 1)),
+        }
+    }
+    return transformer
+
+
+def test_cache_image_renormalises_a_cell_by_its_good_pixel_area(log: object) -> None:
+    # ARRANGE: 85% OF THE CELL IS A GOOD PIXEL OF 100, 15% IS A FLAGGED PIXEL
+    transformer = _two_pixel_cell_transformer(log, (0.85, 0.15))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[100.0, 60000.0]]), associatedMask=np.array([[False, True]]))
+    rectified = transformer.get_order_rectified()[0]
+
+    # ASSERT: THE GOOD PIXELS' MEAN SCALED TO THE FULL CELL AREA (1.0), AND THE CELL STAYS UNMASKED
+    assert rectified["flux"][0, 0] == pytest.approx(100.0)
+    assert not rectified["bpMask"][0, 0]
+
+
+def test_cache_image_renormalises_variance_like_flux(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.85, 0.15))
+    mask = np.array([[False, True]])
+
+    # ACT
+    transformer.cache_image("variance", np.array([[4.0, 9.0e6]]), associatedMask=mask)
+
+    # ASSERT
+    assert transformer.get_order_rectified()[0]["variance"][0, 0] == pytest.approx(4.0)
+
+
+def test_cache_image_ignores_non_finite_values_under_the_mask(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.9, 0.1))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[10.0, np.nan]]), associatedMask=np.array([[False, True]]))
+
+    # ASSERT
+    assert transformer.get_order_rectified()[0]["flux"][0, 0] == pytest.approx(10.0)
+
+
+def test_cache_image_keeps_the_plain_sum_for_a_fully_flagged_cell_and_masks_it(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.5, 0.5))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[2.0, 4.0]]), associatedMask=np.array([[True, True]]))
+    rectified = transformer.get_order_rectified()[0]
+
+    # ASSERT
+    assert rectified["flux"][0, 0] == pytest.approx(3.0)
+    assert rectified["bpMask"][0, 0]
+
+
+def test_cache_image_masks_a_cell_over_the_bad_area_threshold_but_still_renormalises_it(log: object) -> None:
+    # ARRANGE: 70% GOOD AT 10, 30% FLAGGED
+    transformer = _two_pixel_cell_transformer(log, (0.7, 0.3))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[10.0, 500.0]]), associatedMask=np.array([[False, True]]))
+    rectified = transformer.get_order_rectified()[0]
+
+    # ASSERT
+    assert rectified["bpMask"][0, 0]
+    assert rectified["flux"][0, 0] == pytest.approx(10.0)
+
+
+def test_cache_image_leaves_cells_without_flagged_pixels_exactly_as_the_plain_weighted_sum(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.3, 0.7))
+    flux = np.array([[1.1, 2.3]])
+
+    # ACT
+    transformer.cache_image("flux", flux, associatedMask=np.array([[False, False]]))
+
+    # ASSERT: BIT-IDENTICAL TO THE UNMASKED SUM
+    assert transformer.get_order_rectified()[0]["flux"][0, 0] == 1.1 * 0.3 + 2.3 * 0.7
+
+
 def test_cache_image_without_mask_or_coverage_preserves_optional_contract(
     log: object,
 ) -> None:
