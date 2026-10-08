@@ -1017,6 +1017,33 @@ class horne_extraction(base_util):
         plt.show()
         plt.close(fig)
 
+    @staticmethod
+    def _resample_grid(minWavelength, maxWavelength, ratio):
+        """*build the merged-spectrum wavelength grid: multiples of the output step lying inside [min, max]*
+
+        **Key Arguments:**
+
+        - ``minWavelength`` -- the shortest extracted wavelength (nm)
+        - ``maxWavelength`` -- the longest extracted wavelength (nm)
+        - ``ratio`` -- the reciprocal of the output step size
+
+        **Return:**
+
+        - ``grid`` -- the wavelength grid (nm), first bin >= ``minWavelength`` and last bin <= ``maxWavelength``
+        """
+        import numpy as np
+
+        firstIndex = int(np.ceil(minWavelength * ratio))
+        lastIndex = int(np.floor(maxWavelength * ratio))
+        # GUARD AGAINST FLOATING-POINT ROUNDING PUSHING AN END BIN OUTSIDE THE DATA
+        if firstIndex / ratio < minWavelength:
+            firstIndex += 1
+        if lastIndex / ratio > maxWavelength:
+            lastIndex -= 1
+        if lastIndex < firstIndex:
+            raise ValueError("No output wavelength bin lies inside the extracted wavelength range.")
+        return np.arange(firstIndex, lastIndex + 1) / ratio
+
     def merge_extracted_orders(self, extractedOrdersDF):
         """*merge the extracted order spectra in one continuous spectrum*
 
@@ -1131,17 +1158,12 @@ class horne_extraction(base_util):
 
             # ENSURE THE RANGE IS VALID
             if min_wavelength < max_wavelength and stepWavelengthOrderMerge > 0:
-                start = float(format(min_wavelength * ratio, ".0f")) / ratio
-                stop = float(format(max_wavelength * ratio, ".0f")) / ratio
-
-                # DEFINE THE WAVELENGTH ARRAY
-                wave_resample_grid = np.arange(start, stop, step=stepWavelengthOrderMerge)
+                # DEFINE THE WAVELENGTH ARRAY, ALIGNED TO STEP MULTIPLES AND INSIDE THE EXTRACTED RANGE
+                wave_resample_grid = self._resample_grid(min_wavelength, max_wavelength, ratio)
             else:
                 raise ValueError("Invalid range or step size for wavelength resampling.")
         else:
             raise ValueError("The 'wavelengthMean' column is empty or contains invalid values.")
-        # wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMean']) * ratio, '.0f')) / ratio, float(
-        #     format(np.max(extractedOrdersDF['wavelengthMean']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
 
         # ADD UNITS TO THE VARIOUS COLUMNS
         extractedOrdersDF["extractedFluxOptimal"] = extractedOrdersDF["extractedFluxOptimal"].values * u.electron

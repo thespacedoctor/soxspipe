@@ -25,6 +25,19 @@ class _ResponseFitConvergenceError(Exception):
         self.originalError = originalError
 
 
+def _fit_sampled_polynomial(wavelength: Any, response: Any, polynomialOrder: int) -> Any:
+    """Fit a polynomial to the median-sampled (every 100th point, +/-5 window) response."""
+    import numpy as np
+
+    sampledWavelength = np.array(
+        [np.median(wavelength[max(0, index - 5) : index + 6]) for index in range(0, len(wavelength), 100)]
+    )
+    sampledResponse = np.array(
+        [np.median(response[max(0, index - 5) : index + 6]) for index in range(0, len(response), 100)]
+    )
+    return np.polyfit(sampledWavelength, sampledResponse, deg=polynomialOrder)
+
+
 def _fit_response_polynomial(
     wavelength: Any,
     rawResponse: Any,
@@ -32,8 +45,13 @@ def _fit_response_polynomial(
     maxIterations: int,
     excludedRegions: Any = (),
     smoothingSigma: float | None = None,
+    log: Any = None,
 ) -> tuple[Any, Any, Any]:
-    """Fit the response polynomial using the pipeline clipping algorithm."""
+    """Fit the response polynomial using the pipeline clipping algorithm.
+
+    The returned coefficients are always the fit to the returned points. If the iteration cap is reached while
+    points are still being deleted, the polynomial is refitted on the surviving points and a warning is logged.
+    """
     import numpy as np
 
     fittedWavelength = np.asarray(wavelength).copy()
@@ -52,23 +70,7 @@ def _fit_response_polynomial(
     deletedPointCount = 1
     while iteration < int(maxIterations) and deletedPointCount > 0:
         try:
-            sampledWavelength = np.array(
-                [
-                    np.median(fittedWavelength[max(0, index - 5) : index + 6])
-                    for index in range(0, len(fittedWavelength), 100)
-                ]
-            )
-            sampledResponse = np.array(
-                [
-                    np.median(fittedResponse[max(0, index - 5) : index + 6])
-                    for index in range(0, len(fittedResponse), 100)
-                ]
-            )
-            responseCoefficients = np.polyfit(
-                sampledWavelength,
-                sampledResponse,
-                deg=polynomialOrder,
-            )
+            responseCoefficients = _fit_sampled_polynomial(fittedWavelength, fittedResponse, polynomialOrder)
             modelResponse = np.polyval(responseCoefficients, fittedWavelength)
             deletedPoints = [
                 index
@@ -79,6 +81,18 @@ def _fit_response_polynomial(
             fittedResponse = np.delete(fittedResponse, deletedPoints)
             deletedPointCount = len(deletedPoints)
             iteration += 1
+        except Exception as error:
+            raise _ResponseFitConvergenceError(error) from error
+
+    if iteration > 0 and deletedPointCount > 0:
+        # THE CAP WAS REACHED MID-REJECTION: THE COEFFICIENTS PREDATE THE LAST DELETION, SO REFIT THE SURVIVORS
+        if log is not None:
+            log.warning(
+                f"The response function fit reached the iteration cap ({int(maxIterations)}) while still "
+                f"rejecting points; refitting the {len(fittedWavelength)} surviving points."
+            )
+        try:
+            responseCoefficients = _fit_sampled_polynomial(fittedWavelength, fittedResponse, polynomialOrder)
         except Exception as error:
             raise _ResponseFitConvergenceError(error) from error
 
@@ -409,6 +423,7 @@ class response_function:
                 maxIterations=self.recipeSettings[self.arm.lower()]["max_iteration"],
                 excludedRegions=excludeRegions,
                 smoothingSigma=5 if self.arm == "NIR" else None,
+                log=self.log,
             )
         except _ResponseFitConvergenceError as e:
             self.log.print("fail")

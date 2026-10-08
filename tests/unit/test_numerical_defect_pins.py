@@ -226,11 +226,6 @@ def _merge_one_order(log: object, firstWavelength: float) -> tuple[np.ndarray, p
     return wavelength, merged, extraction
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1248 (DY-35 C1): merged spectrum fabricates a FLUX=0, VARIANCE=0, SNR=NaN bin below the first sample",
-)
 def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: object) -> None:
     # ARRANGE AND ACT: THE FIRST SAMPLE (500.004 NM) ROUNDS DOWN TO 500.00 ON THE 0.02 NM OUTPUT GRID
     wavelength, merged, _ = _merge_one_order(log, firstWavelength=500.004)
@@ -271,11 +266,6 @@ def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_res
     assert np.isfinite(coefficients).all()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1245 (DY-35 B1): response fit returns pre-rejection coefficients when it hits the cap",
-)
 def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> None:
     # ARRANGE: A BLOCK OF HIGH POINTS PULLS THE FIRST FIT, SO THE SINGLE ALLOWED PASS STILL DELETES POINTS
     wavelength = np.linspace(500.0, 900.0, 1000)

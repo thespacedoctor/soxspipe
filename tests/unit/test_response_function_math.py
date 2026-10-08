@@ -162,6 +162,42 @@ def test_response_fit_preserves_native_preprocessing_and_zero_iteration_errors()
         )
 
 
+class _RecordingLog:
+    """Collect warning messages from the fit routine."""
+
+    def __init__(self) -> None:
+        self.warnings: list[str] = []
+
+    def warning(self, message: str) -> None:
+        self.warnings.append(message)
+
+
+def _block_outlier_response() -> tuple[np.ndarray, np.ndarray]:
+    wavelengths = np.linspace(500.0, 900.0, 1000)
+    rawResponse = np.full(1000, 1.0)
+    rawResponse[295:306] = 3.0
+    return wavelengths, rawResponse
+
+
+def test_response_fit_warns_once_when_the_cap_is_reached_while_still_rejecting() -> None:
+    wavelengths, rawResponse = _block_outlier_response()
+    recordingLog = _RecordingLog()
+
+    _fit_response_polynomial(wavelengths, rawResponse, polynomialOrder=1, maxIterations=1, log=recordingLog)
+
+    assert len(recordingLog.warnings) == 1
+    assert "iteration cap" in recordingLog.warnings[0]
+
+
+def test_response_fit_does_not_warn_when_it_converges_before_the_cap() -> None:
+    wavelengths, rawResponse = _block_outlier_response()
+    recordingLog = _RecordingLog()
+
+    _fit_response_polynomial(wavelengths, rawResponse, polynomialOrder=1, maxIterations=5, log=recordingLog)
+
+    assert recordingLog.warnings == []
+
+
 def test_response_fit_marks_only_iterative_convergence_failures() -> None:
     with pytest.raises(_ResponseFitConvergenceError) as excInfo:
         _fit_response_polynomial(
