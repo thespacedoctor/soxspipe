@@ -217,10 +217,12 @@ def _supplementary_files_in_directory(directory):
 
     **Return:**
 
-    - ``supplementaryFilepaths`` -- the supplementary file paths, in directory-listing order
+    - ``supplementaryFilepaths`` -- the supplementary file paths, sorted by name
     """
     supplementaryFilepaths = []
-    for d in os.listdir(directory):
+    # SORTED, BECAUSE THE LAST MAP LISTED FOR AN ARM WINS AND RAW LISTING ORDER
+    # VARIES BETWEEN FILESYSTEMS (DY-48)
+    for d in sorted(os.listdir(directory)):
         filepath = os.path.join(directory, d)
         if os.path.isfile(filepath) and ".fits" not in d.lower() and d[0] != ".":
             supplementaryFilepaths.append(filepath)
