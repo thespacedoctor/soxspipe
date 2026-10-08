@@ -219,6 +219,91 @@ def test_a_path_that_is_neither_a_sof_file_nor_a_directory_is_rejected_by_name(
         _recipe(log, tmp_path, missing)
 
 
+def test_a_list_of_path_objects_gives_the_same_night_date_as_a_list_of_strings(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`pathlib.Path` entries are frames too, not an `AttributeError`."""
+    # ARRANGE
+    _isolate(monkeypatch)
+    paths = [
+        _write_frame(tmp_path / "raw", "a.fits", "2024-01-02T14:30:00", seed=1),
+        _write_frame(tmp_path / "raw", "b.fits", "2024-01-02T15:30:00", seed=2),
+    ]
+
+    # ACT
+    fromPaths = _recipe(log, tmp_path, paths)
+    fromStrings = _recipe(log, tmp_path, [str(path) for path in paths])
+
+    # ASSERT
+    assert fromPaths.startNightDate == fromStrings.startNightDate == "2024-01-01"
+
+
+def test_a_list_of_only_non_fits_paths_fails_naming_the_rejected_entries(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When every entry is rejected, the error names them rather than saying only that nothing was given."""
+    # ARRANGE
+    _isolate(monkeypatch)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"notes\.txt.*frame\.fits\.bak"):
+        _recipe(log, tmp_path, [str(tmp_path / "notes.txt"), tmp_path / "frame.fits.bak"])
+
+
+def test_a_backup_copy_of_a_frame_is_not_taken_as_a_frame_and_is_reported(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`x.fits.bak` contains `.fits` but is not a FITS frame, so it cannot date the night."""
+    # ARRANGE
+    _isolate(monkeypatch)
+    backup = _write_frame(tmp_path / "raw", "early.fits.bak", "2024-01-01T20:00:00", seed=1)
+    frame = _write_frame(tmp_path / "raw", "late.fits", "2024-01-02T20:00:00", seed=2)
+
+    # ACT
+    recipe = _recipe(log, tmp_path, [str(backup), str(frame)])
+
+    # ASSERT
+    assert recipe.startNightDate == "2024-01-02"
+    assert any(level == "warning" and "early.fits.bak" in message for level, message in log.messages)
+
+
+def test_an_unreadable_frame_is_skipped_with_a_warning_naming_it(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A file that is not FITS is skipped with a warning while another frame dates the night."""
+    # ARRANGE
+    _isolate(monkeypatch)
+    broken = tmp_path / "raw" / "broken.fits"
+    broken.parent.mkdir()
+    broken.write_text("not a fits file")
+    frame = _write_frame(tmp_path / "raw", "good.fits", "2024-01-02T20:00:00")
+
+    # ACT
+    recipe = _recipe(log, tmp_path, [str(broken), str(frame)])
+
+    # ASSERT
+    assert recipe.startNightDate == "2024-01-02"
+    assert any(level == "warning" and "broken.fits" in message for level, message in log.messages)
+
+
+def test_a_frame_without_mjd_obs_is_logged_by_name_when_it_is_skipped(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A frame skipped for a missing keyword leaves a debug trace naming the file and the keyword."""
+    # ARRANGE
+    _isolate(monkeypatch)
+    undated = _write_frame(tmp_path / "raw", "undated.fits", None, seed=1)
+    dated = _write_frame(tmp_path / "raw", "dated.fits", "2024-01-02T20:00:00", seed=2)
+
+    # ACT
+    _recipe(log, tmp_path, [str(undated), str(dated)])
+
+    # ASSERT
+    assert any(
+        level == "debug" and "undated.fits" in message and "MJD-OBS" in message for level, message in log.messages
+    )
+
+
 def test_the_list_route_names_the_recipe_after_recipe_arm_and_night(
     log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

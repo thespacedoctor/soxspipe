@@ -1630,36 +1630,54 @@ def start_night_date(obsTime):
     return (obsTime - nightStartOffset).strftime("%Y-%m-%d")
 
 
-def _frame_paths(inputFrames):
+def _frame_paths(log, inputFrames):
     """*list the FITS frames in a directory or a list of frame paths*
 
     **Key Arguments:**
 
-    - ``inputFrames`` -- a directory path or a list of FITS frame paths. Anything falsy gives an empty list
+    - ``log`` -- logger. Entries of a list that are not FITS frames are reported to it as warnings
+    - ``inputFrames`` -- a directory path or a list of FITS frame paths (``str`` or ``os.PathLike``).
+      Anything falsy gives no frames
 
     **Return:**
 
-    - ``framePaths`` -- the FITS frame paths. A directory is listed in name order
+    - ``framePaths`` -- the FITS frame paths as strings. A directory is listed in name order
+    - ``rejected`` -- the entries of a list that are not FITS frames
 
     Raises ``TypeError`` for a string that is not a directory.
     """
     from soxspipe.commonutils.fits_frame_names import is_fits_frame
 
     if not inputFrames:
-        return []
+        return [], []
     if isinstance(inputFrames, list):
-        return [f for f in inputFrames if ".fits" in f.lower()]
+        framePaths, rejected = [], []
+        for entry in inputFrames:
+            try:
+                path = os.fspath(entry)
+            except TypeError:
+                rejected.append(repr(entry))
+                continue
+            if isinstance(path, str) and is_fits_frame(path):
+                framePaths.append(path)
+            else:
+                rejected.append(str(path))
+        for entry in rejected:
+            log.warning(f"start_night_date_from_frames: `{entry}` is not a FITS frame and is ignored")
+        return framePaths, rejected
     directory = os.path.expanduser(inputFrames) if isinstance(inputFrames, str) else None
     if directory is None or not os.path.isdir(directory):
         raise TypeError(f"`{inputFrames}` is not a SOF file, a directory of frames or a list of FITS frame paths")
-    return [os.path.join(directory, name) for name in sorted(os.listdir(directory)) if is_fits_frame(name)]
+    framePaths = [os.path.join(directory, name) for name in sorted(os.listdir(directory)) if is_fits_frame(name)]
+    return framePaths, []
 
 
-def _frame_keyword(path, keyword, extensions):
+def _frame_keyword(log, path, keyword, extensions):
     """*read one header keyword from a FITS frame, trying each extension in turn*
 
     **Key Arguments:**
 
+    - ``log`` -- logger. An unreadable frame is a warning; a missing keyword is a debug message
     - ``path`` -- the FITS frame path
     - ``keyword`` -- the header keyword
     - ``extensions`` -- the extensions to try, in order
@@ -1673,10 +1691,12 @@ def _frame_keyword(path, keyword, extensions):
     for extension in extensions:
         try:
             header = fits.getheader(path, extension)
-        except (OSError, IndexError, KeyError, ValueError):
+        except (OSError, IndexError, KeyError, ValueError) as e:
+            log.warning(f"_frame_keyword: could not read extension {extension} of `{path}`, skipping it: {e}")
             continue
         if keyword in header:
             return header[keyword]
+        log.debug(f"_frame_keyword: `{path}` has no {keyword} keyword in extension {extension}")
     return None
 
 
@@ -1710,8 +1730,13 @@ def start_night_date_from_frames(log, settings, inputFrames):
 
     from astropy.time import Time
 
-    framePaths = _frame_paths(inputFrames)
+    framePaths, rejected = _frame_paths(log, inputFrames)
     if not framePaths:
+        if rejected:
+            raise ValueError(
+                "Cannot determine the start-of-night date: there are no input frames, "
+                f"and these entries are not FITS frames: {', '.join(rejected)}"
+            )
         raise ValueError("Cannot determine the start-of-night date: there are no input frames")
 
     kw = keyword_lookup(log=log, settings=settings).get
@@ -1719,24 +1744,34 @@ def start_night_date_from_frames(log, settings, inputFrames):
 
     dated = []
     for path in framePaths:
+        value = _frame_keyword(log, path, kw("MJDOBS"), extensions)
+        if value is None:
+            continue
         try:
-            mjd = float(_frame_keyword(path, kw("MJDOBS"), extensions))
+            mjd = float(value)
         except (TypeError, ValueError):
+            log.warning(
+                f"start_night_date_from_frames: {kw('MJDOBS')} of `{path}` is not a number ({value!r}), skipping it"
+            )
             continue
         if math.isfinite(mjd):
             dated.append((mjd, path))
+        else:
+            log.warning(
+                f"start_night_date_from_frames: {kw('MJDOBS')} of `{path}` is not finite ({value!r}), skipping it"
+            )
     if not dated:
         raise ValueError(
             f"Cannot determine the start-of-night date: none of the {len(framePaths)} input frames has a "
             f"readable {kw('MJDOBS')} keyword"
         )
 
-    mjd, earliestPath = min(dated)
-    arm = _frame_keyword(earliestPath, kw("SEQ_ARM"), extensions)
+    earliestMjd, earliestPath = min(dated)
+    arm = _frame_keyword(log, earliestPath, kw("SEQ_ARM"), extensions)
     if not arm:
         raise ValueError(f"Cannot name the recipe run: `{earliestPath}` has no {kw('SEQ_ARM')} keyword")
 
-    return start_night_date(Time(mjd, format="mjd", scale="utc")), str(arm).strip()
+    return start_night_date(Time(earliestMjd, format="mjd", scale="utc")), str(arm).strip()
 
 
 def predict_product_path(sofName, recipeName=False):
