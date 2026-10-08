@@ -1598,6 +1598,147 @@ def _add_pixel_scale_column(mapDF, dispAxis):
     mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
 
 
+# AN OBSERVING NIGHT IS DATED BY THE UTC DAY THAT BEGAN 15 HOURS BEFORE THE OBSERVATION
+NIGHT_START_OFFSET_SECONDS = 15.0 * 60 * 60
+
+
+def start_night_date(obsTime):
+    """*convert an observation time to the date of the observing night it belongs to*
+
+    The date is that of the instant 15 hours before the observation, formatted ``YYYY-MM-DD``. The SOF route
+    (``predict_product_path``) and the frame-list route (``start_night_date_from_frames``) both use it.
+
+    **Key Arguments:**
+
+    - ``obsTime`` -- the observation time. An ``astropy.time.Time`` in UTC.
+
+    **Return:**
+
+    - ``startNightDate`` -- the start-of-night date as ``YYYY-MM-DD``
+
+    **Usage:**
+
+    ```python
+    from astropy.time import Time
+    from soxspipe.commonutils.toolkit import start_night_date
+    startNightDate = start_night_date(Time("2024-01-02T10:00:00", scale="utc"))
+    ```
+    """
+    from astropy.time import TimeDelta
+
+    nightStartOffset = TimeDelta(NIGHT_START_OFFSET_SECONDS, format="sec")
+    return (obsTime - nightStartOffset).strftime("%Y-%m-%d")
+
+
+def _frame_paths(inputFrames):
+    """*list the FITS frames in a directory or a list of frame paths*
+
+    **Key Arguments:**
+
+    - ``inputFrames`` -- a directory path or a list of FITS frame paths. Anything falsy gives an empty list
+
+    **Return:**
+
+    - ``framePaths`` -- the FITS frame paths. A directory is listed in name order
+
+    Raises ``TypeError`` for a string that is not a directory.
+    """
+    from soxspipe.commonutils.fits_frame_names import is_fits_frame
+
+    if not inputFrames:
+        return []
+    if isinstance(inputFrames, list):
+        return [f for f in inputFrames if ".fits" in f.lower()]
+    directory = os.path.expanduser(inputFrames) if isinstance(inputFrames, str) else None
+    if directory is None or not os.path.isdir(directory):
+        raise TypeError(f"`{inputFrames}` is not a SOF file, a directory of frames or a list of FITS frame paths")
+    return [os.path.join(directory, name) for name in sorted(os.listdir(directory)) if is_fits_frame(name)]
+
+
+def _frame_keyword(path, keyword, extensions):
+    """*read one header keyword from a FITS frame, trying each extension in turn*
+
+    **Key Arguments:**
+
+    - ``path`` -- the FITS frame path
+    - ``keyword`` -- the header keyword
+    - ``extensions`` -- the extensions to try, in order
+
+    **Return:**
+
+    - ``value`` -- the keyword value, or *None* if the frame is unreadable or does not carry the keyword
+    """
+    from astropy.io import fits
+
+    for extension in extensions:
+        try:
+            header = fits.getheader(path, extension)
+        except (OSError, IndexError, KeyError, ValueError):
+            continue
+        if keyword in header:
+            return header[keyword]
+    return None
+
+
+def start_night_date_from_frames(log, settings, inputFrames):
+    """*find the start-of-night date and arm of a list or directory of frames*
+
+    The date comes from the frame with the earliest ``MJD-OBS``, converted by ``start_night_date``.
+    Frames with no readable ``MJD-OBS`` are ignored.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- a directory path or a list of FITS frame paths
+
+    **Return:**
+
+    - ``startNightDate`` -- the start-of-night date as ``YYYY-MM-DD``
+    - ``arm`` -- the arm of the earliest frame
+
+    Raises ``ValueError`` if there are no frames, if no frame has a readable ``MJD-OBS``, or if the earliest
+    frame does not name its arm.
+
+    **Usage:**
+
+    ```python
+    startNightDate, arm = start_night_date_from_frames(log=log, settings=settings, inputFrames=["a.fits", "b.fits"])
+    ```
+    """
+    import math
+
+    from astropy.time import Time
+
+    framePaths = _frame_paths(inputFrames)
+    if not framePaths:
+        raise ValueError("Cannot determine the start-of-night date: there are no input frames")
+
+    kw = keyword_lookup(log=log, settings=settings).get
+    extensions = sorted({0, settings.get("data-extension", 0)})
+
+    dated = []
+    for path in framePaths:
+        try:
+            mjd = float(_frame_keyword(path, kw("MJDOBS"), extensions))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(mjd):
+            dated.append((mjd, path))
+    if not dated:
+        raise ValueError(
+            f"Cannot determine the start-of-night date: none of the {len(framePaths)} input frames has a "
+            f"readable {kw('MJDOBS')} keyword"
+        )
+
+    mjd, earliestPath = min(dated)
+    arm = _frame_keyword(earliestPath, kw("SEQ_ARM"), extensions)
+    if not arm:
+        raise ValueError(f"Cannot name the recipe run: `{earliestPath}` has no {kw('SEQ_ARM')} keyword")
+
+    return start_night_date(Time(mjd, format="mjd", scale="utc")), str(arm).strip()
+
+
 def predict_product_path(sofName, recipeName=False):
     """*predict the path of the recipe product from a given SOF name*
 
@@ -1619,7 +1760,7 @@ def predict_product_path(sofName, recipeName=False):
     ```
     """
 
-    from astropy.time import Time, TimeDelta
+    from astropy.time import Time
 
     startNightDate = False
 
@@ -1652,9 +1793,7 @@ def predict_product_path(sofName, recipeName=False):
 
         try:
             obsDate = Time.strptime(obsDate, "%Y%m%dT%H%M%S", scale="utc")
-            night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
-            startNightDate = obsDate - night_start_offset
-            startNightDate = startNightDate.strftime("%Y-%m-%d")
+            startNightDate = start_night_date(obsDate)
         except (ValueError, TypeError):
             print("Could not determine OBSDATE from sof filename")
             pass

@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: every recipe now runs from a list of frame paths or a directory as well as a `.sof` file, instead of failing with `AttributeError`; the night date is the earliest `MJD-OBS` minus 15 hours, the QC `sof_name` is `<recipe>_<ARM>_<night>.sof`, and input with no frames or no `MJD-OBS` raises a clear `ValueError` (DY-90).
 * **ENHANCEMENT**: astropy is upgraded from 6.1.2 to 7.2.2 and `uncompresspy` 0.4.1 is added, so astropy can open LZW-compressed `.fits.Z` frames. Reduction output changes slightly, because astropy 7 no longer computes float32 sigma-clipping statistics with bottleneck, which lost precision (DY-694).
 * **FEATURE**: `soxs_mbias` writes `<product>_BIAS_DISTRIBUTION_QC_PLOT.pdf`, which compares the pixel flux histograms of the earliest raw bias frame and the master bias, with the RON values (DY-267).
 * **FEATURE**: extraction (stare, nod, offset) writes `<template>_SLIT_DRIFT_QC_PLOT<nodding sequence>.pdf`, which plots the object slit position against wavelength before rectification, with per-order fits and residuals; it is not written for the `_NOTFLAT` re-extraction (DY-270).

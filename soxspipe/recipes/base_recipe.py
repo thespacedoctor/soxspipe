@@ -189,9 +189,21 @@ class base_recipe:
         - ``verbose`` -- also print the refusal to the terminal
         - ``overwrite`` -- run again over an existing product or error log
 
-        Sets ``self.sofName``, ``self.productPath`` and ``self.log``. A product
-        or an error log already in place raises ``FileExistsError`` unless
-        ``overwrite`` is set.
+        Sets ``self.sofName``, ``self.productPath``, ``self.startNightDate`` and
+        ``self.log``. A product or an error log already in place raises
+        ``FileExistsError`` unless ``overwrite`` is set. That refusal applies to
+        a ``.sof`` input only.
+
+        A list of frame paths or a directory has no ``.sof`` name to read, so
+        ``startNightDate`` is the start-of-night date of the earliest
+        ``MJD-OBS`` among the frames (``toolkit.start_night_date``) and
+        ``sofName`` is a synthetic name, ``<recipeName>_<ARM>_<startNightDate>``
+        (for example ``soxs-mbias_VIS_2024-01-01``). The arm is that of the
+        earliest frame, so two arms reduced on one night do not delete each
+        other's QC rows. The QC table and the session database key on that name
+        with a ``.sof`` suffix, exactly as for a real set-of-files.
+        ``productPath`` is *False*: the product path is not predicted. Input
+        with no frames, or with no readable ``MJD-OBS``, raises ``ValueError``.
         """
         from soxspipe.commonutils import toolkit
 
@@ -222,7 +234,10 @@ class base_recipe:
 
             self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
-            self.sofName = False
+            self.startNightDate, arm = toolkit.start_night_date_from_frames(
+                log=log, settings=self.settings, inputFrames=inputFrames
+            )
+            self.sofName = f"{self.recipeName}_{arm}_{self.startNightDate}"
             self.productPath = False
             self.log = log
 
