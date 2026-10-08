@@ -197,3 +197,49 @@ def test_dispersion_grid_builds_order_edges_and_cross_lines(
     assert {"line", "fit_x", "fit_y"}.issubset(result.columns)
     if useSkylines:
         assert {501.0, 601.0}.issubset(result["wavelength"])
+
+
+@pytest.mark.parametrize(
+    ("shape", "expectedRatio"),
+    [((50, 100), 0.5), ((100, 100), 1.0), ((300, 100), 1.5), ((1000, 100), 1.5)],
+)
+def test_qc_image_panel_height_scales_with_aspect_and_caps_tall_images(
+    shape: tuple[int, int], expectedRatio: float
+) -> None:
+    height = toolkit.qc_image_panel_height(np.zeros(shape))
+
+    assert height == pytest.approx(toolkit.QC_PLOT_PANEL_WIDTH_INCHES * expectedRatio)
+
+
+@pytest.mark.parametrize(("qcRows", "expectedQcRows"), [(0, 1), (3, 4), (10, 11), (25, 11)])
+def test_qc_table_heights_cap_qc_rows_and_pad_settings(qcRows: int, expectedQcRows: int) -> None:
+    qc = pd.DataFrame({"qc_name": [f"QC{i}" for i in range(qcRows)]})
+    settings = {"a": 1, "b": 2, "c": 3}
+
+    qcHeight, settingsHeight = toolkit.qc_table_heights(qc, settings)
+
+    assert qcHeight == pytest.approx(toolkit.QC_TABLE_ROW_HEIGHT_INCHES * expectedQcRows)
+    assert settingsHeight == pytest.approx(toolkit.QC_TABLE_ROW_HEIGHT_INCHES * 5)
+
+
+def test_legend_below_axis_anchors_legend_under_the_axis_with_given_font_size() -> None:
+    fig, ax = plt.subplots()
+    ax.plot([0, 1], [0, 1], label="edge")
+
+    legend = toolkit.legend_below_axis(ax, fig, fontsize=6)
+
+    renderer = fig.canvas.get_renderer()
+    fig.draw(renderer)
+    assert legend.get_window_extent(renderer).y1 < ax.get_window_extent(renderer).y0
+    assert legend.get_texts()[0].get_fontsize() == 6
+    plt.close(fig)
+
+
+def test_legend_below_axis_defaults_to_fontsize_four() -> None:
+    fig, ax = plt.subplots()
+    ax.plot([0, 1], [0, 1], label="edge")
+
+    legend = toolkit.legend_below_axis(ax, fig)
+
+    assert legend.get_texts()[0].get_fontsize() == 4
+    plt.close(fig)

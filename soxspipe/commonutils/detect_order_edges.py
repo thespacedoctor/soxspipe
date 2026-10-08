@@ -15,16 +15,16 @@ from datetime import datetime
 from soxspipe.commonutils import _base_detect, detector_lookup, keyword_lookup
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
-from soxspipe.commonutils.toolkit import cut_image_slice, unpack_order_table
+from soxspipe.commonutils.toolkit import (
+    QC_PLOT_DECORATION_HEIGHT_INCHES,
+    cut_image_slice,
+    legend_below_axis,
+    qc_image_panel_height,
+    qc_table_heights,
+    unpack_order_table,
+)
 
 os.environ["TERM"] = "vt100"
-
-# ORDER-EDGE QC PLOT LAYOUT (INCHES)
-PLOT_PANEL_WIDTH_INCHES = 5.2
-TABLE_ROW_HEIGHT_INCHES = 0.25
-PLOT_DECORATION_HEIGHT_INCHES = 2.0
-# DROP THE LEGENDS BELOW THE TICK LABELS, BESIDE THE AXIS LABEL
-LEGEND_OFFSET_POINTS = 14
 
 
 class detect_order_edges(_base_detect):
@@ -572,7 +572,6 @@ class detect_order_edges(_base_detect):
         import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
-        from matplotlib.transforms import offset_copy
 
         allResiduals = np.concatenate(
             (
@@ -630,12 +629,11 @@ class detect_order_edges(_base_detect):
                 allAxisACoordsClipped = aLen - 1 - allAxisACoordsClipped
 
         # SIZE EACH IMAGE PANEL TO THE IMAGE ASPECT AND GIVE EACH TABLE ITS OWN FULL-WIDTH ROW SO THEY CANNOT OVERLAP
-        imagePanelHeight = PLOT_PANEL_WIDTH_INCHES * min(rotatedImg.shape[0] / rotatedImg.shape[1], 1.5)
-        qcTableHeight = TABLE_ROW_HEIGHT_INCHES * (min(len(self.qc.index), 10) + 1)
-        settingsTableHeight = TABLE_ROW_HEIGHT_INCHES * (len(self.recipeSettings) + 2)
+        imagePanelHeight = qc_image_panel_height(rotatedImg)
+        qcTableHeight, settingsTableHeight = qc_table_heights(self.qc, self.recipeSettings)
         heightRatios = [imagePanelHeight, imagePanelHeight, qcTableHeight, settingsTableHeight]
         fig = plt.figure(
-            figsize=(6, sum(heightRatios) + PLOT_DECORATION_HEIGHT_INCHES),
+            figsize=(6, sum(heightRatios) + QC_PLOT_DECORATION_HEIGHT_INCHES),
             constrained_layout=True,
         )
         gs = fig.add_gridspec(4, 1, height_ratios=heightRatios)
@@ -684,12 +682,7 @@ class detect_order_edges(_base_detect):
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis="both", which="major", labelsize=9)
-        toprow.legend(
-            loc="upper right",
-            bbox_to_anchor=(1.0, 0.0),
-            bbox_transform=offset_copy(toprow.transAxes, fig=fig, y=-LEGEND_OFFSET_POINTS, units="points"),
-            fontsize=4,
-        )
+        legend_below_axis(toprow, fig)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
@@ -833,12 +826,7 @@ class detect_order_edges(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        midrow.legend(
-            loc="upper right",
-            bbox_to_anchor=(1.0, 0.0),
-            bbox_transform=offset_copy(midrow.transAxes, fig=fig, y=-LEGEND_OFFSET_POINTS, units="points"),
-            fontsize=4,
-        )
+        legend_below_axis(midrow, fig)
         midrow.tick_params(axis="both", which="major", labelsize=9)
 
         # PLOT THE FINAL RESULTS:

@@ -25,6 +25,15 @@ from soxspipe.commonutils.polynomials import (
 
 os.environ["TERM"] = "vt100"
 
+# QC PLOT LAYOUT (INCHES)
+QC_PLOT_PANEL_WIDTH_INCHES = 5.2
+QC_TABLE_ROW_HEIGHT_INCHES = 0.25
+QC_PLOT_DECORATION_HEIGHT_INCHES = 2.0
+QC_RESIDUAL_ROW_HEIGHT_INCHES = 2.5
+QC_STRIP_ROW_HEIGHT_INCHES = 2.0
+# DROP THE LEGENDS BELOW THE TICK LABELS, BESIDE THE AXIS LABEL
+QC_LEGEND_OFFSET_POINTS = 14
+
 
 def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False, debug=False):
     """*cut and return an N-pixel wide and M-pixels long slice, centred on a given coordinate from an image frame*
@@ -1936,6 +1945,82 @@ def get_calibration_lamp(log, frame, kw):
 
     log.debug("completed the ``read_calibration_lamp`` function")
     return lamp
+
+
+def qc_image_panel_height(image):
+    """*return the height in inches of a QC plot image panel sized to the image aspect ratio*
+
+    **Key Arguments:**
+
+    - ``image`` -- the 2D array (or frame) shown in the panel. Only its shape is used
+
+    **Return:**
+
+    - ``height`` -- panel height in inches, with the height-to-width ratio capped at 1.5
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import qc_image_panel_height
+    imagePanelHeight = qc_image_panel_height(rotatedImg)
+    ```
+    """
+    return QC_PLOT_PANEL_WIDTH_INCHES * min(image.shape[0] / image.shape[1], 1.5)
+
+
+def qc_table_heights(qc, settings):
+    """*return the heights in inches of the QC table and settings table rows of a QC plot*
+
+    **Key Arguments:**
+
+    - ``qc`` -- data frame of collected QCs (at most 10 rows are tabulated)
+    - ``settings`` -- settings reported in the settings table
+
+    **Return:**
+
+    - ``qcHeight`` -- height of the QC table row in inches
+    - ``settingsHeight`` -- height of the settings table row in inches
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import qc_table_heights
+    qcHeight, settingsHeight = qc_table_heights(qc=self.qc, settings=settings)
+    ```
+    """
+    qcHeight = QC_TABLE_ROW_HEIGHT_INCHES * (min(len(qc.index), 10) + 1)
+    settingsHeight = QC_TABLE_ROW_HEIGHT_INCHES * (len(settings) + 2)
+    return qcHeight, settingsHeight
+
+
+def legend_below_axis(ax, fig, fontsize=4):
+    """*place the legend of an axis below its tick labels, beside the x-axis label*
+
+    **Key Arguments:**
+
+    - ``ax`` -- the axis to add the legend to
+    - ``fig`` -- the figure the axis belongs to
+    - ``fontsize`` -- legend font size. Default *4*
+
+    **Return:**
+
+    - ``legend`` -- the legend, anchored at the right edge of the axis
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import legend_below_axis
+    legend_below_axis(ax=toprow, fig=fig)
+    ```
+    """
+    from matplotlib.transforms import offset_copy
+
+    return ax.legend(
+        loc="upper right",
+        bbox_to_anchor=(1.0, 0.0),
+        bbox_transform=offset_copy(ax.transAxes, fig=fig, y=-QC_LEGEND_OFFSET_POINTS, units="points"),
+        fontsize=fontsize,
+    )
 
 
 def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):

@@ -14,7 +14,7 @@ from scipy.interpolate import splrep
 
 import soxspipe.commonutils.toolkit as toolkit
 from soxspipe.commonutils.subtract_sky import subtract_sky
-from tests.unit._plot_spies import quiet_show, spy_figures
+from tests.unit._plot_spies import image_interpolations, probe_on_savefig, quiet_show, spy_figures
 
 pytestmark = pytest.mark.unit
 
@@ -355,3 +355,35 @@ def test_image_comparison_order_mask_covers_the_true_detector_pixels_of_the_orde
     subtractor.plot_image_comparison(frame, frame.copy(), frame.copy())
 
     assert _positions(~np.isnan(objectPanelValues[0])) == {(1, 7), (4, 6)}
+
+
+def test_sky_sampling_images_and_mask_overlays_are_embedded_without_resampling(
+    log: Any, tmp_path: Path, figures: list
+) -> None:
+    """Embed every panel and flag overlay at native resolution so vector markers line up with pixels when zoomed."""
+    outputPath = tmp_path / "interpolation_plots"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=False)
+
+    subtractor.plot_sky_sampling(order=11, imageMapOrderDF=_order_strip(), knotLocations=np.array([502.0, 508.0]))
+
+    [figure] = figures
+    interpolations = image_interpolations(figure)
+    assert len(interpolations) == 9
+    assert set(interpolations) == {"none"}
+
+
+def test_image_comparison_images_are_embedded_without_resampling(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Embed the object, sky-model and sky-subtracted panels at native resolution."""
+    outputPath = tmp_path / "comparison_interpolation_plots"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=False, shape=(4, 4))
+    subtractor.mapDF = pd.DataFrame({"x": [0, 1], "y": [0, 1]})
+    frame = subtractor.objectFrame
+    probes = probe_on_savefig(monkeypatch, image_interpolations)
+
+    subtractor.plot_image_comparison(frame, frame.copy(), frame.copy())
+
+    assert probes == [["none", "none", "none"]]
