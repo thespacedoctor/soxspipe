@@ -192,6 +192,8 @@ def _construct_extractor(
     headerOverrides: dict[str, object],
     recipeName: str,
     locationSetIndex: object,
+    slitLength: float = 8,
+    binning: int = 1,
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection."""
     import soxspipe.commonutils as commonutils
@@ -227,8 +229,8 @@ def _construct_extractor(
         self.log = receivedLog
         self.settings = settings
         self.dispersionMap = "dispersion-map.fits"
-        self.binx = 1
-        self.biny = 1
+        self.binx = binning
+        self.biny = binning
         self.detectorParams = {"dispersion-axis": "x"}
         self.imageMap = pd.DataFrame({"wavelength": [500.0, 0.0], "slit_position": [0.0, 0.0]})
         self.twoDMap = {"WAVELENGTH": CCDData(np.ones((3, 3)), unit=u.nm, meta={"MJDOBS": 60310.5})}
@@ -269,7 +271,7 @@ def _construct_extractor(
         log=log,
         settings={"instrument": "soxs"},
         recipeSettings={
-            "horne-extraction-slit-length": 8,
+            "horne-extraction-slit-length": slitLength,
             "horne-extraction-profile-clipping-sigma": 3.0,
             "horne-extraction-profile-clipping-iteration-count": 2,
             "horne-extraction-profile-global-clipping-sigma": 4.0,
@@ -310,6 +312,41 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert extractor.imageMap["wavelength"].tolist() == [500.0]
     assert captured["recipeName"] == "soxs-stare"
     assert captured["locationSetIndex"] == 2
+
+
+def test_odd_slit_length_setting_keeps_its_half_pixel_in_the_half_length(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep half of an odd slit-length setting as x.5 so the extracted slit is as long as the setting."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=1,
+        slitLength=15,
+    )
+
+    assert extractor.slitHalfLength == 7.5
+
+
+def test_binned_slit_half_length_is_scaled_without_rounding(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scale the slit half length by the binning and leave whole-row rounding to the image transformer."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=1,
+        slitLength=15,
+        binning=2,
+    )
+
+    assert extractor.slitHalfLength == 3.75
 
 
 @pytest.mark.parametrize(

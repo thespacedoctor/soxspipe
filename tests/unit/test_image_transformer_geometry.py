@@ -908,6 +908,54 @@ def test_rectified_boundaries_size_slit_bins_from_measured_arcsec_per_pixel(
     np.testing.assert_array_equal(wavelengthEdges[0], measuredEdges)
 
 
+def _boundary_ready_transformer(log: object, *, slitHalfLength: float, zoomFactorSlit: int) -> image_transformer:
+    """Return a transformer with one order on a constant slit position, ready for boundary determination."""
+    transformer = _transformer(log, zoomFactorSlit=zoomFactorSlit)
+    transformer.slitHalfLength = slitHalfLength
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.orderPixelTable = pd.DataFrame({"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]})
+    transformer.mapDF = pd.DataFrame(
+        {"x": [0, 1], "y": [0, 0], "slit_position": [0.0, 0.0], "wavelength": [500.0, 502.0]}
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+    return transformer
+
+
+def test_odd_slit_length_gives_that_many_rectified_rows_centred_on_the_trace(log: object) -> None:
+    # ARRANGE: THE DEFAULT SLIT LENGTH OF 15 PIXELS, A HALF LENGTH OF 7.5, ZOOMED 5 TIMES
+    transformer = _boundary_ready_transformer(log, slitHalfLength=15 / 2, zoomFactorSlit=5)
+
+    # ACT
+    slitEdges, _ = transformer._determine_rectified_image_boundaries()
+    cellCentres = (slitEdges[0][:-1] + slitEdges[0][1:]) / 2.0
+    rows = transformer._unzoom(np.broadcast_to(cellCentres[:, None], (len(cellCentres), 4)).copy(), operation="mean")
+
+    # ASSERT
+    assert rows.shape[0] == 15
+    assert rows[:, 0].mean() == pytest.approx(0.0)
+    assert slitEdges[0][0] == pytest.approx(-7.5)
+    assert slitEdges[0][-1] == pytest.approx(7.5)
+
+
+def test_fractional_slit_length_rounds_to_whole_rectified_rows(log: object) -> None:
+    # ARRANGE: A BINNED SLIT LENGTH OF 7.5 ROWS (HALF LENGTH 3.75) CANNOT BE A FRACTION OF A RECTIFIED ROW
+    transformer = _boundary_ready_transformer(log, slitHalfLength=3.75, zoomFactorSlit=5)
+
+    # ACT
+    slitEdges, _ = transformer._determine_rectified_image_boundaries()
+
+    # ASSERT: ROUNDED HALF UP TO 8 ROWS, EACH CELL STILL 1/5 OF A ROW WIDE
+    assert (len(slitEdges[0]) - 1) // 5 == 8
+    np.testing.assert_allclose(np.diff(slitEdges[0]), 0.2)
+
+
 def test_measure_order_trace_geometry_samples_trace_and_slit_probe_in_one_conversion(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

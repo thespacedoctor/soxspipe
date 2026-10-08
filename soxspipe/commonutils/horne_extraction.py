@@ -145,7 +145,8 @@ class horne_extraction(base_util):
         )
 
         # COLLECT SETTINGS FROM SETTINGS FILE
-        self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
+        # HALF LENGTH KEPT AS setting / 2 (MAY END IN .5) SO THE EXTRACTED SLIT IS AS LONG AS THE SETTING
+        self.slitHalfLength = self.recipeSettings["horne-extraction-slit-length"] / 2
         self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
         self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
@@ -203,7 +204,6 @@ class horne_extraction(base_util):
                 self.slitHalfLength /= self.binx
             else:
                 self.slitHalfLength /= self.biny
-            self.slitHalfLength = round(self.slitHalfLength)
 
         # REMOVE ZEROS
         mask = (self.imageMap["wavelength"] == 0) & (self.imageMap["slit_position"] == 0)

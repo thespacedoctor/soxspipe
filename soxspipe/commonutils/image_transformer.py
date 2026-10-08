@@ -61,7 +61,8 @@ class image_transformer(base_util):
     - ``twoDMapPath`` -- path to the 2D map FITS file (pixel wavelength and slit position values needed for rectification)
     - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
     - ``associatedFrame`` -- an example 2D frame to be rectified. This frame is used to determine detector binning, arm etc.
-    - ``slitHalfLength`` -- half-length of the slit in detector pixels (sets extraction aperture)
+    - ``slitHalfLength`` -- half-length of the slit in detector pixels (sets extraction aperture). May end in .5.
+      The rectified grid has ``2 * slitHalfLength`` rows (rounded half up), centred on the trace
 
     **Return:**
 
@@ -577,7 +578,10 @@ class image_transformer(base_util):
 
         # SLIT OFFSET EDGES, CENTRED ON ZERO — THE ABSOLUTE SLIT POSITION OF ANY POINT IS THIS OFFSET
         # PLUS THE PER-ORDER, PER-WAVELENGTH TRACE CENTRE (SEE orderSlitCentreCoeffs)
-        slitPixelOffsets = np.arange(-self.slitHalfLength, self.slitHalfLength, 1.0 / self.zoomFactorSlit)
+        # THE GRID HOLDS A WHOLE NUMBER OF DETECTOR-PIXEL ROWS (2 x HALF LENGTH, ROUNDED HALF UP), EDGES FROM -H TO +H
+        # INCLUSIVE, SO THE ROWS ARE CENTRED ON THE TRACE AND EACH ROW IS EXACTLY zoomFactorSlit CELLS WIDE
+        nSlitRows = int(np.floor(2 * self.slitHalfLength + 0.5))
+        slitPixelOffsets = np.linspace(-nSlitRows / 2, nSlitRows / 2, nSlitRows * self.zoomFactorSlit + 1)
         orderSlitEdges = [slitPixelOffsets * arcsecPerPixel for _, arcsecPerPixel in orderGeometry]
         orderWlEdges = [wlEdges for wlEdges, _ in orderGeometry]
 
