@@ -5,12 +5,15 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import struct
+import tempfile
+from pathlib import Path
 
 import pytest
 
 from soxspipe.commonutils.session_status_restore import (
     classify_session_sofs,
     format_session_summary,
+    open_backup_read_only,
     read_session_snapshots,
     session_status_snapshot,
 )
@@ -281,6 +284,76 @@ def test_read_snapshots_leaves_the_backup_and_its_directory_unchanged(tmp_path, 
     assert sorted(path.name for path in tmp_path.iterdir()) == listingBefore
 
 
+@pytest.fixture
+def scratch_root(tmp_path, monkeypatch):
+    """Send every temporary directory to a known folder, so a leaked scratch directory is visible."""
+    root = tmp_path / "scratch-root"
+    root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(root))
+    return root
+
+
+def test_open_backup_read_only_reads_from_a_copy_outside_the_backups_directory(tmp_path, scratch_root) -> None:
+    # ARRANGE
+    backup = tmp_path / "backups" / "backup.db"
+    backup.parent.mkdir()
+    _write_backup(backup, {"science": [("a.sof", "pass")]}, {})
+
+    # ACT
+    with open_backup_read_only(backup) as connection:
+        databasePath = connection.execute("PRAGMA database_list;").fetchone()[2]
+        rows = connection.execute("SELECT sof FROM product_frames;").fetchall()
+        scratchWhileOpen = list(scratch_root.iterdir())
+
+    # ASSERT
+    assert rows == [("a.sof",)]
+    assert len(scratchWhileOpen) == 1
+    assert scratchWhileOpen[0] in Path(databasePath).parents
+
+
+def test_open_backup_read_only_removes_the_scratch_directory_after_a_successful_read(tmp_path, scratch_root) -> None:
+    # ARRANGE
+    backup = tmp_path / "backup.db"
+    _write_backup(backup, {"science": [("a.sof", "pass")]}, {})
+
+    # ACT
+    with open_backup_read_only(backup) as connection:
+        connection.execute("SELECT 1;")
+
+    # ASSERT
+    assert list(scratch_root.iterdir()) == []
+
+
+def test_open_backup_read_only_removes_the_scratch_directory_when_the_quick_check_fails(tmp_path, scratch_root) -> None:
+    # ARRANGE
+    backup = tmp_path / "backup.db"
+    _write_corrupt_but_openable_database(backup)
+
+    # ACT / ASSERT
+    with pytest.raises(sqlite3.DatabaseError, match="quick check"), open_backup_read_only(backup):
+        pytest.fail("the body must not run for a database that fails its quick check")
+    assert list(scratch_root.iterdir()) == []
+
+
+def test_open_backup_read_only_removes_the_scratch_directory_when_the_caller_raises(tmp_path, scratch_root) -> None:
+    # ARRANGE
+    backup = tmp_path / "backup.db"
+    _write_backup(backup, {"science": [("a.sof", "pass")]}, {})
+
+    # ACT / ASSERT
+    with pytest.raises(RuntimeError, match="caller failed"), open_backup_read_only(backup):
+        raise RuntimeError("caller failed")
+    assert list(scratch_root.iterdir()) == []
+
+
+def test_open_backup_read_only_raises_an_operational_error_for_a_missing_file(tmp_path, scratch_root) -> None:
+    # ACT / ASSERT
+    with pytest.raises(sqlite3.OperationalError), open_backup_read_only(tmp_path / "missing.db"):
+        pytest.fail("the body must not run for a missing database")
+    assert list(scratch_root.iterdir()) == []
+    assert not (tmp_path / "missing.db").exists()
+
+
 # THE BACKUP IS UNTRUSTED INPUT, SO ITS VALUES MUST NOT REACH THE LOG OR AN EXCEPTION AT FULL LENGTH
 
 HOSTILE_LENGTH = 10_000
@@ -324,6 +397,8 @@ def test_read_snapshots_logs_only_a_bounded_slice_of_a_hostile_sof_name(tmp_path
 def test_quick_check_failure_message_is_bounded_however_long_the_sqlite_output(tmp_path, log, monkeypatch) -> None:
     # ARRANGE
     hostileOutput = "*** in database main ***\n" + "P" * HOSTILE_LENGTH
+    backup = tmp_path / "backup.db"
+    backup.write_bytes(b"")
 
     class _FakeConnection:
         def execute(self, sqlQuery):
@@ -339,7 +414,7 @@ def test_quick_check_failure_message_is_bounded_however_long_the_sqlite_output(t
 
     # ACT
     with pytest.raises(sqlite3.DatabaseError, match="quick check") as caught:
-        read_session_snapshots(tmp_path / "backup.db", ["science"], log)
+        read_session_snapshots(backup, ["science"], log)
 
     # ASSERT
     assert len(str(caught.value)) < 500
