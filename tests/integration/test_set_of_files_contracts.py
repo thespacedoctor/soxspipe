@@ -8,7 +8,13 @@ import pytest
 from astropy.io import fits
 
 from soxspipe.commonutils.set_of_files import set_of_files
-from tests.factories import pipeline_settings, prepared_fits, raw_fits, sof_file
+from tests.factories import (
+    lzw_compressed_fits,
+    pipeline_settings,
+    prepared_fits,
+    raw_fits,
+    sof_file,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -112,6 +118,89 @@ def test_sof_input_preserves_member_order(tmp_path: Path, log: object) -> None:
 
     assert list(collection.summary["file"]) == ["second.fits", "first.fits"]
     assert supplementary == {}
+
+
+def test_sof_input_reads_lzw_compressed_members_in_place(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    sourcePath = raw_fits(tmp_path / "source.fits", seed=1)
+    compressedPath = lzw_compressed_fits(sourcePath, tmp_path / "frame.fits.Z")
+    sourcePath.unlink()
+    inputPath = sof_file(tmp_path / "input.sof", [(compressedPath, "BIAS_VIS")])
+
+    collection, _ = set_of_files(
+        log=log,
+        settings=_settings(tmp_path),
+        inputFrames=str(inputPath),
+        verbose=False,
+    ).get()
+
+    assert list(collection.summary["file"]) == ["frame.fits.Z"]
+    assert compressedPath.exists()
+    assert list(tmp_path.rglob("*.fits")) == []
+
+
+def test_sof_input_reads_the_compressed_member_not_its_uncompressed_twin(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    sourcePath = raw_fits(tmp_path / "source.fits", seed=1)
+    compressedPath = lzw_compressed_fits(sourcePath, tmp_path / "frame.fits.Z")
+    raw_fits(tmp_path / "frame.fits", seed=2)
+    inputPath = sof_file(tmp_path / "input.sof", [(compressedPath, "BIAS_VIS")])
+
+    collection, _ = set_of_files(
+        log=log,
+        settings=_settings(tmp_path),
+        inputFrames=str(inputPath),
+        verbose=False,
+    ).get()
+
+    assert list(collection.summary["file"]) == ["frame.fits.Z"]
+
+
+@pytest.mark.parametrize("name", ["FRAME.FITS", "frame.Fits.Z"])
+def test_sof_input_reads_members_whatever_the_case_of_the_fits_suffix(
+    tmp_path: Path,
+    log: object,
+    name: str,
+) -> None:
+    sourcePath = raw_fits(tmp_path / "source.fits", seed=1)
+    memberPath = tmp_path / name
+    if name.endswith(".Z"):
+        lzw_compressed_fits(sourcePath, memberPath)
+    else:
+        memberPath.write_bytes(sourcePath.read_bytes())
+    inputPath = sof_file(tmp_path / "input.sof", [(memberPath, "BIAS_VIS")])
+
+    collection, supplementary = set_of_files(
+        log=log,
+        settings=_settings(tmp_path),
+        inputFrames=str(inputPath),
+        verbose=False,
+    ).get()
+
+    assert list(collection.summary["file"]) == [name]
+    assert supplementary == {}
+
+
+def test_sof_input_ignores_a_trailing_comment_that_names_another_frame(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    memberPath = raw_fits(tmp_path / "frame.fits", seed=1)
+    inputPath = tmp_path / "input.sof"
+    inputPath.write_text(f"{memberPath} BIAS_VIS # was {tmp_path / 'old.fits'}\n", encoding="utf-8")
+
+    collection, _ = set_of_files(
+        log=log,
+        settings=_settings(tmp_path),
+        inputFrames=str(inputPath),
+        verbose=False,
+    ).get()
+
+    assert list(collection.summary["file"]) == ["frame.fits"]
 
 
 def test_sof_input_rejects_a_missing_member(tmp_path: Path, log: object) -> None:
@@ -285,6 +374,28 @@ def test_generate_sof_from_directory_is_sorted_and_uses_header_categories(
     assert outputPath.read_text(encoding="utf-8").splitlines() == [
         f"{earlierPath.resolve()} BIAS_VIS",
         f"{laterPath.resolve()} BIAS_VIS",
+    ]
+
+
+def test_generate_sof_from_directory_lists_lzw_compressed_frames(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    framesPath = tmp_path / "frames"
+    framesPath.mkdir()
+    plainPath = raw_fits(framesPath / "a.fits", seed=1)
+    compressedPath = lzw_compressed_fits(raw_fits(tmp_path / "b.fits", seed=2), framesPath / "b.fits.Z")
+    outputPath = tmp_path / "inventory" / "frames.sof"
+
+    set_of_files(
+        log=log,
+        settings=_settings(tmp_path),
+        verbose=False,
+    )._generate_sof_file_from_directory(str(framesPath), str(outputPath))
+
+    assert outputPath.read_text(encoding="utf-8").splitlines() == [
+        f"{plainPath.resolve()} BIAS_VIS",
+        f"{compressedPath.resolve()} BIAS_VIS",
     ]
 
 

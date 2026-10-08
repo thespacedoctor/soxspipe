@@ -56,6 +56,25 @@ def raw_fits(
     return destination
 
 
+def harvestable_raw_fits(destination: Path, *, includeDprType: bool = True) -> Path:
+    """Write a raw bias frame carrying every header card the data organiser indexes."""
+    raw_fits(destination)
+    with fits.open(destination, mode="update") as hdus:
+        header = hdus[0].header
+        header["MJD-OBS"] = 60311.75
+        header["ESO DET3 EXPO TIME"] = 8.0
+        header["ESO DET BINX"] = 1
+        header["ESO DET BINY"] = 2
+        header["ESO TPL ID"] = "SOXS_cal_bias"
+        header["ESO INS ACFW ID"] = "g"
+        header["ESO INS VISE NAME"] = "SLIT_1.0"
+        header["ESO DET3 CAM NAME"] = "VIS"
+        header["ESO ADA ABSROT END"] = 12.5
+        if not includeDprType:
+            del header["ESO DPR TYPE"]
+    return destination
+
+
 def prepared_fits(
     destination: Path,
     *,

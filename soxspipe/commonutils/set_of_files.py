@@ -11,11 +11,17 @@ Date Created
 
 import logging
 import os
+import re
 from os import path
 
 from ccdproc import ImageFileCollection
 
+from soxspipe.commonutils.fits_frame_names import is_fits_frame
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
+
+# A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits (ANY CASE) OR .fits.Z. THE MATCH ENDS AT
+# THE FIRST SUCH SUFFIX FOLLOWED BY WHITESPACE, SO A TRAILING COMMENT NAMING ANOTHER FRAME IS IGNORED
+SOF_FITS_PATH = re.compile(r"(.*?\.(?i:fits)(?:\.Z)?)(?=\s|$)")
 
 
 class ImageFileCollection(ImageFileCollection):
@@ -129,6 +135,27 @@ class ImageFileCollection(ImageFileCollection):
 
 
 os.environ["TERM"] = "vt100"
+
+
+def _fits_path_from_sof_line(line, home):
+    """*return the frame path from one SOF line, keeping any ``.Z`` suffix*
+
+    The path ends at the first ``.fits`` or ``.fits.Z`` that is followed by
+    whitespace or the end of the line, so a directory name holding ``.fits``
+    does not cut the path short.
+
+    **Key Arguments:**
+
+    - ``line`` -- one SOF line, the frame path then its tag
+    - ``home`` -- the home directory that replaces a leading ``~/``
+
+    **Return:**
+
+    - ``fitsPath`` -- the frame path
+    """
+    match = SOF_FITS_PATH.match(line)
+    fitsPath = match.group(1) if match else line[: line.lower().index(".fits")] + ".fits"
+    return fitsPath.replace("~/", home + "/")
 
 
 def _supplementary_path_from_sof_line(line, home):
@@ -349,7 +376,7 @@ class set_of_files:
 
         content = ""
         for d in sorted(os.listdir(directory)):
-            if os.path.isfile(os.path.join(directory, d)) and (os.path.splitext(d)[-1].lower() == ".fits"):
+            if os.path.isfile(os.path.join(directory, d)) and is_fits_frame(d):
                 fitsPath = os.path.abspath(os.path.join(directory, d))
                 # OPEN FITS FILE AT HDULIST - HDU (HEADER DATA UNIT) CONTAINS A HEADER AND A DATA ARRAY (IMAGE) OR
                 # TABLE.
@@ -472,10 +499,7 @@ class set_of_files:
         # REMOVE COMMENTED LINES
         lines = [sofLine for sofLine in lines if len(sofLine) and sofLine[0] != "#"]
 
-        fitsFiles = []
-        fitsFiles[:] = [
-            sofLine.split(".fits")[0].replace("~/", home + "/") + ".fits" for sofLine in lines if ".fits" in sofLine
-        ]
+        fitsFiles = [_fits_path_from_sof_line(sofLine, home) for sofLine in lines if ".fits" in sofLine.lower()]
 
         supplementaryFilepaths = [
             _supplementary_path_from_sof_line(sofLine, home)

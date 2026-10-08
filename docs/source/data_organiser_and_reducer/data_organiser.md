@@ -12,7 +12,13 @@ The algorithm used by the soxspipe data-organiser to prepare a workspace for dat
 
 At the heart of the DO is a SQLite database called `soxspipe.db`. Here, the organiser's bookkeeping is performed, recorded, and maintained.
 
-The ESO Science Archive Facility delivers FITS data in a `.Z` compressed format. When running `soxspipe prep`, the DO first finds and uncompresses any `.Z` compressed FITS frames within the workspace root. The DO then reads the FITS headers of all of the FITS frames in the workspace root and selects out the raw (unreduced) frames, recording one entry per raw frame in the `raw_frames` table of `soxspipe.db`. The DO then moves these raw frames to a `raw` directory within the workspace. Any remaining files are moved out of the workspace root and into a `misc` directory.
+The ESO Science Archive Facility delivers FITS data in a `.fits.Z` compressed format. The DO does not uncompress these frames and does not need the system `uncompress` command. They stay compressed on disk, and astropy reads them directly. This needs astropy 7.2 or later with the `uncompresspy` package, which soxspipe installs.
+
+When you run `soxspipe prep`, the DO finds all `.fits` and `.fits.Z` frames in the workspace root and anywhere in the `raw` directory tree. The `.fits` suffix can be in any letter case (for example `.FITS`). The `.Z` must be an upper-case `Z`. The DO then reads the FITS headers of these frames and selects out the raw (unreduced) frames, recording one entry per raw frame in the `raw_frames` table of `soxspipe.db`. A compressed frame is recorded with its `.fits.Z` name. The DO then moves raw frames from the workspace root to a `raw/<night>/` directory, still compressed. Any remaining files are moved out of the workspace root and into a `misc` directory.
+
+If a frame exists in both forms, the compressed one is kept. This applies when `X.fits` and `X.fits.Z` are in the same directory, and when a `X.fits` in the workspace root has a `X.fits.Z` that is already in the database. In both cases the DO deletes `X.fits`. The DO never deletes an uncompressed frame that is itself recorded in the database.
+
+SOF files list compressed frames with their `.fits.Z` name (for example `./raw/2024-01-01/X.fits.Z`), and the recipes read them in place. Frames that the recipes prepare from a `.fits.Z` input are saved without the `.Z`. For example, `X.fits.Z` gives `X_pre.fits`. No output file name carries `.Z`.
 
 A sanity check is performed to ensure that the data in the `raw_frames` database table matches the data in the `raw` directory. If frames have been removed from the file system, the corresponding records in the database table are deleted. Also, frames within the `raw` directory missing from the database table are added.
 

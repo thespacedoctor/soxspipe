@@ -12,6 +12,7 @@ from .dataframes import (
 )
 from .files import (
     dispersion_map_fits,
+    harvestable_raw_fits,
     lzw_compress,
     lzw_compressed_fits,
     order_table_fits,
@@ -28,6 +29,7 @@ __all__ = [
     "WorkspaceLayout",
     "dispersion_map_fits",
     "dispersion_table",
+    "harvestable_raw_fits",
     "instrument_header",
     "lzw_compress",
     "lzw_compressed_fits",

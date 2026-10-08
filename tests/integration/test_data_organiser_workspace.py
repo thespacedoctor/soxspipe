@@ -8,14 +8,20 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from astropy.io import fits
 
-from soxspipe.commonutils import keyword_lookup
+import soxspipe.commonutils
+from soxspipe.commonutils import data_organiser, keyword_lookup
 from soxspipe.commonutils.data_organiser import (
     _harvest_fits_headers,
     _UnsafePathError,
 )
-from tests.factories import raw_fits, workspace_organiser
+from tests.factories import (
+    harvestable_raw_fits,
+    lzw_compressed_fits,
+    raw_fits,
+    workspace_layout,
+    workspace_organiser,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -45,28 +51,10 @@ def _organiser_header_keywords(log) -> tuple[object, list[str]]:
     return kw, ["file", *(kw(alias).lower() for alias in aliases)]
 
 
-def _write_harvestable_fits(destination: Path, *, includeDprType: bool = True) -> Path:
-    raw_fits(destination)
-    with fits.open(destination, mode="update") as hdus:
-        header = hdus[0].header
-        header["MJD-OBS"] = 60311.75
-        header["ESO DET3 EXPO TIME"] = 8.0
-        header["ESO DET BINX"] = 1
-        header["ESO DET BINY"] = 2
-        header["ESO TPL ID"] = "SOXS_cal_bias"
-        header["ESO INS ACFW ID"] = "g"
-        header["ESO INS VISE NAME"] = "SLIT_1.0"
-        header["ESO DET3 CAM NAME"] = "VIS"
-        header["ESO ADA ABSROT END"] = 12.5
-        if not includeDprType:
-            del header["ESO DPR TYPE"]
-    return destination
-
-
 def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(tmp_path, log, capsys) -> None:
     """Use real FITS headers and ignore frames missing mandatory DPR metadata."""
-    validPath = _write_harvestable_fits(tmp_path / "valid.fits")
-    invalidPath = _write_harvestable_fits(tmp_path / "invalid.fits", includeDprType=False)
+    validPath = harvestable_raw_fits(tmp_path / "valid.fits")
+    invalidPath = harvestable_raw_fits(tmp_path / "invalid.fits", includeDprType=False)
     kw, keywords = _organiser_header_keywords(log)
 
     harvested = _harvest_fits_headers(
@@ -516,7 +504,7 @@ def test_prepare_indexes_a_raw_frame_and_creates_a_base_session(tmp_path, log, m
     """Prepare a disposable workspace through its public setup workflow."""
     organiser = workspace_organiser(tmp_path, log=log)
     rootPath = Path(organiser.rootDir)
-    rawPath = _write_harvestable_fits(rootPath / "bias.fits")
+    rawPath = harvestable_raw_fits(rootPath / "bias.fits")
     monkeypatch.chdir(rootPath)
 
     organiser.prepare(report=False)
@@ -532,7 +520,7 @@ def test_prepare_report_describes_the_completed_isolated_workspace(tmp_path, log
     """A second public preparation run reports the established workspace inventory."""
     organiser = workspace_organiser(tmp_path, log=log)
     rootPath = Path(organiser.rootDir)
-    _write_harvestable_fits(rootPath / "bias.fits")
+    harvestable_raw_fits(rootPath / "bias.fits")
     monkeypatch.chdir(rootPath)
 
     organiser.prepare(report=False)
@@ -542,3 +530,41 @@ def test_prepare_report_describes_the_completed_isolated_workspace(tmp_path, log
     assert "WORKSPACE FOR HAS BEEN PREPARED" in output
     assert "`misc/`: a lost-and-found archive" in output
     assert "`sessions/`: directory of data-reduction sessions" in output
+
+
+def test_organiser_leaves_compressed_frames_compressed_without_an_uncompress_command(
+    tmp_path, log, monkeypatch
+) -> None:
+    """Build the organiser over .fits.Z frames with no uncompress command on PATH."""
+    layout = workspace_layout(tmp_path)
+    nestedPath = layout.raw / "2024-01-01"
+    nestedPath.mkdir()
+    sourcePath = raw_fits(tmp_path / "source.fits")
+    rootFrame = lzw_compressed_fits(sourcePath, layout.root / "root.fits.Z")
+    nestedFrame = lzw_compressed_fits(sourcePath, nestedPath / "nested.fits.Z")
+    emptyBin = tmp_path / "empty-bin"
+    emptyBin.mkdir()
+    monkeypatch.setenv("PATH", str(emptyBin))
+
+    data_organiser(log=log, rootDir=str(layout.root), dbConnect=False)
+
+    assert rootFrame.read_bytes() == lzw_compressed_fits(sourcePath, tmp_path / "expected.fits.Z").read_bytes()
+    assert nestedFrame.exists()
+    assert not (layout.root / "root.fits").exists()
+    assert not (nestedPath / "nested.fits").exists()
+    assert not hasattr(soxspipe.commonutils, "uncompress")
+
+
+def test_fits_detection_counts_compressed_frames_at_the_root_and_in_the_raw_tree(tmp_path, log) -> None:
+    """A workspace holding only .fits.Z frames still has FITS files to prepare."""
+    organiser = workspace_organiser(tmp_path, log=log)
+    rootPath = Path(organiser.rootDir)
+    sourcePath = raw_fits(tmp_path / "source.fits")
+
+    rootFrame = lzw_compressed_fits(sourcePath, rootPath / "root.fits.Z")
+    assert organiser._fits_files_exist() is True
+    rootFrame.unlink()
+    nestedPath = Path(organiser.rawDir) / "2024-01-01"
+    nestedPath.mkdir()
+    lzw_compressed_fits(sourcePath, nestedPath / "nested.fits.Z")
+    assert organiser._fits_files_exist() is True

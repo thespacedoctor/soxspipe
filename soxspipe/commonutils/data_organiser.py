@@ -19,6 +19,7 @@ from pathlib import Path
 
 from fundamentals import tools
 
+from soxspipe.commonutils.fits_frame_names import is_fits_frame, superseded_frame_names
 from soxspipe.commonutils.late_frame_rejoin import (
     delete_stale_files,
     find_rejoined_sofs,
@@ -453,11 +454,6 @@ class data_organiser:
             "offset",
         ]
 
-        # DECOMPRESS .Z FILES
-        from soxspipe.commonutils import uncompress
-
-        uncompress(log=self.log, directory=self.rootDir)
-
         exists = os.path.exists(self.rootDbPath)
         if exists and dbConnect:
             self.conn, reset = self._get_or_create_db_connection()
@@ -790,6 +786,8 @@ class data_organiser:
 
         import pandas as pd
 
+        self._delete_superseded_frames()
+
         remainingFiles = 1
         firstPass = True
 
@@ -886,6 +884,68 @@ class data_organiser:
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return
 
+    def _delete_superseded_frames(self):
+        """*delete each uncompressed frame whose compressed `.fits.Z` twin is in the workspace*
+
+        When ``X.fits`` and ``X.fits.Z`` hold the same frame, the compressed file is kept. Twins pair within one
+        directory, and a frame at the workspace root also pairs with an ``X.fits.Z`` anywhere in the ``raw/``
+        tree, where `prep` has already moved it. Frames in different ``raw/`` night folders never pair. Only
+        regular files on disk count as twins, so a database row or a dangling link never condemns a frame. An
+        uncompressed frame that is itself indexed in ``raw_frames`` is never deleted, and nothing outside the
+        workspace is touched: a symlink is unlinked, never followed.
+
+        **Return:**
+
+        - None
+        """
+        self.log.debug("starting the ``_delete_superseded_frames`` method")
+
+        indexedNames = set()
+        if self.conn is not None:
+            indexedNames = {row[0] for row in self.conn.execute("SELECT file FROM raw_frames")}
+
+        framesByDirectory = {self.rootDir: [entry.name for entry in os.scandir(self.rootDir) if entry.is_file()]}
+        if os.path.isdir(self.rawDir):
+            # os.walk FOLLOWS A SYMLINKED raw/ ITSELF (VLT MODE) BUT NO LINK BELOW IT; THE OWNERSHIP CHECK
+            # BELOW KEEPS DELETES INSIDE THE WORKSPACE
+            for directory, _, files in os.walk(self.rawDir):
+                framesByDirectory[directory] = [f for f in files if os.path.isfile(os.path.join(directory, f))]
+        compressedInRaw = {
+            name for directory, names in framesByDirectory.items() if directory != self.rootDir for name in names
+        }
+
+        for directory in sorted(framesByDirectory):
+            names = sorted(n for n in framesByDirectory[directory] if is_fits_frame(n))
+            present = compressedInRaw if directory == self.rootDir else ()
+            for name in sorted(superseded_frame_names(names, present=present) - indexedNames):
+                self._delete_superseded_frame(os.path.join(directory, name))
+
+        self.log.debug("completed the ``_delete_superseded_frames`` method")
+        return
+
+    def _delete_superseded_frame(self, filepath):
+        """*delete one superseded uncompressed frame, if its directory lies inside the workspace*
+
+        **Key Arguments:**
+
+        - ``filepath`` -- the uncompressed frame to delete
+
+        **Return:**
+
+        - None
+        """
+        try:
+            _validate_owned_path(os.path.dirname(filepath), self.rootDir, "superseded frame")
+        except _UnsafePathError as error:
+            self.log.warning(f"not deleting `{filepath}`: {error}")
+            return
+        self.log.info(f"deleting `{filepath}`: its compressed twin is kept")
+        try:
+            os.remove(filepath)
+        except OSError as error:
+            self.log.warning(f"could not delete `{filepath}`, its twin may also be indexed: {error}")
+        return
+
     def _create_directory_table(self, pathToDirectory, filterKeys, limit=10000):
         """*create an astropy table based on the contents of a directory*
 
@@ -926,11 +986,7 @@ class data_organiser:
         fitsPathsRel = []
         fitsNames = []
         for entry in os.scandir(pathToDirectory):
-            if (
-                not entry.name.startswith(".")
-                and entry.is_file()
-                and (os.path.splitext(entry.name)[1] == ".fits" or ".fits.Z" in entry.name)
-            ):
+            if not entry.name.startswith(".") and entry.is_file() and is_fits_frame(entry.name):
                 # fitsPaths.append(entry.path)
                 if os.path.islink(entry.path):
                     fp = "./" + os.path.relpath(os.path.realpath(entry.path), pathToDirectory)
@@ -1125,8 +1181,7 @@ class data_organiser:
             for f in filesNotInDB:
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 basename = os.path.basename(f)
-                extension = os.path.splitext(basename)[1]
-                if extension.lower() != ".fits":
+                if not is_fits_frame(basename):
                     pass
                 elif self.rootDir in f:
                     exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
@@ -1896,15 +1951,13 @@ class data_organiser:
                 whatToList="files",  # all | files | dirs
             )
             for f in theseFiles:
-                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f):
+                if is_fits_frame(f):
                     fitsExist = True
                     break
         if not fitsExist:
             for d in os.listdir(self.rootDir):
                 filepath = os.path.join(self.rootDir, d)
-                if os.path.isfile(filepath) and (
-                    os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)
-                ):
+                if os.path.isfile(filepath) and is_fits_frame(filepath):
                     fitsExist = True
                     break
         return fitsExist
