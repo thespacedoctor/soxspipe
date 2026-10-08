@@ -271,11 +271,6 @@ def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_res
     assert np.isfinite(coefficients).all()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1245 (DY-35 B1): response fit returns pre-rejection coefficients when it hits the cap",
-)
 def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> None:
     # ARRANGE: A BLOCK OF HIGH POINTS PULLS THE FIRST FIT, SO THE SINGLE ALLOWED PASS STILL DELETES POINTS
     wavelength = np.linspace(500.0, 900.0, 1000)
