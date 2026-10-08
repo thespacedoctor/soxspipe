@@ -338,6 +338,21 @@ class _base_detect:
         if len(allClipped):
             allClipped = pd.concat(allClipped, ignore_index=True)
 
+        # A CAP EXIT WITH ROWS STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE ROWS JUST REJECTED
+        if iteration > 0 and clippedCount > 0:
+            self.log.info(
+                f"fit_global_polynomial: iteration limit of {clippingIterationLimit} reached with {clippedCount} rows "
+                "still being clipped; refitting to the surviving rows"
+            )
+            if len(pixelList.index) < nCoeff:
+                return None, pixelList, pixelList
+            coeff = _solve_linear_poly_coefficients(
+                poly=poly,
+                pixelList=pixelList,
+                yValues=pixelList[axisACol].values,
+                nCoeff=nCoeff,
+            )
+
         res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
             orderPixelTable=pixelList,
             coeff=coeff,
@@ -346,6 +361,8 @@ class _base_detect:
             axisBCol=axisBCol,
             writeQCs=writeQCs,
         )
+        pixelList[f"{axisACol}_fit_res"] = res
+        pixelList[f"{axisACol}_fit"] = xfit
 
         self.log.debug("completed the ``fit_global_polynomial`` method")
         return coeff, pixelList, allClipped

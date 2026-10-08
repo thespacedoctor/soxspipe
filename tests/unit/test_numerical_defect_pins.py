@@ -339,11 +339,6 @@ def test_rectified_unmasked_cell_does_not_carry_the_masked_pixel_value(log: obje
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1246 (DY-35 B2): fit_global_polynomial returns pre-clipping coefficients on a cap exit",
-)
 def test_global_polynomial_coefficients_match_a_refit_on_the_kept_rows(log: object) -> None:
     # ARRANGE: FIVE ORDERS WITH A BLOCK OF CORRUPTED MEASUREMENTS AND THE NIR MFLAT TWO-PASS CAP
     detector = object.__new__(detect_continuum)
