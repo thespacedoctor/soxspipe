@@ -48,7 +48,8 @@ class horne_extraction(base_util):
     - ``productsTable`` -- the data frame to collect output products (if False no products are saved to file)
     - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
     - ``sofName`` -- the set-of-files filename
-    - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+    - ``locationSetIndex`` -- the index of the AB cycle locations, or the offset stack's own index (nodding and
+      offset modes only). Default *False*
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``notFlattened`` -- flag to indicate if the frame is flattened or not. Default *False*
     - ``debug`` -- flag to indicate if debug mode is on (shows plots). Default *False*
@@ -109,7 +110,7 @@ class horne_extraction(base_util):
         from astropy.nddata import CCDData
 
         from soxspipe.commonutils import detect_continuum
-        from soxspipe.commonutils.toolkit import unpack_order_table
+        from soxspipe.commonutils.toolkit import nodding_sequence_suffix, unpack_order_table
 
         super().__init__(
             log, settings, associatedFrame=skySubtractedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath
@@ -139,13 +140,9 @@ class horne_extraction(base_util):
             self.skySubtractedFrame = unflattenedFrame
 
         # DETECTING SEQUENCE AUTOMATICALLY
-        try:
-            self.noddingSequence = "_A" if int(skySubtractedFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
-            if locationSetIndex:
-                self.noddingSequence += str(locationSetIndex)
-        except (KeyError, TypeError) as e:
-            self.log.debug(f"__init__: `self.noddingSequence = '_A' if int(skySubtractedFr...` failed, continuing: {e}")
-            self.noddingSequence = ""
+        self.noddingSequence = nodding_sequence_suffix(
+            header=skySubtractedFrame.header, locationSetIndex=locationSetIndex, recipeName=recipeName
+        )
 
         # COLLECT SETTINGS FROM SETTINGS FILE
         self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
