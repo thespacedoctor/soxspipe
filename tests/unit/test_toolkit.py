@@ -30,8 +30,8 @@ def test_cut_image_slice_returns_centered_medians_and_coordinates(log: object) -
 
     assert_array_equal(horizontal, [22.0, 23.0, 24.0, 25.0])
     assert_array_equal(vertical, [10.0, 17.0, 24.0, 31.0])
-    assert (xOffset, yCentre) == (1, 3.5)
-    assert (yOffset, xCentre) == (1, 3.5)
+    assert (xOffset, yCentre) == (1, 3.0)
+    assert (yOffset, xCentre) == (1, 3.0)
 
 
 def test_cut_image_slice_returns_raw_data_when_median_false(log: object) -> None:
@@ -47,7 +47,7 @@ def test_cut_image_slice_returns_raw_data_when_median_false(log: object) -> None
             [29.0, 30.0, 31.0, 32.0],
         ],
     )
-    assert (offset, centre) == (1, 3.5)
+    assert (offset, centre) == (1, 3.0)
 
 
 def test_cut_image_slice_rejects_invalid_axis_and_out_of_bounds(log: object) -> None:

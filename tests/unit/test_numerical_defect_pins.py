@@ -504,18 +504,10 @@ def test_rectified_slit_grid_has_two_h_rows_centred_on_the_trace(log: object) ->
 
 
 # ---------------------------------------------------------------------------
-# C4: cut_image_slice reports a centre 0.5 px too high
+# C4: cut_image_slice reports the centre of the collapsed rows
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1250 (DY-35 C4): cut_image_slice reports the slice centre 0.5 px above the rows it collapsed "
-        "(pixel-centre convention unconfirmed; delete this pin if the owner rules it deliberate)"
-    ),
-)
 def test_cut_image_slice_reports_the_centre_of_the_collapsed_rows(log: object) -> None:
     # ARRANGE: PIXEL VALUE EQUALS ROW INDEX, SO THE MEDIAN OF THE COLLAPSED SLICE IS THEIR CENTRE
     rowIndices, _ = np.mgrid[0:60, 0:80]

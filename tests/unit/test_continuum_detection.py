@@ -264,6 +264,27 @@ def test_gaussian_slice_fit_recovers_trace_and_leaves_low_signal_unfitted(
     assert np.isnan(result.loc[1, "gauss_mean"])
 
 
+def test_gaussian_slice_fit_reports_the_anti_axis_centre_of_the_collapsed_rows(log: object) -> None:
+    # ARRANGE: A HORIZONTAL TRACE ON ROW 30, SO THE ONE-ROW SLICE COLLAPSES ONLY ROW 30
+    detector = _detector(log)
+    detector.sliceWidth = 1
+    detector.detectorParams = {"dispersion-axis": "x"}
+    detector.debug = False
+    detector.peakSigmaLimit = 3.0
+    detector.sliceAxis = "x"
+    detector.sliceAntiAxis = "y"
+    columns = np.arange(80, dtype=float)
+    frame = np.tile(20.0 * np.exp(-0.5 * ((columns - 40.0) / 2.0) ** 2), (60, 1))
+    detector.traceFrame = np.ma.masked_array(frame, mask=np.zeros(frame.shape, dtype=bool))
+    pixels = pd.DataFrame({"fit_x": [40.0], "fit_y": [30.0]})
+
+    # ACT
+    result = detector.fit_1d_gaussian_to_slices(pixels, sliceLength=21)
+
+    # ASSERT: PIXEL CENTRES ARE AT INTEGER INDICES, SO ROW 30 IS REPORTED AS 30.0 AND NOT 30.5
+    assert result.loc[0, "cont_y"] == pytest.approx(30.0, abs=1e-12)
+
+
 def test_constructor_resolves_trace_orientation_and_nodding_metadata(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
