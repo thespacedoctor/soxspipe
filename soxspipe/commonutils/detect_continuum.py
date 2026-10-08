@@ -26,7 +26,17 @@ from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
     chebyshev_xy_polynomial,
 )
-from soxspipe.commonutils.toolkit import cut_image_slice, get_calibration_lamp, read_spectral_format
+from soxspipe.commonutils.toolkit import (
+    QC_PLOT_DECORATION_HEIGHT_INCHES,
+    QC_RESIDUAL_ROW_HEIGHT_INCHES,
+    QC_STRIP_ROW_HEIGHT_INCHES,
+    cut_image_slice,
+    get_calibration_lamp,
+    legend_below_axis,
+    qc_image_panel_height,
+    qc_table_heights,
+    read_spectral_format,
+)
 
 os.environ["TERM"] = "vt100"
 
@@ -1143,36 +1153,50 @@ class detect_continuum(_base_detect):
         if flipImage:
             rotatedImg = np.flipud(rotatedImg)
             if not rotateImage:
+                # FLIPUD SENDS PIXEL ROW r TO ROW N-1-r. PLOT FROM COPIES SO THE CALLER'S COORDINATES STAY UNFLIPPED
                 aLen = rotatedImg.shape[0]
-                orderPixelTable[f"cont_{self.axisA}"] = aLen - orderPixelTable[f"cont_{self.axisA}"]
-                clippedData[f"cont_{self.axisA}"] = aLen - clippedData[f"cont_{self.axisA}"]
-                clippedData[f"fit_{self.axisA}"] = aLen - clippedData[f"fit_{self.axisA}"]
+                orderPixelTable = orderPixelTable.assign(
+                    **{f"cont_{self.axisA}": aLen - 1 - orderPixelTable[f"cont_{self.axisA}"]}
+                )
+                clippedData = clippedData.assign(
+                    **{
+                        f"cont_{self.axisA}": aLen - 1 - clippedData[f"cont_{self.axisA}"],
+                        f"fit_{self.axisA}": aLen - 1 - clippedData[f"fit_{self.axisA}"],
+                    }
+                )
 
-        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(7, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:5, 0:2])
-            bottomright = fig.add_subplot(gs[4:5, 2:])
-            fwhmaxis = fig.add_subplot(gs[5:6, :])
-            settingsAx = fig.add_subplot(gs[6:, 2:])
-            qcAx = fig.add_subplot(gs[6:, 0:2])
-        else:
-            fig = plt.figure(figsize=(6, 19), constrained_layout=True)
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(10, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:6, 0:2])
-            bottomright = fig.add_subplot(gs[4:6, 2:])
-            fwhmaxis = fig.add_subplot(gs[6:7, :])
-            settingsAx = fig.add_subplot(gs[7:, 2:])
-            qcAx = fig.add_subplot(gs[7:, 0:2])
+        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
+        self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
+        tableSettings = {**self.recipeSettings, **{"exptime": self.exptime}}
 
-        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
-        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
+        # SIZE EACH IMAGE PANEL TO THE IMAGE ASPECT AND GIVE EACH TABLE ITS OWN FULL-WIDTH ROW SO THEY CANNOT OVERLAP
+        imagePanelHeight = qc_image_panel_height(rotatedImg)
+        qcTableHeight, settingsTableHeight = qc_table_heights(self.qc, tableSettings)
+        heightRatios = [
+            imagePanelHeight,
+            imagePanelHeight,
+            QC_RESIDUAL_ROW_HEIGHT_INCHES,
+            QC_STRIP_ROW_HEIGHT_INCHES,
+            qcTableHeight,
+            settingsTableHeight,
+        ]
+        fig = plt.figure(
+            figsize=(6, sum(heightRatios) + QC_PLOT_DECORATION_HEIGHT_INCHES),
+            constrained_layout=True,
+        )
+        gs = fig.add_gridspec(6, 2, height_ratios=heightRatios)
+        toprow = fig.add_subplot(gs[0, :])
+        midrow = fig.add_subplot(gs[1, :])
+        bottomleft = fig.add_subplot(gs[2, 0])
+        bottomright = fig.add_subplot(gs[2, 1])
+        fwhmaxis = fig.add_subplot(gs[3, :])
+        settingsAx = fig.add_subplot(gs[5, :])
+        qcAx = fig.add_subplot(gs[4, :])
+
+        # INTERPOLATION "none" EMBEDS THE IMAGE AT NATIVE RESOLUTION IN THE PDF; RESAMPLING TO THE SAVE DPI
+        # OFFSETS THE ORDER BANDS FROM THE VECTOR MARKERS WHEN ZOOMED
+        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
+        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
         toprow.set_title("1D gaussian peak positions (post-clipping)", fontsize=10)
         toprow.scatter(
             orderPixelTable[f"cont_{self.axisB}"],
@@ -1208,12 +1232,7 @@ class detect_continuum(_base_detect):
             linewidths=0.5,
             label="peaks clipped during continuum fitting",
         )
-        # Put a legend below current axis
-
-        if arm == "VIS":
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        legend_below_axis(toprow, fig)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -1281,10 +1300,13 @@ class detect_continuum(_base_detect):
             except ValueError as e:
                 self.log.debug(f"plot_results: `xfit, yfit, stdfit, lower, upper = zip( *[...` failed, continuing: {e}")
                 continue
+            # THE ORDER METADATA STAYS ON THE aLen - xfit FRAME IT HAS ALWAYS BEEN WRITTEN IN (SEE DY-1219)
+            metaXfit = xfit
             if flipImage and not rotateImage:
-                xfit = aLen - np.array(xfit)
-                lower = aLen - np.array(lower)
-                upper = aLen - np.array(upper)
+                metaXfit = aLen - np.array(xfit)
+                xfit = aLen - 1 - np.array(xfit)
+                lower = aLen - 1 - np.array(lower)
+                upper = aLen - 1 - np.array(upper)
             foundOrders.append(o)
             # lower = xfit - 3 * stdfit
             # upper = xfit + 3 * stdfit
@@ -1300,8 +1322,8 @@ class detect_continuum(_base_detect):
             midrow.fill_between(yfit, lower, upper, color=orderColours[o], alpha=0.3, label=label1)
             ymin.append(min(yfit))
             ymax.append(max(yfit))
-            xmin.append(axisALength - max(xfit))
-            xmax.append(axisALength - min(xfit))
+            xmin.append(axisALength - max(metaXfit))
+            xmax.append(axisALength - min(metaXfit))
             try:
                 midrow.text(
                     yfit[10],
@@ -1333,13 +1355,9 @@ class detect_continuum(_base_detect):
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis="both", which="major", labelsize=9)
 
-        if arm == "VIS":
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        legend_below_axis(midrow, fig)
 
         # PLOT THE FINAL RESULTS:
-        plt.subplots_adjust(top=0.92)
         for o in uniqueOrders:
             c = orderColours[o]
             mask = orderPixelTable["order"] == o
@@ -1371,7 +1389,6 @@ class detect_continuum(_base_detect):
         bottomleft.tick_params(axis="both", which="major", labelsize=9)
 
         # PLOT THE FINAL RESULTS:
-        plt.subplots_adjust(top=0.92)
         for o in uniqueOrders:
             c = orderColours[o]
             mask = orderPixelTable["order"] == o
@@ -1437,13 +1454,11 @@ class detect_continuum(_base_detect):
             orderPixelTable["gauss_stddev_fit"].max() * stdToFwhm * 1.2,
         )
 
-        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
-        self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
         qc_settings_plot_tables(
             log=self.log,
             qc=self.qc,
             qcAx=qcAx,
-            settings={**self.recipeSettings, **{"exptime": self.exptime}},
+            settings=tableSettings,
             settingsAx=settingsAx,
         )
 
@@ -1461,7 +1476,6 @@ class detect_continuum(_base_detect):
             fig.suptitle(
                 f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}",
                 fontsize=12,
-                y=0.99,
             )
         else:
             fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
