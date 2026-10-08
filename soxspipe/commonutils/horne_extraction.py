@@ -454,7 +454,7 @@ class horne_extraction(base_util):
                         pd.DataFrame(
                             [
                                 {
-                                    "soxspipe_recipe": "soxs-stare",
+                                    "soxspipe_recipe": self.recipeName,
                                     "product_label": f"EXTRACTED_ORDERS_TABLE{self.noddingSequence}{self.notFlattened}",
                                     "file_name": filename,
                                     "file_type": "FITS",
@@ -542,7 +542,7 @@ class horne_extraction(base_util):
                         pd.DataFrame(
                             [
                                 {
-                                    "soxspipe_recipe": "soxs-stare",
+                                    "soxspipe_recipe": self.recipeName,
                                     "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}{self.notFlattened}",
                                     "file_name": filename,
                                     "file_type": "FITS",
@@ -1529,7 +1529,7 @@ class horne_extraction(base_util):
                     pd.DataFrame(
                         [
                             {
-                                "soxspipe_recipe": "soxs-stare",
+                                "soxspipe_recipe": self.recipeName,
                                 "product_label": f"EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}{self.notFlattened}",
                                 "file_name": filename,
                                 "file_type": "PDF",

@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: extraction (stare, nod, offset) now records the running recipe in the `soxspipe_recipe` column of its products-table rows, instead of always `soxs-stare` (DY-907).
 * **FIXED**: `soxs_offset` gives each cycle and the stacked pair their own object-trace table, residual PDF, extraction products and `_ONOFF` frame (suffixes `_1`, `_2`, `_STACK`), because real offset frames have no `CUMOFF Y` and every cycle used to overwrite one file, so none overwrites another (DY-906).
 * **FIXED**: every recipe now runs from a list of frame paths or a directory as well as a `.sof` file, instead of failing with `AttributeError`; the night date is the earliest `MJD-OBS` minus 15 hours, the QC `sof_name` is `<recipe>_<ARM>_<night>.sof`, and input with no frames or no `MJD-OBS` raises a clear `ValueError` (DY-90).
 * **FIXED**: the sky image-comparison QC plot rotates and flips its three panels, and labels their axes, with the arm's `rotate-qc-plot` and `flip-qc-plot` detector parameters, as the other QC plots do (DY-699).

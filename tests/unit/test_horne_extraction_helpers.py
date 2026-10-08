@@ -437,6 +437,72 @@ def test_extract_writes_order_and_merged_product_contracts(
     assert joins == {"1011": 501.0}
 
 
+@pytest.mark.parametrize("recipeName", ["soxs-stare", "soxs-nod", "soxs-offset"])
+def test_extract_labels_every_product_row_with_the_running_recipe(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recipeName: str,
+) -> None:
+    """Record the recipe the extraction was built with on each product row it adds."""
+    import soxspipe.commonutils.phase3 as phase3
+
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.recipeName = recipeName
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: None)
+
+    _, products, _, _, _ = extractor.extract()
+
+    assert products["product_label"].tolist() == [
+        "EXTRACTED_ORDERS_TABLE",
+        "EXTRACTED_MERGED_ASCII",
+        "EXTRACTED_MERGED_TABLE",
+    ]
+    assert products["soxspipe_recipe"].tolist() == [recipeName] * 3
+
+
+@pytest.mark.parametrize("recipeName", ["soxs-stare", "soxs-nod", "soxs-offset"])
+def test_plot_extracted_spectrum_qc_labels_product_row_with_the_running_recipe(
+    log: object,
+    tmp_path: Path,
+    recipeName: str,
+) -> None:
+    """Record the recipe the extraction was built with on the QC plot row."""
+    extractor = _extractor(log)
+    wavelengths = np.linspace(500.0, 523.0, 24)
+    extractor.recipeName = recipeName
+    extractor.arm = "VIS"
+    extractor.settings = {"PAE": False}
+    extractor.skylinesDF = pd.DataFrame({"WAVELENGTH": [510.0], "FLUX": [3.0]})
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.noddingSequence = ""
+    extractor.notFlattened = ""
+    extractor.qcDir = str(tmp_path)
+    extractor.dateObs = "2024-01-02T03:04:05"
+    extractor.products = product_table().iloc[0:0]
+    extractions = [
+        pd.DataFrame(
+            {
+                "order": [10] * len(wavelengths),
+                "wavelengthMean": wavelengths,
+                "extractedFluxOptimal": np.linspace(2.0, 4.0, len(wavelengths)),
+                "extractedFluxBoxcarRobust": np.linspace(1.0, 3.0, len(wavelengths)),
+                "varianceSpectrum": np.ones(len(wavelengths)),
+                "skyFlux": np.linspace(0.2, 0.5, len(wavelengths)),
+                "snr": np.linspace(3.0, 6.0, len(wavelengths)),
+            }
+        )
+    ]
+
+    extractor.plot_extracted_spectrum_qc(extractions)
+
+    assert extractor.products["product_label"].tolist() == ["EXTRACTED_ORDERS_QC_PLOT"]
+    assert extractor.products["soxspipe_recipe"].tolist() == [recipeName]
+
+
 def test_plot_extracted_spectrum_qc_writes_pdf_and_product_record(
     log: object,
     tmp_path: Path,
@@ -444,6 +510,7 @@ def test_plot_extracted_spectrum_qc_writes_pdf_and_product_record(
     """Write the public extracted-spectrum diagnostic with its product contract."""
     extractor = _extractor(log)
     wavelengths = np.linspace(500.0, 523.0, 24)
+    extractor.recipeName = "soxs-nod"
     extractor.arm = "VIS"
     extractor.settings = {"PAE": False}
     extractor.skylinesDF = pd.DataFrame({"WAVELENGTH": [510.0], "FLUX": [3.0]})
