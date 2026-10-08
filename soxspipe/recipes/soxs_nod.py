@@ -851,7 +851,8 @@ class soxs_nod(base_recipe):
 
         - ``aFrame`` -- the frame taken at the A location. CCDData object.
         - ``bFrame`` -- the frame taken at the B location. CCDDate object.
-        - ``locationSetIndex`` -- the index of the AB cycle
+        - ``locationSetIndex`` -- the cycle index (int), or the ``STACKED_LOCATION_SET`` label (str)
+          that a stacked offset pair passes
         - ``orderTablePath`` -- path to the order table
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data. Default *False*
         - ``masterFlat`` -- path to the master flat frame. Default *False*
@@ -961,7 +962,8 @@ class soxs_nod(base_recipe):
 
         - ``A_minus_B_notflattened`` -- the A-B difference
         - ``B_minus_A_notflattened`` -- the B-A difference, or False outside nodding mode
-        - ``locationSetIndex`` -- the index of the AB cycle
+        - ``locationSetIndex`` -- the cycle index (int), or the ``STACKED_LOCATION_SET`` label (str)
+          that a stacked offset pair passes
         - ``notFlattened`` -- if True, the cycle is the unflattened pass used to calculate efficiency
         """
         # WRITE IN A FITS FILE THE A-B AND B-A FRAMES
@@ -1137,7 +1139,8 @@ class soxs_nod(base_recipe):
         - ``aFrame`` -- the frame taken at the A location
         - ``bFrame`` -- the frame taken at the B location
         - ``theseProducts`` -- the products table to add the single-frame extractions to, or False
-        - ``locationSetIndex`` -- the index of the AB cycle
+        - ``locationSetIndex`` -- the cycle index (int), or the ``STACKED_LOCATION_SET`` label (str)
+          that a stacked offset pair passes
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data
 
         **Return:**

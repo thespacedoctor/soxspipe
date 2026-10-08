@@ -35,11 +35,12 @@ def _offset_product_directory(workspace_path: Path) -> Path:
 def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path) -> None:
     product_directory = _offset_product_directory(reduced_workspace)
     expected_products = {
-        f"{_PRODUCT_STEM}.fits",
         f"{_PRODUCT_STEM}.log",
         f"{_PRODUCT_STEM}_EXTRACTED_MERGED.fits",
         f"{_PRODUCT_STEM}_EXTRACTED_MERGED.txt",
         f"{_PRODUCT_STEM}_FLUXCAL.fits",
+        f"{_PRODUCT_STEM}_OBJTRACE_1.fits",
+        f"{_PRODUCT_STEM}_OBJTRACE_2.fits",
         f"{_PRODUCT_STEM}_ONOFF_1.fits",
         f"{_PRODUCT_STEM}_ONOFF_2.fits",
     }

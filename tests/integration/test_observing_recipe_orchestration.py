@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from soxspipe.recipes import soxs_nod, soxs_offset, soxs_stare
+from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories import (
     pipeline_settings,
     product_table,
@@ -508,7 +509,7 @@ def test_offset_success_returns_extraction_and_records_qc(
     extractArgs = captured["extract_cycle"][0]
     assert extractArgs["aFrame"] is captured["keywords"][0]["frame"]
     assert extractArgs["bFrame"] is captured["keywords"][1]["frame"]
-    assert extractArgs["locationSetIndex"] == 1
+    assert extractArgs["locationSetIndex"] == STACKED_LOCATION_SET
     assert extractArgs["orderTablePath"] == str(tmp_path / "ORDER_TAB_VIS.fits")
     assert extractArgs["masterFlat"] is False
     stackArgs = captured["stack_extractions"][0]
