@@ -111,11 +111,13 @@ def test_edge_positions_interpolate_threshold_crossings(
     assert result["xcoord_upper"] == pytest.approx(58.75)
 
 
-def test_get_records_edge_fits_qc_and_product_contracts(
+def _get_detector(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-) -> None:
+    orderPixels: pd.DataFrame,
+) -> detect_order_edges:
+    """Return a detector with everything `get()` needs except the polynomial fit."""
     detector = _edge_detector(log)
     detector.recipeSettings = {
         "slice-length-for-edge-detection": 20,
@@ -139,14 +141,7 @@ def test_get_records_edge_fits_qc_and_product_contracts(
     detector.recipeName = "soxs-mflat"
     detector.dateObs = "2024-01-01T00:00:00"
     detector.tag = ""
-    orderPixels = pd.DataFrame(
-        {
-            "order": [10, 10],
-            "xcoord_centre": [5.0, 5.0],
-            "ycoord": [1.0, 3.0],
-        }
-    )
-    orderMeta = pd.DataFrame({"order": [10]})
+    orderMeta = pd.DataFrame({"order": orderPixels["order"].unique()})
     monkeypatch.setattr(
         orderEdgesModule,
         "unpack_order_table",
@@ -161,6 +156,24 @@ def test_get_records_edge_fits_qc_and_product_contracts(
 
     detector.determine_order_flux_threshold = with_thresholds
     detector.determine_lower_upper_edge_pixel_positions = with_edge_positions
+    detector.write_order_table_to_file = lambda **kwargs: str(tmp_path / "edges.fits")
+    detector.plot_results = lambda **kwargs: str(tmp_path / "edges.pdf")
+    return detector
+
+
+def test_get_records_edge_fits_qc_and_product_contracts(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    orderPixels = pd.DataFrame(
+        {
+            "order": [10, 10],
+            "xcoord_centre": [5.0, 5.0],
+            "ycoord": [1.0, 3.0],
+        }
+    )
+    detector = _get_detector(log, monkeypatch, tmp_path, orderPixels)
 
     def fit_edge(
         *,
@@ -174,8 +187,6 @@ def test_get_records_edge_fits_qc_and_product_contracts(
         return [3.0], fitted, fitted.iloc[:0].copy()
 
     detector.fit_global_polynomial = fit_edge
-    detector.write_order_table_to_file = lambda **kwargs: str(tmp_path / "edges.fits")
-    detector.plot_results = lambda **kwargs: str(tmp_path / "edges.pdf")
 
     products, qc, detectionCounts = detector.get()
 
@@ -185,6 +196,46 @@ def test_get_records_edge_fits_qc_and_product_contracts(
     assert pd.api.types.is_numeric_dtype(qc["qc_value"])
     assert products["product_label"].tolist() == ["ORDER_LOC", "ORDER_LOC_RES"]
     assert products["file_name"].tolist() == ["edges.fits", "edges.pdf"]
+
+
+def test_get_fits_lower_edge_using_only_rows_with_finite_lower_positions(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE: ORDER 11 HAS A MISSING CENTRE, SO ITS EDGE POSITIONS COME OUT AS NAN
+    orderPixels = pd.DataFrame(
+        {
+            "order": [10, 10, 11, 11],
+            "xcoord_centre": [5.0, 5.0, 5.0, np.nan],
+            "ycoord": [1.0, 3.0, 1.0, 3.0],
+        }
+    )
+    detector = _get_detector(log, monkeypatch, tmp_path, orderPixels)
+    fitInputs: dict[str, pd.DataFrame] = {}
+
+    def fit_edge(
+        *,
+        pixelList: pd.DataFrame,
+        axisACol: str,
+        **kwargs: object,
+    ) -> tuple[list[float], pd.DataFrame, pd.DataFrame]:
+        if pixelList[axisACol].isna().any():
+            raise ValueError("non-finite values in fit input")
+        fitInputs[axisACol] = pixelList
+        fitted = pixelList.copy()
+        fitted["x_fit"] = fitted[axisACol]
+        fitted["x_fit_res"] = 0.0
+        return [3.0], fitted, fitted.iloc[:0].copy()
+
+    detector.fit_global_polynomial = fit_edge
+
+    # ACT
+    detector.get()
+
+    # ASSERT
+    assert fitInputs["xcoord_lower"]["ycoord"].tolist() == [1.0, 3.0]
+    assert fitInputs["xcoord_upper"]["ycoord"].tolist() == [1.0, 3.0]
 
 
 def test_plot_results_writes_order_edge_diagnostic(
