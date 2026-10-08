@@ -246,6 +246,50 @@ def test_every_image_panel_layer_follows_the_rotate_and_flip_qc_plot_settings(
     assert skyModelPanel[display(15, 3, shape)] == 163.0
 
 
+@pytest.mark.parametrize(
+    ("dispersionAxis", "rotate", "flip", "expectedOrientation", "labels"),
+    [
+        pytest.param("x", 90, 1, lambda data: np.flipud(np.rot90(data, 1)), ("y-axis", "x-axis"), id="vis"),
+        pytest.param("y", 0, 1, np.flipud, ("x-axis", "y-axis"), id="nir"),
+        pytest.param("x", 90, 0, lambda data: np.rot90(data, 1), ("y-axis", "x-axis"), id="rotate-only"),
+        pytest.param("x", 180, 0, lambda data: np.rot90(data, 2), ("x-axis", "y-axis"), id="half-turn"),
+    ],
+)
+def test_every_image_comparison_panel_follows_the_rotate_and_flip_qc_plot_settings(
+    log: Any,
+    tmp_path: Path,
+    figures: list,
+    dispersionAxis: str,
+    rotate: int,
+    flip: int,
+    expectedOrientation: Callable[[np.ndarray], np.ndarray],
+    labels: tuple[str, str],
+) -> None:
+    """The object, sky-model and sky-subtracted panels are rotated by `rotate-qc-plot`, then flipped by `flip-qc-plot`.
+
+    The frames are non-square and asymmetric, so a wrong rotation or a missing
+    flip changes the displayed array. The axis labels name the detector axis
+    each display axis shows.
+    """
+    shape = (6, 8)
+    outputPath = tmp_path / "comparison_orientation"
+    outputPath.mkdir()
+    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=rotate, flip=flip, shape=shape)
+    subtractor.mapDF = pd.DataFrame({"x": [1, 2], "y": [1, 4]})
+    objectFrame = subtractor.objectFrame
+    skyModelFrame = CCDData(objectFrame.data * 2.0 + 0.5, unit="electron", mask=np.zeros(shape, dtype=bool))
+    skySubFrame = CCDData(objectFrame.data * -3.0 - 0.25, unit="electron", mask=np.zeros(shape, dtype=bool))
+
+    subtractor.plot_image_comparison(objectFrame, skyModelFrame, skySubFrame)
+
+    [figure] = figures
+    assert len(figure.axes) == 3
+    for panel, frame in zip(figure.axes, (objectFrame, skyModelFrame, skySubFrame), strict=True):
+        [image] = panel.images
+        np.testing.assert_array_equal(np.asarray(image.get_array()), expectedOrientation(frame.data))
+        assert (panel.get_xlabel(), panel.get_ylabel()) == labels
+
+
 def test_a_rotate_qc_plot_that_is_not_a_multiple_of_90_degrees_is_rejected(log: Any, tmp_path: Path) -> None:
     """A 45-degree rotation cannot be drawn as quarter turns, so the plot raises instead of truncating it."""
     subtractor = _subtractor(log, tmp_path, dispersionAxis="x", rotate=45)
