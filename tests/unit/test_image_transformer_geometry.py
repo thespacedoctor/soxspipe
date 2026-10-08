@@ -256,6 +256,100 @@ def test_cache_image_records_flux_mask_coverage_and_rectified_views(
     assert transformer.get_order_slices() is transformer.orderSlices
 
 
+def _two_pixel_cell_transformer(log: object, areas: tuple[float, float]) -> image_transformer:
+    """Return a transformer with one rectified cell built from detector pixels (0, 0) and (0, 1)."""
+    transformer = _transformer(log)
+    transformer.uniqueOrders = [10]
+    transformer.orderSlitEdges = [np.array([0.0, 1.0])]
+    transformer.orderWlEdges = [np.array([0.0, 1.0])]
+    transformer.orderSlices = [pd.DataFrame()]
+    transformer._resamplingWeights = {
+        10: {
+            "flatIdx": np.array([0, 0]),
+            "px": np.array([0, 1]),
+            "py": np.array([0, 0]),
+            "area": np.array(areas),
+            "shape": (1, 1),
+            "coverage": np.ones((1, 1)),
+        }
+    }
+    return transformer
+
+
+def test_cache_image_renormalises_a_cell_by_its_good_pixel_area(log: object) -> None:
+    # ARRANGE: 85% OF THE CELL IS A GOOD PIXEL OF 100, 15% IS A FLAGGED PIXEL
+    transformer = _two_pixel_cell_transformer(log, (0.85, 0.15))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[100.0, 60000.0]]), associatedMask=np.array([[False, True]]))
+    rectified = transformer.get_order_rectified()[0]
+
+    # ASSERT: THE GOOD PIXELS' MEAN SCALED TO THE FULL CELL AREA (1.0), AND THE CELL STAYS UNMASKED
+    assert rectified["flux"][0, 0] == pytest.approx(100.0)
+    assert not rectified["bpMask"][0, 0]
+
+
+def test_cache_image_renormalises_variance_like_flux(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.85, 0.15))
+    mask = np.array([[False, True]])
+
+    # ACT
+    transformer.cache_image("variance", np.array([[4.0, 9.0e6]]), associatedMask=mask)
+
+    # ASSERT
+    assert transformer.get_order_rectified()[0]["variance"][0, 0] == pytest.approx(4.0)
+
+
+def test_cache_image_ignores_non_finite_values_under_the_mask(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.9, 0.1))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[10.0, np.nan]]), associatedMask=np.array([[False, True]]))
+
+    # ASSERT
+    assert transformer.get_order_rectified()[0]["flux"][0, 0] == pytest.approx(10.0)
+
+
+def test_cache_image_keeps_the_plain_sum_for_a_fully_flagged_cell_and_masks_it(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.5, 0.5))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[2.0, 4.0]]), associatedMask=np.array([[True, True]]))
+    rectified = transformer.get_order_rectified()[0]
+
+    # ASSERT
+    assert rectified["flux"][0, 0] == pytest.approx(3.0)
+    assert rectified["bpMask"][0, 0]
+
+
+def test_cache_image_masks_a_cell_over_the_bad_area_threshold_but_still_renormalises_it(log: object) -> None:
+    # ARRANGE: 70% GOOD AT 10, 30% FLAGGED
+    transformer = _two_pixel_cell_transformer(log, (0.7, 0.3))
+
+    # ACT
+    transformer.cache_image("flux", np.array([[10.0, 500.0]]), associatedMask=np.array([[False, True]]))
+    rectified = transformer.get_order_rectified()[0]
+
+    # ASSERT
+    assert rectified["bpMask"][0, 0]
+    assert rectified["flux"][0, 0] == pytest.approx(10.0)
+
+
+def test_cache_image_leaves_cells_without_flagged_pixels_exactly_as_the_plain_weighted_sum(log: object) -> None:
+    # ARRANGE
+    transformer = _two_pixel_cell_transformer(log, (0.3, 0.7))
+    flux = np.array([[1.1, 2.3]])
+
+    # ACT
+    transformer.cache_image("flux", flux, associatedMask=np.array([[False, False]]))
+
+    # ASSERT: BIT-IDENTICAL TO THE UNMASKED SUM
+    assert transformer.get_order_rectified()[0]["flux"][0, 0] == 1.1 * 0.3 + 2.3 * 0.7
+
+
 def test_cache_image_without_mask_or_coverage_preserves_optional_contract(
     log: object,
 ) -> None:
@@ -641,6 +735,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
+    ratioAtBoundaries: list[tuple[float, float]] = []
 
     def fake_base_init(
         transformer: image_transformer,
@@ -659,6 +754,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
         transformer: image_transformer,
     ) -> tuple[list[np.ndarray], list[np.ndarray]]:
         calls.append("boundaries")
+        ratioAtBoundaries.append(transformer.dispersionBinRatio)
         transformer.orderSlices = [pd.DataFrame()]
         return [np.array([0.0, 1.0])], [np.array([500.0, 501.0])]
 
@@ -670,6 +766,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
         calls.append("coordinates")
 
     monkeypatch.setattr(base_util, "__init__", fake_base_init)
+    monkeypatch.setattr(image_transformer, "_read_dispersion_bin_ratio", lambda transformer: (2.0, 1.0))
     monkeypatch.setattr(
         image_transformer,
         "_determine_rectified_image_boundaries",
@@ -698,6 +795,7 @@ def test_constructor_prepares_geometry_weights_and_coordinate_cache(
     )
 
     assert calls == ["boundaries", "weights", "coordinates"]
+    assert ratioAtBoundaries == [(2.0, 1.0)]
     assert (transformer.ny, transformer.nx) == (3, 4)
     assert transformer.uniqueOrders.tolist() == [10]
     assert transformer._resamplingWeights == {10: {}}
@@ -908,6 +1006,54 @@ def test_rectified_boundaries_size_slit_bins_from_measured_arcsec_per_pixel(
     np.testing.assert_array_equal(wavelengthEdges[0], measuredEdges)
 
 
+def _boundary_ready_transformer(log: object, *, slitHalfLength: float, zoomFactorSlit: int) -> image_transformer:
+    """Return a transformer with one order on a constant slit position, ready for boundary determination."""
+    transformer = _transformer(log, zoomFactorSlit=zoomFactorSlit)
+    transformer.slitHalfLength = slitHalfLength
+    transformer.axisA = "x"
+    transformer.axisB = "y"
+    transformer.dispersionAxis = "x"
+    transformer.orderPixelTable = pd.DataFrame({"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]})
+    transformer.mapDF = pd.DataFrame(
+        {"x": [0, 1], "y": [0, 0], "slit_position": [0.0, 0.0], "wavelength": [500.0, 502.0]}
+    )
+    transformer.orderNums = np.array([10])
+    transformer.amins = np.array([0.0])
+    transformer.amaxs = np.array([2.0])
+    transformer.waveLengthMin = np.array([500.0])
+    transformer.waveLengthMax = np.array([504.0])
+    transformer.uniqueOrders = np.array([10])
+    return transformer
+
+
+def test_odd_slit_length_gives_that_many_rectified_rows_centred_on_the_trace(log: object) -> None:
+    # ARRANGE: THE DEFAULT SLIT LENGTH OF 15 PIXELS, A HALF LENGTH OF 7.5, ZOOMED 5 TIMES
+    transformer = _boundary_ready_transformer(log, slitHalfLength=15 / 2, zoomFactorSlit=5)
+
+    # ACT
+    slitEdges, _ = transformer._determine_rectified_image_boundaries()
+    cellCentres = (slitEdges[0][:-1] + slitEdges[0][1:]) / 2.0
+    rows = transformer._unzoom(np.broadcast_to(cellCentres[:, None], (len(cellCentres), 4)).copy(), operation="mean")
+
+    # ASSERT
+    assert rows.shape[0] == 15
+    assert rows[:, 0].mean() == pytest.approx(0.0)
+    assert slitEdges[0][0] == pytest.approx(-7.5)
+    assert slitEdges[0][-1] == pytest.approx(7.5)
+
+
+def test_fractional_slit_length_rounds_to_whole_rectified_rows(log: object) -> None:
+    # ARRANGE: A BINNED SLIT LENGTH OF 7.5 ROWS (HALF LENGTH 3.75) CANNOT BE A FRACTION OF A RECTIFIED ROW
+    transformer = _boundary_ready_transformer(log, slitHalfLength=3.75, zoomFactorSlit=5)
+
+    # ACT
+    slitEdges, _ = transformer._determine_rectified_image_boundaries()
+
+    # ASSERT: ROUNDED HALF UP TO 8 ROWS, EACH CELL STILL 1/5 OF A ROW WIDE
+    assert (len(slitEdges[0]) - 1) // 5 == 8
+    np.testing.assert_allclose(np.diff(slitEdges[0]), 0.2)
+
+
 def test_measure_order_trace_geometry_samples_trace_and_slit_probe_in_one_conversion(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -980,3 +1126,145 @@ def test_measure_order_trace_geometry_trims_trace_samples_that_fall_off_the_dete
     assert edges[-1] < 505.0
     np.testing.assert_allclose(np.diff(edges), 0.1)
     assert scale == pytest.approx(0.25)
+
+
+def _unbinned_solution_conversion(received: list[pd.DataFrame] | None = None):
+    """Fake conversion: a 1x1 solution with 10 px per nm along x and 4 px per arcsec along y."""
+
+    def fake_conversion(**kwargs: object) -> pd.DataFrame:
+        table = kwargs["orderPixelTable"]
+        if received is not None:
+            received.append(table.copy(deep=True))
+        return table.assign(
+            fit_x=10.0 * (table["wavelength"] - 500.0),
+            fit_y=10.0 + 4.0 * table["slit_position"],
+        )
+
+    return fake_conversion
+
+
+def test_precomputed_weights_sample_binned_frame_pixels_from_an_unbinned_solution(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: A 2X2-BINNED FRAME, A 1X1 DISPERSION SOLUTION. ONE CELL SPANNING UNBINNED x 20 TO 40, y 10 TO 18
+    transformer = _transformer(log)
+    transformer.edgeSamples = 1
+    transformer.uniqueOrders = [10]
+    transformer.orderSlitEdges = [np.array([0.0, 2.0])]
+    transformer.orderWlEdges = [np.array([502.0, 504.0])]
+    transformer.orderSlitCentreCoeffs = [np.array([0.0])]
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 100
+    transformer.ny = 100
+    transformer.dispersionBinRatio = (2.0, 2.0)
+    dispersionModule = importlib.import_module("soxspipe.commonutils.dispersion_map_to_pixel_arrays")
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", _unbinned_solution_conversion())
+
+    # ACT
+    weights = transformer._precompute_resampling_weights()[10]
+
+    # ASSERT: BINNED POSITIONS ARE x 10 TO 20 AND y 5 TO 9, WHOLE-PIXEL CELL EDGES AT HALF-PIXEL OFFSETS
+    assert weights["px"].min() == 10
+    assert weights["px"].max() == 20
+    assert weights["py"].min() == 5
+    assert weights["py"].max() == 9
+    assert weights["area"].sum() == pytest.approx(10.0 * 4.0)
+
+
+def test_precomputed_weights_are_unchanged_when_frame_and_solution_binning_match(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THE SAME CELL, UNBINNED FRAME AND UNBINNED SOLUTION
+    transformer = _transformer(log)
+    transformer.edgeSamples = 1
+    transformer.uniqueOrders = [10]
+    transformer.orderSlitEdges = [np.array([0.0, 2.0])]
+    transformer.orderWlEdges = [np.array([502.0, 504.0])]
+    transformer.orderSlitCentreCoeffs = [np.array([0.0])]
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 100
+    transformer.ny = 100
+    dispersionModule = importlib.import_module("soxspipe.commonutils.dispersion_map_to_pixel_arrays")
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", _unbinned_solution_conversion())
+
+    # ACT
+    weights = transformer._precompute_resampling_weights()[10]
+
+    # ASSERT: x 20 TO 40, y 10 TO 18 — THE SOLUTION PIXELS ARE USED AS THEY ARE
+    assert weights["px"].min() == 20
+    assert weights["px"].max() == 40
+    assert weights["py"].min() == 10
+    assert weights["py"].max() == 18
+    assert weights["area"].sum() == pytest.approx(20.0 * 8.0)
+
+
+def test_trace_geometry_is_measured_in_binned_frame_pixels(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: 4 PIXELS PER ARCSEC ALONG y IN THE 1X1 SOLUTION, A 2X2-BINNED FRAME
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.zoomFactorWavelength = 1
+    transformer.dispersionMap = "coefficients.fits"
+    transformer.nx = 10000
+    transformer.ny = 10000
+    transformer.dispersionBinRatio = (2.0, 2.0)
+    dispersionModule = importlib.import_module("soxspipe.commonutils.dispersion_map_to_pixel_arrays")
+    monkeypatch.setattr(dispersionModule, "dispersion_map_to_pixel_arrays", _unbinned_solution_conversion())
+
+    # ACT
+    ((edges, arcsecPerPixel),) = transformer._measure_order_trace_geometry([(10, 500.0, 502.0, 20, np.array([0.0]))])
+
+    # ASSERT: 10 UNBINNED = 5 BINNED PIXELS PER nm ALONG THE TRACE; 2 BINNED PIXELS PER ARCSEC ACROSS THE SLIT
+    np.testing.assert_allclose(np.diff(edges), 0.2)
+    assert arcsecPerPixel == pytest.approx(0.5)
+
+
+def test_dispersion_bin_ratio_divides_frame_binning_by_solution_binning(
+    log: object,
+    tmp_path: object,
+) -> None:
+    from astropy.io import fits
+
+    # ARRANGE: A SOLUTION FILE RECORDING 1X1 BINNING, AND A 2X2-BINNED FRAME
+    solutionPath = tmp_path / "solution.fits"
+    header = fits.Header({"WIN_BINX": 1, "WIN_BINY": 1})
+    fits.HDUList([fits.PrimaryHDU(header=header)]).writeto(solutionPath)
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.kw = lambda name: name
+    transformer.dispersionMap = str(solutionPath)
+    transformer.binx = 2
+    transformer.biny = 4
+
+    # ACT
+    ratio = transformer._read_dispersion_bin_ratio()
+
+    # ASSERT
+    assert ratio == (2.0, 4.0)
+
+
+def test_dispersion_bin_ratio_defaults_to_unbinned_when_the_solution_has_no_binning_keywords(
+    log: object,
+    tmp_path: object,
+) -> None:
+    from astropy.io import fits
+
+    # ARRANGE
+    solutionPath = tmp_path / "solution.fits"
+    fits.HDUList([fits.PrimaryHDU()]).writeto(solutionPath)
+    transformer = image_transformer.__new__(image_transformer)
+    transformer.log = log
+    transformer.kw = lambda name: name
+    transformer.dispersionMap = str(solutionPath)
+    transformer.binx = 1
+    transformer.biny = 1
+
+    # ACT
+    ratio = transformer._read_dispersion_bin_ratio()
+
+    # ASSERT
+    assert ratio == (1.0, 1.0)

@@ -145,7 +145,8 @@ class horne_extraction(base_util):
         )
 
         # COLLECT SETTINGS FROM SETTINGS FILE
-        self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
+        # HALF LENGTH KEPT AS setting / 2 (MAY END IN .5) SO THE EXTRACTED SLIT IS AS LONG AS THE SETTING
+        self.slitHalfLength = self.recipeSettings["horne-extraction-slit-length"] / 2
         self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
         self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
@@ -203,7 +204,6 @@ class horne_extraction(base_util):
                 self.slitHalfLength /= self.binx
             else:
                 self.slitHalfLength /= self.biny
-            self.slitHalfLength = round(self.slitHalfLength)
 
         # REMOVE ZEROS
         mask = (self.imageMap["wavelength"] == 0) & (self.imageMap["slit_position"] == 0)
@@ -331,7 +331,11 @@ class horne_extraction(base_util):
         # RECTIFIED PIXELS SHARE DETECTOR PIXELS, AND THE EXTRACTION SUMS ACROSS THEM: LINEAR WEIGHTS APPROXIMATE
         # THAT SUM'S VARIANCE BY COUNTING EACH DETECTOR PIXEL'S VARIANCE ABOUT ONCE, WHEREAS SQUARED WEIGHTS
         # DROP THE COVARIANCE AND UNDERESTIMATE THE NOISE (~1.55x INFLATED SNR ON REAL DATA)
-        transformer.cache_image("variance", self.skySubtractedFrame.uncertainty.array**2)
+        # THE SAME BAD-PIXEL MASK KEEPS FLAGGED PIXELS OUT OF THE VARIANCE SUMS TOO,
+        # SO FLUX AND VARIANCE CELLS ARE RENORMALISED ALIKE
+        transformer.cache_image(
+            "variance", self.skySubtractedFrame.uncertainty.array**2, associatedMask=self.skySubtractedFrame.mask
+        )
         if self.subtractedFrame:
             transformer.cache_image("fluxSky", self.subtractedFrame.data)
 

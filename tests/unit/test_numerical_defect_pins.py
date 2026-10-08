@@ -291,11 +291,6 @@ def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> Non
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1252 (DY-35 A5): rectification carries a masked pixel's value into an unmasked cell",
-)
 def test_rectified_unmasked_cell_does_not_carry_the_masked_pixel_value(log: object) -> None:
     # ARRANGE: ONE RECTIFIED CELL, 85% FROM PIXEL (0,0) AND 15% FROM THE FLAGGED HOT PIXEL (0,1)
     transformer = _transformer(log)
@@ -459,11 +454,6 @@ def test_object_profile_clipping_stops_once_a_pass_clips_nothing(monkeypatch: py
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1247 (DY-35 C2): rectified slit grid has 2H-1 rows centred half a pixel below the trace",
-)
 def test_rectified_slit_grid_has_two_h_rows_centred_on_the_trace(log: object) -> None:
     # ARRANGE: SLIT HALF LENGTH 3 AT 1 ARCSEC PER PIXEL, ONE ORDER ON A CONSTANT SLIT POSITION
     slitHalfLength = 3
