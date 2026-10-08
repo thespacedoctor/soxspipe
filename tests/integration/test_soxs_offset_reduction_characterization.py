@@ -23,6 +23,7 @@ from astropy import units as u
 from astropy.table import Table
 
 from soxspipe.recipes import soxs_offset
+from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories import synthetic_ccd
 from tests.integration.test_observing_recipe_orchestration import (
     RouteCollection,
@@ -399,3 +400,25 @@ def test_an_empty_inventory_fails_at_the_first_quicklook(
         recipe.produce_product()
 
     assert calls == []
+
+
+def test_each_cycle_and_the_stacked_pair_extract_under_their_own_location_set(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cycles are numbered from one, and the stacked pair takes the stack's own index so its products never collide."""
+    # ARRANGE
+    cyclesRecipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS, stem="cycles")
+    _, cyclesCaptured = _patch(cyclesRecipe, monkeypatch, tmp_path)
+    stackRecipe, _ = _offset_recipe(log, tmp_path, SINGLE_PAIR, stem="stack")
+    stackRecipe.generateReponseCurve = False
+    _, stackCaptured = _patch(stackRecipe, monkeypatch, tmp_path)
+
+    # ACT
+    cyclesRecipe.produce_product()
+    stackRecipe.produce_product()
+
+    # ASSERT
+    assert [call["locationSetIndex"] for call in cyclesCaptured["extract_cycle"]] == [1, 2]
+    assert [call["locationSetIndex"] for call in stackCaptured["extract_cycle"]] == [STACKED_LOCATION_SET]

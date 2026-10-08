@@ -851,7 +851,7 @@ class soxs_nod(base_recipe):
 
         - ``aFrame`` -- the frame taken at the A location. CCDData object.
         - ``bFrame`` -- the frame taken at the B location. CCDDate object.
-        - ``locationSetIndex`` -- the index of the AB cycle
+        - ``locationSetIndex`` -- the index of the AB cycle (an offset run's stacked pair passes its own index)
         - ``orderTablePath`` -- path to the order table
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data. Default *False*
         - ``masterFlat`` -- path to the master flat frame. Default *False*

@@ -2176,6 +2176,42 @@ def utility_setup(log, settings, recipeName, startNightDate):
     return qcDir, productDir
 
 
+def nodding_sequence_suffix(header, locationSetIndex, recipeName):
+    """*return the suffix that separates the products of one nodding or offset sequence from the next*
+
+    The suffix is ``_A`` or ``_B`` (the sign of ``HIERARCH ESO SEQ CUMOFF Y``) followed by the
+    ``locationSetIndex``. Real offset frames carry no ``CUMOFF Y``, so an offset recipe falls back
+    to ``_`` followed by the ``locationSetIndex`` (e.g. ``_1``, ``_2``, ``_STACK``). Any other recipe
+    without ``CUMOFF Y`` gets no suffix.
+
+    **Key Arguments:**
+
+    - ``header`` -- the header of the frame the sequence was taken from
+    - ``locationSetIndex`` -- the index of the AB cycle locations, or *False* for none
+    - ``recipeName`` -- the name of the recipe, as given in the settings dictionary
+
+    **Return:**
+
+    - ``noddingSequence`` -- the suffix, or an empty string
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import nodding_sequence_suffix
+    noddingSequence = nodding_sequence_suffix(header=frame.header, locationSetIndex=2, recipeName="soxs-nod")
+    ```
+    """
+    try:
+        noddingSequence = "_A" if int(header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
+        if locationSetIndex:
+            noddingSequence += str(locationSetIndex)
+    except (KeyError, TypeError):
+        noddingSequence = ""
+        if locationSetIndex and "offset" in str(recipeName).lower():
+            noddingSequence = f"_{locationSetIndex}"
+    return noddingSequence
+
+
 def plot_merged_spectrum_qc(
     merged_orders,
     products,

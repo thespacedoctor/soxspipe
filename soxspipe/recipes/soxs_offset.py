@@ -21,6 +21,9 @@ from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
 
+# THE locationSetIndex OF THE STACKED ON/OFF PAIR. IT GIVES THE STACK TRACE AND EXTRACTION PRODUCT NAMES OF ITS OWN.
+STACKED_LOCATION_SET = "STACK"
+
 # TODO: WHEN COMBINING SPECTRA AT THE END, WE USE A SIMPLE SUM. IF WE USE SIGMA-CLIPPING FOLLOWED BY A MEAN
 # COMBINE, WE CAN REMOVE CRHS FOR DATA SETS WITH MORE THAN 1 AB CYCLE.
 
@@ -576,7 +579,7 @@ class soxs_offset(soxs_nod):
         mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
             aFrame=aFrame,
             bFrame=bFrame,
-            locationSetIndex=1,
+            locationSetIndex=STACKED_LOCATION_SET,
             orderTablePath=orderTablePath,
             masterFlat=masterFlat,
         )
@@ -594,7 +597,7 @@ class soxs_offset(soxs_nod):
             mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
                 aFrame=aFrame,
                 bFrame=bFrame,
-                locationSetIndex=1,
+                locationSetIndex=STACKED_LOCATION_SET,
                 orderTablePath=orderTablePath,
                 notFlattened=True,
                 masterFlat=masterFlat,

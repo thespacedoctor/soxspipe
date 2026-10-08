@@ -185,11 +185,15 @@ def test_extract_returns_empty_results_when_no_order_trace_exists(log: object) -
     assert result[2:] == (None, None, None)
 
 
-def test_constructor_prepares_vis_extraction_after_trace_detection(
+def _construct_extractor(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Initialize the public extractor with the trace and order-table contracts intact."""
+    *,
+    headerOverrides: dict[str, object],
+    recipeName: str,
+    locationSetIndex: object,
+) -> tuple[horne_extraction, dict[str, object]]:
+    """Build an extractor through its real constructor, with synthetic trace detection."""
     import soxspipe.commonutils as commonutils
     import soxspipe.commonutils.toolkit as toolkit
     from soxspipe.commonutils.base_util import base_util
@@ -197,7 +201,8 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     header = instrument_header()
     header["INSTRUME"] = "SOXS"
     header["MJDOBS"] = 60311.0
-    header["HIERARCH ESO SEQ CUMOFF Y"] = 1.0
+    for keyword, value in headerOverrides.items():
+        header[keyword] = value
     frame = CCDData(
         np.ones((3, 3)),
         unit=u.electron,
@@ -272,14 +277,30 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
         skySubtractedFrame=frame,
         unflattenedFrame=frame,
         twoDMapPath="two-d-map.fits",
-        recipeName="soxs-stare",
+        recipeName=recipeName,
         qcTable=pd.DataFrame(),
         productsTable=product_table().iloc[0:0],
         dispersionMap="dispersion-map.fits",
         sofName="SYNTHETIC",
-        locationSetIndex=2,
+        locationSetIndex=locationSetIndex,
         startNightDate="2024-01-02",
         turnOffMP=True,
+    )
+
+    return extractor, captured
+
+
+def test_constructor_prepares_vis_extraction_after_trace_detection(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Initialize the public extractor with the trace and order-table contracts intact."""
+    extractor, captured = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={"HIERARCH ESO SEQ CUMOFF Y": 1.0},
+        recipeName="soxs-stare",
+        locationSetIndex=2,
     )
 
     assert extractor.noddingSequence == "_A2"
@@ -289,6 +310,29 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert extractor.imageMap["wavelength"].tolist() == [500.0]
     assert captured["recipeName"] == "soxs-stare"
     assert captured["locationSetIndex"] == 2
+
+
+@pytest.mark.parametrize(
+    ("locationSetIndex", "expectedSequence"),
+    [(1, "_1"), (2, "_2"), ("STACK", "_STACK")],
+)
+def test_offset_extraction_without_cumoff_y_is_suffixed_by_its_location_set(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    locationSetIndex: object,
+    expectedSequence: str,
+) -> None:
+    """Real offset frames carry no CUMOFF Y, so each cycle and the stack take their own product suffix."""
+    extractor, captured = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={"HIERARCH ESO SEQ FIXOFF RA": -2.0, "HIERARCH ESO SEQ FIXOFF DEC": 0.0},
+        recipeName="soxs-offset",
+        locationSetIndex=locationSetIndex,
+    )
+
+    assert extractor.noddingSequence == expectedSequence
+    assert captured["locationSetIndex"] == locationSetIndex
 
 
 def test_constructor_names_products_without_a_sof_name(

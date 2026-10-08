@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import importlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,6 +14,7 @@ from astropy.nddata import CCDData
 
 from soxspipe.commonutils.detect_continuum import detect_continuum
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
+from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories import instrument_header, pipeline_settings, qc_table
 
 pytestmark = pytest.mark.unit
@@ -108,6 +111,9 @@ def _order_table_name(detector: detect_continuum, monkeypatch: pytest.MonkeyPatc
         ("soxs-stare", "", f"{SOF_NAME}_OBJECT_TRACE_residuals_{POLY_ORDERS}.pdf"),
         ("soxs-nod", "_A1", f"{SOF_NAME}_OBJECT_TRACE_residuals_A1_{POLY_ORDERS}.pdf"),
         ("soxs-order-centres", "", f"{SOF_NAME}_residuals_{POLY_ORDERS}.pdf"),
+        ("soxs-mflat", "", f"{SOF_NAME}_OBJECT_TRACE_residuals_{POLY_ORDERS}.pdf"),
+        ("soxs-nod-std", "_A1", f"{SOF_NAME}_OBJECT_TRACE_residuals_A1_{POLY_ORDERS}.pdf"),
+        ("soxs-offset-std", "_B2", f"{SOF_NAME}_OBJECT_TRACE_residuals_B2_{POLY_ORDERS}.pdf"),
         ("soxs-offset", "_A1", f"{SOF_NAME}_OBJECT_TRACE_residuals_A1_{POLY_ORDERS}.pdf"),
         ("soxs-offset", "_B2", f"{SOF_NAME}_OBJECT_TRACE_residuals_B2_{POLY_ORDERS}.pdf"),
     ],
@@ -132,6 +138,8 @@ def test_residual_pdf_name_follows_recipe_and_nodding_sequence(
         ("soxs-nod", "_A1", f"{SOF_NAME}_OBJTRACE_A1.fits"),
         ("soxs-mflat", "", "SOXS_VIS_OLOC_SOF.fits"),
         ("soxs-order-centres", "", f"{SOF_NAME}.fits"),
+        ("soxs-nod-std", "_A1", f"{SOF_NAME}_OBJTRACE_A1.fits"),
+        ("soxs-offset-std", "_B2", f"{SOF_NAME}_OBJTRACE_B2.fits"),
         ("soxs-offset", "_A1", f"{SOF_NAME}_OBJTRACE_A1.fits"),
         ("soxs-offset", "_B2", f"{SOF_NAME}_OBJTRACE_B2.fits"),
     ],
@@ -200,3 +208,127 @@ def test_offset_trace_residual_products_point_to_different_files(
     residualRows = residualRows[residualRows["product_label"].str.startswith("OBJECT_TRACE_RES")]
     assert residualRows["product_label"].tolist() == ["OBJECT_TRACE_RES_A1", "OBJECT_TRACE_RES_B2"]
     assert residualRows["file_path"].nunique() == 2
+
+
+OFFSET_HEADER = {"HIERARCH ESO SEQ FIXOFF RA": -2.0, "HIERARCH ESO SEQ FIXOFF DEC": 0.0}
+
+
+def _constructed_detector(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    recipeName: str,
+    headerOverrides: dict[str, object],
+    locationSetIndex: object = False,
+) -> detect_continuum:
+    """Build a continuum detector through its real constructor."""
+    monkeypatch.setattr(
+        "soxspipe.commonutils.toolkit.utility_setup",
+        lambda **_: (str(tmp_path / QC_DIR_NAME), str(tmp_path / PRODUCT_DIR_NAME)),
+    )
+    monkeypatch.setattr(
+        importlib.import_module("soxspipe.commonutils.detect_continuum"), "get_calibration_lamp", lambda **_: ""
+    )
+    (tmp_path / QC_DIR_NAME).mkdir(exist_ok=True)
+    frame = CCDData(
+        np.full((32, 32), 20.0),
+        unit=u.electron,
+        meta=instrument_header(arm="VIS", overrides={"EXPTIME": 60.0, **headerOverrides}),
+    )
+    detector = detect_continuum(
+        log=log,
+        traceFrame=frame,
+        dispersion_map="dispersion.fits",
+        settings={**pipeline_settings(tmp_path), "tune-pipeline": False},
+        recipeSettings={"detect-continuum": {"disp-axis-deg": 1, "order-deg": 0}},
+        recipeName=recipeName,
+        qcTable=qc_table(),
+        productsTable=pd.DataFrame(),
+        sofName=SOF_NAME,
+        locationSetIndex=locationSetIndex,
+        startNightDate="2024-01-02",
+    )
+    detector.detectorParams = {"rotate-qc-plot": 0, "flip-qc-plot": 0, "dispersion-axis": "x"}
+    detector.axisBDeg = 1
+    detector.orderDeg = 0
+    return detector
+
+
+@pytest.mark.parametrize(
+    ("recipeName", "headerOverrides", "locationSetIndex", "expectedSequence"),
+    [
+        ("soxs-nod", {"HIERARCH ESO SEQ CUMOFF Y": 2.0}, 2, "_A2"),
+        ("soxs-nod", {"HIERARCH ESO SEQ CUMOFF Y": -2.0}, 1, "_B1"),
+        ("soxs-nod", {}, 1, ""),
+        ("soxs-stare", {"HIERARCH ESO SEQ CUMOFF Y": 2.0}, False, "_A"),
+        ("soxs-stare", {}, False, ""),
+    ],
+)
+def test_nodding_sequence_for_nod_and_stare_is_unchanged(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recipeName: str,
+    headerOverrides: dict[str, object],
+    locationSetIndex: object,
+    expectedSequence: str,
+) -> None:
+    detector = _constructed_detector(
+        log,
+        monkeypatch,
+        tmp_path,
+        recipeName=recipeName,
+        headerOverrides=headerOverrides,
+        locationSetIndex=locationSetIndex,
+    )
+
+    assert detector.noddingSequence == expectedSequence
+
+
+@pytest.mark.parametrize(
+    ("locationSetIndex", "expectedSequence"),
+    [(1, "_1"), (2, "_2"), (STACKED_LOCATION_SET, "_STACK")],
+)
+def test_offset_frames_without_cumoff_y_take_their_sequence_from_the_location_set(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    locationSetIndex: object,
+    expectedSequence: str,
+) -> None:
+    detector = _constructed_detector(
+        log,
+        monkeypatch,
+        tmp_path,
+        recipeName="soxs-offset",
+        headerOverrides=OFFSET_HEADER,
+        locationSetIndex=locationSetIndex,
+    )
+
+    assert detector.noddingSequence == expectedSequence
+
+
+def test_two_offset_cycles_and_the_stacked_pair_write_three_sets_of_trace_files(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    detectors = [
+        _constructed_detector(
+            log,
+            monkeypatch,
+            tmp_path,
+            recipeName="soxs-offset",
+            headerOverrides=OFFSET_HEADER,
+            locationSetIndex=locationSetIndex,
+        )
+        for locationSetIndex in (1, 2, STACKED_LOCATION_SET)
+    ]
+
+    pdfNames = [_residual_pdf_name(detector, monkeypatch) for detector in detectors]
+    tableNames = [_order_table_name(detector, monkeypatch) for detector in detectors]
+
+    assert len(set(pdfNames)) == 3
+    assert len(set(tableNames)) == 3
+    assert f"{SOF_NAME}.fits".upper() not in tableNames

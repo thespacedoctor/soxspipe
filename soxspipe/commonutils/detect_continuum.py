@@ -33,6 +33,7 @@ from soxspipe.commonutils.toolkit import (
     cut_image_slice,
     get_calibration_lamp,
     legend_below_axis,
+    nodding_sequence_suffix,
     qc_image_panel_height,
     qc_table_heights,
     read_spectral_format,
@@ -41,8 +42,8 @@ from soxspipe.commonutils.toolkit import (
 os.environ["TERM"] = "vt100"
 
 
-def _is_nodding_recipe(recipeName):
-    """*return True for the recipes that write one trace file per nodding sequence (soxs-nod and soxs-offset)*"""
+def _has_sequence_suffixed_traces(recipeName):
+    """*return True for the recipes whose trace files carry a per-sequence suffix (soxs-nod and soxs-offset)*"""
     return "nod" in recipeName.lower() or "offset" in recipeName.lower()
 
 
@@ -514,7 +515,7 @@ class _base_detect:
 
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
-        elif _is_nodding_recipe(self.recipeName):
+        elif _has_sequence_suffixed_traces(self.recipeName):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
             filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + ".fits"
 
@@ -585,7 +586,8 @@ class detect_continuum(_base_detect):
     - ``binx`` -- binning in x-axis
     - ``biny`` -- binning in y-axis
     - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
-    - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+    - ``locationSetIndex`` -- the index of the AB cycle locations, or the offset stack's own index (nodding and
+      offset modes only). Default *False*
     - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``debug`` -- if *True* then extra debugging information is printed. Default *False*
@@ -632,13 +634,9 @@ class detect_continuum(_base_detect):
         import copy
 
         self.settings = settings
-        try:
-            self.noddingSequence = "_A" if int(traceFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
-            if locationSetIndex:
-                self.noddingSequence += str(locationSetIndex)
-        except (KeyError, TypeError) as e:
-            self.log.debug(f"__init__: `self.noddingSequence = '_A' if int(traceFrame.head...` failed, continuing: {e}")
-            self.noddingSequence = ""
+        self.noddingSequence = nodding_sequence_suffix(
+            header=traceFrame.header, locationSetIndex=locationSetIndex, recipeName=recipeName
+        )
 
         self.recipeName = recipeName
         self.traceFrame = traceFrame
@@ -1495,7 +1493,7 @@ class detect_continuum(_base_detect):
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
             filename = self.sofName + f"_residuals_{polyOrders}.pdf"
-        elif _is_nodding_recipe(self.recipeName):
+        elif _has_sequence_suffixed_traces(self.recipeName):
             filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + f"_{polyOrders}.pdf"
         else:
             filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
