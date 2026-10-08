@@ -226,11 +226,6 @@ def _merge_one_order(log: object, firstWavelength: float) -> tuple[np.ndarray, p
     return wavelength, merged, extraction
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1248 (DY-35 C1): merged spectrum fabricates a FLUX=0, VARIANCE=0, SNR=NaN bin below the first sample",
-)
 def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: object) -> None:
     # ARRANGE AND ACT: THE FIRST SAMPLE (500.004 NM) ROUNDS DOWN TO 500.00 ON THE 0.02 NM OUTPUT GRID
     wavelength, merged, _ = _merge_one_order(log, firstWavelength=500.004)

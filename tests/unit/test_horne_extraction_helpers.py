@@ -739,6 +739,29 @@ def test_order_merge_resamples_nir_flux_and_preserves_variance(log: object) -> N
     assert joins == {}
 
 
+def test_merge_grid_keeps_bins_inside_the_range_at_both_ends() -> None:
+    # 500.013 ROUNDS DOWN TO 500.02 ON THE 0.02 NM STEP AND 500.187 ROUNDS UP TO 500.20, BOTH OUTSIDE THE DATA
+    grid = horne_extraction._resample_grid(500.013, 500.187, ratio=50.0)
+
+    np.testing.assert_allclose(grid[[0, -1]], [500.02, 500.18])
+    assert grid.min() >= 500.013
+    assert grid.max() <= 500.187
+    np.testing.assert_allclose(np.diff(grid), 0.02)
+
+
+def test_merge_grid_includes_end_bins_that_sit_exactly_on_the_step() -> None:
+    grid = horne_extraction._resample_grid(1000.02, 1000.14, ratio=1 / 0.06)
+
+    assert grid[0] >= 1000.02
+    assert grid[-1] <= 1000.14
+    assert len(grid) == 3
+
+
+def test_merge_grid_raises_when_no_step_multiple_lies_inside_the_range() -> None:
+    with pytest.raises(ValueError, match="No output wavelength bin"):
+        horne_extraction._resample_grid(500.003, 500.007, ratio=50.0)
+
+
 def test_order_merge_renumbers_soxs_vis_orders_in_place_and_keeps_their_dtype(log: object) -> None:
     extractor = _extractor(log)
     extractor.arm = "VIS"
