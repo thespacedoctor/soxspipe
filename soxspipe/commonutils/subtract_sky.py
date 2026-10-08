@@ -1192,6 +1192,33 @@ class subtract_sky:
             | imageMapOrderDF["flagged_object_clipped"]
         )
 
+    @staticmethod
+    def _noisy_region_flux_scale(noisyPixels):
+        """*return the flux scale used to down-weight noisy-region pixels in the sky fit*
+
+        The scale is ``max(abs(flux), noise)``. Bright noisy pixels are still down-weighted
+        in proportion to their flux (DY-695). Pixels with ``abs(flux)`` below their own noise
+        share one bounded weight, instead of a weight that diverges at zero flux (DY-1253).
+        The noise is the pixel ``error``. Where that is not a positive finite number (for example
+        no dark subtraction gives 0) the local ``residual_windowed_std`` is used, as the sky
+        weights already divide by it.
+
+        **Key Arguments:**
+
+        - ``noisyPixels`` -- the noisy-region rows of the single-order dataframe,
+          with `flux`, `error` and `residual_windowed_std` columns
+
+        **Return:**
+
+        - ``fluxScale`` -- numpy array, strictly positive, one value per row of `noisyPixels`
+        """
+        import numpy as np
+
+        errors = noisyPixels["error"].to_numpy(dtype=float)
+        isUsableError = np.isfinite(errors) & (errors > 0)
+        noise = np.where(isUsableError, errors, noisyPixels["residual_windowed_std"].to_numpy(dtype=float))
+        return np.maximum(np.abs(noisyPixels["flux"].to_numpy(dtype=float)), noise)
+
     def fit_bspline_curve_to_sky(self, imageMapOrder):
         """*fit a single-order univariate bspline to the unclipped sky pixels (wavelength vs flux)*
 
@@ -1355,11 +1382,13 @@ class subtract_sky:
 
             if iterationCount == 2:
                 mask_noisy = imageMapOrder["flagged_noisy_region"] == True
+                # BOUND THE REWEIGHT BY THE PIXEL NOISE: 1/|flux| DIVERGES AT ZERO FLUX (DY-1253)
+                noisyFluxScale = self._noisy_region_flux_scale(imageMapOrder.loc[mask_noisy])
                 imageMapOrder.loc[mask_noisy, "weights2"] = (
-                    imageMapOrder.loc[mask_noisy, "weights2"] / imageMapOrder.loc[mask_noisy, "flux"].abs() * 0.1
+                    imageMapOrder.loc[mask_noisy, "weights2"] / noisyFluxScale * 0.1
                 )
                 imageMapOrder.loc[mask_noisy, "weights"] = (
-                    imageMapOrder.loc[mask_noisy, "weights"] / imageMapOrder.loc[mask_noisy, "flux"].abs() * 0.1
+                    imageMapOrder.loc[mask_noisy, "weights"] / noisyFluxScale * 0.1
                 )
 
             # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
@@ -2759,7 +2788,8 @@ class subtract_sky:
             imageMapOrder.loc[mask_unclipped, "sky_residuals"].abs() / imageMapOrder.loc[mask_unclipped, "error"]
         )
         # INF ARISES WHEN ERROR == 0 (NO DARK SUBTRACTION); REPLACE WITH 1 TO AVOID MASKING GOOD PIXELS
-        imageMapOrder.replace([np.inf, -np.inf], 1, inplace=True)
+        # RESTRICTED TO sky_residuals SO NO OTHER COLUMN (E.G. THE FIT WEIGHTS) IS REWRITTEN (DY-1253)
+        imageMapOrder["sky_residuals"] = imageMapOrder["sky_residuals"].replace([np.inf, -np.inf], 1)
 
         # ROLLING QUANTILE OVER A LONG WINDOW TO ESTIMATE THE LOCAL RESIDUAL FLOOR
         window = max(int(20000 / iteration), 1000)

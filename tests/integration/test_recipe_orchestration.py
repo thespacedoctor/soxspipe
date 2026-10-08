@@ -8,6 +8,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -114,7 +115,8 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     rawFrames = [synthetic_ccd(seed=1), synthetic_ccd(seed=2)]
     noiseFrame = synthetic_ccd(seed=3, prepared=True)
     stackedFrame = noiseFrame.copy()
-    expectedMasterRon = float(stackedFrame.data.std())
+    # THE MASTER RON IS THE SPREAD OF THE PIXELS THE STACK DID NOT MASK (DY-1249)
+    expectedMasterRon = float(np.ma.std(np.ma.array(stackedFrame.data, mask=stackedFrame.mask)))
     recipe = soxs_mbias.__new__(soxs_mbias)
     recipe.log = log
     recipe.arm = "VIS"
