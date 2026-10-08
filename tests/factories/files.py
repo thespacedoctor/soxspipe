@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 import numpy as np
@@ -49,9 +49,15 @@ def raw_fits(
     shape: tuple[int, int] = (32, 32),
     seed: int = 7,
     instrument: str = "soxs",
+    headerOverrides: Mapping[str, object] | None = None,
 ) -> Path:
     """Write a deterministic primary-HDU raw frame and return its path."""
-    frame = synthetic_ccd(shape=shape, seed=seed, instrument=instrument)
+    frame = synthetic_ccd(
+        shape=shape,
+        seed=seed,
+        instrument=instrument,
+        headerOverrides=headerOverrides,
+    )
     fits.PrimaryHDU(data=np.asarray(frame.data), header=frame.header).writeto(destination)
     return destination
 

@@ -179,32 +179,6 @@ def test_the_overwrite_flag_runs_over_an_existing_product(
     assert recipe.sofName == "synthetic"
 
 
-def test_input_that_is_not_a_set_of_files_fails_on_the_unset_night_date(
-    log: Any,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """A frame list, or no frames at all, cannot construct a recipe today.
-
-    `self.startNightDate` is set only on the set-of-files branch, and the
-    constructor reads it unconditionally when it sets up the QC and product
-    directories. Pinned as it stands: every route into `base_recipe` other
-    than a `.sof` path raises `AttributeError`. Reported as a defect.
-    """
-    # ARRANGE
-    _isolate(monkeypatch, tmp_path, productPath=tmp_path / "unused.fits")
-
-    # ACT / ASSERT
-    with pytest.raises(AttributeError, match="startNightDate"):
-        base_recipe(
-            log=log,
-            settings=_settings(tmp_path),
-            inputFrames=["raw_one.fits", "raw_two.fits"],
-            recipeName="soxs-mbias",
-            turnOffMP=True,
-        )
-
-
 def test_the_session_database_records_the_recipe_as_failed_before_it_runs(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,

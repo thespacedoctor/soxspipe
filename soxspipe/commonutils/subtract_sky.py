@@ -2039,6 +2039,7 @@ class subtract_sky:
         import numpy.ma as ma
 
         arm = self.arm
+        xLabel, yLabel = self._qc_display_axis_labels()
 
         # a = plt.figure(figsize=(40, 15))
         if arm == "UVB":
@@ -2061,8 +2062,8 @@ class subtract_sky:
         nonOrderMask = ma.make_mask(nonOrderMask)
         combinedMask = (nonOrderMask == 1) | (objectFrame.mask == 1)
 
-        # ROTATE THE IMAGE FOR BETTER LAYOUT
-        rotatedImg = np.rot90(objectFrame.data, 1)
+        # ORIENT THE IMAGE AS THE OTHER QC PLOTS DO
+        rotatedImg = self._qc_display_image(objectFrame.data)
         maskedDataArray = np.ma.array(objectFrame.data, mask=combinedMask)
         maskedDataValues = np.array(maskedDataArray.filled(np.nan), dtype=float, copy=True)
 
@@ -2077,11 +2078,11 @@ class subtract_sky:
         vmin = mean - 0.1 * std
         toprow.imshow(rotatedImg, vmin=0, vmax=100, cmap="gray", alpha=1.0, interpolation="none")
         toprow.set_title(f"Original {arm} Frame", fontsize=10)
-        toprow.set_ylabel("x-axis", fontsize=8)
-        toprow.set_xlabel("y-axis", fontsize=8)
+        toprow.set_ylabel(yLabel, fontsize=8)
+        toprow.set_xlabel(xLabel, fontsize=8)
         toprow.tick_params(axis="both", which="major", labelsize=9)
 
-        rotatedImg = np.rot90(skyModelFrame.data, 1)
+        rotatedImg = self._qc_display_image(skyModelFrame.data)
         maskedDataArray = np.ma.array(skyModelFrame.data, mask=combinedMask)
         maskedDataValues = np.array(maskedDataArray.filled(np.nan), dtype=float, copy=True)
         std = np.nanstd(maskedDataValues)
@@ -2090,11 +2091,11 @@ class subtract_sky:
         vmin = mean - 1 * std
         midrow.imshow(rotatedImg, vmin=0, vmax=100, cmap="gray", alpha=1.0, interpolation="none")
         midrow.set_title(f"Sky-model for {arm} Frame", fontsize=10)
-        midrow.set_ylabel("x-axis", fontsize=8)
-        midrow.set_xlabel("y-axis", fontsize=8)
+        midrow.set_ylabel(yLabel, fontsize=8)
+        midrow.set_xlabel(xLabel, fontsize=8)
         midrow.tick_params(axis="both", which="major", labelsize=9)
 
-        rotatedImg = np.rot90(skySubFrame.data, 1)
+        rotatedImg = self._qc_display_image(skySubFrame.data)
         maskedDataArray = np.ma.array(skySubFrame.data, mask=combinedMask)
         maskedDataValues = np.array(maskedDataArray.filled(np.nan), dtype=float, copy=True)
 
@@ -2110,8 +2111,8 @@ class subtract_sky:
         vmin = 0
         bottomrow.imshow(rotatedImg, vmin=vmin, vmax=30, cmap="gray", alpha=1.0, interpolation="none")
         bottomrow.set_title(f"Sky-subtracted {arm} Frame", fontsize=10)
-        bottomrow.set_ylabel("x-axis", fontsize=8)
-        bottomrow.set_xlabel("y-axis", fontsize=8)
+        bottomrow.set_ylabel(yLabel, fontsize=8)
+        bottomrow.set_xlabel(xLabel, fontsize=8)
         bottomrow.tick_params(axis="both", which="major", labelsize=9)
 
         # plt.show()
