@@ -203,7 +203,7 @@ def test_get_fits_lower_edge_using_only_rows_with_finite_lower_positions(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    # ARRANGE: ORDER 11 HAS A MISSING CENTRE, SO ITS EDGE POSITIONS COME OUT AS NAN
+    # ARRANGE: ORDER 11 HAS A MISSING CENTRE, SO THE HEIGHT COUPLING AFTER EDGE DETECTION TURNS ITS EDGES INTO NAN
     orderPixels = pd.DataFrame(
         {
             "order": [10, 10, 11, 11],

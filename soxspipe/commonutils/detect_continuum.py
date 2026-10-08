@@ -69,7 +69,7 @@ def _solve_linear_poly_coefficients(poly, pixelList, yValues, nCoeff):
     The design matrix is built by evaluating ``poly`` once per unit coefficient vector. Columns are scaled to unit
     norm before solving, because raw order and axis-B powers span tens of orders of magnitude and would otherwise look
     rank-deficient. Where the scaled design matrix is genuinely rank-deficient the solution with minimum norm in the
-    column-scaled basis is returned, so the result depends only on the data and never on floating-point noise.
+    column-scaled basis is returned, so last-bit noise in the inputs cannot move the answer to a different solution.
 
     **Key Arguments:**
 
