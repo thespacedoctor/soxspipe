@@ -40,6 +40,7 @@
 * **TEST**: the real-data workflow now runs only on pull requests into `main` and on manual dispatch; it no longer runs on pull requests into `develop` or on a weekly schedule (DY-840)
 * **TEST**: `tools/check_changelog.py` rejects a bullet repeated within one release block, in pre-commit and CI (DY-851)
 * **TEST**: CI now fails when any file is not formatted with the pinned `ruff format`; the whole repository was reformatted once to start clean (DY-850)
+* **TEST**: the real-data gate now fails when any recipe in its reduction chain records a QC `fail` in the `quality_control` table, or when the table is empty; an expected failure must be listed with a reason in `tests/real_data/test_qc_verdict.py` (DY-908)
 
 ## v0.18.0 - September 30, 2026
 
