@@ -344,7 +344,7 @@ class detect_order_edges(_base_detect):
         orderPixelTableLower = orderPixelTable.dropna(axis="index", how="any", subset=[f"{self.axisA}coord_lower"])
 
         lowerCoeff, orderPixelTableLower, clippedLower = self.fit_global_polynomial(
-            pixelList=orderPixelTable,
+            pixelList=orderPixelTableLower,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_lower",
             orderCol="order",

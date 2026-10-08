@@ -42,6 +42,11 @@ from soxspipe.commonutils.toolkit import (
 
 os.environ["TERM"] = "vt100"
 
+# SINGULAR VALUES BELOW THIS FRACTION OF THE LARGEST (OF THE COLUMN-SCALED DESIGN MATRIX) ARE TREATED AS ZERO.
+# FIXED, NOT EPS * MAX(M, N), SO THE CUT DOES NOT SHIFT AS SIGMA-CLIPPING CHANGES THE ROW COUNT. IT SITS WELL ABOVE
+# FLOATING-POINT NOISE (~1E-16) AND WELL BELOW THE SMALLEST SINGULAR VALUE OF THE REAL SOXS NIR EDGE FIT (~4E-10)
+LSTSQ_RCOND = 1.0e-12
+
 
 def _order_colours(orders):
     """*assign each order a colour from the matplotlib property cycle, keyed by the order itself*
@@ -58,6 +63,50 @@ def _order_colours(orders):
 
     cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     return {order: cycle[i % len(cycle)] for i, order in enumerate(orders)}
+
+
+def _solve_linear_poly_coefficients(poly, pixelList, yValues, nCoeff):
+    """*solve for the coefficients of a model that is linear in its coefficients, by least squares*
+
+    The design matrix is built by evaluating ``poly`` once per unit coefficient vector. Columns are scaled to unit
+    norm before solving, because raw order and axis-B powers span tens of orders of magnitude and would otherwise look
+    rank-deficient. Where the scaled design matrix is genuinely rank-deficient the solution with minimum norm in the
+    column-scaled basis is returned, so last-bit noise in the inputs cannot move the answer to a different solution.
+
+    **Key Arguments:**
+
+    - ``poly`` -- the model, called as ``poly(pixelList, *coeff)``, linear in ``coeff``
+    - ``pixelList`` -- data-frame holding the columns ``poly`` needs
+    - ``yValues`` -- the values to fit, one per row of ``pixelList``
+    - ``nCoeff`` -- the number of coefficients in the model
+
+    **Return:**
+
+    - ``coeff`` -- the fitted coefficients, as an array of length ``nCoeff``
+
+    **Usage:**
+
+    ```python
+    yValues = pixelList["cont_x"].values
+    coeff = _solve_linear_poly_coefficients(poly=poly, pixelList=pixelList, yValues=yValues, nCoeff=6)
+    ```
+    """
+    import numpy as np
+
+    unitVectors = np.eye(nCoeff)
+    designMatrix = np.column_stack([poly(pixelList, *unitVectors[j]) for j in range(nCoeff)])
+    # NULLABLE PANDAS DTYPES (E.G. Float64 WITH pd.NA) BECOME PLAIN FLOATS, SO MISSING VALUES BECOME NaN AND ARE CAUGHT
+    yArray = np.asarray(yValues, dtype=float)
+
+    if not (np.isfinite(designMatrix).all() and np.isfinite(yArray).all()):
+        raise ValueError("array must not contain infs or NaNs")
+
+    # SCALE EACH COLUMN TO UNIT NORM (ALL-ZERO COLUMNS LEFT AS THEY ARE)
+    columnScale = np.linalg.norm(designMatrix, axis=0)
+    columnScale[columnScale == 0] = 1.0
+
+    scaledCoeff = np.linalg.lstsq(designMatrix / columnScale, yArray, rcond=LSTSQ_RCOND)[0]
+    return scaledCoeff / columnScale
 
 
 class _base_detect:
@@ -191,7 +240,6 @@ class _base_detect:
         import numpy as np
         import pandas as pd
         from astropy.stats import sigma_clip
-        from scipy.optimize import curve_fit
 
         arm = self.arm
 
@@ -230,35 +278,27 @@ class _base_detect:
             allClipped.append(pixelList.loc[removeMask])
             pixelList = pixelList.loc[~removeMask]
 
-        coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
+        nCoeff = (self.axisBDeg + 1) * (self.orderDeg + 1)
+
+        # PLACEHOLDER SO THE FINAL RESIDUALS CAN BE EVALUATED IF THE CLIPPING LOOP NEVER RUNS
+        coeff = np.ones(nCoeff)
         while clippedCount > 0 and iteration < clippingIterationLimit:
             startCount = len(pixelList.index)
             iteration += 1
 
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
 
-            if len(pixelList.index) == 0:
-                # REMOVE THIS ORDER FROM PIXEL LIST
+            # TOO FEW POINTS TO CONSTRAIN THE POLYNOMIAL (OR NONE LEFT) - NO SOLUTION
+            if len(pixelList.index) < nCoeff:
                 coeff = None
                 return coeff, pixelList, pixelList
 
-            if iteration < 3:
-                coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
-
-            try:
-                coeff, pcov_x = curve_fit(
-                    poly,
-                    xdata=pixelList,
-                    ydata=pixelList[axisACol].values,
-                    p0=coeff,
-                    maxfev=30000,
-                )
-            except TypeError:
-                # REMOVE THIS ORDER FROM PIXEL LIST
-                coeff = None
-                return coeff, pixelList, pixelList
-            except Exception as e:
-                raise e
+            coeff = _solve_linear_poly_coefficients(
+                poly=poly,
+                pixelList=pixelList,
+                yValues=pixelList[axisACol].values,
+                nCoeff=nCoeff,
+            )
 
             res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
                 orderPixelTable=pixelList,

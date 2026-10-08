@@ -200,7 +200,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         values={
             "N ORDERS": count(15),
             "SAMPLES DET FRAC": fraction(0.97),
-            "Y RES SD": level(0.043),
+            "Y RES SD": level(0.042),
         },
     ),
     QcBaseline(
@@ -232,10 +232,10 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-mflat",
         sofName="20250514T085927_NIR_3_MFLAT_QTH_SLIT1_0_3_75S_SOXS.sof",
         values={
-            "INNER ORDER PIX MEAN": level(0.919),
+            "INNER ORDER PIX MEAN": level(0.918),
             "COLDPIX FRAC": fraction(0.009302),
             "N LOW SENS": count(0),
-            "ORDEXP50": level(6360.739),
+            "ORDEXP50": level(6359.945),
         },
     ),
     QcBaseline(
@@ -260,10 +260,10 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-mflat",
         sofName="20251128T114919_NIR_3_MFLAT_QTH_SLIT1_5_2_5S_SOXS.sof",
         values={
-            "INNER ORDER PIX MEAN": level(0.927),
+            "INNER ORDER PIX MEAN": level(0.928),
             "COLDPIX FRAC": fraction(0.009712),
             "N LOW SENS": count(0),
-            "ORDEXP50": level(12722.924),
+            "ORDEXP50": level(12731.39),
         },
     ),
     QcBaseline(
@@ -307,7 +307,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         values={
             "EFF MEDIAN": level(0.1161),
-            "SNR MEDIAN": level(50.025),
+            "SNR MEDIAN": level(50.02),
             "N ORDERS": count(15),
         },
     ),
@@ -318,22 +318,22 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         gridStart=400.0,
         gridStop=800.0,
-        median=level(7.086518641448493e-16),
+        median=level(7.086515405406636e-16),
         points={
-            450.0: level(2.8511877279730926e-16),
-            520.0: level(4.984971059401051e-16),
-            750.0: level(1.0925030036867112e-15),
+            450.0: level(2.851225832469254e-16),
+            520.0: level(4.984987325633302e-16),
+            750.0: level(1.0925032070420776e-15),
         },
     ),
     ResponseBaseline(
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         gridStart=1000.0,
         gridStop=1800.0,
-        median=level(2.642979895790927e-16),
+        median=level(2.683396467367584e-16),
         points={
-            1050.0: level(2.8587312775782497e-16),
-            1250.0: level(2.867448904632329e-16),
-            1650.0: level(1.811413701890149e-16),
+            1050.0: level(2.8684728642574555e-16),
+            1250.0: level(2.86521453471114e-16),
+            1650.0: level(1.7916834391261548e-16),
         },
     ),
 )
