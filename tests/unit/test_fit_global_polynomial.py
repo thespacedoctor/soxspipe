@@ -55,7 +55,8 @@ def test_rank_deficient_fit_returns_the_minimum_norm_solution(log: object) -> No
     detector = _detector(log, orderDeg=3, axisBDeg=3, clippingSigma=NO_CLIPPING_SIGMA)
     pixels = _rank_deficient_pixels()
     design = _design_matrix(pixels, 3, 3)
-    assert np.linalg.matrix_rank(design / np.linalg.norm(design, axis=0), tol=LSTSQ_RCOND) == 12
+    singularValues = np.linalg.svd(design / np.linalg.norm(design, axis=0), compute_uv=False)
+    assert np.count_nonzero(singularValues > LSTSQ_RCOND * singularValues[0]) == 12
 
     coefficients, _, _ = detector.fit_global_polynomial(pixels.copy())
 
@@ -132,7 +133,7 @@ def test_fewer_points_than_coefficients_returns_no_solution(log: object) -> None
     assert clipped is fitted
 
 
-def test_exponents_included_path_matches_the_computed_path(log: object) -> None:
+def test_exponents_included_flag_makes_the_fit_use_the_precomputed_power_columns(log: object) -> None:
     detector = _detector(log, orderDeg=1, axisBDeg=2, clippingSigma=NO_CLIPPING_SIGMA)
     pixels = pd.DataFrame(
         {
@@ -141,16 +142,55 @@ def test_exponents_included_path_matches_the_computed_path(log: object) -> None:
         }
     )
     pixels["cont_x"] = 2.0 + 0.1 * pixels["cont_y"] + 0.5 * pixels["order"] + 0.01 * pixels["order"] * pixels["cont_y"]
+    # POWER COLUMNS BUILT FROM A SHIFTED AND SCALED BASIS, SO THEY DIFFER FROM A RECOMPUTATION FROM THE RAW COORDINATES
+    shiftedY = pixels["cont_y"] / 10.0
+    shiftedOrder = pixels["order"] - 10.0
     withPowers = pixels.copy()
     for j in range(3):
-        withPowers[f"y_pow_{j}"] = withPowers["cont_y"].pow(j)
+        withPowers[f"y_pow_{j}"] = shiftedY.pow(j)
     for i in range(2):
-        withPowers[f"order_pow_{i}"] = withPowers["order"].pow(i)
+        withPowers[f"order_pow_{i}"] = shiftedOrder.pow(i)
+    shiftedDesign = np.column_stack([shiftedOrder**i * shiftedY**j for i in range(2) for j in range(3)])
+    expectedShifted = np.linalg.lstsq(shiftedDesign, pixels["cont_x"].to_numpy(), rcond=None)[0]
 
-    computed, _, _ = detector.fit_global_polynomial(pixels.copy())
-    precomputed, _, _ = detector.fit_global_polynomial(withPowers, exponentsIncluded=True)
+    computed, _, _ = detector.fit_global_polynomial(withPowers.copy())
+    precomputed, _, _ = detector.fit_global_polynomial(withPowers.copy(), exponentsIncluded=True)
 
-    np.testing.assert_allclose(precomputed, computed, rtol=1e-9, atol=1e-12)
+    np.testing.assert_allclose(precomputed, expectedShifted, rtol=1e-8, atol=1e-10)
+    assert not np.allclose(precomputed, computed, rtol=1e-3, atol=1e-6)
+
+
+def test_all_zero_design_columns_get_zero_coefficients_and_the_fit_still_matches(log: object) -> None:
+    detector = _detector(log, orderDeg=1, axisBDeg=2, clippingSigma=NO_CLIPPING_SIGMA)
+    pixels = pd.DataFrame(
+        {
+            "order": np.repeat([10.0, 11.0, 12.0], 4),
+            "cont_y": np.zeros(12),
+        }
+    )
+    pixels["cont_x"] = 2.0 + 0.5 * pixels["order"]
+
+    coefficients, fitted, _ = detector.fit_global_polynomial(pixels.copy())
+
+    # TERM ORDER IS ORDER-POWER OUTER, AXIS-B POWER INNER, SO EVERY AXIS-B POWER ABOVE ZERO IS AN ALL-ZERO COLUMN
+    zeroColumns = [1, 2, 4, 5]
+    assert np.isfinite(coefficients).all()
+    np.testing.assert_array_equal(np.asarray(coefficients)[zeroColumns], 0.0)
+    np.testing.assert_allclose(fitted["cont_x_fit"], pixels["cont_x"], rtol=0, atol=1e-9)
+
+
+def test_nullable_dtype_missing_values_raise_instead_of_returning_garbage(log: object) -> None:
+    detector = _detector(log, orderDeg=0, axisBDeg=1)
+    pixels = pd.DataFrame(
+        {
+            "order": np.full(6, 10.0),
+            "cont_y": np.arange(6, dtype=float),
+            "stddev": pd.array([1.0, 1.1, pd.NA, 1.2, 1.3, 1.4], dtype="Float64"),
+        }
+    )
+
+    with pytest.raises(ValueError, match="infs or NaNs"):
+        detector.fit_global_polynomial(pixels, axisACol="stddev")
 
 
 def test_non_finite_values_raise_instead_of_returning_garbage(log: object) -> None:

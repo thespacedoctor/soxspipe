@@ -68,8 +68,8 @@ def _solve_linear_poly_coefficients(poly, pixelList, yValues, nCoeff):
 
     The design matrix is built by evaluating ``poly`` once per unit coefficient vector. Columns are scaled to unit
     norm before solving, because raw order and axis-B powers span tens of orders of magnitude and would otherwise look
-    rank-deficient. Where the scaled design matrix is genuinely rank-deficient the minimum-norm solution is returned,
-    so the result depends only on the data and never on floating-point noise.
+    rank-deficient. Where the scaled design matrix is genuinely rank-deficient the solution with minimum norm in the
+    column-scaled basis is returned, so the result depends only on the data and never on floating-point noise.
 
     **Key Arguments:**
 
@@ -93,15 +93,17 @@ def _solve_linear_poly_coefficients(poly, pixelList, yValues, nCoeff):
 
     unitVectors = np.eye(nCoeff)
     designMatrix = np.column_stack([poly(pixelList, *unitVectors[j]) for j in range(nCoeff)])
+    # NULLABLE PANDAS DTYPES (E.G. Float64 WITH pd.NA) BECOME PLAIN FLOATS, SO MISSING VALUES BECOME NaN AND ARE CAUGHT
+    yArray = np.asarray(yValues, dtype=float)
 
-    if not (np.isfinite(designMatrix).all() and np.isfinite(yValues).all()):
+    if not (np.isfinite(designMatrix).all() and np.isfinite(yArray).all()):
         raise ValueError("array must not contain infs or NaNs")
 
     # SCALE EACH COLUMN TO UNIT NORM (ALL-ZERO COLUMNS LEFT AS THEY ARE)
     columnScale = np.linalg.norm(designMatrix, axis=0)
     columnScale[columnScale == 0] = 1.0
 
-    scaledCoeff = np.linalg.lstsq(designMatrix / columnScale, yValues, rcond=LSTSQ_RCOND)[0]
+    scaledCoeff = np.linalg.lstsq(designMatrix / columnScale, yArray, rcond=LSTSQ_RCOND)[0]
     return scaledCoeff / columnScale
 
 
