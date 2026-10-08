@@ -80,11 +80,6 @@ def _bias_frame(rng: np.random.Generator, shape: tuple[int, int], hotPixels: dic
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1249 (DY-35 A1): MASTER RON is the std of the unmasked array, so clipped and masked pixels count",
-)
 def test_master_ron_excludes_masked_pixels(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
     # ARRANGE: FIVE BIAS FRAMES SHARING 20 HOT PIXELS (0.05% OF THE DETECTOR)
     monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: None)
