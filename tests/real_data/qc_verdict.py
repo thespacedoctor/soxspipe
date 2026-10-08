@@ -43,7 +43,7 @@ def qc_verdict_problems(connection: sqlite3.Connection, allowedFailures: tuple[A
     ).fetchall()
     allowedKeys = {(allowed.recipe, allowed.sofName, allowed.qcName) for allowed in allowedFailures}
     return [
-        f"{recipe} {sofName}: {qcName} = {qcValue} is outside [{qcMin}, {qcMax}]"
+        f"{recipe} {sofName}: {qcName} = {qcValue} failed QC (acceptable range {qcMin} to {qcMax})"
         for recipe, sofName, qcName, qcValue, qcMin, qcMax in failingRows
         if (recipe, sofName, qcName) not in allowedKeys
     ]
