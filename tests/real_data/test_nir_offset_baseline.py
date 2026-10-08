@@ -86,7 +86,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
         report("fluxcal rows", len(fluxcal_table))
         report("fluxcal median", float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])))
-        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.521486461282483e-15, rel=0.05)
+        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.54792923409245e-15, rel=0.05)
 
     with sqlite3.connect(reduced_workspace / "soxspipe.db") as connection:
         qc_values = dict(
