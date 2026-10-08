@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import importlib
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -18,6 +17,9 @@ from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories import instrument_header, pipeline_settings, qc_table
 
 pytestmark = pytest.mark.unit
+
+# THE PACKAGE RE-EXPORTS THE detect_continuum CLASS UNDER THE MODULE'S OWN NAME, SO THE MODULE NEEDS importlib.
+continuumModule = importlib.import_module("soxspipe.commonutils.detect_continuum")
 
 SOF_NAME = "SOXS_VIS_FLAT_SOF"
 POLY_ORDERS = "01"
@@ -227,9 +229,7 @@ def _constructed_detector(
         "soxspipe.commonutils.toolkit.utility_setup",
         lambda **_: (str(tmp_path / QC_DIR_NAME), str(tmp_path / PRODUCT_DIR_NAME)),
     )
-    monkeypatch.setattr(
-        importlib.import_module("soxspipe.commonutils.detect_continuum"), "get_calibration_lamp", lambda **_: ""
-    )
+    monkeypatch.setattr(continuumModule, "get_calibration_lamp", lambda **_: "")
     (tmp_path / QC_DIR_NAME).mkdir(exist_ok=True)
     frame = CCDData(
         np.full((32, 32), 20.0),

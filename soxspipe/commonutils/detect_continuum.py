@@ -32,6 +32,7 @@ from soxspipe.commonutils.toolkit import (
     QC_STRIP_ROW_HEIGHT_INCHES,
     cut_image_slice,
     get_calibration_lamp,
+    has_sequence_suffixed_traces,
     legend_below_axis,
     nodding_sequence_suffix,
     qc_image_panel_height,
@@ -40,11 +41,6 @@ from soxspipe.commonutils.toolkit import (
 )
 
 os.environ["TERM"] = "vt100"
-
-
-def _has_sequence_suffixed_traces(recipeName):
-    """*return True for the recipes whose trace files carry a per-sequence suffix (soxs-nod and soxs-offset)*"""
-    return "nod" in recipeName.lower() or "offset" in recipeName.lower()
 
 
 def _order_colours(orders):
@@ -515,7 +511,7 @@ class _base_detect:
 
         elif "stare" in self.recipeName.lower():
             filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
-        elif _has_sequence_suffixed_traces(self.recipeName):
+        elif has_sequence_suffixed_traces(self.recipeName):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
             filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + ".fits"
 
@@ -1493,7 +1489,7 @@ class detect_continuum(_base_detect):
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
             filename = self.sofName + f"_residuals_{polyOrders}.pdf"
-        elif _has_sequence_suffixed_traces(self.recipeName):
+        elif has_sequence_suffixed_traces(self.recipeName):
             filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + f"_{polyOrders}.pdf"
         else:
             filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"

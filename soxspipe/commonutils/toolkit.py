@@ -2176,7 +2176,33 @@ def utility_setup(log, settings, recipeName, startNightDate):
     return qcDir, productDir
 
 
-def nodding_sequence_suffix(header, locationSetIndex, recipeName):
+def _is_offset_recipe(recipeName):
+    """*return True if the recipe name is an offset recipe*"""
+    return "offset" in recipeName.lower()
+
+
+def has_sequence_suffixed_traces(recipeName):
+    """*return True for the recipes whose trace products carry a per-sequence suffix (soxs-nod and soxs-offset)*
+
+    **Key Arguments:**
+
+    - ``recipeName`` -- the name of the recipe, as given in the settings dictionary
+
+    **Return:**
+
+    - ``hasSuffix`` -- *True* if the recipe name contains ``nod`` or ``offset``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import has_sequence_suffixed_traces
+    hasSuffix = has_sequence_suffixed_traces("soxs-offset")
+    ```
+    """
+    return "nod" in recipeName.lower() or _is_offset_recipe(recipeName)
+
+
+def nodding_sequence_suffix(header, locationSetIndex: int | str | bool, recipeName):
     """*return the suffix that separates the products of one nodding or offset sequence from the next*
 
     The suffix is ``_A`` or ``_B`` (the sign of ``HIERARCH ESO SEQ CUMOFF Y``) followed by the
@@ -2187,7 +2213,7 @@ def nodding_sequence_suffix(header, locationSetIndex, recipeName):
     **Key Arguments:**
 
     - ``header`` -- the header of the frame the sequence was taken from
-    - ``locationSetIndex`` -- the index of the AB cycle locations, or *False* for none
+    - ``locationSetIndex`` -- the cycle index, the offset stack's label, or *False* for none
     - ``recipeName`` -- the name of the recipe, as given in the settings dictionary
 
     **Return:**
@@ -2201,14 +2227,13 @@ def nodding_sequence_suffix(header, locationSetIndex, recipeName):
     noddingSequence = nodding_sequence_suffix(header=frame.header, locationSetIndex=2, recipeName="soxs-nod")
     ```
     """
-    try:
-        noddingSequence = "_A" if int(header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
-        if locationSetIndex:
-            noddingSequence += str(locationSetIndex)
-    except (KeyError, TypeError):
-        noddingSequence = ""
-        if locationSetIndex and "offset" in str(recipeName).lower():
-            noddingSequence = f"_{locationSetIndex}"
+    if "HIERARCH ESO SEQ CUMOFF Y" not in header:
+        if locationSetIndex and _is_offset_recipe(recipeName):
+            return f"_{locationSetIndex}"
+        return ""
+    noddingSequence = "_A" if header["HIERARCH ESO SEQ CUMOFF Y"] > 0 else "_B"
+    if locationSetIndex:
+        noddingSequence += str(locationSetIndex)
     return noddingSequence
 
 
