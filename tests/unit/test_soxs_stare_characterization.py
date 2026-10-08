@@ -16,8 +16,8 @@ Stare differs from the first two tier-3 recipes in three ways the tests pin:
 it builds `set_of_files` with no `ext` argument, it reads its recipe settings
 before collecting the frames, and it names its products from the set-of-files
 name after the frames are prepared. Without a set-of-files name, that last
-step calls a name the module never imports (DY-111), a branch that DY-90
-masks today.
+step calls a name the module never imports (DY-111). Since DY-90 every route
+into the constructor sets a name, so the branch is no longer reached through it.
 
 `verify_input_frames` is tested by direct call. Its NIR branch and its
 error-reporting block are the lines the suite does not reach, and every
@@ -31,6 +31,7 @@ from typing import Any
 
 import pytest
 from astropy.nddata import CCDData
+from astropy.time import Time
 
 import soxspipe.commonutils as commonutils
 import soxspipe.commonutils.set_of_files as set_of_files_module
@@ -38,7 +39,7 @@ import soxspipe.commonutils.toolkit as toolkit
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.recipes.base_recipe import base_recipe
 from soxspipe.recipes.soxs_stare import soxs_stare
-from tests.factories import synthetic_ccd
+from tests.factories import raw_fits, synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -369,33 +370,35 @@ def test_a_quiet_construction_prints_only_the_verification_announcements(
     assert "SUMMARY TABLE" not in printed
 
 
-def test_a_list_of_frames_fails_in_the_inherited_constructor(
+def test_a_list_of_frames_constructs_and_names_its_products_from_the_synthetic_name(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A list of frames never reaches the stare constructor's own body.
-
-    This pins a defect, DY-90: `base_recipe.__init__` reads
-    `self.startNightDate`, which only a set-of-files path sets. Whoever fixes
-    DY-90 moves this pin, and then meets DY-111.
-    """
+    """A list of frames reaches the stare constructor's body, and the synthetic name drives the template (DY-90)."""
     # ARRANGE
+    frame = raw_fits(
+        tmp_path / "object.fits",
+        headerOverrides={"MJD-OBS": float(Time("2024-01-02T20:00:00", scale="utc").mjd), "SEQ_ARM": "VIS"},
+    )
     inventory = FrameInventory()
     calls: list[str] = []
 
-    # ACT / ASSERT
-    with pytest.raises(AttributeError, match="startNightDate"):
-        _construct(
-            log,
-            monkeypatch,
-            tmp_path,
-            inventory=inventory,
-            calls=calls,
-            inputFrames=[str(tmp_path / "object.fits")],
-        )
+    # ACT
+    recipe, sofArguments = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        inputFrames=[str(frame)],
+    )
 
-    assert calls == []
+    # ASSERT
+    assert recipe.sofName == "soxs-stare_VIS_2024-01-02"
+    assert recipe.filenameTemplate == "soxs-stare_VIS_2024-01-02.fits"
+    assert sofArguments["inputFrames"] == [str(frame)]
+    assert "set_of_files" in calls
 
 
 class FramesWithFiles:

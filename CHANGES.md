@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: every recipe now runs from a list of frame paths or a directory as well as a `.sof` file, instead of failing with `AttributeError`; the night date is the earliest `MJD-OBS` minus 15 hours, the QC `sof_name` is `<recipe>_<ARM>_<night>.sof`, and input with no frames or no `MJD-OBS` raises a clear `ValueError` (DY-90).
 * **FIXED**: the sky image-comparison QC plot rotates and flips its three panels, and labels their axes, with the arm's `rotate-qc-plot` and `flip-qc-plot` detector parameters, as the other QC plots do (DY-699).
 * **FIXED**: reading a preserved database (QC history and session statuses restored on a refresh) now goes through a scratch copy, so no file in `backups/` is created or changed; `open_backup_read_only` is now a context manager (DY-273).
 * **FIXED**: `data_organiser.session_switch` now updates `sessionId` as well as `sessionPath`, so a later `prepare()` on the same instance reads and writes the status column of the session switched to (DY-910).
