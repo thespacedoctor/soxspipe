@@ -41,6 +41,7 @@
 * **TEST**: `tools/check_changelog.py` rejects a bullet repeated within one release block, in pre-commit and CI (DY-851)
 * **TEST**: CI now fails when any file is not formatted with the pinned `ruff format`; the whole repository was reformatted once to start clean (DY-850)
 * **TEST**: the real-data gate now fails when any recipe in its reduction chain records a QC `fail` in the `quality_control` table, or when the table is empty; an expected failure must be listed with a reason in `tests/real_data/test_qc_verdict.py` (DY-908)
+* **TEST**: the real-data gate now holds all 23 calibration SOFs and both standard-star `nod` SOFs to baseline QC values within bands, checks each standard star's response curve on a fixed wavelength grid, and fails when it reduces a SOF with no baseline or stops reducing one (DY-257)
 
 ## v0.18.0 - September 30, 2026
 

@@ -51,19 +51,22 @@ class Band:
     """An approved value and how far a run may land from it."""
 
     centre: float
-    rel: float = 0.0
-    abs: float = 0.0
+    relTol: float = 0.0
+    absTol: float = 0.0
 
 
 def level(centre: float) -> Band:
-    return Band(centre, rel=LEVEL_REL)
+    """A level, residual or RMS value, held to `LEVEL_REL`."""
+    return Band(centre, relTol=LEVEL_REL)
 
 
 def fraction(centre: float) -> Band:
-    return Band(centre, abs=FRACTION_ABS)
+    """A fraction, held to `FRACTION_ABS`."""
+    return Band(centre, absTol=FRACTION_ABS)
 
 
 def count(centre: int) -> Band:
+    """A count, held exactly."""
     return Band(float(centre))
 
 
@@ -316,7 +319,7 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
         median=level(7.075162382086183e-16),
         points={
             450.0: level(2.847147794003331e-16),
-            600.0: level(7.075162382086183e-16),
+            520.0: level(4.990828057279169e-16),
             750.0: level(1.0858371357198532e-15),
         },
     ),
@@ -386,7 +389,7 @@ def test_calibration_qc_matches_approved_baseline(reduced_workspace: Path, basel
     for name in qcNames:
         report(f"{baseline.sofName} {name}", measured[name])
     for name, band in baseline.values.items():
-        assert measured[name] == pytest.approx(band.centre, rel=band.rel, abs=band.abs), name
+        assert measured[name] == pytest.approx(band.centre, rel=band.relTol, abs=band.absTol), name
 
 
 def _response_curve(responsePath: Path, wavelengths: np.ndarray) -> np.ndarray:
@@ -420,6 +423,6 @@ def test_standard_star_response_curve_matches_approved_baseline(
     for wavelength, value in pointValues.items():
         report(f"{stem} response at {wavelength:g} nm", value)
 
-    assert curveMedian == pytest.approx(baseline.median.centre, rel=baseline.median.rel, abs=baseline.median.abs)
+    assert curveMedian == pytest.approx(baseline.median.centre, rel=baseline.median.relTol, abs=baseline.median.absTol)
     for wavelength, band in baseline.points.items():
-        assert pointValues[wavelength] == pytest.approx(band.centre, rel=band.rel, abs=band.abs), wavelength
+        assert pointValues[wavelength] == pytest.approx(band.centre, rel=band.relTol, abs=band.absTol), wavelength
