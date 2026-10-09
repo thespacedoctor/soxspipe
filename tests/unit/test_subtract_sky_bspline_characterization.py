@@ -149,7 +149,9 @@ def test_skylines_drive_knot_insertion_until_an_iteration_adds_none(
 
     modelled, spline, knots, fluxErrorRatio, residualFloor = subtractor.fit_bspline_curve_to_sky(_skyline_order())
 
-    assert residualFloor == 5
+    # THE FLOOR IS THE MEASURED ONE, NOT A HARDCODED 5 (DY-1286)
+    unclipped = modelled["flagged_all_clipped"] == False  # noqa: E712
+    assert residualFloor == pytest.approx(modelled.loc[unclipped, "sky_residual_floor"].median())
     assert knots.size == expected["knotCount"]
     assert knots[[0, -1]].tolist() == _approx_list(expected["knotEnds"], ANCHORED_FIT_REL)
     assert spline[0].size == expected["coefficientKnots"]
