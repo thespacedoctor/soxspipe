@@ -10,6 +10,7 @@ Date Created
 """
 
 import contextlib
+import numbers
 import os
 import sys
 from datetime import datetime
@@ -1078,7 +1079,12 @@ class subtract_sky:
 
         import numpy as np
 
-        if not np.isfinite(sigma_clip_limit):
+        isFiniteNumber = (
+            isinstance(sigma_clip_limit, numbers.Real)
+            and not isinstance(sigma_clip_limit, bool)
+            and np.isfinite(sigma_clip_limit)
+        )
+        if not isFiniteNumber:
             raise ValueError(
                 f"the sky-subtraction setting percentile_clipping_sigma must be a finite number, got {sigma_clip_limit}"
             )

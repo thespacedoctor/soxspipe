@@ -362,9 +362,9 @@ def test_a_start_below_the_floor_is_not_clamped_and_does_not_retry(log: Any) -> 
     assert _messages(log, "warning") == [("warning", FLOOR_WARNING)]
 
 
-@pytest.mark.parametrize("sigma", [float("inf"), float("-inf"), float("nan")])
-def test_a_non_finite_sigma_limit_raises_a_value_error_naming_the_setting(log: Any, sigma: float) -> None:
-    """A sigma of inf or NaN would clip nothing or everything silently, so it is refused up front."""
+@pytest.mark.parametrize("sigma", [float("inf"), float("-inf"), float("nan"), None, "3", True, [3.0, 2.0]])
+def test_a_non_finite_sigma_limit_raises_a_value_error_naming_the_setting(log: Any, sigma: Any) -> None:
+    """A sigma that is not a finite number would clip nothing, everything or crash later, so it is refused up front."""
     subtractor, iterations = _subtractor(log, arm="VIS")
 
     with pytest.raises(ValueError, match="percentile_clipping_sigma"):
