@@ -240,3 +240,64 @@ def test_detrend_leaves_the_input_uncertainty_untouched(log: Any) -> None:
     recipe.detrend(rawFrame, master_bias=masterBias, master_flat=masterFlat)
 
     np.testing.assert_array_equal(rawFrame.uncertainty.array, before)
+
+
+def _helper_inputs(rawValue: float, biasValue: float) -> tuple[base_recipe, CCDData, CCDData]:
+    """Return a recipe, a 4x4 prepared frame with unit error and a master bias, for the pedestal helper."""
+    recipe = _recipe(None)
+    recipe.detectorParams = {"ron": READ_NOISE * u.electron}
+    return recipe, _frame(rawValue), _frame(biasValue)
+
+
+@pytest.mark.parametrize("nanIn", ["data", "bias"])
+def test_pedestal_helper_leaves_the_error_of_a_non_finite_pixel_unchanged(nanIn: str) -> None:
+    """A NaN in the frame or in the master bias keeps that pixel's error as it was."""
+    recipe, frame, masterBias = _helper_inputs(BIAS_PEDESTAL + SKY_LEVEL, BIAS_PEDESTAL)
+    (frame if nanIn == "data" else masterBias).data[1, 2] = np.nan
+
+    corrected = recipe._remove_bias_pedestal_from_uncertainty(frame, masterBias)
+
+    assert corrected.uncertainty.array[1, 2] == pytest.approx(1.0)
+    expectedScale = (SKY_LEVEL + READ_NOISE**2) / (BIAS_PEDESTAL + SKY_LEVEL + READ_NOISE**2)
+    assert corrected.uncertainty.array[0, 0] == pytest.approx(np.sqrt(expectedScale), rel=1e-5)
+
+
+def test_pedestal_helper_keeps_only_read_noise_when_the_frame_is_below_the_bias() -> None:
+    """Counts below the bias level carry no photon noise, so only the read-noise share of the variance remains."""
+    rawValue = 100.0
+    recipe, frame, masterBias = _helper_inputs(rawValue, BIAS_PEDESTAL)
+
+    corrected = recipe._remove_bias_pedestal_from_uncertainty(frame, masterBias)
+
+    expectedScale = READ_NOISE**2 / (rawValue + READ_NOISE**2)
+    np.testing.assert_allclose(corrected.uncertainty.array, np.sqrt(expectedScale), rtol=1e-5)
+
+
+def test_pedestal_helper_leaves_a_non_positive_pixel_unchanged() -> None:
+    """A pixel at or below zero counts has a read-noise-only error already, so the scale is one."""
+    recipe, frame, masterBias = _helper_inputs(-5.0, BIAS_PEDESTAL)
+
+    corrected = recipe._remove_bias_pedestal_from_uncertainty(frame, masterBias)
+
+    np.testing.assert_allclose(corrected.uncertainty.array, 1.0, rtol=1e-6)
+
+
+def test_pedestal_helper_keeps_the_mask_and_an_electron_stddev_uncertainty() -> None:
+    """The corrected copy keeps the input mask and a standard-deviation uncertainty in electrons."""
+    recipe, frame, masterBias = _helper_inputs(BIAS_PEDESTAL + SKY_LEVEL, BIAS_PEDESTAL)
+    frame.mask[2, 3] = True
+
+    corrected = recipe._remove_bias_pedestal_from_uncertainty(frame, masterBias)
+
+    assert corrected is not frame
+    np.testing.assert_array_equal(corrected.mask, frame.mask)
+    assert isinstance(corrected.uncertainty, StdDevUncertainty)
+    assert corrected.uncertainty.unit == u.electron
+
+
+def test_pedestal_helper_returns_a_frame_without_uncertainty_as_is() -> None:
+    """A frame with no uncertainty map has nothing to correct."""
+    recipe, frame, masterBias = _helper_inputs(BIAS_PEDESTAL + SKY_LEVEL, BIAS_PEDESTAL)
+    frame.uncertainty = None
+
+    assert recipe._remove_bias_pedestal_from_uncertainty(frame, masterBias) is frame

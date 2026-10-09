@@ -1835,7 +1835,9 @@ class base_recipe:
         counts the electrons of the bias pedestal (about 650 e- in the VIS arm) as signal. This rescales each
         pixel's variance by the ratio of ``max(data - bias, 0) + ron^2`` to ``max(data, 0) + ron^2``. A ratio
         keeps the scaling right for a mean-combined stack, whose variance is the single-frame variance over the
-        number of frames. ``ccdproc.subtract_bias`` then adds the variance of the master bias itself.
+        number of frames. ``ccdproc.subtract_bias`` then adds the variance of the master bias itself. Pixels
+        that cosmic-ray cleaning changed after preparation are masked, so a ratio from their cleaned counts
+        does not matter. A master dark still carries the pedestal variance of its own raw frames.
 
         **Usage:**
 
