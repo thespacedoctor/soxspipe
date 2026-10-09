@@ -729,10 +729,8 @@ def test_object_clipping_marks_object_pixels_and_updates_local_noise(
     assert result[0].loc[1, "residual_windowed_std"] == pytest.approx(np.sqrt(7 / 3))
 
 
-def test_subtract_leaves_the_global_pandas_chained_assignment_option_alone(
-    log: object,
-) -> None:
-    """Sky subtraction must not silence SettingWithCopy warnings for the whole process (DY-1286)."""
+def _one_order_subtractor(log: object) -> subtract_sky:
+    """A subtractor holding a two-pixel, one-order map, with object masking stubbed out."""
     subtractor = _subtractor(log)
     subtractor.axisA = "x"
     subtractor.axisB = "y"
@@ -768,6 +766,14 @@ def test_subtract_leaves_the_global_pandas_chained_assignment_option_alone(
     }
     subtractor.get_over_sampled_sky_from_order = lambda frame, **_: frame.copy()
     subtractor.clip_object_slit_positions = lambda orders, **_: orders
+    return subtractor
+
+
+def test_subtract_leaves_the_global_pandas_chained_assignment_option_alone(
+    log: object,
+) -> None:
+    """Sky subtraction must not silence SettingWithCopy warnings for the whole process (DY-1286)."""
+    subtractor = _one_order_subtractor(log)
     subtractor.fit_bspline_curve_to_sky = lambda frame: (
         frame.copy(),
         (None, None, 3),
@@ -780,6 +786,57 @@ def test_subtract_leaves_the_global_pandas_chained_assignment_option_alone(
         subtractor.subtract()
 
         assert pd.get_option("mode.chained_assignment") == "warn"
+
+
+def test_subtract_hands_each_order_over_as_its_own_frame_so_adding_columns_is_not_chained_assignment(
+    log: object,
+) -> None:
+    """The per-order frames are written to; they must not be slices of the map frame (DY-1286)."""
+    subtractor = _one_order_subtractor(log)
+    subtractor.fit_bspline_curve_to_sky = lambda frame: (
+        frame.copy(),
+        (None, None, 3),
+        np.array([501.0]),
+        np.array([1.0, 2.0]),
+        0.5,
+    )
+
+    def add_flag_column(frame: pd.DataFrame, **_: object) -> pd.DataFrame:
+        frame["flagged_all_clipped"] = False
+        return frame
+
+    subtractor.get_over_sampled_sky_from_order = add_flag_column
+    # A SECOND ORDER MAKES EACH ORDER A PARTIAL SELECTION OF THE MAP, WHICH IS WHEN PANDAS FLAGS A SLICE
+    subtractor.mapDF.loc[1, "order"] = 11
+
+    with pd.option_context("mode.chained_assignment", "raise"):
+        model, _, _, _, _ = subtractor.subtract()
+
+    assert model is not None
+
+
+def test_subtract_logs_the_mean_residual_floor_of_the_orders_that_measured_one(
+    log: object,
+) -> None:
+    """An order whose pixels are all clipped has no floor; it must not turn the frame mean into nan (DY-1286)."""
+    # ARRANGE
+    subtractor = _one_order_subtractor(log)
+    subtractor.mapDF.loc[1, "order"] = 11
+    floors = iter([np.nan, 2.0])
+    subtractor.fit_bspline_curve_to_sky = lambda frame: (
+        frame.copy(),
+        (None, None, 3),
+        np.array([501.0]),
+        np.array([1.0, 2.0]),
+        next(floors),
+    )
+
+    # ACT
+    subtractor.subtract()
+
+    # ASSERT
+    [summary] = [message for _, message in log.messages if "MEAN RES FLOOR" in message]
+    assert "MEAN RES FLOOR: 2.000," in summary
 
 
 def test_sliding_mean_pads_the_ends_with_the_first_and_last_window_means() -> None:

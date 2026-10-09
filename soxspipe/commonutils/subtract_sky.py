@@ -255,19 +255,13 @@ class subtract_sky:
         allimageMapOrder = []
         allimageMapOrderWithObject = []
 
-        # SPLIT ORDERS INTO THEIR OWN DATAFRAMES
-        imageMapOrders = []
-        for o in uniqueOrders:
-            # SELECT DATAFRAME CONTAINING ONLY A SINGLE ORDER
-            imageMapOrders.append(self.mapDF[self.mapDF["order"] == o])
-
         # GET OVER SAMPLED SKY & SKY+OBJECT AS LISTS OF DATAFRAMES
         self.log.print("\n  ## CLIPPING DEVIANT PIXELS AND PIXELS WITH OBJECT FLUX\n")
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         for o in uniqueOrders:
-            # SELECT ONLY A DATAFRAME CONTAINING ONLY A SINGLE ORDER
-            imageMapOrder = self.mapDF[self.mapDF["order"] == o]
+            # COPY THE ORDER OUT OF THE MAP: THE STEPS BELOW ADD AND WRITE COLUMNS ON IT
+            imageMapOrder = self.mapDF[self.mapDF["order"] == o].copy()
 
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
             imageMapOrder = self.get_over_sampled_sky_from_order(
@@ -307,8 +301,14 @@ class subtract_sky:
         allimageMapOrder = newAllimageMapOrder
 
         allFluxErrorRatios = np.concatenate(allFluxErrorRatios)
+        # AN ORDER WITH NO MEASURED FLOOR (E.G. EVERY PIXEL CLIPPED) IS LEFT OUT OF THE FRAME MEAN
+        measuredFloors = np.array(allResidualFloor, dtype=float)
+        measuredFloors = measuredFloors[np.isfinite(measuredFloors)]
+        meanResidualFloor = measuredFloors.mean() if measuredFloors.size else np.nan
         self.log.print(
-            f"\n\tFULL FRAME SKY-MODEL FLUX TO ERROR METRICS: MEAN {allFluxErrorRatios.mean():0.3f}, STD {allFluxErrorRatios.std():0.3f}, MEDIAN {np.median(allFluxErrorRatios):0.3f}, MEAN RES FLOOR: {np.mean(allResidualFloor):0.3f}, KNOT COUNT: {totalKnots}"
+            f"\n\tFULL FRAME SKY-MODEL FLUX TO ERROR METRICS: MEAN {allFluxErrorRatios.mean():0.3f}, "
+            f"STD {allFluxErrorRatios.std():0.3f}, MEDIAN {np.median(allFluxErrorRatios):0.3f}, "
+            f"MEAN RES FLOOR: {meanResidualFloor:0.3f}, KNOT COUNT: {totalKnots}"
         )
         # self.log.print(f'\t{allFluxErrorRatios.mean():0.3f},  {allFluxErrorRatios.std():0.3f},  {np.median(allFluxErrorRatios):0.3f},  {allFluxErrorRatios.max():0.3f},  {allFluxErrorRatios.min():0.3f}, {allFluxErrorRatios.max()-allFluxErrorRatios.min():0.3f},{np.mean(allResidualFloor):0.3f},{totalKnots}')
 
@@ -1390,7 +1390,7 @@ class subtract_sky:
 
         extraKnots = np.array([])
         iterationCount = -3
-        residualFloor = False
+        residualFloor = np.nan
 
         slitIlluminationCorrectionIteration = 4
         tiltAdjustmentIteration = 4
