@@ -42,6 +42,8 @@ BRIGHT_ORDER_SKY_LIMIT = 2500
 # EACH VIS OBJECT-CLIPPING RETRY LOWERS THE SIGMA LIMIT BY RETRY_SIGMA_STEP, BUT NEVER BELOW MIN_CLIP_SIGMA (DY-1285)
 RETRY_SIGMA_STEP = 0.1
 MIN_CLIP_SIGMA = 1.5
+# ROUND EACH RETRY SIGMA SO REPEATED 0.1 STEPS DO NOT DRIFT PAST THE FLOOR
+RETRY_SIGMA_DECIMALS = 6
 
 
 def _sliding_mean(values, window):
@@ -1181,7 +1183,7 @@ class subtract_sky:
                         f"ORDER {order}: OBJECT IS LIKELY VERY BRIGHT - SKIPPING SKY-SUBTRACTION FOR THIS ORDER"
                     )
                     return None
-                retrySigma = round(sigma_clip_limit - RETRY_SIGMA_STEP, 6)
+                retrySigma = round(sigma_clip_limit - RETRY_SIGMA_STEP, RETRY_SIGMA_DECIMALS)
                 if retrySigma < MIN_CLIP_SIGMA:
                     self.log.warning(
                         f"ORDER {order}: OBJECT CLIPPING IS AT OR BELOW THE MINIMUM SIGMA LIMIT OF {MIN_CLIP_SIGMA} "
@@ -2135,6 +2137,7 @@ class subtract_sky:
 
         The order is too bright to fit a sky model to (DY-1285), so nothing is subtracted from it.
         Its sky-subtracted pixels and residuals are the measured flux and error, so the extraction still sees the data.
+        Its residuals are therefore flux over error, the signal-to-noise of the unsubtracted data, not a sky residual.
         Its sky-model pixels are 0 and are flagged in the sky-model mask (the QUAL extension).
         This stops the 0 being mistaken for a measured sky.
         Uncertainties are left as the object frame's, never 0.
