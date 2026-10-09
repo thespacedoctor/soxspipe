@@ -355,11 +355,8 @@ class subtract_sky:
                         ignore_index=True,
                     )
 
-        # SET NANs TO 0
-        skymodelCCDData.data[np.isnan(skymodelCCDData.data)] = 0
-        skymodelCCDData.uncertainty.array[np.isnan(skymodelCCDData.uncertainty.array)] = 0
-        skySubtractedCCDData.data[np.isnan(skySubtractedCCDData.data)] = 0
-        skySubtractedCCDData.uncertainty.array[np.isnan(skySubtractedCCDData.uncertainty.array)] = 0
+        # FLAG EVERY PIXEL WITH NO VALUE, THEN SET THE NaN DATA TO 0. A NaN UNCERTAINTY STAYS NaN UNDER THE FLAG
+        self._flag_and_zero_fill_missing_pixels(skymodelCCDData, skySubtractedCCDData)
 
         if self.recipeSettings["sky-subtraction"]["sky_model_qc_plot"]:
             comparisonPdf = self.plot_image_comparison(self.objectFrame, skymodelCCDData, skySubtractedCCDData)
@@ -1666,7 +1663,13 @@ class subtract_sky:
         imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
         imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
         imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
-        # REPLACE VALUES LESS THAN ZERO IN COLUMN WITH ZERO
+        # REPLACE VALUES LESS THAN ZERO IN COLUMN WITH ZERO, REPORTING HOW MANY (DY-1284)
+        clippedCount = int((imageMapOrder["sky_model"] < 0).sum())
+        if clippedCount:
+            self.log.info(
+                f"\t\tThe zero clip of the sky model clipped {clippedCount} of {len(imageMapOrder)} pixels "
+                f"in order {order}.\n"
+            )
         imageMapOrder["sky_model"] = imageMapOrder["sky_model"].apply(lambda x: max(0, x))
 
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
@@ -2052,6 +2055,37 @@ class subtract_sky:
 
         self.log.debug("completed the ``add_data_to_placeholder_images`` method")
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData
+
+    def _flag_and_zero_fill_missing_pixels(self, skymodelCCDData, skySubtractedCCDData):
+        """*flag every pixel that has no sky model, sky-subtracted value or uncertainty, and set its data to 0*
+
+        The pixels are flagged in the ``mask`` (``QUAL``) of both frames. An uncertainty is never set to 0, because
+        a 0 uncertainty gives an infinite weight in the optimal extraction. A NaN uncertainty stays NaN under the flag.
+
+        **Key Arguments:**
+
+        - ``skymodelCCDData`` -- the sky model. Updated in place.
+        - ``skySubtractedCCDData`` -- the sky-subtracted data. Updated in place.
+
+        **Usage:**
+
+        ```python
+        self._flag_and_zero_fill_missing_pixels(skymodelCCDData, skySubtractedCCDData)
+        ```
+        """
+        import numpy as np
+
+        frames = (skymodelCCDData, skySubtractedCCDData)
+        isMissing = np.zeros(skymodelCCDData.data.shape, dtype=bool)
+        for frame in frames:
+            isMissing |= np.isnan(frame.data) | np.isnan(frame.uncertainty.array)
+
+        for frame in frames:
+            # A NEW ARRAY PER FRAME, SO THE TWO MASKS NEVER SHARE MEMORY
+            frame.mask = isMissing | (False if frame.mask is None else frame.mask)
+            frame.data[np.isnan(frame.data)] = 0
+
+        self.log.debug(f"flagged {np.count_nonzero(isMissing)} pixels with no sky model or uncertainty")
 
     def plot_image_comparison(self, objectFrame, skyModelFrame, skySubFrame):
         """*generate a plot of original image, sky-model and sky-subtraction image*

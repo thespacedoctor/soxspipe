@@ -99,7 +99,12 @@ def _sloped_order(*, noisy: bool) -> pd.DataFrame:
 
 
 def _info_messages(log: Any) -> list[str]:
-    return [message for level, message in log.messages if level == "info"]
+    # THE PER-ORDER ZERO-CLIP COUNT (DY-1284) DEPENDS ON THE FITTED SKY, NOT ON THE KNOT LOGIC UNDER TEST
+    return [
+        message
+        for level, message in log.messages
+        if level == "info" and "The zero clip of the sky model" not in message
+    ]
 
 
 def _approx_list(values: list[float], rel: float = 1e-12) -> list[Any]:
