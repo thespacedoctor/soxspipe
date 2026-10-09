@@ -15,12 +15,8 @@ import sys
 from datetime import datetime
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
-from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
-    dispersion_map_to_pixel_arrays,
-)
 from soxspipe.commonutils.filenamer import filenamer
-from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
-from soxspipe.commonutils.toolkit import quicklook_image, read_spectral_format, twoD_disp_map_image_to_dataframe
+from soxspipe.commonutils.toolkit import quicklook_image, twoD_disp_map_image_to_dataframe
 
 os.environ["TERM"] = "vt100"
 
@@ -39,6 +35,35 @@ ANCHOR_WEIGHT = 1e5
 # AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
 OBJECT_MIN_RUN_BINS = 4
 OBJECT_PEAK_COUNT = 0.05
+
+
+def _sliding_mean(values, window):
+    """*running mean of a 1D array, padded at each end so there is one value per input element*
+
+    **Key Arguments:**
+
+    - ``values`` -- 1D array of values
+    - ``window`` -- the window size; an even size is widened by one so the window is centred
+
+    **Return:**
+
+    - ``means`` -- array the same length as ``values``. The first and last ``window // 2`` elements repeat the first
+      and last full-window means. An array shorter than the window is averaged with the largest odd window it holds.
+    """
+    import numpy as np
+
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return values.copy()
+
+    if window % 2 == 0:
+        window += 1
+    if values.size < window:
+        window = values.size if values.size % 2 else values.size - 1
+
+    means = np.mean(np.lib.stride_tricks.sliding_window_view(values, (window,)), axis=1)
+    halfWindow = window // 2
+    return np.concatenate((np.full(halfWindow, means[0]), means, np.full(halfWindow, means[-1])))
 
 
 class subtract_sky:
@@ -211,8 +236,6 @@ class subtract_sky:
 
         import numpy as np
         import pandas as pd
-
-        pd.options.mode.chained_assignment = None
 
         self.log.print("\n# MODELLING SKY BACKGROUND AND REMOVING FROM SCIENCE FRAME")
 
@@ -1470,7 +1493,6 @@ class subtract_sky:
 
                 counts = group.size()
                 index = group.indices.keys()
-                potentialNewKnots = group["wavelength"].mean()
                 potentialNewKnots2 = group["wavelength"].mean() - group["wavelength"].std()
                 potentialNewKnots3 = group["wavelength"].mean() + group["wavelength"].std()
 
@@ -1485,18 +1507,6 @@ class subtract_sky:
                     nk = np.ma.compressed(np.ma.masked_array(np.array(nk), ~mask))
                     allKnots = np.sort(np.concatenate((nk, allKnots)))
                     extraKnots = np.sort(np.concatenate((nk, extraKnots)))
-
-                # NOW ADD KNOTS WHERE BSPLINE SKY IS BELOW 0
-                lowBspline = ~mask_all_clipped & (imageMapOrder["sky_model_wl"] < -5000)
-                df = imageMapOrder.loc[lowBspline]
-                ind = np.digitize(df["wavelength"], allKnots)
-                group = imageMapOrder.loc[lowBspline].groupby(ind)
-                counts = group.size()
-                potentialNewKnots = group["wavelength"].mean()
-                mask = counts < min_points_per_knot
-                newKnots = np.ma.compressed(np.ma.masked_array(potentialNewKnots, mask))
-                allKnots = np.sort(np.concatenate((newKnots, allKnots)))
-                extraKnots = np.sort(np.concatenate((newKnots, extraKnots)))
 
                 # if order == self.qcPlotOrder:
                 #     print(f"EXTRA KNOTS: {len(newKnots)} .... {len(allKnots)} ... {iterationCount}")
@@ -1604,18 +1614,8 @@ class subtract_sky:
             else:
                 window = 25
 
-            def sliding_mean(arr, window):
-                if window % 2 == 0:
-                    window += 1
-
-                medianArry = np.mean(np.lib.stride_tricks.sliding_window_view(arr, (window,)), axis=1)
-                start = np.ones(window // 2) * medianArry[0]
-                end = np.ones(window // 2) * medianArry[-1]
-                medianArry = np.concatenate((start, medianArry, end))
-                return medianArry
-
             ## USE ROLLING MEAN TO ESTIMATE THE LOCAL RESIDUALS, WHICH CAN BE USED TO ADD NEW KNOTS IN HIGH-RESIDUAL AREAS
-            imageMapOrder.loc[~mask_all_clipped, "sky_residual_rolling_average"] = sliding_mean(
+            imageMapOrder.loc[~mask_all_clipped, "sky_residual_rolling_average"] = _sliding_mean(
                 imageMapOrder.loc[~mask_all_clipped, "sky_residuals"].values,
                 window=window,
             )
@@ -2159,226 +2159,6 @@ class subtract_sky:
         self.log.debug("completed the ``plot_results`` method")
         return filePath
 
-    def _rectify_order(self, order, imageMapOrder, remove_clipped=False, conserve_flux=False):
-        """*rectify order on a fine slit-position, wavelength grid*
-
-        **Key Arguments:**
-
-        - ``order`` -- order to be rectified
-        - ``imageMapOrder`` -- the image map for this order (wavelength, slit-position and flux for each physical pixel
-        - ``conserve_flux`` -- conserve the flux budget across the entire image
-
-        **Return:**
-
-        - None
-
-        **Usage:**
-
-        ```python
-        usage code
-        ```
-        """
-        self.log.debug("starting the ``rectify_order`` method")
-
-        import numpy as np
-        import pandas as pd
-
-        dispMap = self.dispMap
-        kw = self.kw
-        dp = self.detectorParams
-        arm = self.arm
-
-        # READ THE SPECTRAL FORMAT TABLE TO DETERMINE THE LIMITS OF THE TRACES
-        orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
-            log=self.log, settings=self.settings, arm=self.arm
-        )
-
-        for o, minWl, maxWl in zip(orderNums, waveLengthMin, waveLengthMax):
-            if o == order:
-                orderInfo = (order, minWl, maxWl)
-        order, minWl, maxWl = orderInfo
-
-        minWl = minWl - 5
-        maxWl = minWl + 5
-
-        # DYNAMICALLY DETERMINE SIZE OF SUB-PIXELS
-        slit_pixel_range = imageMapOrder[self.axisA].max() - imageMapOrder[self.axisA].min()
-        wl_pixel_range = imageMapOrder[self.axisB].max() - imageMapOrder[self.axisB].min()
-
-        wl_range = maxWl - minWl
-        slitLength = dp["slit_length"]
-        slitLength = 4
-        sl_range = dp["slit_length"]
-        sl_range = 4
-
-        straighten_grid_res_wavelength = 2 * (wl_range / wl_pixel_range)  # in nm
-        straighten_grid_res_slit = 2 * (sl_range / slit_pixel_range)  # in arcsec
-
-        halfGrid = slitLength / 2
-        slitArray = np.arange(-halfGrid, halfGrid + straighten_grid_res_slit, straighten_grid_res_slit)
-
-        wlArray = np.arange(minWl, maxWl, straighten_grid_res_wavelength)
-
-        # ONE SINGLE-VALUE SLIT ARRAY FOR EVERY WAVELENGTH ARRAY
-        bigSlitArray = np.concatenate([np.ones(wlArray.shape[0]) * slitArray[i] for i in range(0, slitArray.shape[0])])
-        # NOW THE BIG WAVELEGTH ARRAY
-        bigWlArray = np.tile(wlArray, np.shape(slitArray)[0])
-
-        # CREATE PANDAS DATAFRAME WITH LARGE ARRAYS - ONE ROW PER
-        # WAVELENGTH-SLIT GRID CELL
-        myDict = {
-            "order": np.ones(bigWlArray.shape[0]) * order,
-            "wavelength": bigWlArray,
-            "slit_position": bigSlitArray,
-        }
-        orderPixelTable = pd.DataFrame(myDict)
-
-        # GET DETECTOR PIXEL POSITIONS FOR ALL WAVELENGTH-SLIT GRID CELLS
-        orderPixelTable = dispersion_map_to_pixel_arrays(
-            log=self.log,
-            dispersionMapPath=self.dispMap,
-            orderPixelTable=orderPixelTable,
-            removeOffDetectorLocation=False,
-        )
-        # INTEGER PIXEL VALUES & FIT DISPLACEMENTS FROM PIXEL CENTRES
-        orderPixelTable["pixel_x"] = np.floor(orderPixelTable["fit_x"].values)
-        orderPixelTable["pixel_y"] = np.floor(orderPixelTable["fit_y"].values)
-
-        # xpd-update-filter-dataframe-column-values
-
-        # FILTER DATA FRAME
-        # FIRST CREATE THE MASK
-        # mask = (orderPixelTable["pixel_x"] < self.objectFrame.shape[1]) & (orderPixelTable["pixel_y"] < self.objectFrame.shape[0])
-        # orderPixelTable = orderPixelTable.loc[mask]
-
-        # xpd-update-filter-dataframe-column-values
-
-        pixel_x = orderPixelTable["pixel_x"].values.astype(int)
-        pixel_y = orderPixelTable["pixel_y"].values.astype(int)
-
-        # fluxValues = self.objectFrame.data[pixel_y, pixel_x].byteswap().newbyteorder()
-        # try:
-        #     orderPixelTable["flux"] = fluxValues.byteswap().newbyteorder()
-        #     orderPixelTable.sort_values(['slit_position', 'wavelength'])
-        # except:
-        #     orderPixelTable["flux"] = fluxValues
-        #     orderPixelTable.sort_values(['slit_position', 'wavelength'])
-
-        orderPixelTable = pd.merge(
-            orderPixelTable,
-            imageMapOrder[["x", "y", "flux", "flagged_all_clipped"]],
-            how="left",
-            left_on=["pixel_x", "pixel_y"],
-            right_on=["x", "y"],
-        )
-
-        # FILTER DATA FRAME
-        # FIRST CREATE THE MASK
-        mask = orderPixelTable["flux"].isnull()
-        self.log.print(orderPixelTable.loc[~mask, "wavelength"].min())
-
-        # DROP MISSING VALUES
-        # orderPixelTable.dropna(axis='index', how='any', subset=['x'], inplace=True)
-
-        # orderPixelTable = orderPixelTable[['order', 'wavelength', 'slit_position', 'fit_x', 'fit_y', 'flux', 'clipped']]
-        # orderPixelTable['weight'] = 100
-
-        if conserve_flux:
-            # ADD A COUNT COLUMN FOR THE NUMBER OF SMALL SLIT/WL PIXELS FALLING IN LARGE DETECTOR PIXELS
-            count = orderPixelTable.groupby(["pixel_x", "pixel_y"]).size().reset_index(name="count")
-            orderPixelTable = pd.merge(
-                orderPixelTable,
-                count,
-                how="left",
-                left_on=["pixel_x", "pixel_y"],
-                right_on=["pixel_x", "pixel_y"],
-            )
-
-        # FILTER DATA FRAME
-        # FIRST CREATE THE MASK
-        if remove_clipped:
-            mask = orderPixelTable["flagged_all_clipped"] == True
-            orderPixelTable.loc[mask, "flux"] = np.nan
-
-        # RESTRUCTURE FLUXES INTO A STRAIGHTENED IMAGE
-        imageArray = np.array([])
-        for index, slit in enumerate(slitArray):
-            rowFlux = orderPixelTable[(orderPixelTable["slit_position"] == slit)]["flux"].values
-            if index == 0:
-                imageArray = rowFlux
-            else:
-                imageArray = np.vstack((imageArray, rowFlux))
-
-        imageArray[imageArray > 80000] = np.nan
-        imageArray[imageArray < -7000] = np.nan
-
-        from soxspipe.commonutils.toolkit import quicklook_image
-
-        quicklook_image(
-            log=self.log,
-            CCDObject=imageArray,
-            show=False,
-            ext="data",
-            stdWindow=3,
-            title=False,
-            surfacePlot=True,
-            inst="dummy",
-        )
-
-        self.log.debug("completed the ``rectify_order`` method")
-        return imageArray
-
-    def calculate_residuals(self, skyPixelsDF, fluxcoeff, orderDeg, wavelengthDeg, slitDeg, writeQCs=False):
-        """*calculate residuals of the polynomial fits against the observed line positions*
-
-        **Key Arguments:**
-
-        - ``skyPixelsDF`` -- the predicted line list as a data frame
-        - ``fluxcoeff`` -- the flux-coefficients
-        - ``orderDeg`` -- degree of the order fitting
-        - ``wavelengthDeg`` -- degree of wavelength fitting
-        - ``slitDeg`` -- degree of the slit fitting (False for single pinhole)
-        - ``writeQCs`` -- write the QCs to dataframe? Default *False*
-
-        **Return:**
-
-        - ``residuals`` -- combined x-y residuals
-        - ``mean`` -- the mean of the combine residuals
-        - ``std`` -- the stdev of the combine residuals
-        - ``median`` -- the median of the combine residuals
-        """
-        self.log.debug("starting the ``calculate_residuals`` method")
-
-        import numpy as np
-
-        arm = self.arm
-
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-        # POLY FUNCTION NEEDS A DATAFRAME AS INPUT
-        poly = chebyshev_order_wavelength_polynomials(
-            log=self.log,
-            orderDeg=orderDeg,
-            wavelengthDeg=wavelengthDeg,
-            slitDeg=slitDeg,
-            exponentsIncluded=True,
-        ).poly
-
-        # CALCULATE RESIDUALS BETWEEN MEASURED FLUX AND POLY
-        # FITTED FLUX
-        skyPixelsDF["fit_sky_subtracted_flux"] = poly(skyPixelsDF, *fluxcoeff)
-        skyPixelsDF["residuals_sky_subtracted_flux"] = (
-            skyPixelsDF["fit_sky_subtracted_flux"] - skyPixelsDF["sky_subtracted_flux"]
-        )
-
-        # CALCULATE COMBINED RESIDUALS AND STATS
-        res_mean = np.mean(skyPixelsDF["residuals_sky_subtracted_flux"])
-        res_std = np.std(skyPixelsDF["residuals_sky_subtracted_flux"])
-        res_median = np.median(skyPixelsDF["residuals_sky_subtracted_flux"])
-
-        self.log.debug("completed the ``calculate_residuals`` method")
-        return res_mean, res_std, res_median, skyPixelsDF
-
     def _object_slit_ranges(self, counts, binEdges, edgeMargin):
         """*the slit-position ranges of the runs of positive bins that are objects*
 
@@ -2577,7 +2357,7 @@ class subtract_sky:
         # COLLECT THE SKYLINE PIXELS
         mask = orderDF["flagged_all_clipped"] == False
         # mask = ((orderDF["flagged_all_clipped"] == False) & (orderDF["flagged_sky_line"] == False))
-        thisOrder = orderDF.loc[mask]
+        thisOrder = orderDF.loc[mask].copy()
 
         # SORT BY COLUMN NAME
         thisOrder.sort_values(["slit_position"], inplace=True, kind="stable")
@@ -2759,7 +2539,7 @@ class subtract_sky:
         **Return:**
 
         - `imageMapOrder` -- same dataframe but now with sky-line locations flagged
-        - `residualFloor` -- the residual floor (currently hardcoded to 5)
+        - `residualFloor` -- the median of the measured local residual floor over the unclipped pixels
 
         **Usage:**
 
@@ -2855,8 +2635,10 @@ class subtract_sky:
             "flagged_sky_line",
         ] = "peak"
 
+        residualFloor = float(imageMapOrder.loc[mask_unclipped, "sky_residual_floor"].median())
+
         self.log.debug("completed the ``determine_residual_floor`` method")
-        return imageMapOrder, 5
+        return imageMapOrder, residualFloor
 
     def plot_order_skymodel_fitting_quicklook(self, imageMapOrder, tck, title=None, knots=False):
         """Quick-look diagnostic plot of the sky-model fit for a single order."""

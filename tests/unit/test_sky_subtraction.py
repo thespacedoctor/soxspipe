@@ -12,7 +12,7 @@ from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 from scipy.interpolate import splrep
 
-from soxspipe.commonutils.subtract_sky import subtract_sky
+from soxspipe.commonutils.subtract_sky import _sliding_mean, subtract_sky
 from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
@@ -438,46 +438,6 @@ def test_sky_sampling_plot_writes_a_complete_order_diagnostic(
     assert Path(outputPath).read_bytes().startswith(b"%PDF")
 
 
-def test_calculate_residuals_evaluates_polynomial_and_propagates_nan(
-    log: object,
-) -> None:
-    subtractor = _subtractor(log)
-    pixels = pd.DataFrame(
-        {
-            "order_pow_0": [1.0, 1.0, 1.0],
-            "wavelength_pow_0": [1.0, 1.0, 1.0],
-            "wavelength_pow_1": [2.0, 3.0, 4.0],
-            "slit_position_pow_0": [1.0, 1.0, 1.0],
-            "sky_subtracted_flux": [4.0, 8.0, np.nan],
-        }
-    )
-
-    mean, std, median, result = subtractor.calculate_residuals(
-        pixels.copy(),
-        fluxcoeff=[1.0, 2.0],
-        orderDeg=0,
-        wavelengthDeg=1,
-        slitDeg=0,
-    )
-
-    np.testing.assert_allclose(
-        result["fit_sky_subtracted_flux"],
-        [5.0, 7.0, 9.0],
-        rtol=1e-12,
-        atol=1e-12,
-    )
-    np.testing.assert_allclose(
-        result["residuals_sky_subtracted_flux"],
-        [1.0, -1.0, np.nan],
-        rtol=1e-12,
-        atol=1e-12,
-        equal_nan=True,
-    )
-    assert mean == pytest.approx(0.0)
-    assert std == pytest.approx(1.0)
-    assert np.isnan(median)
-
-
 def test_object_clipping_marks_flagged_pixels_and_refreshes_local_noise(
     log: object,
 ) -> None:
@@ -539,66 +499,13 @@ def test_residual_floor_normalises_errors_and_flags_local_excess(
         iteration=1,
     )
 
-    assert residualFloor == 5
+    # THE MEDIAN NORMALISED RESIDUAL IS |10 - 8| / 1 = 2, NOT A HARDCODED CONSTANT (DY-1286)
+    assert residualFloor == pytest.approx(2.0)
     assert result.loc[5, "sky_residuals"] == 1.0
     assert np.isfinite(result["sky_residuals"]).all()
     assert result.loc[10, "flagged_sky_line"] == "line"
     assert result.loc[0, "flagged_sky_line"] == False
     assert not result["flagged_noisy_region"].any()
-
-
-def test_rectify_order_builds_a_grid_and_masks_clipped_detector_pixels(
-    log: object,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Rectification preserves sampled flux while removing explicitly clipped pixels."""
-    import importlib
-
-    import soxspipe.commonutils.toolkit as toolkit
-
-    module = importlib.import_module("soxspipe.commonutils.subtract_sky")
-    subtractor = _subtractor(log)
-    subtractor.axisA = "x"
-    subtractor.axisB = "y"
-    subtractor.arm = "VIS"
-    subtractor.dispMap = "synthetic-dispersion-map.fits"
-    subtractor.settings = {"instrument": "soxs"}
-    subtractor.kw = lambda key: key
-    subtractor.detectorParams = {"slit_length": 4.0}
-    pixels = pd.DataFrame(
-        {
-            "x": [0, 1, 0],
-            "y": [0, 0, 1],
-            "flux": [15.0, 25.0, 0.0],
-            "flagged_all_clipped": [False, True, False],
-        }
-    )
-
-    monkeypatch.setattr(
-        module,
-        "read_spectral_format",
-        lambda **_: (np.array([10]), np.array([500.0]), np.array([510.0])),
-    )
-
-    def map_to_detector(**kwargs: object) -> pd.DataFrame:
-        table = cast(pd.DataFrame, kwargs["orderPixelTable"]).copy()
-        table["fit_x"] = np.arange(len(table), dtype=float)
-        table["fit_y"] = 0.0
-        return table
-
-    monkeypatch.setattr(module, "dispersion_map_to_pixel_arrays", map_to_detector)
-    monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
-
-    image = subtractor._rectify_order(
-        order=10,
-        imageMapOrder=pixels,
-        remove_clipped=True,
-        conserve_flux=True,
-    )
-
-    assert image.shape == (2, 1)
-    assert image[0, 0] == pytest.approx(15.0)
-    assert np.isnan(image[1, 0])
 
 
 def test_over_sampled_sky_marks_bad_pixels_and_slit_edges_before_clipping(
@@ -820,3 +727,89 @@ def test_object_clipping_marks_object_pixels_and_updates_local_noise(
     ]
     assert np.isnan(result[0].loc[2, "residual_windowed_std"])
     assert result[0].loc[1, "residual_windowed_std"] == pytest.approx(np.sqrt(7 / 3))
+
+
+def test_subtract_leaves_the_global_pandas_chained_assignment_option_alone(
+    log: object,
+) -> None:
+    """Sky subtraction must not silence SettingWithCopy warnings for the whole process (DY-1286)."""
+    subtractor = _subtractor(log)
+    subtractor.axisA = "x"
+    subtractor.axisB = "y"
+    subtractor.debug = False
+    subtractor.stopSubtraction = False
+    subtractor.detectorParams = {"dispersion-axis": "x"}
+    subtractor.dateObs = "2024-01-02T03:04:05"
+    subtractor.objectFrame = CCDData(
+        np.full((2, 2), 10.0),
+        unit=u.electron,
+        mask=np.zeros((2, 2), dtype=bool),
+        uncertainty=StdDevUncertainty(np.ones((2, 2))),
+    )
+    subtractor.mapDF = pd.DataFrame(
+        {
+            "order": [10, 10],
+            "x": [0, 1],
+            "y": [0, 1],
+            "sky_model": [4.0, 5.0],
+            "sky_subtracted_flux": [6.0, 5.0],
+            "error": [2.0, 1.0],
+        }
+    )
+    subtractor.qc = pd.DataFrame()
+    subtractor.products = pd.DataFrame()
+    subtractor.recipeSettings = {
+        "sky-subtraction": {
+            "bspline_order": 3,
+            "clip-slit-edge-fraction": 0.1,
+            "aggressive_object_masking": False,
+            "sky_model_qc_plot": False,
+        }
+    }
+    subtractor.get_over_sampled_sky_from_order = lambda frame, **_: frame.copy()
+    subtractor.clip_object_slit_positions = lambda orders, **_: orders
+    subtractor.fit_bspline_curve_to_sky = lambda frame: (
+        frame.copy(),
+        (None, None, 3),
+        np.array([501.0]),
+        np.array([1.0, 2.0]),
+        0.5,
+    )
+
+    with pd.option_context("mode.chained_assignment", "warn"):
+        subtractor.subtract()
+
+        assert pd.get_option("mode.chained_assignment") == "warn"
+
+
+def test_sliding_mean_pads_the_ends_with_the_first_and_last_window_means() -> None:
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+
+    result = _sliding_mean(values, window=3)
+
+    np.testing.assert_allclose(result, [2.0, 2.0, 3.0, 4.0, 5.0, 6.0, 6.0])
+
+
+def test_sliding_mean_widens_an_even_window_to_the_next_odd_size() -> None:
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    result = _sliding_mean(values, window=2)
+
+    np.testing.assert_allclose(result, [2.0, 2.0, 3.0, 4.0, 4.0])
+
+
+@pytest.mark.parametrize("size", [1, 2, 4, 14])
+def test_sliding_mean_returns_one_value_per_pixel_when_the_order_is_shorter_than_the_window(size: int) -> None:
+    """A small order with fewer unclipped pixels than the window must not crash (DY-1286)."""
+    values = np.arange(size, dtype=float)
+
+    result = _sliding_mean(values, window=15)
+
+    assert result.shape == values.shape
+    assert np.isfinite(result).all()
+
+
+def test_sliding_mean_of_an_empty_order_is_empty() -> None:
+    result = _sliding_mean(np.array([], dtype=float), window=15)
+
+    assert result.shape == (0,)

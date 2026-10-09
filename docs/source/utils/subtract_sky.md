@@ -60,11 +60,10 @@ Finally, this bspline fit is used to generate an estimation of the sky flux leve
 The bspline fit is used to estimate the sky flux level in every pixel in the original detector space (top panel), which is then subtracted from the original image to produce a frame with the sky removed (bottom panel). The object trace can be clearly seen now the skylines have been removed.
 :::
 
+The uncertainties written with the products are not yet a full error budget:
 
-
-
-
-
+- The `ERRS` extension of the sky-model product (`SKYMODEL`) is a copy of the object frame's uncertainty. It is not the uncertainty of the model.
+- The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model.
 
 ### Utility API
 

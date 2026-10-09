@@ -69,7 +69,9 @@ def test_fit_bspline_curve_models_constant_sky_for_both_weighting_paths(
 
     assert spline[2] == 1
     assert knots.size == 0
-    assert residualFloor == 5
+    # THE FLOOR IS THE MEASURED ONE, NOT A HARDCODED 5 (DY-1286)
+    unclipped = modelled["flagged_all_clipped"] == False  # noqa: E712
+    assert residualFloor == pytest.approx(modelled.loc[unclipped, "sky_residual_floor"].median())
     np.testing.assert_allclose(modelled["sky_model"], 12.0)
     np.testing.assert_allclose(modelled["sky_subtracted_flux"], 0.0, atol=1e-9)
     np.testing.assert_allclose(modelled["residual_windowed_std"], 1.0)
