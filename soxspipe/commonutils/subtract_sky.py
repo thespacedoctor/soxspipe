@@ -10,6 +10,8 @@ Date Created
 """
 
 import contextlib
+import math
+import numbers
 import os
 import sys
 from datetime import datetime
@@ -35,6 +37,14 @@ ANCHOR_WEIGHT = 1e5
 # AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
 OBJECT_MIN_RUN_BINS = 4
 OBJECT_PEAK_COUNT = 0.05
+
+# A VIS ORDER WITH A MEAN PERCENTILE-SMOOTHED FLUX ABOVE THIS (E-) IS TOO BRIGHT TO FIT A SKY MODEL TO (DY-1285)
+BRIGHT_ORDER_SKY_LIMIT = 2500
+# EACH VIS OBJECT-CLIPPING RETRY LOWERS THE SIGMA LIMIT BY RETRY_SIGMA_STEP, BUT NEVER BELOW MIN_CLIP_SIGMA (DY-1285)
+RETRY_SIGMA_STEP = 0.1
+MIN_CLIP_SIGMA = 1.5
+# ROUND EACH RETRY SIGMA SO REPEATED 0.1 STEPS DO NOT DRIFT PAST THE FLOOR
+RETRY_SIGMA_DECIMALS = 6
 
 
 def _sliding_mean(values, window):
@@ -143,8 +153,6 @@ class subtract_sky:
         self.startNightDate = startNightDate
         self.debug = debug
         self.debugInfo = debugInfo
-        ## NEEDED TO FLAG IF THE SKY SUBTRACTION SHOULD BE STOPPED - E.G. IF THE OBJECT IS VERY BRIGHT AND WE ARE LIKELY FITTING THE SKY TO THE OBJECT FLUX
-        self.stopSubtraction = False
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -254,6 +262,9 @@ class subtract_sky:
 
         allimageMapOrder = []
         allimageMapOrderWithObject = []
+        # ORDERS TOO BRIGHT TO MODEL (DY-1285) AND THE IDS OF THE ORDERS THAT ARE MODELLED
+        skippedOrders = []
+        modelledOrderIds = []
 
         # GET OVER SAMPLED SKY & SKY+OBJECT AS LISTS OF DATAFRAMES
         self.log.print("\n  ## CLIPPING DEVIANT PIXELS AND PIXELS WITH OBJECT FLUX\n")
@@ -264,14 +275,20 @@ class subtract_sky:
             imageMapOrder = self.mapDF[self.mapDF["order"] == o].copy()
 
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
-            imageMapOrder = self.get_over_sampled_sky_from_order(
+            clippedOrder = self.get_over_sampled_sky_from_order(
                 imageMapOrder,
                 clipBPs=True,
                 clipSlitEdge=self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"],
             )
-            allimageMapOrder.append(imageMapOrder)
-            if self.stopSubtraction:
-                return None, None, None, self.qc, self.products
+            if clippedOrder is None:
+                skippedOrders.append(imageMapOrder)
+                continue
+            modelledOrderIds.append(o)
+            allimageMapOrder.append(clippedOrder)
+
+        # NO ORDER LEFT TO MODEL: THERE IS NO SKY MODEL, SO THE CALLER TURNS SKY SUBTRACTION OFF
+        if not allimageMapOrder:
+            return None, None, None, self.qc, self.products
 
         # MASK OUT OBJECT PIXELS
         allimageMapOrder = self.clip_object_slit_positions(
@@ -290,7 +307,7 @@ class subtract_sky:
         alltck = []
         allKnots = []
         totalKnots = 0
-        for o, imageMapOrder in zip(uniqueOrders, allimageMapOrder):
+        for imageMapOrder in allimageMapOrder:
             imageMapOrder, tck, knots, flux_error_ratio, residualFloor = self.fit_bspline_curve_to_sky(imageMapOrder)
             totalKnots += len(knots)
             newAllimageMapOrder.append(imageMapOrder)
@@ -312,7 +329,7 @@ class subtract_sky:
         )
         # self.log.print(f'\t{allFluxErrorRatios.mean():0.3f},  {allFluxErrorRatios.std():0.3f},  {np.median(allFluxErrorRatios):0.3f},  {allFluxErrorRatios.max():0.3f},  {allFluxErrorRatios.min():0.3f}, {allFluxErrorRatios.max()-allFluxErrorRatios.min():0.3f},{np.mean(allResidualFloor):0.3f},{totalKnots}')
 
-        for o, imageMapOrder, tck, knots in zip(uniqueOrders, allimageMapOrder, alltck, allKnots):
+        for o, imageMapOrder, tck, knots in zip(modelledOrderIds, allimageMapOrder, alltck, allKnots, strict=True):
             if isinstance(imageMapOrder, pd.core.frame.DataFrame):
                 # INJECT THE PIXEL VALUES BACK INTO THE PLACEHOLDER IMAGES
                 skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData = (
@@ -354,6 +371,14 @@ class subtract_sky:
                         ],
                         ignore_index=True,
                     )
+
+        for imageMapOrder in skippedOrders:
+            skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData = self._pass_through_unmodelled_order(
+                imageMapOrder,
+                skymodelCCDData,
+                skySubtractedCCDData,
+                skySubtractedResidualsCCDData,
+            )
 
         # FLAG EVERY PIXEL WITH NO VALUE, THEN SET THE NaN DATA TO 0. A NaN UNCERTAINTY STAYS NaN UNDER THE FLAG
         self._flag_and_zero_fill_missing_pixels(skymodelCCDData, skySubtractedCCDData)
@@ -1039,6 +1064,8 @@ class subtract_sky:
         **Return:**
 
         - ``imageMapOrderDF`` -- image order dataframe with 'clipped' == True for those pixels that have been clipped via rolling window clipping
+            - ``None`` for a VIS order that is too bright to model (DY-1285)
+            - a warning names the order, and the caller skips sky subtraction for that order only
 
         **Usage:**
 
@@ -1054,6 +1081,16 @@ class subtract_sky:
         self.log.debug("starting the ``rolling_window_clipping`` method")
 
         import numpy as np
+
+        isFiniteNumber = (
+            isinstance(sigma_clip_limit, numbers.Real)
+            and not isinstance(sigma_clip_limit, bool)
+            and math.isfinite(sigma_clip_limit)
+        )
+        if not isFiniteNumber:
+            raise ValueError(
+                f"the sky-subtraction setting percentile_clipping_sigma must be a finite number, got {sigma_clip_limit}"
+            )
 
         allPixels = len(imageMapOrderDF.index)
         order = imageMapOrderDF["order"].values[0]
@@ -1141,24 +1178,27 @@ class subtract_sky:
                     title=f"clipping pixels containing object flux\niteration {iteration} - {percent:1.1f}% clipped",
                 )
 
-            if self.arm.upper() in ("VIS"):
-                if iteration == 5:
-                    totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
-                    percent = (float(totalClipped) / float(allPixels)) * 100.0
-
-                    if percent < 5:
-                        if imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"].mean() > 2500:
-                            self.log.warning(
-                                "OBJECT IS LIKELY VERY BRIGHT - STOPPING SKY-SUBTRACTION TO AVOID CLIPPING TOO MANY PIXELS"
-                            )
-                            self.stopSubtraction = True
-                            return None
-                        imageMapOrderDF["flagged_object_clipped"] = False
-                        self._rebuild_all_clipped_flag(imageMapOrderDF)
-                        sigma_clip_limit -= 0.1
-                        if quantile > 0.1:
-                            quantile -= 0.05
-                        iteration = 0
+            if self.arm.upper() == "VIS" and iteration == 5 and percent < 5:
+                if imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"].mean() > BRIGHT_ORDER_SKY_LIMIT:
+                    self.log.warning(
+                        f"ORDER {order}: OBJECT IS LIKELY VERY BRIGHT - SKIPPING SKY-SUBTRACTION FOR THIS ORDER"
+                    )
+                    return None
+                retrySigma = round(sigma_clip_limit - RETRY_SIGMA_STEP, RETRY_SIGMA_DECIMALS)
+                if retrySigma < MIN_CLIP_SIGMA:
+                    self.log.warning(
+                        f"ORDER {order}: OBJECT CLIPPING IS AT OR BELOW THE MINIMUM SIGMA LIMIT OF {MIN_CLIP_SIGMA} "
+                        "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING"
+                    )
+                else:
+                    imageMapOrderDF["flagged_object_clipped"] = False
+                    self._rebuild_all_clipped_flag(imageMapOrderDF)
+                    sigma_clip_limit = retrySigma
+                    if quantile > 0.1:
+                        quantile -= 0.05
+                    iteration = 0
+                    # THE RETRY STARTS FROM NOTHING CLIPPED, SO AN EQUAL COUNT IS NOT CONVERGENCE
+                    lastClipped = -1
                 # if iteration == max_iterations:
                 #     totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
                 #     percent = (float(totalClipped) / float(allPixels)) * 100.0
@@ -2086,6 +2126,48 @@ class subtract_sky:
             frame.data[np.isnan(frame.data)] = 0
 
         self.log.debug(f"flagged {np.count_nonzero(isMissing)} pixels with no sky model or uncertainty")
+
+    def _pass_through_unmodelled_order(
+        self,
+        imageMapOrderDF,
+        skymodelCCDData,
+        skySubtractedCCDData,
+        skySubtractedResidualsCCDData,
+    ):
+        """*write an order that has no sky model into the output images as measured, with its model flagged*
+
+        The order is too bright to fit a sky model to (DY-1285), so nothing is subtracted from it.
+        Its sky-subtracted pixels and residuals are the measured flux and error, so the extraction still sees the data.
+        Its residuals are therefore flux over error, the signal-to-noise of the unsubtracted data, not a sky residual.
+        Its sky-model pixels are 0 and are flagged in the sky-model mask (the QUAL extension).
+        This stops the 0 being mistaken for a measured sky.
+        Uncertainties are left as the object frame's, never 0.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- the single-order dataframe, with ``flux`` and ``error`` columns
+        - ``skymodelCCDData`` -- the sky model image. Updated in place.
+        - ``skySubtractedCCDData`` -- the sky-subtracted image. Updated in place.
+        - ``skySubtractedResidualsCCDData`` -- the residuals image. Updated in place.
+
+        **Return:**
+
+        - ``skymodelCCDData``, ``skySubtractedCCDData``, ``skySubtractedResidualsCCDData`` -- the updated images
+        """
+        import numpy as np
+
+        unsubtractedOrder = imageMapOrderDF.assign(sky_model=0.0, sky_subtracted_flux=imageMapOrderDF["flux"])
+        skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData = self.add_data_to_placeholder_images(
+            unsubtractedOrder,
+            skymodelCCDData,
+            skySubtractedCCDData,
+            skySubtractedResidualsCCDData,
+        )
+        if skymodelCCDData.mask is None:
+            skymodelCCDData.mask = np.zeros(skymodelCCDData.data.shape, dtype=bool)
+        rows, columns = self._detector_rows_and_columns(unsubtractedOrder)
+        skymodelCCDData.mask[rows, columns] = True
+        return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData
 
     def plot_image_comparison(self, objectFrame, skyModelFrame, skySubFrame):
         """*generate a plot of original image, sky-model and sky-subtraction image*

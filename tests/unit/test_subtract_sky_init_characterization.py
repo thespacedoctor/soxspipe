@@ -87,7 +87,6 @@ def test_a_nir_jh_frame_keeps_orders_above_12_swaps_axes_and_names_from_the_head
     # NIR IGNORES THE BINNING KEYWORDS
     assert (subtractor.binx, subtractor.biny) == (1, 1)
     assert subtractor.dateObs == "2024-01-02T03:04:05.678"
-    assert subtractor.stopSubtraction is False
     [mapCall] = collaborators["map"]
     assert mapCall["slit_length"] == 12
     assert mapCall["dispAxis"] == "y"

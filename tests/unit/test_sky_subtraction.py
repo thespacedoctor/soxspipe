@@ -131,7 +131,6 @@ def test_subtract_runs_one_order_workflow_and_returns_finite_product_frames(
     subtractor.axisA = "x"
     subtractor.axisB = "y"
     subtractor.debug = False
-    subtractor.stopSubtraction = False
     subtractor.detectorParams = {"dispersion-axis": "x"}
     subtractor.dateObs = "2024-01-02T03:04:05"
     subtractor.objectFrame = CCDData(
@@ -186,7 +185,6 @@ def test_subtract_records_order_and_frame_qc_products_when_requested(
     subtractor.axisA = "x"
     subtractor.axisB = "y"
     subtractor.debug = True
-    subtractor.stopSubtraction = False
     subtractor.detectorParams = {"dispersion-axis": "x"}
     subtractor.dateObs = "2024-01-02T03:04:05"
     subtractor.objectFrame = CCDData(
@@ -553,7 +551,6 @@ def test_rolling_window_clipping_marks_an_isolated_bright_object_pixel(
     """Flag a bright synthetic object while retaining the surrounding sky pixels."""
     subtractor = _subtractor(log)
     subtractor.debug = False
-    subtractor.stopSubtraction = False
     pixels = pd.DataFrame(
         {
             "order": [10] * 11,
@@ -576,11 +573,11 @@ def test_rolling_window_clipping_marks_an_isolated_bright_object_pixel(
     assert "residual_global_sigma" in result
 
 
-def test_subtract_stops_without_products_when_order_sampling_requests_abort(
+def test_subtract_returns_no_model_when_order_sampling_skips_every_order(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The public subtraction seam preserves its established early-abort result."""
+    """With no order left to model, the public subtraction seam returns no products."""
     subtractor = _subtractor(log)
     subtractor.mapDF = pd.DataFrame(
         {
@@ -590,7 +587,6 @@ def test_subtract_stops_without_products_when_order_sampling_requests_abort(
     )
     subtractor.qc = pd.DataFrame({"qc_name": []})
     subtractor.products = pd.DataFrame({"product_label": []})
-    subtractor.stopSubtraction = False
     subtractor.recipeSettings["sky-subtraction"].update(
         {
             "bspline_order": 3,
@@ -605,22 +601,20 @@ def test_subtract_stops_without_products_when_order_sampling_requests_abort(
         lambda: (placeholder, placeholder, placeholder),
     )
 
-    def abort_after_first_order(
+    def skip_every_order(
         imageMapOrder: pd.DataFrame,
         *,
         clipBPs: bool,
         clipSlitEdge: float,
-    ) -> pd.DataFrame:
+    ) -> None:
         calls.append((int(imageMapOrder["order"].iloc[0]), clipBPs, clipSlitEdge))
-        subtractor.stopSubtraction = True
-        return imageMapOrder
 
-    monkeypatch.setattr(subtractor, "get_over_sampled_sky_from_order", abort_after_first_order)
+    monkeypatch.setattr(subtractor, "get_over_sampled_sky_from_order", skip_every_order)
 
     result = subtractor.subtract()
 
     assert result == (None, None, None, subtractor.qc, subtractor.products)
-    assert calls == [(10, True, 0.1)]
+    assert calls == [(10, True, 0.1), (11, True, 0.1)]
 
 
 @pytest.mark.parametrize("writeQCPlot", [False, True])
@@ -645,7 +639,6 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
     subtractor.mapDF = pd.DataFrame({"order": [10], "x": [1], "y": [2], "mask": [False]})
     subtractor.qc = pd.DataFrame({"qc_name": []})
     subtractor.products = pd.DataFrame({"product_label": []})
-    subtractor.stopSubtraction = False
     subtractor.recipeSettings["sky-subtraction"].update(
         {
             "aggressive_object_masking": False,
@@ -735,7 +728,6 @@ def _one_order_subtractor(log: object) -> subtract_sky:
     subtractor.axisA = "x"
     subtractor.axisB = "y"
     subtractor.debug = False
-    subtractor.stopSubtraction = False
     subtractor.detectorParams = {"dispersion-axis": "x"}
     subtractor.dateObs = "2024-01-02T03:04:05"
     subtractor.objectFrame = CCDData(
