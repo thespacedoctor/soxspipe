@@ -1,5 +1,14 @@
 # Release Notes
 
+* **FIXED**: the response function now matches the points kept when its clipping loop stops at `max_iteration` while still rejecting points, and a warning is logged; before, it was fitted before the last rejection and could be off by several percent. Flux-calibrated output changes (DY-1245).
+* **FIXED**: sigma-clipped polynomial fits (order centres, object traces, order edges, dispersion solution) that stop at the clipping-iteration cap now refit to the rows they keep, so the coefficients and RES QCs match the final set. Reduction output changes (DY-1246).
+* **FIXED**: the rectified slit grid has the set number of rows, centred on the object trace, where it was one row short and half a pixel low; an odd `horne-extraction-slit-length` (default 15) now extracts the full length. Extracted spectra change (DY-1247).
+* **FIXED**: merged 1D spectra no longer start or end with a made-up bin of zero flux, zero variance and NaN SNR outside the extracted wavelength range (DY-1248).
+* **FIXED**: the MASTER RON QC no longer counts clipped and masked pixels, so its value drops by a few percent (DY-1249).
+* **FIXED**: order-centre and object-trace positions on the cross-dispersion axis no longer sit 0.5 px too high. Reduction output changes (DY-1250).
+* **FIXED**: rectification scales dispersion-solution pixel positions to the frame binning when the two differ, for example a 2x2 frame with a 1x1 solution; output for matching binning is unchanged (DY-1251).
+* **FIXED**: rectification leaves flagged pixels out of each cell's flux and variance and rescales the cell to its good-pixel area, so unmasked cells no longer carry part of a hot pixel's value. Extracted spectra change (DY-1252).
+* **FIXED**: sky-fit weights in noisy low-flux regions are bounded by the pixel noise, so the sky model is no longer pulled toward zero there. Sky-subtracted output changes (DY-1253).
 * **FIXED**: extraction (stare, nod, offset) now records the running recipe in the `soxspipe_recipe` column of its products-table rows, instead of always `soxs-stare` (DY-907).
 * **FIXED**: `soxs_offset` gives each cycle and the stacked pair their own object-trace table, residual PDF, extraction products and `_ONOFF` frame (suffixes `_1`, `_2`, `_STACK`), because real offset frames have no `CUMOFF Y` and every cycle used to overwrite one file, so none overwrites another (DY-906).
 * **FIXED**: every recipe now runs from a list of frame paths or a directory as well as a `.sof` file, instead of failing with `AttributeError`; the night date is the earliest `MJD-OBS` minus 15 hours, the QC `sof_name` is `<recipe>_<ARM>_<night>.sof`, and input with no frames or no `MJD-OBS` raises a clear `ValueError` (DY-90).

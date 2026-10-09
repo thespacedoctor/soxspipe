@@ -99,7 +99,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250831T021035_VIS_1X1_1_MBIAS_SOXS.sof",
         values={
             "MBIAS MEDIAN": level(644.498976493901),
-            "MASTER RON": level(1.90140116214752),
+            "MASTER RON": level(1.84482500198915),
         },
     ),
     QcBaseline(
@@ -107,7 +107,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250901T100431_VIS_1X1_1_MBIAS_SOXS.sof",
         values={
             "MBIAS MEDIAN": level(643.710507724261),
-            "MASTER RON": level(1.75077450275421),
+            "MASTER RON": level(1.70791413606355),
         },
     ),
     QcBaseline(
@@ -162,7 +162,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-disp-solution",
         sofName="20250514T121150_NIR_3_DSOL_PINHOLE_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.2869),
+            "XY RES MEDIAN": level(0.27518),
             "GOODLINES FRAC": fraction(0.835616),
             "DETLINES NUM": count(611),
         },
@@ -189,7 +189,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-disp-solution",
         sofName="20251128T122146_NIR_3_DSOL_PINHOLE_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.30478),
+            "XY RES MEDIAN": level(0.31128),
             "GOODLINES FRAC": fraction(0.847793),
             "DETLINES NUM": count(602),
         },
@@ -200,7 +200,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         values={
             "N ORDERS": count(15),
             "SAMPLES DET FRAC": fraction(0.97),
-            "Y RES SD": level(0.042),
+            "Y RES SD": level(0.043),
         },
     ),
     QcBaseline(
@@ -224,7 +224,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T121139_NIR_3_OLOC_QTH_PINHOLE_10_0S_SOXS.sof",
         values={
             "N ORDERS": count(15),
-            "SAMPLES DET FRAC": fraction(0.987),
+            "SAMPLES DET FRAC": fraction(0.988),
             "Y RES SD": level(0.044),
         },
     ),
@@ -235,7 +235,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
             "INNER ORDER PIX MEAN": level(0.918),
             "COLDPIX FRAC": fraction(0.009302),
             "N LOW SENS": count(0),
-            "ORDEXP50": level(6359.945),
+            "ORDEXP50": level(6350.17),
         },
     ),
     QcBaseline(
@@ -244,7 +244,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         values={
             "INNER ORDER PIX MEAN": level(0.965),
             "COLDPIX FRAC": fraction(0.005825),
-            "ORDEXP50": level(3882.34),
+            "ORDEXP50": level(3882.12),
         },
     ),
     QcBaseline(
@@ -253,25 +253,25 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         values={
             "INNER ORDER PIX MEAN": level(0.965),
             "COLDPIX FRAC": fraction(0.004728),
-            "ORDEXP50": level(3904.04),
+            "ORDEXP50": level(3903.68),
         },
     ),
     QcBaseline(
         recipe="soxs-mflat",
         sofName="20251128T114919_NIR_3_MFLAT_QTH_SLIT1_5_2_5S_SOXS.sof",
         values={
-            "INNER ORDER PIX MEAN": level(0.928),
+            "INNER ORDER PIX MEAN": level(0.929),
             "COLDPIX FRAC": fraction(0.009712),
             "N LOW SENS": count(0),
-            "ORDEXP50": level(12731.39),
+            "ORDEXP50": level(12750.414),
         },
     ),
     QcBaseline(
         recipe="soxs-spat-solution",
         sofName="20250514T121227_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.22416),
-            "GOODLINES FRAC": fraction(0.555148),
+            "XY RES MEDIAN": level(0.22057),
+            "GOODLINES FRAC": fraction(0.552497),
             "PINHOLE COUNT MIN": count(9),
         },
     ),
@@ -288,8 +288,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20251128T122217_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.24353),
-            "GOODLINES FRAC": fraction(0.453007),
+            "XY RES MEDIAN": level(0.23518),
+            "GOODLINES FRAC": fraction(0.45423),
             "PINHOLE COUNT MIN": count(9),
         },
     ),
@@ -297,8 +297,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-nod-std",
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         values={
-            "EFF MEDIAN": level(0.1273),
-            "SNR MEDIAN": level(161.41),
+            "EFF MEDIAN": level(0.1411),
+            "SNR MEDIAN": level(167.39),
             "N ORDERS": count(4),
         },
     ),
@@ -306,8 +306,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-nod-std",
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         values={
-            "EFF MEDIAN": level(0.1161),
-            "SNR MEDIAN": level(50.02),
+            "EFF MEDIAN": level(0.1184),
+            "SNR MEDIAN": level(50.11),
             "N ORDERS": count(15),
         },
     ),
@@ -318,22 +318,22 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         gridStart=400.0,
         gridStop=800.0,
-        median=level(7.086515405406636e-16),
+        median=level(6.439642574682012e-16),
         points={
-            450.0: level(2.851225832469254e-16),
-            520.0: level(4.984987325633302e-16),
-            750.0: level(1.0925032070420776e-15),
+            450.0: level(2.5536838692969926e-16),
+            520.0: level(4.501926866419762e-16),
+            750.0: level(9.987140454489237e-16),
         },
     ),
     ResponseBaseline(
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         gridStart=1000.0,
         gridStop=1800.0,
-        median=level(2.683396467367584e-16),
+        median=level(2.549478498298049e-16),
         points={
-            1050.0: level(2.8684728642574555e-16),
-            1250.0: level(2.86521453471114e-16),
-            1650.0: level(1.7916834391261548e-16),
+            1050.0: level(2.816610729608056e-16),
+            1250.0: level(2.823529607320961e-16),
+            1650.0: level(1.7958537633370726e-16),
         },
     ),
 )

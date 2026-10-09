@@ -477,6 +477,91 @@ def test_fit_polynomials_retains_dropped_lines_and_runs_final_qc_fit(
     assert qcCalls == [False, True]
 
 
+def _cap_exit_lines() -> pd.DataFrame:
+    """Twenty lines at a constant position with three gross outliers in x, none in y."""
+    lineCount = 20
+    observedX = 100.0 + 0.1 * np.sin(np.arange(lineCount))
+    observedX[[3, 9, 15]] += [80.0, -90.0, 70.0]
+    return pd.DataFrame(
+        {
+            "order": 10.0,
+            "wavelength": np.linspace(500.0, 600.0, lineCount),
+            "slit_position": 0.0,
+            "observed_x": observedX,
+            "observed_y": 20.0 + 0.1 * np.cos(np.arange(lineCount)),
+            "dropped": False,
+        }
+    )
+
+
+def _record_residual_calls(mapper: create_dispersion_map) -> list[dict[str, object]]:
+    """Replace calculate_residuals with a constant-model version that records each call."""
+    calls: list[dict[str, object]] = []
+
+    def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
+        table = kwargs["orderPixelTable"].copy()
+        table["residuals_x"] = kwargs["xcoeff"][0] - table["observed_x"]
+        table["residuals_y"] = kwargs["ycoeff"][0] - table["observed_y"]
+        table["residuals_xy"] = np.hypot(table["residuals_x"], table["residuals_y"])
+        calls.append(
+            {
+                "writeQCs": kwargs["writeQCs"],
+                "xcoeff": np.asarray(kwargs["xcoeff"]),
+                "ycoeff": np.asarray(kwargs["ycoeff"]),
+                "lineCount": len(table),
+            }
+        )
+        return 0.0, 0.0, 0.0, table
+
+    mapper.calculate_residuals = calculate_residuals
+    return calls
+
+
+def test_fit_polynomials_refits_the_surviving_lines_when_the_iteration_cap_is_reached(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Return coefficients fitted to the kept lines, not to the lines the last pass rejected."""
+    mapper = _fitting_mapper(log)
+    mapper.recipeSettings["poly-clipping-iteration-limit"] = 1
+    mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 2.0
+    commonutilsModule = importlib.import_module("soxspipe.commonutils")
+    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
+    calls = _record_residual_calls(mapper)
+    lines = _cap_exit_lines()
+
+    xcoeff, ycoeff, keptLines, clippedLines = mapper.fit_polynomials(lines, wavelengthDeg=0, orderDeg=0, slitDeg=0)
+
+    assert len(clippedLines) > 0
+    assert set(lines.loc[[3, 9, 15], "wavelength"]).issubset(set(clippedLines["wavelength"]))
+    assert xcoeff[0] == pytest.approx(keptLines["observed_x"].mean(), abs=1e-6)
+    assert ycoeff[0] == pytest.approx(keptLines["observed_y"].mean(), abs=1e-6)
+    assert calls[-1]["writeQCs"] is True
+    assert calls[-1]["lineCount"] == len(keptLines)
+    capMessages = [message for level, message in log.messages if level == "info" and "iteration limit" in message]
+    assert len(capMessages) == 1
+    assert f"{len(clippedLines)} lines still being clipped" in capMessages[0]
+
+
+def test_fit_polynomials_does_not_refit_when_a_pass_clips_nothing(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the converged coefficients and stay silent when the loop ends before the cap."""
+    mapper = _fitting_mapper(log)
+    mapper.recipeSettings["poly-clipping-iteration-limit"] = 10
+    mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 2.0
+    commonutilsModule = importlib.import_module("soxspipe.commonutils")
+    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
+    calls = _record_residual_calls(mapper)
+
+    mapper.fit_polynomials(_cap_exit_lines(), wavelengthDeg=0, orderDeg=0, slitDeg=0)
+
+    assert not [message for level, message in log.messages if "iteration limit" in message]
+    assert calls[-1]["writeQCs"] is True
+    assert len(calls) == sum(1 for call in calls if not call["writeQCs"]) + 1
+
+
 def test_detect_pinhole_arc_lines_uses_shifted_positions_and_collects_measurements(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

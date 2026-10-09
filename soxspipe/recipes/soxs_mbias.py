@@ -529,7 +529,8 @@ class soxs_mbias(base_recipe):
             post_stack_clipping=True,
         )
 
-        masterRon = np.std(combined_noise.data)
+        # ESTIMATE THE RON FROM THE PIXELS THAT SURVIVED CLIPPING, AS soxs_mdark DOES
+        masterRon = np.std(np.ma.array(combined_noise.data, mask=combined_noise.mask))
 
         # USE COMBINED NOISE MASK AS MBIAS MASK
         combined_noise.data = (

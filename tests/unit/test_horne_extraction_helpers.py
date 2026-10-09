@@ -80,6 +80,7 @@ def _configure_synthetic_orchestration(
 
         def cache_image(self, name: str, image: np.ndarray, **kwargs: object) -> None:
             captured.setdefault("cached", []).append(name)
+            captured.setdefault("cacheKwargs", {})[name] = kwargs
 
         def get_order_slices(self) -> list[pd.DataFrame]:
             return [orderSlice]
@@ -166,6 +167,7 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
     assert captured["transformer"]
     assert captured["cached"] == ["fluxRaw", "variance"]
+    assert captured["cacheKwargs"]["variance"]["associatedMask"] is extractor.skySubtractedFrame.mask
     assert captured["slitDriftTransformer"] is captured["transformerInstance"]
     assert captured["extractions"][0].equals(extraction.drop(columns=["slitEdgeTruncated"]))
     assert extractor.slitEdgeOrders == []
@@ -192,6 +194,8 @@ def _construct_extractor(
     headerOverrides: dict[str, object],
     recipeName: str,
     locationSetIndex: object,
+    slitLength: float = 8,
+    binning: int = 1,
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection."""
     import soxspipe.commonutils as commonutils
@@ -227,8 +231,8 @@ def _construct_extractor(
         self.log = receivedLog
         self.settings = settings
         self.dispersionMap = "dispersion-map.fits"
-        self.binx = 1
-        self.biny = 1
+        self.binx = binning
+        self.biny = binning
         self.detectorParams = {"dispersion-axis": "x"}
         self.imageMap = pd.DataFrame({"wavelength": [500.0, 0.0], "slit_position": [0.0, 0.0]})
         self.twoDMap = {"WAVELENGTH": CCDData(np.ones((3, 3)), unit=u.nm, meta={"MJDOBS": 60310.5})}
@@ -269,7 +273,7 @@ def _construct_extractor(
         log=log,
         settings={"instrument": "soxs"},
         recipeSettings={
-            "horne-extraction-slit-length": 8,
+            "horne-extraction-slit-length": slitLength,
             "horne-extraction-profile-clipping-sigma": 3.0,
             "horne-extraction-profile-clipping-iteration-count": 2,
             "horne-extraction-profile-global-clipping-sigma": 4.0,
@@ -310,6 +314,41 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert extractor.imageMap["wavelength"].tolist() == [500.0]
     assert captured["recipeName"] == "soxs-stare"
     assert captured["locationSetIndex"] == 2
+
+
+def test_odd_slit_length_setting_keeps_its_half_pixel_in_the_half_length(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep half of an odd slit-length setting as x.5 so the extracted slit is as long as the setting."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=1,
+        slitLength=15,
+    )
+
+    assert extractor.slitHalfLength == 7.5
+
+
+def test_binned_slit_half_length_is_scaled_without_rounding(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scale the slit half length by the binning and leave whole-row rounding to the image transformer."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=1,
+        slitLength=15,
+        binning=2,
+    )
+
+    assert extractor.slitHalfLength == 3.75
 
 
 @pytest.mark.parametrize(
@@ -737,6 +776,29 @@ def test_order_merge_resamples_nir_flux_and_preserves_variance(log: object) -> N
     np.testing.assert_allclose(merged["SKY_COUNTS"].values.value, [4.0 / 3, 7.0 / 3])
     np.testing.assert_allclose(merged["SNR"].values.value, [6.0, 9.0])
     assert joins == {}
+
+
+def test_merge_grid_keeps_bins_inside_the_range_at_both_ends() -> None:
+    # 500.013 ROUNDS DOWN TO 500.02 ON THE 0.02 NM STEP AND 500.187 ROUNDS UP TO 500.20, BOTH OUTSIDE THE DATA
+    grid = horne_extraction._resample_grid(500.013, 500.187, ratio=50.0)
+
+    np.testing.assert_allclose(grid[[0, -1]], [500.02, 500.18])
+    assert grid.min() >= 500.013
+    assert grid.max() <= 500.187
+    np.testing.assert_allclose(np.diff(grid), 0.02)
+
+
+def test_merge_grid_includes_end_bins_that_sit_exactly_on_the_step() -> None:
+    grid = horne_extraction._resample_grid(1000.02, 1000.14, ratio=1 / 0.06)
+
+    assert grid[0] >= 1000.02
+    assert grid[-1] <= 1000.14
+    assert len(grid) == 3
+
+
+def test_merge_grid_raises_when_no_step_multiple_lies_inside_the_range() -> None:
+    with pytest.raises(ValueError, match="No output wavelength bin"):
+        horne_extraction._resample_grid(500.003, 500.007, ratio=50.0)
 
 
 def test_order_merge_renumbers_soxs_vis_orders_in_place_and_keeps_their_dtype(log: object) -> None:

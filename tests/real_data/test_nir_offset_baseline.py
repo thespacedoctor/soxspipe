@@ -58,7 +58,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
         # OF SPECTRAL COVERAGE
         report("merged rows", len(merged_table))
-        assert len(merged_table) == pytest.approx(20_612, abs=25)
+        assert len(merged_table) == pytest.approx(20_608, abs=25)
         assert set(merged_table.names) == {
             "WAVE",
             "FLUX_COUNTS",
@@ -73,10 +73,10 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         report("wave max", float(np.nanmax(mergedWave)))
         report("wave step median", float(np.nanmedian(np.diff(mergedWave))))
         report("snr median", float(np.nanmedian(merged_table["SNR"])))
-        assert float(np.nanmin(mergedWave)) == pytest.approx(794.82, abs=0.12)
-        assert float(np.nanmax(mergedWave)) == pytest.approx(2031.48, abs=1.0)
+        assert float(np.nanmin(mergedWave)) == pytest.approx(795.12, abs=0.12)
+        assert float(np.nanmax(mergedWave)) == pytest.approx(2031.54, abs=1.0)
         assert float(np.nanmedian(np.diff(mergedWave))) == pytest.approx(0.06, abs=1e-6)
-        assert float(np.nanmedian(merged_table["SNR"])) == pytest.approx(103.45, abs=2.0)
+        assert float(np.nanmedian(merged_table["SNR"])) == pytest.approx(103.85, abs=2.0)
 
     with fits.open(fluxcal_path) as fluxcal_hdus:
         assert len(fluxcal_hdus) == 2
@@ -86,7 +86,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
         report("fluxcal rows", len(fluxcal_table))
         report("fluxcal median", float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])))
-        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.521486461282483e-15, rel=0.05)
+        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.54792923409245e-15, rel=0.05)
 
     with sqlite3.connect(reduced_workspace / "soxspipe.db") as connection:
         qc_values = dict(

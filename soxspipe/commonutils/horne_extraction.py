@@ -145,7 +145,8 @@ class horne_extraction(base_util):
         )
 
         # COLLECT SETTINGS FROM SETTINGS FILE
-        self.slitHalfLength = int(self.recipeSettings["horne-extraction-slit-length"] / 2)
+        # HALF LENGTH KEPT AS THE SETTING / 2 (MAY END IN .5) SO THE EXTRACTED SLIT IS AS LONG AS THE SETTING
+        self.slitHalfLength = self.recipeSettings["horne-extraction-slit-length"] / 2
         self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
         self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
@@ -203,7 +204,6 @@ class horne_extraction(base_util):
                 self.slitHalfLength /= self.binx
             else:
                 self.slitHalfLength /= self.biny
-            self.slitHalfLength = round(self.slitHalfLength)
 
         # REMOVE ZEROS
         mask = (self.imageMap["wavelength"] == 0) & (self.imageMap["slit_position"] == 0)
@@ -331,7 +331,11 @@ class horne_extraction(base_util):
         # RECTIFIED PIXELS SHARE DETECTOR PIXELS, AND THE EXTRACTION SUMS ACROSS THEM: LINEAR WEIGHTS APPROXIMATE
         # THAT SUM'S VARIANCE BY COUNTING EACH DETECTOR PIXEL'S VARIANCE ABOUT ONCE, WHEREAS SQUARED WEIGHTS
         # DROP THE COVARIANCE AND UNDERESTIMATE THE NOISE (~1.55x INFLATED SNR ON REAL DATA)
-        transformer.cache_image("variance", self.skySubtractedFrame.uncertainty.array**2)
+        # THE SAME BAD-PIXEL MASK KEEPS FLAGGED PIXELS OUT OF THE VARIANCE SUMS TOO,
+        # SO FLUX AND VARIANCE CELLS ARE RENORMALISED ALIKE
+        transformer.cache_image(
+            "variance", self.skySubtractedFrame.uncertainty.array**2, associatedMask=self.skySubtractedFrame.mask
+        )
         if self.subtractedFrame:
             transformer.cache_image("fluxSky", self.subtractedFrame.data)
 
@@ -1017,6 +1021,33 @@ class horne_extraction(base_util):
         plt.show()
         plt.close(fig)
 
+    @staticmethod
+    def _resample_grid(minWavelength, maxWavelength, ratio):
+        """*build the merged-spectrum wavelength grid: multiples of the output step lying inside [min, max]*
+
+        **Key Arguments:**
+
+        - ``minWavelength`` -- the shortest extracted wavelength (nm)
+        - ``maxWavelength`` -- the longest extracted wavelength (nm)
+        - ``ratio`` -- the reciprocal of the output step size
+
+        **Return:**
+
+        - ``grid`` -- the wavelength grid (nm), first bin >= ``minWavelength`` and last bin <= ``maxWavelength``
+        """
+        import numpy as np
+
+        firstIndex = int(np.ceil(minWavelength * ratio))
+        lastIndex = int(np.floor(maxWavelength * ratio))
+        # GUARD AGAINST FLOATING-POINT ROUNDING PUSHING AN END BIN OUTSIDE THE DATA
+        if firstIndex / ratio < minWavelength:
+            firstIndex += 1
+        if lastIndex / ratio > maxWavelength:
+            lastIndex -= 1
+        if lastIndex < firstIndex:
+            raise ValueError("No output wavelength bin lies inside the extracted wavelength range.")
+        return np.arange(firstIndex, lastIndex + 1) / ratio
+
     def merge_extracted_orders(self, extractedOrdersDF):
         """*merge the extracted order spectra in one continuous spectrum*
 
@@ -1131,17 +1162,12 @@ class horne_extraction(base_util):
 
             # ENSURE THE RANGE IS VALID
             if min_wavelength < max_wavelength and stepWavelengthOrderMerge > 0:
-                start = float(format(min_wavelength * ratio, ".0f")) / ratio
-                stop = float(format(max_wavelength * ratio, ".0f")) / ratio
-
-                # DEFINE THE WAVELENGTH ARRAY
-                wave_resample_grid = np.arange(start, stop, step=stepWavelengthOrderMerge)
+                # DEFINE THE WAVELENGTH ARRAY, ALIGNED TO STEP MULTIPLES AND INSIDE THE EXTRACTED RANGE
+                wave_resample_grid = self._resample_grid(min_wavelength, max_wavelength, ratio)
             else:
                 raise ValueError("Invalid range or step size for wavelength resampling.")
         else:
             raise ValueError("The 'wavelengthMean' column is empty or contains invalid values.")
-        # wave_resample_grid = np.arange(float(format(np.min(extractedOrdersDF['wavelengthMean']) * ratio, '.0f')) / ratio, float(
-        #     format(np.max(extractedOrdersDF['wavelengthMean']) * ratio, '.0f')) / ratio, step=stepWavelengthOrderMerge)
 
         # ADD UNITS TO THE VARIOUS COLUMNS
         extractedOrdersDF["extractedFluxOptimal"] = extractedOrdersDF["extractedFluxOptimal"].values * u.electron

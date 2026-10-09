@@ -80,11 +80,6 @@ def _bias_frame(rng: np.random.Generator, shape: tuple[int, int], hotPixels: dic
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1249 (DY-35 A1): MASTER RON is the std of the unmasked array, so clipped and masked pixels count",
-)
 def test_master_ron_excludes_masked_pixels(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
     # ARRANGE: FIVE BIAS FRAMES SHARING 20 HOT PIXELS (0.05% OF THE DETECTOR)
     monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: None)
@@ -226,11 +221,6 @@ def _merge_one_order(log: object, firstWavelength: float) -> tuple[np.ndarray, p
     return wavelength, merged, extraction
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1248 (DY-35 C1): merged spectrum fabricates a FLUX=0, VARIANCE=0, SNR=NaN bin below the first sample",
-)
 def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: object) -> None:
     # ARRANGE AND ACT: THE FIRST SAMPLE (500.004 NM) ROUNDS DOWN TO 500.00 ON THE 0.02 NM OUTPUT GRID
     wavelength, merged, _ = _merge_one_order(log, firstWavelength=500.004)
@@ -271,11 +261,6 @@ def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_res
     assert np.isfinite(coefficients).all()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1245 (DY-35 B1): response fit returns pre-rejection coefficients when it hits the cap",
-)
 def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> None:
     # ARRANGE: A BLOCK OF HIGH POINTS PULLS THE FIRST FIT, SO THE SINGLE ALLOWED PASS STILL DELETES POINTS
     wavelength = np.linspace(500.0, 900.0, 1000)
@@ -301,11 +286,6 @@ def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> Non
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1252 (DY-35 A5): rectification carries a masked pixel's value into an unmasked cell",
-)
 def test_rectified_unmasked_cell_does_not_carry_the_masked_pixel_value(log: object) -> None:
     # ARRANGE: ONE RECTIFIED CELL, 85% FROM PIXEL (0,0) AND 15% FROM THE FLAGGED HOT PIXEL (0,1)
     transformer = _transformer(log)
@@ -339,11 +319,6 @@ def test_rectified_unmasked_cell_does_not_carry_the_masked_pixel_value(log: obje
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1246 (DY-35 B2): fit_global_polynomial returns pre-clipping coefficients on a cap exit",
-)
 def test_global_polynomial_coefficients_match_a_refit_on_the_kept_rows(log: object) -> None:
     # ARRANGE: FIVE ORDERS WITH A BLOCK OF CORRUPTED MEASUREMENTS AND THE NIR MFLAT TWO-PASS CAP
     detector = object.__new__(detect_continuum)
@@ -469,11 +444,6 @@ def test_object_profile_clipping_stops_once_a_pass_clips_nothing(monkeypatch: py
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1247 (DY-35 C2): rectified slit grid has 2H-1 rows centred half a pixel below the trace",
-)
 def test_rectified_slit_grid_has_two_h_rows_centred_on_the_trace(log: object) -> None:
     # ARRANGE: SLIT HALF LENGTH 3 AT 1 ARCSEC PER PIXEL, ONE ORDER ON A CONSTANT SLIT POSITION
     slitHalfLength = 3
@@ -504,18 +474,10 @@ def test_rectified_slit_grid_has_two_h_rows_centred_on_the_trace(log: object) ->
 
 
 # ---------------------------------------------------------------------------
-# C4: cut_image_slice reports a centre 0.5 px too high
+# C4: cut_image_slice reports the centre of the collapsed rows
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1250 (DY-35 C4): cut_image_slice reports the slice centre 0.5 px above the rows it collapsed "
-        "(pixel-centre convention unconfirmed; delete this pin if the owner rules it deliberate)"
-    ),
-)
 def test_cut_image_slice_reports_the_centre_of_the_collapsed_rows(log: object) -> None:
     # ARRANGE: PIXEL VALUE EQUALS ROW INDEX, SO THE MEDIAN OF THE COLLAPSED SLICE IS THEIR CENTRE
     rowIndices, _ = np.mgrid[0:60, 0:80]
