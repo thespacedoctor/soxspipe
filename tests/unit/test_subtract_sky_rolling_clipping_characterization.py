@@ -529,6 +529,25 @@ def test_a_frame_whose_every_order_is_bright_returns_no_model(log: Any, monkeypa
     assert result == (None, None, None, subtractor.qc, subtractor.products)
 
 
+def test_a_missing_pixel_is_flagged_in_both_frames_without_unflagging_a_skipped_order_model(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The missing-pixel flagging (DY-1284) runs after the skipped-order pass-through and adds to its flags."""
+    subtractor = _two_order_subtractor(log, monkeypatch, bright=(BRIGHT_ORDER,))
+    missingColumn = 5
+    subtractor.objectFrame.uncertainty.array[:, missingColumn] = np.nan
+    isMissing = np.zeros((2, PIXEL_COUNT), dtype=bool)
+    isMissing[:, missingColumn] = True
+
+    model, subtracted, _, _, _ = subtractor.subtract()
+
+    assert model.mask[0].all()
+    assert np.array_equal(model.mask[1], isMissing[1])
+    assert np.array_equal(subtracted.mask, isMissing)
+    assert np.isfinite(model.data).all()
+    assert np.isfinite(subtracted.data).all()
+
+
 def test_a_skipped_order_still_flags_its_model_when_the_object_frame_has_no_mask(
     log: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
