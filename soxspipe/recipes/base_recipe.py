@@ -1818,6 +1818,54 @@ class base_recipe:
 
         return processedFrame
 
+    def _remove_bias_pedestal_from_uncertainty(self, frame, master_bias):
+        """*re-derive the photon noise of a prepared frame from its bias-subtracted counts*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the prepared frame, whose uncertainty was derived from its raw counts. CCDData object.
+        - ``master_bias`` -- the master bias that is about to be subtracted from the frame. CCDData object.
+
+        **Return:**
+
+        - ``correctedFrame`` -- a copy of the frame whose uncertainty carries the photon noise of the bias-subtracted
+          counts. CCDData object.
+
+        The uncertainty map is built at preparation, before any master bias is available, so its photon term
+        counts the electrons of the bias pedestal (about 650 e- in the VIS arm) as signal. This rescales each
+        pixel's variance by the ratio of ``max(data - bias, 0) + ron^2`` to ``max(data, 0) + ron^2``. A ratio
+        keeps the scaling right for a mean-combined stack, whose variance is the single-frame variance over the
+        number of frames. ``ccdproc.subtract_bias`` then adds the variance of the master bias itself. Pixels
+        that cosmic-ray cleaning changed after preparation are masked, so a ratio from their cleaned counts
+        does not matter. A master dark still carries the pedestal variance of its own raw frames.
+
+        **Usage:**
+
+        ```python
+        frame = self._remove_bias_pedestal_from_uncertainty(frame, master_bias)
+        ```
+        """
+        import numpy as np
+        from astropy.nddata import StdDevUncertainty
+
+        if frame.uncertainty is None:
+            return frame
+
+        ronValue = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+        rawCounts = np.asarray(frame.data, dtype=np.float64)
+        biasCounts = np.asarray(master_bias.data, dtype=np.float64)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            varianceScale = (np.clip(rawCounts - biasCounts, 0, None) + ronValue**2) / (
+                np.clip(rawCounts, 0, None) + ronValue**2
+            )
+        # LEAVE PIXELS WITH NO USABLE COUNTS UNCHANGED
+        varianceScale = np.where(np.isfinite(varianceScale), varianceScale, 1.0)
+
+        correctedFrame = frame.copy()
+        correctedError = np.asarray(frame.uncertainty.array, dtype=np.float64) * np.sqrt(varianceScale)
+        correctedFrame.uncertainty = StdDevUncertainty(correctedError.astype(np.float32), unit=frame.uncertainty.unit)
+        return correctedFrame
+
     def detrend(
         self,
         inputFrame,
@@ -1881,6 +1929,7 @@ class base_recipe:
         processedFrame = inputFrame
 
         if master_bias != False:  # noqa: E712
+            processedFrame = self._remove_bias_pedestal_from_uncertainty(processedFrame, master_bias)
             processedFrame = ccdproc.subtract_bias(processedFrame, master_bias, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
