@@ -732,6 +732,8 @@ class soxs_stare(base_recipe):
         - ``skySubtractedCCDData`` -- the sky-subtracted frame, or ``combined_object`` when no sky was subtracted
         - ``productPath`` -- the path to the last sky product written, or None when none was written
         """
+        import numpy as np
+
         productPath = None
 
         if self.subtractSky:
@@ -768,13 +770,20 @@ class soxs_stare(base_recipe):
                     skySubtractedCCDData, skymodelCCDData, skySubtractedResidualsCCDData
                 )
 
-                # ADD QUALITY CHECKS
+                # ADD QUALITY CHECKS. PIXELS THE SKY SUBTRACTION FLAGGED AS MISSING (E.G. BETWEEN THE ORDERS)
+                # ARE NOT DETECTOR BAD PIXELS, SO THEY STAY OUT OF THE BAD-PIXEL COUNT (DY-1284)
+                skyFlags = np.asarray(skySubtractedCCDData.mask, dtype=bool)
+                if combined_object.mask is None:
+                    skyOnlyFlags = skyFlags
+                else:
+                    skyOnlyFlags = skyFlags & ~np.asarray(combined_object.mask, dtype=bool)
                 self.qc = generic_quality_checks(
                     log=self.log,
                     frame=skySubtractedCCDData,
                     settings=self.settings,
                     recipeName=self.recipeName,
                     qcTable=self.qc,
+                    excludeMask=skyOnlyFlags,
                 )
                 self.qc = spectroscopic_image_quality_checks(
                     log=self.log,
