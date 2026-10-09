@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from fractions import Fraction
 from typing import Any
 
 import numpy as np
@@ -363,7 +364,7 @@ def test_a_start_below_the_floor_is_not_clamped_and_does_not_retry(log: Any) -> 
 
 
 @pytest.mark.parametrize("sigma", [float("inf"), float("-inf"), float("nan"), None, "3", True, [3.0, 2.0]])
-def test_a_non_finite_sigma_limit_raises_a_value_error_naming_the_setting(log: Any, sigma: Any) -> None:
+def test_a_non_finite_or_non_numeric_sigma_limit_raises_a_value_error_naming_the_setting(log: Any, sigma: Any) -> None:
     """A sigma that is not a finite number would clip nothing, everything or crash later, so it is refused up front."""
     subtractor, iterations = _subtractor(log, arm="VIS")
 
@@ -371,6 +372,16 @@ def test_a_non_finite_sigma_limit_raises_a_value_error_naming_the_setting(log: A
         _clip(subtractor, _object_order(100.0), sigma=sigma)
 
     assert iterations == []
+
+
+@pytest.mark.parametrize("sigma", [3, 3.0, np.float32(3.0), np.float64(3.0), np.int64(3), Fraction(3, 1)])
+def test_any_finite_real_sigma_limit_is_accepted(log: Any, sigma: Any) -> None:
+    """Plain numbers from the settings file, numpy scalars and other real numbers all clip as usual."""
+    subtractor, iterations = _subtractor(log, arm="VIS")
+
+    _clip(subtractor, _object_order(100.0), sigma=sigma)
+
+    assert iterations
 
 
 @pytest.mark.parametrize("arm", ["VI", "IS", "V"])

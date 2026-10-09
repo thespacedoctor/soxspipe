@@ -10,6 +10,7 @@ Date Created
 """
 
 import contextlib
+import math
 import numbers
 import os
 import sys
@@ -1084,7 +1085,7 @@ class subtract_sky:
         isFiniteNumber = (
             isinstance(sigma_clip_limit, numbers.Real)
             and not isinstance(sigma_clip_limit, bool)
-            and np.isfinite(sigma_clip_limit)
+            and math.isfinite(sigma_clip_limit)
         )
         if not isFiniteNumber:
             raise ValueError(
