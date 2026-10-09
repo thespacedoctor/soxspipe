@@ -7,6 +7,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+from astropy import units as u
+from astropy.nddata import CCDData, StdDevUncertainty
 
 from soxspipe.commonutils.subtract_sky import subtract_sky
 
@@ -23,7 +25,6 @@ def _subtractor(log: Any, *, arm: str) -> tuple[subtract_sky, list[str]]:
     subtractor.log = log
     subtractor.arm = arm
     subtractor.debug = True
-    subtractor.stopSubtraction = False
     iterations: list[str] = []
     # DEBUG MODE PLOTS EVERY ITERATION; RECORD THE ITERATION LINE OF EACH TITLE INSTEAD
     subtractor.plot_order_skymodel_fitting_quicklook = lambda frame, spline, title=None: iterations.append(
@@ -32,9 +33,9 @@ def _subtractor(log: Any, *, arm: str) -> tuple[subtract_sky, list[str]]:
     return subtractor, iterations
 
 
-def _object_order(level: float) -> pd.DataFrame:
+def _object_order(level: float, *, seed: int = 5) -> pd.DataFrame:
     """Seeded shot noise at `level` plus four gaussian objects 4 to 16 pixels wide."""
-    rng = np.random.default_rng(5)
+    rng = np.random.default_rng(seed)
     index = np.arange(PIXEL_COUNT)
     flux = level + rng.normal(0.0, 1.0, PIXEL_COUNT) * np.sqrt(level)
     for position, width in enumerate((4, 8, 12, 16), start=1):
@@ -58,6 +59,21 @@ def _with_edge_and_bad_pixels(pixels: pd.DataFrame, *, edge: list[int], bad: lis
     flagged.loc[bad, "flagged_bad_pixel_clipped"] = True
     flagged.loc[edge + bad, "flagged_all_clipped"] = True
     return flagged
+
+
+def _with_random_edge_pixels(pixels: pd.DataFrame, *, fraction: float, seed: int) -> pd.DataFrame:
+    """Flag a seeded `fraction` of the rows as edge-clipped, so object clipping stays under 5% of the order."""
+    flagged = pixels.copy()
+    isEdge = np.random.default_rng(seed).random(len(flagged)) < fraction
+    flagged.loc[isEdge, "flagged_edge_clipped"] = True
+    flagged.loc[isEdge, "flagged_all_clipped"] = True
+    return flagged
+
+
+def _final_sigma(clipped: pd.DataFrame) -> float:
+    """Return the sigma limit of the last clipping pass, recovered from the stored upper limit and std."""
+    ratio = clipped["flux_minus_smoothed_residual_upper_limit"] / clipped["flux_minus_smoothed_residual_std"]
+    return float(ratio.dropna().iloc[0])
 
 
 def _component_union(pixels: pd.DataFrame) -> pd.Series:
@@ -107,7 +123,6 @@ def test_a_faint_vis_order_retries_clipping_and_releases_pixels_from_the_abandon
         "iteration 7 - 7.2% clipped",
         "iteration 8 - 7.3% clipped",
     ]
-    assert subtractor.stopSubtraction is False
     assert int(clipped["flagged_object_clipped"].sum()) == 147
     assert int(clipped["flagged_all_clipped"].sum()) == 147
     assert (clipped["flagged_all_clipped"] == _component_union(clipped)).all()
@@ -122,14 +137,13 @@ def test_a_faint_vis_order_retries_clipping_and_releases_pixels_from_the_abandon
     assert int(clipped["flux_percentile_smoothed"].isna().sum()) == 91
 
 
-def test_a_bright_vis_order_stops_sky_subtraction_at_iteration_five(log: Any) -> None:
-    """A smoothed sky above 2500 with under 5% clipped returns None and raises the stop flag."""
+def test_a_bright_vis_order_is_skipped_at_iteration_five_and_the_warning_names_the_order(log: Any) -> None:
+    """A smoothed sky above 2500 with under 5% clipped returns None, so the caller can skip that order alone."""
     subtractor, iterations = _subtractor(log, arm="VIS")
 
     result = _clip(subtractor, _object_order(3000.0))
 
     assert result is None
-    assert subtractor.stopSubtraction is True
     assert iterations == [
         "iteration 1 - 1.8% clipped",
         "iteration 2 - 2.2% clipped",
@@ -138,7 +152,7 @@ def test_a_bright_vis_order_stops_sky_subtraction_at_iteration_five(log: Any) ->
         "iteration 5 - 3.2% clipped",
     ]
     assert _messages(log, "print", "warning") == [
-        ("warning", "OBJECT IS LIKELY VERY BRIGHT - STOPPING SKY-SUBTRACTION TO AVOID CLIPPING TOO MANY PIXELS")
+        ("warning", "ORDER 10: OBJECT IS LIKELY VERY BRIGHT - SKIPPING SKY-SUBTRACTION FOR THIS ORDER")
     ]
 
 
@@ -148,7 +162,6 @@ def test_the_same_bright_order_in_uvb_iterates_to_convergence(log: Any) -> None:
 
     clipped = _clip(subtractor, _object_order(3000.0))
 
-    assert subtractor.stopSubtraction is False
     assert iterations == [
         "iteration 1 - 1.8% clipped",
         "iteration 2 - 2.2% clipped",
@@ -248,3 +261,167 @@ def test_normal_clipping_without_a_reset_excludes_the_union_of_edge_bad_pixel_an
     assert int(clipped["flagged_object_clipped"].sum()) == 74
     assert int(clipped["flagged_all_clipped"].sum()) == 81
     assert (clipped["flagged_all_clipped"] == _component_union(clipped)).all()
+
+
+def test_a_vis_retry_whose_first_pass_matches_the_last_pass_before_it_carries_on_clipping(log: Any) -> None:
+    """The retry resets the last-clipped count, so an equal first pass does not end clipping (DY-1285)."""
+    subtractor, iterations = _subtractor(log, arm="VIS")
+
+    clipped = _clip(subtractor, _object_order(100.0, seed=121), iterations=10)
+
+    assert iterations[:6] == [
+        "iteration 1 - 1.8% clipped",
+        "iteration 2 - 2.1% clipped",
+        "iteration 3 - 2.5% clipped",
+        "iteration 4 - 2.8% clipped",
+        "iteration 5 - 2.9% clipped",
+        "iteration 1 - 2.9% clipped",
+    ]
+    assert len(iterations) == 18
+    assert int(clipped["flagged_object_clipped"].sum()) == 145
+    assert _final_sigma(clipped) == pytest.approx(2.8)
+
+
+def test_vis_retries_stop_lowering_sigma_at_the_floor_and_warn(log: Any) -> None:
+    """The sigma limit never drops below 1.5, and reaching that floor logs a warning naming the order (DY-1285)."""
+    subtractor, iterations = _subtractor(log, arm="VIS")
+    pixels = _with_random_edge_pixels(_object_order(100.0, seed=41), fraction=0.95, seed=1041)
+
+    clipped = _clip(subtractor, pixels, sigma=2.0, iterations=10)
+
+    assert _final_sigma(clipped) == pytest.approx(1.5)
+    assert len(iterations) == 31
+    assert int(clipped["flagged_object_clipped"].sum()) == 69
+    assert _messages(log, "warning") == [
+        (
+            "warning",
+            "ORDER 10: OBJECT CLIPPING REACHED THE MINIMUM SIGMA LIMIT OF 1.5 "
+            "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING AGAIN",
+        )
+    ]
+
+
+@pytest.mark.parametrize("arm", ["VI", "IS", "V"])
+def test_an_arm_name_inside_the_word_vis_does_not_take_the_vis_only_branches(log: Any, arm: str) -> None:
+    """Only the arm VIS retries and skips bright orders; a piece of the word VIS iterates like UVB (DY-1285)."""
+    subtractor, iterations = _subtractor(log, arm=arm)
+    uvbSubtractor, uvbIterations = _subtractor(log, arm="UVB")
+
+    result = _clip(subtractor, _object_order(3000.0))
+    uvbResult = _clip(uvbSubtractor, _object_order(3000.0))
+
+    assert result is not None
+    assert iterations == uvbIterations
+    assert int(result["flagged_object_clipped"].sum()) == int(uvbResult["flagged_object_clipped"].sum())
+
+
+BRIGHT_ORDER = 10
+FAINT_ORDER = 11
+FITTED_SKY = 100.0
+PIXEL_ERROR = 2.0
+
+
+def _two_order_subtractor(log: Any, monkeypatch: pytest.MonkeyPatch, *, bright: tuple[int, ...]) -> subtract_sky:
+    """A subtractor over one faint and one bright VIS order, with the real object clipping and a flat stub sky fit."""
+    subtractor, _ = _subtractor(log, arm="VIS")
+    subtractor.debug = False
+    subtractor.axisA = "x"
+    subtractor.axisB = "y"
+    subtractor.detectorParams = {"dispersion-axis": "x"}
+    subtractor.dateObs = "2024-01-02T03:04:05"
+    subtractor.recipeSettings = {
+        "sky-subtraction": {
+            "bspline_order": 3,
+            "clip-slit-edge-fraction": 0.0,
+            "aggressive_object_masking": False,
+            "sky_model_qc_plot": False,
+        }
+    }
+    subtractor.objectFrame = CCDData(
+        np.zeros((2, PIXEL_COUNT)),
+        unit=u.electron,
+        mask=np.zeros((2, PIXEL_COUNT), dtype=bool),
+        uncertainty=StdDevUncertainty(np.full((2, PIXEL_COUNT), PIXEL_ERROR), unit=u.electron),
+    )
+    orders = []
+    for row, order in enumerate((BRIGHT_ORDER, FAINT_ORDER)):
+        pixels = _object_order(3000.0 if order in bright else 100.0)
+        pixels["order"] = order
+        pixels["x"] = np.arange(PIXEL_COUNT)
+        pixels["y"] = row
+        pixels["error"] = PIXEL_ERROR
+        pixels["mask"] = False
+        orders.append(pixels)
+    subtractor.mapDF = pd.concat(orders, ignore_index=True)
+    subtractor.qc = pd.DataFrame()
+    subtractor.products = pd.DataFrame()
+
+    def clip_order(imageMapOrder: pd.DataFrame, **_: Any) -> Any:
+        return subtractor.rolling_window_clipping(imageMapOrder, windowSize=11, sigma_clip_limit=3, max_iterations=10)
+
+    def fit_flat_sky(imageMapOrder: pd.DataFrame) -> Any:
+        fitted = imageMapOrder.copy()
+        fitted["sky_model"] = FITTED_SKY
+        fitted["sky_subtracted_flux"] = fitted["flux"] - FITTED_SKY
+        return fitted, object(), [1, 2], np.array([1.0]), 1.0
+
+    monkeypatch.setattr(subtractor, "get_over_sampled_sky_from_order", clip_order)
+    monkeypatch.setattr(subtractor, "clip_object_slit_positions", lambda orders, **_: orders)
+    monkeypatch.setattr(subtractor, "fit_bspline_curve_to_sky", fit_flat_sky)
+    return subtractor
+
+
+def test_one_bright_order_keeps_the_sky_model_of_the_other_orders(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The faint order is modelled and subtracted even though the bright order skips sky subtraction (DY-1285)."""
+    subtractor = _two_order_subtractor(log, monkeypatch, bright=(BRIGHT_ORDER,))
+
+    model, subtracted, residuals, _, _ = subtractor.subtract()
+
+    assert (model.data[1] == FITTED_SKY).all()
+    assert np.allclose(
+        subtracted.data[1], subtractor.mapDF.loc[subtractor.mapDF["order"] == FAINT_ORDER, "flux"] - FITTED_SKY
+    )
+    assert not model.mask[1].any()
+
+
+def test_a_skipped_bright_order_passes_its_data_through_with_a_masked_zero_model(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A skipped order keeps its measured flux and error, and only its model is zero and flagged in the QUAL mask."""
+    subtractor = _two_order_subtractor(log, monkeypatch, bright=(BRIGHT_ORDER,))
+    brightFlux = subtractor.mapDF.loc[subtractor.mapDF["order"] == BRIGHT_ORDER, "flux"].to_numpy()
+
+    model, subtracted, residuals, _, _ = subtractor.subtract()
+
+    assert (model.data[0] == 0).all()
+    assert model.mask[0].all()
+    assert np.allclose(subtracted.data[0], brightFlux)
+    assert np.allclose(residuals.data[0], brightFlux / PIXEL_ERROR)
+    assert not subtracted.mask[0].any()
+    assert (subtracted.uncertainty.array[0] == PIXEL_ERROR).all()
+    assert (model.uncertainty.array[0] == PIXEL_ERROR).all()
+    assert ("warning", "ORDER 10: OBJECT IS LIKELY VERY BRIGHT - SKIPPING SKY-SUBTRACTION FOR THIS ORDER") in _messages(
+        log, "warning"
+    )
+
+
+def test_a_frame_whose_every_order_is_bright_returns_no_model(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With no order modelled there is no sky model, so the recipe turns sky subtraction off as before."""
+    subtractor = _two_order_subtractor(log, monkeypatch, bright=(BRIGHT_ORDER, FAINT_ORDER))
+
+    result = subtractor.subtract()
+
+    assert result == (None, None, None, subtractor.qc, subtractor.products)
+
+
+def test_a_skipped_order_still_flags_its_model_when_the_object_frame_has_no_mask(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A frame without a mask gets one, flagging only the skipped order's sky-model pixels."""
+    subtractor = _two_order_subtractor(log, monkeypatch, bright=(BRIGHT_ORDER,))
+    subtractor.objectFrame.mask = None
+
+    model, _, _, _, _ = subtractor.subtract()
+
+    assert model.mask[0].all()
+    assert not model.mask[1].any()
