@@ -19,7 +19,7 @@ stareModule = importlib.import_module("soxspipe.recipes.soxs_stare")
 FRAME_SHAPE = (3, 3)
 
 
-def _frame(mask: np.ndarray) -> CCDData:
+def _frame(mask: np.ndarray | None) -> CCDData:
     return CCDData(
         np.ones(FRAME_SHAPE),
         unit=u.electron,
@@ -28,15 +28,12 @@ def _frame(mask: np.ndarray) -> CCDData:
     )
 
 
-def test_the_bad_pixel_qc_does_not_count_pixels_that_only_the_sky_subtraction_flagged(
+def _run_subtract_sky_and_capture_exclude_mask(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    detectorMask = np.zeros(FRAME_SHAPE, dtype=bool)
-    detectorMask[0, 0] = True
-    skySubtractionMask = detectorMask.copy()
-    skySubtractionMask[1:, :] = True
-    objectFrame = _frame(detectorMask)
+    objectFrame: CCDData,
+    skySubtractionMask: np.ndarray,
+) -> np.ndarray:
     calls: dict[str, list] = {"excludeMask": []}
 
     class FakeSubtractSky:
@@ -69,5 +66,31 @@ def test_the_bad_pixel_qc_does_not_count_pixels_that_only_the_sky_subtraction_fl
     recipe._subtract_sky(objectFrame, "map.fits", "disp.fits", "orders.fits")
 
     [excludeMask] = calls["excludeMask"]
-    expected = skySubtractionMask & ~detectorMask
-    np.testing.assert_array_equal(excludeMask, expected)
+    return excludeMask
+
+
+def test_the_bad_pixel_qc_does_not_count_pixels_that_only_the_sky_subtraction_flagged(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    detectorMask = np.zeros(FRAME_SHAPE, dtype=bool)
+    detectorMask[0, 0] = True
+    skySubtractionMask = detectorMask.copy()
+    skySubtractionMask[1:, :] = True
+
+    excludeMask = _run_subtract_sky_and_capture_exclude_mask(log, monkeypatch, _frame(detectorMask), skySubtractionMask)
+
+    np.testing.assert_array_equal(excludeMask, skySubtractionMask & ~detectorMask)
+
+
+def test_the_bad_pixel_qc_excludes_every_sky_flag_when_the_object_frame_has_no_mask(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    skySubtractionMask = np.zeros(FRAME_SHAPE, dtype=bool)
+    skySubtractionMask[1:, :] = True
+
+    excludeMask = _run_subtract_sky_and_capture_exclude_mask(log, monkeypatch, _frame(None), skySubtractionMask)
+
+    assert excludeMask.dtype == bool
+    np.testing.assert_array_equal(excludeMask, skySubtractionMask)
