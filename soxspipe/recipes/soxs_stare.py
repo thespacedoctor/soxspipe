@@ -768,13 +768,15 @@ class soxs_stare(base_recipe):
                     skySubtractedCCDData, skymodelCCDData, skySubtractedResidualsCCDData
                 )
 
-                # ADD QUALITY CHECKS
+                # ADD QUALITY CHECKS. PIXELS THE SKY SUBTRACTION FLAGGED AS MISSING (E.G. BETWEEN THE ORDERS)
+                # ARE NOT DETECTOR BAD PIXELS, SO THEY STAY OUT OF THE BAD-PIXEL COUNT (DY-1284)
                 self.qc = generic_quality_checks(
                     log=self.log,
                     frame=skySubtractedCCDData,
                     settings=self.settings,
                     recipeName=self.recipeName,
                     qcTable=self.qc,
+                    excludeMask=skySubtractedCCDData.mask & ~combined_object.mask,
                 )
                 self.qc = spectroscopic_image_quality_checks(
                     log=self.log,
