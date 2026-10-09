@@ -42,7 +42,7 @@ def _recipe(log: Any) -> base_recipe:
     recipe.arm = "VIS"
     recipe.inst = "SOXS"
     recipe.kw = lambda keyword: keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": 3.8 * u.electron}
     recipe.recipeSettings = {"subtract_background": False}
     recipe.darkDetrendWarningIssued1 = False
     recipe.darkDetrendWarningIssued2 = False
@@ -183,3 +183,60 @@ def test_clip_and_stack_short_circuits_single_frame_and_rejects_empty_input(log:
     assert recipe.clip_and_stack([frame], "soxs_stare") is frame
     with pytest.raises(ValueError, match="No frames were sent"):
         recipe.clip_and_stack([], "soxs_stare")
+
+
+BIAS_PEDESTAL = 647.0
+SKY_LEVEL = 4.0
+READ_NOISE = 3.8
+MASTER_BIAS_ERROR = 0.5
+
+
+def _pedestal_frames(flatValue: float, stackSize: int) -> tuple[CCDData, CCDData, CCDData]:
+    """Return a prepared sky frame, its master bias and its master flat.
+
+    The frame sits on a bias pedestal and carries the uncertainty map that the preparation step gives it: the
+    deviation of the raw (pedestal included) counts. ``stackSize`` frames of this kind have been mean-combined.
+    """
+    shape = (4, 4)
+    recipe = _recipe(None)
+    recipe.kw = lambda keyword: f"ESO {keyword.replace('_', ' ')}" if keyword.startswith("DPR_") else keyword
+    recipe.detectorParams = {"ron": READ_NOISE * u.electron}
+    rawFrame = _frame(BIAS_PEDESTAL + SKY_LEVEL)
+    rawFrame = recipe._add_uncertainty_map(rawFrame)
+    rawFrame.uncertainty = StdDevUncertainty(rawFrame.uncertainty.array / np.sqrt(stackSize), unit=u.electron)
+    masterBias = _frame(BIAS_PEDESTAL)
+    masterBias.uncertainty = StdDevUncertainty(np.full(shape, MASTER_BIAS_ERROR), unit=u.electron)
+    masterFlat = _frame(flatValue)
+    masterFlat.uncertainty = StdDevUncertainty(np.zeros(shape), unit=u.electron)
+    return rawFrame, masterBias, masterFlat
+
+
+@pytest.mark.parametrize(("flatValue", "stackSize"), [(1.0, 1), (0.5, 1), (1.0, 4)])
+def test_detrend_error_excludes_the_bias_pedestal_from_the_photon_term(
+    log: Any,
+    flatValue: float,
+    stackSize: int,
+) -> None:
+    """The error of a bias-subtracted sky pixel is its own photon noise, read noise and bias error, over the flat."""
+    recipe = _recipe(log)
+    recipe.detectorParams = {"ron": READ_NOISE * u.electron}
+    rawFrame, masterBias, masterFlat = _pedestal_frames(flatValue, stackSize)
+
+    calibrated = recipe.detrend(rawFrame, master_bias=masterBias, master_flat=masterFlat)
+
+    expectedVariance = (SKY_LEVEL + READ_NOISE**2) / stackSize + MASTER_BIAS_ERROR**2
+    expectedError = np.sqrt(expectedVariance) / flatValue
+    np.testing.assert_allclose(calibrated.uncertainty.array, np.full((4, 4), expectedError), rtol=1e-4)
+    np.testing.assert_allclose(calibrated.data, np.full((4, 4), SKY_LEVEL / flatValue), rtol=1e-4)
+
+
+def test_detrend_leaves_the_input_uncertainty_untouched(log: Any) -> None:
+    """Correcting the photon term must not change the frame that was handed in."""
+    recipe = _recipe(log)
+    recipe.detectorParams = {"ron": READ_NOISE * u.electron}
+    rawFrame, masterBias, masterFlat = _pedestal_frames(1.0, 1)
+    before = rawFrame.uncertainty.array.copy()
+
+    recipe.detrend(rawFrame, master_bias=masterBias, master_flat=masterFlat)
+
+    np.testing.assert_array_equal(rawFrame.uncertainty.array, before)
