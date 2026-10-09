@@ -1078,6 +1078,11 @@ class subtract_sky:
 
         import numpy as np
 
+        if not np.isfinite(sigma_clip_limit):
+            raise ValueError(
+                f"the sky-subtraction setting percentile_clipping_sigma must be a finite number, got {sigma_clip_limit}"
+            )
+
         allPixels = len(imageMapOrderDF.index)
         order = imageMapOrderDF["order"].values[0]
 
@@ -1173,26 +1178,26 @@ class subtract_sky:
                 retrySigma = round(sigma_clip_limit - RETRY_SIGMA_STEP, 6)
                 if retrySigma < MIN_CLIP_SIGMA:
                     self.log.warning(
-                        f"ORDER {order}: OBJECT CLIPPING REACHED THE MINIMUM SIGMA LIMIT OF {MIN_CLIP_SIGMA} "
-                        "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING AGAIN"
+                        f"ORDER {order}: OBJECT CLIPPING IS AT OR BELOW THE MINIMUM SIGMA LIMIT OF {MIN_CLIP_SIGMA} "
+                        "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING"
                     )
                 else:
                     imageMapOrderDF["flagged_object_clipped"] = False
                     self._rebuild_all_clipped_flag(imageMapOrderDF)
-                    sigma_clip_limit -= RETRY_SIGMA_STEP
+                    sigma_clip_limit = retrySigma
                     if quantile > 0.1:
                         quantile -= 0.05
                     iteration = 0
                     # THE RETRY STARTS FROM NOTHING CLIPPED, SO AN EQUAL COUNT IS NOT CONVERGENCE
                     lastClipped = -1
-            # if iteration == max_iterations:
-            #     totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
-            #     percent = (float(totalClipped) / float(allPixels)) * 100.0
-            #     if percent > 70:
-            #         print("FIXING PERCENT > 70")
-            #         imageMapOrderDF["flagged_object_clipped"] = False
-            #         windowSize = windowSize + 1
-            #         iteration = 0
+                # if iteration == max_iterations:
+                #     totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
+                #     percent = (float(totalClipped) / float(allPixels)) * 100.0
+                #     if percent > 70:
+                #         print("FIXING PERCENT > 70")
+                #         imageMapOrderDF["flagged_object_clipped"] = False
+                #         windowSize = windowSize + 1
+                #         iteration = 0
 
         totalClipped = len(imageMapOrderDF.loc[(imageMapOrderDF["flagged_object_clipped"] == True)].index)
         percent = (float(totalClipped) / float(allPixels)) * 100.0

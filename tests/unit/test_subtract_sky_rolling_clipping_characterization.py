@@ -18,6 +18,10 @@ PIXEL_COUNT = 2000
 # PINNING EVERY ROW AS A LITERAL IS IMPRACTICAL; THESE ROWS SAMPLE THE FIRST
 # OBJECT FLANK, A CLIPPED ROW, THE THIRD OBJECT AND THE LAST ROW
 SAMPLED_ROWS = [5, 400, 1000, 1999]
+FLOOR_WARNING = (
+    "ORDER 10: OBJECT CLIPPING IS AT OR BELOW THE MINIMUM SIGMA LIMIT OF 1.5 "
+    "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING"
+)
 
 
 def _subtractor(log: Any, *, arm: str) -> tuple[subtract_sky, list[str]]:
@@ -74,6 +78,37 @@ def _final_sigma(clipped: pd.DataFrame) -> float:
     """Return the sigma limit of the last clipping pass, recovered from the stored upper limit and std."""
     ratio = clipped["flux_minus_smoothed_residual_upper_limit"] / clipped["flux_minus_smoothed_residual_std"]
     return float(ratio.dropna().iloc[0])
+
+
+def _record_pass_limits(subtractor: subtract_sky) -> list[tuple[pd.Series, pd.Series]]:
+    """Record the stored (upper limit, std) columns of every clipping pass, which expose the exact sigma used."""
+    passes: list[tuple[pd.Series, pd.Series]] = []
+    previousSpy = subtractor.plot_order_skymodel_fitting_quicklook
+
+    def spy(frame: pd.DataFrame, spline: Any, title: str | None = None) -> None:
+        isFinite = frame["flux_minus_smoothed_residual_std"].notna()
+        passes.append(
+            (
+                frame.loc[isFinite, "flux_minus_smoothed_residual_upper_limit"].copy(),
+                frame.loc[isFinite, "flux_minus_smoothed_residual_std"].copy(),
+            )
+        )
+        previousSpy(frame, spline, title=title)
+
+    subtractor.plot_order_skymodel_fitting_quicklook = spy
+    return passes
+
+
+def _pass_used_exactly(limits: tuple[pd.Series, pd.Series], sigma: float) -> bool:
+    """True when every row's upper limit is exactly its std times `sigma`."""
+    upper, std = limits
+    return bool((upper == std * sigma).all())
+
+
+def _pass_used_less_than(limits: tuple[pd.Series, pd.Series], sigma: float) -> bool:
+    """True when any row's upper limit is below its std times `sigma`, so the pass used a smaller sigma."""
+    upper, std = limits
+    return bool((upper < std * sigma).any())
 
 
 def _component_union(pixels: pd.DataFrame) -> pd.Series:
@@ -283,22 +318,59 @@ def test_a_vis_retry_whose_first_pass_matches_the_last_pass_before_it_carries_on
 
 
 def test_vis_retries_stop_lowering_sigma_at_the_floor_and_warn(log: Any) -> None:
-    """The sigma limit never drops below 1.5, and reaching that floor logs a warning naming the order (DY-1285)."""
+    """Every pass uses a sigma of at least 1.5 exactly, and reaching the floor logs a warning naming the order."""
     subtractor, iterations = _subtractor(log, arm="VIS")
+    passes = _record_pass_limits(subtractor)
     pixels = _with_random_edge_pixels(_object_order(100.0, seed=41), fraction=0.95, seed=1041)
 
     clipped = _clip(subtractor, pixels, sigma=2.0, iterations=10)
 
-    assert _final_sigma(clipped) == pytest.approx(1.5)
+    assert not any(_pass_used_less_than(limits, 1.5) for limits in passes)
+    assert _pass_used_exactly(passes[-1], 1.5)
     assert len(iterations) == 31
     assert int(clipped["flagged_object_clipped"].sum()) == 69
-    assert _messages(log, "warning") == [
-        (
-            "warning",
-            "ORDER 10: OBJECT CLIPPING REACHED THE MINIMUM SIGMA LIMIT OF 1.5 "
-            "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING AGAIN",
-        )
-    ]
+    assert _messages(log, "warning") == [("warning", FLOOR_WARNING)]
+
+
+def test_a_start_one_retry_above_the_floor_retries_twice_and_stops_exactly_at_the_floor(log: Any) -> None:
+    """Starting at 1.7 the sigma goes 1.7, 1.6, 1.5 and then stops, so the third attempt is the last (DY-1285)."""
+    subtractor, iterations = _subtractor(log, arm="VIS")
+    passes = _record_pass_limits(subtractor)
+    pixels = _with_random_edge_pixels(_object_order(100.0, seed=2), fraction=0.95, seed=1002)
+
+    _clip(subtractor, pixels, sigma=1.7, iterations=10)
+
+    firstPasses = [index for index, entry in enumerate(iterations) if entry.startswith("iteration 1 ")]
+    assert len(firstPasses) == 3
+    assert all(
+        _pass_used_exactly(passes[index], sigma) for index, sigma in zip(firstPasses, (1.7, 1.6, 1.5), strict=True)
+    )
+    assert not any(_pass_used_less_than(limits, 1.5) for limits in passes)
+    assert _messages(log, "warning") == [("warning", FLOOR_WARNING)]
+
+
+def test_a_start_below_the_floor_is_not_clamped_and_does_not_retry(log: Any) -> None:
+    """An initial sigma under the floor is used as given, with no retry and the same warning (DY-1285)."""
+    subtractor, iterations = _subtractor(log, arm="VIS")
+    passes = _record_pass_limits(subtractor)
+    pixels = _with_random_edge_pixels(_object_order(100.0, seed=2), fraction=0.95, seed=1002)
+
+    _clip(subtractor, pixels, sigma=1.2, iterations=10)
+
+    assert sum(entry.startswith("iteration 1 ") for entry in iterations) == 1
+    assert all(_pass_used_exactly(limits, 1.2) for limits in passes)
+    assert _messages(log, "warning") == [("warning", FLOOR_WARNING)]
+
+
+@pytest.mark.parametrize("sigma", [float("inf"), float("-inf"), float("nan")])
+def test_a_non_finite_sigma_limit_raises_a_value_error_naming_the_setting(log: Any, sigma: float) -> None:
+    """A sigma of inf or NaN would clip nothing or everything silently, so it is refused up front."""
+    subtractor, iterations = _subtractor(log, arm="VIS")
+
+    with pytest.raises(ValueError, match="percentile_clipping_sigma"):
+        _clip(subtractor, _object_order(100.0), sigma=sigma)
+
+    assert iterations == []
 
 
 @pytest.mark.parametrize("arm", ["VI", "IS", "V"])
@@ -321,8 +393,14 @@ FITTED_SKY = 100.0
 PIXEL_ERROR = 2.0
 
 
-def _two_order_subtractor(log: Any, monkeypatch: pytest.MonkeyPatch, *, bright: tuple[int, ...]) -> subtract_sky:
-    """A subtractor over one faint and one bright VIS order, with the real object clipping and a flat stub sky fit."""
+def _two_order_subtractor(
+    log: Any, monkeypatch: pytest.MonkeyPatch, *, bright: tuple[int, ...], aggressive: bool = False
+) -> subtract_sky:
+    """A subtractor over one faint and one bright VIS order, with the real object clipping and a flat stub sky fit.
+
+    The order ids that reach the object-slit-range step and the sky fit are recorded in `clippedOrderIds` and
+    `fittedOrderIds`.
+    """
     subtractor, _ = _subtractor(log, arm="VIS")
     subtractor.debug = False
     subtractor.axisA = "x"
@@ -333,8 +411,10 @@ def _two_order_subtractor(log: Any, monkeypatch: pytest.MonkeyPatch, *, bright: 
         "sky-subtraction": {
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.0,
-            "aggressive_object_masking": False,
+            "aggressive_object_masking": aggressive,
             "sky_model_qc_plot": False,
+            "percentile_rolling_window_size": 11,
+            "noise_rolling_window_size": 30,
         }
     }
     subtractor.objectFrame = CCDData(
@@ -347,6 +427,7 @@ def _two_order_subtractor(log: Any, monkeypatch: pytest.MonkeyPatch, *, bright: 
     for row, order in enumerate((BRIGHT_ORDER, FAINT_ORDER)):
         pixels = _object_order(3000.0 if order in bright else 100.0)
         pixels["order"] = order
+        pixels["slit_position"] = np.linspace(-1.0, 1.0, PIXEL_COUNT)
         pixels["x"] = np.arange(PIXEL_COUNT)
         pixels["y"] = row
         pixels["error"] = PIXEL_ERROR
@@ -359,14 +440,23 @@ def _two_order_subtractor(log: Any, monkeypatch: pytest.MonkeyPatch, *, bright: 
     def clip_order(imageMapOrder: pd.DataFrame, **_: Any) -> Any:
         return subtractor.rolling_window_clipping(imageMapOrder, windowSize=11, sigma_clip_limit=3, max_iterations=10)
 
+    subtractor.clippedOrderIds = []
+    subtractor.fittedOrderIds = []
+    realClipObjects = subtractor.clip_object_slit_positions
+
+    def clip_objects(orders: list[pd.DataFrame], **kwargs: Any) -> Any:
+        subtractor.clippedOrderIds.append([int(order["order"].iloc[0]) for order in orders])
+        return realClipObjects(orders, **kwargs)
+
     def fit_flat_sky(imageMapOrder: pd.DataFrame) -> Any:
+        subtractor.fittedOrderIds.append(int(imageMapOrder["order"].iloc[0]))
         fitted = imageMapOrder.copy()
         fitted["sky_model"] = FITTED_SKY
         fitted["sky_subtracted_flux"] = fitted["flux"] - FITTED_SKY
         return fitted, object(), [1, 2], np.array([1.0]), 1.0
 
     monkeypatch.setattr(subtractor, "get_over_sampled_sky_from_order", clip_order)
-    monkeypatch.setattr(subtractor, "clip_object_slit_positions", lambda orders, **_: orders)
+    monkeypatch.setattr(subtractor, "clip_object_slit_positions", clip_objects)
     monkeypatch.setattr(subtractor, "fit_bspline_curve_to_sky", fit_flat_sky)
     return subtractor
 
@@ -382,6 +472,31 @@ def test_one_bright_order_keeps_the_sky_model_of_the_other_orders(log: Any, monk
         subtracted.data[1], subtractor.mapDF.loc[subtractor.mapDF["order"] == FAINT_ORDER, "flux"] - FITTED_SKY
     )
     assert not model.mask[1].any()
+
+
+@pytest.mark.parametrize("aggressive", [False, True])
+def test_a_skipped_bright_order_is_left_out_of_object_slit_range_pooling_and_the_sky_fit(
+    log: Any, monkeypatch: pytest.MonkeyPatch, aggressive: bool
+) -> None:
+    """Only the faint order reaches the pooled object-slit-range step and the spline fit (DY-1285)."""
+    subtractor = _two_order_subtractor(log, monkeypatch, bright=(BRIGHT_ORDER,), aggressive=aggressive)
+
+    subtractor.subtract()
+
+    assert subtractor.clippedOrderIds == [[FAINT_ORDER]]
+    assert subtractor.fittedOrderIds == [FAINT_ORDER]
+
+
+def test_modelled_orders_are_pooled_and_fitted_in_order_when_none_is_bright(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With no skipped order both orders go through, in map order."""
+    subtractor = _two_order_subtractor(log, monkeypatch, bright=())
+
+    subtractor.subtract()
+
+    assert subtractor.clippedOrderIds == [[BRIGHT_ORDER, FAINT_ORDER]]
+    assert subtractor.fittedOrderIds == [BRIGHT_ORDER, FAINT_ORDER]
 
 
 def test_a_skipped_bright_order_passes_its_data_through_with_a_masked_zero_model(
