@@ -1,7 +1,7 @@
 """Continuum-trace fitting never writes into a pandas slice of a caller's table (DY-1294).
 
-Every test runs under ``mode.chained_assignment = "raise"`` and keeps the parent table alive, because pandas only
-flags a write to a slice while the frame it was cut from still exists.
+The chained-assignment tests run under ``mode.chained_assignment = "raise"`` and keep the parent table alive, because
+pandas only flags a write to a slice while the frame it was cut from still exists.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ continuumModule = importlib.import_module("soxspipe.commonutils.detect_continuum
 
 ROWS_PER_ORDER = 60
 TRACE_STDDEV = 1.5
+SOLUTION_CENTRE = 16.0
 
 
 def _detector(log: object, *, orderDeg: int = 1, axisBDeg: int = 1) -> detect_continuum:
@@ -108,7 +109,7 @@ def _gaussian_slice(**kwargs: object) -> tuple[np.ndarray, int, float]:
     y = float(kwargs["y"])
     length = int(kwargs["length"])
     lengthOffset = int(x - length / 2)
-    trueCentre = 16.0 - _shift_for(np.array([y]))[0]
+    trueCentre = SOLUTION_CENTRE - _shift_for(np.array([y]))[0]
     stddev = _stddev_for(np.array([y]))[0]
     pixels = np.arange(length, dtype=float)
     data = 100.0 * np.exp(-0.5 * ((pixels - (trueCentre - lengthOffset)) / stddev) ** 2)
@@ -134,7 +135,7 @@ def _trace_sampler(log: object, monkeypatch: pytest.MonkeyPatch, *, inst: str, o
         {
             "order": np.repeat(orders, ROWS_PER_ORDER),
             "wavelength": np.linspace(500.0, 700.0, rowCount),
-            "fit_x": np.full(rowCount, 16.0),
+            "fit_x": np.full(rowCount, SOLUTION_CENTRE),
             "fit_y": np.arange(rowCount, dtype=float),
         }
     )
@@ -158,7 +159,7 @@ def test_soxs_vis_trace_sampling_never_writes_into_the_strided_probe_slices(
     # ASSERT: EVERY SAMPLE IS FOUND AT ITS TRUE POSITION
     assert detectionPercentage == pytest.approx(100.0)
     assert result.groupby("order").size().to_dict() == {1.0: 60, 2.0: 60, 3.0: 60, 4.0: 60}
-    expected = 16.0 - _shift_for(result["fit_y"].to_numpy())
+    expected = SOLUTION_CENTRE - _shift_for(result["fit_y"].to_numpy())
     np.testing.assert_allclose(result["cont_x"], expected, rtol=0, atol=1e-3)
     np.testing.assert_allclose(result["gauss_stddev"], _stddev_for(result["fit_y"].to_numpy()), rtol=0, atol=1e-3)
     assert result["pre-clipped"].eq(False).all()
@@ -177,12 +178,12 @@ def test_trace_sampling_never_writes_into_the_strided_probe_slices_outside_soxs_
 
     # ASSERT
     assert detectionPercentage == pytest.approx(100.0)
-    expected = 16.0 - _shift_for(result["fit_y"].to_numpy())
+    expected = SOLUTION_CENTRE - _shift_for(result["fit_y"].to_numpy())
     np.testing.assert_allclose(result["cont_x"], expected, rtol=0, atol=1e-3)
     assert result["pre-clipped"].eq(False).all()
 
 
-def test_trace_sampling_outside_soxs_vis_recovers_after_a_widened_slit_probe(
+def test_trace_sampling_outside_soxs_vis_recovers_after_a_widened_slice_probe(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -195,7 +196,7 @@ def test_trace_sampling_outside_soxs_vis_recovers_after_a_widened_slit_probe(
         yValues = orderPixelTable["fit_y"].to_numpy()
         found = len(calls) > 1
         return orderPixelTable.assign(
-            cont_x=16.0 - _shift_for(yValues) if found else np.nan,
+            cont_x=SOLUTION_CENTRE - _shift_for(yValues) if found else np.nan,
             cont_y=yValues if found else np.nan,
             gauss_stddev=_stddev_for(yValues) if found else np.nan,
         )
