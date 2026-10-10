@@ -3329,8 +3329,6 @@ class data_organiser:
 
     def _group_raw_frames(self, rawFrames, filterKeywordsRaw, addFilepaths=True, addStartDate=True):
         """Group raw frames and return grouped rows with aggregation metadata."""
-        import pandas as pd
-
         # Create aggregation dictionary
         agg_dict = {col: "mean" for col in self.filterKeywordsExtras if col not in filterKeywordsRaw}
         agg_dict["file"] = "size"  # for counting rows
@@ -3348,7 +3346,6 @@ class data_organiser:
         # Group and aggregate
         rawGroups = rawFrames.groupby(filterKeywordsRaw).agg(agg_dict).rename(columns={"file": "counts"}).reset_index()
         rawGroups.style.hide(axis="index")
-        pd.options.mode.chained_assignment = None
 
         # Normalise timestamps to compact YYYYMMDDTHHMMSS format for SOF naming.
         if addFilepaths:
