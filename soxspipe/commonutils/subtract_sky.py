@@ -1270,8 +1270,11 @@ class subtract_sky:
         - ``ron`` -- the header value when it is a finite, positive number; otherwise ``defaultRon``.
           A header value that is present but unusable logs a warning
         """
+        import numpy as np
+
         try:
-            ron = float(headerValue)
+            # A BOOLEAN WOULD CONVERT TO A READ NOISE OF 0 OR 1
+            ron = math.nan if isinstance(headerValue, (bool, np.bool_)) else float(headerValue)
         except (TypeError, ValueError):
             ron = math.nan
         if math.isfinite(ron) and ron > 0:
@@ -1281,7 +1284,8 @@ class subtract_sky:
                 f"The frame's read noise ({headerValue!r}) is not a positive number; "
                 f"the sky fit uses the detector default of {defaultRon} e-."
             )
-        return float(defaultRon)
+        # THE RECIPES HOLD THE DEFAULT AS AN ASTROPY QUANTITY IN ELECTRONS, THE LOOKUP AS A PLAIN FLOAT
+        return float(getattr(defaultRon, "value", defaultRon))
 
     @staticmethod
     def _inverse_noise_weights(skyModel, ron):

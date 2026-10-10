@@ -128,8 +128,10 @@ def test_inverse_noise_weights_follow_the_model_sky_and_floor_negative_sky_at_th
 
 
 def test_an_infinite_model_sky_gets_zero_weight() -> None:
+    # ACT
     weights = subtract_sky._inverse_noise_weights(np.array([np.inf]), 3.0)
 
+    # ASSERT
     assert weights.tolist() == [0.0]
 
 
@@ -143,24 +145,42 @@ def test_nan_values_are_filled_by_interpolation_and_an_all_nan_array_becomes_zer
     np.testing.assert_allclose(allNan, 0.0)
 
 
-@pytest.mark.parametrize("headerValue", [None, "0", 0.0, -1.0, np.nan, np.inf, "junk"])
+@pytest.mark.parametrize("headerValue", [None, "0", 0.0, -1.0, np.nan, np.inf, "junk", True, np.bool_(True)])
 def test_an_unusable_header_read_noise_falls_back_to_the_detector_default(log: Any, headerValue: Any) -> None:
+    # ACT
     ron = subtract_sky._read_noise(headerValue, 3.8, log)
 
+    # ASSERT
     assert ron == 3.8
+
+
+def test_a_detector_default_held_as_a_quantity_in_electrons_is_returned_as_a_float(log: Any) -> None:
+    # ARRANGE
+    from astropy import units as u
+
+    # ACT
+    ron = subtract_sky._read_noise(None, 3.8 * u.electron, log)
+
+    # ASSERT
+    assert ron == 3.8
+    assert type(ron) is float
 
 
 @pytest.mark.parametrize("headerValue", [3.3, "3.3"])
 def test_a_usable_header_read_noise_is_used(log: Any, headerValue: Any) -> None:
+    # ACT
     ron = subtract_sky._read_noise(headerValue, 3.8, log)
 
+    # ASSERT
     assert ron == 3.3
     assert not [message for level, message in log.messages if level == "warning"]
 
 
 def test_an_unusable_header_read_noise_is_logged(log: Any) -> None:
+    # ACT
     subtract_sky._read_noise("junk", 3.8, log)
 
+    # ASSERT
     warnings = [message for level, message in log.messages if level == "warning"]
     assert len(warnings) == 1
     assert "junk" in warnings[0]
