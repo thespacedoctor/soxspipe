@@ -33,6 +33,13 @@ ANCHOR_MIN_FIT_SAMPLES = 3
 # THE FIT WEIGHT OF THE FIRST AND LAST SAMPLES, WHICH CARRY THE ORDER-END ANCHOR VALUES
 ANCHOR_WEIGHT = 1e5
 
+# THE MAXIMUM NUMBER OF CLIP-AND-REFIT PASSES OF THE SKY B-SPLINE AGAINST ITS RESIDUALS (DY-1281)
+BSPLINE_CLIP_MAX_PASSES = 5
+# THE NUMBER OF WAVELENGTH-SORTED PIXELS OVER WHICH THE LOCAL MEDIAN RESIDUAL IS TAKEN BEFORE CLIPPING (DY-1281)
+RESIDUAL_MEDIAN_WINDOW = 25
+# CONVERTS A MEDIAN ABSOLUTE DEVIATION TO A GAUSSIAN STANDARD DEVIATION
+MAD_TO_SIGMA = 1.4826
+
 # A RUN OF POSITIVE SLIT-POSITION BINS IS AN OBJECT ONLY WITH MORE THAN OBJECT_MIN_RUN_BINS BINS
 # AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
 OBJECT_MIN_RUN_BINS = 4
@@ -1329,6 +1336,147 @@ class subtract_sky:
         filled[isNan] = np.interp(np.flatnonzero(isNan), np.flatnonzero(~isNan), filled[~isNan])
         return filled
 
+    def _spline_fit_samples(self, imageMapOrder, mask_all_clipped, starterKnots):
+        """*return the wavelengths, fluxes and weights of the unclipped pixels, with the order-end anchors applied*
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- wavelength-sorted order dataframe with ``flux``, ``slit_normalisation_ratio``
+          and ``weights`` columns
+        - ``mask_all_clipped`` -- boolean series, True for the pixels left out of the fit
+        - ``starterKnots`` -- the starter knots that bound the order-end anchor windows
+
+        **Return:**
+
+        - ``goodWl`` -- series of the unclipped wavelengths
+        - ``goodFlux`` -- new array of the unclipped fluxes; the first and last carry the end-anchor values
+        - ``goodWeights`` -- new array of the unclipped weights; the first and last carry ``ANCHOR_WEIGHT``
+        """
+        goodWl = imageMapOrder.loc[~mask_all_clipped, "wavelength"]
+        goodFlux = (
+            imageMapOrder.loc[~mask_all_clipped, "flux"]
+            / imageMapOrder.loc[~mask_all_clipped, "slit_normalisation_ratio"]
+        ).to_numpy(dtype=float, copy=True)
+        goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights"].to_numpy(dtype=float, copy=True)
+        goodFlux[0], goodFlux[-1] = self._end_anchor_values(goodWl.values, goodFlux, starterKnots)
+        goodWeights[0] = ANCHOR_WEIGHT
+        goodWeights[-1] = ANCHOR_WEIGHT
+        return goodWl, goodFlux, goodWeights
+
+    def _flag_residual_outliers(self, imageMapOrder, tck, sigma):
+        """*flag the unclipped pixels whose residual exceeds ``sigma`` times the noise, on both sides of the fit*
+
+        The residual is measured from its rolling median over the neighbouring unclipped pixels in
+        wavelength, so a misfit that neighbouring wavelengths share, such as a skyline that the current
+        knots do not yet resolve, is left for knot insertion; an isolated outlier is flagged.
+        The noise model is the one that weights the fit (DY-1282), σ² = max(sky, 0) + RON², with the sky taken as
+        the model plus that local median residual. Once the knots resolve the sky, the local residual is near zero.
+        Where the neighbouring residuals scatter more than the noise model (a misfit that varies along the slit),
+        their robust (MAD) scatter is used instead, so the clip does not hide that misfit from knot insertion.
+        Flagged pixels get ``flagged_bspline_clipped`` and ``flagged_all_clipped`` (DY-1281).
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- order dataframe. Updated in place.
+        - ``tck`` -- the fitted spline
+        - ``sigma`` -- the clipping limit, in units of the noise model
+
+        **Return:**
+
+        - ``newlyClipped`` -- boolean array, True for the pixels this call flagged
+        """
+        import numpy as np
+        import pandas as pd
+        import scipy.interpolate as ip
+
+        model = ip.splev(imageMapOrder["wavelength"].to_numpy(), tck)
+        residual = (imageMapOrder["flux"] / imageMapOrder["slit_normalisation_ratio"]).to_numpy(dtype=float) - model
+        isUnclipped = ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool)
+        # A MISFIT SHARED BY NEIGHBOURING WAVELENGTHS (AN UNRESOLVED SKYLINE) IS FOR THE KNOTS TO FIX, NOT THE CLIP
+        unclippedResidual = pd.Series(residual[isUnclipped])
+        localMedian = unclippedResidual.rolling(RESIDUAL_MEDIAN_WINDOW, center=True, min_periods=1).median()
+        localMad = (
+            (unclippedResidual - localMedian).abs().rolling(RESIDUAL_MEDIAN_WINDOW, center=True, min_periods=1).median()
+        )
+        localResidual = np.full(residual.shape, np.nan)
+        localResidual[isUnclipped] = localMedian.to_numpy()
+        localScatter = np.full(residual.shape, np.nan)
+        localScatter[isUnclipped] = MAD_TO_SIGMA * localMad.to_numpy()
+        # THE NOISE OF THE LOCAL SKY, NOT OF A MODEL THAT MAY NOT YET RESOLVE A SKYLINE
+        noise = 1.0 / self._inverse_noise_weights(model + localResidual, self.ron)
+        # A MISFIT THAT VARIES ALONG THE SLIT (E.G. A SMALL WAVELENGTH ERROR ON A SKYLINE FLANK) SCATTERS THE
+        # NEIGHBOURS TOO; THE CLIP NEVER CUTS INSIDE THAT SCATTER, AND NEVER INSIDE THE NOISE MODEL
+        noise = np.fmax(noise, localScatter)
+        # A NAN RESIDUAL COMPARES FALSE, SO IT IS NEVER FLAGGED HERE
+        newlyClipped = isUnclipped & (np.abs(residual - localResidual) > sigma * noise)
+        imageMapOrder.loc[newlyClipped, "flagged_bspline_clipped"] = True
+        imageMapOrder.loc[newlyClipped, "flagged_all_clipped"] = True
+        return newlyClipped
+
+    def _clip_residual_outliers_and_refit(self, imageMapOrder, tck, allKnots, starterKnots, sigma):
+        """*refit without the residual outliers, then clip and refit with the same knots until none is new (DY-1281)*
+
+        Cosmic-ray residuals, object wings and cold pixels all pull an unclipped spline.
+        The pixels already flagged ``flagged_bspline_clipped`` (by the clip after the last knot-growth fit)
+        are still in ``tck``, so the first pass refits without them. Each later pass flags the outliers of the
+        current fit and refits. As in every fit, the weights come from the noise of the previous model.
+        The passes stop when a pass flags no new pixel, or after ``BSPLINE_CLIP_MAX_PASSES`` refits,
+        so the returned spline is always fitted without every flagged pixel.
+        A refit that FITPACK cannot make, or reports as poor, is not applied: the flags it was made for are
+        removed and the previous spline is kept.
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- wavelength-sorted order dataframe. Its clipping flags and ``weights`` are
+          updated in place.
+        - ``tck`` -- the fitted spline
+        - ``allKnots`` -- the interior knots of ``tck``
+        - ``starterKnots`` -- the starter knots that bound the order-end anchor windows
+        - ``sigma`` -- the clipping limit, in units of the noise model
+
+        **Return:**
+
+        - ``tck`` -- the spline fitted to the pixels left after clipping
+        - ``allKnots`` -- its interior knots
+        """
+        import scipy.interpolate as ip
+
+        order = imageMapOrder["order"].values[0]
+        notYetRefit = imageMapOrder["flagged_bspline_clipped"].to_numpy(dtype=bool, copy=True)
+        refits = 0
+        while notYetRefit.any():
+            imageMapOrder["weights"] = self._inverse_noise_weights(
+                ip.splev(imageMapOrder["wavelength"].to_numpy(), tck), self.ron
+            )
+            mask_all_clipped = imageMapOrder["flagged_all_clipped"].astype(bool)
+            goodWl, goodFlux, goodWeights = self._spline_fit_samples(imageMapOrder, mask_all_clipped, starterKnots)
+            refitKnots = self._drop_knots_without_samples(allKnots, goodWl.values, order)
+            try:
+                refitTck, _, ier, msg = ip.splrep(
+                    goodWl, goodFlux, t=refitKnots, k=self.bspline_order, w=goodWeights, full_output=True
+                )
+            except (ValueError, TypeError, RuntimeError) as e:
+                ier, msg = POOR_FITPACK_IER, str(e)
+            if ier >= POOR_FITPACK_IER:
+                imageMapOrder.loc[notYetRefit, "flagged_bspline_clipped"] = False
+                imageMapOrder.loc[notYetRefit, "flagged_all_clipped"] = False
+                self.log.warning(
+                    f"\t\tThe sky refit without {int(notYetRefit.sum())} residual outliers of order {order} "
+                    f"failed (FITPACK: {msg}). Keeping the fit that includes them.\n"
+                )
+                break
+            tck, allKnots = refitTck, refitKnots
+            refits += 1
+            if refits >= BSPLINE_CLIP_MAX_PASSES:
+                break
+            notYetRefit = self._flag_residual_outliers(imageMapOrder, tck, sigma)
+
+        self.log.info(
+            f"\t\tResidual clipping flagged {int(imageMapOrder['flagged_bspline_clipped'].sum())} pixels "
+            f"of order {order} at {sigma} sigma.\n"
+        )
+        return tck, allKnots
+
     def fit_bspline_curve_to_sky(self, imageMapOrder):
         """*fit a single-order univariate bspline to the unclipped sky pixels (wavelength vs flux)*
 
@@ -1450,6 +1598,10 @@ class subtract_sky:
         # CLIP NAN FLUX
         imageMapOrder.loc[imageMapOrder["flux"].isnull(), "flagged_all_clipped"] = True
         mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
+        # THE PIXELS CLIPPED BEFORE THE FIT; THE RESIDUAL CLIP ADDS TO THESE AFRESH AFTER EACH FIT (DY-1281)
+        mask_clipped_before_fit = mask_all_clipped.to_numpy(dtype=bool, copy=True)
+        if "flagged_bspline_clipped" not in imageMapOrder.columns:
+            imageMapOrder["flagged_bspline_clipped"] = False
 
         lastExtraKnotCount = -1
         tck_previous = None
@@ -1461,19 +1613,7 @@ class subtract_sky:
                 noiseModelSky = ip.splev(imageMapOrder["wavelength"].values, tck_previous)
             imageMapOrder["weights"] = self._inverse_noise_weights(noiseModelSky, self.ron)
 
-            # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
-            goodWl = imageMapOrder.loc[~mask_all_clipped, "wavelength"]
-            goodFlux = (
-                imageMapOrder.loc[~mask_all_clipped, "flux"]
-                / imageMapOrder.loc[~mask_all_clipped, "slit_normalisation_ratio"]
-            )
-            goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights"]
-
-            goodFlux = goodFlux.values
-            goodWeights = goodWeights.values
-            goodFlux[0], goodFlux[-1] = self._end_anchor_values(goodWl.values, goodFlux, starterKnots)
-            goodWeights[0] = ANCHOR_WEIGHT
-            goodWeights[-1] = ANCHOR_WEIGHT
+            goodWl, goodFlux, goodWeights = self._spline_fit_samples(imageMapOrder, mask_all_clipped, starterKnots)
 
             if iterationCount < 5:
                 baseKnots = starterKnots
@@ -1587,54 +1727,12 @@ class subtract_sky:
             tck_previous = tck
             allKnotsPrevious = allKnots
 
-            if iterationCount >= -1:
-                # FIRST PASS SIGMA CLIPPING OF BSPLINE
-                for _ in range(3):
-                    mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
-
-                    # ## ROLLING MEDIAN CLIPPING
-                    # imageMapOrder.loc[~mask_all_clipped, "sky_flux_rolling_median"] = (
-                    #     imageMapOrder.loc[~mask_all_clipped, "flux"]
-                    #     .rolling(35, center=True, min_periods=3, closed="both")
-                    #     .median()
-                    # )
-                    # imageMapOrder.loc[~mask_all_clipped, "sky_flux_rolling_std"] = (
-                    #     imageMapOrder.loc[~mask_all_clipped, "flux"]
-                    #     .rolling(35, center=True, min_periods=3, closed="both")
-                    #     .std()
-                    # )
-                    # mask_rolling_median_clipping = ~mask_all_clipped & (
-                    #     (
-                    #         imageMapOrder["flux"]
-                    #         > imageMapOrder["sky_flux_rolling_median"] + imageMapOrder["sky_flux_rolling_std"] * 3
-                    #     )
-                    #     | (
-                    #         imageMapOrder["flux"]
-                    #         < imageMapOrder["sky_flux_rolling_median"] - imageMapOrder["sky_flux_rolling_std"] * 2
-                    #     )
-                    # )
-                    # imageMapOrder.loc[mask_rolling_median_clipping, "flagged_all_clipped"] = True
-                    # imageMapOrder.loc[mask_rolling_median_clipping, "flagged_bspline_clipped"] = True
-
-                    # residuals = imageMapOrder.loc[~mask_all_clipped, "sky_subtracted_flux"]
-                    # imageMapOrder.loc[~mask_all_clipped, "bspline_sky_residual_windowed_std"] = (
-                    #     imageMapOrder.loc[~mask_all_clipped, "sky_subtracted_flux"]
-                    #     .rolling(15, center=True, min_periods=3, closed="both")
-                    #     .std()
-                    # )
-
-                    # mask_residual_clipping = ~mask_all_clipped & (
-                    #     (
-                    #         imageMapOrder["sky_subtracted_flux"]
-                    #         > imageMapOrder["bspline_sky_residual_windowed_std"] * bsplineSigma
-                    #     )
-                    #     | (
-                    #         imageMapOrder["sky_subtracted_flux"]
-                    #         < -imageMapOrder["bspline_sky_residual_windowed_std"] * bsplineSigma
-                    #     )
-                    # )
-                    # imageMapOrder.loc[mask_residual_clipping, "flagged_bspline_clipped"] = True
-                    # imageMapOrder.loc[mask_residual_clipping, "flagged_all_clipped"] = True
+            # TWO-SIDED RESIDUAL CLIP AFTER EACH FIT; THE NEXT ITERATION REFITS WITHOUT THE CLIPPED PIXELS (DY-1281).
+            # THE CLIP STARTS AFRESH EACH TIME, SO A SKYLINE CLIPPED BY A FIT WITH TOO FEW KNOTS RETURNS ONCE RESOLVED
+            imageMapOrder["flagged_bspline_clipped"] = False
+            imageMapOrder["flagged_all_clipped"] = mask_clipped_before_fit
+            self._flag_residual_outliers(imageMapOrder, tck, bsplineSigma)
+            mask_all_clipped = imageMapOrder["flagged_all_clipped"].astype(bool)
 
             if iterationCount > 0:
                 imageMapOrder, residualFloor = self.determine_residual_floor(imageMapOrder, tck, iterationCount)
@@ -1701,6 +1799,9 @@ class subtract_sky:
                 break
 
             lastExtraKnotCount = len(extraKnots)
+
+        # REFIT WITHOUT THE CLIPPED PIXELS, THEN CLIP AND REFIT WITH THE FINAL KNOTS UNTIL NONE IS NEW (DY-1281)
+        tck, allKnots = self._clip_residual_outliers_and_refit(imageMapOrder, tck, allKnots, starterKnots, bsplineSigma)
 
         imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
         imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
