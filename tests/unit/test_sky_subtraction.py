@@ -31,12 +31,18 @@ def _subtractor(log: object) -> subtract_sky:
     return subtractor
 
 
+@pytest.mark.parametrize(("headerRon", "expectedRon"), [(None, 3.8), (3.3, 3.3)])
 def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    headerRon: float | None,
+    expectedRon: float,
 ) -> None:
-    """Initialize the public sky-subtraction workflow from a prepared VIS frame."""
+    """Initialize the public sky-subtraction workflow from a prepared VIS frame.
+
+    The sky-fit read noise is the frame's own value, else the detector default (DY-1282).
+    """
     import importlib
 
     import soxspipe.commonutils.toolkit as toolkit
@@ -46,6 +52,8 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     header["ESO INS VISE NAME"] = "SLIT1.0"
     header["ESO DET BINX"] = 2
     header["ESO DET BINY"] = 1
+    if headerRon is not None:
+        header["ESO DET CHIP RON"] = headerRon
     frame = CCDData(np.ones((3, 3)), unit=u.electron, meta=header)
     mapTable = pd.DataFrame({"order": [10, 10], "wavelength": [500.0, 501.0], "slit_position": [0.0, 0.1]})
 
@@ -55,7 +63,7 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
 
         def get(self, arm: str) -> dict[str, object]:
             assert arm == "VIS"
-            return {"dispersion-axis": "x", "slit_length": 11.0}
+            return {"dispersion-axis": "x", "slit_length": 11.0, "ron": 3.8}
 
     monkeypatch.setattr(module, "detector_lookup", DetectorLookup)
     monkeypatch.setattr(
@@ -90,6 +98,7 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     assert subtractor.binx == 2
     assert subtractor.biny == 1
     assert subtractor.mapDF.equals(mapTable)
+    assert subtractor.ron == expectedRon
 
 
 @pytest.mark.parametrize("dispersionAxis", ["x", "y"])

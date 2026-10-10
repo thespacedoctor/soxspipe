@@ -1,4 +1,8 @@
-"""Fit weights of the noisy-region pixels in the B-spline sky fit (DY-1253)."""
+"""A noisy low-flux region keeps its sky level in the B-spline sky fit (DY-1253).
+
+The 1/abs(flux) noisy-region reweight this file once pinned was removed with the inverse-noise
+weights of DY-1282; the region-level test stays as the regression guard.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,6 @@ import pandas as pd
 import pytest
 from scipy.interpolate import splrep
 
-from soxspipe.commonutils.subtract_sky import subtract_sky
 from tests.unit.test_subtract_sky_bspline_characterization import _subtractor
 
 pytestmark = pytest.mark.unit
@@ -19,8 +22,7 @@ TRUE_SKY = 3.0
 NOISE = 4.0
 NOISY_BLOCK = slice(1000, 2000)
 SEEDS = range(8)
-# THE BLOCK MEAN IS NOISY BECAUSE THE BLOCK IS DOWN-WEIGHTED BY DESIGN, SO IT IS AVERAGED OVER SEEDS. THE
-# UNBOUNDED REWEIGHT GAVE ~0.5 AND THE BOUNDED ONE GIVES ~3.3 AGAINST A TRUE SKY OF 3
+# THE BLOCK MEAN IS AVERAGED OVER SEEDS. THE UNBOUNDED 1/abs(flux) REWEIGHT OF DY-1253 GAVE ~0.5 AGAINST A TRUE SKY OF 3
 MIN_RECOVERED_SKY = 2.0
 
 
@@ -36,6 +38,7 @@ def _low_flux_order(seed: int) -> pd.DataFrame:
             "flux": TRUE_SKY + rng.normal(0.0, NOISE, PIXEL_COUNT),
             "error": np.full(PIXEL_COUNT, NOISE),
             "residual_windowed_std": np.full(PIXEL_COUNT, NOISE),
+            "flux_percentile_smoothed": np.full(PIXEL_COUNT, TRUE_SKY),
             "flagged_all_clipped": False,
             "residual_windowed_long_median": longMedian,
             "flux_windowed_long_median": np.full(PIXEL_COUNT, TRUE_SKY),
@@ -58,33 +61,6 @@ def test_noisy_low_flux_region_is_not_pulled_toward_zero(log: Any) -> None:
 
     # ASSERT
     assert np.mean(blockMeans) > MIN_RECOVERED_SKY
-
-
-def _scale(flux: list[float], error: list[float], windowedStd: list[float]) -> np.ndarray:
-    pixels = pd.DataFrame({"flux": flux, "error": error, "residual_windowed_std": windowedStd})
-    return subtract_sky._noisy_region_flux_scale(pixels)
-
-
-def test_flux_scale_is_the_absolute_flux_when_flux_exceeds_the_noise() -> None:
-    """Bright noisy pixels keep the 1/abs(flux) down-weighting of DY-695."""
-    scale = _scale([100.0, -80.0], [4.0, 4.0], [5.0, 5.0])
-
-    assert scale.tolist() == [100.0, 80.0]
-
-
-def test_flux_scale_is_the_pixel_error_when_flux_is_below_the_noise() -> None:
-    """Flux near or at zero gives a finite scale equal to the pixel noise."""
-    scale = _scale([0.0, -1.0, 2.0], [4.0, 4.0, 4.0], [9.0, 9.0, 9.0])
-
-    assert scale.tolist() == [4.0, 4.0, 4.0]
-
-
-@pytest.mark.parametrize("badError", [0.0, np.nan, np.inf, -1.0])
-def test_flux_scale_falls_back_to_the_windowed_std_when_the_error_is_unusable(badError: float) -> None:
-    """A zero or non-finite error (no dark subtraction) must not give a zero or infinite scale."""
-    scale = _scale([0.0], [badError], [6.0])
-
-    assert scale.tolist() == [6.0]
 
 
 def test_residual_floor_leaves_infinite_values_in_other_columns_alone(log: Any) -> None:
@@ -114,19 +90,3 @@ def test_residual_floor_leaves_infinite_values_in_other_columns_alone(log: Any) 
     # ASSERT
     assert result.loc[7, "weights"] == np.inf
     assert result.loc[5, "sky_residuals"] == 1.0
-
-
-@pytest.mark.parametrize("badStd", [0.0, np.nan, np.inf])
-def test_flux_scale_uses_the_absolute_flux_when_no_noise_estimate_is_usable(badStd: float) -> None:
-    """With neither noise estimate usable, the scale falls back to abs(flux) alone."""
-    scale = _scale([3.0], [0.0], [badStd])
-
-    assert scale.tolist() == [3.0]
-
-
-@pytest.mark.parametrize("badFlux", [0.0, np.nan])
-def test_flux_scale_is_infinite_when_nothing_bounds_it(badFlux: float) -> None:
-    """A row with no usable noise and no usable flux gets zero weight (an infinite scale), never NaN or inf weight."""
-    scale = _scale([badFlux], [0.0], [np.nan])
-
-    assert scale.tolist() == [np.inf]

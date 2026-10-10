@@ -1,4 +1,4 @@
-"""Zero-filled sky-subtraction pixels are flagged, and the zero clip of the sky model is pinned (DY-1284)."""
+"""Zero-filled sky-subtraction pixels are flagged (DY-1284), and the sky model is not clipped at zero (DY-1282)."""
 
 from __future__ import annotations
 
@@ -154,6 +154,7 @@ def _flat_sky_pixels(flux: np.ndarray) -> pd.DataFrame:
             "flux": flux,
             "error": np.ones(wavelength.size),
             "residual_windowed_std": np.ones(wavelength.size),
+            "flux_percentile_smoothed": np.zeros(wavelength.size),
             "flagged_all_clipped": False,
             "flagged_noisy_region": False,
             "residual_windowed_long_median": np.zeros(wavelength.size),
@@ -170,6 +171,7 @@ def _fitter(log: Any) -> subtract_sky:
     subtractor.binx = 1
     subtractor.biny = 1
     subtractor.bspline_order = 1
+    subtractor.ron = 1.0
     subtractor.recipeSettings = {
         "sky-subtraction": {
             "bspline_fitting_residual_clipping_sigma": 3,
@@ -183,32 +185,19 @@ def _fitter(log: Any) -> subtract_sky:
     return subtractor
 
 
-def test_the_zero_clip_of_the_sky_model_reports_how_many_pixels_it_clipped_per_order(log: Any) -> None:
-    pixelCount = 64
+def test_a_negative_sky_is_modelled_as_negative_and_not_clipped_at_zero(log: Any) -> None:
+    """The sky model is no longer clipped at zero (DY-1282), so a negative excursion stays honest noise."""
     subtractor = _fitter(log)
 
-    subtractor.fit_bspline_curve_to_sky(_flat_sky_pixels(np.full(pixelCount, -5.0)))
+    modelled, _, _, _, _ = subtractor.fit_bspline_curve_to_sky(_flat_sky_pixels(np.full(64, -5.0)))
 
-    clipMessages = [message for _, message in log.messages if "clipped" in message and "zero" in message]
-    assert len(clipMessages) == 1
-    assert f"{pixelCount} of {pixelCount}" in clipMessages[0]
-    assert "order 10" in clipMessages[0]
-
-
-def test_a_sky_model_that_is_never_negative_reports_no_zero_clip(log: Any) -> None:
-    subtractor = _fitter(log)
-
-    subtractor.fit_bspline_curve_to_sky(_flat_sky_pixels(np.full(64, 12.0)))
-
-    assert not [message for _, message in log.messages if "zero" in message]
+    np.testing.assert_allclose(modelled["sky_model"], -5.0)
+    np.testing.assert_allclose(modelled["sky_subtracted_flux"], 0.0, atol=1e-9)
+    assert not [message for _, message in log.messages if "zero clip" in message]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the sky model is clipped at zero, so a sky that is 0 in truth gets a positive mean; DY-1282 removes it",
-)
 def test_a_sky_that_is_zero_in_truth_gives_a_model_with_mean_zero(log: Any) -> None:
-    # THIS SEED GIVES A FIT THAT CROSSES ZERO (UNCLIPPED MEAN 0.015, CLIPPED MEAN 0.234)
+    # THIS SEED GIVES A FIT THAT CROSSES ZERO; THE OLD ZERO CLIP RAISED ITS MEAN FROM 0.015 TO 0.234
     noise = np.random.default_rng(10).normal(0.0, 1.0, 64)
     noise -= noise.mean()
     subtractor = _fitter(log)
