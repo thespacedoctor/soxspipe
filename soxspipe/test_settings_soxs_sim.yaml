@@ -141,6 +141,8 @@ soxs-stare:
         # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
         clip-slit-edge-fraction: 0.05
         aggressive_object_masking: True
+        # WITH AGGRESSIVE MASKING, MASK EACH SLIT POSITION WHERE THE OBJECT PROFILE IS ABOVE THIS FRACTION OF THE SKY NOISE
+        object_profile_mask_sigma: 0.1
         bspline_order: 3
         slit_illumination_order: 3
 

@@ -33,10 +33,23 @@ ANCHOR_MIN_FIT_SAMPLES = 3
 # THE FIT WEIGHT OF THE FIRST AND LAST SAMPLES, WHICH CARRY THE ORDER-END ANCHOR VALUES
 ANCHOR_WEIGHT = 1e5
 
-# A RUN OF POSITIVE SLIT-POSITION BINS IS AN OBJECT ONLY WITH MORE THAN OBJECT_MIN_RUN_BINS BINS
-# AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
-OBJECT_MIN_RUN_BINS = 4
-OBJECT_PEAK_COUNT = 0.05
+# EACH ORDER'S OBJECT MASK COMES FROM ITS SPATIAL PROFILE, THE MEDIAN NORMALISED SKY RESIDUAL IN EACH OF
+# OBJECT_PROFILE_BINS SLIT BINS. A BIN IS MASKED ONLY WHEN ITS PROFILE IS ALSO OBJECT_PROFILE_DETECTION_SIGMA TIMES
+# ABOVE THE BIN'S OWN MEDIAN NOISE (DY-1279)
+OBJECT_PROFILE_BINS = 50
+# THE MASK THRESHOLD, IN UNITS OF THE SKY NOISE, WHEN THE SETTINGS LACK object_profile_mask_sigma
+DEFAULT_OBJECT_PROFILE_MASK_SIGMA = 0.1
+OBJECT_PROFILE_DETECTION_SIGMA = 3
+OBJECT_PROFILE_MAX_ITERATIONS = 10
+OBJECT_PROFILE_GROW_BINS = 1
+# THE MASK ALWAYS LEAVES AT LEAST THIS MANY SLIT BINS, THE FAINTEST IN THE PROFILE, FOR THE SKY FIT
+OBJECT_PROFILE_MIN_SKY_BINS = 5
+# THE MEDIAN ABSOLUTE DEVIATION OF GAUSSIAN NOISE TIMES MAD_TO_SIGMA IS ITS STANDARD DEVIATION
+MAD_TO_SIGMA = 1.4826
+# THE MEDIAN OF N GAUSSIAN SAMPLES HAS A STANDARD ERROR OF MEDIAN_STANDARD_ERROR_FACTOR * SIGMA / SQRT(N)
+MEDIAN_STANDARD_ERROR_FACTOR = math.sqrt(math.pi / 2)
+# WARN WHEN OBJECT MASKING LEAVES FEWER SKY PIXELS THAN THIS IN A TYPICAL DISPERSION-AXIS ROW OF AN ORDER
+MIN_SKY_PIXELS_PER_WAVELENGTH = 5
 
 # A VIS ORDER WITH A MEAN PERCENTILE-SMOOTHED FLUX ABOVE THIS (E-) IS TOO BRIGHT TO FIT A SKY MODEL TO (DY-1285)
 BRIGHT_ORDER_SKY_LIMIT = 2500
@@ -2275,49 +2288,115 @@ class subtract_sky:
         self.log.debug("completed the ``plot_results`` method")
         return filePath
 
-    def _object_slit_ranges(self, counts, binEdges, edgeMargin):
-        """*the slit-position ranges of the runs of positive bins that are objects*
+    def _mask_object_from_spatial_profile(self, imageMapOrderDF):
+        """*mask the slit positions of an order where the object's spatial profile is above the sky noise (DY-1279)*
+
+        The order's flux is collapsed along wavelength into a spatial profile. The profile is the median, in each of
+        ``OBJECT_PROFILE_BINS`` slit bins, of the sky-subtracted flux divided by the pixel error. The sky is a rolling
+        median in wavelength of the pixels outside the masked bins, so the profile and the mask are iterated together.
+        A bin is masked when its profile is above the ``object_profile_mask_sigma`` setting and above
+        ``OBJECT_PROFILE_DETECTION_SIGMA`` times the bin's own median noise. Slit-edge and bad pixels take no part.
 
         **Key Arguments:**
 
-        - ``counts`` -- the background-subtracted counts of object-flagged pixels in each slit-position bin
-        - ``binEdges`` -- the edges of those bins, one more than the counts
-        - ``edgeMargin`` -- the number of bins at each end of the slit that are not examined
+        - ``imageMapOrderDF`` -- single order dataframe, sorted by wavelength, with the clipping flag columns
 
         **Return:**
 
-        - ``objectRanges`` -- a ``[lower, upper]`` slit-position pair for each object
-            - ``lower`` is the left edge of the run's first positive bin and ``upper`` the right edge of its last
-            - an object run has more than ``OBJECT_MIN_RUN_BINS`` positive bins and a count above ``OBJECT_PEAK_COUNT``
-            - a run that reaches the last examined bin is judged by the same rules
-
-        **Usage:**
-
-        ```python
-        object_ranges = self._object_slit_ranges(
-            result.to_numpy(), bins, edges
-        )
-        ```
-
+        - ``isMasked`` -- boolean numpy array, one value per row: the pixel lies in a masked slit bin
+            - at least ``OBJECT_PROFILE_MIN_SKY_BINS`` bins, the faintest, are never masked; a warning names the order
+              when this limit is reached
         """
-        objectRanges = []
-        runStart = None
-        runPeak = 0.0
-        lastExamined = len(counts) - edgeMargin
-        # A NON-POSITIVE SENTINEL BIN AFTER THE LAST EXAMINED BIN CLOSES A RUN THAT REACHES IT
-        for binIndex in range(edgeMargin, lastExamined + 1):
-            count = counts[binIndex] if binIndex < lastExamined else 0
-            if count > 0:
-                if runStart is None:
-                    runStart = binIndex
-                runPeak = max(runPeak, count)
-                continue
-            isLongRun = runStart is not None and binIndex - runStart > OBJECT_MIN_RUN_BINS
-            if isLongRun and runPeak > OBJECT_PEAK_COUNT:
-                objectRanges.append([binEdges[runStart], binEdges[binIndex]])
-            runStart = None
-            runPeak = 0.0
-        return objectRanges
+        import numpy as np
+        import pandas as pd
+        from scipy.ndimage import binary_dilation
+
+        sky_settings = self.recipeSettings["sky-subtraction"]
+        # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NO object_profile_mask_sigma
+        maskSigma = sky_settings.get("object_profile_mask_sigma", DEFAULT_OBJECT_PROFILE_MASK_SIGMA)
+        windowSize = int(sky_settings["percentile_rolling_window_size"])
+
+        slitPosition = imageMapOrderDF["slit_position"].to_numpy(dtype=float)
+        wavelength = imageMapOrderDF["wavelength"].to_numpy(dtype=float)
+        flux = imageMapOrderDF["flux"].to_numpy(dtype=float)
+        error = imageMapOrderDF["error"].to_numpy(dtype=float)
+        # THE ROLLING-WINDOW OBJECT FLAGS ALSO CLIP POSITIVE NOISE, WHICH WOULD BIAS THE SKY LOW, SO THEY ARE NOT USED
+        isUsable = (
+            ~imageMapOrderDF["flagged_edge_clipped"].to_numpy(dtype=bool)
+            & ~imageMapOrderDF["flagged_bad_pixel_clipped"].to_numpy(dtype=bool)
+            & np.isfinite(flux)
+            & np.isfinite(wavelength)
+            & np.isfinite(error)
+            & (error > 0)
+        )
+        if np.count_nonzero(isUsable) < windowSize:
+            return np.zeros(len(imageMapOrderDF), dtype=bool)
+
+        binEdges = np.linspace(slitPosition[isUsable].min(), slitPosition[isUsable].max(), OBJECT_PROFILE_BINS + 1)
+        binIndex = np.clip(np.digitize(slitPosition, binEdges) - 1, 0, OBJECT_PROFILE_BINS - 1)
+
+        isObjectBin = np.zeros(OBJECT_PROFILE_BINS, dtype=bool)
+        for _ in range(OBJECT_PROFILE_MAX_ITERATIONS):
+            isSky = isUsable & ~isObjectBin[binIndex]
+            # TOO FEW SKY PIXELS LEFT TO ESTIMATE THE SKY: KEEP THE LAST MASK
+            if np.count_nonzero(isSky) < windowSize:
+                break
+            skyMedian = pd.Series(flux[isSky]).rolling(windowSize, center=True, min_periods=1).median().to_numpy()
+            sky = np.interp(wavelength, wavelength[isSky], skyMedian)
+            normalised = pd.Series((flux - sky)[isUsable] / error[isUsable])
+            groups = normalised.groupby(binIndex[isUsable])
+            profile = groups.median().reindex(range(OBJECT_PROFILE_BINS))
+            spread = groups.apply(lambda values: np.median(np.abs(values - np.median(values)))) * MAD_TO_SIGMA
+            binNoise = (spread * MEDIAN_STANDARD_ERROR_FACTOR / np.sqrt(groups.size())).reindex(
+                range(OBJECT_PROFILE_BINS)
+            )
+            newObjectBins = ((profile > maskSigma) & (profile > OBJECT_PROFILE_DETECTION_SIGMA * binNoise)).to_numpy(
+                dtype=bool
+            )
+            # GROW THE MASK BY OBJECT_PROFILE_GROW_BINS ON EACH SIDE: THE WINGS JUST OUTSIDE IT RAISE THE ROLLING SKY,
+            # WHICH PULLS THE PROFILE OF THE OUTERMOST WING BINS BELOW THE THRESHOLD
+            if newObjectBins.any():
+                newObjectBins = binary_dilation(newObjectBins, iterations=OBJECT_PROFILE_GROW_BINS)
+            # NEVER MASK THE WHOLE SLIT: THE SKY FIT WOULD HAVE NO PIXELS, SO THE FAINTEST BINS STAY AS SKY
+            hasPixels = profile.notna().to_numpy()
+            minSkyBins = min(OBJECT_PROFILE_MIN_SKY_BINS, np.count_nonzero(hasPixels))
+            if np.count_nonzero(hasPixels & ~newObjectBins) < minSkyBins:
+                faintestBins = profile.dropna().sort_values(kind="stable").index[:minSkyBins]
+                newObjectBins[faintestBins] = False
+                isObjectBin = newObjectBins
+                self.log.warning(
+                    f"ORDER {imageMapOrderDF['order'].values[0]}: OBJECT LIGHT IS ABOVE THE MASK THRESHOLD ACROSS THE "
+                    f"WHOLE SLIT - FITTING THE SKY TO THE {minSkyBins} FAINTEST SLIT BINS; "
+                    "THE SKY MODEL MAY CONTAIN OBJECT LIGHT"
+                )
+                break
+            if np.array_equal(newObjectBins, isObjectBin):
+                break
+            isObjectBin = newObjectBins
+
+        return isObjectBin[binIndex]
+
+    def _warn_if_sky_is_sparse(self, imageMapOrderDF):
+        """*warn when object masking leaves an order with too few sky pixels per wavelength (DY-1279)*
+
+        The count is the median, over the order's dispersion-axis rows, of the unclipped pixels in each row.
+        A warning names the order when it is below ``MIN_SKY_PIXELS_PER_WAVELENGTH``.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- single order dataframe with the ``flagged_all_clipped`` column
+        """
+        import numpy as np
+
+        order = imageMapOrderDF["order"].values[0]
+        isSky = ~imageMapOrderDF["flagged_all_clipped"]
+        skyPixelsPerRow = isSky.groupby(imageMapOrderDF[self.axisA]).sum().to_numpy()
+        medianSkyPixels = float(np.median(skyPixelsPerRow)) if skyPixelsPerRow.size else 0.0
+        if medianSkyPixels < MIN_SKY_PIXELS_PER_WAVELENGTH:
+            self.log.warning(
+                f"ORDER {order}: ONLY {medianSkyPixels:0.1f} SKY PIXELS PER WAVELENGTH ARE LEFT AFTER OBJECT MASKING "
+                f"(MINIMUM {MIN_SKY_PIXELS_PER_WAVELENGTH}) - THE SKY MODEL MAY CONTAIN OBJECT LIGHT"
+            )
 
     def clip_object_slit_positions(self, order_dataframes, aggressive=False):
         """*clip out pixels flagged as an object*
@@ -2325,11 +2404,14 @@ class subtract_sky:
         **Key Arguments:**
 
         - ``order_dataframes`` -- a list of order data-frames with pixels potentially containing the object flagged.
+        - ``aggressive`` -- also mask the slit positions where the order's spatial profile shows object light.
+          Default *False*
+            - each order gets its own mask from its own profile (DY-1279)
+            - a warning names any order left with too few sky pixels per wavelength
 
         **Return:**
 
         - ``order_dataframes`` -- the order dataframes with the object(s) slit-ranges clipped
-        - ``sky_only_dataframes`` -- dataframes with object removed
 
         **Usage:**
 
@@ -2342,61 +2424,16 @@ class subtract_sky:
         """
         self.log.debug("starting the ``clip_object_slit_positions`` method")
 
-        import numpy as np
-        import pandas as pd
-
-        # COMBINE ALL ORDERS AND KEEP ONLY PIXELS FLAGGED AS POTENTIAL OBJECT
-        allimageMapOrder = pd.concat(order_dataframes)
-        mask = allimageMapOrder["flagged_object_clipped"] == True
-        allimageMapOrder = allimageMapOrder.loc[mask]
-
         percentile_rolling_window_size = self.recipeSettings["sky-subtraction"]["percentile_rolling_window_size"]
         noise_rolling_window_size = self.recipeSettings["sky-subtraction"]["noise_rolling_window_size"]
 
-        if aggressive:
-            # BIN FLAGGED PIXEL COUNTS INTO DISCRETE SLIT-POSITION RANGES
-            nbins = 100
-            minsp = allimageMapOrder["slit_position"].min()
-            maxsp = allimageMapOrder["slit_position"].max()
-            bins = np.linspace(minsp, maxsp, nbins)
-            result = allimageMapOrder["slit_position"].value_counts(bins=bins, sort=False, normalize=True) * nbins
-
-            # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
-            result -= result.median()
-            result -= result.abs().median()
-            # result -= result.abs().median()
-
-            # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
-            edges = int(nbins / 20)
-            object_ranges = self._object_slit_ranges(result.to_numpy(), bins, edges)
-
-            if 1 == 0:
-                import matplotlib.pyplot as plt
-
-                self.log.print(object_ranges)
-                width = (maxsp - minsp) / nbins
-                fig, ax = plt.subplots()
-                bins = bins[:-1]
-                rects1 = ax.bar(bins - width / 2, result, width, label="count")
-                fig.tight_layout()
-                plt.show()
-
-        # NOW FOR EACH OBJECT SLIT-RANGE, FLAG AS CLIPPED IN ORIGINAL ORDER DATAFRAMES
         for df in order_dataframes:
             if aggressive:
-                for objectt in object_ranges:
-                    df.loc[
-                        (df["slit_position"].between(objectt[0], objectt[1])),
-                        "flagged_all_clipped",
-                    ] = True
-                    df.loc[
-                        (df["slit_position"].between(objectt[0], objectt[1])),
-                        "flagged_object_clipped",
-                    ] = True
-                    df.loc[(df["flagged_object_clipped"] == True), "flagged_all_clipped"] = True
-            else:
-                # df.loc[((df['slit_position'].between(object[0], object[1])) & (df['object'] == True)), "flagged_all_clipped"] = True
-                df.loc[(df["flagged_object_clipped"] == True), "flagged_all_clipped"] = True
+                isMasked = self._mask_object_from_spatial_profile(df)
+                df.loc[isMasked, "flagged_object_clipped"] = True
+            df.loc[df["flagged_object_clipped"], "flagged_all_clipped"] = True
+            if aggressive:
+                self._warn_if_sky_is_sparse(df)
             # df.loc[
             #     ((df["flagged_all_clipped"] == False) & (df["flagged_object_clipped"] == True)),
             #     "flagged_object_clipped",

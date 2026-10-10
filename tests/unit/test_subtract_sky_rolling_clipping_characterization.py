@@ -423,6 +423,7 @@ def _two_order_subtractor(
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.0,
             "aggressive_object_masking": aggressive,
+            "object_profile_mask_sigma": 0.1,
             "sky_model_qc_plot": False,
             "percentile_rolling_window_size": 11,
             "noise_rolling_window_size": 30,
@@ -440,6 +441,8 @@ def _two_order_subtractor(
         pixels["order"] = order
         pixels["slit_position"] = np.linspace(-1.0, 1.0, PIXEL_COUNT)
         pixels["x"] = np.arange(PIXEL_COUNT)
+        # THE AGGRESSIVE PATH BUILDS THE OBJECT MASK FROM A WAVELENGTH-ROLLING SKY (DY-1279)
+        pixels["wavelength"] = 400.0 + 0.01 * np.arange(PIXEL_COUNT)
         pixels["y"] = row
         pixels["error"] = PIXEL_ERROR
         pixels["mask"] = False

@@ -339,6 +339,8 @@ soxs-stare-std:
             clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # WITH AGGRESSIVE MASKING, MASK EACH SLIT POSITION WHERE THE OBJECT PROFILE IS ABOVE THIS FRACTION OF THE SKY NOISE
+            object_profile_mask_sigma: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
@@ -404,6 +406,8 @@ soxs-stare-std:
             clip-slit-edge-fraction: 0.02
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # WITH AGGRESSIVE MASKING, MASK EACH SLIT POSITION WHERE THE OBJECT PROFILE IS ABOVE THIS FRACTION OF THE SKY NOISE
+            object_profile_mask_sigma: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
@@ -482,6 +486,8 @@ soxs-stare:
             clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # WITH AGGRESSIVE MASKING, MASK EACH SLIT POSITION WHERE THE OBJECT PROFILE IS ABOVE THIS FRACTION OF THE SKY NOISE
+            object_profile_mask_sigma: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
@@ -547,6 +553,8 @@ soxs-stare:
             clip-slit-edge-fraction: 0.02
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # WITH AGGRESSIVE MASKING, MASK EACH SLIT POSITION WHERE THE OBJECT PROFILE IS ABOVE THIS FRACTION OF THE SKY NOISE
+            object_profile_mask_sigma: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # ORDER OF THE POLYNOMIAL USED TO FIT THE SLIT ILLUMINATION PROFILE
