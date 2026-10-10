@@ -193,18 +193,17 @@ def test_each_fit_is_weighted_by_the_noise_of_the_previous_model_not_the_measure
     """The first fit uses the rolling-percentile sky; every later fit uses the fit before it."""
     # ARRANGE
     realSplrep = scipy.interpolate.splrep
-    calls: list[tuple[np.ndarray, Any]] = []
+    calls: list[tuple[np.ndarray, np.ndarray, Any]] = []
 
     def recording_splrep(x: Any, y: Any, **kwargs: Any) -> Any:
         result = realSplrep(x, y, **kwargs)
-        calls.append((np.asarray(kwargs["w"], dtype=float).copy(), result[0]))
+        calls.append((np.asarray(x, dtype=float).copy(), np.asarray(kwargs["w"], dtype=float).copy(), result[0]))
         return result
 
     monkeypatch.setattr(scipy.interpolate, "splrep", recording_splrep)
     subtractor = _subtractor(log, arm=arm)
     pixels = _skyline_order()
     percentileSky = pixels["flux_percentile_smoothed"].to_numpy()
-    wavelength = pixels["wavelength"].to_numpy()
 
     # ACT
     subtractor.fit_bspline_curve_to_sky(pixels)
@@ -213,8 +212,9 @@ def test_each_fit_is_weighted_by_the_noise_of_the_previous_model_not_the_measure
     assert len(calls) > 2
     expectedFirst = 1.0 / np.sqrt(np.clip(percentileSky, 0.0, None) + subtractor.ron**2)
     # THE FIRST AND LAST SAMPLES CARRY THE ORDER-END ANCHOR WEIGHT
-    np.testing.assert_allclose(calls[0][0][1:-1], expectedFirst[1:-1])
-    for (_, previousSpline), (weights, _) in zip(calls[:-1], calls[1:], strict=True):
+    np.testing.assert_allclose(calls[0][1][1:-1], expectedFirst[1:-1])
+    # A FIT TAKES ONLY THE UNCLIPPED PIXELS (DY-1281), SO EACH IS CHECKED AT ITS OWN SAMPLE WAVELENGTHS
+    for (_, _, previousSpline), (wavelength, weights, _) in zip(calls[:-1], calls[1:], strict=True):
         previousModel = scipy.interpolate.splev(wavelength, previousSpline)
         expected = 1.0 / np.sqrt(np.clip(previousModel, 0.0, None) + subtractor.ron**2)
         np.testing.assert_allclose(weights[1:-1], expected[1:-1])
