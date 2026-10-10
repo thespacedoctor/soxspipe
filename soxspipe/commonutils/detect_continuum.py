@@ -243,6 +243,9 @@ class _base_detect:
 
         arm = self.arm
 
+        # WORK ON A PRIVATE COPY: CALLERS PASS FILTERED SLICES (E.G. dropna) AND USE THE RETURNED TABLE
+        pixelList = pixelList.copy()
+
         clippedCount = 1
 
         poly = chebyshev_order_xy_polynomials(
@@ -276,7 +279,7 @@ class _base_detect:
         if "pre-clipped" in pixelList.columns:
             removeMask = pixelList["pre-clipped"] == True
             allClipped.append(pixelList.loc[removeMask])
-            pixelList = pixelList.loc[~removeMask]
+            pixelList = pixelList.loc[~removeMask].copy()
 
         nCoeff = (self.axisBDeg + 1) * (self.orderDeg + 1)
 
@@ -325,7 +328,7 @@ class _base_detect:
             # REMOVE FILTERED ROWS FROM DATA FRAME
             removeMask = pixelList["mask"] == True
             allClipped.append(pixelList.loc[removeMask])
-            pixelList = pixelList.loc[~removeMask]
+            pixelList = pixelList.loc[~removeMask].copy()
             clippedCount = startCount - len(pixelList.index)
 
             if iteration > 1:
@@ -1657,6 +1660,9 @@ class detect_continuum(_base_detect):
             uniqueOrders = orderPixelTable["order"].unique()
             uniqueOrders = "&".join(map(str, sorted(uniqueOrders)))
 
+            # WORK ON A PRIVATE COPY: THE PROBE CALLS PASS STRIDED SLICES AND DISCARD THE RESULT
+            orderPixelTable = orderPixelTable.copy()
+
             sliceLength = self.sliceLength
             if np.isnan(medianShift):
                 sliceLength = sliceLength * 1.2
@@ -1915,7 +1921,7 @@ class detect_continuum(_base_detect):
                 )
 
                 if np.isnan(medianShift):
-                    junk, medianShift, tmpOrderPixelTable = find_centre_points(
+                    junk, medianShift, medianStddev = find_centre_points(
                         orderPixelTable=tmpOrderPixelTable.iloc[::everyN],
                         medianShift=medianShift,
                         medianStddev=False,
