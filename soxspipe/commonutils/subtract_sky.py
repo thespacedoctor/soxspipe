@@ -1445,18 +1445,22 @@ class subtract_sky:
         notYetRefit = imageMapOrder["flagged_bspline_clipped"].to_numpy(dtype=bool, copy=True)
         refits = 0
         while notYetRefit.any():
+            # THE WEIGHTS OF THIS REFIT COME FROM THE FIT BEFORE IT, AS IN EVERY FIT (DY-1282)
             imageMapOrder["weights"] = self._inverse_noise_weights(
                 ip.splev(imageMapOrder["wavelength"].to_numpy(), tck), self.ron
             )
             mask_all_clipped = imageMapOrder["flagged_all_clipped"].astype(bool)
-            goodWl, goodFlux, goodWeights = self._spline_fit_samples(imageMapOrder, mask_all_clipped, starterKnots)
-            refitKnots = self._drop_knots_without_samples(allKnots, goodWl.values, order)
-            try:
-                refitTck, _, ier, msg = ip.splrep(
-                    goodWl, goodFlux, t=refitKnots, k=self.bspline_order, w=goodWeights, full_output=True
-                )
-            except (ValueError, TypeError, RuntimeError) as e:
-                ier, msg = POOR_FITPACK_IER, str(e)
+            if int((~mask_all_clipped).sum()) <= self.bspline_order:
+                ier, msg = POOR_FITPACK_IER, "too few unclipped pixels left to fit"
+            else:
+                goodWl, goodFlux, goodWeights = self._spline_fit_samples(imageMapOrder, mask_all_clipped, starterKnots)
+                refitKnots = self._drop_knots_without_samples(allKnots, goodWl.values, order)
+                try:
+                    refitTck, _, ier, msg = ip.splrep(
+                        goodWl, goodFlux, t=refitKnots, k=self.bspline_order, w=goodWeights, full_output=True
+                    )
+                except (ValueError, TypeError, RuntimeError) as e:
+                    ier, msg = POOR_FITPACK_IER, str(e)
             if ier >= POOR_FITPACK_IER:
                 imageMapOrder.loc[notYetRefit, "flagged_bspline_clipped"] = False
                 imageMapOrder.loc[notYetRefit, "flagged_all_clipped"] = False

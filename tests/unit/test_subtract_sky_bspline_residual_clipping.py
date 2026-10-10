@@ -34,6 +34,9 @@ MODEL_DIFFERENCE_PERCENTILE = 99
 # THE HALF-WIDTH OF THE WAVELENGTH RANGE AROUND AN OUTLIER THAT IT WOULD PULL
 NEIGHBOURHOOD_NM = 0.02
 SEEDS = range(6)
+SEED = 3
+# OUTLIERS ARE INJECTED THIS MANY PIXELS AWAY FROM THE ORDER ENDS, WHOSE SAMPLES CARRY THE END ANCHORS
+END_MARGIN_PIXELS = 100
 
 
 def _production_like_subtractor(log: Any) -> subtract_sky:
@@ -83,7 +86,9 @@ def _clean_and_contaminated_orders(seed: int) -> tuple[pd.DataFrame, pd.DataFram
     sky = _true_sky(wavelength)
     cleanFlux = rng.poisson(sky) + rng.normal(0.0, RON, PIXEL_COUNT)
     # KEEP THE OUTLIERS AWAY FROM THE ORDER ENDS, WHOSE SAMPLES ARE REPLACED BY THE END ANCHORS
-    outlierRows = rng.choice(np.arange(100, PIXEL_COUNT - 100), size=OUTLIER_COUNT, replace=False)
+    outlierRows = rng.choice(
+        np.arange(END_MARGIN_PIXELS, PIXEL_COUNT - END_MARGIN_PIXELS), size=OUTLIER_COUNT, replace=False
+    )
     noise = np.sqrt(sky + RON**2)
     shiftSigma = np.where(np.arange(OUTLIER_COUNT) % 2 == 0, COSMIC_RAY_SIGMA, COLD_PIXEL_SIGMA)
     contaminatedFlux = cleanFlux.copy()
@@ -126,7 +131,7 @@ def test_cosmic_rays_and_cold_pixels_do_not_pull_the_sky_model(log: Any) -> None
 
 def test_injected_cosmic_rays_and_cold_pixels_are_flagged_as_bspline_clipped(log: Any) -> None:
     # ARRANGE
-    _, contaminated, outlierRows = _clean_and_contaminated_orders(seed=3)
+    _, contaminated, outlierRows = _clean_and_contaminated_orders(seed=SEED)
     contaminated["row"] = np.arange(PIXEL_COUNT)
 
     # ACT
@@ -142,7 +147,7 @@ def test_injected_cosmic_rays_and_cold_pixels_are_flagged_as_bspline_clipped(log
 def test_a_clean_sky_with_bright_skylines_has_no_pixel_clipped(log: Any) -> None:
     """Early fits do not resolve the skylines; the clip must leave those lines to knot insertion."""
     # ARRANGE
-    clean, _, _ = _clean_and_contaminated_orders(seed=3)
+    clean, _, _ = _clean_and_contaminated_orders(seed=SEED)
 
     # ACT
     modelled, _, _, _, _ = _production_like_subtractor(log).fit_bspline_curve_to_sky(clean)
@@ -155,7 +160,7 @@ def test_a_clean_sky_with_bright_skylines_has_no_pixel_clipped(log: Any) -> None
 def test_the_clip_limit_is_the_bspline_fitting_residual_clipping_sigma_setting(log: Any) -> None:
     """A limit above the injected outliers clips none of them."""
     # ARRANGE
-    _, contaminated, _ = _clean_and_contaminated_orders(seed=3)
+    _, contaminated, _ = _clean_and_contaminated_orders(seed=SEED)
     subtractor = _production_like_subtractor(log)
     subtractor.recipeSettings["sky-subtraction"]["bspline_fitting_residual_clipping_sigma"] = 2 * COSMIC_RAY_SIGMA
 
@@ -173,22 +178,48 @@ def test_the_final_clip_and_refit_stops_after_the_maximum_number_of_passes(
     # ARRANGE
     realSplrep = scipy.interpolate.splrep
     callsPerLimit = {}
+    callCount = [0]
 
     def counting_splrep(*args: Any, **kwargs: Any) -> Any:
-        calls.append(1)
+        callCount[0] += 1
         return realSplrep(*args, **kwargs)
 
     monkeypatch.setattr(scipy.interpolate, "splrep", counting_splrep)
 
     # ACT
     for passLimit in (2, 3):
-        calls: list[int] = []
+        callCount[0] = 0
         monkeypatch.setattr(subtract_sky_module, "BSPLINE_CLIP_MAX_PASSES", passLimit)
         subtractor = _production_like_subtractor(log)
         subtractor.recipeSettings["sky-subtraction"]["bspline_fitting_residual_clipping_sigma"] = 1
-        _, contaminated, _ = _clean_and_contaminated_orders(seed=3)
+        _, contaminated, _ = _clean_and_contaminated_orders(seed=SEED)
         subtractor.fit_bspline_curve_to_sky(contaminated)
-        callsPerLimit[passLimit] = len(calls)
+        callsPerLimit[passLimit] = callCount[0]
 
     # ASSERT
     assert callsPerLimit[3] - callsPerLimit[2] == 1
+
+
+def test_a_clip_that_leaves_too_few_pixels_to_fit_is_undone_and_the_previous_fit_kept(log: Any) -> None:
+    """With no more unclipped pixels than the spline order, no refit is possible, so the clip is rolled back."""
+    # ARRANGE
+    clean, _, _ = _clean_and_contaminated_orders(seed=SEED)
+    subtractor = _production_like_subtractor(log)
+    modelled, spline, knots, _, _ = subtractor.fit_bspline_curve_to_sky(clean)
+    modelled["slit_normalisation_ratio"] = 1
+    # EVERY PIXEL IS AWAITING A REFIT WITHOUT IT, SO NONE IS LEFT TO FIT
+    modelled["flagged_bspline_clipped"] = True
+    modelled["flagged_all_clipped"] = True
+
+    # ACT
+    keptSpline, keptKnots = subtractor._clip_residual_outliers_and_refit(
+        modelled, spline, knots, np.array([]), CLIPPING_SIGMA
+    )
+
+    # ASSERT
+    assert keptSpline is spline
+    assert keptKnots is knots
+    assert int(modelled["flagged_bspline_clipped"].sum()) == 0
+    assert int(modelled["flagged_all_clipped"].sum()) == 0
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("too few unclipped pixels" in message for message in warnings)
