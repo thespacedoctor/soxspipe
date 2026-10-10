@@ -1921,7 +1921,7 @@ class detect_continuum(_base_detect):
                 )
 
                 if np.isnan(medianShift):
-                    junk, medianShift, tmpOrderPixelTable = find_centre_points(
+                    junk, medianShift, medianStddev = find_centre_points(
                         orderPixelTable=tmpOrderPixelTable.iloc[::everyN],
                         medianShift=medianShift,
                         medianStddev=False,

@@ -180,3 +180,32 @@ def test_trace_sampling_never_writes_into_the_strided_probe_slices_outside_soxs_
     expected = 16.0 - _shift_for(result["fit_y"].to_numpy())
     np.testing.assert_allclose(result["cont_x"], expected, rtol=0, atol=1e-3)
     assert result["pre-clipped"].eq(False).all()
+
+
+def test_trace_sampling_outside_soxs_vis_recovers_after_a_widened_slit_probe(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THE FIRST PROBE FINDS NOTHING, SO THE SAMPLER RETRIES WITH A WIDER SLICE THAT FINDS THE TRACE
+    detector = _trace_sampler(log, monkeypatch, inst="XSH", orders=[10.0, 11.0])
+    calls = []
+
+    def fit_slices(orderPixelTable: pd.DataFrame, **_: object) -> pd.DataFrame:
+        calls.append(len(orderPixelTable.index))
+        yValues = orderPixelTable["fit_y"].to_numpy()
+        found = len(calls) > 1
+        return orderPixelTable.assign(
+            cont_x=16.0 - _shift_for(yValues) if found else np.nan,
+            cont_y=yValues if found else np.nan,
+            gauss_stddev=_stddev_for(yValues) if found else np.nan,
+        )
+
+    monkeypatch.setattr(detector, "fit_1d_gaussian_to_slices", fit_slices)
+
+    # ACT
+    result, detectionPercentage = detector.sample_trace()
+
+    # ASSERT: TWO STRIDED PROBES, THEN ONE FULL FIT OF THE WHOLE TABLE
+    assert calls == [12, 12, 120]
+    assert detectionPercentage == pytest.approx(100.0)
+    assert len(result.index) == 120
