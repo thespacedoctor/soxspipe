@@ -229,7 +229,7 @@ class subtract_sky:
             self.biny = 1
 
         # READ NOISE (E-) OF THE SKY-FIT NOISE MODEL: THE FRAME'S OWN VALUE, ELSE THE DETECTOR DEFAULT (DY-1282)
-        self.ron = float(self.objectFrame.header.get(kw("RON")) or dp["ron"])
+        self.ron = self._read_noise(self.objectFrame.header.get(kw("RON")), dp["ron"], self.log)
         return
 
     def subtract(self):
@@ -1256,6 +1256,34 @@ class subtract_sky:
         )
 
     @staticmethod
+    def _read_noise(headerValue, defaultRon, log):
+        """*return the read noise (e-) for the sky-fit noise model: the frame's header value, else the default*
+
+        **Key Arguments:**
+
+        - ``headerValue`` -- the frame's read-noise keyword value, or ``None`` when the keyword is missing
+        - ``defaultRon`` -- the detector-parameter read noise (e-)
+        - ``log`` -- logger
+
+        **Return:**
+
+        - ``ron`` -- the header value when it is a finite, positive number; otherwise ``defaultRon``.
+          A header value that is present but unusable logs a warning
+        """
+        try:
+            ron = float(headerValue)
+        except (TypeError, ValueError):
+            ron = math.nan
+        if math.isfinite(ron) and ron > 0:
+            return ron
+        if headerValue is not None:
+            log.warning(
+                f"The frame's read noise ({headerValue!r}) is not a positive number; "
+                f"the sky fit uses the detector default of {defaultRon} e-."
+            )
+        return float(defaultRon)
+
+    @staticmethod
     def _inverse_noise_weights(skyModel, ron):
         """*return the B-spline sky-fit weights, 1/σ, from a noise model of the sky (DY-1282)*
 
@@ -1264,25 +1292,25 @@ class subtract_sky:
 
         **Key Arguments:**
 
-        - ``skyModel`` -- array of model sky values (e-), one per pixel. A NaN value is treated as 0
+        - ``skyModel`` -- array of model sky values (e-), one per pixel. NaN and -inf are treated as 0
         - ``ron`` -- the detector read noise (e-), finite and positive
 
         **Return:**
 
-        - ``weights`` -- numpy array of finite, positive weights, one per pixel
+        - ``weights`` -- numpy array of finite, non-negative weights, one per pixel; a +inf model sky gives 0
         """
         import numpy as np
 
-        skyModel = np.nan_to_num(np.asarray(skyModel, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
+        skyModel = np.nan_to_num(np.asarray(skyModel, dtype=float), nan=0.0, posinf=np.inf, neginf=0.0)
         return 1.0 / np.sqrt(np.clip(skyModel, 0.0, None) + ron**2)
 
     @staticmethod
     def _fill_nans_by_interpolation(values):
-        """*replace the NaN values of a 1D array by linear interpolation over its finite values*
+        """*replace the NaN values of a 1D array by linear interpolation over its other values*
 
         **Key Arguments:**
 
-        - ``values`` -- 1D array. An array with no finite value is returned as zeros
+        - ``values`` -- 1D array. An array that is all NaN is returned as zeros
 
         **Return:**
 
@@ -1291,7 +1319,7 @@ class subtract_sky:
         import numpy as np
 
         filled = np.array(values, dtype=float)
-        isNan = ~np.isfinite(filled)
+        isNan = np.isnan(filled)
         if isNan.all():
             return np.zeros_like(filled)
         filled[isNan] = np.interp(np.flatnonzero(isNan), np.flatnonzero(~isNan), filled[~isNan])

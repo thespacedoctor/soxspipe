@@ -117,16 +117,53 @@ def test_the_mean_sky_model_over_skyline_pixels_is_unbiased(log: Any) -> None:
 
 
 def test_inverse_noise_weights_follow_the_model_sky_and_floor_negative_sky_at_the_read_noise() -> None:
-    weights = subtract_sky._inverse_noise_weights(np.array([-5.0, 0.0, 16.0, np.nan]), 3.0)
+    # ARRANGE
+    skyModel = np.array([-5.0, 0.0, 16.0, np.nan, -np.inf])
 
-    np.testing.assert_allclose(weights, [1 / 3.0, 1 / 3.0, 1 / 5.0, 1 / 3.0])
+    # ACT
+    weights = subtract_sky._inverse_noise_weights(skyModel, 3.0)
+
+    # ASSERT
+    np.testing.assert_allclose(weights, [1 / 3.0, 1 / 3.0, 1 / 5.0, 1 / 3.0, 1 / 3.0])
+
+
+def test_an_infinite_model_sky_gets_zero_weight() -> None:
+    weights = subtract_sky._inverse_noise_weights(np.array([np.inf]), 3.0)
+
+    assert weights.tolist() == [0.0]
 
 
 def test_nan_values_are_filled_by_interpolation_and_an_all_nan_array_becomes_zeros() -> None:
+    # ACT
     filled = subtract_sky._fill_nans_by_interpolation(np.array([np.nan, 2.0, np.nan, 6.0, np.nan]))
+    allNan = subtract_sky._fill_nans_by_interpolation(np.full(3, np.nan))
 
+    # ASSERT
     np.testing.assert_allclose(filled, [2.0, 2.0, 4.0, 6.0, 6.0])
-    np.testing.assert_allclose(subtract_sky._fill_nans_by_interpolation(np.full(3, np.nan)), 0.0)
+    np.testing.assert_allclose(allNan, 0.0)
+
+
+@pytest.mark.parametrize("headerValue", [None, "0", 0.0, -1.0, np.nan, np.inf, "junk"])
+def test_an_unusable_header_read_noise_falls_back_to_the_detector_default(log: Any, headerValue: Any) -> None:
+    ron = subtract_sky._read_noise(headerValue, 3.8, log)
+
+    assert ron == 3.8
+
+
+@pytest.mark.parametrize("headerValue", [3.3, "3.3"])
+def test_a_usable_header_read_noise_is_used(log: Any, headerValue: Any) -> None:
+    ron = subtract_sky._read_noise(headerValue, 3.8, log)
+
+    assert ron == 3.3
+    assert not [message for level, message in log.messages if level == "warning"]
+
+
+def test_an_unusable_header_read_noise_is_logged(log: Any) -> None:
+    subtract_sky._read_noise("junk", 3.8, log)
+
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "junk" in warnings[0]
 
 
 @pytest.mark.parametrize("arm", ["VIS", "NIR"])
