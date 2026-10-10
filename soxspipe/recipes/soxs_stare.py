@@ -398,7 +398,7 @@ class soxs_stare(base_recipe):
         )
 
         unflattenedSkySubtractedCCDData = self._unflatten_sky_subtracted_frame(
-            skySubtractedCCDData, master_flat, combined_object, combined_object_notflattened
+            skySubtractedCCDData, master_flat, combined_object_notflattened
         )
 
         from soxspipe.commonutils.toolkit import quicklook_image
@@ -879,27 +879,36 @@ class soxs_stare(base_recipe):
 
         return productPath
 
-    def _unflatten_sky_subtracted_frame(
-        self, skySubtractedCCDData, master_flat, combined_object, combined_object_notflattened
-    ):
+    def _unflatten_sky_subtracted_frame(self, skySubtractedCCDData, master_flat, combined_object_notflattened):
         """*return the frame the optimal extraction uses as its unflattened input*
 
         **Key Arguments:**
 
-        - ``skySubtractedCCDData`` -- the sky-subtracted frame
+        - ``skySubtractedCCDData`` -- the sky-subtracted, flat-corrected frame
         - ``master_flat`` -- the master flat, or False when none is used
-        - ``combined_object`` -- the detrended object frame, whose uncertainty the unflattened frame takes
         - ``combined_object_notflattened`` -- the stacked frame before detrending
 
         **Return:**
 
         - ``unflattenedSkySubtractedCCDData`` -- the sky-subtracted frame multiplied back by the master flat, the
           sky-subtracted frame itself when there is no flat, or the stacked frame when no sky was subtracted
+
+        With a flat, the data is the sky-subtracted data times the flat, the mask is the OR of the sky-subtracted
+        and flat masks, and the header is the sky-subtracted frame's. The uncertainty is the sky-subtracted
+        (flat-corrected) standard deviation scaled back by the absolute flat. The flat's own uncertainty is not
+        propagated a second time, because the flat correction in ``detrend`` already folded it into the
+        flat-corrected uncertainty.
         """
+        import numpy as np
+        from astropy.nddata import StdDevUncertainty
+
         if self.subtractSky:
             if master_flat:
                 unflattenedSkySubtractedCCDData = skySubtractedCCDData.multiply(master_flat)
-                unflattenedSkySubtractedCCDData.uncertainty = combined_object.uncertainty.array
+                # SCALE THE ERROR BACK BY THE FLAT; MULTIPLY WOULD COUNT THE FLAT'S OWN ERROR TWICE
+                unflattenedSkySubtractedCCDData.uncertainty = StdDevUncertainty(
+                    np.abs(master_flat.data) * skySubtractedCCDData.uncertainty.array
+                )
                 unflattenedSkySubtractedCCDData.header = skySubtractedCCDData.header
             else:
                 unflattenedSkySubtractedCCDData = skySubtractedCCDData

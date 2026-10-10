@@ -354,6 +354,7 @@ def test_sky_subtracted_frame_is_unflattened_by_the_master_flat(
     detrended.uncertainty = StdDevUncertainty(np.full(detrended.shape, 2.5), unit=u.electron)
     skyModel = synthetic_ccd(seed=521, prepared=True)
     skySubtracted = synthetic_ccd(seed=522, prepared=True)
+    skySubtracted.uncertainty = StdDevUncertainty(np.full(skySubtracted.shape, 1.5), unit=u.electron)
     residuals = synthetic_ccd(seed=523, prepared=True)
     captured = _patch_stare(
         recipe,
@@ -371,7 +372,8 @@ def test_sky_subtracted_frame_is_unflattened_by_the_master_flat(
     unflattened = extractorArgs["unflattenedFrame"]
     flatData = synthetic_ccd(seed=FLAT_SEED, prepared=True).data
     np.testing.assert_allclose(unflattened.data, skySubtracted.data * flatData, rtol=1e-12, atol=0)
-    np.testing.assert_array_equal(unflattened.uncertainty.array, np.full(detrended.shape, 2.5))
+    # THE SKY-SUBTRACTED ERROR IS SCALED BACK BY THE FLAT, NOT TAKEN FROM THE DETRENDED FRAME (DY-1391)
+    np.testing.assert_allclose(unflattened.uncertainty.array, 1.5 * np.abs(flatData), rtol=1e-6, atol=0)
     assert unflattened.header is skySubtracted.header
     assert extractorArgs["skySubtractedFrame"] is skySubtracted
     assert extractorArgs["subtractedFrame"] is skyModel
