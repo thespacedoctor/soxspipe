@@ -22,6 +22,7 @@ def _subtractor(log: Any, *, arm: str) -> subtract_sky:
     subtractor.binx = 1
     subtractor.biny = 1
     subtractor.bspline_order = 1
+    subtractor.ron = 3.3
     subtractor.recipeSettings = {
         "sky-subtraction": {
             "bspline_fitting_residual_clipping_sigma": 3,
@@ -49,6 +50,7 @@ def _constant_sky_pixels(*, include_nan_flux: bool = False) -> pd.DataFrame:
             "flux": flux,
             "error": np.ones(wavelength.size),
             "residual_windowed_std": residualStd,
+            "flux_percentile_smoothed": np.full(wavelength.size, 12.0),
             "flagged_all_clipped": False,
             "flagged_noisy_region": False,
             "residual_windowed_long_median": np.zeros(wavelength.size),

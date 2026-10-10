@@ -227,6 +227,9 @@ class subtract_sky:
         else:
             self.binx = 1
             self.biny = 1
+
+        # READ NOISE (E-) OF THE SKY-FIT NOISE MODEL: THE FRAME'S OWN VALUE, ELSE THE DETECTOR DEFAULT (DY-1282)
+        self.ron = self._read_noise(self.objectFrame.header.get(kw("RON")), dp["ron"], self.log)
         return
 
     def subtract(self):
@@ -1253,36 +1256,78 @@ class subtract_sky:
         )
 
     @staticmethod
-    def _noisy_region_flux_scale(noisyPixels):
-        """*return the flux scale used to down-weight noisy-region pixels in the sky fit*
-
-        The scale is ``max(abs(flux), noise)``. Bright noisy pixels are still down-weighted
-        in proportion to their flux (DY-695). Pixels with ``abs(flux)`` below their own noise
-        share one bounded weight, instead of a weight that diverges at zero flux (DY-1253).
-        The noise is the pixel ``error``. Where that is not a positive finite number (for example
-        no dark subtraction gives 0) the local ``residual_windowed_std`` is used, as the sky
-        weights already divide by it. If neither noise estimate is usable, ``abs(flux)`` alone
-        sets the scale, and a row with no usable flux either gets an infinite scale (zero weight).
+    def _read_noise(headerValue, defaultRon, log):
+        """*return the read noise (e-) for the sky-fit noise model: the frame's header value, else the default*
 
         **Key Arguments:**
 
-        - ``noisyPixels`` -- the noisy-region rows of the single-order dataframe,
-          with `flux`, `error` and `residual_windowed_std` columns
+        - ``headerValue`` -- the frame's read-noise keyword value, or ``None`` when the keyword is missing
+        - ``defaultRon`` -- the detector-parameter read noise (e-)
+        - ``log`` -- logger
 
         **Return:**
 
-        - ``fluxScale`` -- numpy array, strictly positive (possibly ``inf``), one value per row of `noisyPixels`
+        - ``ron`` -- the header value when it is a finite, positive number; otherwise ``defaultRon``.
+          A header value that is present but unusable logs a warning
         """
         import numpy as np
 
-        errors = noisyPixels["error"].to_numpy(dtype=float)
-        isUsableError = np.isfinite(errors) & (errors > 0)
-        noise = np.where(isUsableError, errors, noisyPixels["residual_windowed_std"].to_numpy(dtype=float))
-        # AN UNUSABLE FALLBACK NOISE LEAVES abs(flux) ALONE TO SET THE SCALE
-        noise = np.where(np.isfinite(noise) & (noise > 0), noise, 0.0)
-        fluxScale = np.fmax(np.abs(noisyPixels["flux"].to_numpy(dtype=float)), noise)
-        # NOTHING BOUNDS THE SCALE: AN INFINITE SCALE GIVES THE ROW ZERO WEIGHT, NEVER AN INF OR NaN WEIGHT
-        return np.where(np.isfinite(fluxScale) & (fluxScale > 0), fluxScale, np.inf)
+        try:
+            # A BOOLEAN WOULD CONVERT TO A READ NOISE OF 0 OR 1
+            ron = math.nan if isinstance(headerValue, (bool, np.bool_)) else float(headerValue)
+        except (TypeError, ValueError):
+            ron = math.nan
+        if math.isfinite(ron) and ron > 0:
+            return ron
+        if headerValue is not None:
+            log.warning(
+                f"The frame's read noise ({headerValue!r}) is not a positive number; "
+                f"the sky fit uses the detector default of {defaultRon} e-."
+            )
+        # THE RECIPES HOLD THE DEFAULT AS AN ASTROPY QUANTITY IN ELECTRONS, THE LOOKUP AS A PLAIN FLOAT
+        return float(getattr(defaultRon, "value", defaultRon))
+
+    @staticmethod
+    def _inverse_noise_weights(skyModel, ron):
+        """*return the B-spline sky-fit weights, 1/σ, from a noise model of the sky (DY-1282)*
+
+        σ² = max(skyModel, 0) + ron². The weights come from a model of the sky, never from the
+        measured flux, so they do not correlate with the noise in each pixel and cannot bias the fit.
+
+        **Key Arguments:**
+
+        - ``skyModel`` -- array of model sky values (e-), one per pixel. NaN and -inf are treated as 0
+        - ``ron`` -- the detector read noise (e-), finite and positive
+
+        **Return:**
+
+        - ``weights`` -- numpy array of finite, non-negative weights, one per pixel; a +inf model sky gives 0
+        """
+        import numpy as np
+
+        skyModel = np.nan_to_num(np.asarray(skyModel, dtype=float), nan=0.0, posinf=np.inf, neginf=0.0)
+        return 1.0 / np.sqrt(np.clip(skyModel, 0.0, None) + ron**2)
+
+    @staticmethod
+    def _fill_nans_by_interpolation(values):
+        """*replace the NaN values of a 1D array by linear interpolation over its other values*
+
+        **Key Arguments:**
+
+        - ``values`` -- 1D array. An array that is all NaN is returned as zeros
+
+        **Return:**
+
+        - ``filled`` -- a new array with no NaN values
+        """
+        import numpy as np
+
+        filled = np.array(values, dtype=float)
+        isNan = np.isnan(filled)
+        if isNan.all():
+            return np.zeros_like(filled)
+        filled[isNan] = np.interp(np.flatnonzero(isNan), np.flatnonzero(~isNan), filled[~isNan])
+        return filled
 
     def fit_bspline_curve_to_sky(self, imageMapOrder):
         """*fit a single-order univariate bspline to the unclipped sky pixels (wavelength vs flux)*
@@ -1341,41 +1386,8 @@ class subtract_sky:
         data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
         imageMapOrder["residual_windowed_std"] = data
 
-        imageMapOrder.loc[~mask_all_clipped, "weights"] = (
-            1 / imageMapOrder.loc[~mask_all_clipped, "residual_windowed_std"].values
-        )
-
-        if self.arm.upper() == "VIS":
-            imageMapOrder.loc[~mask_all_clipped, "weights2"] = (
-                imageMapOrder.loc[~mask_all_clipped, "flux"].values + 1000
-            )
-            imageMapOrder.loc[imageMapOrder["weights2"] < 0.01, "weights2"] = 0.01
-
-            described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
-            if self.debug:
-                print("weights2 description", described_weights)
-
-            imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[
-                ~mask_all_clipped, "weights2"
-            ].values / (imageMapOrder.loc[~mask_all_clipped, "residual_windowed_std"].values * 2.0)
-
-            described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
-            if self.debug:
-                print("weights2 description", described_weights)
-
-            imageMapOrder.loc[~mask_all_clipped, "weights"] = np.pow(
-                imageMapOrder.loc[~mask_all_clipped, "weights2"].values, 1.2
-            )
-            imageMapOrder.loc[~mask_all_clipped, "weights2"] = np.pow(
-                imageMapOrder.loc[~mask_all_clipped, "weights2"].values, 1.2
-            )
-        else:
-            imageMapOrder.loc[~mask_all_clipped, "weights2"] = imageMapOrder.loc[~mask_all_clipped, "weights"]
-
-        described_weights = imageMapOrder.loc[~mask_all_clipped, "weights2"].describe()
-        if self.debug:
-            print("weights2 description", described_weights)
-        # imageMapOrder["weights"] = 1 / imageMapOrder["error"].values
+        # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282)
+        noiseModelSky = self._fill_nans_by_interpolation(imageMapOrder["flux_percentile_smoothed"].values)
 
         # WE WILL UPDATE THIS VALUE LATER IN WORKFLOW WITH SLIT-ILLUMINATION CORRECTION
         imageMapOrder["slit_normalisation_ratio"] = 1
@@ -1445,16 +1457,9 @@ class subtract_sky:
         while iterationCount < bsplineIterations:
             iterationCount += 1
 
-            if iterationCount == 2:
-                mask_noisy = imageMapOrder["flagged_noisy_region"] == True
-                # BOUND THE REWEIGHT BY THE PIXEL NOISE: 1/|flux| DIVERGES AT ZERO FLUX (DY-1253)
-                noisyFluxScale = self._noisy_region_flux_scale(imageMapOrder.loc[mask_noisy])
-                imageMapOrder.loc[mask_noisy, "weights2"] = (
-                    imageMapOrder.loc[mask_noisy, "weights2"] / noisyFluxScale * 0.1
-                )
-                imageMapOrder.loc[mask_noisy, "weights"] = (
-                    imageMapOrder.loc[mask_noisy, "weights"] / noisyFluxScale * 0.1
-                )
+            if tck_previous is not None:
+                noiseModelSky = ip.splev(imageMapOrder["wavelength"].values, tck_previous)
+            imageMapOrder["weights"] = self._inverse_noise_weights(noiseModelSky, self.ron)
 
             # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
             goodWl = imageMapOrder.loc[~mask_all_clipped, "wavelength"]
@@ -1462,10 +1467,7 @@ class subtract_sky:
                 imageMapOrder.loc[~mask_all_clipped, "flux"]
                 / imageMapOrder.loc[~mask_all_clipped, "slit_normalisation_ratio"]
             )
-            if iterationCount < 5:
-                goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights"]
-            else:
-                goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights2"]
+            goodWeights = imageMapOrder.loc[~mask_all_clipped, "weights"]
 
             goodFlux = goodFlux.values
             goodWeights = goodWeights.values
@@ -1702,15 +1704,8 @@ class subtract_sky:
 
         imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
         imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
+        # THE MODEL IS NOT CLIPPED AT ZERO: A NEGATIVE EXCURSION IS NOISE, AND A CLIP BIASES A FAINT SKY HIGH (DY-1282)
         imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
-        # REPLACE VALUES LESS THAN ZERO IN COLUMN WITH ZERO, REPORTING HOW MANY (DY-1284)
-        clippedCount = int((imageMapOrder["sky_model"] < 0).sum())
-        if clippedCount:
-            self.log.info(
-                f"\t\tThe zero clip of the sky model clipped {clippedCount} of {len(imageMapOrder)} pixels "
-                f"in order {order}.\n"
-            )
-        imageMapOrder["sky_model"] = imageMapOrder["sky_model"].apply(lambda x: max(0, x))
 
         imageMapOrder["sky_subtracted_flux"] = imageMapOrder["flux"] - imageMapOrder["sky_model"]
         imageMapOrder["sky_subtracted_flux_weighted"] = (
