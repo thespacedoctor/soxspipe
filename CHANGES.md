@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: SOXS VIS recipes now read the read noise of each readout mode from `ESO DET OUT1 RON` (3.3, 3.5 or 5.4 e-), not the 3.8 e- default, and only raw frames are checked for a read-noise mix, so a calibration product from another readout mode no longer stops a recipe. NIR keeps the 7.3 e- default. VIS ERRS and SNR change (DY-1457).
 * **FIXED**: the response function now matches the points kept when its clipping loop stops at `max_iteration` while still rejecting points, and a warning is logged; before, it was fitted before the last rejection and could be off by several percent. Flux-calibrated output changes (DY-1245).
 * **FIXED**: sigma-clipped polynomial fits (order centres, object traces, order edges, dispersion solution) that stop at the clipping-iteration cap now refit to the rows they keep, so the coefficients and RES QCs match the final set. Reduction output changes (DY-1246).
 * **FIXED**: the rectified slit grid has the set number of rows, centred on the object trace, where it was one row short and half a pixel low; an odd `horne-extraction-slit-length` (default 15) now extracts the full length. Extracted spectra change (DY-1247).

@@ -238,7 +238,8 @@ def test_input_frame_validation_records_consistent_vis_detector_metadata(
         {
             "SEQ_ARM": ["VIS"],
             "INSTRUME": ["SOXS"],
-            "PRO_CATG": ["SCIENCE_VIS"],
+            # A RAW FRAME CARRIES NO PRO_CATG; ONLY RAW FRAMES ARE READ FOR READ NOISE (DY-1457)
+            "PRO_CATG": [None],
             "CDELT1": [1],
             "CDELT2": [1],
             "DET_READ_SPEED": ["fast"],
@@ -292,7 +293,7 @@ def test_input_frame_validation_records_consistent_vis_detector_metadata(
     assert recipe.detectorParams["ron"].value == pytest.approx(3.5)
     assert set(imageTypes) == {"OBJECT"}
     assert set(imageTechnology) == {"ECHELLE,SLIT"}
-    assert set(imageCategories) == {"SCIENCE", "SCIENCE_VIS"}
+    assert set(imageCategories) == {"SCIENCE"}
 
 
 def test_report_output_formats_whole_number_qc_values_to_four_decimals(
