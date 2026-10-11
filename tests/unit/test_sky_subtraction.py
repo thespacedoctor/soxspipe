@@ -53,7 +53,7 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     header["ESO DET BINX"] = 2
     header["ESO DET BINY"] = 1
     if headerRon is not None:
-        header["ESO DET CHIP RON"] = headerRon
+        header["ESO DET OUT1 RON"] = headerRon
     frame = CCDData(np.ones((3, 3)), unit=u.electron, meta=header)
     mapTable = pd.DataFrame({"order": [10, 10], "wavelength": [500.0, 501.0], "slit_position": [0.0, 0.1]})
 

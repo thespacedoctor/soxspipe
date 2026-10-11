@@ -322,9 +322,11 @@ def test_a_soxs_nir_nodding_recipe_accepts_the_five_and_one_point_five_slit_pair
 
 
 def test_mixed_readnoise_is_rejected(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Two different `RON` values fail with `TypeError` naming the values."""
+    """Two raw frames with different `RON` values fail with `TypeError` naming the values."""
     # ARRANGE
     summary = {key: value * 2 for key, value in UNIFORM_VIS_SUMMARY.items()}
+    # ONLY RAW FRAMES (NO PRO_CATG) ARE READ FOR READ NOISE (DY-1457)
+    summary["PRO_CATG"] = [None, None]
     summary["RON"] = [3.5, 4.5]
     recipe = _recipe(log, summary)
     monkeypatch.setattr(RECIPE_MODULE, "detector_lookup", _detector_lookup())

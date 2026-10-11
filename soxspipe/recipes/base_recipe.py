@@ -1123,18 +1123,28 @@ class base_recipe:
     def _verify_single_readnoise(self):
         """*record the detector readnoise the input frames were read out with*
 
-        A mix of readnoise values raises an exception; otherwise ``self.detectorParams["ron"]`` is set.
-        """
-        from contextlib import suppress
+        Only raw frames (no ``PRO_CATG``) are read: a calibration product's read noise describes the frames it
+        was built from, which may have used another readout mode or night (DY-1457).
 
+        A mix of raw-frame readnoise values raises an exception; otherwise ``self.detectorParams["ron"]`` is set.
+        """
+        import numpy as np
         from astropy import units as u
 
         kw = self.kw
 
-        # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
-        ron = self.inputFrames.values(keyword=kw("RON"), unique=True)
-        with suppress(ValueError):
-            ron.remove(None)
+        def is_missing(value: object) -> bool:
+            return value is None or value is np.ma.masked
+
+        # HIERARCH ESO DET OUT1 RON - READOUT NOISE IN ELECTRONS
+        summary = self.inputFrames.summary
+        rawRon = [
+            value
+            for catg, value in zip(summary[kw("PRO_CATG")], summary[kw("RON")], strict=True)
+            if is_missing(catg) and not is_missing(value)
+        ]
+        # UNIQUE VALUES IN ORDER OF FIRST APPEARANCE
+        ron = list(dict.fromkeys(rawRon))
 
         # MIXED NOISE
         if len(ron) > 1:
@@ -1145,6 +1155,10 @@ class base_recipe:
             self.detectorParams["ron"] = ron[0] * u.electron
         else:
             # NIR
+            self.log.debug(
+                f"no raw frame carries a usable {kw('RON')}; using the detector-parameter read noise "
+                f"({self.detectorParams['ron']} e-)"
+            )
             self.detectorParams["ron"] = self.detectorParams["ron"] * u.electron
 
         return
