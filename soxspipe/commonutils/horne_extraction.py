@@ -1711,8 +1711,8 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
     # SORT BY COLUMN NAME
     crossDispersionSlicesDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True, kind="stable")
 
-    # REMOVE 0 WAVELENGTH
-    crossDispersionSlicesDF = crossDispersionSlicesDF.loc[crossDispersionSlicesDF["wavelengthMean"] > 0]
+    # REMOVE 0 WAVELENGTH (A LOCAL COPY, SO THE IN-PLACE dropna BELOW NEVER TARGETS A SLICE)
+    crossDispersionSlicesDF = crossDispersionSlicesDF.loc[crossDispersionSlicesDF["wavelengthMean"] > 0].copy()
 
     crossDispersionSlicesDF.dropna(
         how="any",

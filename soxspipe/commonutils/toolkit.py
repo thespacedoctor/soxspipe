@@ -677,7 +677,7 @@ def unpack_order_table(
 
     if order:
         mask = orderMetaTable["order"] == order
-        orderMetaTable = orderMetaTable.loc[mask]
+        orderMetaTable = orderMetaTable.loc[mask].copy()
 
     axisA, axisB, axisAbin, axisBbin = _order_table_axes(orderPolyTable, binx, biny)
 
@@ -866,7 +866,8 @@ def _rescale_order_tables_for_binning(orderPixelTable, orderMetaTable, axisA, ax
         orderPixelTable[f"{axisB}coord"] /= axisBbin
         orderPixelTable["std"] /= axisBbin
         mask = orderPixelTable[f"{axisB}coord"].mod(1) > 0
-        orderPixelTable = orderPixelTable.loc[~mask]
+        # THE BINNED TABLE IS A NEW LOCAL TABLE, NOT A VIEW OF THE UNBINNED ONE
+        orderPixelTable = orderPixelTable.loc[~mask].copy()
         orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round().astype("int")
 
     return orderPixelTable, orderMetaTable

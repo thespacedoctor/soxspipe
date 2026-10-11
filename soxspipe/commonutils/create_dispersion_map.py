@@ -906,9 +906,9 @@ class create_dispersion_map:
             # MAKE A CLEAN COPY OF THE DETECTION TABLE ... USED FOR PIPELINE TUNING ONLY
             lineDetectionTable = orderPixelTable.copy()
 
-            # COLLECT MISSING LINES
+            # COLLECT MISSING LINES INTO THEIR OWN TABLE (THE WRITER AND QC PLOT SORT AND FLIP IT IN PLACE)
             mask = orderPixelTable["observed_x"].isnull()
-            missingLines = orderPixelTable.loc[mask]
+            missingLines = orderPixelTable.loc[mask].copy()
             # GROUP RESULTS BY WAVELENGTH
             lineGroups = missingLines.groupby(["wavelength", "order"])
             lineGroups = lineGroups.size().to_frame(name="count").reset_index()
@@ -1337,8 +1337,7 @@ class create_dispersion_map:
         df["droppedOnMissing"] = s["dropped"].values
 
         # FILTER OUT DROPPED SETS
-        df = df.loc[df["droppedOnMissing"] == False]
-        df.drop(columns=["droppedOnMissing"], inplace=True)
+        df = df.loc[~df["droppedOnMissing"]].drop(columns=["droppedOnMissing"])
 
         return df
 
@@ -1466,10 +1465,10 @@ class create_dispersion_map:
         else:
             goodAndClippedLines = goodLinesTable[keepColumns]
 
-        # SORT BOTH DATAFRAMES
-        goodAndClippedLines.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
-        goodLinesTable = goodLinesTable[keepColumns]
-        goodLinesTable.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
+        # SORT BOTH DATAFRAMES INTO NEW TABLES, LEAVING THE CALLER'S FITTED TABLE AS IT WAS
+        sortColumns = ["order", "wavelength", "slit_index"]
+        goodAndClippedLines = goodAndClippedLines.sort_values(sortColumns, kind="stable")
+        goodLinesTable = goodLinesTable[keepColumns].sort_values(sortColumns, kind="stable")
 
         return goodAndClippedLines, goodLinesTable
 
@@ -2416,7 +2415,8 @@ class create_dispersion_map:
         allClippedLines = []
         mask = orderPixelTable["dropped"] == True
         allClippedLines.append(orderPixelTable.loc[mask])
-        orderPixelTable = orderPixelTable.loc[~mask]
+        # THE FIT WORKS ON ITS OWN COPY: ITS COLUMNS AND CLIPPING FLAGS NEVER BELONG IN THE CALLER'S TABLE
+        orderPixelTable = orderPixelTable.loc[~mask].copy()
 
         import pandas as pd
 
@@ -2520,7 +2520,7 @@ class create_dispersion_map:
             mask = orderPixelTable["sigma_clipped"] == True
             allClippedLines.append(orderPixelTable.loc[mask])
             mask = orderPixelTable["sigma_clipped"] == True
-            orderPixelTable = orderPixelTable.loc[~mask]
+            orderPixelTable = orderPixelTable.loc[~mask].copy()
 
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
@@ -2703,7 +2703,7 @@ class create_dispersion_map:
                 )
 
             mask = orderPixelTable["sigma_clipped"] == True
-            orderPixelTable = orderPixelTable.loc[~mask]
+            orderPixelTable = orderPixelTable.loc[~mask].copy()
 
         if len(allClippedLines):
             allClippedLines = pd.concat(allClippedLines, ignore_index=True)
