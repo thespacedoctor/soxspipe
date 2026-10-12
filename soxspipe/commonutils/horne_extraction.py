@@ -1300,7 +1300,12 @@ class horne_extraction(base_util):
         if self.notFlattened:
             return
 
-        from soxspipe.commonutils.slit_drift_qc import plot_slit_drift_qc, slit_drift_series
+        from soxspipe.commonutils.slit_drift_qc import (
+            plot_slit_drift_qc,
+            slit_drift_arcsec,
+            slit_drift_series,
+            slit_zero_crossings,
+        )
         from soxspipe.commonutils.toolkit import append_product, utcnow_string
 
         series = slit_drift_series(
@@ -1310,6 +1315,8 @@ class horne_extraction(base_util):
             transformer.wlMinMax,
             transformer.orderSlitCentreFallback,
         )
+        driftArcsec = slit_drift_arcsec(series)
+        crossings = slit_zero_crossings(series)
         filename = self.filenameTemplate.replace(".fits", f"_SLIT_DRIFT_QC_PLOT{self.noddingSequence}.pdf")
         filePath = f"{self.qcDir}/{filename}"
         plot_slit_drift_qc(
@@ -1317,7 +1324,10 @@ class horne_extraction(base_util):
             transformer.globalSlitCentreArcsec,
             f"Slit position of the object trace before rectification ({self.arm.upper()})",
             filePath,
+            driftArcsec=driftArcsec,
+            zeroWavelength=crossings[0] if crossings else None,
         )
+        self._record_slit_drift_qcs(driftArcsec, crossings)
 
         if not isinstance(self.products, bool):
             self.products = append_product(
@@ -1334,6 +1344,54 @@ class horne_extraction(base_util):
             )
 
         self.log.debug("completed the ``plot_slit_drift_qc`` method")
+
+    def _record_slit_drift_qcs(self, driftArcsec, crossings):
+        """*add the ``SLIT DRIFT`` and ``SLIT ZERO WLEN`` QCs*
+
+        **Key Arguments:**
+
+        - ``driftArcsec`` -- the slit-position drift in arcsec, or *None* if every order fell back to the mean
+        - ``crossings`` -- the wavelengths (nm) where the trace crosses slit position 0, blue to red. Only the bluest
+          is recorded
+        """
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        if driftArcsec is None:
+            self.log.warning("Every order fell back to the mean slit position, so no SLIT DRIFT QC can be measured.")
+        if len(crossings) > 1:
+            others = ", ".join(f"{wavelength:0.1f} nm" for wavelength in crossings[1:])
+            self.log.info(
+                f"The object trace also crosses slit position 0 at {others}; "
+                f"only the bluest crossing ({crossings[0]:0.1f} nm) is recorded."
+            )
+        if isinstance(self.qc, bool):
+            return
+
+        utcnow = utcnow_string()
+        if driftArcsec is not None:
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="SLIT DRIFT",
+                qcValue=round(driftArcsec, 3),
+                qcComment="Slit position drift of the object trace, reddest minus bluest wavelength",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit="arcsec",
+                toHeader=True,
+            )
+        if crossings:
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="SLIT ZERO WLEN",
+                qcValue=round(crossings[0], 2),
+                qcComment="Wavelength where the object trace crosses slit position 0",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit="nm",
+                toHeader=True,
+            )
 
     def plot_extracted_spectrum_qc(self, extractions):
         """*plot extracted spectrum QC plot*

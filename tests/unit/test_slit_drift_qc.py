@@ -10,9 +10,12 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.slit_drift_qc import (
+    SLIT_DRIFT_EDGE_TRIM_FRACTION,
     SLIT_DRIFT_FIT_SAMPLES,
     plot_slit_drift_qc,
+    slit_drift_arcsec,
     slit_drift_series,
+    slit_zero_crossings,
 )
 from tests.unit._plot_spies import spy_figures
 
@@ -202,3 +205,318 @@ def test_plot_closes_figure_when_saving_fails(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         plot_slit_drift_qc(_two_order_series(), MEAN_SLIT_ARCSEC, "title", str(missingDirectory))
     assert plt.get_fignums() == []
+
+
+def _entry(wavelength: list[float], slit: list[float], isFallback: bool = False) -> dict:
+    """A minimal series entry carrying only the keys the metric functions read."""
+    return {
+        "fitWavelength": np.array(wavelength, dtype=float),
+        "fitSlit": np.array(slit, dtype=float),
+        "isFallback": isFallback,
+    }
+
+
+def test_drift_is_trimmed_reddest_fitted_slit_position_minus_trimmed_bluest() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0], [0.5, 1.0]), _entry([600.0, 610.0], [2.0, 3.5])]
+    trim = SLIT_DRIFT_EDGE_TRIM_FRACTION
+    blueSlit = 0.5 + trim * 0.5
+    redSlit = 3.5 - trim * 1.5
+
+    # ACT
+    drift = slit_drift_arcsec(series)
+
+    # ASSERT
+    assert drift == pytest.approx(redSlit - blueSlit)
+
+
+def test_drift_is_negative_when_trace_moves_towards_lower_slit_positions() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0], [2.0, 1.5]), _entry([600.0, 610.0], [1.0, 0.5])]
+    trim = SLIT_DRIFT_EDGE_TRIM_FRACTION
+    expected = (0.5 + trim * 0.5) - (2.0 - trim * 0.5)
+
+    # ACT
+    drift = slit_drift_arcsec(series)
+
+    # ASSERT
+    assert drift == pytest.approx(expected)
+    assert drift < 0
+
+
+def test_drift_skips_fallback_orders_at_either_end() -> None:
+    # ARRANGE
+    series = [
+        _entry([400.0, 410.0], [9.0, 9.0], isFallback=True),
+        _entry([500.0, 510.0], [0.5, 1.0]),
+        _entry([600.0, 610.0], [2.0, 3.5]),
+        _entry([700.0, 710.0], [-9.0, -9.0], isFallback=True),
+    ]
+    trim = SLIT_DRIFT_EDGE_TRIM_FRACTION
+
+    # ACT
+    drift = slit_drift_arcsec(series)
+
+    # ASSERT
+    assert drift == pytest.approx((3.5 - trim * 1.5) - (0.5 + trim * 0.5))
+
+
+def test_drift_of_a_single_order_is_its_trimmed_end_to_end_change() -> None:
+    # ARRANGE
+    wavelength = np.linspace(500.0, 600.0, 101)
+    series = [_entry(list(wavelength), list((wavelength - 500.0) / 100.0))]
+
+    # ACT
+    drift = slit_drift_arcsec(series)
+
+    # ASSERT
+    assert drift == pytest.approx(1.0 - 2 * SLIT_DRIFT_EDGE_TRIM_FRACTION)
+
+
+def test_drift_ignores_a_spike_within_the_trimmed_edge_of_the_range() -> None:
+    # ARRANGE
+    wavelength = np.linspace(500.0, 600.0, 101)
+    slit = (wavelength - 500.0) / 100.0
+    spiked = slit.copy()
+    spiked[:4] = 50.0
+    spiked[-4:] = -50.0
+
+    # ACT
+    drift = slit_drift_arcsec([_entry(list(wavelength), list(spiked))])
+
+    # ASSERT
+    assert drift == pytest.approx(slit_drift_arcsec([_entry(list(wavelength), list(slit))]))
+
+
+def test_drift_uses_the_bluest_and_reddest_ends_even_when_one_order_is_nested_inside_another() -> None:
+    # ARRANGE
+    wavelength = np.linspace(500.0, 600.0, 101)
+    wide = _entry(list(wavelength), list((wavelength - 500.0) / 100.0))
+    nested = _entry([540.0, 560.0], [9.0, 9.0])
+
+    # ACT
+    drift = slit_drift_arcsec([wide, nested])
+
+    # ASSERT
+    assert drift == pytest.approx(1.0 - 2 * SLIT_DRIFT_EDGE_TRIM_FRACTION)
+
+
+def test_drift_is_finite_when_an_end_wavelength_is_nan() -> None:
+    # ARRANGE
+    wavelength = np.linspace(500.0, 600.0, 101)
+    wavelength[0] = np.nan
+    series = [_entry(list(wavelength), list((np.linspace(500.0, 600.0, 101) - 500.0) / 100.0))]
+
+    # ACT
+    drift = slit_drift_arcsec(series)
+
+    # ASSERT
+    assert drift == pytest.approx(0.891)
+
+
+def test_drift_is_none_when_the_fitted_values_are_not_finite() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0], [np.nan, np.nan])]
+
+    # ACT / ASSERT
+    assert slit_drift_arcsec(series) is None
+
+
+def test_drift_is_none_when_every_order_fell_back() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0], [0.25, 0.25], isFallback=True)]
+
+    # ACT / ASSERT
+    assert slit_drift_arcsec(series) is None
+
+
+def test_drift_is_none_for_an_empty_series() -> None:
+    # ACT / ASSERT
+    assert slit_drift_arcsec([]) is None
+
+
+def test_zero_crossing_inside_one_order_is_linearly_interpolated() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0, 520.0], [-1.0, -0.5, 1.5])]
+
+    # ACT
+    crossings = slit_zero_crossings(series)
+
+    # ASSERT
+    assert crossings == pytest.approx([512.5])
+
+
+def test_a_sign_change_between_orders_across_a_gap_gives_no_crossing() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0], [-2.0, -1.0]), _entry([530.0, 540.0], [3.0, 4.0])]
+
+    # ACT / ASSERT
+    assert slit_zero_crossings(series) == []
+
+
+def test_overlapping_orders_with_opposite_sign_edges_do_not_create_false_crossings() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 520.0], [-2.0, -1.0]), _entry([510.0, 530.0], [1.0, 2.0])]
+
+    # ACT / ASSERT
+    assert slit_zero_crossings(series) == []
+
+
+def test_a_fallback_order_between_two_valid_orders_is_not_bridged() -> None:
+    # ARRANGE
+    series = [
+        _entry([500.0, 510.0], [-1.0, -1.0]),
+        _entry([520.0, 530.0], [0.25, 0.25], isFallback=True),
+        _entry([540.0, 550.0], [1.0, 1.0]),
+    ]
+
+    # ACT / ASSERT
+    assert slit_zero_crossings(series) == []
+
+
+def test_a_run_of_exact_zero_samples_counts_as_one_crossing_at_its_bluest_sample() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0, 520.0, 530.0], [-1.0, 0.0, 0.0, 1.0])]
+
+    # ACT
+    crossings = slit_zero_crossings(series)
+
+    # ASSERT
+    assert crossings == pytest.approx([510.0])
+
+
+def test_no_zero_crossing_returns_an_empty_list() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0], [0.5, 1.0]), _entry([600.0, 610.0], [2.0, 3.5])]
+
+    # ACT / ASSERT
+    assert slit_zero_crossings(series) == []
+
+
+def test_two_zero_crossings_are_returned_blue_first() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0], [-1.0, 1.0]), _entry([600.0, 610.0], [1.0, -1.0])]
+
+    # ACT
+    crossings = slit_zero_crossings(series)
+
+    # ASSERT
+    assert crossings == pytest.approx([505.0, 605.0])
+
+
+def test_crossing_exactly_on_a_sample_counts_once() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0, 520.0], [-1.0, 0.0, 1.0])]
+
+    # ACT
+    crossings = slit_zero_crossings(series)
+
+    # ASSERT
+    assert crossings == pytest.approx([510.0])
+
+
+def test_zero_crossings_ignore_fallback_orders() -> None:
+    # ARRANGE
+    series = [
+        _entry([500.0, 510.0], [-1.0, 1.0], isFallback=True),
+        _entry([600.0, 610.0], [1.0, 2.0]),
+    ]
+
+    # ACT / ASSERT
+    assert slit_zero_crossings(series) == []
+
+
+def test_an_exact_zero_sample_at_a_non_finite_wavelength_is_not_a_crossing() -> None:
+    # ARRANGE
+    series = [_entry([500.0, np.nan, 520.0, 530.0], [-1.0, 0.0, -1.0, 1.0])]
+
+    # ACT
+    crossings = slit_zero_crossings(series)
+
+    # ASSERT
+    assert crossings == pytest.approx([525.0])
+
+
+def test_a_sign_change_across_a_non_finite_wavelength_is_not_a_crossing() -> None:
+    # ARRANGE
+    series = [_entry([500.0, np.nan, 520.0], [-1.0, 1.0, 2.0])]
+
+    # ACT / ASSERT
+    assert slit_zero_crossings(series) == []
+
+
+def test_a_zero_at_a_non_finite_wavelength_does_not_hide_the_next_exact_zero() -> None:
+    # ARRANGE
+    series = [_entry([np.nan, 510.0], [0.0, 0.0])]
+
+    # ACT
+    crossings = slit_zero_crossings(series)
+
+    # ASSERT
+    assert crossings == pytest.approx([510.0])
+
+
+def test_opposite_signed_infinite_slit_values_give_no_crossing() -> None:
+    # ARRANGE
+    series = [_entry([500.0, 510.0, 520.0], [-np.inf, np.inf, 1.0])]
+
+    # ACT
+    crossings = slit_zero_crossings(series)
+
+    # ASSERT
+    assert crossings == []
+
+
+def test_zero_crossings_of_an_empty_series_is_empty() -> None:
+    # ACT / ASSERT
+    assert slit_zero_crossings([]) == []
+
+
+def test_plot_with_drift_and_zero_crossing_writes_pdf_and_annotates_both_axes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    figures = spy_figures(monkeypatch)
+    filePath = tmp_path / "annotated.pdf"
+
+    # ACT
+    plot_slit_drift_qc(
+        _two_order_series(),
+        MEAN_SLIT_ARCSEC,
+        "title",
+        str(filePath),
+        driftArcsec=2.25,
+        zeroWavelength=550.0,
+    )
+
+    # ASSERT
+    assert filePath.read_bytes().startswith(b"%PDF")
+    mainAxis, residualAxis = figures[0].axes
+    legendLabels = [text.get_text() for text in mainAxis.get_legend().get_texts()]
+    assert "slit drift (red - blue) = +2.250 arcsec" in legendLabels
+    assert "trace crosses slit 0 at 550.0 nm" in [text.get_text() for text in mainAxis.texts]
+    for axis in (mainAxis, residualAxis):
+        verticals = [line for line in axis.get_lines() if list(line.get_xdata()) == [550.0, 550.0]]
+        assert len(verticals) == 1
+        assert verticals[0].get_linestyle() == ":"
+    horizontals = [line for line in mainAxis.get_lines() if list(line.get_ydata()) == [0, 0]]
+    assert len(horizontals) == 1
+
+
+def test_plot_without_new_keywords_has_no_drift_legend_or_zero_crossing_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    figures = spy_figures(monkeypatch)
+
+    # ACT
+    plot_slit_drift_qc(_two_order_series(), MEAN_SLIT_ARCSEC, "title", str(tmp_path / "plain.pdf"))
+
+    # ASSERT
+    mainAxis = figures[0].axes[0]
+    legendLabels = [text.get_text() for text in mainAxis.get_legend().get_texts()]
+    assert not any("slit drift" in label for label in legendLabels)
+    assert list(mainAxis.texts) == []
+    assert [line for line in mainAxis.get_lines() if list(line.get_ydata()) == [0, 0]] == []
