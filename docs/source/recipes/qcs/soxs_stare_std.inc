@@ -25,6 +25,8 @@
 | `SNR MEDIAN` | The median signal-to-noise ratio across all orders (global) |  | VIS: [50,1000], NIR: [7,200] |
 | `EFF MEDIAN O<N>` | The median efficiency (order N) |  | - |
 | `SNR MEDIAN O<N>` | The median signal-to-noise ratio across all orders (order N) |  | - |
+| `SLIT DRIFT` | Fitted slit position of the object trace 5% in from the red end of the reddest order, minus that 5% in from the blue end of the bluest order. Signed. Fallback orders are skipped. Not written if every order fell back | arcsec | - |
+| `SLIT ZERO WLEN` | Wavelength where a fitted order curve crosses slit position 0. A sign change between two orders does not count. Written only if such a crossing exists. If there are several, the bluest is recorded | nm | - |
 
 
 :::

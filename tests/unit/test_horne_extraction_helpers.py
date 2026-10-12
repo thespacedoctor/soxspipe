@@ -588,9 +588,16 @@ def _slit_drift_extractor(
     tmp_path: Path,
     products: bool | pd.DataFrame,
     notFlattened: str = "",
+    qc: bool | pd.DataFrame | None = None,
+    orderCoeffs: tuple[float, float] = (1.0, -599.0),
+    fallbackFlags: tuple[bool, bool] = (False, True),
 ) -> tuple[horne_extraction, SimpleNamespace]:
-    """Build an extractor and a transformer stand-in carrying the slit-drift attributes."""
+    """Build an extractor and a transformer stand-in carrying the slit-drift attributes.
+
+    Order 10 (red) has the linear slit-centre fit ``orderCoeffs``; order 11 (blue) is flat at 0.25 arcsec.
+    """
     extractor = _extractor(log)
+    extractor.qc = pd.DataFrame() if qc is None else qc
     extractor.filenameTemplate = "SYNTHETIC.fits"
     extractor.noddingSequence = "_A1"
     extractor.notFlattened = notFlattened
@@ -609,9 +616,9 @@ def _slit_drift_extractor(
     transformer = SimpleNamespace(
         orderPixelTable=orderPixelTable,
         uniqueOrders=[10, 11],
-        orderSlitCentreCoeffs=[np.array([1.0, -599.0]), np.array([0.25])],
+        orderSlitCentreCoeffs=[np.array(orderCoeffs), np.array([0.25])],
         wlMinMax=[(600.0, 602.0), (500.0, 501.0)],
-        orderSlitCentreFallback=[False, True],
+        orderSlitCentreFallback=list(fallbackFlags),
         globalSlitCentreArcsec=0.25,
     )
     return extractor, transformer
@@ -659,6 +666,128 @@ def test_plot_slit_drift_qc_writes_nothing_for_the_not_flattened_re_extraction(l
     # ASSERT
     assert list(tmp_path.glob("*.pdf")) == []
     assert extractor.products.empty
+
+
+def _qc_row(extractor: horne_extraction, qcName: str) -> pd.Series:
+    return extractor.qc[extractor.qc["qc_name"] == qcName].iloc[0]
+
+
+def test_plot_slit_drift_qc_records_the_slit_drift_qc_in_arcsec(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False)
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    row = _qc_row(extractor, "SLIT DRIFT")
+    assert row["qc_value"] == pytest.approx(1.8)
+    assert row["qc_unit"] == "arcsec"
+    assert row["qc_comment"] == "Slit position drift of the object trace, reddest minus bluest wavelength"
+    assert row["soxspipe_recipe"] == "soxs-nod"
+    assert row["obs_date_utc"] == "2024-01-02T03:04:05"
+    assert bool(row["to_header"]) is True
+
+
+def test_plot_slit_drift_qc_rounds_the_drift_to_three_decimals(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False, orderCoeffs=(1.00049, -599.0))
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    assert _qc_row(extractor, "SLIT DRIFT")["qc_value"] == 1.801
+
+
+def test_plot_slit_drift_qc_records_no_zero_crossing_qc_when_the_trace_stays_on_one_side(
+    log: object, tmp_path: Path
+) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False)
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    assert extractor.qc["qc_name"].tolist() == ["SLIT DRIFT"]
+
+
+def test_plot_slit_drift_qc_records_the_wavelength_where_the_trace_crosses_slit_zero(
+    log: object, tmp_path: Path
+) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False, orderCoeffs=(1.0, -601.0))
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    row = _qc_row(extractor, "SLIT ZERO WLEN")
+    assert row["qc_value"] == pytest.approx(601.0)
+    assert row["qc_unit"] == "nm"
+    assert row["qc_comment"] == "Wavelength where the object trace crosses slit position 0"
+    assert bool(row["to_header"]) is True
+    assert extractor.qc["reduction_date_utc"].nunique() == 1
+
+
+def test_plot_slit_drift_qc_records_only_the_bluest_crossing_and_logs_the_others(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False, orderCoeffs=(1.0, -601.0))
+    transformer.uniqueOrders.append(12)
+    transformer.orderSlitCentreCoeffs.append(np.array([-1.0, 701.0]))
+    transformer.wlMinMax.append((700.0, 702.0))
+    transformer.orderSlitCentreFallback.append(False)
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    zeroRows = extractor.qc[extractor.qc["qc_name"] == "SLIT ZERO WLEN"]
+    assert zeroRows["qc_value"].tolist() == pytest.approx([601.0])
+    infos = [message for level, message in log.messages if level == "info"]
+    assert any("701.0" in message and "crosses slit position 0" in message for message in infos)
+
+
+def test_plot_slit_drift_qc_warns_and_skips_the_drift_qc_when_every_order_fell_back(
+    log: object, tmp_path: Path
+) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False, fallbackFlags=(True, True))
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    assert extractor.qc.empty
+    warnings_ = [message for level, message in log.messages if level == "warning"]
+    assert any("fell back" in message for message in warnings_)
+    assert (tmp_path / "SYNTHETIC_SLIT_DRIFT_QC_PLOT_A1.pdf").is_file()
+
+
+def test_plot_slit_drift_qc_leaves_a_disabled_qc_table_alone(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(log, tmp_path, products=False, qc=False)
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    assert extractor.qc is False
+    assert (tmp_path / "SYNTHETIC_SLIT_DRIFT_QC_PLOT_A1.pdf").is_file()
+
+
+def test_plot_slit_drift_qc_records_no_qc_for_the_not_flattened_re_extraction(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor, transformer = _slit_drift_extractor(
+        log, tmp_path, products=False, notFlattened="_NOTFLAT", orderCoeffs=(1.0, -601.0)
+    )
+
+    # ACT
+    extractor.plot_slit_drift_qc(transformer)
+
+    # ASSERT
+    assert extractor.qc.empty
 
 
 def test_skyline_matching_and_clipped_shift_reject_outliers(log: object) -> None:

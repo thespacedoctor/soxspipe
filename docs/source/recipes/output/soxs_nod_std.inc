@@ -14,7 +14,7 @@
 | `OBJECT TRACE RES`          | Residuals of the object trace polynomial fit | PDF       |     -       |    -       |     -      |
 | `BKGROUND`                  | Fitted intra-order image background          | PDF       |     -       |    -       |     -      |
 | `EXTRACTED ORDERS QC PLOT`  | QC plot of extracted source                  | PDF       |     -       |    -       |     -      |
-| `SLIT DRIFT QC PLOT`      | QC plot of the object slit position against wavelength before rectification | PDF       |     -       |    -       |     -      |
+| `SLIT DRIFT QC PLOT`      | QC plot of the object slit position against wavelength before rectification. The legend gives the slit drift, and a vertical line marks where the trace crosses slit position 0 | PDF       |     -       |    -       |     -      |
 | `EXTRACTED MERGED QC PLOT`  | QC plot of extracted order-merged source     | PDF       |     -       |    -       |     -      |
 | `EXTRACTED MERGED FLUXCALIBRATED QC PLOT` | QC plot of extracted order-merged, flux-calibrated source | PDF | - | - | - |
 | `RESPONSE QC PLOT` | Response curve QC plot. | PDF | - | - | - |
