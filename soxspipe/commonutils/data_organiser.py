@@ -19,6 +19,7 @@ from pathlib import Path
 
 from fundamentals import tools
 
+from soxspipe.commonutils.calibration_matching import has_calibration_matches_table, refresh_calibration_matches
 from soxspipe.commonutils.fits_frame_names import is_fits_frame, superseded_frame_names
 from soxspipe.commonutils.late_frame_rejoin import (
     delete_stale_files,
@@ -99,6 +100,16 @@ class DatabasePreservationError(sqlite3.DatabaseError):
 
 class _UnreadableDatabaseError(sqlite3.DatabaseError):
     """A database that opens but whose SQLite snapshot fails its `quick_check`."""
+
+
+class OutdatedWorkspaceError(RuntimeError):
+    """The workspace database was made from an older template and lacks the `calibration_matches` table."""
+
+    def __init__(self):
+        super().__init__(
+            "This workspace was created by an older version of soxspipe. "
+            "Run `soxspipe prep --refresh` to rebuild its database; your QC history and reduction statuses are kept."
+        )
 
 
 # LABEL IN THE NAME OF A RAW, BYTE-FOR-BYTE BACKUP OF A DATABASE THAT FAILED TO OPEN
@@ -513,6 +524,7 @@ class data_organiser:
 
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
         self.conn, reset = self._get_or_create_db_connection()
+        self._require_calibration_matches_table()
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
@@ -1604,7 +1616,10 @@ class data_organiser:
         except sqlite3.OperationalError as e:
             self.log.debug(f"_ensure_session_database_objects: SOF map table already exists: {e}")
 
+        # THE TABLE IS CLONED FROM THE `z_sof_map` SQL TEXT, WHICH CARRIES NO INDEXES
         sqlQueries = [
+            f"CREATE INDEX IF NOT EXISTS idx_{sofMapTableName}_sof ON {sofMapTableName} (sof);",
+            f"CREATE INDEX IF NOT EXISTS idx_{sofMapTableName}_filepath ON {sofMapTableName} (filepath);",
             "DROP VIEW IF EXISTS sof_map;",
             f"CREATE VIEW sof_map as select * from {sofMapTableName};",  # noqa: S608
         ]
@@ -2510,7 +2525,8 @@ class data_organiser:
           type: position in the sof map}`, unioned across every sof sharing that display row. `reasons` is
           `{calibration type: reason string}` from `missing_reasons`, empty when nothing is missing.
           `matchContext` is the group's own `(binning, rospeed, gain)`, taken from its first sof, passed
-          to `missing_reasons` so `mbias`/`mflat` are classified against the same mode the group is in.
+          to `missing_reasons` so the gated types (`mbias`, `mdark`, `mflat`) are classified against the same
+          mode the group is in.
         """
         import pandas as pd
 
@@ -2596,7 +2612,7 @@ class data_organiser:
         """*name the raw sofs blocking each missing calibration currently reported as failed QC, a failed
         run, or not yet reduced*
 
-        For `mbias`/`mflat` this is scoped to the group's own binning/readout speed/gain (see
+        For `mbias`, `mdark` and `mflat` this is scoped to the group's own binning/readout speed/gain (see
         `missing_calibrations.calibration_match_clause`); every other type is arm-only, since its
         `cal_<type>` view does not hard-gate on mode either.
 
@@ -2754,6 +2770,16 @@ class data_organiser:
             self.conn.commit()
         c.close()
 
+    def _require_calibration_matches_table(self):
+        """*stop with a clear message when the workspace database predates the `calibration_matches` table*
+
+        **Raises:**
+
+        - ``OutdatedWorkspaceError`` -- when the table is missing; `soxspipe prep --refresh` rebuilds the database
+        """
+        if not has_calibration_matches_table(self.conn):
+            raise OutdatedWorkspaceError()
+
     def _calibration_completeness_select_query(self, recipe, arm, ttype, calType):
         """*build the `(sql, params)` pair that finds product SOFs whose calibration prerequisites are satisfied*
 
@@ -2877,6 +2903,7 @@ class data_organiser:
 
         import pandas as pd
 
+        self._require_calibration_matches_table()
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
 
         c = self.conn.cursor()
@@ -3019,6 +3046,8 @@ class data_organiser:
                 else:
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
+                            # MATCH THIS RECIPE'S INCOMPLETE SOFS ON THIS ARM AGAINST THE CURRENT UPSTREAM PRODUCTS
+                            refresh_calibration_matches(self.conn, calType, recipe=recipe, arm=arm)
                             sqlQuery, sqlParams = self._calibration_completeness_select_query(
                                 recipe, arm, ttype, calType
                             )
@@ -3045,6 +3074,9 @@ class data_organiser:
 
             sqlQuery = """update product_frames set complete = 1 where complete = -1;"""
             c.execute(sqlQuery)
+
+        # THE LOOP REFRESHED ONLY THE SOFS IT CHECKED; LEAVE THE `cal_<type>` VIEWS MATCHING THE FINAL STATE
+        refresh_calibration_matches(self.conn)
 
         self.conn.commit()
         c.close()
