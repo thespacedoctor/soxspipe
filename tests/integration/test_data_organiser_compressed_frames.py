@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import uncompresspy
 from astropy.io import fits
 
+from soxspipe.commonutils.data_organiser import _harvest_fits_headers
 from soxspipe.commonutils.set_of_files import set_of_files
 from tests.factories import (
     harvestable_raw_fits,
@@ -16,6 +18,7 @@ from tests.factories import (
     raw_frame_table,
     workspace_organiser,
 )
+from tests.integration.test_data_organiser_workspace import _organiser_header_keywords
 
 pytestmark = pytest.mark.integration
 
@@ -210,3 +213,44 @@ def test_a_dangling_compressed_link_never_condemns_a_frame(tmp_path, organiser) 
     organiser._delete_superseded_frames()
 
     assert keptPath.exists()
+
+
+def _forbid_lzw_seek(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make any seek through an LZW stream fail, as a seek decodes the whole file."""
+
+    def _forbidden_seek(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("the header harvest must not seek through the data unit")
+
+    monkeypatch.setattr(uncompresspy.LZWFile, "seek", _forbidden_seek)
+
+
+def test_harvest_fits_headers_reads_a_compressed_frame_without_seeking(tmp_path, log, monkeypatch) -> None:
+    framePath = _compressed_frame(tmp_path, tmp_path / "bias.fits.Z")
+    kw, keywords = _organiser_header_keywords(log)
+    _forbid_lzw_seek(monkeypatch)
+
+    harvested = _harvest_fits_headers(
+        batch=[str(framePath)],
+        log=log,
+        pathToDirectory=str(tmp_path),
+        keywords=keywords,
+        filterKeys=["mjd-obs", "eso dpr catg", "eso dpr tech", "eso dpr type", "exptime"],
+        instrument="SOXS",
+        kw=kw,
+    )
+
+    assert [Path(name).name for name in harvested["file"]] == ["bias.fits.Z"]
+    assert harvested.loc[0, "eso dpr type"] == "BIAS"
+
+
+def test_create_directory_table_reads_compressed_frames_without_seeking(tmp_path, organiser, monkeypatch) -> None:
+    rootPath = Path(organiser.rootDir)
+    _compressed_frame(tmp_path, rootPath / "bias.fits.Z")
+    _forbid_lzw_seek(monkeypatch)
+
+    rawFrames, fitsPaths, _ = organiser._create_directory_table(
+        str(rootPath), filterKeys=["mjd-obs", "eso dpr catg", "eso dpr tech", "eso dpr type", "exptime"]
+    )
+
+    assert fitsPaths == ["bias.fits.Z"]
+    assert list(rawFrames["eso dpr type"]) == ["BIAS"]

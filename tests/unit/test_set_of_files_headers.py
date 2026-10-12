@@ -14,6 +14,7 @@ from pathlib import Path
 import astropy.io.fits as astropy_fits
 import numpy as np
 import pytest
+import uncompresspy
 from astropy.io import fits
 from astropy.table import Table
 
@@ -22,7 +23,7 @@ from soxspipe.commonutils.set_of_files import (
     _join_fits_summaries_in_input_order,
     _supplementary_path_from_sof_line,
 )
-from tests.factories import raw_fits
+from tests.factories import lzw_compressed_fits, raw_fits
 
 pytestmark = pytest.mark.unit
 
@@ -271,3 +272,21 @@ def test_dict_from_fits_header_joins_comment_and_history_when_keys_are_lowercase
 
     assert list(collection.summary["comment"]) == ["first comment,second comment"]
     assert list(collection.summary["history"]) == ["only history"]
+
+
+def test_summary_of_an_lzw_frame_never_seeks_through_the_data_unit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plainPath = raw_fits(tmp_path / "one.fits", shape=(64, 64))
+    framePath = lzw_compressed_fits(plainPath, tmp_path / "one.fits.Z")
+
+    def _forbidden_seek(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("the header read must not seek through the data unit")
+
+    monkeypatch.setattr(uncompresspy.LZWFile, "seek", _forbidden_seek)
+
+    collection = ImageFileCollection(filenames=[str(framePath)], location=str(tmp_path), keywords=["INSTRUME"])
+
+    assert list(collection.summary["file"]) == ["one.fits.Z"]
+    assert list(collection.summary["INSTRUME"]) == [fits.getheader(plainPath)["INSTRUME"]]

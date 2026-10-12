@@ -17,6 +17,7 @@ from os import path
 from ccdproc import ImageFileCollection
 
 from soxspipe.commonutils.fits_frame_names import is_fits_frame
+from soxspipe.commonutils.fits_headers import read_header
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
 # A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits (ANY CASE) OR .fits.Z. THE MATCH ENDS AT
@@ -40,8 +41,6 @@ class ImageFileCollection(ImageFileCollection):
         """
         from collections import OrderedDict
 
-        from astropy.io import fits
-
         def _add_val_to_dict(key, value, tbl_dict, n_previous, missing_marker):
             try:
                 tbl_dict[key].append(value)
@@ -57,11 +56,11 @@ class ImageFileCollection(ImageFileCollection):
             n_previous = len(summary["file"])
 
         try:
-            h = fits.getheader(file_name, self.ext)
+            h = read_header(file_name, self.ext)
         except (OSError, IndexError, KeyError) as e:
             # THIS CLASS SUBCLASSES CCDPROC'S ImageFileCollection, WHICH CARRIES NO SOXSPIPE LOGGER
             logging.getLogger(__name__).debug(f"_dict_from_fits_header: `h = fits.getheade...` failed, continuing: {e}")
-            h = fits.getheader(file_name, 0)
+            h = read_header(file_name, 0)
 
         # KEEP THE BARE ASSERT: AN EXPLICIT RAISE WOULD ALSO FIRE UNDER `python -O`, WHERE THIS CHECK IS SKIPPED TODAY.
         # IT MIRRORS THE UPSTREAM CCDPROC METHOD THIS OVERRIDES

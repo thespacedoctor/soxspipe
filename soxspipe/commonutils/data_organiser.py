@@ -978,9 +978,9 @@ class data_organiser:
         self.log.debug("starting the ``_create_directory_table`` function")
 
         import pandas as pd
-        from ccdproc import ImageFileCollection
 
         from soxspipe.commonutils import keyword_lookup
+        from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
@@ -3510,7 +3510,8 @@ class data_organiser:
 def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
     import numpy as np
     from astropy.time import Time, TimeDelta
-    from ccdproc import ImageFileCollection
+
+    from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
 
     masterTable = ImageFileCollection(filenames=batch, keywords=keywords)
     masterTable = masterTable.summary
