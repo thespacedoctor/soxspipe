@@ -104,18 +104,24 @@ def _prepared_organiser(log, rootDir, vlt=False, **prepareArguments):
 
     **Raises:**
 
-    - `SystemExit` (status 1), chained from the `DatabasePreservationError`, when a database rebuild is refused
+    - `SystemExit` (status 1), chained from the `DatabasePreservationError`, when a database rebuild is refused,
+      or from the `OutdatedWorkspaceError`, when the workspace was made by an older soxspipe
     """
     from soxspipe.commonutils import data_organiser
-    from soxspipe.commonutils.data_organiser import DatabasePreservationError
+    from soxspipe.commonutils.data_organiser import DatabasePreservationError, OutdatedWorkspaceError
 
     try:
         do = data_organiser(log=log, rootDir=rootDir, vlt=vlt)
         do.prepare(**prepareArguments)
-    except DatabasePreservationError as error:
-        print(error, file=sys.stderr)
-        raise SystemExit(1) from error
+    except (DatabasePreservationError, OutdatedWorkspaceError) as error:
+        _exit_with_message(error)
     return do
+
+
+def _exit_with_message(error):
+    """*print `error` on stderr and exit with status 1, without a traceback*"""
+    print(error, file=sys.stderr)
+    raise SystemExit(1) from error
 
 
 def main(arguments=None):
@@ -507,21 +513,25 @@ def main(arguments=None):
 
         while watch:
             from soxspipe.commonutils import reducer
+            from soxspipe.commonutils.data_organiser import OutdatedWorkspaceError
 
-            collection = reducer(
-                log=log,
-                workspaceDirectory=a["workspaceDirectory"],
-                reductionTarget=reductionTarget,
-                settings=settings,
-                pathToSettings=arguments["--settings"],
-                quitOnFail=a["quitOnFailFlag"],
-                overwrite=a["overwriteFlag"],
-                verbose=verbose,
-                refreshWorkspace=a["prepFlag"],
-            )
-            if a["batchSize"]:
-                a["batchSize"] = int(a["batchSize"])
-            collection.reduce(batch=a["batchSize"], multiprocess=a["multiprocessFlag"])
+            try:
+                collection = reducer(
+                    log=log,
+                    workspaceDirectory=a["workspaceDirectory"],
+                    reductionTarget=reductionTarget,
+                    settings=settings,
+                    pathToSettings=arguments["--settings"],
+                    quitOnFail=a["quitOnFailFlag"],
+                    overwrite=a["overwriteFlag"],
+                    verbose=verbose,
+                    refreshWorkspace=a["prepFlag"],
+                )
+                if a["batchSize"]:
+                    a["batchSize"] = int(a["batchSize"])
+                collection.reduce(batch=a["batchSize"], multiprocess=a["multiprocessFlag"])
+            except OutdatedWorkspaceError as error:
+                _exit_with_message(error)
 
             if a["watchFlag"]:
                 xsec = 15

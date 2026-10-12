@@ -61,6 +61,45 @@ The DO does not add a late frame to a set in these cases:
 - The SOF name is kept for one `prep` run only. The name is held in memory. If the set is still unprocessed when the run ends (for example, while a calibration is missing), a later `prep` names the set after its earliest frame.
 - `soxspipe prep --refresh` rebuilds the database and groups all frames again. It does not keep the old SOF names in this way.
 
+### How calibrations are matched
+
+Each product SOF that is not yet complete needs calibration products from earlier recipes in the cascade. The DO picks them with one rule per calibration type, defined in `CALIBRATION_RULES` in `soxspipe/commonutils/calibration_matching.py`. This section is for users who want to know why a SOF lists a given calibration.
+
+Every time the DO builds the SOF files, it refreshes the `calibration_matches` table in `soxspipe.db`. The `cal_<type>` views read this table.
+
+#### Rules common to every type
+
+An upstream product is a candidate for a SOF only when all of these are true:
+
+- It has the same arm as the SOF.
+- Its recipe comes earlier in the cascade (it has a lower `recipe_order`) than the recipe of the SOF.
+- It is complete and its status is `pass` or empty.
+- It has an `mjd-obs` value. The SOF also needs one, and the SOF must not be complete.
+
+A blank value never matches. For example, a SOF with no slit value matches no upstream product under a rule that compares slits.
+
+The DO ranks the candidates by the distance between their `mjd-obs` and the `mjd-obs` of the SOF, nearest first, and keeps the number set for the type. The `mdark` type ranks by exposure time first. If two candidates are at the same distance, the DO keeps the one with the earlier upstream `mjd-obs`. If those are equal too, it keeps the one that comes first by `filepath`. Earlier versions broke these ties in no fixed order.
+
+#### Rules for each type
+
+| Calibration type | Upstream recipe | Extra hard matches | Rank | Products kept | Post-filter |
+| --- | --- | --- | --- | --- | --- |
+| `mbias` | `mbias` | Same readout speed. Same binning and gain, except on NIR. | `mjd-obs` | 1 | None |
+| `mdark` | `mdark` | Same readout speed. Upstream product from the NIR arm only. | Exposure time, then `mjd-obs` | 1 | None |
+| `disp_solution` | `disp_solution` | None. Only `order_centres` and `spat_solution` SOFs get a match. | `mjd-obs` | 1 | None |
+| `order_centres` | `order_centres` | None. Only `mflat` SOFs get a match. | `mjd-obs` | 1 | None |
+| `mflat` | `mflat` | Same readout speed, same slit, and same binning and gain except on NIR. A `spat_solution` SOF skips the readout speed and slit matches. On NIR, a `SLIT5.0` SOF also accepts a `SLIT1.5` upstream product. | `mjd-obs` | 2 | A `spat_solution` SOF keeps only matches whose tag starts with `ORDER` |
+| `spat_solution` | `spat_solution` | None | `mjd-obs` | 2 | None |
+| `std_flux` | `stare_std`, `nod_std`, `offset_std` | Upstream slit is `SLIT5.0` and the tag starts with `RESP_TAB`. SOFs of the three standard-star recipes get no match. | `mjd-obs` | 1 | None |
+
+For `mdark`, the DO first keeps the candidates with the smallest exposure-time difference, then picks the nearest of these in time.
+
+#### Workspaces from an older version
+
+A workspace made by an older soxspipe has no `calibration_matches` table. `soxspipe prep` and `soxspipe reduce` stop with a message to run `soxspipe prep --refresh`. The refresh rebuilds the database and keeps the QC history and the statuses.
+
+The old `cal_<type>` views paired every incomplete product with every upstream product. On a workspace of 141,391 frames, the first SOF-building pass took about 1024 s. With the table it takes about 50 s, and the SOFs are the same.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.data_organiser.data_organiser

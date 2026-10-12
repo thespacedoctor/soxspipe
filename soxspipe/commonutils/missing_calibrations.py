@@ -9,6 +9,7 @@ Date Created
 : September 28, 2026
 """
 
+from soxspipe.commonutils.calibration_matching import CALIBRATION_RULES
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
 CALIBRATION_DESCRIPTIONS = {
@@ -24,15 +25,7 @@ CALIBRATION_DESCRIPTIONS = {
 UNKNOWN_MISSING = "unknown"
 
 # WHICH RECIPE(S) PRODUCE EACH CALIBRATION TYPE, FOR TRACING WHY ONE IS MISSING
-CALIBRATION_RECIPES = {
-    "mbias": ("mbias",),
-    "mdark": ("mdark",),
-    "disp_solution": ("disp_solution",),
-    "order_centres": ("order_centres",),
-    "mflat": ("mflat",),
-    "spat_solution": ("spat_solution",),
-    "std_flux": ("stare_std", "nod_std", "offset_std"),
-}
+CALIBRATION_RECIPES = {calType: rule.upstreamRecipes for calType, rule in CALIBRATION_RULES.items()}
 
 FAILED_QC = "failed QC"
 FAILED_RUN = "failed run"
@@ -45,15 +38,13 @@ NO_MATCH = "no match"
 # THE RAISED EXCEPTION'S OWN TEXT INSTEAD, SO THIS PREFIX IS HOW classify_missing_reason TELLS THE TWO APART
 QC_FAILURE_MESSAGE_PREFIX = "QC values outside of acceptable limits:"
 
-# CALIBRATION TYPES WHOSE `cal_<type>` VIEW HARD-GATES A CANDIDATE UPSTREAM PRODUCT ON READOUT SPEED
-# (BOTH ARMS) AND, ON VIS ONLY, ON BINNING AND GAIN TOO (SEE soxs_sof_map.yaml-DRIVEN VIEWS IN THE DB:
-# cal_mbias/cal_mflat REQUIRE `upstream.rospeed = downstream.rospeed`, AND ON VIS ALSO
-# `upstream.binning = downstream.binning AND upstream.gain = downstream.gain`; NIR IS EXEMPT FROM THE
-# BINNING/GAIN CHECK. EVERY OTHER TYPE'S VIEW RANKS BY BINNING/SLIT/ROSPEED PROXIMITY BUT DOES NOT
-# REQUIRE THEM TO MATCH, SO classify_missing_reason LEAVES THOSE TYPES ARM-ONLY TO STAY FAITHFUL TO THE
-# REAL VIEW, RATHER THAN GUESSING A TIGHTER MATCH THAT THE VIEW ITSELF DOES NOT APPLY
-ROSPEED_GATED_TYPES = frozenset({"mbias", "mflat"})
-VIS_BINNING_GATED_TYPES = frozenset({"mbias", "mflat"})
+# CALIBRATION TYPES WHOSE `cal_<type>` MATCH HARD-GATES A CANDIDATE UPSTREAM PRODUCT ON READOUT SPEED (BOTH ARMS)
+# AND, ON VIS ONLY, ON BINNING AND GAIN TOO. TAKEN FROM CALIBRATION_RULES SO THE REPORT NEVER DRIFTS FROM THE
+# MATCHER. EVERY OTHER TYPE IS LEFT ARM-ONLY, SINCE ITS MATCH DOES NOT REQUIRE THESE TO BE EQUAL
+ROSPEED_GATED_TYPES = frozenset(calType for calType, rule in CALIBRATION_RULES.items() if rule.matchRospeed)
+VIS_BINNING_GATED_TYPES = frozenset(
+    calType for calType, rule in CALIBRATION_RULES.items() if rule.matchBinningGainUnlessNir
+)
 
 
 def required_calibrations(sofMapLookup, recipe, arm):
@@ -151,8 +142,8 @@ def describe_missing(positionsByType, reasonsByType=None):
 def calibration_match_clause(calibrationType, arm, binning, rospeed, gain):
     """*build the extra `WHERE` clause and params that mirror one `cal_<type>` view's hard-match rules*
 
-    Only `mbias` and `mflat` gate on readout speed (both arms) and, on VIS, binning and gain too; see
-    `ROSPEED_GATED_TYPES`/`VIS_BINNING_GATED_TYPES`. A `None` context value (not known for this group)
+    `mbias`, `mdark` and `mflat` gate on readout speed (both arms), and `mbias` and `mflat` on VIS binning and
+    gain too; see `ROSPEED_GATED_TYPES`/`VIS_BINNING_GATED_TYPES`. A `None` context value (not known for this group)
     is never gated on, since a false exclusion is worse than the coarser arm-only match it replaces.
 
     **Return:**
@@ -183,9 +174,9 @@ def classify_missing_reason(conn, calibrationType, arm, binning=None, rospeed=No
     reducing yet; no raw frames for a producing recipe exist at all on this arm; otherwise frames exist
     and presumably passed, but no `cal_<type>` row matched (binning, readout speed or slit mismatch).
 
-    For `mbias`/`mflat`, ``binning``, ``rospeed`` and ``gain`` narrow every check to the same hard-match
-    rules their `cal_<type>` view applies (see `calibration_match_clause`), so an unrelated failed or
-    unfinished run in a different binning/readout mode on the same arm is not misattributed to this
+    For the gated types (`mbias`, `mdark`, `mflat`), ``binning``, ``rospeed`` and ``gain`` narrow every check
+    to the same hard-match rules their `cal_<type>` view applies (see `calibration_match_clause`), so an unrelated
+    failed or unfinished run in a different binning/readout mode on the same arm is not misattributed to this
     calibration. Every other type's view does not hard-gate on these, so they are ignored for it.
 
     **Key Arguments:**

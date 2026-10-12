@@ -738,3 +738,50 @@ def test_reduce_watch_exits_non_zero_when_its_re_prepare_refuses_a_rebuild(
     assert set(initKwargs) == {"log", "rootDir", "vlt"}
     assert initKwargs["rootDir"] == "."
     assert initKwargs["vlt"] is False
+
+
+def test_main_prep_exits_non_zero_with_the_refresh_advice_for_an_outdated_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A workspace made from an older template is refused with the advice on stderr, not a traceback."""
+    from soxspipe.commonutils.data_organiser import OutdatedWorkspaceError
+
+    def refuse_outdated(self: object, **kwargs: object) -> None:
+        raise OutdatedWorkspaceError()
+
+    monkeypatch.setattr(RecordingOrganiser, "prepare", refuse_outdated)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "prep"])
+
+    assert error.value.code == 1
+    assert "soxspipe prep --refresh" in capsys.readouterr().err
+
+
+def test_main_reduce_exits_non_zero_with_the_refresh_advice_for_an_outdated_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`reduce` refreshes the session's SOFs first, so an outdated workspace is refused there too."""
+    from soxspipe.commonutils.data_organiser import OutdatedWorkspaceError
+
+    commonutilsModule = import_module("soxspipe.commonutils")
+    (tmp_path / "soxspipe.db").touch()
+
+    class OutdatedReducer:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def reduce(self, **kwargs: object) -> None:
+            raise OutdatedWorkspaceError()
+
+    monkeypatch.setattr(commonutilsModule, "reducer", OutdatedReducer)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "reduce", "all"])
+
+    assert error.value.code == 1
+    assert "soxspipe prep --refresh" in capsys.readouterr().err
