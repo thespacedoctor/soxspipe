@@ -68,6 +68,14 @@ def new_workspace(tmp_path, log, monkeypatch):
     organiser.conn.close()
 
 
+@pytest.fixture
+def flats_only_workspace(tmp_path, log, monkeypatch):
+    """A fresh workspace holding a slit-flat run but none of the calibrations it needs."""
+    organiser = _workspace(tmp_path, log, monkeypatch, raw_flat_run_table(range(1, 11)))
+    yield organiser
+    organiser.conn.close()
+
+
 def _sof_members(organiser, sof):
     return {row[0] for row in organiser.conn.execute("SELECT file FROM sof_map WHERE sof = ?", (sof,))}
 
@@ -111,3 +119,19 @@ def test_a_session_sof_map_is_indexed_on_sof_and_filepath(new_workspace):
 
     # ASSERT
     assert {"sof", "filepath"} <= indexedColumns
+
+
+def test_a_sof_left_mid_build_by_an_interrupted_prep_is_not_promoted_to_complete(flats_only_workspace):
+    # ARRANGE -- A PREP KILLED BETWEEN MARKING A SOF -1 AND PROMOTING IT LEAVES THE -1 BEHIND
+    flats_only_workspace.prepare(report=False)
+    flats_only_workspace.conn.execute("UPDATE product_frames SET complete = -1 WHERE sof = ?", (MFLAT,))
+
+    # ACT
+    flats_only_workspace.prepare(report=False)
+
+    # ASSERT -- NO MASTER BIAS OR ORDER CENTRES EXIST, SO THE FLAT SOF CANNOT BE COMPLETE
+    completes = {
+        row[0]
+        for row in flats_only_workspace.conn.execute("SELECT complete FROM product_frames WHERE sof = ?", (MFLAT,))
+    }
+    assert completes == {0}

@@ -2911,6 +2911,10 @@ class data_organiser:
         c.execute(sqlQuery)
         sqlQuery = "update raw_frames set processed = 0 where processed < 0;"
         c.execute(sqlQuery)
+        # A SOF IS MARKED -1 ONLY WITHIN ONE BUILD; A -1 LEFT BY AN INTERRUPTED BUILD WOULD OTHERWISE BE PROMOTED TO
+        # COMPLETE WITHOUT ITS CALIBRATIONS BEING CHECKED
+        sqlQuery = "update product_frames set complete = 0 where complete = -1;"
+        c.execute(sqlQuery)
 
         # CLEAN UP FAILED FILES
         # DELETE FROM

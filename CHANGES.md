@@ -66,6 +66,7 @@
 * **FIXED**: a recipe whose QC rows still fail to write to the database after seven attempts now raises the original error, so the SOF is marked `fail`, where before the rows were dropped silently (DY-603).
 * **FIXED**: in a named session, an out-of-range QC value now marks the SOF `fail` in that session's status, where before the session showed `pass` and the failure was written to the `base` session instead (DY-272).
 * **FIXED**: VIS sky-subtraction object clipping now restarts its convergence check after a retry, so an equal first pass no longer ends the loop; its retries stop lowering the sigma limit at 1.5 with a warning, and a non-finite `percentile_clipping_sigma` raises a clear error; a bright VIS order skips sky subtraction on its own (data passed through, sky model 0 and flagged in QUAL) instead of turning sky subtraction off for the whole frame; and the arm test is an exact match. Sky-subtracted output changes where a retry or a bright order occurs (DY-1285).
+* **FIXED**: a `prep` interrupted after marking a product SOF `complete = -1` no longer leaves that SOF to be marked complete by the next `prep` without its calibrations being checked (DY-1513).
 * **TEST**: the real-data NIR offset and stare baselines are re-recorded from CI after the astropy 7.2.2 upgrade (DY-694)
 * **TEST**: characterization tests raise subtract_sky.py coverage from 67.7% to 95.4% (DY-40)
 * **TEST**: the subtract_sky end-anchoring characterization test pins the spline derivative instead of a flux-error-ratio sum that differed between AVX2 and AVX512 CPUs (DY-40)
