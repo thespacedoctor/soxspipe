@@ -4,8 +4,8 @@ The stare recipe is the only recipe that models the sky with the b-spline fit in
 `subtract_sky`, so these checks are the end-to-end guard on that fit. As with the offset
 check, the reduction is not bit-reproducible across hardware, so each value is asserted
 within a band. The sky bands are narrow enough that a sky model of zero, or one doubled,
-fails them. The centres were re-recorded from four bit-identical CI runs on
-2026-10-07, after the astropy 7.2.2 upgrade (DY-694). A local arm64 reduction lands up
+fails them. The centres were re-recorded from six bit-identical CI runs on
+2026-10-13, after the sky-model rework (DY-1514). A local arm64 reduction lands up
 to 5% away, so expect local runs to sit near the band edges. The NIR detected fraction is
 the exception: a local arm64 run gives about 0.92 against the CI value of 0.786, so it
 fails locally (DY-994).
@@ -62,18 +62,18 @@ BASELINES = [
             obsDate="2025-10-13T04:35:11.440",
             nOrders=4,
             # 0.02 NM STEPS, SO ±50 ROWS IS ±1 NM OF SPECTRAL COVERAGE
-            rows=25_104,
+            rows=25_097,
             rowsAbs=50,
             waveMin=348.0,
             waveMinAbs=0.04,
-            waveMax=850.06,
+            waveMax=849.92,
             waveStep=0.02,
-            snrMedian=139.23,
-            fluxcalMedian=5.820667594380986e-14,
-            skyCountsMedian=34.81199264526367,
-            skyModelMedian=66.55050659179688,
-            skyModelP90=875.3766967773422,
-            detectedFraction=0.98,
+            snrMedian=154.76,
+            fluxcalMedian=5.842524611619996e-14,
+            skyCountsMedian=33.4631462097168,
+            skyModelMedian=61.16815948486328,
+            skyModelP90=550.0821289062501,
+            detectedFraction=0.982,
             objtraceStem="20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_FEIGE110",
         ),
         id="vis",
@@ -84,18 +84,18 @@ BASELINES = [
             obsDate="2026-01-11T08:03:47.6362",
             nOrders=15,
             # 0.06 NM STEPS, SO ±25 ROWS IS ±1.5 NM OF SPECTRAL COVERAGE
-            rows=20_617,
+            rows=20_614,
             rowsAbs=25,
-            waveMin=795.18,
+            waveMin=795.06,
             waveMinAbs=0.12,
-            waveMax=2032.14,
+            waveMax=2031.84,
             waveStep=0.06,
-            snrMedian=15.49,
-            fluxcalMedian=2.9561662291844365e-15,
-            skyCountsMedian=19.717500686645508,
-            skyModelMedian=23.781517028808594,
-            skyModelP90=138.764990234375,
-            detectedFraction=0.916,
+            snrMedian=15.53,
+            fluxcalMedian=2.955810101373219e-15,
+            skyCountsMedian=19.632287979125977,
+            skyModelMedian=23.388748168945312,
+            skyModelP90=147.01077270507812,
+            detectedFraction=0.914,
             objtraceStem="20260111T080347_NIR_3_STARE_OBJ_SLIT5_0_30_0S_SOXS_CD-325613",
         ),
         id="nir",

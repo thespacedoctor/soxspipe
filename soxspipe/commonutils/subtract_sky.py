@@ -143,6 +143,9 @@ class subtract_sky:
 
     """
 
+    # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
+    maskedOrders = frozenset()
+
     def __init__(
         self,
         log,
@@ -205,7 +208,7 @@ class subtract_sky:
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
 
         # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280, DY-1517); subtract FLAGS AND ZERO-FILLS THEM AS NO-MODEL PIXELS
-        self.mapDF = self._leave_out_excluded_pixels(self.mapDF, excludeMask, masterFlat)
+        self.mapDF, self.maskedOrders = self._leave_out_excluded_pixels(self.mapDF, excludeMask, masterFlat)
 
         quicklook_image(
             log=self.log,
@@ -271,13 +274,18 @@ class subtract_sky:
 
         - ``keptMapDF`` -- a new dataframe holding the rows of ``mapDF`` that stay in the sky model
         """
+        maskedOrders = frozenset()
+        if excludeMask is not None:
+            isExcluded = self._exclude_image(excludeMask)
+            isRowExcluded = isExcluded[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
+            maskedOrders = frozenset(mapDF.loc[isRowExcluded, "order"].unique().tolist())
         if masterFlat is not None:
             mapDF = self._add_flat_column(mapDF, masterFlat)
             lowFlatImage = self._low_flat_pixels(mapDF)
             excludeMask = lowFlatImage if excludeMask is None else lowFlatImage | self._exclude_image(excludeMask)
         if excludeMask is None:
-            return mapDF
-        return self._drop_excluded_pixels(mapDF, excludeMask)
+            return mapDF, maskedOrders
+        return self._drop_excluded_pixels(mapDF, excludeMask), maskedOrders
 
     def _exclude_image(self, excludeMask):
         """*the exclude mask as a boolean image, checked against the shape of the object frame*
@@ -434,11 +442,18 @@ class subtract_sky:
             # COPY THE ORDER OUT OF THE MAP: THE STEPS BELOW ADD AND WRITE COLUMNS ON IT
             imageMapOrder = self.mapDF[self.mapDF["order"] == o].copy()
 
+            # THE EXCLUDE MASK HAS ALREADY TRIMMED THE SLIT ENDS OF A MASKED ORDER, SO IT IS NOT EDGE CLIPPED AGAIN
+            if o in self.maskedOrders:
+                clipSlitEdge = False
+                self.log.debug(f"order {o} is covered by the slit-illumination mask so its slit edges are not clipped")
+            else:
+                clipSlitEdge = self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"]
+
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
             clippedOrder = self.get_over_sampled_sky_from_order(
                 imageMapOrder,
                 clipBPs=True,
-                clipSlitEdge=self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"],
+                clipSlitEdge=clipSlitEdge,
             )
             if clippedOrder is None:
                 skippedOrders.append(imageMapOrder)
