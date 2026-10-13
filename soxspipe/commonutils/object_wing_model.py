@@ -343,6 +343,8 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
         return replace(estimate, reason=f"only {nCore} core pixels, fewer than the {MIN_CORE_PIXELS} needed")
     # A CLIPPED FIT DID NOT SEE EVERY USABLE PIXEL, SO THE PROFILE COMES FROM THE PIXELS IT DID SEE
     isProfile = isUsable if isFitted is None else isUsable & isFitted
+    if not isProfile.any():
+        return replace(estimate, reason="the first sky fit used none of the usable pixels")
     binCentres, profile, profileNoise = slit_profile(
         slitPosition[isProfile], residual[isProfile], error[isProfile], spectrum[isProfile]
     )

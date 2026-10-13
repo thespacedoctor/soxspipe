@@ -61,6 +61,8 @@ LOW_FLAT_REFERENCE_PERCENTILE = 95
 # THE OBJECT-WING CORRECTION SETTINGS USED WHEN A WORKSPACE'S SETTINGS PREDATE THEM (DY-1279)
 DEFAULT_OBJECT_WING_CORRECTION = True
 DEFAULT_OBJECT_WING_GATE_FRACTION = 0.1
+# THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE DIVIDES BY
+MIN_LOGGED_SKY_LEVEL = 1e-9
 
 
 def _sliding_mean(values, window):
@@ -90,6 +92,29 @@ def _sliding_mean(values, window):
     means = np.mean(np.lib.stride_tricks.sliding_window_view(values, (window,)), axis=1)
     halfWindow = window // 2
     return np.concatenate((np.full(halfWindow, means[0]), means, np.full(halfWindow, means[-1])))
+
+
+def _object_wing_log_line(order, estimate):
+    """*the log line that reports an order's object-wing correction (DY-1279)*
+
+    **Key Arguments:**
+
+    - ``order`` -- the order number
+    - ``estimate`` -- the ``object_wing_estimate`` the correction used
+
+    **Return:**
+
+    - ``line`` -- the message, framed by newlines because the fit's progress line erases the line above it
+    """
+    import math
+
+    skyShare = estimate.biasLevel / max(estimate.skyLevel, MIN_LOGGED_SKY_LEVEL) * 100
+    loss = estimate.slitLossFraction
+    lossText = f"ABOUT {loss * 100:0.2f}%" if math.isfinite(loss) else "AN UNKNOWN SHARE"
+    return (
+        f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
+        f"OBJECT LIGHT ({skyShare:0.0f}% OF THE SKY), REMOVING {lossText} OF THE OBJECT FLUX\n"
+    )
 
 
 class subtract_sky:
@@ -677,7 +702,7 @@ class subtract_sky:
             & np.isfinite(skyModel)
         )
         # THE UPPER-ONLY CLIP KEEPS THE BRIGHTER WING PIXELS OUT OF THE FIT, SO THE PROFILE USES ONLY THE PIXELS IT USED
-        isFitted = ~firstFit["flagged_all_clipped"].reindex(preFitOrder.index).to_numpy(dtype=bool)
+        isFitted = ~firstFit["flagged_all_clipped"].reindex(preFitOrder.index, fill_value=True).to_numpy(dtype=bool)
         estimate = estimate_object_wings(
             wavelength, slitPosition, flux, skyModel, error, isUsable, gateFraction, isFitted=isFitted
         )
@@ -686,19 +711,20 @@ class subtract_sky:
             self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")
             return fitResult
 
-        wings = wing_model(estimate, slitPosition)
+        # LABEL THE WINGS NOW: THE REFIT SORTS ITS INPUT IN PLACE, SO ITS INDEX NO LONGER MATCHES THE ARRAY ORDER
+        wings = pd.Series(wing_model(estimate, slitPosition), index=preFitOrder.index)
         refitInput = preFitOrder.copy()
-        refitInput["flux"] = flux - wings
-        refitOrder, *rest = self.fit_bspline_curve_to_sky(refitInput)
+        refitInput["flux"] = flux - wings.to_numpy()
+        try:
+            refitOrder, *rest = self.fit_bspline_curve_to_sky(refitInput)
+        except ValueError as error:
+            self.log.warning(f"order {order}: the object-wing refit failed, so the first sky fit is kept ({error})")
+            return fitResult
         refitOrder["flux"] = preFitOrder["flux"].reindex(refitOrder.index)
-        refitOrder["object_wing_model"] = pd.Series(wings, index=refitInput.index).reindex(refitOrder.index)
+        refitOrder["object_wing_model"] = wings.reindex(refitOrder.index)
+        # THE WEIGHTED RESIDUAL COLUMNS AND THE FIT METRICS STILL DESCRIBE THE FIT TO THE WING-SUBTRACTED FLUX
         refitOrder["sky_subtracted_flux"] = refitOrder["flux"] - refitOrder["sky_model"]
-        # THE FIT'S PROGRESS LINE ERASES THE LINE ABOVE IT, SO THIS ONE IS FRAMED BY NEWLINES
-        self.log.print(
-            f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
-            f"OBJECT LIGHT ({estimate.biasLevel / max(estimate.skyLevel, 1e-9) * 100:0.0f}% OF THE SKY), "
-            f"REMOVING ABOUT {estimate.slitLossFraction * 100:0.2f}% OF THE OBJECT FLUX\n"
-        )
+        self.log.print(_object_wing_log_line(order, estimate))
         return (refitOrder, *rest)
 
     def get_over_sampled_sky_from_order(self, imageMapOrder, clipBPs=True, clipSlitEdge=False):

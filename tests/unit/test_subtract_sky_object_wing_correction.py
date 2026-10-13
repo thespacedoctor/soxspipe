@@ -40,6 +40,12 @@ SEEING_FWHM = 1.0
 BRIGHT_STAR_FLUX_PER_COLUMN = 10000.0
 # A STAR AS BRIGHT AS THE SPECTROPHOTOMETRIC STANDARDS THE CORRECTION IS MEANT FOR
 STANDARD_STAR_FLUX_PER_COLUMN = 100000.0
+# A STAR WHOSE WINGS PUT ABOUT A QUARTER OF THE SKY LEVEL INTO THE FIRST MODEL, ABOVE THE SHIPPED GATE. THE STANDARD
+# STAR ABOVE PUTS ABOUT 8 PERCENT, AND THE REAL VIS STANDARDS 9 TO 290 PERCENT
+GATE_PASSING_STAR_FLUX_PER_COLUMN = 1000000.0
+# THE SYNTHETIC MOFFAT IS ABOUT 15 TIMES BRIGHTER AT 1 TO 1.5 ARCSEC FROM THE CENTRE THAN BEYOND 3 ARCSEC; WINGS PUT ON
+# THE WRONG ROWS ARE FLAT ALONG THE SLIT
+NEAR_TO_FAR_WING_RATIO = 5.0
 # THE ATMOSPHERIC-TURBULENCE MOFFAT INDEX (TRUJILLO ET AL. 2001)
 TURBULENCE_BETA = 4.765
 # THE FRACTION OF A STANDARD STAR'S FLUX THAT MAY GO INTO THE SKY MODEL (DY-1279 ACCEPTANCE)
@@ -179,6 +185,56 @@ def test_the_correction_does_not_take_more_than_the_object_light_out_of_the_sky_
     modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN, seed=seed))
 
     assert _object_flux_fraction_in_model(modelled) > -MAX_OVER_CORRECTION
+
+
+def test_in_an_order_listed_in_pixel_order_the_wing_model_follows_the_slit_profile(log: Any) -> None:
+    # THE 2D MAP LISTS PIXELS IN DETECTOR ORDER, NOT BY WAVELENGTH. THE FIT ITSELF DEPENDS ON THE ROW ORDER, SO THE
+    # RESULT IS NOT COMPARED WITH A SORTED RUN; THE WINGS MUST STILL SIT ON THE ROWS THEY WERE COMPUTED FOR
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN).sample(frac=1.0, random_state=1279).reset_index(drop=True)
+
+    modelled = _modelled(_bare_subtractor(log), order)
+
+    distance = np.abs(modelled["slit_position"] - OBJECT_CENTRE)
+    nearWings = modelled.loc[(distance > 1.0) & (distance < 1.5), "object_wing_model"].mean()
+    farWings = modelled.loc[distance > 3.0, "object_wing_model"].mean()
+    assert nearWings > NEAR_TO_FAR_WING_RATIO * abs(farWings)
+
+
+def test_a_refit_that_fails_keeps_the_first_fit_and_logs_a_warning(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    subtractor = _bare_subtractor(log)
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order)
+    firstFit = subtract_sky.fit_bspline_curve_to_sky
+    calls = []
+
+    def fit_then_fail(self: subtract_sky, imageMapOrder: pd.DataFrame) -> Any:
+        calls.append(1)
+        if len(calls) > 1:
+            raise ValueError("FITPACK FAILED")
+        return firstFit(self, imageMapOrder)
+
+    monkeypatch.setattr(subtract_sky, "fit_bspline_curve_to_sky", fit_then_fail)
+
+    modelled = _modelled(subtractor, order)
+
+    assert len(calls) == 2
+    pd.testing.assert_frame_equal(modelled, uncorrected)
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("FITPACK FAILED" in message and f"order {STAR_ORDER}" in message for message in warnings)
+
+
+def test_at_the_shipped_gate_a_very_bright_star_is_corrected_and_a_fainter_star_is_not(log: Any) -> None:
+    shippedGate = _sky_settings()["object_wing_gate_fraction"]
+    standard = _modelled(
+        _bare_subtractor(log, object_wing_gate_fraction=shippedGate),
+        _order(STAR_ORDER, GATE_PASSING_STAR_FLUX_PER_COLUMN),
+    )
+    fainter = _modelled(
+        _bare_subtractor(log, object_wing_gate_fraction=shippedGate), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    )
+
+    assert "object_wing_model" in standard
+    assert "object_wing_model" not in fainter
 
 
 def test_the_corrected_order_keeps_its_real_flux_and_subtracts_the_refitted_sky(log: Any) -> None:

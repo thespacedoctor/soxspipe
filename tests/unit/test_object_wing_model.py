@@ -246,7 +246,7 @@ def _object_profile(slitPosition, wingAmplitude):
     return moffat + oneSided
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class synthetic_order:
     """One shuffled order with the truth that was injected into it."""
 
@@ -675,3 +675,15 @@ def test_slit_loss_fraction_still_counts_the_object_core_when_the_fit_did_not_us
 
     # ASSERT
     assert estimate.slitLossFraction == pytest.approx(expected, rel=0.1)
+
+
+def test_estimate_without_any_pixel_the_first_fit_used_is_not_corrected():
+    # ARRANGE
+    order = _build_order()
+
+    # ACT
+    estimate = _estimate_with(order, order.skyModel, np.zeros(order.flux.shape, dtype=bool))
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert "first sky fit" in estimate.reason
