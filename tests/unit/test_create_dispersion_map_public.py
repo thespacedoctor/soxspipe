@@ -748,6 +748,46 @@ def test_get_writes_the_fitted_map_and_returns_workflow_products(log: object) ->
     assert calls == ["quicklook", "metrics", "line-qc", "fitted", "missing"]
 
 
+def test_get_raises_arithmetic_error_when_no_reduced_degree_fit_succeeds(log: object) -> None:
+    """Stop at constant polynomials with the helpful error instead of lowering a degree below zero."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.lineDetectionTable = pd.DataFrame(
+        {
+            "wavelength": [500.0, 501.0],
+            "order": [10, 10],
+            "slit_position": [0.0, 0.0],
+            "observed_x": [100.0, 101.0],
+        }
+    )
+    mapper.recipeName = "soxs-disp-solution"
+    mapper.recipeSettings = {"mph_line_set_min": 1}
+    mapper.settings = {"tune-pipeline": False}
+    mapper.firstGuessMap = False
+    mapper.orderTable = False
+    mapper.create2DMap = False
+    mapper.qc = pd.DataFrame()
+    mapper.products = pd.DataFrame()
+    mapper.dateObs = "2025-01-02T03:04:05"
+    attemptedDegrees: list[tuple[int, int, int]] = []
+
+    def fit_polynomials(**kwargs: object) -> tuple[str, None, None, None]:
+        attemptedDegrees.append((kwargs["wavelengthDeg"], kwargs["orderDeg"], kwargs["slitDeg"]))
+        return "xerror", None, None, None
+
+    mapper._initialize_recipe_settings = lambda: (False, False, 1, 1, 0)
+    mapper.get_predicted_line_list = lambda: mapper.lineDetectionTable.copy()
+    mapper._prepare_pinhole_frame = lambda: "prepared-frame"
+    mapper._generate_quicklook_and_debug_plots = lambda *args: None
+    mapper._clip_on_measured_line_metrics = lambda table: table
+    mapper.fit_polynomials = fit_polynomials
+
+    with pytest.raises(ArithmeticError, match="Could not converge on a good fit"):
+        mapper.get()
+
+    assert attemptedDegrees == [(1, 1, 0), (0, 1, 0), (0, 0, 0)]
+
+
 def test_get_detects_and_shifts_lines_before_fitting(log: object) -> None:
     """Run the three-pass detector branch before the deterministic fitting seam."""
     mapper = object.__new__(create_dispersion_map)

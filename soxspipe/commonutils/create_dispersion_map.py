@@ -72,6 +72,11 @@ os.environ["TERM"] = "vt100"
 # THAN THE ~1e-16 NOISE A LEAST-SQUARES SOLVE VARIES BY BETWEEN MACHINES
 RESIDUAL_QUANTISATION_DECIMALS = 9
 
+FIT_NOT_CONVERGED_MESSAGE = (
+    "Could not converge on a good fit to the dispersion solution. "
+    "Please check the quality of your data or adjust your fitting parameters."
+)
+
 
 def quantise_residuals(residuals: "npt.ArrayLike") -> "np.ndarray":
     """*round residuals to a fixed precision so the clip decision cannot flip on float noise*
@@ -694,24 +699,34 @@ class create_dispersion_map:
 
         return orderPixelTable
 
+    def _lower_highest_degree(self, degList):
+        """*return the degrees with the highest one lowered by one, or raise if they are all constant already*"""
+        if max(degList) <= 0:
+            self.log.error(FIT_NOT_CONVERGED_MESSAGE)
+            raise ArithmeticError(FIT_NOT_CONVERGED_MESSAGE)
+        degList = list(degList)
+        degList[degList.index(max(degList))] -= 1
+        return degList
+
     def _reduce_polynomial_degrees(self, popt_x, popt_y, wavelengthDeg, orderDeg, slitDeg):
-        """*REDUCE POLYNOMIAL DEGREES WHEN FIT FAILS*"""
+        """*REDUCE POLYNOMIAL DEGREES WHEN FIT FAILS*
+
+        Raises ``ArithmeticError`` when the degrees to reduce are all zero, because a lower degree does not exist.
+        """
         # HANDLE DIFFERENT POLYNOMIAL DEGREE FORMATS
         if not isinstance(wavelengthDeg, list):
             # SINGLE DEGREE FOR BOTH AXES
-            degList = [wavelengthDeg, orderDeg, slitDeg]
-            degList[degList.index(max(degList))] -= 1
-            wavelengthDeg, orderDeg, slitDeg = degList
+            wavelengthDeg, orderDeg, slitDeg = self._lower_highest_degree([wavelengthDeg, orderDeg, slitDeg])
         elif popt_x == "xerror":
             # REDUCE X-AXIS DEGREES
-            degList = [wavelengthDeg[0], orderDeg[0], slitDeg[0]]
-            degList[degList.index(max(degList))] -= 1
-            wavelengthDeg[0], orderDeg[0], slitDeg[0] = degList
+            wavelengthDeg[0], orderDeg[0], slitDeg[0] = self._lower_highest_degree(
+                [wavelengthDeg[0], orderDeg[0], slitDeg[0]]
+            )
         elif popt_y == "yerror":
             # REDUCE Y-AXIS DEGREES
-            degList = [wavelengthDeg[1], orderDeg[1], slitDeg[1]]
-            degList[degList.index(max(degList))] -= 1
-            wavelengthDeg[1], orderDeg[1], slitDeg[1] = degList
+            wavelengthDeg[1], orderDeg[1], slitDeg[1] = self._lower_highest_degree(
+                [wavelengthDeg[1], orderDeg[1], slitDeg[1]]
+            )
 
         # UPDATE RECIPE SETTINGS
         self.recipeSettings["order-deg"] = orderDeg
@@ -967,10 +982,7 @@ class create_dispersion_map:
                 else:
                     # IN TUNING MODE, FAIL IMMEDIATELY WITHOUT RETRY
                     if self.settings["tune-pipeline"]:
-                        raise ArithmeticError(
-                            "Could not converge on a good fit to the dispersion solution. "
-                            "Please check the quality of your data or adjust your fitting parameters."
-                        )
+                        raise ArithmeticError(FIT_NOT_CONVERGED_MESSAGE)
 
                     # REDUCE POLYNOMIAL DEGREES AND RETRY
                     wavelengthDeg, orderDeg, slitDeg = self._reduce_polynomial_degrees(
@@ -988,10 +1000,7 @@ class create_dispersion_map:
                             "Could not converge on a good fit to the dispersion solution after 5 attempts. "
                             "Please check the quality of your data or adjust your fitting parameters."
                         )
-                        raise ArithmeticError(
-                            "Could not converge on a good fit to the dispersion solution. "
-                            "Please check the quality of your data or adjust your fitting parameters."
-                        )
+                        raise ArithmeticError(FIT_NOT_CONVERGED_MESSAGE)
 
             if bootstrap_dispersion_solution:
                 # WRITE THE MAP TO FILE

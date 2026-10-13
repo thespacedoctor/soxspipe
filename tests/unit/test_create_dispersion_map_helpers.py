@@ -549,6 +549,29 @@ def test_polynomial_degree_reduction_targets_failed_axis(
 
 
 @pytest.mark.parametrize(
+    ("poptX", "poptY", "wavelength", "order", "slit"),
+    [
+        (None, None, 0, 0, 0),
+        ("xerror", None, [0, 3], [0, 3], [0, 3]),
+        (None, "yerror", [3, 0], [3, 0], [3, 0]),
+    ],
+)
+def test_polynomial_degree_reduction_raises_when_the_failed_axis_is_already_constant(
+    log: object,
+    poptX: str | None,
+    poptY: str | None,
+    wavelength: int | list[int],
+    order: int | list[int],
+    slit: int | list[int],
+) -> None:
+    mapper = _mapper(log)
+    mapper.firstGuessMap = True
+
+    with pytest.raises(ArithmeticError, match="Could not converge on a good fit"):
+        mapper._reduce_polynomial_degrees(poptX, poptY, wavelength, order, slit)
+
+
+@pytest.mark.parametrize(
     ("technique", "expected"),
     [
         ("ECHELLE,PINHOLE", "single"),
