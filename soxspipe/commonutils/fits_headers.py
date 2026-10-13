@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-*Fast FITS header reading for plain and LZW-compressed frames*
+*Fast FITS header and pixel reading for plain and LZW-compressed frames*
 
 ``fits.getheader`` on a ``.fits.Z`` file parses the primary header and then seeks
 past the data unit. ``uncompresspy`` has no random access, so that seek decodes
@@ -8,6 +8,12 @@ the whole file. For the primary header, ``read_header`` instead streams only the
 blocks up to the ``END`` card, which is about 100 times faster. Any other request,
 and any failure of the fast path, is handed to ``fits.getheader`` so results and
 errors stay the same as before.
+
+``CCDData.read`` on a ``.fits.Z`` file decodes the pixels with the same pure-Python
+decoder, which takes about 1.2 s per real NIR frame. ``read_ccd`` instead decompresses
+the file with the system ``gzip`` (about 0.06 s), which reads LZW natively, and gives
+the bytes to astropy. If ``gzip`` is missing or fails, it falls back to ``CCDData.read``
+on the path.
 
 This module imports nothing from soxspipe except ``fits_frame_names``, which
 itself imports nothing from soxspipe, so it cannot create an import cycle.
@@ -19,22 +25,31 @@ Date Created
 : October 12, 2026
 """
 
+import io
 import logging
 import os
+import shutil
+import subprocess
 import warnings
 from collections import OrderedDict
 
 import uncompresspy
 from astropy.io import fits
+from astropy.nddata import CCDData
 from ccdproc import ImageFileCollection
 
 from soxspipe.commonutils.fits_frame_names import LZW_SUFFIX, is_fits_frame
 
 FITS_BLOCK_SIZE = 2880
+GZIP_TIMEOUT_SECONDS = 120
+GZIP_STDERR_LOG_LIMIT = 500
 FITS_CARD_SIZE = 80
 END_CARD = b"END" + b" " * (FITS_CARD_SIZE - 3)
 
 log = logging.getLogger(__name__)
+
+# SET ONCE THE MISSING-GZIP WARNING HAS BEEN LOGGED, SO A WORKSPACE OF FRAMES WARNS ONLY ONCE
+_hasWarnedGzipMissing = False
 
 
 def _block_holds_end_card(block):
@@ -125,6 +140,106 @@ def read_header(path, ext=0):
             # THE FALLBACK BELOW RE-RAISES THE AUTHORITATIVE ERROR
             log.debug(f"read_header: fast LZW read of `{path}` failed, falling back to fits.getheader: {e}")
     return fits.getheader(path, ext)
+
+
+def _decompress_lzw(filePath):
+    """*decompress a ``.fits.Z`` file with the system ``gzip``, which reads LZW natively*
+
+    **Key Arguments:**
+
+    - ``filePath`` -- the path of a ``.fits.Z`` file
+
+    **Return:**
+
+    - ``data`` -- the decompressed bytes of the FITS file
+
+    **Raises:**
+
+    - ``FileNotFoundError`` -- when no ``gzip`` binary is on the ``PATH``
+    - ``subprocess.CalledProcessError`` -- when ``gzip`` exits with an error
+    - ``subprocess.TimeoutExpired`` -- when ``gzip`` runs longer than ``GZIP_TIMEOUT_SECONDS``
+    - ``OSError`` -- when ``gzip`` cannot be started
+    """
+    gzipPath = shutil.which("gzip")
+    if gzipPath is None:
+        raise FileNotFoundError("gzip is not on the PATH")
+    # LIST ARGUMENTS AND NO SHELL: THE PATH IS NEVER PARSED BY A SHELL. `--` ENDS OPTION PARSING,
+    # SO A FILE NAME STARTING WITH A DASH IS NOT TAKEN FOR A GZIP OPTION
+    result = subprocess.run(  # noqa: S603
+        [gzipPath, "-dc", "--", filePath],
+        capture_output=True,
+        check=True,
+        timeout=GZIP_TIMEOUT_SECONDS,
+    )
+    return result.stdout
+
+
+def _describe_failure(error):
+    """*return a log-ready description of a failed gzip run, with its bounded error output*
+
+    **Key Arguments:**
+
+    - ``error`` -- the exception raised by ``_decompress_lzw``
+
+    **Return:**
+
+    - ``description`` -- the exception text, followed by the first ``GZIP_STDERR_LOG_LIMIT``
+      characters of ``gzip``'s error output when there is any
+    """
+    stderr = getattr(error, "stderr", None)
+    if not stderr:
+        return str(error)
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode(errors="replace")
+    return f"{error}: {stderr.strip()[:GZIP_STDERR_LOG_LIMIT]}"
+
+
+def _warn_once_gzip_missing():
+    """*log a warning, once per process, that gzip is missing and LZW reads will be slow*"""
+    global _hasWarnedGzipMissing
+    if _hasWarnedGzipMissing:
+        return
+    _hasWarnedGzipMissing = True
+    log.warning(
+        "gzip was not found, so .fits.Z frames are read with the much slower uncompresspy; "
+        "install gzip to speed up reading"
+    )
+
+
+def read_ccd(path, **kwargs):
+    """*return a CCDData frame, decompressing an LZW frame with the system* ``gzip``
+
+    The pure-Python ``uncompresspy`` decoder takes about 1.2 s per real NIR frame. ``gzip`` decodes the
+    same file in about 0.06 s. Only the decompression step falls back to ``CCDData.read`` on the path,
+    when ``gzip`` is missing, fails or times out. A missing ``gzip`` is logged once as a warning. An error
+    raised by astropy while it parses the decompressed bytes is not caught, so the caller sees the same
+    exception as before. The decompressed bytes are read from memory, so ``memmap`` does not apply on the
+    fast path.
+
+    **Key Arguments:**
+
+    - ``path`` -- the path of the FITS file
+    - ``kwargs`` -- the keyword arguments given to ``CCDData.read``. A ``format`` given here is
+      replaced by ``"fits"`` on the fast path
+
+    **Return:**
+
+    - ``frame`` -- the frame, as an ``astropy.nddata.CCDData``
+    """
+    if not _is_lzw_frame_path(path):
+        return CCDData.read(path, **kwargs)
+    try:
+        data = _decompress_lzw(os.fsdecode(path))
+    except FileNotFoundError as e:
+        _warn_once_gzip_missing()
+        log.debug(f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {e}")
+        return CCDData.read(path, **kwargs)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        log.debug(
+            f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {_describe_failure(e)}"
+        )
+        return CCDData.read(path, **kwargs)
+    return CCDData.read(io.BytesIO(data), **{**kwargs, "format": "fits"})
 
 
 class HeaderImageFileCollection(ImageFileCollection):
