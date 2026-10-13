@@ -1528,11 +1528,35 @@ class base_recipe:
         new_n_masked = combiner.data_arr.mask.sum()
         diff = new_n_masked - old_n_masked
         if self.verbose:
-            percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
+            percent = 100 * diff / (len(combiner.data_arr) * totalPixels)
             self.log.print(
                 f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)"
             )
         return
+
+    @staticmethod
+    def _frame_mask(ccd):
+        """*return the bad-pixel mask of a frame as a new full-shape boolean array*
+
+        **Key Arguments:**
+
+        - ``ccd`` -- the frame, a CCDData object. A frame with no mask has no flagged pixels.
+
+        **Return:**
+
+        - ``mask`` -- a boolean array the shape of the frame data, True where the pixel is flagged bad
+
+        **Usage:**
+
+        ```python
+        combinedMask = self._frame_mask(ccds[0])
+        ```
+        """
+        import numpy as np
+
+        if ccd.mask is None:
+            return np.zeros(ccd.data.shape, dtype=bool)
+        return np.array(ccd.mask, dtype=bool)
 
     def _set_input_masks(self, combiner, combinedMask, ignore_input_masks):
         """*set the per-frame masks the clipping starts from*
@@ -1557,7 +1581,8 @@ class base_recipe:
             return
 
         # A PIXEL FLAGGED IN EVERY FRAME HAS NO FRAME TO STACK. IT KEEPS ITS DATA AND STAYS
-        # FLAGGED IN THE COMBINED MASK, SO NO NAN OR ZERO FRAME COUNT REACHES THE MASTER
+        # FLAGGED IN THE COMBINED MASK, SO IT IS NOT LEFT WITH A ZERO FRAME COUNT. NON-FINITE
+        # DATA IN THE FRAMES STILL GIVES A NAN MEAN THERE
         combiner.data_arr.mask = np.ma.getmaskarray(combiner.data_arr) & ~combinedMask
 
     def _mean_combine_frames(self, combiner, ccds, combinedMask):
@@ -1672,9 +1697,9 @@ class base_recipe:
         self.log.print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 
         # PIXELS FLAGGED BAD IN EVERY INPUT FRAME. THE CALLER'S MASKS ARE NEVER CHANGED
-        combinedMask = np.array(ccds[0].mask, dtype=bool)
+        combinedMask = self._frame_mask(ccds[0])
         for c in ccds[1:]:
-            combinedMask &= np.asarray(c.mask, dtype=bool)
+            combinedMask &= self._frame_mask(c)
 
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
