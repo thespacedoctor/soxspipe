@@ -148,3 +148,77 @@ def test_get_skylines_dataframe_filters_real_fits_table(
     assert result["WAVELENGTH"].dtype.kind == "f"
     assert result["FLUX"].dtype.kind == "f"
     assert result["ISOLATED"].dtype.kind == "b"
+
+
+def _record_opened_hdulists(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Record every HDUList that ``fits.open`` returns, so a test can inspect its file handle afterwards."""
+    opened: list = []
+    realOpen = fits.open
+
+    def recording_open(*args, **kwargs):
+        hdul = realOpen(*args, **kwargs)
+        opened.append(hdul)
+        return hdul
+
+    monkeypatch.setattr(fits, "open", recording_open)
+    return opened
+
+
+def _write_map(path: Path, *, hasOrder: bool = True, hasOrderData: bool = True) -> Path:
+    """Write a small 2D map, optionally without its ORDER extension or without data in it."""
+    image = np.ones((6, 4), dtype="float32")
+    hdus = [fits.PrimaryHDU(image, header=fits.Header({"EXTNAME": "WAVELENGTH"})), fits.ImageHDU(image, name="SLIT")]
+    if hasOrder:
+        hdus.append(fits.ImageHDU(image if hasOrderData else None, name="ORDER"))
+    fits.HDUList(hdus).writeto(path)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("mapOptions", "error"),
+    [({"hasOrder": False}, KeyError), ({"hasOrderData": False}, AttributeError)],
+)
+def test_open_disp_map_hdus_closes_the_file_when_the_map_is_malformed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mapOptions: dict, error: type
+) -> None:
+    path = _write_map(tmp_path / "map.fits", **mapOptions)
+    opened = _record_opened_hdulists(monkeypatch)
+
+    with pytest.raises(error):
+        toolkit._open_disp_map_hdus(str(path), 1, 1)
+
+    assert len(opened) == 1
+    assert opened[0]._file.closed
+
+
+def test_open_disp_map_hdus_leaves_the_file_open_for_the_caller_when_the_map_is_valid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_map(tmp_path / "map.fits")
+    opened = _record_opened_hdulists(monkeypatch)
+
+    hdul, minimumBinnedPixelValue, binned = toolkit._open_disp_map_hdus(str(path), 1, 1)
+
+    assert hdul is opened[0]
+    assert not hdul._file.closed
+    assert minimumBinnedPixelValue is None
+    assert not binned
+    hdul.close()
+
+
+def test_open_disp_map_hdus_closes_the_file_when_the_binning_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import astropy.nddata
+
+    def refuse(*args, **kwargs):
+        raise ValueError("cannot block-reduce")
+
+    path = _write_map(tmp_path / "map.fits")
+    opened = _record_opened_hdulists(monkeypatch)
+    monkeypatch.setattr(astropy.nddata, "block_reduce", refuse)
+
+    with pytest.raises(ValueError):
+        toolkit._open_disp_map_hdus(str(path), 2, 2)
+
+    assert opened[0]._file.closed

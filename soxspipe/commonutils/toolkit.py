@@ -1478,23 +1478,27 @@ def _open_disp_map_hdus(twoDMapPath, binx, biny):
     from astropy.io import fits
 
     hdul = fits.open(twoDMapPath)
+    # THE HDUList MUST NOT LEAK ITS FILE HANDLE WHEN A MISSING OR EMPTY EXTENSION RAISES BEFORE IT IS RETURNED
+    try:
+        hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float32")
+        hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
+        hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
 
-    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float32")
-    hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
-    hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
+        binned = False
+        minimumBinnedPixelValue = None
+        if binx > 1 or biny > 1:
+            binned = True
+            from astropy.nddata import block_reduce
 
-    binned = False
-    minimumBinnedPixelValue = None
-    if binx > 1 or biny > 1:
-        binned = True
-        from astropy.nddata import block_reduce
-
-        minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
-        hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
-        hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
-        hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
-        minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
-        minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
+            minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
+            hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
+            hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
+            hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
+            minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
+            minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
+    except BaseException:
+        hdul.close()
+        raise
 
     return hdul, minimumBinnedPixelValue, binned
 

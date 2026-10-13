@@ -23,9 +23,11 @@ from .files import (
 from .frames import instrument_header, synthetic_ccd
 from .settings import pipeline_settings
 from .signals import synthetic_signal
+from .slit_illumination import illumination_scene, synthetic_illumination_scene
 from .workspaces import WorkspaceLayout, workspace_layout, workspace_organiser
 
 __all__ = [
+    "illumination_scene",
     "WorkspaceLayout",
     "dispersion_map_fits",
     "dispersion_table",
@@ -46,6 +48,7 @@ __all__ = [
     "raw_group_table",
     "sof_file",
     "synthetic_ccd",
+    "synthetic_illumination_scene",
     "synthetic_signal",
     "workspace_layout",
     "workspace_organiser",
