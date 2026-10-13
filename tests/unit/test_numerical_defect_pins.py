@@ -162,11 +162,6 @@ def _stack_with_one_masked_value(
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1254 (DY-35 A2): clip_and_stack discards pixels flagged in only some of the input frames",
-)
 def test_clip_and_stack_excludes_pixel_masked_in_one_input_frame(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -177,11 +172,6 @@ def test_clip_and_stack_excludes_pixel_masked_in_one_input_frame(
     assert combined.data[MASKED_PIXEL] == pytest.approx(10.125)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1254 (DY-35 A2): ignore_input_masks has no effect on the stacked value",
-)
 def test_clip_and_stack_ignore_input_masks_changes_the_stacked_value(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
