@@ -23,6 +23,7 @@ from astropy import units as u
 from astropy.nddata import CCDData
 
 from soxspipe.recipes import base_recipe
+from tests.factories import lzw_compressed_fits
 
 pytestmark = pytest.mark.unit
 
@@ -221,6 +222,29 @@ def test_a_corrupted_frame_is_dropped_from_the_reduction(
 
     # ACT
     result = recipe._prepare_single_frame(rawPath)
+
+    # ASSERT
+    assert result is None
+    assert any("likely corrupted" in str(message) for message in log.messages)
+
+
+def test_a_corrupted_compressed_frame_is_dropped_from_the_reduction(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `buffer is too small` failure on the gzip-decompressed bytes still returns `None`."""
+    # ARRANGE
+    recipe = _recipe(log, tmp_path)
+    compressedPath = lzw_compressed_fits(Path(_raw_frame(tmp_path)), tmp_path / "raw.fits.Z")
+
+    def failing_read(*_: object, **__: object) -> CCDData:
+        raise TypeError("buffer is too small for requested array")
+
+    monkeypatch.setattr(CCDData, "read", failing_read)
+
+    # ACT
+    result = recipe._prepare_single_frame(str(compressedPath))
 
     # ASSERT
     assert result is None

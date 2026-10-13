@@ -396,9 +396,9 @@ class base_recipe:
 
         import ccdproc
         from astropy import units as u
-        from astropy.nddata import CCDData
 
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         warnings.filterwarnings(action="ignore")
         logging.captureWarnings(True)
@@ -415,7 +415,7 @@ class base_recipe:
             frame = self._absolute_path(frame)
             # OPEN THE RAW FRAME - MASK AND UNCERT TO BE POPULATED LATER
             try:
-                frame = CCDData.read(
+                frame = read_ccd(
                     frame,
                     hdu=0,
                     unit=u.adu,

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-*Fast FITS header reading for plain and LZW-compressed frames*
+*Fast FITS header and pixel reading for plain and LZW-compressed frames*
 
 ``fits.getheader`` on a ``.fits.Z`` file parses the primary header and then seeks
 past the data unit. ``uncompresspy`` has no random access, so that seek decodes
@@ -8,6 +8,12 @@ the whole file. For the primary header, ``read_header`` instead streams only the
 blocks up to the ``END`` card, which is about 100 times faster. Any other request,
 and any failure of the fast path, is handed to ``fits.getheader`` so results and
 errors stay the same as before.
+
+``CCDData.read`` on a ``.fits.Z`` file decodes the pixels with the same pure-Python
+decoder, which takes about 1.2 s per real NIR frame. ``read_ccd`` instead decompresses
+the file with the system ``gzip`` (about 0.06 s), which reads LZW natively, and gives
+the bytes to astropy. If ``gzip`` is missing or fails, it falls back to ``CCDData.read``
+on the path.
 
 This module imports nothing from soxspipe except ``fits_frame_names``, which
 itself imports nothing from soxspipe, so it cannot create an import cycle.
@@ -19,13 +25,17 @@ Date Created
 : October 12, 2026
 """
 
+import io
 import logging
 import os
+import shutil
+import subprocess
 import warnings
 from collections import OrderedDict
 
 import uncompresspy
 from astropy.io import fits
+from astropy.nddata import CCDData
 from ccdproc import ImageFileCollection
 
 from soxspipe.commonutils.fits_frame_names import LZW_SUFFIX, is_fits_frame
@@ -125,6 +135,58 @@ def read_header(path, ext=0):
             # THE FALLBACK BELOW RE-RAISES THE AUTHORITATIVE ERROR
             log.debug(f"read_header: fast LZW read of `{path}` failed, falling back to fits.getheader: {e}")
     return fits.getheader(path, ext)
+
+
+def _decompress_lzw(filePath):
+    """*decompress a ``.fits.Z`` file with the system ``gzip``, which reads LZW natively*
+
+    **Key Arguments:**
+
+    - ``filePath`` -- the path of a ``.fits.Z`` file
+
+    **Return:**
+
+    - ``data`` -- the decompressed bytes of the FITS file
+
+    **Raises:**
+
+    - ``FileNotFoundError`` -- when no ``gzip`` binary is on the ``PATH``
+    - ``subprocess.CalledProcessError`` -- when ``gzip`` exits with an error
+    - ``OSError`` -- when ``gzip`` cannot be started
+    """
+    gzipPath = shutil.which("gzip")
+    if gzipPath is None:
+        raise FileNotFoundError("gzip is not on the PATH")
+    # LIST ARGUMENTS AND NO SHELL: THE PATH IS NEVER PARSED BY A SHELL
+    result = subprocess.run([gzipPath, "-dc", filePath], capture_output=True, check=True)  # noqa: S603
+    return result.stdout
+
+
+def read_ccd(path, **kwargs):
+    """*return a CCDData frame, decompressing an LZW frame with the system* ``gzip``
+
+    The pure-Python ``uncompresspy`` decoder takes about 1.2 s per real NIR frame. ``gzip`` decodes the
+    same file in about 0.06 s. Only the decompression step falls back to ``CCDData.read`` on the path,
+    when ``gzip`` is missing or fails. An error raised by astropy while it parses the decompressed
+    bytes is not caught, so the caller sees the same exception as before.
+
+    **Key Arguments:**
+
+    - ``path`` -- the path of the FITS file
+    - ``kwargs`` -- the keyword arguments given to ``CCDData.read``
+
+    **Return:**
+
+    - ``frame`` -- the frame, as an ``astropy.nddata.CCDData``
+    """
+    if not _is_lzw_frame_path(path):
+        return CCDData.read(path, **kwargs)
+    try:
+        data = _decompress_lzw(os.fsdecode(path))
+    except (OSError, subprocess.CalledProcessError) as e:
+        log.debug(f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {e}")
+        return CCDData.read(path, **kwargs)
+    return CCDData.read(io.BytesIO(data), format="fits", **kwargs)
 
 
 class HeaderImageFileCollection(ImageFileCollection):
