@@ -106,8 +106,6 @@ def _object_wing_log_line(order, estimate):
 
     - ``line`` -- the message, framed by newlines because the fit's progress line erases the line above it
     """
-    import math
-
     skyShare = estimate.biasLevel / max(estimate.skyLevel, MIN_LOGGED_SKY_LEVEL) * 100
     loss = estimate.slitLossFraction
     lossText = f"ABOUT {loss * 100:0.2f}%" if math.isfinite(loss) else "AN UNKNOWN SHARE"
@@ -717,8 +715,8 @@ class subtract_sky:
         refitInput["flux"] = flux - wings.to_numpy()
         try:
             refitOrder, *rest = self.fit_bspline_curve_to_sky(refitInput)
-        except ValueError as error:
-            self.log.warning(f"order {order}: the object-wing refit failed, so the first sky fit is kept ({error})")
+        except ValueError as exc:
+            self.log.warning(f"order {order}: the object-wing refit failed, so the first sky fit is kept ({exc})")
             return fitResult
         refitOrder["flux"] = preFitOrder["flux"].reindex(refitOrder.index)
         refitOrder["object_wing_model"] = wings.reindex(refitOrder.index)

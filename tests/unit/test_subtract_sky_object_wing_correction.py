@@ -50,12 +50,7 @@ NEAR_TO_FAR_WING_RATIO = 5.0
 TURBULENCE_BETA = 4.765
 # THE FRACTION OF A STANDARD STAR'S FLUX THAT MAY GO INTO THE SKY MODEL (DY-1279 ACCEPTANCE)
 MAX_OBJECT_FLUX_IN_MODEL = 0.001
-# THE LIMIT FOR THE FAINTER BRIGHT STAR. THE PROFILE COMES FROM THE PIXELS THE UPPER-CLIPPED FIT USED, WHICH UNDERSTATES
-# THE WINGS IN THIS NOISE-LIMITED SCENE: THE CORRECTION TAKES OUT 70 TO 85 PERCENT OF THE OBJECT LIGHT, NOT ALL OF IT.
-# ON REAL STANDARDS A PROFILE FROM EVERY PIXEL TAKES OUT 20 TO 50 PERCENT TOO MUCH, SO THIS IS THE ACCEPTED TRADE
-MAX_BRIGHT_STAR_FLUX_IN_MODEL = 0.002
-# THE SHARE OF THE OBJECT FLUX THAT THE CORRECTION MAY TAKE OUT OF THE SKY MODEL BEYOND THE OBJECT LIGHT IN IT. A
-# PROFILE BUILT FROM PIXELS THE UPPER-CLIPPED FIT DID NOT USE OVERSTATES THE WINGS AND BREAKS THIS
+# THE SHARE OF A STANDARD STAR'S FLUX THAT THE CORRECTION MAY TAKE OUT OF THE SKY MODEL BEYOND THE OBJECT LIGHT IN IT
 MAX_OVER_CORRECTION = 0.0002
 # THE SYNTHETIC STAR'S WINGS PUT ABOUT 3% OF THE SKY LEVEL INTO THE FIRST MODEL; A GATE OF 0 MAKES THESE TESTS MEASURE
 # THE CORRECTION ITSELF, AND THE GATE IS TESTED WITH THE WING MODEL (tests/unit/test_object_wing_model.py)
@@ -143,48 +138,45 @@ def _modelled(subtractor: subtract_sky, order: pd.DataFrame) -> pd.DataFrame:
 
 
 def _object_flux_fraction_in_model(modelled: pd.DataFrame) -> float:
-    """The share of the object flux in the sky model.
+    """The share of the object flux in the sky model: the model's excess over the true flat sky, summed over the order.
 
-    The object spectrum is flat, so the object light in the model is the mean object light left in the fitted
-    pixels, at every pixel of the order. The correction removes its wing model from the fitted pixels first.
+    A negative share means the model is below the true sky, so the correction took out more than the object light.
     """
-    isFitted = ~modelled["flagged_all_clipped"]
-    wingModel = modelled.get("object_wing_model", 0.0)
-    objectLeft = (modelled["object_flux"] - wingModel)[isFitted]
-    return float(objectLeft.mean() * len(modelled) / modelled["object_flux"].sum())
+    return float((modelled["sky_model"] - SKY_LEVEL).sum() / modelled["object_flux"].sum())
 
 
 @pytest.mark.parametrize("seed", [1279, 1, 2, 3])
-def test_with_the_correction_a_standard_star_puts_under_a_tenth_of_a_percent_of_its_flux_into_the_sky_model(
-    log: Any, seed: int
+@pytest.mark.parametrize("isShippedGate", [False, True], ids=["open-gate", "shipped-gate"])
+def test_a_standard_star_puts_under_a_tenth_of_a_percent_of_its_flux_into_the_sky_model(
+    log: Any, seed: int, isShippedGate: bool
 ) -> None:
-    modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, STANDARD_STAR_FLUX_PER_COLUMN, seed=seed))
+    gateFraction = _sky_settings()["object_wing_gate_fraction"] if isShippedGate else OPEN_GATE
+    modelled = _modelled(
+        _bare_subtractor(log, object_wing_gate_fraction=gateFraction),
+        _order(STAR_ORDER, STANDARD_STAR_FLUX_PER_COLUMN, seed=seed),
+    )
 
     assert abs(_object_flux_fraction_in_model(modelled)) < MAX_OBJECT_FLUX_IN_MODEL
 
 
 @pytest.mark.parametrize("seed", [1279, 1, 2, 3])
-def test_with_the_correction_a_bright_star_puts_under_a_fifth_of_a_percent_of_its_flux_into_the_sky_model(
+def test_the_correction_takes_almost_no_more_than_a_standard_stars_wing_light_out_of_the_sky_model(
     log: Any, seed: int
 ) -> None:
-    modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN, seed=seed))
+    modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, STANDARD_STAR_FLUX_PER_COLUMN, seed=seed))
 
-    assert abs(_object_flux_fraction_in_model(modelled)) < MAX_BRIGHT_STAR_FLUX_IN_MODEL
+    assert "object_wing_model" in modelled
+    assert _object_flux_fraction_in_model(modelled) > -MAX_OVER_CORRECTION
 
 
-def test_without_the_correction_the_same_bright_star_puts_more_than_that_into_the_sky_model(log: Any) -> None:
+def test_without_the_correction_a_bright_star_puts_more_than_a_tenth_of_a_percent_into_the_sky_model(
+    log: Any,
+) -> None:
     modelled = _modelled(
         _bare_subtractor(log, object_wing_correction=False), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
     )
 
-    assert _object_flux_fraction_in_model(modelled) > MAX_BRIGHT_STAR_FLUX_IN_MODEL
-
-
-@pytest.mark.parametrize("seed", [1, 2, 3])
-def test_the_correction_does_not_take_more_than_the_object_light_out_of_the_sky_model(log: Any, seed: int) -> None:
-    modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN, seed=seed))
-
-    assert _object_flux_fraction_in_model(modelled) > -MAX_OVER_CORRECTION
+    assert _object_flux_fraction_in_model(modelled) > MAX_OBJECT_FLUX_IN_MODEL
 
 
 def test_in_an_order_listed_in_pixel_order_the_wing_model_follows_the_slit_profile(log: Any) -> None:

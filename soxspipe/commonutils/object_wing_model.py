@@ -289,7 +289,17 @@ def _blank_estimate(reason, nPixels):
 
     nan = float("nan")
     return object_wing_estimate(
-        False, reason, nan, np.array([]), np.array([]), nan, np.full(nPixels, nan), nan, nan, nan, nan
+        isCorrected=False,
+        reason=reason,
+        centre=nan,
+        binCentres=np.array([]),
+        profile=np.array([]),
+        zeroPoint=nan,
+        coreSpectrum=np.full(nPixels, nan),
+        biasLevel=nan,
+        biasNoise=nan,
+        skyLevel=nan,
+        slitLossFraction=nan,
     )
 
 
