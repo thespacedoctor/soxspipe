@@ -470,3 +470,95 @@ def test_read_ccd_propagates_a_parse_error_from_the_decompressed_bytes(
 
     with pytest.raises(TypeError, match="buffer is too small"):
         read_ccd(framePath, **PIXEL_READ_KWARGS)
+
+
+@requiresGzip
+def test_read_ccd_reads_a_dash_prefixed_relative_filename(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plainPath = raw_fits(tmp_path / "plain.fits")
+    lzw_compressed_fits(plainPath, tmp_path / "-c.fits.Z")
+    monkeypatch.chdir(tmp_path)
+    decompressed = _spy_on_decompress(monkeypatch)
+
+    frame = read_ccd("-c.fits.Z", **PIXEL_READ_KWARGS)
+
+    assert decompressed == ["-c.fits.Z"]
+    assert np.array_equal(frame.data, fits.getdata(plainPath))
+
+
+def test_read_ccd_gives_gzip_a_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    framePath = _lzw_frame(tmp_path)
+    runKwargs: list[dict] = []
+
+    def _recording_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+        runKwargs.append(kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(fits_headers.shutil, "which", lambda name: "/usr/bin/gzip")
+    monkeypatch.setattr(fits_headers.subprocess, "run", _recording_run)
+
+    fits_headers._decompress_lzw(os.fspath(framePath))
+
+    assert runKwargs[0]["timeout"] == fits_headers.GZIP_TIMEOUT_SECONDS
+
+
+def test_read_ccd_falls_back_to_ccddata_read_when_gzip_times_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    framePath = _lzw_frame(tmp_path)
+
+    def _timing_out(*args: object, **kwargs: object) -> None:
+        raise subprocess.TimeoutExpired(cmd="gzip", timeout=fits_headers.GZIP_TIMEOUT_SECONDS)
+
+    monkeypatch.setattr(fits_headers.shutil, "which", lambda name: "/usr/bin/gzip")
+    monkeypatch.setattr(fits_headers.subprocess, "run", _timing_out)
+    pixelReads = _spy_on_ccddata_read(monkeypatch)
+
+    read_ccd(framePath, **PIXEL_READ_KWARGS)
+
+    assert pixelReads == [(framePath, PIXEL_READ_KWARGS)]
+
+
+def test_read_ccd_warns_once_per_process_when_gzip_is_not_installed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    framePath = _lzw_frame(tmp_path)
+    monkeypatch.setattr(fits_headers.shutil, "which", lambda name: None)
+    monkeypatch.setattr(fits_headers, "_hasWarnedGzipMissing", False)
+    _spy_on_ccddata_read(monkeypatch)
+
+    with caplog.at_level(logging.DEBUG, logger=fits_headers.log.name):
+        read_ccd(framePath, **PIXEL_READ_KWARGS)
+        read_ccd(framePath, **PIXEL_READ_KWARGS)
+
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "install gzip" in warnings[0].getMessage()
+
+
+def test_read_ccd_logs_the_gzip_error_output_when_the_subprocess_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    framePath = _lzw_frame(tmp_path)
+
+    def _failing(filePath: object) -> bytes:
+        raise subprocess.CalledProcessError(1, ["gzip"], stderr=b"gzip: not in compressed format")
+
+    monkeypatch.setattr(fits_headers, "_decompress_lzw", _failing)
+    _spy_on_ccddata_read(monkeypatch)
+
+    with caplog.at_level(logging.DEBUG, logger=fits_headers.log.name):
+        read_ccd(framePath, **PIXEL_READ_KWARGS)
+
+    assert any("not in compressed format" in record.getMessage() for record in caplog.records)
+
+
+@requiresGzip
+def test_read_ccd_accepts_a_caller_supplied_format_on_the_fast_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    framePath = _lzw_frame(tmp_path)
+    pixelReads = _spy_on_ccddata_read(monkeypatch)
+
+    read_ccd(framePath, **{**PIXEL_READ_KWARGS, "format": "fits"})
+
+    assert pixelReads[0][1]["format"] == "fits"

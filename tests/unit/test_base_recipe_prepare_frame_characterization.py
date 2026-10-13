@@ -13,6 +13,7 @@ which is what a split of this method could silently change.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from typing import Any
 
@@ -238,7 +239,10 @@ def test_a_corrupted_compressed_frame_is_dropped_from_the_reduction(
     recipe = _recipe(log, tmp_path)
     compressedPath = lzw_compressed_fits(Path(_raw_frame(tmp_path)), tmp_path / "raw.fits.Z")
 
-    def failing_read(*_: object, **__: object) -> CCDData:
+    sources: list[object] = []
+
+    def failing_read(source: object, **__: object) -> CCDData:
+        sources.append(source)
         raise TypeError("buffer is too small for requested array")
 
     monkeypatch.setattr(CCDData, "read", failing_read)
@@ -247,6 +251,7 @@ def test_a_corrupted_compressed_frame_is_dropped_from_the_reduction(
     result = recipe._prepare_single_frame(str(compressedPath))
 
     # ASSERT
+    assert [type(source) for source in sources] == [io.BytesIO]
     assert result is None
     assert any("likely corrupted" in str(message) for message in log.messages)
 

@@ -41,10 +41,15 @@ from ccdproc import ImageFileCollection
 from soxspipe.commonutils.fits_frame_names import LZW_SUFFIX, is_fits_frame
 
 FITS_BLOCK_SIZE = 2880
+GZIP_TIMEOUT_SECONDS = 120
+GZIP_STDERR_LOG_LIMIT = 500
 FITS_CARD_SIZE = 80
 END_CARD = b"END" + b" " * (FITS_CARD_SIZE - 3)
 
 log = logging.getLogger(__name__)
+
+# SET ONCE THE MISSING-GZIP WARNING HAS BEEN LOGGED, SO A WORKSPACE OF FRAMES WARNS ONLY ONCE
+_hasWarnedGzipMissing = False
 
 
 def _block_holds_end_card(block):
@@ -152,14 +157,53 @@ def _decompress_lzw(filePath):
 
     - ``FileNotFoundError`` -- when no ``gzip`` binary is on the ``PATH``
     - ``subprocess.CalledProcessError`` -- when ``gzip`` exits with an error
+    - ``subprocess.TimeoutExpired`` -- when ``gzip`` runs longer than ``GZIP_TIMEOUT_SECONDS``
     - ``OSError`` -- when ``gzip`` cannot be started
     """
     gzipPath = shutil.which("gzip")
     if gzipPath is None:
         raise FileNotFoundError("gzip is not on the PATH")
-    # LIST ARGUMENTS AND NO SHELL: THE PATH IS NEVER PARSED BY A SHELL
-    result = subprocess.run([gzipPath, "-dc", filePath], capture_output=True, check=True)  # noqa: S603
+    # LIST ARGUMENTS AND NO SHELL: THE PATH IS NEVER PARSED BY A SHELL. `--` ENDS OPTION PARSING,
+    # SO A FILE NAME STARTING WITH A DASH IS NOT TAKEN FOR A GZIP OPTION
+    result = subprocess.run(  # noqa: S603
+        [gzipPath, "-dc", "--", filePath],
+        capture_output=True,
+        check=True,
+        timeout=GZIP_TIMEOUT_SECONDS,
+    )
     return result.stdout
+
+
+def _describe_failure(error):
+    """*return a log-ready description of a failed gzip run, with its bounded error output*
+
+    **Key Arguments:**
+
+    - ``error`` -- the exception raised by ``_decompress_lzw``
+
+    **Return:**
+
+    - ``description`` -- the exception text, followed by the first ``GZIP_STDERR_LOG_LIMIT``
+      characters of ``gzip``'s error output when there is any
+    """
+    stderr = getattr(error, "stderr", None)
+    if not stderr:
+        return str(error)
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode(errors="replace")
+    return f"{error}: {stderr.strip()[:GZIP_STDERR_LOG_LIMIT]}"
+
+
+def _warn_once_gzip_missing():
+    """*log a warning, once per process, that gzip is missing and LZW reads will be slow*"""
+    global _hasWarnedGzipMissing
+    if _hasWarnedGzipMissing:
+        return
+    _hasWarnedGzipMissing = True
+    log.warning(
+        "gzip was not found, so .fits.Z frames are read with the much slower uncompresspy; "
+        "install gzip to speed up reading"
+    )
 
 
 def read_ccd(path, **kwargs):
@@ -167,13 +211,16 @@ def read_ccd(path, **kwargs):
 
     The pure-Python ``uncompresspy`` decoder takes about 1.2 s per real NIR frame. ``gzip`` decodes the
     same file in about 0.06 s. Only the decompression step falls back to ``CCDData.read`` on the path,
-    when ``gzip`` is missing or fails. An error raised by astropy while it parses the decompressed
-    bytes is not caught, so the caller sees the same exception as before.
+    when ``gzip`` is missing, fails or times out. A missing ``gzip`` is logged once as a warning. An error
+    raised by astropy while it parses the decompressed bytes is not caught, so the caller sees the same
+    exception as before. The decompressed bytes are read from memory, so ``memmap`` does not apply on the
+    fast path.
 
     **Key Arguments:**
 
     - ``path`` -- the path of the FITS file
-    - ``kwargs`` -- the keyword arguments given to ``CCDData.read``
+    - ``kwargs`` -- the keyword arguments given to ``CCDData.read``. A ``format`` given here is
+      replaced by ``"fits"`` on the fast path
 
     **Return:**
 
@@ -183,10 +230,16 @@ def read_ccd(path, **kwargs):
         return CCDData.read(path, **kwargs)
     try:
         data = _decompress_lzw(os.fsdecode(path))
-    except (OSError, subprocess.CalledProcessError) as e:
+    except FileNotFoundError as e:
+        _warn_once_gzip_missing()
         log.debug(f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {e}")
         return CCDData.read(path, **kwargs)
-    return CCDData.read(io.BytesIO(data), format="fits", **kwargs)
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        log.debug(
+            f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {_describe_failure(e)}"
+        )
+        return CCDData.read(path, **kwargs)
+    return CCDData.read(io.BytesIO(data), **{**kwargs, "format": "fits"})
 
 
 class HeaderImageFileCollection(ImageFileCollection):
