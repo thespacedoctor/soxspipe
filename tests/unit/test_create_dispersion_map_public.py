@@ -562,6 +562,67 @@ def test_fit_polynomials_does_not_refit_when_a_pass_clips_nothing(
     assert len(calls) == sum(1 for call in calls if not call["writeQCs"]) + 1
 
 
+def _line_table(lineCount: int) -> pd.DataFrame:
+    """Return distinct, undropped lines whose positions vary smoothly with wavelength."""
+    return pd.DataFrame(
+        {
+            "order": 10.0,
+            "wavelength": np.linspace(500.0, 600.0, lineCount),
+            "slit_position": 0.0,
+            "observed_x": np.linspace(100.0, 200.0, lineCount),
+            "observed_y": np.linspace(20.0, 30.0, lineCount),
+            "dropped": False,
+        }
+    )
+
+
+def test_fit_polynomials_returns_xerror_when_clipping_leaves_fewer_lines_than_coefficients(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report the degree-reduction marker when a later pass has fewer lines than coefficients."""
+    mapper = _fitting_mapper(log)
+    mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 1.0
+    mapper.recipeSettings["poly-clipping-iteration-limit"] = 5
+    commonutilsModule = importlib.import_module("soxspipe.commonutils")
+    # A QUADRATIC IN WAVELENGTH HAS THREE COEFFICIENTS PER AXIS
+    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: (np.ones(3), np.ones(3)))
+    calls: list[int] = []
+
+    def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
+        # THE LAST LINE IS THE ONLY OUTLIER, SO EACH PASS CLIPS EXACTLY ONE LINE
+        table = kwargs["orderPixelTable"].copy()
+        residuals = np.zeros(len(table))
+        residuals[-1] = 10.0
+        table["residuals_x"] = residuals
+        table["residuals_y"] = residuals
+        table["residuals_xy"] = residuals
+        calls.append(len(table))
+        return 0.0, 0.0, 0.0, table
+
+    mapper.calculate_residuals = calculate_residuals
+
+    result = mapper.fit_polynomials(_line_table(4), wavelengthDeg=2, orderDeg=0, slitDeg=0)
+
+    assert calls == [4, 3]
+    assert result == ("xerror", None, None, None)
+
+
+def test_fit_polynomials_returns_yerror_when_only_the_y_polynomial_has_too_many_coefficients(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report the y-axis marker when two lines fit the x polynomial but not the y polynomial."""
+    mapper = _fitting_mapper(log)
+    commonutilsModule = importlib.import_module("soxspipe.commonutils")
+    # X IS LINEAR IN WAVELENGTH (TWO COEFFICIENTS) AND Y IS QUADRATIC (THREE COEFFICIENTS)
+    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: (np.ones(2), np.ones(3)))
+
+    result = mapper.fit_polynomials(_line_table(2), wavelengthDeg=[1, 2], orderDeg=[0, 0], slitDeg=[0, 0])
+
+    assert result == (None, "yerror", None, None)
+
+
 def test_detect_pinhole_arc_lines_uses_shifted_positions_and_collects_measurements(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -685,6 +746,46 @@ def test_get_writes_the_fitted_map_and_returns_workflow_products(log: object) ->
     assert result[4] is mapper.products
     assert result[5].equals(mapper.lineDetectionTable)
     assert calls == ["quicklook", "metrics", "line-qc", "fitted", "missing"]
+
+
+def test_get_raises_arithmetic_error_when_no_reduced_degree_fit_succeeds(log: object) -> None:
+    """Stop at constant polynomials with the helpful error instead of lowering a degree below zero."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.lineDetectionTable = pd.DataFrame(
+        {
+            "wavelength": [500.0, 501.0],
+            "order": [10, 10],
+            "slit_position": [0.0, 0.0],
+            "observed_x": [100.0, 101.0],
+        }
+    )
+    mapper.recipeName = "soxs-disp-solution"
+    mapper.recipeSettings = {"mph_line_set_min": 1}
+    mapper.settings = {"tune-pipeline": False}
+    mapper.firstGuessMap = False
+    mapper.orderTable = False
+    mapper.create2DMap = False
+    mapper.qc = pd.DataFrame()
+    mapper.products = pd.DataFrame()
+    mapper.dateObs = "2025-01-02T03:04:05"
+    attemptedDegrees: list[tuple[int, int, int]] = []
+
+    def fit_polynomials(**kwargs: object) -> tuple[str, None, None, None]:
+        attemptedDegrees.append((kwargs["wavelengthDeg"], kwargs["orderDeg"], kwargs["slitDeg"]))
+        return "xerror", None, None, None
+
+    mapper._initialize_recipe_settings = lambda: (False, False, 1, 1, 0)
+    mapper.get_predicted_line_list = lambda: mapper.lineDetectionTable.copy()
+    mapper._prepare_pinhole_frame = lambda: "prepared-frame"
+    mapper._generate_quicklook_and_debug_plots = lambda *args: None
+    mapper._clip_on_measured_line_metrics = lambda table: table
+    mapper.fit_polynomials = fit_polynomials
+
+    with pytest.raises(ArithmeticError, match="Could not converge on a good fit"):
+        mapper.get()
+
+    assert attemptedDegrees == [(1, 1, 0), (0, 1, 0), (0, 0, 0)]
 
 
 def test_get_detects_and_shifts_lines_before_fitting(log: object) -> None:
