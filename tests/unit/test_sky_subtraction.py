@@ -22,6 +22,8 @@ def _subtractor(log: object) -> subtract_sky:
     subtractor = object.__new__(subtract_sky)
     subtractor.log = log
     subtractor.arm = "VIS"
+    # THE NOISE UNITS OF THE LONG RESIDUAL MEDIAN NEED THE READ NOISE (DY-1517)
+    subtractor.ron = 3.3
     subtractor.recipeSettings = {
         "sky-subtraction": {
             "residual_floor_percentile": 50,

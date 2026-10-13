@@ -14,12 +14,16 @@ pytestmark = pytest.mark.unit
 
 PIXELS_PER_ORDER = 4000
 BIN_WIDTH = 11.0 / 99
+# THE LONG RESIDUAL MEDIAN IS IN NOISE UNITS SINCE DY-1517: ITS PINNED SUMS FELL BY ABOUT sqrt(100 + 3.3**2), THE
+# NOISE OF THE 100 E- SKY OF THESE ORDERS
 NOISE_COLUMNS = ("residual_windowed_std", "residual_windowed_long_median", "flux_windowed_long_median")
 
 
 def _subtractor(log: Any) -> subtract_sky:
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
+    # THE NOISE UNITS OF THE LONG RESIDUAL MEDIAN NEED THE READ NOISE (DY-1517)
+    subtractor.ron = 3.3
     subtractor.recipeSettings = {
         "sky-subtraction": {
             "percentile_rolling_window_size": 15,
@@ -103,10 +107,10 @@ def test_a_central_object_masks_its_slit_range_in_every_order(log: Any, masked_r
         insideRange = order["slit_position"].between(lower, upper)
         assert order.loc[insideRange, "flagged_object_clipped"].all()
     assert _noise_summary(result[0]) == _expected_noise(
-        [(6385.0131472153225, 392), (137.46062579534546, 405), (359471.17853026406, 405)]
+        [(6385.0131472153225, 392), (13.061768989430979, 405), (359471.17853026406, 405)]
     )
     assert _noise_summary(result[1]) == _expected_noise(
-        [(6428.201453266465, 338), (-67.38329929430459, 351), (364825.4955009001, 351)]
+        [(6428.201453266465, 338), (-6.4081588489168295, 351), (364825.4955009001, 351)]
     )
 
 
@@ -129,10 +133,10 @@ def test_an_object_at_the_blue_slit_edge_is_masked_from_the_first_examined_bin(
     assert [int(order["flagged_object_clipped"].sum()) for order in result] == [631, 600]
     assert [int(order["flagged_all_clipped"].sum()) for order in result] == [631, 600]
     assert _noise_summary(result[0]) == _expected_noise(
-        [(6242.460744138139, 631), (19.521000344039592, 644), (335582.05770925974, 644)]
+        [(6242.460744138139, 631), (1.8546999764809473, 644), (335582.05770925974, 644)]
     )
     assert _noise_summary(result[1]) == _expected_noise(
-        [(6226.8607221658385, 600), (231.64411541533178, 613), (338658.9684423819, 613)]
+        [(6226.8607221658385, 600), (21.980777479211937, 613), (338658.9684423819, 613)]
     )
 
 
@@ -152,10 +156,10 @@ def test_without_an_object_range_aggressive_masking_leaves_object_flags_unpromot
     assert [int(order["flagged_object_clipped"].sum()) for order in result] == [367, 349]
     assert [int(order["flagged_all_clipped"].sum()) for order in result] == [0, 0]
     assert _noise_summary(result[0]) == _expected_noise(
-        [(6411.643045030396, 367), (103.67070347766978, 380), (361976.18861746334, 380)]
+        [(6411.643045030396, 367), (9.806251518490537, 380), (361976.18861746334, 380)]
     )
     assert _noise_summary(result[1]) == _expected_noise(
-        [(6405.264848625138, 349), (75.97294583409979, 362), (363737.83604636916, 362)]
+        [(6405.264848625138, 349), (7.208032974340101, 362), (363737.83604636916, 362)]
     )
 
 
@@ -193,10 +197,10 @@ def test_an_object_running_into_the_red_margin_is_closed_after_the_loop(
     assert [int(order["flagged_object_clipped"].sum()) for order in result] == [654, 672]
     assert [int(order["flagged_all_clipped"].sum()) for order in result] == [654, 672]
     assert _noise_summary(result[0]) == _expected_noise(
-        [(6212.313468960861, 654), (127.97333372969166, 667), (333259.15392645646, 667)]
+        [(6212.313468960861, 654), (12.130875960143896, 667), (333259.15392645646, 667)]
     )
     assert _noise_summary(result[1]) == _expected_noise(
-        [(6143.968166835047, 672), (43.69186079400444, 685), (331434.72029450943, 685)]
+        [(6143.968166835047, 672), (4.126946307870407, 685), (331434.72029450943, 685)]
     )
 
 

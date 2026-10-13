@@ -53,6 +53,11 @@ MIN_CLIP_SIGMA = 1.5
 # ROUND EACH RETRY SIGMA SO REPEATED 0.1 STEPS DO NOT DRIFT PAST THE FLOOR
 RETRY_SIGMA_DECIMALS = 6
 
+# A PIXEL WHOSE MASTER FLAT IS BELOW THIS FRACTION OF THE 95TH PERCENTILE OF ITS ORDER'S FLAT IS OUT OF BAND (DY-1517)
+LOW_FLAT_FRACTION = 0.02
+# THE PERCENTILE OF AN ORDER'S FLAT THAT LOW_FLAT_FRACTION IS TAKEN OF
+LOW_FLAT_REFERENCE_PERCENTILE = 95
+
 
 def _sliding_mean(values, window):
     """*running mean of a 1D array, padded at each end so there is one value per input element*
@@ -107,6 +112,11 @@ class subtract_sky:
     - ``excludeMask`` -- boolean image, the shape of ``objectFrame``, True for a pixel to leave out of the sky model.
       An excluded pixel comes out with its sky model and sky-subtracted data set to 0 and flagged in the mask.
       Default *None*, which excludes nothing
+    - ``masterFlat`` -- the master flat the object frame was divided by, a CCDData object with the shape of
+      ``objectFrame``.
+      The sky fit then weights each pixel by its flat-fielded noise and leaves out the pixels where the flat is low
+      (not finite, not positive, or below ``LOW_FLAT_FRACTION`` of the 95th percentile of the flat of their order),
+      as for ``excludeMask``. Default *None*, which applies no flat
 
     **Usage:**
 
@@ -149,6 +159,7 @@ class subtract_sky:
         debug=False,
         debugInfo=False,
         excludeMask=None,
+        masterFlat=None,
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
@@ -193,9 +204,8 @@ class subtract_sky:
         if "JH" in self.slit:
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
 
-        # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280); subtract FLAGS AND ZERO-FILLS THEM AS PIXELS WITH NO MODEL
-        if excludeMask is not None:
-            self.mapDF = self._drop_excluded_pixels(self.mapDF, excludeMask)
+        # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280, DY-1517); subtract FLAGS AND ZERO-FILLS THEM AS NO-MODEL PIXELS
+        self.mapDF = self._leave_out_excluded_pixels(self.mapDF, excludeMask, masterFlat)
 
         quicklook_image(
             log=self.log,
@@ -247,6 +257,111 @@ class subtract_sky:
         self.ron = self._read_noise(self.objectFrame.header.get(kw("RON")), dp["ron"], self.log)
         return
 
+    def _leave_out_excluded_pixels(self, mapDF, excludeMask, masterFlat):
+        """*the map without the pixels left out of the sky model, and with the master flat of each pixel*
+
+        **Key Arguments:**
+
+        - ``mapDF`` -- the dispersion map dataframe, with integer ``x`` and ``y`` pixel columns
+        - ``excludeMask`` -- boolean image, True for a pixel to leave out of the sky model, or None
+        - ``masterFlat`` -- CCDData object, the master flat, or None. The map then gets a ``flat`` column and the
+          low-flat pixels are left out with those of ``excludeMask``
+
+        **Return:**
+
+        - ``keptMapDF`` -- a new dataframe holding the rows of ``mapDF`` that stay in the sky model
+        """
+        if masterFlat is not None:
+            mapDF = self._add_flat_column(mapDF, masterFlat)
+            lowFlatImage = self._low_flat_pixels(mapDF)
+            excludeMask = lowFlatImage if excludeMask is None else lowFlatImage | self._exclude_image(excludeMask)
+        if excludeMask is None:
+            return mapDF
+        return self._drop_excluded_pixels(mapDF, excludeMask)
+
+    def _exclude_image(self, excludeMask):
+        """*the exclude mask as a boolean image, checked against the shape of the object frame*
+
+        **Key Arguments:**
+
+        - ``excludeMask`` -- boolean image, the shape of the object frame, True for a pixel to leave out
+
+        **Return:**
+
+        - ``excludeImage`` -- the mask as a boolean numpy array
+
+        A mask of the wrong shape raises ``ValueError``.
+        """
+        import numpy as np
+
+        excludeImage = np.asarray(excludeMask, dtype=bool)
+        if excludeImage.shape != self.objectFrame.data.shape:
+            raise ValueError(
+                f"the exclude mask shape {excludeImage.shape} differs from the object frame shape "
+                f"{self.objectFrame.data.shape}"
+            )
+        return excludeImage
+
+    def _add_flat_column(self, mapDF, masterFlat):
+        """*a copy of the map with the master flat value of each pixel in a ``flat`` column*
+
+        **Key Arguments:**
+
+        - ``mapDF`` -- the dispersion map dataframe, with integer ``x`` (column) and ``y`` (row) pixel columns. They
+          index the object frame directly, as the map is unpacked at the frame's binning and shape
+        - ``masterFlat`` -- CCDData object, the master flat, with the shape of the object frame
+
+        **Return:**
+
+        - ``flatMapDF`` -- a new dataframe holding the rows of ``mapDF`` and the ``flat`` column
+
+        A master flat of the wrong shape raises ``ValueError``.
+        """
+        import numpy as np
+
+        flatImage = np.asarray(masterFlat.data, dtype=float)
+        if flatImage.shape != self.objectFrame.data.shape:
+            raise ValueError(
+                f"the master flat shape {flatImage.shape} differs from the object frame shape "
+                f"{self.objectFrame.data.shape}"
+            )
+        return mapDF.assign(flat=flatImage[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)])
+
+    def _low_flat_pixels(self, mapDF):
+        """*the detector pixels where the master flat is too low to give a usable flat-fielded value*
+
+        Where the flat falls to about 0.001 at the end of a VIS order, flat division leaves a huge, biased value
+        with an uncertainty to match. A pixel is low-flat when its flat is not finite, not positive, or below
+        ``LOW_FLAT_FRACTION`` times the 95th percentile of the positive, finite flat values of its order.
+
+        **Key Arguments:**
+
+        - ``mapDF`` -- the dispersion map dataframe, with ``order``, ``flat`` and integer ``x`` and ``y`` columns
+
+        **Return:**
+
+        - ``lowFlatImage`` -- boolean image, the shape of the object frame, True for a low-flat map pixel. It is
+          False where the map has no pixel
+        """
+        import numpy as np
+        import pandas as pd
+
+        flat = mapDF["flat"].to_numpy(dtype=float)
+        isUsable = np.isfinite(flat) & (flat > 0)
+        usableFlat = pd.Series(np.where(isUsable, flat, np.nan), index=mapDF.index)
+        referenceFlat = usableFlat.groupby(mapDF["order"].to_numpy()).quantile(LOW_FLAT_REFERENCE_PERCENTILE / 100.0)
+        threshold = mapDF["order"].map(referenceFlat).to_numpy(dtype=float) * LOW_FLAT_FRACTION
+        isLow = ~isUsable | (flat < threshold)
+
+        lowFlatImage = np.zeros(self.objectFrame.data.shape, dtype=bool)
+        lowFlatImage[mapDF["y"].to_numpy(dtype=int)[isLow], mapDF["x"].to_numpy(dtype=int)[isLow]] = True
+        self.log.print(
+            f"\n  Excluding {np.count_nonzero(isLow)} low-flat pixels (flat below "
+            f"{LOW_FLAT_FRACTION:.0%} of the order's {LOW_FLAT_REFERENCE_PERCENTILE}th percentile) "
+            "from the sky model\n"
+        )
+        return lowFlatImage
+
     def _drop_excluded_pixels(self, mapDF, excludeMask):
         """*the map rows whose detector pixel is not excluded*
 
@@ -264,16 +379,14 @@ class subtract_sky:
         """
         import numpy as np
 
-        isExcluded = np.asarray(excludeMask, dtype=bool)
-        if isExcluded.shape != self.objectFrame.data.shape:
-            raise ValueError(
-                f"the exclude mask shape {isExcluded.shape} differs from the object frame shape "
-                f"{self.objectFrame.data.shape}"
-            )
+        isExcluded = self._exclude_image(excludeMask)
         isRowExcluded = isExcluded[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
         if len(mapDF) and isRowExcluded.all():
-            raise ValueError("the exclude mask excludes every pixel of the dispersion map, so no sky can be modelled")
-        self.log.print(f"\n  Excluding {np.count_nonzero(isRowExcluded)} slit-end pixels from the sky model\n")
+            raise ValueError(
+                "every pixel of the dispersion map is left out of the sky model (by the exclude mask or a low master "
+                "flat), so no sky can be modelled"
+            )
+        self.log.print(f"\n  Excluding {np.count_nonzero(isRowExcluded)} pixels from the sky model\n")
         return mapDF.loc[~isRowExcluded]
 
     def subtract(self):
@@ -1330,16 +1443,22 @@ class subtract_sky:
         return float(getattr(defaultRon, "value", defaultRon))
 
     @staticmethod
-    def _inverse_noise_weights(skyModel, ron):
+    def _inverse_noise_weights(skyModel, ron, flat=None):
         """*return the B-spline sky-fit weights, 1/σ, from a noise model of the sky (DY-1282)*
 
         σ² = max(skyModel, 0) + ron². The weights come from a model of the sky, never from the
         measured flux, so they do not correlate with the noise in each pixel and cannot bias the fit.
 
+        The fit runs on flat-fielded flux. A pixel with master flat ``f`` collected ``f`` times the sky in
+        electrons, so its σ² = (max(skyModel, 0) · f + ron²) / f² and its weight is
+        f / sqrt(max(skyModel, 0) · f + ron²). A low flat therefore gives a low weight (DY-1517).
+
         **Key Arguments:**
 
         - ``skyModel`` -- array of model sky values (e-), one per pixel. NaN and -inf are treated as 0
         - ``ron`` -- the detector read noise (e-), finite and positive
+        - ``flat`` -- array of master flat values, one per pixel. A flat that is not finite and positive gives a
+          weight of 0. Default *None*, which applies no flat
 
         **Return:**
 
@@ -1348,7 +1467,29 @@ class subtract_sky:
         import numpy as np
 
         skyModel = np.nan_to_num(np.asarray(skyModel, dtype=float), nan=0.0, posinf=np.inf, neginf=0.0)
-        return 1.0 / np.sqrt(np.clip(skyModel, 0.0, None) + ron**2)
+        positiveSky = np.clip(skyModel, 0.0, None)
+        if flat is None:
+            return 1.0 / np.sqrt(positiveSky + ron**2)
+        flat = np.asarray(flat, dtype=float)
+        isUsable = np.isfinite(flat) & (flat > 0)
+        usableFlat = np.where(isUsable, flat, 1.0)
+        return np.where(isUsable, usableFlat / np.sqrt(positiveSky * usableFlat + ron**2), 0.0)
+
+    @staticmethod
+    def _flat_values(imageMapOrder):
+        """*the master flat of each pixel of an order, or None when the map carries no flat*
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- dataframe of the pixels of one order
+
+        **Return:**
+
+        - ``flat`` -- numpy array of master flat values, or None without a ``flat`` column
+        """
+        if "flat" not in imageMapOrder.columns:
+            return None
+        return imageMapOrder["flat"].to_numpy(dtype=float)
 
     @staticmethod
     def _fill_nans_by_interpolation(values):
@@ -1438,7 +1579,7 @@ class subtract_sky:
         localScatter = np.full(residual.shape, np.nan)
         localScatter[isUnclipped] = MAD_TO_SIGMA * localMad.to_numpy()
         # THE NOISE OF THE LOCAL SKY, NOT OF A MODEL THAT MAY NOT YET RESOLVE A SKYLINE
-        noise = 1.0 / self._inverse_noise_weights(model + localResidual, self.ron)
+        noise = 1.0 / self._inverse_noise_weights(model + localResidual, self.ron, self._flat_values(imageMapOrder))
         # A MISFIT THAT VARIES ALONG THE SLIT (E.G. A SMALL WAVELENGTH ERROR ON A SKYLINE FLANK) SCATTERS THE
         # NEIGHBOURS TOO; THE CLIP NEVER CUTS INSIDE THAT SCATTER, AND NEVER INSIDE THE NOISE MODEL
         noise = np.fmax(noise, localScatter)
@@ -1482,7 +1623,7 @@ class subtract_sky:
         while notYetRefit.any():
             # THE WEIGHTS OF THIS REFIT COME FROM THE FIT BEFORE IT, AS IN EVERY FIT (DY-1282)
             imageMapOrder["weights"] = self._inverse_noise_weights(
-                ip.splev(imageMapOrder["wavelength"].to_numpy(), tck), self.ron
+                ip.splev(imageMapOrder["wavelength"].to_numpy(), tck), self.ron, self._flat_values(imageMapOrder)
             )
             mask_all_clipped = imageMapOrder["flagged_all_clipped"].astype(bool)
             if int((~mask_all_clipped).sum()) <= self.bspline_order:
@@ -1644,7 +1785,9 @@ class subtract_sky:
 
             if tck_previous is not None:
                 noiseModelSky = ip.splev(imageMapOrder["wavelength"].values, tck_previous)
-            imageMapOrder["weights"] = self._inverse_noise_weights(noiseModelSky, self.ron)
+            imageMapOrder["weights"] = self._inverse_noise_weights(
+                noiseModelSky, self.ron, self._flat_values(imageMapOrder)
+            )
 
             goodWl, goodFlux, goodWeights = self._spline_fit_samples(imageMapOrder, mask_all_clipped, starterKnots)
 
@@ -2438,7 +2581,9 @@ class subtract_sky:
 
         **Return:**
 
-        - ``order_dataframes`` -- the order dataframes with the object(s) slit-ranges clipped
+        - ``order_dataframes`` -- the order dataframes with the object(s) slit-ranges clipped, and the
+          ``residual_windowed_long_median`` column holding the long rolling median of the residual in units of the
+          pixel noise, σ = 1 / ``_inverse_noise_weights`` of the percentile-smoothed sky and the order's flat (DY-1517)
         - ``sky_only_dataframes`` -- dataframes with object removed
 
         **Usage:**
@@ -2525,17 +2670,23 @@ class subtract_sky:
                 .std()
             )
 
-            # GENERATE A LARGER ROLLING WINDOWED STD TO BE USED IN DETERMINING NOISE
-            df.loc[notClippedOrObjectMask, "residual_windowed_long_median"] = (
-                df.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"]
-                .rolling(
-                    noise_rolling_window_size,
-                    center=True,
-                    min_periods=30,
-                    closed="both",
+            # THE RESIDUAL IN UNITS OF ITS OWN NOISE (1/WEIGHT), SO A LOW FLAT'S LARGER NOISE IS NOT A NOISY REGION
+            # (DY-1517)
+            residualInNoiseUnits = df.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"] * (
+                self._inverse_noise_weights(
+                    df.loc[notClippedOrObjectMask, "flux_percentile_smoothed"].to_numpy(dtype=float),
+                    self.ron,
+                    self._flat_values(df.loc[notClippedOrObjectMask]),
                 )
-                .median()
             )
+
+            # GENERATE A LARGER ROLLING WINDOWED MEDIAN TO BE USED IN DETERMINING NOISE
+            df.loc[notClippedOrObjectMask, "residual_windowed_long_median"] = residualInNoiseUnits.rolling(
+                noise_rolling_window_size,
+                center=True,
+                min_periods=30,
+                closed="both",
+            ).median()
 
             # GENERATE A LARGER ROLLING WINDOWED STD TO BE USED IN DETERMINING NOISE
             df.loc[notClippedOrObjectMask, "flux_windowed_long_median"] = (
@@ -2555,8 +2706,13 @@ class subtract_sky:
     def determine_residual_floor(self, imageMapOrder, tck, iteration):
         """*determine residual floor and flag sky-lines*
 
+        A region is noisy when its long rolling median of the residual, in units of the pixel noise (see
+        ``clip_object_slit_positions``), is high against the other regions of the order, or when its long rolling
+        median of the flux is low (DY-1517).
+
         **Key Arguments:**
-            - ``imageMapOrder`` -- dataframe with various processed data for a given order
+            - ``imageMapOrder`` -- dataframe with various processed data for a given order, including the
+              ``residual_windowed_long_median`` column in noise units
             - ``tck`` -- the fitted bspline components. t for knots, c for coefficients, k for order
             - ``iteration`` -- the iteration number of the sky-subtraction loop, used to determine how aggressive to be in flagging sky-lines
 
@@ -2609,7 +2765,8 @@ class subtract_sky:
                 .quantile(residual_floor_percentile / 100.0)
             )
 
-        # FLAG NOISY REGIONS: high residual windowed median or deeply negative flux
+        # FLAG NOISY REGIONS: HIGH RESIDUAL WINDOWED MEDIAN (IN NOISE UNITS, SO THE THRESHOLD IS IN SIGMA) OR DEEPLY
+        # NEGATIVE FLUX
         imageMapOrder["flagged_noisy_region"] = False
 
         _, median_resid, std_resid = sigma_clipped_stats(
@@ -2619,6 +2776,8 @@ class subtract_sky:
             cenfunc="median",
             maxiters=10,
         )
+        # NEVER LET THE SPREAD FALL BELOW ONE NOISE UNIT, SO A REGION IS NOISY ONLY WHEN ITS MEDIAN RESIDUAL IS AT LEAST
+        # noise_sigma TIMES THE PIXEL NOISE ABOVE THE REST OF THE ORDER
         std_resid = max(std_resid, 1.0)
         mask_high_resid = imageMapOrder["residual_windowed_long_median"] > median_resid + noise_significance * std_resid
 

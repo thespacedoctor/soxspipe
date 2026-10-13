@@ -29,6 +29,8 @@ def _subtractor(log: Any, *, arm: str) -> tuple[subtract_sky, list[str]]:
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
     subtractor.arm = arm
+    # THE NOISE UNITS OF THE LONG RESIDUAL MEDIAN NEED THE READ NOISE (DY-1517)
+    subtractor.ron = 3.3
     subtractor.debug = True
     iterations: list[str] = []
     # DEBUG MODE PLOTS EVERY ITERATION; RECORD THE ITERATION LINE OF EACH TITLE INSTEAD
