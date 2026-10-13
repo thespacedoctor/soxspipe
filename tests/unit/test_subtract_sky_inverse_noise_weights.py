@@ -127,6 +127,70 @@ def test_inverse_noise_weights_follow_the_model_sky_and_floor_negative_sky_at_th
     np.testing.assert_allclose(weights, [1 / 3.0, 1 / 3.0, 1 / 5.0, 1 / 3.0, 1 / 3.0])
 
 
+def test_inverse_noise_weights_without_a_flat_are_unchanged() -> None:
+    # ARRANGE
+    skyModel = np.array([-5.0, 0.0, 16.0, 400.0])
+
+    # ACT
+    withoutFlat = subtract_sky._inverse_noise_weights(skyModel, 3.0)
+    withNoneFlat = subtract_sky._inverse_noise_weights(skyModel, 3.0, flat=None)
+
+    # ASSERT
+    np.testing.assert_array_equal(withNoneFlat, withoutFlat)
+
+
+def test_a_flat_of_one_gives_the_weights_of_no_flat() -> None:
+    # ARRANGE
+    skyModel = np.array([-5.0, 0.0, 16.0, 400.0])
+
+    # ACT
+    weights = subtract_sky._inverse_noise_weights(skyModel, 3.0, flat=np.ones(4))
+
+    # ASSERT
+    np.testing.assert_allclose(weights, subtract_sky._inverse_noise_weights(skyModel, 3.0))
+
+
+def test_flat_weights_follow_the_flat_fielded_noise_model() -> None:
+    # ARRANGE
+    skyModel = np.array([100.0, 100.0])
+    flat = np.array([0.5, 2.0])
+
+    # ACT
+    weights = subtract_sky._inverse_noise_weights(skyModel, 3.0, flat=flat)
+
+    # ASSERT SIGMA = SQRT(MODEL * F + RON^2) / F, SO THE WEIGHT IS F / SQRT(MODEL * F + RON^2)
+    expected = flat / np.sqrt(skyModel * flat + 3.0**2)
+    np.testing.assert_allclose(weights, expected)
+    np.testing.assert_allclose(weights, [0.5 / np.sqrt(59.0), 2.0 / np.sqrt(209.0)])
+
+
+def test_a_very_low_flat_gives_a_far_lower_weight() -> None:
+    # ACT
+    normal = subtract_sky._inverse_noise_weights(np.array([100.0]), 3.3, flat=np.array([1.0]))
+    low = subtract_sky._inverse_noise_weights(np.array([100.0]), 3.3, flat=np.array([0.001]))
+
+    # ASSERT
+    assert low[0] < normal[0] / 100.0
+
+
+@pytest.mark.parametrize("badFlat", [0.0, -0.5, np.nan, np.inf, -np.inf])
+def test_a_flat_that_is_not_finite_and_positive_gives_zero_weight(badFlat: float) -> None:
+    # ACT
+    weights = subtract_sky._inverse_noise_weights(np.array([10.0, 10.0]), 3.0, flat=np.array([1.0, badFlat]))
+
+    # ASSERT
+    assert weights[0] > 0
+    assert weights[1] == 0.0
+
+
+def test_flat_weights_floor_a_negative_model_sky_at_zero() -> None:
+    # ACT
+    weights = subtract_sky._inverse_noise_weights(np.array([-50.0]), 3.0, flat=np.array([0.5]))
+
+    # ASSERT
+    np.testing.assert_allclose(weights, [0.5 / 3.0])
+
+
 def test_an_infinite_model_sky_gets_zero_weight() -> None:
     # ACT
     weights = subtract_sky._inverse_noise_weights(np.array([np.inf]), 3.0)

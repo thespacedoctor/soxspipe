@@ -841,6 +841,59 @@ def test_a_centred_standard_star_keeps_the_response_verdict(
     assert [message for level, message in log.messages if level == "error"] == []
 
 
+def _sky_call_recorder(recipe: soxs_stare) -> list[tuple[Any, ...]]:
+    """Replace `_subtract_sky` with a double that records its positional arguments."""
+    skyCalls: list[tuple[Any, ...]] = []
+
+    def record_sky_call(*args: Any) -> tuple[Any, Any, str]:
+        skyCalls.append(args)
+        return args[0], args[0], "product.fits"
+
+    recipe._subtract_sky = record_sky_call
+    return skyCalls
+
+
+def test_the_master_flat_is_passed_to_the_sky_subtraction_when_the_flat_is_used(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1517: the sky fit needs the flat to weight its pixels and to leave out the low-flat ones."""
+    # ARRANGE
+    recipe, _ = _produce_product_recipe(log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=False)
+    skyCalls = _sky_call_recorder(recipe)
+    masterFlat = recipe._read_calibration_frames(recipe.kw, "VIS")[2]
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    [args] = skyCalls
+    assert args[5] is masterFlat
+
+
+@pytest.mark.parametrize("useFlat", [False, None], ids=["use-flat-off", "use-flat-missing"])
+def test_no_master_flat_is_passed_to_the_sky_subtraction_when_the_flat_is_not_used(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    useFlat: bool | None,
+) -> None:
+    """With `use_flat` off or absent the frame is not flat-fielded, so the sky fit gets no flat (DY-1517)."""
+    # ARRANGE
+    recipe, _ = _produce_product_recipe(log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=False)
+    skyCalls = _sky_call_recorder(recipe)
+    if useFlat is None:
+        del recipe.recipeSettings["use_flat"]
+    else:
+        recipe.recipeSettings["use_flat"] = useFlat
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    [args] = skyCalls
+    assert args[5] is None
+
+
 def test_a_science_frame_that_spills_over_the_slit_edge_is_not_failed(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,

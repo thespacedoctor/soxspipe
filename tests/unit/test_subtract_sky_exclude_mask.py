@@ -1,4 +1,7 @@
-"""Pixels passed to ``subtract_sky`` in ``excludeMask`` stay out of the sky model and come out flagged (DY-1280)."""
+"""Pixels passed to ``subtract_sky`` in ``excludeMask`` stay out of the sky model and come out flagged (DY-1280).
+
+Pixels where the master flat is low (DY-1517) are excluded the same way.
+"""
 
 from __future__ import annotations
 
@@ -154,3 +157,95 @@ def test_an_excluded_pixel_comes_out_flagged_and_zero_with_its_uncertainty_kept(
     for pixel in [(0, 0), (0, 1), (1, 1), (1, 2)]:
         assert model.data[pixel] == 4.0
         assert not subtracted.mask[pixel]
+
+
+def _master_flat(rows: list[list[float]]) -> CCDData:
+    return CCDData(np.array(rows, dtype=float), unit=u.dimensionless_unscaled)
+
+
+GOOD_FLAT_ROWS = [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]
+
+
+def test_without_a_master_flat_the_map_has_no_flat_column_and_nothing_is_excluded(log: Any) -> None:
+    subtractor = _construct(log, _frame(), masterFlat=None)
+
+    assert "flat" not in subtractor.mapDF.columns
+    assert len(subtractor.mapDF) == len(MAP_TABLE)
+    assert not [message for level, message in log.messages if "low-flat" in message]
+
+
+def test_the_map_carries_the_master_flat_value_of_each_pixel(log: Any) -> None:
+    flat = _master_flat([[1.0, 0.9, 0.8], [0.7, 0.6, 0.5], [9.0, 9.0, 9.0]])
+
+    subtractor = _construct(log, _frame(), masterFlat=flat)
+
+    expected = {(0, 0): 1.0, (0, 1): 0.9, (0, 2): 0.8, (1, 0): 0.7, (1, 1): 0.6, (1, 2): 0.5}
+    actual = {
+        (y, x): value
+        for y, x, value in zip(subtractor.mapDF["y"], subtractor.mapDF["x"], subtractor.mapDF["flat"], strict=True)
+    }
+    assert actual == expected
+
+
+def test_a_pixel_below_the_low_flat_fraction_of_its_order_is_excluded(log: Any) -> None:
+    # ORDER 12 IS ROW 0, ORDER 13 IS ROW 1; 0.01 IS BELOW 2% OF THE 95TH PERCENTILE OF ORDER 12 (ABOUT 1.0)
+    flat = _master_flat([[1.0, 1.0, 0.01], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]])
+
+    subtractor = _construct(log, _frame(), masterFlat=flat)
+
+    assert _map_pixels(subtractor) == {(0, 0), (0, 1), (1, 0), (1, 1), (1, 2)}
+
+
+def test_the_low_flat_test_is_per_order_so_a_uniformly_low_order_is_kept(log: Any) -> None:
+    # ORDER 13 IS A THOUSAND TIMES FAINTER THAN ORDER 12 BUT IS NOT LOW RELATIVE TO ITSELF
+    flat = _master_flat([[1.0, 1.0, 1.0], [0.001, 0.001, 0.001], [1.0, 1.0, 1.0]])
+
+    subtractor = _construct(log, _frame(), masterFlat=flat)
+
+    assert len(subtractor.mapDF) == len(MAP_TABLE)
+
+
+def test_a_flat_that_is_not_finite_and_positive_is_excluded(log: Any) -> None:
+    flat = _master_flat([[1.0, np.nan, np.inf], [0.0, -2.0, 1.0], [1.0, 1.0, 1.0]])
+
+    subtractor = _construct(log, _frame(), masterFlat=flat)
+
+    assert _map_pixels(subtractor) == {(0, 0), (1, 2)}
+
+
+def test_low_flat_pixels_are_excluded_as_well_as_those_of_the_exclude_mask(log: Any) -> None:
+    flat = _master_flat([[1.0, 1.0, 1.0], [0.001, 1.0, 1.0], [1.0, 1.0, 1.0]])
+    excludeMask = np.zeros(FRAME_SHAPE, dtype=bool)
+    excludeMask[0, 2] = True
+
+    subtractor = _construct(log, _frame(), masterFlat=flat, excludeMask=excludeMask)
+
+    assert _map_pixels(subtractor) == {(0, 0), (0, 1), (1, 1), (1, 2)}
+    assert excludeMask.sum() == 1
+
+
+def test_a_master_flat_of_the_wrong_shape_raises(log: Any) -> None:
+    with pytest.raises(ValueError, match="master flat"):
+        _construct(log, _frame(), masterFlat=CCDData(np.ones((2, 3)), unit=u.dimensionless_unscaled))
+
+
+def test_an_exclude_mask_of_the_wrong_shape_still_raises_with_a_master_flat(log: Any) -> None:
+    with pytest.raises(ValueError, match="exclude mask shape"):
+        _construct(
+            log,
+            _frame(),
+            masterFlat=_master_flat(GOOD_FLAT_ROWS),
+            excludeMask=np.zeros((2, 3), dtype=bool),
+        )
+
+
+def test_the_low_flat_pixel_count_is_logged_once_and_the_exclusion_message_is_generic(log: Any) -> None:
+    flat = _master_flat([[1.0, 1.0, 0.01], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]])
+
+    _construct(log, _frame(), masterFlat=flat)
+
+    messages = [message for _, message in log.messages]
+    assert len([message for message in messages if "low-flat" in message]) == 1
+    assert any("Excluding 1 low-flat pixels" in message for message in messages)
+    assert any("Excluding 1 pixels from the sky model" in message for message in messages)
+    assert not any("slit-end" in message for message in messages)

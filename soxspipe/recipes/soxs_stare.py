@@ -409,8 +409,10 @@ class soxs_stare(base_recipe):
             skylines=False,
         )
 
+        # THE SKY FIT TAKES THE FLAT ONLY WHEN THE FRAME WAS FLAT-FIELDED (DY-1517)
+        skyMasterFlat = master_flat if master_flat is not False else None
         skymodelCCDData, skySubtractedCCDData, productPath = self._subtract_sky(
-            combined_object, twoDMap, dispMap, orderTablePath, excludeMask
+            combined_object, twoDMap, dispMap, orderTablePath, excludeMask, skyMasterFlat
         )
 
         unflattenedSkySubtractedCCDData = self._unflatten_sky_subtracted_frame(
@@ -875,7 +877,7 @@ class soxs_stare(base_recipe):
             label="QC",
         )
 
-    def _subtract_sky(self, combined_object, twoDMap, dispMap, orderTablePath, excludeMask=None):
+    def _subtract_sky(self, combined_object, twoDMap, dispMap, orderTablePath, excludeMask=None, masterFlat=None):
         """*subtract the sky from the detrended frame, when sky subtraction is on, and write the sky products*
 
         Updates ``self.qc`` and ``self.products``. A sky subtraction that returns no model sets ``self.subtractSky``
@@ -888,6 +890,8 @@ class soxs_stare(base_recipe):
         - ``dispMap`` -- the path to the dispersion map table
         - ``orderTablePath`` -- the path to the order table
         - ``excludeMask`` -- boolean image, True for a pixel to leave out of the sky model. Default *None*
+        - ``masterFlat`` -- the master flat the object frame was divided by, so the sky fit can weight by the
+          flat-fielded noise and leave out the low-flat pixels. Default *None*, for a frame that was not flat-fielded
 
         **Return:**
 
@@ -915,6 +919,7 @@ class soxs_stare(base_recipe):
                 startNightDate=self.startNightDate,
                 debug=self.debug,
                 excludeMask=excludeMask,
+                masterFlat=masterFlat,
             )
             (
                 skymodelCCDData,

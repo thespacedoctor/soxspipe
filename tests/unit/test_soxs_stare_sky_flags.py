@@ -168,6 +168,27 @@ def test_the_sky_subtraction_constructor_gets_no_mask_by_default(log: Any, monke
     assert kwargs["excludeMask"] is None
 
 
+def test_the_master_flat_reaches_the_sky_subtraction_constructor(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    recipe, constructorKwargs = _sky_recipe(log, monkeypatch, subtractSky=True)
+    masterFlat = _frame(None)
+
+    recipe._subtract_sky(_frame(None), "map.fits", "disp.fits", "orders.fits", None, masterFlat)
+
+    [kwargs] = constructorKwargs
+    assert kwargs["masterFlat"] is masterFlat
+
+
+def test_the_sky_subtraction_constructor_gets_no_master_flat_by_default(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recipe, constructorKwargs = _sky_recipe(log, monkeypatch, subtractSky=True)
+
+    recipe._subtract_sky(_frame(None), "map.fits", "disp.fits", "orders.fits")
+
+    [kwargs] = constructorKwargs
+    assert kwargs["masterFlat"] is None
+
+
 def test_the_bad_pixel_qc_does_not_count_pixels_excluded_by_the_overlap_mask(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
