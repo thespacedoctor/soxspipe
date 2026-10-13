@@ -2393,7 +2393,8 @@ class create_dispersion_map:
                     yValues=orderPixelTable[f"observed_{axis}"].to_numpy(),
                     nCoeff=nCoeff,
                 )
-            except (np.linalg.LinAlgError, ValueError) as e:
+            # RUNTIMEERROR AND TYPEERROR COVER A POLY OR DATA COLUMN THAT CANNOT BE EVALUATED AS FLOATS
+            except (np.linalg.LinAlgError, ValueError, RuntimeError, TypeError) as e:
                 self.log.debug(f"fit_polynomials: {axis}-axis least-squares fit failed, continuing: {e}")
                 return None, None, failure
 

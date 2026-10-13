@@ -382,9 +382,11 @@ def _synthetic_fitted_lines() -> pd.DataFrame:
     )
 
 
+@pytest.mark.parametrize("error", [ValueError, RuntimeError, TypeError, np.linalg.LinAlgError])
 def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
 ) -> None:
     """Report an x-axis fitting failure before residual processing begins."""
     mapper = _fitting_mapper(log)
@@ -394,7 +396,7 @@ def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     monkeypatch.setattr(
         polynomialsModule,
         "solve_linear_poly_coefficients",
-        lambda **kwargs: (_ for _ in ()).throw(ValueError("fit failed")),
+        lambda **kwargs: (_ for _ in ()).throw(error("fit failed")),
     )
 
     result = mapper.fit_polynomials(
@@ -407,16 +409,18 @@ def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     assert result == ("xerror", None, None, None)
 
 
+@pytest.mark.parametrize("error", [ValueError, RuntimeError, TypeError, np.linalg.LinAlgError])
 def test_fit_polynomials_returns_y_axis_error_after_a_successful_x_fit(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
 ) -> None:
     """Preserve the distinct y-fit failure result used by degree fallback."""
     mapper = _fitting_mapper(log)
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
     polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
-    fitResults = iter([[1.0], ValueError("y fit failed")])
+    fitResults = iter([[1.0], error("y fit failed")])
 
     def fit(**kwargs: object) -> list[float]:
         result = next(fitResults)
