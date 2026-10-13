@@ -26,6 +26,11 @@
 | `poly_clipping_iteration_limit`                     | maximum number of clipping iterations when fitting global polynomial to object trace                        | int   | settings file | [`detect_continuum`](../utils/detect_continuum.md) |
 | `background_subtraction: bspline_deg`         | degree of bsplines used to fit the inter-order background (if `subtract_background` == True)         | int  | settings file                  | [`subtract_background`](../utils/subtract_background.md) |
 | `background_subtraction: gaussian_blur_sigma` | Standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True)  | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
+| `slit-illumination: measure-offset` | measure the along-slit offset of the sky image from the master flat for each order, and leave the slit ends that are not lit in both out of the sky model. `True` for SOXS VIS and NIR, `False` for X-Shooter. If the `slit-illumination` block is missing, the offset is not measured | bool | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: overlap-margin-arcsec` | how far inside the range lit in both the sky image and the master flat the mask edges sit (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: profile-bin-arcsec` | slit bin width of the skyline profiles (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: max-offset-arcsec` | largest order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: max-order-scatter-arcsec` | largest uncertainty on a fitted order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 
 
 :::

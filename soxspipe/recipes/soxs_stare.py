@@ -25,6 +25,20 @@ from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
+# THE SLIT OFFSETS FOLLOW THE ROTATOR ANGLE, SO INPUT FRAMES MORE THAN THIS FAR APART IN ABSROT (DEGREES) ARE FLAGGED
+ABSROT_SPREAD_WARNING_DEGREES = 10.0
+
+
+def _read_rotator_angle(header, key):
+    """*the rotator angle in degrees from a header, or None if the keyword is missing or not a finite number*"""
+    import math
+
+    try:
+        angle = float(header[key])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return angle if math.isfinite(angle) else None
+
 
 class soxs_stare(base_recipe):
     """
@@ -377,6 +391,8 @@ class soxs_stare(base_recipe):
         # INJECT KEYWORDS INTO HEADER
         self.update_fits_keywords(frame=combined_object)
 
+        excludeMask = self._slit_illumination_exclude_mask(combined_object, master_flat, twoDMap, allObjectFrames)
+
         from soxspipe.commonutils.toolkit import quicklook_image
 
         quicklook_image(
@@ -394,11 +410,11 @@ class soxs_stare(base_recipe):
         )
 
         skymodelCCDData, skySubtractedCCDData, productPath = self._subtract_sky(
-            combined_object, twoDMap, dispMap, orderTablePath
+            combined_object, twoDMap, dispMap, orderTablePath, excludeMask
         )
 
         unflattenedSkySubtractedCCDData = self._unflatten_sky_subtracted_frame(
-            skySubtractedCCDData, master_flat, combined_object_notflattened
+            skySubtractedCCDData, master_flat, combined_object_notflattened, excludeMask
         )
 
         from soxspipe.commonutils.toolkit import quicklook_image
@@ -713,7 +729,153 @@ class soxs_stare(base_recipe):
 
         return orderTablePath, dispMap, twoDMap, responseFunctionPath
 
-    def _subtract_sky(self, combined_object, twoDMap, dispMap, orderTablePath):
+    def _slit_illumination_exclude_mask(self, combined_object, master_flat, twoDMap, allObjectFrames):
+        """*measure the slit offset of each order and return the mask of the slit ends to leave out of the sky model*
+
+        Nothing is measured, recorded or plotted unless the ``slit-illumination`` settings block has ``measure-offset``
+        set to True. Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``combined_object`` -- the detrended object frame
+        - ``master_flat`` -- the master flat CCDData, or False when no flat was used
+        - ``twoDMap`` -- the path to the dispersion map image
+        - ``allObjectFrames`` -- the stacked input frames, whose rotator angles are compared
+
+        **Return:**
+
+        - ``excludeMask`` -- boolean image, True for a pixel to leave out of the sky model, or *None* when the offset
+          is not measured or could not be applied
+        """
+        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.slit_illumination import measure_slit_illumination
+        from soxspipe.commonutils.slit_illumination_mask import exclude_mask_from_result
+
+        illuminationSettings = self._slit_illumination_settings()
+        if illuminationSettings is None:
+            return None
+        binx, biny = self._read_frame_binning(combined_object)
+        self._check_rotator_angles(combined_object, allObjectFrames)
+        # PARTNERS ARE DELIBERATELY NOT PASSED. VIS ORDERS 2 AND 3 CAN NEVER BE MEASURED (NO SKYLINES BELOW 557.7 NM)
+        # AND THE R AND I ORDERS MOVE WITH THE OPPOSITE SIGN, SO A BORROWED OFFSET WOULD BE WRONG
+        result = measure_slit_illumination(
+            log=self.log,
+            frame=combined_object,
+            masterFlat=master_flat if isinstance(master_flat, CCDData) else None,
+            twoDMapPath=twoDMap,
+            settings=self.settings,
+            arm=self.arm,
+            binx=binx,
+            biny=biny,
+            illuminationSettings=illuminationSettings,
+            partners=None,
+        )
+        self._record_slit_illumination_qcs(result)
+        self._write_slit_illumination_qc_plot(result)
+        return exclude_mask_from_result(self.log, result, twoDMap, binx, biny)
+
+    def _slit_illumination_settings(self):
+        """*the ``slit-illumination`` settings block, or None when the offset is not to be measured*
+
+        A ``measure-offset`` value that is not a boolean is logged as a warning and treated as off.
+        """
+        block = self.recipeSettings.get("slit-illumination")
+        if not isinstance(block, dict) or "measure-offset" not in block:
+            return None
+        measureOffset = block["measure-offset"]
+        if not isinstance(measureOffset, bool):
+            self.log.warning(
+                f"slit-illumination measure-offset = {measureOffset!r} is not True or False, so the slit offset is "
+                "not measured"
+            )
+            return None
+        return block if measureOffset else None
+
+    def _read_frame_binning(self, frame):
+        """*the frame's binning from its header: 1 by 1 on the NIR arm, or with a warning if either key is unusable*"""
+        if self.arm == "NIR":
+            return 1, 1
+        try:
+            return int(frame.header[self.kw("WIN_BINX")]), int(frame.header[self.kw("WIN_BINY")])
+        except (KeyError, TypeError, ValueError) as error:
+            self.log.warning(
+                f"The frame header has no usable integer binning keywords ({type(error).__name__}: {error}), "
+                "so a binning of 1 by 1 is used to read the 2D map."
+            )
+            return 1, 1
+
+    def _check_rotator_angles(self, combined_object, allObjectFrames):
+        """*log the rotator angle of the stacked frame and warn if the stacked input frames differ widely in it*
+
+        The slit offsets depend on the rotator angle, and one offset is measured for the whole stack. A frame with no
+        usable ABSROT keyword is left out and never fails the recipe.
+        """
+        from soxspipe.commonutils.slit_illumination_qc import rotator_angle_spread
+
+        key = self.kw("ABSROT")
+        stackedAngle = _read_rotator_angle(combined_object.header, key)
+        if stackedAngle is None:
+            self.log.info("The stacked frame has no usable ABSROT keyword, so its rotator angle is not logged.")
+        else:
+            self.log.info(f"The ABSROT of the stacked frame is {stackedAngle:.1f} degrees.")
+        angles = [_read_rotator_angle(frame.header, key) for frame in allObjectFrames]
+        spread = rotator_angle_spread([angle for angle in angles if angle is not None])
+        if spread > ABSROT_SPREAD_WARNING_DEGREES:
+            self.log.warning(
+                f"The ABSROT of the stacked input frames spans {spread:.1f} degrees, more than "
+                f"{ABSROT_SPREAD_WARNING_DEGREES:.1f} degrees, so one slit offset may not fit every frame."
+            )
+
+    def _record_slit_illumination_qcs(self, result):
+        """*add the ``SLIT ILLUM`` QCs: an offset for each order with a usable one, how many, and whether applied*
+
+        The QCs are deliberately absent from ``qc-acceptable-ranges``, so flexure never fails a science recipe.
+        """
+        from soxspipe.commonutils.slit_illumination_mask import usable_offsets
+        from soxspipe.commonutils.toolkit import append_qc
+
+        utcnow = utcnow_string()
+        offsets = usable_offsets(result.offsets)
+        qcs = [
+            (f"SLIT ILLUM OFFSET O{order}", round(offset, 3), f"Slit offset of order {order}", "arcsec")
+            for order, offset in offsets.items()
+        ]
+        qcs.append(("SLIT ILLUM APPLIED", int(result.isApplied), "1 if the slit offsets masked the sky model", None))
+        qcs.append(("SLIT ILLUM N ORDERS", len(offsets), "Number of orders with a usable slit offset", None))
+        for qcName, qcValue, qcComment, qcUnit in qcs:
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName=qcName,
+                qcValue=qcValue,
+                qcComment=qcComment,
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                qcUnit=qcUnit,
+                toHeader=True,
+            )
+
+    def _write_slit_illumination_qc_plot(self, result):
+        """*write the slit-illumination QC plot and add it to the products, if there is a profile to plot*"""
+        from soxspipe.commonutils.slit_illumination_qc import plot_slit_illumination_qc
+
+        if result.profiles.empty:
+            return
+        filename = self.filenameTemplate.replace(".fits", "_SLIT_ILLUM_QC_PLOT.pdf")
+        filePath = f"{self.qcDir}/{filename}"
+        plot_slit_illumination_qc(result, f"Slit illumination offsets ({self.arm.upper()})", filePath)
+        self.add_product(
+            productLabel="SLIT_ILLUMINATION_QC_PLOT",
+            fileName=filename,
+            filePath=filePath,
+            productDesc="Skyline slit profile of each order against the master flat, with the fitted slit offset",
+            reductionDateUtc=utcnow_string(),
+            fileType="PDF",
+            label="QC",
+        )
+
+    def _subtract_sky(self, combined_object, twoDMap, dispMap, orderTablePath, excludeMask=None):
         """*subtract the sky from the detrended frame, when sky subtraction is on, and write the sky products*
 
         Updates ``self.qc`` and ``self.products``. A sky subtraction that returns no model sets ``self.subtractSky``
@@ -725,11 +887,13 @@ class soxs_stare(base_recipe):
         - ``twoDMap`` -- the path to the dispersion map image
         - ``dispMap`` -- the path to the dispersion map table
         - ``orderTablePath`` -- the path to the order table
+        - ``excludeMask`` -- boolean image, True for a pixel to leave out of the sky model. Default *None*
 
         **Return:**
 
         - ``skymodelCCDData`` -- the sky model, or False when no sky was subtracted
-        - ``skySubtractedCCDData`` -- the sky-subtracted frame, or ``combined_object`` when no sky was subtracted
+        - ``skySubtractedCCDData`` -- the sky-subtracted frame, or when no sky was subtracted ``combined_object``
+          itself (a copy with ``excludeMask`` added to its mask, if there is an ``excludeMask``)
         - ``productPath`` -- the path to the last sky product written, or None when none was written
         """
         import numpy as np
@@ -750,6 +914,7 @@ class soxs_stare(base_recipe):
                 recipeName=self.recipeName,
                 startNightDate=self.startNightDate,
                 debug=self.debug,
+                excludeMask=excludeMask,
             )
             (
                 skymodelCCDData,
@@ -763,7 +928,7 @@ class soxs_stare(base_recipe):
                 self.subtractSky = False
                 self.recipeSettings["sky-subtraction"]["subtract_sky"] = False
                 skymodelCCDData = False
-                skySubtractedCCDData = combined_object
+                skySubtractedCCDData = self._flag_excluded_pixels(combined_object, excludeMask)
                 self.recipeSettings["horne-extraction-slit-length"] = 30.0
             else:
                 productPath = self._write_sky_products(
@@ -795,9 +960,32 @@ class soxs_stare(base_recipe):
                 )
         else:
             skymodelCCDData = False
-            skySubtractedCCDData = combined_object
+            skySubtractedCCDData = self._flag_excluded_pixels(combined_object, excludeMask)
 
         return skymodelCCDData, skySubtractedCCDData, productPath
+
+    @staticmethod
+    def _flag_excluded_pixels(combined_object, excludeMask):
+        """*the frame to extract when no sky was subtracted, with the overlap-mask pixels flagged*
+
+        **Key Arguments:**
+
+        - ``combined_object`` -- the detrended object frame, which is not modified
+        - ``excludeMask`` -- boolean image, True for a pixel the sky model left out, or *None*
+
+        **Return:**
+
+        - ``frame`` -- ``combined_object`` itself if ``excludeMask`` is None, else a copy whose mask is the union of
+          its mask (none counts as nothing masked) and ``excludeMask``
+        """
+        import numpy as np
+
+        if excludeMask is None:
+            return combined_object
+        flagged = combined_object.copy()
+        existing = np.zeros(excludeMask.shape, dtype=bool) if combined_object.mask is None else combined_object.mask
+        flagged.mask = np.asarray(existing, dtype=bool) | np.asarray(excludeMask, dtype=bool)
+        return flagged
 
     def _write_sky_products(self, skySubtractedCCDData, skymodelCCDData, skySubtractedResidualsCCDData):
         """*write the sky-subtracted frame, the sky model and the residuals, and record each as a product*
@@ -879,7 +1067,9 @@ class soxs_stare(base_recipe):
 
         return productPath
 
-    def _unflatten_sky_subtracted_frame(self, skySubtractedCCDData, master_flat, combined_object_notflattened):
+    def _unflatten_sky_subtracted_frame(
+        self, skySubtractedCCDData, master_flat, combined_object_notflattened, excludeMask=None
+    ):
         """*return the frame the optimal extraction uses as its unflattened input*
 
         **Key Arguments:**
@@ -887,11 +1077,13 @@ class soxs_stare(base_recipe):
         - ``skySubtractedCCDData`` -- the sky-subtracted, flat-corrected frame
         - ``master_flat`` -- the master flat, or False when none is used
         - ``combined_object_notflattened`` -- the stacked frame before detrending
+        - ``excludeMask`` -- boolean image of the pixels left out of the sky model, or *None*. Default *None*
 
         **Return:**
 
         - ``unflattenedSkySubtractedCCDData`` -- the sky-subtracted frame multiplied back by the master flat, the
-          sky-subtracted frame itself when there is no flat, or the stacked frame when no sky was subtracted
+          sky-subtracted frame itself when there is no flat, or the stacked frame when no sky was subtracted (a
+          copy with ``excludeMask`` added to its mask, if there is an ``excludeMask``)
 
         With a flat, the data is the sky-subtracted data times the flat, the mask is the OR of the sky-subtracted
         and flat masks, and the header is the sky-subtracted frame's. The uncertainty is the sky-subtracted
@@ -913,7 +1105,7 @@ class soxs_stare(base_recipe):
             else:
                 unflattenedSkySubtractedCCDData = skySubtractedCCDData
         else:
-            unflattenedSkySubtractedCCDData = combined_object_notflattened
+            unflattenedSkySubtractedCCDData = self._flag_excluded_pixels(combined_object_notflattened, excludeMask)
 
         return unflattenedSkySubtractedCCDData
 

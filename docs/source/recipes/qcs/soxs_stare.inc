@@ -24,6 +24,9 @@
 | `SNR MEDIAN O<N>` | The median signal-to-noise ratio across all orders (order N) |  | - |
 | `SLIT DRIFT` | Fitted slit position of the object trace 5% in from the red end of the reddest order, minus that 5% in from the blue end of the bluest order. Signed. Fallback orders are skipped. Not written if every order fell back | arcsec | - |
 | `SLIT ZERO WLEN` | Wavelength where a fitted order curve crosses slit position 0. A sign change between two orders does not count. Written only if such a crossing exists. If there are several, the bluest is recorded | nm | - |
+| `SLIT ILLUM OFFSET O<N>` | Along-slit offset of the sky image from the master flat (order N). Written for each order with a usable offset, and only if `slit-illumination: measure-offset` is on. Positive when the sky image sits toward +SLIT | arcsec | - |
+| `SLIT ILLUM APPLIED` | 1 if the slit offsets were used to mask the sky model, 0 if no order had a usable offset | | - |
+| `SLIT ILLUM N ORDERS` | Number of orders with a usable slit offset | | - |
 
 
 :::
