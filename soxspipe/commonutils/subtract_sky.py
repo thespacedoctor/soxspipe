@@ -133,6 +133,9 @@ class subtract_sky:
 
     """
 
+    # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
+    maskedOrders = frozenset()
+
     def __init__(
         self,
         log,
@@ -195,7 +198,7 @@ class subtract_sky:
 
         # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280); subtract FLAGS AND ZERO-FILLS THEM AS PIXELS WITH NO MODEL
         if excludeMask is not None:
-            self.mapDF = self._drop_excluded_pixels(self.mapDF, excludeMask)
+            self.mapDF, self.maskedOrders = self._drop_excluded_pixels(self.mapDF, excludeMask)
 
         quicklook_image(
             log=self.log,
@@ -259,6 +262,7 @@ class subtract_sky:
         **Return:**
 
         - ``keptMapDF`` -- a new dataframe holding the rows of ``mapDF`` whose pixel is not excluded
+        - ``maskedOrders`` -- the orders that lose at least one map row to the mask, as a frozenset
 
         A mask of the wrong shape, or one that excludes every map pixel, raises ``ValueError``.
         """
@@ -274,7 +278,8 @@ class subtract_sky:
         if len(mapDF) and isRowExcluded.all():
             raise ValueError("the exclude mask excludes every pixel of the dispersion map, so no sky can be modelled")
         self.log.print(f"\n  Excluding {np.count_nonzero(isRowExcluded)} slit-end pixels from the sky model\n")
-        return mapDF.loc[~isRowExcluded]
+        maskedOrders = frozenset(mapDF.loc[isRowExcluded, "order"].unique().tolist())
+        return mapDF.loc[~isRowExcluded], maskedOrders
 
     def subtract(self):
         """
@@ -321,11 +326,18 @@ class subtract_sky:
             # COPY THE ORDER OUT OF THE MAP: THE STEPS BELOW ADD AND WRITE COLUMNS ON IT
             imageMapOrder = self.mapDF[self.mapDF["order"] == o].copy()
 
+            # THE EXCLUDE MASK HAS ALREADY TRIMMED THE SLIT ENDS OF A MASKED ORDER, SO IT IS NOT EDGE CLIPPED AGAIN
+            if o in self.maskedOrders:
+                clipSlitEdge = False
+                self.log.debug(f"order {o} is covered by the slit-illumination mask so its slit edges are not clipped")
+            else:
+                clipSlitEdge = self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"]
+
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
             clippedOrder = self.get_over_sampled_sky_from_order(
                 imageMapOrder,
                 clipBPs=True,
-                clipSlitEdge=self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"],
+                clipSlitEdge=clipSlitEdge,
             )
             if clippedOrder is None:
                 skippedOrders.append(imageMapOrder)
