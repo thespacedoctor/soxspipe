@@ -104,6 +104,9 @@ class subtract_sky:
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``debug`` -- whether to show debug plots. Default *False*
     - ``debugInfo`` -- info to add to debug plots. Default *False*
+    - ``excludeMask`` -- boolean image, the shape of ``objectFrame``, True for a pixel to leave out of the sky model.
+      An excluded pixel comes out with its sky model and sky-subtracted data set to 0 and flagged in the mask.
+      Default *None*, which excludes nothing
 
     **Usage:**
 
@@ -145,6 +148,7 @@ class subtract_sky:
         startNightDate="",
         debug=False,
         debugInfo=False,
+        excludeMask=None,
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
@@ -188,6 +192,10 @@ class subtract_sky:
         # ACCOUNT FOR BLOCKING FILTER
         if "JH" in self.slit:
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
+
+        # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280); subtract FLAGS AND ZERO-FILLS THEM AS PIXELS WITH NO MODEL
+        if excludeMask is not None:
+            self.mapDF = self._drop_excluded_pixels(self.mapDF, excludeMask)
 
         quicklook_image(
             log=self.log,
@@ -238,6 +246,35 @@ class subtract_sky:
         # READ NOISE (E-) OF THE SKY-FIT NOISE MODEL: THE FRAME'S OWN VALUE, ELSE THE DETECTOR DEFAULT (DY-1282)
         self.ron = self._read_noise(self.objectFrame.header.get(kw("RON")), dp["ron"], self.log)
         return
+
+    def _drop_excluded_pixels(self, mapDF, excludeMask):
+        """*the map rows whose detector pixel is not excluded*
+
+        **Key Arguments:**
+
+        - ``mapDF`` -- the dispersion map dataframe, with integer ``x`` (column) and ``y`` (row) pixel columns. They
+          index the object frame directly, as the map is unpacked at the frame's binning and shape
+        - ``excludeMask`` -- boolean image, the shape of the object frame, True for a pixel to drop
+
+        **Return:**
+
+        - ``keptMapDF`` -- a new dataframe holding the rows of ``mapDF`` whose pixel is not excluded
+
+        A mask of the wrong shape, or one that excludes every map pixel, raises ``ValueError``.
+        """
+        import numpy as np
+
+        isExcluded = np.asarray(excludeMask, dtype=bool)
+        if isExcluded.shape != self.objectFrame.data.shape:
+            raise ValueError(
+                f"the exclude mask shape {isExcluded.shape} differs from the object frame shape "
+                f"{self.objectFrame.data.shape}"
+            )
+        isRowExcluded = isExcluded[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
+        if len(mapDF) and isRowExcluded.all():
+            raise ValueError("the exclude mask excludes every pixel of the dispersion map, so no sky can be modelled")
+        self.log.print(f"\n  Excluding {np.count_nonzero(isRowExcluded)} slit-end pixels from the sky model\n")
+        return mapDF.loc[~isRowExcluded]
 
     def subtract(self):
         """
