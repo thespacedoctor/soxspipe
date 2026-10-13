@@ -477,11 +477,18 @@ def test_read_ccd_reads_a_dash_prefixed_relative_filename(tmp_path: Path, monkey
     plainPath = raw_fits(tmp_path / "plain.fits")
     lzw_compressed_fits(plainPath, tmp_path / "-c.fits.Z")
     monkeypatch.chdir(tmp_path)
-    decompressed = _spy_on_decompress(monkeypatch)
+    gzipArgvs: list[list[str]] = []
+    realRun = subprocess.run
+
+    def _recording_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess:
+        gzipArgvs.append(list(argv))
+        return realRun(argv, **kwargs)
+
+    monkeypatch.setattr(fits_headers.subprocess, "run", _recording_run)
 
     frame = read_ccd("-c.fits.Z", **PIXEL_READ_KWARGS)
 
-    assert decompressed == ["-c.fits.Z"]
+    assert [argv[-2:] for argv in gzipArgvs] == [["--", "-c.fits.Z"]]
     assert np.array_equal(frame.data, fits.getdata(plainPath))
 
 
@@ -553,12 +560,12 @@ def test_read_ccd_logs_the_gzip_error_output_when_the_subprocess_fails(
 
 
 @requiresGzip
-def test_read_ccd_accepts_a_caller_supplied_format_on_the_fast_path(
+def test_read_ccd_overrides_a_caller_supplied_format_on_the_fast_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     framePath = _lzw_frame(tmp_path)
     pixelReads = _spy_on_ccddata_read(monkeypatch)
 
-    read_ccd(framePath, **{**PIXEL_READ_KWARGS, "format": "fits"})
+    read_ccd(framePath, **{**PIXEL_READ_KWARGS, "format": "ascii"})
 
     assert pixelReads[0][1]["format"] == "fits"

@@ -14,6 +14,7 @@ which is what a split of this method could silently change.
 from __future__ import annotations
 
 import io
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -229,6 +230,7 @@ def test_a_corrupted_frame_is_dropped_from_the_reduction(
     assert any("likely corrupted" in str(message) for message in log.messages)
 
 
+@pytest.mark.skipif(shutil.which("gzip") is None, reason="the gzip binary is not installed")
 def test_a_corrupted_compressed_frame_is_dropped_from_the_reduction(
     log: Any,
     tmp_path: Path,
