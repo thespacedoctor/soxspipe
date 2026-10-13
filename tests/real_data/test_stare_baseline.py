@@ -4,8 +4,8 @@ The stare recipe is the only recipe that models the sky with the b-spline fit in
 `subtract_sky`, so these checks are the end-to-end guard on that fit. As with the offset
 check, the reduction is not bit-reproducible across hardware, so each value is asserted
 within a band. The sky bands are narrow enough that a sky model of zero, or one doubled,
-fails them. The centres were re-recorded from four bit-identical CI runs on
-2026-10-07, after the astropy 7.2.2 upgrade (DY-694). A local arm64 reduction lands up
+fails them. The centres were re-recorded from six bit-identical CI runs on
+2026-10-13, after the sky-model rework (DY-1514). A local arm64 reduction lands up
 to 5% away, so expect local runs to sit near the band edges. The NIR detected fraction is
 the exception: a local arm64 run gives about 0.92 against the CI value of 0.786, so it
 fails locally (DY-994).
@@ -69,11 +69,11 @@ BASELINES = [
             waveMax=849.92,
             waveStep=0.02,
             snrMedian=154.76,
-            fluxcalMedian=5.820667594380986e-14,
+            fluxcalMedian=5.842524611619996e-14,
             skyCountsMedian=33.4631462097168,
-            skyModelMedian=66.55050659179688,
-            skyModelP90=875.3766967773422,
-            detectedFraction=0.98,
+            skyModelMedian=61.16815948486328,
+            skyModelP90=550.0821289062501,
+            detectedFraction=0.982,
             objtraceStem="20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_FEIGE110",
         ),
         id="vis",
@@ -91,11 +91,11 @@ BASELINES = [
             waveMax=2031.84,
             waveStep=0.06,
             snrMedian=15.53,
-            fluxcalMedian=2.9561662291844365e-15,
+            fluxcalMedian=2.955810101373219e-15,
             skyCountsMedian=19.632287979125977,
-            skyModelMedian=23.781517028808594,
-            skyModelP90=138.764990234375,
-            detectedFraction=0.916,
+            skyModelMedian=23.388748168945312,
+            skyModelP90=147.01077270507812,
+            detectedFraction=0.914,
             objtraceStem="20260111T080347_NIR_3_STARE_OBJ_SLIT5_0_30_0S_SOXS_CD-325613",
         ),
         id="nir",
