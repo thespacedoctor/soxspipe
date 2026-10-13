@@ -350,6 +350,10 @@ soxs-stare-std:
             clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
+            object_wing_correction: True
+            # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS FRACTION OF THE SKY LEVEL
+            object_wing_gate_fraction: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
@@ -424,6 +428,10 @@ soxs-stare-std:
             clip-slit-edge-fraction: 0.02
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
+            object_wing_correction: True
+            # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS FRACTION OF THE SKY LEVEL
+            object_wing_gate_fraction: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
@@ -511,6 +519,10 @@ soxs-stare:
             clip-slit-edge-fraction: 0.07
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
+            object_wing_correction: True
+            # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS FRACTION OF THE SKY LEVEL
+            object_wing_gate_fraction: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
@@ -585,6 +597,10 @@ soxs-stare:
             clip-slit-edge-fraction: 0.02
             # AGGRESSIVELY MASK REGIONS NEAR THE OBJECT TRACE
             aggressive_object_masking: True
+            # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
+            object_wing_correction: True
+            # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS FRACTION OF THE SKY LEVEL
+            object_wing_gate_fraction: 0.1
             # THE ORDER OF THE BSPLINE USED TO FIT THE SKY SPECTRUM
             bspline_order: 3
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED

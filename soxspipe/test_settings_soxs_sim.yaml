@@ -141,6 +141,10 @@ soxs-stare:
         # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
         clip-slit-edge-fraction: 0.05
         aggressive_object_masking: True
+        # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
+        object_wing_correction: True
+        # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS FRACTION OF THE SKY LEVEL
+        object_wing_gate_fraction: 0.1
         bspline_order: 3
 
 
