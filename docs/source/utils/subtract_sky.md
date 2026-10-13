@@ -67,6 +67,18 @@ The uncertainties written with the products are not yet a full error budget:
 - The `ERRS` extension of the sky-model product (`SKYMODEL`) is a copy of the object frame's uncertainty. It is not the uncertainty of the model.
 - The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model.
 
+### Object-wing correction
+
+The sky model is a bspline in wavelength only. Light from the wings of a bright object, outside the object mask, can therefore enter the fit. The sky model then carries some object light, and the pipeline subtracts that light from the object. This matters most for bright objects such as standard stars, and most in the blue orders where the sky is faint.
+
+After the first fit of an order, the pipeline measures the spatial profile of the residual (the flux minus the first sky fit). It bins the profile in 0.25 arcsec slit bins, in units of the object's core spectrum. It uses only the pixels that the first fit used, not the clipped pixels. The pipeline takes the faintest 1 arcsec of the profile to hold no object light, and this sets the zero point of the profile.
+
+If the zero point is negative, the first fit holds object light. The pipeline corrects the order when this light is above `object_wing_gate_fraction` of the sky level (default 0.1) and above 5 times its noise. It then subtracts the wing model from the sky pixels and refits the sky. The flux in the output is not changed, because only the sky model changes. The log reports each corrected order. An order that fails either test keeps the first fit.
+
+This method cannot tell light that is constant along the whole slit from sky. It assumes that the faintest 1 arcsec of the slit has no object light.
+
+To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on and the gate fraction is 0.1.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.subtract_sky.subtract_sky
