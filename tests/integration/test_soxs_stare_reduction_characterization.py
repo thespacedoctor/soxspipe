@@ -23,8 +23,19 @@ import pytest
 from astropy import units as u
 from astropy.nddata import StdDevUncertainty
 
+from soxspipe.commonutils.slit_illumination import (
+    FLAT_EDGE_COLUMNS,
+    OFFSET_COLUMNS,
+    PROFILE_COLUMNS,
+    STATUS_FAILED,
+    STATUS_FITTED,
+    _read_disp_map,
+    slit_illumination_result,
+)
+from soxspipe.commonutils.slit_illumination_mask import overlap_exclude_mask
 from soxspipe.recipes import soxs_stare
 from tests.factories import pipeline_settings, qc_table, synthetic_ccd
+from tests.factories.slit_illumination import write_map_images
 from tests.integration.test_observing_recipe_orchestration import (
     RouteCollection,
     _empty_products,
@@ -459,3 +470,500 @@ def test_raw_stack_surface_plot_is_shown_only_in_debug_mode(
 
     # ASSERT
     assert captured["quicklook"][1]["show"] is True
+
+
+# THE SLIT-ILLUMINATION BLOCK THE SOXS DEFAULT SETTINGS CARRY WITH THE MEASUREMENT SWITCHED ON
+ILLUMINATION_BLOCK = {
+    "measure-offset": True,
+    "overlap-margin-arcsec": 0.3,
+    "profile-bin-arcsec": 0.1,
+    "max-offset-arcsec": 3.0,
+    "max-order-scatter-arcsec": 0.3,
+}
+ILLUMINATION_QC_NAMES = ("SLIT ILLUM OFFSET O11", "SLIT ILLUM OFFSET O12", "SLIT ILLUM APPLIED", "SLIT ILLUM N ORDERS")
+MAP_SHAPE = (32, 32)
+OFFSET_ARCSEC = {11: 0.8, 12: -0.4}
+
+
+def _illumination_recipe_settings(block: dict[str, object] | None, *, useFlat: bool = True) -> dict[str, object]:
+    recipeSettings: dict[str, object] = {"use_flat": useFlat, "sky-subtraction": {"subtract_sky": True}}
+    if block is not None:
+        recipeSettings["slit-illumination"] = block
+    return recipeSettings
+
+
+def _write_illumination_map(tmpPath: Path, arm: str = "VIS") -> Path:
+    """Write a 2D map with order 11 in the top half and order 12 in the bottom half, SLIT running -6 to 6 arcsec."""
+    slit = np.tile(np.linspace(-6.0, 6.0, MAP_SHAPE[1]), (MAP_SHAPE[0], 1))
+    orderMap = np.where(np.arange(MAP_SHAPE[0])[:, None] < MAP_SHAPE[0] // 2, 11.0, 12.0) * np.ones(MAP_SHAPE)
+    wavelength = np.full(MAP_SHAPE, 600.0)
+    return write_map_images(tmpPath / f"DISP_IMAGE_{arm}.fits", wavelength, slit, orderMap)
+
+
+def _illumination_result(*, isApplied: bool = True, hasProfiles: bool = True) -> slit_illumination_result:
+    status = STATUS_FITTED if isApplied else STATUS_FAILED
+    offsets = pd.DataFrame(
+        [
+            {
+                "order": order,
+                "offset": OFFSET_ARCSEC[order] if isApplied else np.nan,
+                "offsetErr": 0.02,
+                "scienceWidth": 0.15,
+                "nBins": 100,
+                "status": status,
+                "reason": "" if isApplied else "too few skyline bins",
+                "borrowedFrom": np.nan,
+            }
+            for order in OFFSET_ARCSEC
+        ],
+        columns=OFFSET_COLUMNS,
+    )
+    flatEdges = pd.DataFrame(
+        [{"order": order, "lower": -5.0, "upper": 5.0, "width": 0.15, "reason": ""} for order in OFFSET_ARCSEC],
+        columns=FLAT_EDGE_COLUMNS,
+    )
+    slit = np.linspace(-6.0, 6.0, 40)
+    profiles = pd.DataFrame(
+        {"order": 11, "slit": slit, "profile": 1.0, "profileErr": 0.1, "nLines": 5}, columns=PROFILE_COLUMNS
+    )
+    return slit_illumination_result(
+        offsets=offsets,
+        flatEdges=flatEdges,
+        profiles=profiles if hasProfiles else pd.DataFrame(columns=PROFILE_COLUMNS),
+        isApplied=isApplied,
+        reason="" if isApplied else "no order has a usable offset",
+        overlapMarginArcsec=0.3,
+    )
+
+
+def _stub_measurement(
+    monkeypatch: pytest.MonkeyPatch, result: slit_illumination_result | None
+) -> list[dict[str, object]]:
+    """Replace `measure_slit_illumination` with a double that records its arguments; None makes any call a failure."""
+    calls: list[dict[str, object]] = []
+
+    def fake_measure(
+        log: Any,
+        frame: Any,
+        masterFlat: Any,
+        twoDMapPath: Any,
+        settings: Any,
+        arm: Any,
+        binx: Any,
+        biny: Any,
+        illuminationSettings: Any = None,
+        partners: Any = None,
+    ) -> slit_illumination_result:
+        calls.append(
+            {
+                "frame": frame,
+                "masterFlat": masterFlat,
+                "twoDMapPath": twoDMapPath,
+                "arm": arm,
+                "binx": binx,
+                "biny": biny,
+                "illuminationSettings": illuminationSettings,
+                "partners": partners,
+            }
+        )
+        assert result is not None, "the slit-illumination measurement must not run"
+        return result
+
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.slit_illumination"), "measure_slit_illumination", fake_measure
+    )
+    return calls
+
+
+def _illumination_qc(recipe: soxs_stare) -> pd.DataFrame:
+    return recipe.qc.loc[recipe.qc["qc_name"].str.startswith("SLIT ILLUM")].set_index("qc_name")
+
+
+def test_without_a_slit_illumination_block_nothing_is_measured_and_the_sky_gets_no_mask(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Develop's behaviour: no block means no measurement, no QC, no plot and `excludeMask=None`."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=_illumination_recipe_settings(None))
+    calls = _stub_measurement(monkeypatch, None)
+    captured = _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=540 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls == []
+    assert captured["sky"][0]["excludeMask"] is None
+    assert len(_illumination_qc(recipe)) == 0
+    assert not recipe.products["product_label"].eq("SLIT_ILLUMINATION_QC_PLOT").any()
+
+
+@pytest.mark.parametrize(
+    ("measureOffset", "isWarned"),
+    [(False, False), ("yes", True), (1, True), (None, True)],
+    ids=["false", "string", "int", "none"],
+)
+def test_measure_offset_is_off_unless_it_is_the_boolean_true(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    measureOffset: object,
+    isWarned: bool,
+) -> None:
+    """Only `measure-offset: True` switches the measurement on; any other value is off, and a non-bool warns."""
+    # ARRANGE
+    block = {**ILLUMINATION_BLOCK, "measure-offset": measureOffset}
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=_illumination_recipe_settings(block))
+    calls = _stub_measurement(monkeypatch, None)
+    captured = _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=540 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls == []
+    assert captured["sky"][0]["excludeMask"] is None
+    assert len(_illumination_qc(recipe)) == 0
+    warnings = [text for level, text in log.messages if level == "warning" and "measure-offset" in text]
+    assert bool(warnings) is isWarned
+
+
+def test_a_measured_offset_masks_the_sky_model_and_records_the_qcs_and_plot(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With the block on, the measurement gets the right inputs, its mask reaches the sky, and QCs and plot are kept."""
+    # ARRANGE
+    routes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(_calibration_path(tmp_path, "MASTER_FLAT_VIS", FLAT_SEED))]}
+    recipe = _stare_recipe(
+        log, tmp_path, extraRoutes=routes, recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK)
+    )
+    mapPath = _write_illumination_map(tmp_path)
+    Path(recipe.qcDir).mkdir()
+    result = _illumination_result()
+    calls = _stub_measurement(monkeypatch, result)
+    detrended = synthetic_ccd(seed=550, prepared=True, headerOverrides={"WIN_BINX": 1, "WIN_BINY": 1})
+    captured = _patch_stare(
+        recipe,
+        monkeypatch,
+        tmp_path,
+        detrended=detrended,
+        skyResult=tuple(synthetic_ccd(seed=560 + n, prepared=True) for n in range(3)),
+    )
+    _, slit, orderMap = _read_disp_map(mapPath, 1, 1)
+    expectedMask = overlap_exclude_mask(log, slit, orderMap, result.flatEdges, result.offsets, 0.3)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    [call] = calls
+    assert call["frame"] is detrended
+    _assert_read_of(call["masterFlat"], FLAT_SEED)
+    assert (call["twoDMapPath"], call["arm"], call["binx"], call["biny"]) == (str(mapPath), "VIS", 1, 1)
+    assert call["illuminationSettings"] == ILLUMINATION_BLOCK
+    assert call["partners"] is None
+    assert expectedMask.any()
+    np.testing.assert_array_equal(captured["sky"][0]["excludeMask"], expectedMask)
+    qcs = _illumination_qc(recipe)
+    assert set(qcs.index) == set(ILLUMINATION_QC_NAMES)
+    assert qcs.loc["SLIT ILLUM OFFSET O11", "qc_value"] == 0.8
+    assert qcs.loc["SLIT ILLUM OFFSET O12", "qc_value"] == -0.4
+    assert qcs.loc["SLIT ILLUM OFFSET O11", "qc_unit"] == "arcsec"
+    assert qcs.loc["SLIT ILLUM APPLIED", "qc_value"] == 1
+    assert qcs.loc["SLIT ILLUM N ORDERS", "qc_value"] == 2
+    assert qcs["to_header"].all()
+    plotPath = Path(recipe.qcDir) / "OBJECT_VIS_SLIT_ILLUM_QC_PLOT.pdf"
+    assert plotPath.read_bytes().startswith(b"%PDF")
+    [row] = recipe.products.loc[recipe.products["product_label"] == "SLIT_ILLUMINATION_QC_PLOT"].to_dict("records")
+    assert (row["file_name"], row["file_path"], row["file_type"], row["label"]) == (
+        plotPath.name,
+        str(plotPath),
+        "PDF",
+        "QC",
+    )
+
+
+def test_a_master_flat_that_was_switched_off_is_measured_as_no_flat(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`use_flat` false leaves `master_flat` False, which must reach the measurement as None, never False."""
+    # ARRANGE
+    routes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(_calibration_path(tmp_path, "MASTER_FLAT_VIS", FLAT_SEED))]}
+    recipeSettings = _illumination_recipe_settings(ILLUMINATION_BLOCK, useFlat=False)
+    recipe = _stare_recipe(log, tmp_path, extraRoutes=routes, recipeSettings=recipeSettings)
+    _write_illumination_map(tmp_path)
+    calls = _stub_measurement(monkeypatch, _illumination_result(isApplied=False, hasProfiles=False))
+    _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=570 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls[0]["masterFlat"] is None
+
+
+@pytest.mark.parametrize(
+    ("arm", "headerBinning", "expected"),
+    [
+        ("VIS", {"WIN_BINX": 2, "WIN_BINY": 4}, (2, 4)),
+        ("VIS", {}, (1, 1)),
+        ("NIR", {"WIN_BINX": 2, "WIN_BINY": 2}, (1, 1)),
+    ],
+    ids=["vis-binned", "vis-no-keyword", "nir-ignores-keyword"],
+)
+def test_the_measurement_uses_the_header_binning_except_on_the_nir_arm_or_without_the_keyword(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    arm: str,
+    headerBinning: dict[str, object],
+    expected: tuple[int, int],
+) -> None:
+    """Binning comes from `WIN_BINX`/`WIN_BINY` of the detrended frame, as `soxs_order_centres` reads it."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path, arm=arm, recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK))
+    calls = _stub_measurement(monkeypatch, _illumination_result(isApplied=False, hasProfiles=False))
+    _patch_stare(
+        recipe,
+        monkeypatch,
+        tmp_path,
+        detrended=synthetic_ccd(seed=580, arm=arm, prepared=True, headerOverrides=headerBinning),
+        skyResult=tuple(synthetic_ccd(seed=581 + n, prepared=True) for n in range(3)),
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert (calls[0]["binx"], calls[0]["biny"]) == expected
+
+
+def test_a_measurement_that_is_not_applied_records_zero_and_gives_the_sky_no_mask(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A not-applied result writes APPLIED 0 and N ORDERS 0, no offset QCs and `excludeMask=None`; the plot stays."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK))
+    _write_illumination_map(tmp_path)
+    Path(recipe.qcDir).mkdir()
+    _stub_measurement(monkeypatch, _illumination_result(isApplied=False))
+    captured = _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=590 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["sky"][0]["excludeMask"] is None
+    qcs = _illumination_qc(recipe)
+    assert set(qcs.index) == {"SLIT ILLUM APPLIED", "SLIT ILLUM N ORDERS"}
+    assert qcs.loc["SLIT ILLUM APPLIED", "qc_value"] == 0
+    assert qcs.loc["SLIT ILLUM N ORDERS", "qc_value"] == 0
+    assert (Path(recipe.qcDir) / "OBJECT_VIS_SLIT_ILLUM_QC_PLOT.pdf").exists()
+
+
+def test_no_plot_is_written_when_the_measurement_has_no_profiles(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A measurement that never got as far as profiles (no flat, unreadable map) has nothing to plot."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK))
+    _stub_measurement(monkeypatch, _illumination_result(isApplied=False, hasProfiles=False))
+    _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=595 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert not recipe.products["product_label"].eq("SLIT_ILLUMINATION_QC_PLOT").any()
+    assert not (Path(recipe.qcDir) / "OBJECT_VIS_SLIT_ILLUM_QC_PLOT.pdf").exists()
+
+
+def test_a_wide_rotator_spread_between_input_frames_is_warned(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Frames whose ABSROT differs by more than the limit get a warning; the stacked frame's ABSROT is logged."""
+    # ARRANGE
+    objectRoute = _route(DPR_TYPE="OBJECT", DPR_TECH=STARE_TECHNIQUE)
+    paths = [
+        str(
+            _write_prepared_frame(
+                tmp_path / f"stare-object-{n}.fits",
+                seed=600 + n,
+                headerOverrides={"DPR_TYPE": "OBJECT", "DPR_TECH": STARE_TECHNIQUE, "ABSROT": angle},
+            )
+        )
+        for n, angle in enumerate((175.0, -175.0, 150.0))
+    ]
+    recipe = _stare_recipe(
+        log,
+        tmp_path,
+        extraRoutes={objectRoute: paths},
+        recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK),
+    )
+    _stub_measurement(monkeypatch, _illumination_result(isApplied=False, hasProfiles=False))
+    _patch_stare(
+        recipe,
+        monkeypatch,
+        tmp_path,
+        detrended=synthetic_ccd(seed=610, prepared=True, headerOverrides={"ABSROT": 172.5}),
+        skyResult=tuple(synthetic_ccd(seed=611 + n, prepared=True) for n in range(3)),
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    warnings = [text for level, text in log.messages if level == "warning" and "ABSROT" in text]
+    assert len(warnings) == 1
+    assert "35.0" in warnings[0]
+    assert any(level == "info" and "172.5" in text and "ABSROT" in text for level, text in log.messages)
+
+
+def test_a_narrow_rotator_spread_or_missing_rotator_keywords_raise_no_warning(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Frames within the limit, and frames with no ABSROT at all, neither warn nor fail the recipe."""
+    # ARRANGE
+    objectRoute = _route(DPR_TYPE="OBJECT", DPR_TECH=STARE_TECHNIQUE)
+    overrides = [{"ABSROT": 179.0}, {"ABSROT": -179.0}, {}]
+    paths = [
+        str(
+            _write_prepared_frame(
+                tmp_path / f"stare-object-{n}.fits",
+                seed=620 + n,
+                headerOverrides={"DPR_TYPE": "OBJECT", "DPR_TECH": STARE_TECHNIQUE, **override},
+            )
+        )
+        for n, override in enumerate(overrides)
+    ]
+    recipe = _stare_recipe(
+        log,
+        tmp_path,
+        extraRoutes={objectRoute: paths},
+        recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK),
+    )
+    _stub_measurement(monkeypatch, _illumination_result(isApplied=False, hasProfiles=False))
+    _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=630 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert not [text for level, text in log.messages if level == "warning" and "ABSROT" in text]
+
+
+def test_the_slit_illumination_qcs_are_never_checked_against_an_acceptable_range(log: Any) -> None:
+    """Flexure must not fail a science recipe: a QC with no `qc-acceptable-ranges` entry always passes."""
+    # ARRANGE
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.inst = "XSH"
+    recipe.recipeName = "soxs-stare"
+    recipe.dateObs = "2024-01-02T03:04:05.678"
+    recipe.recipeSettings = {"qc-acceptable-ranges": {"RON": [0, 1]}}
+    recipe.qc = qc_table()
+    for name, value in (("SLIT ILLUM OFFSET O11", 2.9), ("SLIT ILLUM APPLIED", 0), ("SLIT ILLUM N ORDERS", 0)):
+        recipe.add_qc(qcName=name, qcValue=value, qcComment="x", reductionDateUtc="2024-01-02T04:05:06")
+
+    # ACT
+    recipe.flag_poor_data()
+
+    # ASSERT
+    flags = recipe.qc.set_index("qc_name")["qc_flag"]
+    assert flags["RON"] == "fail"
+    assert flags[[name for name in flags.index if name.startswith("SLIT ILLUM")]].eq("pass").all()
+
+
+@pytest.mark.parametrize("subtractSky", [False, True], ids=["sky-off", "no-model"])
+def test_with_no_sky_model_both_extraction_frames_carry_the_overlap_mask(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    subtractSky: bool,
+) -> None:
+    """Sky off, or a sky model that comes back None, still masks the skyline-free slit ends in both Horne frames."""
+    # ARRANGE
+    recipeSettings = {
+        "use_flat": False,
+        "sky-subtraction": {"subtract_sky": subtractSky},
+        "slit-illumination": ILLUMINATION_BLOCK,
+    }
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=recipeSettings)
+    mapPath = _write_illumination_map(tmp_path)
+    Path(recipe.qcDir).mkdir()
+    result = _illumination_result()
+    _stub_measurement(monkeypatch, result)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, skyResult=(None, None, None))
+    _, slit, orderMap = _read_disp_map(mapPath, 1, 1)
+    excludeMask = overlap_exclude_mask(log, slit, orderMap, result.flatEdges, result.offsets, 0.3)
+    stackBefore = synthetic_ccd(seed=510, prepared=True)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    stack = captured["stack"][0]["result"]
+    detrended = captured["detrend"][0]["result"]
+    extractorArgs = captured["extractor"][0]
+    expectedUnflattened = np.asarray(stackBefore.mask, dtype=bool) | excludeMask
+    expectedSkySubtracted = np.asarray(detrended.mask, dtype=bool) | excludeMask
+    assert excludeMask.any()
+    assert extractorArgs["subtractedFrame"] is False
+    np.testing.assert_array_equal(extractorArgs["skySubtractedFrame"].mask, expectedSkySubtracted)
+    np.testing.assert_array_equal(extractorArgs["unflattenedFrame"].mask, expectedUnflattened)
+    # NEITHER INPUT FRAME IS MUTATED
+    assert extractorArgs["unflattenedFrame"] is not stack
+    assert extractorArgs["skySubtractedFrame"] is not detrended
+    np.testing.assert_array_equal(stack.mask, stackBefore.mask)
+    np.testing.assert_array_equal(detrended.mask, synthetic_ccd(seed=511, prepared=True).mask)
+
+
+def test_with_no_sky_model_and_no_applied_offset_the_extraction_frames_are_the_input_frames(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A measurement that is not applied gives no mask, so the no-model frames stay the very objects develop used."""
+    # ARRANGE
+    recipeSettings = {
+        "use_flat": False,
+        "sky-subtraction": {"subtract_sky": True},
+        "slit-illumination": ILLUMINATION_BLOCK,
+    }
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=recipeSettings)
+    _stub_measurement(monkeypatch, _illumination_result(isApplied=False, hasProfiles=False))
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, skyResult=(None, None, None))
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    extractorArgs = captured["extractor"][0]
+    assert extractorArgs["unflattenedFrame"] is captured["stack"][0]["result"]
+    assert extractorArgs["skySubtractedFrame"] is captured["detrend"][0]["result"]

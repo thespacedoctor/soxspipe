@@ -10,6 +10,8 @@ The Kelson Background Subtraction method, initially outlined in {cite:t}`kelson2
 The algorithm used to model and subtract the sky-flux from data taken in stare mode.
 :::
 
+If the recipe passes an `excludeMask`, the pixels it marks are dropped before the sky is fitted. The `soxs_stare` recipe builds this mask from the slit-illumination measurement so that the slit ends not lit in both the sky image and the master flat do not enter the sky model. With sky subtraction off, the recipe adds the same mask to a copy of the frame's mask instead. Without an `excludeMask`, no pixels are dropped.
+
 Due to the curved format of each order (at least in the SOXS NIR data) and the cross-dispersion tilt of the skylines, each pixel measures flux at a slightly different wavelength to its neighbours. This provides us with an over-sampled spectrum of the sky.
 
 The first step is to assign a wavelength, slit position and echelle order number to each detector pixel via the 2D dispersion map. Next, we flatten the data for each order to provide the over-sampled, wavelength-sorted flux array. 

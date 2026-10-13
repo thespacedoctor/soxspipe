@@ -12,13 +12,19 @@ from numbers import Real
 
 import numpy as np
 
-from soxspipe.commonutils.slit_illumination import STATUS_BORROWED, STATUS_FITTED
+from soxspipe.commonutils.slit_illumination import STATUS_BORROWED, STATUS_FITTED, _read_disp_map
 from soxspipe.commonutils.slit_illumination_profiles import in_order_pixels
 
-__all__ = ["overlap_exclude_mask"]
+__all__ = [
+    "exclude_mask_from_result",
+    "kept_slit_range",
+    "overlap_exclude_mask",
+    "usable_flat_edges",
+    "usable_offsets",
+]
 
 
-def _usable_offsets(offsets):
+def usable_offsets(offsets):
     """*``{order: offset}`` for every order whose offset was fitted or borrowed and is finite*"""
     isUsable = offsets["status"].isin([STATUS_FITTED, STATUS_BORROWED]) & np.isfinite(
         offsets["offset"].to_numpy(dtype=float)
@@ -27,13 +33,38 @@ def _usable_offsets(offsets):
     return dict(zip(usable["order"].astype(int), usable["offset"].astype(float), strict=True))
 
 
-def _usable_flat_edges(flatEdges):
+def usable_flat_edges(flatEdges):
     """*``{order: (lower, upper)}`` for every order whose flat edges are finite*"""
     lower = flatEdges["lower"].to_numpy(dtype=float)
     upper = flatEdges["upper"].to_numpy(dtype=float)
     isUsable = np.isfinite(lower) & np.isfinite(upper)
     orders = flatEdges["order"].to_numpy()[isUsable]
     return {int(order): (lo, up) for order, lo, up in zip(orders, lower[isUsable], upper[isUsable], strict=True)}
+
+
+def kept_slit_range(lower, upper, offset, marginArcsec):
+    """*the slit range of one order where both the science sky and the master flat are lit, less the margin*
+
+    **Key Arguments:**
+
+    - ``lower`` -- the flat's lower lit edge in arcsec
+    - ``upper`` -- the flat's upper lit edge in arcsec
+    - ``offset`` -- the order's slit offset in arcsec
+    - ``marginArcsec`` -- how far inside the both-lit range the limits sit, in arcsec
+
+    **Return:**
+
+    - ``keepLower`` -- the lower limit of the kept range in arcsec
+    - ``keepUpper`` -- the upper limit of the kept range in arcsec. Not above ``keepLower`` if the range is empty
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_illumination_mask import kept_slit_range
+    keepLower, keepUpper = kept_slit_range(-5.0, 5.0, 1.0, 0.3)
+    ```
+    """
+    return max(lower, lower + offset) + marginArcsec, min(upper, upper + offset) - marginArcsec
 
 
 def overlap_exclude_mask(log, slit, orderMap, flatEdges, offsets, marginArcsec):
@@ -77,13 +108,12 @@ def overlap_exclude_mask(log, slit, orderMap, flatEdges, offsets, marginArcsec):
 
     excludeMask = np.zeros(slit.shape, dtype=bool)
     isInOrder = in_order_pixels(orderMap, slit)
-    flatByOrder = _usable_flat_edges(flatEdges)
-    for order, offset in _usable_offsets(offsets).items():
+    flatByOrder = usable_flat_edges(flatEdges)
+    for order, offset in usable_offsets(offsets).items():
         if order not in flatByOrder:
             continue
         lower, upper = flatByOrder[order]
-        keepLower = max(lower, lower + offset) + marginArcsec
-        keepUpper = min(upper, upper + offset) - marginArcsec
+        keepLower, keepUpper = kept_slit_range(lower, upper, offset, marginArcsec)
         if not keepLower < keepUpper:
             log.warning(
                 f"order {order} is not masked: its both-lit slit range "
@@ -97,4 +127,38 @@ def overlap_exclude_mask(log, slit, orderMap, flatEdges, offsets, marginArcsec):
 
     log.debug(f"the overlap mask excludes {np.count_nonzero(excludeMask)} pixels")
     log.debug("completed the ``overlap_exclude_mask`` function")
+    return excludeMask
+
+
+def exclude_mask_from_result(log, result, twoDMapPath, binx, biny):
+    """*the sky-model exclusion mask for a slit-illumination measurement*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``result`` -- the ``slit_illumination_result`` from ``measure_slit_illumination``
+    - ``twoDMapPath`` -- path to the 2D dispersion map the measurement used
+    - ``binx`` -- binning in the x-axis
+    - ``biny`` -- binning in the y-axis
+
+    **Return:**
+
+    - ``excludeMask`` -- boolean image at the frame's binning, True for a pixel to exclude from the sky model, or
+      *None* if the measurement was not applied
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_illumination_mask import exclude_mask_from_result
+    excludeMask = exclude_mask_from_result(log, result, twoDMapPath, binx, biny)
+    ```
+    """
+    log.debug("starting the ``exclude_mask_from_result`` function")
+    if not result.isApplied:
+        return None
+    _, slit, orderMap = _read_disp_map(twoDMapPath, binx, biny)
+    excludeMask = overlap_exclude_mask(
+        log, slit, orderMap, result.flatEdges, result.offsets, result.overlapMarginArcsec
+    )
+    log.debug("completed the ``exclude_mask_from_result`` function")
     return excludeMask

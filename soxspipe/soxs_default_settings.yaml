@@ -326,6 +326,17 @@ soxs-stare-std:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+        slit-illumination:
+            # MEASURE THE ALONG-SLIT OFFSET OF EACH ORDER'S SKY IMAGE FROM THE MASTER FLAT'S AND MASK THE SLIT ENDS THAT ARE NOT LIT IN BOTH
+            measure-offset: True
+            # HOW FAR INSIDE THE BOTH-LIT SLIT RANGE THE MASK EDGES SIT (ARCSEC)
+            overlap-margin-arcsec: 0.3
+            # SLIT BIN WIDTH OF THE SKYLINE PROFILES (ARCSEC)
+            profile-bin-arcsec: 0.1
+            # LARGEST ORDER OFFSET ACCEPTED (ARCSEC)
+            max-offset-arcsec: 3.0
+            # LARGEST UNCERTAINTY ON A FITTED ORDER OFFSET ACCEPTED (ARCSEC)
+            max-order-scatter-arcsec: 0.3
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
@@ -389,6 +400,17 @@ soxs-stare-std:
             poly-fitting-residual-clipping-sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 10
+        slit-illumination:
+            # MEASURE THE ALONG-SLIT OFFSET OF EACH ORDER'S SKY IMAGE FROM THE MASTER FLAT'S AND MASK THE SLIT ENDS THAT ARE NOT LIT IN BOTH
+            measure-offset: True
+            # HOW FAR INSIDE THE BOTH-LIT SLIT RANGE THE MASK EDGES SIT (ARCSEC)
+            overlap-margin-arcsec: 0.3
+            # SLIT BIN WIDTH OF THE SKYLINE PROFILES (ARCSEC)
+            profile-bin-arcsec: 0.1
+            # LARGEST ORDER OFFSET ACCEPTED (ARCSEC)
+            max-offset-arcsec: 3.0
+            # LARGEST UNCERTAINTY ON A FITTED ORDER OFFSET ACCEPTED (ARCSEC)
+            max-order-scatter-arcsec: 0.3
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
@@ -465,6 +487,17 @@ soxs-stare:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+        slit-illumination:
+            # MEASURE THE ALONG-SLIT OFFSET OF EACH ORDER'S SKY IMAGE FROM THE MASTER FLAT'S AND MASK THE SLIT ENDS THAT ARE NOT LIT IN BOTH
+            measure-offset: True
+            # HOW FAR INSIDE THE BOTH-LIT SLIT RANGE THE MASK EDGES SIT (ARCSEC)
+            overlap-margin-arcsec: 0.3
+            # SLIT BIN WIDTH OF THE SKYLINE PROFILES (ARCSEC)
+            profile-bin-arcsec: 0.1
+            # LARGEST ORDER OFFSET ACCEPTED (ARCSEC)
+            max-offset-arcsec: 3.0
+            # LARGEST UNCERTAINTY ON A FITTED ORDER OFFSET ACCEPTED (ARCSEC)
+            max-order-scatter-arcsec: 0.3
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
@@ -528,6 +561,17 @@ soxs-stare:
             poly-fitting-residual-clipping-sigma: 3
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO OBJECT TRACE
             poly-clipping-iteration-limit: 10
+        slit-illumination:
+            # MEASURE THE ALONG-SLIT OFFSET OF EACH ORDER'S SKY IMAGE FROM THE MASTER FLAT'S AND MASK THE SLIT ENDS THAT ARE NOT LIT IN BOTH
+            measure-offset: True
+            # HOW FAR INSIDE THE BOTH-LIT SLIT RANGE THE MASK EDGES SIT (ARCSEC)
+            overlap-margin-arcsec: 0.3
+            # SLIT BIN WIDTH OF THE SKYLINE PROFILES (ARCSEC)
+            profile-bin-arcsec: 0.1
+            # LARGEST ORDER OFFSET ACCEPTED (ARCSEC)
+            max-offset-arcsec: 3.0
+            # LARGEST UNCERTAINTY ON A FITTED ORDER OFFSET ACCEPTED (ARCSEC)
+            max-order-scatter-arcsec: 0.3
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
