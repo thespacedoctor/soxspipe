@@ -425,6 +425,8 @@ def _two_order_subtractor(
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.0,
             "aggressive_object_masking": aggressive,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "sky_model_qc_plot": False,
             "percentile_rolling_window_size": 11,
             "noise_rolling_window_size": 30,

@@ -78,6 +78,8 @@ def _construct(log: Any, frame: CCDData, **kwargs: Any) -> subtract_sky:
                 "bspline_order": 3,
                 "clip-slit-edge-fraction": 0.1,
                 "aggressive_object_masking": False,
+                # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+                "object_wing_correction": False,
                 "sky_model_qc_plot": False,
             }
         },

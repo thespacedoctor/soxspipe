@@ -167,6 +167,8 @@ def test_subtract_runs_one_order_workflow_and_returns_finite_product_frames(
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "sky_model_qc_plot": False,
         }
     }
@@ -221,6 +223,8 @@ def test_subtract_records_order_and_frame_qc_products_when_requested(
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "sky_model_qc_plot": True,
         }
     }
@@ -629,6 +633,8 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
     subtractor.recipeSettings["sky-subtraction"].update(
         {
             "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "sky_model_qc_plot": writeQCPlot,
@@ -740,6 +746,8 @@ def _one_order_subtractor(log: object) -> subtract_sky:
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "sky_model_qc_plot": False,
         }
     }

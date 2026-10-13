@@ -58,6 +58,10 @@ LOW_FLAT_FRACTION = 0.02
 # THE PERCENTILE OF AN ORDER'S FLAT THAT LOW_FLAT_FRACTION IS TAKEN OF
 LOW_FLAT_REFERENCE_PERCENTILE = 95
 
+# THE OBJECT-WING CORRECTION SETTINGS USED WHEN A WORKSPACE'S SETTINGS PREDATE THEM (DY-1279)
+DEFAULT_OBJECT_WING_CORRECTION = True
+DEFAULT_OBJECT_WING_GATE_FRACTION = 0.1
+
 
 def _sliding_mean(values, window):
     """*running mean of a 1D array, padded at each end so there is one value per input element*
@@ -581,6 +585,8 @@ class subtract_sky:
         """
         import numpy as np
 
+        isWingCorrectionOn, gateFraction = self._object_wing_settings()
+
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         fittedOrders = []
         allFluxErrorRatios = []
@@ -589,7 +595,12 @@ class subtract_sky:
         allKnots = []
         totalKnots = 0
         for imageMapOrder in allimageMapOrder:
-            imageMapOrder, tck, knots, flux_error_ratio, residualFloor = self.fit_bspline_curve_to_sky(imageMapOrder)
+            # THE FIT SORTS AND WRITES COLUMNS IN PLACE, SO THE REFIT STARTS FROM A COPY OF THE CLIPPED ORDER
+            preFitOrder = imageMapOrder.copy() if isWingCorrectionOn else None
+            fitResult = self.fit_bspline_curve_to_sky(imageMapOrder)
+            if isWingCorrectionOn:
+                fitResult = self._refit_without_object_wings(preFitOrder, fitResult, gateFraction)
+            imageMapOrder, tck, knots, flux_error_ratio, residualFloor = fitResult
             totalKnots += len(knots)
             fittedOrders.append(imageMapOrder)
             allFluxErrorRatios.append(flux_error_ratio)
@@ -608,6 +619,83 @@ class subtract_sky:
             f"MEAN RES FLOOR: {meanResidualFloor:0.3f}, KNOT COUNT: {totalKnots}"
         )
         return fittedOrders, alltck, allKnots
+
+    def _object_wing_settings(self):
+        """*the object-wing correction switch and gate fraction, with defaults for older workspace settings (DY-1279)*
+
+        **Return:**
+
+        - ``isOn`` -- True when the object-wing correction runs
+        - ``gateFraction`` -- an order is corrected only when the object light in its sky model is above this
+          fraction of its sky level
+        """
+        skySettings = self.recipeSettings["sky-subtraction"]
+        # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NEITHER KEY
+        isOn = bool(skySettings.get("object_wing_correction", DEFAULT_OBJECT_WING_CORRECTION))
+        gateFraction = float(skySettings.get("object_wing_gate_fraction", DEFAULT_OBJECT_WING_GATE_FRACTION))
+        if not (math.isfinite(gateFraction) and gateFraction >= 0):
+            raise ValueError(
+                "the sky-subtraction setting object_wing_gate_fraction must be a finite number >= 0, "
+                f"got {gateFraction}"
+            )
+        return isOn, gateFraction
+
+    def _refit_without_object_wings(self, preFitOrder, fitResult, gateFraction):
+        """*estimate the object light in an order's first sky fit and, if it is significant, refit without it (DY-1279)*
+
+        The object's spatial profile, with its zero point at the faintest 1 arcsec of the slit, gives a model of the
+        object light at every pixel (``object_wing_model``). The sky is refitted to the flux minus that model. The
+        returned order carries the real flux, and its sky-subtracted flux is the real flux minus the refitted sky.
+
+        **Key Arguments:**
+
+        - ``preFitOrder`` -- copy of the clipped order dataframe taken before the first fit
+        - ``fitResult`` -- the tuple returned by ``fit_bspline_curve_to_sky`` for the first fit
+        - ``gateFraction`` -- the ``object_wing_gate_fraction`` setting
+
+        **Return:**
+
+        - ``fitResult`` -- the first fit unchanged when the order is not corrected, else the refit's tuple
+        """
+        import numpy as np
+        import pandas as pd
+
+        from soxspipe.commonutils.object_wing_model import estimate_object_wings, wing_model
+
+        firstFit = fitResult[0]
+        # THE FIT SORTED ITS ORDER BY WAVELENGTH; THE INDEX STILL MATCHES THE COPY TAKEN BEFORE IT
+        skyModel = firstFit["sky_model"].reindex(preFitOrder.index).to_numpy(dtype=float)
+        wavelength = preFitOrder["wavelength"].to_numpy(dtype=float)
+        slitPosition = preFitOrder["slit_position"].to_numpy(dtype=float)
+        flux = preFitOrder["flux"].to_numpy(dtype=float)
+        error = preFitOrder["error"].to_numpy(dtype=float)
+        isUsable = (
+            ~preFitOrder["flagged_edge_clipped"].to_numpy(dtype=bool)
+            & ~preFitOrder["flagged_bad_pixel_clipped"].to_numpy(dtype=bool)
+            & np.isfinite(flux)
+            & np.isfinite(error)
+            & np.isfinite(skyModel)
+        )
+        estimate = estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, gateFraction)
+        order = preFitOrder["order"].values[0]
+        if not estimate.isCorrected:
+            self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")
+            return fitResult
+
+        wings = wing_model(estimate, slitPosition)
+        refitInput = preFitOrder.copy()
+        refitInput["flux"] = flux - wings
+        refitOrder, *rest = self.fit_bspline_curve_to_sky(refitInput)
+        refitOrder["flux"] = preFitOrder["flux"].reindex(refitOrder.index)
+        refitOrder["object_wing_model"] = pd.Series(wings, index=refitInput.index).reindex(refitOrder.index)
+        refitOrder["sky_subtracted_flux"] = refitOrder["flux"] - refitOrder["sky_model"]
+        # THE FIT'S PROGRESS LINE ERASES THE LINE ABOVE IT, SO THIS ONE IS FRAMED BY NEWLINES
+        self.log.print(
+            f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
+            f"OBJECT LIGHT ({estimate.biasLevel / max(estimate.skyLevel, 1e-9) * 100:0.0f}% OF THE SKY), "
+            f"REMOVING ABOUT {estimate.slitLossFraction * 100:0.2f}% OF THE OBJECT FLUX\n"
+        )
+        return (refitOrder, *rest)
 
     def get_over_sampled_sky_from_order(self, imageMapOrder, clipBPs=True, clipSlitEdge=False):
         """*unpack the over sampled sky from an order*
