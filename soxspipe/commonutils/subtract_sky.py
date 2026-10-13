@@ -306,9 +306,7 @@ class subtract_sky:
             aggressive=self.recipeSettings["sky-subtraction"]["aggressive_object_masking"],
         )
 
-        self.log.print(
-            "\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH) AND LOW-ORDER POLY (SLIT-ILLUMINATION PROFILE)\n"
-        )
+        self.log.print("\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH)\n")
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         newAllimageMapOrder = []
@@ -1541,7 +1539,7 @@ class subtract_sky:
         # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282)
         noiseModelSky = self._fill_nans_by_interpolation(imageMapOrder["flux_percentile_smoothed"].values)
 
-        # WE WILL UPDATE THIS VALUE LATER IN WORKFLOW WITH SLIT-ILLUMINATION CORRECTION
+        # NO SLIT-ILLUMINATION CORRECTION IS APPLIED, SO THE RATIO IS A CONSTANT 1
         imageMapOrder["slit_normalisation_ratio"] = 1
 
         # FOR WEIGHTED BSPLINES WE ONLY NEED *INTERIOR* KNOTS (DON'T GO BEYOND RANGE OF DATA)
@@ -1593,12 +1591,6 @@ class subtract_sky:
         iterationCount = -3
         residualFloor = np.nan
 
-        slitIlluminationCorrectionIteration = 4
-        tiltAdjustmentIteration = 4
-
-        slitCorrectIterationLimit = 2
-        slitCorrectIterations = 0
-
         # CLIP NAN FLUX
         imageMapOrder.loc[imageMapOrder["flux"].isnull(), "flagged_all_clipped"] = True
         mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
@@ -1633,25 +1625,6 @@ class subtract_sky:
 
             if self.debug:
                 print("total knot count", len(allKnots), iterationCount)
-
-            if slitCorrectIterations < slitCorrectIterationLimit:
-                # SLIT CORRECT ACTUALLY HELPS
-                if iterationCount == slitIlluminationCorrectionIteration and False:
-                    # FIT SLIT-ILLUMINATION PROFILE
-                    imageMapOrder = self.cross_dispersion_flux_normaliser(imageMapOrder)
-                    extraKnots = np.array([])
-                    iterationCount = -2
-                    slitIlluminationCorrectionIteration = -99
-                    tiltAdjustmentIteration = 4
-
-                # FLUX SHUFFLING MAKE EXTRACTION WORSE
-                if iterationCount == tiltAdjustmentIteration and self.arm.upper() in ["NIR"] and False:
-                    # FIT SLIT-ILLUMINATION PROFILE
-                    imageMapOrder = self.adjust_tilt(imageMapOrder, tck)
-                    extraKnots = np.array([])
-                    iterationCount = -2
-                    # tiltAdjustmentIteration = -99
-                    slitCorrectIterations += 1
 
             if iterationCount > 1:
                 # POTENTIAL NEW KNOTS PLACED HALF WAY BETWEEN ADJACENT CURRENT KNOTS
@@ -2541,208 +2514,6 @@ class subtract_sky:
 
         self.log.debug("completed the ``clip_object_slit_positions`` method")
         return order_dataframes
-
-    def cross_dispersion_flux_normaliser(self, orderDF):
-        """*measure and normalise the flux in the cross-dispersion direction*
-
-        **Key Arguments:**
-
-        - ``orderDF`` -- a single order dataframe containing sky-subtraction flux residuals used to determine and remove a slit-illumination correction
-
-        **Return:**
-
-        - `correctedOrderDF` -- dataframe with slit-illumination correction factor added (flux-normaliser)
-
-        **Usage:**
-
-        ```python
-        correctedOrderDF = self.cross_dispersion_flux_normaliser(orderDF)
-        ```
-        """
-        self.log.debug("starting the ``cross_dispersion_flux_normaliser`` method")
-
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import scipy.interpolate as ip
-        from astropy.stats import sigma_clip
-
-        slit_illumination_order = self.recipeSettings["sky-subtraction"]["slit_illumination_order"]
-        order = orderDF["order"].values[0]
-        orderDF["slit_normalisation_ratio"] = 1.0
-
-        # COLLECT THE SKYLINE PIXELS
-        mask = orderDF["flagged_all_clipped"] == False
-        # mask = ((orderDF["flagged_all_clipped"] == False) & (orderDF["flagged_sky_line"] == False))
-        thisOrder = orderDF.loc[mask].copy()
-
-        # SORT BY COLUMN NAME
-        thisOrder.sort_values(["slit_position"], inplace=True, kind="stable")
-
-        # GROUP INTO DISCRETE WAVELENGTH BINS
-        # DEFINE THE BINS FOR COLUMN 'wavelength'
-        lower = float("%0.*f" % (1, thisOrder["slit_position"].min()))
-        upper = float("%0.*f" % (1, thisOrder["slit_position"].max()))
-
-        # DO AN INITIAL CLIPPING OF THE DATA
-        # masked_residuals = sigma_clip(
-        #     thisOrder["sky_subtracted_flux"], sigma_lower=3, sigma_upper=3, maxiters=5, cenfunc='mean', stdfunc='std')
-        # thisOrder["flagged_all_clipped"] = masked_residuals.mask
-
-        # FIT THE DATA WITH A POLYMONIAL
-        mask = thisOrder["flagged_all_clipped"] == False
-        sp = thisOrder.loc[mask]["slit_position"].values
-        fx = thisOrder.loc[mask]["sky_subtracted_flux"].values
-        wt = 1 / thisOrder.loc[mask]["residual_windowed_std"].values
-
-        # STARTER KNOTS USED TO MEASURE THE RESIDUAL FLOOR BEFORE REVERTING TO defaultPointsPerKnot
-        starterPointsPerKnot = 500
-
-        if self.binx > 1:
-            starterPointsPerKnot /= self.binx
-        if self.biny > 1:
-            starterPointsPerKnot /= self.biny
-
-        starterPointsPerKnot = int(starterPointsPerKnot)
-
-        n_interior_knots = int(sp.shape[0] / starterPointsPerKnot)
-        # QUANTILE SPACES - i.e. PERCENTAGE VALUES TO PLACE THE KNOTS, FROM 0-1,  WAVELENGTH RANGE
-        qs = np.linspace(0, 1, n_interior_knots + 2)[1:-1]
-        starterKnots = np.quantile(sp, qs)
-
-        tck, fp, ier, msg = ip.splrep(sp, fx, k=1, w=wt, t=starterKnots, full_output=True)
-
-        iteration = 0
-        spCopy = np.copy(sp)
-        fxCopy = np.copy(fx)
-        while iteration < 3 and True:
-            iteration += 1
-            coeff = np.polyfit(spCopy, fxCopy, deg=slit_illumination_order)
-            residuals = fxCopy - np.polyval(coeff, spCopy)
-            masked_residuals = sigma_clip(
-                residuals,
-                sigma_lower=3,
-                sigma_upper=3,
-                maxiters=1,
-                cenfunc="mean",
-                stdfunc="std",
-            )
-            # REDUCE ARRAYS TO NON-MASKED VALUES
-            a = [spCopy, fxCopy]
-            spCopy, fxCopy = [np.ma.compressed(np.ma.masked_array(i, masked_residuals.mask)) for i in a]
-
-        # FIX ME
-        if self.debug:
-            fig = plt.figure(figsize=(15, 4))
-            plt.title("Slit Illumination Profile")
-
-            plt.plot(sp, fx, ".", ms=1, color="red", alpha=0.3)
-
-            xp = np.linspace(lower, upper, 100)
-            fitFx = np.polyval(coeff, xp)
-            plt.plot(xp, fitFx, color="blue")
-
-            slitPos = np.linspace(lower, upper, 10000)
-            sky = ip.splev(slitPos, tck)
-            plt.plot(slitPos, sky, label="sky model", c="#268bd2", zorder=3)
-
-            plt.xlabel("slit-position", fontsize=12)
-            plt.ylabel("normalised flux", fontsize=12)
-            plt.show()
-            plt.close("all")
-
-        # USE THE SLIT-ILLUMINATION FUNCTION TO CREATE A FLUX-NORMALISATION
-
-        if False:
-            orderDF["flux"] -= np.polyval(coeff, orderDF["slit_position"].values)
-        # orderDF['flux'] -= ip.splev(orderDF['slit_position'].values, tck)
-        orderDF["slit_normalisation_ratio"] = 1
-
-        self.log.debug("completed the ``cross_dispersion_flux_normaliser`` method")
-        return orderDF
-
-    def adjust_tilt(self, orderDF, tck):
-        """*correct the tilt of the slit by attempting to minimise the residuals of the bspline fit while shifting the tilt angle*
-
-        **Key Arguments:**
-
-        - ``orderDF`` -- a single order dataframe containing sky-subtraction flux residuals used to determine and remove a slit-illumination correction
-        - ``tck`` -- spline parameters to replot
-
-        **Return:**
-
-        - `orderDF` -- dataframe with wavelengths adjusted for a corrected tilt
-
-        **Usage:**
-
-        ```python
-        orderDF = self.adjust_tilt(orderDF, tck)
-        ```
-        """
-        self.log.debug("starting the ``adjust_tilt`` method")
-
-        import numpy as np
-        import pandas as pd
-        import scipy.interpolate as ip
-
-        slit_illumination_order = self.recipeSettings["sky-subtraction"]["slit_illumination_order"]
-
-        # COLLECT THE SKYLINE PIXELS
-        # mask = ((orderDF["flagged_all_clipped"] == False) & (orderDF["flagged_sky_line"] != False))
-        mask = orderDF["flagged_all_clipped"] == False
-        thisOrder = orderDF.loc[mask]
-        order = orderDF["order"].values[0]
-
-        # GROUP INTO DISCRETE WAVELENGTH BINS
-        # DEFINE THE BINS FOR COLUMN 'wavelength'
-        lower = float("%0.*f" % (1, thisOrder["wavelength"].min()))
-        upper = float("%0.*f" % (1, thisOrder["wavelength"].max()))
-        wlBins = np.linspace(lower, upper, 1000)
-        # BIN RESULTS
-        thisOrder["wl_bins"] = pd.cut(thisOrder["wavelength"], bins=wlBins)
-        wlGroups = thisOrder[["pixelScale", "wl_bins"]].groupby(["wl_bins"])
-        thisOrder["pixelScale"] = wlGroups["pixelScale"].transform(lambda x: x.mean())
-
-        minimum = 1000000
-        bestShift = 0.0
-
-        if order == self.qcPlotOrder or True:
-            orderEdge = int(len(thisOrder.index) / 10)
-            flux = thisOrder["flux"][orderEdge:-orderEdge]
-            wl = thisOrder["wavelength"][orderEdge:-orderEdge]
-            sp = thisOrder["slit_position"][orderEdge:-orderEdge]
-            ps = thisOrder["pixelScale"][orderEdge:-orderEdge]
-            scatter = thisOrder["residual_windowed_std"][orderEdge:-orderEdge]
-            for shift in np.arange(-0.01, 0.01, 0.00001):
-                # shiftedWl = wl - sp * ps * shift
-                shiftedWl = wl - sp * shift
-                sky = ip.splev(shiftedWl, tck)
-                der = ip.splev(shiftedWl, tck, der=1)
-
-                skySubtractedFlux = np.abs((flux - sky) * der / scatter)
-                mean = np.mean(skySubtractedFlux)
-                # median = np.median(skySubtractedFlux)
-                # p80 = np.percentile(skySubtractedFlux, 80)
-                # p90 = np.percentile(skySubtractedFlux, 90)
-                # p95 = np.percentile(skySubtractedFlux, 95)
-                # p99 = np.percentile(skySubtractedFlux, 99)
-
-                if mean < minimum and mean > 0:
-                    minimum = mean
-                    bestShift = shift
-
-            # if order == self.qcPlotOrder:
-            #     print(f"{shift:0.5f}, {mean:0.3f}, {median:0.3f}, {p80:0.3f}, {p90:0.3f}, {p95:0.3f}, {p99:0.3f}")
-
-        # print(f"BEST SHIFT: {bestShift:0.5f}. MIN: {minimum:0.2f}")
-
-        orderDF["wavelength"] = orderDF["wavelength"] - orderDF["slit_position"] * bestShift
-
-        # orderDF['wavelength'] = orderDF["wavelength"] - orderDF["slit_position"] * orderDF["pixelScale"] * bestShift
-
-        orderDF.sort_values(by=["wavelength"], inplace=True, kind="stable")
-
-        self.log.debug("completed the ``adjust_tilt`` method")
-        return orderDF
 
     def determine_residual_floor(self, imageMapOrder, tck, iteration):
         """*determine residual floor and flag sky-lines*

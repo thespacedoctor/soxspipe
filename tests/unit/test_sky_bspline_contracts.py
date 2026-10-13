@@ -7,7 +7,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.interpolate import splrep
 
 from soxspipe.commonutils.subtract_sky import subtract_sky
 
@@ -121,53 +120,3 @@ def test_fit_bspline_curve_excludes_nan_flux_from_model_quality_metrics(
     # THE WEIGHTED RESIDUAL IS MULTIPLIED BY THE SPLINE DERIVATIVE, WHICH IS 0 ON A FLAT SKY, SO 0 IS THE TRUE VALUE
     # THE OLD CONSTANT 1 CAME FROM THE REMOVED FLAT-MEDIAN FALLBACK (DY-593)
     np.testing.assert_allclose(fluxErrorRatio, 0.0, atol=1e-9)
-
-
-def test_cross_dispersion_normaliser_retains_flux_and_adds_unity_ratio(
-    log: Any,
-) -> None:
-    """Slit-illumination fitting leaves the legacy unity correction in place."""
-    subtractor = _subtractor(log, arm="VIS")
-    subtractor.recipeSettings["sky-subtraction"]["slit_illumination_order"] = 1
-    slitPositions = np.linspace(-1.0, 1.0, 32)
-    pixels = pd.DataFrame(
-        {
-            "order": 10,
-            "slit_position": slitPositions,
-            "sky_subtracted_flux": 2.0 + slitPositions,
-            "residual_windowed_std": np.ones(slitPositions.size),
-            "flagged_all_clipped": False,
-        }
-    )
-
-    corrected = subtractor.cross_dispersion_flux_normaliser(pixels.copy())
-
-    np.testing.assert_allclose(corrected["sky_subtracted_flux"], 2.0 + slitPositions)
-    np.testing.assert_allclose(corrected["slit_normalisation_ratio"], 1.0)
-
-
-def test_adjust_tilt_returns_wavelength_sorted_corrected_order(log: Any) -> None:
-    """Tilt optimization preserves all pixels and leaves an ordered wavelength axis."""
-    subtractor = _subtractor(log, arm="VIS")
-    subtractor.recipeSettings["sky-subtraction"]["slit_illumination_order"] = 1
-    subtractor.qcPlotOrder = 10
-    wavelengths = np.linspace(500.0, 510.0, 80)
-    slitPositions = np.linspace(-1.0, 1.0, 80)
-    spline = splrep(wavelengths, 0.5 * wavelengths + 1.0, k=1)
-    pixels = pd.DataFrame(
-        {
-            "order": 10,
-            "wavelength": wavelengths[::-1],
-            "slit_position": slitPositions,
-            "pixelScale": np.ones(wavelengths.size),
-            "flux": (0.5 * wavelengths[::-1]) + 1.0,
-            "residual_windowed_std": np.ones(wavelengths.size),
-            "flagged_all_clipped": False,
-        }
-    )
-
-    corrected = subtractor.adjust_tilt(pixels.copy(), spline)
-
-    assert len(corrected) == len(pixels)
-    assert corrected["wavelength"].is_monotonic_increasing
-    assert np.isfinite(corrected["wavelength"]).all()

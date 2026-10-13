@@ -346,30 +346,6 @@ def test_clip_object_slit_positions_updates_masks_and_local_noise(log: object) -
     assert pixels.loc[20, "flux_windowed_long_median"] == pytest.approx(99.948718, abs=1e-6)
 
 
-def test_cross_dispersion_normaliser_keeps_the_current_unity_flux_contract(log: object) -> None:
-    """The fitted illumination profile currently preserves a unity correction."""
-    subtractor = _subtractor(log)
-    subtractor.recipeSettings["sky-subtraction"]["slit_illumination_order"] = 1
-    subtractor.binx = 1
-    subtractor.biny = 1
-    subtractor.debug = False
-    slitPositions = np.linspace(-1.0, 1.0, 20)
-    pixels = pd.DataFrame(
-        {
-            "order": np.full(slitPositions.size, 10),
-            "slit_position": slitPositions,
-            "flagged_all_clipped": False,
-            "sky_subtracted_flux": 20.0 + 3.0 * slitPositions,
-            "residual_windowed_std": np.full(slitPositions.size, 0.5),
-        }
-    )
-
-    corrected = subtractor.cross_dispersion_flux_normaliser(pixels)
-
-    assert corrected is pixels
-    np.testing.assert_allclose(corrected["slit_normalisation_ratio"], 1.0)
-
-
 @pytest.mark.parametrize("arm", ["UVB", "VIS"])
 def test_image_comparison_writes_recipe_named_pdf(tmp_path: Path, log: object, arm: str) -> None:
     subtractor = _subtractor(log)
