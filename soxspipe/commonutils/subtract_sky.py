@@ -473,33 +473,8 @@ class subtract_sky:
 
         self.log.print("\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH)\n")
 
-        # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
-        newAllimageMapOrder = []
-        allFluxErrorRatios = []
-        allResidualFloor = []
-        alltck = []
-        allKnots = []
-        totalKnots = 0
-        for imageMapOrder in allimageMapOrder:
-            imageMapOrder, tck, knots, flux_error_ratio, residualFloor = self.fit_bspline_curve_to_sky(imageMapOrder)
-            totalKnots += len(knots)
-            newAllimageMapOrder.append(imageMapOrder)
-            allFluxErrorRatios.append(flux_error_ratio)
-            allResidualFloor.append(residualFloor)
-            alltck.append(tck)
-            allKnots.append(knots)
-        allimageMapOrder = newAllimageMapOrder
+        allimageMapOrder, alltck, allKnots = self._fit_sky_to_orders(allimageMapOrder)
 
-        allFluxErrorRatios = np.concatenate(allFluxErrorRatios)
-        # AN ORDER WITH NO MEASURED FLOOR (E.G. EVERY PIXEL CLIPPED) IS LEFT OUT OF THE FRAME MEAN
-        measuredFloors = np.array(allResidualFloor, dtype=float)
-        measuredFloors = measuredFloors[np.isfinite(measuredFloors)]
-        meanResidualFloor = measuredFloors.mean() if measuredFloors.size else np.nan
-        self.log.print(
-            f"\n\tFULL FRAME SKY-MODEL FLUX TO ERROR METRICS: MEAN {allFluxErrorRatios.mean():0.3f}, "
-            f"STD {allFluxErrorRatios.std():0.3f}, MEDIAN {np.median(allFluxErrorRatios):0.3f}, "
-            f"MEAN RES FLOOR: {meanResidualFloor:0.3f}, KNOT COUNT: {totalKnots}"
-        )
         # self.log.print(f'\t{allFluxErrorRatios.mean():0.3f},  {allFluxErrorRatios.std():0.3f},  {np.median(allFluxErrorRatios):0.3f},  {allFluxErrorRatios.max():0.3f},  {allFluxErrorRatios.min():0.3f}, {allFluxErrorRatios.max()-allFluxErrorRatios.min():0.3f},{np.mean(allResidualFloor):0.3f},{totalKnots}')
 
         for o, imageMapOrder, tck, knots in zip(modelledOrderIds, allimageMapOrder, alltck, allKnots, strict=True):
@@ -590,6 +565,49 @@ class subtract_sky:
             self.qc,
             self.products,
         )
+
+    def _fit_sky_to_orders(self, allimageMapOrder):
+        """*fit the b-spline sky model to each order and print the full-frame fit metrics*
+
+        **Key Arguments:**
+
+        - ``allimageMapOrder`` -- list of clipped order dataframes, one per modelled order
+
+        **Return:**
+
+        - ``fittedOrders`` -- the order dataframes with the sky-model columns added, in the input order
+        - ``alltck`` -- the fitted spline of each order
+        - ``allKnots`` -- the interior knots of each order's spline
+        """
+        import numpy as np
+
+        # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
+        fittedOrders = []
+        allFluxErrorRatios = []
+        allResidualFloor = []
+        alltck = []
+        allKnots = []
+        totalKnots = 0
+        for imageMapOrder in allimageMapOrder:
+            imageMapOrder, tck, knots, flux_error_ratio, residualFloor = self.fit_bspline_curve_to_sky(imageMapOrder)
+            totalKnots += len(knots)
+            fittedOrders.append(imageMapOrder)
+            allFluxErrorRatios.append(flux_error_ratio)
+            allResidualFloor.append(residualFloor)
+            alltck.append(tck)
+            allKnots.append(knots)
+
+        allFluxErrorRatios = np.concatenate(allFluxErrorRatios)
+        # AN ORDER WITH NO MEASURED FLOOR (E.G. EVERY PIXEL CLIPPED) IS LEFT OUT OF THE FRAME MEAN
+        measuredFloors = np.array(allResidualFloor, dtype=float)
+        measuredFloors = measuredFloors[np.isfinite(measuredFloors)]
+        meanResidualFloor = measuredFloors.mean() if measuredFloors.size else np.nan
+        self.log.print(
+            f"\n\tFULL FRAME SKY-MODEL FLUX TO ERROR METRICS: MEAN {allFluxErrorRatios.mean():0.3f}, "
+            f"STD {allFluxErrorRatios.std():0.3f}, MEDIAN {np.median(allFluxErrorRatios):0.3f}, "
+            f"MEAN RES FLOOR: {meanResidualFloor:0.3f}, KNOT COUNT: {totalKnots}"
+        )
+        return fittedOrders, alltck, allKnots
 
     def get_over_sampled_sky_from_order(self, imageMapOrder, clipBPs=True, clipSlitEdge=False):
         """*unpack the over sampled sky from an order*
