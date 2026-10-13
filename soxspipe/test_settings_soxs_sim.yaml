@@ -142,7 +142,6 @@ soxs-stare:
         clip-slit-edge-fraction: 0.05
         aggressive_object_masking: True
         bspline_order: 3
-        slit_illumination_order: 3
 
 
 

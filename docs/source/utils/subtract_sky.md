@@ -42,8 +42,6 @@ Using the first and second derivatives of the bspline fit, those pixels associat
 
 A bspline is refitted to the order's wavelength-sorted sky-flux array using the updated knot set, and residuals are recalculated.
 
-At this stage, all the residuals are sorted by slit-position, and a low-order polynomial with order `slit_illumination_order` is fitted to the residuals. If illumination is not constant along the length of the slit, this polynomial will fit the profile of that inconsistency. This slit illumination profile is subtracted from the original pixel flux.
-
 A final round of iterative bspline fitting is performed, each time adding new knots at locations where the residuals exceed the residual floor determined earlier and at the wings of prominent skylines. This continues until the bspline fitting iteration limit (`bspline_iteration_limit`) is reached. With the final knots, the bspline is then refitted without the clipped pixels, clipped again and refitted, until a pass clips no new pixel or after five refits. {numref}`bspline_fit` shows the final bspline fit that is used as the sky model.
 
 :::{figure-md} bspline_fit

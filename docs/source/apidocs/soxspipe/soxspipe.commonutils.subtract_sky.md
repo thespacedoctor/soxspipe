@@ -45,14 +45,6 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} adjust_tilt(orderDF, tck)
-:canonical: soxspipe.commonutils.subtract_sky.subtract_sky.adjust_tilt
-
-```{autodoc2-docstring} soxspipe.commonutils.subtract_sky.subtract_sky.adjust_tilt
-```
-
-````
-
 ````{py:method} calculate_residuals(skyPixelsDF, fluxcoeff, orderDeg, wavelengthDeg, slitDeg, writeQCs=False)
 :canonical: soxspipe.commonutils.subtract_sky.subtract_sky.calculate_residuals
 
@@ -73,14 +65,6 @@ Bases: {py:obj}`object`
 :canonical: soxspipe.commonutils.subtract_sky.subtract_sky.create_placeholder_images
 
 ```{autodoc2-docstring} soxspipe.commonutils.subtract_sky.subtract_sky.create_placeholder_images
-```
-
-````
-
-````{py:method} cross_dispersion_flux_normaliser(orderDF)
-:canonical: soxspipe.commonutils.subtract_sky.subtract_sky.cross_dispersion_flux_normaliser
-
-```{autodoc2-docstring} soxspipe.commonutils.subtract_sky.subtract_sky.cross_dispersion_flux_normaliser
 ```
 
 ````
