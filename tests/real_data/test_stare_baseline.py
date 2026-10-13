@@ -6,9 +6,9 @@ check, the reduction is not bit-reproducible across hardware, so each value is a
 within a band. The sky bands are narrow enough that a sky model of zero, or one doubled,
 fails them. The centres were re-recorded from six bit-identical CI runs on
 2026-10-13, after the sky-model rework (DY-1514). A local arm64 reduction lands up
-to 5% away, so expect local runs to sit near the band edges. The NIR detected fraction is
-the exception: a local arm64 run gives about 0.92 against the CI value of 0.786, so it
-fails locally (DY-994).
+to 5% away, so expect local runs to sit near the band edges. The NIR detected fraction
+swings with small upstream changes (DY-994): CI gave 0.786 after the astropy 7.2.2
+upgrade and gives 0.914 now, and a local arm64 run gave about 0.92 on 2026-10-07.
 """
 
 from __future__ import annotations
