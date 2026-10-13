@@ -2335,7 +2335,11 @@ class create_dispersion_map:
         return orderPixelTable
 
     def _fit_xy_coefficients(self, orderPixelTable, polyx, polyy, orderDeg, wavelengthDeg, slitDeg):
-        """*fit the x and y dispersion polynomials to a set of lines from fresh first-guess coefficients*
+        """*fit the x and y dispersion polynomials to a set of lines by exact linear least squares*
+
+        Both polynomials are linear in their coefficients, so each axis is solved directly with a column-scaled
+        ``lstsq`` rather than iterated towards the minimum. An iterative optimiser on this badly conditioned power
+        basis stops short of the minimum, so its result swings on tiny input changes (DY-1525).
 
         **Key Arguments:**
 
@@ -2352,12 +2356,12 @@ class create_dispersion_map:
         - ``ycoeff`` -- the fitted y-coefficients (*None* if the fit failed)
         - ``failure`` -- *None* on success, else the result tuple ``fit_polynomials`` returns on a fit failure
         """
-        from scipy.optimize import curve_fit
+        import numpy as np
 
         from soxspipe.commonutils import get_cached_coeffs
+        from soxspipe.commonutils.polynomials import solve_linear_poly_coefficients
 
-        # START FROM SCRATCH EACH TIME SO A PREVIOUS PASS DOES NOT INFLUENCE THE FINAL RESULT
-        # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
+        # ONLY THE COEFFICIENT COUNTS ARE USED: A LINEAR SOLVE NEEDS NO STARTING GUESS
         xcoeff, ycoeff = get_cached_coeffs(
             log=self.log,
             arm=self.arm,
@@ -2369,47 +2373,31 @@ class create_dispersion_map:
             reset=True,
         )
 
-        # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
-        # FIRST X
-        self.log.info("curvefit x")
-        # CURVE_FIT RAISES A TYPEERROR RATHER THAN FAILING TO CONVERGE WHEN THERE ARE FEWER LINES THAN COEFFICIENTS
-        if len(orderPixelTable.index) < len(xcoeff):
-            self.log.debug(
-                f"fit_polynomials: {len(orderPixelTable.index)} lines cannot constrain {len(xcoeff)} x-coefficients"
-            )
-            return None, None, ("xerror", None, None, None)
-        try:
-            xcoeff, pcov_x = curve_fit(
-                polyx,
-                xdata=orderPixelTable,
-                ydata=orderPixelTable["observed_x"].to_numpy(),
-                p0=xcoeff,
-                maxfev=30000,
-            )
-        except (RuntimeError, ValueError) as e:
-            self.log.debug(f"fit_polynomials: `xcoeff, pcov_x = curve_fit( polyx, xdat...` failed, continuing: {e}")
-            return None, None, ("xerror", None, None, None)
+        axisFits = (
+            ("x", polyx, len(xcoeff), ("xerror", None, None, None)),
+            ("y", polyy, len(ycoeff), (None, "yerror", None, None)),
+        )
+        coefficients = {}
+        for axis, poly, nCoeff, failure in axisFits:
+            self.log.info(f"least-squares fit {axis}")
+            # FEWER LINES THAN COEFFICIENTS IS REPORTED AS A FAILURE SO THE CALLER LOWERS THE DEGREES (DY-1256)
+            if len(orderPixelTable.index) < nCoeff:
+                self.log.debug(
+                    f"fit_polynomials: {len(orderPixelTable.index)} lines cannot constrain {nCoeff} {axis}-coefficients"
+                )
+                return None, None, failure
+            try:
+                coefficients[axis] = solve_linear_poly_coefficients(
+                    poly=poly,
+                    pixelList=orderPixelTable,
+                    yValues=orderPixelTable[f"observed_{axis}"].to_numpy(),
+                    nCoeff=nCoeff,
+                )
+            except (np.linalg.LinAlgError, ValueError) as e:
+                self.log.debug(f"fit_polynomials: {axis}-axis least-squares fit failed, continuing: {e}")
+                return None, None, failure
 
-        # NOW Y
-        self.log.info("curvefit y")
-        if len(orderPixelTable.index) < len(ycoeff):
-            self.log.debug(
-                f"fit_polynomials: {len(orderPixelTable.index)} lines cannot constrain {len(ycoeff)} y-coefficients"
-            )
-            return None, None, (None, "yerror", None, None)
-        try:
-            ycoeff, pcov_y = curve_fit(
-                polyy,
-                xdata=orderPixelTable,
-                ydata=orderPixelTable["observed_y"].to_numpy(),
-                p0=ycoeff,
-                maxfev=30000,
-            )
-        except (RuntimeError, ValueError) as e:
-            self.log.debug(f"fit_polynomials: `ycoeff, pcov_y = curve_fit( polyy, xdat...` failed, continuing: {e}")
-            return None, None, (None, "yerror", None, None)
-
-        return xcoeff, ycoeff, None
+        return coefficients["x"], coefficients["y"], None
 
     def fit_polynomials(self, orderPixelTable, wavelengthDeg, orderDeg, slitDeg, missingLines=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
