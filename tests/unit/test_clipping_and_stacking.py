@@ -118,3 +118,101 @@ def test_clip_and_stack_can_disable_post_stack_clipping(
 
     assert combined.data[4, 4] == pytest.approx(100.0)
     assert not combined.mask[4, 4]
+
+
+def _frames_masked_in_the_first_only(pixel: tuple[int, int]) -> list[CCDData]:
+    """Five frames of value 10 with the values 12, 9, 10, 11, 10.5 at ``pixel``; the first frame flags it as bad."""
+    frames = []
+    for frameIndex, value in enumerate([12.0, 9.0, 10.0, 11.0, 10.5]):
+        data = np.full((8, 8), 10.0)
+        data[pixel] = value
+        mask = np.zeros((8, 8), dtype=bool)
+        mask[pixel] = frameIndex == 0
+        frames.append(_frame(data, mask))
+    return frames
+
+
+def test_clip_and_stack_uncertainty_uses_the_frames_that_contributed_at_each_pixel(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THE PIXEL IS BAD IN ONE OF FIVE FRAMES
+    recipe = _recipe(tmp_path, log)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None)
+    frames = _frames_masked_in_the_first_only((3, 3))
+
+    # ACT
+    combined = recipe.clip_and_stack(frames, recipe="soxs_mbias", post_stack_clipping=False)
+
+    # ASSERT: FOUR FRAMES CONTRIBUTED AT THE PIXEL, FIVE ELSEWHERE
+    assert combined.data[3, 3] == pytest.approx(10.125)
+    assert combined.uncertainty.array[3, 3] == pytest.approx(3.0 / np.sqrt(4))
+    assert combined.uncertainty.array[0, 0] == pytest.approx(3.0 / np.sqrt(5))
+    assert not combined.mask[3, 3]
+
+
+def test_clip_and_stack_ignoring_input_masks_uses_every_frame_and_leaves_caller_masks_alone(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _recipe(tmp_path, log)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None)
+    frames = _frames_masked_in_the_first_only((3, 3))
+
+    # ACT
+    combined = recipe.clip_and_stack(frames, recipe="soxs_mbias", ignore_input_masks=True, post_stack_clipping=False)
+
+    # ASSERT: ALL FIVE FRAMES CONTRIBUTE, AND THE CALLER'S FRAME KEEPS ITS MASK
+    assert combined.data[3, 3] == pytest.approx(10.5)
+    assert combined.uncertainty.array[3, 3] == pytest.approx(3.0 / np.sqrt(5))
+    assert frames[0].mask[3, 3]
+
+
+def test_clip_and_stack_keeps_the_value_of_a_pixel_flagged_in_every_frame(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: A STATIC BAD PIXEL, FLAGGED IN ALL FIVE FRAMES
+    recipe = _recipe(tmp_path, log)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None)
+    frames = []
+    for _ in range(5):
+        mask = np.zeros((8, 8), dtype=bool)
+        mask[3, 3] = True
+        frames.append(_frame(np.full((8, 8), 10.0), mask))
+
+    # ACT
+    combined = recipe.clip_and_stack(frames, recipe="soxs_mbias", post_stack_clipping=False)
+
+    # ASSERT: THE PIXEL STAYS FLAGGED BUT HOLDS A FINITE VALUE AND UNCERTAINTY
+    assert combined.mask[3, 3]
+    assert combined.data[3, 3] == pytest.approx(10.0)
+    assert combined.uncertainty.array[3, 3] == pytest.approx(3.0 / np.sqrt(5))
+
+
+def test_clip_and_stack_leaves_masked_values_out_of_the_clipping_statistics(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THREE FRAMES FLAG A WILD VALUE (30) AT THE PIXEL; OF THE FOUR UNFLAGGED, ONE IS A TRUE OUTLIER
+    recipe = _recipe(tmp_path, log)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **kwargs: None)
+    frames = []
+    for value, isFlagged in [(30.0, True)] * 3 + [(9.8, False), (10.0, False), (10.2, False), (30.0, False)]:
+        data = np.full((8, 8), 10.0)
+        data[3, 3] = value
+        mask = np.zeros((8, 8), dtype=bool)
+        mask[3, 3] = isFlagged
+        frames.append(_frame(data, mask))
+
+    # ACT
+    combined = recipe.clip_and_stack(frames, recipe="soxs_mbias", post_stack_clipping=False)
+
+    # ASSERT: THE FLAGGED 30s DO NOT SHIELD THE UNFLAGGED 30, AND DO NOT CLIP THE GOOD VALUES
+    assert combined.data[3, 3] == pytest.approx(10.0)
+    assert combined.uncertainty.array[3, 3] == pytest.approx(3.0 / np.sqrt(3))

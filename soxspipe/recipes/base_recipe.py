@@ -1477,11 +1477,12 @@ class base_recipe:
         stacked_clipping_iterations,
         totalPixels,
     ):
-        """*sigma-clip the individual input frames, replacing the combiner's masks*
+        """*sigma-clip the individual input frames, adding the clipped pixels to each frame's mask*
 
         **Key Arguments:**
 
-        - ``combiner`` -- the Combiner object holding the frames to clip. Its mask is replaced in place.
+        - ``combiner`` -- the Combiner object holding the frames to clip. Its mask is replaced in place by the
+          union of each frame's existing mask and its clip mask.
         - ``stacked_clipping_sigma`` -- the sigma level to clip the individual frames at
         - ``stacked_clipping_iterations`` -- the number of clipping iterations to run
         - ``totalPixels`` -- the pixel count of one frame, used to report the clipped fraction
@@ -1505,9 +1506,14 @@ class base_recipe:
         # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
         old_n_masked = combiner.data_arr.mask.sum()
 
+        # PIXELS ALREADY MASKED IN A FRAME TAKE NO PART IN THE CLIPPING STATISTICS AND STAY
+        # MASKED IN THAT FRAME ONLY. THE CLIP MASK RETURNED INCLUDES THEM
         ## Reduce memory by avoiding an extra full-array copy during clipping
         combiner.data_arr.mask = sigma_clip(
-            np.asarray(combiner.data_arr.data, dtype=np.float32),
+            np.ma.array(
+                np.asarray(combiner.data_arr.data, dtype=np.float32),
+                mask=np.ma.getmaskarray(combiner.data_arr),
+            ),
             sigma_lower=stacked_clipping_sigma,
             sigma_upper=stacked_clipping_sigma,
             axis=0,
@@ -1528,6 +1534,32 @@ class base_recipe:
             )
         return
 
+    def _set_input_masks(self, combiner, combinedMask, ignore_input_masks):
+        """*set the per-frame masks the clipping starts from*
+
+        **Key Arguments:**
+
+        - ``combiner`` -- the Combiner object holding the frames. Its per-frame masks are replaced in place;
+          the input frames themselves are not changed.
+        - ``combinedMask`` -- the pixels flagged bad in every input frame
+        - ``ignore_input_masks`` -- drop the input masks, so that only the clip mask applies?
+
+        **Usage:**
+
+        ```python
+        self._set_input_masks(combiner, combinedMask, ignore_input_masks=False)
+        ```
+        """
+        import numpy as np
+
+        if ignore_input_masks:
+            combiner.data_arr.mask = np.zeros(combiner.data_arr.shape, dtype=bool)
+            return
+
+        # A PIXEL FLAGGED IN EVERY FRAME HAS NO FRAME TO STACK. IT KEEPS ITS DATA AND STAYS
+        # FLAGGED IN THE COMBINED MASK, SO NO NAN OR ZERO FRAME COUNT REACHES THE MASTER
+        combiner.data_arr.mask = np.ma.getmaskarray(combiner.data_arr) & ~combinedMask
+
     def _mean_combine_frames(self, combiner, ccds, combinedMask):
         """*mean combine the clipped frames, and combine their error maps the same way*
 
@@ -1535,7 +1567,7 @@ class base_recipe:
 
         - ``combiner`` -- the Combiner object holding the clipped frames. Its data is overwritten with the error maps.
         - ``ccds`` -- the input frames as a list of CCDData objects
-        - ``combinedMask`` -- the bad-pixel mask shared by every input frame
+        - ``combinedMask`` -- the pixels flagged bad in every input frame
 
         **Return:**
 
@@ -1578,7 +1610,11 @@ class base_recipe:
 
         - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
         - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
-        - ``ignore_input_masks`` -- ignore the input masks during clip and stacking?
+        - ``ignore_input_masks`` -- ignore the input masks during clip and stacking? If *False*, a pixel flagged
+          bad in a frame is left out of that frame only (its input mask is joined to its clip mask), and the
+          uncertainty uses the number of frames that contributed at the pixel. If *True*, only the clip mask
+          applies. Either way a pixel flagged in every frame stays flagged in the combined frame. The input
+          frames' masks are never changed.
         - ``post_stack_clipping`` -- allow cross-plane clipping on combined frame. Clipping settings in setting file. Default *True*.
 
         **Return:**
@@ -1635,17 +1671,16 @@ class base_recipe:
 
         self.log.print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 
-        # COMBINE MASKS AND THEN RESET
-        combinedMask = ccds[0].mask
-        for c in ccds:
-            combinedMask = c.mask & combinedMask
-            if ignore_input_masks:
-                c.mask[:, :] = False
+        # PIXELS FLAGGED BAD IN EVERY INPUT FRAME. THE CALLER'S MASKS ARE NEVER CHANGED
+        combinedMask = np.array(ccds[0].mask, dtype=bool)
+        for c in ccds[1:]:
+            combinedMask &= np.asarray(c.mask, dtype=bool)
 
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
         # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
         combiner = Combiner(ccds, dtype=np.float32)
+        self._set_input_masks(combiner, combinedMask, ignore_input_masks)
 
         # self.log.print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
         # PRINT SOME INFO FOR USER
