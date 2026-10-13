@@ -2363,6 +2363,12 @@ class create_dispersion_map:
         # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
         # FIRST X
         self.log.info("curvefit x")
+        # CURVE_FIT RAISES A TYPEERROR RATHER THAN FAILING TO CONVERGE WHEN THERE ARE FEWER LINES THAN COEFFICIENTS
+        if len(orderPixelTable.index) < len(xcoeff):
+            self.log.debug(
+                f"fit_polynomials: {len(orderPixelTable.index)} lines cannot constrain {len(xcoeff)} x-coefficients"
+            )
+            return None, None, ("xerror", None, None, None)
         try:
             xcoeff, pcov_x = curve_fit(
                 polyx,
@@ -2377,6 +2383,11 @@ class create_dispersion_map:
 
         # NOW Y
         self.log.info("curvefit y")
+        if len(orderPixelTable.index) < len(ycoeff):
+            self.log.debug(
+                f"fit_polynomials: {len(orderPixelTable.index)} lines cannot constrain {len(ycoeff)} y-coefficients"
+            )
+            return None, None, (None, "yerror", None, None)
         try:
             ycoeff, pcov_y = curve_fit(
                 polyy,

@@ -562,6 +562,67 @@ def test_fit_polynomials_does_not_refit_when_a_pass_clips_nothing(
     assert len(calls) == sum(1 for call in calls if not call["writeQCs"]) + 1
 
 
+def _line_table(lineCount: int) -> pd.DataFrame:
+    """Return distinct, undropped lines whose positions vary smoothly with wavelength."""
+    return pd.DataFrame(
+        {
+            "order": 10.0,
+            "wavelength": np.linspace(500.0, 600.0, lineCount),
+            "slit_position": 0.0,
+            "observed_x": np.linspace(100.0, 200.0, lineCount),
+            "observed_y": np.linspace(20.0, 30.0, lineCount),
+            "dropped": False,
+        }
+    )
+
+
+def test_fit_polynomials_returns_xerror_when_clipping_leaves_fewer_lines_than_coefficients(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report the degree-reduction marker when a later pass has fewer lines than coefficients."""
+    mapper = _fitting_mapper(log)
+    mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 1.0
+    mapper.recipeSettings["poly-clipping-iteration-limit"] = 5
+    commonutilsModule = importlib.import_module("soxspipe.commonutils")
+    # A QUADRATIC IN WAVELENGTH HAS THREE COEFFICIENTS PER AXIS
+    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: (np.ones(3), np.ones(3)))
+    calls: list[int] = []
+
+    def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
+        # THE LAST LINE IS THE ONLY OUTLIER, SO EACH PASS CLIPS EXACTLY ONE LINE
+        table = kwargs["orderPixelTable"].copy()
+        residuals = np.zeros(len(table))
+        residuals[-1] = 10.0
+        table["residuals_x"] = residuals
+        table["residuals_y"] = residuals
+        table["residuals_xy"] = residuals
+        calls.append(len(table))
+        return 0.0, 0.0, 0.0, table
+
+    mapper.calculate_residuals = calculate_residuals
+
+    result = mapper.fit_polynomials(_line_table(4), wavelengthDeg=2, orderDeg=0, slitDeg=0)
+
+    assert calls == [4, 3]
+    assert result == ("xerror", None, None, None)
+
+
+def test_fit_polynomials_returns_yerror_when_only_the_y_polynomial_has_too_many_coefficients(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report the y-axis marker when two lines fit the x polynomial but not the y polynomial."""
+    mapper = _fitting_mapper(log)
+    commonutilsModule = importlib.import_module("soxspipe.commonutils")
+    # X IS LINEAR IN WAVELENGTH (TWO COEFFICIENTS) AND Y IS QUADRATIC (THREE COEFFICIENTS)
+    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: (np.ones(2), np.ones(3)))
+
+    result = mapper.fit_polynomials(_line_table(2), wavelengthDeg=[1, 2], orderDeg=[0, 0], slitDeg=[0, 0])
+
+    assert result == (None, "yerror", None, None)
+
+
 def test_detect_pinhole_arc_lines_uses_shifted_positions_and_collects_measurements(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

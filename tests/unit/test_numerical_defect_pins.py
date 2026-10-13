@@ -355,11 +355,6 @@ def test_global_polynomial_coefficients_match_a_refit_on_the_kept_rows(log: obje
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=TypeError,
-    reason="DY-1256 (DY-35 B3): fit_polynomials raises TypeError instead of returning xerror when lines < coefficients",
-)
 def test_fit_polynomials_returns_xerror_when_fewer_lines_than_coefficients(log: object) -> None:
     # ARRANGE: TEN LINES CANNOT CONSTRAIN THE 16 COEFFICIENTS OF A 3 x 3 x 0 POLYNOMIAL
     mapper = _mapper(log)
