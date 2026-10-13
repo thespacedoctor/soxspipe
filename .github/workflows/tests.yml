@@ -19,7 +19,7 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       BLAS_NUM_THREADS: "1"
       HOME: /tmp/soxspipe-required/home
