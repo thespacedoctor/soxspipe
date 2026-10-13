@@ -9,7 +9,8 @@ The estimate has five steps:
 
 1. The residual is the flux minus the first sky fit. Its brightest slit bin gives the object centre.
 2. The residual of the pixels near the centre gives the object spectrum G(λ), by a rolling median along wavelength.
-3. The residual over G, binned along the slit, gives a non-parametric spatial profile P(s).
+3. The residual over G, binned along the slit, gives a non-parametric spatial profile P(s). Only the pixels the
+   first sky fit used go into it, because a clipped fit did not see the brighter wing pixels.
 4. The faintest 1 arcsec of the profile is taken to hold no object light. Its level P0 is the zero point.
 5. If the zero point is negative and significant, the first sky fit holds object light of -P0·G(λ). The wing model is
    G(λ)·(P(s) − P0), which is to be subtracted from the sky pixels before the sky is refitted.
@@ -44,7 +45,8 @@ class object_wing_estimate:
     - ``reason`` -- why no correction is made. Empty if ``isCorrected``
     - ``centre`` -- the slit position of the object centre in arcsec
     - ``binCentres`` -- the centre of every profile bin in arcsec
-    - ``profile`` -- the profile P in every bin, in units of the core spectrum. NaN for empty bins
+    - ``profile`` -- the profile P in every bin, in units of the core spectrum, from the pixels the first sky fit
+      used. NaN for empty bins
     - ``zeroPoint`` -- the level P0 of the faintest part of the profile
     - ``coreSpectrum`` -- the object spectrum G at every input pixel
     - ``biasLevel`` -- the object light in the sky fit at the median core spectrum, -P0 times that median
@@ -291,7 +293,7 @@ def _blank_estimate(reason, nPixels):
     )
 
 
-def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, gateFraction):
+def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, gateFraction, isFitted=None):
     """*estimate the object light that the first sky fit absorbed, from the frame's own spatial profile*
 
     **Key Arguments:**
@@ -303,6 +305,8 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
     - ``error`` -- the flux error of each pixel
     - ``isUsable`` -- True for the pixels that may be used. Pixels with a value that is not finite are skipped too
     - ``gateFraction`` -- the smallest bias, as a fraction of the sky level, that is worth correcting
+    - ``isFitted`` -- True for the pixels the first sky fit used. The profile and its zero point come from the usable
+      pixels among these, so the wing model holds the light the fit saw. Default *None*, which is every usable pixel
 
     **Return:**
 
@@ -320,6 +324,8 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
     import numpy as np
 
     arrays = [wavelength, slitPosition, flux, skyModel, error, isUsable]
+    if isFitted is not None:
+        arrays.append(isFitted)
     if any(array.shape != wavelength.shape for array in arrays):
         raise ValueError("the pixel arrays must all have the same shape")
     isUsable = isUsable & np.isfinite(wavelength) & np.isfinite(slitPosition) & np.isfinite(flux)
@@ -335,8 +341,10 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
     estimate = replace(estimate, centre=centre, coreSpectrum=spectrum)
     if nCore < MIN_CORE_PIXELS:
         return replace(estimate, reason=f"only {nCore} core pixels, fewer than the {MIN_CORE_PIXELS} needed")
+    # A CLIPPED FIT DID NOT SEE EVERY USABLE PIXEL, SO THE PROFILE COMES FROM THE PIXELS IT DID SEE
+    isProfile = isUsable if isFitted is None else isUsable & isFitted
     binCentres, profile, profileNoise = slit_profile(
-        slitPosition[isUsable], residual[isUsable], error[isUsable], spectrum[isUsable]
+        slitPosition[isProfile], residual[isProfile], error[isProfile], spectrum[isProfile]
     )
     estimate = replace(estimate, binCentres=binCentres, profile=profile)
     zeroPoint, zeroNoise, _ = faint_end_zero_point(binCentres, profile, profileNoise)
@@ -349,6 +357,12 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
     biasNoise = zeroNoise * medianSpectrum
     skyLevel = float(np.median(skyModel[isUsable]))
     reason = _no_correction_reason(zeroPoint, biasLevel, biasNoise, skyLevel, gateFraction)
+    # THE SLIT LOSS NEEDS THE WHOLE OBJECT, AND THE FIT DID NOT USE THE OBJECT CORE
+    slitProfile = profile
+    if isFitted is not None:
+        _, slitProfile, _ = slit_profile(
+            slitPosition[isUsable], residual[isUsable], error[isUsable], spectrum[isUsable]
+        )
     return replace(
         estimate,
         isCorrected=reason == "",
@@ -357,7 +371,7 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
         biasLevel=biasLevel,
         biasNoise=biasNoise,
         skyLevel=skyLevel,
-        slitLossFraction=_slit_loss_fraction(profile, zeroPoint),
+        slitLossFraction=_slit_loss_fraction(slitProfile, zeroPoint),
     )
 
 

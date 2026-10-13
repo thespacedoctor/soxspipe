@@ -676,8 +676,12 @@ class subtract_sky:
             & np.isfinite(error)
             & np.isfinite(skyModel)
         )
-        estimate = estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, gateFraction)
-        order = preFitOrder["order"].values[0]
+        # THE UPPER-ONLY CLIP KEEPS THE BRIGHTER WING PIXELS OUT OF THE FIT, SO THE PROFILE USES ONLY THE PIXELS IT USED
+        isFitted = ~firstFit["flagged_all_clipped"].reindex(preFitOrder.index).to_numpy(dtype=bool)
+        estimate = estimate_object_wings(
+            wavelength, slitPosition, flux, skyModel, error, isUsable, gateFraction, isFitted=isFitted
+        )
+        order = int(preFitOrder["order"].values[0])
         if not estimate.isCorrected:
             self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")
             return fitResult

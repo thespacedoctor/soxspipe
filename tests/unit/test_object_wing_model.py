@@ -608,3 +608,70 @@ def test_estimate_reports_that_no_slit_bin_has_enough_usable_pixels():
     # ASSERT
     assert not estimate.isCorrected
     assert "enough usable pixels" in estimate.reason
+
+
+OBJECT_MASK_ARCSEC = 2.0
+UPPER_CLIP_SIGMA = 2.0
+N_CLIP_PASSES = 5
+
+
+def _object_share(order, isFitted, flux):
+    """Return the least-squares share of the object spectrum in the flux of the fitted pixels, above the sky."""
+    spectrum = order.spectrum[isFitted]
+    return float(np.sum((flux[isFitted] - SKY_LEVEL) * spectrum) / np.sum(spectrum**2))
+
+
+def _upper_clipped_first_fit(order):
+    """Mimic a first sky fit with an object mask and an upper-only clip.
+
+    Return the mask of the pixels the fit used, the share of the object spectrum the fit absorbed, and the sky model.
+    """
+    isOutsideMask = np.abs(order.slitPosition) > OBJECT_MASK_ARCSEC
+    isFitted = isOutsideMask
+    for _ in range(N_CLIP_PASSES):
+        share = _object_share(order, isFitted, order.flux)
+        skyModel = SKY_LEVEL + share * order.spectrum
+        isFitted = isOutsideMask & (order.flux - skyModel < UPPER_CLIP_SIGMA * order.error)
+    share = _object_share(order, isFitted, order.flux)
+    return isFitted, share, SKY_LEVEL + share * order.spectrum
+
+
+def _estimate_with(order, skyModel, isFitted=None):
+    """Run the estimate on the order against a given sky model, optionally with the mask of the fitted pixels."""
+    kwargs = {} if isFitted is None else {"isFitted": isFitted}
+    return estimate_object_wings(
+        order.wavelength, order.slitPosition, order.flux, skyModel, order.error, order.isUsable, GATE_FRACTION, **kwargs
+    )
+
+
+def test_profile_from_the_fitted_pixels_does_not_overstate_the_wings_an_upper_clipped_fit_saw():
+    # ARRANGE
+    order = _build_order(wingAmplitude=WING_AMPLITUDE)
+    isFitted, share, skyModel = _upper_clipped_first_fit(order)
+    assert share > 0
+
+    # ACT
+    allPixelWings = wing_model(_estimate_with(order, skyModel), order.slitPosition)
+    fittedEstimate = _estimate_with(order, skyModel, isFitted)
+    fittedWings = wing_model(fittedEstimate, order.slitPosition)
+
+    # ASSERT
+    # A REFIT OF THE SAME PIXELS SHOULD FIND NO OBJECT LIGHT LEFT, AND NOT A DEFICIT
+    assert fittedEstimate.isCorrected, fittedEstimate.reason
+    assert _object_share(order, isFitted, order.flux - allPixelWings) < -0.2 * share
+    assert abs(_object_share(order, isFitted, order.flux - fittedWings)) < 0.1 * share
+
+
+def test_slit_loss_fraction_still_counts_the_object_core_when_the_fit_did_not_use_it():
+    # ARRANGE
+    order = _build_order()
+    isFitted = np.abs(order.slitPosition) > OBJECT_MASK_ARCSEC
+    binCentres = np.arange(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH + BIN_ARCSEC / 2, BIN_ARCSEC)
+    binLight = _object_profile(binCentres, 0.0)
+    expected = len(binCentres) * order.unmaskedLevel / binLight.sum()
+
+    # ACT
+    estimate = _estimate_with(order, order.skyModel, isFitted)
+
+    # ASSERT
+    assert estimate.slitLossFraction == pytest.approx(expected, rel=0.1)
