@@ -1,5 +1,5 @@
 :::{table} Quality Control metrics calculated in the `soxs_nod_std` recipe. Note that the acceptable ranges are enforced only for standard stars, not for science frames.
-:name: soxs_nod_qc
+:name: soxs_nod_std_qc
 :class: longtable
 :widths: 15, 45, 10, 30
 

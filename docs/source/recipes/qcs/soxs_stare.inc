@@ -1,4 +1,5 @@
 :::{table} Quality Control metrics calculated in the `soxs_stare` recipe. 
+:name: soxs_stare_qc
 :class: longtable
 :widths: 15, 45, 10, 30
 
