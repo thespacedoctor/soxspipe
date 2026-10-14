@@ -585,11 +585,6 @@ def test_dispersion_residual_qc_values_are_numeric(log: object) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="DY-1260 (DY-35 C7): a 2x2-binned map with a 2x2-binned frame is block-reduced twice and raises ValueError",
-)
 def test_binned_map_with_same_binned_frame_gives_one_row_per_pixel(tmp_path: Path) -> None:
     # ARRANGE: A MAP ALREADY AT THE FRAME'S 2x2 BINNING, WAVELENGTH INCREASING WITH X, ONE ORDER
     rowCount, columnCount = 4, 6

@@ -1406,7 +1406,9 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
 
     binx, biny = _associated_frame_binning(associatedFrame, kw)
 
-    hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny)
+    # WITHOUT AN ASSOCIATED FRAME THE MAP IS KEPT AT ITS OWN BINNING
+    mapKw = kw if associatedFrame else None
+    hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny, kw=mapKw)
 
     mapDF = pd.DataFrame.from_dict(_disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame))
     if removeMaskedPixels:
@@ -1458,20 +1460,54 @@ def _associated_frame_binning(associatedFrame, kw):
     return 1, 1
 
 
-def _open_disp_map_hdus(twoDMapPath, binx, biny):
+def _map_reduction_factors(header, binx, biny, kw):
+    """*the block-reduce factors that take a 2D dispersion map from its own binning to the frame's binning*
+
+    **Key Arguments:**
+
+    - ``header`` -- the primary header of the 2D dispersion map
+    - ``binx`` -- the frame's binning in the x-axis
+    - ``biny`` -- the frame's binning in the y-axis
+    - ``kw`` -- fits keyword lookup dictionary, or *None* to treat the map as unbinned. A NIR map, or one with
+      no binning keywords, is also treated as unbinned
+
+    **Return:**
+
+    - ``factorX`` -- the frame's x-binning divided by the map's x-binning
+    - ``factorY`` -- the frame's y-binning divided by the map's y-binning
+    """
+    mapBinx, mapBiny = 1, 1
+    hasBinning = kw is not None and kw("WIN_BINX") in header and kw("WIN_BINY") in header
+    if hasBinning and header.get(kw("SEQ_ARM")) != "NIR":
+        mapBinx, mapBiny = int(header[kw("WIN_BINX")]), int(header[kw("WIN_BINY")])
+
+    if binx % mapBinx or biny % mapBiny:
+        raise ValueError(
+            f"the 2D dispersion map binning ({mapBinx}x{mapBiny}) cannot be block-reduced to the frame binning "
+            f"({binx}x{biny})"
+        )
+    return binx // mapBinx, biny // mapBiny
+
+
+def _open_disp_map_hdus(twoDMapPath, binx, biny, kw=None):
     """*open a 2D dispersion map and block-reduce its extensions to the frame's binning*
+
+    The map is reduced by the ratio of the frame's binning to the map's own binning, so a map already at the
+    frame's binning is left as it is.
 
     **Key Arguments:**
 
     - ``twoDMapPath`` -- 2D dispersion map image path
-    - ``binx`` -- binning in the x-axis
-    - ``biny`` -- binning in the y-axis
+    - ``binx`` -- the frame's binning in the x-axis
+    - ``biny`` -- the frame's binning in the y-axis
+    - ``kw`` -- fits keyword lookup dictionary, used to read the map's own binning. Default *None*, which treats
+      the map as unbinned
 
     **Return:**
 
-    - ``hdul`` -- the open dispersion-map HDU list, block-reduced when the frame is binned
-    - ``minimumBinnedPixelValue`` -- the minimum unbinned wavelength within each binned pixel, or *None* when
-      the frame is unbinned
+    - ``hdul`` -- the open dispersion-map HDU list, block-reduced when the frame is more binned than the map
+    - ``minimumBinnedPixelValue`` -- the minimum map wavelength within each block-reduced pixel, or *None* when
+      the map was not block-reduced
     - ``binned`` -- was the map block-reduced?
     """
     import numpy as np
@@ -1484,17 +1520,19 @@ def _open_disp_map_hdus(twoDMapPath, binx, biny):
         hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
         hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
 
+        factorX, factorY = _map_reduction_factors(hdul[0].header, binx, biny, kw)
+
         binned = False
         minimumBinnedPixelValue = None
-        if binx > 1 or biny > 1:
+        if factorX > 1 or factorY > 1:
             binned = True
             from astropy.nddata import block_reduce
 
             minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
-            hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
-            hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
-            hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
-            minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
+            hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (factorY, factorX), func=np.mean)
+            hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (factorY, factorX), func=np.mean)
+            hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (factorY, factorX), func=np.mean)
+            minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (factorY, factorX), func=np.min)
             minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
     except BaseException:
         hdul.close()
