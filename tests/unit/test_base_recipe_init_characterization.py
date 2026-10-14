@@ -320,6 +320,7 @@ def test_merged_settings_are_used_throughout_initialisation_without_mutating_the
     tmp_path: Path,
 ) -> None:
     """Constructor collaborators receive the merged copy, including user overrides."""
+
     # ARRANGE
     class IsolatedOrganiser:
         def __init__(self, **_: object) -> None:
