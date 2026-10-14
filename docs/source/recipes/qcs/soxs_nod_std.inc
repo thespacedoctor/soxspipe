@@ -1,5 +1,5 @@
 :::{table} Quality Control metrics calculated in the `soxs_nod_std` recipe. Note that the acceptable ranges are enforced only for standard stars, not for science frames.
-:name: soxs_nod_qc
+:name: soxs_nod_std_qc
 :class: longtable
 :widths: 15, 45, 10, 30
 
@@ -27,6 +27,7 @@
 | `SNR MEDIAN O<N>` | The median signal-to-noise ratio across all orders (order N) |  | - |
 | `SLIT DRIFT` | Fitted slit position of the object trace 5% in from the red end of the reddest order, minus that 5% in from the blue end of the bluest order. Signed. Fallback orders are skipped. Not written if every order fell back | arcsec | - |
 | `SLIT ZERO WLEN` | Wavelength where a fitted order curve crosses slit position 0. A sign change between two orders does not count. Written only if such a crossing exists. If there are several, the bluest is recorded | nm | - |
+| `N ORDERS SLIT EDGE` | Number of orders where the object spills over the slit edge. Flux beyond the slit edge is lost and the extraction in these orders is unreliable. An order spills when more than 20% of its wavelength slices are cut off at the slit edge | | - |
 
 
 :::

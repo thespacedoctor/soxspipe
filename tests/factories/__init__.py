@@ -21,7 +21,7 @@ from .files import (
     sof_file,
 )
 from .frames import instrument_header, synthetic_ccd
-from .settings import pipeline_settings
+from .settings import logging_settings, pipeline_settings
 from .signals import synthetic_signal
 from .slit_illumination import illumination_scene, synthetic_illumination_scene
 from .workspaces import WorkspaceLayout, workspace_layout, workspace_organiser
@@ -33,6 +33,7 @@ __all__ = [
     "dispersion_table",
     "harvestable_raw_fits",
     "instrument_header",
+    "logging_settings",
     "lzw_compress",
     "lzw_compressed_fits",
     "order_table",

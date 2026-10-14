@@ -15,7 +15,7 @@ soxspipe nod_std sof/20260111T041914_NIR_3_NOD_STD_FLUX_SLIT1_0_150_0S_SOXS.sof 
 To adjust the default settings for the `soxs_nod_std` and recipe, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs-nod-std` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`soxs_nod_parameters`.
 
 
-Product files are written in the `products/soxs_nod_std ` and QC plots are in the qc/soxs_nod_std` workspace directory. A report of the product files, QC plots and metrics is also printed to the terminal. The QC metrics calculated for `soxs_nod_std` are found in {numref}`soxs_nod_qc`.
+Product files are written in the `products/soxs_nod_std` and QC plots are in the `qc/soxs_nod_std` workspace directory. A report of the product files, QC plots and metrics is also printed to the terminal. The QC metrics calculated for `soxs_nod_std` are found in {numref}`soxs_nod_std_qc`.
 
 
 ### Reduction Tips

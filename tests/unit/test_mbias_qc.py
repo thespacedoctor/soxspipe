@@ -51,18 +51,9 @@ def test_qc_bias_structure_records_axis_slopes(log: object) -> None:
 
     structX, structY = recipe.qc_bias_structure(frame)
 
-    expectedX = np.polyfit(
-        np.linspace(0, frame.shape[1], frame.shape[1], dtype=int),
-        np.nansum(frame, axis=0),
-        deg=1,
-    )[0]
-    expectedY = np.polyfit(
-        np.linspace(0, frame.shape[0], frame.shape[0], dtype=int),
-        np.nansum(frame, axis=1),
-        deg=1,
-    )[0]
-    assert structX == pytest.approx(expectedX)
-    assert structY == pytest.approx(expectedY)
+    # SUMS OVER THE OTHER AXIS MULTIPLY EACH SLOPE BY ITS LENGTH: 2 x 4 ROWS AND 3 x 5 COLUMNS
+    assert structX == pytest.approx(8.0)
+    assert structY == pytest.approx(15.0)
     assert recipe.qc["qc_name"].tolist() == ["STRUCTX", "STRUCTY"]
     assert recipe.qc["qc_value"].tolist() == pytest.approx([structX, structY])
     assert recipe.qc["to_header"].tolist() == [True, True]
