@@ -570,10 +570,10 @@ def measure_slit_illumination(
     problem = _input_problem(frame, masterFlat)
     if problem:
         return _not_applied(log, problem, config)
-    try:
-        from soxspipe.commonutils.keyword_lookup import keyword_lookup
+    from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
-        kw = keyword_lookup(log=log, settings=settings).get
+    kw = keyword_lookup(log=log, settings=settings).get
+    try:
         mapImages = _read_disp_map(twoDMapPath, binx, biny, kw)
     # ATTRIBUTEERROR COVERS A MAP EXTENSION THAT IS PRESENT BUT HOLDS NO DATA
     except (OSError, KeyError, ValueError, AttributeError) as error:
