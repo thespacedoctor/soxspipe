@@ -1,5 +1,6 @@
 # Release Notes
 
+* **DOCS**: the recipe and user-manual recipe pages now give each figure and table its own label (QC figures use `<recipe>_qc_fig`), and the `soxs_nod_std` and `soxs_stare_std` QC-metric links now point to their own tables (DY-1508).
 * **FIXED**: multiprocessing reductions no longer hang on macOS when a forked worker crashes in Apple Accelerate; the bulk recipe pool now uses the spawn start method (DY-1532).
 * **ENHANCEMENT**: the slit drift QC plot (`SLIT_DRIFT_QC_PLOT`) legend now also gives the science minus multi-pinhole observation time and `ABSROT` difference, assuming 0 deg when the multi-pinhole frame has no `ABSROT`; `read_rotator_angle` moves to `slit_illumination_qc` (DY-1531).
 * **FIXED**: the stare sky model no longer carries the wing light of bright objects: each order is refitted without a model of the wings (settings `object_wing_correction`, `object_wing_gate_fraction`). Sky-subtracted output and bright-object fluxes change (DY-1279).
