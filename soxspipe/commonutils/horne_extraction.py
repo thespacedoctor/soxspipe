@@ -1941,7 +1941,7 @@ def fit_object_profile(
 
     # DETERMINE LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS
     for slitPixelIndex in range(0, ss):
-        iteration = 1
+        iteration = 0
         clipped_count = 1
 
         fractions = fluxRawNormalisedMasked[slitPixelIndex, :]
@@ -1953,9 +1953,9 @@ def fit_object_profile(
         a = [fractions, dispersionAxisPixels]
         fractions, dispersionAxisPixels = [np.ma.compressed(np.ma.masked_array(i, mask)) for i in a]
 
-        startCount = len(fractions)
         coeff = []
 
+        # STOP AT THE ITERATION LIMIT, OR AS SOON AS A PASS CLIPS NOTHING (A FURTHER PASS WOULD REPEAT THE SAME FIT)
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
             # FIT A POLYNOMIAL TO THE FRACTIONAL FLUXES
             if len(dispersionAxisPixels):
@@ -1964,6 +1964,7 @@ def fit_object_profile(
                 coeff = []
                 break
             residuals = fractions - np.polyval(coeff, dispersionAxisPixels)
+            passCount = len(fractions)
 
             # REMOVE REMAINING OUTLIERS
             masked_residuals = sigma_clip(
@@ -1979,9 +1980,7 @@ def fit_object_profile(
             fractions, dispersionAxisPixels = [
                 np.ma.compressed(np.ma.masked_array(i, masked_residuals.mask)) for i in a
             ]
-            clipped_count = startCount - len(fractions)
-            percent = (float(clipped_count) / float(startCount)) * 100.0
-            # print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
+            clipped_count = passCount - len(fractions)
             iteration = iteration + 1
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
