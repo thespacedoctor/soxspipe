@@ -13,7 +13,7 @@
 * **FIXED**: merged 1D spectra no longer start or end with a made-up bin of zero flux, zero variance and NaN SNR outside the extracted wavelength range (DY-1248).
 * **FIXED**: the MASTER RON QC no longer counts clipped and masked pixels, so its value drops by a few percent (DY-1249).
 * **FIXED**: order-centre and object-trace positions on the cross-dispersion axis no longer sit 0.5 px too high. Reduction output changes (DY-1250).
-* **FIXED**: reading a 2D dispersion map into a dataframe now block-reduces it by the frame binning divided by the map's own binning, so a binned map used with a frame of the same binning no longer crashes with `All arrays must be of the same length`; an unbinned map is unchanged (DY-1260).
+* **FIXED**: the 2D dispersion map is now block-reduced by the frame binning divided by the map's own binning, in the map dataframe and in the stare slit-illumination measurement, so a binned map used with a frame of the same binning no longer crashes with `All arrays must be of the same length`; an unbinned map is unchanged (DY-1260).
 * **FIXED**: rectification scales dispersion-solution pixel positions to the frame binning when the two differ, for example a 2x2 frame with a 1x1 solution; output for matching binning is unchanged (DY-1251).
 * **FIXED**: rectification leaves flagged pixels out of each cell's flux and variance and rescales the cell to its good-pixel area, so unmasked cells no longer carry part of a hot pixel's value. Extracted spectra change (DY-1252).
 * **FIXED**: sky-fit weights in noisy low-flux regions are bounded by the pixel noise, so the sky model is no longer pulled toward zero there. Sky-subtracted output changes (DY-1253).

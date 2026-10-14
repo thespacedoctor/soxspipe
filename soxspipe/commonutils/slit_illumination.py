@@ -418,11 +418,14 @@ def _resolve_settings(log, illuminationSettings):
     return config
 
 
-def _read_disp_map(twoDMapPath, binx, biny):
-    """*the WAVELENGTH, SLIT and ORDER images of a 2D map, block-reduced to the frame's binning*"""
+def _read_disp_map(twoDMapPath, binx, biny, kw):
+    """*the WAVELENGTH, SLIT and ORDER images of a 2D map, block-reduced from its own binning to the frame's*
+
+    ``kw`` is the fits keyword lookup used to read the map's own binning.
+    """
     from soxspipe.commonutils.toolkit import _open_disp_map_hdus
 
-    hdul, _, _ = _open_disp_map_hdus(twoDMapPath, binx, biny)
+    hdul, _, _ = _open_disp_map_hdus(twoDMapPath, binx, biny, kw=kw)
     try:
         return tuple(np.array(hdul[name].data, dtype=float) for name in ("WAVELENGTH", "SLIT", "ORDER"))
     finally:
@@ -540,7 +543,7 @@ def measure_slit_illumination(
     - ``frame`` -- the detrended, flat-fielded science CCDData, with a mask and a StdDev uncertainty
     - ``masterFlat`` -- the master flat CCDData, or *None* if there is none
     - ``twoDMapPath`` -- path to the 2D dispersion map
-    - ``settings`` -- the soxspipe settings dictionary, used to find the skyline table
+    - ``settings`` -- the soxspipe settings dictionary, used to find the skyline table and the FITS keywords
     - ``arm`` -- the spectrograph arm
     - ``binx`` -- binning in the x-axis
     - ``biny`` -- binning in the y-axis
@@ -568,7 +571,10 @@ def measure_slit_illumination(
     if problem:
         return _not_applied(log, problem, config)
     try:
-        mapImages = _read_disp_map(twoDMapPath, binx, biny)
+        from soxspipe.commonutils.keyword_lookup import keyword_lookup
+
+        kw = keyword_lookup(log=log, settings=settings).get
+        mapImages = _read_disp_map(twoDMapPath, binx, biny, kw)
     # ATTRIBUTEERROR COVERS A MAP EXTENSION THAT IS PRESENT BUT HOLDS NO DATA
     except (OSError, KeyError, ValueError, AttributeError) as error:
         return _not_applied(log, f"the 2D map could not be read ({type(error).__name__}: {error})", config)

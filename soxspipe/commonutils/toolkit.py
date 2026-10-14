@@ -1489,7 +1489,7 @@ def _map_reduction_factors(header, binx, biny, kw):
     return binx // mapBinx, biny // mapBiny
 
 
-def _open_disp_map_hdus(twoDMapPath, binx, biny, kw=None):
+def _open_disp_map_hdus(twoDMapPath, binx, biny, *, kw):
     """*open a 2D dispersion map and block-reduce its extensions to the frame's binning*
 
     The map is reduced by the ratio of the frame's binning to the map's own binning, so a map already at the
@@ -1500,8 +1500,8 @@ def _open_disp_map_hdus(twoDMapPath, binx, biny, kw=None):
     - ``twoDMapPath`` -- 2D dispersion map image path
     - ``binx`` -- the frame's binning in the x-axis
     - ``biny`` -- the frame's binning in the y-axis
-    - ``kw`` -- fits keyword lookup dictionary, used to read the map's own binning. Default *None*, which treats
-      the map as unbinned
+    - ``kw`` -- fits keyword lookup dictionary, used to read the map's own binning, or *None* to keep the map at
+      its own binning by treating it as unbinned
 
     **Return:**
 

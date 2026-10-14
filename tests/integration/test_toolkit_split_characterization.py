@@ -228,12 +228,15 @@ def test_two_d_disp_map_dataframe_reduces_a_binned_map_by_the_frame_to_map_binni
     assert_array_equal(interOrderMask, np.zeros((2, 2)))
 
 
-def test_two_d_disp_map_dataframe_rejects_a_frame_less_binned_than_its_map(
+@pytest.mark.parametrize(("binx", "biny"), [(1, 1), (3, 2)], ids=["less-binned", "not-a-multiple"])
+def test_two_d_disp_map_dataframe_rejects_a_frame_binning_the_map_cannot_be_reduced_to(
     tmp_path: Path,
     log: object,
+    binx: int,
+    biny: int,
 ) -> None:
     mapPath = _two_by_two_binned_2d_map(tmp_path / "binned_map.fits")
-    frame = _vis_frame((8, 8), binx=1, biny=1)
+    frame = _vis_frame((8 // biny, 8 // binx), binx=binx, biny=biny)
 
     with pytest.raises(ValueError, match="cannot be block-reduced"):
         toolkit.twoD_disp_map_image_to_dataframe(
@@ -244,6 +247,31 @@ def test_two_d_disp_map_dataframe_rejects_a_frame_less_binned_than_its_map(
             associatedFrame=frame,
             dispAxis="y",
         )
+
+
+def test_two_d_disp_map_dataframe_treats_a_nir_map_as_unbinned(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    # ARRANGE: NIR IS NEVER BINNED, SO BINNING KEYWORDS IN A NIR MAP HEADER ARE IGNORED, AS THEY ARE FOR THE FRAME
+    mapPath = _two_by_two_binned_2d_map(tmp_path / "nir_map.fits")
+    fits.setval(mapPath, "ARM", value="NIR", ext=0)
+    frame = _vis_frame((4, 4), binx=1, biny=1)
+    frame.meta["ARM"] = "NIR"
+
+    # ACT
+    result, _ = toolkit.twoD_disp_map_image_to_dataframe(
+        log,
+        slit_length=4,
+        twoDMapPath=str(mapPath),
+        kw=lambda key: KEYWORD_MAP[key],
+        associatedFrame=frame,
+        dispAxis="y",
+    )
+
+    # ASSERT
+    assert len(result) == 16
+    assert list(result["min"]) == [1.0] * 16
 
 
 def test_two_d_disp_map_dataframe_keeps_a_binned_map_at_its_own_binning_without_a_frame(
