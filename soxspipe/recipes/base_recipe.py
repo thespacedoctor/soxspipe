@@ -1381,20 +1381,10 @@ class base_recipe:
         """
         self.log.debug("starting the ``write`` method")
 
-        import numpy as np
+        from soxspipe.commonutils.phase3 import add_qc_to_header, basic_header_scrubbing, sort_keywords
 
-        from soxspipe.commonutils.phase3 import basic_header_scrubbing, sort_keywords
-
-        # WRITE QCs TO HEADERS; FITS HEADERS CANNOT HOLD NAN, SO SKIP MISSING VALUES (AS phase3 DOES)
-        for n, v, c, h in zip(
-            self.qc["qc_name"].values,
-            self.qc["qc_value"].values,
-            self.qc["qc_comment"].values,
-            self.qc["to_header"].values,
-        ):
-            isMissing = isinstance(v, (float, np.floating)) and np.isnan(v)
-            if h and not isMissing:
-                frame.header[f"ESO QC {n}".upper()] = (v, c)
+        # WRITE QCs TO HEADERS
+        add_qc_to_header(frame.header, self.qc)
 
         if product:
             frame.header = basic_header_scrubbing(log=self.log, settings=self.settings, header=frame.header)
