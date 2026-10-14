@@ -4,11 +4,25 @@ Before rectification each order is centred on a polynomial fit of the object tra
 wavelength. This module builds the plotting series for those fits and draws the QC figure.
 """
 
+import math
+
 import numpy as np
+
+from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
 
 SLIT_DRIFT_FIT_SAMPLES = 100
 FALLBACK_SPAN_ALPHA = 0.15
 SLIT_DRIFT_EDGE_TRIM_FRACTION = 0.05
+SECONDS_PER_MINUTE = 60.0
+SECONDS_PER_HOUR = 3600.0
+SECONDS_PER_DAY = 86400.0
+MINUTES_PER_HOUR = 60.0
+HOURS_PER_DAY = 24.0
+OFFSET_DECIMALS = 1
+FULL_TURN_DEGREES = 360.0
+HALF_TURN_DEGREES = 180.0
+# DAYTIME CALIBRATION FRAMES CARRY NO ABSROT KEYWORD AND ARE TAKEN WITH THE ROTATOR PARKED AT THIS ANGLE
+CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES = 0.0
 
 
 def slit_drift_series(
@@ -168,6 +182,149 @@ def slit_zero_crossings(series):
     return sorted(crossings)
 
 
+def _signed(value):
+    """*a value as signed text with one decimal, where a value that rounds to zero reads +0.0 and never -0.0*"""
+    return f"{round(value, OFFSET_DECIMALS) + 0.0:+.{OFFSET_DECIMALS}f}"
+
+
+def format_time_offset(seconds):
+    """*a signed time offset as text, in minutes, hours or days according to its size*
+
+    **Key Arguments:**
+
+    - ``seconds`` -- the time offset in seconds
+
+    **Return:**
+
+    - ``text`` -- the signed offset with one decimal and a unit: ``min`` if the rounded offset is under an hour, ``h``
+      if under a day, otherwise ``d``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_drift_qc import format_time_offset
+    text = format_time_offset(2520.0)  # "+42.0 min"
+    ```
+    """
+    # THE UNIT IS CHOSEN AFTER ROUNDING, SO 3599.99 s READS +1.0 h AND NOT +60.0 min
+    minutes = round(abs(seconds) / SECONDS_PER_MINUTE, OFFSET_DECIMALS)
+    if minutes < MINUTES_PER_HOUR:
+        return f"{_signed(seconds / SECONDS_PER_MINUTE)} min"
+    hours = round(abs(seconds) / SECONDS_PER_HOUR, OFFSET_DECIMALS)
+    if hours < HOURS_PER_DAY:
+        return f"{_signed(seconds / SECONDS_PER_HOUR)} h"
+    return f"{_signed(seconds / SECONDS_PER_DAY)} d"
+
+
+def rotator_angle_offset(scienceAngle, pinholeAngle):
+    """*the rotator angle of the science frame minus that of the multi-pinhole frame, wrapped to (-180, 180] degrees*
+
+    **Key Arguments:**
+
+    - ``scienceAngle`` -- the science frame rotator angle in degrees
+    - ``pinholeAngle`` -- the multi-pinhole frame rotator angle in degrees
+
+    **Return:**
+
+    - ``offset`` -- the signed angle difference in degrees, taking the shorter way round the circle
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_drift_qc import rotator_angle_offset
+    offset = rotator_angle_offset(179.0, -179.0)  # -2.0
+    ```
+    """
+    # PYTHON'S MODULO TAKES THE SIGN OF THE DIVISOR, GIVING [-180, 180), SO +180 DEGREES IS MAPPED BACK FROM -180
+    offset = (scienceAngle - pinholeAngle + HALF_TURN_DEGREES) % FULL_TURN_DEGREES - HALF_TURN_DEGREES
+    if offset == -HALF_TURN_DEGREES:
+        return HALF_TURN_DEGREES
+    return offset
+
+
+def _observation_mjd(header, kw):
+    """*the observation time of a header as an MJD, from MJD-OBS or else DATE-OBS, or None if neither is usable*"""
+    from astropy.time import Time
+
+    try:
+        value = header[kw("MJDOBS")]
+        # A BOOLEAN IS NOT A DATE, EVEN THOUGH float() ACCEPTS IT, SO IT FALLS THROUGH TO DATE-OBS
+        if not isinstance(value, bool | np.bool_) and math.isfinite(float(value)):
+            return float(value)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        pass
+    try:
+        dateObs = str(header[kw("DATE_OBS")])
+        # A DATE WITH NO TIME OF DAY CANNOT GIVE A TIME OFFSET
+        if "T" not in dateObs:
+            return None
+        return float(Time(dateObs, format="isot", scale="utc").mjd)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def pinhole_offset_labels(scienceHeader, pinholeHeader, kw):
+    """*the legend labels for the science frame's time and rotator-angle offsets from the multi-pinhole frame*
+
+    An offset that cannot be worked out because a value is missing, unreadable or not finite is left out, and the
+    other is still given. The exception is the multi-pinhole rotator angle: daytime calibration frames carry no
+    ABSROT and are taken with the rotator parked at ``CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES``, so that angle is used
+    when the multi-pinhole header has no usable one, and the label says it was assumed. A missing science angle still
+    drops the rotator entry. This function never raises.
+
+    **Key Arguments:**
+
+    - ``scienceHeader`` -- the science frame header
+    - ``pinholeHeader`` -- the multi-pinhole frame header
+    - ``kw`` -- the keyword lookup, mapping an alias such as ``MJDOBS`` to the header keyword
+
+    **Return:**
+
+    - ``labels`` -- a list of up to two legend labels, the obs-time offset first and then the rotator-angle offset,
+      both science minus multi-pinhole
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_drift_qc import pinhole_offset_labels
+    labels = pinhole_offset_labels(scienceHeader, pinholeHeader, self.kw)
+    ```
+    """
+    labels = []
+    scienceMjd = _observation_mjd(scienceHeader, kw)
+    pinholeMjd = _observation_mjd(pinholeHeader, kw)
+    if scienceMjd is not None and pinholeMjd is not None:
+        seconds = (scienceMjd - pinholeMjd) * SECONDS_PER_DAY
+        if math.isfinite(seconds):
+            labels.append(f"science - multi-pinhole obs time = {format_time_offset(seconds)}")
+    rotatorLabel = _rotator_label(scienceHeader, pinholeHeader, kw("ABSROT"))
+    if rotatorLabel is not None:
+        labels.append(rotatorLabel)
+    return labels
+
+
+def _rotator_label(scienceHeader, pinholeHeader, key):
+    """*the rotator-angle offset legend label, or None if the science angle or the offset is not usable*
+
+    A multi-pinhole header with no usable rotator angle is a daytime calibration frame, so the parked angle
+    ``CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES`` is used and the label says so.
+    """
+    scienceAngle = read_rotator_angle(scienceHeader, key)
+    if scienceAngle is None:
+        return None
+    pinholeAngle = read_rotator_angle(pinholeHeader, key)
+    isAssumed = pinholeAngle is None
+    if isAssumed:
+        pinholeAngle = CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES
+    offset = rotator_angle_offset(scienceAngle, pinholeAngle)
+    if not math.isfinite(offset):
+        return None
+    label = f"science - multi-pinhole rotator angle (ABSROT) = {_signed(offset)} deg"
+    if isAssumed:
+        label += f" (multi-pinhole ABSROT assumed {CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES:.1f} deg)"
+    return label
+
+
 def _draw_order(mainAxis, residualAxis, entry, colour):
     """*draw one order's trace points, fit curve and residuals*"""
     mainAxis.scatter(entry["traceWavelength"], entry["traceSlit"], s=1, color=colour, rasterized=True)
@@ -208,15 +365,19 @@ def _annotate_zero_crossing(mainAxis, residualAxis, zeroWavelength):
     )
 
 
-def _annotate_metrics(mainAxis, residualAxis, driftArcsec, zeroWavelength):
-    """*add the drift legend entry and the zero-crossing marks, for whichever metrics are given*"""
+def _annotate_metrics(mainAxis, residualAxis, driftArcsec, zeroWavelength, extraLabels):
+    """*add the drift legend entry, any extra legend entries and the zero-crossing marks, for whichever are given*"""
     if driftArcsec is not None:
         mainAxis.plot([], [], linestyle="none", label=f"slit drift (red - blue) = {driftArcsec:+.3f} arcsec")
+    for label in extraLabels:
+        mainAxis.plot([], [], linestyle="none", label=label)
     if zeroWavelength is not None:
         _annotate_zero_crossing(mainAxis, residualAxis, zeroWavelength)
 
 
-def plot_slit_drift_qc(series, meanSlitArcsec, title, filePath, driftArcsec=None, zeroWavelength=None):
+def plot_slit_drift_qc(
+    series, meanSlitArcsec, title, filePath, driftArcsec=None, zeroWavelength=None, extraLabels=None
+):
     """*plot the slit position of the object trace against wavelength, with the per-order fits and residuals*
 
     **Key Arguments:**
@@ -228,6 +389,7 @@ def plot_slit_drift_qc(series, meanSlitArcsec, title, filePath, driftArcsec=None
     - ``driftArcsec`` -- the slit-position drift (red minus blue) to quote in the legend. Default *None* (not shown)
     - ``zeroWavelength`` -- the wavelength (nm) at which to mark the trace crossing slit position 0. Default *None*
       (not shown)
+    - ``extraLabels`` -- further legend entries, each drawn as text with no marker. Default *None* (none added)
 
     **Return:**
 
@@ -257,7 +419,7 @@ def plot_slit_drift_qc(series, meanSlitArcsec, title, filePath, driftArcsec=None
             label=f"mean slit position over all orders (former single centre) = {meanSlitArcsec:.3f} arcsec",
         )
         residualAxis.axhline(0, color="black", lw=0.5)
-        _annotate_metrics(mainAxis, residualAxis, driftArcsec, zeroWavelength)
+        _annotate_metrics(mainAxis, residualAxis, driftArcsec, zeroWavelength, extraLabels or ())
         mainAxis.set_ylabel("slit position (arcsec)", fontsize=10)
         residualAxis.set_ylabel("residual (arcsec)", fontsize=10)
         residualAxis.set_xlabel("wavelength (nm)", fontsize=10)

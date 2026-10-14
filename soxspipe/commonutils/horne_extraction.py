@@ -1279,6 +1279,30 @@ class horne_extraction(base_util):
 
         return merged_orders, orderJoins
 
+    def _pinhole_offset_labels(self):
+        """*the legend labels for the science frame's obs-time and rotator-angle offsets from the multi-pinhole frame*
+
+        The multi-pinhole header is read from the primary header of the dispersion map, which is a copy of the
+        multi-pinhole frame header. If the map cannot be read there are no labels and the plot is still made.
+
+        **Return:**
+
+        - ``labels`` -- list of legend labels, or *None* if the dispersion map header cannot be read
+        """
+        from astropy.io import fits
+
+        from soxspipe.commonutils.slit_drift_qc import pinhole_offset_labels
+
+        if not self.dispersionMap:
+            self.log.debug("no dispersion map to read the multi-pinhole header from, so no offset labels are added")
+            return None
+        try:
+            pinholeHeader = fits.getheader(self.dispersionMap, 0)
+        except (OSError, KeyError, ValueError, TypeError) as e:
+            self.log.debug(f"could not read the multi-pinhole header from the dispersion map ({type(e).__name__}: {e})")
+            return None
+        return pinhole_offset_labels(self.skySubtractedFrame.header, pinholeHeader, self.kw)
+
     def plot_slit_drift_qc(self, transformer):
         """*plot the object trace's slit position against wavelength, before rectification*
 
@@ -1326,6 +1350,7 @@ class horne_extraction(base_util):
             filePath,
             driftArcsec=driftArcsec,
             zeroWavelength=crossings[0] if crossings else None,
+            extraLabels=self._pinhole_offset_labels(),
         )
         self._record_slit_drift_qcs(driftArcsec, crossings)
 
