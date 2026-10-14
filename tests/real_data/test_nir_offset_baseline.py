@@ -4,9 +4,9 @@ The reduction is not bit-reproducible across hardware, so each value is asserted
 within a band rather than exactly. The bands absorb the variation seen across CI
 runner architectures and stay narrow enough that a real regression in extraction,
 wavelength calibration or flux calibration still trips them. The centres were
-re-recorded from bit-identical CI runs on 2026-10-07, after the astropy 7.2.2 upgrade
-(DY-694). astropy 7 stopped running `sigma_clip` through bottleneck for float32 data,
-which had lost precision, so every product moved.
+re-recorded on 2026-10-14 from six bit-identical CI runs (38566513736,
+38566517851, 38566520911, 38566524861, 38566528464 and 38566531516), together
+with the stare and calibration baselines (DY-1521, DY-1524).
 """
 
 from __future__ import annotations
@@ -103,15 +103,15 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     # THE MERGED GRID RUNS FROM THE BLUEST TO THE REDDEST EXTRACTED SAMPLE IN
     # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
     # OF SPECTRAL COVERAGE
-    assert mergedRows == pytest.approx(20_608, abs=25)
+    assert mergedRows == pytest.approx(20_614, abs=25)
     # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO ONE GRID STEP
-    assert waveMin == pytest.approx(795.12, abs=0.12)
-    assert waveMax == pytest.approx(2031.54, abs=1.0)
+    assert waveMin == pytest.approx(795.06, abs=0.12)
+    assert waveMax == pytest.approx(2031.84, abs=1.0)
     assert waveStep == pytest.approx(0.06, abs=1e-6)
-    assert snrMedian == pytest.approx(103.85, abs=2.0)
-    assert fluxcalRows == pytest.approx(20_612, abs=25)
+    assert snrMedian == pytest.approx(104.0, abs=2.0)
+    assert fluxcalRows == pytest.approx(20_614, abs=25)
     assert fluxcalRows == mergedRows
-    assert fluxcalMedian == pytest.approx(8.54792923409245e-15, rel=0.05)
+    assert fluxcalMedian == pytest.approx(8.341117921527572e-15, rel=0.05)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
     assert nOrders == 15
-    assert detectedFraction == pytest.approx(0.975, abs=0.02)
+    assert detectedFraction == pytest.approx(0.979, abs=0.02)
