@@ -577,7 +577,7 @@ def measure_slit_illumination(
         return _not_applied(log, problem, config)
     flatEdges, profiles, offsets = _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners)
     for _, row in offsets.loc[offsets["status"] != STATUS_FITTED].iterrows():
-        log.warning(f"slit illumination offset of order {row['order']} is {row['status']}: {row['reason']}")
+        log.info(f"slit illumination offset of order {row['order']} is {row['status']}: {row['reason']}")
     isApplied = bool((offsets["status"] != STATUS_FAILED).any())
     if not isApplied:
         return _not_applied(log, _unusable_reason(offsets), config, flatEdges, profiles, offsets)
