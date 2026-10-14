@@ -185,7 +185,7 @@ def test_open_disp_map_hdus_closes_the_file_when_the_map_is_malformed(
     opened = _record_opened_hdulists(monkeypatch)
 
     with pytest.raises(error):
-        toolkit._open_disp_map_hdus(str(path), 1, 1)
+        toolkit._open_disp_map_hdus(str(path), 1, 1, kw=None)
 
     assert len(opened) == 1
     assert opened[0]._file.closed
@@ -197,7 +197,7 @@ def test_open_disp_map_hdus_leaves_the_file_open_for_the_caller_when_the_map_is_
     path = _write_map(tmp_path / "map.fits")
     opened = _record_opened_hdulists(monkeypatch)
 
-    hdul, minimumBinnedPixelValue, binned = toolkit._open_disp_map_hdus(str(path), 1, 1)
+    hdul, minimumBinnedPixelValue, binned = toolkit._open_disp_map_hdus(str(path), 1, 1, kw=None)
 
     assert hdul is opened[0]
     assert not hdul._file.closed
@@ -219,6 +219,20 @@ def test_open_disp_map_hdus_closes_the_file_when_the_binning_fails(
     monkeypatch.setattr(astropy.nddata, "block_reduce", refuse)
 
     with pytest.raises(ValueError):
-        toolkit._open_disp_map_hdus(str(path), 2, 2)
+        toolkit._open_disp_map_hdus(str(path), 2, 2, kw=None)
+
+    assert opened[0]._file.closed
+
+
+def test_open_disp_map_hdus_closes_the_file_when_the_map_binning_does_not_divide_the_frame_binning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_map(tmp_path / "map.fits")
+    fits.setval(path, "BINX", value=2, ext=0)
+    fits.setval(path, "BINY", value=2, ext=0)
+    opened = _record_opened_hdulists(monkeypatch)
+
+    with pytest.raises(ValueError, match="cannot be block-reduced"):
+        toolkit._open_disp_map_hdus(str(path), 3, 2, kw={"SEQ_ARM": "ARM", "WIN_BINX": "BINX", "WIN_BINY": "BINY"}.get)
 
     assert opened[0]._file.closed
