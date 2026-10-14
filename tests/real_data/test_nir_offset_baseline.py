@@ -104,7 +104,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
     # OF SPECTRAL COVERAGE
     assert mergedRows == pytest.approx(20_614, abs=25)
-    # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO ONE GRID STEP
+    # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO TWO GRID STEPS
     assert waveMin == pytest.approx(795.06, abs=0.12)
     assert waveMax == pytest.approx(2031.84, abs=1.0)
     assert waveStep == pytest.approx(0.06, abs=1e-6)

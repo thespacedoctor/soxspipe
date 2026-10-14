@@ -122,7 +122,9 @@ def _sky_model_levels(sky_model_path: Path) -> tuple[float, float]:
     return float(np.median(sky[in_order])), float(np.percentile(sky[in_order], 90))
 
 
-def _measure_stare_reduction(reduced_workspace: Path, product_directory: Path, baseline: StareBaseline) -> dict:
+def _measure_stare_reduction(
+    reduced_workspace: Path, product_directory: Path, baseline: StareBaseline
+) -> dict[str, float]:
     """Read every baselined value of one stare reduction, checking product structure on the way."""
     stem = baseline.stem
     with fits.open(product_directory / f"{stem}_EXTRACTED_MERGED.fits") as merged_hdus:
