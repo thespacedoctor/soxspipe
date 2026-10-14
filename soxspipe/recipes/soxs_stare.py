@@ -14,6 +14,7 @@ import os
 import sys
 
 from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
+from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
 from soxspipe.commonutils.toolkit import (
     generic_quality_checks,
     get_calibrations_path,
@@ -27,17 +28,6 @@ os.environ["TERM"] = "vt100"
 
 # THE SLIT OFFSETS FOLLOW THE ROTATOR ANGLE, SO INPUT FRAMES MORE THAN THIS FAR APART IN ABSROT (DEGREES) ARE FLAGGED
 ABSROT_SPREAD_WARNING_DEGREES = 10.0
-
-
-def _read_rotator_angle(header, key):
-    """*the rotator angle in degrees from a header, or None if the keyword is missing or not a finite number*"""
-    import math
-
-    try:
-        angle = float(header[key])
-    except (KeyError, TypeError, ValueError):
-        return None
-    return angle if math.isfinite(angle) else None
 
 
 class soxs_stare(base_recipe):
@@ -816,12 +806,12 @@ class soxs_stare(base_recipe):
         from soxspipe.commonutils.slit_illumination_qc import rotator_angle_spread
 
         key = self.kw("ABSROT")
-        stackedAngle = _read_rotator_angle(combined_object.header, key)
+        stackedAngle = read_rotator_angle(combined_object.header, key)
         if stackedAngle is None:
             self.log.info("The stacked frame has no usable ABSROT keyword, so its rotator angle is not logged.")
         else:
             self.log.info(f"The ABSROT of the stacked frame is {stackedAngle:.1f} degrees.")
-        angles = [_read_rotator_angle(frame.header, key) for frame in allObjectFrames]
+        angles = [read_rotator_angle(frame.header, key) for frame in allObjectFrames]
         spread = rotator_angle_spread([angle for angle in angles if angle is not None])
         if spread > ABSROT_SPREAD_WARNING_DEGREES:
             self.log.warning(
