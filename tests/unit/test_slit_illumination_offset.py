@@ -629,7 +629,7 @@ def test_is_not_applied_when_every_order_fails_and_lists_the_reasons(tmp_path, l
     assert "11: " in result.reason and "12: " in result.reason
     assert "exceeds the maximum" in result.reason
     assert (result.offsets["status"] == "failed").all()
-    assert any(level == "warning" and "order 11" in message for level, message in log.messages)
+    assert any(level == "info" and "order 11" in message for level, message in log.messages)
 
 
 def test_is_applied_when_at_least_one_order_has_an_offset(tmp_path, log, monkeypatch):
