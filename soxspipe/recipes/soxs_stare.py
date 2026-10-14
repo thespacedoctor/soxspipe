@@ -765,7 +765,7 @@ class soxs_stare(base_recipe):
         )
         self._record_slit_illumination_qcs(result)
         self._write_slit_illumination_qc_plot(result)
-        return exclude_mask_from_result(self.log, result, twoDMap, binx, biny)
+        return exclude_mask_from_result(self.log, result, twoDMap, binx, biny, self.kw)
 
     def _slit_illumination_settings(self):
         """*the ``slit-illumination`` settings block, or None when the offset is not to be measured*
