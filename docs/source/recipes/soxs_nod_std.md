@@ -22,9 +22,9 @@
 
 ## Method
 
-The algorithm used in the `soxs_nod` and `soxs_nod_std` recipe is shown in {numref}`soxs_nod_diagram`.
+The algorithm used in the `soxs_nod` and `soxs_nod_std` recipe is shown in {numref}`soxs_nod_std_diagram`.
 
-:::{figure-md} soxs_nod_diagram
+:::{figure-md} soxs_nod_std_diagram
 ![](soxs_nod.png){width=600px}
 
 The `soxs_nod` and `soxs_nod_std` recipes reduced SOXS data acquired in nodding mode with one or multiple ABBA (jitter offsets) sequences. 
@@ -37,14 +37,14 @@ See [`soxs_nod`](./soxs_nod.md) for more details.
 :::{include} output/soxs_nod_std.inc
 :::
 
-:::{figure-md} soxs_nod_qc
+:::{figure-md} soxs_nod_std_qc_fig
 ![image-20260414114627756](../_images/image-20260414114627756.png)
 
-A QC plot resulting from the `soxs_nod` recipe. This is a SOXS VIS wavelength and flux calibrated spectrum of the standard star CD-325613. The top- and middle-panels show the flux and wavelength calibrated spectrum, the top in linear-flux and the middle in log-flux scale. The bottom panel shows the signal-to-noise ratio across the entire wavelength range covered by the spectrum.
+A QC plot resulting from the `soxs_nod` recipe. This is a SOXS VIS wavelength and flux calibrated spectrum of the standard star CD-325613. The top- and middle-panels show the flux and wavelength calibrated spectrum, the top in linear-flux and the middle in log-flux scale. The bottom panel shows the signal-to-noise ratio across the entire wavelength range covered by the spectrum. If optimal extraction logged warnings or errors, they are printed below the plot (ERROR in red, WARNING in orange, at most 20 lines). Each note starts with its nodding position, for example `[A1]`.
 
 :::
 
-:::{figure-md} response_curve_util
+:::{figure-md} soxs_nod_std_response_curve
 
 ![image-20260414151800690](../_images/image-20260414151800690.png)
 

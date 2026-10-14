@@ -228,11 +228,6 @@ def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1255 (DY-35 A4): response fit returns all-NaN coefficients from a non-finite response, no error",
-)
 def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_response() -> None:
     # ARRANGE: A ZERO-FLUX SAMPLE GIVES AN INFINITE RAW RESPONSE; THE SMOOTHING SPREADS IT OVER ABOUT 41 SAMPLES
     wavelength = np.linspace(1000.0, 2000.0, 400)
@@ -376,11 +371,6 @@ def test_fit_polynomials_returns_xerror_when_fewer_lines_than_coefficients(log: 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1257 (DY-35 B4): fit_object_profile keeps iterating after a pass that clips nothing",
-)
 def test_object_profile_clipping_stops_once_a_pass_clips_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
     # ARRANGE: PURE GAUSSIAN NOISE, SO CLIPPING SETTLES AFTER A FEW PASSES WELL BEFORE THE CAP OF TEN
     slitRows, wavelengthColumns = 7, 2000
@@ -422,6 +412,43 @@ def test_object_profile_clipping_stops_once_a_pass_clips_nothing(monkeypatch: py
     assert len(rows) == slitRows
     for rowCounts in rows:
         assert np.all(np.diff(rowCounts) < 0), rowCounts
+
+
+@pytest.mark.parametrize("iterationLimit", [1, 3])
+def test_object_profile_clipping_runs_at_most_the_configured_number_of_passes(
+    monkeypatch: pytest.MonkeyPatch, iterationLimit: int
+) -> None:
+    # ARRANGE: A ONE-SIGMA CLIP REMOVES ABOUT A THIRD OF THE POINTS EVERY PASS, SO ONLY THE CAP CAN END THE LOOP
+    slitRows, wavelengthColumns = 3, 500
+    rng = np.random.default_rng(5)
+    flux = 1000.0 + rng.normal(0, 10, (slitRows, wavelengthColumns))
+    images = {"fluxRaw": flux, "mask": np.zeros_like(flux, dtype=bool)}
+    fitCount = 0
+    realPolyfit = np.polyfit
+
+    def counting_polyfit(x: np.ndarray, y: np.ndarray, deg: int, *args: object, **kwargs: object) -> np.ndarray:
+        nonlocal fitCount
+        fitCount += 1
+        return realPolyfit(x, y, deg, *args, **kwargs)
+
+    monkeypatch.setattr(np, "polyfit", counting_polyfit)
+
+    # ACT
+    fit_object_profile(
+        pd.DataFrame({"x": range(wavelengthColumns)}),
+        images,
+        slitHalfLength=1,
+        clippingSigma=1.0,
+        clippingIterationLimit=iterationLimit,
+        hornePolyOrder=3,
+        axisB="y",
+        order=1,
+        debug=False,
+        plt=None,
+    )
+
+    # ASSERT: A LIMIT OF N GIVES N FITTING PASSES PER SLIT ROW, NOT N - 1
+    assert fitCount == slitRows * iterationLimit
 
 
 # ---------------------------------------------------------------------------
@@ -482,11 +509,6 @@ def test_cut_image_slice_reports_the_centre_of_the_collapsed_rows(log: object) -
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1258 (DY-35 C5): qc_bias_structure fits against a pixel axis ending at N, not N-1",
-)
 def test_bias_structure_slopes_use_a_zero_to_n_minus_one_pixel_axis() -> None:
     # ARRANGE: A SMALL FRAME MAKES THE AXIS ERROR LARGE; THE RAMP SLOPES ARE KNOWN EXACTLY
     captured: dict[str, float] = {}
@@ -510,11 +532,6 @@ def test_bias_structure_slopes_use_a_zero_to_n_minus_one_pixel_axis() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1259 (DY-35 C6): inner-order pixel QC values are stored as formatted strings, not numbers",
-)
 def test_inner_order_qc_values_are_numeric(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     # ARRANGE: THE SAME STUBS AS THE CHARACTERIZATION TEST THAT PINS THE STRING FORM
     _identity_keyword_lookup(monkeypatch)
@@ -533,11 +550,6 @@ def test_inner_order_qc_values_are_numeric(monkeypatch: pytest.MonkeyPatch, log:
     assert all(isinstance(value, Real) for value in result["qc_value"])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1259 (DY-35 C6): dispersion-solution residual QC values are stored as formatted strings, not numbers",
-)
 def test_dispersion_residual_qc_values_are_numeric(log: object) -> None:
     # ARRANGE: THE TWO-LINE TABLE USED BY THE EXISTING calculate_residuals TESTS
     mapper = _mapper(log)
@@ -585,11 +597,6 @@ def test_dispersion_residual_qc_values_are_numeric(log: object) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="DY-1260 (DY-35 C7): a 2x2-binned map with a 2x2-binned frame is block-reduced twice and raises ValueError",
-)
 def test_binned_map_with_same_binned_frame_gives_one_row_per_pixel(tmp_path: Path) -> None:
     # ARRANGE: A MAP ALREADY AT THE FRAME'S 2x2 BINNING, WAVELENGTH INCREASING WITH X, ONE ORDER
     rowCount, columnCount = 4, 6

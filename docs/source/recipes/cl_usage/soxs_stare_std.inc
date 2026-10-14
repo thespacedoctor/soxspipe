@@ -16,7 +16,7 @@ soxspipe stare_std sof/20260111T060038_VIS_1X1_1_STARE_STD_FLUX_SLIT1_0_300_0S_S
 To adjust the default settings for the `soxs_stare_std` recipes, open the `soxspipe.yaml` file referenced in the command above in a text editor, navigate to the `soxs-stare-std` dictionary, save the file and rerun the recipe command. The settings' descriptions can be found in {numref}`soxs_stare_parameters`.
 
 
-Product files are written in the `products/soxs_stare_std` directory, and QC plots are in the `qc/soxs_stare_std` workspace directory. A report of the product files, QC plots and metrics is also printed to the terminal. The QC metrics calculated for `soxs_stare_std` are found in {numref}`soxs_stare_qc`.
+Product files are written in the `products/soxs_stare_std` directory, and QC plots are in the `qc/soxs_stare_std` workspace directory. A report of the product files, QC plots and metrics is also printed to the terminal. The QC metrics calculated for `soxs_stare_std` are found in {numref}`soxs_stare_std_qc`.
 
 
 ### Reduction Tips

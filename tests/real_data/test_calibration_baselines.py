@@ -20,11 +20,11 @@ bands the median and three fixed wavelengths. The polynomial diverges outside th
 so the grids stop well short of the arm edges.
 
 Bands follow the stare convention: levels, residuals and RMS values to 5% relative,
-fractions to ±0.02 absolute, and counts exactly. The centres were recorded on
-2026-10-08 from six bit-identical CI runs (37762274955, 37762278852, 37762282502,
-37762285955, 37762289494 and 37762292741). Local arm64 reductions do not match: most
-values land within the bands, but the 2025-08-31 VIS dispersion and spatial solutions
-give an `XY RES MEDIAN` 24% to 35% below the CI value, so those two fail locally.
+fractions to ±0.02 absolute, and counts exactly. The centres were re-recorded on
+2026-10-14 from six bit-identical CI runs (38566513736, 38566517851, 38566520911,
+38566524861, 38566528464 and 38566531516), after the exact dispersion fit (DY-1525),
+per-frame stacking masks (DY-1254) and the DY-1518 background mask (DY-1524). Since
+DY-1525, local arm64 reductions give the same `XY RES MEDIAN` as CI.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250831T021035_VIS_1X1_1_MBIAS_SOXS.sof",
         values={
             "MBIAS MEDIAN": level(644.498976493901),
-            "MASTER RON": level(1.84482500198915),
+            "MASTER RON": level(1.82982501991057),
         },
     ),
     QcBaseline(
@@ -107,7 +107,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250901T100431_VIS_1X1_1_MBIAS_SOXS.sof",
         values={
             "MBIAS MEDIAN": level(643.710507724261),
-            "MASTER RON": level(1.70791413606355),
+            "MASTER RON": level(1.68993050289757),
         },
     ),
     QcBaseline(
@@ -115,7 +115,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250514T120301_NIR_3_MDARK_5_0S_SOXS.sof",
         values={
             "MDARK MEDIAN": level(-0.94981895210743),
-            "HOTPIX FRAC": fraction(0.009302),
+            "HOTPIX FRAC": fraction(0.008368),
         },
     ),
     QcBaseline(
@@ -123,7 +123,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250514T120422_NIR_3_MDARK_10_0S_SOXS.sof",
         values={
             "MDARK MEDIAN": level(-1.61726377464756),
-            "HOTPIX FRAC": fraction(0.009088),
+            "HOTPIX FRAC": fraction(0.008138),
         },
     ),
     QcBaseline(
@@ -131,7 +131,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250514T120611_NIR_3_MDARK_15_0S_SOXS.sof",
         values={
             "MDARK MEDIAN": level(-0.635831097712049),
-            "HOTPIX FRAC": fraction(0.008801),
+            "HOTPIX FRAC": fraction(0.007809),
         },
     ),
     QcBaseline(
@@ -139,7 +139,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T105414_NIR_3_MDARK_2_0S_SOXS.sof",
         values={
             "MDARK MEDIAN": level(-1.58572523045206),
-            "HOTPIX FRAC": fraction(0.009712),
+            "HOTPIX FRAC": fraction(0.008151),
         },
     ),
     QcBaseline(
@@ -147,7 +147,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T105637_NIR_3_MDARK_10_0S_SOXS.sof",
         values={
             "MDARK MEDIAN": level(0.403825461475081),
-            "HOTPIX FRAC": fraction(0.010009),
+            "HOTPIX FRAC": fraction(0.008577),
         },
     ),
     QcBaseline(
@@ -155,14 +155,14 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T105827_NIR_3_MDARK_15_0S_SOXS.sof",
         values={
             "MDARK MEDIAN": level(-1.73318660216511),
-            "HOTPIX FRAC": fraction(0.009858),
+            "HOTPIX FRAC": fraction(0.008408),
         },
     ),
     QcBaseline(
         recipe="soxs-disp-solution",
         sofName="20250514T121150_NIR_3_DSOL_PINHOLE_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.27518),
+            "XY RES MEDIAN": level(0.25505),
             "GOODLINES FRAC": fraction(0.835616),
             "DETLINES NUM": count(611),
         },
@@ -171,7 +171,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-disp-solution",
         sofName="20250831T030313_VIS_1X1_1_DSOL_PINHOLE_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.46559),
+            "XY RES MEDIAN": level(0.25024),
             "GOODLINES FRAC": fraction(0.932836),
             "DETLINES NUM": count(130),
         },
@@ -180,7 +180,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-disp-solution",
         sofName="20250901T105805_VIS_1X1_1_DSOL_PINHOLE_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.44424),
+            "XY RES MEDIAN": level(0.1974),
             "GOODLINES FRAC": fraction(0.932836),
             "DETLINES NUM": count(129),
         },
@@ -189,9 +189,9 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-disp-solution",
         sofName="20251128T122146_NIR_3_DSOL_PINHOLE_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.31128),
-            "GOODLINES FRAC": fraction(0.847793),
-            "DETLINES NUM": count(602),
+            "XY RES MEDIAN": level(0.29097),
+            "GOODLINES FRAC": fraction(0.838661),
+            "DETLINES NUM": count(603),
         },
     ),
     QcBaseline(
@@ -199,8 +199,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250514T091410_NIR_3_OLOC_QTH_PINHOLE_10_0S_SOXS.sof",
         values={
             "N ORDERS": count(15),
-            "SAMPLES DET FRAC": fraction(0.97),
-            "Y RES SD": level(0.043),
+            "SAMPLES DET FRAC": fraction(0.971),
+            "Y RES SD": level(0.042),
         },
     ),
     QcBaseline(
@@ -208,7 +208,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250831T024046_VIS_1X1_1_OLOC_QTH_PINHOLE_10_0S_SOXS.sof",
         values={
             "N ORDERS": count(4),
-            "SAMPLES DET FRAC": fraction(0.936),
+            "SAMPLES DET FRAC": fraction(0.935),
         },
     ),
     QcBaseline(
@@ -216,7 +216,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250901T103524_VIS_1X1_1_OLOC_QTH_PINHOLE_10_0S_SOXS.sof",
         values={
             "N ORDERS": count(4),
-            "SAMPLES DET FRAC": fraction(0.943),
+            "SAMPLES DET FRAC": fraction(0.94),
         },
     ),
     QcBaseline(
@@ -224,7 +224,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T121139_NIR_3_OLOC_QTH_PINHOLE_10_0S_SOXS.sof",
         values={
             "N ORDERS": count(15),
-            "SAMPLES DET FRAC": fraction(0.988),
+            "SAMPLES DET FRAC": fraction(0.987),
             "Y RES SD": level(0.044),
         },
     ),
@@ -232,46 +232,46 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-mflat",
         sofName="20250514T085927_NIR_3_MFLAT_QTH_SLIT1_0_3_75S_SOXS.sof",
         values={
-            "INNER ORDER PIX MEAN": level(0.918),
-            "COLDPIX FRAC": fraction(0.009302),
+            "INNER ORDER PIX MEAN": level(0.921),
+            "COLDPIX FRAC": fraction(0.008368),
             "N LOW SENS": count(0),
-            "ORDEXP50": level(6350.17),
+            "ORDEXP50": level(6382.758),
         },
     ),
     QcBaseline(
         recipe="soxs-mflat",
         sofName="20250831T023807_VIS_1X1_1_MFLAT_QTH_SLIT5_0_2_0S_SOXS.sof",
         values={
-            "INNER ORDER PIX MEAN": level(0.965),
-            "COLDPIX FRAC": fraction(0.005825),
-            "ORDEXP50": level(3882.12),
+            "INNER ORDER PIX MEAN": level(0.971),
+            "COLDPIX FRAC": fraction(0.005784),
+            "ORDEXP50": level(3883.01),
         },
     ),
     QcBaseline(
         recipe="soxs-mflat",
         sofName="20250901T103245_VIS_1X1_1_MFLAT_QTH_SLIT5_0_2_0S_SOXS.sof",
         values={
-            "INNER ORDER PIX MEAN": level(0.965),
-            "COLDPIX FRAC": fraction(0.004728),
-            "ORDEXP50": level(3903.68),
+            "INNER ORDER PIX MEAN": level(0.97),
+            "COLDPIX FRAC": fraction(0.004902),
+            "ORDEXP50": level(3902.36),
         },
     ),
     QcBaseline(
         recipe="soxs-mflat",
         sofName="20251128T114919_NIR_3_MFLAT_QTH_SLIT1_5_2_5S_SOXS.sof",
         values={
-            "INNER ORDER PIX MEAN": level(0.929),
-            "COLDPIX FRAC": fraction(0.009712),
+            "INNER ORDER PIX MEAN": level(0.935),
+            "COLDPIX FRAC": fraction(0.008151),
             "N LOW SENS": count(0),
-            "ORDEXP50": level(12750.414),
+            "ORDEXP50": level(12719.765),
         },
     ),
     QcBaseline(
         recipe="soxs-spat-solution",
         sofName="20250514T121227_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.22057),
-            "GOODLINES FRAC": fraction(0.552497),
+            "XY RES MEDIAN": level(0.21581),
+            "GOODLINES FRAC": fraction(0.555556),
             "PINHOLE COUNT MIN": count(9),
         },
     ),
@@ -279,7 +279,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20250831T030421_VIS_1X1_1_SSOL_MULTPIN_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.40157),
+            "XY RES MEDIAN": level(0.20049),
             "GOODLINES FRAC": fraction(0.855721),
             "PINHOLE COUNT MIN": count(9),
         },
@@ -288,8 +288,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20251128T122217_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.23518),
-            "GOODLINES FRAC": fraction(0.45423),
+            "XY RES MEDIAN": level(0.23585),
+            "GOODLINES FRAC": fraction(0.458308),
             "PINHOLE COUNT MIN": count(9),
         },
     ),
@@ -297,8 +297,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-nod-std",
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         values={
-            "EFF MEDIAN": level(0.1411),
-            "SNR MEDIAN": level(167.39),
+            "EFF MEDIAN": level(0.141),
+            "SNR MEDIAN": level(167.53),
             "N ORDERS": count(4),
         },
     ),
@@ -306,8 +306,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-nod-std",
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         values={
-            "EFF MEDIAN": level(0.1184),
-            "SNR MEDIAN": level(50.11),
+            "EFF MEDIAN": level(0.1181),
+            "SNR MEDIAN": level(50.06),
             "N ORDERS": count(15),
         },
     ),
@@ -318,22 +318,22 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         gridStart=400.0,
         gridStop=800.0,
-        median=level(6.439642574682012e-16),
+        median=level(6.480576596882429e-16),
         points={
-            450.0: level(2.5536838692969926e-16),
-            520.0: level(4.501926866419762e-16),
-            750.0: level(9.987140454489237e-16),
+            450.0: level(2.563466015354061e-16),
+            520.0: level(4.533904217995678e-16),
+            750.0: level(1.0035960594215976e-15),
         },
     ),
     ResponseBaseline(
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         gridStart=1000.0,
         gridStop=1800.0,
-        median=level(2.549478498298049e-16),
+        median=level(2.5193888910149326e-16),
         points={
-            1050.0: level(2.816610729608056e-16),
-            1250.0: level(2.823529607320961e-16),
-            1650.0: level(1.7958537633370726e-16),
+            1050.0: level(3.004500738155184e-16),
+            1250.0: level(2.8338771923419703e-16),
+            1650.0: level(1.808693048569876e-16),
         },
     ),
 )

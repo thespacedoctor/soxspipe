@@ -12,6 +12,7 @@ Date Created
 import os
 
 from .base_util import base_util
+from .extraction_notes import extraction_note_logger, format_extraction_notes
 from .filenamer import filenamer
 
 os.environ["TERM"] = "vt100"
@@ -111,6 +112,9 @@ class horne_extraction(base_util):
 
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import nodding_sequence_suffix, unpack_order_table
+
+        # COLLECT THE WARNINGS AND ERRORS OF THE EXTRACTION AND THE HELPERS IT BUILDS, TO PRINT ON THE QC PLOTS
+        log = extraction_note_logger(log)
 
         super().__init__(
             log, settings, associatedFrame=skySubtractedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath
@@ -359,6 +363,8 @@ class horne_extraction(base_util):
 
         inputArray = [[s, r] for s, r in zip(orderSlices, orderRectifiedImages)]
 
+        # EXTRACTION RUNS IN-PROCESS (turnOffMP=True BELOW). WARNINGS LOGGED INSIDE WORKER PROCESSES WOULD NOT REACH
+        # THE PLOT NOTES, BECAUSE EACH WORKER RECORDS INTO ITS OWN COPY OF self.log
         extractions = fmultiprocess(
             log=self.log,
             function=extract_single_order,
@@ -567,6 +573,18 @@ class horne_extraction(base_util):
 
         self.log.debug("completed the ``extract`` method")
         return self.qc, self.products, mergedSpectumDF, orderJoins, extractionFilepath
+
+    @property
+    def extractionNotes(self) -> list[tuple[str, str]]:  # noqa: N802
+        """*the warnings and errors logged during this extraction*
+
+        **Return:**
+
+        - ``notes`` -- a list of ``(level, message)`` pairs, empty if the extractor's log is not a note collector
+        """
+        if isinstance(self.log, extraction_note_logger):
+            return self.log.notes
+        return []
 
     def _summarise_slit_edge_spill(self, extractions):
         """*find the orders where the object spills over the slit edge, report them and drop the per-slice flag*
@@ -1279,6 +1297,30 @@ class horne_extraction(base_util):
 
         return merged_orders, orderJoins
 
+    def _pinhole_offset_labels(self):
+        """*the legend labels for the science frame's obs-time and rotator-angle offsets from the multi-pinhole frame*
+
+        The multi-pinhole header is read from the primary header of the dispersion map, which is a copy of the
+        multi-pinhole frame header. If the map cannot be read there are no labels and the plot is still made.
+
+        **Return:**
+
+        - ``labels`` -- list of legend labels, or *None* if the dispersion map header cannot be read
+        """
+        from astropy.io import fits
+
+        from soxspipe.commonutils.slit_drift_qc import pinhole_offset_labels
+
+        if not self.dispersionMap:
+            self.log.debug("no dispersion map to read the multi-pinhole header from, so no offset labels are added")
+            return None
+        try:
+            pinholeHeader = fits.getheader(self.dispersionMap, 0)
+        except (OSError, KeyError, ValueError, TypeError) as e:
+            self.log.debug(f"could not read the multi-pinhole header from the dispersion map ({type(e).__name__}: {e})")
+            return None
+        return pinhole_offset_labels(self.skySubtractedFrame.header, pinholeHeader, self.kw)
+
     def plot_slit_drift_qc(self, transformer):
         """*plot the object trace's slit position against wavelength, before rectification*
 
@@ -1326,6 +1368,7 @@ class horne_extraction(base_util):
             filePath,
             driftArcsec=driftArcsec,
             zeroWavelength=crossings[0] if crossings else None,
+            extraLabels=self._pinhole_offset_labels(),
         )
         self._record_slit_drift_qcs(driftArcsec, crossings)
 
@@ -1417,6 +1460,8 @@ class horne_extraction(base_util):
         import matplotlib.pyplot as plt
         import pandas as pd
         from astropy.stats import sigma_clip, sigma_clipped_stats
+
+        from soxspipe.commonutils.toolkit import add_notes_below_figure
 
         fig = plt.figure(figsize=(14, 12), constrained_layout=True, dpi=180)
         gs = fig.add_gridspec(4, 1)
@@ -1590,6 +1635,8 @@ class horne_extraction(base_util):
 
         toprow.set_ylim(-200, maxFlux)
         secondrow.set_ylim(-200, maxFlux)
+        # PRINT EVERY WARNING AND ERROR OF THE EXTRACTION UNDER THE PLOT
+        add_notes_below_figure(fig, format_extraction_notes(self.extractionNotes))
         filename = self.filenameTemplate.replace(
             ".fits",
             f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}{self.notFlattened}.pdf",
@@ -1916,7 +1963,7 @@ def fit_object_profile(
 
     # DETERMINE LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS
     for slitPixelIndex in range(0, ss):
-        iteration = 1
+        iteration = 0
         clipped_count = 1
 
         fractions = fluxRawNormalisedMasked[slitPixelIndex, :]
@@ -1928,9 +1975,9 @@ def fit_object_profile(
         a = [fractions, dispersionAxisPixels]
         fractions, dispersionAxisPixels = [np.ma.compressed(np.ma.masked_array(i, mask)) for i in a]
 
-        startCount = len(fractions)
         coeff = []
 
+        # STOP AT THE ITERATION LIMIT, OR AS SOON AS A PASS CLIPS NOTHING (A FURTHER PASS WOULD REPEAT THE SAME FIT)
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
             # FIT A POLYNOMIAL TO THE FRACTIONAL FLUXES
             if len(dispersionAxisPixels):
@@ -1939,6 +1986,7 @@ def fit_object_profile(
                 coeff = []
                 break
             residuals = fractions - np.polyval(coeff, dispersionAxisPixels)
+            passCount = len(fractions)
 
             # REMOVE REMAINING OUTLIERS
             masked_residuals = sigma_clip(
@@ -1954,9 +2002,7 @@ def fit_object_profile(
             fractions, dispersionAxisPixels = [
                 np.ma.compressed(np.ma.masked_array(i, masked_residuals.mask)) for i in a
             ]
-            clipped_count = startCount - len(fractions)
-            percent = (float(clipped_count) / float(startCount)) * 100.0
-            # print(f"\tProfile fitting iteration {iteration}, slice index {slitPixelIndex+1}/{slitHalfLength * 2}. {clipped_count} clipped ({percent:0.2f}%) - ORDER {order}")
+            clipped_count = passCount - len(fractions)
             iteration = iteration + 1
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION

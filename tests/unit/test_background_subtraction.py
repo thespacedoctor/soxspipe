@@ -125,49 +125,88 @@ def test_mask_order_locations_handles_a_single_order(tmp_path: Path, log: object
 
 
 @pytest.mark.parametrize(
-    ("edgeup", "edgelow", "maskedSlices"),
-    [
-        (
-            [50.0, 34.0, 18.0],
-            [46.0, 30.0, 14.0],
-            [
-                (slice(0, 18), slice(43, 53)),
-                (slice(27, 37),),
-                (slice(11, 21), slice(46, 64)),
-            ],
-        ),
-        (
-            [18.0, 34.0, 50.0],
-            [14.0, 30.0, 46.0],
-            [(slice(12, 20),), (slice(28, 36),), (slice(44, 52),)],
-        ),
-    ],
-    ids=["orders-toward-lower-axis-a", "orders-toward-higher-axis-a"],
+    "orderNumbers",
+    [(10, 11, 12), (12, 11, 10)],
+    ids=["orders-toward-higher-axis-a", "orders-toward-lower-axis-a"],
 )
-def test_mask_order_locations_preserves_multi_order_geometry(
+def test_mask_order_locations_grows_orders_into_gaps_whichever_way_orders_run(
     tmp_path: Path,
     log: object,
-    edgeup: list[float],
-    edgelow: list[float],
-    maskedSlices: list[tuple[slice, ...]],
+    orderNumbers: tuple[int, int, int],
 ) -> None:
+    """Each order grows by half the gap to its real neighbour minus 3 px (DY-1518)."""
+    # ARRANGE: THREE ORDERS LISTED FROM LOW TO HIGH AXIS-A, TWO ROWS EACH; GAPS OF 20 PX AND 30 PX
     worker = _subtractor(tmp_path, log)
-    worker.frame = _frame(shape=(16, 64))
+    worker.frame = _frame(shape=(16, 230))
     orderPixels = pd.DataFrame(
         {
-            "order": [10, 11, 12],
-            "ycoord": [5, 6, 7],
-            "xcoord_edgeup": edgeup,
-            "xcoord_edgelow": edgelow,
+            "order": [n for n in orderNumbers for _ in (5, 6)],
+            "ycoord": [5, 6] * 3,
+            "xcoord_edgelow": [50.0, 50.0, 90.0, 90.0, 140.0, 140.0],
+            "xcoord_edgeup": [70.0, 70.0, 110.0, 110.0, 160.0, 160.0],
         }
     )
 
+    # ACT
     worker.mask_order_locations(orderPixels)
 
-    expectedMask = np.zeros((16, 64), dtype=bool)
-    for row, rowSlices in zip((5, 6, 7), maskedSlices, strict=True):
-        for maskedSlice in rowSlices:
-            expectedMask[row, maskedSlice] = True
+    # ASSERT: GROWTH 7 PX ACROSS THE 20 PX GAP, 12 PX ACROSS THE 30 PX GAP;
+    # OUTERMOST ORDERS COPY THEIR ONE GAP; THE FRAME IS MASKED FROM 25 PX
+    # BEYOND THE LOWEST AND THE HIGHEST ORDER
+    expectedRow = np.zeros(230, dtype=bool)
+    for maskedSlice in (slice(0, 18), slice(43, 77), slice(83, 122), slice(128, 172), slice(197, 230)):
+        expectedRow[maskedSlice] = True
+    expectedMask = np.zeros((16, 230), dtype=bool)
+    expectedMask[5] = expectedMask[6] = expectedRow
+    np.testing.assert_array_equal(worker.frame.mask, expectedMask)
+
+
+def test_mask_order_locations_grows_orders_into_gaps_along_y(tmp_path: Path, log: object) -> None:
+    """Orders laid out along y, as on SOXS NIR, grow into their gaps the same way (DY-1518)."""
+    # ARRANGE: ORDER NUMBERS RISE TOWARD HIGHER Y; GAPS OF 20 PX AND 30 PX
+    worker = _subtractor(tmp_path, log)
+    worker.axisA, worker.axisB = "y", "x"
+    worker.frame = _frame(shape=(230, 16))
+    orderPixels = pd.DataFrame(
+        {
+            "order": [10, 11, 12],
+            "xcoord": [5, 5, 5],
+            "ycoord_edgelow": [50.0, 90.0, 140.0],
+            "ycoord_edgeup": [70.0, 110.0, 160.0],
+        }
+    )
+
+    # ACT
+    worker.mask_order_locations(orderPixels)
+
+    # ASSERT
+    expectedMask = np.zeros((230, 16), dtype=bool)
+    for maskedSlice in (slice(0, 18), slice(43, 77), slice(83, 122), slice(128, 172), slice(197, 230)):
+        expectedMask[maskedSlice, 5] = True
+    np.testing.assert_array_equal(worker.frame.mask, expectedMask)
+
+
+def test_mask_order_locations_ignores_an_order_with_no_finite_edges(tmp_path: Path, log: object) -> None:
+    """An order with no finite edges is neither a neighbour nor the edge order (DY-1518)."""
+    # ARRANGE: THE HIGHEST-NUMBERED ORDER HAS NO FINITE EDGES
+    worker = _subtractor(tmp_path, log)
+    worker.frame = _frame(shape=(16, 230))
+    orderPixels = pd.DataFrame(
+        {
+            "order": [10, 11, 12],
+            "ycoord": [5, 5, 5],
+            "xcoord_edgelow": [50.0, 90.0, np.nan],
+            "xcoord_edgeup": [70.0, 110.0, np.nan],
+        }
+    )
+
+    # ACT
+    worker.mask_order_locations(orderPixels)
+
+    # ASSERT: ORDER 11 IS THE HIGH EDGE ORDER, SO THE FRAME IS MASKED FROM 25 PX BEYOND IT
+    expectedMask = np.zeros((16, 230), dtype=bool)
+    for maskedSlice in (slice(0, 18), slice(43, 77), slice(83, 117), slice(142, 230)):
+        expectedMask[5, maskedSlice] = True
     np.testing.assert_array_equal(worker.frame.mask, expectedMask)
 
 

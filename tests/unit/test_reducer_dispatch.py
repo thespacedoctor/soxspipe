@@ -10,6 +10,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from tests.factories import logging_settings
+
 pytestmark = pytest.mark.unit
 
 
@@ -211,7 +213,7 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
         recipe="mflat",
         sofList=sofPaths,
         commandList=[f"soxspipe mflat {sofName}" for sofName in sofNames],
-        settings={"workspace-root-dir": str(workspacePath)},
+        settings={"workspace-root-dir": str(workspacePath), **logging_settings(tmp_path / "bulk.log")},
         overwrite=True,
         workspaceDirectory=str(workspacePath),
         conn=connection,
@@ -281,7 +283,7 @@ def test_run_recipe_bulk_skips_refresh_and_qc_when_workers_return_nothing(
         recipe="mbias",
         sofList=[],
         commandList=[],
-        settings={},
+        settings=logging_settings(tmp_path / "bulk.log"),
         overwrite=False,
         workspaceDirectory=str(tmp_path),
         conn=connection,
@@ -368,7 +370,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
         recipe="mflat",
         sofList=[str(workspacePath / "sof" / hostileSofName)],
         commandList=[f"soxspipe mflat {hostileSofName}"],
-        settings={"workspace-root-dir": str(workspacePath)},
+        settings={"workspace-root-dir": str(workspacePath), **logging_settings(tmp_path / "bulk.log")},
         overwrite=True,
         workspaceDirectory=str(workspacePath),
         conn=connection,

@@ -8,11 +8,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from astropy.io.fits import Header
 
 from soxspipe.commonutils.slit_drift_qc import (
+    CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES,
     SLIT_DRIFT_EDGE_TRIM_FRACTION,
     SLIT_DRIFT_FIT_SAMPLES,
+    format_time_offset,
+    pinhole_offset_labels,
     plot_slit_drift_qc,
+    rotator_angle_offset,
     slit_drift_arcsec,
     slit_drift_series,
     slit_zero_crossings,
@@ -520,3 +525,235 @@ def test_plot_without_new_keywords_has_no_drift_legend_or_zero_crossing_label(
     assert not any("slit drift" in label for label in legendLabels)
     assert list(mainAxis.texts) == []
     assert [line for line in mainAxis.get_lines() if list(line.get_ydata()) == [0, 0]] == []
+
+
+@pytest.mark.parametrize(
+    ("seconds", "expected"),
+    [
+        (42 * 60.0, "+42.0 min"),
+        (59 * 60.0, "+59.0 min"),
+        (61 * 60.0, "+1.0 h"),
+        (23 * 3600.0, "+23.0 h"),
+        (25 * 3600.0, "+1.0 d"),
+        (-42 * 60.0, "-42.0 min"),
+        (3599.99, "+1.0 h"),
+        (-3599.99, "-1.0 h"),
+        (3600.0, "+1.0 h"),
+        (-3600.0, "-1.0 h"),
+        (86399.0, "+1.0 d"),
+        (86400.0, "+1.0 d"),
+        (-86400.0, "-1.0 d"),
+        (-0.4, "+0.0 min"),
+        (-5.3 * 3600.0, "-5.3 h"),
+        (2.1 * 86400.0, "+2.1 d"),
+        (0.0, "+0.0 min"),
+    ],
+)
+def test_time_offset_uses_the_unit_that_fits_its_size_and_keeps_its_sign(seconds: float, expected: str) -> None:
+    # ARRANGE / ACT
+    text = format_time_offset(seconds)
+
+    # ASSERT
+    assert text == expected
+
+
+@pytest.mark.parametrize(
+    ("scienceAngle", "pinholeAngle", "expected"),
+    [
+        (179.0, -179.0, -2.0),
+        (-179.0, 179.0, 2.0),
+        (10.0, 5.0, 5.0),
+        (5.0, 10.0, -5.0),
+        (180.0, 0.0, 180.0),
+        (0.0, 180.0, 180.0),
+    ],
+)
+def test_rotator_offset_is_wrapped_into_minus_180_to_180(
+    scienceAngle: float, pinholeAngle: float, expected: float
+) -> None:
+    # ARRANGE / ACT
+    offset = rotator_angle_offset(scienceAngle, pinholeAngle)
+
+    # ASSERT
+    assert offset == pytest.approx(expected)
+
+
+KW = {"MJDOBS": "MJD-OBS", "DATE_OBS": "DATE-OBS", "ABSROT": "ESO ADA ABSROT END"}.get
+
+
+def _offset_header(**cards: object) -> Header:
+    return Header(cards)
+
+
+def test_labels_give_time_and_rotator_offsets_when_both_headers_carry_them() -> None:
+    # ARRANGE
+    science = _offset_header(**{"MJD-OBS": 60000.5, "ESO ADA ABSROT END": 10.0})
+    pinhole = _offset_header(**{"MJD-OBS": 60000.5 - 42.0 / 1440.0, "ESO ADA ABSROT END": 13.2})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == [
+        "science - multi-pinhole obs time = +42.0 min",
+        "science - multi-pinhole rotator angle (ABSROT) = -3.2 deg",
+    ]
+
+
+def test_labels_fall_back_to_the_obs_date_when_mjd_is_missing() -> None:
+    # ARRANGE
+    science = _offset_header(**{"DATE-OBS": "2024-01-02T05:00:00"})
+    pinhole = _offset_header(**{"DATE-OBS": "2024-01-02T03:00:00"})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == ["science - multi-pinhole obs time = +2.0 h"]
+
+
+def test_labels_drop_only_the_time_entry_when_one_side_has_no_usable_time() -> None:
+    # ARRANGE
+    science = _offset_header(**{"DATE-OBS": "not a date", "ESO ADA ABSROT END": 1.0})
+    pinhole = _offset_header(**{"MJD-OBS": 60000.0, "ESO ADA ABSROT END": 0.0})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == ["science - multi-pinhole rotator angle (ABSROT) = +1.0 deg"]
+
+
+def test_labels_drop_only_the_rotator_entry_when_the_science_absrot_is_missing() -> None:
+    # ARRANGE
+    science = _offset_header(**{"MJD-OBS": 60001.0})
+    pinhole = _offset_header(**{"MJD-OBS": 60000.0, "ESO ADA ABSROT END": 4.0})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == ["science - multi-pinhole obs time = +1.0 d"]
+
+
+def test_labels_assume_the_parked_rotator_angle_when_the_pinhole_header_has_no_absrot() -> None:
+    # ARRANGE
+    science = _offset_header(**{"MJD-OBS": 60001.0, "ESO ADA ABSROT END": 84.9})
+    pinhole = _offset_header(**{"MJD-OBS": 60000.0})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == [
+        "science - multi-pinhole obs time = +1.0 d",
+        "science - multi-pinhole rotator angle (ABSROT) = +84.9 deg "
+        f"(multi-pinhole ABSROT assumed {CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES:.1f} deg)",
+    ]
+
+
+def test_labels_use_a_real_pinhole_absrot_over_the_parked_angle() -> None:
+    # ARRANGE
+    science = _offset_header(**{"ESO ADA ABSROT END": 84.9})
+    pinhole = _offset_header(**{"ESO ADA ABSROT END": 80.0})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == ["science - multi-pinhole rotator angle (ABSROT) = +4.9 deg"]
+
+
+def test_labels_treat_a_boolean_pinhole_absrot_as_missing() -> None:
+    # ARRANGE
+    science = _offset_header(**{"ESO ADA ABSROT END": 10.0})
+    pinhole = _offset_header(**{"ESO ADA ABSROT END": True})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == [
+        "science - multi-pinhole rotator angle (ABSROT) = +10.0 deg "
+        f"(multi-pinhole ABSROT assumed {CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES:.1f} deg)"
+    ]
+
+
+def test_labels_fall_back_to_the_obs_date_when_mjd_is_a_boolean() -> None:
+    # ARRANGE
+    science = _offset_header(**{"MJD-OBS": True, "DATE-OBS": "2024-01-02T05:00:00"})
+    pinhole = _offset_header(**{"MJD-OBS": np.bool_(True), "DATE-OBS": "2024-01-02T03:00:00"})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == ["science - multi-pinhole obs time = +2.0 h"]
+
+
+def test_labels_skip_header_values_too_large_for_a_float() -> None:
+    # ARRANGE
+    science = {"MJD-OBS": 10**400, "DATE-OBS": "2024-01-02T05:00:00", "ESO ADA ABSROT END": 10**400}
+    pinhole = {"MJD-OBS": 10**400, "DATE-OBS": "2024-01-02T03:00:00", "ESO ADA ABSROT END": 10.0}
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == ["science - multi-pinhole obs time = +2.0 h"]
+
+
+def test_labels_drop_the_time_entry_when_the_obs_date_has_no_time_of_day() -> None:
+    # ARRANGE
+    science = _offset_header(**{"DATE-OBS": "2024-01-02"})
+    pinhole = _offset_header(**{"DATE-OBS": "2024-01-01T03:00:00"})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == []
+
+
+def test_labels_drop_offsets_that_are_not_finite() -> None:
+    # ARRANGE
+    science = _offset_header(**{"MJD-OBS": 1e308, "ESO ADA ABSROT END": 1e308})
+    pinhole = _offset_header(**{"MJD-OBS": -1e308, "ESO ADA ABSROT END": -1e308})
+
+    # ACT
+    labels = pinhole_offset_labels(science, pinhole, KW)
+
+    # ASSERT
+    assert labels == []
+
+
+def test_labels_are_empty_when_nothing_usable_is_in_either_header() -> None:
+    # ARRANGE / ACT
+    labels = pinhole_offset_labels(_offset_header(), _offset_header(), KW)
+
+    # ASSERT
+    assert labels == []
+
+
+def test_labels_are_empty_when_the_headers_are_not_headers() -> None:
+    # ARRANGE / ACT
+    labels = pinhole_offset_labels(None, None, KW)
+
+    # ASSERT
+    assert labels == []
+
+
+def test_plot_legend_lists_each_extra_label(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    figures = spy_figures(monkeypatch)
+    extraLabels = ["science - multi-pinhole obs time = +42.0 min", "science - multi-pinhole rotator angle = -3.2 deg"]
+
+    # ACT
+    plot_slit_drift_qc(
+        _two_order_series(), MEAN_SLIT_ARCSEC, "title", str(tmp_path / "plot.pdf"), extraLabels=extraLabels
+    )
+
+    # ASSERT
+    legendTexts = [text.get_text() for text in figures[0].axes[0].get_legend().get_texts()]
+    for label in extraLabels:
+        assert label in legendTexts

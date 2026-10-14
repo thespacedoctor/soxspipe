@@ -100,6 +100,35 @@ def sort_keywords(log, header):
     return header
 
 
+def add_qc_to_header(header, qc):
+    """*write the QC rows flagged ``to_header`` into a FITS header as ``ESO QC <NAME>`` cards*
+
+    FITS headers cannot hold NaN or infinite floats, so a row with a non-finite value is left out.
+
+    **Key Arguments:**
+
+    - ``header`` -- the astropy FITS header to update in place
+    - ``qc`` -- the QC table, with ``qc_name``, ``qc_value``, ``qc_comment`` and ``to_header`` columns
+
+    **Return:**
+
+    - ``header`` -- the updated header
+    """
+    import numpy as np
+
+    for n, v, c, h in zip(
+        qc["qc_name"].values,
+        qc["qc_value"].values,
+        qc["qc_comment"].values,
+        qc["to_header"].values,
+        strict=True,
+    ):
+        isMissing = isinstance(v, (float, np.floating)) and not np.isfinite(v)
+        if h and not isMissing:
+            header[f"ESO QC {n}".upper()] = (v, c)
+    return header
+
+
 def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
     """
     *Write a fits table to disk with a header that is ESO Phase 3 compliant*
@@ -121,21 +150,12 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
     ```
     """
     log.debug("starting the ``write_fits_table_to_disk`` method")
-    import numpy as np
     from astropy.io import fits
     from astropy.table import Table
 
     if qc is not None:
         # ADD QC METRICS TO HEADER
-        for n, v, c, h in zip(
-            qc["qc_name"].values,
-            qc["qc_value"].values,
-            qc["qc_comment"].values,
-            qc["to_header"].values,
-        ):
-            isMissing = isinstance(v, (float, np.floating)) and np.isnan(v)
-            if h and not isMissing:
-                header[f"ESO QC {n}".upper()] = (v, c)
+        add_qc_to_header(header, qc)
 
     # CONVERT TO FITS BINARY TABLE HDU
     tableExensions = []
