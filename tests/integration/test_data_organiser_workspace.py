@@ -8,9 +8,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from astropy.io import fits
+from astropy.time import Time
 
 import soxspipe.commonutils
-from soxspipe.commonutils import data_organiser, keyword_lookup
+from soxspipe.commonutils import data_organiser, keyword_lookup, toolkit
 from soxspipe.commonutils.data_organiser import (
     _harvest_fits_headers,
     _UnsafePathError,
@@ -81,6 +83,36 @@ def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(tmp_p
     assert harvested.loc[0, "rospeed"] == 2
     assert harvested.loc[0, "filepath"] == "--"
     assert "missing DPR keywords" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("observationTime", "expectedNightDate"),
+    [
+        ("2024-01-02T14:59:59", "2024-01-01"),
+        ("2024-01-02T15:00:01", "2024-01-02"),
+    ],
+)
+def test_header_harvest_and_toolkit_share_the_night_boundary(tmp_path, log, observationTime, expectedNightDate) -> None:
+    """Both night-date routes apply the shared 15:00 UTC boundary."""
+    framePath = harvestable_raw_fits(tmp_path / "boundary.fits")
+    observation = Time(observationTime, scale="utc")
+    with fits.open(framePath, mode="update") as hdus:
+        hdus[0].header["MJD-OBS"] = observation.mjd
+    kw, keywords = _organiser_header_keywords(log)
+
+    harvested = _harvest_fits_headers(
+        batch=[str(framePath)],
+        log=log,
+        pathToDirectory=str(tmp_path),
+        keywords=keywords,
+        filterKeys=["mjd-obs", "eso dpr catg", "eso dpr tech", "eso dpr type", "exptime"],
+        instrument="SOXS",
+        kw=kw,
+    )
+
+    toolkitNightDate = toolkit.start_night_date(observation)
+    assert toolkitNightDate == expectedNightDate
+    assert harvested.loc[0, "night start date"] == toolkitNightDate
 
 
 def test_directory_table_returns_empty_contract_when_no_fits_exist(tmp_path, log) -> None:
