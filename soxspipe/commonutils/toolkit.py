@@ -542,8 +542,8 @@ def _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax):
     # ax.set_zticks([])
 
     X, Y = np.meshgrid(
-        np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]),
-        np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]),
+        np.arange(rotatedImg.shape[1]),
+        np.arange(rotatedImg.shape[0]),
     )
     ax.plot_surface(
         X=X,

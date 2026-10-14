@@ -30,6 +30,10 @@ from soxspipe.commonutils.toolkit import OMITTED
 
 os.environ["TERM"] = "vt100"
 
+# DARK AND FRAME EXPOSURE TIMES CLOSER THAN THIS (IN SECONDS) COUNT AS EQUAL. IT ONLY
+# ABSORBS FLOAT NOISE IN THE HEADER VALUES; ANY REAL DIFFERENCE IS A MISMATCH.
+EXPTIME_MATCH_TOLERANCE_SECONDS = 1e-3
+
 
 # THE FORMER `imstats` CLOSURE INSIDE `qc_ron`. A MODULE-LEVEL FUNCTION RATHER
 # THAN A METHOD, SO THAT THE READ-OUT-NOISE CALCULATION STAYS AS UNOVERRIDEABLE
@@ -1770,7 +1774,11 @@ class base_recipe:
         return combined_frame
 
     def _subtract_dark_frame(self, processedFrame, dark, inputFrame):
-        """*subtract a dark frame, scaling it first when its exposure time does not match*
+        """*subtract a dark frame, scaling an X-Shooter dark first when its exposure time does not match*
+
+        SOXS darks are never scaled by exposure time, because the SOXS NIR dark level does not
+        change with exposure time. Darks of every other instrument (X-Shooter) are scaled whenever the two
+        exposure times differ.
 
         **Key Arguments:**
 
@@ -1794,11 +1802,12 @@ class base_recipe:
 
         kw = self.kw
 
-        # DARK WITH MATCHING EXPOSURE TIME
-        tolerence = 0.5
-        if (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (
-            int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence
-        ):
+        # SOXS DARKS ARE NEVER SCALED BY EXPOSURE TIME: THE NIR DARK LEVEL IS FLAT ACROSS
+        # EXPOSURE TIMES (DY-1263 RULING). X-SHOOTER DARKS ARE SCALED WHENEVER THE TIMES DIFFER.
+        darkExptime = float(dark.header[kw("EXPTIME")])
+        frameExptime = float(processedFrame.header[kw("EXPTIME")])
+        exptimesMatch = abs(darkExptime - frameExptime) <= EXPTIME_MATCH_TOLERANCE_SECONDS
+        if self.inst == "SOXS" or exptimesMatch:
             return ccdproc.subtract_dark(
                 processedFrame,
                 dark,
@@ -1806,16 +1815,6 @@ class base_recipe:
                 exposure_unit=u.second,
                 add_keyword=None,
             )
-
-        # THE `and False` DISABLES THIS BRANCH DELIBERATELY. REMOVING IT IS A
-        # BEHAVIOUR CHANGE, NOT A LINT FIX, SO IT IS DY-88'S TO DECIDE.
-        if self.inst == "SOXS" and False:  # noqa: SIM223
-            if not self.darkDetrendWarningIssued2:
-                self.log.warning(
-                    "Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."  # noqa: E501
-                )
-                self.darkDetrendWarningIssued2 = True
-            return processedFrame
 
         if not self.darkDetrendWarningIssued2:
             self.log.warning(

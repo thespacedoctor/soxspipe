@@ -15,6 +15,8 @@ from tests.factories import instrument_header, product_table
 
 pytestmark = pytest.mark.unit
 
+XSH_INSTRUMENT = "XSHOOTER"
+
 
 def _frame(value: float, exposure: float = 10.0) -> CCDData:
     """Return a uniform, prepared calibration frame."""
@@ -81,10 +83,11 @@ def test_detrend_applies_bias_matching_dark_and_flat_in_order(log: Any) -> None:
 
 
 def test_detrend_scales_a_different_exposure_dark_once(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A different-exposure dark is scaled and emits its warning only once."""
+    """An X-Shooter different-exposure dark is scaled and emits its warning only once."""
     import soxspipe.commonutils.toolkit as toolkit
 
     recipe = _recipe(log)
+    recipe.inst = XSH_INSTRUMENT
     quicklookCalls: list[dict[str, object]] = []
     monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: quicklookCalls.append(kwargs))
     dark = _frame(2.0, exposure=5.0)
@@ -97,6 +100,79 @@ def test_detrend_scales_a_different_exposure_dark_once(log: Any, monkeypatch: py
     assert len(quicklookCalls) == 2
     assert quicklookCalls[0]["CCDObject"] is dark
     assert quicklookCalls[1]["CCDObject"] is calibrated
+
+
+def _spy_on_subtract_dark(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Record the keyword arguments of every real ``ccdproc.subtract_dark`` call."""
+    import ccdproc
+
+    realSubtractDark = ccdproc.subtract_dark
+    calls: list[dict[str, object]] = []
+
+    def spy(*args: object, **kwargs: object) -> CCDData:
+        calls.append(kwargs)
+        return realSubtractDark(*args, **kwargs)
+
+    monkeypatch.setattr(ccdproc, "subtract_dark", spy)
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("instrument", "darkExposure", "frameExposure", "expectedScale", "expectedValue"),
+    [
+        # SOXS NEVER SCALES, WHETHER OR NOT THE EXPOSURE TIMES MATCH (DY-1263 RULING)
+        pytest.param("SOXS", 0.4, 0.9, False, 18.0, id="soxs-sub-second-mismatch-unscaled"),
+        pytest.param("SOXS", 2.0, 5.0, False, 18.0, id="soxs-whole-second-mismatch-unscaled"),
+        pytest.param("SOXS", 5.0, 5.0, False, 18.0, id="soxs-equal-unscaled"),
+        # X-SHOOTER SCALES WHENEVER THE EXPOSURE TIMES DIFFER: 20 - 2 * 0.9 / 0.4 = 15.5
+        pytest.param(XSH_INSTRUMENT, 0.4, 0.9, True, 15.5, id="xsh-sub-second-mismatch-scaled"),
+        pytest.param(XSH_INSTRUMENT, 5.0, 5.0, False, 18.0, id="xsh-equal-unscaled"),
+        # JUST OVER THE HEADER-NOISE TOLERANCE IS A REAL MISMATCH: 20 - 2 * 5.0 / 5.01
+        pytest.param(XSH_INSTRUMENT, 5.01, 5.0, True, 20.0 - 2.0 * 5.0 / 5.01, id="xsh-just-over-tolerance-scaled"),
+    ],
+)
+def test_subtract_dark_frame_scales_only_differing_xshooter_exposures(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    instrument: str,
+    darkExposure: float,
+    frameExposure: float,
+    expectedScale: bool,
+    expectedValue: float,
+) -> None:
+    """SOXS darks are never scaled; X-Shooter darks are scaled only when the exposure times differ."""
+    import soxspipe.commonutils.toolkit as toolkit
+
+    recipe = _recipe(log)
+    recipe.inst = instrument
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: None)
+    calls = _spy_on_subtract_dark(monkeypatch)
+    frame = _frame(20.0, exposure=frameExposure)
+
+    subtracted = recipe._subtract_dark_frame(frame, _frame(2.0, exposure=darkExposure), frame)
+
+    assert len(calls) == 1
+    assert calls[0].get("scale", False) is expectedScale
+    np.testing.assert_allclose(subtracted.data, np.full((4, 4), expectedValue))
+
+
+def test_subtract_dark_frame_treats_header_noise_as_equal_xshooter_exposures(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """X-Shooter exposure times that differ only by float header noise are not scaled."""
+    import soxspipe.commonutils.toolkit as toolkit
+
+    recipe = _recipe(log)
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: None)
+    recipe.inst = XSH_INSTRUMENT
+    calls = _spy_on_subtract_dark(monkeypatch)
+    frame = _frame(20.0, exposure=5.0)
+
+    recipe._subtract_dark_frame(frame, _frame(2.0, exposure=5.0 + 1e-6), frame)
+
+    assert len(calls) == 1
+    assert calls[0].get("scale", False) is False
 
 
 def test_detrend_delegates_background_subtraction_when_enabled(

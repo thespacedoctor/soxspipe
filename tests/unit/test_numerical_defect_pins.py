@@ -514,11 +514,6 @@ def test_cut_image_slice_reports_the_centre_of_the_collapsed_rows(log: object) -
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1258 (DY-35 C5): qc_bias_structure fits against a pixel axis ending at N, not N-1",
-)
 def test_bias_structure_slopes_use_a_zero_to_n_minus_one_pixel_axis() -> None:
     # ARRANGE: A SMALL FRAME MAKES THE AXIS ERROR LARGE; THE RAMP SLOPES ARE KNOWN EXACTLY
     captured: dict[str, float] = {}
