@@ -311,7 +311,6 @@ class soxs_mbias(base_recipe):
             turnOffMP=turnOffMP,
         )
         log.debug("instantiating a new 'soxs_mbias' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
 

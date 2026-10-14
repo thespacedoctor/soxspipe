@@ -99,9 +99,12 @@ class base_recipe:
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
+        # Merge before any constructor work reads settings.  Keep the merge
+        # non-mutating so callers can safely reuse their input dictionary.
+        settings = {**self._advanced_settings(), **settings}
         self.settings = settings
         self.debug = debug
-        self.workspaceRootPath = self._absolute_path(settings["workspace-root-dir"])
+        self.workspaceRootPath = self._absolute_path(self.settings["workspace-root-dir"])
         self.turnOffMP = turnOffMP
 
         if self.debug:
@@ -160,9 +163,6 @@ class base_recipe:
         if not self.turnOffMP:
             self._open_session_database(home)
 
-        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
-        self.settings = {**self._advanced_settings(), **self.settings}
-
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc, self.products = self._empty_qc_and_product_tables(pd)
 
@@ -174,7 +174,7 @@ class base_recipe:
 
         self.qcDir, self.productDir = utility_setup(
             log=self.log,
-            settings=settings,
+            settings=self.settings,
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
         )

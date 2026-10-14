@@ -78,7 +78,6 @@ class soxs_order_centres(base_recipe):
         )
         self.log = log
         log.debug("instantiating a new 'soxs_order_centres' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.polyOrders = polyOrders

@@ -87,7 +87,6 @@ class soxs_nod(base_recipe):
         )
         self.log = log
         log.debug("instansiating a new 'soxs_nod' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
 
