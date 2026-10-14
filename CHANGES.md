@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: SOXS darks are now always subtracted unscaled, and X-Shooter darks are scaled whenever their exposure time differs from the frame's, where both used to compare whole seconds only (0.4 s and 0.9 s matched). SOXS NIR output changes where the matched dark's whole-second exposure time differs (DY-1263).
 * **FIXED**: the `STRUCTX` and `STRUCTY` master-bias QCs are now fitted against a 0 to N-1 pixel axis; the old axis skipped N-1 and ended at N, so the slopes change, most on small frames (DY-1258).
 * **DOCS**: the `soxs_stare`, `soxs_stare_std`, `soxs_nod`, `soxs_nod_std` and `soxs_offset` QC tables now list the `N ORDERS SLIT EDGE` QC; only a flux-standard stare reduction that builds a response curve fails on a spill (DY-1507).
 * **DOCS**: the recipe and user-manual recipe pages now give each figure and table its own label (QC figures use `<recipe>_qc_fig`), and the `soxs_nod_std` and `soxs_stare_std` QC-metric links now point to their own tables (DY-1508).
