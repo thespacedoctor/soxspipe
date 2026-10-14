@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: the `STRUCTX` and `STRUCTY` master-bias QCs are now fitted against a 0 to N-1 pixel axis, where the last point was N; the slopes change slightly, most on small frames (DY-1258).
 * **ENHANCEMENT**: the slit drift QC plot (`SLIT_DRIFT_QC_PLOT`) legend now also gives the science minus multi-pinhole observation time and `ABSROT` difference, assuming 0 deg when the multi-pinhole frame has no `ABSROT`; `read_rotator_angle` moves to `slit_illumination_qc` (DY-1531).
 * **FIXED**: the stare sky model no longer carries the wing light of bright objects: each order is refitted without a model of the wings (settings `object_wing_correction`, `object_wing_gate_fraction`). Sky-subtracted output and bright-object fluxes change (DY-1279).
 * **FEATURE**: `soxs_stare` and `soxs_stare_std` measure the along-slit offset of the sky image from the master flat for each order, mask the slit ends not lit in both from the sky model (or flag them when sky subtraction is off), and add the `SLIT ILLUM OFFSET O<N>`, `SLIT ILLUM APPLIED` and `SLIT ILLUM N ORDERS` QCs, the `SLIT_ILLUMINATION_QC_PLOT` product and an `ABSROT` spread warning; set by the new `slit-illumination` settings block (on for SOXS, off for X-Shooter), and sky-subtracted output changes (DY-1280).
