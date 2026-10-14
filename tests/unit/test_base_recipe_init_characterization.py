@@ -314,6 +314,65 @@ def test_user_settings_override_the_packaged_advanced_settings(
     assert len(recipe.settings) > len(_settings(tmp_path)) + 1
 
 
+def test_merged_settings_are_used_throughout_initialisation_without_mutating_the_caller(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Constructor collaborators receive the merged copy, including user overrides."""
+    # ARRANGE
+    class IsolatedOrganiser:
+        def __init__(self, **_: object) -> None:
+            return None
+
+        def session_list(self, *, silent: bool) -> tuple[bool, list[str]]:
+            return False, []
+
+        def close(self) -> None:
+            return None
+
+    received: dict[str, dict[str, Any]] = {}
+
+    def record_settings(name: str):
+        def recorder(*_: object, settings: dict[str, Any], **__: object):
+            received[name] = settings
+            if name == "night":
+                return "2024-01-02", "VIS"
+            if name == "calibrations":
+                return "calibrations"
+            return str(tmp_path / "qc"), str(tmp_path / "products")
+
+        return recorder
+
+    monkeypatch.setattr(commonutils, "data_organiser", IsolatedOrganiser)
+    monkeypatch.setattr(base_recipe, "_advanced_settings", lambda _: {"advanced-only": 1, "shared": "advanced"})
+    monkeypatch.setattr(toolkit, "start_night_date_from_frames", record_settings("night"))
+    monkeypatch.setattr(toolkit, "get_calibrations_path", record_settings("calibrations"))
+    monkeypatch.setattr(toolkit, "utility_setup", record_settings("utility"))
+    callerSettings = _settings(tmp_path, shared="user")
+    originalSettings = callerSettings.copy()
+
+    # ACT
+    recipe = base_recipe(
+        log=log,
+        settings=callerSettings,
+        inputFrames=[],
+        recipeName="soxs-mbias",
+        turnOffMP=True,
+    )
+
+    # ASSERT
+    assert recipe.settings["advanced-only"] == 1
+    assert recipe.settings["shared"] == "user"
+    assert callerSettings == originalSettings
+    assert recipe.settings is not callerSettings
+    assert received == {
+        "night": recipe.settings,
+        "calibrations": recipe.settings,
+        "utility": recipe.settings,
+    }
+
+
 def test_the_constructor_assigns_the_empty_qc_and_product_tables(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,

@@ -126,7 +126,6 @@ class soxs_mflat(base_recipe):
         )
         self.log = log
         log.debug("instantiating a new 'soxs_mflat' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
 

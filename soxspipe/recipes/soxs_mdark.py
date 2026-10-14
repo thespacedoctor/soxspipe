@@ -76,7 +76,6 @@ class soxs_mdark(base_recipe):
         )
         self.log = log
         log.debug("instantiating a new 'soxs_mdark' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
         # xt-self-arg-tmpx

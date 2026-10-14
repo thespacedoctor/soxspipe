@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 from astropy.io import fits
 from astropy.time import Time
 
@@ -42,13 +41,15 @@ class _IsolatedOrganiser:
 
 
 def _settings(workspace: Path) -> dict[str, Any]:
-    """Return the packaged advanced and SOXS default settings rooted in a temporary workspace."""
+    """Return the SOXS default settings rooted in a temporary workspace."""
     import soxspipe
 
     packageDirectory = Path(soxspipe.__file__).parent
-    settings: dict[str, Any] = {}
-    for fileName in ("advanced_settings.yaml", "soxs_default_settings.yaml"):
-        settings.update(yaml.safe_load((packageDirectory / fileName).read_text(encoding="utf-8")))
+    import yaml
+
+    settings: dict[str, Any] = yaml.safe_load(
+        (packageDirectory / "soxs_default_settings.yaml").read_text(encoding="utf-8")
+    )
     return {**settings, "workspace-root-dir": str(workspace)}
 
 
