@@ -23,7 +23,7 @@ from astropy.stats import sigma_clip, sigma_clipped_stats
 
 from soxspipe.commonutils import toolkit
 from tests.factories import product_table
-from tests.unit._plot_spies import spy_figures
+from tests.unit._plot_spies import probe_on_savefig, spy_figures
 
 pytestmark = pytest.mark.unit
 
@@ -409,3 +409,44 @@ def test_plot_merged_spectrum_qc_filename_suffix_reflects_nodding_sequence(
     _, outputPath = _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, noddingSequence=noddingSequence)
 
     assert outputPath == str(tmp_path / f"synthetic_EXTRACTED_MERGED_QC_PLOT{expectedSuffix}.pdf")
+
+
+@pytest.mark.parametrize("fluxCalibrated", [False, True])
+def test_plot_merged_spectrum_qc_prints_extraction_notes_under_the_figure(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, fluxCalibrated: bool
+) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: [text.get_text() for text in figure.texts])
+    _stub_skylines(monkeypatch)
+    merged = _synthetic_merged_orders()
+    notes = ["[A1] WARNING: Order skipped: 12", "[B1] ERROR: spill"]
+
+    _call_plot_merged_spectrum_qc(
+        monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated, extractionNotes=notes
+    )
+
+    assert probes == [notes]
+
+
+def test_plot_merged_spectrum_qc_with_notes_keeps_the_four_axes(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    figures = spy_figures(monkeypatch)
+    _stub_skylines(monkeypatch)
+
+    _call_plot_merged_spectrum_qc(
+        monkeypatch, tmp_path, log, _synthetic_merged_orders(), extractionNotes=["WARNING: note"]
+    )
+
+    assert len(figures[-1].axes) == 4
+
+
+@pytest.mark.parametrize("notes", [None, []])
+def test_plot_merged_spectrum_qc_without_notes_draws_no_figure_text(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, notes: object
+) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: list(figure.texts))
+    _stub_skylines(monkeypatch)
+
+    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, _synthetic_merged_orders(), extractionNotes=notes)
+
+    assert probes == [[]]

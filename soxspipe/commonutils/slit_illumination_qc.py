@@ -11,7 +11,7 @@ import numpy as np
 from soxspipe.commonutils.slit_illumination import top_hat
 from soxspipe.commonutils.slit_illumination_mask import kept_slit_range, usable_flat_edges, usable_offsets
 
-__all__ = ["plot_slit_illumination_qc", "rotator_angle_spread"]
+__all__ = ["plot_slit_illumination_qc", "read_rotator_angle", "rotator_angle_spread"]
 
 PANEL_COLUMNS = 3
 PANEL_SIZE_INCHES = (5.5, 3.2)
@@ -22,6 +22,36 @@ CURVE_SAMPLES = 400
 CURVE_PADDING_ARCSEC = 2.0
 KEPT_RANGE_ALPHA = 0.15
 FULL_TURN_DEGREES = 360.0
+
+
+def read_rotator_angle(header, key):
+    """*the rotator angle in degrees from a header, or None if the keyword is missing or not a finite number*
+
+    **Key Arguments:**
+
+    - ``header`` -- the FITS header to read
+    - ``key`` -- the rotator-angle keyword
+
+    **Return:**
+
+    - ``angle`` -- the angle in degrees, or *None* if the keyword is missing, boolean or not a finite number
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
+    angle = read_rotator_angle(header, "ESO ADA ABSROT END")
+    ```
+    """
+    try:
+        value = header[key]
+        # A BOOLEAN IS NOT AN ANGLE, EVEN THOUGH float() ACCEPTS IT
+        if isinstance(value, bool | np.bool_):
+            return None
+        angle = float(value)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    return angle if math.isfinite(angle) else None
 
 
 def rotator_angle_spread(angles):

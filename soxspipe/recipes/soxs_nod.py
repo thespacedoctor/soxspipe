@@ -57,6 +57,10 @@ class soxs_nod(base_recipe):
     ```
     """
 
+    # EXTRACTION WARNINGS AND ERRORS FOR THE MERGED QC PLOTS.
+    # AN IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) WHEN NOTES ARE ADDED
+    extractionNotes = ()
+
     def __init__(
         self,
         log,
@@ -804,6 +808,7 @@ class soxs_nod(base_recipe):
             fluxCalibrated=False,
             qcTable=self.qc,
             settings=self.settings,
+            extractionNotes=list(self.extractionNotes),
         )
 
         if filePath_fluxcal:
@@ -831,6 +836,7 @@ class soxs_nod(base_recipe):
                 fluxCalibrated=True,
                 qcTable=self.qc,
                 settings=self.settings,
+                extractionNotes=list(self.extractionNotes),
             )
 
         return
@@ -1173,6 +1179,7 @@ class soxs_nod(base_recipe):
         )
 
         self.qc, theseProducts, mergedSpectrumDF_A, orderJoins, extractionFITSPathA = optimalExtractor.extract()
+        self._collect_extraction_notes(optimalExtractor, notFlattened)
 
         # EXTRACT THE B MINUS A FRAME
         if "nod" in self.recipeName:
@@ -1202,10 +1209,38 @@ class soxs_nod(base_recipe):
                 orderJoins,
                 extractionFITSPathB,
             ) = optimalExtractor.extract()
+            self._collect_extraction_notes(optimalExtractor, notFlattened)
         else:
             mergedSpectrumDF_B = False
 
         return mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins, theseProducts
+
+    def _collect_extraction_notes(self, extractor, notFlattened):
+        """*add an extractor's warnings and errors to the notes printed on the merged QC plots*
+
+        The notes are tagged with the extractor's nodding sequence (e.g. ``A1``) and de-duplicated in first-seen
+        order. The ``_NOTFLAT`` re-extraction is skipped: its spectrum feeds the response curve and is never
+        plotted on the merged QC plots, and its own per-order plot already carries its notes.
+
+        Sets ``self.extractionNotes``.
+
+        **Key Arguments:**
+
+        - ``extractor`` -- the extractor that has just run
+        - ``notFlattened`` -- if True, the extraction was performed on non-flattened data and nothing is collected
+        """
+        from soxspipe.commonutils.extraction_notes import format_extraction_notes
+
+        if notFlattened:
+            return
+
+        tag = extractor.noddingSequence.removeprefix("_")
+        newNotes = [
+            note
+            for note in format_extraction_notes(extractor.extractionNotes, tag=tag)
+            if note not in self.extractionNotes
+        ]
+        self.extractionNotes = (*self.extractionNotes, *newNotes)
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
         """*merge individual AB cycles into a master extraction*

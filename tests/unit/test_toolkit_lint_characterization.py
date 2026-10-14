@@ -74,57 +74,9 @@ def _spectroscopic_frame(*, shape: tuple[int, int] = (4, 4)) -> SimpleNamespace:
 
 
 # ---------------------------------------------------------------------------
-# 1. UP031 -- `"%0.*f" % (3, value)` IN `spectroscopic_image_quality_checks`
+# 1. UP031 -- THE `"%0.*f" % (3, value)` SITE IN `spectroscopic_image_quality_checks`
+#    WAS REMOVED BY DY-1259, WHICH STORES ROUNDED FLOATS INSTEAD OF STRINGS
 # ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("label", "value"),
-    [
-        ("python_float", 2.5),
-        ("np_float64", np.float64(2.5)),
-        ("np_float32", np.float32(2.5)),
-        ("negative", -3.14159),
-        ("large", 1e20),
-        ("round_half_up_2.0005", 2.0005),
-        ("round_half_up_2.0015", 2.0015),
-        ("nan", float("nan")),
-        ("inf", float("inf")),
-        ("neg_inf", float("-inf")),
-    ],
-)
-def test_percent_format_and_fstring_format_agree_for_ordinary_floats(label: str, value: object) -> None:
-    """`"%0.*f" % (3, value)` and `f"{value:.3f}"` are byte-for-byte identical
-    for every ordinary numeric input reachable from `np.ma.mean`/`np.ma.sum`
-    of a non-fully-masked frame -- both delegate to the same float formatter,
-    including the half-up rounding of `2.0005`/`2.0015` to `2.001`/`2.002`."""
-    # THE PERCENT FORM IS THE EXPRESSION UNDER TEST
-    percentForm = "%0.*f" % (3, value)  # noqa: UP031
-    fStringForm = f"{value:.3f}"
-
-    assert percentForm == fStringForm
-
-
-def test_percent_format_and_fstring_format_disagree_for_fully_masked_constant() -> None:
-    """The reason toolkit.py keeps its `%` form under `noqa: UP031`: the two candidate rewrites do *not* agree on
-    the one input this call site can actually receive from a fully-masked
-    frame (`np.ma.mean`/`np.ma.sum` return `np.ma.masked`, a `MaskedConstant`).
-    `"%0.*f" % (3, np.ma.masked)` silently coerces to NaN and renders `"nan"`
-    (with a `UserWarning`); `f"{np.ma.masked:.3f}"` renders `"--"` (with a
-    `FutureWarning`) and ignores the format spec entirely. A straight UP031
-    rewrite would silently change the QC string for the fully-masked-frame
-    edge case -- pinned here so the later commit can choose deliberately."""
-    maskedScalar = np.ma.masked
-
-    with pytest.warns(UserWarning, match="converting a masked element to nan"):
-        # THE PERCENT FORM IS THE EXPRESSION UNDER TEST
-        percentForm = "%0.*f" % (3, maskedScalar)  # noqa: UP031
-    with pytest.warns(FutureWarning, match="Format strings passed to MaskedConstant"):
-        fStringForm = f"{maskedScalar:.3f}"
-
-    assert percentForm == "nan"
-    assert fStringForm == "--"
-    assert percentForm != fStringForm
 
 
 @pytest.mark.parametrize(
@@ -134,30 +86,29 @@ def test_percent_format_and_fstring_format_disagree_for_fully_masked_constant() 
             "x",
             {"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]},
             (2, 0),
-            "8.200",
-            "41.000",
+            8.2,
+            41.0,
         ),
         (
             "y",
             {"ycoord_edgeup": [3, 4], "ycoord_edgelow": [1, 0], "xcoord": [1, 2]},
             (0, 2),
-            "8.800",
-            "44.000",
+            8.8,
+            44.0,
         ),
     ],
 )
-def test_spectroscopic_image_quality_checks_qc_value_matches_percent_format(
+def test_spectroscopic_image_quality_checks_qc_value_is_rounded_float(
     monkeypatch: pytest.MonkeyPatch,
     log: object,
     dispersionAxis: str,
     pixelColumns: dict[str, list[float]],
     badPixel: tuple[int, int],
-    expectedMean: str,
-    expectedSum: str,
+    expectedMean: float,
+    expectedSum: float,
 ) -> None:
-    """Restates the table pinned in `test_toolkit_characterization.py` as a
-    direct cross-check against the standalone `"%0.*f"` table above, so the
-    two live side by side and cannot silently drift apart."""
+    """Restates the table pinned in `test_toolkit_characterization.py`: the
+    inner-order mean and sum are stored as floats, not formatted strings."""
     _identity_keyword_lookup(monkeypatch)
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub(**{"dispersion-axis": dispersionAxis}))
     monkeypatch.setattr(toolkit, "unpack_order_table", _unpack_order_table_stub(pd.DataFrame(pixelColumns)))
@@ -169,16 +120,16 @@ def test_spectroscopic_image_quality_checks_qc_value_matches_percent_format(
     )
 
     assert result["qc_value"].tolist() == [expectedMean, expectedSum]
+    assert all(isinstance(value, float) for value in result["qc_value"])
 
 
-def test_spectroscopic_image_quality_checks_reports_nan_string_for_fully_masked_frame(
+def test_spectroscopic_image_quality_checks_reports_nan_float_for_fully_masked_frame(
     monkeypatch: pytest.MonkeyPatch, log: object
 ) -> None:
     """When no pixel is ever unmasked (an empty order-pixel table), the
     combined mask excludes every pixel, so `np.ma.mean`/`np.ma.sum` return
-    `np.ma.masked` and the QC value ends up as the literal string `"nan"`
-    (via the `UserWarning`-emitting coercion pinned above) -- not a crash,
-    not a `NaN` float, a `"nan"` string. Pinned as-is."""
+    `np.ma.masked`. The QC value is a NaN float -- not a crash, not the
+    string `"nan"` -- and no masked-element coercion warning is raised."""
     _identity_keyword_lookup(monkeypatch)
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub(**{"dispersion-axis": "x"}))
     emptyPixels = pd.DataFrame({"xcoord_edgeup": [], "xcoord_edgelow": [], "ycoord": []})
@@ -191,9 +142,9 @@ def test_spectroscopic_image_quality_checks_reports_nan_string_for_fully_masked_
             log, frame, "unused-order-table.fits", {}, "soxs-stare", pd.DataFrame()
         )
 
-    assert result["qc_value"].tolist() == ["nan", "nan"]
-    assert all(isinstance(value, str) for value in result["qc_value"])
-    assert any("converting a masked element to nan" in str(w.message) for w in caught)
+    assert all(isinstance(value, float) for value in result["qc_value"])
+    assert all(np.isnan(value) for value in result["qc_value"])
+    assert not any("converting a masked element to nan" in str(w.message) for w in caught)
 
 
 # ---------------------------------------------------------------------------
@@ -399,7 +350,7 @@ def test_spectroscopic_image_quality_checks_clamps_and_skips_out_of_range_rows_a
     )
 
     # ONLY ROW 1 OF THE 4X4 ARANGE(16) FRAME ([4, 5, 6, 7]) IS UNMASKED
-    assert result["qc_value"].tolist() == ["5.500", "22.000"]
+    assert result["qc_value"].tolist() == [5.5, 22.0]
 
 
 def test_spectroscopic_image_quality_checks_clamps_and_skips_out_of_range_rows_axis_y(
@@ -424,7 +375,7 @@ def test_spectroscopic_image_quality_checks_clamps_and_skips_out_of_range_rows_a
     )
 
     # ONLY COLUMN 1 OF THE 4X4 ARANGE(16) FRAME ([1, 5, 9, 13]) IS UNMASKED
-    assert result["qc_value"].tolist() == ["7.000", "28.000"]
+    assert result["qc_value"].tolist() == [7.0, 28.0]
 
 
 # ---------------------------------------------------------------------------

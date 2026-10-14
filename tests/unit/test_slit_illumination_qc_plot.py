@@ -18,6 +18,7 @@ from soxspipe.commonutils.slit_illumination import (
 )
 from soxspipe.commonutils.slit_illumination_qc import (
     plot_slit_illumination_qc,
+    read_rotator_angle,
     rotator_angle_spread,
 )
 
@@ -198,3 +199,22 @@ def test_closes_the_figure_when_drawing_fails(tmp_path, monkeypatch):
 )
 def test_rotator_angle_spread_is_the_smallest_arc_holding_every_angle(angles, expected):
     assert rotator_angle_spread(angles) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [
+        ({"ABSROT": 12.5}, 12.5),
+        ({"ABSROT": "-3.5"}, -3.5),
+        ({}, None),
+        ({"ABSROT": "junk"}, None),
+        ({"ABSROT": float("nan")}, None),
+        ({"ABSROT": float("inf")}, None),
+        ({"ABSROT": True}, None),
+        ({"ABSROT": np.bool_(False)}, None),
+        ({"ABSROT": 10**400}, None),
+    ],
+    ids=["number", "numeric-string", "missing", "unparseable", "nan", "inf", "bool", "numpy-bool", "overflow"],
+)
+def test_read_rotator_angle_gives_a_finite_float_or_none(header, expected):
+    assert read_rotator_angle(header, "ABSROT") == expected

@@ -51,11 +51,33 @@ def _fit_response_polynomial(
 
     The returned coefficients are always the fit to the returned points. If the iteration cap is reached while
     points are still being deleted, the polynomial is refitted on the surviving points and a warning is logged.
+    Samples with a non-finite wavelength or response (for example from zero extracted flux) are dropped before
+    fitting, with a warning; if no finite samples remain, ``_ResponseFitConvergenceError`` is raised.
     """
     import numpy as np
 
     fittedWavelength = np.asarray(wavelength).copy()
     fittedResponse = np.asarray(rawResponse).copy()
+
+    # A ZERO-FLUX SAMPLE GIVES AN INFINITE RAW RESPONSE: DROP IT BEFORE SMOOTHING SPREADS IT AND POLYFIT RETURNS NAN
+    isFinite = np.isfinite(fittedWavelength) & np.isfinite(fittedResponse)
+    nonFiniteCount = int(np.count_nonzero(~isFinite))
+    if nonFiniteCount > 0:
+        if not isFinite.any():
+            raise _ResponseFitConvergenceError(
+                ValueError(
+                    f"All {nonFiniteCount} raw response samples have a non-finite wavelength or response "
+                    "(for example from zero extracted flux), so there are no finite samples to fit."
+                )
+            )
+        if log is not None:
+            log.warning(
+                f"Dropped {nonFiniteCount} raw response samples with a non-finite wavelength or response "
+                "(for example from zero extracted flux) before fitting the response function."
+            )
+        fittedWavelength = fittedWavelength[isFinite]
+        fittedResponse = fittedResponse[isFinite]
+
     for lowerBound, upperBound in excludedRegions:
         excluded = np.where((fittedWavelength >= lowerBound) & (fittedWavelength <= upperBound))[0]
         fittedWavelength = np.delete(fittedWavelength, excluded)
@@ -692,6 +714,8 @@ class response_function:
         from astropy.io import fits
         from astropy.table import Table
 
+        from soxspipe.commonutils.phase3 import add_qc_to_header
+
         arm = self.arm
         kw = self.kw
 
@@ -717,14 +741,7 @@ class response_function:
         header[kw("PRO_CATG").upper()] = f"RESP_TAB_{arm}".upper()
 
         # WRITE QCs TO HEADERS
-        for n, v, c, h in zip(
-            self.qc["qc_name"].values,
-            self.qc["qc_value"].values,
-            self.qc["qc_comment"].values,
-            self.qc["to_header"].values,
-        ):
-            if h:
-                header[f"ESO QC {n}".upper()] = (v, c)
+        add_qc_to_header(header, self.qc)
 
         priHDU = fits.PrimaryHDU(header=header)
 

@@ -693,6 +693,7 @@ class soxs_offset(soxs_nod):
             fluxCalibrated=False,
             qcTable=self.qc,
             settings=self.settings,
+            extractionNotes=list(self.extractionNotes),
         )
 
         if filePath_fluxcal:
@@ -720,6 +721,7 @@ class soxs_offset(soxs_nod):
                 fluxCalibrated=True,
                 qcTable=self.qc,
                 settings=self.settings,
+                extractionNotes=list(self.extractionNotes),
             )
 
         return

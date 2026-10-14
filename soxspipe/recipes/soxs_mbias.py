@@ -631,8 +631,8 @@ class soxs_mbias(base_recipe):
         collaps_ax1 = np.nansum(combined_bias_mean, axis=0)
         collaps_ax2 = np.nansum(combined_bias_mean, axis=1)
 
-        x_axis = np.linspace(0, len(collaps_ax1), len(collaps_ax1), dtype=int)
-        y_axis = np.linspace(0, len(collaps_ax2), len(collaps_ax2), dtype=int)
+        x_axis = np.arange(len(collaps_ax1))
+        y_axis = np.arange(len(collaps_ax2))
 
         # FIT WITH A LINE AND COLLECT THE SLOPE
         coeff_ax1 = np.polyfit(x_axis, collaps_ax1, deg=1)

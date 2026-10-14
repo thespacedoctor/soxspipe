@@ -353,6 +353,37 @@ def test_write_stamps_flagged_qc_values_and_builds_the_product_path(
     assert written.data[0, 0] == pytest.approx(7.0)
 
 
+def test_write_skips_nan_qc_values_that_fits_headers_cannot_hold(
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """A NaN QC value is left out of the header instead of crashing the write (DY-1259)."""
+    # ARRANGE
+    recipe = _write_recipe(tmp_path, log)
+    recipe.qc = pd.concat(
+        [
+            qc_row(recipeName="soxs-mbias", name="RON", value=1.25, unit="electron", comment="[e-] read noise"),
+            qc_row(
+                recipeName="soxs-mbias",
+                name="INNER ORDER PIX MEAN",
+                value=float("nan"),
+                unit="electrons",
+                comment="[e-] Mean inner-order pixel value",
+            ),
+        ],
+        ignore_index=True,
+    )
+    frame = _frame(np.full((4, 4), 7.0))
+
+    # ACT
+    filepath = recipe._write(frame, str(tmp_path))
+
+    # ASSERT
+    written = CCDData.read(filepath, hdu_uncertainty="ERRS", hdu_mask="QUAL")
+    assert written.header["ESO QC RON"] == pytest.approx(1.25)
+    assert "ESO QC INNER ORDER PIX MEAN" not in written.header
+
+
 def test_write_can_save_a_named_non_product_frame_with_masked_pixels_set(
     tmp_path: Path,
     log: Any,

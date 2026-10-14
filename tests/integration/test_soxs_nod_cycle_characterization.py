@@ -82,6 +82,9 @@ def _patch_extraction_collaborators(
     joinSequence = joins or [{10: 1}]
 
     class RecordingExtractor:
+        noddingSequence = ""
+        extractionNotes: list = []
+
         def __init__(self, **kwargs: object) -> None:
             extractCalls.append(kwargs)
 
@@ -358,6 +361,9 @@ def test_save_single_frame_extractions_e712_comparison_controls_the_products_tab
     calls = {"count": 0}
 
     class SequencedExtractor:
+        noddingSequence = ""
+        extractionNotes: list = []
+
         def __init__(self, **kwargs: object) -> None:
             productsSeen.append(kwargs["productsTable"])
             calls["count"] += 1

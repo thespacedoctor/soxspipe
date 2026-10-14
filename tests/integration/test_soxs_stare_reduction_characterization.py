@@ -159,6 +159,7 @@ def _patch_stare(
     class FakeExtractor:
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
+        extractionNotes: list = []
 
         def __init__(self, **kwargs: object) -> None:
             captured["extractor"].append(kwargs)
@@ -657,7 +658,7 @@ def test_a_measured_offset_masks_the_sky_model_and_records_the_qcs_and_plot(
         detrended=detrended,
         skyResult=tuple(synthetic_ccd(seed=560 + n, prepared=True) for n in range(3)),
     )
-    _, slit, orderMap = _read_disp_map(mapPath, 1, 1)
+    _, slit, orderMap = _read_disp_map(mapPath, 1, 1, recipe.kw)
     expectedMask = overlap_exclude_mask(log, slit, orderMap, result.flatEdges, result.offsets, 0.3)
 
     # ACT
@@ -920,7 +921,7 @@ def test_with_no_sky_model_both_extraction_frames_carry_the_overlap_mask(
     result = _illumination_result()
     _stub_measurement(monkeypatch, result)
     captured = _patch_stare(recipe, monkeypatch, tmp_path, skyResult=(None, None, None))
-    _, slit, orderMap = _read_disp_map(mapPath, 1, 1)
+    _, slit, orderMap = _read_disp_map(mapPath, 1, 1, recipe.kw)
     excludeMask = overlap_exclude_mask(log, slit, orderMap, result.flatEdges, result.offsets, 0.3)
     stackBefore = synthetic_ccd(seed=510, prepared=True)
 

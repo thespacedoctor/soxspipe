@@ -12,8 +12,10 @@ Date Created
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from os.path import expanduser
+from typing import TYPE_CHECKING
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
@@ -22,6 +24,9 @@ from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
 )
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 os.environ["TERM"] = "vt100"
 
@@ -33,6 +38,21 @@ QC_RESIDUAL_ROW_HEIGHT_INCHES = 2.5
 QC_STRIP_ROW_HEIGHT_INCHES = 2.0
 # DROP THE LEGENDS BELOW THE TICK LABELS, BESIDE THE AXIS LABEL
 QC_LEGEND_OFFSET_POINTS = 14
+
+# EXTRACTION NOTES PRINTED UNDER A QC PLOT
+# THE MOST NOTES DRAWN ON A PLOT. THE REST ARE SUMMARISED AS A COUNT
+MAX_PLOT_NOTES = 20
+# CHARACTERS PER LINE BEFORE A LONG NOTE IS WRAPPED (MONOSPACE, NOTE_FONT_SIZE_POINTS, ON A 14 INCH WIDE FIGURE)
+NOTE_WRAP_WIDTH = 160
+NOTE_FONT_SIZE_POINTS = 7
+# LINE PITCH AS A MULTIPLE OF THE FONT SIZE
+NOTE_LINE_SPACING = 1.4
+# GAP IN POINTS BETWEEN THE FIGURE EDGE AND THE FIRST NOTE
+NOTE_TOP_GAP_POINTS = 6
+NOTE_LEFT_MARGIN = 0.01
+NOTE_ERROR_COLOUR = "#dc322f"
+NOTE_WARNING_COLOUR = "darkorange"
+NOTE_SUMMARY_COLOUR = "dimgrey"
 
 
 def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False, debug=False):
@@ -542,8 +562,8 @@ def _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax):
     # ax.set_zticks([])
 
     X, Y = np.meshgrid(
-        np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]),
-        np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]),
+        np.arange(rotatedImg.shape[1]),
+        np.arange(rotatedImg.shape[0]),
     )
     ax.plot_surface(
         X=X,
@@ -1079,9 +1099,9 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     utcnow = utcnow_string()
 
-    # A FULLY MASKED FRAME GIVES np.ma.masked, WHICH `%0.*f` FORMATS AS "nan" BUT `:.3f` FORMATS AS "--"
-    mean = "%0.*f" % (3, mean)  # noqa: UP031
-    flux = "%0.*f" % (3, flux)  # noqa: UP031
+    # A FULLY MASKED FRAME GIVES np.ma.masked; STORE IT AS NAN
+    mean = round(float(np.ma.filled(mean, np.nan)), 3)
+    flux = round(float(np.ma.filled(flux, np.nan)), 3)
 
     qcTable = pd.concat(
         [
@@ -1406,7 +1426,9 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
 
     binx, biny = _associated_frame_binning(associatedFrame, kw)
 
-    hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny)
+    # WITHOUT AN ASSOCIATED FRAME THE MAP IS KEPT AT ITS OWN BINNING
+    mapKw = kw if associatedFrame else None
+    hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny, kw=mapKw)
 
     mapDF = pd.DataFrame.from_dict(_disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame))
     if removeMaskedPixels:
@@ -1458,20 +1480,54 @@ def _associated_frame_binning(associatedFrame, kw):
     return 1, 1
 
 
-def _open_disp_map_hdus(twoDMapPath, binx, biny):
+def _map_reduction_factors(header, binx, biny, kw):
+    """*the block-reduce factors that take a 2D dispersion map from its own binning to the frame's binning*
+
+    **Key Arguments:**
+
+    - ``header`` -- the primary header of the 2D dispersion map
+    - ``binx`` -- the frame's binning in the x-axis
+    - ``biny`` -- the frame's binning in the y-axis
+    - ``kw`` -- fits keyword lookup dictionary, or *None* to treat the map as unbinned. A NIR map, or one with
+      no binning keywords, is also treated as unbinned
+
+    **Return:**
+
+    - ``factorX`` -- the frame's x-binning divided by the map's x-binning
+    - ``factorY`` -- the frame's y-binning divided by the map's y-binning
+    """
+    mapBinx, mapBiny = 1, 1
+    hasBinning = kw is not None and kw("WIN_BINX") in header and kw("WIN_BINY") in header
+    if hasBinning and header.get(kw("SEQ_ARM")) != "NIR":
+        mapBinx, mapBiny = int(header[kw("WIN_BINX")]), int(header[kw("WIN_BINY")])
+
+    if binx % mapBinx or biny % mapBiny:
+        raise ValueError(
+            f"the 2D dispersion map binning ({mapBinx}x{mapBiny}) cannot be block-reduced to the frame binning "
+            f"({binx}x{biny})"
+        )
+    return binx // mapBinx, biny // mapBiny
+
+
+def _open_disp_map_hdus(twoDMapPath, binx, biny, *, kw):
     """*open a 2D dispersion map and block-reduce its extensions to the frame's binning*
+
+    The map is reduced by the ratio of the frame's binning to the map's own binning, so a map already at the
+    frame's binning is left as it is.
 
     **Key Arguments:**
 
     - ``twoDMapPath`` -- 2D dispersion map image path
-    - ``binx`` -- binning in the x-axis
-    - ``biny`` -- binning in the y-axis
+    - ``binx`` -- the frame's binning in the x-axis
+    - ``biny`` -- the frame's binning in the y-axis
+    - ``kw`` -- fits keyword lookup dictionary, used to read the map's own binning, or *None* to keep the map at
+      its own binning by treating it as unbinned
 
     **Return:**
 
-    - ``hdul`` -- the open dispersion-map HDU list, block-reduced when the frame is binned
-    - ``minimumBinnedPixelValue`` -- the minimum unbinned wavelength within each binned pixel, or *None* when
-      the frame is unbinned
+    - ``hdul`` -- the open dispersion-map HDU list, block-reduced when the frame is more binned than the map
+    - ``minimumBinnedPixelValue`` -- the minimum map wavelength within each block-reduced pixel, or *None* when
+      the map was not block-reduced
     - ``binned`` -- was the map block-reduced?
     """
     import numpy as np
@@ -1484,17 +1540,19 @@ def _open_disp_map_hdus(twoDMapPath, binx, biny):
         hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
         hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
 
+        factorX, factorY = _map_reduction_factors(hdul[0].header, binx, biny, kw)
+
         binned = False
         minimumBinnedPixelValue = None
-        if binx > 1 or biny > 1:
+        if factorX > 1 or factorY > 1:
             binned = True
             from astropy.nddata import block_reduce
 
             minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
-            hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
-            hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
-            hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
-            minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
+            hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (factorY, factorX), func=np.mean)
+            hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (factorY, factorX), func=np.mean)
+            hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (factorY, factorX), func=np.mean)
+            minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (factorY, factorX), func=np.min)
             minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
     except BaseException:
         hdul.close()
@@ -2413,6 +2471,98 @@ def nodding_sequence_suffix(header, locationSetIndex: int | str | bool, recipeNa
     return noddingSequence
 
 
+def add_notes_below_figure(fig: "Figure", notes: Sequence[str] | None, maxNotes: int = MAX_PLOT_NOTES) -> None:
+    """*print notes in small type under a figure, one text per note, errors in red and warnings in orange*
+
+    The notes are ``fig.text`` artists placed just below the lowest axes, tick labels and axis labels included,
+    so no axes are added and a figure with no notes is left untouched. Saving with ``bbox_inches="tight"``
+    extends the page to include them.
+
+    **Key Arguments:**
+
+    - ``fig`` -- the figure to add the notes to
+    - ``notes`` -- the display strings to draw, e.g. from ``format_extraction_notes``.
+      Nothing is drawn if this is empty or *None*
+    - ``maxNotes`` -- the most notes to draw. The rest are summarised as a count on one last line.
+      Default *MAX_PLOT_NOTES*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import add_notes_below_figure
+    add_notes_below_figure(fig, ["WARNING: Order skipped: 12"])
+    ```
+    """
+    import textwrap
+
+    from matplotlib.transforms import offset_copy
+
+    if not notes:
+        return
+
+    shownNotes = [(note, _note_colour(note)) for note in notes[:maxNotes]]
+    hiddenCount = len(notes) - len(shownNotes)
+    if hiddenCount > 0:
+        shownNotes.append((f"… and {hiddenCount} more (see the recipe log)", NOTE_SUMMARY_COLOUR))
+
+    anchorY = _lowest_axes_bottom_in_figure_fraction(fig)
+    linePitch = NOTE_FONT_SIZE_POINTS * NOTE_LINE_SPACING
+    offsetPoints = NOTE_TOP_GAP_POINTS
+    for note, colour in shownNotes:
+        wrapped = textwrap.fill(note, width=NOTE_WRAP_WIDTH, subsequent_indent="    ")
+        fig.text(
+            NOTE_LEFT_MARGIN,
+            anchorY,
+            wrapped,
+            transform=offset_copy(fig.transFigure, fig=fig, y=-offsetPoints, units="points"),
+            va="top",
+            ha="left",
+            family="monospace",
+            fontsize=NOTE_FONT_SIZE_POINTS,
+            color=colour,
+        )
+        offsetPoints += linePitch * (wrapped.count("\n") + 1)
+
+
+def _lowest_axes_bottom_in_figure_fraction(fig: "Figure") -> float:
+    """*the bottom edge of the lowest visible axes, tick labels and axis labels included, as a figure fraction*
+
+    **Key Arguments:**
+
+    - ``fig`` -- the figure to measure. It is laid out without being rendered
+
+    **Return:**
+
+    - ``bottom`` -- the figure-fraction y of the lowest tight-bbox edge, or 0 if the figure has no visible axes
+    """
+    visibleAxes = [ax for ax in fig.axes if ax.get_visible()]
+    if not visibleAxes:
+        return 0.0
+
+    # NO RENDERER ARGUMENT: MATPLOTLIB PICKS THE FIGURE'S OWN, SO NON-AGG CANVASES (PDF, SVG, PS) WORK TOO
+    fig.draw_without_rendering()
+    lowestPixel = min(ax.get_tightbbox().y0 for ax in visibleAxes)
+    return float(lowestPixel / fig.bbox.height)
+
+
+def _note_colour(note: str) -> str:
+    """*the colour a note is drawn in: red for an error, orange otherwise*
+
+    **Key Arguments:**
+
+    - ``note`` -- the display string, with an optional ``[tag] `` prefix
+
+    **Return:**
+
+    - ``colour`` -- the matplotlib colour
+    """
+    import re
+
+    if re.match(r"^(\[[^\]]*\] )?ERROR: ", note):
+        return NOTE_ERROR_COLOUR
+    return NOTE_WARNING_COLOUR
+
+
 def plot_merged_spectrum_qc(
     merged_orders,
     products,
@@ -2428,6 +2578,7 @@ def plot_merged_spectrum_qc(
     fluxCalibrated=False,
     qcTable=False,
     settings=False,
+    extractionNotes=None,
 ):
     """*plot the order-merged spectrum QC plot, save it to the QC directory and record it in the products table*
 
@@ -2447,6 +2598,8 @@ def plot_merged_spectrum_qc(
     - ``fluxCalibrated`` -- is the spectrum flux calibrated? Default *False*
     - ``qcTable`` -- the QC table holding the SNR values to plot. Default *False*
     - ``settings`` -- the soxspipe settings dictionary, used to look up the skylines. Default *False*
+    - ``extractionNotes`` -- display strings (see ``format_extraction_notes``) to print under the plot.
+      Default *None* (no notes)
 
     **Return:**
 
@@ -2523,6 +2676,7 @@ def plot_merged_spectrum_qc(
     else:
         filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
     filePath = f"{qcDir}/{filename}"
+    add_notes_below_figure(fig, extractionNotes)
     if debug:
         plt.show()
     save_qc_plot(filePath)

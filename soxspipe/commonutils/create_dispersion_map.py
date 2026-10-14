@@ -2181,7 +2181,7 @@ class create_dispersion_map:
 
             for name, value, unit, comment, order in zip(qc_names, qc_values, qc_units, qc_comments, qc_order):
                 if unit != "lines":
-                    value = f"{value:0.5f}"
+                    value = round(float(value), 5)
                 self.qc = pd.concat(
                     [
                         self.qc,
