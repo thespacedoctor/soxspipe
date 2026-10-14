@@ -164,9 +164,9 @@ def test_dispersion_fit_of_a_table_with_dropped_lines_never_writes_into_a_slice(
         lambda **_: (np.array([0.0]), np.array([0.0])),
     )
     monkeypatch.setattr(
-        importlib.import_module("scipy.optimize"),
-        "curve_fit",
-        lambda _, xdata, ydata, p0, **__: (np.asarray(p0), np.eye(len(p0))),
+        importlib.import_module("soxspipe.commonutils.polynomials"),
+        "solve_linear_poly_coefficients",
+        lambda **kwargs: np.zeros(kwargs["nCoeff"]),
     )
 
     def residuals_in_place(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:

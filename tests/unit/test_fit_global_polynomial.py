@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.detect_continuum import LSTSQ_RCOND, detect_continuum
+from soxspipe.commonutils.detect_continuum import detect_continuum
+from soxspipe.commonutils.polynomials import LSTSQ_RCOND
 
 pytestmark = pytest.mark.unit
 

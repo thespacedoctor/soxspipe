@@ -382,17 +382,21 @@ def _synthetic_fitted_lines() -> pd.DataFrame:
     )
 
 
+@pytest.mark.parametrize("error", [ValueError, RuntimeError, TypeError, np.linalg.LinAlgError])
 def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
 ) -> None:
     """Report an x-axis fitting failure before residual processing begins."""
     mapper = _fitting_mapper(log)
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimiseModule = importlib.import_module("scipy.optimize")
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     monkeypatch.setattr(
-        optimiseModule, "curve_fit", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("fit failed"))
+        polynomialsModule,
+        "solve_linear_poly_coefficients",
+        lambda **kwargs: (_ for _ in ()).throw(error("fit failed")),
     )
 
     result = mapper.fit_polynomials(
@@ -405,24 +409,26 @@ def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     assert result == ("xerror", None, None, None)
 
 
+@pytest.mark.parametrize("error", [ValueError, RuntimeError, TypeError, np.linalg.LinAlgError])
 def test_fit_polynomials_returns_y_axis_error_after_a_successful_x_fit(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
 ) -> None:
     """Preserve the distinct y-fit failure result used by degree fallback."""
     mapper = _fitting_mapper(log)
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimiseModule = importlib.import_module("scipy.optimize")
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
-    fitResults = iter([([1.0], None), RuntimeError("y fit failed")])
+    fitResults = iter([[1.0], error("y fit failed")])
 
-    def fit(*args: object, **kwargs: object) -> tuple[list[float], None]:
+    def fit(**kwargs: object) -> list[float]:
         result = next(fitResults)
         if isinstance(result, Exception):
             raise result
         return result
 
-    monkeypatch.setattr(optimiseModule, "curve_fit", fit)
+    monkeypatch.setattr(polynomialsModule, "solve_linear_poly_coefficients", fit)
 
     result = mapper.fit_polynomials(
         _synthetic_fitted_lines(),
@@ -441,10 +447,10 @@ def test_fit_polynomials_retains_dropped_lines_and_runs_final_qc_fit(
     """Fit retained lines, retain dropped rows, and request final QC residuals."""
     mapper = _fitting_mapper(log)
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimiseModule = importlib.import_module("scipy.optimize")
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
-    fitResults = iter([([1.5], None), ([2.5], None)])
-    monkeypatch.setattr(optimiseModule, "curve_fit", lambda *args, **kwargs: next(fitResults))
+    fitResults = iter([[1.5], [2.5]])
+    monkeypatch.setattr(polynomialsModule, "solve_linear_poly_coefficients", lambda **kwargs: next(fitResults))
     qcCalls: list[bool] = []
 
     def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
@@ -1398,16 +1404,16 @@ def test_fit_polynomials_clips_outliers_and_retains_previously_dropped_lines(
         }
     )
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimizeModule = importlib.import_module("scipy.optimize")
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(
         commonutilsModule,
         "get_cached_coeffs",
         lambda **_: (np.array([0.0]), np.array([0.0])),
     )
     monkeypatch.setattr(
-        optimizeModule,
-        "curve_fit",
-        lambda _, xdata, ydata, p0, **__: (np.asarray(p0), np.eye(len(p0))),
+        polynomialsModule,
+        "solve_linear_poly_coefficients",
+        lambda **kwargs: np.zeros(kwargs["nCoeff"]),
     )
 
     def residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
@@ -1458,12 +1464,12 @@ def test_fit_polynomials_clips_an_entire_multi_pinhole_arc_line_set(
         }
     )
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimizeModule = importlib.import_module("scipy.optimize")
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     monkeypatch.setattr(
-        optimizeModule,
-        "curve_fit",
-        lambda _, xdata, ydata, p0, **__: (np.asarray(p0), np.eye(len(p0))),
+        polynomialsModule,
+        "solve_linear_poly_coefficients",
+        lambda **kwargs: np.zeros(kwargs["nCoeff"]),
     )
 
     def residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
