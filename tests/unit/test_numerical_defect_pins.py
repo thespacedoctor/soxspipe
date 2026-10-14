@@ -228,11 +228,6 @@ def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1255 (DY-35 A4): response fit returns all-NaN coefficients from a non-finite response, no error",
-)
 def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_response() -> None:
     # ARRANGE: A ZERO-FLUX SAMPLE GIVES AN INFINITE RAW RESPONSE; THE SMOOTHING SPREADS IT OVER ABOUT 41 SAMPLES
     wavelength = np.linspace(1000.0, 2000.0, 400)
