@@ -285,15 +285,15 @@ def _order_frame(*, badPixel: tuple[int, int], winBin: bool = True, arm: str = "
             "x",
             {"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]},
             (2, 0),
-            "8.200",
-            "41.000",
+            8.2,
+            41.0,
         ),
         (
             "y",
             {"ycoord_edgeup": [3, 4], "ycoord_edgelow": [1, 0], "xcoord": [1, 2]},
             (0, 2),
-            "8.800",
-            "44.000",
+            8.8,
+            44.0,
         ),
     ],
 )
@@ -304,8 +304,8 @@ def test_spectroscopic_image_quality_checks_pins_full_row_contract_per_dispersio
     dispersionAxis: str,
     pixelColumns: dict[str, list[float]],
     badPixel: tuple[int, int],
-    expectedMean: str,
-    expectedSum: str,
+    expectedMean: float,
+    expectedSum: float,
 ) -> None:
     _identity_keyword_lookup(monkeypatch)
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub(dispersionAxis))
@@ -329,10 +329,9 @@ def test_spectroscopic_image_quality_checks_pins_full_row_contract_per_dispersio
     assert result["soxspipe_recipe"].tolist() == ["soxs-stare", "soxs-stare"]
     assert result["qc_name"].tolist() == ["INNER ORDER PIX MEAN", "INNER ORDER PIX SUM"]
     assert result["qc_value"].tolist() == [expectedMean, expectedSum]
-    # BUG-LIKE: THESE ARE NUMERIC MEASUREMENTS BUT ARE RECORDED AS FORMATTED
-    # STRINGS (`"%0.*f" % (3, value)`), NOT FLOATS -- PINNED AS-IS
-    assert isinstance(result["qc_value"].iloc[0], str)
-    assert isinstance(result["qc_value"].iloc[1], str)
+    # DY-1259: THE MEASUREMENTS ARE STORED AS FLOATS ROUNDED TO 3 DECIMALS, NOT FORMATTED STRINGS
+    assert isinstance(result["qc_value"].iloc[0], float)
+    assert isinstance(result["qc_value"].iloc[1], float)
     assert result["qc_comment"].tolist() == [
         "[e-] Mean inner-order pixel value",
         "[e-] Sum of all inner-order pixel values",
@@ -359,7 +358,7 @@ def test_spectroscopic_image_quality_checks_falls_back_to_unbinned_pixels_for_ni
         log, frame, "unused-order-table.fits", {}, "soxs-stare", pd.DataFrame()
     )
 
-    assert result["qc_value"].tolist() == ["8.800", "44.000"]
+    assert result["qc_value"].tolist() == [8.8, 44.0]
 
 
 def _run_binning_check(

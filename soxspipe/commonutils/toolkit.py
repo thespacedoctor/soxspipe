@@ -1079,9 +1079,9 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     utcnow = utcnow_string()
 
-    # A FULLY MASKED FRAME GIVES np.ma.masked, WHICH `%0.*f` FORMATS AS "nan" BUT `:.3f` FORMATS AS "--"
-    mean = "%0.*f" % (3, mean)  # noqa: UP031
-    flux = "%0.*f" % (3, flux)  # noqa: UP031
+    # A FULLY MASKED FRAME GIVES np.ma.masked; STORE IT AS NAN
+    mean = round(float(np.ma.filled(mean, np.nan)), 3)
+    flux = round(float(np.ma.filled(flux, np.nan)), 3)
 
     qcTable = pd.concat(
         [

@@ -714,6 +714,8 @@ class response_function:
         from astropy.io import fits
         from astropy.table import Table
 
+        from soxspipe.commonutils.phase3 import add_qc_to_header
+
         arm = self.arm
         kw = self.kw
 
@@ -739,14 +741,7 @@ class response_function:
         header[kw("PRO_CATG").upper()] = f"RESP_TAB_{arm}".upper()
 
         # WRITE QCs TO HEADERS
-        for n, v, c, h in zip(
-            self.qc["qc_name"].values,
-            self.qc["qc_value"].values,
-            self.qc["qc_comment"].values,
-            self.qc["to_header"].values,
-        ):
-            if h:
-                header[f"ESO QC {n}".upper()] = (v, c)
+        add_qc_to_header(header, self.qc)
 
         priHDU = fits.PrimaryHDU(header=header)
 

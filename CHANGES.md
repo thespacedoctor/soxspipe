@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: the `INNER ORDER PIX MEAN`/`SUM` QCs and the 38 dispersion-solution residual, FWHM and R QCs now store numbers rounded to 3 and 5 decimals, not formatted strings, in the QC table, FITS headers and database; all three QC header writers now share `phase3.add_qc_to_header`, which leaves a NaN or infinite QC out of the header instead of crashing the write (DY-1259).
 * **FIXED**: Horne profile fitting now stops a slit row's clipping loop once a pass clips nothing, instead of always running to the cap, and `horne-extraction-profile-clipping-iteration-count` now gives that many passes, not one fewer. Rows that still clip at the cap get one more fitting pass, so extracted spectra can change by a very small amount (DY-1257).
 * **FIXED**: SOXS darks are now always subtracted unscaled, and X-Shooter darks are scaled whenever their exposure time differs from the frame's, where both used to compare whole seconds only (0.4 s and 0.9 s matched). SOXS NIR output changes where the matched dark's whole-second exposure time differs (DY-1263).
 * **FIXED**: the `STRUCTX` and `STRUCTY` master-bias QCs are now fitted against a 0 to N-1 pixel axis; the old axis skipped N-1 and ended at N, so the slopes change, most on small frames (DY-1258).

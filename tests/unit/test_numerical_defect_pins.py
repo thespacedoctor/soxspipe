@@ -532,11 +532,6 @@ def test_bias_structure_slopes_use_a_zero_to_n_minus_one_pixel_axis() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1259 (DY-35 C6): inner-order pixel QC values are stored as formatted strings, not numbers",
-)
 def test_inner_order_qc_values_are_numeric(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     # ARRANGE: THE SAME STUBS AS THE CHARACTERIZATION TEST THAT PINS THE STRING FORM
     _identity_keyword_lookup(monkeypatch)
@@ -555,11 +550,6 @@ def test_inner_order_qc_values_are_numeric(monkeypatch: pytest.MonkeyPatch, log:
     assert all(isinstance(value, Real) for value in result["qc_value"])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1259 (DY-35 C6): dispersion-solution residual QC values are stored as formatted strings, not numbers",
-)
 def test_dispersion_residual_qc_values_are_numeric(log: object) -> None:
     # ARRANGE: THE TWO-LINE TABLE USED BY THE EXISTING calculate_residuals TESTS
     mapper = _mapper(log)

@@ -1385,17 +1385,10 @@ class base_recipe:
         """
         self.log.debug("starting the ``write`` method")
 
-        from soxspipe.commonutils.phase3 import basic_header_scrubbing, sort_keywords
+        from soxspipe.commonutils.phase3 import add_qc_to_header, basic_header_scrubbing, sort_keywords
 
         # WRITE QCs TO HEADERS
-        for n, v, c, h in zip(
-            self.qc["qc_name"].values,
-            self.qc["qc_value"].values,
-            self.qc["qc_comment"].values,
-            self.qc["to_header"].values,
-        ):
-            if h:
-                frame.header[f"ESO QC {n}".upper()] = (v, c)
+        add_qc_to_header(frame.header, self.qc)
 
         if product:
             frame.header = basic_header_scrubbing(log=self.log, settings=self.settings, header=frame.header)

@@ -181,6 +181,36 @@ def test_plot_response_curve_writes_qc_pdf_and_product_row(
     ]
 
 
+def test_write_response_function_to_file_skips_nan_qc_values(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    """A NaN QC value from an upstream recipe is left out of the header instead of crashing the write (DY-1259)."""
+    # ARRANGE
+    response = object.__new__(response_function)
+    response.log = log
+    response.arm = "VIS"
+    response.kw = lambda key: key
+    response.sofName = "SYNTHETIC"
+    response.header = fits.Header({"OBJECT": "Synthetic standard"})
+    response.productDir = str(tmp_path)
+    response.qc = pd.concat(
+        [qc_table(), qc_table().assign(qc_name="INNER ORDER PIX MEAN", qc_value=float("nan"))],
+        ignore_index=True,
+    )
+    response.products = product_table().iloc[0:0]
+    response.recipeName = "soxs-response"
+    response.dateObs = "2024-01-02T03:04:05"
+
+    # ACT
+    filePath = response.write_response_function_to_file(responseFuncCoeffs=np.array([0.5, 2.0]), polyOrder=1)
+
+    # ASSERT
+    with fits.open(filePath, checksum=True) as hdul:
+        assert hdul[0].header["ESO QC RON"] == 3.2
+        assert "ESO QC INNER ORDER PIX MEAN" not in hdul[0].header
+
+
 def test_get_writes_response_when_optional_efficiency_is_unavailable(
     log: object,
 ) -> None:
