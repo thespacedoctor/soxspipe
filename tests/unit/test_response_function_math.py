@@ -210,6 +210,43 @@ def test_response_fit_marks_only_iterative_convergence_failures() -> None:
     assert isinstance(excInfo.value.originalError, TypeError)
 
 
+def test_response_fit_raises_when_no_finite_response_samples_remain() -> None:
+    # ARRANGE: EVERY SAMPLE HAD ZERO EXTRACTED FLUX, SO THE RAW RESPONSE IS INFINITE OR NAN THROUGHOUT
+    wavelengths = np.linspace(1000.0, 2000.0, 400)
+    rawResponse = np.full(400, np.inf)
+    rawResponse[::2] = np.nan
+
+    # ACT AND ASSERT
+    with pytest.raises(_ResponseFitConvergenceError, match="no finite samples"):
+        _fit_response_polynomial(wavelengths, rawResponse, polynomialOrder=3, maxIterations=5, smoothingSigma=5)
+
+
+@pytest.mark.parametrize(
+    ("badWavelength", "badResponse"),
+    [(1500.0, np.inf), (1500.0, np.nan), (np.nan, 2.0)],
+    ids=["infinite-response", "nan-response", "nan-wavelength"],
+)
+def test_response_fit_drops_non_finite_samples_and_warns(badWavelength: float, badResponse: float) -> None:
+    # ARRANGE: ONE NON-FINITE SAMPLE IN AN OTHERWISE FLAT RESPONSE
+    wavelengths = np.linspace(1000.0, 2000.0, 400)
+    rawResponse = np.full(400, 2.0)
+    wavelengths[200] = badWavelength
+    rawResponse[200] = badResponse
+    recordingLog = _RecordingLog()
+
+    # ACT
+    coefficients, fittedWavelengths, _ = _fit_response_polynomial(
+        wavelengths, rawResponse, polynomialOrder=0, maxIterations=5, smoothingSigma=5, log=recordingLog
+    )
+
+    # ASSERT: ONLY THE BAD SAMPLE IS DROPPED, AND THE FIT RECOVERS THE FLAT RESPONSE
+    assert len(fittedWavelengths) == 399
+    assert np.isfinite(fittedWavelengths).all()
+    np.testing.assert_allclose(coefficients, [2.0], rtol=1e-12)
+    assert len(recordingLog.warnings) == 1
+    assert "Dropped 1 raw response samples" in recordingLog.warnings[0]
+
+
 def test_response_get_rejects_an_unknown_standard_star(log: object) -> None:
     response = object.__new__(response_function)
     response.log = log
