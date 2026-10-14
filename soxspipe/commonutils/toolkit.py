@@ -12,8 +12,10 @@ Date Created
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from os.path import expanduser
+from typing import TYPE_CHECKING
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
@@ -22,6 +24,9 @@ from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
 )
+
+if TYPE_CHECKING:
+    from matplotlib.figure import Figure
 
 os.environ["TERM"] = "vt100"
 
@@ -33,6 +38,21 @@ QC_RESIDUAL_ROW_HEIGHT_INCHES = 2.5
 QC_STRIP_ROW_HEIGHT_INCHES = 2.0
 # DROP THE LEGENDS BELOW THE TICK LABELS, BESIDE THE AXIS LABEL
 QC_LEGEND_OFFSET_POINTS = 14
+
+# EXTRACTION NOTES PRINTED UNDER A QC PLOT
+# THE MOST NOTES DRAWN ON A PLOT. THE REST ARE SUMMARISED AS A COUNT
+MAX_PLOT_NOTES = 20
+# CHARACTERS PER LINE BEFORE A LONG NOTE IS WRAPPED (MONOSPACE, NOTE_FONT_SIZE_POINTS, ON A 14 INCH WIDE FIGURE)
+NOTE_WRAP_WIDTH = 160
+NOTE_FONT_SIZE_POINTS = 7
+# LINE PITCH AS A MULTIPLE OF THE FONT SIZE
+NOTE_LINE_SPACING = 1.4
+# GAP IN POINTS BETWEEN THE FIGURE EDGE AND THE FIRST NOTE
+NOTE_TOP_GAP_POINTS = 6
+NOTE_LEFT_MARGIN = 0.01
+NOTE_ERROR_COLOUR = "#dc322f"
+NOTE_WARNING_COLOUR = "darkorange"
+NOTE_SUMMARY_COLOUR = "dimgrey"
 
 
 def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False, debug=False):
@@ -2451,6 +2471,98 @@ def nodding_sequence_suffix(header, locationSetIndex: int | str | bool, recipeNa
     return noddingSequence
 
 
+def add_notes_below_figure(fig: "Figure", notes: Sequence[str] | None, maxNotes: int = MAX_PLOT_NOTES) -> None:
+    """*print notes in small type under a figure, one text per note, errors in red and warnings in orange*
+
+    The notes are ``fig.text`` artists placed just below the lowest axes, tick labels and axis labels included,
+    so no axes are added and a figure with no notes is left untouched. Saving with ``bbox_inches="tight"``
+    extends the page to include them.
+
+    **Key Arguments:**
+
+    - ``fig`` -- the figure to add the notes to
+    - ``notes`` -- the display strings to draw, e.g. from ``format_extraction_notes``.
+      Nothing is drawn if this is empty or *None*
+    - ``maxNotes`` -- the most notes to draw. The rest are summarised as a count on one last line.
+      Default *MAX_PLOT_NOTES*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import add_notes_below_figure
+    add_notes_below_figure(fig, ["WARNING: Order skipped: 12"])
+    ```
+    """
+    import textwrap
+
+    from matplotlib.transforms import offset_copy
+
+    if not notes:
+        return
+
+    shownNotes = [(note, _note_colour(note)) for note in notes[:maxNotes]]
+    hiddenCount = len(notes) - len(shownNotes)
+    if hiddenCount > 0:
+        shownNotes.append((f"… and {hiddenCount} more (see the recipe log)", NOTE_SUMMARY_COLOUR))
+
+    anchorY = _lowest_axes_bottom_in_figure_fraction(fig)
+    linePitch = NOTE_FONT_SIZE_POINTS * NOTE_LINE_SPACING
+    offsetPoints = NOTE_TOP_GAP_POINTS
+    for note, colour in shownNotes:
+        wrapped = textwrap.fill(note, width=NOTE_WRAP_WIDTH, subsequent_indent="    ")
+        fig.text(
+            NOTE_LEFT_MARGIN,
+            anchorY,
+            wrapped,
+            transform=offset_copy(fig.transFigure, fig=fig, y=-offsetPoints, units="points"),
+            va="top",
+            ha="left",
+            family="monospace",
+            fontsize=NOTE_FONT_SIZE_POINTS,
+            color=colour,
+        )
+        offsetPoints += linePitch * (wrapped.count("\n") + 1)
+
+
+def _lowest_axes_bottom_in_figure_fraction(fig: "Figure") -> float:
+    """*the bottom edge of the lowest visible axes, tick labels and axis labels included, as a figure fraction*
+
+    **Key Arguments:**
+
+    - ``fig`` -- the figure to measure. It is laid out without being rendered
+
+    **Return:**
+
+    - ``bottom`` -- the figure-fraction y of the lowest tight-bbox edge, or 0 if the figure has no visible axes
+    """
+    visibleAxes = [ax for ax in fig.axes if ax.get_visible()]
+    if not visibleAxes:
+        return 0.0
+
+    # NO RENDERER ARGUMENT: MATPLOTLIB PICKS THE FIGURE'S OWN, SO NON-AGG CANVASES (PDF, SVG, PS) WORK TOO
+    fig.draw_without_rendering()
+    lowestPixel = min(ax.get_tightbbox().y0 for ax in visibleAxes)
+    return float(lowestPixel / fig.bbox.height)
+
+
+def _note_colour(note: str) -> str:
+    """*the colour a note is drawn in: red for an error, orange otherwise*
+
+    **Key Arguments:**
+
+    - ``note`` -- the display string, with an optional ``[tag] `` prefix
+
+    **Return:**
+
+    - ``colour`` -- the matplotlib colour
+    """
+    import re
+
+    if re.match(r"^(\[[^\]]*\] )?ERROR: ", note):
+        return NOTE_ERROR_COLOUR
+    return NOTE_WARNING_COLOUR
+
+
 def plot_merged_spectrum_qc(
     merged_orders,
     products,
@@ -2466,6 +2578,7 @@ def plot_merged_spectrum_qc(
     fluxCalibrated=False,
     qcTable=False,
     settings=False,
+    extractionNotes=None,
 ):
     """*plot the order-merged spectrum QC plot, save it to the QC directory and record it in the products table*
 
@@ -2485,6 +2598,8 @@ def plot_merged_spectrum_qc(
     - ``fluxCalibrated`` -- is the spectrum flux calibrated? Default *False*
     - ``qcTable`` -- the QC table holding the SNR values to plot. Default *False*
     - ``settings`` -- the soxspipe settings dictionary, used to look up the skylines. Default *False*
+    - ``extractionNotes`` -- display strings (see ``format_extraction_notes``) to print under the plot.
+      Default *None* (no notes)
 
     **Return:**
 
@@ -2561,6 +2676,7 @@ def plot_merged_spectrum_qc(
     else:
         filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
     filePath = f"{qcDir}/{filename}"
+    add_notes_below_figure(fig, extractionNotes)
     if debug:
         plt.show()
     save_qc_plot(filePath)

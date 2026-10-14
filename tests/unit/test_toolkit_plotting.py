@@ -243,3 +243,166 @@ def test_legend_below_axis_defaults_to_fontsize_four() -> None:
 
     assert legend.get_texts()[0].get_fontsize() == 4
     plt.close(fig)
+
+
+def _figure_with_two_axes() -> plt.Figure:
+    fig, axes = plt.subplots(2, 1, constrained_layout=True)
+    axes[0].plot([0, 1], [0, 1])
+    return fig
+
+
+def test_add_notes_below_figure_adds_no_text_when_there_are_no_notes() -> None:
+    fig = _figure_with_two_axes()
+
+    toolkit.add_notes_below_figure(fig, [])
+    toolkit.add_notes_below_figure(fig, None)
+
+    assert fig.texts == []
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_draws_one_text_per_note_in_order() -> None:
+    fig = _figure_with_two_axes()
+
+    toolkit.add_notes_below_figure(fig, ["WARNING: first", "ERROR: second"])
+
+    assert [text.get_text() for text in fig.texts] == ["WARNING: first", "ERROR: second"]
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_colours_errors_red_and_warnings_orange() -> None:
+    from matplotlib.colors import to_rgb
+
+    fig = _figure_with_two_axes()
+
+    toolkit.add_notes_below_figure(fig, ["WARNING: w", "ERROR: e", "[A1] ERROR: tagged"])
+
+    warningRgb, errorRgb, taggedErrorRgb = (to_rgb(text.get_color()) for text in fig.texts)
+    assert errorRgb[0] > 0.7 and errorRgb[1] < 0.3 and errorRgb[2] < 0.3
+    assert taggedErrorRgb == errorRgb
+    assert warningRgb[0] > 0.7 and 0.4 < warningRgb[1] < 0.7 and warningRgb[2] < 0.2
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_stacks_each_note_below_the_previous_one() -> None:
+    fig = _figure_with_two_axes()
+    toolkit.add_notes_below_figure(fig, ["WARNING: first", "WARNING: second", "WARNING: third"])
+    renderer = fig.canvas.get_renderer()
+    fig.draw(renderer)
+
+    extents = [text.get_window_extent(renderer) for text in fig.texts]
+
+    assert extents[0].y0 > extents[1].y0 > extents[2].y0
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_wraps_a_long_note_onto_several_lines() -> None:
+    fig = _figure_with_two_axes()
+    longNote = "WARNING: " + "word " * 100
+
+    toolkit.add_notes_below_figure(fig, [longNote])
+
+    lines = fig.texts[0].get_text().split("\n")
+    assert len(lines) > 1
+    assert all(len(line) <= toolkit.NOTE_WRAP_WIDTH for line in lines)
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_does_not_overlap_a_wrapped_note_with_the_next_note() -> None:
+    fig = _figure_with_two_axes()
+    toolkit.add_notes_below_figure(fig, ["WARNING: " + "word " * 100, "WARNING: next"])
+    renderer = fig.canvas.get_renderer()
+    fig.draw(renderer)
+
+    first, second = (text.get_window_extent(renderer) for text in fig.texts)
+
+    assert first.y0 >= second.y1 - 1e-6
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_truncates_past_the_maximum_and_counts_the_rest() -> None:
+    fig = _figure_with_two_axes()
+    notes = [f"WARNING: note {i}" for i in range(toolkit.MAX_PLOT_NOTES + 3)]
+
+    toolkit.add_notes_below_figure(fig, notes)
+
+    texts = [text.get_text() for text in fig.texts]
+    assert len(texts) == toolkit.MAX_PLOT_NOTES + 1
+    assert texts[:-1] == notes[: toolkit.MAX_PLOT_NOTES]
+    assert texts[-1] == "… and 3 more (see the recipe log)"
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_keeps_every_note_when_exactly_at_the_maximum() -> None:
+    fig = _figure_with_two_axes()
+    notes = [f"WARNING: note {i}" for i in range(toolkit.MAX_PLOT_NOTES)]
+
+    toolkit.add_notes_below_figure(fig, notes)
+
+    assert [text.get_text() for text in fig.texts] == notes
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_leaves_the_axes_count_unchanged() -> None:
+    fig = _figure_with_two_axes()
+
+    toolkit.add_notes_below_figure(fig, ["WARNING: first"])
+
+    assert len(fig.axes) == 2
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_extends_the_tight_bounding_box_to_include_the_notes() -> None:
+    fig = _figure_with_two_axes()
+    renderer = fig.canvas.get_renderer()
+    heightBefore = fig.get_tightbbox(renderer).height
+
+    toolkit.add_notes_below_figure(fig, ["WARNING: first", "ERROR: second"])
+
+    assert fig.get_tightbbox(renderer).height > heightBefore
+    plt.close(fig)
+
+
+def _first_note_top_and_lowest_tight_bottom(fig: plt.Figure) -> tuple[float, float]:
+    """Return the first note's top edge and the lowest axes tight-bbox bottom, in display pixels."""
+    fig.draw_without_rendering()
+    lowestAxes = min(ax.get_tightbbox().y0 for ax in fig.axes)
+    noteTop = fig.texts[0].get_window_extent().y1
+    return noteTop, lowestAxes
+
+
+def _merged_style_figure() -> plt.Figure:
+    fig = plt.figure(figsize=(14, 10), constrained_layout=True, dpi=180)
+    gs = fig.add_gridspec(5, 1, height_ratios=[3, 1, 1, 1, 0])
+    for row in range(4):
+        ax = fig.add_subplot(gs[row, :])
+        ax.plot([0, 1], [0, 1])
+        ax.set_xlabel("wavelength (nm)")
+    return fig
+
+
+@pytest.mark.parametrize("figureBuilder", [_figure_with_two_axes, _merged_style_figure])
+def test_add_notes_below_figure_puts_the_first_note_just_below_the_lowest_axes_tight_bbox(figureBuilder) -> None:
+    fig = figureBuilder()
+
+    toolkit.add_notes_below_figure(fig, ["ERROR: " + "word " * 80])
+
+    noteTop, lowestAxes = _first_note_top_and_lowest_tight_bottom(fig)
+    gapPoints = (lowestAxes - noteTop) * 72 / fig.dpi
+    assert gapPoints >= -0.5
+    assert gapPoints <= 20
+    plt.close(fig)
+
+
+def test_add_notes_below_figure_works_on_a_figure_with_a_non_agg_canvas() -> None:
+    from matplotlib.backends.backend_pdf import FigureCanvasPdf
+
+    fig = _merged_style_figure()
+    FigureCanvasPdf(fig)
+
+    toolkit.add_notes_below_figure(fig, ["ERROR: " + "word " * 80])
+
+    assert len(fig.texts) == 1
+    noteTop, lowestAxes = _first_note_top_and_lowest_tight_bottom(fig)
+    assert noteTop <= lowestAxes + 0.5
+    plt.close(fig)

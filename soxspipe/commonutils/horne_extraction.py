@@ -12,6 +12,7 @@ Date Created
 import os
 
 from .base_util import base_util
+from .extraction_notes import extraction_note_logger, format_extraction_notes
 from .filenamer import filenamer
 
 os.environ["TERM"] = "vt100"
@@ -111,6 +112,9 @@ class horne_extraction(base_util):
 
         from soxspipe.commonutils import detect_continuum
         from soxspipe.commonutils.toolkit import nodding_sequence_suffix, unpack_order_table
+
+        # COLLECT THE WARNINGS AND ERRORS OF THE EXTRACTION AND THE HELPERS IT BUILDS, TO PRINT ON THE QC PLOTS
+        log = extraction_note_logger(log)
 
         super().__init__(
             log, settings, associatedFrame=skySubtractedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath
@@ -359,6 +363,8 @@ class horne_extraction(base_util):
 
         inputArray = [[s, r] for s, r in zip(orderSlices, orderRectifiedImages)]
 
+        # EXTRACTION RUNS IN-PROCESS (turnOffMP=True BELOW). WARNINGS LOGGED INSIDE WORKER PROCESSES WOULD NOT REACH
+        # THE PLOT NOTES, BECAUSE EACH WORKER RECORDS INTO ITS OWN COPY OF self.log
         extractions = fmultiprocess(
             log=self.log,
             function=extract_single_order,
@@ -567,6 +573,18 @@ class horne_extraction(base_util):
 
         self.log.debug("completed the ``extract`` method")
         return self.qc, self.products, mergedSpectumDF, orderJoins, extractionFilepath
+
+    @property
+    def extractionNotes(self) -> list[tuple[str, str]]:  # noqa: N802
+        """*the warnings and errors logged during this extraction*
+
+        **Return:**
+
+        - ``notes`` -- a list of ``(level, message)`` pairs, empty if the extractor's log is not a note collector
+        """
+        if isinstance(self.log, extraction_note_logger):
+            return self.log.notes
+        return []
 
     def _summarise_slit_edge_spill(self, extractions):
         """*find the orders where the object spills over the slit edge, report them and drop the per-slice flag*
@@ -1443,6 +1461,8 @@ class horne_extraction(base_util):
         import pandas as pd
         from astropy.stats import sigma_clip, sigma_clipped_stats
 
+        from soxspipe.commonutils.toolkit import add_notes_below_figure
+
         fig = plt.figure(figsize=(14, 12), constrained_layout=True, dpi=180)
         gs = fig.add_gridspec(4, 1)
         toprow = fig.add_subplot(gs[0:1, :])
@@ -1615,6 +1635,8 @@ class horne_extraction(base_util):
 
         toprow.set_ylim(-200, maxFlux)
         secondrow.set_ylim(-200, maxFlux)
+        # PRINT EVERY WARNING AND ERROR OF THE EXTRACTION UNDER THE PLOT
+        add_notes_below_figure(fig, format_extraction_notes(self.extractionNotes))
         filename = self.filenameTemplate.replace(
             ".fits",
             f"_EXTRACTED_ORDERS_QC_PLOT{self.noddingSequence}{self.notFlattened}.pdf",
