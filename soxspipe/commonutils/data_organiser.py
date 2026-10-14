@@ -3548,6 +3548,7 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     from astropy.time import Time, TimeDelta
 
     from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
+    from soxspipe.commonutils.toolkit import NIGHT_START_OFFSET_SECONDS
 
     masterTable = ImageFileCollection(filenames=batch, keywords=keywords)
     masterTable = masterTable.summary
@@ -3602,7 +3603,7 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     # SO COUNT CHILEAN OBSERVING NIGHTS AS 15:00 UTC-15:00 UTC (11am-11am)
     if "mjd-obs" in masterTable.colnames:
         chile_offset = TimeDelta(4.0 * 60 * 60, format="sec")
-        night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
+        night_start_offset = TimeDelta(NIGHT_START_OFFSET_SECONDS, format="sec")
         mjd_ofset = TimeDelta(12.0 * 60 * 60, format="sec")
         masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
         chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset
