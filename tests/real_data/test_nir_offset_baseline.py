@@ -54,11 +54,6 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert merged_hdus[0].header["ESO PRO REC1 ID"] == "soxs-offset"
         assert merged_hdus[0].header["DATE-OBS"] == "2025-05-14T04:03:11.8311"
         merged_table = merged_hdus[1].data
-        # THE MERGED GRID RUNS FROM THE BLUEST TO THE REDDEST EXTRACTED SAMPLE IN
-        # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
-        # OF SPECTRAL COVERAGE
-        report("merged rows", len(merged_table))
-        assert len(merged_table) == pytest.approx(20_608, abs=25)
         assert set(merged_table.names) == {
             "WAVE",
             "FLUX_COUNTS",
@@ -67,26 +62,19 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
             "SNR",
             "FLUX_DENSITY_COUNTS",
         }
+        mergedRows = len(merged_table)
         mergedWave = np.asarray(merged_table["WAVE"], dtype=float)
-        # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO ONE GRID STEP
-        report("wave min", float(np.nanmin(mergedWave)))
-        report("wave max", float(np.nanmax(mergedWave)))
-        report("wave step median", float(np.nanmedian(np.diff(mergedWave))))
-        report("snr median", float(np.nanmedian(merged_table["SNR"])))
-        assert float(np.nanmin(mergedWave)) == pytest.approx(795.12, abs=0.12)
-        assert float(np.nanmax(mergedWave)) == pytest.approx(2031.54, abs=1.0)
-        assert float(np.nanmedian(np.diff(mergedWave))) == pytest.approx(0.06, abs=1e-6)
-        assert float(np.nanmedian(merged_table["SNR"])) == pytest.approx(103.85, abs=2.0)
+        snrMedian = float(np.nanmedian(merged_table["SNR"]))
+    waveMin = float(np.nanmin(mergedWave))
+    waveMax = float(np.nanmax(mergedWave))
+    waveStep = float(np.nanmedian(np.diff(mergedWave)))
 
     with fits.open(fluxcal_path) as fluxcal_hdus:
         assert len(fluxcal_hdus) == 2
         fluxcal_table = fluxcal_hdus[1].data
-        assert len(fluxcal_table) == pytest.approx(20_612, abs=25)
-        assert len(fluxcal_table) == len(merged_table)
         assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
-        report("fluxcal rows", len(fluxcal_table))
-        report("fluxcal median", float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])))
-        assert float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"])) == pytest.approx(8.54792923409245e-15, rel=0.05)
+        fluxcalRows = len(fluxcal_table)
+        fluxcalMedian = float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"]))
 
     with sqlite3.connect(reduced_workspace / "soxspipe.db") as connection:
         qc_values = dict(
@@ -97,8 +85,33 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
                 ("soxs-offset", "2025-05-14%", "N ORDERS", "SAMPLES DET FRAC"),
             )
         )
+    nOrders = float(qc_values["N ORDERS"])
+    detectedFraction = float(qc_values["SAMPLES DET FRAC"])
+
+    # EVERY VALUE IS REPORTED BEFORE THE FIRST BAND ASSERTION, SO A FAILING RUN STILL
+    # RECORDS ALL OF THEM FOR THE NEXT RE-RECORD
+    report("merged rows", mergedRows)
+    report("wave min", waveMin)
+    report("wave max", waveMax)
+    report("wave step median", waveStep)
+    report("snr median", snrMedian)
+    report("fluxcal rows", fluxcalRows)
+    report("fluxcal median", fluxcalMedian)
+    report("n orders", nOrders)
+    report("samples det frac", detectedFraction)
+
+    # THE MERGED GRID RUNS FROM THE BLUEST TO THE REDDEST EXTRACTED SAMPLE IN
+    # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
+    # OF SPECTRAL COVERAGE
+    assert mergedRows == pytest.approx(20_608, abs=25)
+    # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO ONE GRID STEP
+    assert waveMin == pytest.approx(795.12, abs=0.12)
+    assert waveMax == pytest.approx(2031.54, abs=1.0)
+    assert waveStep == pytest.approx(0.06, abs=1e-6)
+    assert snrMedian == pytest.approx(103.85, abs=2.0)
+    assert fluxcalRows == pytest.approx(20_612, abs=25)
+    assert fluxcalRows == mergedRows
+    assert fluxcalMedian == pytest.approx(8.54792923409245e-15, rel=0.05)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
-    report("n orders", float(qc_values["N ORDERS"]))
-    report("samples det frac", float(qc_values["SAMPLES DET FRAC"]))
-    assert float(qc_values["N ORDERS"]) == 15
-    assert float(qc_values["SAMPLES DET FRAC"]) == pytest.approx(0.975, abs=0.02)
+    assert nOrders == 15
+    assert detectedFraction == pytest.approx(0.975, abs=0.02)
