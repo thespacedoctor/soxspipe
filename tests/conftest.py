@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import socket
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import NoReturn
 
@@ -176,6 +177,16 @@ def isolated_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NUMBA_CACHE_DIR", str(numbaPath))
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def restore_multiprocess_start_method() -> Iterator[None]:
+    """Undo any global `multiprocess` start-method change made by a test."""
+    import multiprocess
+
+    originalMethod = multiprocess.get_start_method(allow_none=True)
+    yield
+    multiprocess.set_start_method(originalMethod, force=True)
 
 
 @pytest.fixture(autouse=True)

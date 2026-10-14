@@ -30,14 +30,14 @@
 :::{include} ../../../recipes/qcs/soxs_nod_std.inc
 :::
 
-:::{figure-md} soxs_nod_std_qc
+:::{figure-md} user_manual_soxs_nod_std_qc_fig
 ![image-20260414114627756](../../../_images/image-20260414114627756.png)
 
 A QC plot resulting from the `soxs_nod_std` recipe. This is a SOXS VIS wavelength and flux calibrated spectrum of the standard star CD-325613. The top- and middle-panels show the flux and wavelength calibrated spectrum, the top in linear-flux and the middle in log-flux scale. The bottom panel shows the signal-to-noise ratio across the entire wavelength range covered by the spectrum.
 
 :::
 
-:::{figure-md} response_curve_util
+:::{figure-md} user_manual_soxs_nod_std_response_curve
 
 ![image-20260414151800690](../../../_images/image-20260414151800690.png)
 

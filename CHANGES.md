@@ -1,6 +1,9 @@
 # Release Notes
 
 * **FIXED**: the `STRUCTX` and `STRUCTY` master-bias QCs are now fitted against a 0 to N-1 pixel axis; the old axis skipped N-1 and ended at N, so the slopes change, most on small frames (DY-1258).
+* **DOCS**: the `soxs_stare`, `soxs_stare_std`, `soxs_nod`, `soxs_nod_std` and `soxs_offset` QC tables now list the `N ORDERS SLIT EDGE` QC; only a flux-standard stare reduction that builds a response curve fails on a spill (DY-1507).
+* **DOCS**: the recipe and user-manual recipe pages now give each figure and table its own label (QC figures use `<recipe>_qc_fig`), and the `soxs_nod_std` and `soxs_stare_std` QC-metric links now point to their own tables (DY-1508).
+* **FIXED**: multiprocessing reductions no longer hang on macOS when a forked worker crashes in Apple Accelerate; the bulk recipe pool now uses the spawn start method (DY-1532).
 * **ENHANCEMENT**: the slit drift QC plot (`SLIT_DRIFT_QC_PLOT`) legend now also gives the science minus multi-pinhole observation time and `ABSROT` difference, assuming 0 deg when the multi-pinhole frame has no `ABSROT`; `read_rotator_angle` moves to `slit_illumination_qc` (DY-1531).
 * **FIXED**: the stare sky model no longer carries the wing light of bright objects: each order is refitted without a model of the wings (settings `object_wing_correction`, `object_wing_gate_fraction`). Sky-subtracted output and bright-object fluxes change (DY-1279).
 * **FEATURE**: `soxs_stare` and `soxs_stare_std` measure the along-slit offset of the sky image from the master flat for each order, mask the slit ends not lit in both from the sky model (or flag them when sky subtraction is off), and add the `SLIT ILLUM OFFSET O<N>`, `SLIT ILLUM APPLIED` and `SLIT ILLUM N ORDERS` QCs, the `SLIT_ILLUMINATION_QC_PLOT` product and an `ABSROT` spread warning; set by the new `slit-illumination` settings block (on for SOXS, off for X-Shooter), and sky-subtracted output changes (DY-1280).
