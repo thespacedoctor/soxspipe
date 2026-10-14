@@ -92,9 +92,7 @@ def test_header_harvest_filters_incomplete_fits_and_derives_night_metadata(tmp_p
         ("2024-01-02T15:00:01", "2024-01-02"),
     ],
 )
-def test_header_harvest_and_toolkit_share_the_night_boundary(
-    tmp_path, log, observationTime, expectedNightDate
-) -> None:
+def test_header_harvest_and_toolkit_share_the_night_boundary(tmp_path, log, observationTime, expectedNightDate) -> None:
     """Both night-date routes apply the shared 15:00 UTC boundary."""
     framePath = harvestable_raw_fits(tmp_path / "boundary.fits")
     observation = Time(observationTime, scale="utc")
