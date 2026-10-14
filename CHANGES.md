@@ -1,5 +1,6 @@
 # Release Notes
 
+* **DOCS**: the `soxs_stare`, `soxs_stare_std`, `soxs_nod`, `soxs_nod_std` and `soxs_offset` QC tables now list the `N ORDERS SLIT EDGE` QC; only a flux-standard stare reduction that builds a response curve fails on a spill (DY-1507).
 * **DOCS**: the recipe and user-manual recipe pages now give each figure and table its own label (QC figures use `<recipe>_qc_fig`), and the `soxs_nod_std` and `soxs_stare_std` QC-metric links now point to their own tables (DY-1508).
 * **FIXED**: multiprocessing reductions no longer hang on macOS when a forked worker crashes in Apple Accelerate; the bulk recipe pool now uses the spawn start method (DY-1532).
 * **ENHANCEMENT**: the slit drift QC plot (`SLIT_DRIFT_QC_PLOT`) legend now also gives the science minus multi-pinhole observation time and `ABSROT` difference, assuming 0 deg when the multi-pinhole frame has no `ABSROT`; `read_rotator_angle` moves to `slit_illumination_qc` (DY-1531).
