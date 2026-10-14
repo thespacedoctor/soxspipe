@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import logging
 import sqlite3
 from importlib import import_module
 from pathlib import Path
@@ -9,6 +11,7 @@ from typing import Any
 
 import multiprocess
 import pytest
+import yaml
 
 from tests.factories import logging_settings
 
@@ -149,3 +152,115 @@ def test_run_recipe_bulk_raises_before_starting_the_pool_when_logging_settings_a
 
     # ASSERT
     assert poolWasStarted is False
+
+
+class _StubLoggingSetup:
+    """Stand in for `setup_dryx_logging`, recording the yaml it is given and returning an unregistered logger."""
+
+    def __init__(self, logPath: Path) -> None:
+        self.recordedYaml: list[dict[str, Any]] = []
+        self.logPath = logPath
+        self.returnedLog = logging.Logger("dy1532-probe")
+        self.fileHandler = logging.FileHandler(logPath, delay=True)
+        self.streamHandler = logging.StreamHandler()
+        for handler in (self.fileHandler, self.streamHandler):
+            handler.setLevel(logging.DEBUG)
+            self.returnedLog.addHandler(handler)
+
+    def __call__(self, yaml_file: str) -> logging.Logger:
+        # THE TEMPORARY YAML IS DELETED WHEN THE CALLER RETURNS, SO READ IT NOW
+        with open(yaml_file) as settingsFile:
+            self.recordedYaml.append(yaml.safe_load(settingsFile))
+        return self.returnedLog
+
+    def close(self) -> None:
+        for handler in (self.fileHandler, self.streamHandler):
+            handler.close()
+
+
+@pytest.fixture
+def stub_logging_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
+    """Replace the shared logger setup with a recording stub, and close its handlers afterwards."""
+    stub = _StubLoggingSetup(tmp_path / "stub.log")
+    monkeypatch.setattr(import_module("fundamentals.logs"), "setup_dryx_logging", stub)
+    yield stub
+    stub.close()
+
+
+def test_worker_log_rebuilds_a_bare_logger_from_a_copy_of_the_logging_settings(
+    tmp_path: Path,
+    stub_logging_setup: _StubLoggingSetup,
+) -> None:
+    """A bare logger is rebuilt by the shared setup, muted on the console, from settings that stay untouched."""
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    settings = logging_settings(tmp_path / "shared.log")
+    settingsBefore = copy.deepcopy(settings)
+
+    # ACT
+    workerLog = reducerModule._worker_log(logging.Logger("dy1532-bare"), settings)
+
+    # ASSERT
+    recordedConfig = stub_logging_setup.recordedYaml[0]["logging settings"]
+    assert len(stub_logging_setup.recordedYaml) == 1
+    assert recordedConfig["disable_existing_loggers"] is False
+    assert recordedConfig["handlers"]["file"]["mode"] == "a"
+    assert settings == settingsBefore
+    assert workerLog is stub_logging_setup.returnedLog
+    assert stub_logging_setup.streamHandler.level == logging.WARNING
+    assert stub_logging_setup.fileHandler.level == logging.DEBUG
+
+
+def test_worker_log_rebuilds_from_settings_that_have_no_file_handler(
+    tmp_path: Path,
+    stub_logging_setup: _StubLoggingSetup,
+) -> None:
+    """Settings with only a console handler are passed on without inventing a file handler."""
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    settings = logging_settings(tmp_path / "shared.log")
+    del settings["logging settings"]["handlers"]["file"]
+    settings["logging settings"]["root"]["handlers"] = ["console"]
+
+    # ACT
+    workerLog = reducerModule._worker_log(logging.Logger("dy1532-bare"), settings)
+
+    # ASSERT
+    recordedConfig = stub_logging_setup.recordedYaml[0]["logging settings"]
+    assert "file" not in recordedConfig["handlers"]
+    assert workerLog is stub_logging_setup.returnedLog
+
+
+def test_worker_log_returns_a_working_logger_unchanged(
+    tmp_path: Path,
+    stub_logging_setup: _StubLoggingSetup,
+) -> None:
+    """A logger that has handlers and a `print` method needs no rebuild."""
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    workingLog = logging.Logger("dy1532-working")
+    workingLog.addHandler(logging.NullHandler())
+    workingLog.print = lambda message: None  # type: ignore[attr-defined]
+
+    # ACT
+    workerLog = reducerModule._worker_log(workingLog, logging_settings(tmp_path / "shared.log"))
+
+    # ASSERT
+    assert workerLog is workingLog
+    assert stub_logging_setup.recordedYaml == []
+
+
+def test_worker_log_returns_a_bare_logger_unchanged_when_settings_have_no_logging_block(
+    stub_logging_setup: _StubLoggingSetup,
+) -> None:
+    """Without a `logging settings` block there is nothing to rebuild from."""
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    bareLog = logging.Logger("dy1532-bare")
+
+    # ACT
+    workerLog = reducerModule._worker_log(bareLog, {})
+
+    # ASSERT
+    assert workerLog is bareLog
+    assert stub_logging_setup.recordedYaml == []
