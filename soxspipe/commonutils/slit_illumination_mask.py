@@ -130,7 +130,7 @@ def overlap_exclude_mask(log, slit, orderMap, flatEdges, offsets, marginArcsec):
     return excludeMask
 
 
-def exclude_mask_from_result(log, result, twoDMapPath, binx, biny):
+def exclude_mask_from_result(log, result, twoDMapPath, binx, biny, kw):
     """*the sky-model exclusion mask for a slit-illumination measurement*
 
     **Key Arguments:**
@@ -140,6 +140,7 @@ def exclude_mask_from_result(log, result, twoDMapPath, binx, biny):
     - ``twoDMapPath`` -- path to the 2D dispersion map the measurement used
     - ``binx`` -- binning in the x-axis
     - ``biny`` -- binning in the y-axis
+    - ``kw`` -- fits keyword lookup dictionary, used to read the map's own binning
 
     **Return:**
 
@@ -150,13 +151,13 @@ def exclude_mask_from_result(log, result, twoDMapPath, binx, biny):
 
     ```python
     from soxspipe.commonutils.slit_illumination_mask import exclude_mask_from_result
-    excludeMask = exclude_mask_from_result(log, result, twoDMapPath, binx, biny)
+    excludeMask = exclude_mask_from_result(log, result, twoDMapPath, binx, biny, kw)
     ```
     """
     log.debug("starting the ``exclude_mask_from_result`` function")
     if not result.isApplied:
         return None
-    _, slit, orderMap = _read_disp_map(twoDMapPath, binx, biny)
+    _, slit, orderMap = _read_disp_map(twoDMapPath, binx, biny, kw)
     excludeMask = overlap_exclude_mask(
         log, slit, orderMap, result.flatEdges, result.offsets, result.overlapMarginArcsec
     )
