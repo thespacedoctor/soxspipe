@@ -159,6 +159,7 @@ def _patch_stare(
     class FakeExtractor:
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
+        extractionNotes: list = []
 
         def __init__(self, **kwargs: object) -> None:
             captured["extractor"].append(kwargs)

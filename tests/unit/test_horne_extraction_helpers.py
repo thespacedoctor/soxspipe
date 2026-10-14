@@ -14,6 +14,7 @@ from astropy import units as u
 from astropy.io import fits
 from astropy.nddata import CCDData, StdDevUncertainty
 
+from soxspipe.commonutils.extraction_notes import extraction_note_logger
 from soxspipe.commonutils.horne_extraction import (
     _slit_edge_truncated_columns,
     _unsupported_pixel_mask,
@@ -24,6 +25,7 @@ from soxspipe.commonutils.horne_extraction import (
     horne_extraction,
 )
 from tests.factories import instrument_header, product_table
+from tests.unit._plot_spies import probe_on_savefig
 
 pytestmark = pytest.mark.unit
 
@@ -1579,3 +1581,107 @@ def test_extract_reports_slit_edge_spill_from_the_per_order_extractions(
     assert extractor.slitEdgeOrders == [(10, 500.0, 502.0, 1.0)]
     assert qc["qc_value"].tolist() == [1]
     assert len([level for level, _ in log.messages if level == "error"]) == 1
+
+
+def test_extraction_notes_is_empty_when_the_log_is_not_a_collector(log: object) -> None:
+    extractor = _extractor(log)
+
+    assert extractor.extractionNotes == []
+
+
+def test_extraction_notes_returns_what_the_collecting_log_recorded(log: object) -> None:
+    extractor = _extractor(extraction_note_logger(log))
+    extractor.log.warning("careful")
+
+    assert extractor.extractionNotes == [("WARNING", "careful")]
+
+
+def test_constructor_hands_the_collecting_log_to_the_helpers_it_builds(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Warnings raised in the trace detector must reach the extractor's notes."""
+    extractor, captured = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=1,
+    )
+
+    assert isinstance(extractor.log, extraction_note_logger)
+    assert captured["log"] is extractor.log
+    captured["log"].warning("from the detector")
+    assert extractor.extractionNotes == [("WARNING", "from the detector")]
+    assert ("warning", "from the detector") in log.messages
+
+
+def _plot_ready_extractor(log: object, tmp_path: Path) -> horne_extraction:
+    extractor = _extractor(log)
+    extractor.recipeName = "soxs-stare"
+    extractor.arm = "VIS"
+    extractor.settings = {"PAE": False}
+    extractor.skylinesDF = pd.DataFrame({"WAVELENGTH": [510.0], "FLUX": [3.0]})
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.noddingSequence = ""
+    extractor.notFlattened = ""
+    extractor.qcDir = str(tmp_path)
+    extractor.dateObs = "2024-01-02T03:04:05"
+    extractor.products = product_table().iloc[0:0]
+    return extractor
+
+
+def _plot_order(order: int, wavelengths: object = None) -> pd.DataFrame:
+    wave = np.linspace(500.0, 523.0, 24) if wavelengths is None else wavelengths
+    return pd.DataFrame(
+        {
+            "order": [order] * 24,
+            "wavelengthMean": wave,
+            "extractedFluxOptimal": np.linspace(2.0, 4.0, 24),
+            "extractedFluxBoxcarRobust": np.linspace(1.0, 3.0, 24),
+            "varianceSpectrum": np.ones(24),
+            "skyFlux": np.linspace(0.2, 0.5, 24),
+            "snr": np.linspace(3.0, 6.0, 24),
+        }
+    )
+
+
+def test_per_order_plot_carries_the_skipped_order_warning_as_a_note(log: object, tmp_path: Path, monkeypatch) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: [text.get_text() for text in figure.texts])
+    extractor = _plot_ready_extractor(extraction_note_logger(log), tmp_path)
+    unplottable = _plot_order(11, wavelengths=pd.Series([1.0, "x"] * 12, dtype=object))
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(10), unplottable])
+
+    assert probes == [["WARNING: Order skipped: 11"]]
+
+
+def test_per_order_plot_carries_the_slit_edge_spill_error_as_a_note(log: object, tmp_path: Path, monkeypatch) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: [text.get_text() for text in figure.texts])
+    extractor = _plot_ready_extractor(extraction_note_logger(log), tmp_path)
+    extractor.qc = False
+    extractor._summarise_slit_edge_spill([_order_extraction(11, 1.0, wlStart=538.04)])
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(10)])
+
+    assert len(probes) == 1
+    assert len(probes[0]) == 1
+    assert probes[0][0].startswith("ERROR: The object spills over the slit edge in order(s) 11")
+
+
+def test_per_order_plot_has_no_figure_text_when_nothing_was_logged(log: object, tmp_path: Path, monkeypatch) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: list(figure.texts))
+    extractor = _plot_ready_extractor(extraction_note_logger(log), tmp_path)
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(10)])
+
+    assert probes == [[]]
+
+
+def test_per_order_plot_still_works_when_the_log_is_not_a_collector(log: object, tmp_path: Path, monkeypatch) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: list(figure.texts))
+    extractor = _plot_ready_extractor(log, tmp_path)
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(10)])
+
+    assert probes == [[]]

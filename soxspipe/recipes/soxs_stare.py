@@ -468,7 +468,7 @@ class soxs_stare(base_recipe):
                     "as failed and will not be used to flux-calibrate other frames."
                 )
 
-        self._plot_merged_spectrum_qcs(mergedSpectumDF, orderJoins, filePath_fluxcal)
+        self._plot_merged_spectrum_qcs(mergedSpectumDF, orderJoins, filePath_fluxcal, optimalExtractor.extractionNotes)
 
         qcTable = self.report_output()
         self.clean_up(forceFail=forceFailure)
@@ -1218,7 +1218,7 @@ class soxs_stare(base_recipe):
 
         return forceFailure
 
-    def _plot_merged_spectrum_qcs(self, mergedSpectumDF, orderJoins, filePath_fluxcal):
+    def _plot_merged_spectrum_qcs(self, mergedSpectumDF, orderJoins, filePath_fluxcal, extractionNotes=()):
         """*plot the merged spectrum QC and, when the spectrum was flux calibrated, the calibrated one too*
 
         Updates ``self.products``.
@@ -1228,9 +1228,13 @@ class soxs_stare(base_recipe):
         - ``mergedSpectumDF`` -- the merged extracted spectrum
         - ``orderJoins`` -- the order joins of the extraction
         - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum, or None when it was not calibrated
+        - ``extractionNotes`` -- the ``(level, message)`` warnings and errors of the extraction, to print under
+          both plots. Default *()*
         """
+        from soxspipe.commonutils.extraction_notes import format_extraction_notes
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
+        noteLines = format_extraction_notes(extractionNotes)
         self.products, filePath = plot_merged_spectrum_qc(
             merged_orders=mergedSpectumDF,
             products=self.products,
@@ -1246,6 +1250,7 @@ class soxs_stare(base_recipe):
             fluxCalibrated=False,
             qcTable=self.qc,
             settings=self.settings,
+            extractionNotes=noteLines,
         )
 
         if filePath_fluxcal:
@@ -1272,6 +1277,7 @@ class soxs_stare(base_recipe):
                 fluxCalibrated=True,
                 qcTable=self.qc,
                 settings=self.settings,
+                extractionNotes=noteLines,
             )
 
         return

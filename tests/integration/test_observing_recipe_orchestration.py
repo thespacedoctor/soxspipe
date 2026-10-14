@@ -788,6 +788,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
     class FakeExtractor:
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
+        extractionNotes: list = []
 
         def __init__(self, **kwargs: object) -> None:
             calls.append("extractor")
@@ -1140,6 +1141,7 @@ def test_stare_generates_a_response_from_a_flux_standard(
     class FakeExtractor:
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
+        extractionNotes: list = []
 
         def __init__(self, **kwargs: object) -> None:
             extractionArguments.append(kwargs)
@@ -1263,6 +1265,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     class FakeExtractor:
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
+        extractionNotes: list = []
+        extractionNotes = [("WARNING", "Order skipped: 7")]
 
         def __init__(self, **kwargs: object) -> None:
             calls.append("extractor")
@@ -1296,8 +1300,11 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     monkeypatch.setattr(stareModule, "get_calibrations_path", lambda **_: str(tmp_path))
     monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
 
+    plotNotes: list[object] = []
+
     def fake_plot(**kwargs: object) -> tuple[pd.DataFrame, str]:
         calls.append(f"plot:{kwargs['fluxCalibrated']}")
+        plotNotes.append(kwargs["extractionNotes"])
         return kwargs["products"], str(tmp_path / "merged.pdf")
 
     monkeypatch.setattr(toolkit, "plot_merged_spectrum_qc", fake_plot)
@@ -1317,3 +1324,217 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         "report",
         "clean_up:False",
     ]
+    assert plotNotes == [["WARNING: Order skipped: 7"]] * 2
+
+
+def _cycle_recipe(
+    recipeClass: type,
+    recipeName: str,
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extractorNotes: list[tuple[str, list[tuple[str, str]]]],
+) -> Any:
+    """Build a nod or offset recipe whose extractors report the given ``(noddingSequence, notes)`` in turn."""
+    import soxspipe.commonutils as commonutils
+
+    nodModule = import_module("soxspipe.recipes.soxs_nod")
+    recipe = recipeClass.__new__(recipeClass)
+    recipe.log = log
+    recipe.recipeName = recipeName
+    recipe.sofName = "SYNTHETIC"
+    recipe.debug = False
+    recipe.qc = qc_table().iloc[0:0].copy()
+    recipe.products = _empty_products()
+    recipe.settings = {"instrument": "soxs"}
+    recipe.recipeSettings = {"save_single_frame_extractions": False}
+    recipe.twoDMap = "two-d-map.fits"
+    recipe.dispMap = "dispersion-map.fits"
+    recipe.startNightDate = "2024-01-02"
+    recipe.turnOffMP = True
+    recipe.arm = "VIS"
+    recipe.kw = _keyword
+    recipe.productDir = str(tmp_path)
+    reports = iter(extractorNotes)
+
+    class Extractor:
+        def __init__(self, **kwargs: object) -> None:
+            self.noddingSequence, self.extractionNotes = next(reports)
+
+        def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
+            spectrum = pd.DataFrame({"WAVE": [500.0], "FLUX": [1.0]})
+            return recipe.qc, recipe.products, spectrum, {10: 1}, "extraction.fits"
+
+    monkeypatch.setattr(commonutils, "horne_extraction", Extractor)
+    monkeypatch.setattr(nodModule, "generic_quality_checks", lambda **kwargs: kwargs["qcTable"])
+    monkeypatch.setattr(nodModule, "spectroscopic_image_quality_checks", lambda **kwargs: kwargs["qcTable"])
+    return recipe
+
+
+def _run_cycle(recipe: Any, *, notFlattened: bool = False, locationSetIndex: object = 1) -> None:
+    recipe.process_single_ab_nodding_cycle(
+        aFrame=synthetic_ccd(shape=(3, 3), seed=11, prepared=True),
+        bFrame=synthetic_ccd(shape=(3, 3), seed=12, prepared=True),
+        locationSetIndex=locationSetIndex,
+        orderTablePath="orders.fits",
+        notFlattened=notFlattened,
+    )
+
+
+def test_nod_cycle_collects_the_notes_of_both_extractors_tagged_with_their_nodding_sequence(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    recipe = _cycle_recipe(
+        soxs_nod,
+        "soxs-nod",
+        log,
+        tmp_path,
+        monkeypatch,
+        [("_A1", [("WARNING", "Order skipped: 12")]), ("_B1", [("ERROR", "spill")])],
+    )
+
+    _run_cycle(recipe)
+
+    assert recipe.extractionNotes == ("[A1] WARNING: Order skipped: 12", "[B1] ERROR: spill")
+
+
+def test_nod_cycle_does_not_collect_notes_from_the_notflat_reextraction(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The response-curve pass is never plotted on the merged spectrum, so its notes stay on its own plot."""
+    recipe = _cycle_recipe(
+        soxs_nod,
+        "soxs-nod",
+        log,
+        tmp_path,
+        monkeypatch,
+        [("_A1", [("WARNING", "flat")]), ("_B1", []), ("_A1", [("WARNING", "notflat only")]), ("_B1", [])],
+    )
+
+    _run_cycle(recipe)
+    _run_cycle(recipe, notFlattened=True)
+
+    assert recipe.extractionNotes == ("[A1] WARNING: flat",)
+
+
+def test_nod_recipe_removes_duplicate_notes_across_cycles_keeping_first_seen_order(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    sameWarning = [("WARNING", "Order skipped: 12")]
+    recipe = _cycle_recipe(
+        soxs_nod,
+        "soxs-nod",
+        log,
+        tmp_path,
+        monkeypatch,
+        [("_A1", sameWarning), ("_B1", sameWarning), ("_A1", sameWarning), ("_B1", [("ERROR", "late")])],
+    )
+
+    _run_cycle(recipe)
+    _run_cycle(recipe)
+
+    assert recipe.extractionNotes == (
+        "[A1] WARNING: Order skipped: 12",
+        "[B1] WARNING: Order skipped: 12",
+        "[B1] ERROR: late",
+    )
+
+
+def test_offset_cycle_collects_the_single_extractors_notes_with_its_sequence_tag(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    recipe = _cycle_recipe(
+        soxs_offset,
+        "soxs-offset",
+        log,
+        tmp_path,
+        monkeypatch,
+        [("_STACK", [("WARNING", "Order skipped: 3")])],
+    )
+
+    _run_cycle(recipe, locationSetIndex=STACKED_LOCATION_SET)
+
+    assert recipe.extractionNotes == ("[STACK] WARNING: Order skipped: 3",)
+
+
+def test_cycle_notes_have_no_tag_when_the_extractor_has_no_nodding_sequence(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    recipe = _cycle_recipe(soxs_offset, "soxs-offset", log, tmp_path, monkeypatch, [("", [("WARNING", "bare")])])
+
+    _run_cycle(recipe)
+
+    assert recipe.extractionNotes == ("WARNING: bare",)
+
+
+@pytest.mark.parametrize(
+    ("recipeClass", "plotMethod"),
+    [(soxs_nod, "_plot_nod_stacked_spectrum_qcs"), (soxs_offset, "_plot_stacked_spectrum_qcs")],
+)
+def test_nod_and_offset_merged_plots_both_receive_the_collected_notes(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recipeClass: type,
+    plotMethod: str,
+) -> None:
+    from astropy.table import Table
+
+    fluxPath = tmp_path / "FLUXCAL.fits"
+    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    recipe = recipeClass.__new__(recipeClass)
+    recipe.log = log
+    recipe.products = _empty_products()
+    recipe.qcDir = str(tmp_path)
+    recipe.filenameTemplate = "OBJECT_VIS.fits"
+    recipe.dateObs = "2024-01-02T03:04:05.678"
+    recipe.arm = "VIS"
+    recipe.recipeName = "soxs-nod"
+    recipe.debug = False
+    recipe.qc = qc_table()
+    recipe.settings = {}
+    recipe.extractionNotes = ["[A1] WARNING: Order skipped: 12"]
+    plots: list[dict[str, object]] = []
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(
+        toolkit,
+        "plot_merged_spectrum_qc",
+        lambda **kwargs: (plots.append(kwargs), (kwargs["products"], "plot.pdf"))[-1],
+    )
+
+    getattr(recipe, plotMethod)(pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]}), {10: 11}, str(fluxPath))
+
+    assert [plot["fluxCalibrated"] for plot in plots] == [False, True]
+    assert [plot["extractionNotes"] for plot in plots] == [["[A1] WARNING: Order skipped: 12"]] * 2
+
+
+def test_stare_merged_plots_receive_the_extractors_notes(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from astropy.table import Table
+
+    fluxPath = tmp_path / "FLUXCAL.fits"
+    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.products = _empty_products()
+    recipe.qcDir = str(tmp_path)
+    recipe.filenameTemplate = "OBJECT_VIS.fits"
+    recipe.dateObs = "2024-01-02T03:04:05.678"
+    recipe.arm = "VIS"
+    recipe.recipeName = "soxs-stare"
+    recipe.debug = False
+    recipe.qc = qc_table()
+    recipe.settings = {}
+    plots: list[dict[str, object]] = []
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(
+        toolkit,
+        "plot_merged_spectrum_qc",
+        lambda **kwargs: (plots.append(kwargs), (kwargs["products"], "plot.pdf"))[-1],
+    )
+    merged = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [3.0]})
+
+    recipe._plot_merged_spectrum_qcs(merged, {10: 11}, str(fluxPath), [("ERROR", "spill"), ("WARNING", "skipped")])
+
+    assert [plot["extractionNotes"] for plot in plots] == [["ERROR: spill", "WARNING: skipped"]] * 2

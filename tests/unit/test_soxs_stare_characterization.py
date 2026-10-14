@@ -732,6 +732,7 @@ class SpillingExtractor:
 
     def __init__(self, slitEdgeOrders: list[tuple[int, float, float, float]], **_: object) -> None:
         self.slitEdgeOrders = slitEdgeOrders
+        self.extractionNotes = []
 
     def extract(self) -> tuple[str, str, str, dict[str, float], str]:
         return "qc", "products", "mergedSpectrum", {"1011": 501.0}, "extraction.fits"
