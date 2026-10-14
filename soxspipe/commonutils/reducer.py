@@ -13,8 +13,6 @@ Date Created
 import os
 import sys
 
-# multiprocessing.set_start_method("spawn")
-
 os.environ["TERM"] = "vt100"
 
 
@@ -547,6 +545,54 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     return productPath, qcTable
 
 
+def _worker_log(log, settings):
+    """*return a logger that can write from inside a spawned worker process*
+
+    A `logging.Logger` pickles by name, so a spawned worker receives a bare logger with no
+    handlers and no ``print`` level. This rebuilds it from the ``logging settings`` block using
+    the standard logger setup. A logger that already works (it has handlers and a ``print``
+    method, as in a forked worker, a reused spawned worker, or a test double) is returned
+    unchanged.
+
+    Known limitation: each spawned worker owns its own rotating file handler on the shared log
+    file, so a concurrent rollover can race (follow-up DY-1534).
+
+    **Key Arguments:**
+
+    - ``log`` -- the logger the worker was given
+    - ``settings`` -- the settings dictionary, holding the ``logging settings`` block
+    """
+    import copy
+    import logging
+    import tempfile
+
+    import yaml
+    from fundamentals import logs
+
+    isWorkingLogger = not isinstance(log, logging.Logger) or (hasattr(log, "print") and log.hasHandlers())
+    if isWorkingLogger or "logging settings" not in settings:
+        return log
+
+    # THE SHIPPED FILE HANDLER TRUNCATES ITS FILE ON OPEN ("w+"), WHICH WOULD WIPE THE SHARED LOG
+    loggingSettings = copy.deepcopy(settings["logging settings"])
+    # KEEP LOGGERS THAT ALREADY EXIST IN THE WORKER (ASTROPY, ETC.) ENABLED
+    loggingSettings["disable_existing_loggers"] = False
+    if "file" in loggingSettings.get("handlers", {}):
+        loggingSettings["handlers"]["file"]["mode"] = "a"
+
+    with tempfile.TemporaryDirectory() as tempDirectory:
+        settingsPath = os.path.join(tempDirectory, "logging.yaml")
+        with open(settingsPath, "w") as settingsFile:
+            yaml.safe_dump({"logging settings": loggingSettings}, settingsFile)
+        rebuiltLog = logs.setup_dryx_logging(yaml_file=settingsPath)
+
+    # BULK WORKERS ARE MUTED: ONLY WARNINGS AND ABOVE MAY REACH THE TERMINAL (MIRRORS THE FMULTIPROCESS MUTE)
+    for handler in rebuiltLog.handlers:
+        if not isinstance(handler, logging.FileHandler):
+            handler.setLevel(logging.WARNING)
+    return rebuiltLog
+
+
 def run_recipe_bulk(
     log,
     recipe,
@@ -571,11 +617,21 @@ def run_recipe_bulk(
     - ``workspaceDirectory`` -- path to the root of the workspace
     - ``conn`` -- a connection to the workspace database
     - ``sessionId`` -- the session ID of the workspace
+
+    The ``multiprocess`` start method is switched to ``spawn`` for the worker pool and restored
+    to its previous value afterwards, even when the pool raises. The start method is process-global,
+    so concurrent calls from several threads are not supported. A ``ValueError`` is raised if
+    ``settings`` has no ``logging settings`` block, because spawned workers rebuild their
+    logger from it.
     """
     log.debug("starting the ``run_recipe_bulk`` method")
 
+    if "logging settings" not in settings:
+        raise ValueError("The settings have no `logging settings` block, which spawned reduction workers need to log.")
+
     import shutil
 
+    import multiprocess
     import pandas as pd
     from fundamentals import fmultiprocess
 
@@ -592,6 +648,8 @@ def run_recipe_bulk(
         wrapperTurnOffMP=True,
     ):
         import traceback
+
+        log = _worker_log(log, settings)
 
         returnDict = {
             "status": None,
@@ -653,21 +711,27 @@ def run_recipe_bulk(
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
 
-    results = fmultiprocess(
-        log=log,
-        function=wrapper,
-        inputArray=inputDicts,
-        poolSize=poolSize,
-        timeout=36000,
-        settings=settings,
-        overwrite=overwrite,
-        recipe=recipe,
-        workspaceDirectory=workspaceDirectory,
-        wrapperTurnOffMP=wrapperTurnOffMP,
-        turnOffMP=turnOffMP,
-        mute=True,
-        progressBar=True,
-    )
+    # FORKED WORKERS CRASH IN APPLE ACCELERATE (GCD IS NOT FORK-SAFE); SPAWN GIVES EACH WORKER A CLEAN PROCESS
+    originalStartMethod = multiprocess.get_start_method(allow_none=True)
+    multiprocess.set_start_method("spawn", force=True)
+    try:
+        results = fmultiprocess(
+            log=log,
+            function=wrapper,
+            inputArray=inputDicts,
+            poolSize=poolSize,
+            timeout=36000,
+            settings=settings,
+            overwrite=overwrite,
+            recipe=recipe,
+            workspaceDirectory=workspaceDirectory,
+            wrapperTurnOffMP=wrapperTurnOffMP,
+            turnOffMP=turnOffMP,
+            mute=True,
+            progressBar=True,
+        )
+    finally:
+        multiprocess.set_start_method(originalStartMethod, force=True)
 
     passing = []
     failing = []
