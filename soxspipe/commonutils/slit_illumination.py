@@ -472,7 +472,7 @@ def _unusable_reason(offsets):
 
 def _not_applied(log, reason, config, flatEdges=None, profiles=None, offsets=None):
     """*the result for a measurement that cannot be applied; the reason is logged*"""
-    log.warning(f"slit illumination offset is not applied: {reason}")
+    log.info(f"slit illumination offset is not applied: {reason}")
     return slit_illumination_result(
         offsets=pd.DataFrame(columns=OFFSET_COLUMNS) if offsets is None else offsets,
         flatEdges=pd.DataFrame(columns=FLAT_EDGE_COLUMNS) if flatEdges is None else flatEdges,
