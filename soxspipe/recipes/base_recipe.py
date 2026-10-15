@@ -1987,6 +1987,14 @@ class base_recipe:
         # AMBIGUOUS, SO NONE OF THE COMPARISONS CAN BECOME A TRUTH CHECK.
         if master_bias == False and dark == False and master_flat == False:  # noqa: E712
             raise TypeError("detrend method needs at least a master-bias frame, a dark frame or a master flat frame")
+        # UVB/VIS MASTER DARKS KEEP THE BIAS PEDESTAL (SOXS_MDARK SUBTRACTS NO BIAS), AS DO THE LAMP-OFF AND RAW DARK
+        # FRAMES SOXS_MFLAT FALLS BACK TO, SO A BIAS PLUS A DARK WOULD SUBTRACT THE PEDESTAL TWICE (DY-1580)
+        if self.arm.upper() in ("UVB", "VIS") and master_bias != False and dark != False:  # noqa: E712
+            raise ValueError(
+                f"{self.arm} frames cannot be detrended with both a master bias and a master dark: "
+                f"{self.arm} master darks, lamp-off frames and raw darks still carry the bias pedestal, "
+                "so this combination is not supported"
+            )
         if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
             if not self.darkDetrendWarningIssued1:
                 self.log.warning("Dark and science/calibration frame have differing exposure-times.")
