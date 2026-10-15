@@ -422,3 +422,33 @@ def test_each_cycle_and_the_stacked_pair_extract_under_their_own_location_set(
     # ASSERT
     assert [call["locationSetIndex"] for call in cyclesCaptured["extract_cycle"]] == [1, 2]
     assert [call["locationSetIndex"] for call in stackCaptured["extract_cycle"]] == [STACKED_LOCATION_SET]
+
+
+@pytest.mark.parametrize("withBias", [True, False], ids=["sof-names-a-bias", "sof-names-no-bias"])
+def test_the_master_bias_the_sof_names_is_held_for_the_difference_frames(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    withBias: bool,
+) -> None:
+    """A VIS offset reduction reads the SOF's master bias for the A-B errors, and warns when there is none (DY-1390)."""
+    # ARRANGE
+    biasRoutes = {}
+    biasPath = tmp_path / "MASTER_BIAS_VIS.fits"
+    if withBias:
+        _write_prepared_frame(biasPath, seed=500, headerOverrides={})
+        biasRoutes = {_route(PRO_CATG="MASTER_BIAS_VIS"): [str(biasPath)]}
+    recipe, _ = _offset_recipe(log, tmp_path, SINGLE_PAIR, extraRoutes=biasRoutes)
+    _patch(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    warnings = [message for level, message in log.messages if "MASTER_BIAS_VIS" in message and level == "warning"]
+    if withBias:
+        np.testing.assert_array_equal(recipe.masterBias.data, synthetic_ccd(seed=500, prepared=True).data)
+        assert warnings == []
+    else:
+        assert recipe.masterBias is False
+        assert len(warnings) == 1

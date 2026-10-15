@@ -276,7 +276,7 @@ class soxs_offset(soxs_nod):
     def _read_calibration_inputs(self, kw, arm):
         """*read the master flat and locate the order table, dispersion maps and response table*
 
-        Sets ``self.dispMap`` and ``self.twoDMap``.
+        Sets ``self.dispMap``, ``self.twoDMap`` and ``self.masterBias``.
 
         **Key Arguments:**
 
@@ -306,6 +306,8 @@ class soxs_offset(soxs_nod):
                 hdu_flags="FLAGS",
                 key_uncertainty_type="UTYPE",
             )
+
+        self.masterBias = self._read_master_bias(kw, arm)
 
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
