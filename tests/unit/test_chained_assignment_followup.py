@@ -159,11 +159,6 @@ def test_dispersion_fit_of_a_table_with_dropped_lines_never_writes_into_a_slice(
         }
     )
     monkeypatch.setattr(
-        importlib.import_module("soxspipe.commonutils"),
-        "get_cached_coeffs",
-        lambda **_: (np.array([0.0]), np.array([0.0])),
-    )
-    monkeypatch.setattr(
         importlib.import_module("soxspipe.commonutils.polynomials"),
         "solve_linear_poly_coefficients",
         lambda **kwargs: np.zeros(kwargs["nCoeff"]),

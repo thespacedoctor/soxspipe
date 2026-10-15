@@ -14,7 +14,6 @@ from . import phase3
 from .detect_order_edges import detect_order_edges
 from .filenamer import filenamer
 from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
-from .dispersion_map_to_pixel_arrays import get_cached_coeffs
 from .subtract_background import subtract_background
 from .subtract_sky import subtract_sky
 from .data_organiser import data_organiser

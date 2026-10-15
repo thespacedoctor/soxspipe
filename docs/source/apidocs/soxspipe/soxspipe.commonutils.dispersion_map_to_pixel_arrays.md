@@ -19,10 +19,6 @@
   - ```{autodoc2-docstring} soxspipe.commonutils.dispersion_map_to_pixel_arrays.dispersion_map_to_pixel_arrays
     :summary:
     ```
-* - {py:obj}`get_cached_coeffs <soxspipe.commonutils.dispersion_map_to_pixel_arrays.get_cached_coeffs>`
-  - ```{autodoc2-docstring} soxspipe.commonutils.dispersion_map_to_pixel_arrays.get_cached_coeffs
-    :summary:
-    ```
 ````
 
 ### API
@@ -31,12 +27,5 @@
 :canonical: soxspipe.commonutils.dispersion_map_to_pixel_arrays.dispersion_map_to_pixel_arrays
 
 ```{autodoc2-docstring} soxspipe.commonutils.dispersion_map_to_pixel_arrays.dispersion_map_to_pixel_arrays
-```
-````
-
-````{py:function} get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False)
-:canonical: soxspipe.commonutils.dispersion_map_to_pixel_arrays.get_cached_coeffs
-
-```{autodoc2-docstring} soxspipe.commonutils.dispersion_map_to_pixel_arrays.get_cached_coeffs
 ```
 ````
