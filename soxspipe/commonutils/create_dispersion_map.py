@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     # RUNTIME, SO THIS BLOCK COSTS NOTHING AT IMPORT TIME
     import numpy as np
     import numpy.typing as npt
+    from matplotlib.axes import Axes
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
@@ -83,8 +84,10 @@ NO_LINES_SURVIVED_MESSAGE = (
 )
 
 
-def plot_xy_residual_histogram(ax, values):
+def plot_xy_residual_histogram(ax: "Axes", values: "npt.ArrayLike") -> None:
     """*draw a histogram of xy residuals, or a short note when there is nothing to draw*
+
+    Non-finite residuals are left out on purpose, so they cannot distort the Scott bin widths.
 
     **Key Arguments:**
 
@@ -94,6 +97,7 @@ def plot_xy_residual_histogram(ax, values):
     import numpy as np
     from astropy.visualization import hist
 
+    values = np.asarray(values, dtype=float)
     values = values[np.isfinite(values)]
     if len(values) == 0:
         ax.text(0.5, 0.5, "no lines", ha="center", va="center", transform=ax.transAxes)
