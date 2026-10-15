@@ -1846,15 +1846,13 @@ class subtract_sky:
         bsplineSigma = self.recipeSettings["sky-subtraction"]["bspline_fitting_residual_clipping_sigma"]
         # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
         bsplineIterations = self.recipeSettings["sky-subtraction"]["bspline_iteration_limit"]
-        # USE THIS PERCENTILE TO DETERMINE THE RESIDUAL FLOOR
-        residual_floor_percentile = self.recipeSettings["sky-subtraction"]["residual_floor_percentile"]
 
         # SORT BY COLUMN NAME
         imageMapOrder.sort_values(by=["wavelength"], inplace=True, kind="stable")
         order = imageMapOrder["order"].values[0]
 
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
-        mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
+        mask_all_clipped = imageMapOrder["flagged_all_clipped"].eq(True)
         goodWl = imageMapOrder.loc[~mask_all_clipped, "wavelength"]
 
         # REPLACE NANS IN residual_windowed_std
@@ -1920,7 +1918,7 @@ class subtract_sky:
 
         # CLIP NAN FLUX
         imageMapOrder.loc[imageMapOrder["flux"].isnull(), "flagged_all_clipped"] = True
-        mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True
+        mask_all_clipped = imageMapOrder["flagged_all_clipped"].eq(True)
         # THE PIXELS CLIPPED BEFORE THE FIT; THE RESIDUAL CLIP ADDS TO THESE AFRESH AFTER EACH FIT (DY-1281)
         mask_clipped_before_fit = mask_all_clipped.to_numpy(dtype=bool, copy=True)
         if "flagged_bspline_clipped" not in imageMapOrder.columns:
