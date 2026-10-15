@@ -118,7 +118,6 @@ class base_recipe:
         else:
             matplotlib.use("Agg")
 
-        self.darkDetrendWarningIssued1 = False
         self.darkDetrendWarningIssued2 = False
 
         if isinstance(inputFrames, str) and "_STD_" in inputFrames:
@@ -2025,7 +2024,6 @@ class base_recipe:
         # `arm` AND `dp` ARE UNUSED, TWO OF THE MODULE'S `F841` FINDINGS. DELETING
         # THEM IS DY-88'S.
         arm = self.arm  # noqa: F841
-        kw = self.kw
         dp = self.detectorParams  # noqa: F841
 
         if master_bias == None:
@@ -2046,11 +2044,6 @@ class base_recipe:
                 f"{self.arm} master darks, lamp-off frames and raw darks still carry the bias pedestal, "
                 "so this combination is not supported"
             )
-        if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            if not self.darkDetrendWarningIssued1:
-                self.log.warning("Dark and science/calibration frame have differing exposure-times.")
-                self.darkDetrendWarningIssued1 = True
-
         processedFrame = inputFrame
 
         if master_bias != False:  # noqa: E712
