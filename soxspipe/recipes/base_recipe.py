@@ -2247,8 +2247,10 @@ class base_recipe:
         """*measure the read-out noise in a single raw frame, from the first two input frames*
 
         The noise is measured on the difference of the first two input frames,
-        so the mask returned alongside it is the mask of that difference and is
-        needed by the caller to measure the master frame against the same pixels.
+        so any fixed pattern the frames share cancels. The mask returned
+        alongside it is the mask of that difference and is needed by the caller
+        to measure the master frame against the same pixels. At least two input
+        frames are required.
 
         **Return:**
 
@@ -2262,30 +2264,27 @@ class base_recipe:
         ```
         """
         import math
+        from itertools import islice
 
         import numpy as np
         from astropy.stats import sigma_clip
 
         from soxspipe.commonutils import toolkit
 
-        # LIST OF RAW CCDDATA OBJECTS
-        # THE COMPREHENSION IS THE BASE REVISION'S. COLLAPSING IT TO `list()` IS
-        # DY-88'S LINT SWEEP, NOT THIS COMMIT'S.
-        ccds = [  # noqa: C416
-            c
-            for c in self.inputFrames.ccds(
+        # ONLY THE FIRST TWO RAW FRAMES ARE NEEDED, SO NO MORE ARE LOADED
+        raw_one, raw_two = islice(
+            self.inputFrames.ccds(
                 ccd_kwargs={
                     "hdu_uncertainty": "ERRS",
                     "hdu_mask": "QUAL",
                     "hdu_flags": "FLAGS",
                     "key_uncertainty_type": "UTYPE",
                 }
-            )
-        ]
+            ),
+            2,
+        )
 
         # SINGLE FRAME RON
-        raw_one = ccds[0]
-        raw_two = ccds[1]
         raw_diff = raw_one.subtract(raw_two)
         toolkit.frame_to_32(raw_diff)
 
@@ -2317,23 +2316,25 @@ class base_recipe:
         frameType=False,
         frameName=False,
         masterFrame=False,
-        rawRon=False,
         masterRon=False,
     ):
         """*calculate the read-out-noise from bias/dark frames*
+
+        The raw read-out-noise is measured on the difference of the first two raw
+        frames, so fixed pattern noise cancels. With fewer than two raw frames it
+        cannot be measured, and no ``RAW RON`` QC is recorded.
 
         **Key Arguments:**
 
         - ``frameType`` -- the type of the frame for reporting QC values. Default *False*
         - ``frameName`` -- the name of the frame in human readable words. Default *False*
         - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
-        - ``rawRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
         - ``masterRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
 
-        - ``rawRon`` -- raw read-out-noise in electrons
-        - ``masterRon`` -- combined read-out-noise in mbias
+        - ``rawRon`` -- raw read-out-noise in electrons, or *None* if fewer than two raw frames were supplied
+        - ``masterRon`` -- combined read-out-noise in mbias, or *None* if there is no master noise
 
         **Usage:**
 
@@ -2354,7 +2355,9 @@ class base_recipe:
         # ONE TIMESTAMP COVERS BOTH THE RAW AND MASTER RON ROWS, AS IT DID INLINE.
         utcnow = toolkit.utcnow_string()
 
-        if not rawRon and len(self.inputFrames.files) > 1:
+        rawRon = None
+        combinedMask = None
+        if len(self.inputFrames.files) > 1:
             rawRon, combinedMask = self._measure_raw_frame_ron()
 
         if rawRon:
@@ -2372,8 +2375,9 @@ class base_recipe:
             )
 
         if masterFrame and not masterRon:
-            # PREDICTED MASTER NOISE
-            # predictedMasterRon = rawRon / math.sqrt(len(ccds))
+            # WITHOUT A RAW PAIR THERE IS NO RAW MASK, SO USE THE MASTER FRAME'S OWN
+            if combinedMask is None:
+                combinedMask = masterFrame.mask
 
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             tmp = np.ma.array(masterFrame.data, mask=combinedMask)
@@ -2396,6 +2400,28 @@ class base_recipe:
 
         self.log.debug("completed the ``qc_bias_ron`` method")
         return rawRon, masterRon
+
+    def _fill_masked_uncertainty(self, frame, fillValue):
+        """*set the uncertainty of the masked pixels of a frame to a single value*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame (CCDData object) whose uncertainty is updated in place
+        - ``fillValue`` -- the uncertainty (e-) given to every masked pixel
+
+        **Usage:**
+
+        ```python
+        self._fill_masked_uncertainty(frame, fillValue=rawRon)
+        ```
+        """
+        import numpy as np
+
+        frame.uncertainty = np.ma.array(
+            frame.uncertainty.array,
+            mask=frame.mask,
+            fill_value=fillValue,
+        ).filled()
 
     def qc_median_flux_level(self, frame, frameType="MBIAS", frameName="master bias", medianFlux=False):
         """*calculate the median flux level in the frame, excluding masked pixels*

@@ -14,23 +14,9 @@ from astropy.table import MaskedColumn, Table
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.recipes import base_recipe
-from tests.factories import instrument_header, pipeline_settings, qc_row, qc_table
+from tests.factories import StubInputFrames, instrument_header, noise_frame_pair, pipeline_settings, qc_row, qc_table
 
 pytestmark = pytest.mark.unit
-
-
-class StubInputFrames:
-    """Input-frame collection boundary returning fixed CCDData objects."""
-
-    def __init__(self, ccdList: list[CCDData]) -> None:
-        self.files = [f"synthetic_{index}.fits" for index in range(len(ccdList))]
-        self._ccdList = ccdList
-        self.ccdKwargs: list[dict[str, Any]] = []
-
-    def ccds(self, ccd_kwargs: dict[str, Any] | None = None) -> list[CCDData]:
-        """Return the fixed frames and record the requested extension names."""
-        self.ccdKwargs.append(dict(ccd_kwargs or {}))
-        return list(self._ccdList)
 
 
 def _frame(data: np.ndarray, mask: np.ndarray | None = None) -> CCDData:
@@ -193,9 +179,115 @@ def test_qc_ron_reports_nothing_when_a_single_input_frame_is_supplied(
     rawRon, masterRon = recipe.qc_ron(frameType="MBIAS", frameName="master bias")
 
     # ASSERT
-    assert rawRon is False
+    assert rawRon is None
     assert masterRon is None
     assert recipe.qc.empty
+
+
+def test_qc_ron_measures_raw_noise_free_of_fixed_pattern(log: Any) -> None:
+    """A fixed pattern shared by both raw frames cancels in the difference."""
+    # ARRANGE
+    noiseSigma = 3.0
+    patternSigma = 10.0
+    pixelCount = 256 * 256
+    recipe = _recipe(log)
+    recipe.inputFrames = StubInputFrames(
+        noise_frame_pair(noiseSigma=noiseSigma, patternSigma=patternSigma, shape=(256, 256))
+    )
+
+    # ACT
+    rawRon, _masterRon = recipe.qc_ron(frameType="MBIAS", frameName="master bias")
+
+    # ASSERT
+    # THE STANDARD ERROR OF A STANDARD DEVIATION IS sigma / sqrt(2N); FIVE OF THEM
+    # BOUND A SEEDED DRAW. THE PATTERN-INCLUSIVE VALUE WOULD BE ABOUT 10.4
+    tolerance = 5 * noiseSigma / np.sqrt(2 * pixelCount)
+    assert rawRon == pytest.approx(noiseSigma, abs=tolerance)
+    rawRow = recipe.qc.set_index("qc_name").loc["RAW RON"]
+    assert rawRow["qc_value"] == pytest.approx(rawRon)
+
+
+def test_qc_ron_excludes_a_pixel_masked_in_either_raw_frame(log: Any) -> None:
+    """A pixel masked in only one frame of the raw pair is left out of the raw noise."""
+
+    # ARRANGE
+    def ron(maskFirst: np.ndarray, maskSecond: np.ndarray) -> float:
+        frames = _noise_frames()
+        # TWO MILD OUTLIERS THAT SIGMA CLIPPING KEEPS, SO ONLY THE MASKS CAN DROP THEM
+        frames[0].data[0, 0] += 10.0
+        frames[1].data[1, 1] -= 10.0
+        frames[0].mask, frames[1].mask = maskFirst, maskSecond
+        recipe = _recipe(log)
+        recipe.inputFrames = StubInputFrames(frames)
+        rawRon, _masterRon = recipe.qc_ron(frameType="MBIAS", frameName="master bias")
+        return rawRon
+
+    noMask = np.zeros((16, 16), dtype=bool)
+    maskFirst, maskSecond, maskBoth = noMask.copy(), noMask.copy(), noMask.copy()
+    maskFirst[0, 0] = True
+    maskSecond[1, 1] = True
+    maskBoth[0, 0] = maskBoth[1, 1] = True
+
+    # ACT
+    asymmetricRon = ron(maskFirst, maskSecond)
+    unionRon = ron(maskBoth, maskBoth)
+    unmaskedRon = ron(noMask, noMask)
+
+    # ASSERT
+    assert asymmetricRon == pytest.approx(unionRon, rel=1e-12)
+    assert asymmetricRon != pytest.approx(unmaskedRon, rel=1e-3)
+
+
+def test_qc_ron_measures_master_noise_from_its_own_mask_when_only_one_raw_frame(
+    log: Any,
+) -> None:
+    """With no raw pair there is no raw mask, so the master frame's own mask is used."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.inputFrames = StubInputFrames([_frame(np.full((8, 8), 3.0))])
+    masterMask = np.zeros((8, 8), dtype=bool)
+    masterMask[0, 0] = True
+    masterFrame = _frame(np.full((8, 8), 5.0), masterMask)
+    masterFrame.data[0, 0] = 1000.0
+    masterFrame.data[1, 1] = 9.0
+
+    # ACT
+    rawRon, masterRon = recipe.qc_ron(
+        frameType="MBIAS",
+        frameName="master bias",
+        masterFrame=masterFrame,
+    )
+
+    # ASSERT
+    expected = float(np.ma.std(np.ma.array(masterFrame.data, mask=masterMask)))
+    assert rawRon is None
+    assert masterRon == pytest.approx(expected)
+    assert recipe.qc["qc_name"].tolist() == ["MASTER RON"]
+
+
+def test_measure_raw_frame_ron_reads_only_the_first_two_frames(log: Any) -> None:
+    """The raw noise needs two frames, so later frames are never loaded."""
+    # ARRANGE
+    recipe = _recipe(log)
+    pair = noise_frame_pair()
+    consumed: list[int] = []
+
+    class LazyFrames:
+        files = ["a.fits", "b.fits", "c.fits", "d.fits"]
+
+        def ccds(self, ccd_kwargs: dict[str, Any] | None = None) -> Any:
+            for index in range(len(self.files)):
+                consumed.append(index)
+                yield pair[index] if index < 2 else _frame(np.zeros((16, 16)))
+
+    recipe.inputFrames = LazyFrames()
+
+    # ACT
+    rawRon, _combinedMask = recipe._measure_raw_frame_ron()
+
+    # ASSERT
+    assert rawRon > 0
+    assert consumed == [0, 1]
 
 
 def _keyword_recipe(tmp_path: Path, log: Any, rawFrames: Table) -> base_recipe:

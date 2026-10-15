@@ -134,7 +134,8 @@ def bias_distribution_summary(
     - ``rawPixels`` -- the flux (e-) of the unclipped pixels of the plotted raw frame
     - ``frameRon`` -- the sigma-clipped standard deviation (e-) of the plotted raw frame
     - ``masterPixels`` -- the flux (e-) of the unmasked master-bias pixels
-    - ``rawRon`` -- the mean of the per-frame RON values (the RAW RON QC)
+    - ``rawRon`` -- the RAW RON QC value (e-), measured on the difference of two raw frames. `None` if there
+      were fewer than two raw frames
     - ``masterRon`` -- the standard deviation (e-) of the stacked, mean-subtracted frame (the MASTER RON QC)
 
     **Return:**
@@ -143,7 +144,8 @@ def bias_distribution_summary(
       and `statsTable`. `statsTable` is a dictionary with `columns` (the four column headers) and `rows` (one list
       of cell strings per row: the plotted raw frame, the master bias and the RAW RON QC). Numbers are formatted
       to two decimal places. The mean and median cells of the RAW RON QC row hold a dash because that value is
-      a mean of per-frame RONs and not a pixel statistic. `masterRon` is carried by the master bias row
+      not a pixel statistic of the plotted frame. Its RON cell holds a dash too if `rawRon` is `None`.
+      `masterRon` is carried by the master bias row
 
     Raises `ValueError` if either sample has no finite, unmasked pixels. A bias frame with every pixel masked is
     unusable, so the recipe stops rather than writing a plot of NaN values.
@@ -165,13 +167,14 @@ def bias_distribution_summary(
     masterMean = float(np.mean(masterPixels))
     masterMedian = float(np.median(masterPixels))
     binEdges = _histogram_bin_edges(rawPixels, masterPixels, rawMean, frameRon)
+    rawRonCell = STATS_TABLE_NOT_APPLICABLE if rawRon is None else f"{rawRon:.2f}"
 
     statsTable = {
         "columns": list(STATS_TABLE_COLUMNS),
         "rows": [
             ["raw frame", f"{rawMean:.2f}", f"{rawMedian:.2f}", f"{frameRon:.2f}"],
             ["master bias", f"{masterMean:.2f}", f"{masterMedian:.2f}", f"{masterRon:.2f}"],
-            ["RAW RON (QC)", STATS_TABLE_NOT_APPLICABLE, STATS_TABLE_NOT_APPLICABLE, f"{rawRon:.2f}"],
+            ["RAW RON (QC)", STATS_TABLE_NOT_APPLICABLE, STATS_TABLE_NOT_APPLICABLE, rawRonCell],
         ],
     }
 
@@ -396,7 +399,7 @@ class soxs_mbias(base_recipe):
         (
             combined_bias_mean,
             masterMedianBiasLevel,
-            rawRon,
+            meanFrameRon,
             masterRon,
             rawFrameSample,
         ) = self._combine_bias_frames()
@@ -404,13 +407,15 @@ class soxs_mbias(base_recipe):
         # OPTIMISE: 24%
         self.qc_periodic_pattern_noise(frames=self.inputFrames)
 
-        self.qc_ron(
+        rawRon, masterRon = self.qc_ron(
             frameType="MBIAS",
             frameName="master bias",
             masterFrame=combined_bias_mean,
-            rawRon=rawRon,
             masterRon=masterRon,
         )
+
+        # FILL THE MASKED UNCERTAINTY WITH THE MEASURED RAW RON, OR THE MEAN FRAME RON IF THERE WAS NO RAW PAIR
+        self._fill_masked_uncertainty(combined_bias_mean, meanFrameRon if rawRon is None else rawRon)
 
         self.qc_bias_structure(combined_bias_mean)
 
@@ -431,6 +436,7 @@ class soxs_mbias(base_recipe):
         )
 
         self.update_fits_keywords(frame=combined_bias_mean)
+        combined_bias_mean.header[kw("DATANCOM")] = len(self.inputFrames.files)
 
         # WRITE TO DISK
         toolkit.frame_to_32(combined_bias_mean)
@@ -478,7 +484,8 @@ class soxs_mbias(base_recipe):
 
         - ``combined_bias_mean`` -- the stacked master-bias frame
         - ``masterMedianBiasLevel`` -- the median of the per-frame mean bias levels
-        - ``rawRon`` -- the mean of the per-frame read-out noise values
+        - ``meanFrameRon`` -- the mean of the per-frame clipped standard deviations. These include fixed pattern
+          noise, so the RAW RON QC is measured separately by `qc_ron`
         - ``masterRon`` -- the standard deviation of the stacked noise frame
         - ``rawFrameSample`` -- the earliest raw frame (by MJD-OBS) for the QC plot, a dictionary with the keys
           `pixels` (flux of its unclipped, unflagged pixels) and `frameRon` (its RON)
@@ -486,7 +493,7 @@ class soxs_mbias(base_recipe):
         **Usage:**
 
         ```python
-        combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon, rawFrameSample = self._combine_bias_frames()
+        combined_bias_mean, masterMedianBiasLevel, meanFrameRon, masterRon, rawFrameSample = self._combine_bias_frames()
         ```
         """
         import numpy as np
@@ -512,7 +519,7 @@ class soxs_mbias(base_recipe):
         meanBiasLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds], strict=False)
         masterMeanBiasLevel = np.mean(meanBiasLevels)
         masterMedianBiasLevel = np.median(meanBiasLevels)
-        rawRon = np.mean(rons)
+        meanFrameRon = np.mean(rons)
 
         # SAMPLE BEFORE STACKING IN CASE THE STACK TOUCHES THE INPUT FRAMES
         rawFrameSample = {
@@ -535,15 +542,10 @@ class soxs_mbias(base_recipe):
         combined_noise.data = (
             np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanBiasLevel
         )
-        combined_noise.uncertainty = np.ma.array(
-            combined_noise.uncertainty.array,
-            mask=combined_noise.mask,
-            fill_value=rawRon,
-        ).filled()
         combined_bias_mean = combined_noise
         combined_bias_mean.mask = combined_noise.mask
 
-        return combined_bias_mean, masterMedianBiasLevel, rawRon, masterRon, rawFrameSample
+        return combined_bias_mean, masterMedianBiasLevel, meanFrameRon, masterRon, rawFrameSample
 
     def plot_bias_distribution_qc(self, rawFrameSample, masterFrame, rawRon, masterRon, productPath):
         """*plot the raw and master bias pixel-flux distributions and register the plot as a QC product*
@@ -553,7 +555,7 @@ class soxs_mbias(base_recipe):
         - ``rawFrameSample`` -- the earliest raw frame's `pixels` and `frameRon`
           (see `_combine_bias_frames`)
         - ``masterFrame`` -- the master bias frame
-        - ``rawRon`` -- the mean of the per-frame RON values (the RAW RON QC)
+        - ``rawRon`` -- the RAW RON QC value, or *None* if it could not be measured
         - ``masterRon`` -- the MASTER RON QC value
         - ``productPath`` -- the path of the master bias product, used to name the plot
 

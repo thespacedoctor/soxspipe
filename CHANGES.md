@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: the `RAW RON` QC of `soxs_mbias` and `soxs_mdark` is now measured from the difference of the first two raw frames divided by √2, so fixed-pattern noise no longer inflates it; a master built from one raw frame writes no `RAW RON`, and master biases and darks now record the number of combined frames in `ESO PRO DATANCOM` (DY-1458).
 * **FIXED**: `soxspipe reduce` no longer crashes with `KeyError: 'workspace-root-dir'`; the packaged advanced settings again default the workspace root to the current directory, which DY-1225 had removed (DY-1601).
 * **FIXED**: `soxs_nod`, `soxs_nod_std` and `soxs_offset` now read the UVB/VIS master bias their SOF names and remove the bias-pedestal photon noise from the A and B errors before differencing; VIS nod and offset ERRS, SNR and extraction weights change, and a SOF with no master bias logs a warning (DY-1390).
 * **FIXED**: `detrend` now raises an error when a UVB or VIS frame gets both a master bias and a master dark, because UVB/VIS master darks still carry the bias pedestal and the pedestal was subtracted twice. This includes `soxs_mflat` given a master bias with lamp-off or raw dark frames. NIR is unchanged (DY-1580).

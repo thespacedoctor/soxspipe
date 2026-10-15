@@ -151,7 +151,7 @@ def test_bias_distribution_summary_reports_distinct_mean_and_median_for_skewed_p
 
 
 def test_bias_distribution_summary_labels_three_ron_values_distinctly() -> None:
-    """The plotted-frame RON, the mean raw RON and the master RON each sit in the RON column of their own row."""
+    """The plotted-frame RON, the measured raw RON and the master RON each sit in the RON column of their own row."""
     # ACT
     summary = _summary(frameRon=2.134, rawRon=3.568, masterRon=0.413)
 
@@ -160,6 +160,17 @@ def test_bias_distribution_summary_labels_three_ron_values_distinctly() -> None:
     assert _row(summary, "raw frame")[ronColumn] == "2.13"
     assert _row(summary, "master bias")[ronColumn] == "0.41"
     assert _row(summary, "RAW RON (QC)")[ronColumn] == "3.57"
+
+
+def test_bias_distribution_summary_dashes_the_raw_ron_when_it_was_not_measured() -> None:
+    """A missing RAW RON QC shows a dash in the RON column rather than failing to format."""
+    # ACT
+    summary = _summary(rawRon=None)
+
+    # ASSERT
+    ronColumn = _column(summary, "RON (e-)")
+    assert _row(summary, "RAW RON (QC)")[ronColumn] == "\u2014"
+    assert _row(summary, "master bias")[ronColumn] == "0.50"
 
 
 def test_bias_distribution_summary_table_has_expected_columns_and_dashed_qc_cells() -> None:
@@ -406,11 +417,11 @@ def test_combine_bias_frames_samples_first_frame_without_clipped_or_bad_pixels(
     assert rawFrameSample["pixels"].max() < 200.0
 
 
-def test_combine_bias_frames_keeps_mean_raw_ron_as_third_value(
+def test_combine_bias_frames_returns_mean_frame_ron_as_third_value(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The sample RON is frame 0's while the returned raw RON stays the mean of all frames."""
+    """The sample RON is frame 0's while the returned frame RON is the mean over all frames."""
     # ARRANGE
     recipe, _frames, _originalData = _combine_fixture(log, monkeypatch)
 
@@ -457,6 +468,22 @@ def test_plot_bias_distribution_qc_writes_pdf_in_qc_directory(log: object, tmp_p
 
     # ASSERT
     assert filePath == str(tmp_path / "MASTER_BIAS_VIS_BIAS_DISTRIBUTION_QC_PLOT.pdf")
+    with open(filePath, "rb") as pdfFile:
+        assert pdfFile.read(4) == b"%PDF"
+
+
+def test_plot_bias_distribution_qc_writes_pdf_when_raw_ron_was_not_measured(log: object, tmp_path: Path) -> None:
+    """A recipe with a single raw frame has no RAW RON and still plots."""
+    # ARRANGE
+    recipe = _plot_recipe(log, tmp_path)
+    rawFrameSample, masterFrame = _plot_inputs()
+
+    # ACT
+    filePath = recipe.plot_bias_distribution_qc(
+        rawFrameSample, masterFrame, None, 0.5, "/products/MASTER_BIAS_VIS.fits"
+    )
+
+    # ASSERT
     with open(filePath, "rb") as pdfFile:
         assert pdfFile.read(4) == b"%PDF"
 

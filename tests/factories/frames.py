@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
 import numpy as np
 from astropy import units as u
@@ -92,3 +93,43 @@ def synthetic_ccd(
         mask=mask,
         uncertainty=uncertainty,
     )
+
+
+class StubInputFrames:
+    """Input-frame collection boundary returning fixed CCDData objects."""
+
+    def __init__(self, ccdList: list[CCDData]) -> None:
+        self.files = [f"synthetic_{index}.fits" for index in range(len(ccdList))]
+        self._ccdList = ccdList
+        self.ccdKwargs: list[dict[str, Any]] = []
+
+    def ccds(self, ccd_kwargs: dict[str, Any] | None = None) -> list[CCDData]:
+        """Return the fixed frames and record the requested extension names."""
+        self.ccdKwargs.append(dict(ccd_kwargs or {}))
+        return list(self._ccdList)
+
+
+def noise_frame_pair(
+    *,
+    noiseSigma: float = 3.0,
+    patternSigma: float = 0.0,
+    shape: tuple[int, int] = (16, 16),
+    seed: int = 11,
+) -> list[CCDData]:
+    """Return two frames sharing one fixed pattern, each with independent white noise.
+
+    The difference of the pair cancels the fixed pattern, so its spread divided
+    by the square root of two is the white noise ``noiseSigma``.
+    """
+    rng = np.random.default_rng(seed)
+    pattern = rng.normal(loc=0.0, scale=patternSigma, size=shape) if patternSigma else np.zeros(shape)
+    return [
+        CCDData(
+            (100.0 + pattern + rng.normal(loc=0.0, scale=noiseSigma, size=shape)).astype(np.float32),
+            unit=u.electron,
+            meta=instrument_header(),
+            mask=np.zeros(shape, dtype=bool),
+            uncertainty=StdDevUncertainty(np.full(shape, 1.0), unit=u.electron),
+        )
+        for _ in range(2)
+    ]

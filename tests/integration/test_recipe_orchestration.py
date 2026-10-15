@@ -34,6 +34,10 @@ class FakeFrameCollection:
     calls: list[tuple[str, object]] = field(default_factory=list)
     activePaths: list[str] = field(default_factory=list)
 
+    @property
+    def files(self) -> list[str]:
+        return [f"synthetic_{index}.fits" for index in range(len(self.ccdFrames))]
+
     def ccds(self, **kwargs: object) -> list[object]:
         self.calls.append(("ccds", kwargs))
         return list(self.ccdFrames)
@@ -106,7 +110,18 @@ def _assert_product_row(
     assert row["label"] == "PROD"
 
 
+# THE MEAN OF THE PER-FRAME CLIPPED STANDARD DEVIATIONS THE FAKE SUBTRACTION REPORTS
+MEAN_FRAME_RON = 3.0
+
+
+@pytest.mark.parametrize(
+    ("measuredRawRon", "expectedFill"),
+    [(2.0, 2.0), (None, MEAN_FRAME_RON)],
+    ids=["raw-ron-measured", "no-raw-pair-falls-back-to-mean-frame-ron"],
+)
 def test_master_bias_produce_product_runs_collaborators_and_records_product(
+    measuredRawRon: float | None,
+    expectedFill: float,
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -196,11 +211,12 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
         "qc_periodic_pattern_noise",
         lambda *args, **kwargs: append_qc("qc_periodic_pattern_noise", *args, **kwargs),
     )
-    monkeypatch.setattr(
-        recipe,
-        "qc_ron",
-        lambda *args, **kwargs: append_qc("qc_ron", *args, **kwargs),
-    )
+
+    def fake_qc_ron(*args: object, **kwargs: object) -> tuple[float | None, float]:
+        append_qc("qc_ron", *args, **kwargs)
+        return measuredRawRon, kwargs["masterRon"]
+
+    monkeypatch.setattr(recipe, "qc_ron", fake_qc_ron)
     monkeypatch.setattr(
         recipe,
         "qc_bias_structure",
@@ -217,6 +233,7 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
         assert kwargs["frame"] is stackedFrame
         assert kwargs["frame"].header["DATE-OBS"] == "2024-01-02T03:04:05.678"
         assert set(kwargs) == {"frame"}
+        assert "DATANCOM" not in kwargs["frame"].header
         calls.append("update_fits_keywords")
 
     def fake_write(**kwargs: object) -> str:
@@ -295,8 +312,11 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     assert ronArgs["frameType"] == "MBIAS"
     assert ronArgs["frameName"] == "master bias"
     assert ronArgs["masterFrame"] is stackedFrame
-    assert ronArgs["rawRon"] == pytest.approx(3.0)
+    assert "rawRon" not in ronArgs
     assert ronArgs["masterRon"] == pytest.approx(expectedMasterRon)
+    # THE MASKED PIXEL OF THE STACK TAKES THE MEASURED RAW RON, OR THE MEAN FRAME RON IF NONE WAS MEASURED
+    assert stackedFrame.uncertainty.array[0, 0] == pytest.approx(expectedFill)
+    assert stackedFrame.header["DATANCOM"] == len(rawFrames)
     assert qcArguments["qc_bias_structure"] == {
         "args": (stackedFrame,),
     }
@@ -336,7 +356,14 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     ]
 
 
+@pytest.mark.parametrize(
+    ("measuredRawRon", "expectedFill"),
+    [(2.0, 2.0), (None, MEAN_FRAME_RON)],
+    ids=["raw-ron-measured", "no-raw-pair-falls-back-to-mean-frame-ron"],
+)
 def test_master_dark_produce_product_preserves_qc_and_records_product(
+    measuredRawRon: float | None,
+    expectedFill: float,
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -417,7 +444,7 @@ def test_master_dark_produce_product_preserves_qc_and_records_product(
                 "qc",
                 pd.concat([recipe.qc, ronQc], ignore_index=True),
             ),
-            (3.0, 1.0),
+            (measuredRawRon, 1.0),
         )[-1],
     )
 
@@ -425,6 +452,7 @@ def test_master_dark_produce_product_preserves_qc_and_records_product(
         assert kwargs["frame"] is stackedFrame
         assert kwargs["frame"].header["DATE-OBS"] == "2024-01-02T03:04:05.678"
         assert set(kwargs) == {"frame"}
+        assert "DATANCOM" not in kwargs["frame"].header
         calls.append("keywords")
 
     def fake_write(**kwargs: object) -> str:
@@ -475,6 +503,8 @@ def test_master_dark_produce_product_preserves_qc_and_records_product(
         returnedQc.reset_index(drop=True),
         pd.concat([originalQc, genericQc, medianQc, ronQc], ignore_index=True),
     )
+    assert stackedFrame.uncertainty.array[0, 0] == pytest.approx(expectedFill)
+    assert stackedFrame.header["DATANCOM"] == len(rawFrames)
     _assert_product_row(
         recipe.products.iloc[-1],
         recipeName="soxs-mdark",
