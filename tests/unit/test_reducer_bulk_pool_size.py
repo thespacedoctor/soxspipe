@@ -122,7 +122,7 @@ def test_the_progress_message_names_the_cpu_default_pool_size(
 ) -> None:
     """Without a user value, a light recipe's message names the one-per-CPU pool size."""
     # ARRANGE
-    monkeypatch.setattr(import_module("psutil"), "cpu_count", lambda: 7)
+    monkeypatch.setattr(import_module("soxspipe.commonutils.reducer").os, "cpu_count", lambda: 7)
 
     # ACT
     _pool_size_for(monkeypatch, tmp_path, log, "mbias")

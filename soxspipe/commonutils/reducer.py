@@ -644,7 +644,6 @@ def run_recipe_bulk(
 
     import multiprocess
     import pandas as pd
-    import psutil
     from fundamentals import fmultiprocess
 
     from soxspipe.commonutils import data_organiser
@@ -724,7 +723,7 @@ def run_recipe_bulk(
     else:
         # FALSE LETS fmultiprocess USE ONE WORKER PER CPU
         effectivePoolSize = False
-        print(f"{runningMessage} with a pool size of {psutil.cpu_count()}...")
+        print(f"{runningMessage} with a pool size of {os.cpu_count()}...")
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
 
