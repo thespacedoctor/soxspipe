@@ -352,10 +352,16 @@ def test_reduce_serial_dispatches_rows_and_refreshes_after_failure(
     assert any(level == "error" and "Recipe failed" in message for level, message in log.messages)
 
 
+@pytest.mark.parametrize(
+    ("poolArguments", "expectedPoolSize"),
+    [({}, None), ({"poolSize": 2}, 2)],
+)
 def test_reduce_multiprocess_forwards_selected_group(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     log: Any,
+    poolArguments: dict[str, int],
+    expectedPoolSize: int | None,
 ) -> None:
     """Pass selected SOFs and commands to the bulk reducer exactly once."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
@@ -409,9 +415,10 @@ def test_reduce_multiprocess_forwards_selected_group(
     monkeypatch.setattr(commonutilsModule, "data_organiser", RecordingOrganiser)
     monkeypatch.setattr(reducerModule, "run_recipe_bulk", fake_bulk)
 
-    collection.reduce(batch=1, multiprocess=True)
+    collection.reduce(batch=1, multiprocess=True, **poolArguments)
 
     assert len(bulkCalls) == 1
+    assert bulkCalls[0]["poolSize"] == expectedPoolSize
     assert bulkCalls[0]["recipe"] == "mbias"
     assert bulkCalls[0]["sofList"] == [str(workspacePath / "sessions" / "night1" / "sof" / "bias.sof")]
     assert bulkCalls[0]["commandList"] == ["run bias"]

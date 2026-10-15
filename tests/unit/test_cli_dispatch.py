@@ -335,7 +335,80 @@ def test_main_reduce_all_converts_batch_and_forwards_flags(
             "refreshWorkspace": False,
         }
     ]
-    assert reduceCalls == [{"batch": 2, "multiprocess": True}]
+    assert reduceCalls == [{"batch": 2, "multiprocess": True, "poolSize": None}]
+
+
+def _record_reducer(monkeypatch: pytest.MonkeyPatch) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Replace the reducer with a recorder and return its constructor and `reduce` calls."""
+    initCalls: list[dict[str, object]] = []
+    reduceCalls: list[dict[str, object]] = []
+
+    class RecordingReducer:
+        def __init__(self, **kwargs: object) -> None:
+            initCalls.append(kwargs)
+
+        def reduce(self, **kwargs: object) -> None:
+            reduceCalls.append(kwargs)
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "reducer", RecordingReducer)
+    return initCalls, reduceCalls
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["soxspipe", "-m", "reduce", "all", "--cores", "2"],
+        ["soxspipe", "-m", "reduce", "all", "-c", "2"],
+    ],
+)
+def test_main_reduce_all_forwards_the_user_pool_size(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    argv: list[str],
+) -> None:
+    """`--cores` sets the worker-pool size for multiprocessing mode."""
+    # ARRANGE
+    (tmp_path / "soxspipe.db").touch()
+    _, reduceCalls = _record_reducer(monkeypatch)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, argv)
+
+    # ASSERT
+    assert reduceCalls == [{"batch": None, "multiprocess": True, "poolSize": 2}]
+
+
+@pytest.mark.parametrize(
+    ("argv", "expectedMessage"),
+    [
+        (["soxspipe", "-m", "reduce", "all", "--cores", "0"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores=-1"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "abc"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "2.5"], "positive whole number"),
+        (["soxspipe", "reduce", "all", "--cores", "2"], "-m"),
+    ],
+)
+def test_main_reduce_all_rejects_an_invalid_pool_size_before_any_reduction(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    expectedMessage: str,
+) -> None:
+    """A bad `--cores` value, or `--cores` without `-m`, exits non-zero and never builds the reducer."""
+    # ARRANGE
+    (tmp_path / "soxspipe.db").touch()
+    initCalls, reduceCalls = _record_reducer(monkeypatch)
+
+    # ACT
+    with pytest.raises(SystemExit) as excinfo:
+        _run_cli(monkeypatch, tmp_path, argv)
+
+    # ASSERT
+    assert excinfo.value.code not in (0, None)
+    assert expectedMessage in capsys.readouterr().err
+    assert initCalls == []
+    assert reduceCalls == []
 
 
 def test_main_reduce_returns_before_dispatch_when_workspace_is_unprepared(

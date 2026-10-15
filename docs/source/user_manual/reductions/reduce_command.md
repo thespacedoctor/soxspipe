@@ -38,6 +38,14 @@ To do this, from the root directory of your workspace, run:
 soxspipe reduce all . -m
 ```
 
+By default, the pool for the `mflat`, stare, nod and offset recipes has 3 worker processes, to limit memory use. The pool for every other recipe has one worker process for each CPU. To set the pool size yourself, add the `--cores` (`-c`) option. It sets the number of worker processes for every recipe, and it replaces the default sizes. The value must be a positive whole number, and you can only use it with `-m`. If you use it without `-m`, or give a value that is not a positive whole number, `soxspipe` prints an error message and exits before it reduces any data. For example, to use 2 worker processes, run:
+
+```bash
+soxspipe reduce all . -m --cores 2
+```
+
+Choose the value from the memory you have free, not from the number of CPU cores. One NIR stare reduction can use about 13 GB of memory at its peak, so a value that is too high can exhaust the memory of your computer. The progress message for each recipe states the pool size in use.
+
 :::{figure-md} multiprocess
 ![image-20260410181117526](../../_images/image-20260410181117526.png)
 

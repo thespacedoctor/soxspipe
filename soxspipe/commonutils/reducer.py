@@ -134,9 +134,16 @@ class reducer:
 
         return
 
-    def reduce(self, batch=False, multiprocess=False):
+    def reduce(self, batch=False, multiprocess=False, poolSize=None):  # noqa: PLR0915
         """
         *reduce the selected data*
+
+        **Key Arguments:**
+
+        - ``batch`` -- the maximum number of recipe batches to run. Default *False* (no limit).
+        - ``multiprocess`` -- run each recipe's reductions in a worker pool. Default *False*.
+        - ``poolSize`` -- the number of worker processes in multiprocessing mode. Default *None*, which keeps
+          the built-in choice of ``run_recipe_bulk``.
         """
         self.log.debug("starting the ``reduce`` method")
 
@@ -207,6 +214,7 @@ class reducer:
                         workspaceDirectory=self.workspaceDirectory,
                         conn=conn,
                         sessionId=self.sessionId,
+                        poolSize=poolSize,
                     )
                     endTime = times.get_now_sql_datetime()
                     runningTime = times.calculate_time_difference(startTime, endTime)
@@ -603,6 +611,7 @@ def run_recipe_bulk(
     workspaceDirectory,
     conn,
     sessionId,
+    poolSize=None,
 ):
     """*execute a pipeline recipe in multiprocessing mode*
 
@@ -617,6 +626,8 @@ def run_recipe_bulk(
     - ``workspaceDirectory`` -- path to the root of the workspace
     - ``conn`` -- a connection to the workspace database
     - ``sessionId`` -- the session ID of the workspace
+    - ``poolSize`` -- the number of worker processes. Default *None*, which uses 3 for the memory-heavy recipes
+      (mflat, stare, nod and offset) and one per CPU for every other recipe.
 
     The ``multiprocess`` start method is switched to ``spawn`` for the worker pool and restored
     to its previous value afterwards, even when the pool raises. The start method is process-global,
@@ -699,15 +710,22 @@ def run_recipe_bulk(
 
     inputDicts = [{"sof": sof, "command": command} for sof, command in zip(sofList, commandList)]
 
-    poolSize = False
     turnOffMP = False
     wrapperTurnOffMP = True
 
-    if "mflat" in recipe or "stare" in recipe or "nod" in recipe or "offset" in recipe:
+    if poolSize is not None:
+        print(
+            f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode "
+            f"with a pool size of {poolSize}..."
+        )
+    elif "mflat" in recipe or "stare" in recipe or "nod" in recipe or "offset" in recipe:
         poolSize = 3
         print(
             f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode with a pool size of {poolSize} to avoid memory issues..."
         )
+    else:
+        # FALSE LETS fmultiprocess USE ONE WORKER PER CPU
+        poolSize = False
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
 
