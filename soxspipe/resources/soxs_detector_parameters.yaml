@@ -32,7 +32,6 @@ VIS:
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 12 #arcsec
-  line-atlas: ThAr.fits
   line-atlas: thar_murphy.fits
   dispersion-axis: x
   rotate-qc-plot: 90
@@ -72,7 +71,7 @@ NIR:
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 12 #arcsec
-  line-atlas: ArHgNeXe.fits
+  line-atlas: ArHgNeXe_all.fits
   dispersion-axis: y
   rotate-qc-plot: 0
   flip-qc-plot: 1
