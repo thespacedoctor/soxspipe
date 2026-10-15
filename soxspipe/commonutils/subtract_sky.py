@@ -14,7 +14,6 @@ import math
 import numbers
 import os
 import sys
-import time
 from datetime import datetime
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
@@ -621,15 +620,10 @@ class subtract_sky:
         for imageMapOrder in allimageMapOrder:
             # THE FIT SORTS AND WRITES COLUMNS IN PLACE, SO THE REFIT STARTS FROM A COPY OF THE CLIPPED ORDER
             preFitOrder = imageMapOrder.copy() if isWingCorrectionOn else None
-            orderNumber = imageMapOrder["order"].values[0]
-            fitStart = time.perf_counter()
             fitResult = self.fit_bspline_curve_to_sky(imageMapOrder)
             if isWingCorrectionOn:
                 fitResult = self._refit_without_object_wings(preFitOrder, fitResult, gateFraction)
             imageMapOrder, tck, knots, flux_error_ratio, residualFloor = fitResult
-            self.log.info(
-                f"\t\tSky fit of order {orderNumber}: {len(knots)} knots in {time.perf_counter() - fitStart:0.2f} s.\n"
-            )
             totalKnots += len(knots)
             fittedOrders.append(imageMapOrder)
             allFluxErrorRatios.append(flux_error_ratio)
@@ -1844,16 +1838,21 @@ class subtract_sky:
         self.log.debug("starting the ``fit_bspline_curve_to_sky`` method")
 
         import numpy as np
+        import scipy.interpolate as ip
 
         # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot
         min_points_per_knot = self.recipeSettings["sky-subtraction"]["min_points_per_knot"]
+        # WHEN REFINING THE BSPLINE FIT, USE THIS SIGMA FOR CLIPPING
+        bsplineSigma = self.recipeSettings["sky-subtraction"]["bspline_fitting_residual_clipping_sigma"]
+        # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
+        bsplineIterations = self.recipeSettings["sky-subtraction"]["bspline_iteration_limit"]
 
         # SORT BY COLUMN NAME
         imageMapOrder.sort_values(by=["wavelength"], inplace=True, kind="stable")
         order = imageMapOrder["order"].values[0]
 
         # CREATE ARRAYS NEEDED FOR BSPLINE FITTING
-        mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True  # noqa: E712
+        mask_all_clipped = imageMapOrder["flagged_all_clipped"].eq(True)
         goodWl = imageMapOrder.loc[~mask_all_clipped, "wavelength"]
 
         # REPLACE NANS IN residual_windowed_std
@@ -1913,62 +1912,18 @@ class subtract_sky:
         if self.debug:
             print("starter knot count", len(starterKnots))
 
-        # CLIP NAN FLUX
-        imageMapOrder.loc[imageMapOrder["flux"].isnull(), "flagged_all_clipped"] = True
-        # THE PIXELS CLIPPED BEFORE THE FIT; THE RESIDUAL CLIP ADDS TO THESE AFRESH AFTER EACH FIT (DY-1281)
-        mask_clipped_before_fit = imageMapOrder["flagged_all_clipped"].eq(True).to_numpy(dtype=bool, copy=True)
-        if "flagged_bspline_clipped" not in imageMapOrder.columns:
-            imageMapOrder["flagged_bspline_clipped"] = False
-
-        tck, allKnots, residualFloor = self._fit_adaptive_knot_sky(
-            imageMapOrder, starterKnots, defaultKnots, noiseModelSky, mask_clipped_before_fit
-        )
-        tck, allKnots, flux_error_ratio = self._finish_sky_fit(imageMapOrder, tck, allKnots, starterKnots)
-
-        self.log.debug("completed the ``fit_bspline_curve_to_sky`` method")
-        return imageMapOrder, tck, allKnots, flux_error_ratio, residualFloor
-
-    def _fit_adaptive_knot_sky(self, imageMapOrder, starterKnots, defaultKnots, noiseModelSky, mask_clipped_before_fit):  # noqa: PLR0915 (THE LOOP MOVED UNCHANGED FROM fit_bspline_curve_to_sky)
-        """*fit the sky of one order with knots grown where the residuals are high (the adaptive knot scheme)*
-
-        The fit starts from the starter knots, switches to the default knots on iteration 5, prunes knots in
-        noisy regions and adds knots where the local residuals are high. After each fit it clips the residual
-        outliers afresh (DY-1281).
-
-        **Key Arguments:**
-
-        - ``imageMapOrder`` -- wavelength-sorted order dataframe. Its clipping flags, ``weights`` and residual
-          columns are updated in place.
-        - ``starterKnots`` -- the starter knots, which also bound the order-end anchor windows
-        - ``defaultKnots`` -- the knots used from iteration 5
-        - ``noiseModelSky`` -- the sky that weights the first fit
-        - ``mask_clipped_before_fit`` -- boolean array, True for the pixels clipped before any fit
-
-        **Return:**
-
-        - ``tck`` -- the last good spline
-        - ``allKnots`` -- its interior knots
-        - ``residualFloor`` -- the residual floor of the last iteration, NaN if none was measured
-
-        **Raises:**
-
-        - ``ValueError`` -- if FITPACK cannot fit the spline, or reports a poor first fit
-        """
-        import numpy as np
-        import scipy.interpolate as ip
-
-        # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot
-        min_points_per_knot = self.recipeSettings["sky-subtraction"]["min_points_per_knot"]
-        # WHEN REFINING THE BSPLINE FIT, USE THIS SIGMA FOR CLIPPING
-        bsplineSigma = self.recipeSettings["sky-subtraction"]["bspline_fitting_residual_clipping_sigma"]
-        # NUMBER OF ITERATIONS USED TO FIT THE BSPLINE
-        bsplineIterations = self.recipeSettings["sky-subtraction"]["bspline_iteration_limit"]
-        order = imageMapOrder["order"].values[0]
-
         extraKnots = np.array([])
         iterationCount = -3
         residualFloor = np.nan
-        mask_all_clipped = imageMapOrder["flagged_all_clipped"] == True  # noqa: E712
+
+        # CLIP NAN FLUX
+        imageMapOrder.loc[imageMapOrder["flux"].isnull(), "flagged_all_clipped"] = True
+        mask_all_clipped = imageMapOrder["flagged_all_clipped"].eq(True)
+        # THE PIXELS CLIPPED BEFORE THE FIT; THE RESIDUAL CLIP ADDS TO THESE AFRESH AFTER EACH FIT (DY-1281)
+        mask_clipped_before_fit = mask_all_clipped.to_numpy(dtype=bool, copy=True)
+        if "flagged_bspline_clipped" not in imageMapOrder.columns:
+            imageMapOrder["flagged_bspline_clipped"] = False
+
         lastExtraKnotCount = -1
         tck_previous = None
         allKnotsPrevious = None
@@ -2149,29 +2104,6 @@ class subtract_sky:
 
             lastExtraKnotCount = len(extraKnots)
 
-        return tck, allKnots, residualFloor
-
-    def _finish_sky_fit(self, imageMapOrder, tck, allKnots, starterKnots):
-        """*clip the residual outliers of a sky fit, refit, and write the sky-model columns of the order*
-
-        **Key Arguments:**
-
-        - ``imageMapOrder`` -- wavelength-sorted order dataframe. Its clipping flags and sky-model columns are
-          updated in place.
-        - ``tck`` -- the fitted spline
-        - ``allKnots`` -- the interior knots of ``tck``
-        - ``starterKnots`` -- the starter knots that bound the order-end anchor windows
-
-        **Return:**
-
-        - ``tck`` -- the spline fitted without the residual outliers
-        - ``allKnots`` -- its interior knots
-        - ``flux_error_ratio`` -- the weighted residuals of the unclipped pixels, without the first and last 1000
-          when the order has more
-        """
-        import scipy.interpolate as ip
-
-        bsplineSigma = self.recipeSettings["sky-subtraction"]["bspline_fitting_residual_clipping_sigma"]
         # REFIT WITHOUT THE CLIPPED PIXELS, THEN CLIP AND REFIT WITH THE FINAL KNOTS UNTIL NONE IS NEW (DY-1281)
         tck, allKnots = self._clip_residual_outliers_and_refit(imageMapOrder, tck, allKnots, starterKnots, bsplineSigma)
 
@@ -2195,7 +2127,8 @@ class subtract_sky:
         if flux_error_ratio[1000:-1000].shape[0]:
             flux_error_ratio = flux_error_ratio[1000:-1000]
 
-        return tck, allKnots, flux_error_ratio
+        self.log.debug("completed the ``fit_bspline_curve_to_sky`` method")
+        return imageMapOrder, tck, allKnots, flux_error_ratio, residualFloor
 
     def _end_anchor_values(self, wavelength, flux, starterKnots):
         """*the local flux values that anchor the blue and red ends of the sky fit*
