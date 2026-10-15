@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FIXED**: `detrend` now raises an error when a UVB or VIS frame gets both a master bias and a master dark, because UVB/VIS master darks still carry the bias pedestal and the pedestal was subtracted twice. This includes `soxs_mflat` given a master bias with lamp-off or raw dark frames. NIR is unchanged (DY-1580).
 * **FIXED**: stare sky-subtraction rolling-window clipping now sorts each order by wavelength itself, so for distinct wavelengths the sky model and clip flags no longer depend on the row order of the input. Output is unchanged for wavelength-sorted input, as production supplies today (DY-1528).
 * **ENHANCEMENT**: the response-function product (`RESP_TAB_<ARM>`) now also holds the fitted response curve in a second table extension, `RESPONSE`, with `WAVE` (nm) and `RESPONSE` columns sampled on the extracted standard-star wavelengths; the coefficient table stays the first extension, and flux calibration now reads it by HDU index (DY-1378).
 * **FIXED**: the scattered-light background mask now finds each order's neighbours by their position on the detector, not by order number. SOXS orders now grow into half of each inter-order gap (they grew by 2 px only), and X-Shooter no longer masks the whole frame beyond its first and last orders. Background-subtracted output changes in `soxs_mflat`, `soxs_stare` and `soxs_stare_std` (DY-1518).

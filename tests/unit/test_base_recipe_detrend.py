@@ -68,6 +68,8 @@ def test_detrend_requires_a_calibration_frame(log: Any) -> None:
 def test_detrend_applies_bias_matching_dark_and_flat_in_order(log: Any) -> None:
     """Bias, equal-exposure dark, and normalized flat retain CCDData semantics."""
     recipe = _recipe(log)
+    # ONLY NIR ACCEPTS A BIAS AND A DARK TOGETHER (DY-1580)
+    recipe.arm = "NIR"
 
     calibrated = recipe.detrend(
         _frame(20.0),
@@ -80,6 +82,47 @@ def test_detrend_applies_bias_matching_dark_and_flat_in_order(log: Any) -> None:
     assert calibrated.data.dtype == np.float32
     assert not recipe.darkDetrendWarningIssued1
     assert not recipe.darkDetrendWarningIssued2
+
+
+@pytest.mark.parametrize("instrument", ["SOXS", XSH_INSTRUMENT])
+@pytest.mark.parametrize("arm", ["UVB", "VIS", "vis"])
+def test_detrend_refuses_a_uvb_vis_frame_with_both_a_bias_and_a_dark(log: Any, arm: str, instrument: str) -> None:
+    """A UVB/VIS master dark still carries the bias pedestal, so bias plus dark would subtract it twice (DY-1580)."""
+    recipe = _recipe(log)
+    recipe.arm = arm
+    recipe.inst = instrument
+
+    with pytest.raises(ValueError, match="still carry the bias pedestal"):
+        recipe.detrend(_frame(20.0), master_bias=_frame(2.0), dark=_frame(3.0))
+
+
+@pytest.mark.parametrize(
+    ("arm", "masterBias", "dark", "expectedValue"),
+    [
+        pytest.param("NIR", 2.0, 3.0, 15.0, id="nir-bias-and-dark"),
+        pytest.param("NIR", None, 3.0, 17.0, id="nir-dark-only"),
+        pytest.param("VIS", 2.0, None, 18.0, id="vis-bias-only"),
+        pytest.param("VIS", None, 3.0, 17.0, id="vis-dark-only"),
+    ],
+)
+def test_detrend_accepts_every_other_bias_and_dark_combination(
+    log: Any,
+    arm: str,
+    masterBias: float | None,
+    dark: float | None,
+    expectedValue: float,
+) -> None:
+    """NIR, and UVB/VIS with only one of bias or dark, detrend as before."""
+    recipe = _recipe(log)
+    recipe.arm = arm
+
+    calibrated = recipe.detrend(
+        _frame(20.0),
+        master_bias=False if masterBias is None else _frame(masterBias),
+        dark=False if dark is None else _frame(dark),
+    )
+
+    np.testing.assert_allclose(calibrated.data, np.full((4, 4), expectedValue))
 
 
 def test_detrend_scales_a_different_exposure_dark_once(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
