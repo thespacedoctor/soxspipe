@@ -77,6 +77,31 @@ FIT_NOT_CONVERGED_MESSAGE = (
     "Please check the quality of your data or adjust your fitting parameters."
 )
 
+NO_LINES_SURVIVED_MESSAGE = (
+    "No usable arc lines or multi-pinhole sets survived pre-fit clipping "
+    "({detected} detected, {clipped} clipped). Please check the quality of your data or the line detection settings."
+)
+
+
+def plot_xy_residual_histogram(ax, values):
+    """*draw a histogram of xy residuals, or a short note when there is nothing to draw*
+
+    **Key Arguments:**
+
+    - ``ax`` -- the matplotlib axes to draw on
+    - ``values`` -- the xy residuals, in pixels; may be empty
+    """
+    import numpy as np
+    from astropy.visualization import hist
+
+    values = values[np.isfinite(values)]
+    if len(values) == 0:
+        ax.text(0.5, 0.5, "no lines", ha="center", va="center", transform=ax.transAxes)
+    else:
+        hist(values, bins="scott", ax=ax, histtype="stepfilled", alpha=0.7, density=True)
+    ax.set_xlabel("xy residual")
+    ax.tick_params(axis="both", which="major", labelsize=9)
+
 
 def quantise_residuals(residuals: "npt.ArrayLike") -> "np.ndarray":
     """*round residuals to a fixed precision so the clip decision cannot flip on float noise*
@@ -699,6 +724,23 @@ class create_dispersion_map:
 
         return orderPixelTable
 
+    def _raise_if_no_lines_survived(self, orderPixelTable, detectedLines):
+        """*raise a clear error when every detected line was dropped before the polynomial fit*
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table after pre-fit clipping, with its boolean "dropped" column
+        - ``detectedLines`` -- the number of lines detected before clipping
+
+        Raises ``ArithmeticError``, the type `get` already raises when no fit can be found.
+        """
+        clippedLines = int(orderPixelTable["dropped"].sum())
+        if len(orderPixelTable.index) > clippedLines:
+            return
+        message = NO_LINES_SURVIVED_MESSAGE.format(detected=detectedLines, clipped=clippedLines)
+        self.log.error(message)
+        raise ArithmeticError(message)
+
     def _lower_highest_degree(self, degList):
         """*return the degrees with the highest one lowered by one, or raise if they are all constant already*"""
         if max(degList) <= 0:
@@ -962,6 +1004,9 @@ class create_dispersion_map:
                 orderPixelTable = self._clip_on_measured_line_metrics(orderPixelTable)
             else:
                 orderPixelTable["fwhm_pin_px"] = 3.0
+
+            # STOP BEFORE FITTING IF THE CLIP LEFT NOTHING TO FIT
+            self._raise_if_no_lines_survived(orderPixelTable, detectedLines)
 
             # STEP 6: ITERATIVELY FIT POLYNOMIAL SOLUTIONS WITH AUTOMATIC DEGREE REDUCTION
             fitFound = False
@@ -3299,7 +3344,6 @@ class create_dispersion_map:
         import numpy as np
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
-        from astropy.visualization import hist
 
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
@@ -3667,16 +3711,7 @@ class create_dispersion_map:
         bottomleft.set_xlabel(f"{self.axisA} residual (mean: {mean_x_res:2.2f} pix)")
         bottomleft.set_ylabel(f"{self.axisB} residual (mean: {mean_y_res:2.2f} pix)")
         bottomleft.tick_params(axis="both", which="major", labelsize=9)
-        hist(
-            orderPixelTable["residuals_xy"],
-            bins="scott",
-            ax=bottomright,
-            histtype="stepfilled",
-            alpha=0.7,
-            density=True,
-        )
-        bottomright.set_xlabel("xy residual")
-        bottomright.tick_params(axis="both", which="major", labelsize=9)
+        plot_xy_residual_histogram(bottomright, orderPixelTable["residuals_xy"])
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         if self.firstGuessMap:
@@ -4036,7 +4071,6 @@ class create_dispersion_map:
         self.log.debug("starting the ``_clip_on_measured_line_metrics`` method")
 
         import matplotlib.pyplot as plt
-        from astropy.visualization import hist
 
         # LAYOUT THE FIGURE
         fig = plt.figure(figsize=(6, 12), constrained_layout=True)
@@ -4138,16 +4172,7 @@ class create_dispersion_map:
             bottomleft.tick_params(axis="both", which="major", labelsize=9)
             bottomleft.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-            hist(
-                lineGroups[(lineGroups["sigma_clipped_scatter"] == False)]["xy_diff"],
-                bins="scott",
-                ax=bottomright,
-                histtype="stepfilled",
-                alpha=0.7,
-                density=True,
-            )
-            bottomright.set_xlabel("xy residual")
-            bottomright.tick_params(axis="both", which="major", labelsize=9)
+            plot_xy_residual_histogram(bottomright, lineGroups.loc[~lineGroups["sigma_clipped_scatter"], "xy_diff"])
 
             # REMOVE THE CLIPPED DATA BEFORE CLIPPING ON FWHM
             mask = lineGroups["sigma_clipped_scatter"] == True
