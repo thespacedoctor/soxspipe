@@ -46,7 +46,6 @@ def _recipe(log: Any) -> base_recipe:
     recipe.kw = lambda keyword: keyword
     recipe.detectorParams = {"ron": 3.8 * u.electron}
     recipe.recipeSettings = {"subtract_background": False}
-    recipe.darkDetrendWarningIssued1 = False
     recipe.darkDetrendWarningIssued2 = False
     recipe.sofName = "synthetic"
     recipe.recipeName = "soxs-stare"
@@ -80,7 +79,6 @@ def test_detrend_applies_bias_matching_dark_and_flat_in_order(log: Any) -> None:
 
     np.testing.assert_allclose(calibrated.data, np.full((4, 4), 30.0))
     assert calibrated.data.dtype == np.float32
-    assert not recipe.darkDetrendWarningIssued1
     assert not recipe.darkDetrendWarningIssued2
 
 
@@ -138,11 +136,54 @@ def test_detrend_scales_a_different_exposure_dark_once(log: Any, monkeypatch: py
     calibrated = recipe.detrend(_frame(20.0, exposure=10.0), dark=dark)
 
     np.testing.assert_allclose(calibrated.data, np.full((4, 4), 16.0))
-    assert recipe.darkDetrendWarningIssued1
     assert recipe.darkDetrendWarningIssued2
     assert len(quicklookCalls) == 2
     assert quicklookCalls[0]["CCDObject"] is dark
     assert quicklookCalls[1]["CCDObject"] is calibrated
+
+
+def _exptime_warnings(log: Any) -> list[str]:
+    """Return every warning the recipe logged about differing exposure times."""
+    return [message for level, message in log.messages if level == "warning" and "differing exposure-times" in message]
+
+
+def test_detrend_does_not_warn_about_a_different_exposure_soxs_dark(log: Any) -> None:
+    """SOXS darks are subtracted unscaled by design, so a different exposure time is not worth a warning (DY-1553)."""
+    recipe = _recipe(log)
+    recipe.arm = "NIR"
+
+    recipe.detrend(_frame(20.0, exposure=3.75), dark=_frame(2.0, exposure=5.0))
+
+    assert _exptime_warnings(log) == []
+
+
+def test_detrend_warns_once_about_a_different_exposure_xshooter_dark(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An X-Shooter dark of a different exposure time is scaled, which earns exactly one warning per recipe."""
+    import soxspipe.commonutils.toolkit as toolkit
+
+    recipe = _recipe(log)
+    recipe.arm = "NIR"
+    recipe.inst = XSH_INSTRUMENT
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: None)
+
+    recipe.detrend(_frame(20.0, exposure=10.0), dark=_frame(2.0, exposure=5.0))
+    recipe.detrend(_frame(20.0, exposure=10.0), dark=_frame(2.0, exposure=5.0))
+
+    assert len(_exptime_warnings(log)) == 1
+
+
+def test_detrend_does_not_warn_about_xshooter_exposure_times_within_the_tolerance(log: Any) -> None:
+    """X-Shooter exposure times that differ only by header float noise are equal, so they are not warned about."""
+    recipe = _recipe(log)
+    recipe.arm = "NIR"
+    recipe.inst = XSH_INSTRUMENT
+
+    recipe.detrend(_frame(20.0, exposure=5.0), dark=_frame(2.0, exposure=5.0 + 1e-6))
+
+    assert _exptime_warnings(log) == []
 
 
 def _spy_on_subtract_dark(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
