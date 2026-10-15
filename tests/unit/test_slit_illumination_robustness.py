@@ -159,7 +159,7 @@ def test_is_not_applied_and_does_not_raise_when_the_map_file_is_missing(scene, t
 
     assert not result.isApplied
     assert "2D map" in result.reason
-    assert any(level == "warning" and "2D map" in message for level, message in log.messages)
+    assert any(level == "info" and "2D map" in message for level, message in log.messages)
 
 
 def test_is_not_applied_and_does_not_raise_when_the_map_lacks_an_extension(scene, tmp_path, log, monkeypatch):
