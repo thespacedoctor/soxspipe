@@ -38,7 +38,7 @@ To do this, from the root directory of your workspace, run:
 soxspipe reduce all . -m
 ```
 
-By default, the pool for the `mflat`, stare, nod and offset recipes has 3 worker processes, to limit memory use. The pool for every other recipe has one worker process for each CPU. To set the pool size yourself, add the `--cores` (`-c`) option. It sets the number of worker processes for every recipe, and it replaces the default sizes. The value must be a positive whole number, and you can only use it with `-m`. If you use it without `-m`, or give a value that is not a positive whole number, `soxspipe` prints an error message and exits before it reduces any data. For example, to use 2 worker processes, run:
+By default, the pool for the `mflat`, stare, nod and offset recipes has 3 worker processes, to limit memory use. The pool for every other recipe has one worker process for each CPU. To set the pool size yourself, add the `--cores` (`-c`) option. It sets the number of worker processes for every recipe, and it replaces the default sizes. The value must be a positive whole number no larger than the number of CPUs on your computer, and you can only use it with `-m`. If you use it without `-m`, or give a value outside that range, `soxspipe` prints an error message and exits before it reduces any data. For example, to use 2 worker processes, run:
 
 ```bash
 soxspipe reduce all . -m --cores 2

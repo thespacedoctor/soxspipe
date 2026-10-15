@@ -63,7 +63,11 @@ def test_memory_heavy_recipes_keep_a_pool_of_three_without_a_user_pool_size(
     recipe: str,
 ) -> None:
     """Without a user value, the memory-heavy recipes keep the built-in cap of 3."""
-    assert _pool_size_for(monkeypatch, tmp_path, log, recipe) == 3
+    # ACT
+    poolSize = _pool_size_for(monkeypatch, tmp_path, log, recipe)
+
+    # ASSERT
+    assert poolSize == 3
 
 
 @pytest.mark.parametrize("recipe", LIGHT_RECIPES)
@@ -74,7 +78,11 @@ def test_light_recipes_keep_the_cpu_default_without_a_user_pool_size(
     recipe: str,
 ) -> None:
     """Without a user value, other recipes leave the pool size to `fmultiprocess` (one per CPU)."""
-    assert _pool_size_for(monkeypatch, tmp_path, log, recipe) is False
+    # ACT
+    poolSize = _pool_size_for(monkeypatch, tmp_path, log, recipe)
+
+    # ASSERT
+    assert poolSize is False
 
 
 @pytest.mark.parametrize("recipe", MEMORY_HEAVY_RECIPES + LIGHT_RECIPES)
@@ -85,7 +93,11 @@ def test_a_user_pool_size_overrides_the_built_in_choice_for_every_recipe(
     recipe: str,
 ) -> None:
     """A user-set pool size replaces both the cap of 3 and the CPU default."""
-    assert _pool_size_for(monkeypatch, tmp_path, log, recipe, poolSize=2) == 2
+    # ACT
+    poolSize = _pool_size_for(monkeypatch, tmp_path, log, recipe, poolSize=2)
+
+    # ASSERT
+    assert poolSize == 2
 
 
 def test_the_progress_message_names_the_user_pool_size(
@@ -95,6 +107,25 @@ def test_the_progress_message_names_the_user_pool_size(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The user can see the number of worker processes in use."""
+    # ACT
     _pool_size_for(monkeypatch, tmp_path, log, "mbias", poolSize=5)
 
+    # ASSERT
     assert "with a pool size of 5" in capsys.readouterr().out
+
+
+def test_the_progress_message_names_the_cpu_default_pool_size(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without a user value, a light recipe's message names the one-per-CPU pool size."""
+    # ARRANGE
+    monkeypatch.setattr(import_module("psutil"), "cpu_count", lambda: 7)
+
+    # ACT
+    _pool_size_for(monkeypatch, tmp_path, log, "mbias")
+
+    # ASSERT
+    assert "with a pool size of 7" in capsys.readouterr().out

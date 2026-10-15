@@ -139,18 +139,22 @@ def _pool_size_from_cores(cores, multiprocess):
 
     **Raises:**
 
-    - `SystemExit` (status 1) when the value is not a positive whole number, or when `--cores` is used without `-m`
+    - `SystemExit` (status 1) when the value is not a positive whole number, is larger than the logical CPU count,
+      or when `--cores` is used without `-m`
     """
     if cores is None:
         return None
     if not multiprocess:
         _exit_with_message(ValueError("The --cores option only works with the -m (multiprocess) flag."))
-    try:
-        poolSize = int(cores)
-    except ValueError:
-        poolSize = 0
-    if poolSize < 1:
+    if not (cores.isascii() and cores.isdigit()) or int(cores) < 1:
         _exit_with_message(ValueError(f"The --cores value must be a positive whole number, not `{cores}`."))
+    poolSize = int(cores)
+    # THE POOL STARTS EVERY WORKER AT ONCE, SO A HUGE VALUE WOULD SPAWN THAT MANY PROCESSES
+    cpuCount = os.cpu_count() or 1
+    if poolSize > cpuCount:
+        _exit_with_message(
+            ValueError(f"The --cores value must be at most {cpuCount} (the number of CPUs), not {poolSize}.")
+        )
     return poolSize
 
 

@@ -359,6 +359,7 @@ def _record_reducer(monkeypatch: pytest.MonkeyPatch) -> tuple[list[dict[str, obj
     [
         ["soxspipe", "-m", "reduce", "all", "--cores", "2"],
         ["soxspipe", "-m", "reduce", "all", "-c", "2"],
+        ["soxspipe", "-m", "reduce", "all", "-c2"],
     ],
 )
 def test_main_reduce_all_forwards_the_user_pool_size(
@@ -368,6 +369,7 @@ def test_main_reduce_all_forwards_the_user_pool_size(
 ) -> None:
     """`--cores` sets the worker-pool size for multiprocessing mode."""
     # ARRANGE
+    monkeypatch.setattr(import_module("soxspipe.cl_utils").os, "cpu_count", lambda: 4)
     (tmp_path / "soxspipe.db").touch()
     _, reduceCalls = _record_reducer(monkeypatch)
 
@@ -378,6 +380,44 @@ def test_main_reduce_all_forwards_the_user_pool_size(
     assert reduceCalls == [{"batch": None, "multiprocess": True, "poolSize": 2}]
 
 
+def test_main_reduce_all_accepts_a_pool_size_equal_to_the_cpu_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The logical CPU count is the largest accepted `--cores` value."""
+    # ARRANGE
+    monkeypatch.setattr(import_module("soxspipe.cl_utils").os, "cpu_count", lambda: 4)
+    (tmp_path / "soxspipe.db").touch()
+    _, reduceCalls = _record_reducer(monkeypatch)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", "-m", "reduce", "all", "--cores", "4"])
+
+    # ASSERT
+    assert reduceCalls == [{"batch": None, "multiprocess": True, "poolSize": 4}]
+
+
+def test_main_reduce_all_rejects_a_pool_size_above_the_cpu_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A pool larger than the logical CPU count is refused, naming the limit."""
+    # ARRANGE
+    monkeypatch.setattr(import_module("soxspipe.cl_utils").os, "cpu_count", lambda: 4)
+    (tmp_path / "soxspipe.db").touch()
+    initCalls, _ = _record_reducer(monkeypatch)
+
+    # ACT
+    with pytest.raises(SystemExit) as excinfo:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "-m", "reduce", "all", "--cores", "5"])
+
+    # ASSERT
+    assert excinfo.value.code not in (0, None)
+    assert "at most 4" in capsys.readouterr().err
+    assert initCalls == []
+
+
 @pytest.mark.parametrize(
     ("argv", "expectedMessage"),
     [
@@ -385,6 +425,11 @@ def test_main_reduce_all_forwards_the_user_pool_size(
         (["soxspipe", "-m", "reduce", "all", "--cores=-1"], "positive whole number"),
         (["soxspipe", "-m", "reduce", "all", "--cores", "abc"], "positive whole number"),
         (["soxspipe", "-m", "reduce", "all", "--cores", "2.5"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "+2"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", " 2"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "2_0"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", ""], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", str(10**9)], "at most"),
         (["soxspipe", "reduce", "all", "--cores", "2"], "-m"),
     ],
 )

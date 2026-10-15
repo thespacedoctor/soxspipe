@@ -644,6 +644,7 @@ def run_recipe_bulk(
 
     import multiprocess
     import pandas as pd
+    import psutil
     from fundamentals import fmultiprocess
 
     from soxspipe.commonutils import data_organiser
@@ -713,19 +714,17 @@ def run_recipe_bulk(
     turnOffMP = False
     wrapperTurnOffMP = True
 
+    runningMessage = f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode"
     if poolSize is not None:
-        print(
-            f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode "
-            f"with a pool size of {poolSize}..."
-        )
+        effectivePoolSize = poolSize
+        print(f"{runningMessage} with a pool size of {effectivePoolSize}...")
     elif "mflat" in recipe or "stare" in recipe or "nod" in recipe or "offset" in recipe:
-        poolSize = 3
-        print(
-            f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode with a pool size of {poolSize} to avoid memory issues..."
-        )
+        effectivePoolSize = 3
+        print(f"{runningMessage} with a pool size of {effectivePoolSize} to avoid memory issues...")
     else:
         # FALSE LETS fmultiprocess USE ONE WORKER PER CPU
-        poolSize = False
+        effectivePoolSize = False
+        print(f"{runningMessage} with a pool size of {psutil.cpu_count()}...")
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
 
@@ -737,7 +736,7 @@ def run_recipe_bulk(
             log=log,
             function=wrapper,
             inputArray=inputDicts,
-            poolSize=poolSize,
+            poolSize=effectivePoolSize,
             timeout=36000,
             settings=settings,
             overwrite=overwrite,
