@@ -44,6 +44,9 @@ class _UniqueKeyLoader(yaml.SafeLoader):
 def _construct_unique_mapping(loader: _UniqueKeyLoader, node: yaml.MappingNode, deep: bool = False) -> dict:
     seenKeys = set()
     for keyNode, _ in node.value:
+        # A MERGE KEY (<<) HAS NO CONSTRUCTOR AND MAY BE OVERRIDDEN LOCALLY, SO ONLY EXPLICIT KEYS ARE COUNTED
+        if keyNode.tag == "tag:yaml.org,2002:merge":
+            continue
         key = loader.construct_object(keyNode, deep=deep)
         if key in seenKeys:
             raise yaml.constructor.ConstructorError(None, None, f"duplicate key {key!r}", keyNode.start_mark)
@@ -62,8 +65,8 @@ def _load_rejecting_duplicates(text: str):
         loader.dispose()
 
 
-def _column_names(calibrationsDir: Path, armParameters: dict) -> list[str]:
-    with fits.open(calibrationsDir / armParameters["line-atlas"]) as hdus:
+def _column_names(calibrationsDir: Path, atlas: str) -> list[str]:
+    with fits.open(calibrationsDir / atlas) as hdus:
         return list(hdus[1].columns.names)
 
 
@@ -99,6 +102,26 @@ def test_unique_key_loader_rejects_a_repeated_key() -> None:
         _load_rejecting_duplicates(text)
 
 
+def test_unique_key_loader_accepts_merge_keys_and_local_overrides() -> None:
+    # ARRANGE
+    text = "base: &base\n  gain: 1\n  ron: 2\nVIS:\n  <<: *base\n  ron: 3\n"
+
+    # ACT
+    parsed = _load_rejecting_duplicates(text)
+
+    # ASSERT
+    assert parsed["VIS"] == {"gain": 1, "ron": 3}
+
+
+def test_unique_key_loader_rejects_a_repeated_key_beside_a_merge_key() -> None:
+    # ARRANGE
+    text = "base: &base\n  gain: 1\nVIS:\n  <<: *base\n  ron: 2\n  ron: 3\n"
+
+    # ACT / ASSERT
+    with pytest.raises(yaml.constructor.ConstructorError, match="duplicate key 'ron'"):
+        _load_rejecting_duplicates(text)
+
+
 def _missing_static_calibrations(instrument: str) -> set[tuple[str, str, str, str]]:
     parameters = yaml.safe_load(_yaml_path(instrument).read_text())
     calibrationsDir = RESOURCES_DIR / "static_calibrations" / instrument
@@ -124,7 +147,7 @@ def test_every_static_calibration_named_in_detector_parameters_exists(instrument
 
 @pytest.mark.xfail(
     strict=True,
-    reason="soxs_detector_parameters.yaml names BP_MAP_RP_VIS_1x2.fits, which is not packaged; needs a decision",
+    reason="DY-1604: soxs_detector_parameters.yaml names BP_MAP_RP_VIS_1x2.fits, which is not packaged",
 )
 def test_soxs_vis_1x2_bad_pixel_map_is_packaged() -> None:
     # ARRANGE / ACT
@@ -134,45 +157,33 @@ def test_soxs_vis_1x2_bad_pixel_map_is_packaged() -> None:
     assert not (missing & KNOWN_MISSING)
 
 
-@pytest.mark.parametrize(
-    ("arm", "atlas"),
-    [("VIS", "thar_murphy.fits"), ("NIR", "ArHgNeXe.fits")],
+_XSH_SOURCE_COLUMN = pytest.mark.xfail(
+    strict=True,
+    reason="DY-1605: xsh/ThAr.fits names its column 'Source', not 'source'",
 )
-def test_soxs_line_atlas_names_the_agreed_file(arm: str, atlas: str) -> None:
-    # ARRANGE
-    parameters = yaml.safe_load(_yaml_path("soxs").read_text())
-
-    # ACT / ASSERT
-    assert parameters[arm]["line-atlas"] == atlas
 
 
 @pytest.mark.parametrize(
-    "instrument",
+    ("instrument", "arm", "atlas"),
     [
-        "soxs",
-        pytest.param(
-            "xsh",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="xsh/ThAr.fits names its column 'Source', not 'source'; X-Shooter values need a decision",
-            ),
-        ),
+        ("soxs", "VIS", "thar_murphy.fits"),
+        ("soxs", "NIR", "ArHgNeXe.fits"),
+        pytest.param("xsh", "UVB", "ThAr.fits", marks=_XSH_SOURCE_COLUMN),
+        pytest.param("xsh", "VIS", "ThAr.fits", marks=_XSH_SOURCE_COLUMN),
+        ("xsh", "NIR", "ArHgNeXe.fits"),
     ],
 )
-def test_every_line_atlas_has_the_columns_the_static_line_list_reads(instrument: str) -> None:
+def test_line_atlas_of_each_arm_has_the_columns_the_static_line_list_reads(
+    instrument: str, arm: str, atlas: str
+) -> None:
     # ARRANGE
     parameters = yaml.safe_load(_yaml_path(instrument).read_text())
     calibrationsDir = RESOURCES_DIR / "static_calibrations" / instrument
 
-    # ACT
-    lacking = {
-        (arm, armParameters["line-atlas"]): sorted(
-            LINE_ATLAS_COLUMNS - set(_column_names(calibrationsDir, armParameters))
-        )
-        for arm, armParameters in parameters.items()
-        if "line-atlas" in armParameters
-    }
-    lacking = {atlas: columns for atlas, columns in lacking.items() if columns}
+    # ACT (A MISSING ARM OR A MISSING line-atlas KEY RAISES KeyError AND FAILS THE TEST)
+    namedAtlas = parameters[arm]["line-atlas"]
+    columns = set(_column_names(calibrationsDir, namedAtlas))
 
     # ASSERT
-    assert lacking == {}
+    assert namedAtlas == atlas
+    assert sorted(LINE_ATLAS_COLUMNS - columns) == []
