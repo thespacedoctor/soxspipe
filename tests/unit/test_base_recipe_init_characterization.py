@@ -314,6 +314,37 @@ def test_user_settings_override_the_packaged_advanced_settings(
     assert len(recipe.settings) > len(_settings(tmp_path)) + 1
 
 
+def test_a_session_settings_file_without_a_workspace_root_runs_in_the_current_directory(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`soxspipe reduce` passes the session settings `prep` writes, which name no workspace root (DY-1601)."""
+    # ARRANGE
+    import yaml
+
+    import soxspipe
+
+    _isolate(monkeypatch, tmp_path, productPath=tmp_path / "unused.fits")
+    monkeypatch.chdir(tmp_path)
+    sessionSettings = yaml.safe_load(
+        (Path(soxspipe.__file__).parent / "soxs_default_settings.yaml").read_text(encoding="utf-8")
+    )
+    assert "workspace-root-dir" not in sessionSettings
+
+    # ACT
+    recipe = base_recipe(
+        log=log,
+        settings=sessionSettings,
+        inputFrames=str(tmp_path / "synthetic.sof"),
+        recipeName="soxs-mbias",
+        turnOffMP=True,
+    )
+
+    # ASSERT
+    assert Path(recipe.workspaceRootPath).resolve() == tmp_path.resolve()
+
+
 def test_merged_settings_are_used_throughout_initialisation_without_mutating_the_caller(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,

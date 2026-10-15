@@ -9,6 +9,13 @@ from soxspipe.recipes import base_recipe
 pytestmark = pytest.mark.unit
 
 
-def test_base_recipe_requires_workspace_root_before_side_effects(log: object) -> None:
-    with pytest.raises(KeyError, match="workspace-root-dir"):
-        base_recipe(log=log, settings={}, inputFrames=False)
+def test_the_packaged_advanced_settings_default_the_workspace_root_to_the_current_directory() -> None:
+    """Session settings name no workspace root, so the packaged default must (DY-1601)."""
+    # ARRANGE
+    recipe = base_recipe.__new__(base_recipe)
+
+    # ACT
+    advancedSettings = recipe._advanced_settings()
+
+    # ASSERT
+    assert advancedSettings["workspace-root-dir"] == "./"
