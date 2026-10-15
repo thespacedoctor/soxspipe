@@ -948,6 +948,123 @@ def test_peak_centres_skip_peaks_that_do_not_rise_above_the_local_baseline(log: 
     assert centres.size == 0
 
 
+def _gaussian(pixels: np.ndarray, centre: float, sigma: float, height: float = 10.0) -> np.ndarray:
+    return height * np.exp(-0.5 * ((pixels - centre) / sigma) ** 2)
+
+
+def test_peak_centres_keep_the_centre_of_a_narrow_symmetric_line(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.37, sigma=1.3)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.37, abs=0.1)]
+
+
+def test_peak_centres_give_one_centre_for_two_horns_on_a_sloped_baseline(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 0.01 * pixels
+    sky[95:106] += [5, 10, 10, 9, 8, 8, 8, 9, 10, 10, 5]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([96, 104]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1)]
+
+
+def test_peak_centres_give_one_centre_when_the_dip_falls_below_half_of_one_horn(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    sky[98:103] = [10, 10, 3, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # HALF OF THE BRIGHTEST SAMPLE (6) IS CROSSED AT 97.6 AND 102.5
+    assert centres.tolist() == [pytest.approx(100.05, abs=1e-6)]
+
+
+def test_peak_centres_keep_two_distinct_close_lines_apart(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 95.2, sigma=1.5) + _gaussian(pixels, 105.4, sigma=1.5, height=7.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([95, 105]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(95.2, abs=0.1), pytest.approx(105.4, abs=0.1)]
+
+
+def test_peak_centres_measure_a_line_wide_relative_to_the_baseline_window(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.ones_like(pixels)
+    sky[66:135] = 11.0
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=1e-6)]
+
+
+def test_peak_centres_measure_a_line_in_a_short_order(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(30.0)
+    sky = 1.0 + _gaussian(pixels, 14.6, sigma=2.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([15]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(14.6, abs=0.1)]
+
+
+def test_peak_centres_drop_a_line_whose_half_maximum_crossing_falls_on_a_missing_sample(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0)
+    # SAMPLE 97 IS THE FIRST BELOW HALF MAXIMUM ON THE BLUE SIDE
+    sky[97] = np.nan
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.size == 0
+
+
+def test_peak_centres_use_the_half_maximum_midpoint_of_an_asymmetric_line(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sigma = np.where(pixels < 100.0, 2.0, 6.0)
+    sky = 1.0 + 10.0 * np.exp(-0.5 * ((pixels - 100.0) / sigma) ** 2)
+    halfWidthFactor = np.sqrt(2.0 * np.log(2.0))
+    expected = 100.0 + 0.5 * (6.0 - 2.0) * halfWidthFactor
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(expected, abs=0.1)]
+
+
 def test_skyline_matching_and_clipped_shift_reject_outliers(log: object) -> None:
     extractor = _extractor(log)
     matchedPixels, matchedShifts = extractor._match_peaks_to_skylines(
