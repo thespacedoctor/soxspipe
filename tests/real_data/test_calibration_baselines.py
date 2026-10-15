@@ -396,7 +396,7 @@ def test_calibration_qc_matches_approved_baseline(reduced_workspace: Path, basel
 
 def _response_curve(responsePath: Path, wavelengths: np.ndarray) -> np.ndarray:
     """Evaluate the response function on a wavelength grid, the way `flux_calibration` applies it."""
-    coefficientTable = Table.read(responsePath, format="fits")
+    coefficientTable = Table.read(responsePath, format="fits", hdu=1)
     coefficients = [coefficientTable[f"c{index}"][0] for index in range(int(coefficientTable["polyOrder"][0]) + 1)]
     # ONE COUNT PER SECOND WITH NO EXTINCTION, SO THE RESULT IS THE FLUX ONE COUNT PER SECOND STANDS FOR
     return np.asarray(
