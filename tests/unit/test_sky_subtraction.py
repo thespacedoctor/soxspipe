@@ -545,6 +545,7 @@ def test_rolling_window_clipping_marks_an_isolated_bright_object_pixel(
     pixels = pd.DataFrame(
         {
             "order": [10] * 11,
+            "wavelength": np.arange(11, dtype=float),
             "flux": [10.0, 10.0, 10.0, 10.0, 10.0, 100.0, 10.0, 10.0, 10.0, 10.0, 10.0],
             "flagged_all_clipped": [False] * 11,
             "flagged_object_clipped": [False] * 11,

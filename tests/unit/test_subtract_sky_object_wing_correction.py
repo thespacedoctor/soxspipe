@@ -180,8 +180,9 @@ def test_without_the_correction_a_bright_star_puts_more_than_a_tenth_of_a_percen
 
 
 def test_in_an_order_listed_in_pixel_order_the_wing_model_follows_the_slit_profile(log: Any) -> None:
-    # THE 2D MAP LISTS PIXELS IN DETECTOR ORDER, NOT BY WAVELENGTH. THE FIT ITSELF DEPENDS ON THE ROW ORDER, SO THE
-    # RESULT IS NOT COMPARED WITH A SORTED RUN; THE WINGS MUST STILL SIT ON THE ROWS THEY WERE COMPUTED FOR
+    # THE 2D MAP LISTS PIXELS IN DETECTOR ORDER, NOT BY WAVELENGTH. THE WINGS MUST STILL SIT ON THE ROWS THEY WERE
+    # COMPUTED FOR. ROW-ORDER INDEPENDENCE OF THE SKY MODEL IS TESTED IN
+    # test_the_sky_model_and_clip_flags_do_not_depend_on_the_row_order_of_the_order (DY-1528)
     order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN).sample(frac=1.0, random_state=1279).reset_index(drop=True)
 
     modelled = _modelled(_bare_subtractor(log), order)
@@ -190,6 +191,23 @@ def test_in_an_order_listed_in_pixel_order_the_wing_model_follows_the_slit_profi
     nearWings = modelled.loc[(distance > 1.0) & (distance < 1.5), "object_wing_model"].mean()
     farWings = modelled.loc[distance > 3.0, "object_wing_model"].mean()
     assert nearWings > NEAR_TO_FAR_WING_RATIO * abs(farWings)
+
+
+@pytest.mark.parametrize("isWingCorrected", [False, True], ids=["correction-off", "correction-on"])
+def test_the_sky_model_and_clip_flags_do_not_depend_on_the_row_order_of_the_order(
+    log: Any, isWingCorrected: bool
+) -> None:
+    # DY-1528: THE ROLLING-WINDOW CLIPPING RAN OVER RAW ROW ORDER, SO A SHUFFLED ORDER GAVE A DIFFERENT SKY MODEL
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    shuffled = order.sample(frac=1.0, random_state=1528)
+
+    sortedRun = _modelled(_bare_subtractor(log, object_wing_correction=isWingCorrected), order).sort_index()
+    shuffledRun = _modelled(_bare_subtractor(log, object_wing_correction=isWingCorrected), shuffled).sort_index()
+
+    assert ("object_wing_model" in sortedRun) == isWingCorrected
+    pd.testing.assert_index_equal(shuffledRun.index, sortedRun.index)
+    np.testing.assert_array_equal(shuffledRun["sky_model"], sortedRun["sky_model"])
+    np.testing.assert_array_equal(shuffledRun["flagged_all_clipped"], sortedRun["flagged_all_clipped"])
 
 
 def test_a_refit_that_fails_keeps_the_first_fit_and_logs_a_warning(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:

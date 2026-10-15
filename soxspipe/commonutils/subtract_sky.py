@@ -737,6 +737,7 @@ class subtract_sky:
         **Return:**
 
         - `imageMapOrder` -- input order dataframe with outlying pixels masked AND object pixels masked
+            - a new dataframe, stable-sorted by wavelength; each row keeps its own index
 
         **Usage:**
 
@@ -1368,9 +1369,13 @@ class subtract_sky:
         - ``sigma_clip_limit`` -- clip data values straying beyond this sigma limit. Default *5*
         - ``max_iterations`` -- maximum number of iterations when clipping
 
+        The rolling windows run in wavelength order.
+        For finite, distinct wavelengths, the result does not depend on the row order of the input (DY-1528).
+
         **Return:**
 
         - ``imageMapOrderDF`` -- image order dataframe with 'clipped' == True for those pixels that have been clipped via rolling window clipping
+            - a new dataframe, stable-sorted by wavelength; each row keeps its own index
             - ``None`` for a VIS order that is too bright to model (DY-1285)
             - a warning names the order, and the caller skips sky subtraction for that order only
 
@@ -1398,6 +1403,9 @@ class subtract_sky:
             raise ValueError(
                 f"the sky-subtraction setting percentile_clipping_sigma must be a finite number, got {sigma_clip_limit}"
             )
+
+        # THE ROLLING WINDOWS ARE WAVELENGTH WINDOWS, SO THEY MUST RUN IN WAVELENGTH ORDER WHATEVER THE INPUT ROW ORDER
+        imageMapOrderDF = imageMapOrderDF.sort_values("wavelength", kind="stable")
 
         allPixels = len(imageMapOrderDF.index)
         order = imageMapOrderDF["order"].values[0]

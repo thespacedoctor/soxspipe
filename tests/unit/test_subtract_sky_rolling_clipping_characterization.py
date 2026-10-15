@@ -50,6 +50,8 @@ def _object_order(level: float, *, seed: int = 5) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "order": 10,
+            # ROWS ARE LISTED IN WAVELENGTH ORDER, AS THE CLIPPING SORTS BY WAVELENGTH (DY-1528)
+            "wavelength": 500.0 + 0.01 * index,
             "flux": flux,
             "flagged_all_clipped": False,
             "flagged_object_clipped": False,
