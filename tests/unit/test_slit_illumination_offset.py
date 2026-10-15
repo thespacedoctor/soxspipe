@@ -574,7 +574,7 @@ def test_is_not_applied_without_a_master_flat_and_does_not_raise(tmp_path, log, 
     assert not result.isApplied
     assert "no master flat" in result.reason
     assert result.offsets.empty
-    assert any(level == "warning" and "no master flat" in message for level, message in log.messages)
+    assert any(level == "info" and "no master flat" in message for level, message in log.messages)
 
 
 def test_is_not_applied_when_the_flat_has_no_lit_level(tmp_path, log, monkeypatch):
