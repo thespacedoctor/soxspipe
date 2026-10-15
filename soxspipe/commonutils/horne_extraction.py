@@ -759,9 +759,12 @@ class horne_extraction(base_util):
                     else:
                         shiftArray = axisBVals
 
-                    # MATCH DETECTED PEAKS TO ISOLATED CATALOGUE SKYLINES
+                    # MEASURE SUB-SAMPLE LINE CENTRES, SO A FLAT-TOPPED WIDE-SLIT LINE IS NOT CENTRED ON A SHOULDER
+                    peakCentres = self._measure_peak_centres(shiftArray, skyVals, peaks)
+
+                    # MATCH LINE CENTRES TO ISOLATED CATALOGUE SKYLINES
                     matchedSkylinePixels, matchedShifts = self._match_peaks_to_skylines(
-                        shiftArray, peaks, calibrationSkylines, tolerance=tolerance[iteration]
+                        peakCentres, calibrationSkylines, tolerance=tolerance[iteration]
                     )
 
                     # SIGMA-CLIP SHIFT DISTRIBUTION AND COMPUTE MEDIAN
@@ -895,11 +898,17 @@ class horne_extraction(base_util):
 
         return localSkylines, calibrationSkylines
 
-    def _match_peaks_to_skylines(self, shiftArray, peaks, calibrationSkylines, tolerance=15):
-        """Match observed sky-peak positions to catalogue skyline positions within a pixel tolerance."""
+    def _measure_peak_centres(self, shiftArray, skyVals, peaks):
+        """Return one sub-sample centre per sky line holding the detected peaks (see ``skyline_centres``)."""
+        from soxspipe.commonutils.skyline_centres import measure_line_centres
+
+        return measure_line_centres(shiftArray, skyVals, peaks)
+
+    def _match_peaks_to_skylines(self, peakPositions, calibrationSkylines, tolerance=15):
+        """Match observed sky-line centres to catalogue skyline positions within a tolerance."""
         import numpy as np
 
-        peakPositions = shiftArray[peaks]
+        peakPositions = np.asarray(peakPositions, dtype=float)
         matchedSkylinePixels = []
         matchedShifts = []
 

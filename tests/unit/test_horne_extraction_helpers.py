@@ -861,11 +861,410 @@ def test_plot_slit_drift_qc_records_no_qc_for_the_not_flattened_re_extraction(lo
     assert extractor.qc.empty
 
 
+SYNTHETIC_PIXEL_NM = 0.05
+
+
+def _flat_topped_dipped_line(wavelength: np.ndarray, centre: float) -> np.ndarray:
+    """Wide-slit sky line: a smooth-edged top hat with a dip off its middle, so its two horns differ."""
+    from scipy.special import erf
+
+    halfWidth, edgeSigma = 0.15, 0.04
+    topHat = 0.5 * (
+        erf((wavelength - centre + halfWidth) / edgeSigma) - erf((wavelength - centre - halfWidth) / edgeSigma)
+    )
+    # THE DIP SITS LEFT OF CENTRE, SO THE RIGHT HORN IS THE BRIGHTEST SAMPLE
+    dip = 1.0 - 0.3 * np.exp(-0.5 * ((wavelength - centre + 0.03) / 0.05) ** 2)
+    return 1.0 + 20.0 * topHat * dip
+
+
+def test_skyline_tuning_recovers_the_offset_of_a_flat_topped_line_with_a_central_dip(
+    log: object,
+) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    extractor.debug = False
+    catalogueLine = 510.0
+    trueOffsetNm = 0.137
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    extraction = pd.DataFrame(
+        {
+            "order": 1,
+            "wavelengthMean": wavelength,
+            "pixelScaleNm": SYNTHETIC_PIXEL_NM,
+            "skyFlux": _flat_topped_dipped_line(wavelength, catalogueLine + trueOffsetNm),
+        }
+    )
+    extractor._get_local_skylines_for_order = lambda *args: (np.array([catalogueLine]), np.array([catalogueLine]))
+    recordedShifts: list[float] = []
+    extractor._record_order_shift_qc = lambda order, shift: recordedShifts.append(shift)
+
+    # ACT
+    extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
+
+    # ASSERT
+    assert recordedShifts == [pytest.approx(-trueOffsetNm, abs=0.1 * SYNTHETIC_PIXEL_NM)]
+
+
+def test_peak_centres_merge_both_horns_of_one_line_into_its_half_maximum_midpoint(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    sky = _flat_topped_dipped_line(wavelength, 510.0)
+    hornPeaks = np.array([np.argmax(np.where(wavelength < 509.97, sky, 0)), np.argmax(sky)])
+
+    # ACT
+    centres = extractor._measure_peak_centres(wavelength, sky, hornPeaks)
+
+    # ASSERT
+    assert hornPeaks[0] != hornPeaks[1]
+    assert centres.tolist() == [pytest.approx(510.0, abs=0.1 * SYNTHETIC_PIXEL_NM)]
+
+
+def test_peak_centres_drop_a_line_whose_half_maximum_runs_off_the_order_end(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    sky = _flat_topped_dipped_line(wavelength, 500.05) + _flat_topped_dipped_line(wavelength, 510.0) - 1.0
+    peaks = np.array([np.argmax(np.where(wavelength < 505.0, sky, 0)), np.argmax(np.where(wavelength > 505.0, sky, 0))])
+
+    # ACT
+    centres = extractor._measure_peak_centres(wavelength, sky, peaks)
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(510.0, abs=0.1 * SYNTHETIC_PIXEL_NM)]
+
+
+def test_peak_centres_skip_peaks_that_do_not_rise_above_the_local_baseline(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    sky = np.ones_like(wavelength)
+    sky[100] = np.nan
+
+    # ACT
+    centres = extractor._measure_peak_centres(wavelength, sky, np.array([50, 100]))
+
+    # ASSERT
+    assert centres.size == 0
+
+
+def _gaussian(pixels: np.ndarray, centre: float, sigma: float, height: float = 10.0) -> np.ndarray:
+    return height * np.exp(-0.5 * ((pixels - centre) / sigma) ** 2)
+
+
+def test_peak_centres_keep_the_centre_of_a_narrow_symmetric_line(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.37, sigma=1.3)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.37, abs=0.1)]
+
+
+def test_peak_centres_give_one_centre_for_two_horns_on_a_sloped_baseline(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 0.01 * pixels
+    sky[95:106] += [5, 10, 10, 9, 8, 8, 8, 9, 10, 10, 5]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([96, 104]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1)]
+
+
+def test_peak_centres_give_one_centre_when_the_valley_stays_above_half_of_the_lower_peak(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # VALLEY 6 IS 0.6 OF THE LOWER HORN, LIKE THE 0.74-0.99 DIPS OF REAL 5-ARCSEC LINES
+    sky[98:103] = [10, 10, 6, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # HALF OF THE BRIGHTEST SAMPLE (6) IS CROSSED AT 97.6 AND 102.5
+    assert centres.tolist() == [pytest.approx(100.05, abs=1e-6)]
+
+
+def test_peak_centres_give_two_centres_when_the_valley_falls_below_half_of_the_lower_peak(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # VALLEY 3 IS 0.3 OF THE LOWER PEAK: BETWEEN REAL 1-ARCSEC VALLEYS (<= 0.11) AND 5-ARCSEC DIPS (>= 0.74)
+    sky[98:103] = [10, 10, 3, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # LEFT LINE CROSSES ITS HALF MAXIMUM (5) AT 97.5 AND 99 + 5/7; RIGHT LINE (6) AT 100 + 1/3 AND 102.5
+    assert centres.tolist() == [
+        pytest.approx(0.5 * (97.5 + 99.0 + 5.0 / 7.0), abs=1e-6),
+        pytest.approx(0.5 * (100.0 + 1.0 / 3.0 + 102.5), abs=1e-6),
+    ]
+
+
+def test_peak_centres_judge_the_valley_against_the_lower_peak(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # VALLEY 3 IS 0.75 OF THE LOWER PEAK (4) BUT ONLY 0.25 OF THE HIGHER ONE (12)
+    sky[98:103] = [4, 4, 3, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # ONE LINE; THE LOW SHOULDER STAYS BELOW HALF MAXIMUM (6), WHICH IS CROSSED AT 100 + 1/3 AND 102.5
+    assert centres.tolist() == [pytest.approx(0.5 * (100.0 + 1.0 / 3.0 + 102.5), abs=1e-6)]
+
+
+def test_peak_centres_give_two_centres_when_the_dip_reaches_the_baseline(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # A DIP TO THE BASELINE CANNOT BE TOLD FROM A RESOLVED DOUBLET, SO IT IS TWO LINES
+    sky[98:103] = [10, 10, 0, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([98, 102]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(98.5, abs=1e-6), pytest.approx(101.5, abs=1e-6)]
+
+
+def test_peak_centres_keep_an_equal_height_doublet_whose_valley_falls_below_half_apart(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 97.0, sigma=1.5) + _gaussian(pixels, 103.0, sigma=1.5)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([97, 103]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(97.0, abs=0.3), pytest.approx(103.0, abs=0.3)]
+
+
+def test_peak_centres_keep_a_faint_line_on_the_wing_of_a_bright_line(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0, height=100.0) + _gaussian(pixels, 108.0, sigma=1.0, height=4.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100, 108]))
+
+    # ASSERT
+    # THE BRIGHT LINE'S WING STILL LIFTS THE FAINT LINE'S BLUE SIDE, PULLING ITS CENTRE ABOUT 0.2 SAMPLES BLUEWARD
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1), pytest.approx(108.0, abs=0.3)]
+
+
+def test_peak_centres_give_one_centre_when_a_nan_sits_in_the_valley(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    sky[98:103] = [10, 10, np.nan, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # HALF OF THE BRIGHTEST SAMPLE (6) IS CROSSED AT 97.6 AND 102.5
+    assert centres.tolist() == [pytest.approx(100.05, abs=1e-6)]
+
+
+def test_peak_centres_give_one_centre_when_the_valley_is_exactly_the_valley_fraction(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # VALLEY 5 IS EXACTLY 0.5 OF THE LOWER PEAK (10)
+    sky[98:103] = [10, 10, 5, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.05, abs=1e-6)]
+
+
+def test_peak_centres_join_a_chain_only_where_each_adjacent_valley_is_high(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # A-B VALLEY 7 OF 10 JOINS; B-C VALLEY 0 SPLITS
+    sky[95:100] = [10, 10, 7, 10, 10]
+    sky[103:105] = [12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([95, 98, 103]))
+
+    # ASSERT
+    # A-B CROSSES HALF MAXIMUM (5) AT 94.5 AND 99.5; C CROSSES 6 AT 102.5 AND 104.5
+    assert centres.tolist() == [pytest.approx(97.0, abs=1e-6), pytest.approx(103.5, abs=1e-6)]
+
+
+def test_peak_centres_join_a_chain_whose_adjacent_valleys_are_all_high(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # EACH ADJACENT VALLEY (6) KEEPS 0.6 OF THE LOWER PEAK B (10); A AND C ALONE (20) WOULD NOT JOIN ACROSS IT
+    sky[95:102] = [20, 20, 6, 10, 6, 20, 20]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([96, 98, 100]))
+
+    # ASSERT
+    # ONE LINE CROSSING HALF MAXIMUM (10) AT 94.5 AND 101.5
+    assert centres.tolist() == [pytest.approx(98.0, abs=1e-6)]
+
+
+def test_peak_centres_reject_non_integral_peak_indices(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="integer"):
+        extractor._measure_peak_centres(np.arange(10.0), np.ones(10), np.array([4.9]))
+
+
+def test_peak_centres_reject_a_boolean_peak_mask(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    mask = np.zeros(10, dtype=bool)
+    mask[5] = True
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="integer"):
+        extractor._measure_peak_centres(np.arange(10.0), np.ones(10), mask)
+
+
+def test_peak_centres_accept_integral_float_peak_indices(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100.0]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1)]
+
+
+def test_peak_centres_reject_coordinates_and_sky_of_different_lengths(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="same length"):
+        extractor._measure_peak_centres(np.arange(10.0), np.ones(9), np.array([5]))
+
+
+def test_peak_centres_skip_peak_indices_outside_the_spectrum(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([-1, 100, 200]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1)]
+
+
+def test_peak_centres_keep_two_distinct_close_lines_apart(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 95.2, sigma=1.5) + _gaussian(pixels, 105.4, sigma=1.5, height=7.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([95, 105]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(95.2, abs=0.1), pytest.approx(105.4, abs=0.1)]
+
+
+def test_peak_centres_measure_a_line_wide_relative_to_the_baseline_window(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.ones_like(pixels)
+    sky[66:135] = 11.0
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=1e-6)]
+
+
+def test_peak_centres_measure_a_line_in_a_short_order(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(30.0)
+    sky = 1.0 + _gaussian(pixels, 14.6, sigma=2.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([15]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(14.6, abs=0.1)]
+
+
+def test_peak_centres_drop_a_line_whose_half_maximum_crossing_falls_on_a_missing_sample(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0)
+    # SAMPLE 97 IS THE FIRST BELOW HALF MAXIMUM ON THE BLUE SIDE
+    sky[97] = np.nan
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.size == 0
+
+
+def test_peak_centres_use_the_half_maximum_midpoint_of_an_asymmetric_line(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sigma = np.where(pixels < 100.0, 2.0, 6.0)
+    sky = 1.0 + 10.0 * np.exp(-0.5 * ((pixels - 100.0) / sigma) ** 2)
+    halfWidthFactor = np.sqrt(2.0 * np.log(2.0))
+    expected = 100.0 + 0.5 * (6.0 - 2.0) * halfWidthFactor
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(expected, abs=0.1)]
+
+
 def test_skyline_matching_and_clipped_shift_reject_outliers(log: object) -> None:
     extractor = _extractor(log)
     matchedPixels, matchedShifts = extractor._match_peaks_to_skylines(
-        np.array([100.0, 101.0, 200.0]),
-        np.array([0, 2]),
+        np.array([100.0, 200.0]),
         np.array([100.2, 199.8]),
         tolerance=0.5,
     )
