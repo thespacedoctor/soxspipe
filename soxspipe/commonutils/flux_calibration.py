@@ -162,10 +162,10 @@ class flux_calibration:
             extinctionCorrectionFactor = 1.0
 
         # APPLY RESPNSE FUNCTION
-        responseFunctionCoeff = Table.read(self.responseFunction, format="fits")
+        responseFunctionCoeff = Table.read(self.responseFunction, format="fits", hdu=1)
         # NOW UNPACK THE COEFFICIENTS
         polyCoeffs = []
-        for idx_coeff in range(0, int(responseFunctionCoeff["polyOrder"]) + 1):
+        for idx_coeff in range(0, int(responseFunctionCoeff["polyOrder"][0]) + 1):
             polyCoeffs.append(responseFunctionCoeff[f"c{idx_coeff}"][0])
 
         flux_calibration = _calculate_flux_calibration(

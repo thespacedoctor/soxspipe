@@ -38,6 +38,23 @@ def _fit_sampled_polynomial(wavelength: Any, response: Any, polynomialOrder: int
     return np.polyfit(sampledWavelength, sampledResponse, deg=polynomialOrder)
 
 
+def _sampled_response_table(wavelength: Any, responseCoefficients: Any) -> Any:
+    """Return the response polynomial evaluated at each finite wavelength, sorted, as a WAVE/RESPONSE table.
+
+    RESPONSE carries the scale flux calibration applies: flux = counts / exptime * RESPONSE * 1e-17. The counts are
+    electrons; the unit uses ``ct`` because the FITS unit standard has no electron.
+    """
+    import astropy.units as u
+    import numpy as np
+    from astropy.table import Table
+
+    wave = np.asarray(wavelength, dtype=float)
+    wave = np.sort(wave[np.isfinite(wave)])
+    response = np.polyval(responseCoefficients, wave)
+    responseUnit = u.Unit("1e-17 erg / (cm2 s Angstrom)") / (u.ct / u.s)
+    return Table({"WAVE": wave * u.nm, "RESPONSE": response * responseUnit})
+
+
 def _fit_response_polynomial(
     wavelength: Any,
     rawResponse: Any,
@@ -456,7 +473,9 @@ class response_function:
             plt.show()
 
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
-        self.write_response_function_to_file(responseFuncCoeffs=responseFuncCoeffs, polyOrder=polyOrder)
+        self.write_response_function_to_file(
+            responseFuncCoeffs=responseFuncCoeffs, polyOrder=polyOrder, wavelength=stdExtWave
+        )
 
         if stdEfficiencyEstimate is not None:
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
@@ -693,13 +712,17 @@ class response_function:
         self.log.debug("completed the ``plot_response_curve`` method")
         return plotFilePath
 
-    def write_response_function_to_file(self, responseFuncCoeffs, polyOrder):
-        """*write out the fitted polynomial solution coefficients to file*
+    def write_response_function_to_file(self, responseFuncCoeffs: Any, polyOrder: int, wavelength: Any) -> str:
+        """*write out the fitted polynomial solution coefficients, and the curve they give, to file*
+
+        The first table extension holds the coefficients. A second extension, ``RESPONSE``, holds the fitted
+        polynomial evaluated at each finite ``wavelength``, sorted by wavelength.
 
         **Key Arguments:**
 
         - ``responseFuncCoeffs`` -- the response curve coefficients
         - ``polyOrder`` -- the order of polynomial used to fit the curve
+        - ``wavelength`` -- the wavelengths (nm) of the extracted standard-star spectrum
 
         **Return:**
 
@@ -745,7 +768,10 @@ class response_function:
 
         priHDU = fits.PrimaryHDU(header=header)
 
-        hduList = fits.HDUList([priHDU, BinTableHDU])
+        curveHDU = fits.table_to_hdu(_sampled_response_table(wavelength, responseFuncCoeffs))
+        curveHDU.name = "RESPONSE"
+
+        hduList = fits.HDUList([priHDU, BinTableHDU, curveHDU])
         hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 

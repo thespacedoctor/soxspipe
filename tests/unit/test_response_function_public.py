@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import astropy.units as u
 import numpy as np
 import pandas as pd
 import pytest
@@ -84,11 +85,8 @@ def test_response_constructor_reads_and_normalizes_synthetic_standard(
     assert response.productDir == str(tmp_path / "products")
 
 
-def test_write_response_function_to_file_preserves_fits_and_product_contract(
-    tmp_path: Path,
-    log: object,
-) -> None:
-    """Write response coefficients, header QC values, and product metadata."""
+def _response_writer(tmp_path: Path, log: object) -> response_function:
+    """Return a VIS response_function with only the state the RESP writer reads."""
     response = object.__new__(response_function)
     response.log = log
     response.arm = "VIS"
@@ -100,10 +98,20 @@ def test_write_response_function_to_file_preserves_fits_and_product_contract(
     response.products = product_table().iloc[0:0]
     response.recipeName = "soxs-response"
     response.dateObs = "2024-01-02T03:04:05"
+    return response
+
+
+def test_write_response_function_to_file_preserves_fits_and_product_contract(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    """Write response coefficients, header QC values, and product metadata."""
+    response = _response_writer(tmp_path, log)
 
     filePath = response.write_response_function_to_file(
         responseFuncCoeffs=np.array([0.5, 2.0]),
         polyOrder=1,
+        wavelength=np.array([500.0, 600.0]),
     )
 
     assert filePath == str(tmp_path / "SYNTHETIC_RESP.fits")
@@ -181,29 +189,51 @@ def test_plot_response_curve_writes_qc_pdf_and_product_row(
     ]
 
 
+def test_write_response_function_to_file_adds_sampled_response_curve_extension(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    """The RESP product carries the fitted curve as a WAVE/RESPONSE table after the coefficient table (DY-1378)."""
+    # ARRANGE
+    response = _response_writer(tmp_path, log)
+
+    # ACT
+    filePath = response.write_response_function_to_file(
+        responseFuncCoeffs=np.array([0.5, 2.0]),
+        polyOrder=1,
+        wavelength=np.array([600.0, np.nan, 500.0, 550.0]),
+    )
+
+    # ASSERT
+    with fits.open(filePath, checksum=True) as hdul:
+        assert [hdu.name for hdu in hdul] == ["PRIMARY", "", "RESPONSE"]
+        assert hdul[1].data["polyOrder"][0] == 1
+        np.testing.assert_allclose(hdul[1].data["c0"], [0.5])
+        np.testing.assert_allclose(hdul[1].data["c1"], [2.0])
+    curve = Table.read(filePath, hdu="RESPONSE")
+    assert curve.colnames == ["WAVE", "RESPONSE"]
+    assert str(curve["WAVE"].unit) == "nm"
+    assert curve["RESPONSE"].unit == u.Unit("1e-17 erg / (cm2 s Angstrom)") / (u.ct / u.s)
+    np.testing.assert_array_equal(curve["WAVE"], [500.0, 550.0, 600.0])
+    np.testing.assert_allclose(curve["RESPONSE"], [252.0, 277.0, 302.0], rtol=1e-14, atol=0)
+
+
 def test_write_response_function_to_file_skips_nan_qc_values(
     tmp_path: Path,
     log: object,
 ) -> None:
     """A NaN QC value from an upstream recipe is left out of the header instead of crashing the write (DY-1259)."""
     # ARRANGE
-    response = object.__new__(response_function)
-    response.log = log
-    response.arm = "VIS"
-    response.kw = lambda key: key
-    response.sofName = "SYNTHETIC"
-    response.header = fits.Header({"OBJECT": "Synthetic standard"})
-    response.productDir = str(tmp_path)
+    response = _response_writer(tmp_path, log)
     response.qc = pd.concat(
         [qc_table(), qc_table().assign(qc_name="INNER ORDER PIX MEAN", qc_value=float("nan"))],
         ignore_index=True,
     )
-    response.products = product_table().iloc[0:0]
-    response.recipeName = "soxs-response"
-    response.dateObs = "2024-01-02T03:04:05"
 
     # ACT
-    filePath = response.write_response_function_to_file(responseFuncCoeffs=np.array([0.5, 2.0]), polyOrder=1)
+    filePath = response.write_response_function_to_file(
+        responseFuncCoeffs=np.array([0.5, 2.0]), polyOrder=1, wavelength=np.array([500.0, 600.0])
+    )
 
     # ASSERT
     with fits.open(filePath, checksum=True) as hdul:
@@ -243,4 +273,5 @@ def test_get_writes_response_when_optional_efficiency_is_unavailable(
     assert products.empty
     np.testing.assert_allclose(captured["response_write"]["responseFuncCoeffs"], [2.0e17])
     assert captured["response_write"]["polyOrder"] == 0
+    np.testing.assert_array_equal(captured["response_write"]["wavelength"], wavelengths)
     assert captured["plot"]["stdEfficiencyEstimate"] is None
