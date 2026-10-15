@@ -80,6 +80,12 @@ class base_recipe:
     To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler recipes (e.g. `soxs_mbias`) - copy and modify the code.
     """
 
+    # THE READ NOISE RESOLVED FROM THE MASTER BIAS IN THE SOF (A ``ReadNoise``); NONE WITHOUT A MASTER BIAS (DY-1458)
+    readNoise = None
+    # THE NOMINAL READ NOISE (E-) IN THE RAW-FRAME HEADERS (NONE IF THEY CARRY NONE) AND THE DETECTOR DEFAULT (E-)
+    rawHeaderRon = None
+    defaultRon = None
+
     def __init__(
         self,
         log,
@@ -909,6 +915,7 @@ class base_recipe:
         self._verify_single_gain()
         self._verify_single_slit_width()
         self._verify_single_readnoise()
+        self._apply_measured_read_noise()
 
         imageTypes, imageTech, imageCat = self._collect_frame_classifications()
 
@@ -1149,6 +1156,8 @@ class base_recipe:
         ]
         # UNIQUE VALUES IN ORDER OF FIRST APPEARANCE
         ron = list(dict.fromkeys(rawRon))
+        self.defaultRon = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+        self.rawHeaderRon = float(ron[0]) if len(ron) and ron[0] else None
 
         # MIXED NOISE
         if len(ron) > 1:
@@ -1164,6 +1173,48 @@ class base_recipe:
                 f"({self.detectorParams['ron']} e-)"
             )
             self.detectorParams["ron"] = self.detectorParams["ron"] * u.electron
+
+        return
+
+    def _apply_measured_read_noise(self):
+        """*replace the nominal read noise with the one measured on the master bias the SOF names*
+
+        Only UVB and VIS frames are looked at: NIR has no master bias. Without a master bias in the SOF, the
+        nominal read noise stays. Otherwise ``self.detectorParams["ron"]`` is set to the single-frame read noise, which
+        the prepared uncertainty and the bias-pedestal correction use. The master bias noise reaches a detrended
+        frame through ``ccdproc.subtract_bias``, so it is not added here. The sky-subtraction noise model has no such
+        propagation; ``self.readNoise.skyFit`` holds the value it needs (DY-1458).
+        """
+        from astropy import units as u
+        from astropy.io import fits
+
+        from soxspipe.commonutils.read_noise import resolve_read_noise
+
+        if self.arm.upper() not in ("UVB", "VIS"):
+            return
+
+        masterBiasPaths = self.inputFrames.files_filtered(
+            include_path=True, **{self.kw("PRO_CATG"): f"MASTER_BIAS_{self.arm}"}
+        )
+        if not len(masterBiasPaths):
+            return
+
+        # SORT SO THE CHOICE DOES NOT DEPEND ON DIRECTORY ORDER
+        masterBiasPath = sorted(masterBiasPaths)[-1]
+        if len(masterBiasPaths) > 1:
+            self.log.warning(
+                f"The SOF names {len(masterBiasPaths)} master biases; the read noise is taken from "
+                f"{os.path.basename(masterBiasPath)}."
+            )
+
+        try:
+            masterBiasHeader = fits.getheader(masterBiasPath)
+        except OSError as e:
+            self.log.warning(f"The master bias header could not be read ({e}).")
+            masterBiasHeader = None
+
+        self.readNoise = resolve_read_noise(masterBiasHeader, self.rawHeaderRon, self.defaultRon, self.kw, self.log)
+        self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
 
         return
 

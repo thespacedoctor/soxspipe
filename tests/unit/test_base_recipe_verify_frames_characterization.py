@@ -58,9 +58,10 @@ class FrameInventory:
         self.summary = summary
         self._files = ["science.fits"] if files is None else files
 
-    def files_filtered(self, *, include_path: bool) -> list[str]:
+    def files_filtered(self, *, include_path: bool, **filters: object) -> list[str]:
         assert include_path is True
-        return self._files
+        # THESE SCENES NAME NO MASTER BIAS, SO ANY PRO_CATG FILTER FINDS NOTHING
+        return [] if filters else self._files
 
     def values(self, keyword: str, *, unique: bool) -> list[Any]:
         assert unique is True

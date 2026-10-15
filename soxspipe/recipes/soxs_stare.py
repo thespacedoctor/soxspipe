@@ -909,6 +909,7 @@ class soxs_stare(base_recipe):
                 debug=self.debug,
                 excludeMask=excludeMask,
                 masterFlat=masterFlat,
+                ron=None if self.readNoise is None else self.readNoise.skyFit,
             )
             (
                 skymodelCCDData,

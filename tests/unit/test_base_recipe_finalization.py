@@ -261,9 +261,10 @@ def test_input_frame_validation_records_consistent_vis_detector_metadata(
         def __init__(self) -> None:
             self.summary = summary
 
-        def files_filtered(self, *, include_path: bool) -> list[str]:
+        def files_filtered(self, *, include_path: bool, **filters: object) -> list[str]:
             assert include_path is True
-            return ["science.fits"]
+            # THIS SCENE NAMES NO MASTER BIAS, SO ANY PRO_CATG FILTER FINDS NOTHING
+            return [] if filters else ["science.fits"]
 
         def values(self, keyword: str, *, unique: bool) -> list[object]:
             assert unique is True

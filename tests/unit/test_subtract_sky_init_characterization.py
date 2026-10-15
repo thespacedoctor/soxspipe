@@ -127,3 +127,22 @@ def test_a_vis_frame_without_binning_keywords_defaults_to_unbinned(log: Any, col
     assert collaborators["filenamer"] == []
     assert collaborators["map"][0]["dispAxis"] == "x"
     assert collaborators["setup"][0]["recipeName"] == "soxs-stare"
+
+
+def test_a_given_read_noise_replaces_the_frame_header_value(log: Any, collaborators: dict[str, list]) -> None:
+    """A read noise the recipe passes beats the frame's own header card (DY-1458)."""
+    header = instrument_header(arm="VIS", overrides={"ESO INS VISE NAME": "SLIT1.0", "ESO DET OUT1 RON": 3.3})
+    frame = CCDData(np.ones((3, 3)), unit=u.electron, meta=header)
+
+    subtractor = _construct(log, frame, ron=4.4721)
+
+    assert subtractor.ron == pytest.approx(4.4721)
+
+
+def test_the_frame_header_read_noise_is_used_when_none_is_given(log: Any, collaborators: dict[str, list]) -> None:
+    header = instrument_header(arm="VIS", overrides={"ESO INS VISE NAME": "SLIT1.0", "ESO DET OUT1 RON": 3.3})
+    frame = CCDData(np.ones((3, 3)), unit=u.electron, meta=header)
+
+    subtractor = _construct(log, frame)
+
+    assert subtractor.ron == pytest.approx(3.3)

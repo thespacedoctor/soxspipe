@@ -10,6 +10,7 @@ import pytest
 from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 
+from soxspipe.commonutils.read_noise import ReadNoise
 from soxspipe.recipes.soxs_stare import soxs_stare
 
 pytestmark = pytest.mark.unit
@@ -304,3 +305,26 @@ def test_the_nir_binning_is_one_by_one_without_a_warning(log: Any) -> None:
 
     assert result == (1, 1)
     assert not [level for level, _ in log.messages if level == "warning"]
+
+
+def test_the_sky_subtraction_gets_the_read_noise_with_the_master_bias_term(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recipe, constructorKwargs = _sky_recipe(log, monkeypatch, subtractSky=True)
+    recipe.readNoise = ReadNoise(singleFrame=4.0, nCombined=4, skyFit=4.472136, source="master bias")
+
+    recipe._subtract_sky(_frame(None), "map.fits", "disp.fits", "orders.fits")
+
+    [kwargs] = constructorKwargs
+    assert kwargs["ron"] == pytest.approx(4.472136)
+
+
+def test_the_sky_subtraction_gets_no_read_noise_without_a_master_bias(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recipe, constructorKwargs = _sky_recipe(log, monkeypatch, subtractSky=True)
+
+    recipe._subtract_sky(_frame(None), "map.fits", "disp.fits", "orders.fits")
+
+    [kwargs] = constructorKwargs
+    assert kwargs["ron"] is None

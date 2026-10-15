@@ -144,6 +144,10 @@ class subtract_sky:
       The sky fit then weights each pixel by its flat-fielded noise and leaves out the pixels where the flat is low
       (not finite, not positive, or below ``LOW_FLAT_FRACTION`` of the 95th percentile of the flat of their order),
       as for ``excludeMask``. Default *None*, which applies no flat
+    - ``ron`` -- the read noise (e-) of the sky-fit noise model, a plain float. Pass it when the frame's own header
+      value is not the noise left in the frame, e.g. the single-frame read noise scaled by ``sqrt(1 + 1/N)`` for the
+      master bias subtracted from it. A value that is not a finite, positive number falls back to the detector default.
+      Default *None*, which uses the frame's read-noise header value, else the detector default
 
     **Usage:**
 
@@ -190,6 +194,7 @@ class subtract_sky:
         debugInfo=False,
         excludeMask=None,
         masterFlat=None,
+        ron=None,
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
@@ -283,8 +288,10 @@ class subtract_sky:
             self.binx = 1
             self.biny = 1
 
-        # READ NOISE (E-) OF THE SKY-FIT NOISE MODEL: THE FRAME'S OWN VALUE, ELSE THE DETECTOR DEFAULT (DY-1282)
-        self.ron = self._read_noise(self.objectFrame.header.get(kw("RON")), dp["ron"], self.log)
+        # READ NOISE (E-) OF THE SKY-FIT NOISE MODEL: THE GIVEN VALUE, ELSE THE FRAME'S OWN, ELSE THE DETECTOR DEFAULT
+        # (DY-1282, DY-1458)
+        ronValue = ron if ron is not None else self.objectFrame.header.get(kw("RON"))
+        self.ron = self._read_noise(ronValue, dp["ron"], self.log)
         return
 
     def _leave_out_excluded_pixels(self, mapDF, excludeMask, masterFlat):
