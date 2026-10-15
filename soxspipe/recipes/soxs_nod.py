@@ -61,6 +61,9 @@ class soxs_nod(base_recipe):
     # AN IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) WHEN NOTES ARE ADDED
     extractionNotes = ()
 
+    # THE UVB/VIS MASTER BIAS THAT TAKES THE BIAS PEDESTAL OUT OF THE A AND B ERRORS, OR False (DY-1390)
+    masterBias = False
+
     def __init__(
         self,
         log,
@@ -406,7 +409,7 @@ class soxs_nod(base_recipe):
     def _read_nod_calibration_inputs(self, kw, arm):
         """*read the master flat and locate the order table, dispersion maps and response table*
 
-        Sets ``self.dispMap`` and ``self.twoDMap``.
+        Sets ``self.dispMap``, ``self.twoDMap`` and ``self.masterBias``.
 
         **Key Arguments:**
 
@@ -437,6 +440,8 @@ class soxs_nod(base_recipe):
                 key_uncertainty_type="UTYPE",
             )
 
+        self.masterBias = self._read_master_bias(kw, arm)
+
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
         orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
@@ -459,6 +464,47 @@ class soxs_nod(base_recipe):
             responseFunctionPath = False
 
         return master_flat, orderTablePath, responseFunctionPath
+
+    def _read_master_bias(self, kw, arm):
+        """*read the UVB/VIS master bias the SOF names, so the bias pedestal can leave the A and B errors*
+
+        NIR frames carry no bias pedestal, so a NIR reduction never looks for one.
+
+        **Key Arguments:**
+
+        - ``kw`` -- the keyword lookup
+        - ``arm`` -- the arm the frames were taken with
+
+        **Return:**
+
+        - ``masterBias`` -- the master bias, or False on NIR or when the SOF names none
+        """
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
+        if arm.upper() not in ("UVB", "VIS"):
+            return False
+
+        masterBias = False
+        add_filters = {kw("PRO_CATG"): f"MASTER_BIAS_{arm}"}
+        for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+            masterBias = CCDData.read(
+                i,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
+            )
+
+        if masterBias is False:
+            self.log.warning(
+                f"The sof file names no MASTER_BIAS_{arm} frame, so the {arm} difference-frame errors still count "
+                "the bias pedestal as photon noise."
+            )
+
+        return masterBias
 
     def _split_ab_frames(self, allObjectFrames, allFilenames, kw):
         """*split the science frames into A and B frames by the sign of their cumulative nodding offset*
@@ -933,6 +979,11 @@ class soxs_nod(base_recipe):
         The B-A difference belongs to nodding mode only. An offset run never builds one, and never reads
         the False this returns in its place.
 
+        The bias pedestal cancels in the difference, but the error of each frame still counts it as photon
+        noise. When ``self.masterBias`` holds a master bias, the A and B errors are first rescaled to the
+        photon noise of their bias-subtracted counts, as ``detrend`` does for a stare frame. The data are
+        unchanged.
+
         **Key Arguments:**
 
         - ``aFrame`` -- the frame taken at the A location
@@ -943,11 +994,16 @@ class soxs_nod(base_recipe):
         - ``A_minus_B_notflattened`` -- the A-B difference, carrying the A header
         - ``B_minus_A_notflattened`` -- the B-A difference carrying the B header, or False outside nodding mode
         """
+        aOperand, bOperand = aFrame, bFrame
+        if self.masterBias is not False:
+            aOperand = self._remove_bias_pedestal_from_uncertainty(aFrame, self.masterBias)
+            bOperand = self._remove_bias_pedestal_from_uncertainty(bFrame, self.masterBias)
+
         # SUBTRACTING A FROM B
-        A_minus_B_notflattened = aFrame.subtract(bFrame)
+        A_minus_B_notflattened = aOperand.subtract(bOperand)
         B_minus_A_notflattened = False
         if "nod" in self.recipeName:
-            B_minus_A_notflattened = bFrame.subtract(aFrame)
+            B_minus_A_notflattened = bOperand.subtract(aOperand)
 
         # REAPPLYING HEADERS
         hdr_A = aFrame.header
