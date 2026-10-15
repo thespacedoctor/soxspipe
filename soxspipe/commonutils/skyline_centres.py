@@ -40,22 +40,37 @@ def measure_line_centres(coordinates, skyVals, peaks):
 
     - ``coordinates`` -- ascending wavelength (or pixel) coordinate of each sky sample
     - ``skyVals`` -- the sky spectrum (any constant or slowly varying baseline), the same length as ``coordinates``
-    - ``peaks`` -- indices of the detected sky peaks; indices outside the spectrum are ignored
+    - ``peaks`` -- integer indices of the detected sky peaks; indices outside the spectrum are ignored, and
+      non-integral values or a boolean mask raise ``ValueError``
 
     **Return:**
 
     - ``centres`` -- one centre per line. A line is dropped when its half maximum runs off the end of the order,
       when a sample next to one of its half-maximum crossings is NaN, or when it does not rise above its baseline.
+
+    Peaks are joined pairwise: each peak is compared only with the next peak, so a chain A-B-C is one line when
+    both A-B and B-C pass the valley test, and two lines when either fails. NaN samples in a valley are ignored.
     """
     coordinates = np.asarray(coordinates, dtype=float)
     skyVals = np.asarray(skyVals, dtype=float)
     if len(coordinates) != len(skyVals):
         raise ValueError(f"coordinates ({len(coordinates)}) and skyVals ({len(skyVals)}) must be the same length")
 
-    peaks = np.unique([int(peak) for peak in peaks if 0 <= peak < len(skyVals)])
-    peaks = [peak for peak in peaks if np.isfinite(skyVals[peak])]
-    centres = [_half_maximum_centre(coordinates, skyVals, line) for line in _group_peaks_into_lines(skyVals, peaks)]
+    validPeaks = [peak for peak in _peak_indices(peaks) if 0 <= peak < len(skyVals) and np.isfinite(skyVals[peak])]
+    lines = _group_peaks_into_lines(skyVals, validPeaks)
+    centres = [_half_maximum_centre(coordinates, skyVals, line) for line in lines]
     return np.sort([centre for centre in centres if np.isfinite(centre)])
+
+
+def _peak_indices(peaks):
+    """*return the sorted, unique peak indices as ints, rejecting a boolean mask and non-integral values*"""
+    peakArray = np.asarray(peaks)
+    if peakArray.dtype == bool:
+        raise ValueError("peaks must be integer indices, not a boolean mask")
+    peakArray = peakArray.astype(float)
+    if not np.all(np.isfinite(peakArray) & (peakArray == np.round(peakArray))):
+        raise ValueError(f"peaks must be integer indices, got {peakArray[peakArray != np.round(peakArray)]}")
+    return np.unique(peakArray.astype(int)).tolist()
 
 
 def _first_baseline(skyVals, first, last):
@@ -78,9 +93,11 @@ def _group_peaks_into_lines(skyVals, peaks):
 
 def _is_one_line(skyVals, left, right):
     """*return True when the valley between peaks ``left`` and ``right`` keeps the valley fraction of the lower peak*"""
+    # THE VALLEY TEST USES THE FIRST-PASS BASELINE; THE CENTRE LEVEL LATER USES THE LINE'S OWN BASELINE
     baseline = _first_baseline(skyVals, left, right)
     lowerHeight = min(skyVals[left], skyVals[right]) - baseline
-    valley = np.min(skyVals[left : right + 1]) - baseline
+    # BOTH PEAKS ARE FINITE, SO THE VALLEY CANNOT BE ALL NAN
+    valley = np.nanmin(skyVals[left : right + 1]) - baseline
     return bool(lowerHeight > 0 and valley >= SKYLINE_VALLEY_FRACTION * lowerHeight)
 
 

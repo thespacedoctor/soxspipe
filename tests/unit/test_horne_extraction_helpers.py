@@ -1072,6 +1072,102 @@ def test_peak_centres_keep_a_faint_line_on_the_wing_of_a_bright_line(log: object
     assert centres.tolist() == [pytest.approx(100.0, abs=0.1), pytest.approx(108.0, abs=0.3)]
 
 
+def test_peak_centres_give_one_centre_when_a_nan_sits_in_the_valley(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    sky[98:103] = [10, 10, np.nan, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # HALF OF THE BRIGHTEST SAMPLE (6) IS CROSSED AT 97.6 AND 102.5
+    assert centres.tolist() == [pytest.approx(100.05, abs=1e-6)]
+
+
+def test_peak_centres_give_one_centre_when_the_valley_is_exactly_the_valley_fraction(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # VALLEY 5 IS EXACTLY 0.5 OF THE LOWER PEAK (10)
+    sky[98:103] = [10, 10, 5, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.05, abs=1e-6)]
+
+
+def test_peak_centres_join_a_chain_only_where_each_adjacent_valley_is_high(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # A-B VALLEY 7 OF 10 JOINS; B-C VALLEY 0 SPLITS
+    sky[95:100] = [10, 10, 7, 10, 10]
+    sky[103:105] = [12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([95, 98, 103]))
+
+    # ASSERT
+    # A-B CROSSES HALF MAXIMUM (5) AT 94.5 AND 99.5; C CROSSES 6 AT 102.5 AND 104.5
+    assert centres.tolist() == [pytest.approx(97.0, abs=1e-6), pytest.approx(103.5, abs=1e-6)]
+
+
+def test_peak_centres_join_a_chain_whose_adjacent_valleys_are_all_high(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # EACH ADJACENT VALLEY (6) KEEPS 0.6 OF THE LOWER PEAK B (10); A AND C ALONE (20) WOULD NOT JOIN ACROSS IT
+    sky[95:102] = [20, 20, 6, 10, 6, 20, 20]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([96, 98, 100]))
+
+    # ASSERT
+    # ONE LINE CROSSING HALF MAXIMUM (10) AT 94.5 AND 101.5
+    assert centres.tolist() == [pytest.approx(98.0, abs=1e-6)]
+
+
+def test_peak_centres_reject_non_integral_peak_indices(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="integer"):
+        extractor._measure_peak_centres(np.arange(10.0), np.ones(10), np.array([4.9]))
+
+
+def test_peak_centres_reject_a_boolean_peak_mask(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    mask = np.zeros(10, dtype=bool)
+    mask[5] = True
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="integer"):
+        extractor._measure_peak_centres(np.arange(10.0), np.ones(10), mask)
+
+
+def test_peak_centres_accept_integral_float_peak_indices(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100.0]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1)]
+
+
 def test_peak_centres_reject_coordinates_and_sky_of_different_lengths(log: object) -> None:
     # ARRANGE
     extractor = _extractor(log)
