@@ -53,7 +53,7 @@ Bases: {py:obj}`object`
 ```{autodoc2-docstring} soxspipe.commonutils.reducer.reducer.__init__
 ```
 
-````{py:method} reduce(batch=False, multiprocess=False)
+````{py:method} reduce(batch=False, multiprocess=False, poolSize=None)
 :canonical: soxspipe.commonutils.reducer.reducer.reduce
 
 ```{autodoc2-docstring} soxspipe.commonutils.reducer.reducer.reduce
@@ -78,7 +78,7 @@ Bases: {py:obj}`object`
 ```
 ````
 
-````{py:function} run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, workspaceDirectory, conn, sessionId)
+````{py:function} run_recipe_bulk(log, recipe, sofList, commandList, settings, overwrite, workspaceDirectory, conn, sessionId, poolSize=None)
 :canonical: soxspipe.commonutils.reducer.run_recipe_bulk
 
 ```{autodoc2-docstring} soxspipe.commonutils.reducer.run_recipe_bulk

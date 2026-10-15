@@ -7,7 +7,7 @@
     Usage:
         soxspipe --version
         soxspipe prep [<workspaceDirectory> --vlt --refresh]
-        soxspipe [-qwpVm] reduce all [<workspaceDirectory> -b <batchSize> -s <pathToSettingsFile>]
+        soxspipe [-qwpVm] reduce all [<workspaceDirectory> -b <batchSize> -c <cores> -s <pathToSettingsFile>]
         soxspipe [-qxV] reduce sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
         soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
         soxspipe list (ob|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
@@ -53,6 +53,7 @@
         inputFrames                            path to a directory of frames or a set-of-files file
     
         -b, --batch                            reduce data in batches of <batchSize> recipes (only when reducing all data)
+        -c, --cores <cores>                    number of reductions to run in parallel (only with -m)
         -d, --debug                            show debugging plots
         -h, --help                             show this help message
         -m, --multiprocess                     run reductions of recipe in parallel (experimental, use with caution and check your results carefully if using this flag)
