@@ -151,6 +151,7 @@ def test_detrend_does_not_warn_about_a_different_exposure_soxs_dark(log: Any) ->
     """SOXS darks are subtracted unscaled by design, so a different exposure time is not worth a warning (DY-1553)."""
     recipe = _recipe(log)
     recipe.arm = "NIR"
+    recipe.inst = "SOXS"
 
     recipe.detrend(_frame(20.0, exposure=3.75), dark=_frame(2.0, exposure=5.0))
 
