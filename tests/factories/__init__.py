@@ -20,7 +20,7 @@ from .files import (
     raw_fits,
     sof_file,
 )
-from .frames import instrument_header, synthetic_ccd
+from .frames import StubInputFrames, instrument_header, noise_frame_pair, synthetic_ccd
 from .settings import logging_settings, pipeline_settings
 from .signals import synthetic_signal
 from .slit_illumination import illumination_scene, synthetic_illumination_scene
@@ -28,6 +28,7 @@ from .workspaces import WorkspaceLayout, workspace_layout, workspace_organiser
 
 __all__ = [
     "illumination_scene",
+    "StubInputFrames",
     "WorkspaceLayout",
     "dispersion_map_fits",
     "dispersion_table",
@@ -36,6 +37,7 @@ __all__ = [
     "logging_settings",
     "lzw_compress",
     "lzw_compressed_fits",
+    "noise_frame_pair",
     "order_table",
     "order_table_fits",
     "pipeline_settings",

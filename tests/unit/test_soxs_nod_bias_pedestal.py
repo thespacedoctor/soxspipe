@@ -164,3 +164,27 @@ def test_a_nir_reduction_never_looks_for_a_master_bias(log: Any) -> None:
     assert masterBias is False
     assert recipe.inputFrames.lookups == []
     assert not [message for level, message in log.messages if level == "warning"]
+
+
+def test_a_measured_read_noise_in_the_recipe_sets_the_difference_error(log: Any) -> None:
+    """The A-B error counts the measured read noise twice and no master-bias term (DY-1458)."""
+    measuredRon = 4.0
+    recipe = _recipe(log)
+    recipe.detectorParams = {"ron": measuredRon * u.electron}
+    recipe.masterBias = _master_bias()
+    rng = np.random.default_rng(9)
+
+    def frame(sky: float) -> CCDData:
+        data = PEDESTAL + rng.poisson(sky, SHAPE) + rng.normal(0.0, measuredRon, SHAPE)
+        error = np.sqrt(np.clip(data, 0, None) + measuredRon**2)
+        return CCDData(
+            data.astype(np.float32),
+            unit=u.electron,
+            uncertainty=StdDevUncertainty(error.astype(np.float32), unit=u.electron),
+            mask=np.zeros(SHAPE, dtype=bool),
+        )
+
+    aMinusB, _ = recipe._difference_cycle_frames(frame(SKY_A), frame(SKY_B))
+
+    # 120 + 80 + 2 * 16 = 232
+    assert np.median(aMinusB.uncertainty.array) == pytest.approx(np.sqrt(232.0), rel=0.01)

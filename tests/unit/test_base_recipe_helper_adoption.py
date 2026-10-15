@@ -24,7 +24,7 @@ import pandas as pd
 import pytest
 
 from soxspipe.recipes import base_recipe
-from tests.factories import qc_table, synthetic_ccd
+from tests.factories import StubInputFrames, noise_frame_pair, qc_table, synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -55,6 +55,7 @@ def _recipe(log: Any) -> base_recipe:
     recipe.recipeName = "soxs-mbias"
     recipe.dateObs = "2024-01-02T03:04:05"
     recipe.qc = pd.DataFrame({column: [] for column in QC_COLUMNS})
+    recipe.inputFrames = StubInputFrames(noise_frame_pair())
     return recipe
 
 
@@ -171,7 +172,7 @@ def test_qc_ron_reads_the_clock_once_for_both_noise_rows(
     issued = _counting_clock(monkeypatch)
 
     # ACT
-    recipe.qc_ron(frameType="MBIAS", rawRon=2.5, masterRon=0.8)
+    recipe.qc_ron(frameType="MBIAS", masterRon=0.8)
 
     # ASSERT
     assert len(issued) == 1
@@ -236,7 +237,6 @@ def test_qc_ron_shares_one_timestamp_across_both_noise_rows(log: Any) -> None:
     recipe.qc_ron(
         frameType="MBIAS",
         frameName="master bias",
-        rawRon=2.5,
         masterRon=0.8,
     )
 
@@ -257,18 +257,17 @@ def test_qc_ron_rows_keep_their_values_and_columns(log: Any) -> None:
     rawRon, masterRon = recipe.qc_ron(
         frameType="MBIAS",
         frameName="master bias",
-        rawRon=2.5,
         masterRon=0.8,
     )
 
     # ASSERT
-    assert rawRon == pytest.approx(2.5, rel=1e-12)
+    assert rawRon == pytest.approx(3.0, rel=0.2)
     assert masterRon == pytest.approx(0.8, rel=1e-12)
     assert list(recipe.qc.columns) == QC_COLUMNS
     rows = recipe.qc.set_index("qc_name")
     rawRow = rows.loc["RAW RON"]
     assert rawRow["soxspipe_recipe"] == "soxs-mbias"
-    assert rawRow["qc_value"] == pytest.approx(2.5, rel=1e-12)
+    assert rawRow["qc_value"] == pytest.approx(rawRon, rel=1e-12)
     # THE LEADING "M" IS STRIPPED FROM THE FRAME TYPE FOR THE SINGLE-FRAME ROW.
     assert rawRow["qc_comment"] == "[e-] RON in single BIAS"
     assert rawRow["qc_unit"] == "electrons"
@@ -289,10 +288,10 @@ def test_qc_ron_appends_only_the_raw_row_when_no_master_noise_is_supplied(
     recipe = _recipe(log)
 
     # ACT
-    rawRon, masterRon = recipe.qc_ron(frameType="MBIAS", rawRon=2.5)
+    rawRon, masterRon = recipe.qc_ron(frameType="MBIAS")
 
     # ASSERT
-    assert rawRon == pytest.approx(2.5, rel=1e-12)
+    assert rawRon == pytest.approx(3.0, rel=0.2)
     assert masterRon is None
     assert list(recipe.qc["qc_name"]) == ["RAW RON"]
 
@@ -371,7 +370,7 @@ def test_appending_every_qc_row_leaves_the_column_order_untouched(log: Any) -> N
     frame.mask = np.zeros((2, 2), dtype=bool)
 
     # ACT
-    recipe.qc_ron(frameType="MBIAS", rawRon=2.5, masterRon=0.8)
+    recipe.qc_ron(frameType="MBIAS", masterRon=0.8)
     recipe.qc_median_flux_level(frame, frameType="MBIAS", frameName="master bias")
     recipe.flag_poor_data()
 
