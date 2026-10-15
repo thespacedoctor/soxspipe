@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from astropy.io import fits
 
 import soxspipe
 
@@ -32,6 +33,9 @@ STATIC_CALIBRATION_KEYS = [
 # THE SOXS VIS 1x2 BAD-PIXEL MAP IS NAMED BUT NOT PACKAGED
 KNOWN_MISSING = {("soxs", "VIS", "bad-pixel map", "BP_MAP_RP_VIS_1x2.fits")}
 
+# THE COLUMNS create_new_static_line_list READS FROM THE LINE ATLAS
+LINE_ATLAS_COLUMNS = {"wave", "ion", "source", "amplitude"}
+
 
 class _UniqueKeyLoader(yaml.SafeLoader):
     """A safe yaml loader that raises when a mapping repeats a key."""
@@ -56,6 +60,11 @@ def _load_rejecting_duplicates(text: str):
         return loader.get_single_data()
     finally:
         loader.dispose()
+
+
+def _column_names(calibrationsDir: Path, armParameters: dict) -> list[str]:
+    with fits.open(calibrationsDir / armParameters["line-atlas"]) as hdus:
+        return list(hdus[1].columns.names)
 
 
 def _yaml_path(instrument: str) -> Path:
@@ -127,7 +136,7 @@ def test_soxs_vis_1x2_bad_pixel_map_is_packaged() -> None:
 
 @pytest.mark.parametrize(
     ("arm", "atlas"),
-    [("VIS", "thar_murphy.fits"), ("NIR", "ArHgNeXe_all.fits")],
+    [("VIS", "thar_murphy.fits"), ("NIR", "ArHgNeXe.fits")],
 )
 def test_soxs_line_atlas_names_the_agreed_file(arm: str, atlas: str) -> None:
     # ARRANGE
@@ -135,3 +144,35 @@ def test_soxs_line_atlas_names_the_agreed_file(arm: str, atlas: str) -> None:
 
     # ACT / ASSERT
     assert parameters[arm]["line-atlas"] == atlas
+
+
+@pytest.mark.parametrize(
+    "instrument",
+    [
+        "soxs",
+        pytest.param(
+            "xsh",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="xsh/ThAr.fits names its column 'Source', not 'source'; X-Shooter values need a decision",
+            ),
+        ),
+    ],
+)
+def test_every_line_atlas_has_the_columns_the_static_line_list_reads(instrument: str) -> None:
+    # ARRANGE
+    parameters = yaml.safe_load(_yaml_path(instrument).read_text())
+    calibrationsDir = RESOURCES_DIR / "static_calibrations" / instrument
+
+    # ACT
+    lacking = {
+        (arm, armParameters["line-atlas"]): sorted(
+            LINE_ATLAS_COLUMNS - set(_column_names(calibrationsDir, armParameters))
+        )
+        for arm, armParameters in parameters.items()
+        if "line-atlas" in armParameters
+    }
+    lacking = {atlas: columns for atlas, columns in lacking.items() if columns}
+
+    # ASSERT
+    assert lacking == {}

@@ -71,7 +71,7 @@ NIR:
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_NIR.fits
   slit_length: 12 #arcsec
-  line-atlas: ArHgNeXe_all.fits
+  line-atlas: ArHgNeXe.fits
   dispersion-axis: y
   rotate-qc-plot: 0
   flip-qc-plot: 1
