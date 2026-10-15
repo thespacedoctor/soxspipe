@@ -1177,43 +1177,50 @@ class base_recipe:
         return
 
     def _apply_measured_read_noise(self):
-        """*replace the nominal read noise with the one measured on the master bias the SOF names*
+        """*replace the nominal read noise with the one measured on the master frame the SOF names*
 
-        Only UVB and VIS frames are looked at: NIR has no master bias. Without a master bias in the SOF, the
-        nominal read noise stays. Otherwise ``self.detectorParams["ron"]`` is set to the single-frame read noise, which
-        the prepared uncertainty and the bias-pedestal correction use. The master bias noise reaches a detrended
-        frame through ``ccdproc.subtract_bias``, so it is not added here. The sky-subtraction noise model has no such
-        propagation; ``self.readNoise.skyFit`` holds the value it needs (DY-1458).
+        UVB and VIS frames use the master bias (``MASTER_BIAS_<arm>``); NIR frames use the master dark
+        (``MASTER_DARK_NIR``). A UVB/VIS SOF never takes its read noise from a master dark. Without that master frame
+        in the SOF, or for any other arm, the nominal read noise stays. Otherwise ``self.detectorParams["ron"]`` is set
+        to the single-frame read noise, which the prepared uncertainty and the bias-pedestal correction use. The master
+        frame's noise reaches a detrended frame through ``ccdproc.subtract_bias`` or ``ccdproc.subtract_dark``, so it
+        is not added here. The sky-subtraction noise model has no such propagation; ``self.readNoise.skyFit`` holds
+        the value it needs (DY-1458, DY-1581).
         """
         from astropy import units as u
         from astropy.io import fits
 
-        from soxspipe.commonutils.read_noise import resolve_read_noise
+        from soxspipe.commonutils.read_noise import SOURCE_MASTER_BIAS, SOURCE_MASTER_DARK, resolve_read_noise
 
-        if self.arm.upper() not in ("UVB", "VIS"):
+        arm = self.arm.upper()
+        if arm in ("UVB", "VIS"):
+            masterCatg, masterLabel, masterPlural = f"MASTER_BIAS_{arm}", SOURCE_MASTER_BIAS, "master biases"
+        elif arm == "NIR":
+            masterCatg, masterLabel, masterPlural = "MASTER_DARK_NIR", SOURCE_MASTER_DARK, "master darks"
+        else:
             return
 
-        masterBiasPaths = self.inputFrames.files_filtered(
-            include_path=True, **{self.kw("PRO_CATG"): f"MASTER_BIAS_{self.arm}"}
-        )
-        if not len(masterBiasPaths):
+        masterPaths = self.inputFrames.files_filtered(include_path=True, **{self.kw("PRO_CATG"): masterCatg})
+        if not len(masterPaths):
             return
 
         # SORT SO THE CHOICE DOES NOT DEPEND ON DIRECTORY ORDER
-        masterBiasPath = sorted(masterBiasPaths)[-1]
-        if len(masterBiasPaths) > 1:
+        masterPath = sorted(masterPaths)[-1]
+        if len(masterPaths) > 1:
             self.log.warning(
-                f"The SOF names {len(masterBiasPaths)} master biases; the read noise is taken from "
-                f"{os.path.basename(masterBiasPath)}."
+                f"The SOF names {len(masterPaths)} {masterPlural}; the read noise is taken from "
+                f"{os.path.basename(masterPath)}."
             )
 
         try:
-            masterBiasHeader = fits.getheader(masterBiasPath)
+            masterHeader = fits.getheader(masterPath)
         except OSError as e:
-            self.log.warning(f"The master bias header could not be read ({e}).")
-            masterBiasHeader = None
+            self.log.warning(f"The {masterLabel} header could not be read ({e}).")
+            masterHeader = None
 
-        self.readNoise = resolve_read_noise(masterBiasHeader, self.rawHeaderRon, self.defaultRon, self.kw, self.log)
+        self.readNoise = resolve_read_noise(
+            masterHeader, self.rawHeaderRon, self.defaultRon, self.kw, self.log, masterLabel=masterLabel
+        )
         self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
 
         return
