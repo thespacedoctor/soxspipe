@@ -2331,8 +2331,8 @@ class subtract_sky:
             return allKnots.copy()
         return allKnots[keepMask]
 
-    def _drop_knots_without_samples(self, allKnots, wavelength, order, minSamples=1):
-        """*drop the knots that would leave a knot interval with fewer than ``minSamples`` samples in it*
+    def _drop_knots_without_samples(self, allKnots, wavelength, order):
+        """*drop the knots that would leave a knot interval with no sample in it*
 
         Knot addition can propose a duplicate knot, a knot outside the sampled wavelength range, or
         two knots with no sample between them, and FITPACK rejects those knot vectors with ``ier=30``
@@ -2344,13 +2344,11 @@ class subtract_sky:
         - ``allKnots`` -- the proposed interior knot wavelengths, in any order
         - ``wavelength`` -- the sorted wavelengths of the samples the spline is fitted to
         - ``order`` -- the order number, used in the log message
-        - ``minSamples`` -- the fewest samples a knot interval may hold. Default *1*
 
         **Return:**
 
-        - ``keptKnots`` -- a new sorted array of the knots with ``minSamples`` samples since the previous kept knot
-          and after the last one (see ``sky_knots.knots_with_samples``)
-            - of two knots too close together, the bluer knot is kept
+        - ``keptKnots`` -- a new sorted array of the knots with a sample since the previous kept knot and one after
+            - of two knots with no sample between them, the bluer knot is kept
             - a sample exactly on a knot counts for neither neighbouring interval
             - a warning is logged when knots were proposed and none is kept
 
@@ -2361,15 +2359,29 @@ class subtract_sky:
         ```
 
         """
-        from soxspipe.commonutils.sky_knots import knots_with_samples
+        import numpy as np
 
-        keptKnots = knots_with_samples(allKnots, wavelength, minSamples)
-        if len(allKnots) and not len(keptKnots):
+        proposedKnots = np.sort(np.asarray(allKnots, dtype=float))
+        keptKnots = []
+        if len(wavelength):
+            lastWavelength = wavelength[-1]
+            # THE FIRST KNOT NEEDS A SAMPLE BLUEWARD OF IT; EACH LATER KNOT NEEDS ONE SINCE THE LAST KEPT KNOT
+            lowerBound = -np.inf
+            for knot in proposedKnots:
+                if knot >= lastWavelength:
+                    break
+                # lowerBound IS -inf OR A KEPT KNOT BELOW lastWavelength, SO A SAMPLE ABOVE IT ALWAYS EXISTS
+                firstSampleAbove = np.searchsorted(wavelength, lowerBound, side="right")
+                if wavelength[firstSampleAbove] < knot:
+                    keptKnots.append(knot)
+                    lowerBound = knot
+
+        if len(proposedKnots) and not keptKnots:
             self.log.warning(
                 f"\t\tEvery proposed b-spline knot for order {order} lacks samples in its interval. "
                 "Fitting without knots.\n"
             )
-        return keptKnots
+        return np.array(keptKnots, dtype=float)
 
     def create_placeholder_images(self):
         """*create placeholder images for the sky model and sky-subtracted frame*
