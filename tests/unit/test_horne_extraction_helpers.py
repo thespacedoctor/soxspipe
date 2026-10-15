@@ -979,12 +979,13 @@ def test_peak_centres_give_one_centre_for_two_horns_on_a_sloped_baseline(log: ob
     assert centres.tolist() == [pytest.approx(100.0, abs=0.1)]
 
 
-def test_peak_centres_give_one_centre_when_the_dip_falls_below_half_of_one_horn(log: object) -> None:
+def test_peak_centres_give_one_centre_when_the_valley_stays_above_half_of_the_lower_peak(log: object) -> None:
     # ARRANGE
     extractor = _extractor(log)
     pixels = np.arange(200.0)
     sky = np.zeros_like(pixels)
-    sky[98:103] = [10, 10, 3, 12, 12]
+    # VALLEY 6 IS 0.6 OF THE LOWER HORN, LIKE THE 0.74-0.99 DIPS OF REAL 5-ARCSEC LINES
+    sky[98:103] = [10, 10, 6, 12, 12]
 
     # ACT
     centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
@@ -992,6 +993,105 @@ def test_peak_centres_give_one_centre_when_the_dip_falls_below_half_of_one_horn(
     # ASSERT
     # HALF OF THE BRIGHTEST SAMPLE (6) IS CROSSED AT 97.6 AND 102.5
     assert centres.tolist() == [pytest.approx(100.05, abs=1e-6)]
+
+
+def test_peak_centres_give_two_centres_when_the_valley_falls_below_half_of_the_lower_peak(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # VALLEY 3 IS 0.3 OF THE LOWER PEAK: BETWEEN REAL 1-ARCSEC VALLEYS (<= 0.11) AND 5-ARCSEC DIPS (>= 0.74)
+    sky[98:103] = [10, 10, 3, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # LEFT LINE CROSSES ITS HALF MAXIMUM (5) AT 97.5 AND 99 + 5/7; RIGHT LINE (6) AT 100 + 1/3 AND 102.5
+    assert centres.tolist() == [
+        pytest.approx(0.5 * (97.5 + 99.0 + 5.0 / 7.0), abs=1e-6),
+        pytest.approx(0.5 * (100.0 + 1.0 / 3.0 + 102.5), abs=1e-6),
+    ]
+
+
+def test_peak_centres_judge_the_valley_against_the_lower_peak(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # VALLEY 3 IS 0.75 OF THE LOWER PEAK (4) BUT ONLY 0.25 OF THE HIGHER ONE (12)
+    sky[98:103] = [4, 4, 3, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([99, 102]))
+
+    # ASSERT
+    # ONE LINE; THE LOW SHOULDER STAYS BELOW HALF MAXIMUM (6), WHICH IS CROSSED AT 100 + 1/3 AND 102.5
+    assert centres.tolist() == [pytest.approx(0.5 * (100.0 + 1.0 / 3.0 + 102.5), abs=1e-6)]
+
+
+def test_peak_centres_give_two_centres_when_the_dip_reaches_the_baseline(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = np.zeros_like(pixels)
+    # A DIP TO THE BASELINE CANNOT BE TOLD FROM A RESOLVED DOUBLET, SO IT IS TWO LINES
+    sky[98:103] = [10, 10, 0, 12, 12]
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([98, 102]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(98.5, abs=1e-6), pytest.approx(101.5, abs=1e-6)]
+
+
+def test_peak_centres_keep_an_equal_height_doublet_whose_valley_falls_below_half_apart(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 97.0, sigma=1.5) + _gaussian(pixels, 103.0, sigma=1.5)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([97, 103]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(97.0, abs=0.3), pytest.approx(103.0, abs=0.3)]
+
+
+def test_peak_centres_keep_a_faint_line_on_the_wing_of_a_bright_line(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0, height=100.0) + _gaussian(pixels, 108.0, sigma=1.0, height=4.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([100, 108]))
+
+    # ASSERT
+    # THE BRIGHT LINE'S WING STILL LIFTS THE FAINT LINE'S BLUE SIDE, PULLING ITS CENTRE ABOUT 0.2 SAMPLES BLUEWARD
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1), pytest.approx(108.0, abs=0.3)]
+
+
+def test_peak_centres_reject_coordinates_and_sky_of_different_lengths(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="same length"):
+        extractor._measure_peak_centres(np.arange(10.0), np.ones(9), np.array([5]))
+
+
+def test_peak_centres_skip_peak_indices_outside_the_spectrum(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    pixels = np.arange(200.0)
+    sky = 1.0 + _gaussian(pixels, 100.0, sigma=2.0)
+
+    # ACT
+    centres = extractor._measure_peak_centres(pixels, sky, np.array([-1, 100, 200]))
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(100.0, abs=0.1)]
 
 
 def test_peak_centres_keep_two_distinct_close_lines_apart(log: object) -> None:
