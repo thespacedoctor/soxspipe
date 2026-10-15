@@ -27,6 +27,8 @@ SLIT_EDGE_PEAK_FRACTION = 0.5
 SLIT_EDGE_ORDER_FRACTION = 0.2
 # SOXS VIS TRACE ORDER NUMBERS RENUMBERED SO THE MERGED AND PRODUCT ORDERS SORT BY WAVELENGTH
 SOXS_VIS_ORDER_REMAP = {4: 1, 1: 2, 3: 3, 2: 4}
+# HALF-WIDTH IN SAMPLES OF THE WINDOW WHOSE MEDIAN IS THE LOCAL BASELINE UNDER A SKY LINE
+SKYLINE_BASELINE_HALF_WINDOW = 50
 
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
 
@@ -759,9 +761,12 @@ class horne_extraction(base_util):
                     else:
                         shiftArray = axisBVals
 
-                    # MATCH DETECTED PEAKS TO ISOLATED CATALOGUE SKYLINES
+                    # MEASURE SUB-SAMPLE LINE CENTRES, SO A FLAT-TOPPED WIDE-SLIT LINE IS NOT CENTRED ON A SHOULDER
+                    peakCentres = self._measure_peak_centres(shiftArray, skyVals, peaks)
+
+                    # MATCH LINE CENTRES TO ISOLATED CATALOGUE SKYLINES
                     matchedSkylinePixels, matchedShifts = self._match_peaks_to_skylines(
-                        shiftArray, peaks, calibrationSkylines, tolerance=tolerance[iteration]
+                        peakCentres, calibrationSkylines, tolerance=tolerance[iteration]
                     )
 
                     # SIGMA-CLIP SHIFT DISTRIBUTION AND COMPUTE MEDIAN
@@ -895,11 +900,68 @@ class horne_extraction(base_util):
 
         return localSkylines, calibrationSkylines
 
-    def _match_peaks_to_skylines(self, shiftArray, peaks, calibrationSkylines, tolerance=15):
-        """Match observed sky-peak positions to catalogue skyline positions within a pixel tolerance."""
+    def _measure_peak_centres(self, shiftArray, skyVals, peaks):
+        """Return the sorted, unique half-maximum midpoints of the sky lines holding the detected peaks.
+
+        **Key Arguments:**
+
+        - ``shiftArray`` -- ascending wavelength (or pixel) coordinate of each sky sample
+        - ``skyVals`` -- the continuum-normalised sky spectrum
+        - ``peaks`` -- indices of the detected sky peaks
+
+        **Return:**
+
+        - ``peakCentres`` -- one centre per line; two horns of one flat-topped line give one centre. A line whose
+          half-maximum runs off the end of the order, or which does not rise above its local baseline, is dropped.
+        """
         import numpy as np
 
-        peakPositions = shiftArray[peaks]
+        shiftArray = np.asarray(shiftArray, dtype=float)
+        skyVals = np.asarray(skyVals, dtype=float)
+        centres = [self._half_maximum_centre(shiftArray, skyVals, int(peak)) for peak in peaks]
+        return np.unique([centre for centre in centres if np.isfinite(centre)])
+
+    @staticmethod
+    def _half_maximum_centre(shiftArray, skyVals, peak):
+        """Return the midpoint of the half-maximum crossings of the line holding ``peak``, or NaN."""
+        import numpy as np
+
+        lower = max(0, peak - SKYLINE_BASELINE_HALF_WINDOW)
+        baseline = np.nanmedian(skyVals[lower : peak + SKYLINE_BASELINE_HALF_WINDOW + 1])
+        if not np.isfinite(skyVals[peak]) or not skyVals[peak] > baseline:
+            return np.nan
+
+        # WALK OUT FROM THE PEAK, THEN AGAIN FROM THE LINE'S BRIGHTEST SAMPLE, SO EVERY HORN OF A LINE AGREES
+        left, right = horne_extraction._samples_above(skyVals, peak, baseline + 0.5 * (skyVals[peak] - baseline))
+        top = left + int(np.nanargmax(skyVals[left : right + 1]))
+        level = baseline + 0.5 * (skyVals[top] - baseline)
+        left, right = horne_extraction._samples_above(skyVals, top, level)
+        if left == 0 or right == len(skyVals) - 1:
+            return np.nan
+
+        # LINEAR INTERPOLATION OF EACH CROSSING BETWEEN THE LAST SAMPLE ABOVE AND THE FIRST BELOW THE LEVEL
+        leftCrossing = np.interp(level, [skyVals[left - 1], skyVals[left]], [shiftArray[left - 1], shiftArray[left]])
+        rightCrossing = np.interp(
+            level, [skyVals[right + 1], skyVals[right]], [shiftArray[right + 1], shiftArray[right]]
+        )
+        return 0.5 * (leftCrossing + rightCrossing)
+
+    @staticmethod
+    def _samples_above(skyVals, start, level):
+        """Return the first and last index of the contiguous run of samples above ``level`` around ``start``."""
+        left = start
+        while left > 0 and skyVals[left - 1] > level:
+            left -= 1
+        right = start
+        while right < len(skyVals) - 1 and skyVals[right + 1] > level:
+            right += 1
+        return left, right
+
+    def _match_peaks_to_skylines(self, peakPositions, calibrationSkylines, tolerance=15):
+        """Match observed sky-line centres to catalogue skyline positions within a tolerance."""
+        import numpy as np
+
+        peakPositions = np.asarray(peakPositions, dtype=float)
         matchedSkylinePixels = []
         matchedShifts = []
 

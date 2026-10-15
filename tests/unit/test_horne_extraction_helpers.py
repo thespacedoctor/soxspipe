@@ -861,11 +861,97 @@ def test_plot_slit_drift_qc_records_no_qc_for_the_not_flattened_re_extraction(lo
     assert extractor.qc.empty
 
 
+SYNTHETIC_PIXEL_NM = 0.05
+
+
+def _flat_topped_dipped_line(wavelength: np.ndarray, centre: float) -> np.ndarray:
+    """Wide-slit sky line: a smooth-edged top hat with a dip off its middle, so its two horns differ."""
+    from scipy.special import erf
+
+    halfWidth, edgeSigma = 0.15, 0.04
+    topHat = 0.5 * (
+        erf((wavelength - centre + halfWidth) / edgeSigma) - erf((wavelength - centre - halfWidth) / edgeSigma)
+    )
+    # THE DIP SITS LEFT OF CENTRE, SO THE RIGHT HORN IS THE BRIGHTEST SAMPLE
+    dip = 1.0 - 0.3 * np.exp(-0.5 * ((wavelength - centre + 0.03) / 0.05) ** 2)
+    return 1.0 + 20.0 * topHat * dip
+
+
+def test_skyline_tuning_recovers_the_offset_of_a_flat_topped_line_with_a_central_dip(
+    log: object,
+) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    extractor.debug = False
+    catalogueLine = 510.0
+    trueOffsetNm = 0.137
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    extraction = pd.DataFrame(
+        {
+            "order": 1,
+            "wavelengthMean": wavelength,
+            "pixelScaleNm": SYNTHETIC_PIXEL_NM,
+            "skyFlux": _flat_topped_dipped_line(wavelength, catalogueLine + trueOffsetNm),
+        }
+    )
+    extractor._get_local_skylines_for_order = lambda *args: (np.array([catalogueLine]), np.array([catalogueLine]))
+    recordedShifts: list[float] = []
+    extractor._record_order_shift_qc = lambda order, shift: recordedShifts.append(shift)
+
+    # ACT
+    extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
+
+    # ASSERT
+    assert recordedShifts == [pytest.approx(-trueOffsetNm, abs=0.1 * SYNTHETIC_PIXEL_NM)]
+
+
+def test_peak_centres_merge_both_horns_of_one_line_into_its_half_maximum_midpoint(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    sky = _flat_topped_dipped_line(wavelength, 510.0)
+    hornPeaks = np.array([np.argmax(np.where(wavelength < 509.97, sky, 0)), np.argmax(sky)])
+
+    # ACT
+    centres = extractor._measure_peak_centres(wavelength, sky, hornPeaks)
+
+    # ASSERT
+    assert hornPeaks[0] != hornPeaks[1]
+    assert centres.tolist() == [pytest.approx(510.0, abs=0.1 * SYNTHETIC_PIXEL_NM)]
+
+
+def test_peak_centres_drop_a_line_whose_half_maximum_runs_off_the_order_end(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    sky = _flat_topped_dipped_line(wavelength, 500.05) + _flat_topped_dipped_line(wavelength, 510.0) - 1.0
+    peaks = np.array([np.argmax(np.where(wavelength < 505.0, sky, 0)), np.argmax(np.where(wavelength > 505.0, sky, 0))])
+
+    # ACT
+    centres = extractor._measure_peak_centres(wavelength, sky, peaks)
+
+    # ASSERT
+    assert centres.tolist() == [pytest.approx(510.0, abs=0.1 * SYNTHETIC_PIXEL_NM)]
+
+
+def test_peak_centres_skip_peaks_that_do_not_rise_above_the_local_baseline(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log)
+    wavelength = np.arange(500.0, 520.0, SYNTHETIC_PIXEL_NM)
+    sky = np.ones_like(wavelength)
+    sky[100] = np.nan
+
+    # ACT
+    centres = extractor._measure_peak_centres(wavelength, sky, np.array([50, 100]))
+
+    # ASSERT
+    assert centres.size == 0
+
+
 def test_skyline_matching_and_clipped_shift_reject_outliers(log: object) -> None:
     extractor = _extractor(log)
     matchedPixels, matchedShifts = extractor._match_peaks_to_skylines(
-        np.array([100.0, 101.0, 200.0]),
-        np.array([0, 2]),
+        np.array([100.0, 200.0]),
         np.array([100.2, 199.8]),
         tolerance=0.5,
     )
