@@ -935,6 +935,66 @@ def test_plot_results_returns_only_the_plot_path(tmp_path, log: object, savefig_
     assert Path(outputPath).read_bytes().startswith(b"%PDF")
 
 
+def _develop_fit_curves(detector: detect_continuum, orderPixelTable: pd.DataFrame, orderPolyTable: pd.DataFrame):
+    """Evaluate the order fits with the zip-and-filter code that `plot_results` carried before DY-1219."""
+    axisALength = detector.traceFrame.data.shape[1] if detector.axisB == "y" else detector.traceFrame.data.shape[0]
+    axisBLength = detector.traceFrame.data.shape[0] if detector.axisB == "y" else detector.traceFrame.data.shape[1]
+    axisBLineList = np.arange(0, axisBLength, 3)
+    poly = continuumModule.chebyshev_order_xy_polynomials(
+        log=detector.log,
+        axisBCol=detector.axisB,
+        orderCol="order",
+        orderDeg=detector.orderDeg,
+        axisBDeg=detector.axisBDeg,
+    ).poly
+    row = orderPolyTable.iloc[-1]
+    centCoeff = [float(v) for k, v in row.items() if "cent_" in k]
+    stdCoeff = [float(v) for k, v in row.items() if "std_" in k]
+    df = pd.DataFrame({detector.axisB: axisBLineList})
+    curves = []
+    for o in orderPixelTable["order"].unique():
+        df["order"] = o
+        xfit = poly(df, *centCoeff)
+        stdfit = poly(df, *stdCoeff)
+        try:
+            xfit, yfit, stdfit = zip(
+                *[
+                    (x, y, std)
+                    for x, y, std in zip(xfit, axisBLineList, stdfit, strict=True)
+                    if x > 0 and x < axisALength - 10
+                ],
+                strict=True,
+            )
+        except ValueError:
+            continue
+        curves.append((o, np.array(xfit), np.array(yfit), np.array(stdfit)))
+    return curves
+
+
+def test_fitted_order_curves_match_the_pre_refactor_evaluation_exactly(tmp_path, log: object) -> None:
+    """Keep the plotted curves bit-identical, including partly and wholly filtered-out orders."""
+    # ARRANGE
+    orientation = ORIENTATIONS["no-rotate-no-flip"]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    # ORDER 5 IS ALWAYS OFF THE LOW EDGE, 10 CROSSES IT, 11 AND 12 ARE ON THE DETECTOR, 20 IS ALWAYS OFF THE HIGH EDGE
+    orders = [5.0, 10.0, 11.0, 12.0, 20.0]
+    pixels = _trace_pixels(orders, slope=0.0, intercept=0.0)
+    coefficients = pd.DataFrame([SLOPED_COEFFICIENTS])
+    expected = _develop_fit_curves(detector, pixels, coefficients)
+
+    # ACT
+    curves = detector._fitted_order_curves(pixels, coefficients)
+
+    # ASSERT
+    assert [curve[0] for curve in curves] == [10.0, 11.0, 12.0]
+    assert len(curves) == len(expected)
+    for curve, oldCurve in zip(curves, expected, strict=True):
+        assert curve[0] == oldCurve[0]
+        for new, old in zip(curve[1:], oldCurve[1:], strict=True):
+            assert np.array_equal(new, old)
+    assert len(curves[0][1]) < len(curves[1][1])
+
+
 def test_order_colours_assigns_a_stable_distinct_colour_per_order_and_wraps_after_the_cycle() -> None:
     # ARRANGE
     cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]

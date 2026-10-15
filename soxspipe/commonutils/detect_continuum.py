@@ -1155,7 +1155,7 @@ class detect_continuum(_base_detect):
             axisALength = self.traceFrame.data.shape[0]
             axisBLength = self.traceFrame.data.shape[1]
 
-        axisBlinelist = np.arange(0, axisBLength, 3)
+        axisBLineList = np.arange(0, axisBLength, 3)
 
         poly = chebyshev_order_xy_polynomials(
             log=self.log,
@@ -1165,29 +1165,21 @@ class detect_continuum(_base_detect):
             axisBDeg=self.axisBDeg,
         ).poly
         for _index, row in orderPolyTable.iterrows():
-            cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-            std_coeff = [float(v) for k, v in row.items() if "std_" in k]
+            centCoeff = [float(v) for k, v in row.items() if "cent_" in k]
+            stdCoeff = [float(v) for k, v in row.items() if "std_" in k]
 
-        df = pd.DataFrame({f"{self.axisB}": axisBlinelist})
+        df = pd.DataFrame({f"{self.axisB}": axisBLineList})
         curves = []
         for o in orderPixelTable["order"].unique():
             df["order"] = o
-            xfit = poly(df, *cent_coeff)
-            stdfit = poly(df, *std_coeff)
+            axisAFit = np.asarray(poly(df, *centCoeff))
+            axisAStdFit = np.asarray(poly(df, *stdCoeff))
 
-            try:
-                xfit, yfit, stdfit = zip(
-                    *[
-                        (x, y, std)
-                        for x, y, std in zip(xfit, axisBlinelist, stdfit, strict=True)
-                        if x > 0 and x < (axisALength) - 10
-                    ],
-                    strict=True,
-                )
-            except ValueError as e:
-                self.log.debug(f"_fitted_order_curves: `xfit, yfit, stdfit = zip( *[...` failed, continuing: {e}")
+            keep = (axisAFit > 0) & (axisAFit < axisALength - 10)
+            if not keep.any():
+                self.log.debug(f"_fitted_order_curves: order {o} has no fitted positions on the detector, continuing")
                 continue
-            curves.append((o, np.array(xfit), yfit, np.array(stdfit)))
+            curves.append((o, axisAFit[keep], axisBLineList[keep], axisAStdFit[keep]))
         return curves
 
     def build_order_metadata(self, orderPixelTable, orderPolyTable):
