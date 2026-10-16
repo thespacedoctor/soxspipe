@@ -87,7 +87,7 @@ def _residual_pdf_name(detector: detect_continuum, monkeypatch: pytest.MonkeyPat
     """Run the real ``plot_results`` and return the name of the PDF it writes."""
     monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
     pixels, polynomials, clipped = _plot_inputs()
-    filePath, _ = detector.plot_results(orderPixelTable=pixels, orderPolyTable=polynomials, clippedData=clipped)
+    filePath = detector.plot_results(orderPixelTable=pixels, orderPolyTable=polynomials, clippedData=clipped)
     assert Path(filePath).read_bytes().startswith(b"%PDF")
     return Path(filePath).name
 
