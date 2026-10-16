@@ -24,7 +24,10 @@ fractions to ±0.02 absolute, and counts exactly. The centres were re-recorded o
 2026-10-14 from six bit-identical CI runs (38566513736, 38566517851, 38566520911,
 38566524861, 38566528464 and 38566531516), after the exact dispersion fit (DY-1525),
 per-frame stacking masks (DY-1254) and the DY-1518 background mask (DY-1524). Since
-DY-1525, local arm64 reductions give the same `XY RES MEDIAN` as CI.
+DY-1525, local arm64 reductions give the same `XY RES MEDIAN` as CI. The three VIS
+dispersion and spatial solution entries were re-recorded on 2026-10-16 from two
+identical CI runs (38869883513 and 38869886400), after three blended Th lines were
+marked deleted in the VIS line lists (DY-1578).
 """
 
 from __future__ import annotations
@@ -171,18 +174,18 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-disp-solution",
         sofName="20250831T030313_VIS_1X1_1_DSOL_PINHOLE_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.25024),
-            "GOODLINES FRAC": fraction(0.932836),
-            "DETLINES NUM": count(130),
+            "XY RES MEDIAN": level(0.23581),
+            "GOODLINES FRAC": fraction(0.931298),
+            "DETLINES NUM": count(127),
         },
     ),
     QcBaseline(
         recipe="soxs-disp-solution",
         sofName="20250901T105805_VIS_1X1_1_DSOL_PINHOLE_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.1974),
-            "GOODLINES FRAC": fraction(0.932836),
-            "DETLINES NUM": count(129),
+            "XY RES MEDIAN": level(0.19831),
+            "GOODLINES FRAC": fraction(0.931298),
+            "DETLINES NUM": count(126),
         },
     ),
     QcBaseline(
@@ -279,8 +282,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20250831T030421_VIS_1X1_1_SSOL_MULTPIN_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.20049),
-            "GOODLINES FRAC": fraction(0.855721),
+            "XY RES MEDIAN": level(0.18952),
+            "GOODLINES FRAC": fraction(0.868533),
             "PINHOLE COUNT MIN": count(9),
         },
     ),
