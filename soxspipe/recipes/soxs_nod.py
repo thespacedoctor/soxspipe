@@ -325,22 +325,25 @@ class soxs_nod(base_recipe):
             allFrameANames,
             allFrameBNames,
         ) = self._split_ab_frames(allObjectFrames, allFilenames, kw)
-        uniqueOffsets = self._check_ab_balance(allFrameAOffsets, allFrameBOffsets)
+        # THE SPLIT HOLDS THE FRAMES NOW. DROPPING THIS LIST LETS THE ALIGNED FRAMES REPLACE THE ORIGINALS IN MEMORY
+        del allObjectFrames
+        self._check_ab_balance(allFrameAOffsets, allFrameBOffsets)
 
         forceFailure = False
-        if len(allFrameAOffsets) > 1 and len(uniqueOffsets) > 1:
+        if self._should_align_and_stack():
+            allFrameA, allFrameB = self._align_ab_frames(allFrameA, allFrameB, allFrameANames, allFrameBNames)
+            stackedSpectrum, orderJoins, forceFailure = self._reduce_stacked_ab_pair(
+                allFrameA,
+                allFrameB,
+                orderTablePath=orderTablePath,
+                master_flat=master_flat,
+            )
+        else:
             stackedSpectrum, orderJoins = self._reduce_each_nodding_cycle(
                 allFrameA,
                 allFrameB,
                 allFrameANames,
                 allFrameBNames,
-                orderTablePath=orderTablePath,
-                master_flat=master_flat,
-            )
-        else:
-            stackedSpectrum, orderJoins, forceFailure = self._reduce_stacked_ab_pair(
-                allFrameA,
-                allFrameB,
                 orderTablePath=orderTablePath,
                 master_flat=master_flat,
             )
@@ -358,6 +361,140 @@ class soxs_nod(base_recipe):
         self.log.debug("completed the ``produce_product`` method")
 
         return productPath, qcTable
+
+    def _should_align_and_stack(self):
+        """*decide whether to align and stack the frames before extraction, or to extract each cycle on its own*
+
+        The ``stack_before_extraction`` recipe setting decides, and defaults to True. A standard star is always
+        aligned and stacked, so that its SOF still yields one response curve.
+
+        **Return:**
+
+        - ``shouldStack`` -- True to align the frames along the slit and stack them before extraction
+        """
+        isEnabled = bool(self.recipeSettings.get("stack_before_extraction", True))
+        isStandard = self.generateReponseCurve or "-std" in self.recipeName
+        if isStandard and not isEnabled:
+            self.log.warning(
+                "stack_before_extraction is off, but a standard star is always aligned and stacked so that the SOF "
+                "still yields one response curve."
+            )
+            return True
+        return isEnabled
+
+    def _aligns_each_order(self):
+        """*decide whether each order of a frame gets its own slit shift*
+
+        Only SOXS VIS does. SOXS NIR and every X-Shooter arm get one shift per frame.
+
+        **Return:**
+
+        - ``isPerOrder`` -- True for SOXS VIS
+        """
+        return self.inst.upper() == "SOXS" and self.arm.upper() == "VIS"
+
+    def _align_ab_frames(self, allFrameA, allFrameB, allFrameANames, allFrameBNames):
+        """*align the A frames to each other and the B frames to each other along the slit*
+
+        Each frame is traced on its cycle difference with its partner, so both groups are measured before either is
+        resampled. The two lists are changed in place: each original frame is replaced by its aligned frame as soon
+        as that exists. Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``allFrameA`` -- the A frames
+        - ``allFrameB`` -- the B frames
+        - ``allFrameANames`` -- the A frames' file names
+        - ``allFrameBNames`` -- the B frames' file names
+
+        **Return:**
+
+        - ``allFrameA`` -- the aligned A frames
+        - ``allFrameB`` -- the aligned B frames
+        """
+        from soxspipe.commonutils.slit_alignment import frame_group
+
+        results = self._align_frame_groups(
+            [frame_group(allFrameA, allFrameB, allFrameANames), frame_group(allFrameB, allFrameA, allFrameBNames)]
+        )
+        self._record_slit_alignment(
+            results,
+            obsDateUtc=allFrameA[0].header[self.kw("DATE_OBS")],
+            hasShifts=len(allFrameA) > 1,
+        )
+        return allFrameA, allFrameB
+
+    def _align_frame_groups(self, groups):
+        """*align each group of frames along the slit, to the first of them in time*
+
+        **Key Arguments:**
+
+        - ``groups`` -- the ``frame_group`` objects to align. Their ``frames`` lists are changed in place
+
+        **Return:**
+
+        - ``results`` -- the ``slit_alignment_result`` of each group
+        """
+        from soxspipe.commonutils.slit_alignment import align_frame_groups_along_slit
+
+        return align_frame_groups_along_slit(
+            log=self.log,
+            groups=groups,
+            twoDMapPath=self.twoDMap,
+            dispersionMap=self.dispMap,
+            settings=self.settings,
+            recipeSettings=self.recipeSettings,
+            recipeName=self.recipeName,
+            perOrder=self._aligns_each_order(),
+            startNightDate=self.startNightDate,
+        )
+
+    def _record_slit_alignment(self, results, obsDateUtc, hasShifts):
+        """*record the fallback count as a QC and the shifts as a QC plot product*
+
+        ``self.dateObs`` is not set until the extractions are stacked, so the observation date is passed in.
+        Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``results`` -- the ``slit_alignment_result`` of each group aligned
+        - ``obsDateUtc`` -- the observation date to record against the QC and the product
+        - ``hasShifts`` -- True when the groups held more than one frame, so there are shifts to plot
+        """
+        import pandas as pd
+
+        from soxspipe.commonutils.slit_alignment_qc import plot_slit_alignment_qc
+
+        reductionDateUtc = utcnow_string()
+        self.add_qc(
+            qcName="SLIT ALIGN FALLBACK NUM",
+            qcValue=sum(result.fallbackCount for result in results),
+            qcComment="Number of slit shifts taken from other orders or frames, as no object trace was found",
+            reductionDateUtc=reductionDateUtc,
+            qcUnit=None,
+            toHeader=True,
+            obsDateUtc=obsDateUtc,
+        )
+        if not hasShifts:
+            return
+
+        filename = self.sofName + "_SLIT_ALIGN_QC_PLOT.pdf"
+        filePath = f"{self.qcDir}/{filename}"
+        plot_slit_alignment_qc(
+            shifts=pd.concat([result.shifts for result in results], ignore_index=True),
+            title=f"Slit alignment ({self.arm.upper()})",
+            filePath=filePath,
+        )
+        self.add_product(
+            productLabel="SLIT_ALIGNMENT_QC_PLOT",
+            fileName=filename,
+            filePath=filePath,
+            productDesc="Slit shift of each frame, or order of a frame, applied before stacking",
+            reductionDateUtc=reductionDateUtc,
+            fileType="PDF",
+            label="QC",
+            obsDateUtc=obsDateUtc,
+        )
 
     def _read_nod_object_frames(self, kw):
         """*read the nodding science frames of the first frame type that has any*
@@ -721,7 +858,7 @@ class soxs_nod(base_recipe):
         """
         forceFailure = False
 
-        # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
+        # STACKING A AND B SEQUENCES, WHICH ARE ALREADY ALIGNED ALONG THE SLIT
         aFrame = self.clip_and_stack(
             frames=allFrameA,
             recipe="soxs_nod",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 from dataclasses import dataclass, field
 from importlib import import_module
@@ -117,6 +118,7 @@ def _configure_nodding_recipe(
     }
     recipe.log = log
     recipe.arm = "VIS"
+    recipe.inst = "SOXS"
     recipe.kw = _keyword
     recipe.detectorParams = {}
     recipe.inputFrames = RouteCollection(routes)
@@ -141,6 +143,7 @@ def _patch_nodding_collaborators(
     monkeypatch: pytest.MonkeyPatch,
     plotPath: Path,
     extractionPath: Path,
+    alignFallbackCount: int = 0,
 ) -> tuple[list[str], dict[str, list[dict[str, object]]], pd.DataFrame]:
     calls: list[str] = []
     captured: dict[str, list[dict[str, object]]] = {
@@ -150,6 +153,8 @@ def _patch_nodding_collaborators(
         "stack_extractions": [],
         "plot": [],
         "clean_up": [],
+        "align": [],
+        "align_plot": [],
     }
     spectrum = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]})
     extractionQc = qc_row(
@@ -205,6 +210,49 @@ def _patch_nodding_collaborators(
         "stack_extractions",
         fake_stack_extractions,
     )
+    slitAlignment = import_module("soxspipe.commonutils.slit_alignment")
+    alignmentQc = import_module("soxspipe.commonutils.slit_alignment_qc")
+    # THE FAKES BIND THEIR ARGUMENTS TO THE REAL SIGNATURES, SO A WRONG KEYWORD FAILS HERE AND NOT ONLY ON REAL DATA
+    alignSignature = inspect.signature(slitAlignment.align_frame_groups_along_slit)
+    plotSignature = inspect.signature(alignmentQc.plot_slit_alignment_qc)
+
+    def fake_align(**kwargs: object) -> list[Any]:
+        alignSignature.bind(**kwargs)
+        results = []
+        for group in kwargs["groups"]:
+            captured["align"].append(
+                {
+                    **{key: value for key, value in kwargs.items() if key != "groups"},
+                    "frames": list(group.frames),
+                    "partnerFrames": list(group.partnerFrames),
+                    "frameNames": group.frameNames,
+                }
+            )
+            for index, frame in enumerate(group.frames):
+                group.frames[index] = frame.copy()
+                group.frames[index].header["ALIGNED"] = True
+            shifts = pd.DataFrame(
+                {
+                    "frame": group.frameNames,
+                    "mjd": [frame.header.get("MJD-OBS", 0.0) for frame in group.frames],
+                    "order": -1,
+                    "position_arcsec": float("nan"),
+                    "shift_arcsec": 0.0,
+                    "is_fallback": False,
+                    "is_reference": False,
+                }
+            )
+            results.append(slitAlignment.slit_alignment_result(tuple(group.frames), shifts, alignFallbackCount))
+        return results
+
+    monkeypatch.setattr(slitAlignment, "align_frame_groups_along_slit", fake_align)
+
+    def fake_align_plot(**kwargs: object) -> str:
+        plotSignature.bind(**kwargs)
+        captured["align_plot"].append(kwargs)
+        return str(kwargs["filePath"])
+
+    monkeypatch.setattr(alignmentQc, "plot_slit_alignment_qc", fake_align_plot)
     monkeypatch.setattr(
         recipe,
         "report_output",
@@ -411,7 +459,9 @@ def test_nod_success_records_qc_and_characterizes_none_product_path(
 
     assert returnedPath is None
     expectedQc = pd.concat([originalQc, extractionQc], ignore_index=True)
-    pd.testing.assert_frame_equal(returnedQc, expectedQc)
+    isAlignQc = returnedQc["qc_name"] == "SLIT ALIGN FALLBACK NUM"
+    assert returnedQc.loc[isAlignQc, "qc_value"].tolist() == [0]
+    pd.testing.assert_frame_equal(returnedQc.loc[~isAlignQc].reset_index(drop=True), expectedQc, check_dtype=False)
     _assert_merged_product(recipe.products, plotPath)
     assert calls == [
         "stack",
@@ -487,7 +537,9 @@ def test_offset_success_returns_extraction_and_records_qc(
 
     assert returnedPath == str(extractionPath)
     expectedQc = pd.concat([originalQc, extractionQc], ignore_index=True)
-    pd.testing.assert_frame_equal(returnedQc, expectedQc)
+    isAlignQc = returnedQc["qc_name"] == "SLIT ALIGN FALLBACK NUM"
+    assert returnedQc.loc[isAlignQc, "qc_value"].tolist() == [0]
+    pd.testing.assert_frame_equal(returnedQc.loc[~isAlignQc].reset_index(drop=True), expectedQc, check_dtype=False)
     _assert_merged_product(recipe.products, plotPath)
     assert calls == [
         "stack",
@@ -528,7 +580,7 @@ def test_offset_multiple_locations_extracts_each_pair_before_final_stack(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Distinct offset locations retain one directional extraction per pair."""
+    """With `stack_before_extraction` off, distinct offset locations retain one directional extraction per pair."""
     headers = [
         {"HIERARCH ESO SEQ FIXOFF RA": -3.0, "HIERARCH ESO SEQ FIXOFF DEC": 1.0},
         {"HIERARCH ESO SEQ FIXOFF RA": -4.0, "HIERARCH ESO SEQ FIXOFF DEC": 2.0},
@@ -551,6 +603,7 @@ def test_offset_multiple_locations_extracts_each_pair_before_final_stack(
         objectPaths=paths,
         technique="ECHELLE,SLIT,OFFSET",
     )
+    recipe.recipeSettings = {"use_flat": False, "stack_before_extraction": False}
     calls, captured, _ = _patch_nodding_collaborators(
         recipe,
         monkeypatch=monkeypatch,

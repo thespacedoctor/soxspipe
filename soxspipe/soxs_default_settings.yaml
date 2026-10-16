@@ -622,6 +622,8 @@ soxs-nod-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3
@@ -704,6 +706,8 @@ soxs-nod:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3
@@ -768,6 +772,8 @@ soxs-offset:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3
@@ -830,6 +836,8 @@ soxs-offset-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3

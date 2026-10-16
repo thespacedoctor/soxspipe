@@ -89,15 +89,27 @@ def _nod_recipe(
     return recipe, paths
 
 
-def _patch(recipe: soxs_nod, monkeypatch: pytest.MonkeyPatch, tmpPath: Path) -> tuple[list[str], dict[str, Any]]:
+def _patch(
+    recipe: soxs_nod,
+    monkeypatch: pytest.MonkeyPatch,
+    tmpPath: Path,
+    alignFallbackCount: int = 0,
+) -> tuple[list[str], dict[str, Any]]:
     """Stub the shared collaborators and return the call log and captured arguments."""
     calls, captured, _ = _patch_nodding_collaborators(
         recipe,
         monkeypatch=monkeypatch,
         plotPath=tmpPath / "OBJECT_VIS_MERGED_QC.pdf",
         extractionPath=tmpPath / "OBJECT_VIS_EXTRACTED.fits",
+        alignFallbackCount=alignFallbackCount,
     )
     return calls, captured
+
+
+def _extract_each_cycle(recipe: soxs_nod) -> soxs_nod:
+    """Turn `stack_before_extraction` off, so the recipe takes the per-cycle path."""
+    recipe.recipeSettings = {**recipe.recipeSettings, "stack_before_extraction": False}
+    return recipe
 
 
 # ONE BALANCED AB PAIR AT ONE NODDING LOCATION, WHICH TAKES THE STACKED PATH.
@@ -112,14 +124,15 @@ TWO_LOCATIONS = [
 ]
 
 
-def test_two_offset_locations_process_each_cycle_before_one_final_stack(
+def test_with_the_setting_off_each_cycle_is_extracted_before_one_final_stack(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Several distinct A offsets take the per-cycle path, with no frame stacking at all."""
+    """With `stack_before_extraction` off, each cycle is extracted on its own, with no frame stacking at all."""
     # ARRANGE
     recipe, _ = _nod_recipe(log, tmp_path, TWO_LOCATIONS)
+    _extract_each_cycle(recipe)
     calls, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -162,6 +175,7 @@ def test_each_cycle_pairs_the_a_and_b_frames_in_observation_time_order(
         _nod_header(-5.0, 60000.5),
     ]
     recipe, _ = _nod_recipe(log, tmp_path, headers)
+    _extract_each_cycle(recipe)
     _, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -194,6 +208,7 @@ def test_the_frame_name_lists_are_not_sorted_with_their_frames(
         _nod_header(-5.0, 60000.5),
     ]
     recipe, _ = _nod_recipe(log, tmp_path, headers)
+    _extract_each_cycle(recipe)
     _, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -238,6 +253,7 @@ def test_each_cycle_records_its_raw_frame_names_in_priority_order(
     # ARRANGE
     headers = [{**header, **extraHeader(index)} for index, header in enumerate(TWO_LOCATIONS)]
     recipe, _ = _nod_recipe(log, tmp_path, headers)
+    _extract_each_cycle(recipe)
     _, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -262,6 +278,7 @@ def test_the_per_cycle_spectra_are_concatenated_in_cycle_order_for_the_final_sta
     """Each cycle's A and B spectra are appended to their own frame, and the last cycle's joins win."""
     # ARRANGE
     recipe, _ = _nod_recipe(log, tmp_path, TWO_LOCATIONS)
+    _extract_each_cycle(recipe)
     calls, captured = _patch(recipe, monkeypatch, tmp_path)
     cycleIndex = 0
 
@@ -473,13 +490,14 @@ def test_object_frames_win_over_standard_frames_and_leave_the_recipe_name(
 
 
 @pytest.mark.parametrize(
-    ("headers", "useFlat", "withFlat", "expectFlat", "expectedCycles"),
+    ("headers", "useFlat", "withFlat", "expectFlat", "expectedCycles", "stackFirst"),
     [
-        (SINGLE_PAIR, True, True, True, 1),
-        (SINGLE_PAIR, True, False, False, 1),
-        (SINGLE_PAIR, False, True, False, 1),
-        (TWO_LOCATIONS, True, True, True, 2),
-        (TWO_LOCATIONS, True, False, False, 2),
+        (SINGLE_PAIR, True, True, True, 1, True),
+        (SINGLE_PAIR, True, False, False, 1, True),
+        (SINGLE_PAIR, False, True, False, 1, True),
+        (TWO_LOCATIONS, True, True, True, 1, True),
+        (TWO_LOCATIONS, True, True, True, 2, False),
+        (TWO_LOCATIONS, True, False, False, 2, False),
     ],
 )
 def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
@@ -491,6 +509,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
     withFlat: bool,
     expectFlat: bool,
     expectedCycles: int,
+    stackFirst: bool,
 ) -> None:
     """Each extraction receives the read master flat only when `use_flat` is set and a flat was supplied."""
     # ARRANGE
@@ -500,7 +519,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
         _write_prepared_frame(flatPath, seed=400, headerOverrides={})
         flatRoutes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(flatPath)]}
     recipe, _ = _nod_recipe(log, tmp_path, headers, extraRoutes=flatRoutes)
-    recipe.recipeSettings = {"use_flat": useFlat}
+    recipe.recipeSettings = {"use_flat": useFlat, "stack_before_extraction": stackFirst}
     _, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -520,23 +539,24 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
         assert all(flat is flats[0] for flat in flats)
 
 
-def test_a_multi_location_standard_never_builds_a_response_curve(
+def test_a_multi_location_standard_is_stacked_so_it_builds_one_response_curve(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The response curve belongs to the stacked path only, so the per-cycle path skips it."""
+    """Distinct offsets no longer send a standard down the per-cycle path, which cannot build a response."""
     # ARRANGE
     recipe, _ = _nod_recipe(log, tmp_path, TWO_LOCATIONS)
     recipe.generateReponseCurve = True
     calls, captured = _patch(recipe, monkeypatch, tmp_path)
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", _StubResponse)
 
     # ACT
     recipe.produce_product()
 
-    # ASSERT
+    # ASSERT: ONE EXTRACTION OF THE FLATTENED STACK AND ONE OF THE UNFLATTENED STACK
     assert calls.count("extract_cycle") == 2
-    assert calls.count("stack_extractions") == 1
+    assert calls.count("stack_extractions") == 2
     assert captured["clean_up"] == [{"forceFail": False}]
 
 
@@ -732,3 +752,172 @@ def test_the_master_bias_the_sof_names_is_held_for_the_difference_frames(
     else:
         assert recipe.masterBias is False
         assert len(warnings) == 1
+
+
+def test_a_jittered_set_is_aligned_group_by_group_then_stacked_and_extracted_once(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With `stack_before_extraction` on, distinct offsets no longer choose the per-cycle path (DY-1612)."""
+    # ARRANGE
+    recipe, _ = _nod_recipe(log, tmp_path, TWO_LOCATIONS)
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: A ALIGNS TO A WITH B AS PARTNER, THEN B ALIGNS TO B WITH A AS PARTNER
+    assert [[frame.header["MJD-OBS"] for frame in entry["frames"]] for entry in captured["align"]] == [
+        [60000.0, 60000.2],
+        [60000.1, 60000.3],
+    ]
+    assert [[frame.header["MJD-OBS"] for frame in entry["partnerFrames"]] for entry in captured["align"]] == [
+        [60000.1, 60000.3],
+        [60000.0, 60000.2],
+    ]
+    assert [entry["frameNames"] for entry in captured["align"]] == [
+        ["nod-0.fits", "nod-1.fits"],
+        ["nod-2.fits", "nod-3.fits"],
+    ]
+    assert captured["align"][0]["twoDMapPath"] == str(tmp_path / "DISP_IMAGE_VIS.fits")
+    assert captured["align"][0]["dispersionMap"] == str(tmp_path / "DISP_TAB_VIS.fits")
+    assert captured["align"][0]["recipeName"] == "soxs-nod"
+    assert calls == [
+        "stack",
+        "stack",
+        "keywords",
+        "keywords",
+        "extract_cycle",
+        "stack_extractions",
+        "plot",
+        "report",
+        "clean_up",
+    ]
+    assert all(frame.header["ALIGNED"] for entry in captured["stack"] for frame in entry["frames"])
+    assert [len(entry["frames"]) for entry in captured["stack"]] == [2, 2]
+
+
+def test_turning_stack_before_extraction_off_extracts_each_cycle_even_without_jitter(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The setting alone chooses the path: two pairs at one offset are extracted cycle by cycle."""
+    # ARRANGE
+    headers = [
+        _nod_header(3.0, 60000.0),
+        _nod_header(3.0, 60000.2),
+        _nod_header(-3.0, 60000.1),
+        _nod_header(-3.0, 60000.3),
+    ]
+    recipe, _ = _nod_recipe(log, tmp_path, headers)
+    recipe.recipeSettings = {"use_flat": False, "stack_before_extraction": False}
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["align"] == []
+    assert captured["align_plot"] == []
+    assert calls.count("stack") == 0
+    assert [entry["locationSetIndex"] for entry in captured["extract_cycle"]] == [1, 2]
+
+
+def test_a_standard_is_aligned_and_stacked_even_when_the_setting_is_off_and_the_log_says_so(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A standard must still give one response curve, so it stacks whatever the setting says."""
+    # ARRANGE
+    recipe, _ = _nod_recipe(log, tmp_path, TWO_LOCATIONS)
+    recipe.recipeSettings = {"use_flat": False, "stack_before_extraction": False}
+    recipe.generateReponseCurve = True
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", _StubResponse)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert len(captured["align"]) == 2
+    assert calls.count("stack") == 2
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("stack_before_extraction" in message and "response" in message for message in warnings)
+
+
+class _StubResponse:
+    """A response-curve builder that reports success and leaves the tables as they are."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.qcTable = kwargs["qcTable"]
+        self.productsTable = kwargs["productsTable"]
+
+    def get(self) -> tuple[Any, Any, bool]:
+        return self.qcTable, self.productsTable, False
+
+
+def test_the_fallback_count_is_a_header_qc_and_the_shifts_get_one_pdf_product(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both groups' fallbacks add up to `SLIT ALIGN FALLBACK NUM`, and one QC plot covers both groups."""
+    # ARRANGE: THE FAKE ALIGNMENT REPORTS 2 FALLBACKS FOR EACH GROUP
+    recipe, _ = _nod_recipe(log, tmp_path, TWO_LOCATIONS)
+    recipe.dateObs = False
+    _, captured = _patch(recipe, monkeypatch, tmp_path, alignFallbackCount=2)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    qcRow = recipe.qc.loc[recipe.qc["qc_name"] == "SLIT ALIGN FALLBACK NUM"].iloc[0]
+    assert qcRow["qc_value"] == 4
+    assert qcRow["to_header"]
+    assert qcRow["obs_date_utc"] == "2024-01-02T03:04:05.678"
+    assert len(captured["align_plot"]) == 1
+    plotArguments = captured["align_plot"][0]
+    assert plotArguments["shifts"]["frame"].tolist() == ["nod-0.fits", "nod-1.fits", "nod-2.fits", "nod-3.fits"]
+    assert plotArguments["filePath"] == str(tmp_path / "qc" / "OBJECT_VIS_SLIT_ALIGN_QC_PLOT.pdf")
+    plotRow = recipe.products.loc[recipe.products["product_label"] == "SLIT_ALIGNMENT_QC_PLOT"].iloc[0]
+    assert plotRow["file_type"] == "PDF"
+    assert plotRow["file_path"] == plotArguments["filePath"]
+
+
+@pytest.mark.parametrize(
+    ("instrument", "arm", "perOrder"),
+    [
+        ("SOXS", "VIS", True),
+        ("SOXS", "NIR", False),
+        ("XSH", "UVB", False),
+        ("XSH", "VIS", False),
+        ("XSH", "NIR", False),
+    ],
+)
+def test_only_soxs_vis_gets_a_shift_for_every_order(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    instrument: str,
+    arm: str,
+    perOrder: bool,
+) -> None:
+    """SOXS NIR and every X-Shooter arm get one shift per frame (DY-1612 ruling)."""
+    # ARRANGE
+    armRoutes = {
+        _route(PRO_CATG=f"{name}_{arm}"): [str(tmp_path / f"{name}_{arm}.fits")]
+        for name in ("ORDER_TAB", "DISP_TAB", "DISP_IMAGE")
+    }
+    recipe, _ = _nod_recipe(log, tmp_path, TWO_LOCATIONS, extraRoutes=armRoutes)
+    recipe.inst = instrument
+    recipe.arm = arm
+    _, captured = _patch(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert [entry["perOrder"] for entry in captured["align"]] == [perOrder, perOrder]
