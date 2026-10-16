@@ -391,9 +391,7 @@ def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
 ) -> None:
     """Report an x-axis fitting failure before residual processing begins."""
     mapper = _fitting_mapper(log)
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
     polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     monkeypatch.setattr(
         polynomialsModule,
         "solve_linear_poly_coefficients",
@@ -418,9 +416,7 @@ def test_fit_polynomials_returns_y_axis_error_after_a_successful_x_fit(
 ) -> None:
     """Preserve the distinct y-fit failure result used by degree fallback."""
     mapper = _fitting_mapper(log)
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
     polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     fitResults = iter([[1.0], error("y fit failed")])
 
     def fit(**kwargs: object) -> list[float]:
@@ -447,9 +443,7 @@ def test_fit_polynomials_retains_dropped_lines_and_runs_final_qc_fit(
 ) -> None:
     """Fit retained lines, retain dropped rows, and request final QC residuals."""
     mapper = _fitting_mapper(log)
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
     polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     fitResults = iter([[1.5], [2.5]])
     monkeypatch.setattr(polynomialsModule, "solve_linear_poly_coefficients", lambda **kwargs: next(fitResults))
     qcCalls: list[bool] = []
@@ -532,8 +526,6 @@ def test_fit_polynomials_refits_the_surviving_lines_when_the_iteration_cap_is_re
     mapper = _fitting_mapper(log)
     mapper.recipeSettings["poly-clipping-iteration-limit"] = 1
     mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 2.0
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     calls = _record_residual_calls(mapper)
     lines = _cap_exit_lines()
 
@@ -558,8 +550,6 @@ def test_fit_polynomials_does_not_refit_when_a_pass_clips_nothing(
     mapper = _fitting_mapper(log)
     mapper.recipeSettings["poly-clipping-iteration-limit"] = 10
     mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 2.0
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     calls = _record_residual_calls(mapper)
 
     mapper.fit_polynomials(_cap_exit_lines(), wavelengthDeg=0, orderDeg=0, slitDeg=0)
@@ -591,9 +581,6 @@ def test_fit_polynomials_returns_xerror_when_clipping_leaves_fewer_lines_than_co
     mapper = _fitting_mapper(log)
     mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 1.0
     mapper.recipeSettings["poly-clipping-iteration-limit"] = 5
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    # A QUADRATIC IN WAVELENGTH HAS THREE COEFFICIENTS PER AXIS
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: (np.ones(3), np.ones(3)))
     calls: list[int] = []
 
     def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
@@ -609,6 +596,7 @@ def test_fit_polynomials_returns_xerror_when_clipping_leaves_fewer_lines_than_co
 
     mapper.calculate_residuals = calculate_residuals
 
+    # A QUADRATIC IN WAVELENGTH HAS THREE COEFFICIENTS PER AXIS
     result = mapper.fit_polynomials(_line_table(4), wavelengthDeg=2, orderDeg=0, slitDeg=0)
 
     assert calls == [4, 3]
@@ -621,10 +609,7 @@ def test_fit_polynomials_returns_yerror_when_only_the_y_polynomial_has_too_many_
 ) -> None:
     """Report the y-axis marker when two lines fit the x polynomial but not the y polynomial."""
     mapper = _fitting_mapper(log)
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
     # X IS LINEAR IN WAVELENGTH (TWO COEFFICIENTS) AND Y IS QUADRATIC (THREE COEFFICIENTS)
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: (np.ones(2), np.ones(3)))
-
     result = mapper.fit_polynomials(_line_table(2), wavelengthDeg=[1, 2], orderDeg=[0, 0], slitDeg=[0, 0])
 
     assert result == (None, "yerror", None, None)
@@ -1404,13 +1389,7 @@ def test_fit_polynomials_clips_outliers_and_retains_previously_dropped_lines(
             "dropped": [False, False, False, False, True],
         }
     )
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
     polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
-    monkeypatch.setattr(
-        commonutilsModule,
-        "get_cached_coeffs",
-        lambda **_: (np.array([0.0]), np.array([0.0])),
-    )
     monkeypatch.setattr(
         polynomialsModule,
         "solve_linear_poly_coefficients",
@@ -1464,9 +1443,7 @@ def test_fit_polynomials_clips_an_entire_multi_pinhole_arc_line_set(
             "R_pin": [4000.0] * 6,
         }
     )
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
     polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
     monkeypatch.setattr(
         polynomialsModule,
         "solve_linear_poly_coefficients",

@@ -198,145 +198,7 @@ def _filter_and_trim_pixel_table(orderPixelTable, removeOffDetectorLocation, tri
     return orderPixelTable
 
 
-def get_cached_coeffs(log, arm, settings, recipeName, orderDeg, wavelengthDeg, slitDeg, reset=False):
-    """*find cached coefficients (if they exist)*
-
-    Return a line-list with x,y fits given a first guess dispersion map.*
-
-    **Key Arguments:**
-
-    - ``log`` -- logger
-    - ``arm`` -- the spectrograph arm.
-    - ``settings`` -- pipeline settings dictionary
-    - ``recipeName`` -- the name of the recipe.
-    - ``orderDeg`` -- the order deg
-    - ``wavelengthDeg`` -- wavelength degree
-    - ``slitDeg`` -- slit degree
-    - ``reset`` -- always reset the coeffs. Don't use cached. Default *False*
-
-    **Return:**
-
-    - ``xcoeff`` -- the x-axis coefficient array, cached if available, otherwise unit-valued
-    - ``ycoeff`` -- the y-axis coefficient array, cached if available, otherwise unit-valued
-
-    **Usage:**
-
-    ```python
-    from soxspipe.commonutils import get_cached_coeffs
-    xcoeff, ycoeff = get_cached_coeffs(
-        log=log,
-        arm=arm,
-        settings=settings,
-        recipeName=recipeName,
-        orderDeg=orderDeg,
-        wavelengthDeg=wavelengthDeg,
-        slitDeg=slitDeg
-    )
-    ```
-    """
-    log.debug("starting the ``get_cached_coeffs`` function")
-
-    # IMPORTED HERE, UNCONDITIONALLY, TO MATCH THE PRE-REFACTOR IMPORT TIMING:
-    # THE HELPERS BELOW RE-IMPORT THE SAME MODULES LOCALLY, SINCE THEY RUN IN
-    # THEIR OWN SCOPE, BUT THIS CALL SITE MUST NOT BECOME CONDITIONAL ON WHICH
-    # BRANCH RUNS
-    import math  # noqa: F401
-
-    import numpy as np  # noqa: F401
-    from astropy.table import Table  # noqa: F401
-
-    # READ THE FILE
-    home = expanduser("~")
-    cache = settings["workspace-root-dir"].replace("~", home) + "/.cache"
-    filePath = _dispersion_cache_file_path(cache, recipeName, arm, orderDeg, wavelengthDeg, slitDeg)
-
-    if os.path.exists(filePath) and not reset:
-        coeff = _load_cached_coefficients(filePath)
-    else:
-        coeff = _default_coefficients(orderDeg, wavelengthDeg, slitDeg)
-
-    log.debug("completed the ``get_cached_coeffs`` function")
-    return coeff["x"], coeff["y"]
-
-
-def _dispersion_cache_file_path(cache, recipeName, arm, orderDeg, wavelengthDeg, slitDeg):
-    """*build the cached-coefficient FITS filename for a recipe, arm and set of polynomial degrees*
-
-    **Key Arguments:**
-
-    - ``cache`` -- the resolved workspace cache directory
-    - ``recipeName`` -- the name of the recipe
-    - ``arm`` -- the spectrograph arm
-    - ``orderDeg`` -- the order deg, or a list of per-axis order degs
-    - ``wavelengthDeg`` -- wavelength degree, or a list of per-axis wavelength degrees
-    - ``slitDeg`` -- slit degree, or a list of per-axis slit degrees
-
-    **Return:**
-
-    - ``filePath`` -- the full path to the cached-coefficient FITS file
-
-    **Usage:**
-
-    ```python
-    filePath = _dispersion_cache_file_path(cache, recipeName, arm, orderDeg, wavelengthDeg, slitDeg)
-    ```
-    """
-    polyOrders = [orderDeg, wavelengthDeg, slitDeg]
-    if isinstance(orderDeg, list):
-        merged_list = []
-        for sublist in polyOrders:
-            merged_list.extend(sublist)
-        polyOrders = merged_list
-    polyOrders[:] = [str(l) for l in polyOrders]
-    polyOrders = "".join(polyOrders)
-    filename = f"{recipeName}_{arm}_{polyOrders}.fits"
-    return f"{cache}/{filename}"
-
-
-def _load_cached_coefficients(filePath):
-    """*read previously cached dispersion-solution coefficients from a FITS file*
-
-    **Key Arguments:**
-
-    - ``filePath`` -- the full path to the cached-coefficient FITS file
-
-    **Return:**
-
-    - ``coeff`` -- dictionary keyed by axis ("x"/"y") of the coefficient list
-
-    **Usage:**
-
-    ```python
-    coeff = _load_cached_coefficients(filePath)
-    ```
-    """
-    import math
-
-    from astropy.table import Table
-
-    coeff = {}
-    dispersion_map = filePath
-    # SPEC FORMAT TO PANDAS DATAFRAME
-    dat = Table.read(dispersion_map, format="fits")
-    tableData = dat.to_pandas()
-
-    # READ IN THE X- AND Y- COEFF FROM DISPERSION MAP FILE
-    for _index, row in tableData.iterrows():
-        axis = row["axis"].decode("utf-8")
-        # VALIDATE THE DEGREE COLUMNS PARSE AS INTEGERS; RAISES ON A
-        # MALFORMED CACHE FILE, AS THE PRE-REFACTOR CODE DID
-        int(row["order_deg"])
-        int(row["wavelength_deg"])
-        int(row["slit_deg"])
-        coeff[axis] = [
-            float(v)
-            for k, v in row.items()
-            if k not in ["axis", "order_deg", "wavelength_deg", "slit_deg"] and not math.isnan(v)
-        ]
-    return coeff
-
-
-def _default_coefficients(orderDeg, wavelengthDeg, slitDeg):
+def default_coefficients(orderDeg, wavelengthDeg, slitDeg):
     """*build unit-valued fallback coefficient arrays sized for the given polynomial degrees*
 
     **Key Arguments:**
@@ -352,7 +214,7 @@ def _default_coefficients(orderDeg, wavelengthDeg, slitDeg):
     **Usage:**
 
     ```python
-    coeff = _default_coefficients(orderDeg, wavelengthDeg, slitDeg)
+    coeff = default_coefficients(orderDeg, wavelengthDeg, slitDeg)
     ```
     """
     import numpy as np

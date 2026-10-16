@@ -1856,29 +1856,6 @@ class create_dispersion_map:
             log=self.log, settings=self.settings, header=header, tables=[t], filePath=filePath, qc=self.qc
         )
 
-        if False:
-            # MAKE RELATIVE HOME PATH ABSOLUTE
-            from os.path import expanduser
-
-            home = expanduser("~")
-
-            cache = self.settings["workspace-root-dir"].replace("~", home) + "/.cache"
-            # Recursively create missing directories
-            if not os.path.exists(cache):
-                os.makedirs(cache)
-            polyOrders = [orderDeg, wavelengthDeg, slitDeg]
-            if isinstance(orderDeg, list):
-                merged_list = []
-                for sublist in polyOrders:
-                    merged_list.extend(sublist)
-                polyOrders = merged_list
-            polyOrders[:] = [str(l) for l in polyOrders]
-            polyOrders = "".join(polyOrders)
-            filename = f"{self.recipeName}_{self.arm}_{polyOrders}.fits"
-            cacheFilePath = f"{cache}/{filename}"
-            hduList.verify("fix")
-            hduList.writeto(cacheFilePath, checksum=True, overwrite=True)
-
         self.log.debug("completed the ``write_map_to_file`` method")
         return filePath
 
@@ -2407,24 +2384,15 @@ class create_dispersion_map:
         """
         import numpy as np
 
-        from soxspipe.commonutils import get_cached_coeffs
+        from soxspipe.commonutils.dispersion_map_to_pixel_arrays import default_coefficients
         from soxspipe.commonutils.polynomials import solve_linear_poly_coefficients
 
         # ONLY THE COEFFICIENT COUNTS ARE USED: A LINEAR SOLVE NEEDS NO STARTING GUESS
-        xcoeff, ycoeff = get_cached_coeffs(
-            log=self.log,
-            arm=self.arm,
-            settings=self.settings,
-            recipeName=self.recipeName,
-            orderDeg=orderDeg,
-            wavelengthDeg=wavelengthDeg,
-            slitDeg=slitDeg,
-            reset=True,
-        )
+        defaults = default_coefficients(orderDeg, wavelengthDeg, slitDeg)
 
         axisFits = (
-            ("x", polyx, len(xcoeff), ("xerror", None, None, None)),
-            ("y", polyy, len(ycoeff), (None, "yerror", None, None)),
+            ("x", polyx, len(defaults["x"]), ("xerror", None, None, None)),
+            ("y", polyy, len(defaults["y"]), (None, "yerror", None, None)),
         )
         coefficients = {}
         for axis, poly, nCoeff, failure in axisFits:

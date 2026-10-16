@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -160,3 +162,83 @@ def test_a_non_finite_observed_position_returns_the_axis_failure_tuple(
     # ASSERT
     assert (xcoeff, ycoeff) == (None, None)
     assert failure == expected
+
+
+def _spy_on_solver(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Record the ``nCoeff`` each call to the linear solver receives, while still solving."""
+    module = importlib.import_module("soxspipe.commonutils.polynomials")
+    original = module.solve_linear_poly_coefficients
+    sizes: list[int] = []
+
+    def recording_solver(**kwargs: object) -> np.ndarray:
+        sizes.append(kwargs["nCoeff"])
+        return original(**kwargs)
+
+    monkeypatch.setattr(module, "solve_linear_poly_coefficients", recording_solver)
+    return sizes
+
+
+def _per_axis_fit(log: object, table: pd.DataFrame, orderDeg: list[int], wavelengthDeg: list[int], slitDeg: list[int]):
+    """Run the x/y fit with a different set of polynomial degrees on each axis."""
+    polys = {
+        axis: chebyshev_order_wavelength_polynomials(
+            log=log,
+            orderDeg=orderDeg[index],
+            wavelengthDeg=wavelengthDeg[index],
+            slitDeg=slitDeg[index],
+            exponentsIncluded=True,
+            axis=axis,
+        ).poly
+        for index, axis in enumerate("xy")
+    }
+    fitTable = _add_exponents(table, max(orderDeg), max(wavelengthDeg), max(slitDeg))
+    return _mapper(log)._fit_xy_coefficients(fitTable, polys["x"], polys["y"], orderDeg, wavelengthDeg, slitDeg)
+
+
+def test_each_axis_is_solved_with_the_coefficient_count_of_its_own_degrees(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: X HAS 2 * 1 * 1 = 2 COEFFICIENTS AND Y HAS 3 * 2 * 1 = 6
+    sizes = _spy_on_solver(monkeypatch)
+
+    # ACT
+    xcoeff, ycoeff, failure = _per_axis_fit(
+        log, _vis_like_lines(1), orderDeg=[1, 2], wavelengthDeg=[0, 1], slitDeg=[0, 0]
+    )
+
+    # ASSERT
+    assert failure is None
+    assert sizes == [2, 6]
+    assert (len(xcoeff), len(ycoeff)) == (2, 6)
+
+
+def test_a_shared_set_of_degrees_gives_both_axes_the_same_coefficient_count(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: ORDER 2, WAVELENGTH 3, SLIT 1 IS 3 * 4 * 2 = 24 COEFFICIENTS ON EACH AXIS
+    sizes = _spy_on_solver(monkeypatch)
+
+    # ACT
+    _, _, xcoeff, ycoeff, failure = _fit(log, _vis_like_lines(1), orderDeg=2, wavelengthDeg=3, slitDeg=1)
+
+    # ASSERT
+    assert failure is None
+    assert sizes == [24, 24]
+    assert (len(xcoeff), len(ycoeff)) == (24, 24)
+
+
+def test_fewer_lines_than_y_coefficients_fails_the_y_axis_after_solving_x(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: FIVE LINES CONSTRAIN THE 2 X-COEFFICIENTS BUT NOT THE 6 Y-COEFFICIENTS
+    sizes = _spy_on_solver(monkeypatch)
+
+    # ACT
+    xcoeff, ycoeff, failure = _per_axis_fit(
+        log, _vis_like_lines(1).head(5), orderDeg=[1, 2], wavelengthDeg=[0, 1], slitDeg=[0, 0]
+    )
+
+    # ASSERT
+    assert (xcoeff, ycoeff) == (None, None)
+    assert failure == (None, "yerror", None, None)
+    assert sizes == [2]
