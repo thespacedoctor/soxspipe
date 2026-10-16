@@ -182,3 +182,25 @@ def test_the_sky_fit_noise_adds_the_master_bias_noise_in_quadrature(
     # ASSERT
     assert result.singleFrame == pytest.approx(4.0)
     assert result.skyFit == pytest.approx(expectedSkyFit, rel=1e-6)
+
+
+def test_the_resolver_labels_a_master_dark_in_its_source_and_warnings(log: Any) -> None:
+    # ARRANGE: NO USABLE RAW RON, SO THE WARNING MUST NAME THE MASTER DARK
+    header = _header(ron=None)
+
+    # ACT
+    result = resolve_read_noise(header, None, DEFAULT_RON, _kw(log), log, masterLabel="master dark")
+    measured = resolve_read_noise(_header(ron=7.6), None, 7.3, _kw(log), log, masterLabel="master dark")
+
+    # ASSERT
+    assert result.source == "detector default"
+    assert any("master dark" in message and "master bias" not in message for message in _warnings(log))
+    assert measured.source == "master dark"
+
+
+def test_a_missing_nominal_value_compares_the_measured_value_to_the_detector_default(log: Any) -> None:
+    # ACT: 15.0 IS FAR FROM THE 7.3 DEFAULT
+    resolve_read_noise(_header(ron=15.0), None, 7.3, _kw(log), log, masterLabel="master dark")
+
+    # ASSERT
+    assert any("nominal 7.30" in message for message in _warnings(log))
