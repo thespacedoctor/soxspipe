@@ -44,7 +44,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         f"{_PRODUCT_STEM}_ONOFF_1.fits",
         f"{_PRODUCT_STEM}_ONOFF_2.fits",
     }
-    assert {path.name for path in product_directory.iterdir()} == expected_products
+    productNames = {path.name for path in product_directory.iterdir()}
 
     merged_path = product_directory / f"{_PRODUCT_STEM}_EXTRACTED_MERGED.fits"
     fluxcal_path = product_directory / f"{_PRODUCT_STEM}_FLUXCAL.fits"
@@ -52,7 +52,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert len(merged_hdus) == 2
         assert merged_hdus[0].header["INSTRUME"] == "SOXS"
         assert merged_hdus[0].header["ESO PRO REC1 ID"] == "soxs-offset"
-        assert merged_hdus[0].header["DATE-OBS"] == "2025-05-14T04:03:11.8311"
+        dateObs = merged_hdus[0].header["DATE-OBS"]
         merged_table = merged_hdus[1].data
         assert set(merged_table.names) == {
             "WAVE",
@@ -99,6 +99,11 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     report("fluxcal median", fluxcalMedian)
     report("n orders", nOrders)
     report("samples det frac", detectedFraction)
+    report("products", sorted(productNames))
+    report("date-obs", dateObs)
+
+    assert productNames == expected_products
+    assert dateObs == "2025-05-14T04:03:11.8311"
 
     # THE MERGED GRID RUNS FROM THE BLUEST TO THE REDDEST EXTRACTED SAMPLE IN
     # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM

@@ -27,7 +27,7 @@ The algorithm used in the `soxs_nod` and `soxs_nod_std` recipe is shown in {numr
 :::{figure-md} soxs_nod_std_diagram
 ![](soxs_nod.png){width=600px}
 
-The `soxs_nod` and `soxs_nod_std` recipes reduced SOXS data acquired in nodding mode with one or multiple ABBA sequences, with or without jitter offsets. 
+The `soxs_nod` and `soxs_nod_std` recipes reduced SOXS data acquired in nodding mode with one or multiple ABBA sequences, with or without jitter offsets.
 :::
 
 See [`soxs_nod`](./soxs_nod.md) for more details.
@@ -48,7 +48,7 @@ A QC plot resulting from the `soxs_nod` recipe. This is a SOXS VIS wavelength an
 
 ![image-20260414151800690](../_images/image-20260414151800690.png)
 
-The output of the `reponse_function` utility (used by nodding and stare recipes) used in the reduction of spectroscopic standard star spectra. The third panel shows th fittted response curve, and the final panel shows the overall efficiency of the instrument across the entire wavelength range of the spectrograph arm. 
+The output of the `reponse_function` utility (used by nodding and stare recipes) used in the reduction of spectroscopic standard star spectra. The third panel shows th fittted response curve, and the final panel shows the overall efficiency of the instrument across the entire wavelength range of the spectrograph arm.
 
 :::
 
