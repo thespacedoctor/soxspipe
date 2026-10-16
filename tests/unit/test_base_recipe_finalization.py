@@ -350,3 +350,34 @@ def test_report_output_deduplicates_qc_and_hides_paths_in_console_mode(
     assert reported["sof_name"].tolist() == ["synthetic.sof"]
     assert "file_path" not in recipe.products.columns
     assert any("SOXS-MBIAS QC METRICS" in message for level, message in log.messages)
+
+
+def test_report_output_keeps_every_per_order_qc_row_but_lists_only_the_all_order_row_on_the_console(
+    log: Any,
+) -> None:
+    """Per-order QCs carry their own names, so none is deduplicated away, and only the all-order row is printed."""
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.verbose = False
+    recipe.conn = None
+    recipe.sofName = "synthetic"
+    recipe.dateObs = "2024-01-02T03:04:05"
+    recipe.recipeName = "soxs-stare"
+    recipe.inst = "XSHOOTER"
+    recipe.recipeSettings = {"qc-acceptable-ranges": {"snr-median": [0.0, 5.0]}}
+    base = qc_table().iloc[0:0]
+    rows = [("SNR MEDIAN", None, 10.0), ("SNR MEDIAN O1", 1, 20.0), ("SNR MEDIAN O2", 2, 30.0)]
+    recipe.qc = pd.concat(
+        [base, *[qc_table().assign(qc_name=name, qc_order=order, qc_value=value) for name, order, value in rows]],
+        ignore_index=True,
+    )
+    recipe.qc["qc_order"] = recipe.qc["qc_order"].astype(object)
+    recipe.products = product_table()
+
+    reported = recipe.report_output()
+
+    assert sorted(reported["qc_name"]) == ["SNR MEDIAN", "SNR MEDIAN O1", "SNR MEDIAN O2"]
+    flags = reported.set_index("qc_name")["qc_flag"].to_dict()
+    assert flags == {"SNR MEDIAN": "fail", "SNR MEDIAN O1": "pass", "SNR MEDIAN O2": "pass"}
+    printed = " ".join(message for level, message in log.messages)
+    assert printed.count("SNR MEDIAN") == 1

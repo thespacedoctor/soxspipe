@@ -913,10 +913,65 @@ def test_calculate_residuals_returns_analytic_pixel_scale_and_resolution(
     assert len(mapper.qc.index) == 38
     assert set(mapper.qc["qc_name"]) >= {
         "XY RES MEDIAN",
-        "FWHM PIN MEDIAN",
-        "R PIN MEDIAN",
+        "XY RES MEDIAN O1",
+        "FWHM PIN MEDIAN O1",
+        "R PIN MEDIAN O1",
     }
-    assert set(mapper.qc["qc_order"].dropna()) == {"r"}
+    assert mapper.qc["qc_name"].is_unique
+    assert set(mapper.qc["qc_order"].dropna()) == {1}
+
+
+@pytest.mark.parametrize(
+    ("arm", "orders", "expectedNames", "expectedComment"),
+    [
+        ("VIS", [1.0, 2.0], ["X RES MEDIAN O1", "X RES MEDIAN O2"], "for order 2 (u)"),
+        ("NIR", [11.0, 12.0], ["X RES MEDIAN O11", "X RES MEDIAN O12"], "for order 12"),
+    ],
+)
+def test_calculate_residuals_gives_each_order_its_own_numbered_qc_card(
+    log: object, arm: str, orders: list[float], expectedNames: list[str], expectedComment: str
+) -> None:
+    mapper = _mapper(log)
+    mapper.arcFrame = False
+    mapper.arm = arm
+    rows = len(orders)
+    table = pd.DataFrame(
+        {
+            "order": orders,
+            "wavelength": [10.0, 20.0],
+            "slit_position": [0.0, 0.0],
+            "order_pow_x_0": [1.0] * rows,
+            "wavelength_pow_x_0": [1.0] * rows,
+            "wavelength_pow_x_1": [10.0, 20.0],
+            "slit_position_pow_x_0": [1.0] * rows,
+            "order_pow_y_0": [1.0] * rows,
+            "wavelength_pow_y_0": [1.0] * rows,
+            "wavelength_pow_y_1": [10.0, 20.0],
+            "slit_position_pow_y_0": [1.0] * rows,
+            "observed_x": [17.0, 40.0],
+            "observed_y": [1.0, 5.0],
+            "detector_x": [20.0, 40.0],
+            "detector_y": [5.0, 5.0],
+            "fwhm_pin_px": [2.0, 2.0],
+        }
+    )
+
+    mapper.calculate_residuals(
+        table,
+        xcoeff=[0.0, 2.0],
+        ycoeff=[5.0, 0.0],
+        orderDeg=0,
+        wavelengthDeg=1,
+        slitDeg=0,
+        pixelRange=True,
+        writeQCs=True,
+    )
+
+    perOrder = mapper.qc.loc[mapper.qc["qc_name"].isin(expectedNames)]
+    assert perOrder["qc_name"].tolist() == expectedNames
+    assert perOrder["qc_order"].tolist() == [int(order) for order in orders]
+    assert expectedComment in perOrder["qc_comment"].iloc[-1]
+    assert mapper.qc["qc_name"].is_unique
 
 
 def test_largest_cluster_center_ignores_noise_and_returns_none_without_cluster() -> None:

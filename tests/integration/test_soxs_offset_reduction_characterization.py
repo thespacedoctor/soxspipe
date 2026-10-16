@@ -319,7 +319,7 @@ def test_a_single_location_standard_builds_a_response_from_an_unflattened_extrac
     arguments = responseArguments[0]
     assert arguments["stdExtractionPath"] == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
     assert arguments["stdNotFlatExtractionPath"] == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
-    assert arguments["orderJoins"] == {10: 11}
+    assert arguments["orderJoins"] == {"10-11": 11}
     assert arguments["recipeName"] == "soxs-offset"
     assert captured["clean_up"] == [{"forceFail": "synthetic response failure"}]
 

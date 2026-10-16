@@ -1395,6 +1395,7 @@ class soxs_nod(base_recipe):
             orderJoins=orderJoins,
             recipeName=self.recipeName,
             dateObs=self.dateObs,
+            arm=self.arm,
         )
 
         # WRITE PRODUCT TO DISK

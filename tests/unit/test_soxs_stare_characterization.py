@@ -735,7 +735,7 @@ class SpillingExtractor:
         self.extractionNotes = []
 
     def extract(self) -> tuple[str, str, str, dict[str, float], str]:
-        return "qc", "products", "mergedSpectrum", {"1011": 501.0}, "extraction.fits"
+        return "qc", "products", "mergedSpectrum", {"10-11": 501.0}, "extraction.fits"
 
 
 def _produce_product_recipe(
@@ -912,3 +912,29 @@ def test_a_science_frame_that_spills_over_the_slit_edge_is_not_failed(
     assert calls["response"] == 0
     assert calls["clean_up"] == [False]
     assert [message for level, message in log.messages if level == "error"] == []
+
+
+def test_slit_illumination_offset_qc_names_soxs_vis_orders_by_number_and_band(log: Any) -> None:
+    import pandas as pd
+
+    recipe = object.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.recipeName = "soxs-stare"
+    recipe.dateObs = "2024-01-02T03:04:05"
+    recipe.qc = pd.DataFrame()
+    offsets = pd.DataFrame({"order": [1, 4], "offset": [0.5, -0.25], "status": ["fitted", "fitted"]})
+
+    recipe._record_slit_illumination_qcs(SimpleResult(offsets=offsets, isApplied=True))
+
+    offsetRows = recipe.qc.loc[recipe.qc["qc_name"].str.startswith("SLIT ILLUM OFFSET")]
+    assert offsetRows["qc_name"].tolist() == ["SLIT ILLUM OFFSET O1", "SLIT ILLUM OFFSET O4"]
+    assert offsetRows["qc_comment"].tolist() == ["Slit offset of order 1 (r)", "Slit offset of order 4 (i)"]
+
+
+class SimpleResult:
+    """Minimal stand-in for the slit-illumination result the QC recorder reads."""
+
+    def __init__(self, offsets: object, isApplied: bool) -> None:
+        self.offsets = offsets
+        self.isApplied = isApplied

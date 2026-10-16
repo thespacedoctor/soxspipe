@@ -427,22 +427,95 @@ def test_add_snr_efficiency_qcs_records_global_and_per_order_values(
         log,
         spectrum,
         pd.DataFrame(),
-        {"1011": 500.0},
+        {"10-11": 500.0},
         "soxs-stare",
         "2024-01-02T03:04:05",
+        "NIR",
     )
 
     assert result["qc_name"].tolist() == [
         "EFF MEDIAN",
-        "EFF MEDIAN",
-        "EFF MEDIAN",
+        "EFF MEDIAN O10",
+        "EFF MEDIAN O11",
         "SNR MEDIAN",
-        "SNR MEDIAN",
-        "SNR MEDIAN",
+        "SNR MEDIAN O10",
+        "SNR MEDIAN O11",
     ]
     assert result["qc_value"].tolist() == [0.25, 0.35, 0.15, 25.0, 35.0, 15.0]
-    assert result["qc_order"].iloc[1:].dropna().tolist() == [10.0, 11.0, 10.0, 11.0]
+    assert result["qc_order"].iloc[1:].dropna().tolist() == [10, 11, 10, 11]
     assert "ORDER" not in spectrum.columns
+
+
+def test_add_snr_efficiency_qcs_names_soxs_vis_orders_by_trace_number_and_band(log: object) -> None:
+    spectrum = pd.DataFrame(
+        {
+            "WAVE": [400.0, 500.0, 600.0, 700.0],
+            "SNR": [10.0, 20.0, 30.0, 40.0],
+        }
+    )
+
+    result = toolkit.add_snr_efficiency_qcs(
+        log,
+        spectrum,
+        pd.DataFrame(),
+        {"4-1": 650.0, "1-3": 550.0, "3-2": 450.0},
+        "soxs-stare",
+        "2024-01-02T03:04:05",
+        "VIS",
+    )
+
+    perOrder = result.iloc[1:]
+    assert perOrder["qc_name"].tolist() == ["SNR MEDIAN O1", "SNR MEDIAN O2", "SNR MEDIAN O3", "SNR MEDIAN O4"]
+    assert perOrder["qc_order"].tolist() == [1, 2, 3, 4]
+    assert perOrder["qc_value"].tolist() == [30.0, 10.0, 20.0, 40.0]
+    assert perOrder["qc_comment"].tolist() == [
+        "Median SNR in order 1 (r)",
+        "Median SNR in order 2 (u)",
+        "Median SNR in order 3 (g)",
+        "Median SNR in order 4 (i)",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [("11-12", (11, 12)), ("4-1", (4, 1)), ("9-10", (9, 10)), ("100-101", (100, 101))],
+)
+def test_parse_order_join_key_returns_the_red_and_blue_orders(key: str, expected: tuple[int, int]) -> None:
+    assert toolkit.parse_order_join_key(key) == expected
+
+
+@pytest.mark.parametrize("key", ["1112", "11-", "-12", "a-b", "1-2-3", "", "²-3"])
+def test_parse_order_join_key_rejects_keys_that_are_not_red_dash_blue(key: str) -> None:
+    with pytest.raises(ValueError, match="order join key"):
+        toolkit.parse_order_join_key(key)
+
+
+@pytest.mark.parametrize(
+    ("arm", "joins", "waves", "expectedOrders"),
+    [
+        ("NIR", {"9-10": 500.0, "10-11": 450.0}, [400.0, 470.0, 520.0], [11, 10, 9]),
+        ("NIR", {"100-101": 500.0}, [400.0, 600.0], [101, 100]),
+    ],
+)
+def test_add_snr_efficiency_qcs_assigns_each_wavelength_to_its_order_whatever_the_key_width(
+    log: object, arm: str, joins: dict, waves: list, expectedOrders: list
+) -> None:
+    spectrum = pd.DataFrame({"WAVE": waves, "SNR": [float(i + 1) for i in range(len(waves))]})
+
+    result = toolkit.add_snr_efficiency_qcs(log, spectrum, pd.DataFrame(), joins, "soxs-stare", "2024-01-02", arm)
+
+    perOrder = result.iloc[1:].set_index("qc_order")["qc_value"].to_dict()
+    assert perOrder == {order: float(i + 1) for i, order in enumerate(expectedOrders)}
+
+
+def test_add_snr_efficiency_qcs_labels_bands_only_when_told_the_arm_is_vis(log: object) -> None:
+    spectrum = pd.DataFrame({"WAVE": [400.0, 600.0], "SNR": [1.0, 2.0]})
+
+    result = toolkit.add_snr_efficiency_qcs(
+        log, spectrum, pd.DataFrame(), {"1-2": 500.0}, "soxs-stare", "2024-01-02", "NIR"
+    )
+
+    assert result["qc_comment"].iloc[1:].tolist() == ["Median SNR in order 1", "Median SNR in order 2"]
 
 
 def test_qc_settings_plot_tables_limits_qcs_and_hides_axes(log: object) -> None:

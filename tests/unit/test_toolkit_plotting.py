@@ -125,8 +125,8 @@ def test_merged_spectrum_plot_writes_qc_pdf_and_product_record(
     )
     qc = pd.DataFrame(
         {
-            "qc_name": ["SNR MEDIAN", "SNR MEDIAN", "SNR MEDIAN"],
-            "qc_order": ["GLOBAL", "12", "11"],
+            "qc_name": ["SNR MEDIAN", "SNR MEDIAN O12", "SNR MEDIAN O11"],
+            "qc_order": ["GLOBAL", 12, 11],
             "qc_value": [6.0, 5.0, 7.0],
         }
     )

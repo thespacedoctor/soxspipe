@@ -501,6 +501,7 @@ class response_function:
                 orderJoins=self.orderJoins,
                 recipeName=self.recipeName,
                 dateObs=self.dateObs,
+                arm=self.arm,
             )
 
             write_fits_table_to_disk(

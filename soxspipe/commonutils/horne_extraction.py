@@ -10,10 +10,14 @@ Date Created
 """
 
 import os
+from typing import TYPE_CHECKING
 
 from .base_util import base_util
 from .extraction_notes import extraction_note_logger, format_extraction_notes
 from .filenamer import filenamer
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 os.environ["TERM"] = "vt100"
 
@@ -25,8 +29,6 @@ PROFILE_MIN_LOCAL_SUPPORT = 0.5
 SLIT_EDGE_PEAK_FRACTION = 0.5
 # AN ORDER SPILLS IF MORE THAN THIS FRACTION OF ITS COLUMNS ARE TRUNCATED AT THE SLIT EDGE
 SLIT_EDGE_ORDER_FRACTION = 0.2
-# SOXS VIS TRACE ORDER NUMBERS RENUMBERED SO THE MERGED AND PRODUCT ORDERS SORT BY WAVELENGTH
-SOXS_VIS_ORDER_REMAP = {4: 1, 1: 2, 3: 3, 2: 4}
 
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
 
@@ -415,6 +417,7 @@ class horne_extraction(base_util):
             orderJoins=orderJoins,
             recipeName=self.recipeName,
             dateObs=self.dateObs,
+            arm=arm,
         )
 
         if not isinstance(self.products, bool):
@@ -606,13 +609,9 @@ class horne_extraction(base_util):
                 continue
             fraction = float(e["slitEdgeTruncated"].mean())
             if fraction > SLIT_EDGE_ORDER_FRACTION:
-                order = int(e["order"].iloc[0])
-                # NAME THE ORDER AS THE PRODUCTS NUMBER IT
-                if self.arm.upper() == "VIS":
-                    order = SOXS_VIS_ORDER_REMAP.get(order, order)
                 self.slitEdgeOrders.append(
                     (
-                        order,
+                        int(e["order"].iloc[0]),
                         float(e["wavelengthMean"].min()),
                         float(e["wavelengthMean"].max()),
                         fraction,
@@ -626,13 +625,15 @@ class horne_extraction(base_util):
 
     def _report_slit_edge_spill(self):
         """*log the slit-edge spill error and add the ``N ORDERS SLIT EDGE`` QC*"""
-        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+        from soxspipe.commonutils.toolkit import SOXS_VIS_ORDER_BANDS, append_qc, utcnow_string
 
         if self.slitEdgeOrders:
-            spilled = ", ".join(
-                f"{order} ({wlMin:0.1f}-{wlMax:0.1f} nm, {fraction:.0%} of slices)"
-                for order, wlMin, wlMax, fraction in self.slitEdgeOrders
-            )
+            bands = SOXS_VIS_ORDER_BANDS if self.arm.upper() == "VIS" else {}
+            spilledParts = []
+            for order, wlMin, wlMax, fraction in self.slitEdgeOrders:
+                band = f"{bands[order]}, " if order in bands else ""
+                spilledParts.append(f"{order} ({band}{wlMin:0.1f}-{wlMax:0.1f} nm, {fraction:.0%} of slices)")
+            spilled = ", ".join(spilledParts)
             self.log.error(
                 f"The object spills over the slit edge in order(s) {spilled}. "
                 "Flux beyond the slit edge is lost and the extraction in these orders is unreliable."
@@ -695,6 +696,8 @@ class horne_extraction(base_util):
         self.log.debug("starting the ``tune_wavelength_calibration_to_skylines`` method")
 
         import numpy as np
+
+        from soxspipe.commonutils.toolkit import order_label
 
         # WAVELENGTH OR B-AXIS (DISPERSION AXIS) COLUMN NAMES
         if True:
@@ -805,27 +808,18 @@ class horne_extraction(base_util):
             if byOrder:
                 self._record_order_shift_qc(o, orderShift)
 
-        # SHIFT FROM ORDER 1 IS USED AS FALLBACK FOR VIS ORDERS WITH NO SKYLINE MATCHES
-        if arm.upper() == "VIS" and byOrder:
-            iShift = next((s for o, s in zip(uniqueOrders, orderShifts) if o == 4), 0)
-        else:
-            iShift = 0
-
         # APPLY PER-ORDER PIXEL SHIFTS TO WAVELENGTH COLUMN IN FULL DATAFRAME
         for o, s in zip(uniqueOrders, orderShifts):
             if o == "all":
                 mask = extractedOrdersDF["order"] < 100
             else:
                 mask = extractedOrdersDF["order"] == o
-            # PROPAGATE RED-ORDER SHIFT TO VIS ORDERS THAT HAD NO SKYLINE MATCHES
-            effectiveShift = iShift if (s == 0 and arm.upper() == "VIS" and o in [11, 22, 33]) else s
             if calibrationCol == "wavelengthMean":
-                self.log.print(f"\t\t{effectiveShift:0.2f} {shiftUnits} shift applied to order {o}")
-                extractedOrdersDF.loc[mask, "wavelengthMean"] += effectiveShift
+                orderText = o if o == "all" else order_label(o, arm)
+                self.log.print(f"\t\t{s:0.2f} {shiftUnits} shift applied to order {orderText}")
+                extractedOrdersDF.loc[mask, "wavelengthMean"] += s
             else:
-                extractedOrdersDF.loc[mask, "wavelengthMean"] += (
-                    effectiveShift * extractedOrdersDF.loc[mask, "pixelScaleNm"]
-                )
+                extractedOrdersDF.loc[mask, "wavelengthMean"] += s * extractedOrdersDF.loc[mask, "pixelScaleNm"]
 
         return extractedOrdersDF
 
@@ -995,6 +989,8 @@ class horne_extraction(base_util):
         import matplotlib
         import matplotlib.pyplot as plt
 
+        from soxspipe.commonutils.toolkit import order_label
+
         matplotlib.use("MacOSX")
         fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 9), dpi=180, gridspec_kw={"height_ratios": [2, 1, 2]})
         smoothColor = "tab:orange" if iteration == 0 else "tab:green"
@@ -1043,10 +1039,35 @@ class horne_extraction(base_util):
             )
         else:
             fig.suptitle(
-                f"\nOrder {int(order)} skyline matching and shifting. WL {wmin:0.2f}-{wmax:0.2f}nm. Mean pixel {pixelScaleMedian:0.2f} nm."
+                f"\nOrder {order_label(order, self.arm)} skyline matching and shifting. "
+                f"WL {wmin:0.2f}-{wmax:0.2f}nm. Mean pixel {pixelScaleMedian:0.2f} nm."
             )
         plt.show()
         plt.close(fig)
+
+    @staticmethod
+    def _orders_red_to_blue(extractedOrdersDF: "pd.DataFrame") -> list[int]:
+        """*list the extracted orders from the reddest to the bluest, by their median wavelength*
+
+        Orders whose median wavelength is NaN are left out.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- the extraction table, with ``order`` and ``wavelengthMean`` columns
+
+        **Return:**
+
+        - ``orders`` -- the order numbers as integers, reddest first. Empty if the table has no usable order
+
+        **Raises:**
+
+        - ``ValueError`` -- if an order id is not a whole number
+        """
+        medianWavelengths = extractedOrdersDF.groupby("order")["wavelengthMean"].median().dropna()
+        for order in medianWavelengths.index:
+            if not float(order).is_integer():
+                raise ValueError(f"Expected a whole-number order id in the extraction table, found {order!r}.")
+        return [int(o) for o in medianWavelengths.sort_values(ascending=False, kind="stable").index]
 
     @staticmethod
     def _resample_grid(minWavelength, maxWavelength, ratio):
@@ -1123,55 +1144,37 @@ class horne_extraction(base_util):
         ratio = 1 / stepWavelengthOrderMerge
         order_list = []
 
-        # A FIX FOR SORTING OF SOXS VIS ORDERS
-        if self.arm.upper() in ["VIS"]:
-            extractedOrdersDF["order"] = extractedOrdersDF["order"].replace(SOXS_VIS_ORDER_REMAP)
+        # JOIN NEIGHBOURS IN WAVELENGTH, WHATEVER THE ARM NUMBERS ITS ORDERS. EACH PAIR IS (RED ORDER, BLUE ORDER)
+        orderSequence = self._orders_red_to_blue(extractedOrdersDF)
+        orderPairs = list(zip(orderSequence[:-1], orderSequence[1:], strict=True))
 
-        uniqueOrders = np.sort(extractedOrdersDF["order"].unique())
-
-        lastOrderMin = False
         orderJoins = {}
         orderGaps = {}
-        for o in uniqueOrders:
-            o = int(o)
-            mask = extractedOrdersDF["order"] == o
-            if lastOrderMin:
-                order_join_wl = (extractedOrdersDF.loc[mask]["wavelengthMean"].max() + lastOrderMin) / 2.0
-                orderJoins[f"{o - 1}{o}"] = order_join_wl
-                gap = extractedOrdersDF.loc[mask]["wavelengthMean"].max() - lastOrderMin
-                orderGaps[f"{o - 1}{o}"] = gap
-                # print(f"ORDER: {o}, JOIN: {order_join_wl}, GAP: {gap}")
-            lastOrderMin = extractedOrdersDF.loc[mask]["wavelengthMean"].min()
+        for red, blue in orderPairs:
+            redMin = extractedOrdersDF.loc[extractedOrdersDF["order"] == red]["wavelengthMean"].min()
+            blueMax = extractedOrdersDF.loc[extractedOrdersDF["order"] == blue]["wavelengthMean"].max()
+            orderJoins[f"{red}-{blue}"] = (blueMax + redMin) / 2.0
+            orderGaps[f"{red}-{blue}"] = blueMax - redMin
 
         # A FIX FOR THE UV XSHOOTER DATA (FLATS TAKEN WITH DIFFERENT LAMPS)
         # GET UNIQUE VALUES IN COLUMN
         if self.arm.upper() == "UVB":
-            orderJoins["2021"] = 363.5
+            orderJoins["20-21"] = 363.5
 
         stepRatio = 20
 
-        for o in uniqueOrders:
-            o = int(o)
-            thisKey = f"{o - 1}{o}"
-            if thisKey in orderJoins:
-                mask = extractedOrdersDF["order"] == o - 1
-                gap = orderGaps[f"{o - 1}{o}"]
-                if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
-                    maxwl = orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio
-                    mask = (extractedOrdersDF["order"] == o - 1) & (
-                        extractedOrdersDF["wavelengthMean"]
-                        <= orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio
-                    )
-                    extractedOrdersDF = extractedOrdersDF.loc[~mask]
-
-                if f"{o}{o + 1}" in orderGaps:
-                    gap = orderGaps[f"{o - 1}{o}"]
-                if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
-                    minwl = orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
-                    mask = (extractedOrdersDF["order"] == o) & (
-                        extractedOrdersDF["wavelengthMean"] > orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
-                    )
-                    extractedOrdersDF = extractedOrdersDF.loc[~mask]
+        for red, blue in orderPairs:
+            thisKey = f"{red}-{blue}"
+            gap = orderGaps[thisKey]
+            if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
+                mask = (extractedOrdersDF["order"] == red) & (
+                    extractedOrdersDF["wavelengthMean"] <= orderJoins[thisKey] - stepWavelengthOrderMerge * stepRatio
+                )
+                extractedOrdersDF = extractedOrdersDF.loc[~mask]
+                mask = (extractedOrdersDF["order"] == blue) & (
+                    extractedOrdersDF["wavelengthMean"] > orderJoins[thisKey] + stepWavelengthOrderMerge * stepRatio
+                )
+                extractedOrdersDF = extractedOrdersDF.loc[~mask]
 
         if self.arm.upper() == "UVB":
             # CLIP DICHROICH REGION
@@ -1470,7 +1473,7 @@ class horne_extraction(base_util):
         import pandas as pd
         from astropy.stats import sigma_clip, sigma_clipped_stats
 
-        from soxspipe.commonutils.toolkit import add_notes_below_figure
+        from soxspipe.commonutils.toolkit import add_notes_below_figure, order_label
 
         fig = plt.figure(figsize=(14, 12), constrained_layout=True, dpi=180)
         gs = fig.add_gridspec(4, 1)
@@ -1503,7 +1506,7 @@ class horne_extraction(base_util):
         for df in extractions:
             if not len(df["order"].values):
                 continue
-            o = df["order"].values[0]
+            orderLabel = order_label(df["order"].values[0], self.arm)
 
             extracted_wave_spectrum = df["wavelengthMean"]
             extracted_spectrum = df["extractedFluxOptimal"]
@@ -1544,7 +1547,7 @@ class horne_extraction(base_util):
                     toprow.text(
                         extracted_wave_spectrum[10:-10].mean(),
                         extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std(),
-                        int(o),
+                        orderLabel,
                         fontsize=10,
                         c=line[0].get_color(),
                         verticalalignment="bottom",
@@ -1600,14 +1603,14 @@ class horne_extraction(base_util):
                         toprow.text(
                             extracted_wave_spectrum[10:-10].mean(),
                             extracted_spectrum[10:-10].mean() + 1.4 * extracted_spectrum[10:-10].std(),
-                            int(o),
+                            orderLabel,
                             fontsize=10,
                             c=line[0].get_color(),
                             verticalalignment="bottom",
                         )
                     addedLegend = False
             except (ValueError, IndexError, KeyError, TypeError):
-                self.log.warning(f"Order skipped: {o}")
+                self.log.warning(f"Order skipped: {orderLabel}")
 
         if (
             self.skylinesDF is not None
