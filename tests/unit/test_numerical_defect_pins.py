@@ -447,8 +447,53 @@ def test_object_profile_clipping_runs_at_most_the_configured_number_of_passes(
         plt=None,
     )
 
-    # ASSERT: A LIMIT OF N GIVES N FITTING PASSES PER SLIT ROW, NOT N - 1
-    assert fitCount == slitRows * iterationLimit
+    # ASSERT: A LIMIT OF N GIVES N FITTING PASSES PER SLIT ROW, NOT N - 1, PLUS ONE REFIT ON THE
+    # POINTS THE LAST PASS KEPT, BECAUSE EVERY ROW STOPS AT THE CAP STILL CLIPPING (DY-1554)
+    assert fitCount == slitRows * (iterationLimit + 1)
+
+
+def test_object_profile_refits_on_the_surviving_points_when_clipping_stops_at_the_cap() -> None:
+    # ARRANGE: A ONE-SIGMA CLIP ALWAYS REJECTS POINTS, SO A CAP OF ONE PASS ENDS THE LOOP MID-CLIPPING (DY-1554)
+    from astropy.stats import sigma_clip
+
+    slitRows, wavelengthColumns, polyOrder = 3, 500, 3
+    rng = np.random.default_rng(11)
+    flux = np.array([200.0, 600.0, 200.0])[:, None] + rng.normal(0, 10, (slitRows, wavelengthColumns))
+    images = {"fluxRaw": flux, "mask": np.zeros_like(flux, dtype=bool)}
+    pixels = np.arange(wavelengthColumns)
+    fractions = flux / flux.sum(axis=0)
+    expectedRows = []
+    for rowFractions in fractions:
+        firstFit = np.polyfit(pixels, rowFractions, deg=polyOrder)
+        clipped = sigma_clip(
+            rowFractions - np.polyval(firstFit, pixels),
+            sigma_lower=1.0,
+            sigma_upper=1.0,
+            maxiters=1,
+            cenfunc="mean",
+            stdfunc="std",
+        ).mask
+        refit = np.polyfit(pixels[~clipped], rowFractions[~clipped], deg=polyOrder)
+        expectedRows.append(np.clip(np.polyval(refit, pixels), 0, None))
+    expectedRows = np.array(expectedRows)
+    expectedProfile = expectedRows / expectedRows.sum(axis=0)
+
+    # ACT
+    _, result = fit_object_profile(
+        pd.DataFrame({"x": range(wavelengthColumns)}),
+        images,
+        slitHalfLength=1,
+        clippingSigma=1.0,
+        clippingIterationLimit=1,
+        hornePolyOrder=polyOrder,
+        axisB="y",
+        order=1,
+        debug=False,
+        plt=None,
+    )
+
+    # ASSERT: EACH ROW PROFILE IS THE FIT TO THE POINTS THE LAST PASS KEPT, NOT THE FIT THAT REJECTED THEM
+    np.testing.assert_allclose(result["objectProfile"], expectedProfile, rtol=1e-9, atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
