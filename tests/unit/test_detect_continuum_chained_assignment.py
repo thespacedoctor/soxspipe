@@ -210,3 +210,117 @@ def test_trace_sampling_outside_soxs_vis_recovers_after_a_widened_slice_probe(
     assert calls == [12, 12, 120]
     assert detectionPercentage == pytest.approx(100.0)
     assert len(result.index) == 120
+
+
+def _found(orderPixelTable: pd.DataFrame, stddev: np.ndarray | None = None) -> pd.DataFrame:
+    """The slice-fit result for a trace that is found at every sample."""
+    yValues = orderPixelTable["fit_y"].to_numpy()
+    return orderPixelTable.assign(
+        cont_x=SOLUTION_CENTRE - _shift_for(yValues),
+        cont_y=yValues,
+        gauss_stddev=_stddev_for(yValues) if stddev is None else stddev,
+    )
+
+
+def _not_found(orderPixelTable: pd.DataFrame) -> pd.DataFrame:
+    """The slice-fit result for a trace that is found nowhere."""
+    return orderPixelTable.assign(cont_x=np.nan, cont_y=np.nan, gauss_stddev=np.nan)
+
+
+def test_trace_sampling_outside_soxs_vis_makes_one_strided_probe_then_one_full_fit_when_the_first_probe_succeeds(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    detector = _trace_sampler(log, monkeypatch, inst="XSH", orders=[10.0, 11.0])
+    calls = []
+
+    def fit_slices(orderPixelTable: pd.DataFrame, **_: object) -> pd.DataFrame:
+        calls.append(len(orderPixelTable.index))
+        return _found(orderPixelTable)
+
+    monkeypatch.setattr(detector, "fit_1d_gaussian_to_slices", fit_slices)
+
+    # ACT
+    detector.sample_trace()
+
+    # ASSERT
+    assert calls == [12, 120]
+
+
+@pytest.mark.parametrize("inst", ["XSH", "SOXS"])
+def test_trace_sampling_outside_soxs_vis_retries_every_row_when_both_strided_probes_find_no_shift(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    inst: str,
+) -> None:
+    # ARRANGE: THE TRACE IS ONLY FOUND WHEN EVERY ROW IS SAMPLED, SO BOTH EVERY-10TH-ROW PROBES COME BACK NAN
+    detector = _trace_sampler(log, monkeypatch, inst=inst, orders=[10.0, 11.0])
+    detector.arm = "NIR"
+    calls = []
+
+    def fit_slices(orderPixelTable: pd.DataFrame, **_: object) -> pd.DataFrame:
+        calls.append(len(orderPixelTable.index))
+        return _found(orderPixelTable) if len(orderPixelTable.index) == 120 else _not_found(orderPixelTable)
+
+    monkeypatch.setattr(detector, "fit_1d_gaussian_to_slices", fit_slices)
+
+    # ACT
+    result, detectionPercentage = detector.sample_trace()
+
+    # ASSERT: TWO STRIDED PROBES, THEN THE EVERY-ROW PROBE, THEN THE FULL FIT
+    assert calls == [12, 12, 120, 120]
+    assert detectionPercentage == pytest.approx(100.0)
+    assert len(result.index) == 120
+
+
+def test_trace_sampling_outside_soxs_vis_raises_flux_too_low_only_after_trying_every_row(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: NO SAMPLING DENSITY FINDS THE TRACE
+    detector = _trace_sampler(log, monkeypatch, inst="XSH", orders=[10.0, 11.0])
+    calls = []
+
+    def fit_slices(orderPixelTable: pd.DataFrame, **_: object) -> pd.DataFrame:
+        calls.append(len(orderPixelTable.index))
+        return _not_found(orderPixelTable)
+
+    monkeypatch.setattr(detector, "fit_1d_gaussian_to_slices", fit_slices)
+
+    # ACT
+    with pytest.raises(ValueError, match="FLUX IN THE INPUT FLAT FRAMES IS TOO LOW"):
+        detector.sample_trace()
+
+    # ASSERT: THE EVERY-ROW PROBE WAS ISSUED BEFORE GIVING UP
+    assert 120 in calls
+    assert calls[-1] == 120
+
+
+def test_trace_sampling_outside_soxs_vis_fits_the_full_table_with_the_retry_trace_width(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THE FIRST PROBE FINDS ONLY 4 POINTS PER ORDER (WIDTH ~3), SO ITS SHIFT IS NAN; THE RETRY FINDS WIDTH ~1.5
+    detector = _trace_sampler(log, monkeypatch, inst="XSH", orders=[10.0, 11.0])
+    calls = []
+    widths = []
+
+    def fit_slices(orderPixelTable: pd.DataFrame, medianStddev: object = False, **_: object) -> pd.DataFrame:
+        calls.append(len(orderPixelTable.index))
+        widths.append(medianStddev)
+        if len(calls) > 1:
+            return _found(orderPixelTable)
+        rank = orderPixelTable.groupby("order").cumcount().to_numpy()
+        found = _found(orderPixelTable, stddev=np.where(rank < 4, 3.0 + 0.1 * rank, 0.1))
+        return found.assign(cont_x=found["cont_x"].where(rank < 4), cont_y=found["cont_y"].where(rank < 4))
+
+    monkeypatch.setattr(detector, "fit_1d_gaussian_to_slices", fit_slices)
+
+    # ACT
+    detector.sample_trace()
+
+    # ASSERT: THE FULL-TABLE FIT GETS THE RETRY'S WIDTH (~1.5), NOT THE FIRST PROBE'S (~3.2)
+    assert calls == [12, 12, 120]
+    assert widths[0] is False
+    assert widths[2] == pytest.approx(TRACE_STDDEV, abs=0.2)
