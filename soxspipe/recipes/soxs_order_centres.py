@@ -548,7 +548,7 @@ class soxs_order_centres(base_recipe):
             binx=binx,
             biny=biny,
             startNightDate=self.startNightDate,
-            turnOffMP=self.debug,
+            turnOffMP=self.turnOffMP or self.debug,
             mute=True,
             progressBar=True,
         )

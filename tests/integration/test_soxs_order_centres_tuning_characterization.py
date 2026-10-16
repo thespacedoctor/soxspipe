@@ -98,7 +98,8 @@ def test_tuning_samples_the_trace_once_then_sweeps_the_polynomial_grid(
     assert tuningArguments["inputArray"][-1] == (6, 6)
     assert tuningArguments["poolSize"] is False
     assert tuningArguments["timeout"] == 360000
-    assert tuningArguments["turnOffMP"] is recipe.debug
+    # A RECIPE WITH MULTIPROCESSING TURNED OFF ALSO RUNS ITS TUNING POOL SERIALLY (DY-1535)
+    assert tuningArguments["turnOffMP"] is (recipe.turnOffMP or recipe.debug)
     assert tuningArguments["mute"] is True
     assert tuningArguments["progressBar"] is True
     assert tuningArguments["log"] is recipe.log
