@@ -4,9 +4,10 @@ The reduction is not bit-reproducible across hardware, so each value is asserted
 within a band rather than exactly. The bands absorb the variation seen across CI
 runner architectures and stay narrow enough that a real regression in extraction,
 wavelength calibration or flux calibration still trips them. The centres were
-re-recorded on 2026-10-14 from six bit-identical CI runs (38566513736,
-38566517851, 38566520911, 38566524861, 38566528464 and 38566531516), together
-with the stare and calibration baselines (DY-1521, DY-1524).
+re-recorded on 2026-10-16 from two bit-identical CI runs (38915352201 and
+38915356992), after DY-1612 made the set (two ON positions) align its ON frames
+along the slit and stack them: one ONOFF and one OBJTRACE product instead of one
+per cycle, and the SNR median rose from 104.0 to 149.8.
 """
 
 from __future__ import annotations
@@ -39,10 +40,8 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         f"{_PRODUCT_STEM}_EXTRACTED_MERGED.fits",
         f"{_PRODUCT_STEM}_EXTRACTED_MERGED.txt",
         f"{_PRODUCT_STEM}_FLUXCAL.fits",
-        f"{_PRODUCT_STEM}_OBJTRACE_1.fits",
-        f"{_PRODUCT_STEM}_OBJTRACE_2.fits",
-        f"{_PRODUCT_STEM}_ONOFF_1.fits",
-        f"{_PRODUCT_STEM}_ONOFF_2.fits",
+        f"{_PRODUCT_STEM}_OBJTRACE_STACK.fits",
+        f"{_PRODUCT_STEM}_ONOFF_STACK.fits",
     }
     productNames = {path.name for path in product_directory.iterdir()}
 
@@ -113,10 +112,10 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     assert waveMin == pytest.approx(795.06, abs=0.12)
     assert waveMax == pytest.approx(2031.84, abs=1.0)
     assert waveStep == pytest.approx(0.06, abs=1e-6)
-    assert snrMedian == pytest.approx(104.0, abs=2.0)
+    assert snrMedian == pytest.approx(149.8, abs=2.0)
     assert fluxcalRows == pytest.approx(20_614, abs=25)
     assert fluxcalRows == mergedRows
-    assert fluxcalMedian == pytest.approx(8.341117921527572e-15, rel=0.05)
+    assert fluxcalMedian == pytest.approx(8.431980451680397e-15, rel=0.05)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
     assert nOrders == 15
-    assert detectedFraction == pytest.approx(0.979, abs=0.02)
+    assert detectedFraction == pytest.approx(0.984, abs=0.02)
