@@ -898,7 +898,9 @@ def test_skyline_tuning_recovers_the_offset_of_a_flat_topped_line_with_a_central
     )
     extractor._get_local_skylines_for_order = lambda *args: (np.array([catalogueLine]), np.array([catalogueLine]))
     recordedShifts: list[float] = []
-    extractor._record_order_shift_qc = lambda order, shift: recordedShifts.append(shift)
+    extractor._record_order_shift_qc = lambda order, shift, shiftPx=None: recordedShifts.append(shift)
+    extractor._signed_order_dispersions = lambda *args: {}
+    extractor.detectorParams = {}
 
     # ACT
     extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
@@ -1270,7 +1272,7 @@ def test_skyline_matching_and_clipped_shift_reject_outliers(log: object) -> None
         np.array([100.2, 199.8]),
         tolerance=0.5,
     )
-    clippedWave, clippedShifts, medianShift = extractor._compute_clipped_shift(
+    clippedWave, clippedShifts, medianShift, keptShifts = extractor._compute_clipped_shift(
         list(range(21)),
         [0.1] * 20 + [10.0],
     )
@@ -1280,6 +1282,7 @@ def test_skyline_matching_and_clipped_shift_reject_outliers(log: object) -> None
     assert clippedWave.tolist() == [20]
     assert clippedShifts.tolist() == [10.0]
     assert medianShift == pytest.approx(0.1)
+    assert keptShifts.tolist() == pytest.approx([0.1] * 20)
 
 
 def test_local_skylines_filters_wavelengths_and_projects_single_order(
@@ -1317,17 +1320,20 @@ def test_local_skylines_filters_wavelengths_and_projects_single_order(
     assert received["orderPixelTable"]["order"].tolist() == [12, 12]
 
 
-def test_order_shift_qc_records_rounded_pixel_correction(log: object) -> None:
+def test_order_shift_qc_records_the_rounded_correction_in_nm_and_px(log: object) -> None:
     extractor = _extractor(log)
     extractor.recipeName = "soxs-stare"
     extractor.dateObs = "2026-09-10T12:00:00"
     extractor.qc = pd.DataFrame()
 
-    extractor._record_order_shift_qc(12, 0.12349)
+    extractor._record_order_shift_qc(12, 0.12349, -2.46981)
 
     assert extractor.qc.loc[0, "qc_name"] == "SKY SHIFT O12"
     assert extractor.qc.loc[0, "qc_value"] == pytest.approx(0.123)
-    assert extractor.qc.loc[0, "qc_unit"] == "pixels"
+    assert extractor.qc.loc[0, "qc_unit"] == "nm"
+    assert extractor.qc.loc[1, "qc_name"] == "SKY SHIFT O12 PX"
+    assert extractor.qc.loc[1, "qc_value"] == pytest.approx(-2.470)
+    assert extractor.qc.loc[1, "qc_unit"] == "px"
     # NUMPY BOOL, NOT PYTHON BOOL, NOW THE COLUMN CARRIES A REAL BOOL DTYPE
     assert bool(extractor.qc.loc[0, "to_header"]) is True
 
@@ -1618,8 +1624,12 @@ def test_wavelength_tuning_shifts_only_the_orders_it_measures_and_leaves_vis_u_a
         np.array([]),
         np.array([]),
         next(measuredShifts),
+        np.array([0.0]),
     )
-    extractor._record_order_shift_qc = lambda order, shift: recordedOrders.append((order, shift))
+    extractor._record_order_shift_qc = lambda order, shift, shiftPx=None: recordedOrders.append((order, shift))
+    # NO u/g TRANSFER COEFFICIENTS, SO u AND g STAY UNSHIFTED
+    extractor._signed_order_dispersions = lambda *args: {}
+    extractor.detectorParams = {}
 
     result = extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
 

@@ -31,7 +31,9 @@
 | `SLIT ILLUM OFFSET O<N>` | Along-slit offset of the sky image from the master flat (order N). Written for each order with a usable offset, and only if `slit-illumination: measure-offset` is on. Positive when the sky image sits toward +SLIT | arcsec | - |
 | `SLIT ILLUM APPLIED` | 1 if the slit offsets were used to mask the sky model, 0 if no order had a usable offset | | - |
 | `SLIT ILLUM N ORDERS` | Number of orders with a usable slit offset | | - |
-
+| `SKY SHIFT O<N>` | Wavelength shift that the skyline tuning added to the wavelength solution of order N. Written for every order. For SOXS VIS orders 2 (u) and 3 (g) it is the modelled shift if the model applied, and 0 if not | nm | - |
+| `SKY SHIFT O<N> PX` | The same shift as detector motion along the dispersion axis, using the signed dispersion of the order. Positive means the features moved to larger pixel numbers. Not written for an order with no usable dispersion | px | - |
+| `UG SHIFT SOURCE` | How the SOXS VIS u and g shifts were found: `model` (predicted from the r and i shifts and the rotator angle) or `none` (u and g left unshifted). The comment gives the reason. Written only for SOXS VIS | | - |
 
 :::
 

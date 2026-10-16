@@ -2247,6 +2247,8 @@ class base_recipe:
         """
         self.log.debug("starting the ``flag_poor_data`` method")
 
+        import pandas as pd
+
         from soxspipe.commonutils import toolkit
 
         # ONE TIMESTAMP COVERS BOTH TEMPERATURE ROWS, AS IT DID INLINE.
@@ -2279,12 +2281,14 @@ class base_recipe:
             self.log.debug("No acceptable ranges defined in settings file. Skipping the ``flag_poor_data`` method.")
             return
 
+        # TEXT QCS (E.G. UG SHIFT SOURCE) BECOME NaN HERE, SO THEY ARE NEVER RANGE-FLAGGED
+        numericValues = pd.to_numeric(self.qc["qc_value"], errors="coerce")
         for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
             matchName = k.lower().replace("-", " ").replace("_", " ")
             mask = (
                 (self.qc["qc_name"].str.lower() == matchName)
                 & (self.qc["qc_order"] == "-1")
-                & ((self.qc["qc_value"].astype(float) <= v[0]) | (self.qc["qc_value"].astype(float) >= v[1]))
+                & ((numericValues <= v[0]) | (numericValues >= v[1]))
             )
             self.qc.loc[mask, "qc_flag"] = "fail"
             # ADD GUARDRAIL VALUES TO QC TABLE FOR REPORTING PURPOSES
