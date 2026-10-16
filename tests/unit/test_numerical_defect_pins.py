@@ -496,6 +496,41 @@ def test_object_profile_refits_on_the_surviving_points_when_clipping_stops_at_th
     np.testing.assert_allclose(result["objectProfile"], expectedProfile, rtol=1e-9, atol=1e-12)
 
 
+def test_object_profile_keeps_the_last_fit_when_too_few_points_survive_for_a_refit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: TEN COLUMNS AND A DEGREE-7 FIT, SO A ONE-SIGMA CLIP LEAVES TOO FEW POINTS FOR THE 8 COEFFICIENTS
+    slitRows, wavelengthColumns, polyOrder = 3, 10, 7
+    rng = np.random.default_rng(5)
+    flux = 1000.0 + rng.normal(0, 10, (slitRows, wavelengthColumns))
+    images = {"fluxRaw": flux, "mask": np.zeros_like(flux, dtype=bool)}
+    pointCounts: list[int] = []
+    realPolyfit = np.polyfit
+
+    def recording_polyfit(x: np.ndarray, y: np.ndarray, deg: int, *args: object, **kwargs: object) -> np.ndarray:
+        pointCounts.append(len(x))
+        return realPolyfit(x, y, deg, *args, **kwargs)
+
+    monkeypatch.setattr(np, "polyfit", recording_polyfit)
+
+    # ACT
+    fit_object_profile(
+        pd.DataFrame({"x": range(wavelengthColumns)}),
+        images,
+        slitHalfLength=1,
+        clippingSigma=1.0,
+        clippingIterationLimit=1,
+        hornePolyOrder=polyOrder,
+        axisB="y",
+        order=1,
+        debug=False,
+        plt=None,
+    )
+
+    # ASSERT: ONLY THE ONE CAPPED PASS PER ROW RUNS; NO UNDERDETERMINED REFIT FOLLOWS IT (DY-1554)
+    assert pointCounts == [wavelengthColumns] * slitRows
+
+
 # ---------------------------------------------------------------------------
 # C2: rectified slit grid is one row short and off-centre
 # ---------------------------------------------------------------------------
