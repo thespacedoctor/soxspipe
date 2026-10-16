@@ -86,7 +86,7 @@ def resolve_read_noise(masterHeader, nominalRon, defaultRon, kw, log, masterLabe
 
     if measured is not None and datancom is not None:
         if abs(measured - referenceRon) / referenceRon > NOMINAL_DISAGREEMENT_FRACTION:
-            log.warning(
+            log.info(
                 f"The {masterLabel} read noise of {measured:0.2f} e- is more than "
                 f"{NOMINAL_DISAGREEMENT_FRACTION:.0%} from the nominal {referenceRon:0.2f} e-; "
                 "using the measured value."
