@@ -1879,7 +1879,7 @@ class detect_continuum(_base_detect):
                         medianStddev=False,
                     )
 
-                if not (medianShift) and everyN > 1:
+                if (not (medianShift) or np.isnan(medianShift)) and everyN > 1:
                     sanityCheck = False
                     everyN = 1
                     # print("Reducing everyN to 1")
