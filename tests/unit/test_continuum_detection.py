@@ -212,9 +212,15 @@ def test_get_records_fitted_trace_qc_product_and_order_table(
     monkeypatch.setattr(
         detector,
         "plot_results",
-        lambda **kwargs: ("/qc/continuum.pdf", pd.DataFrame({"axis": ["x"]})),
+        lambda **kwargs: "/qc/continuum.pdf",
     )
-    monkeypatch.setattr(detector, "write_order_table_to_file", lambda **kwargs: "/products/orders.fits")
+    monkeypatch.setattr(detector, "build_order_metadata", lambda **kwargs: pd.DataFrame({"axis": ["x"]}))
+    writeCalls: list[dict] = []
+    monkeypatch.setattr(
+        detector,
+        "write_order_table_to_file",
+        lambda **kwargs: writeCalls.append(kwargs) or "/products/orders.fits",
+    )
 
     result = detector.get()
 
@@ -230,6 +236,7 @@ def test_get_records_fitted_trace_qc_product_and_order_table(
     assert orderPoly.loc[0, "std_11"] == 4.0
     assert "mask" not in orderPixels
     assert orderMeta.to_dict("list") == {"axis": ["x"]}
+    assert writeCalls[0]["orderMetaTable"] is orderMeta
 
 
 def test_gaussian_slice_fit_recovers_trace_and_leaves_low_signal_unfitted(
@@ -530,7 +537,8 @@ def test_plot_results_writes_continuum_diagnostic_and_order_limits(
     coefficients = pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
 
     # ACT
-    outputPath, orderMetadata = detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+    outputPath = detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+    orderMetadata = detector.build_order_metadata(pixels, coefficients)
 
     # ASSERT
     assert Path(outputPath).read_bytes().startswith(b"%PDF")
@@ -561,7 +569,8 @@ def test_plot_results_pairs_each_order_with_its_own_colour_when_an_earlier_fit_i
     )
 
     # ACT
-    _, orderMetadata = detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+    detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+    orderMetadata = detector.build_order_metadata(pixels, coefficients)
 
     # ASSERT
     midrow, bottomleft, bottomright, fwhmaxis = savefig_text_colours[0][1:5]
@@ -737,23 +746,22 @@ def test_plot_results_tables_do_not_overlap(tmp_path, log: object, savefig_probe
 
 
 def test_plot_results_order_metadata_for_unflipped_frame_is_pinned(tmp_path, log: object) -> None:
-    """Pin the order limits written into the order-table product, including the legacy ``axisALength - xfit`` form."""
+    """Pin the order limits written into the order-table product: axis A holds the fitted detector pixel (DY-1219)."""
     # ARRANGE
     detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
     detector.qc = qc_table()
     pixels = _trace_pixels([11.0, 12.0], slope=0.0, intercept=16.0)
 
     # ACT
-    _, orderMetadata = detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _no_continuum_clipped())
-    plt.close("all")
+    orderMetadata = detector.build_order_metadata(pixels, pd.DataFrame([FLIP_COEFFICIENTS]))
 
     # ASSERT
     assert orderMetadata.to_dict("list") == {
         "order": [11.0, 12.0],
         "ymin": [0, 0],
         "ymax": [30, 30],
-        "xmin": [26.0, 18.0],
-        "xmax": [26.0, 18.0],
+        "xmin": [6.0, 14.0],
+        "xmax": [6.0, 14.0],
     }
 
 
@@ -764,8 +772,7 @@ def test_plot_results_order_metadata_for_flip_only_frame_is_pinned(tmp_path, log
     pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
 
     # ACT
-    _, orderMetadata = detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _nir_clipped_data())
-    plt.close("all")
+    orderMetadata = detector.build_order_metadata(pixels, pd.DataFrame([FLIP_COEFFICIENTS]))
 
     # ASSERT
     assert orderMetadata.to_dict("list") == {
@@ -775,6 +782,217 @@ def test_plot_results_order_metadata_for_flip_only_frame_is_pinned(tmp_path, log
         "ymin": [14.0, 22.0],
         "ymax": [14.0, 22.0],
     }
+
+
+# THREE ORIENTATIONS WITH A NON-SQUARE TRACE FRAME, SO A MIRRORED AXIS-A VALUE NEVER EQUALS THE DETECTOR VALUE
+SLOPED_COEFFICIENTS = {**FLIP_COEFFICIENTS, "cent_01": 0.25}
+ORIENTATIONS = {
+    "flip-only-nir": {"arm": "NIR", "axisA": "y", "axisB": "x", "flip": 1, "rotate": 0, "shape": (64, 40)},
+    "rotate-and-flip-vis": {"arm": "VIS", "axisA": "x", "axisB": "y", "flip": 1, "rotate": 90, "shape": (96, 80)},
+    "no-rotate-no-flip": {"arm": "VIS", "axisA": "x", "axisB": "y", "flip": 0, "rotate": 0, "shape": (96, 80)},
+}
+# ORDERS 11 AND 12 SIT AT -82 + 8 * ORDER = 6 AND 14 PIXELS AT AXIS B = 0, RISING 0.25 PIXELS PER AXIS-B PIXEL
+ORIENTATION_ORDERS = [11.0, 12.0]
+
+
+def _oriented_detector(
+    tmp_path: Path, log: object, orientation: dict, *, flip: int | None = None, rotate: int | None = None
+) -> detect_continuum:
+    """Return a detector for one named orientation, optionally overriding its QC-plot flip and rotation."""
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    detector.arm = orientation["arm"]
+    detector.axisA = orientation["axisA"]
+    detector.axisB = orientation["axisB"]
+    detector.detectorParams = {
+        "dispersion-axis": orientation["axisB"],
+        "flip-qc-plot": orientation["flip"] if flip is None else flip,
+        "rotate-qc-plot": orientation["rotate"] if rotate is None else rotate,
+    }
+    detector.traceFrame = CCDData(np.full(orientation["shape"], 20.0), unit=u.electron)
+    detector.qc = qc_table()
+    return detector
+
+
+def _oriented_pixels(orientation: dict) -> pd.DataFrame:
+    """Return a residual-free pixel table for the orientation's two orders, in detector coordinates."""
+    axisA, axisB = orientation["axisA"], orientation["axisB"]
+    pixels = _trace_pixels(ORIENTATION_ORDERS, slope=0.0, intercept=0.0)
+    return pixels.rename(columns={"cont_x": f"cont_{axisA}", "cont_y": f"cont_{axisB}"}).rename(
+        columns={"cont_x_fit_res": f"cont_{axisA}_fit_res"}
+    )
+
+
+def _expected_axis_a_limits(orientation: dict) -> tuple[list[float], list[float]]:
+    """Return the min and max detector axis-A positions of each order's fit over the sampled axis-B grid."""
+    axisBLength = orientation["shape"][1] if orientation["axisB"] == "x" else orientation["shape"][0]
+    lastSample = 3 * ((axisBLength - 1) // 3)
+    lows = [-82.0 + 8.0 * order for order in ORIENTATION_ORDERS]
+    return lows, [low + 0.25 * lastSample for low in lows]
+
+
+def _order_metadata(detector: detect_continuum, orientation: dict) -> pd.DataFrame:
+    return detector.build_order_metadata(_oriented_pixels(orientation), pd.DataFrame([SLOPED_COEFFICIENTS]))
+
+
+@pytest.mark.parametrize("name", list(ORIENTATIONS))
+def test_order_metadata_axis_a_limits_are_the_fitted_detector_positions(tmp_path, log: object, name: str) -> None:
+    """Publish ``{axisA}min/max`` as the min and max fitted axis-A pixel, whatever the QC plot orientation."""
+    # ARRANGE
+    orientation = ORIENTATIONS[name]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    expectedMin, expectedMax = _expected_axis_a_limits(orientation)
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    assert orderMetadata[f"{orientation['axisA']}min"].tolist() == pytest.approx(expectedMin)
+    assert orderMetadata[f"{orientation['axisA']}max"].tolist() == pytest.approx(expectedMax)
+
+
+# THE AXIS-B LIMITS ARE THE FIRST AND LAST SAMPLE OF np.arange(0, AXIS-B LENGTH, 3)
+EXPECTED_AXIS_B_LIMITS = {"flip-only-nir": 39, "rotate-and-flip-vis": 93, "no-rotate-no-flip": 93}
+
+
+@pytest.mark.parametrize("name", list(ORIENTATIONS))
+def test_order_metadata_keeps_the_order_list_and_axis_b_limits(tmp_path, log: object, name: str) -> None:
+    """Pin the order list and ``{axisB}min/max``, which this fix must leave alone."""
+    # ARRANGE
+    orientation = ORIENTATIONS[name]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    axisB = orientation["axisB"]
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    assert orderMetadata["order"].tolist() == ORIENTATION_ORDERS
+    assert orderMetadata[f"{axisB}min"].tolist() == [0, 0]
+    assert orderMetadata[f"{axisB}max"].tolist() == [EXPECTED_AXIS_B_LIMITS[name]] * 2
+    assert list(orderMetadata.columns) == [
+        "order",
+        f"{axisB}min",
+        f"{axisB}max",
+        f"{orientation['axisA']}min",
+        f"{orientation['axisA']}max",
+    ]
+
+
+@pytest.mark.parametrize("name", list(ORIENTATIONS))
+def test_order_metadata_is_computed_without_plotting(
+    tmp_path, log: object, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Build the order metadata with the plotting code stubbed out to fail on any call."""
+    # ARRANGE
+    orientation = ORIENTATIONS[name]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    expectedMin, expectedMax = _expected_axis_a_limits(orientation)
+
+    def plotting_forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the order metadata must not call plot_results")
+
+    monkeypatch.setattr(detector, "plot_results", plotting_forbidden)
+    monkeypatch.setattr(plt, "figure", plotting_forbidden)
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    assert orderMetadata[f"{orientation['axisA']}min"].tolist() == pytest.approx(expectedMin)
+    assert orderMetadata[f"{orientation['axisA']}max"].tolist() == pytest.approx(expectedMax)
+
+
+@pytest.mark.parametrize("flip, rotate", [(0, 0), (1, 0), (1, 90), (0, 90), (1, 270)])
+def test_order_metadata_does_not_change_with_the_qc_plot_orientation(
+    tmp_path, log: object, flip: int, rotate: int
+) -> None:
+    """Change ``flip-qc-plot`` and ``rotate-qc-plot`` on one frame and get identical order metadata."""
+    # ARRANGE
+    orientation = ORIENTATIONS["no-rotate-no-flip"]
+    reference = _order_metadata(_oriented_detector(tmp_path, log, orientation), orientation)
+    detector = _oriented_detector(tmp_path, log, orientation, flip=flip, rotate=rotate)
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    pd.testing.assert_frame_equal(orderMetadata, reference)
+
+
+def test_plot_results_returns_only_the_plot_path(tmp_path, log: object, savefig_text_colours: list) -> None:
+    """Keep ``plot_results`` to drawing: it returns the PDF path and no metadata."""
+    # ARRANGE
+    orientation = ORIENTATIONS["no-rotate-no-flip"]
+    detector = _oriented_detector(tmp_path, log, orientation)
+
+    # ACT
+    outputPath = detector.plot_results(
+        _oriented_pixels(orientation), pd.DataFrame([SLOPED_COEFFICIENTS]), _no_continuum_clipped()
+    )
+
+    # ASSERT
+    assert isinstance(outputPath, str)
+    assert Path(outputPath).read_bytes().startswith(b"%PDF")
+
+
+def _develop_fit_curves(detector: detect_continuum, orderPixelTable: pd.DataFrame, orderPolyTable: pd.DataFrame):
+    """Evaluate the order fits with the zip-and-filter code that `plot_results` carried before DY-1219."""
+    axisALength = detector.traceFrame.data.shape[1] if detector.axisB == "y" else detector.traceFrame.data.shape[0]
+    axisBLength = detector.traceFrame.data.shape[0] if detector.axisB == "y" else detector.traceFrame.data.shape[1]
+    axisBLineList = np.arange(0, axisBLength, 3)
+    poly = continuumModule.chebyshev_order_xy_polynomials(
+        log=detector.log,
+        axisBCol=detector.axisB,
+        orderCol="order",
+        orderDeg=detector.orderDeg,
+        axisBDeg=detector.axisBDeg,
+    ).poly
+    row = orderPolyTable.iloc[-1]
+    centCoeff = [float(v) for k, v in row.items() if "cent_" in k]
+    stdCoeff = [float(v) for k, v in row.items() if "std_" in k]
+    df = pd.DataFrame({detector.axisB: axisBLineList})
+    curves = []
+    for o in orderPixelTable["order"].unique():
+        df["order"] = o
+        xfit = poly(df, *centCoeff)
+        stdfit = poly(df, *stdCoeff)
+        try:
+            xfit, yfit, stdfit = zip(
+                *[
+                    (x, y, std)
+                    for x, y, std in zip(xfit, axisBLineList, stdfit, strict=True)
+                    if x > 0 and x < axisALength - 10
+                ],
+                strict=True,
+            )
+        except ValueError:
+            continue
+        curves.append((o, np.array(xfit), np.array(yfit), np.array(stdfit)))
+    return curves
+
+
+def test_fitted_order_curves_match_the_pre_refactor_evaluation_exactly(tmp_path, log: object) -> None:
+    """Keep the plotted curves bit-identical, including partly and wholly filtered-out orders."""
+    # ARRANGE
+    orientation = ORIENTATIONS["no-rotate-no-flip"]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    # ORDER 5 IS ALWAYS OFF THE LOW EDGE, 10 CROSSES IT, 11 AND 12 ARE ON THE DETECTOR, 20 IS ALWAYS OFF THE HIGH EDGE
+    orders = [5.0, 10.0, 11.0, 12.0, 20.0]
+    pixels = _trace_pixels(orders, slope=0.0, intercept=0.0)
+    coefficients = pd.DataFrame([SLOPED_COEFFICIENTS])
+    expected = _develop_fit_curves(detector, pixels, coefficients)
+
+    # ACT
+    curves = detector._fitted_order_curves(pixels, coefficients)
+
+    # ASSERT
+    assert [curve[0] for curve in curves] == [10.0, 11.0, 12.0]
+    assert len(curves) == len(expected)
+    for curve, oldCurve in zip(curves, expected, strict=True):
+        assert curve[0] == oldCurve[0]
+        for new, old in zip(curve[1:], oldCurve[1:], strict=True):
+            assert np.array_equal(new, old)
+    assert len(curves[0][1]) < len(curves[1][1])
 
 
 def test_order_colours_assigns_a_stable_distinct_colour_per_order_and_wraps_after_the_cycle() -> None:

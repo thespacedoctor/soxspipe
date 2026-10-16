@@ -890,7 +890,11 @@ class detect_continuum(_base_detect):
         orderPixelTable.drop(columns=["mask"], inplace=True)
 
         # OPTIMISE SUPER: 10s 8 hits
-        plotPath, orderMetaTable = self.plot_results(
+        orderMetaTable = self.build_order_metadata(
+            orderPixelTable=orderPixelTable,
+            orderPolyTable=orderPolyTable,
+        )
+        plotPath = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
             clippedData=clippedData,
@@ -1129,6 +1133,88 @@ class detect_continuum(_base_detect):
 
         return orderPixelTable
 
+    def _fitted_order_curves(self, orderPixelTable, orderPolyTable):
+        """*evaluate the order-centre polynomial along each order, in detector pixel coordinates*
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the pixel table with residuals of fits
+        - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+
+        **Return:**
+
+        - ``curves`` -- one ``(order, axisAFit, axisBSamples, axisAStdFit)`` tuple for each order fitted on the detector
+        """
+        import numpy as np
+        import pandas as pd
+
+        if self.axisB == "y":
+            axisALength = self.traceFrame.data.shape[1]
+            axisBLength = self.traceFrame.data.shape[0]
+        elif self.axisB == "x":
+            axisALength = self.traceFrame.data.shape[0]
+            axisBLength = self.traceFrame.data.shape[1]
+
+        axisBLineList = np.arange(0, axisBLength, 3)
+
+        poly = chebyshev_order_xy_polynomials(
+            log=self.log,
+            axisBCol=self.axisB,
+            orderCol="order",
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+        ).poly
+        for _index, row in orderPolyTable.iterrows():
+            centCoeff = [float(v) for k, v in row.items() if "cent_" in k]
+            stdCoeff = [float(v) for k, v in row.items() if "std_" in k]
+
+        df = pd.DataFrame({f"{self.axisB}": axisBLineList})
+        curves = []
+        for o in orderPixelTable["order"].unique():
+            df["order"] = o
+            axisAFit = np.asarray(poly(df, *centCoeff))
+            axisAStdFit = np.asarray(poly(df, *stdCoeff))
+
+            keep = (axisAFit > 0) & (axisAFit < axisALength - 10)
+            if not keep.any():
+                self.log.debug(f"_fitted_order_curves: order {o} has no fitted positions on the detector, continuing")
+                continue
+            curves.append((o, axisAFit[keep], axisBLineList[keep], axisAStdFit[keep]))
+        return curves
+
+    def build_order_metadata(self, orderPixelTable, orderPolyTable):
+        """*find the extent of each fitted order on the detector*
+
+        The limits come from the order-centre fit alone, so the QC plot settings cannot change them.
+        ``{axisA}min`` and ``{axisA}max`` are the smallest and largest fitted axis-A positions in detector pixels.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the pixel table with residuals of fits
+        - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+
+        **Return:**
+
+        - ``orderMetaTable`` -- dataframe of order number and the min and max pixel position along both axes
+        """
+        self.log.debug("starting the ``build_order_metadata`` method")
+
+        import pandas as pd
+
+        curves = self._fitted_order_curves(orderPixelTable, orderPolyTable)
+        orderMetaTable = pd.DataFrame(
+            {
+                "order": [o for o, _, _, _ in curves],
+                f"{self.axisB}min": [min(yfit) for _, _, yfit, _ in curves],
+                f"{self.axisB}max": [max(yfit) for _, _, yfit, _ in curves],
+                f"{self.axisA}min": [min(xfit) for _, xfit, _, _ in curves],
+                f"{self.axisA}max": [max(xfit) for _, xfit, _, _ in curves],
+            }
+        )
+
+        self.log.debug("completed the ``build_order_metadata`` method")
+        return orderMetaTable
+
     def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
 
@@ -1141,13 +1227,11 @@ class detect_continuum(_base_detect):
         **Return:**
 
         - ``filePath`` -- path to the plot pdf
-        - ``orderMetaTable`` -- dataframe of useful order fit metadata
         """
         self.log.debug("starting the ``plot_results`` method")
 
         import matplotlib.pyplot as plt
         import numpy as np
-        import pandas as pd
 
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
@@ -1263,64 +1347,17 @@ class detect_continuum(_base_detect):
             midrow.set_title("order-location fit solutions", fontsize=10)
         else:
             midrow.set_title("global polynomal fit of order-centres", fontsize=10)
-        if self.axisB == "y":
-            axisALength = self.traceFrame.data.shape[1]
-            axisBLength = self.traceFrame.data.shape[0]
-        elif self.axisB == "x":
-            axisALength = self.traceFrame.data.shape[0]
-            axisBLength = self.traceFrame.data.shape[1]
-
-        axisBlinelist = np.arange(0, axisBLength, 3)
-
-        poly = chebyshev_order_xy_polynomials(
-            log=self.log,
-            axisBCol=self.axisB,
-            orderCol="order",
-            orderDeg=self.orderDeg,
-            axisBDeg=self.axisBDeg,
-        ).poly
-        for index, row in orderPolyTable.iterrows():
-            cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-            std_coeff = [float(v) for k, v in row.items() if "std_" in k]
-
         uniqueOrders = orderPixelTable["order"].unique()
-        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-        myDict = {f"{self.axisB}": axisBlinelist}
-        df = pd.DataFrame(myDict)
-        ymin = []
-        ymax = []
-        xmin = []
-        xmax = []
-        foundOrders = []
         orderColours = _order_colours(uniqueOrders)
         labelAdded = None
 
-        for o in uniqueOrders:
-            df["order"] = o
-            xfit = poly(df, *cent_coeff)
-            stdfit = poly(df, *std_coeff)
-
-            try:
-                xfit, yfit, stdfit, lower, upper = zip(
-                    *[
-                        (x, y, std, x - 3 * std, x + 3 * std)
-                        for x, y, std in zip(xfit, axisBlinelist, stdfit)
-                        if x > 0 and x < (axisALength) - 10
-                    ]
-                )
-            except ValueError as e:
-                self.log.debug(f"plot_results: `xfit, yfit, stdfit, lower, upper = zip( *[...` failed, continuing: {e}")
-                continue
-            # THE ORDER METADATA STAYS ON THE aLen - xfit FRAME IT HAS ALWAYS BEEN WRITTEN IN (SEE DY-1219)
-            metaXfit = xfit
+        for o, xfit, yfit, stdfit in self._fitted_order_curves(orderPixelTable, orderPolyTable):
+            lower = xfit - 3 * stdfit
+            upper = xfit + 3 * stdfit
             if flipImage and not rotateImage:
-                metaXfit = aLen - np.array(xfit)
-                xfit = aLen - 1 - np.array(xfit)
-                lower = aLen - 1 - np.array(lower)
-                upper = aLen - 1 - np.array(upper)
-            foundOrders.append(o)
-            # lower = xfit - 3 * stdfit
-            # upper = xfit + 3 * stdfit
+                xfit = aLen - 1 - xfit
+                lower = aLen - 1 - lower
+                upper = aLen - 1 - upper
             if labelAdded == None:
                 label1 = "$3\\sigma$ deviation"
                 label2 = "polynomial fit"
@@ -1331,10 +1368,6 @@ class detect_continuum(_base_detect):
             midrow.plot(yfit, xfit, linewidth=0.7, label=label2, color=orderColours[o])
 
             midrow.fill_between(yfit, lower, upper, color=orderColours[o], alpha=0.3, label=label1)
-            ymin.append(min(yfit))
-            ymax.append(max(yfit))
-            xmin.append(axisALength - max(metaXfit))
-            xmax.append(axisALength - min(metaXfit))
             try:
                 midrow.text(
                     yfit[10],
@@ -1346,16 +1379,6 @@ class detect_continuum(_base_detect):
                 )
             except (IndexError, KeyError) as e:
                 self.log.debug(f"plot_results: `midrow.text( yfit[10], xfit[10] + 10, int(...` failed, continuing: {e}")
-
-        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-        orderMetaTable = {
-            "order": foundOrders,
-            f"{self.axisB}min": ymin,
-            f"{self.axisB}max": ymax,
-            f"{self.axisA}min": xmin,
-            f"{self.axisA}max": xmax,
-        }
-        orderMetaTable = pd.DataFrame(orderMetaTable)
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit
@@ -1538,7 +1561,7 @@ class detect_continuum(_base_detect):
                 )
 
         self.log.debug("completed the ``plot_results`` method")
-        return filePath, orderMetaTable
+        return filePath
 
     def sample_trace(self):
         """*take many cross-dispersion samples across each order to try and find an object trace*
