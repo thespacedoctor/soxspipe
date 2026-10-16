@@ -18,6 +18,7 @@ from astropy.table import Table
 from soxspipe.commonutils.create_dispersion_map import (
     create_dispersion_map,
     measure_line_position,
+    plot_xy_residual_histogram,
 )
 from tests.factories import qc_table
 from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
@@ -1630,3 +1631,132 @@ def test_measure_line_position_detects_a_synthetic_arc_feature(
     assert detected[0]["observed_x"] == pytest.approx(15.0, abs=0.2)
     assert detected[0]["observed_y"] == pytest.approx(25.0, abs=0.2)
     assert detected[0]["flux"] > 0
+
+
+def _metric_clip_mapper(log: object, *, firstGuessMap: bool = True) -> create_dispersion_map:
+    """Return a mapper carrying just the state `_clip_on_measured_line_metrics` reads."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.firstGuessMap = firstGuessMap
+    mapper.debug = False
+    return mapper
+
+
+def _multi_pinhole_line_table(*, dropped: bool = False) -> pd.DataFrame:
+    """Return eight two-line multi-pinhole sets with the columns the pre-fit clip reads."""
+    rows = [
+        {
+            "wavelength": float(wavelength),
+            "order": 10,
+            "ion": "Ar",
+            "dropped": dropped,
+            "fwhm_pin_px": 2.0 + slitIndex * 0.1,
+            "flux": 100.0 + wavelength,
+            "peak": 200.0 + wavelength,
+            "x_diff": 0.1 * slitIndex,
+            "y_diff": 0.2 * slitIndex,
+            "xy_diff": 0.3 * slitIndex,
+        }
+        for wavelength in range(500, 508)
+        for slitIndex in (0, 1)
+    ]
+    return pd.DataFrame(rows)
+
+
+def test_metric_clipping_survives_every_set_clipped_on_scatter(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clipping every multi-pinhole set on scatter returns a table with every line dropped."""
+    module = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
+    realClip = module.sigma_clip_stable
+    scatterColumns = {"x_diff", "y_diff", "xy_diff"}
+
+    def clip_all_scatter(data: pd.Series, **kwargs: object) -> np.ma.MaskedArray:
+        if data.name in scatterColumns:
+            return np.ma.masked_array(data.to_numpy(), mask=np.ones(len(data), dtype=bool))
+        return realClip(data, **kwargs)
+
+    monkeypatch.setattr(module, "sigma_clip_stable", clip_all_scatter)
+    mapper = _metric_clip_mapper(log)
+
+    result = mapper._clip_on_measured_line_metrics(_multi_pinhole_line_table())
+
+    assert result["dropped"].all()
+    assert len(result.index) == 16
+
+
+@pytest.mark.parametrize("firstGuessMap", [True, False])
+def test_metric_clipping_survives_no_undropped_lines_entering(log: object, firstGuessMap: bool) -> None:
+    """A table whose lines are all dropped before the clip passes through without raising."""
+    mapper = _metric_clip_mapper(log, firstGuessMap=firstGuessMap)
+
+    result = mapper._clip_on_measured_line_metrics(_multi_pinhole_line_table(dropped=True))
+
+    assert result["dropped"].all()
+    assert len(result.index) == 16
+
+
+def test_get_stops_before_fitting_when_no_lines_survive_the_pre_fit_clip(log: object) -> None:
+    """An empty post-clip line set raises a clear error and never reaches the polynomial fit."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.lineDetectionTable = pd.DataFrame(
+        {
+            "wavelength": [500.0, 501.0, 502.0],
+            "order": [10, 10, 10],
+            "slit_position": [0.0, 0.0, 0.0],
+            "observed_x": [100.0, 101.0, 102.0],
+        }
+    )
+    mapper.recipeName = "soxs-disp-solution"
+    mapper.recipeSettings = {"mph_line_set_min": 1}
+    mapper.settings = {"tune-pipeline": False}
+    mapper.firstGuessMap = False
+    mapper.orderTable = False
+    mapper.create2DMap = False
+    mapper.qc = pd.DataFrame()
+    mapper.products = pd.DataFrame()
+    mapper.dateObs = "2025-01-02T03:04:05"
+    fitCalls: list[dict[str, object]] = []
+
+    def clip_everything(table: pd.DataFrame) -> pd.DataFrame:
+        return table.assign(dropped=True)
+
+    mapper._initialize_recipe_settings = lambda: (False, False, 1, 1, 0)
+    mapper.get_predicted_line_list = lambda: mapper.lineDetectionTable.copy()
+    mapper._prepare_pinhole_frame = lambda: "prepared-frame"
+    mapper._generate_quicklook_and_debug_plots = lambda *args: None
+    mapper._clip_on_measured_line_metrics = clip_everything
+    mapper.fit_polynomials = lambda **kwargs: fitCalls.append(kwargs)
+
+    with pytest.raises(ArithmeticError, match="No usable arc lines") as excinfo:
+        mapper.get()
+
+    assert "Could not converge" not in str(excinfo.value)
+    assert "3 detected" in str(excinfo.value)
+    assert "3 clipped" in str(excinfo.value)
+    assert fitCalls == []
+
+
+@pytest.mark.parametrize("values", [[], [np.nan, np.inf]])
+def test_residual_histogram_shows_a_note_when_no_finite_residuals_exist(values: list[float]) -> None:
+    """The xy residual panel carries a "no lines" note instead of raising on an empty series."""
+    fig, ax = plt.subplots()
+
+    plot_xy_residual_histogram(ax, pd.Series(values, dtype=float))
+
+    assert [text.get_text() for text in ax.texts] == ["no lines"]
+    assert ax.get_xlabel() == "xy residual"
+    plt.close(fig)
+
+
+def test_residual_histogram_draws_bars_when_residuals_exist() -> None:
+    """The xy residual panel is a histogram, with no note, when residuals exist."""
+    fig, ax = plt.subplots()
+
+    plot_xy_residual_histogram(ax, pd.Series([0.1, 0.2, 0.2, 0.3, 0.4]))
+
+    assert len(ax.texts) == 0
+    assert len(ax.patches) > 0
+    plt.close(fig)
