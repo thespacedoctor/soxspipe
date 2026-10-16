@@ -166,6 +166,19 @@ def _validate_session_id(sessionId):
     return sessionId
 
 
+# A STARE SOF EXTRACTED FRAME BY FRAME REPORTS EACH FRAME'S QCS UNDER `<sof>_F<N>.sof` (DY-1611). THIS SELECTS THE
+# PARENT `<sof>.sof` OF EVERY SUCH QC ROW, SO A FRAME'S QC DECIDES THE STATUS OF THE SOF THAT PRODUCED IT. A ROW
+# COUNTS ONLY WHEN ITS NAME, LESS `.sof`, ENDS IN `_F` FOLLOWED BY ONE OR MORE DIGITS. EVERY PART IS A FIXED LITERAL;
+# NO VALUE FROM A FILE OR SETTING ENTERS THE SQL TEXT
+_FRAME_QC_STEM = "substr(sof_name, 1, length(sof_name) - 4)"
+_FRAME_QC_TRIMMED = f"rtrim({_FRAME_QC_STEM}, '0123456789')"
+_FRAME_QC_PARENT_SOFS = (
+    f"select substr({_FRAME_QC_TRIMMED}, 1, length({_FRAME_QC_TRIMMED}) - 2) || '.sof' from quality_control "  # noqa: S608
+    f"where sof_name like '%.sof' and {_FRAME_QC_TRIMMED} != {_FRAME_QC_STEM} "
+    f"and substr({_FRAME_QC_TRIMMED}, -2) = '_F'"
+)
+
+
 class data_organiser:
     """
     *The `soxspipe` Data Organiser*
@@ -644,7 +657,8 @@ class data_organiser:
         queries = [
             (
                 f'update product_frames set {statusColumn} = "pass" '  # noqa: S608
-                f'where {statusColumn} = "fail" and sof in (select sof_name from quality_control);',
+                f'where {statusColumn} = "fail" and (sof in (select sof_name from quality_control) '
+                f"or sof in ({_FRAME_QC_PARENT_SOFS}));",
                 (),
             ),
             (
@@ -700,7 +714,8 @@ class data_organiser:
             # A QC FAILURE MARKS ONLY THE CURRENT SESSION'S STATUS COLUMN (DY-272)
             (
                 f'update product_frames set {statusColumn} = "fail" '  # noqa: S608
-                'where sof in (select sof_name from quality_control where qc_flag = "fail");',
+                'where sof in (select sof_name from quality_control where qc_flag = "fail") '
+                f"""or sof in ({_FRAME_QC_PARENT_SOFS} and qc_flag = "fail");""",
                 (),
             ),
         ]
@@ -3276,17 +3291,9 @@ class data_organiser:
         if not len(rawFramesNoOffFrames.index):
             return pd.DataFrame(), pd.DataFrame()
 
+        # STARE FRAMES ARE GROUPED BY THESE KEYS TOO, SO ALL FRAMES OF ONE OB AND ARM THAT SHARE SLIT, BINNING,
+        # READOUT AND EXPOSURE TIME LAND IN ONE SOF. THE STARE RECIPE STACKS THEM OR EXTRACTS EACH ONE (DY-1611)
         rawGroups = self._group_raw_frames(rawFramesNoOffFrames, filterKeywordsRaw + ["set_first_file"])
-
-        # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
-        rawGroups = rawGroups.loc[~mask]
-        # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
-        rawScienceFrames = rawFrames.loc[rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])]
-        if len(rawScienceFrames.index):
-            rawScienceFrames = self._group_raw_frames(rawScienceFrames, filterKeywordsRaw + ["mjd-obs"])
-            # MERGE DATAFRAMES
-            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
 
         # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
         mask = rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])

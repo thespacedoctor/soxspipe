@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: stare SOFs hold all frames of one OB per arm; new `stack_before_extraction` setting (default `True`) stacks them or extracts each on its own (DY-1611).
 * **ENHANCEMENT**: skyline wavelength tuning now predicts the SOXS VIS u and g shifts, which have no usable sky lines, from the r and i sky shifts and the change in `ESO ADA ABSROT` since calibration (coefficients in the `ug-wavelength-transfer` block of the VIS detector parameters; leave-one-night-out rms 0.96 and 1.14 px), so VIS stare, nod and offset wavelength-calibrated u/g output changes; `SKY SHIFT O<N>` is now in nm, and `SKY SHIFT O<N> PX` and `UG SHIFT SOURCE` are new; `flag_poor_data` no longer crashes on text QC values (DY-1608).
 * **DOCS**: the UV-VIS instrument page lists the VIS order numbers, bands and wavelength ranges, and the QC pages say what `<N>` means (DY-1563).
 * **FIXED**: SOXS VIS orders now use one numbering everywhere (r=1, u=2, g=3, i=4) in `_EXTRACTED_ORDERS` products, QC cards, plots and messages; extraction products numbered them 1=i, 2=r, 3=g, 4=u before (DY-1563).
