@@ -42,16 +42,18 @@
 | `Y RES SD O<N>`              | Std-dev of residuals in fitting of pinholes along y-axis (order N)  | pixels    | - |
 | `XY RES MAX O<N>`              | Maximum residual in fitting of pinholes (order N)  | pixels    | - |
 | `XY RES MIN O<N>`              | Minimum residual in fitting of pinholes (order N)  | pixels    | - |
+| `XY RES MEDIAN O<N>` | Median residual in fitting of pinholes (order N) | pixels | - |
 | `XY RES SD O<N>`              | Std-dev of residuals in fitting of pinholes along (order N)  | pixels    | - |
 | `X DIFF MEDIAN O<N>` | Median difference between observed and predicted pinhole detector locations along the x-axis (order N)  | pixels    | - |
 | `X DIFF SD O<N>` | Standard deviation in difference between observed and predicted pinhole detector locations along the x-axis (order N) | pixels | - |
 | `Y DIFF MEDIAN O<N>` | SMedian difference between observed and predicted pinhole detector locations along the y-axis (order N)  | pixels    | - |
 | `Y DIFF SD O<N>` | Standard deviation in difference between observed and predicted pinhole detector locations along the y-axis (order N) | pixels | - |
 | `XY DIFF MEDIAN O<N>` | Median difference between observed and predicted pinhole detector locations (order N)  | pixels    | - |
+| `XY DIFF SD O<N>` | Std-dev of difference between observed and predicted pinhole detector locations (order N) | pixels | - |
 | `FWHM PIN MEDIAN O<N>` |  Median FWHM of detected lines in pinhole frames (order N) | pixels    | - |
 | `FWHM PIN SD O<N>` | Standard-deviation in FWHM of detected lines in pinhole frames (order N) | pixels | - |
 | `R PIN MEDIAN O<N>` | Median spectral resolution measured from detected lines in pinhole frames (order N) | | - |
 
 :::
 
-
+In the labels that end in `O<N>`, `<N>` is the order number. For the SOXS UV-VIS arm the order numbers are 1 (r), 2 (u), 3 (g), and 4 (i). The same numbers are used in the products, plots, and logs. The UV-VIS spectrograph page lists the wavelength range of each order.

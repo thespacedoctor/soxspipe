@@ -23,8 +23,8 @@
 | `Y RES SD`              | Std-dev of residual continuum fit along y-axis        | px        | NIR: [0.0,0.5] |
 | `EFF MEDIAN` | The median efficiency (global) |  | VIS: [0.04,0.30], NIR: [0.02,0.2] |
 | `SNR MEDIAN` | The median signal-to-noise ratio across all orders (global) |  | VIS: [50,1000], NIR: [7,200] |
-| `EFF MEDIAN O<N>` | The median efficiency (order N) |  | - |
-| `SNR MEDIAN O<N>` | The median signal-to-noise ratio across all orders (order N) |  | - |
+| `EFF MEDIAN O<N>` | The median efficiency in order N |  | - |
+| `SNR MEDIAN O<N>` | The median signal-to-noise ratio in order N |  | - |
 | `SLIT DRIFT` | Fitted slit position of the object trace 5% in from the red end of the reddest order, minus that 5% in from the blue end of the bluest order. Signed. Fallback orders are skipped. Not written if every order fell back | arcsec | - |
 | `SLIT ZERO WLEN` | Wavelength where a fitted order curve crosses slit position 0. A sign change between two orders does not count. Written only if such a crossing exists. If there are several, the bluest is recorded | nm | - |
 | `N ORDERS SLIT EDGE` | Number of orders where the object spills over the slit edge. Flux beyond the slit edge is lost and the extraction in these orders is unreliable. An order spills when more than 20% of its wavelength slices are cut off at the slit edge | | 0 (a spill fails the recipe when it builds the response curve; set in the recipe code, not in `qc-acceptable-ranges`) |
@@ -35,3 +35,4 @@
 
 :::
 
+In the labels that end in `O<N>`, `<N>` is the order number. For the SOXS UV-VIS arm the order numbers are 1 (r), 2 (u), 3 (g), and 4 (i). The same numbers are used in the products, plots, and logs. The UV-VIS spectrograph page lists the wavelength range of each order.

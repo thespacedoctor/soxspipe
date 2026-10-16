@@ -166,7 +166,7 @@ def _patch_stare(
 
         def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
             spectrum = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]})
-            return recipe.qc, recipe.products, spectrum, {10: 11}, str(tmpPath / "extracted.fits")
+            return recipe.qc, recipe.products, spectrum, {"10-11": 11}, str(tmpPath / "extracted.fits")
 
     stareModule = import_module("soxspipe.recipes.soxs_stare")
     monkeypatch.setattr(stareModule, "subtract_sky", FakeSkySubtractor)

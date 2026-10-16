@@ -272,7 +272,7 @@ def test_the_per_cycle_spectra_are_concatenated_in_cycle_order_for_the_final_sta
         captured["extract_cycle"].append(kwargs)
         spectrumA = pd.DataFrame({"WAVE": [500.0 + cycleIndex]})
         spectrumB = pd.DataFrame({"WAVE": [600.0 + cycleIndex]})
-        return spectrumA, spectrumB, {10: cycleIndex}
+        return spectrumA, spectrumB, {"10-11": cycleIndex}
 
     monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", fake_extract_cycle)
 
@@ -284,7 +284,7 @@ def test_the_per_cycle_spectra_are_concatenated_in_cycle_order_for_the_final_sta
     spectrumA, spectrumB = stackArguments["args"][0]
     assert spectrumA["WAVE"].tolist() == [501.0, 502.0]
     assert spectrumB["WAVE"].tolist() == [601.0, 602.0]
-    assert stackArguments["orderJoins"] == {10: 2}
+    assert stackArguments["orderJoins"] == {"10-11": 2}
 
 
 def test_one_unique_offset_takes_the_stacked_path_with_a_singular_banner(
@@ -595,7 +595,7 @@ def test_a_single_location_standard_builds_a_response_from_an_unflattened_extrac
     assert arguments["sofName"] == "OBJECT_VIS"
     assert arguments["stdExtractionPath"] == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
     assert arguments["stdNotFlatExtractionPath"] == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
-    assert arguments["orderJoins"] == {10: 11}
+    assert arguments["orderJoins"] == {"10-11": 11}
     assert arguments["startNightDate"] == "2024-01-02"
     assert recipe.qc is responseQc
     assert ("print", "# CALCULATING RESPONSE FUNCTION\n") in log.messages

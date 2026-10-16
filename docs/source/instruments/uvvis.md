@@ -40,6 +40,23 @@ SOXS UV-VIS spectral format, Figure 4 of {cite:t}`sanchez2018a` modified to show
 
 
 
+### Order numbers
+
+The pipeline gives each UV-VIS pseudo-order one number, and it uses that number everywhere. Products, QC names, QC plots, log messages, and the `order` column of the `_EXTRACTED_ORDERS` table all use it. The numbers are not in wavelength order.
+
+:::{table} SOXS UV-VIS order numbers and wavelength ranges
+
+| Order number | Band | Full wavelength range (nm) | Extracted wavelength range (nm) |
+| ------------ | ---- | -------------------------- | ------------------------------- |
+| 1            | r    | 524.5 - 685.0              | 538.0 - 675.0                   |
+| 2            | u    | 347.0 - 442.0              | 347.0 - 432.5                   |
+| 3            | g    | 423.5 - 549.5              | 431.5 - 541.0                   |
+| 4            | i    | 660.0 - 853.0              | 671.0 - 850.0                   |
+
+:::
+
+The pipeline reads these values from the `SOXS_SPECTRAL_FORMAT_TAB_VIS.fits` static calibration table. Where a plot or a message names a UV-VIS order, it shows the band letter after the number, for example `1 (r)`. In QC names, `O<N>` stands for the order number from this table. For example, `SNR MEDIAN O1` is the median signal-to-noise ratio in the r order. The cards without an `O<N>` suffix (`SNR MEDIAN`, `EFF MEDIAN`, and the dispersion-solution cards such as `X RES MEDIAN`) are the values for all orders together.
+
 The object trace in these orders is straight, but the skylines are not perpendicular to the object spectrum but are tilted in the cross-dispersion direction (see {numref}`uvis_xenon`).
 
 The full UV-VIS wavelength range is 350 – 850nm (providing a 50nm overlap with the NIR arm for cross-calibration), and with the deep-depleted CCD42-82 device, fringing in the red part of the spectrum is below $5\%$ and, therefore, the pipeline does not perform any fringing corrections. Also, due to the CCD's low dark current, calibration dark frames are not required. Unlike the NIR arm, the UV-VIS arm *will* include an ADC.

@@ -300,7 +300,7 @@ def test_response_get_writes_response_and_efficiency_products(
     monkeypatch.setattr(
         toolkitModule,
         "add_snr_efficiency_qcs",
-        lambda **kwargs: kwargs["qcTable"],
+        lambda **kwargs: captured.update({"snrArm": kwargs["arm"]}) or kwargs["qcTable"],
     )
     monkeypatch.setattr(
         phase3Module,
@@ -322,4 +322,5 @@ def test_response_get_writes_response_and_efficiency_products(
     )
     assert captured["responseWrite"]["polyOrder"] == 0
     assert captured["efficiencyWrite"]["filePath"] == "/products/SYNTHETIC_EFFICIENCY.fits"
+    assert captured["snrArm"] == "VIS"
     assert captured["plot"]["stdEfficiencyEstimate"].shape == (21,)

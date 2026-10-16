@@ -231,32 +231,60 @@ def test_plot_merged_spectrum_qc_labels_title_and_line_colours(
     assert snrLine.get_color() == "black"
 
 
-def test_plot_merged_spectrum_qc_snr_text_sorts_global_vis_letters_then_numeric_orders(
-    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The SNR text box sorts `GLOBAL` first, then VIS arm letters in
-    `_vis_rank` order, then numeric orders ascending, then any order name
-    that is neither a VIS letter nor numeric (the `_order_key` fallback
-    `except` branch); duplicate `(qc_name, qc_order)` rows keep the *last*
-    occurrence's value."""
+def _snr_text_for(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: object, qcTable: pd.DataFrame, arm: str) -> str:
     figures = spy_figures(monkeypatch)
     _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
-    qcTable = pd.DataFrame(
-        {
-            "qc_name": ["SNR MEDIAN"] * 8,
-            "qc_order": [np.nan, "12", "11", "12", "u", "g", "r", "extra"],
-            # THE SECOND "12" ROW (VALUE 9.0) MUST WIN OVER THE FIRST (5.0)
-            "qc_value": [6.0, 5.0, 7.0, 9.0, 1.0, 2.0, 3.0, 4.0],
-        }
-    )
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, qcTable=qcTable, orderJoins=False)
+    _call_plot_merged_spectrum_qc(
+        monkeypatch, tmp_path, log, _synthetic_merged_orders(), qcTable=qcTable, orderJoins=False, arm=arm
+    )
 
     bottom = figures[-1].axes[2]
     snrTexts = [text for text in bottom.texts if ":" in text.get_text()]
     assert len(snrTexts) == 1
-    assert snrTexts[0].get_text() == "GLOBAL: 6\nu: 1\ng: 2\nr: 3\n11: 7\n12: 9\nextra: 4"
+    return snrTexts[0].get_text()
+
+
+def test_plot_merged_spectrum_qc_snr_text_lists_soxs_vis_orders_blue_to_red_with_their_bands(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GLOBAL comes first, then the VIS orders by wavelength (u, g, r, i), each labelled with its trace number
+    and band; duplicate `(qc_name, qc_order)` rows keep the *last* occurrence's value."""
+    qcTable = pd.DataFrame(
+        {
+            "qc_name": [
+                "SNR MEDIAN",
+                "SNR MEDIAN O4",
+                "SNR MEDIAN O1",
+                "SNR MEDIAN O3",
+                "SNR MEDIAN O2",
+                "SNR MEDIAN O3",
+            ],
+            "qc_order": [np.nan, 4, 1, 3, 2, 3],
+            # THE SECOND O3 ROW (VALUE 9.0) MUST WIN OVER THE FIRST (5.0)
+            "qc_value": [6.0, 4.0, 3.0, 5.0, 1.0, 9.0],
+        }
+    )
+
+    text = _snr_text_for(monkeypatch, tmp_path, log, qcTable, arm="VIS")
+
+    assert text == "GLOBAL: 6\n2 (u): 1\n3 (g): 9\n1 (r): 3\n4 (i): 4"
+
+
+def test_plot_merged_spectrum_qc_snr_text_lists_other_arm_orders_by_number(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    qcTable = pd.DataFrame(
+        {
+            "qc_name": ["SNR MEDIAN", "SNR MEDIAN O12", "SNR MEDIAN O11"],
+            "qc_order": [np.nan, 12, 11],
+            "qc_value": [6.0, 5.0, 7.0],
+        }
+    )
+
+    text = _snr_text_for(monkeypatch, tmp_path, log, qcTable, arm="NIR")
+
+    assert text == "GLOBAL: 6\n11: 7\n12: 5"
 
 
 def test_plot_merged_spectrum_qc_snr_text_absent_when_qc_table_is_false(

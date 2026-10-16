@@ -187,7 +187,7 @@ def _patch_nodding_collaborators(
         calls.append("extract_cycle")
         captured["extract_cycle"].append(kwargs)
         recipe.qc = pd.concat([recipe.qc, extractionQc], ignore_index=True)
-        return spectrum.copy(), spectrum.copy(), {10: 11}
+        return spectrum.copy(), spectrum.copy(), {"10-11": 11}
 
     monkeypatch.setattr(
         recipe,
@@ -284,7 +284,7 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
 
         def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
             spectrum = pd.DataFrame({"WAVE": [500.0], "FLUX": [1.0]})
-            return recipe.qc, recipe.products, spectrum, {10: 1}, "extraction.fits"
+            return recipe.qc, recipe.products, spectrum, {"10-11": 1}, "extraction.fits"
 
     monkeypatch.setattr(commonutils, "horne_extraction", Extractor)
     monkeypatch.setattr(
@@ -313,7 +313,7 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
     assert calls[1]["skySubtractedFrame"].data[0, 0] == pytest.approx(bFrame.data[0, 0] - aFrame.data[0, 0])
     assert spectrumA["WAVE"].tolist() == [500.0]
     assert spectrumB["WAVE"].tolist() == [500.0]
-    assert joins == {10: 1}
+    assert joins == {"10-11": 1}
 
 
 def test_nod_stack_extractions_writes_merged_fits_and_ascii_products(
@@ -360,7 +360,7 @@ def test_nod_stack_extractions_writes_merged_fits_and_ascii_products(
         }
     )
 
-    stacked, fitsPath = recipe.stack_extractions([first, second], orderJoins={10: 1})
+    stacked, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert Path(fitsPath).is_file()
     assert Path(fitsPath.replace(".fits", ".txt")).is_file()
@@ -514,7 +514,7 @@ def test_offset_success_returns_extraction_and_records_qc(
     assert extractArgs["masterFlat"] is False
     stackArgs = captured["stack_extractions"][0]
     assert len(stackArgs["args"][0]) == 1
-    assert stackArgs["orderJoins"] == {10: 11}
+    assert stackArgs["orderJoins"] == {"10-11": 11}
     plotArgs = captured["plot"][0]
     assert plotArgs["merged_orders"].equals(pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]}))
     assert plotArgs["filenameTemplate"] == "OBJECT_VIS.fits"
@@ -801,7 +801,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
                 recipe.qc,
                 recipe.products,
                 spectrum,
-                {10: 11},
+                {"10-11": 11},
                 str(tmp_path / "OBJECT_VIS_EXTRACTED.fits"),
             )
 
@@ -1155,7 +1155,7 @@ def test_stare_generates_a_response_from_a_flux_standard(
                 recipe.qc,
                 recipe.products,
                 spectrum,
-                {10: 11},
+                {"10-11": 11},
                 str(tmp_path / f"extracted-{extractionNumber}.fits"),
             )
 
@@ -1199,7 +1199,7 @@ def test_stare_generates_a_response_from_a_flux_standard(
     assert extractionArguments[1]["notFlattened"] is True
     assert responseArguments[0]["stdExtractionPath"] == str(tmp_path / "extracted-1.fits")
     assert responseArguments[0]["stdNotFlatExtractionPath"] == str(tmp_path / "extracted-2.fits")
-    assert responseArguments[0]["orderJoins"] == {10: 11}
+    assert responseArguments[0]["orderJoins"] == {"10-11": 11}
 
 
 def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
@@ -1274,7 +1274,7 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
             calls.append("extract")
             spectrum = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [3.0]})
-            return recipe.qc, recipe.products, spectrum, {10: 11}, str(tmp_path / "extracted.fits")
+            return recipe.qc, recipe.products, spectrum, {"10-11": 11}, str(tmp_path / "extracted.fits")
 
     class FakeFluxCalibrator:
         def __init__(self, **kwargs: object) -> None:
@@ -1363,7 +1363,7 @@ def _cycle_recipe(
 
         def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
             spectrum = pd.DataFrame({"WAVE": [500.0], "FLUX": [1.0]})
-            return recipe.qc, recipe.products, spectrum, {10: 1}, "extraction.fits"
+            return recipe.qc, recipe.products, spectrum, {"10-11": 1}, "extraction.fits"
 
     monkeypatch.setattr(commonutils, "horne_extraction", Extractor)
     monkeypatch.setattr(nodModule, "generic_quality_checks", lambda **kwargs: kwargs["qcTable"])
@@ -1502,7 +1502,7 @@ def test_nod_and_offset_merged_plots_both_receive_the_collected_notes(
         lambda **kwargs: (plots.append(kwargs), (kwargs["products"], "plot.pdf"))[-1],
     )
 
-    getattr(recipe, plotMethod)(pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]}), {10: 11}, str(fluxPath))
+    getattr(recipe, plotMethod)(pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]}), {"10-11": 11}, str(fluxPath))
 
     assert [plot["fluxCalibrated"] for plot in plots] == [False, True]
     assert [plot["extractionNotes"] for plot in plots] == [["[A1] WARNING: Order skipped: 12"]] * 2
@@ -1535,6 +1535,6 @@ def test_stare_merged_plots_receive_the_extractors_notes(
     )
     merged = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [3.0]})
 
-    recipe._plot_merged_spectrum_qcs(merged, {10: 11}, str(fluxPath), [("ERROR", "spill"), ("WARNING", "skipped")])
+    recipe._plot_merged_spectrum_qcs(merged, {"10-11": 11}, str(fluxPath), [("ERROR", "spill"), ("WARNING", "skipped")])
 
     assert [plot["extractionNotes"] for plot in plots] == [["ERROR: spill", "WARNING: skipped"]] * 2

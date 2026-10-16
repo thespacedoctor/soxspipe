@@ -26,9 +26,17 @@ from soxspipe.commonutils.polynomials import (
 )
 
 if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+    from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
 os.environ["TERM"] = "vt100"
+
+# SOXS VIS ORDER NUMBER (AS IN THE STATIC TABLES, PRODUCTS, QCS AND PLOTS) TO ITS BAND
+SOXS_VIS_ORDER_BANDS = {1: "r", 2: "u", 3: "g", 4: "i"}
+# THE SOXS VIS ORDER NUMBERS FROM THE SHORTEST TO THE LONGEST WAVELENGTHS (u, g, r, i)
+SOXS_VIS_ORDERS_BLUE_TO_RED = (2, 3, 1, 4)
 
 # QC PLOT LAYOUT (INCHES)
 QC_PLOT_PANEL_WIDTH_INCHES = 5.2
@@ -53,6 +61,31 @@ NOTE_LEFT_MARGIN = 0.01
 NOTE_ERROR_COLOUR = "#dc322f"
 NOTE_WARNING_COLOUR = "darkorange"
 NOTE_SUMMARY_COLOUR = "dimgrey"
+
+
+def order_label(order: int | float, arm: str) -> str:
+    """*the label for an echelle order: its number, plus its band letter for SOXS VIS*
+
+    **Key Arguments:**
+
+    - ``order`` -- the order number
+    - ``arm`` -- the arm the order belongs to (e.g. ``VIS``). Case is ignored
+
+    **Return:**
+
+    - ``label`` -- e.g. ``"1 (r)"`` for SOXS VIS order 1 and ``"11"`` for order 11 of any other arm
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import order_label
+    label = order_label(1, "VIS")
+    ```
+    """
+    order = int(order)
+    if str(arm).upper() == "VIS" and order in SOXS_VIS_ORDER_BANDS:
+        return f"{order} ({SOXS_VIS_ORDER_BANDS[order]})"
+    return f"{order}"
 
 
 def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False, debug=False):
@@ -2655,11 +2688,11 @@ def plot_merged_spectrum_qc(
     )
 
     bottom_panel = _draw_merged_snr_panel(
-        log=log,
         fig=fig,
         gs=gs,
         merged_orders=merged_orders,
         qcTable=qcTable,
+        arm=arm,
     )
 
     # SKY PANEL WITH SKY FLUX
@@ -2799,16 +2832,16 @@ def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, flux
     return top_panel, middle_panel
 
 
-def _draw_merged_snr_panel(log, fig, gs, merged_orders, qcTable):
+def _draw_merged_snr_panel(fig, gs, merged_orders, qcTable, arm):
     """*draw the SNR panel of the merged-spectrum QC plot, annotated with the per-order SNR values*
 
     **Key Arguments:**
 
-    - ``log`` -- logger
     - ``fig`` -- the QC figure
     - ``gs`` -- the figure's gridspec
     - ``merged_orders`` -- the order-merged spectrum
     - ``qcTable`` -- the QC table holding the SNR values to annotate, or *False* for none
+    - ``arm`` -- the spectrograph arm, which decides how the orders are labelled and sorted
 
     **Return:**
 
@@ -2822,7 +2855,7 @@ def _draw_merged_snr_panel(log, fig, gs, merged_orders, qcTable):
     bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
 
     if not isinstance(qcTable, bool):
-        orderValue, snrValue = _snr_orders_and_values(log, qcTable)
+        orderValue, snrValue = _snr_orders_and_values(qcTable)
 
     bottom_panel.plot(
         merged_orders["WAVE"],
@@ -2839,7 +2872,7 @@ def _draw_merged_snr_panel(log, fig, gs, merged_orders, qcTable):
 
     # ADD SNR VALUES TO BOTTOM PANEL
     if not isinstance(qcTable, bool) and len(orderValue):
-        _annotate_snr_values(bottom_panel, orderValue, snrValue)
+        _annotate_snr_values(bottom_panel, orderValue, snrValue, arm)
 
     return bottom_panel
 
@@ -2858,58 +2891,58 @@ def _set_wavelength_xlim(panel, merged_orders):
         panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
 
 
-def _snr_orders_and_values(log, qcTable):
+def _snr_orders_and_values(qcTable: "pd.DataFrame") -> "tuple[np.ndarray, np.ndarray]":
     """*pull the per-order median SNR values out of a QC table for the merged-spectrum QC plot*
 
     **Key Arguments:**
 
-    - ``log`` -- logger
-    - ``qcTable`` -- the QC table holding the ``SNR MEDIAN`` rows
+    - ``qcTable`` -- the QC table holding the ``SNR MEDIAN`` and ``SNR MEDIAN O<N>`` rows
 
     **Return:**
 
-    - ``orderValue`` -- the order of each SNR value, with ``GLOBAL`` for the whole-spectrum value
+    - ``orderValue`` -- the order number of each SNR value, with ``GLOBAL`` for the whole-spectrum value
     - ``snrValue`` -- the SNR values
     """
     import numpy as np
-    import pandas as pd
 
     qcTable = qcTable.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
-    snrValue = qcTable.loc[qcTable["qc_name"] == "SNR MEDIAN"]
-    orderValue = snrValue["qc_order"].values
-    for i in range(len(orderValue)):
-        try:
-            orderValue[i] = int(orderValue[i])
-        except (ValueError, TypeError) as e:
-            log.debug(f"plot_merged_spectrum_qc: `orderValue[i] = int(orderValue[i])` failed, continuing: {e}")
+    names = qcTable["qc_name"].astype(str)
+    snrValue = qcTable.loc[(names == "SNR MEDIAN") | names.str.fullmatch(r"SNR MEDIAN O\d+")]
+    orderValue = np.array(
+        [
+            "GLOBAL" if name == "SNR MEDIAN" else int(name.rsplit(" O", 1)[1])
+            for name in snrValue["qc_name"].astype(str)
+        ],
+        dtype=object,
+    )
+    return orderValue, snrValue["qc_value"].values
 
-    orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
-    snrValue = snrValue["qc_value"].values
-    return orderValue, snrValue
 
-
-def _annotate_snr_values(bottom_panel, orderValue, snrValue):
+def _annotate_snr_values(bottom_panel: "Axes", orderValue: "np.ndarray", snrValue: "np.ndarray", arm: str) -> None:
     """*write the per-order median SNR values in the corner of the merged-spectrum SNR panel*
+
+    The whole-spectrum value comes first. The SOXS VIS orders follow by wavelength and are labelled with their
+    band. The orders of any other arm follow by number.
 
     **Key Arguments:**
 
     - ``bottom_panel`` -- the SNR panel
     - ``orderValue`` -- the order of each SNR value
     - ``snrValue`` -- the SNR values
+    - ``arm`` -- the spectrograph arm
     """
-    _vis_rank = {"GLOBAL": 0, "u": 1, "g": 2, "r": 3, "i": 4}
+    isVis = str(arm).upper() == "VIS"
 
     def _order_key(pair):
         o = pair[0]
-        if o in _vis_rank:
-            return (0, _vis_rank[o])
-        try:
-            return (1, float(o))
-        except (ValueError, TypeError):
-            return (2, str(o))
+        if o == "GLOBAL":
+            return (0, 0)
+        if isVis and o in SOXS_VIS_ORDERS_BLUE_TO_RED:
+            return (1, SOXS_VIS_ORDERS_BLUE_TO_RED.index(o))
+        return (2, o)
 
     pairs = sorted(zip(orderValue, snrValue, strict=False), key=_order_key)
-    snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in pairs)
+    snr_text = "\n".join(f"{o if o == 'GLOBAL' else order_label(o, arm)}: {v:.0f}" for o, v in pairs)
     bottom_panel.text(
         0.99,
         0.98,
@@ -3157,7 +3190,32 @@ def frame_to_32(frame):
     return frame
 
 
-def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs):
+def parse_order_join_key(key: str) -> tuple[int, int]:
+    """*split an order-join key into the two orders it joins*
+
+    **Key Arguments:**
+
+    - ``key`` -- the join key, ``"<red order>-<blue order>"``, e.g. ``"11-12"`` or, for SOXS VIS, ``"4-1"``
+
+    **Return:**
+
+    - ``redOrder`` -- the order on the red side of the join
+    - ``blueOrder`` -- the order on the blue side of the join
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import parse_order_join_key
+    redOrder, blueOrder = parse_order_join_key("4-1")
+    ```
+    """
+    parts = str(key).split("-")
+    if len(parts) != 2 or not all(part.isascii() and part.isdigit() for part in parts):
+        raise ValueError(f"The order join key {key!r} is not of the form '<red order>-<blue order>'.")
+    return int(parts[0]), int(parts[1])
+
+
+def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs, arm):
     """*add quality checks to the qc table*
 
     **Key Arguments:**
@@ -3166,19 +3224,22 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY'
       to calculate the checks from.
     - ``qcTable`` -- the qc table to which the SNR checks will be added
-    - ``orderJoins`` -- a dictionary containing the wavelengths of order joins (if any) to be added as QCs.
+    - ``orderJoins`` -- a dictionary of order-join wavelengths, keyed ``"<red order>-<blue order>"`` (if any)
     - ``recipeName`` -- name of the recipe to add to the QC entries
     - ``dateObs`` -- the observation date to add to the QC entries (in ISO format, e.g., "2024-06-01T00:00:00")
+    - ``arm`` -- the spectrograph arm, which decides whether SOXS VIS band letters are added to the comments
 
     **Return:**
 
-    - ``qcTable`` -- the updated qc table with SNR checks added
+    - ``qcTable`` -- the updated qc table with SNR checks added. The all-order medians are named ``SNR MEDIAN``
+      and ``EFF MEDIAN``. Each order gets its own ``SNR MEDIAN O<N>`` and ``EFF MEDIAN O<N>`` row, where ``N`` is
+      the order number (for SOXS VIS, 1=r, 2=u, 3=g and 4=i), so the header keeps one card per order.
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
-    qcTable = add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs)
+    qcTable = add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs, arm)
     ```
     """
     import numpy as np
@@ -3194,24 +3255,14 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
     orderJoins = dict(reversed(list(orderJoins.items())))
 
-    for i, (orders, wl) in enumerate(orderJoins.items()):
-        if len(orders) == 2:
-            visOrders = ["i", "r", "g", "u"]
-            lastOrder = visOrders[int(orders[0])]
-            order = visOrders[int(orders[0]) - 1]
-
-        elif len(orders) == 3:
-            lastOrder = int(orders[:1])
-            order = int(orders[1:])
-        else:
-            order = int(orders[:2])
-            lastOrder = int(orders[2::])
+    for i, (key, wl) in enumerate(orderJoins.items()):
+        redOrder, blueOrder = parse_order_join_key(key)
         if i == 0:
-            spectrumDF.loc[(spectrumDF["WAVE"] <= wl), "ORDER"] = lastOrder
+            spectrumDF.loc[(spectrumDF["WAVE"] <= wl), "ORDER"] = blueOrder
         spectrumDF.loc[
             spectrumDF["WAVE"] >= wl,
             "ORDER",
-        ] = order
+        ] = redOrder
 
     utcnow = utcnow_string()
 
@@ -3250,10 +3301,10 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         [
                             {
                                 "soxspipe_recipe": recipeName,
-                                "qc_name": "EFF MEDIAN",
+                                "qc_name": f"EFF MEDIAN O{int(row['ORDER'])}",
                                 "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.4f}"),
-                                "qc_comment": f"Median efficiency in order {row['ORDER']}",
-                                "qc_order": row["ORDER"],
+                                "qc_comment": f"Median efficiency in order {order_label(row['ORDER'], arm)}",
+                                "qc_order": int(row["ORDER"]),
                                 "qc_unit": None,
                                 "obs_date_utc": dateObs,
                                 "reduction_date_utc": utcnow,
@@ -3298,10 +3349,10 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         [
                             {
                                 "soxspipe_recipe": recipeName,
-                                "qc_name": "SNR MEDIAN",
+                                "qc_name": f"SNR MEDIAN O{int(row['ORDER'])}",
                                 "qc_value": float(f"{row['MEDIAN_SNR']:0.3f}"),
-                                "qc_comment": f"Median SNR in order {row['ORDER']}",
-                                "qc_order": row["ORDER"],
+                                "qc_comment": f"Median SNR in order {order_label(row['ORDER'], arm)}",
+                                "qc_order": int(row["ORDER"]),
                                 "qc_unit": None,
                                 "obs_date_utc": dateObs,
                                 "reduction_date_utc": utcnow,

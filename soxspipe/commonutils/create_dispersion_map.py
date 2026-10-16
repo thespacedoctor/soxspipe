@@ -55,6 +55,7 @@ from soxspipe.commonutils.toolkit import (
     QC_STRIP_ROW_HEIGHT_INCHES,
     get_calibrations_path,
     legend_below_axis,
+    order_label,
     qc_image_panel_height,
     qc_table_heights,
     read_spectral_format,
@@ -2118,16 +2119,7 @@ class create_dispersion_map:
                 ydiff_sd = thisOrder["y_diff"].std()
                 xydiff_sd = np.sqrt(np.square(xdiff_sd) + np.square(ydiff_sd)).std()
                 o = int(o)
-
-                if self.inst == "SOXS" and self.arm == "VIS":
-                    for n, oo in zip(["u", "g", "r", "i"], [2, 3, 1, 4]):
-                        if o == oo:
-                            ostr = n
-                            odb = n
-                            break
-                else:
-                    ostr = f"O{o}"
-                    odb = o
+                orderText = order_label(o, self.arm)
 
                 arrayOfNames = [
                     "X RES MEDIAN",
@@ -2148,9 +2140,10 @@ class create_dispersion_map:
                     "R PIN SD",
                 ]
 
-                qc_names.extend(arrayOfNames)
+                # ONE CARD PER ORDER: THE HEADER KEEPS ONLY THE LAST OF ANY REPEATED NAME
+                qc_names.extend([f"{name} O{o}" for name in arrayOfNames])
 
-                qc_order.extend([odb] * len(arrayOfNames))
+                qc_order.extend([o] * len(arrayOfNames))
 
                 qc_values.extend(
                     [
@@ -2175,26 +2168,25 @@ class create_dispersion_map:
 
                 qc_units.extend(["pixels"] * 14 + [""] * 2)
 
-                qc_comments.extend(
-                    [
-                        f"[px] Median residual in dispersion solution fit along x-axis for order {o}",
-                        f"[px] Median residual in dispersion solution fit along y-axis for order {o}",
-                        f"[px] Median residual in dispersion solution fit (XY combined) for order {o}",
-                        f"[px] Std-dev of residual in dispersion solution fit along x-axis for order {o}",
-                        f"[px] Std-dev of residual in dispersion solution fit along y-axis for order {o}",
-                        f"[px] Std-dev of residual in dispersion solution (XY combined) for order {o}",
-                        f"[px] Median difference between predicted and observed line positions along x-axis for order {o}",
-                        f"[px] Median difference between predicted and observed line positions along y-axis for order {o}",
-                        f"[px] Median difference between predicted and observed line positions (XY combined) for order {o}",
-                        f"[px] Std-dev of difference between predicted and observed line positions along x-axis for order {o}",
-                        f"[px] Std-dev of difference between predicted and observed line positions along y-axis for order {o}",
-                        f"[px] Std-dev of difference between predicted and observed line positions (XY combined) for order {o}",
-                        f"[px] Median FWHM of detected lines in pinhole frames for order {o}",
-                        f"[px] Std-dev of FWHM of detected lines in pinhole frames for order {o}",
-                        f"Median spectral resolution measured from detected lines in pinhole frames for order {o}",
-                        f"Std-dev of spectral resolution measured from detected lines in pinhole frames for order {o}",
-                    ]
-                )
+                commentStems = [
+                    "[px] Median residual in dispersion solution fit along x-axis",
+                    "[px] Median residual in dispersion solution fit along y-axis",
+                    "[px] Median residual in dispersion solution fit (XY combined)",
+                    "[px] Std-dev of residual in dispersion solution fit along x-axis",
+                    "[px] Std-dev of residual in dispersion solution fit along y-axis",
+                    "[px] Std-dev of residual in dispersion solution (XY combined)",
+                    "[px] Median difference between predicted and observed line positions along x-axis",
+                    "[px] Median difference between predicted and observed line positions along y-axis",
+                    "[px] Median difference between predicted and observed line positions (XY combined)",
+                    "[px] Std-dev of difference between predicted and observed line positions along x-axis",
+                    "[px] Std-dev of difference between predicted and observed line positions along y-axis",
+                    "[px] Std-dev of difference between predicted and observed line positions (XY combined)",
+                    "[px] Median FWHM of detected lines in pinhole frames",
+                    "[px] Std-dev of FWHM of detected lines in pinhole frames",
+                    "Median spectral resolution measured from detected lines in pinhole frames",
+                    "Std-dev of spectral resolution measured from detected lines in pinhole frames",
+                ]
+                qc_comments.extend([f"{stem} for order {orderText}" for stem in commentStems])
 
             if (
                 len(qc_units) != len(qc_names)

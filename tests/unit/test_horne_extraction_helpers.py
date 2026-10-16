@@ -126,12 +126,12 @@ def _configure_synthetic_orchestration(
     monkeypatch.setattr(
         toolkit,
         "add_snr_efficiency_qcs",
-        lambda **kwargs: kwargs["qcTable"],
+        lambda **kwargs: captured.update(snrKwargs=kwargs) or kwargs["qcTable"],
     )
     extractor.plot_extracted_spectrum_qc = lambda **kwargs: captured.update(kwargs)
     extractor.plot_slit_drift_qc = lambda transformer: captured.update(slitDriftTransformer=transformer)
     extractor.tune_wavelength_calibration_to_skylines = lambda orders, arm: orders
-    extractor.merge_extracted_orders = lambda orders: (merged.copy(), {"1011": 501.0})
+    extractor.merge_extracted_orders = lambda orders: (merged.copy(), {"10-11": 501.0})
     return extractor, extraction, captured
 
 
@@ -166,7 +166,9 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
     assert qc.loc[0, "qc_value"] == 0
     assert products is False
     assert filePath is False
-    assert joins == {"1011": 501.0}
+    assert joins == {"10-11": 501.0}
+    assert captured["snrKwargs"]["arm"] == "VIS"
+    assert captured["snrKwargs"]["orderJoins"] == {"10-11": 501.0}
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
     assert captured["transformer"]
     assert captured["cached"] == ["fluxRaw", "variance"]
@@ -476,7 +478,7 @@ def test_extract_writes_order_and_merged_product_contracts(
     assert (tmp_path / "SYNTHETIC_EXTRACTED_MERGED.txt").is_file()
     assert filePath == str(tmp_path / "SYNTHETIC_EXTRACTED_MERGED.fits")
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
-    assert joins == {"1011": 501.0}
+    assert joins == {"10-11": 501.0}
 
 
 @pytest.mark.parametrize("recipeName", ["soxs-stare", "soxs-nod", "soxs-offset"])
@@ -1400,34 +1402,164 @@ def test_merge_grid_raises_when_no_step_multiple_lies_inside_the_range() -> None
         horne_extraction._resample_grid(500.003, 500.007, ratio=50.0)
 
 
-def test_order_merge_renumbers_soxs_vis_orders_in_place_and_keeps_their_dtype(log: object) -> None:
-    extractor = _extractor(log)
-    extractor.arm = "VIS"
-    extractor.kw = lambda key: key
-    traceOrders = [1, 2, 3, 4]
-    starts = {4: 700.0, 1: 600.0, 3: 500.0, 2: 400.0}
+def _merge_rows(spec: list[tuple[int, list[float], list[float]]], pixelScale: float) -> pd.DataFrame:
+    """Build an extraction table from ``(order, wavelengths, fluxes)`` triples."""
     rows = []
-    for order in traceOrders:
-        for step in range(3):
+    for order, wavelengths, fluxes in spec:
+        for wavelength, flux in zip(wavelengths, fluxes, strict=True):
             rows.append(
                 {
                     "order": order,
-                    "wavelengthMean": starts[order] + 0.02 * step,
-                    "pixelScaleNm": 0.02,
-                    "extractedFluxOptimal": 10.0,
-                    "extractedFluxBoxcar": 10.0,
-                    "extractedFluxBoxcarRobust": 10.0,
-                    "varianceSpectrum": 1.0,
+                    "wavelengthMean": wavelength,
+                    "pixelScaleNm": pixelScale,
+                    "extractedFluxOptimal": flux,
+                    "extractedFluxBoxcar": flux,
+                    "extractedFluxBoxcarRobust": flux,
+                    "varianceSpectrum": 4.0,
                     "skyFlux": 1.0,
                 }
             )
-    extractedOrders = pd.DataFrame(rows).astype({"order": np.int16})
+    return pd.DataFrame(rows)
+
+
+# NIR AND UVB ORDERS RUN RED TO BLUE AS THE ORDER NUMBER RISES. THE JOIN VALUES AND MERGED OUTPUT WERE RECORDED FROM
+# THE MERGE BEFORE IT STOPPED ASSUMING THAT, SO THEY PIN THESE ARMS TO THE EARLIER BEHAVIOUR. ONLY THE JOIN KEYS CHANGED
+# FORMAT, FROM "1112" TO "11-12"
+ASCENDING_MERGE_CASES = {
+    "NIR": {
+        "pixelScale": 0.06,
+        "spec": [
+            (11, [1000.0, 1002.0, 1004.0, 1006.0], [10.0, 20.0, 30.0, 40.0]),
+            (12, [995.0, 997.0, 999.0, 1001.0, 1003.0], [50.0, 60.0, 70.0, 80.0, 90.0]),
+            (13, [990.0, 992.0, 994.0, 996.0, 998.0], [110.0, 120.0, 130.0, 140.0, 150.0]),
+        ],
+        "joins": {"11-12": 1001.5, "12-13": 996.5},
+        "length": 266,
+        "waveEnds": (990.06, 1005.96),
+        "fluxSum": 21605.102,
+        "fluxEveryTenth": [
+            110.3, 113.3, 116.3, 119.3, 122.3, 125.3, 128.3, 131.3, 134.3, 137.3, 135.2, 87.2, 61.3, 64.3,
+            67.3, 70.3, 73.3, 76.3, 79.3, 52.4, 20.3, 23.3, 26.3, 29.3, 32.3, 35.3, 38.3,
+        ],
+    },
+    "UVB": {
+        "pixelScale": 0.02,
+        "spec": [
+            (20, [380.0, 380.5, 381.0, 381.5], [10.0, 20.0, 30.0, 40.0]),
+            (21, [379.0, 379.5, 380.0, 380.5], [50.0, 60.0, 70.0, 80.0]),
+            (22, [377.0, 378.0, 379.0], [110.0, 120.0, 130.0]),
+        ],
+        "joins": {"20-21": 363.5, "21-22": 379.0},
+        "length": 226,
+        "waveEnds": (377.0, 381.5),
+        "fluxSum": 14200.0,
+        "fluxEveryTenth": [
+            110.0, 112.0, 114.0, 116.0, 118.0, 120.0, 106.0, 92.0, 78.0, 64.0, 50.0, 54.0, 58.0, 50.0,
+            30.0, 10.0, 14.0, 18.0, 22.0, 26.0, 30.0, 34.0, 38.0,
+        ],
+    },
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("arm", sorted(ASCENDING_MERGE_CASES))
+def test_order_merge_keeps_the_joins_and_output_when_ascending_order_numbers_run_red_to_blue(
+    log: object, arm: str
+) -> None:
+    case = ASCENDING_MERGE_CASES[arm]
+    extractor = _extractor(log)
+    extractor.arm = arm
+    extractor.kw = lambda key: key
+
+    merged, joins = extractor.merge_extracted_orders(_merge_rows(case["spec"], case["pixelScale"]))
+
+    assert joins == pytest.approx(case["joins"])
+    assert list(joins) == list(case["joins"])
+    wave = merged["WAVE"].values.value
+    flux = merged["FLUX_COUNTS"].values.value
+    assert len(merged) == case["length"]
+    np.testing.assert_allclose([wave[0], wave[-1]], case["waveEnds"])
+    assert flux.sum() == pytest.approx(case["fluxSum"], rel=1e-6)
+    np.testing.assert_allclose(flux[::10], case["fluxEveryTenth"], rtol=1e-5)
+
+
+def _vis_trace_orders() -> pd.DataFrame:
+    """VIS extraction table in trace numbers, where 1=r, 2=u, 3=g and 4=i."""
+    starts = {4: 700.0, 1: 600.0, 3: 500.0, 2: 400.0}
+    spec = [(order, [start + 0.02 * step for step in range(3)], [10.0] * 3) for order, start in starts.items()]
+    return _merge_rows(spec, pixelScale=0.02).astype({"order": np.int16})
+
+
+def _vis_extractor(log: object) -> horne_extraction:
+    extractor = _extractor(log)
+    extractor.arm = "VIS"
+    extractor.kw = lambda key: key
+    return extractor
+
+
+def test_order_merge_joins_soxs_vis_orders_red_to_blue_under_their_trace_numbers(log: object) -> None:
+    extractor = _vis_extractor(log)
+
+    _, joins = extractor.merge_extracted_orders(_vis_trace_orders())
+
+    assert list(joins) == ["4-1", "1-3", "3-2"]
+    assert joins == pytest.approx({"4-1": 650.02, "1-3": 550.02, "3-2": 450.02})
+
+
+def test_orders_red_to_blue_sorts_by_median_wavelength_whatever_the_numbering() -> None:
+    table = _merge_rows(
+        [(1, [600.0, 601.0], [1.0, 1.0]), (2, [400.0, 401.0], [1.0, 1.0]), (4, [700.0, 701.0], [1.0, 1.0])],
+        pixelScale=0.02,
+    )
+
+    assert horne_extraction._orders_red_to_blue(table) == [4, 1, 2]
+
+
+def test_orders_red_to_blue_drops_orders_whose_median_wavelength_is_nan() -> None:
+    table = _merge_rows([(1, [600.0], [1.0]), (2, [400.0], [1.0]), (3, [np.nan], [1.0])], pixelScale=0.02)
+
+    assert horne_extraction._orders_red_to_blue(table) == [1, 2]
+
+
+def test_orders_red_to_blue_returns_an_empty_list_for_an_empty_table() -> None:
+    table = _merge_rows([], pixelScale=0.02).reindex(columns=["order", "wavelengthMean"])
+
+    assert horne_extraction._orders_red_to_blue(table) == []
+
+
+def test_orders_red_to_blue_rejects_order_ids_that_are_not_whole_numbers() -> None:
+    table = _merge_rows([(1.5, [600.0], [1.0]), (2.0, [400.0], [1.0])], pixelScale=0.02)
+
+    with pytest.raises(ValueError, match="whole-number order"):
+        horne_extraction._orders_red_to_blue(table)
+
+
+def test_orders_red_to_blue_accepts_whole_number_float_order_ids() -> None:
+    table = _merge_rows([(11.0, [600.0], [1.0]), (12.0, [400.0], [1.0])], pixelScale=0.02)
+
+    assert horne_extraction._orders_red_to_blue(table) == [11, 12]
+
+
+def test_order_merge_of_an_empty_table_fails_on_the_empty_wavelength_column_not_on_join_building(log: object) -> None:
+    extractor = _vis_extractor(log)
+    empty = _merge_rows([], pixelScale=0.02).reindex(columns=_merge_rows([(1, [1.0], [1.0])], 0.02).columns)
+
+    with pytest.raises(ValueError, match="wavelengthMean"):
+        extractor.merge_extracted_orders(empty)
+
+
+def test_order_merge_leaves_the_callers_soxs_vis_order_column_untouched(log: object) -> None:
+    extractor = _vis_extractor(log)
+    extractedOrders = _vis_trace_orders()
 
     extractor.merge_extracted_orders(extractedOrders)
 
     assert extractedOrders["order"].dtype == np.int16
-    renumbered = extractedOrders.groupby("order")["wavelengthMean"].min().to_dict()
-    assert renumbered == {1: 700.0, 2: 600.0, 3: 500.0, 4: 400.0}
+    assert extractedOrders.groupby("order")["wavelengthMean"].min().to_dict() == {
+        1: 600.0,
+        2: 400.0,
+        3: 500.0,
+        4: 700.0,
+    }
 
 
 def test_order_merge_helpers_weight_signal_and_choose_lower_residual(
@@ -1448,19 +1580,21 @@ def test_order_merge_helpers_weight_signal_and_choose_lower_residual(
     assert selected.tolist() == pytest.approx([-4.0, -4.0])
 
 
-def test_wavelength_tuning_uses_order_four_shift_for_unmatched_vis_order(
+def test_wavelength_tuning_shifts_only_the_orders_it_measures_and_leaves_vis_u_and_g_unshifted(
     log: object,
 ) -> None:
     extractor = _extractor(log)
     extractor.debug = False
     extraction = pd.DataFrame(
         {
-            "order": [4, 11],
-            "wavelengthMean": [500.0, 600.0],
-            "pixelScaleNm": [0.1, 0.1],
+            "order": [4, 1, 2, 3],
+            "wavelengthMean": [750.0, 600.0, 400.0, 500.0],
+            "pixelScaleNm": [0.1, 0.1, 0.1, 0.1],
         }
     )
-    measuredShifts = iter([0.1, 0.1, 0.1, 0.0, 0.0, 0.0])
+    # ORDERS ARE MEASURED IN NUMBER ORDER. ORDER 1 (r) FINDS NO SKYLINES, ORDERS 2 AND 3 (u AND g) ARE NEVER MEASURED
+    # AND ORDER 4 (i) SHIFTS BY 0.1 NM IN EACH OF THREE ITERATIONS
+    measuredShifts = iter([0.0, 0.0, 0.0, 0.1, 0.1, 0.1])
     recordedOrders: list[tuple[int, float]] = []
 
     extractor._extract_order_arrays = lambda order: (
@@ -1489,8 +1623,16 @@ def test_wavelength_tuning_uses_order_four_shift_for_unmatched_vis_order(
 
     result = extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
 
-    assert result["wavelengthMean"].tolist() == pytest.approx([500.3, 600.3])
-    assert recordedOrders == [(4, pytest.approx(0.3)), (11, pytest.approx(0.0))]
+    shiftedByOrder = result.set_index("order")["wavelengthMean"].to_dict()
+    assert shiftedByOrder == pytest.approx({4: 750.3, 1: 600.0, 2: 400.0, 3: 500.0})
+    shiftMessages = [message for level, message in log.messages if "shift applied to order" in message]
+    assert [message.split("shift applied to ")[1] for message in shiftMessages] == [
+        "order 1 (r)",
+        "order 2 (u)",
+        "order 3 (g)",
+        "order 4 (i)",
+    ]
+    assert recordedOrders == [(1, pytest.approx(0.0)), (2, 0.0), (3, 0.0), (4, pytest.approx(0.3))]
 
 
 def test_compute_extractions_returns_sorted_optimal_and_boxcar_spectra() -> None:
@@ -1925,17 +2067,17 @@ def test_slit_edge_summary_records_spilled_orders_logs_one_error_and_adds_the_qc
     assert row["qc_comment"] == "Number of orders where the object spills over the slit edge"
 
 
-def test_slit_edge_summary_names_soxs_vis_orders_as_the_products_number_them(log: object) -> None:
+def test_slit_edge_summary_names_soxs_vis_orders_by_trace_number_and_band(log: object) -> None:
     extractor = _spill_extractor(log)
     extractor.arm = "VIS"
     extractions = [_order_extraction(1, 1.0, wlStart=538.0), _order_extraction(4, 1.0, wlStart=671.0)]
 
     extractor._summarise_slit_edge_spill(extractions)
 
-    assert [o[0] for o in extractor.slitEdgeOrders] == [2, 1]
+    assert [o[0] for o in extractor.slitEdgeOrders] == [1, 4]
     errors = [message for level, message in log.messages if level == "error"]
-    assert "order(s) 2 (538.0-547.0 nm" in errors[0]
-    assert "1 (671.0-680.0 nm" in errors[0]
+    assert "order(s) 1 (r, 538.0-547.0 nm" in errors[0]
+    assert "4 (i, 671.0-680.0 nm" in errors[0]
 
 
 def test_slit_edge_summary_reports_a_clean_extraction_with_a_zero_count_and_no_error(log: object) -> None:
@@ -2053,6 +2195,39 @@ def test_per_order_plot_carries_the_skipped_order_warning_as_a_note(log: object,
     extractor.plot_extracted_spectrum_qc([_plot_order(10), unplottable])
 
     assert probes == [["WARNING: Order skipped: 11"]]
+
+
+def test_per_order_plot_names_a_skipped_soxs_vis_order_by_trace_number_and_band(
+    log: object, tmp_path: Path, monkeypatch
+) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: [text.get_text() for text in figure.texts])
+    extractor = _plot_ready_extractor(extraction_note_logger(log), tmp_path)
+    unplottable = _plot_order(1, wavelengths=pd.Series([1.0, "x"] * 12, dtype=object))
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(4), unplottable])
+
+    assert probes == [["WARNING: Order skipped: 1 (r)"]]
+
+
+def test_per_order_plot_labels_soxs_vis_orders_by_trace_number_and_band(
+    log: object, tmp_path: Path, monkeypatch
+) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: [text.get_text() for text in figure.axes[0].texts])
+    extractor = _plot_ready_extractor(log, tmp_path)
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(1), _plot_order(4, wavelengths=np.linspace(700.0, 723.0, 24))])
+
+    assert probes == [["1 (r)", "4 (i)"]]
+
+
+def test_per_order_plot_labels_other_arm_orders_by_number_only(log: object, tmp_path: Path, monkeypatch) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: [text.get_text() for text in figure.axes[0].texts])
+    extractor = _plot_ready_extractor(log, tmp_path)
+    extractor.arm = "NIR"
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(11)])
+
+    assert probes == [["11"]]
 
 
 def test_per_order_plot_carries_the_slit_edge_spill_error_as_a_note(log: object, tmp_path: Path, monkeypatch) -> None:

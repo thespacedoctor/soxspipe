@@ -464,36 +464,37 @@ def test_add_snr_efficiency_qcs_pins_full_row_contract_under_frozen_clock(log: o
         log,
         _snr_efficiency_spectrum(),
         pd.DataFrame(),
-        {"1011": 500.0},
+        {"10-11": 500.0},
         "soxs-stare",
         "2024-01-02T03:04:05",
+        "NIR",
     )
 
     assert list(result.columns) == _EXPECTED_SNR_EFFICIENCY_QC_COLUMNS
     assert result["soxspipe_recipe"].tolist() == ["soxs-stare"] * 6
     assert result["qc_name"].tolist() == [
         "EFF MEDIAN",
-        "EFF MEDIAN",
-        "EFF MEDIAN",
+        "EFF MEDIAN O10",
+        "EFF MEDIAN O11",
         "SNR MEDIAN",
-        "SNR MEDIAN",
-        "SNR MEDIAN",
+        "SNR MEDIAN O10",
+        "SNR MEDIAN O11",
     ]
     assert result["qc_value"].tolist() == [0.25, 0.35, 0.15, 25.0, 35.0, 15.0]
     assert result["qc_comment"].tolist() == [
         "Median efficiency across all orders",
-        "Median efficiency in order 10.0",
-        "Median efficiency in order 11.0",
+        "Median efficiency in order 10",
+        "Median efficiency in order 11",
         "Median SNR across all orders",
-        "Median SNR in order 10.0",
-        "Median SNR in order 11.0",
+        "Median SNR in order 10",
+        "Median SNR in order 11",
     ]
     assert result["qc_unit"].isna().all()
     assert result["obs_date_utc"].tolist() == ["2024-01-02T03:04:05"] * 6
     assert result["reduction_date_utc"].tolist() == [_FROZEN_TIMESTAMP] * 6
     assert result["to_header"].tolist() == [True] * 6
     assert result["qc_order"].iloc[[0, 3]].isna().all()
-    assert result["qc_order"].iloc[[1, 2, 4, 5]].tolist() == [10.0, 11.0, 10.0, 11.0]
+    assert result["qc_order"].iloc[[1, 2, 4, 5]].tolist() == [10, 11, 10, 11]
 
 
 def test_add_snr_efficiency_qcs_shares_single_timestamp_across_all_rows_under_ticking_clock(
@@ -503,9 +504,10 @@ def test_add_snr_efficiency_qcs_shares_single_timestamp_across_all_rows_under_ti
         log,
         _snr_efficiency_spectrum(),
         pd.DataFrame(),
-        {"1011": 500.0},
+        {"10-11": 500.0},
         "soxs-stare",
         "2024-01-02T03:04:05",
+        "NIR",
     )
 
     timestamps = set(result["reduction_date_utc"])
@@ -533,8 +535,8 @@ def _merged_orders() -> pd.DataFrame:
 def _qc_table_for_plot() -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "qc_name": ["SNR MEDIAN", "SNR MEDIAN", "SNR MEDIAN"],
-            "qc_order": ["GLOBAL", "12", "11"],
+            "qc_name": ["SNR MEDIAN", "SNR MEDIAN O12", "SNR MEDIAN O11"],
+            "qc_order": ["GLOBAL", 12, 11],
             "qc_value": [6.0, 5.0, 7.0],
         }
     )

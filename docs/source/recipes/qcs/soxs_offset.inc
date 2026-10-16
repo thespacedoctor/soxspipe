@@ -22,10 +22,11 @@
 | `Y RES MIN`              | Minimum residual in continuum fit along y-axis        | px        | - |
 | `Y RES SD`              | Std-dev of residual continuum fit along y-axis        | px        | - |
 | `SNR MEDIAN` | The median signal-to-noise ratio across all orders (global) |  | - |
-| `SNR MEDIAN O<N>` | The median signal-to-noise ratio across all orders (order N) |  | - |
+| `SNR MEDIAN O<N>` | The median signal-to-noise ratio in order N |  | - |
 | `SLIT DRIFT` | Fitted slit position of the object trace 5% in from the red end of the reddest order, minus that 5% in from the blue end of the bluest order. Signed. Fallback orders are skipped. Not written if every order fell back | arcsec | - |
 | `SLIT ZERO WLEN` | Wavelength where a fitted order curve crosses slit position 0. A sign change between two orders does not count. Written only if such a crossing exists. If there are several, the bluest is recorded | nm | - |
 | `N ORDERS SLIT EDGE` | Number of orders where the object spills over the slit edge. Flux beyond the slit edge is lost and the extraction in these orders is unreliable. An order spills when more than 20% of its wavelength slices are cut off at the slit edge | | - |
 
 :::
 
+In the labels that end in `O<N>`, `<N>` is the order number. For the SOXS UV-VIS arm the order numbers are 1 (r), 2 (u), 3 (g), and 4 (i). The same numbers are used in the products, plots, and logs. The UV-VIS spectrograph page lists the wavelength range of each order.

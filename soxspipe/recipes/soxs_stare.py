@@ -824,12 +824,17 @@ class soxs_stare(base_recipe):
         The QCs are deliberately absent from ``qc-acceptable-ranges``, so flexure never fails a science recipe.
         """
         from soxspipe.commonutils.slit_illumination_mask import usable_offsets
-        from soxspipe.commonutils.toolkit import append_qc
+        from soxspipe.commonutils.toolkit import append_qc, order_label
 
         utcnow = utcnow_string()
         offsets = usable_offsets(result.offsets)
         qcs = [
-            (f"SLIT ILLUM OFFSET O{order}", round(offset, 3), f"Slit offset of order {order}", "arcsec")
+            (
+                f"SLIT ILLUM OFFSET O{order}",
+                round(offset, 3),
+                f"Slit offset of order {order_label(order, self.arm)}",
+                "arcsec",
+            )
             for order, offset in offsets.items()
         ]
         qcs.append(("SLIT ILLUM APPLIED", int(result.isApplied), "1 if the slit offsets masked the sky model", None))
