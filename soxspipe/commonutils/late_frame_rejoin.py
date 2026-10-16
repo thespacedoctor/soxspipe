@@ -22,8 +22,12 @@ from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 # NO IMPORTS FROM OTHER SOXSPIPE MODULES EXCEPT sql_identifiers: THE PACKAGE `__init__` IMPORT ORDER IS
 # LOAD-BEARING, AND THIS MODULE MUST STAY SAFE TO IMPORT FROM ANYWHERE.
 
-# THESE TECHNIQUES ARE GROUPED ONE EXPOSURE AT A TIME, SO A LATE FRAME NEVER JOINS AN EXISTING SET
-PER_EXPOSURE_TECHS = ("ECHELLE,SLIT,STARE", "ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE")
+# THESE TECHNIQUES ARE GROUPED ONE EXPOSURE AT A TIME, SO A LATE FRAME NEVER JOINS AN EXISTING SET. STARE FRAMES
+# ARE GROUPED BY OB SINCE DY-1611, SO A LATE STARE FRAME REJOINS ITS OB'S SET
+PER_EXPOSURE_TECHS = ("ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE")
+
+# THESE TECHNIQUES ARE GROUPED BY OB, NOT BY TEMPLATE RUN, SO A LATE FRAME REJOINS WHATEVER ITS `eso tpl start`
+OB_GROUPED_TECHS = ("ECHELLE,SLIT,STARE",)
 
 # PRODUCTS WITH NO FILE OF THEIR OWN CARRY THIS PLACEHOLDER NAME
 PLACEHOLDER_PRODUCT_FILE = "XXXX"
@@ -64,7 +68,8 @@ def find_rejoined_sofs(
 
     A late frame is unprocessed and in no SOF. It joins a SOF when it matches that SOF's frames on every grouping
     key and on `eso tpl start`. A frame with no `eso tpl start` never joins, and neither do frames of a technique
-    that is grouped one exposure at a time.
+    that is grouped one exposure at a time. Stare frames are grouped by OB, so for them `eso tpl start` need not
+    match.
 
     **Key Arguments:**
 
@@ -84,20 +89,28 @@ def find_rejoined_sofs(
         return {}
 
     techPlaceholders = _placeholders(len(PER_EXPOSURE_TECHS))
+    obTechPlaceholders = _placeholders(len(OB_GROUPED_TECHS))
     # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier ABOVE
     sqlQuery = f"""SELECT r.*, s.sof AS member_sof
         FROM raw_frames_valid r
         LEFT JOIN (SELECT DISTINCT sof, filepath FROM {sofMapTable}) s ON s.filepath = r.filepath
         WHERE COALESCE(r.`eso dpr tech`, '--') NOT IN ({techPlaceholders})
         AND {_NOT_AN_OFF_FRAME}
-        AND r.`eso tpl start` IN (
-            SELECT `eso tpl start` FROM raw_frames_valid
-            WHERE processed = 0 AND `eso tpl start` IS NOT NULL
+        AND (
+            COALESCE(r.`eso dpr tech`, '--') IN ({obTechPlaceholders})
+            OR r.`eso tpl start` IN (
+                SELECT `eso tpl start` FROM raw_frames_valid
+                WHERE processed = 0 AND `eso tpl start` IS NOT NULL
+            )
         );"""  # noqa: S608
-    frames = pd.read_sql(sqlQuery, con=connection, params=PER_EXPOSURE_TECHS)
+    frames = pd.read_sql(sqlQuery, con=connection, params=PER_EXPOSURE_TECHS + OB_GROUPED_TECHS)
+    # OB-GROUPED FRAMES SHARE ONE TEMPLATE KEY, SO ANY TEMPLATE RUN OF THE OB MATCHES
+    frames = frames.assign(
+        rejoin_template=frames["eso tpl start"].where(~frames["eso dpr tech"].isin(OB_GROUPED_TECHS), "")
+    )
 
     membersBySof: dict[str, set[str]] = {}
-    for _, group in frames.groupby(list(groupingKeys) + ["eso tpl start"], dropna=False):
+    for _, group in frames.groupby(list(groupingKeys) + ["rejoin_template"], dropna=False):
         isLate = (group["processed"] == 0) & group["member_sof"].isna()
         if not isLate.any():
             continue

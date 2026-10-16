@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: stare SOFs hold all frames of one OB per arm; new `stack_before_extraction` setting (default `True`) stacks them or extracts each on its own (DY-1611).
 * **DOCS**: the UV-VIS instrument page lists the VIS order numbers, bands and wavelength ranges, and the QC pages say what `<N>` means (DY-1563).
 * **FIXED**: SOXS VIS orders now use one numbering everywhere (r=1, u=2, g=3, i=4) in `_EXTRACTED_ORDERS` products, QC cards, plots and messages; extraction products numbered them 1=i, 2=r, 3=g, 4=u before (DY-1563).
 * **FIXED**: per-order QCs now write their own header cards (`SNR MEDIAN O<N>`, `EFF MEDIAN O<N>`, `X RES MEDIAN O<N>` and the rest of the dispersion family) on every arm; before, every order wrote the same card, so the unsuffixed card held the last order's value, not the all-order value (DY-1563).

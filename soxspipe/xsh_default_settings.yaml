@@ -273,6 +273,9 @@ bootstrap_dispersion_solution: False
 
 
 soxs-stare:
+    # STACK ALL OBJECT FRAMES OF THE SOF BEFORE EXTRACTION. SET TO False TO EXTRACT EACH FRAME ON ITS OWN
+    # (FLUX STANDARDS ARE ALWAYS STACKED)
+    stack_before_extraction: True
     # DIVIDE IMAGE BY MASTER FLAT FRAME
     use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
