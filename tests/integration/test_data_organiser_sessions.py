@@ -212,3 +212,17 @@ def test_the_sof_map_view_is_created_in_exactly_one_place_in_the_package() -> No
 
     # ASSERT
     assert len(creators) == 1, creators
+
+
+def test_select_session_sets_session_id_and_path_from_the_session_id_file(two_session_workspace) -> None:
+    # ARRANGE: ANOTHER PROCESS SWITCHES THE WORKSPACE TO `alpha` BEHIND THIS LIVE ORGANISER
+    organiser = two_session_workspace
+    assert organiser.sessionId == "beta"
+    Path(organiser.sessionIdFile).write_text("alpha", encoding="utf-8")
+
+    # ACT
+    organiser._select_session()
+
+    # ASSERT: BOTH ATTRIBUTES NAME THE SESSION IN THE FILE
+    assert organiser.sessionId == "alpha"
+    assert Path(organiser.sessionPath) == Path(organiser.sessionsDir) / "alpha"
