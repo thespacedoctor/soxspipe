@@ -591,13 +591,15 @@ class data_organiser:
         else:
             with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
                 sessionId = _validate_session_id(readFile.read())
-                self.sessionPath = str(
-                    _validate_owned_path(
-                        Path(self.sessionsDir) / sessionId,
-                        self.sessionsDir,
-                        "session path",
-                    )
+            # SET THE ID AND PATH TOGETHER SO STATUS COLUMNS FOLLOW THE SESSION IN THE FILE
+            self.sessionPath = str(
+                _validate_owned_path(
+                    Path(self.sessionsDir) / sessionId,
+                    self.sessionsDir,
+                    "session path",
                 )
+            )
+            self.sessionId = sessionId
         return
 
     def _print_prepare_report(self, basename):

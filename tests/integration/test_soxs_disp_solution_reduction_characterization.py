@@ -449,7 +449,8 @@ def test_tuning_fits_the_line_list_once_then_sweeps_the_polynomial_grid(
     assert tuningArguments["inputArray"][-1] == (6, 6, 6, 6)
     assert tuningArguments["poolSize"] == 100
     assert tuningArguments["timeout"] == 3600
-    assert tuningArguments["turnOffMP"] is recipe.debug
+    # A RECIPE WITH MULTIPROCESSING TURNED OFF ALSO RUNS ITS TUNING POOL SERIALLY (DY-1535)
+    assert tuningArguments["turnOffMP"] is (recipe.turnOffMP or recipe.debug)
     assert tuningArguments["mute"] is True
     assert tuningArguments["progressBar"] is True
     assert tuningArguments["lineDetectionTable"] == "LINE-DETECTION-TABLE"

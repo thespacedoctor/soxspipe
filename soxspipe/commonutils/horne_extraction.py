@@ -2014,6 +2014,11 @@ def fit_object_profile(
             clipped_count = passCount - len(fractions)
             iteration = iteration + 1
 
+        # A CAP EXIT WITH POINTS STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE POINTS JUST REJECTED.
+        # REFIT ONLY WHEN THE SURVIVORS CONSTRAIN EVERY COEFFICIENT; OTHERWISE KEEP THE LAST FIT
+        if len(coeff) and clipped_count > 0 and len(dispersionAxisPixels) > hornePolyOrder:
+            coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
+
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
         if len(coeff):
             profile = np.polyval(coeff, dispersionAxisPixelsOrignal)
