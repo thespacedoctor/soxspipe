@@ -287,6 +287,9 @@ bootstrap_dispersion_solution: False
 
 
 soxs-stare-std:
+    # STACK ALL OBJECT FRAMES OF THE SOF BEFORE EXTRACTION. SET TO False TO EXTRACT EACH FRAME ON ITS OWN
+    # (FLUX STANDARDS ARE ALWAYS STACKED)
+    stack_before_extraction: True
     # DIVIDE IMAGE BY MASTER FLAT FRAME
     use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
@@ -452,6 +455,9 @@ soxs-stare-std:
             detector-temp: [0,50]
 
 soxs-stare:
+    # STACK ALL OBJECT FRAMES OF THE SOF BEFORE EXTRACTION. SET TO False TO EXTRACT EACH FRAME ON ITS OWN
+    # (FLUX STANDARDS ARE ALWAYS STACKED)
+    stack_before_extraction: True
     # DIVIDE IMAGE BY MASTER FLAT FRAME
     use_flat: True
     # FIT AND SUBTRACT THE INTRA-ORDER BACKGROUND LIGHT
@@ -622,6 +628,8 @@ soxs-nod-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3
@@ -704,6 +712,8 @@ soxs-nod:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3
@@ -768,6 +778,8 @@ soxs-offset:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3
@@ -830,6 +842,8 @@ soxs-offset-std:
     subtract_background: False
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # STACKED FRAME CLIPPING PARAMETERS. DATA IS CLIPPED DURING STACKING.
     stacked-clipping-sigma: 15
     stacked-clipping-iterations: 3

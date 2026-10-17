@@ -301,7 +301,9 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         values={
             "EFF MEDIAN": level(0.141),
-            "SNR MEDIAN": level(167.53),
+            # 167.53 UNTIL 2026-10-16; 207.34 IN CI RUNS 38915352201 AND 38915356992 AND ON develop
+            # ITSELF (38918109330), SO THE MOVE PREDATES DY-1612
+            "SNR MEDIAN": level(207.34),
             "N ORDERS": count(4),
         },
     ),

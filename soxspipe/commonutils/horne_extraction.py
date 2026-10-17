@@ -715,6 +715,8 @@ class horne_extraction(base_util):
 
         uniqueOrders = np.sort(extractedOrdersDF["order"].unique())
         orderShifts = []
+        # SKY LINES KEPT AND THEIR SHIFT SCATTER IN THE LAST ITERATION, PER MEASURED ORDER (THE u/g MODEL GUARDS)
+        orderStats = {}
 
         if not byOrder and calibrationCol != "wavelengthMean":
             # CAN'T PIXEL SHIFT ALL ORDERS TOGETHER (ONLY WAVELENGTH SHIFTING MAKES SENSE GLOBALLY)
@@ -737,6 +739,7 @@ class horne_extraction(base_util):
             orderDF["wavelength_shifted"] = orderDF["wavelengthMean"]
 
             orderShift = 0.0
+            keptShifts = None
             if not (o in [2, 3] and arm.upper() == "VIS"):
                 for iteration in range(3):
                     # EXTRACT NUMERIC ARRAYS FROM ORDER DATAFRAME
@@ -771,7 +774,7 @@ class horne_extraction(base_util):
                     )
 
                     # SIGMA-CLIP SHIFT DISTRIBUTION AND COMPUTE MEDIAN
-                    clippedWave, clippedShifts, medianShift = self._compute_clipped_shift(
+                    clippedWave, clippedShifts, medianShift, keptShifts = self._compute_clipped_shift(
                         matchedSkylinePixels, matchedShifts
                     )
 
@@ -805,8 +808,15 @@ class horne_extraction(base_util):
                         )
 
             orderShifts.append(orderShift)
-            if byOrder:
-                self._record_order_shift_qc(o, orderShift)
+            if keptShifts is not None:
+                keptShifts = np.ravel(keptShifts)
+                orderStats[o] = {
+                    "nLines": int(keptShifts.size),
+                    "scatterNm": float(np.std(keptShifts)) if keptShifts.size else float("nan"),
+                }
+
+        if byOrder:
+            orderShifts = self._finalise_order_shifts(extractedOrdersDF, arm, uniqueOrders, orderShifts, orderStats)
 
         # APPLY PER-ORDER PIXEL SHIFTS TO WAVELENGTH COLUMN IN FULL DATAFRAME
         for o, s in zip(uniqueOrders, orderShifts):
@@ -917,7 +927,7 @@ class horne_extraction(base_util):
         return matchedSkylinePixels, matchedShifts
 
     def _compute_clipped_shift(self, matchedSkylinePixels, matchedShifts):
-        """Sigma-clip matched shift distribution and return outlier arrays plus median shift."""
+        """Sigma-clip matched shift distribution and return outlier arrays, median shift and the kept shifts."""
         import numpy as np
         from astropy.stats import sigma_clip
 
@@ -932,36 +942,194 @@ class horne_extraction(base_util):
         if np.isnan(medianShift):
             medianShift = 0.0
 
-        return clippedWave, clippedShifts, medianShift
+        return clippedWave, clippedShifts, medianShift, goodShifts
 
-    def _record_order_shift_qc(self, order, medianShift):
-        """Append a QC entry recording the sky-shift applied to the given order."""
-        from datetime import datetime
+    def _record_order_shift_qc(self, order, shiftNm, shiftPx=None):
+        """Append the ``SKY SHIFT O<n>`` QC (nm) and, when the signed dispersion is known, ``SKY SHIFT O<n> PX``."""
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
 
+        reductionDate = utcnow_string()
+        rows = [(f"SKY SHIFT O{int(order)}", round(shiftNm, 3), "nm", "Wavelength shift applied to the order")]
+        if shiftPx is not None:
+            rows.append(
+                (
+                    f"SKY SHIFT O{int(order)} PX",
+                    round(shiftPx, 3),
+                    "px",
+                    "Same shift as detector motion along dispersion",
+                )
+            )
+        for name, value, unit, comment in rows:
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName=name,
+                qcValue=value,
+                qcComment=comment,
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=reductionDate,
+                qcUnit=unit,
+                toHeader=True,
+                qcOrder=int(order),
+            )
+
+    def _finalise_order_shifts(self, extractedOrdersDF, arm, uniqueOrders, orderShifts, orderStats):
+        """*add the modelled VIS u/g shifts to the measured per-order shifts and record the sky-shift QCs*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- the extracted orders, used to sample each order's signed dispersion
+        - ``arm`` -- the arm of the instrument
+        - ``uniqueOrders`` -- the orders, in the same order as ``orderShifts``
+        - ``orderShifts`` -- the measured wavelength shift of each order (nm)
+        - ``orderStats`` -- per measured order, the sky lines kept and their shift scatter (nm) in the last iteration
+
+        **Return:**
+
+        - ``orderShifts`` -- a new list of per-order wavelength shifts (nm), with u/g modelled when the guards pass
+        """
+        from soxspipe.commonutils.ug_wavelength_transfer import nm_shift_to_detector_px
+
+        dispersions = self._signed_order_dispersions(extractedOrdersDF, uniqueOrders)
+        shiftsNm = dict(zip(uniqueOrders, orderShifts, strict=True))
+        if arm.upper() == "VIS":
+            shiftsNm = self._apply_ug_transfer(shiftsNm, orderStats, dispersions)
+        for o in uniqueOrders:
+            shiftPx = nm_shift_to_detector_px(shiftsNm[o], dispersions[o]) if o in dispersions else None
+            self._record_order_shift_qc(o, shiftsNm[o], shiftPx)
+        return [shiftsNm[o] for o in uniqueOrders]
+
+    def _apply_ug_transfer(self, shiftsNm, orderStats, dispersions):
+        """*predict the VIS u and g shifts from the r/i sky shifts and the rotator angles (DY-1608)*
+
+        u and g have no usable sky lines. When the r and i shifts pass the guards and the science rotator angle is
+        usable, their shifts come from the ``ug-wavelength-transfer`` model; otherwise they are left unshifted and
+        the reason is logged. Arms without the model's coefficients are returned unchanged and get no QC.
+
+        **Key Arguments:**
+
+        - ``shiftsNm`` -- ``{order: measured wavelength shift (nm)}``
+        - ``orderStats`` -- per measured order, ``{"nLines": int, "scatterNm": float}``
+        - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
+
+        **Return:**
+
+        - ``shiftsNm`` -- a new dictionary with the u/g shifts replaced when the model applies
+        """
+        from soxspipe.commonutils import ug_wavelength_transfer as ug_transfer
+
+        coeffs = ug_transfer.load_ug_transfer_coefficients(self.detectorParams)
+        if coeffs is None:
+            return shiftsNm
+
+        statsPx = {
+            o: {
+                "nLines": orderStats[o]["nLines"],
+                "scatterPx": orderStats[o]["scatterNm"] / abs(dispersions[o]),
+                "shiftPx": ug_transfer.nm_shift_to_detector_px(shiftsNm[o], dispersions[o]),
+            }
+            for o in ug_transfer.MEASURED_ORDERS
+            if o in orderStats and o in dispersions
+        }
+        scienceAngle = ug_transfer.usable_rotator_angle(self.skySubtractedFrame.header, self.kw)
+        reason = ug_transfer.ug_skip_reason(statsPx, scienceAngle)
+        if reason is None:
+            missing = [o for o in ug_transfer.PREDICTED_ORDERS if o in shiftsNm and o not in dispersions]
+            if missing:
+                reason = f"order {missing[0]}: no dispersion"
+        if reason is not None:
+            self.log.info(f"u/g orders left unshifted: {reason}")
+            self._record_ug_source_qc("none", reason)
+            return shiftsNm
+
+        calibrationAngle = ug_transfer.calibration_rotator_angle(self._dispersion_map_header() or {}, self.kw)
+        predictedPx = ug_transfer.predict_ug_detector_shifts(
+            statsPx[ug_transfer.VIS_R_ORDER]["shiftPx"],
+            statsPx[ug_transfer.VIS_I_ORDER]["shiftPx"],
+            scienceAngle,
+            calibrationAngle,
+            coeffs,
+        )
+        updated = dict(shiftsNm)
+        for o in ug_transfer.PREDICTED_ORDERS:
+            if o in updated:
+                updated[o] = ug_transfer.detector_px_to_nm_shift(predictedPx[o], dispersions[o])
+        self._record_ug_source_qc("model", "predicted from r/i shifts and ABSROT")
+        return updated
+
+    def _record_ug_source_qc(self, source, comment):
+        """Append the ``UG SHIFT SOURCE`` QC: ``model`` or ``none``, with the reason as the comment."""
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName="UG SHIFT SOURCE",
+            qcValue=source,
+            qcComment=comment,
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
+        )
+
+    def _signed_order_dispersions(self, extractedOrdersDF, orders):
+        """*the signed dispersion d(wavelength)/d(pixel) of each order along the dispersion axis (nm/px)*
+
+        ``pixelScaleNm`` is an absolute value, so the sign comes from the dispersion map: two wavelengths per order
+        (the 25th and 75th percentiles of the order's wavelengths) are mapped to detector pixels on the slit centre.
+        An order whose sample points fall off the detector, or map to one pixel, has no entry.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- the extracted orders, with ``order`` and ``wavelengthMean`` columns
+        - ``orders`` -- the orders to sample
+
+        **Return:**
+
+        - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
+        """
+        import numpy as np
         import pandas as pd
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-        self.qc = pd.concat(
-            [
-                self.qc,
-                pd.DataFrame(
-                    [
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"SKY SHIFT O{int(order)}",
-                            "qc_value": round(medianShift, 3),
-                            "qc_comment": "Shift applied to wavelength solution based on skyline matches",
-                            "qc_order": int(order),
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]
-                ),
-            ],
-            ignore_index=True,
+        from soxspipe.commonutils import dispersion_map_to_pixel_arrays
+
+        rows = []
+        for o in orders:
+            wavelengths = extractedOrdersDF.loc[extractedOrdersDF["order"] == o, "wavelengthMean"]
+            if wavelengths.empty:
+                continue
+            for w in wavelengths.quantile([0.25, 0.75]):
+                rows.append({"order": o, "wavelength": float(w), "slit_position": 0.0})
+        if not rows:
+            return {}
+
+        pixels = dispersion_map_to_pixel_arrays(
+            log=self.log, dispersionMapPath=self.dispersionMap, orderPixelTable=pd.DataFrame(rows)
         )
+        dispersions = {}
+        for o, group in pixels.groupby("order"):
+            if len(group) != 2:
+                continue
+            group = group.sort_values("wavelength")
+            deltaPixel = float(group[f"fit_{self.axisB}"].iloc[1]) - float(group[f"fit_{self.axisB}"].iloc[0])
+            deltaWavelength = float(group["wavelength"].iloc[1]) - float(group["wavelength"].iloc[0])
+            if deltaPixel != 0 and deltaWavelength != 0 and np.isfinite(deltaWavelength / deltaPixel):
+                dispersions[o] = deltaWavelength / deltaPixel
+        return dispersions
+
+    def _dispersion_map_header(self):
+        """*the dispersion map's primary header (a copy of the multi-pinhole frame header), or None if unreadable*"""
+        from astropy.io import fits
+
+        if not self.dispersionMap:
+            self.log.debug("there is no dispersion map to read the multi-pinhole header from")
+            return None
+        try:
+            return fits.getheader(self.dispersionMap, 0)
+        except (OSError, KeyError, ValueError, TypeError) as e:
+            self.log.debug(f"could not read the multi-pinhole header from the dispersion map ({type(e).__name__}: {e})")
+            return None
 
     def _plot_skyline_shift_diagnostic(
         self,
@@ -1319,17 +1487,10 @@ class horne_extraction(base_util):
 
         - ``labels`` -- list of legend labels, or *None* if the dispersion map header cannot be read
         """
-        from astropy.io import fits
-
         from soxspipe.commonutils.slit_drift_qc import pinhole_offset_labels
 
-        if not self.dispersionMap:
-            self.log.debug("no dispersion map to read the multi-pinhole header from, so no offset labels are added")
-            return None
-        try:
-            pinholeHeader = fits.getheader(self.dispersionMap, 0)
-        except (OSError, KeyError, ValueError, TypeError) as e:
-            self.log.debug(f"could not read the multi-pinhole header from the dispersion map ({type(e).__name__}: {e})")
+        pinholeHeader = self._dispersion_map_header()
+        if pinholeHeader is None:
             return None
         return pinhole_offset_labels(self.skySubtractedFrame.header, pinholeHeader, self.kw)
 

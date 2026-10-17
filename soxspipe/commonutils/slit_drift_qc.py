@@ -8,7 +8,7 @@ import math
 
 import numpy as np
 
-from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
+from soxspipe.commonutils.slit_illumination_qc import CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES, read_rotator_angle
 
 SLIT_DRIFT_FIT_SAMPLES = 100
 FALLBACK_SPAN_ALPHA = 0.15
@@ -21,8 +21,6 @@ HOURS_PER_DAY = 24.0
 OFFSET_DECIMALS = 1
 FULL_TURN_DEGREES = 360.0
 HALF_TURN_DEGREES = 180.0
-# DAYTIME CALIBRATION FRAMES CARRY NO ABSROT KEYWORD AND ARE TAKEN WITH THE ROTATOR PARKED AT THIS ANGLE
-CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES = 0.0
 
 
 def slit_drift_series(
