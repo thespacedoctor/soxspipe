@@ -336,6 +336,36 @@ def test_clip_and_stack_clips_an_outlier_and_propagates_uncertainty(
     assert result.uncertainty.array[2, 2] == pytest.approx(1 / np.sqrt(3))
 
 
+def test_clip_and_stack_keeps_the_single_frame_flux_scale(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stack is the mean of its frames with the first frame's EXPTIME, so counts per second match one frame.
+
+    DY-1611: stare SOFs now stack every frame of an OB, and flux calibration divides by the stack's EXPTIME.
+    """
+    # ARRANGE
+    import soxspipe.commonutils.toolkit as toolkit
+
+    recipe = _recipe(log)
+    recipe.kw = lambda keyword: f"ESO {keyword.replace('_', ' ')}" if keyword.startswith("DPR_") else keyword
+    recipe.imageType = "OBJECT"
+    recipe.verbose = True
+    recipe.debug = False
+    recipe.recipeSettings.update({"stacked-clipping-sigma": 50.0, "stacked-clipping-iterations": 1})
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
+    frames = [_frame(10.0), _frame(20.0), _frame(30.0)]
+    for frame in frames:
+        frame.header["EXPTIME"] = 300.0
+
+    # ACT
+    result = recipe.clip_and_stack(frames, "soxs_stare", ignore_input_masks=False, post_stack_clipping=False)
+
+    # ASSERT
+    assert result.data[0, 0] == pytest.approx(20.0)
+    assert result.header["EXPTIME"] == 300.0
+
+
 def test_clip_and_stack_short_circuits_single_frame_and_rejects_empty_input(log: Any) -> None:
     """The stack boundary retains a single frame and rejects an empty collection."""
     recipe = _recipe(log)

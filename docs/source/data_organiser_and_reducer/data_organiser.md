@@ -30,6 +30,10 @@ Finally, all SOF files from the `sof_map` table are written to a sof directory i
 
 During the running of each pipeline recipe, Quality Control (QC) metrics are generated, and within the pipeline settings file, there are `qc-acceptable-ranges` for each recipe. These acceptable ranges act as guardrails for the pipeline, so that if a QC metric falls outside an acceptable range, the pipeline forces a 'fail' on this data, preventing it from cascading into further data-reduction stages.
 
+### Stare-mode frames
+
+The DO puts all stare science frames (`ECHELLE,SLIT,STARE`) of one observation block (`eso obs id`) and arm into one SOF, if they have the same slit, binning, readout speed, exposure time and other grouping keywords. Frames that differ in any of these keys go into separate SOFs. The SOF is named after the earliest frame. The `soxs_stare` recipe stacks the frames of the SOF by default. See the `stack_before_extraction` setting in [`soxs_stare`](../recipes/soxs_stare.md).
+
 ### Late-arriving frames
 
 A raw frame can reach the workspace after its set was grouped, for example when the last exposures of a template run are downloaded later. On a plain `soxspipe prep`, the DO adds such a frame to the existing set instead of creating a second set.
@@ -46,12 +50,12 @@ When a late frame joins a set, the DO does these things in the same `prep` run:
 3. The set's stale product file and its `_ERROR.log` file are deleted. This happens at `prep`, not at `reduce`.
 4. The DO prints a line that names the SOFs that gained late frames.
 
-A frame from a different template run has a different `eso tpl start` value. It does not join the set and forms a new SOF.
+A frame from a different template run has a different `eso tpl start` value. It does not join the set and forms a new SOF. Stare frames are the exception: they are grouped by OB, so a late stare frame joins its OB's SOF whatever its `eso tpl start` value.
 
 The DO does not add a late frame to a set in these cases:
 
 - The frame has no `eso tpl start` value.
-- The frame comes from a technique that the DO groups one exposure at a time (`ECHELLE,SLIT,STARE`, `ECHELLE,PINHOLE` and `ECHELLE,MULTI-PINHOLE`).
+- The frame comes from a technique that the DO groups one exposure at a time (`ECHELLE,PINHOLE` and `ECHELLE,MULTI-PINHOLE`).
 - The frame is an NIR `IMAGE` frame that is not a `DARK`. The grouping leaves these frames out.
 
 #### Limits

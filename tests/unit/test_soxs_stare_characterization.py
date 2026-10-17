@@ -768,7 +768,7 @@ def _produce_product_recipe(
     recipe.qc = "qc"
     recipe.products = "products"
     recipe.generateReponseCurve = generateResponseCurve
-    recipe._read_stare_object_frames = lambda kw: [frame]
+    recipe._read_stare_object_frames = lambda kw: ([frame], ["frame.fits"])
     recipe.clip_and_stack = lambda **_: frame
     recipe._read_calibration_frames = lambda kw, arm: (frame, frame, frame)
     recipe._locate_calibration_tables = lambda kw, arm: ("orders.fits", "disp.fits", "map.fits", None)

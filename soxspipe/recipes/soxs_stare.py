@@ -11,6 +11,7 @@ Date Created
 
 ################# GLOBAL IMPORTS ####################
 import os
+import re
 import sys
 
 from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
@@ -344,12 +345,142 @@ class soxs_stare(base_recipe):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-        arm = self.arm
         kw = self.kw
 
         self.subtractSky = self.recipeSettings["sky-subtraction"]["subtract_sky"]
 
-        allObjectFrames = self._read_stare_object_frames(kw)
+        allObjectFrames, allObjectNames = self._read_stare_object_frames(kw)
+
+        extractEach = self._should_extract_each_frame(allObjectFrames)
+        self._delete_other_mode_qc_rows(extractEach)
+        if extractEach:
+            productPath, qcTable = self._reduce_each_object_frame(allObjectFrames, allObjectNames)
+        else:
+            productPath, forceFailure = self._reduce_object_frames(allObjectFrames)
+            qcTable = self.report_output()
+            self.clean_up(forceFail=forceFailure)
+
+        self.log.debug("completed the ``produce_product`` method")
+        return productPath, qcTable
+
+    def _should_extract_each_frame(self, allObjectFrames):
+        """*decide whether to extract each object frame on its own instead of stacking them (DY-1611)*
+
+        The `stack_before_extraction` recipe setting (default True) chooses. A flux standard is always stacked,
+        because the reducer predicts one response curve per SOF and later SOFs read it. Frames that are not stare
+        frames (the PAE flat-lamp and nodding-standard fallbacks) are always stacked too.
+
+        **Key Arguments:**
+
+        - ``allObjectFrames`` -- the object frames of the SOF
+
+        **Return:**
+
+        - ``extractEach`` -- True to extract each frame on its own
+        """
+        if self.recipeSettings.get("stack_before_extraction", True) or len(allObjectFrames) < 2:
+            return False
+        if not getattr(self, "readStareFrames", False):
+            return False
+        if self.generateReponseCurve:
+            self.log.warning(
+                "`stack_before_extraction` is False, but flux-standard frames are always stacked so that the SOF "
+                "gives one response curve."
+            )
+            return False
+        return True
+
+    def _delete_other_mode_qc_rows(self, extractEach):
+        """*delete the QC rows an earlier run of this SOF wrote in the other stacking mode*
+
+        A frame's `<sof>_F<N>.sof` QC rows decide the status of `<sof>.sof` when the QC ranges are applied again,
+        so rows left by a per-frame run must go when the SOF is stacked, and the reverse.
+
+        **Key Arguments:**
+
+        - ``extractEach`` -- True when this run extracts each frame on its own
+        """
+        if not getattr(self, "conn", None):
+            return
+        cursor = self.conn.cursor()
+        # PLAIN TUPLES, WHATEVER ROW FACTORY THE CONNECTION CARRIES
+        cursor.row_factory = None
+        if extractEach:
+            staleNames = [f"{self.sofName}.sof"]
+        else:
+            framePrefix = f"{self.sofName}_F"
+            rows = cursor.execute(
+                "select distinct sof_name from quality_control where substr(sof_name, 1, ?) = ?",
+                (len(framePrefix), framePrefix),
+            ).fetchall()
+            frameName = re.compile(re.escape(framePrefix) + r"\d+\.sof")
+            staleNames = [name for (name,) in rows if frameName.fullmatch(name)]
+        cursor.executemany("delete from quality_control where sof_name = ?", [(name,) for name in staleNames])
+        cursor.close()
+
+    def _reduce_each_object_frame(self, allObjectFrames, allObjectNames):
+        """*reduce and extract each object frame on its own, with its own products and QCs*
+
+        Frame N of the SOF is named ``<sof>_F<N>``. Its QCs are reported under that name, and its product
+        header lists only its own raw frame. The recipe passes or fails as a whole: one frame with a failed QC
+        fails the SOF.
+
+        **Key Arguments:**
+
+        - ``allObjectFrames`` -- the object frames, in observation order
+        - ``allObjectNames`` -- the raw file names of those frames
+
+        **Return:**
+
+        - ``productPath`` -- the path to the last frame's product
+        - ``qcTable`` -- the QCs of every frame
+        """
+        import copy
+
+        import pandas as pd
+
+        sofName, filenameTemplate = self.sofName, self.filenameTemplate
+        # THE SKY-MODEL FALLBACK EDITS THESE, SO EACH FRAME STARTS FROM THE VALUES THE RUN BEGAN WITH
+        recipeSettings, subtractSky = copy.deepcopy(self.recipeSettings), self.subtractSky
+        templateStem, templateExtension = os.path.splitext(filenameTemplate)
+        qcTables = []
+        productPath = None
+        forceFailure = False
+        try:
+            for index, (frame, name) in enumerate(zip(allObjectFrames, allObjectNames, strict=True), start=1):
+                self.log.print(f"\n# EXTRACTING OBJECT FRAME {index} OF {len(allObjectFrames)} ({name}) ON ITS OWN")
+                self.sofName = f"{sofName}_F{index}"
+                self.filenameTemplate = f"{templateStem}_F{index}{templateExtension}"
+                self.recipeSettings, self.subtractSky = copy.deepcopy(recipeSettings), subtractSky
+                productPath, frameFailure = self._reduce_object_frames([frame], rawFrames=[name])
+                forceFailure = forceFailure or frameFailure
+                qcTables.append(self.report_output())
+                self.qc, self.products = self._empty_qc_and_product_tables(pd)
+        finally:
+            self.sofName, self.filenameTemplate = sofName, filenameTemplate
+            self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
+
+        # SKIP EMPTY TABLES SO THEIR ALL-NA COLUMNS DO NOT DECIDE THE DTYPES
+        self.qc = pd.concat([table for table in qcTables if len(table.index)] or qcTables, ignore_index=True)
+        self.clean_up(forceFail=forceFailure)
+        return productPath, self.qc
+
+    def _reduce_object_frames(self, allObjectFrames, rawFrames=False):
+        """*stack the object frames, then detrend, sky-subtract, extract and flux-calibrate the stack*
+
+        **Key Arguments:**
+
+        - ``allObjectFrames`` -- the object frames to stack; one frame is used as it is
+        - ``rawFrames`` -- the raw file names the product header lists. Default *False* lists every raw frame of
+          the SOF
+
+        **Return:**
+
+        - ``productPath`` -- the path to the product
+        - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe
+        """
+        arm = self.arm
+        kw = self.kw
 
         combined_object_notflattened = self.clip_and_stack(
             frames=allObjectFrames,
@@ -378,7 +509,7 @@ class soxs_stare(base_recipe):
         )
 
         # INJECT KEYWORDS INTO HEADER
-        self.update_fits_keywords(frame=combined_object)
+        self.update_fits_keywords(frame=combined_object, rawFrames=rawFrames)
 
         excludeMask = self._slit_illumination_exclude_mask(combined_object, master_flat, twoDMap, allObjectFrames)
 
@@ -469,16 +600,14 @@ class soxs_stare(base_recipe):
 
         self._plot_merged_spectrum_qcs(mergedSpectumDF, orderJoins, filePath_fluxcal, optimalExtractor.extractionNotes)
 
-        qcTable = self.report_output()
-        self.clean_up(forceFail=forceFailure)
-
-        self.log.debug("completed the ``produce_product`` method")
-        return productPath, qcTable
+        return productPath, forceFailure
 
     def _read_stare_object_frames(self, kw):
         """*read the science frames of the first stare input type that has any*
 
         Flux-standard stare frames set ``self.generateReponseCurve``. PAE mode sets ``self.subtractSky`` to False.
+        ``self.readStareFrames`` is True only when the frames are stare object or standard frames, not one of the
+        PAE flat-lamp or nodding-standard fallbacks.
 
         **Key Arguments:**
 
@@ -487,85 +616,38 @@ class soxs_stare(base_recipe):
         **Return:**
 
         - ``allObjectFrames`` -- the science frames, as CCDData objects
+        - ``allObjectNames`` -- the raw file names of those frames, as the product header records them
         """
-        from astropy import units as u
-        from astropy.nddata import CCDData
+        self.readStareFrames = False
 
         # OBJECT FRAMES
-        filter_list = [
-            {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
-            {kw("DPR_TYPE"): "OBJECT,ASYNC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
-        ]
-        allObjectFrames = []
-        for add_filters in filter_list:
-            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(
-                    i,
-                    hdu=0,
-                    unit=u.electron,
-                    hdu_uncertainty="ERRS",
-                    hdu_mask="QUAL",
-                    hdu_flags="FLAGS",
-                    key_uncertainty_type="UTYPE",
-                )
-                allObjectFrames.append(singleFrame)
+        allObjectFrames, allObjectNames = self._read_science_frames(
+            [
+                {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+                {kw("DPR_TYPE"): "OBJECT,ASYNC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+            ]
+        )
 
         # FLUX STD FRAMES
         if not len(allObjectFrames):
-            add_filters = {
-                kw("DPR_TYPE"): "STD,FLUX",
-                kw("DPR_TECH"): "ECHELLE,SLIT,STARE",
-            }
-            allObjectFrames = []
-            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(
-                    i,
-                    hdu=0,
-                    unit=u.electron,
-                    hdu_uncertainty="ERRS",
-                    hdu_mask="QUAL",
-                    hdu_flags="FLAGS",
-                    key_uncertainty_type="UTYPE",
-                )
-                allObjectFrames.append(singleFrame)
+            allObjectFrames, allObjectNames = self._read_science_frames(
+                [{kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"}]
+            )
+            if len(allObjectFrames):
                 self.generateReponseCurve = True
 
-        # FLUX STD FRAMES
+        # TELLURIC STD FRAMES
         if not len(allObjectFrames):
-            add_filters = {
-                kw("DPR_TYPE"): "STD,TELLURIC",
-                kw("DPR_TECH"): "ECHELLE,SLIT,STARE",
-            }
-            allObjectFrames = []
-            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(
-                    i,
-                    hdu=0,
-                    unit=u.electron,
-                    hdu_uncertainty="ERRS",
-                    hdu_mask="QUAL",
-                    hdu_flags="FLAGS",
-                    key_uncertainty_type="UTYPE",
-                )
-                allObjectFrames.append(singleFrame)
+            allObjectFrames, allObjectNames = self._read_science_frames(
+                [{kw("DPR_TYPE"): "STD,TELLURIC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"}]
+            )
+
+        self.readStareFrames = bool(len(allObjectFrames))
 
         if not len(allObjectFrames) and "PAE" in self.settings and self.settings["PAE"]:
-            add_filters = {
-                kw("DPR_TYPE"): "LAMP,FLAT",
-                kw("DPR_TECH"): "ECHELLE,PINHOLE",
-            }
-            allObjectFrames = []
-            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(
-                    i,
-                    hdu=0,
-                    unit=u.electron,
-                    hdu_uncertainty="ERRS",
-                    hdu_mask="QUAL",
-                    hdu_flags="FLAGS",
-                    key_uncertainty_type="UTYPE",
-                )
-                allObjectFrames.append(singleFrame)
+            allObjectFrames, allObjectNames = self._read_science_frames(
+                [{kw("DPR_TYPE"): "LAMP,FLAT", kw("DPR_TECH"): "ECHELLE,PINHOLE"}]
+            )
             self.log.warning("Processing a ORDER-TRACE frame with the stare-mode recipe")
             self.subtractSky = False
 
@@ -573,25 +655,46 @@ class soxs_stare(base_recipe):
             self.subtractSky = False
 
         if not len(allObjectFrames):
-            add_filters = {
-                kw("DPR_TYPE"): "STD,FLUX",
-                kw("DPR_TECH"): "ECHELLE,SLIT,NODDING",
-            }
-            allObjectFrames = []
-            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                singleFrame = CCDData.read(
-                    i,
-                    hdu=0,
-                    unit=u.electron,
-                    hdu_uncertainty="ERRS",
-                    hdu_mask="QUAL",
-                    hdu_flags="FLAGS",
-                    key_uncertainty_type="UTYPE",
-                )
-                allObjectFrames.append(singleFrame)
+            allObjectFrames, allObjectNames = self._read_science_frames(
+                [{kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): "ECHELLE,SLIT,NODDING"}]
+            )
             self.log.warning("Processing a NODDING frame with the stare-mode recipe")
 
-        return allObjectFrames
+        return allObjectFrames, allObjectNames
+
+    def _read_science_frames(self, filterList):
+        """*read every input frame that matches one of the filters, in filter order*
+
+        **Key Arguments:**
+
+        - ``filterList`` -- the header filters, as a list of dictionaries
+
+        **Return:**
+
+        - ``frames`` -- the matching frames, as CCDData objects
+        - ``names`` -- their raw file names: the prepared file name without its `_pre` suffix
+        """
+        from astropy import units as u
+        from astropy.nddata import CCDData
+
+        frames = []
+        names = []
+        for filters in filterList:
+            for path in self.inputFrames.files_filtered(include_path=True, **filters):
+                frames.append(
+                    CCDData.read(
+                        path,
+                        hdu=0,
+                        unit=u.electron,
+                        hdu_uncertainty="ERRS",
+                        hdu_mask="QUAL",
+                        hdu_flags="FLAGS",
+                        key_uncertainty_type="UTYPE",
+                    )
+                )
+                # SAME NAME AS update_fits_keywords GIVES THE RAW FRAME, SO IT CAN FILTER ON IT
+                names.append(os.path.basename(path).replace("_pre", ""))
+        return frames, names
 
     def _read_calibration_frames(self, kw, arm):
         """*read the master bias, the dark and the master flat*
