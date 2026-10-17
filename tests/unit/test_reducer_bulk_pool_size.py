@@ -34,12 +34,13 @@ def _pool_size_for(
     """Run `run_recipe_bulk` against a recording pool and return the `poolSize` it was handed."""
     seenPoolSizes: list[object] = []
 
-    def recording_multiprocess(**kwargs: Any) -> list[dict[str, Any]]:
+    def recording_pool(**kwargs: Any) -> list[dict[str, Any]]:
         seenPoolSizes.append(kwargs["poolSize"])
         return []
 
-    monkeypatch.setattr(import_module("fundamentals"), "fmultiprocess", recording_multiprocess)
-    import_module("soxspipe.commonutils.reducer").run_recipe_bulk(
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", recording_pool)
+    reducerModule.run_recipe_bulk(
         log=log,
         recipe=recipe,
         sofList=[str(tmp_path / "sof" / "first.sof")],
@@ -77,12 +78,15 @@ def test_light_recipes_keep_the_cpu_default_without_a_user_pool_size(
     log: Any,
     recipe: str,
 ) -> None:
-    """Without a user value, other recipes leave the pool size to `fmultiprocess` (one per CPU)."""
+    """Without a user value, other recipes get one worker per CPU."""
+    # ARRANGE
+    monkeypatch.setattr(import_module("soxspipe.commonutils.reducer").os, "cpu_count", lambda: 7)
+
     # ACT
     poolSize = _pool_size_for(monkeypatch, tmp_path, log, recipe)
 
     # ASSERT
-    assert poolSize is False
+    assert poolSize == 7
 
 
 @pytest.mark.parametrize("recipe", MEMORY_HEAVY_RECIPES + LIGHT_RECIPES)

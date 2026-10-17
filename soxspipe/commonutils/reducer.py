@@ -10,8 +10,12 @@ Date Created
 """
 
 # from memory_profiler import profile
+import logging
 import os
 import sys
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
 
 os.environ["TERM"] = "vt100"
 
@@ -601,6 +605,336 @@ def _worker_log(log, settings):
     return rebuiltLog
 
 
+POOL_TIMEOUT_SECONDS = 36000
+WORKER_CRASH_MESSAGE = (
+    "The reduction worker process crashed (killed by a signal) while this SOF was in progress. "
+    "Check the system crash reports, then run this SOF again on its own."
+)
+WORKER_START_MESSAGE = "The reduction worker processes could not start, so this SOF was not run."
+WORKER_TIMEOUT_MESSAGE = (
+    "The batch deadline passed before this reduction finished. Its worker process was stopped, or it never started."
+)
+# THE TIME A WORKER GETS TO EXIT AFTER SIGTERM BEFORE IT IS KILLED
+WORKER_STOP_SECONDS = 10
+
+
+def _bulk_worker(
+    inputDict,
+    log,
+    recipe,
+    settings,
+    overwrite,
+    workspaceDirectory,
+    wrapperTurnOffMP=True,
+):
+    """*run one recipe for one SOF inside a bulk worker process and describe the outcome*
+
+    **Key Arguments:**
+
+    - ``inputDict`` -- a dictionary holding the ``sof`` path and the ``command`` that runs it
+    - ``log`` -- logger
+    - ``recipe`` -- the name of the recipe to execute
+    - ``settings`` -- the settings dictionary
+    - ``overwrite`` -- overwrite existing reductions
+    - ``workspaceDirectory`` -- path to the root of the workspace
+    - ``wrapperTurnOffMP`` -- turn off the multiprocessing inside the recipe. Default *True*.
+
+    **Return:**
+
+    - ``returnDict`` -- the ``status``, ``sof``, ``productPath``, ``qcTable`` and ``error_message`` of the run.
+      The ``error_message`` is a string, so the result always pickles back to the parent process
+    """
+    import traceback
+
+    log = _worker_log(log, settings)
+
+    returnDict = {
+        "status": None,
+        "sof": inputDict["sof"],
+        "productPath": None,
+        "qcTable": None,
+        "error_message": None,
+    }
+
+    try:
+        productPath, qcTable = run_recipe(
+            log=log,
+            recipe=recipe,
+            sof=inputDict["sof"],
+            settings=settings,
+            overwrite=overwrite,
+            command=inputDict["command"],
+            turnOffMP=wrapperTurnOffMP,
+        )
+        returnDict["status"] = "pass"
+        returnDict["productPath"] = productPath
+        returnDict["qcTable"] = qcTable
+        mask = qcTable["qc_flag"] == "fail"
+        failedQcs = qcTable[mask]
+        if len(failedQcs):
+            returnDict["status"] = "fail"
+            failedQcs = failedQcs["qc_name"].tolist()
+            returnDict["error_message"] = (
+                f"The following QC values are outside of acceptable limits: {', '.join(failedQcs)}."
+            )
+    except FileExistsError as e:
+        if "previously failed" in str(e):
+            returnDict["status"] = "previous-fail"
+        elif "product of this recipe" in str(e):
+            returnDict["status"] = "previous-pass"
+        else:
+            returnDict["status"] = "fail"
+            returnDict["error_message"] = str(e)
+    except Exception as e:
+        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+        log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+        log.error(f"\nRecipe Command: {inputDict['command'].replace('-obj ', ' ').replace('_obj ', ' ')}\n\n")
+        returnDict["status"] = "fail"
+        returnDict["error_message"] = str(e)
+
+    return returnDict
+
+
+def _failed_result(inputDict, message):
+    """*the result of a SOF that failed outside the recipe, in the shape ``_bulk_worker`` returns*"""
+    return {
+        "status": "fail",
+        "sof": inputDict["sof"],
+        "productPath": None,
+        "qcTable": None,
+        "error_message": message,
+    }
+
+
+def _mute_worker_stdout():
+    """*silence the printed output of a bulk worker process, as ``fmultiprocess(mute=True)`` did*"""
+    sys.stdout = open(os.devnull, "w")  # noqa: SIM115
+
+
+def _run_marked(markerPath, function, inputDict, log, kwargs):
+    """*touch a marker file to show the task started, then run it*
+
+    A pool that breaks cannot say which tasks were running, because every unfinished future fails the same way.
+    The marker file tells the parent which SOFs had started.
+    """
+    open(markerPath, "w").close()
+    return function(inputDict, log=log, **kwargs)
+
+
+@dataclass(frozen=True)
+class _pool_task:
+    """The fixed parts of a pool run: what to call, on what, and where the start markers go."""
+
+    function: Callable[..., dict]
+    inputDicts: list[dict]
+    log: logging.Logger
+    kwargs: dict
+    markerDirectory: str
+
+    def marker_path(self, index):
+        """Return the path of the file that shows the task for ``inputDicts[index]`` has started."""
+        return os.path.join(self.markerDirectory, f"{index}.started")
+
+
+@dataclass(frozen=True)
+class _round_outcome:
+    """What one pool round settled.
+
+    ``resolved`` maps an input index to its result. ``unstarted`` lists the inputs whose function body was never
+    entered, so they are safe to run again. ``inFlight`` lists the inputs that had started when the pool broke.
+    """
+
+    resolved: dict[int, dict]
+    unstarted: list[int]
+    inFlight: list[int]
+
+
+def _run_in_spawn_pool(function, inputDicts, poolSize, log, **kwargs):
+    """*run ``function`` for each input in a pool of spawned worker processes, one task per input*
+
+    Each task is its own future, so a worker killed by a signal (a segfault, an out-of-memory kill) does not lose the
+    whole batch. Workers are spawned, not forked, because forked workers crash in Apple Accelerate (GCD is not
+    fork-safe).
+
+    A pool that breaks fails every unfinished future the same way, so each task first touches a marker file. A
+    marker means the function body was entered. No marker means the function never ran, so the input is safe to run
+    again. After a break:
+
+    - inputs with no marker are run again in a fresh pool
+    - a single started input is the one that crashed, and fails with ``WORKER_CRASH_MESSAGE``
+    - several started inputs are each run once more, alone, in a pool of one worker. The input that kills its
+      worker there fails with ``WORKER_CRASH_MESSAGE``, and the others keep their results
+
+    Every round settles at least one input or ends the batch, and an input is run in isolation at most once, so the
+    loop ends. When no input can start (for example a worker cannot unpickle ``function``), the remaining inputs fail
+    with ``WORKER_START_MESSAGE``. When ``POOL_TIMEOUT_SECONDS`` passes, the workers are stopped and the unfinished
+    inputs fail with ``WORKER_TIMEOUT_MESSAGE``. An interrupt stops the workers and is raised again.
+
+    A SOF that is run again after a crash may meet partial products written by its first, killed run. The
+    function must classify those itself, as ``_bulk_worker`` does with its ``FileExistsError`` handling.
+
+    **Key Arguments:**
+
+    - ``function`` -- a module-level function, called as ``function(inputDict, log=log, **kwargs)``. It must return
+      a dictionary and may not raise. The function, ``log``, ``kwargs`` and the inputs are sent to the spawned
+      workers, so all of them must be picklable
+    - ``inputDicts`` -- the list of input dictionaries, each with a ``sof`` key
+    - ``poolSize`` -- the number of worker processes
+    - ``log`` -- logger
+    - ``kwargs`` -- further keyword arguments for ``function``
+
+    **Return:**
+
+    - ``results`` -- one result per input, in the order of ``inputDicts``
+    """
+    import tempfile
+
+    from tqdm import tqdm
+
+    results = [None] * len(inputDicts)
+    pending = list(range(len(inputDicts)))
+    deadline = time.monotonic() + POOL_TIMEOUT_SECONDS
+    with tempfile.TemporaryDirectory() as markerDirectory, tqdm(total=len(inputDicts)) as progressBar:
+        task = _pool_task(function, inputDicts, log, kwargs, markerDirectory)
+        while pending:
+            if deadline - time.monotonic() <= 0:
+                resolved = {index: _timed_out_result(task, index) for index in pending}
+                unstarted = []
+            else:
+                outcome = _run_pool_round(task, pending, poolSize, deadline - time.monotonic())
+                resolved = {**outcome.resolved, **_settle_in_flight(task, outcome.inFlight, deadline)}
+                unstarted = outcome.unstarted
+                if not resolved and len(unstarted) == len(pending):
+                    # NO TASK STARTED, SO A NEW POOL WOULD BREAK THE SAME WAY
+                    log.error(WORKER_START_MESSAGE)
+                    resolved = {index: _failed_result(inputDicts[index], WORKER_START_MESSAGE) for index in pending}
+                    unstarted = []
+            for index, result in resolved.items():
+                results[index] = result
+            progressBar.update(len(resolved))
+            pending = unstarted
+    return results
+
+
+def _crashed_result(task, index):
+    """*log and return the failure of an input whose worker process was killed*"""
+    sof = task.inputDicts[index]["sof"]
+    task.log.error(f"{WORKER_CRASH_MESSAGE} SOF: {sof}")
+    return _failed_result(task.inputDicts[index], WORKER_CRASH_MESSAGE)
+
+
+def _timed_out_result(task, index):
+    """*log and return the failure of an input that the batch deadline caught*"""
+    task.log.error(f"{WORKER_TIMEOUT_MESSAGE} SOF: {task.inputDicts[index]['sof']}")
+    return _failed_result(task.inputDicts[index], WORKER_TIMEOUT_MESSAGE)
+
+
+def _settle_in_flight(task, inFlight, deadline):
+    """*decide which started inputs crashed the pool, running each of several once more on its own*
+
+    A lone started input is taken to be the one that crashed, and is not run again. That is wrong only if a
+    different worker died before it touched its marker. Several started inputs are each run alone in a pool of one.
+    Once the deadline has passed, the input and all that follow fail as timed out and no pool is started.
+    """
+    if len(inFlight) == 1:
+        return {inFlight[0]: _crashed_result(task, inFlight[0])}
+    settled = {}
+    for index in inFlight:
+        if deadline - time.monotonic() <= 0:
+            settled[index] = _timed_out_result(task, index)
+            continue
+        outcome = _run_pool_round(task, [index], 1, deadline - time.monotonic())
+        if index in outcome.resolved:
+            settled[index] = outcome.resolved[index]
+        elif outcome.inFlight:
+            settled[index] = _crashed_result(task, index)
+        else:
+            settled[index] = _failed_result(task.inputDicts[index], WORKER_START_MESSAGE)
+    return settled
+
+
+def _run_pool_round(task, indexes, poolSize, timeoutSeconds):
+    """*run the inputs at ``indexes`` in one fresh pool and return what the round settled*"""
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
+
+    for index in indexes:
+        # A MARKER LEFT BY AN EARLIER ROUND MUST NOT MAKE A NEW ROUND LOOK STARTED
+        if os.path.exists(task.marker_path(index)):
+            os.remove(task.marker_path(index))
+    # FORKED WORKERS CRASH IN APPLE ACCELERATE (GCD IS NOT FORK-SAFE); SPAWN GIVES EACH WORKER A CLEAN PROCESS
+    executor = ProcessPoolExecutor(
+        max_workers=max(1, min(poolSize, len(indexes))),
+        mp_context=multiprocessing.get_context("spawn"),
+        initializer=_mute_worker_stdout,
+    )
+    try:
+        futures, unsubmitted = _submit_all(executor, task, indexes)
+        outcome = _collect_round(executor, task, futures, unsubmitted, timeoutSeconds)
+        executor.shutdown()
+    except BaseException:
+        # AN INTERRUPT, EVEN DURING THE SHUTDOWN, MUST NOT LEAVE WORKERS RUNNING AFTER THE MARKER DIRECTORY IS DELETED
+        _stop_workers(executor)
+        raise
+    return outcome
+
+
+def _submit_all(executor, task, indexes):
+    """*submit one future per input, and return the futures with the indexes the broken pool refused*"""
+    from concurrent.futures.process import BrokenProcessPool
+
+    futures = {}
+    for index in indexes:
+        try:
+            future = executor.submit(
+                _run_marked, task.marker_path(index), task.function, task.inputDicts[index], task.log, task.kwargs
+            )
+        except BrokenProcessPool:
+            break
+        futures[future] = index
+    submitted = set(futures.values())
+    return futures, [index for index in indexes if index not in submitted]
+
+
+def _collect_round(executor, task, futures, unsubmitted, timeoutSeconds):
+    """*gather the futures of one round into a ``_round_outcome``, stopping the workers on a timeout*"""
+    from concurrent.futures import as_completed
+    from concurrent.futures.process import BrokenProcessPool
+
+    resolved, inFlight, unstarted = {}, [], list(unsubmitted)
+    try:
+        for future in as_completed(futures, timeout=timeoutSeconds):
+            index = futures[future]
+            try:
+                resolved[index] = future.result()
+            except BrokenProcessPool:
+                (inFlight if os.path.exists(task.marker_path(index)) else unstarted).append(index)
+            except Exception as error:
+                task.log.error(f"The reduction of {task.inputDicts[index]['sof']} returned no result: {error}")
+                resolved[index] = _failed_result(task.inputDicts[index], str(error))
+    except TimeoutError:
+        _stop_workers(executor)
+        settled = set(resolved) | set(inFlight) | set(unstarted)
+        for index in futures.values():
+            if index not in settled:
+                resolved[index] = _timed_out_result(task, index)
+    return _round_outcome(resolved, sorted(unstarted), sorted(inFlight))
+
+
+def _stop_workers(executor):
+    """*terminate and join every worker process of an executor, then shut the executor down*"""
+    # THE EXECUTOR HAS NO PUBLIC WAY TO STOP RUNNING WORKERS, SO THIS READS ITS PRIVATE _processes MAPPING
+    processes = list((getattr(executor, "_processes", None) or {}).values())
+    for process in processes:
+        process.terminate()
+    for process in processes:
+        process.join(WORKER_STOP_SECONDS)
+        if process.is_alive():
+            process.kill()
+            process.join()
+    executor.shutdown(wait=True, cancel_futures=True)
+
+
 def run_recipe_bulk(
     log,
     recipe,
@@ -629,11 +963,10 @@ def run_recipe_bulk(
     - ``poolSize`` -- the number of worker processes. Default *None*, which uses 3 for the memory-heavy recipes
       (mflat, stare, nod and offset) and one per CPU for every other recipe.
 
-    The ``multiprocess`` start method is switched to ``spawn`` for the worker pool and restored
-    to its previous value afterwards, even when the pool raises. The start method is process-global,
-    so concurrent calls from several threads are not supported. A ``ValueError`` is raised if
-    ``settings`` has no ``logging settings`` block, because spawned workers rebuild their
-    logger from it.
+    The reductions run in a pool of spawned worker processes, one task per SOF (see ``_run_in_spawn_pool``).
+    A SOF whose worker process crashes is recorded as a failure and does not stop the rest of the batch.
+    A ``ValueError`` is raised if ``settings`` has no ``logging settings`` block, because spawned workers
+    rebuild their logger from it.
     """
     log.debug("starting the ``run_recipe_bulk`` method")
 
@@ -642,75 +975,13 @@ def run_recipe_bulk(
 
     import shutil
 
-    import multiprocess
     import pandas as pd
-    from fundamentals import fmultiprocess
 
     from soxspipe.commonutils import data_organiser
     from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
-    def wrapper(
-        inputDict,
-        log,
-        recipe,
-        settings,
-        overwrite,
-        workspaceDirectory,
-        wrapperTurnOffMP=True,
-    ):
-        import traceback
-
-        log = _worker_log(log, settings)
-
-        returnDict = {
-            "status": None,
-            "sof": inputDict["sof"],
-            "productPath": None,
-            "qcTable": None,
-            "error_message": None,
-        }
-
-        try:
-            productPath, qcTable = run_recipe(
-                log=log,
-                recipe=recipe,
-                sof=inputDict["sof"],
-                settings=settings,
-                overwrite=overwrite,
-                command=inputDict["command"],
-                turnOffMP=wrapperTurnOffMP,
-            )
-            returnDict["status"] = "pass"
-            returnDict["productPath"] = productPath
-            returnDict["qcTable"] = qcTable
-            mask = qcTable["qc_flag"] == "fail"
-            failedQcs = qcTable[mask]
-            if len(failedQcs):
-                returnDict["status"] = "fail"
-                failedQcs = failedQcs["qc_name"].tolist()
-                returnDict["error_message"] = (
-                    f"The following QC values are outside of acceptable limits: {', '.join(failedQcs)}."
-                )
-        except FileExistsError as e:
-            if "previously failed" in str(e):
-                returnDict["status"] = "previous-fail"
-            elif "product of this recipe" in str(e):
-                returnDict["status"] = "previous-pass"
-            else:
-                returnDict["status"] = "fail"
-                returnDict["error_message"] = e
-        except Exception as e:
-            # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-            log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-            log.error(f"\nRecipe Command: {inputDict['command'].replace('-obj ', ' ').replace('_obj ', ' ')}\n\n")
-            returnDict["status"] = "fail"
-            returnDict["error_message"] = e
-
-        return returnDict
-
     inputDicts = [{"sof": sof, "command": command} for sof, command in zip(sofList, commandList)]
 
-    turnOffMP = False
     wrapperTurnOffMP = True
 
     runningMessage = f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode"
@@ -721,33 +992,22 @@ def run_recipe_bulk(
         effectivePoolSize = 3
         print(f"{runningMessage} with a pool size of {effectivePoolSize} to avoid memory issues...")
     else:
-        # FALSE LETS fmultiprocess USE ONE WORKER PER CPU
-        effectivePoolSize = False
+        effectivePoolSize = os.cpu_count() or 1
         print(f"{runningMessage} with a pool size of {os.cpu_count()}...")
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
 
-    # FORKED WORKERS CRASH IN APPLE ACCELERATE (GCD IS NOT FORK-SAFE); SPAWN GIVES EACH WORKER A CLEAN PROCESS
-    originalStartMethod = multiprocess.get_start_method(allow_none=True)
-    multiprocess.set_start_method("spawn", force=True)
-    try:
-        results = fmultiprocess(
-            log=log,
-            function=wrapper,
-            inputArray=inputDicts,
-            poolSize=effectivePoolSize,
-            timeout=36000,
-            settings=settings,
-            overwrite=overwrite,
-            recipe=recipe,
-            workspaceDirectory=workspaceDirectory,
-            wrapperTurnOffMP=wrapperTurnOffMP,
-            turnOffMP=turnOffMP,
-            mute=True,
-            progressBar=True,
-        )
-    finally:
-        multiprocess.set_start_method(originalStartMethod, force=True)
+    results = _run_in_spawn_pool(
+        function=_bulk_worker,
+        inputDicts=inputDicts,
+        poolSize=effectivePoolSize,
+        log=log,
+        settings=settings,
+        overwrite=overwrite,
+        recipe=recipe,
+        workspaceDirectory=workspaceDirectory,
+        wrapperTurnOffMP=wrapperTurnOffMP,
+    )
 
     passing = []
     failing = []

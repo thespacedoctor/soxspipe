@@ -41,25 +41,19 @@ def _run_real_pool(
     logPath: Path,
     commands: list[str],
 ) -> list[dict[str, Any]]:
-    """Run the exact worker payload of `run_recipe_bulk` through a real pool of one worker.
-
-    The real pool runs inside a stand-in for `fmultiprocess` so that it starts while
-    `run_recipe_bulk` has the spawn start method selected.
-    """
+    """Run the exact worker payload of `run_recipe_bulk` through a real spawned pool of one worker."""
     import sqlite3
 
     reducerModule = import_module("soxspipe.commonutils.reducer")
-    fundamentalsModule = import_module("fundamentals")
-    realFmultiprocess = fundamentalsModule.fmultiprocess
+    realPool = reducerModule._run_in_spawn_pool
     results: list[dict[str, Any]] = []
 
-    def run_real_pool(**kwargs: Any) -> list[dict[str, Any]]:
-        kwargs.update(poolSize=1, progressBar=False, timeout=SPAWN_TIMEOUT_SECONDS)
-        results.extend(realFmultiprocess(**kwargs))
+    def run_real_pool(function: Any, inputDicts: list[dict[str, str]], poolSize: int, log: Any, **kwargs: Any) -> list:
+        results.extend(realPool(function, inputDicts, 1, log, **kwargs))
         return []
 
     monkeypatch.chdir(REPOSITORY_ROOT)
-    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", run_real_pool)
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", run_real_pool)
     # THE PARENT'S REAL LOGGER GAINS `print` FROM THE SETUP FUNCTION. THE CLASS IS PATCHED, NOT AN INSTANCE,
     # BECAUSE THE LOGGER IS PICKLED BY NAME AND A SPAWNED CHILD UNPICKLES A FRESH INSTANCE
     monkeypatch.setattr(logging.Logger, "print", lambda self, message: None, raising=False)
