@@ -191,21 +191,25 @@ class soxs_offset(soxs_nod):
             allFrameONNames,
             allFrameOFFNames,
         ) = self._split_on_off_frames(allObjectFrames, allFilenames, kw)
-        uniqueOffsets = self._check_on_off_balance(allFrameONOffsets, allFrameOFFOffsets)
+        # THE SPLIT HOLDS THE FRAMES NOW. DROPPING THIS LIST LETS THE ALIGNED FRAMES REPLACE THE ORIGINALS IN MEMORY
+        del allObjectFrames
+        self._check_on_off_balance(allFrameONOffsets, allFrameOFFOffsets)
 
-        if len(allFrameONOffsets) > 1 and len(uniqueOffsets) > 1:
-            stackedSpectrum, productPath, orderJoins, forceFailure = self._reduce_each_offset_cycle(
+        forceFailure = False
+        if self._should_align_and_stack():
+            allFrameON = self._align_on_frames(allFrameON, allFrameOFF, allFrameONNames)
+            stackedSpectrum, productPath, orderJoins, forceFailure = self._reduce_stacked_offset_pair(
                 allFrameON,
                 allFrameOFF,
-                allFrameONNames,
-                allFrameOFFNames,
                 orderTablePath=orderTablePath,
                 master_flat=master_flat,
             )
         else:
-            stackedSpectrum, productPath, orderJoins, forceFailure = self._reduce_stacked_offset_pair(
+            stackedSpectrum, productPath, orderJoins = self._reduce_each_offset_cycle(
                 allFrameON,
                 allFrameOFF,
+                allFrameONNames,
+                allFrameOFFNames,
                 orderTablePath=orderTablePath,
                 master_flat=master_flat,
             )
@@ -225,6 +229,32 @@ class soxs_offset(soxs_nod):
         self.log.debug("completed the ``produce_product`` method")
 
         return productPath, qcTable
+
+    def _align_on_frames(self, allFrameON, allFrameOFF, allFrameONNames):
+        """*align the ON frames to each other along the slit; the OFF frames are stacked without alignment*
+
+        The ON list is changed in place: each original frame is replaced by its aligned frame as soon as that exists.
+        Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``allFrameON`` -- the ON frames
+        - ``allFrameOFF`` -- the OFF frames, which are subtracted from the ON frames to trace them
+        - ``allFrameONNames`` -- the ON frames' file names
+
+        **Return:**
+
+        - ``allFrameON`` -- the aligned ON frames
+        """
+        from soxspipe.commonutils.slit_alignment import frame_group
+
+        results = self._align_frame_groups([frame_group(allFrameON, allFrameOFF, allFrameONNames)])
+        self._record_slit_alignment(
+            results,
+            obsDateUtc=allFrameON[0].header[self.kw("DATE_OBS")],
+            hasShifts=len(allFrameON) > 1,
+        )
+        return allFrameON
 
     def _read_offset_object_frames(self, kw):
         """*read the offset science frames of the first frame type that has any*
@@ -445,13 +475,10 @@ class soxs_offset(soxs_nod):
         - ``stackedSpectrum`` -- the stacked extraction
         - ``productPath`` -- the path to the stacked extraction
         - ``orderJoins`` -- the order joins of the last cycle
-        - ``forceFailure`` -- True when a response curve was requested, which this path cannot build
         """
         import pandas as pd
 
         from soxspipe.commonutils.toolkit import quicklook_image
-
-        forceFailure = False
 
         allSpectrumA = []
         sequenceCount = 1
@@ -532,10 +559,7 @@ class soxs_offset(soxs_nod):
         )
         productPath = extractionPath
 
-        if self.generateReponseCurve:
-            forceFailure = True
-
-        return stackedSpectrum, productPath, orderJoins, forceFailure
+        return stackedSpectrum, productPath, orderJoins
 
     def _reduce_stacked_offset_pair(self, allFrameON, allFrameOFF, orderTablePath, master_flat):
         """*stack the ON and OFF frames, extract the pair, and build a response curve when requested*
@@ -556,7 +580,7 @@ class soxs_offset(soxs_nod):
         """
         forceFailure = False
 
-        # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
+        # STACKING ON AND OFF FRAMES. THE ON FRAMES ARE ALREADY ALIGNED ALONG THE SLIT, THE OFF FRAMES ARE NOT
         aFrame = self.clip_and_stack(
             frames=allFrameON,
             recipe="soxs_offset",

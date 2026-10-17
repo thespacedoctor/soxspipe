@@ -186,6 +186,8 @@ soxs-nod:
     stacked-clipping-sigma: 5
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
     # the length of the 'slit' used to collect object flux (in pixels)

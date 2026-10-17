@@ -11,6 +11,13 @@ DY-1518 background mask (DY-1521). DY-1279 removed object light from the VIS sky
 model of this bright standard, so its sky levels fell by about 85%. A local arm64
 reduction lands up to 5% away, so expect local runs to sit near the band edges. The
 NIR detected fraction and blue end swing with small upstream changes (DY-994).
+
+Re-recorded again on 2026-10-16 from two bit-identical CI runs (38915352201 and
+38915356992) in the DY-1612 pull request. These moves predate DY-1612: a gate run on
+develop itself (38918109330, bc80f1d1) gave the same values. They arrived through
+merges into develop, where the gate does not run. The VIS blue end moved from 348.02
+to 348.14 nm and its sky counts median fell 7%; the NIR blue end moved from 794.58 to
+795.06 nm and its SNR median fell from 16.91 to 14.09.
 """
 
 from __future__ import annotations
@@ -64,17 +71,17 @@ BASELINES = [
             obsDate="2025-10-13T04:35:11.440",
             nOrders=4,
             # 0.02 NM STEPS, SO ±50 ROWS IS ±1 NM OF SPECTRAL COVERAGE
-            rows=25_102,
+            rows=25_096,
             rowsAbs=50,
-            waveMin=348.02,
+            waveMin=348.14,
             waveMinAbs=0.04,
             waveMax=850.04,
             waveStep=0.02,
-            snrMedian=156.91,
-            fluxcalMedian=5.925303507351052e-14,
-            skyCountsMedian=6.8395094871521,
-            skyModelMedian=9.14101791381836,
-            skyModelP90=93.79542541503906,
+            snrMedian=156.8,
+            fluxcalMedian=5.930338765555529e-14,
+            skyCountsMedian=6.347151279449463,
+            skyModelMedian=9.057429313659668,
+            skyModelP90=93.78917541503911,
             detectedFraction=0.931,
             objtraceStem="20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_FEIGE110",
         ),
@@ -86,18 +93,18 @@ BASELINES = [
             obsDate="2026-01-11T08:03:47.6362",
             nOrders=15,
             # 0.06 NM STEPS, SO ±25 ROWS IS ±1.5 NM OF SPECTRAL COVERAGE
-            rows=20_620,
+            rows=20_617,
             rowsAbs=25,
-            waveMin=794.58,
+            waveMin=795.06,
             waveMinAbs=0.12,
-            waveMax=2031.72,
+            waveMax=2032.02,
             waveStep=0.06,
-            snrMedian=16.91,
-            fluxcalMedian=3.0643544845287745e-15,
-            skyCountsMedian=17.535743713378906,
-            skyModelMedian=20.37826919555664,
-            skyModelP90=89.83494873046874,
-            detectedFraction=0.938,
+            snrMedian=14.09,
+            fluxcalMedian=3.0812209328868036e-15,
+            skyCountsMedian=17.42337417602539,
+            skyModelMedian=20.28994369506836,
+            skyModelP90=89.84078826904295,
+            detectedFraction=0.939,
             objtraceStem="20260111T080347_NIR_3_STARE_OBJ_SLIT5_0_30_0S_SOXS_CD-325613",
         ),
         id="nir",
