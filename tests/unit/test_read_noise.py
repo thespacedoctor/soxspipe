@@ -46,6 +46,10 @@ def _warnings(log: Any) -> list[str]:
     return [message for level, message in log.messages if level == "warning"]
 
 
+def _infos(log: Any) -> list[str]:
+    return [message for level, message in log.messages if level == "info"]
+
+
 def test_the_measured_read_noise_replaces_the_nominal_one(log: Any) -> None:
     # ACT
     result = _resolve(log, _header(ron=4.0, nCombined=4))
@@ -126,14 +130,14 @@ def test_a_missing_nominal_value_falls_back_to_the_detector_default(log: Any) ->
     assert len(_warnings(log)) == 1
 
 
-def test_a_measured_value_over_fifteen_percent_from_nominal_warns_but_is_used(log: Any) -> None:
+def test_a_measured_value_over_fifteen_percent_from_nominal_is_logged_as_info_and_used(log: Any) -> None:
     # ACT: 4.0 IS 21% ABOVE 3.3
     result = _resolve(log, _header(ron=4.0))
 
     # ASSERT
     assert result.singleFrame == pytest.approx(4.0)
-    assert len(_warnings(log)) == 1
-    assert "nominal" in _warnings(log)[0]
+    assert _warnings(log) == []
+    assert any("nominal" in message for message in _infos(log))
 
 
 def test_a_measured_value_within_fifteen_percent_of_nominal_does_not_warn(log: Any) -> None:
@@ -203,4 +207,4 @@ def test_a_missing_nominal_value_compares_the_measured_value_to_the_detector_def
     resolve_read_noise(_header(ron=15.0), None, 7.3, _kw(log), log, masterLabel="master dark")
 
     # ASSERT
-    assert any("nominal 7.30" in message for message in _warnings(log))
+    assert any("nominal 7.30" in message for message in _infos(log))
