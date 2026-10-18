@@ -32,6 +32,7 @@ marked deleted in the VIS line lists (DY-1578).
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -39,9 +40,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from astropy.table import Table
 
-from soxspipe.commonutils.flux_calibration import _calculate_flux_calibration
+from soxspipe.commonutils.flux_calibration import _calculate_flux_calibration, load_response_factors
 from tests.real_data.reporting import report
 
 pytestmark = pytest.mark.real_data
@@ -401,13 +401,10 @@ def test_calibration_qc_matches_approved_baseline(reduced_workspace: Path, basel
 
 def _response_curve(responsePath: Path, wavelengths: np.ndarray) -> np.ndarray:
     """Evaluate the response function on a wavelength grid, the way `flux_calibration` applies it."""
-    coefficientTable = Table.read(responsePath, format="fits", hdu=1)
-    coefficients = [coefficientTable[f"c{index}"][0] for index in range(int(coefficientTable["polyOrder"][0]) + 1)]
+    responseFactors = load_response_factors(str(responsePath), wavelengths, logging.getLogger(__name__))
     # ONE COUNT PER SECOND WITH NO EXTINCTION, SO THE RESULT IS THE FLUX ONE COUNT PER SECOND STANDS FOR
     return np.asarray(
-        _calculate_flux_calibration(
-            wavelengths, counts=1.0, exposureTime=1.0, responseCoefficients=coefficients, extinctionFactors=1.0
-        ),
+        _calculate_flux_calibration(1.0, exposureTime=1.0, responseFactors=responseFactors, extinctionFactors=1.0),
         dtype=float,
     )
 

@@ -705,3 +705,20 @@ def test_stack_extractions_calls_add_snr_efficiency_qcs_and_writes_its_qc_to_the
     assert recipe.qc is returnedQc
     with fits.open(fitsPath) as hdus:
         assert hdus[0].header["ESO QC SYNTHETIC QC"] == pytest.approx(42.0)
+
+
+def test_stack_extractions_writes_the_product_and_warns_when_the_extraction_found_no_trace(
+    log: Any,
+    tmp_path: Path,
+) -> None:
+    """B found no trace, so its spectrum and the order joins are None; the QCs are skipped and A is still written."""
+    recipe = _stack_recipe(log, tmp_path)
+    first, _ = _spectrum_frames()
+
+    _, fitsPath = recipe.stack_extractions([first, None], orderJoins=None)
+
+    assert Path(fitsPath).exists()
+    assert recipe.qc.empty
+    assert [message for level, message in log.messages if level == "warning"] == [
+        "The SNR and efficiency QCs were skipped: no order joins were supplied (no object trace found)."
+    ]

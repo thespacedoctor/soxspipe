@@ -1,4 +1,4 @@
-"""Analytic contracts for response-function polynomial fitting."""
+"""Contracts for the response-function recipe built on the spline fit."""
 
 from __future__ import annotations
 
@@ -8,243 +8,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.response_function import (
-    _fit_response_polynomial,
-    _ResponseFitConvergenceError,
-    response_function,
-)
+from soxspipe.commonutils import response_fit
+from soxspipe.commonutils.response_function import _ResponseFitConvergenceError, response_function
 
 pytestmark = pytest.mark.unit
 responseModule = importlib.import_module("soxspipe.commonutils.response_function")
 toolkitModule = importlib.import_module("soxspipe.commonutils.toolkit")
 phase3Module = importlib.import_module("soxspipe.commonutils.phase3")
-
-
-def _legacy_fit_response_polynomial(
-    wavelength: np.ndarray,
-    rawResponse: np.ndarray,
-    polynomialOrder: int,
-    maxIterations: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    fittedWavelength = wavelength.copy()
-    fittedResponse = rawResponse.copy()
-    iteration = 0
-    deletedPointCount = 1
-    while iteration < maxIterations and deletedPointCount > 0:
-        sampledWavelength = np.array(
-            [
-                np.median(fittedWavelength[max(0, index - 5) : index + 6])
-                for index in range(0, len(fittedWavelength), 100)
-            ]
-        )
-        sampledResponse = np.array(
-            [np.median(fittedResponse[max(0, index - 5) : index + 6]) for index in range(0, len(fittedResponse), 100)]
-        )
-        coefficients = np.polyfit(
-            sampledWavelength,
-            sampledResponse,
-            deg=polynomialOrder,
-        )
-        modelResponse = np.polyval(coefficients, fittedWavelength)
-        deletedPoints = [
-            index
-            for index, (responseValue, modelValue) in enumerate(zip(fittedResponse, modelResponse, strict=True))
-            if responseValue < 0 or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
-        ]
-        fittedWavelength = np.delete(fittedWavelength, deletedPoints)
-        fittedResponse = np.delete(fittedResponse, deletedPoints)
-        deletedPointCount = len(deletedPoints)
-        iteration += 1
-    return coefficients, fittedWavelength, fittedResponse
-
-
-def test_response_fit_recovers_a_linear_curve_and_rejects_outliers() -> None:
-    wavelengths = np.linspace(400.0, 800.0, 201)
-    rawResponse = 0.02 * wavelengths + 3.0
-    rawResponse[50] = -1.0
-    rawResponse[150] *= 4.0
-
-    coefficients, fittedWavelengths, fittedResponse = _fit_response_polynomial(
-        wavelengths,
-        rawResponse,
-        polynomialOrder=1,
-        maxIterations=5,
-    )
-
-    np.testing.assert_allclose(coefficients, [0.02, 3.0], rtol=1e-12, atol=1e-12)
-    assert len(fittedWavelengths) == 199
-    assert wavelengths[50] not in fittedWavelengths
-    assert wavelengths[150] not in fittedWavelengths
-    np.testing.assert_allclose(
-        fittedResponse,
-        np.polyval(coefficients, fittedWavelengths),
-        rtol=1e-12,
-        atol=1e-12,
-    )
-
-
-def test_response_fit_matches_the_legacy_multi_iteration_algorithm() -> None:
-    wavelengths = np.linspace(400.0, 800.0, 301)
-    rawResponse = 0.02 * wavelengths + 3.0
-    rawResponse[[50, 150]] = [-1.0, 80.0]
-
-    expected = _legacy_fit_response_polynomial(
-        wavelengths,
-        rawResponse,
-        polynomialOrder=1,
-        maxIterations=5,
-    )
-    actual = _fit_response_polynomial(
-        wavelengths,
-        rawResponse,
-        polynomialOrder=1,
-        maxIterations=5,
-    )
-
-    np.testing.assert_allclose(actual[0], expected[0], rtol=0, atol=0)
-    np.testing.assert_array_equal(actual[1], expected[1])
-    np.testing.assert_array_equal(actual[2], expected[2])
-
-
-def test_response_fit_excludes_requested_wavelength_regions() -> None:
-    wavelengths = np.linspace(700.0, 1000.0, 301)
-    rawResponse = 0.01 * wavelengths + 1.0
-
-    coefficients, fittedWavelengths, _ = _fit_response_polynomial(
-        wavelengths,
-        rawResponse,
-        polynomialOrder=1,
-        maxIterations=2,
-        excludedRegions=[(770.0, 850.0), (930.0, 970.0)],
-    )
-
-    assert not np.any((fittedWavelengths >= 770.0) & (fittedWavelengths <= 850.0))
-    assert not np.any((fittedWavelengths >= 930.0) & (fittedWavelengths <= 970.0))
-    np.testing.assert_allclose(coefficients, [0.01, 1.0], rtol=1e-12, atol=1e-12)
-
-
-def test_response_fit_smooths_a_constant_nir_response() -> None:
-    wavelengths = np.linspace(900.0, 1100.0, 201)
-    rawResponse = np.full(wavelengths.shape, 7.5)
-
-    coefficients, fittedWavelengths, fittedResponse = _fit_response_polynomial(
-        wavelengths,
-        rawResponse,
-        polynomialOrder=0,
-        maxIterations=2,
-        smoothingSigma=5,
-    )
-
-    np.testing.assert_allclose(coefficients, [7.5], rtol=1e-14, atol=1e-14)
-    np.testing.assert_array_equal(fittedWavelengths, wavelengths)
-    np.testing.assert_allclose(fittedResponse, rawResponse, rtol=1e-14, atol=1e-14)
-
-
-def test_response_fit_preserves_native_preprocessing_and_zero_iteration_errors() -> None:
-    wavelengths = np.array([500.0, 600.0])
-    rawResponse = np.array([5.0, 6.0])
-
-    with pytest.raises(ValueError, match="too many values to unpack"):
-        _fit_response_polynomial(
-            wavelengths,
-            rawResponse,
-            polynomialOrder=1,
-            maxIterations=1,
-            excludedRegions=[(400.0, 450.0, 500.0)],
-        )
-
-    with pytest.raises(UnboundLocalError):
-        _fit_response_polynomial(
-            wavelengths,
-            rawResponse,
-            polynomialOrder=1,
-            maxIterations=0,
-        )
-
-
-class _RecordingLog:
-    """Collect warning messages from the fit routine."""
-
-    def __init__(self) -> None:
-        self.warnings: list[str] = []
-
-    def warning(self, message: str) -> None:
-        self.warnings.append(message)
-
-
-def _block_outlier_response() -> tuple[np.ndarray, np.ndarray]:
-    wavelengths = np.linspace(500.0, 900.0, 1000)
-    rawResponse = np.full(1000, 1.0)
-    rawResponse[295:306] = 3.0
-    return wavelengths, rawResponse
-
-
-def test_response_fit_warns_once_when_the_cap_is_reached_while_still_rejecting() -> None:
-    wavelengths, rawResponse = _block_outlier_response()
-    recordingLog = _RecordingLog()
-
-    _fit_response_polynomial(wavelengths, rawResponse, polynomialOrder=1, maxIterations=1, log=recordingLog)
-
-    assert len(recordingLog.warnings) == 1
-    assert "iteration cap" in recordingLog.warnings[0]
-
-
-def test_response_fit_does_not_warn_when_it_converges_before_the_cap() -> None:
-    wavelengths, rawResponse = _block_outlier_response()
-    recordingLog = _RecordingLog()
-
-    _fit_response_polynomial(wavelengths, rawResponse, polynomialOrder=1, maxIterations=5, log=recordingLog)
-
-    assert recordingLog.warnings == []
-
-
-def test_response_fit_marks_only_iterative_convergence_failures() -> None:
-    with pytest.raises(_ResponseFitConvergenceError) as excInfo:
-        _fit_response_polynomial(
-            np.array([]),
-            np.array([]),
-            polynomialOrder=1,
-            maxIterations=1,
-        )
-
-    assert isinstance(excInfo.value.originalError, TypeError)
-
-
-def test_response_fit_raises_when_no_finite_response_samples_remain() -> None:
-    # ARRANGE: EVERY SAMPLE HAD ZERO EXTRACTED FLUX, SO THE RAW RESPONSE IS INFINITE OR NAN THROUGHOUT
-    wavelengths = np.linspace(1000.0, 2000.0, 400)
-    rawResponse = np.full(400, np.inf)
-    rawResponse[::2] = np.nan
-
-    # ACT AND ASSERT
-    with pytest.raises(_ResponseFitConvergenceError, match="no finite samples"):
-        _fit_response_polynomial(wavelengths, rawResponse, polynomialOrder=3, maxIterations=5, smoothingSigma=5)
-
-
-@pytest.mark.parametrize(
-    ("badWavelength", "badResponse"),
-    [(1500.0, np.inf), (1500.0, np.nan), (np.nan, 2.0)],
-    ids=["infinite-response", "nan-response", "nan-wavelength"],
-)
-def test_response_fit_drops_non_finite_samples_and_warns(badWavelength: float, badResponse: float) -> None:
-    # ARRANGE: ONE NON-FINITE SAMPLE IN AN OTHERWISE FLAT RESPONSE
-    wavelengths = np.linspace(1000.0, 2000.0, 400)
-    rawResponse = np.full(400, 2.0)
-    wavelengths[200] = badWavelength
-    rawResponse[200] = badResponse
-    recordingLog = _RecordingLog()
-
-    # ACT
-    coefficients, fittedWavelengths, _ = _fit_response_polynomial(
-        wavelengths, rawResponse, polynomialOrder=0, maxIterations=5, smoothingSigma=5, log=recordingLog
-    )
-
-    # ASSERT: ONLY THE BAD SAMPLE IS DROPPED, AND THE FIT RECOVERS THE FLAT RESPONSE
-    assert len(fittedWavelengths) == 399
-    assert np.isfinite(fittedWavelengths).all()
-    np.testing.assert_allclose(coefficients, [2.0], rtol=1e-12)
-    assert len(recordingLog.warnings) == 1
-    assert "Dropped 1 raw response samples" in recordingLog.warnings[0]
 
 
 def test_response_get_rejects_an_unknown_standard_star(log: object) -> None:
@@ -262,21 +32,23 @@ def test_response_get_rejects_an_unknown_standard_star(log: object) -> None:
         response.get()
 
 
-def test_response_get_writes_response_and_efficiency_products(
-    log: object,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    wavelengths = np.linspace(500.0, 520.0, 21)
+def test_the_convergence_error_is_shared_with_the_fit_module() -> None:
+    assert _ResponseFitConvergenceError is response_fit._ResponseFitConvergenceError
+
+
+def _vis_response(log: object, monkeypatch: pytest.MonkeyPatch, absFlux: float = 2.0) -> response_function:
+    """Return a VIS response_function over a flat synthetic standard, with disk writers captured."""
+    wavelengths = np.linspace(400.0, 800.0, 4000)
     response = object.__new__(response_function)
     response.log = log
-    response.stdExtractionDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_COUNTS": np.full(21, 10.0)})
-    response.stdExtractionNotFlatDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(21, 10.0)})
-    response.stdAbsFluxDF = pd.DataFrame({"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(21, 2.0)})
+    response.stdExtractionDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_COUNTS": np.full(4000, 10.0)})
+    response.stdExtractionNotFlatDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(4000, 10.0)})
+    response.stdAbsFluxDF = pd.DataFrame({"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(4000, absFlux)})
     response.std_objName = "SYNTHETIC_STAR"
     response.arm = "VIS"
     response.instrument = "soxs"
     response.texp = 10.0
-    response.recipeSettings = {"vis": {"poly_order": 0, "max_iteration": 2}}
+    response.recipeSettings = {"vis": {}}
     response.calibrationRootPath = "/calibration"
     response.detectorParams = {"extinction": "extinction.fits"}
     response.airmass = 1.0
@@ -291,7 +63,6 @@ def test_response_get_writes_response_and_efficiency_products(
     response.settings = {"instrument": "soxs"}
     response.dateObs = "2024-01-01T00:00:00"
     response.orderJoins = []
-    captured: dict[str, object] = {}
     monkeypatch.setattr(
         responseModule,
         "extinction_correction_factor",
@@ -300,27 +71,88 @@ def test_response_get_writes_response_and_efficiency_products(
     monkeypatch.setattr(
         toolkitModule,
         "add_snr_efficiency_qcs",
-        lambda **kwargs: captured.update({"snrArm": kwargs["arm"]}) or kwargs["qcTable"],
+        lambda **kwargs: kwargs["qcTable"],
     )
-    monkeypatch.setattr(
-        phase3Module,
-        "write_fits_table_to_disk",
-        lambda **kwargs: captured.update({"efficiencyWrite": kwargs}),
-    )
+    monkeypatch.setattr(phase3Module, "write_fits_table_to_disk", lambda **kwargs: None)
+    return response
+
+
+def test_response_get_writes_the_spline_curve_and_legacy_coefficients(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    response = _vis_response(log, monkeypatch)
+    captured: dict[str, object] = {}
     response.write_response_function_to_file = lambda **kwargs: captured.update({"responseWrite": kwargs})
     response.plot_response_curve = lambda **kwargs: captured.update({"plot": kwargs})
 
+    # ACT
     qc, products, recipeError = response.get()
 
+    # ASSERT: A FLAT RATIO OF 2E17 GIVES A FLAT SPLINE AND AN ORDER-5 LEGACY POLYNOMIAL THAT IS FLAT TOO
+    write = captured["responseWrite"]
     assert recipeError is False
-    assert qc.empty
+    assert write["polyOrder"] == 5
+    assert len(write["responseFuncCoeffs"]) == 6
+    np.testing.assert_allclose(write["response"], 2.0e17, rtol=1e-6)
+    np.testing.assert_allclose(np.polyval(write["responseFuncCoeffs"], 600.0), 2.0e17, rtol=1e-6)
+    np.testing.assert_array_equal(write["wavelength"], response.stdExtractionDF["WAVE"].values)
     assert products["product_label"].tolist() == ["EFFICIENCY"]
-    np.testing.assert_allclose(
-        captured["responseWrite"]["responseFuncCoeffs"],
-        [2.0e17],
-        rtol=1e-12,
+    assert captured["plot"]["qcWarnings"] == []
+
+
+def test_response_get_adds_the_response_fit_qcs_before_writing_the_product(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    response = _vis_response(log, monkeypatch)
+    seenAtWrite: dict[str, list[str]] = {}
+    response.write_response_function_to_file = lambda **kwargs: seenAtWrite.update(
+        {"names": response.qc["qc_name"].tolist()}
     )
-    assert captured["responseWrite"]["polyOrder"] == 0
-    assert captured["efficiencyWrite"]["filePath"] == "/products/SYNTHETIC_EFFICIENCY.fits"
-    assert captured["snrArm"] == "VIS"
-    assert captured["plot"]["stdEfficiencyEstimate"].shape == (21,)
+    response.plot_response_curve = lambda **kwargs: None
+
+    # ACT
+    response.get()
+
+    # ASSERT
+    assert seenAtWrite["names"][:2] == ["RESP BIN CLIP FRAC", "RESP MAX GAP"]
+    assert "RESP SELFCAL RES 350-370" not in seenAtWrite["names"]
+    assert "RESP SELFCAL RES 500-600" in seenAtWrite["names"]
+    selfCal = response.qc.loc[response.qc["qc_name"] == "RESP SELFCAL RES 500-600", "qc_value"].iloc[0]
+    assert abs(selfCal) < 1e-3
+
+
+def test_response_get_warns_and_passes_the_warnings_to_the_plot_when_qc_is_out_of_tolerance(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: A TOLERANCE OF ZERO ON THE MAX GAP FORCES A BREACH WITHOUT CHANGING THE FIT
+    response = _vis_response(log, monkeypatch)
+    response.recipeSettings = {"vis": {"max_gap_nm_max": 1}}
+    captured: dict[str, object] = {}
+    response.write_response_function_to_file = lambda **kwargs: None
+    response.plot_response_curve = lambda **kwargs: captured.update(kwargs)
+
+    # ACT
+    _, _, recipeError = response.get()
+
+    # ASSERT: THE RECIPE STILL SUCCEEDS
+    assert recipeError is False
+    assert len(captured["qcWarnings"]) == 1
+    assert any(level == "warning" and "gap" in message for level, message in log.messages)
+
+
+def test_response_get_raises_when_the_response_has_no_finite_samples(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: ZERO EXTRACTED FLUX EVERYWHERE
+    response = _vis_response(log, monkeypatch)
+    response.stdExtractionDF["FLUX_COUNTS"] = 0.0
+
+    # ACT AND ASSERT
+    with pytest.raises(Exception, match="did not converge"):
+        response.get()
