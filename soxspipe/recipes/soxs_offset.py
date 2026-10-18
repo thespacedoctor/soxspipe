@@ -474,13 +474,12 @@ class soxs_offset(soxs_nod):
 
         - ``stackedSpectrum`` -- the stacked extraction
         - ``productPath`` -- the path to the stacked extraction
-        - ``orderJoins`` -- the order joins of the last cycle
+        - ``orderJoins`` -- the order joins of the last cycle that found an object trace (*None* if none did)
         """
-        import pandas as pd
-
         from soxspipe.commonutils.toolkit import quicklook_image
 
         allSpectrumA = []
+        orderJoins = None
         sequenceCount = 1
         # SORT FRAMEON AND FRAMEOFF LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
         # FRAMES IN TIME
@@ -541,14 +540,19 @@ class soxs_offset(soxs_nod):
                 masterFlat = False
 
             # PROCESSING SINGLE SEQUENCE
-            mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
+            mergedSpectrumDF_A, _, cycleJoins = self.process_single_ab_nodding_cycle(
                 aFrame=frameON,
                 bFrame=frameOFF,
                 locationSetIndex=sequenceCount,
                 orderTablePath=orderTablePath,
                 masterFlat=masterFlat,
             )
-            allSpectrumA = mergedSpectrumDF_A if sequenceCount == 1 else pd.concat([allSpectrumA, mergedSpectrumDF_A])
+            # A CYCLE WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO KEEP THE LATEST ONES AN EARLIER CYCLE FOUND
+            if cycleJoins is not None:
+                orderJoins = cycleJoins
+            allSpectrumA = (
+                mergedSpectrumDF_A if sequenceCount == 1 else self._append_spectrum(allSpectrumA, mergedSpectrumDF_A)
+            )
 
             sequenceCount += 1
         stackedSpectrum, extractionPath = self.stack_extractions(

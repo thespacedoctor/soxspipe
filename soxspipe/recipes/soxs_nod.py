@@ -753,14 +753,13 @@ class soxs_nod(base_recipe):
         **Return:**
 
         - ``stackedSpectrum`` -- the stacked extraction
-        - ``orderJoins`` -- the order joins of the last cycle
+        - ``orderJoins`` -- the order joins of the last cycle that found an object trace (*None* if none did)
         """
-        import pandas as pd
-
         from soxspipe.commonutils.toolkit import quicklook_image
 
         allSpectrumA = []
         allSpectrumB = []
+        orderJoins = None
         sequenceCount = 1
         # SORT FRAMEA AND FRAMEB LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
         # FRAMES IN TIME
@@ -821,24 +820,45 @@ class soxs_nod(base_recipe):
             masterFlat = master_flat if self.recipeSettings["use_flat"] and master_flat else False
 
             # PROCESSING SINGLE SEQUENCE
-            mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
+            mergedSpectrumDF_A, mergedSpectrumDF_B, cycleJoins = self.process_single_ab_nodding_cycle(
                 aFrame=frameA,
                 bFrame=frameB,
                 locationSetIndex=sequenceCount,
                 orderTablePath=orderTablePath,
                 masterFlat=masterFlat,
             )
+            # A CYCLE WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO KEEP THE LATEST ONES AN EARLIER CYCLE FOUND
+            if cycleJoins is not None:
+                orderJoins = cycleJoins
             if sequenceCount == 1:
                 allSpectrumA = mergedSpectrumDF_A
                 allSpectrumB = mergedSpectrumDF_B
             else:
-                allSpectrumA = pd.concat([allSpectrumA, mergedSpectrumDF_A])
-                allSpectrumB = pd.concat([allSpectrumB, mergedSpectrumDF_B])
+                allSpectrumA = self._append_spectrum(allSpectrumA, mergedSpectrumDF_A)
+                allSpectrumB = self._append_spectrum(allSpectrumB, mergedSpectrumDF_B)
 
             sequenceCount += 1
         stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB], orderJoins=orderJoins)
 
         return stackedSpectrum, orderJoins
+
+    @staticmethod
+    def _append_spectrum(spectra, newSpectrum):
+        """*append a cycle's spectrum to the spectra gathered so far, skipping cycles that found no object trace*
+
+        **Key Arguments:**
+
+        - ``spectra`` -- the spectra gathered so far (dataframe), or None when no cycle found a trace yet
+        - ``newSpectrum`` -- the cycle's spectrum (dataframe), or None when it found no trace
+
+        **Return:**
+
+        - ``spectra`` -- the combined spectra, or None when neither input holds a spectrum
+        """
+        import pandas as pd
+
+        found = [spectrum for spectrum in (spectra, newSpectrum) if spectrum is not None]
+        return pd.concat(found) if found else None
 
     def _reduce_stacked_ab_pair(self, allFrameA, allFrameB, orderTablePath, master_flat):
         """*stack the A and B frames, extract the pair, and build a response curve when requested*
@@ -1471,6 +1491,20 @@ class soxs_nod(base_recipe):
         )
 
         postfix = "_NOTFLAT" if notFlattened else ""
+
+        # AN EXTRACTION THAT FOUND NO OBJECT TRACE RETURNS NO SPECTRUM, AND WITH NONE TO STACK THERE IS NO PRODUCT
+        if all(spectrum is None for spectrum in dataFrameList):
+            where = (
+                "in the offset frame of any cycle"
+                if "offset" in self.recipeName
+                else "in either nod position of any nodding cycle"
+            )
+            error = (
+                f"No object trace was found {where}, so there is no extracted spectrum to stack. "
+                "Please check that the object is in the slit and bright enough to be traced."
+            )
+            self.log.error(error)
+            raise Exception(error)
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGEDSPECTRUMDF_B INTO A SINGLE DATAFRAME, THEN
         # GROUP BY WAVE AND SUM THE FLUXES
