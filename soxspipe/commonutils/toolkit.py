@@ -2612,6 +2612,7 @@ def plot_merged_spectrum_qc(
     qcTable=False,
     settings=False,
     extractionNotes=None,
+    boxcarExtraction=False,
 ):
     """*plot the order-merged spectrum QC plot, save it to the QC directory and record it in the products table*
 
@@ -2633,6 +2634,7 @@ def plot_merged_spectrum_qc(
     - ``settings`` -- the soxspipe settings dictionary, used to look up the skylines. Default *False*
     - ``extractionNotes`` -- display strings (see ``format_extraction_notes``) to print under the plot.
       Default *None* (no notes)
+    - ``boxcarExtraction`` -- title the plot as a robust boxcar extraction instead of an optimal one. Default *False*
 
     **Return:**
 
@@ -2685,6 +2687,7 @@ def plot_merged_spectrum_qc(
         arm=arm,
         filenameTemplate=filenameTemplate,
         fluxCalibrated=fluxCalibrated,
+        boxcarExtraction=boxcarExtraction,
     )
 
     bottom_panel = _draw_merged_snr_panel(
@@ -2746,7 +2749,7 @@ def plot_merged_spectrum_qc(
     return products, filePath
 
 
-def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, fluxCalibrated):
+def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, fluxCalibrated, boxcarExtraction=False):
     """*draw the linear-scale and log-scale flux panels of the merged-spectrum QC plot*
 
     **Key Arguments:**
@@ -2757,6 +2760,7 @@ def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, flux
     - ``arm`` -- the spectrograph arm
     - ``filenameTemplate`` -- the product filename the plot title is built from
     - ``fluxCalibrated`` -- is the spectrum flux calibrated?
+    - ``boxcarExtraction`` -- title the plot as a robust boxcar extraction instead of an optimal one. Default *False*
 
     **Return:**
 
@@ -2772,8 +2776,9 @@ def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, flux
     else:
         top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
 
+    extractionTitle = "Robust Boxcar Extracted" if boxcarExtraction else "Optimally Extracted"
     top_panel.set_title(
-        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace('.fits', '')}",
+        f"{extractionTitle} Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace('.fits', '')}",
         fontsize=11,
         linespacing=2.0,
     )

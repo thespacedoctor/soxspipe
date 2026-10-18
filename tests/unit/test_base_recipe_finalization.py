@@ -159,6 +159,41 @@ def test_clean_up_records_an_explicit_failure_reason(log: Any, tmp_path: Path) -
     ) in log.messages
 
 
+def test_clean_up_keeps_an_explicit_failure_reason_when_a_qc_also_fails(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed QC marks the recipe failed without replacing the failure message."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["fail"], "qc_name": ["TRACE RMS"]}),
+        status="pass",
+    )
+    connection = RecordingConnection()
+    recipe.conn = connection
+    refreshes: list[bool] = []
+
+    class RecordingOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, *, failure: bool) -> None:
+            refreshes.append(failure)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", RecordingOrganiser)
+
+    recipe.clean_up(forceFail="synthetic calibration mismatch")
+
+    assert connection.statements == ["update product_frames set error_message = ? where sof = ?"]
+    assert connection.params == [("synthetic calibration mismatch", "synthetic.sof")]
+    assert refreshes == [True]
+
+
 def test_constructor_initializes_a_sof_recipe_in_an_isolated_workspace(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,

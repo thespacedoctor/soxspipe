@@ -30,6 +30,12 @@ SLIT_EDGE_PEAK_FRACTION = 0.5
 # AN ORDER SPILLS IF MORE THAN THIS FRACTION OF ITS COLUMNS ARE TRUNCATED AT THE SLIT EDGE
 SLIT_EDGE_ORDER_FRACTION = 0.2
 
+# SLIT POSITION (ARCSEC) ON WHICH THE BOXCAR FALLBACK IS CENTRED WHEN NO OBJECT TRACE WAS FOUND
+SLIT_CENTRE_ARCSEC = 0.0
+
+# SHORT ENOUGH TO FIT ON THE FITS HEADER CARD NEXT TO THE HIERARCH KEYWORD AND THE TEXT VALUE
+EXTRACT_METHOD_QC_COMMENT = "Optimal, or boxcar if no trace"
+
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
 
 
@@ -57,6 +63,10 @@ class horne_extraction(base_util):
     - ``notFlattened`` -- flag to indicate if the frame is flattened or not. Default *False*
     - ``debug`` -- flag to indicate if debug mode is on (shows plots). Default *False*
     - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
+    - ``noTraceFallback`` -- if no object trace is found, fall back to a robust boxcar extraction centred on the slit
+      centre (slit position 0 arcsec) instead of giving up. The fallback is flagged by ``traceFallback``, a warning in
+      ``extractionNotes``, the ``EXTRACT METHOD`` QC and the plot label. Default *False* (no spectrum is extracted
+      when there is no trace)
 
     **Usage:**
 
@@ -89,6 +99,10 @@ class horne_extraction(base_util):
 
     """
 
+    # SET TRUE IN __init__ WHEN NO OBJECT TRACE WAS FOUND AND noTraceFallback ASKED FOR A BOXCAR EXTRACTION INSTEAD
+    noTraceFallback = False
+    traceFallback = False
+
     def __init__(
         self,
         log,
@@ -108,6 +122,7 @@ class horne_extraction(base_util):
         notFlattened=False,
         debug=False,
         turnOffMP=False,
+        noTraceFallback=False,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -136,6 +151,7 @@ class horne_extraction(base_util):
         self.unflattenedFrame = unflattenedFrame
         self.turnOffMP = turnOffMP
         self.subtractedFrame = subtractedFrame
+        self.noTraceFallback = noTraceFallback
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -239,10 +255,67 @@ class horne_extraction(base_util):
             orderMetaTable,
         ) = detector.get()
 
-        # FAILED TO FIND THE TRACE
         if productPath is None:
-            return
+            # FAILED TO FIND THE TRACE
+            if not self.noTraceFallback:
+                return
+            self._use_slit_centre_boxcar_fallback()
+        else:
+            self._unpack_trace(productPath, unpack_order_table)
 
+        # CHECK DIFFERENCE IN TIME BETWEEN OBJECT AND MPH FRAME
+        mjdDispMap = self.twoDMap["WAVELENGTH"].header[self.kw("MJDOBS")]
+        mjdObject = self.skySubtractedFrame.header[self.kw("MJDOBS")]
+        self.log.print(f"\nTime difference between object and dispersion map: {mjdObject - mjdDispMap:.4f} days")
+
+        # xpd-update-filter-dataframe-column-values
+
+    def _use_slit_centre_boxcar_fallback(self):
+        """*prepare a robust boxcar extraction at the slit centre, for when no object trace was found*
+
+        Sets ``orderPixelTable`` to a table of every order (the slit centre is then used for all of them), flags the
+        fallback and logs a warning that reaches the QC plots.
+        """
+        import pandas as pd
+
+        self.orderPixelTable = pd.DataFrame({"order": self.orderNums})
+        self.traceFallback = True
+        self.log.warning(
+            "No object trace was found, so optimal extraction is not possible. "
+            f"The spectrum is a robust boxcar extraction of a {2 * self.slitHalfLength:g}-pixel aperture "
+            "centred on the slit centre (slit position 0 arcsec). Check that the object is on the slit."
+        )
+
+    def _record_extract_method_qc(self):
+        """*add the ``EXTRACT METHOD`` QC: ``optimal``, or ``boxcar`` when no object trace was found*
+
+        Only the flattened extraction of a recipe that asks for the fallback records it, so the nodding and offset
+        recipes and the unflattened re-extraction are unchanged.
+        """
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        if not self.noTraceFallback or self.notFlattened or isinstance(self.qc, bool):
+            return
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName="EXTRACT METHOD",
+            qcValue="boxcar" if self.traceFallback else "optimal",
+            qcComment=EXTRACT_METHOD_QC_COMMENT,
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
+        )
+
+    def _unpack_trace(self, productPath, unpack_order_table):
+        """*read the detected object trace and drop the orders of a SOXS VIS continuum that was badly fitted*
+
+        **Key Arguments:**
+
+        - ``productPath`` -- path to the object-trace order table
+        - ``unpack_order_table`` -- the toolkit function, imported by the caller
+        """
         # UNPACK THE ORDER TABLE
         orderPolyTable, self.orderPixelTable, orderMetaTable = unpack_order_table(
             log=self.log, orderTablePath=productPath
@@ -263,13 +336,6 @@ class horne_extraction(base_util):
             mask = self.orderPixelTable["order"].isin(keepOrders)
             self.orderPixelTable = self.orderPixelTable.loc[mask]
 
-        # CHECK DIFFERENCE IN TIME BETWEEN OBJECT AND MPH FRAME
-        mjdDispMap = self.twoDMap["WAVELENGTH"].header[self.kw("MJDOBS")]
-        mjdObject = self.skySubtractedFrame.header[self.kw("MJDOBS")]
-        self.log.print(f"\nTime difference between object and dispersion map: {mjdObject - mjdDispMap:.4f} days")
-
-        # xpd-update-filter-dataframe-column-values
-
     def extract(self):
         """*extract the full spectrum order-by-order and return FITS Binary table containing order-merged spectrum*
 
@@ -284,6 +350,8 @@ class horne_extraction(base_util):
         if self.orderPixelTable is None:
             self.log.error("No trace found in the data, optimal extraction cannot be performed.")
             return self.qc, self.products, None, None, None
+
+        self._record_extract_method_qc()
 
         import copy
         from contextlib import suppress
@@ -330,8 +398,11 @@ class horne_extraction(base_util):
             dispersionMap=self.dispersionMap,
             associatedFrame=self.skySubtractedFrame,
             slitHalfLength=self.slitHalfLength,
+            fixedSlitCentreArcsec=SLIT_CENTRE_ARCSEC if self.traceFallback else None,
         )
-        self.plot_slit_drift_qc(transformer=transformer)
+        # THE DRIFT IS MEASURED FROM THE FITTED OBJECT TRACE, WHICH A FALLBACK EXTRACTION DOES NOT HAVE
+        if not self.traceFallback:
+            self.plot_slit_drift_qc(transformer=transformer)
         transformer.cache_image("fluxRaw", self.skySubtractedFrame.data, associatedMask=self.skySubtractedFrame.mask)
         # VARIANCE IS RECTIFIED WITH THE SAME LINEAR AREA WEIGHTS AS FLUX, NOT THEIR SQUARES. NEIGHBOURING
         # RECTIFIED PIXELS SHARE DETECTOR PIXELS, AND THE EXTRACTION SUMS ACROSS THEM: LINEAR WEIGHTS APPROXIMATE
@@ -382,6 +453,7 @@ class horne_extraction(base_util):
             axisB=self.axisB,
             hornePolyOrder=self.recipeSettings["horne-extraction-profile-poly-order"],
             debug=self.debug,
+            boxcarOnly=self.traceFallback,
             turnOffMP=True,
             progressBar=True,
         )
@@ -1637,7 +1709,8 @@ class horne_extraction(base_util):
         from soxspipe.commonutils.toolkit import add_notes_below_figure, order_label
 
         fig = plt.figure(figsize=(14, 12), constrained_layout=True, dpi=180)
-        gs = fig.add_gridspec(4, 1)
+        # THE FALLBACK SPECTRUM IS THE BOXCAR, SO ITS DUPLICATE PANEL GETS ALMOST NO HEIGHT AND IS REMOVED BELOW
+        gs = fig.add_gridspec(4, 1, height_ratios=[1, 0.01, 1, 1] if self.traceFallback else None)
         toprow = fig.add_subplot(gs[0:1, :])
         secondrow = fig.add_subplot(gs[1:2, :], sharex=toprow)
         thirdrow = fig.add_subplot(gs[2:3, :], sharex=toprow)
@@ -1716,7 +1789,9 @@ class horne_extraction(base_util):
 
                 else:
                     if addedLegend:
-                        label_opt = "Optimal Extraction"
+                        label_opt = (
+                            "Robust Boxcar Extraction (no object trace)" if self.traceFallback else "Optimal Extraction"
+                        )
                         label_nonopt = "Robust Boxcar Extraction"
                         label_snr = "SNR"
                         label_sky = "Sky Flux"
@@ -1808,6 +1883,8 @@ class horne_extraction(base_util):
 
         toprow.set_ylim(-200, maxFlux)
         secondrow.set_ylim(-200, maxFlux)
+        if self.traceFallback:
+            secondrow.remove()
         # PRINT EVERY WARNING AND ERROR OF THE EXTRACTION UNDER THE PLOT
         add_notes_below_figure(fig, format_extraction_notes(self.extractionNotes))
         filename = self.filenameTemplate.replace(
@@ -1864,9 +1941,25 @@ def extract_single_order(
     axisB,
     hornePolyOrder=3,
     debug=False,
+    boxcarOnly=False,
 ):
     """
     *extract the object spectrum for a single order*
+
+    **Key Arguments:**
+
+    - ``inputData`` -- the order's cross-dispersion slices dataframe and rectified images
+    - ``funclog`` -- logger
+    - ``slitHalfLength`` -- half-length of the extraction aperture in detector pixels
+    - ``clippingSigma`` -- sigma used to clip outliers when fitting the object profile
+    - ``clippingIterationLimit`` -- iteration limit for the profile clipping
+    - ``globalClippingSigma`` -- sigma used to clip the profile globally
+    - ``axisA`` -- the dispersion axis
+    - ``axisB`` -- the cross-dispersion axis
+    - ``hornePolyOrder`` -- order of the polynomial fitted to the object profile along the dispersion axis. Default *3*
+    - ``debug`` -- show the rectified images. Default *False*
+    - ``boxcarOnly`` -- skip the object-profile fit and report the robust boxcar sum as the extracted spectrum. Used
+      when no object trace was found. Default *False*
 
     **Return:**
 
@@ -1874,14 +1967,9 @@ def extract_single_order(
     """
     # log.debug('starting the ``extract_single_order`` method')
 
-    import matplotlib.pyplot as plt
     import numpy as np
 
     crossDispersionSlicesDF, orderRectifiedImages = inputData[0], inputData[1]
-
-    # WE ARE BUILDING A SET OF CROSS-SLIT OBJECT PROFILES
-    # ALONG THE DISPERSION AXIS
-    crossSlitProfiles = []
 
     # 1) SELECTING THE ORDER FROM THE ORDER PIXEL TABLE - THIS IS THE CONTINUUM OF THE OBJECT
     order = crossDispersionSlicesDF["order"].values[0]
@@ -1894,6 +1982,63 @@ def extract_single_order(
     # RETURN IF NO SLICES WERE CREATED
     if not len(crossDispersionSlicesDF.index):
         return None
+
+    if boxcarOnly:
+        # NO OBJECT TRACE: NOTHING TO FIT A PROFILE TO, AND NO SLIT-EDGE SPILL TO MEASURE
+        crossDispersionSlicesDF["slitEdgeTruncated"] = False
+        extractions = compute_boxcar_extractions(
+            crossDispersionSlicesDF=crossDispersionSlicesDF, orderRectifiedImages=orderRectifiedImages
+        )
+    else:
+        extractions = _extract_optimal_order(
+            crossDispersionSlicesDF=crossDispersionSlicesDF,
+            orderRectifiedImages=orderRectifiedImages,
+            slitHalfLength=slitHalfLength,
+            clippingSigma=clippingSigma,
+            clippingIterationLimit=clippingIterationLimit,
+            hornePolyOrder=hornePolyOrder,
+            axisB=axisB,
+            order=order,
+            debug=debug,
+        )
+
+    if "skyFlux" not in extractions.columns:
+        extractions["skyFlux"] = np.nan
+
+    return extractions[
+        [
+            "order",
+            "wavelengthMean",
+            "pixelScaleNm",
+            "varianceSpectrum",
+            "snr",
+            "extractedFluxOptimal",
+            "extractedFluxBoxcar",
+            "extractedFluxBoxcarRobust",
+            "skyFlux",
+            "slitEdgeTruncated",
+        ]
+    ]
+
+
+def _extract_optimal_order(
+    crossDispersionSlicesDF,
+    orderRectifiedImages,
+    slitHalfLength,
+    clippingSigma,
+    clippingIterationLimit,
+    hornePolyOrder,
+    axisB,
+    order,
+    debug,
+):
+    """*fit the object profile of one order and extract it optimally*
+
+    **Return:**
+
+    - ``extractions`` -- the order's slices dataframe with the optimal and boxcar extraction columns added
+    """
+    import matplotlib.pyplot as plt
 
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
@@ -1920,27 +2065,9 @@ def extract_single_order(
     if debug:
         plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
 
-    extractions = compute_extractions(
+    return compute_extractions(
         crossDispersionSlicesDF=crossDispersionSlicesDF, orderRectifiedImages=orderRectifiedImages, order=order
     )
-
-    if "skyFlux" not in extractions.columns:
-        extractions["skyFlux"] = np.nan
-
-    return extractions[
-        [
-            "order",
-            "wavelengthMean",
-            "pixelScaleNm",
-            "varianceSpectrum",
-            "snr",
-            "extractedFluxOptimal",
-            "extractedFluxBoxcar",
-            "extractedFluxBoxcarRobust",
-            "skyFlux",
-            "slitEdgeTruncated",
-        ]
-    ]
 
 
 def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
@@ -1986,6 +2113,61 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
         crossDispersionSlicesDF["varianceSpectrum"], 0.5
     )
 
+    return _sort_and_clean_extractions(crossDispersionSlicesDF)
+
+
+def compute_boxcar_extractions(crossDispersionSlicesDF, orderRectifiedImages):
+    """*compute the robust boxcar spectrum of an order, reported in the optimal-extraction columns*
+
+    The boxcar sums the unmasked rectified flux across the slit. It needs no object profile, so it is used when no
+    object trace was found.
+
+    **Key Arguments:**
+
+    - ``crossDispersionSlicesDF`` -- dataframe of the order's cross-dispersion slices (with pixel scale)
+    - ``orderRectifiedImages`` -- the rectified images of the order, including the final ``mask`` and ``variance``
+
+    **Return:**
+
+    - ``crossDispersionSlicesDF`` -- the slices dataframe with the extracted columns added, sorted by wavelength.
+      ``extractedFluxOptimal`` is a copy of ``extractedFluxBoxcarRobust``, and ``varianceSpectrum`` is the sum of the
+      variance over the same unmasked pixels
+    """
+    import numpy as np
+
+    mask = orderRectifiedImages["mask"]
+
+    wavelengthMasked = np.ma.masked_array(orderRectifiedImages["wavelength"], mask=mask)
+    crossDispersionSlicesDF["wavelengthMean"] = np.ma.mean(wavelengthMasked.T, axis=1).filled(np.nan)
+
+    crossDispersionSlicesDF["extractedFluxBoxcar"] = orderRectifiedImages["fluxRaw"].T.sum(axis=1)
+    if "fluxSky" in orderRectifiedImages:
+        crossDispersionSlicesDF["skyFlux"] = orderRectifiedImages["fluxSky"].T.mean(axis=1)
+    crossDispersionSlicesDF["extractedFluxBoxcarRobust"] = (
+        np.ma.masked_array(orderRectifiedImages["fluxRaw"].T, mask=mask.T).sum(axis=1).astype(float).filled(np.nan)
+    )
+    crossDispersionSlicesDF["varianceSpectrum"] = (
+        np.ma.masked_array(orderRectifiedImages["variance"].T, mask=mask.T).sum(axis=1).astype(float).filled(np.nan)
+    )
+    crossDispersionSlicesDF["extractedFluxOptimal"] = crossDispersionSlicesDF["extractedFluxBoxcarRobust"].copy()
+    crossDispersionSlicesDF["snr"] = crossDispersionSlicesDF["extractedFluxOptimal"] / np.sqrt(
+        crossDispersionSlicesDF["varianceSpectrum"]
+    )
+
+    return _sort_and_clean_extractions(crossDispersionSlicesDF)
+
+
+def _sort_and_clean_extractions(crossDispersionSlicesDF):
+    """*sort the extracted slices by wavelength and drop the unusable ones*
+
+    **Key Arguments:**
+
+    - ``crossDispersionSlicesDF`` -- the extracted slices. This dataframe is sorted in place by wavelength
+
+    **Return:**
+
+    - ``crossDispersionSlicesDF`` -- a filtered copy, without zero-wavelength or incomplete slices
+    """
     # SORT BY COLUMN NAME
     crossDispersionSlicesDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True, kind="stable")
 

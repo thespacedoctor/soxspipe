@@ -478,3 +478,26 @@ def test_plot_merged_spectrum_qc_without_notes_draws_no_figure_text(
     _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, _synthetic_merged_orders(), extractionNotes=notes)
 
     assert probes == [[]]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expectedTitle"),
+    [
+        ({}, "Optimally Extracted Order-Merged Object Spectrum (VIS)\nsynthetic"),
+        ({"boxcarExtraction": True}, "Robust Boxcar Extracted Order-Merged Object Spectrum (VIS)\nsynthetic"),
+    ],
+    ids=["default-optimal", "boxcar-fallback"],
+)
+def test_plot_merged_spectrum_qc_title_names_the_extraction_method(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+    expectedTitle: str,
+) -> None:
+    figures = spy_figures(monkeypatch)
+    _stub_skylines(monkeypatch)
+
+    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, _synthetic_merged_orders(), **overrides)
+
+    assert figures[-1].axes[0].get_title() == expectedTitle

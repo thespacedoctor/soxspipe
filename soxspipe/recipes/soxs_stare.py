@@ -30,6 +30,12 @@ os.environ["TERM"] = "vt100"
 # THE SLIT OFFSETS FOLLOW THE ROTATOR ANGLE, SO INPUT FRAMES MORE THAN THIS FAR APART IN ABSROT (DEGREES) ARE FLAGGED
 ABSROT_SPREAD_WARNING_DEGREES = 10.0
 
+# THE FAILURE OF A STANDARD STAR WITH NO OBJECT TRACE, WHERE ONLY A BOXCAR AT THE SLIT CENTRE COULD BE EXTRACTED
+NO_TRACE_STANDARD_MESSAGE = (
+    "No object trace was found in the standard-star frame, so no response curve was made. "
+    "The spectrum is a robust boxcar extraction; check the pointing and conditions."
+)
+
 
 class soxs_stare(base_recipe):
     """
@@ -453,7 +459,7 @@ class soxs_stare(base_recipe):
                 self.filenameTemplate = f"{templateStem}_F{index}{templateExtension}"
                 self.recipeSettings, self.subtractSky = copy.deepcopy(recipeSettings), subtractSky
                 productPath, frameFailure = self._reduce_object_frames([frame], rawFrames=[name])
-                forceFailure = forceFailure or frameFailure
+                forceFailure = self._combine_failures(forceFailure, frameFailure)
                 qcTables.append(self.report_output())
                 self.qc, self.products = self._empty_qc_and_product_tables(pd)
         finally:
@@ -464,6 +470,28 @@ class soxs_stare(base_recipe):
         self.qc = pd.concat([table for table in qcTables if len(table.index)] or qcTables, ignore_index=True)
         self.clean_up(forceFail=forceFailure)
         return productPath, self.qc
+
+    @staticmethod
+    def _combine_failures(current, new):
+        """*combine the failure of one frame with the failures of the frames before it*
+
+        A failure message wins over a bare ``True``, and the first message wins over later ones, so the reason a
+        frame failed still reaches the database.
+
+        **Key Arguments:**
+
+        - ``current`` -- the combined failure so far: False, True or a message
+        - ``new`` -- the failure of the next frame: False, True or a message
+
+        **Return:**
+
+        - ``failure`` -- the combined failure
+        """
+        if isinstance(current, str):
+            return current
+        if isinstance(new, str):
+            return new
+        return current or new
 
     def _reduce_object_frames(self, allObjectFrames, rawFrames=False):
         """*stack the object frames, then detrend, sky-subtract, extract and flux-calibrate the stack*
@@ -477,7 +505,8 @@ class soxs_stare(base_recipe):
         **Return:**
 
         - ``productPath`` -- the path to the product
-        - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe
+        - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe, or the failure message
+          when a standard star has no object trace
         """
         arm = self.arm
         kw = self.kw
@@ -569,9 +598,11 @@ class soxs_stare(base_recipe):
             startNightDate=self.startNightDate,
             debug=self.debug,
             turnOffMP=self.turnOffMP,
+            noTraceFallback=True,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
         slitEdgeSpill = bool(optimalExtractor.slitEdgeOrders)
+        extractionNotes = list(optimalExtractor.extractionNotes)
 
         # CHECK IF FLUX CALIBRATION IS NEEDED
         filePath_fluxcal = None
@@ -579,6 +610,12 @@ class soxs_stare(base_recipe):
         forceFailure = False
         if responseFunctionPath:
             filePath_fluxcal = self._flux_calibrate_spectrum(responseFunctionPath, mergedSpectumDF, combined_object)
+
+        elif self.generateReponseCurve and optimalExtractor.traceFallback:
+            # A BOXCAR AT THE SLIT CENTRE IS NOT A STANDARD-STAR SPECTRUM TO FIT A RESPONSE CURVE TO
+            self.log.error(NO_TRACE_STANDARD_MESSAGE)
+            forceFailure = NO_TRACE_STANDARD_MESSAGE
+            extractionNotes.append(("ERROR", NO_TRACE_STANDARD_MESSAGE))
 
         elif self.generateReponseCurve:
             forceFailure = (
@@ -598,7 +635,9 @@ class soxs_stare(base_recipe):
                     "as failed and will not be used to flux-calibrate other frames."
                 )
 
-        self._plot_merged_spectrum_qcs(mergedSpectumDF, orderJoins, filePath_fluxcal, optimalExtractor.extractionNotes)
+        self._plot_merged_spectrum_qcs(
+            mergedSpectumDF, orderJoins, filePath_fluxcal, extractionNotes, optimalExtractor.traceFallback
+        )
 
         return productPath, forceFailure
 
@@ -1326,7 +1365,9 @@ class soxs_stare(base_recipe):
 
         return forceFailure
 
-    def _plot_merged_spectrum_qcs(self, mergedSpectumDF, orderJoins, filePath_fluxcal, extractionNotes=()):
+    def _plot_merged_spectrum_qcs(
+        self, mergedSpectumDF, orderJoins, filePath_fluxcal, extractionNotes=(), boxcarExtraction=False
+    ):
         """*plot the merged spectrum QC and, when the spectrum was flux calibrated, the calibrated one too*
 
         Updates ``self.products``.
@@ -1338,6 +1379,7 @@ class soxs_stare(base_recipe):
         - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum, or None when it was not calibrated
         - ``extractionNotes`` -- the ``(level, message)`` warnings and errors of the extraction, to print under
           both plots. Default *()*
+        - ``boxcarExtraction`` -- title both plots as a robust boxcar extraction. Default *False*
         """
         from soxspipe.commonutils.extraction_notes import format_extraction_notes
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
@@ -1359,6 +1401,7 @@ class soxs_stare(base_recipe):
             qcTable=self.qc,
             settings=self.settings,
             extractionNotes=noteLines,
+            boxcarExtraction=boxcarExtraction,
         )
 
         if filePath_fluxcal:
@@ -1386,6 +1429,7 @@ class soxs_stare(base_recipe):
                 qcTable=self.qc,
                 settings=self.settings,
                 extractionNotes=noteLines,
+                boxcarExtraction=boxcarExtraction,
             )
 
         return

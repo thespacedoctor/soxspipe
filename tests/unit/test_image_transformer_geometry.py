@@ -717,6 +717,72 @@ def test_rectified_boundaries_raise_when_every_order_trace_is_invalid(
         transformer._determine_rectified_image_boundaries()
 
 
+def _fixed_centre_transformer(log: object, dispersionAxis: str, fixedSlitCentreArcsec: float | None):
+    """Return a boundary-ready transformer whose order table holds order numbers only and whose map is empty."""
+    transformer = _transformer(log)
+    transformer.axisA = dispersionAxis
+    transformer.axisB = "y" if dispersionAxis == "x" else "x"
+    transformer.dispersionAxis = dispersionAxis
+    transformer.fixedSlitCentreArcsec = fixedSlitCentreArcsec
+    transformer.orderPixelTable = pd.DataFrame({"order": [10, 11]})
+    transformer.mapDF = pd.DataFrame(columns=["x", "y", "slit_position", "wavelength"])
+    transformer.orderNums = np.array([10, 11])
+    transformer.amins = np.array([0.0, 0.0])
+    transformer.amaxs = np.array([2.0, 2.0])
+    transformer.waveLengthMin = np.array([500.0, 600.0])
+    transformer.waveLengthMax = np.array([504.0, 604.0])
+    transformer.uniqueOrders = np.array([10, 11])
+    return transformer
+
+
+@pytest.mark.parametrize("dispersionAxis", ["x", "y"])
+def test_rectified_boundaries_use_the_fixed_slit_centre_for_every_order_without_reading_the_map(
+    log: object,
+    dispersionAxis: str,
+) -> None:
+    # ARRANGE
+    transformer = _fixed_centre_transformer(log, dispersionAxis, 0.0)
+
+    # ACT
+    transformer._determine_rectified_image_boundaries()
+
+    # ASSERT
+    assert len(transformer.orderSlitCentreCoeffs) == 2
+    for coeffs in transformer.orderSlitCentreCoeffs:
+        np.testing.assert_array_equal(coeffs, [0.0])
+    assert transformer.orderSlitCentreFallback == [False, False]
+    assert transformer.globalSlitCentreArcsec == 0.0
+
+
+def test_rectified_boundaries_keep_a_non_zero_fixed_slit_centre(log: object) -> None:
+    transformer = _fixed_centre_transformer(log, "x", 1.25)
+
+    transformer._determine_rectified_image_boundaries()
+
+    assert transformer.globalSlitCentreArcsec == 1.25
+    for coeffs in transformer.orderSlitCentreCoeffs:
+        np.testing.assert_array_equal(coeffs, [1.25])
+
+
+def test_rectified_boundaries_without_a_fixed_slit_centre_still_read_the_map(log: object) -> None:
+    transformer = _fixed_centre_transformer(log, "x", None)
+    transformer.orderPixelTable = pd.DataFrame({"order": [10, 10], "xcoord_centre": [0.0, 1.0], "ycoord": [0, 0]})
+    transformer.mapDF = pd.DataFrame(
+        {"x": [0, 1], "y": [0, 0], "slit_position": [-0.5, 0.5], "wavelength": [500.0, 502.0]}
+    )
+    transformer.uniqueOrders = np.array([10])
+
+    transformer._determine_rectified_image_boundaries()
+
+    assert transformer.globalSlitCentreArcsec == pytest.approx(0.0)
+    assert len(transformer.orderSlitCentreCoeffs) == 1
+    assert len(transformer.orderSlitCentreCoeffs[0]) == 2
+
+
+def test_image_transformer_class_defaults_to_no_fixed_slit_centre() -> None:
+    assert image_transformer.fixedSlitCentreArcsec is None
+
+
 def test_sigma_clip_bpm_preserves_existing_bad_pixels(log: object) -> None:
     transformer = _transformer(log)
     rawFlux = np.ones((2, 10))
