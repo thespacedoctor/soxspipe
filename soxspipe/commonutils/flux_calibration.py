@@ -16,17 +16,81 @@ os.environ["TERM"] = "vt100"
 
 
 def _calculate_flux_calibration(
-    wavelengths: Any,
     counts: Any,
     exposureTime: float,
-    responseCoefficients: Any,
+    responseFactors: Any,
     extinctionFactors: Any,
 ) -> Any:
     """Return calibrated flux values from the pipeline calibration factors."""
+    return counts / exposureTime * extinctionFactors * responseFactors * 10**-17
+
+
+def _response_factors_from_table(wavelengths: Any, tableWave: Any, tableResponse: Any) -> Any:
+    """Interpolate the tabulated response onto the wavelengths in log space; NaN outside the valid table range.
+
+    Table rows with a non-finite wavelength or a response that is not finite and strictly positive are ignored, and
+    the remaining rows are sorted by wavelength. A ValueError is raised if no row remains.
+    """
     import numpy as np
 
-    responseFactors = np.polyval(responseCoefficients, wavelengths)
-    return counts / exposureTime * extinctionFactors * responseFactors * 10**-17
+    wavelengths = np.asarray(wavelengths, dtype=float)
+    tableWave = np.asarray(tableWave, dtype=float)
+    tableResponse = np.asarray(tableResponse, dtype=float)
+    isUsable = np.isfinite(tableWave) & np.isfinite(tableResponse) & (tableResponse > 0)
+    if not isUsable.any():
+        raise ValueError(
+            "The RESPONSE table of the response product has no usable rows: "
+            "every row has a non-finite wavelength or a response that is not finite and positive."
+        )
+    order = np.argsort(tableWave[isUsable], kind="stable")
+    logResponse = np.interp(
+        wavelengths,
+        tableWave[isUsable][order],
+        np.log(tableResponse[isUsable][order]),
+        left=np.nan,
+        right=np.nan,
+    )
+    return np.exp(logResponse)
+
+
+def load_response_factors(responseFunction: str, wavelengths: Any, log: Any) -> Any:
+    """*read the response product and return the response factor at each wavelength*
+
+    The ``RESPONSE`` curve extension is interpolated in log space; wavelengths outside it get NaN. A product from an
+    older release has no such extension, so its polynomial coefficients are evaluated instead and a warning is logged.
+
+    **Key Arguments:**
+
+    - ``responseFunction`` -- path to the ``_RESP.fits`` product
+    - ``wavelengths`` -- the wavelengths (nm) to evaluate
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``responseFactors`` -- the response factor at each wavelength
+    """
+    import numpy as np
+    from astropy.io import fits
+    from astropy.table import Table
+
+    with fits.open(responseFunction) as hdul:
+        hasCurve = "RESPONSE" in [hdu.name for hdu in hdul]
+
+    if hasCurve:
+        curve = Table.read(responseFunction, format="fits", hdu="RESPONSE")
+        factors = _response_factors_from_table(wavelengths, np.asarray(curve["WAVE"]), np.asarray(curve["RESPONSE"]))
+        outsideCount = int(np.count_nonzero(np.isnan(factors) & ~np.isnan(np.asarray(wavelengths, dtype=float))))
+        if outsideCount > 0:
+            log.warning(f"{outsideCount} science samples lie outside the response curve range and were set to NaN.")
+        return factors
+
+    log.warning(
+        "The response product has no RESPONSE curve extension (it predates the spline fit); "
+        "evaluating its polynomial coefficients instead."
+    )
+    coefficients = Table.read(responseFunction, format="fits", hdu=1)
+    polyCoeffs = [coefficients[f"c{index}"][0] for index in range(int(coefficients["polyOrder"][0]) + 1)]
+    return np.polyval(polyCoeffs, np.asarray(wavelengths, dtype=float))
 
 
 # OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
@@ -143,7 +207,6 @@ class flux_calibration:
         from contextlib import suppress
 
         import pandas as pd
-        from astropy.table import Table
 
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import extinction_correction_factor
@@ -162,17 +225,12 @@ class flux_calibration:
             extinctionCorrectionFactor = 1.0
 
         # APPLY RESPNSE FUNCTION
-        responseFunctionCoeff = Table.read(self.responseFunction, format="fits", hdu=1)
-        # NOW UNPACK THE COEFFICIENTS
-        polyCoeffs = []
-        for idx_coeff in range(0, int(responseFunctionCoeff["polyOrder"][0]) + 1):
-            polyCoeffs.append(responseFunctionCoeff[f"c{idx_coeff}"][0])
+        responseFactors = load_response_factors(self.responseFunction, self.extractedSpectrum["WAVE"], self.log)
 
         flux_calibration = _calculate_flux_calibration(
-            self.extractedSpectrum["WAVE"],
             self.extractedSpectrum["FLUX_COUNTS"],
             self.exptime,
-            polyCoeffs,
+            responseFactors,
             extinctionCorrectionFactor,
         )
 

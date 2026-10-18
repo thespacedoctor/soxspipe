@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: fit the response curve as a log-space spline with telluric and stellar-line masks, so the VIS u band is no longer 30-50% wrong; flux calibration reads the RESP `RESPONSE` table and new `RESP` QCs flag poorly constrained curves (DY-1614, DY-1388).
 * **ENHANCEMENT**: nod and offset align frames along the slit through the 2D map and stack them before extraction by default; new `stack_before_extraction` setting and `SLIT ALIGN FALLBACK NUM` QC (DY-1612).
 * **ENHANCEMENT**: stare SOFs hold all frames of one OB per arm; new `stack_before_extraction` setting (default `True`) stacks them or extracts each on its own (DY-1611).
 * **ENHANCEMENT**: skyline wavelength tuning now predicts the SOXS VIS u and g shifts, which have no usable sky lines, from the r and i sky shifts and the change in `ESO ADA ABSROT` since calibration (coefficients in the `ug-wavelength-transfer` block of the VIS detector parameters; leave-one-night-out rms 0.96 and 1.14 px), so VIS stare, nod and offset wavelength-calibrated u/g output changes; `SKY SHIFT O<N>` is now in nm, and `SKY SHIFT O<N> PX` and `UG SHIFT SOURCE` are new; `flag_poor_data` no longer crashes on text QC values (DY-1608).
