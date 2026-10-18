@@ -7,7 +7,10 @@ wavelength calibration or flux calibration still trips them. The centres were
 re-recorded on 2026-10-16 from two bit-identical CI runs (38915352201 and
 38915356992), after DY-1612 made the set (two ON positions) align its ON frames
 along the slit and stack them: one ONOFF and one OBJTRACE product instead of one
-per cycle, and the SNR median rose from 104.0 to 149.8.
+per cycle, and the SNR median rose from 104.0 to 149.8. The flux-calibrated median
+was re-recorded on 2026-10-18 from six bit-identical CI runs (39165616944,
+39165618635, 39165620359, 39165622153, 39165623841 and 39165625784), after the
+response curve became a log-space spline (DY-1614). It fell 3.0%.
 """
 
 from __future__ import annotations
@@ -115,7 +118,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     assert snrMedian == pytest.approx(149.8, abs=2.0)
     assert fluxcalRows == pytest.approx(20_614, abs=25)
     assert fluxcalRows == mergedRows
-    assert fluxcalMedian == pytest.approx(8.431980451680397e-15, rel=0.05)
+    assert fluxcalMedian == pytest.approx(8.181886746739347e-15, rel=0.05)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
     assert nOrders == 15
     assert detectedFraction == pytest.approx(0.984, abs=0.02)

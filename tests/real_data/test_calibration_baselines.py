@@ -14,10 +14,11 @@ writes no QC for its missing arc lines (`DISP_MAP_LINES_MISSING` is a product, t
 instead. `MDARK MEDIAN` sits within 2 e- of zero, so its 5% band is a few hundredths of
 an electron wide; it holds only because the CI runs are bit-identical.
 
-The response product holds polynomial coefficients, so the check evaluates the curve on
-a fixed 1 nm grid inside each arm with the pipeline's own flux-calibration function, and
-bands the median and three fixed wavelengths. The polynomial diverges outside the arm,
-so the grids stop well short of the arm edges.
+The check reads the response curve from the `RESPONSE` table of the response product,
+the way flux calibration does. It evaluates the curve on a fixed 1 nm grid inside each
+arm with the pipeline's own flux-calibration function, and bands the median and three
+fixed wavelengths. The grids stop well short of the arm edges, where the curve is
+extrapolated.
 
 Bands follow the stare convention: levels, residuals and RMS values to 5% relative,
 fractions to ±0.02 absolute, and counts exactly. The centres were re-recorded on
@@ -27,7 +28,11 @@ per-frame stacking masks (DY-1254) and the DY-1518 background mask (DY-1524). Si
 DY-1525, local arm64 reductions give the same `XY RES MEDIAN` as CI. The three VIS
 dispersion and spatial solution entries were re-recorded on 2026-10-16 from two
 identical CI runs (38869883513 and 38869886400), after three blended Th lines were
-marked deleted in the VIS line lists (DY-1578).
+marked deleted in the VIS line lists (DY-1578). The two response baselines were
+re-recorded on 2026-10-18 from six bit-identical CI runs (39165616944, 39165618635,
+39165620359, 39165622153, 39165623841 and 39165625784), after the response curve
+became a log-space spline (DY-1614). The NIR median fell 8.9%, and every other
+response value moved by 4% or less.
 """
 
 from __future__ import annotations
@@ -323,22 +328,22 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         gridStart=400.0,
         gridStop=800.0,
-        median=level(6.480576596882429e-16),
+        median=level(6.661637817078883e-16),
         points={
-            450.0: level(2.563466015354061e-16),
-            520.0: level(4.533904217995678e-16),
-            750.0: level(1.0035960594215976e-15),
+            450.0: level(2.550369112212454e-16),
+            520.0: level(4.423952693380799e-16),
+            750.0: level(1.0117094255316914e-15),
         },
     ),
     ResponseBaseline(
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         gridStart=1000.0,
         gridStop=1800.0,
-        median=level(2.5193888910149326e-16),
+        median=level(2.2952123662753833e-16),
         points={
-            1050.0: level(3.004500738155184e-16),
-            1250.0: level(2.8338771923419703e-16),
-            1650.0: level(1.808693048569876e-16),
+            1050.0: level(2.902814205164791e-16),
+            1250.0: level(2.8295037835504153e-16),
+            1650.0: level(1.8556789083374407e-16),
         },
     ),
 )
