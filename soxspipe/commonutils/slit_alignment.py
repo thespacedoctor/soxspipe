@@ -161,7 +161,7 @@ def _slit_coordinates(mapImages, order, rows, columns):
     for rowStep in (0, 1):
         for columnStep in (0, 1):
             isInside &= mapImages.order[rowBelow + rowStep, columnBelow + columnStep] == order
-    values = map_coordinates(mapImages.slit, [rows, columns], order=1, mode="nearest")
+    values = _map_coordinates(mapImages.slit, [rows, columns], mode="nearest")
     return np.where(isInside, values, np.nan)
 
 
@@ -325,7 +325,35 @@ def _interpolate(image, sources, mode="nearest"):
 
     Beyond the image edge, ``mode`` ``"nearest"`` takes the edge value and ``"constant"`` takes zero.
     """
-    return map_coordinates(image, sources, order=1, mode=mode, cval=0.0)
+    return _map_coordinates(image, sources, mode=mode)
+
+
+def _map_coordinates(image, sources, mode):
+    """*bilinear ``map_coordinates`` of an image, with every source made safe to read first*"""
+    return map_coordinates(image, _safe_sources(sources, image.shape), order=1, mode=mode, cval=0.0)
+
+
+def _safe_sources(sources, shape):
+    """*the (row, column) sources, made safe for ``map_coordinates``, as new arrays*
+
+    scipy's ``map_coordinates`` converts each coordinate to a 64-bit integer index without a range check in
+    ``mode="nearest"``. A coordinate of ``+inf``, or a finite one above about ``9.2e18``, overflows that index, and
+    the read lands just before the image: a crash when the page there is unmapped, and a garbage value otherwise.
+
+    A non-finite coordinate becomes NaN, which gives NaN for ``"nearest"`` and ``cval`` for ``"constant"``. A finite
+    coordinate is clipped to one pixel beyond the image, which keeps the edge value for ``"nearest"`` and ``cval``
+    for ``"constant"``, since bilinear weight at -1 or ``n`` lies wholly outside the image.
+
+    **Key Arguments:**
+
+    - ``sources`` -- the (rows, columns) coordinate arrays
+    - ``shape`` -- the (height, width) of the image they index
+    """
+    safe = []
+    for coordinates, size in zip(sources, shape, strict=True):
+        coordinates = np.asarray(coordinates, dtype=float)
+        safe.append(np.where(np.isfinite(coordinates), np.clip(coordinates, -1, size), np.nan))
+    return safe
 
 
 def _order_sources(mapImages, order, shift):
@@ -343,8 +371,11 @@ def _order_sources(mapImages, order, shift):
     targets = np.nonzero(mapImages.order == order)
     wavelengthRow, wavelengthCol = mapImages.wavelengthRow[targets], mapImages.wavelengthCol[targets]
     determinant = wavelengthRow * mapImages.slitCol[targets] - wavelengthCol * mapImages.slitRow[targets]
-    rows = targets[0] - wavelengthCol * shift / determinant
-    columns = targets[1] + wavelengthRow * shift / determinant
+    # A ZERO DETERMINANT GIVES AN INFINITE OR NaN SOURCE. THE CALLER FLAGS THAT PIXEL BAD, AND
+    # _safe_sources KEEPS THE NON-FINITE VALUE FROM BEING READ AS A MEMORY OFFSET
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rows = targets[0] - wavelengthCol * shift / determinant
+        columns = targets[1] + wavelengthRow * shift / determinant
     return targets, [rows, columns]
 
 

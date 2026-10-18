@@ -69,6 +69,10 @@ def _warnings(log: Any) -> list[str]:
     return [message for level, message in log.messages if level == "warning"]
 
 
+def _infos(log: Any) -> list[str]:
+    return [message for level, message in log.messages if level == "info"]
+
+
 NIR_RAW = {"ESO DET CHIP RON": 0.0}
 
 
@@ -160,7 +164,7 @@ def test_an_unreadable_master_dark_header_falls_back_to_the_yaml_value_with_a_wa
     assert any("master dark" in message and "could not be read" in message for message in _warnings(log))
 
 
-def test_a_measured_nir_value_over_fifteen_percent_from_the_yaml_value_warns_but_is_used(
+def test_a_measured_nir_value_over_fifteen_percent_from_the_yaml_value_is_logged_as_info_and_used(
     tmp_path: Path, log: Any
 ) -> None:
     # ARRANGE: 15.0 IS 105% ABOVE 7.3
@@ -172,7 +176,7 @@ def test_a_measured_nir_value_over_fifteen_percent_from_the_yaml_value_warns_but
 
     # ASSERT
     assert recipe.detectorParams["ron"].value == pytest.approx(15.0)
-    assert any("nominal 7.30" in message for message in _warnings(log))
+    assert any("nominal 7.30" in message for message in _infos(log))
 
 
 def test_a_zero_read_noise_card_on_the_nir_raw_frames_is_not_taken_as_the_read_noise(tmp_path: Path, log: Any) -> None:

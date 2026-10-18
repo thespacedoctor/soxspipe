@@ -1,4 +1,4 @@
-"""Tests that bulk reduction selects the spawn start method around its pool and restores it."""
+"""Tests for the bulk reduction preconditions and the rebuilt worker logger."""
 
 from __future__ import annotations
 
@@ -41,95 +41,6 @@ def _run_bulk(tmp_path: Path, log: Any, settings: dict[str, Any] | None = None) 
     )
 
 
-def test_run_recipe_bulk_selects_the_spawn_start_method_before_building_the_pool(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    log: Any,
-) -> None:
-    """Forked workers crash in Apple Accelerate, so the pool must start spawned workers."""
-    # ARRANGE
-    multiprocess.set_start_method("fork", force=True)
-    seenInsidePool: list[str | None] = []
-
-    def stub_multiprocess(**kwargs: Any) -> list[dict[str, Any]]:
-        seenInsidePool.append(multiprocess.get_start_method(allow_none=True))
-        return []
-
-    monkeypatch.setattr(import_module("fundamentals"), "fmultiprocess", stub_multiprocess)
-
-    # ACT
-    _run_bulk(tmp_path, log)
-
-    # ASSERT
-    assert seenInsidePool == ["spawn"]
-
-
-@pytest.mark.parametrize("originalMethod", [None, "fork"])
-def test_run_recipe_bulk_restores_the_original_start_method_after_the_pool_returns(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    log: Any,
-    originalMethod: str | None,
-) -> None:
-    """The process-wide start method must not stay switched after a bulk reduction."""
-    # ARRANGE
-    multiprocess.set_start_method(originalMethod, force=True)
-    monkeypatch.setattr(import_module("fundamentals"), "fmultiprocess", lambda **kwargs: [])
-
-    # ACT
-    _run_bulk(tmp_path, log)
-
-    # ASSERT
-    assert multiprocess.get_start_method(allow_none=True) == originalMethod
-
-
-def test_run_recipe_bulk_restores_the_original_start_method_when_the_pool_raises(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    log: Any,
-) -> None:
-    """A crashing pool must not leave the process on the spawn start method."""
-    # ARRANGE
-    multiprocess.set_start_method("fork", force=True)
-
-    def exploding_multiprocess(**kwargs: Any) -> list[dict[str, Any]]:
-        raise RuntimeError("pool exploded")
-
-    monkeypatch.setattr(import_module("fundamentals"), "fmultiprocess", exploding_multiprocess)
-
-    # ACT
-    with pytest.raises(RuntimeError, match="pool exploded"):
-        _run_bulk(tmp_path, log)
-
-    # ASSERT
-    assert multiprocess.get_start_method(allow_none=True) == "fork"
-
-
-def test_run_recipe_bulk_targets_the_multiprocess_package_not_stdlib_multiprocessing(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    log: Any,
-) -> None:
-    """`fundamentals` builds its pool from `multiprocess`, so the stdlib context must stay untouched."""
-    # ARRANGE
-    import multiprocessing
-
-    stdlibMethodBefore = multiprocessing.get_start_method(allow_none=True)
-    seenInsidePool: list[str | None] = []
-
-    def stub_multiprocess(**kwargs: Any) -> list[dict[str, Any]]:
-        seenInsidePool.append(multiprocessing.get_start_method(allow_none=True))
-        return []
-
-    monkeypatch.setattr(import_module("fundamentals"), "fmultiprocess", stub_multiprocess)
-
-    # ACT
-    _run_bulk(tmp_path, log)
-
-    # ASSERT
-    assert seenInsidePool == [stdlibMethodBefore]
-
-
 def test_run_recipe_bulk_raises_before_starting_the_pool_when_logging_settings_are_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -139,12 +50,12 @@ def test_run_recipe_bulk_raises_before_starting_the_pool_when_logging_settings_a
     # ARRANGE
     poolWasStarted = False
 
-    def stub_multiprocess(**kwargs: Any) -> list[dict[str, Any]]:
+    def stub_pool(**kwargs: Any) -> list[dict[str, Any]]:
         nonlocal poolWasStarted
         poolWasStarted = True
         return []
 
-    monkeypatch.setattr(import_module("fundamentals"), "fmultiprocess", stub_multiprocess)
+    monkeypatch.setattr(import_module("soxspipe.commonutils.reducer"), "_run_in_spawn_pool", stub_pool)
 
     # ACT
     with pytest.raises(ValueError, match="logging settings"):
@@ -152,6 +63,30 @@ def test_run_recipe_bulk_raises_before_starting_the_pool_when_logging_settings_a
 
     # ASSERT
     assert poolWasStarted is False
+
+
+def test_run_recipe_bulk_leaves_the_global_start_method_alone(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """The pool takes its own spawn context, so no process-wide start method is switched."""
+    # ARRANGE
+    multiprocess.set_start_method("fork", force=True)
+    seenInsidePool: list[str | None] = []
+
+    def stub_pool(**kwargs: Any) -> list[dict[str, Any]]:
+        seenInsidePool.append(multiprocess.get_start_method(allow_none=True))
+        return []
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils.reducer"), "_run_in_spawn_pool", stub_pool)
+
+    # ACT
+    _run_bulk(tmp_path, log)
+
+    # ASSERT
+    assert seenInsidePool == ["fork"]
+    assert multiprocess.get_start_method(allow_none=True) == "fork"
 
 
 class _StubLoggingSetup:

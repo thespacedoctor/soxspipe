@@ -134,7 +134,6 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
     """Translate worker outcomes into session status, error, QC, and refresh writes."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
     commonutilsModule = import_module("soxspipe.commonutils")
-    fundamentalsModule = import_module("fundamentals")
     workerCalls: list[dict[str, object]] = []
     organiserCalls: list[tuple[str, object]] = []
     workspacePath = tmp_path / "workspace"
@@ -161,24 +160,10 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
             raise FileExistsError("unclassified existing output")
         raise RuntimeError("worker exploded")
 
-    def fake_multiprocess(**kwargs: object) -> list[dict[str, object]]:
-        assert kwargs["poolSize"] == 3
-        assert kwargs["timeout"] == 36000
+    def fake_pool(function: Any, inputDicts: list[dict[str, str]], poolSize: int, log: Any, **kwargs: Any) -> list[Any]:
+        assert poolSize == 3
         assert kwargs["wrapperTurnOffMP"] is True
-        assert kwargs["turnOffMP"] is False
-        wrapper = kwargs["function"]
-        return [
-            wrapper(
-                inputDict=inputDict,
-                log=kwargs["log"],
-                recipe=kwargs["recipe"],
-                settings=kwargs["settings"],
-                overwrite=kwargs["overwrite"],
-                workspaceDirectory=kwargs["workspaceDirectory"],
-                wrapperTurnOffMP=kwargs["wrapperTurnOffMP"],
-            )
-            for inputDict in kwargs["inputArray"]
-        ]
+        return [function(inputDict, log=log, **kwargs) for inputDict in inputDicts]
 
     class RecordingOrganiser:
         def __init__(self, **kwargs: object) -> None:
@@ -195,7 +180,7 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
             organiserCalls.append(("close", None))
 
     monkeypatch.setattr(reducerModule, "run_recipe", fake_run_recipe)
-    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", fake_multiprocess)
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", fake_pool)
     monkeypatch.setattr(commonutilsModule, "data_organiser", RecordingOrganiser)
     connection = RecordingConnection(changedRows=1)
     sofNames = [
@@ -267,14 +252,13 @@ def test_run_recipe_bulk_skips_refresh_and_qc_when_workers_return_nothing(
     """Avoid organizer writes when a bulk dispatch has no worker results."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
     commonutilsModule = import_module("soxspipe.commonutils")
-    fundamentalsModule = import_module("fundamentals")
     organiserWasCreated = False
 
     def fail_if_created(**kwargs: object) -> None:
         nonlocal organiserWasCreated
         organiserWasCreated = True
 
-    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", lambda **kwargs: [])
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", lambda **kwargs: [])
     monkeypatch.setattr(commonutilsModule, "data_organiser", fail_if_created)
     connection = RecordingConnection(changedRows=0)
 
@@ -309,7 +293,6 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     """
     reducerModule = import_module("soxspipe.commonutils.reducer")
     commonutilsModule = import_module("soxspipe.commonutils")
-    fundamentalsModule = import_module("fundamentals")
     workspacePath = tmp_path / "workspace"
     (workspacePath / "tmp").mkdir(parents=True)
     hostileSofName = "x.sof') OR (1=1) OR ('a'='"
@@ -317,20 +300,10 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     def fake_run_recipe(**kwargs: object) -> tuple[str, pd.DataFrame]:
         return "product.fits", pd.DataFrame([{"qc_name": "signal", "qc_flag": "pass"}])
 
-    def fake_multiprocess(**kwargs: object) -> list[dict[str, object]]:
-        wrapper = kwargs["function"]
-        return [
-            wrapper(
-                inputDict=inputDict,
-                log=kwargs["log"],
-                recipe=kwargs["recipe"],
-                settings=kwargs["settings"],
-                overwrite=kwargs["overwrite"],
-                workspaceDirectory=kwargs["workspaceDirectory"],
-                wrapperTurnOffMP=kwargs["wrapperTurnOffMP"],
-            )
-            for inputDict in kwargs["inputArray"]
-        ]
+    def fake_pool(function: Any, inputDicts: list[dict[str, str]], poolSize: int, log: Any, **kwargs: Any) -> list[Any]:
+        assert poolSize == 3
+        assert kwargs["wrapperTurnOffMP"] is True
+        return [function(inputDict, log=log, **kwargs) for inputDict in inputDicts]
 
     class NoOpOrganiser:
         def __init__(self, **kwargs: object) -> None:
@@ -346,7 +319,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
             pass
 
     monkeypatch.setattr(reducerModule, "run_recipe", fake_run_recipe)
-    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", fake_multiprocess)
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", fake_pool)
     monkeypatch.setattr(commonutilsModule, "data_organiser", NoOpOrganiser)
 
     # `autocommit=True` MATCHES THE CONNECTION `run_recipe` OPENS IN PRODUCTION
