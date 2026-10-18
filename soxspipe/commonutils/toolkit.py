@@ -3224,7 +3224,9 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY'
       to calculate the checks from.
     - ``qcTable`` -- the qc table to which the SNR checks will be added
-    - ``orderJoins`` -- a dictionary of order-join wavelengths, keyed ``"<red order>-<blue order>"`` (if any)
+    - ``orderJoins`` -- a dictionary of order-join wavelengths, keyed ``"<red order>-<blue order>"`` (if any).
+      *None* means no order joins were supplied, as when an extraction finds no object trace; the checks are then
+      skipped with a warning
     - ``recipeName`` -- name of the recipe to add to the QC entries
     - ``dateObs`` -- the observation date to add to the QC entries (in ISO format, e.g., "2024-06-01T00:00:00")
     - ``arm`` -- the spectrograph arm, which decides whether SOXS VIS band letters are added to the comments
@@ -3234,6 +3236,7 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     - ``qcTable`` -- the updated qc table with SNR checks added. The all-order medians are named ``SNR MEDIAN``
       and ``EFF MEDIAN``. Each order gets its own ``SNR MEDIAN O<N>`` and ``EFF MEDIAN O<N>`` row, where ``N`` is
       the order number (for SOXS VIS, 1=r, 2=u, 3=g and 4=i), so the header keeps one card per order.
+      The table is returned unchanged when ``orderJoins`` is *None*.
 
     **Usage:**
 
@@ -3244,6 +3247,11 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     """
     import numpy as np
     import pandas as pd
+
+    # NONE (NOT AN EMPTY DICTIONARY) MEANS NO ORDER JOINS WERE SUPPLIED, AS WHEN AN EXTRACTION FINDS NO OBJECT TRACE
+    if orderJoins is None:
+        log.warning("The SNR and efficiency QCs were skipped: no order joins were supplied (no object trace found).")
+        return qcTable
 
     spectrumDF = spectrumDF.copy(deep=False)
     spectrumDF["ORDER"] = np.nan
