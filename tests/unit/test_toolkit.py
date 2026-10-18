@@ -518,6 +518,31 @@ def test_add_snr_efficiency_qcs_labels_bands_only_when_told_the_arm_is_vis(log: 
     assert result["qc_comment"].iloc[1:].tolist() == ["Median SNR in order 1", "Median SNR in order 2"]
 
 
+def test_add_snr_efficiency_qcs_returns_qc_table_unchanged_and_warns_when_no_trace_was_found(log: object) -> None:
+    spectrum = pd.DataFrame({"WAVE": [400.0, 600.0], "SNR": [1.0, 2.0], "EFFICIENCY": [0.1, 0.2]})
+    qcTable = pd.DataFrame([{"qc_name": "EXISTING QC", "qc_value": 1.0}])
+
+    result = toolkit.add_snr_efficiency_qcs(log, spectrum, qcTable, None, "soxs-nod", "2024-01-02", "NIR")
+
+    assert result is qcTable
+    assert result["qc_name"].tolist() == ["EXISTING QC"]
+    assert log.messages == [
+        (
+            "warning",
+            "The SNR and efficiency QCs were skipped: no order joins were supplied (no object trace found).",
+        )
+    ]
+
+
+def test_add_snr_efficiency_qcs_still_records_the_global_median_when_the_order_joins_are_empty(log: object) -> None:
+    spectrum = pd.DataFrame({"WAVE": [400.0, 600.0], "SNR": [10.0, 20.0]})
+
+    result = toolkit.add_snr_efficiency_qcs(log, spectrum, pd.DataFrame(), {}, "soxs-stare", "2024-01-02", "NIR")
+
+    assert result["qc_name"].tolist() == ["SNR MEDIAN"]
+    assert [level for level, _ in log.messages if level == "warning"] == []
+
+
 def test_qc_settings_plot_tables_limits_qcs_and_hides_axes(log: object) -> None:
     import matplotlib.pyplot as plt
 
