@@ -119,6 +119,7 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
     np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], expected, rtol=1e-14, atol=0)
     np.testing.assert_array_equal(outputTable["WAVE"], [500.0, 600.0])
     assert originalHeader == fits.Header({"DATE-OBS": "2024-01-02T03:04:05.678"})
+    assert any(level == "warning" and "polynomial" in message for level, message in log.messages)
     assert products.loc[0, "product_label"] == "EXTRACTED_FLUXCAL_SPECTRUM"
     assert products.loc[0, "file_path"] == outputPath
 
@@ -205,18 +206,11 @@ def _nir_calibration(tmp_path: Path, log: object, responsePath: Path) -> flux_ca
     return calibration
 
 
-def test_calibrate_reads_response_product_with_sampled_curve_extension_without_warnings(
-    tmp_path: Path,
-    log: object,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A RESP product with the RESPONSE curve extension calibrates exactly like a coefficient-only file (DY-1378)."""
+def _write_response_product(tmp_path: Path, log: object, wave: np.ndarray, response: np.ndarray) -> Path:
+    """Write a RESP product with a coefficient table and a RESPONSE curve extension."""
     from soxspipe.commonutils.response_function import response_function
     from tests.factories import product_table, qc_table
 
-    # ARRANGE
-    oldResponsePath = tmp_path / "old_response.fits"
-    Table({"polyOrder": [1], "c0": [0.01], "c1": [2.0]}).write(oldResponsePath)
     writer = object.__new__(response_function)
     writer.log = log
     writer.arm = "NIR"
@@ -228,10 +222,71 @@ def test_calibrate_reads_response_product_with_sampled_curve_extension_without_w
     writer.products = product_table().iloc[0:0]
     writer.recipeName = "soxs-stare"
     writer.dateObs = "2024-01-02T03:04:05"
-    newResponsePath = Path(
+    return Path(
         writer.write_response_function_to_file(
-            responseFuncCoeffs=np.array([0.01, 2.0]), polyOrder=1, wavelength=np.array([500.0, 600.0])
+            responseFuncCoeffs=np.array([0.0, 1.0]), polyOrder=1, wavelength=wave, response=response
         )
+    )
+
+
+def test_calibrate_uses_the_response_table_and_logs_no_fallback_warning(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A RESP product with the RESPONSE extension is calibrated from the table, not the polynomial (DY-1614)."""
+    # ARRANGE
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([252.0, 302.0]))
+    captured: list[object] = []
+    monkeypatch.setattr(
+        "soxspipe.commonutils.phase3.write_fits_table_to_disk",
+        lambda **kwargs: captured.append(kwargs["tables"][0]),
+    )
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message=".*multiple tables are present.*")
+        _nir_calibration(tmp_path, log, responsePath).calibrate()
+
+    # ASSERT
+    np.testing.assert_allclose(captured[0]["FLUX_CALIBRATED"].to_numpy(), [20 / 10 * 252e-17, 40 / 10 * 302e-17])
+    assert not any(level == "warning" for level, _ in log.messages)
+
+
+def test_calibrate_sets_samples_outside_the_response_table_to_nan_and_logs_the_count(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Science wavelengths beyond the response curve are NaN, never extrapolated (DY-1614)."""
+    # ARRANGE
+    responsePath = _write_response_product(tmp_path, log, np.array([520.0, 580.0]), np.array([100.0, 100.0]))
+    captured: list[object] = []
+    monkeypatch.setattr(
+        "soxspipe.commonutils.phase3.write_fits_table_to_disk",
+        lambda **kwargs: captured.append(kwargs["tables"][0]),
+    )
+
+    # ACT
+    _nir_calibration(tmp_path, log, responsePath).calibrate()
+
+    # ASSERT: BOTH SCIENCE SAMPLES (500 AND 600 NM) LIE OUTSIDE 520-580 NM
+    assert captured[0]["FLUX_CALIBRATED"].isna().all()
+    assert any(level == "warning" and "2 " in message for level, message in log.messages)
+
+
+def test_calibrate_counts_only_science_samples_outside_the_valid_response_range(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unusable response rows are dropped first, so only science wavelengths beyond the good rows are NaN (DY-1614)."""
+    # ARRANGE: GOOD ROWS SPAN 520-580 NM; THE BAD ROWS SIT AT 480 NM, 540 NM AND 620 NM
+    responsePath = _write_response_product(
+        tmp_path,
+        log,
+        np.array([480.0, 520.0, 540.0, 560.0, 580.0, 620.0]),
+        np.array([0.0, 100.0, -5.0, 100.0, 100.0, np.nan]),
     )
     captured: list[object] = []
     monkeypatch.setattr(
@@ -240,12 +295,10 @@ def test_calibrate_reads_response_product_with_sampled_curve_extension_without_w
     )
 
     # ACT
-    _nir_calibration(tmp_path, log, oldResponsePath).calibrate()
     with warnings.catch_warnings():
-        warnings.filterwarnings("error", message=".*multiple tables are present.*")
-        _nir_calibration(tmp_path, log, newResponsePath).calibrate()
+        warnings.simplefilter("error", RuntimeWarning)
+        _nir_calibration(tmp_path, log, responsePath).calibrate()
 
-    # ASSERT
-    oldFlux, newFlux = (table["FLUX_CALIBRATED"].to_numpy() for table in captured)
-    np.testing.assert_allclose(oldFlux, [1.4e-16, 3.2e-16], rtol=1e-14, atol=0)
-    np.testing.assert_array_equal(newFlux, oldFlux)
+    # ASSERT: THE SCIENCE SAMPLES AT 500 AND 600 NM ARE OUTSIDE 520-580 NM
+    assert captured[0]["FLUX_CALIBRATED"].isna().all()
+    assert any(level == "warning" and message.startswith("2 science samples") for level, message in log.messages)

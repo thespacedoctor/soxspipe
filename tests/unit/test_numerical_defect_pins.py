@@ -35,7 +35,12 @@ import soxspipe.commonutils as commonutils
 from soxspipe.commonutils import keyword_lookup, toolkit
 from soxspipe.commonutils.detect_continuum import detect_continuum
 from soxspipe.commonutils.horne_extraction import fit_object_profile, horne_extraction
-from soxspipe.commonutils.response_function import _fit_response_polynomial, _ResponseFitConvergenceError
+from soxspipe.commonutils.response_fit import (
+    _ResponseFitConvergenceError,
+    bin_log_response,
+    fit_log_spline,
+    mask_response_samples,
+)
 from soxspipe.recipes import base_recipe
 from soxspipe.recipes.soxs_mbias import soxs_mbias
 from tests.factories import instrument_header, pipeline_settings
@@ -228,42 +233,44 @@ def test_merged_spectrum_has_no_bin_outside_the_extracted_wavelength_range(log: 
 # ---------------------------------------------------------------------------
 
 
-def test_response_fit_returns_finite_coefficients_or_raises_for_a_non_finite_response() -> None:
-    # ARRANGE: A ZERO-FLUX SAMPLE GIVES AN INFINITE RAW RESPONSE; THE SMOOTHING SPREADS IT OVER ABOUT 41 SAMPLES
+def test_response_fit_returns_a_finite_spline_or_raises_for_a_non_finite_response() -> None:
+    # ARRANGE: A ZERO-FLUX SAMPLE GIVES AN INFINITE RAW RESPONSE
     wavelength = np.linspace(1000.0, 2000.0, 400)
     rawResponse = np.full(400, 2.0)
     rawResponse[0] = np.inf
 
     # ACT: THE ROUTINE'S OWN FIT ERROR IS THE OTHER ACCEPTABLE OUTCOME; ANY OTHER ERROR PROPAGATES
     try:
-        coefficients, _, _ = _fit_response_polynomial(
-            wavelength, rawResponse, polynomialOrder=3, maxIterations=5, excludedRegions=[], smoothingSigma=5
-        )
+        mask = mask_response_samples(wavelength, rawResponse, [], [], 5.0)
+        binWave, binLog, binErr = bin_log_response(wavelength, rawResponse, mask, 20.0, 5)
+        spline, kept = fit_log_spline(binWave, binLog, binErr, 100.0, 4.0, 2.5, 5)
     except _ResponseFitConvergenceError:
         return
 
     # ASSERT
-    assert np.isfinite(coefficients).all()
+    assert not mask[0]
+    assert np.isfinite(spline(binWave[kept])).all()
 
 
-def test_response_fit_coefficients_match_a_refit_on_the_returned_points() -> None:
-    # ARRANGE: A BLOCK OF HIGH POINTS PULLS THE FIRST FIT, SO THE SINGLE ALLOWED PASS STILL DELETES POINTS
-    wavelength = np.linspace(500.0, 900.0, 1000)
-    rawResponse = np.full(1000, 1.0)
-    rawResponse[295:306] = 3.0
+def test_response_fit_spline_matches_a_refit_on_the_returned_bins() -> None:
+    # ARRANGE: A BLOCK OF HIGH BINS PULLS THE FIRST FIT, SO THE SINGLE ALLOWED PASS STILL CLIPS BINS
+    wavelength = np.linspace(500.0, 900.0, 4000)
+    rawResponse = np.full(4000, 1.0)
+    rawResponse[(wavelength > 600.0) & (wavelength < 640.0)] = 3.0
+    mask = mask_response_samples(wavelength, rawResponse, [], [], 5.0)
+    binWave, binLog, binErr = bin_log_response(wavelength, rawResponse, mask, 5.0, 5)
 
     # ACT: FAILING LOUDLY ON A CAP EXIT IS THE OTHER ACCEPTABLE OUTCOME
     try:
-        coefficients, keptWavelength, keptResponse = _fit_response_polynomial(
-            wavelength, rawResponse, polynomialOrder=1, maxIterations=1
-        )
+        spline, kept = fit_log_spline(binWave, binLog, binErr, 100.0, 4.0, 2.5, 1)
     except _ResponseFitConvergenceError:
         return
 
-    # ASSERT: THE FIRST FIT OF A FRESH CALL ON THE KEPT POINTS IS THE FIT THOSE POINTS GIVE
-    assert len(keptWavelength) < len(wavelength)
-    refit, _, _ = _fit_response_polynomial(keptWavelength, keptResponse, polynomialOrder=1, maxIterations=1)
-    np.testing.assert_allclose(coefficients, refit, atol=1e-9)
+    # ASSERT: THE FIRST FIT OF A FRESH CALL ON THE KEPT BINS IS THE FIT THOSE BINS GIVE
+    assert not kept.all()
+    refit, refitKept = fit_log_spline(binWave[kept], binLog[kept], binErr[kept], 100.0, 4.0, 2.5, 1)
+    assert refitKept.all()
+    np.testing.assert_allclose(spline(binWave[kept]), refit(binWave[kept]), atol=1e-9)
 
 
 # ---------------------------------------------------------------------------
