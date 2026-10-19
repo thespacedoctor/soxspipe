@@ -873,7 +873,8 @@ class soxs_nod(base_recipe):
         **Return:**
 
         - ``stackedSpectrum`` -- the stacked extraction
-        - ``orderJoins`` -- the order joins of the extraction
+        - ``orderJoins`` -- the order joins of the B-A extraction, or of the A-B extraction when the B-A
+          extraction found no object trace
         - ``forceFailure`` -- the response curve's failure flag, or False when no response was built
         """
         forceFailure = False
@@ -1071,7 +1072,8 @@ class soxs_nod(base_recipe):
         - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe)
         - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe), or False
           outside nodding mode
-        - ``orderJoins`` -- the order joins of the last extraction
+        - ``orderJoins`` -- the order joins of the B-A extraction, or of the A-B extraction when the B-A
+          extraction found no object trace (*None* if neither did). An offset run has the A-B extraction only
 
         **Usage:**
 
@@ -1365,7 +1367,8 @@ class soxs_nod(base_recipe):
 
         - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe)
         - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe), or False
-        - ``orderJoins`` -- the order joins of the last extraction
+        - ``orderJoins`` -- the order joins of the B-A extraction, or of the A-B extraction when the B-A
+          extraction found no object trace (*None* if neither did). An offset run has the A-B extraction only
         - ``theseProducts`` -- the products table the extractions returned
         """
         from soxspipe.commonutils import horne_extraction
@@ -1419,10 +1422,14 @@ class soxs_nod(base_recipe):
                 self.qc,
                 theseProducts,
                 mergedSpectrumDF_B,
-                orderJoins,
+                orderJoinsB,
                 extractionFITSPathB,
             ) = optimalExtractor.extract()
             self._collect_extraction_notes(optimalExtractor, notFlattened)
+            # AN EXTRACTION WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO IT MUST NOT ERASE THOSE OF THE OTHER
+            # POSITION
+            if orderJoinsB is not None:
+                orderJoins = orderJoinsB
         else:
             mergedSpectrumDF_B = False
 

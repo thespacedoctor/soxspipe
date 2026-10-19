@@ -18,6 +18,11 @@ develop itself (38918109330, bc80f1d1) gave the same values. They arrived throug
 merges into develop, where the gate does not run. The VIS blue end moved from 348.02
 to 348.14 nm and its sky counts median fell 7%; the NIR blue end moved from 794.58 to
 795.06 nm and its SNR median fell from 16.91 to 14.09.
+
+The two `fluxcalMedian` values were re-recorded on 2026-10-18 from six bit-identical
+CI runs (39165616944, 39165618635, 39165620359, 39165622153, 39165623841 and
+39165625784), after the response curve became a log-space spline (DY-1614). The VIS
+median rose 2.9% and the NIR median fell 3.2%.
 """
 
 from __future__ import annotations
@@ -78,7 +83,7 @@ BASELINES = [
             waveMax=850.04,
             waveStep=0.02,
             snrMedian=156.8,
-            fluxcalMedian=5.930338765555529e-14,
+            fluxcalMedian=6.10426333845815e-14,
             skyCountsMedian=6.347151279449463,
             skyModelMedian=9.057429313659668,
             skyModelP90=93.78917541503911,
@@ -100,7 +105,7 @@ BASELINES = [
             waveMax=2032.02,
             waveStep=0.06,
             snrMedian=14.09,
-            fluxcalMedian=3.0812209328868036e-15,
+            fluxcalMedian=2.9836168959689136e-15,
             skyCountsMedian=17.42337417602539,
             skyModelMedian=20.28994369506836,
             skyModelP90=89.84078826904295,

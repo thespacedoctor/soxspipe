@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from soxspipe.recipes import soxs_nod, soxs_offset
-from tests.integration.test_soxs_nod_cycle_characterization import _spectrum_frames, _stack_recipe
+from tests.integration.test_soxs_nod_cycle_characterization import _ab_frames, _spectrum_frames, _stack_recipe
 
 pytestmark = pytest.mark.integration
 
@@ -206,3 +206,94 @@ def test_offset_cycle_loop_stacks_when_only_a_later_cycle_found_a_trace(
     expected, _ = recipe.stack_extractions([first], orderJoins={"10-11": 1})
 
     assert stacked["FLUX_COUNTS"].tolist() == pytest.approx(expected["FLUX_COUNTS"].tolist())
+
+
+def _extracting_nod_recipe(
+    monkeypatch: pytest.MonkeyPatch, log: Any, tmp_path: Path, extractions: list[tuple[Any, Any]]
+) -> Any:
+    """Return a nod recipe whose real cycle code extracts `extractions`, one `(spectrum, orderJoins)` per call.
+
+    The extractor stands in for `horne_extraction`. Call 1 is the A-B extraction and call 2 the B-A extraction of
+    the cycle, and so on. A `(None, None)` entry is an extraction that found no object trace.
+    """
+    recipe = _stack_recipe(log, tmp_path, recipeName="soxs-nod")
+    recipe.debug = False
+    recipe.recipeSettings = {"save_single_frame_extractions": False, "use_flat": False}
+    recipe.twoDMap = "two-d-map.fits"
+    recipe.dispMap = "dispersion-map.fits"
+    recipe.startNightDate = "2024-01-02"
+    recipe.turnOffMP = True
+    callCount = {"count": 0}
+
+    class StubExtractor:
+        noddingSequence = ""
+        extractionNotes: tuple = ()
+
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def extract(self) -> tuple[Any, Any, Any, Any, Any]:
+            spectrum, joins = extractions[callCount["count"]]
+            callCount["count"] += 1
+            return recipe.qc, recipe.products, spectrum, joins, None if spectrum is None else "extraction.fits"
+
+    nodModule = import_module("soxspipe.recipes.soxs_nod")
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "horne_extraction", StubExtractor)
+    monkeypatch.setattr(nodModule, "generic_quality_checks", lambda **kwargs: kwargs["qcTable"])
+    monkeypatch.setattr(nodModule, "spectroscopic_image_quality_checks", lambda **kwargs: kwargs["qcTable"])
+    return recipe
+
+
+def _run_real_nod_cycle(recipe: Any) -> tuple[Any, Any]:
+    """Run the per-cycle nod loop over one real A and B frame pair, so the joins travel the whole path."""
+    aFrame, bFrame = _ab_frames(aOverrides={"MJD-OBS": 60000.0}, bOverrides={"MJD-OBS": 60000.1})
+    return recipe._reduce_each_nodding_cycle([aFrame], [bFrame], ["a.fits"], ["b.fits"], "orders.fits", False)
+
+
+def test_nod_cycle_keeps_the_a_spectrum_and_joins_when_only_the_a_position_found_a_trace(
+    monkeypatch: pytest.MonkeyPatch, log: Any, tmp_path: Path, snr_qc_order_joins: list[Any]
+) -> None:
+    first, _ = _spectrum_frames()
+    recipe = _extracting_nod_recipe(monkeypatch, log, tmp_path, [(first, {"10-11": 1}), (None, None)])
+
+    stacked, orderJoins = _run_real_nod_cycle(recipe)
+
+    assert orderJoins == {"10-11": 1}
+    assert snr_qc_order_joins == [{"10-11": 1}]
+    expected, _ = recipe.stack_extractions([first], orderJoins={"10-11": 1})
+    assert stacked["FLUX_COUNTS"].tolist() == pytest.approx(expected["FLUX_COUNTS"].tolist())
+
+
+def test_nod_cycle_keeps_the_b_spectrum_and_joins_when_only_the_b_position_found_a_trace(
+    monkeypatch: pytest.MonkeyPatch, log: Any, tmp_path: Path, snr_qc_order_joins: list[Any]
+) -> None:
+    second, _ = _spectrum_frames()
+    recipe = _extracting_nod_recipe(monkeypatch, log, tmp_path, [(None, None), (second, {"20-21": 2})])
+
+    stacked, orderJoins = _run_real_nod_cycle(recipe)
+
+    assert orderJoins == {"20-21": 2}
+    assert snr_qc_order_joins == [{"20-21": 2}]
+    expected, _ = recipe.stack_extractions([second], orderJoins={"20-21": 2})
+    assert stacked["FLUX_COUNTS"].tolist() == pytest.approx(expected["FLUX_COUNTS"].tolist())
+
+
+def test_nod_cycle_uses_the_b_joins_when_both_positions_found_a_trace(
+    monkeypatch: pytest.MonkeyPatch, log: Any, tmp_path: Path, snr_qc_order_joins: list[Any]
+) -> None:
+    first, second = _spectrum_frames()
+    recipe = _extracting_nod_recipe(monkeypatch, log, tmp_path, [(first, {"10-11": 1}), (second, {"20-21": 2})])
+
+    _, orderJoins = _run_real_nod_cycle(recipe)
+
+    assert orderJoins == {"20-21": 2}
+    assert snr_qc_order_joins == [{"20-21": 2}]
+
+
+def test_nod_cycle_raises_when_neither_position_found_a_trace(
+    monkeypatch: pytest.MonkeyPatch, log: Any, tmp_path: Path, passthrough_snr_qcs: None
+) -> None:
+    recipe = _extracting_nod_recipe(monkeypatch, log, tmp_path, [(None, None), (None, None)])
+
+    with pytest.raises(Exception, match="No object trace was found in either nod position"):
+        _run_real_nod_cycle(recipe)
