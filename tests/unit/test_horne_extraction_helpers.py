@@ -25,6 +25,7 @@ from soxspipe.commonutils.horne_extraction import (
     fit_object_profile,
     generate_masks,
     horne_extraction,
+    profile_clip_cap_rows,
 )
 from tests.factories import instrument_header, product_table
 from tests.unit._plot_spies import probe_on_savefig
@@ -2064,7 +2065,7 @@ def test_profile_fitting_normalises_a_symmetric_slit_profile() -> None:
         "mask": np.zeros((2, 5), dtype=bool),
     }
 
-    resultSlices, resultImages = fit_object_profile(
+    resultSlices, resultImages, _ = fit_object_profile(
         slices,
         images,
         slitHalfLength=1,
@@ -2084,7 +2085,7 @@ def test_profile_fitting_normalises_a_symmetric_slit_profile() -> None:
 def _fit_profile(images: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
     """Fit a constant-in-dispersion object profile to rectified order images."""
     slices = pd.DataFrame(index=range(images["fluxRaw"].shape[1]))
-    _, fitted = fit_object_profile(
+    _, fitted, _ = fit_object_profile(
         slices,
         images,
         slitHalfLength=images["fluxRaw"].shape[0] // 2,
@@ -2770,10 +2771,15 @@ def test_debug_tuning_plots_every_iteration_of_the_diagnostic(log: object, tmp_p
     assert np.array_equal(plotCalls[0][6], CATALOGUE)
 
 
-def _noisy_order_images(slitRows: int, columns: int, seed: int = 3) -> dict[str, np.ndarray]:
-    """Build a rectified order of constant flux plus gaussian noise, ready for `extract_single_order`."""
+def _noisy_order_images(slitRows: int, columns: int, seed: int = 3, hasSpike: bool = False) -> dict[str, np.ndarray]:
+    """Build a rectified order of constant flux plus gaussian noise, ready for `extract_single_order`.
+
+    A spike multiplies one pixel by 50, which every slit row's profile fit treats as an outlier even at 5 sigma.
+    """
     rng = np.random.default_rng(seed)
     flux = 1000.0 + rng.normal(0, 10, (slitRows, columns))
+    if hasSpike:
+        flux[slitRows // 2, columns // 2] *= 50
     return {
         "bpMask": np.zeros((slitRows, columns), dtype=bool),
         "fluxRaw": flux,
@@ -2799,12 +2805,14 @@ def _extract_noisy_order(
     )
 
 
-def _fit_noisy_profile(clippingSigma: float, clippingIterationLimit: int, hornePolyOrder: int, columns: int) -> dict:
+def _fit_noisy_profile(
+    clippingSigma: float, clippingIterationLimit: int, hornePolyOrder: int, columns: int
+) -> profile_clip_cap_rows:
     """Fit the profile of a noisy 5-row order and return the cap counts the fit reports."""
     slices = pd.DataFrame({"x": range(columns)})
     images = _noisy_order_images(slitRows=5, columns=columns)
     images["mask"] = images["bpMask"]
-    fit_object_profile(
+    _, _, capRows = fit_object_profile(
         slices,
         images,
         slitHalfLength=2,
@@ -2816,7 +2824,7 @@ def _fit_noisy_profile(clippingSigma: float, clippingIterationLimit: int, horneP
         debug=False,
         plt=None,
     )
-    return slices.attrs["profileClipCapRows"]
+    return capRows
 
 
 def test_object_profile_counts_rows_refitted_when_the_clipping_cap_is_reached() -> None:
@@ -2824,7 +2832,7 @@ def test_object_profile_counts_rows_refitted_when_the_clipping_cap_is_reached() 
     counts = _fit_noisy_profile(clippingSigma=1.0, clippingIterationLimit=1, hornePolyOrder=0, columns=40)
 
     # ASSERT
-    assert counts == {"refitted": 5, "kept": 0}
+    assert counts == profile_clip_cap_rows(refitted=5, kept=0)
 
 
 def test_object_profile_counts_rows_that_keep_their_last_fit_when_too_few_points_survive() -> None:
@@ -2832,7 +2840,7 @@ def test_object_profile_counts_rows_that_keep_their_last_fit_when_too_few_points
     counts = _fit_noisy_profile(clippingSigma=1.0, clippingIterationLimit=1, hornePolyOrder=7, columns=10)
 
     # ASSERT
-    assert counts == {"refitted": 0, "kept": 5}
+    assert counts == profile_clip_cap_rows(refitted=0, kept=5)
 
 
 def test_object_profile_counts_nothing_when_every_row_converges() -> None:
@@ -2840,7 +2848,7 @@ def test_object_profile_counts_nothing_when_every_row_converges() -> None:
     counts = _fit_noisy_profile(clippingSigma=7.0, clippingIterationLimit=1, hornePolyOrder=0, columns=40)
 
     # ASSERT
-    assert counts == {"refitted": 0, "kept": 0}
+    assert counts == profile_clip_cap_rows(refitted=0, kept=0)
 
 
 def test_single_order_extraction_logs_one_info_line_per_order_with_the_cap_counts(log: object) -> None:
@@ -2872,3 +2880,55 @@ def test_single_order_extraction_logs_nothing_when_every_row_converges(log: obje
 
     # ASSERT
     assert log.messages == []
+
+
+def test_extract_logs_one_cap_line_for_each_order_that_has_capped_rows(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THREE ORDERS RUN THROUGH THE REAL PER-ORDER EXTRACTION; ORDERS 7 AND 9 HOLD A SPIKE, ORDER 8 IS CLEAN
+    import fundamentals
+
+    transformerModule = importlib.import_module("soxspipe.commonutils.image_transformer")
+    extractor, extraction, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.clippingSigma = 5.0
+    extractor.clippingIterationLimit = 1
+    extractor.recipeSettings = {"horne-extraction-profile-poly-order": 0}
+    orders = {7: True, 8: False, 9: True}
+    columns = 40
+
+    class ThreeOrderTransformer:
+        """Rectification collaborator that hands out three synthetic orders."""
+
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def cache_image(self, name: str, image: np.ndarray, **kwargs: object) -> None:
+            pass
+
+        def get_order_slices(self) -> list[pd.DataFrame]:
+            return [pd.DataFrame({"order": [order] * columns}) for order in orders]
+
+        def get_order_wavelength_ranges(self) -> list[tuple[float, float]]:
+            return [(400.0, 700.0)] * len(orders)
+
+        def get_order_rectified(self) -> list[dict[str, np.ndarray]]:
+            return [_noisy_order_images(slitRows=5, columns=columns, hasSpike=hasSpike) for hasSpike in orders.values()]
+
+    def run_serially(function: object, inputArray: list[object], **kwargs: object) -> list[object]:
+        fmultiprocessOnly = {"log", "poolSize", "timeout", "turnOffMP", "progressBar"}
+        funcKwargs = {key: value for key, value in kwargs.items() if key not in fmultiprocessOnly}
+        return [function(item, **funcKwargs) for item in inputArray]
+
+    monkeypatch.setattr(transformerModule, "image_transformer", ThreeOrderTransformer)
+    monkeypatch.setattr(fundamentals, "fmultiprocess", run_serially)
+    extractor.merge_extracted_orders = lambda orders: (extraction.iloc[:0].copy(), {})
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    capLines = [message for level, message in log.messages if level == "info" and "iteration limit" in message]
+    assert len(capLines) == 2
+    assert "order 7:" in capLines[0]
+    assert "order 9:" in capLines[1]
