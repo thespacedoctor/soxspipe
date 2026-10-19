@@ -256,6 +256,7 @@ class horne_extraction(base_util):
             locationSetIndex=locationSetIndex,
             startNightDate=self.startNightDate,
             debug=self.debug,
+            notFlattened=bool(self.notFlattened),
         )
         (
             productPath,

@@ -62,6 +62,9 @@ def _order_colours(orders):
 
 
 class _base_detect:
+    # FILE-NAME SUFFIX OF THE NOT-FLATTENED REPEAT OF A TRACE. ONLY detect_continuum SETS IT
+    notFlattened = ""
+
     def fit_order_polynomial(self, pixelList, order, axisBDeg, axisACol, axisBCol, exponentsIncluded=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
@@ -525,7 +528,9 @@ class _base_detect:
             filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
         elif has_sequence_suffixed_traces(self.recipeName):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
-            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + ".fits"
+            filename = (
+                filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + self.notFlattened + ".fits"
+            )
 
         if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -599,6 +604,8 @@ class detect_continuum(_base_detect):
     - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``debug`` -- if *True* then extra debugging information is printed. Default *False*
+    - ``notFlattened`` -- if *True* the trace is the repeat made for the response curve: its files get a
+      ``_NOTFLAT`` suffix and it adds no product row. Default *False*
 
     **Usage:**
 
@@ -635,6 +642,7 @@ class detect_continuum(_base_detect):
         orderPixelTable=False,
         startNightDate="",
         debug=False,
+        notFlattened=False,
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -646,6 +654,7 @@ class detect_continuum(_base_detect):
             header=traceFrame.header, locationSetIndex=locationSetIndex, recipeName=recipeName
         )
 
+        self.notFlattened = "_NOTFLAT" if notFlattened else ""
         self.recipeName = recipeName
         self.traceFrame = traceFrame
         self.dispersion_map = dispersion_map
@@ -911,7 +920,8 @@ class detect_continuum(_base_detect):
             label = "OBJECT_TRACE_RES"
             product_desc = "Residuals of the object trace polynomial fit"
 
-        if not isinstance(self.products, bool):
+        # THE NOT-FLATTENED REPEAT FINDS THE SAME TRACE, SO IT ADDS NO SECOND ROW FOR THE PDF
+        if not isinstance(self.products, bool) and not self.notFlattened:
             self.products = pd.concat(
                 [
                     self.products,
@@ -933,18 +943,13 @@ class detect_continuum(_base_detect):
                 ],
                 ignore_index=True,
             )
-            # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
-            order_table_path = self.write_order_table_to_file(
-                frame=self.traceFrame,
-                orderPolyTable=orderPolyTable,
-                orderMetaTable=orderMetaTable,
-            )
-        else:
-            order_table_path = self.write_order_table_to_file(
-                frame=self.traceFrame,
-                orderPolyTable=orderPolyTable,
-                orderMetaTable=orderMetaTable,
-            )
+
+        # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
+        order_table_path = self.write_order_table_to_file(
+            frame=self.traceFrame,
+            orderPolyTable=orderPolyTable,
+            orderMetaTable=orderMetaTable,
+        )
 
         # mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         # std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
@@ -1525,7 +1530,8 @@ class detect_continuum(_base_detect):
         elif "order" in self.recipeName.lower():
             filename = self.sofName + f"_residuals_{polyOrders}.pdf"
         elif has_sequence_suffixed_traces(self.recipeName):
-            filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + f"_{polyOrders}.pdf"
+            sequence = self.noddingSequence + self.notFlattened
+            filename = self.sofName + "_OBJECT_TRACE_residuals" + sequence + f"_{polyOrders}.pdf"
         else:
             filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
 
