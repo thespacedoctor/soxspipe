@@ -486,7 +486,7 @@ def test_object_profile_refits_on_the_surviving_points_when_clipping_stops_at_th
     expectedProfile = expectedRows / expectedRows.sum(axis=0)
 
     # ACT
-    _, result = fit_object_profile(
+    _, result, _ = fit_object_profile(
         pd.DataFrame({"x": range(wavelengthColumns)}),
         images,
         slitHalfLength=1,
