@@ -11,9 +11,9 @@ per cycle, and the SNR median rose from 104.0 to 149.8. The flux-calibrated medi
 was re-recorded on 2026-10-18 from six bit-identical CI runs (39165616944,
 39165618635, 39165620359, 39165622153, 39165623841 and 39165625784), after the
 response curve became a log-space spline (DY-1614). It fell 3.0%. It was
-re-recorded again on 2026-10-19 from six bit-identical CI runs (39290451388,
-39290461991, 39290472137, 39290482158, 39290492461 and 39290503644), after the NIR
-response fit change (DY-1647). It rose 0.6%.
+re-recorded on 2026-10-19 from six bit-identical CI runs (39290451388, 39290461991,
+39290472137, 39290482158, 39290492461 and 39290503644), after the NIR response fit
+change (DY-1647), and rose 0.6% (DY-1648).
 """
 
 from __future__ import annotations

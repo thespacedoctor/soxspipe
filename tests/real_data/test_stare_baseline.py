@@ -27,7 +27,7 @@ median rose 2.9% and the NIR median fell 3.2%.
 The NIR `fluxcalMedian` was re-recorded on 2026-10-19 from six bit-identical CI runs
 (39290451388, 39290461991, 39290472137, 39290482158, 39290492461 and 39290503644),
 after the NIR response fit change (DY-1647). It rose 0.6%. The VIS values moved by
-0.02% or less, inside their bands, and were left as they are (DY-1648).
+0.01% or less, inside their bands, and were left as they are (DY-1648).
 """
 
 from __future__ import annotations
