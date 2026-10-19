@@ -1,17 +1,18 @@
-"""Tests for the bulk reduction preconditions and the rebuilt worker logger."""
+"""Tests for the bulk reduction preconditions and the worker logger that feeds the parent process."""
 
 from __future__ import annotations
 
-import copy
 import logging
+import queue
 import sqlite3
+from collections.abc import Iterator
 from importlib import import_module
+from logging.handlers import QueueHandler
 from pathlib import Path
 from typing import Any
 
 import multiprocess
 import pytest
-import yaml
 
 from tests.factories import logging_settings
 
@@ -46,7 +47,7 @@ def test_run_recipe_bulk_raises_before_starting_the_pool_when_logging_settings_a
     tmp_path: Path,
     log: Any,
 ) -> None:
-    """A spawned worker rebuilds its logger from `logging settings`, so the parent checks for them first."""
+    """A spawned worker takes its log level from `logging settings`, so the parent checks for them first."""
     # ARRANGE
     poolWasStarted = False
 
@@ -89,113 +90,80 @@ def test_run_recipe_bulk_leaves_the_global_start_method_alone(
     assert multiprocess.get_start_method(allow_none=True) == "fork"
 
 
-class _StubLoggingSetup:
-    """Stand in for `setup_dryx_logging`, recording the yaml it is given and returning an unregistered logger."""
-
-    def __init__(self, logPath: Path) -> None:
-        self.recordedYaml: list[dict[str, Any]] = []
-        self.logPath = logPath
-        self.returnedLog = logging.Logger("dy1532-probe")
-        self.fileHandler = logging.FileHandler(logPath, delay=True)
-        self.streamHandler = logging.StreamHandler()
-        for handler in (self.fileHandler, self.streamHandler):
-            handler.setLevel(logging.DEBUG)
-            self.returnedLog.addHandler(handler)
-
-    def __call__(self, yaml_file: str) -> logging.Logger:
-        # THE TEMPORARY YAML IS DELETED WHEN THE CALLER RETURNS, SO READ IT NOW
-        with open(yaml_file) as settingsFile:
-            self.recordedYaml.append(yaml.safe_load(settingsFile))
-        return self.returnedLog
-
-    def close(self) -> None:
-        for handler in (self.fileHandler, self.streamHandler):
-            handler.close()
-
-
 @pytest.fixture
-def stub_logging_setup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
-    """Replace the shared logger setup with a recording stub, and close its handlers afterwards."""
-    stub = _StubLoggingSetup(tmp_path / "stub.log")
-    monkeypatch.setattr(import_module("fundamentals.logs"), "setup_dryx_logging", stub)
-    yield stub
-    stub.close()
+def added_log_levels(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple[str, int]]]:
+    """Keep `_worker_log` from changing process-wide logging state, and restore the root logger afterwards.
+
+    Yield the list of ``(name, number)`` arguments that `addLoggingLevel` was called with.
+    """
+    rootLog = logging.getLogger()
+    handlersBefore, levelBefore = list(rootLog.handlers), rootLog.level
+    addedLevels: list[tuple[str, int]] = []
+    monkeypatch.setattr(import_module("fundamentals.logs"), "addLoggingLevel", lambda *args: addedLevels.append(args))
+    monkeypatch.setattr(logging, "captureWarnings", lambda capture: None)
+    yield addedLevels
+    rootLog.handlers[:] = handlersBefore
+    rootLog.setLevel(levelBefore)
 
 
-def test_worker_log_rebuilds_a_bare_logger_from_a_copy_of_the_logging_settings(
+def test_worker_log_sends_a_bare_loggers_records_to_the_queue_and_adds_no_file_handler(
     tmp_path: Path,
-    stub_logging_setup: _StubLoggingSetup,
+    added_log_levels: list[tuple[str, int]],
 ) -> None:
-    """A bare logger is rebuilt by the shared setup, muted on the console, from settings that stay untouched."""
+    """A bare logger gets the print level and a queue handler at the settings' root level, and no file handler."""
     # ARRANGE
     reducerModule = import_module("soxspipe.commonutils.reducer")
-    settings = logging_settings(tmp_path / "shared.log")
-    settingsBefore = copy.deepcopy(settings)
+    logQueue: queue.Queue[logging.LogRecord] = queue.Queue()
+    handlersBefore = list(logging.getLogger().handlers)
 
     # ACT
-    workerLog = reducerModule._worker_log(logging.Logger("dy1532-bare"), settings)
+    workerLog = reducerModule._worker_log(logging.Logger("dy1534-bare"), logging_settings(tmp_path / "x.log"), logQueue)
+    logging.getLogger("dy1534.child").info("queued-marker")
+    logging.getLogger("dy1534.child").debug("below-root-level")
 
     # ASSERT
-    recordedConfig = stub_logging_setup.recordedYaml[0]["logging settings"]
-    assert len(stub_logging_setup.recordedYaml) == 1
-    assert recordedConfig["disable_existing_loggers"] is False
-    assert recordedConfig["handlers"]["file"]["mode"] == "a"
-    assert settings == settingsBefore
-    assert workerLog is stub_logging_setup.returnedLog
-    assert stub_logging_setup.streamHandler.level == logging.WARNING
-    assert stub_logging_setup.fileHandler.level == logging.DEBUG
-
-
-def test_worker_log_rebuilds_from_settings_that_have_no_file_handler(
-    tmp_path: Path,
-    stub_logging_setup: _StubLoggingSetup,
-) -> None:
-    """Settings with only a console handler are passed on without inventing a file handler."""
-    # ARRANGE
-    reducerModule = import_module("soxspipe.commonutils.reducer")
-    settings = logging_settings(tmp_path / "shared.log")
-    del settings["logging settings"]["handlers"]["file"]
-    settings["logging settings"]["root"]["handlers"] = ["console"]
-
-    # ACT
-    workerLog = reducerModule._worker_log(logging.Logger("dy1532-bare"), settings)
-
-    # ASSERT
-    recordedConfig = stub_logging_setup.recordedYaml[0]["logging settings"]
-    assert "file" not in recordedConfig["handlers"]
-    assert workerLog is stub_logging_setup.returnedLog
+    assert workerLog.name == "fundamentals.logs"
+    assert added_log_levels == [("PRINT", logging.INFO + 5)]
+    assert logQueue.get_nowait().getMessage() == "queued-marker"
+    assert logQueue.empty()
+    addedHandlers = [handler for handler in logging.getLogger().handlers if handler not in handlersBefore]
+    assert [type(handler) for handler in addedHandlers] == [QueueHandler]
 
 
 def test_worker_log_returns_a_working_logger_unchanged(
     tmp_path: Path,
-    stub_logging_setup: _StubLoggingSetup,
+    added_log_levels: list[tuple[str, int]],
 ) -> None:
-    """A logger that has handlers and a `print` method needs no rebuild."""
+    """A logger that has handlers and a `print` method needs no queue handler."""
     # ARRANGE
     reducerModule = import_module("soxspipe.commonutils.reducer")
-    workingLog = logging.Logger("dy1532-working")
+    workingLog = logging.Logger("dy1534-working")
     workingLog.addHandler(logging.NullHandler())
     workingLog.print = lambda message: None  # type: ignore[attr-defined]
+    handlersBefore = list(logging.getLogger().handlers)
 
     # ACT
-    workerLog = reducerModule._worker_log(workingLog, logging_settings(tmp_path / "shared.log"))
+    workerLog = reducerModule._worker_log(workingLog, logging_settings(tmp_path / "x.log"), queue.Queue())
 
     # ASSERT
     assert workerLog is workingLog
-    assert stub_logging_setup.recordedYaml == []
+    assert logging.getLogger().handlers == handlersBefore
+    assert added_log_levels == []
 
 
 def test_worker_log_returns_a_bare_logger_unchanged_when_settings_have_no_logging_block(
-    stub_logging_setup: _StubLoggingSetup,
+    added_log_levels: list[tuple[str, int]],
 ) -> None:
-    """Without a `logging settings` block there is nothing to rebuild from."""
+    """Without a `logging settings` block there is nothing to set the root level from."""
     # ARRANGE
     reducerModule = import_module("soxspipe.commonutils.reducer")
-    bareLog = logging.Logger("dy1532-bare")
+    bareLog = logging.Logger("dy1534-bare")
+    handlersBefore = list(logging.getLogger().handlers)
 
     # ACT
-    workerLog = reducerModule._worker_log(bareLog, {})
+    workerLog = reducerModule._worker_log(bareLog, {}, queue.Queue())
 
     # ASSERT
     assert workerLog is bareLog
-    assert stub_logging_setup.recordedYaml == []
+    assert logging.getLogger().handlers == handlersBefore
+    assert added_log_levels == []
