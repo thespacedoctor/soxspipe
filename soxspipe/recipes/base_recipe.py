@@ -21,6 +21,7 @@ from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, sub
 # INTERPOLATED. A LEAF MODULE WITH NO IMPORTS OF ITS OWN, SO IT CANNOT
 # DISTURB THE PACKAGE'S LOAD-BEARING IMPORT ORDER.
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
 
 # THE "CALLER DID NOT PASS THIS KEYWORD" SENTINEL USED BY THE add_qc AND
 # add_product DELEGATORS BELOW. IMPORTED FROM `toolkit` RATHER THAN REDEFINED
@@ -2790,51 +2791,21 @@ class base_recipe:
         return recipeSettings
 
     def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
-        """*write a dataframe to a database table, retrying the insert up to seven times*
+        """*write a dataframe to a database table in one transaction, retrying a failed write up to seven times*
 
         **Key Arguments:**
 
         - ``dataframe`` -- the dataframe containing the rows to insert
         - ``table_name`` -- the name of the database table to insert into
-        - ``replace`` -- if True, delete the table's existing rows first; otherwise append. Default: False
+        - ``replace`` -- if True, delete the table's existing rows in the same transaction; otherwise append. Default:
+          False
 
         **Raises:**
 
         - Exception if the insert fails after seven attempts.
         - ``UnsafeSqlIdentifierError`` if ``table_name`` fails the safe-identifier grammar.
         """
-        import time
-
-        # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
-        # THE SAFE-IDENTIFIER GRAMMAR ONCE HERE, BEFORE EITHER SQL SITE BELOW
-        # INTERPOLATES IT.
-        table_name = validate_sql_identifier(table_name, "table name")
-
-        if replace:
-            c = self.conn.cursor()
-            sqlQuery = f"delete from {table_name};"  # noqa: S608
-            try:
-                c.execute(sqlQuery)
-            except sqlite3.OperationalError as e:
-                self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
-            c.close()
-
-        keepTryingMax = 7
-        for attempt in range(1, keepTryingMax + 1):
-            try:
-                dataframe.replace(["--"], None).to_sql(
-                    table_name,
-                    con=self.conn,
-                    index=False,
-                    if_exists="append",
-                    method="multi",
-                )
-                return
-            except Exception:
-                # RE-RAISE THE ORIGINAL ERROR AFTER THE FINAL ATTEMPT SO A LOST QC WRITE FAILS THE RECIPE (DY-603)
-                if attempt == keepTryingMax:
-                    raise
-                time.sleep(1)
+        write_dataframe_to_sqlite(self.conn, self.log, dataframe, table_name, replace=replace, method="multi")
 
     def add_qc(
         self,

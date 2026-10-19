@@ -47,6 +47,7 @@ from soxspipe.commonutils.session_status_restore import (
     read_session_snapshots,
 )
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
 
 os.environ["TERM"] = "vt100"
 
@@ -3512,44 +3513,18 @@ class data_organiser:
 
     def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
         """
-        Retry inserting into the database with a maximum of 7 attempts.
+        Write a DataFrame to a database table in one transaction, retrying a failed write up to 7 times.
 
         **Key Arguments:**
         - `dataframe` -- DataFrame containing rows to insert.
         - `table_name` -- Name of the database table to insert into.
-        - `replace` -- If True, replace existing entries; otherwise, append.
+        - `replace` -- If True, replace existing entries in the same transaction; otherwise, append.
 
         **Raises:**
         - Exception if the insertion fails after 7 attempts.
         - `UnsafeSqlIdentifierError` if `table_name` fails the safe-identifier grammar.
         """
-        import time
-
-        # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
-        # THE SAFE-IDENTIFIER GRAMMAR BEFORE IT IS INTERPOLATED BELOW.
-        table_name = validate_sql_identifier(table_name, "table name")
-
-        if replace:
-            c = self.conn.cursor()
-            sqlQuery = f"delete from {table_name};"  # noqa: S608
-            try:
-                c.execute(sqlQuery)
-            except sqlite3.OperationalError as e:
-                self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
-            c.close()
-
-        keepTrying = 0
-        while keepTrying < 7:
-            try:
-                dataframe.replace(["--", -99.99], None).to_sql(
-                    table_name, con=self.conn, index=False, if_exists="append"
-                )
-                keepTrying = 10
-            except Exception:
-                if keepTrying > 5:
-                    raise
-                time.sleep(1)
-                keepTrying += 1
+        write_dataframe_to_sqlite(self.conn, self.log, dataframe, table_name, replace=replace, sentinels=("--", -99.99))
 
 
 def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
