@@ -33,6 +33,13 @@ re-recorded on 2026-10-18 from six bit-identical CI runs (39165616944, 391656186
 39165620359, 39165622153, 39165623841 and 39165625784), after the response curve
 became a log-space spline (DY-1614). The NIR median fell 8.9%, and every other
 response value moved by 4% or less.
+
+The NIR response baseline was re-recorded on 2026-10-19 from six bit-identical CI
+runs (39290451388, 39290461991, 39290472137, 39290482158, 39290492461 and
+39290503644), after the NIR fit gained wider telluric masks, telluric wing growth
+and a smoothing penalty (DY-1647). The NIR median rose 2.8%, 1050 nm rose 2.3%,
+1250 nm fell 0.3% and 1650 nm fell 1.3%. The VIS curve moved by about 0.02% and was
+left as it is (DY-1648).
 """
 
 from __future__ import annotations
@@ -339,11 +346,11 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         gridStart=1000.0,
         gridStop=1800.0,
-        median=level(2.2952123662753833e-16),
+        median=level(2.360261004443862e-16),
         points={
-            1050.0: level(2.902814205164791e-16),
-            1250.0: level(2.8295037835504153e-16),
-            1650.0: level(1.8556789083374407e-16),
+            1050.0: level(2.9690871250476074e-16),
+            1250.0: level(2.8199095522010097e-16),
+            1650.0: level(1.830674363922343e-16),
         },
     ),
 )
