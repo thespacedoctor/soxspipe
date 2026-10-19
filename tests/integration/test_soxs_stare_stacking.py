@@ -192,6 +192,31 @@ def test_a_frame_that_raises_leaves_the_sof_names_restored(log: Any, tmp_path: P
     assert recipe.filenameTemplate == "OBJECT_VIS.fits"
 
 
+@pytest.mark.parametrize(
+    ("frameFailures", "expected"),
+    [
+        ([True, "no trace", False], "no trace"),
+        ([True, "first message", "second message"], "first message"),
+        ([False, True, False], True),
+        ([False, False, False], False),
+    ],
+    ids=["string-beats-earlier-true", "first-string-wins", "true-kept", "no-failure"],
+)
+def test_without_stacking_a_failure_message_is_not_lost_to_a_bare_failure(
+    log: Any, tmp_path: Path, monkeypatch, frameFailures, expected
+) -> None:
+    # ARRANGE
+    recipe, captured = _recipe(log, tmp_path, monkeypatch, stack=False)
+    failures = iter(frameFailures)
+    monkeypatch.setattr(recipe, "_reduce_object_frames", lambda *args, **kwargs: ("product.fits", next(failures)))
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["cleanUp"] == [{"forceFail": expected}]
+
+
 def test_non_stare_fallback_frames_are_always_stacked(log: Any, tmp_path: Path, monkeypatch) -> None:
     """Only stare frames are extracted one by one; the PAE flat-lamp fallback is stacked as before."""
     # ARRANGE

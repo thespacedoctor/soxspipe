@@ -730,6 +730,8 @@ def test_the_pae_setting_admits_the_nir_flat_lamp_pinhole_frame(
 class SpillingExtractor:
     """Stand-in for `horne_extraction` that reports a chosen slit-edge verdict."""
 
+    traceFallback = False
+
     def __init__(self, slitEdgeOrders: list[tuple[int, float, float, float]], **_: object) -> None:
         self.slitEdgeOrders = slitEdgeOrders
         self.extractionNotes = []

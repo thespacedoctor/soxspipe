@@ -115,6 +115,7 @@ def _patch_stare(
     *,
     detrended: Any = None,
     skyResult: tuple[Any, Any, Any] | None = None,
+    traceFallback: bool = False,
 ) -> dict[str, list[dict[str, object]]]:
     """Stub every collaborator of `produce_product` and return the captured arguments."""
     captured: dict[str, list[dict[str, object]]] = {
@@ -124,6 +125,7 @@ def _patch_stare(
         "write": [],
         "extractor": [],
         "quicklook": [],
+        "cleanUp": [],
     }
 
     def fake_stack(**kwargs: object) -> Any:
@@ -146,7 +148,7 @@ def _patch_stare(
     monkeypatch.setattr(recipe, "update_fits_keywords", lambda **_: None)
     monkeypatch.setattr(recipe, "_write", fake_write)
     monkeypatch.setattr(recipe, "report_output", lambda: recipe.qc)
-    monkeypatch.setattr(recipe, "clean_up", lambda **_: None)
+    monkeypatch.setattr(recipe, "clean_up", lambda **kwargs: captured["cleanUp"].append(kwargs))
 
     class FakeSkySubtractor:
         def __init__(self, **kwargs: object) -> None:
@@ -163,6 +165,7 @@ def _patch_stare(
 
         def __init__(self, **kwargs: object) -> None:
             captured["extractor"].append(kwargs)
+            self.traceFallback = traceFallback
 
         def extract(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[int, int], str]:
             spectrum = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]})
@@ -968,3 +971,172 @@ def test_with_no_sky_model_and_no_applied_offset_the_extraction_frames_are_the_i
     extractorArgs = captured["extractor"][0]
     assert extractorArgs["unflattenedFrame"] is captured["stack"][0]["result"]
     assert extractorArgs["skySubtractedFrame"] is captured["detrend"][0]["result"]
+
+
+NO_TRACE_STANDARD_MESSAGE = (
+    "No object trace was found in the standard-star frame, so no response curve was made. "
+    "The spectrum is a robust boxcar extraction; check the pointing and conditions."
+)
+
+
+def _spy_response_and_plot(recipe: soxs_stare, monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple[Any, ...]]]:
+    """Replace the response-curve, flux-calibration and merged-plot steps with call recorders."""
+    calls: dict[str, list[tuple[Any, ...]]] = {"response": [], "fluxCal": [], "plot": []}
+    monkeypatch.setattr(recipe, "_generate_response_curve", lambda *args: calls["response"].append(args) or False)
+    monkeypatch.setattr(
+        recipe, "_flux_calibrate_spectrum", lambda *args: calls["fluxCal"].append(args) or str(Path("fluxcal.fits"))
+    )
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *args: calls["plot"].append(args))
+    return calls
+
+
+def test_the_stare_extractor_is_asked_for_the_no_trace_boxcar_fallback(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipe = _stare_recipe(log, tmp_path)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+
+    recipe.produce_product()
+
+    assert captured["extractor"][0]["noTraceFallback"] is True
+
+
+def test_a_standard_star_without_an_object_trace_makes_no_response_curve_and_fails_the_recipe(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.generateReponseCurve = True
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, traceFallback=True)
+    calls = _spy_response_and_plot(recipe, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls["response"] == []
+    assert captured["cleanUp"] == [{"forceFail": NO_TRACE_STANDARD_MESSAGE}]
+    assert ("error", NO_TRACE_STANDARD_MESSAGE) in log.messages
+
+
+def test_a_standard_star_without_an_object_trace_still_plots_the_merged_spectrum_with_the_failure_note(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.generateReponseCurve = True
+    _patch_stare(recipe, monkeypatch, tmp_path, traceFallback=True)
+    calls = _spy_response_and_plot(recipe, monkeypatch)
+
+    recipe.produce_product()
+
+    assert len(calls["plot"]) == 1
+    mergedSpectrum, orderJoins, filePathFluxcal, notes, isBoxcar = calls["plot"][0]
+    assert mergedSpectrum["WAVE"].tolist() == [500.0]
+    assert filePathFluxcal is None
+    assert ("ERROR", NO_TRACE_STANDARD_MESSAGE) in notes
+    assert isBoxcar is True
+
+
+def test_a_standard_star_with_an_object_trace_still_builds_the_response_curve(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.generateReponseCurve = True
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+    calls = _spy_response_and_plot(recipe, monkeypatch)
+
+    recipe.produce_product()
+
+    assert len(calls["response"]) == 1
+    assert captured["cleanUp"] == [{"forceFail": False}]
+    assert calls["plot"][0][3] == []
+    assert calls["plot"][0][4] is False
+
+
+def test_a_science_frame_without_an_object_trace_is_still_flux_calibrated_when_a_response_exists(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(tmp_path / "RESP_TAB_VIS.fits")]}
+    recipe = _stare_recipe(log, tmp_path, extraRoutes=routes)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, traceFallback=True)
+    calls = _spy_response_and_plot(recipe, monkeypatch)
+
+    recipe.produce_product()
+
+    assert len(calls["fluxCal"]) == 1
+    assert calls["fluxCal"][0][0] == str(tmp_path / "RESP_TAB_VIS.fits")
+    assert calls["response"] == []
+    assert captured["cleanUp"] == [{"forceFail": False}]
+    assert calls["plot"][0][2] == "fluxcal.fits"
+
+
+def test_a_standard_star_without_an_object_trace_is_flux_calibrated_and_not_failed_when_a_response_is_supplied(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A supplied response table is applied to the boxcar like it is to a science frame (no response curve is built)."""
+    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(tmp_path / "RESP_TAB_VIS.fits")]}
+    recipe = _stare_recipe(log, tmp_path, extraRoutes=routes)
+    recipe.generateReponseCurve = True
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, traceFallback=True)
+    calls = _spy_response_and_plot(recipe, monkeypatch)
+
+    recipe.produce_product()
+
+    assert len(calls["fluxCal"]) == 1
+    assert calls["response"] == []
+    assert captured["cleanUp"] == [{"forceFail": False}]
+    assert calls["plot"][0][3] == []
+
+
+def test_a_science_frame_without_an_object_trace_or_a_response_does_not_fail_the_recipe(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recipe = _stare_recipe(log, tmp_path)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, traceFallback=True)
+    calls = _spy_response_and_plot(recipe, monkeypatch)
+
+    recipe.produce_product()
+
+    assert captured["cleanUp"] == [{"forceFail": False}]
+    assert calls["plot"][0][3] == []
+
+
+@pytest.mark.parametrize("isBoxcar", [False, True])
+def test_both_merged_spectrum_plots_are_told_whether_the_spectrum_is_a_boxcar(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    isBoxcar: bool,
+) -> None:
+    from astropy.table import Table
+
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.dateObs = "2024-01-02T03:04:05"
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    plotKwargs: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        toolkit,
+        "plot_merged_spectrum_qc",
+        lambda **kwargs: plotKwargs.append(kwargs) or (kwargs["products"], str(tmp_path / "merged.pdf")),
+    )
+    fluxCalPath = tmp_path / "fluxcal.fits"
+    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [1.0]}).write(fluxCalPath)
+    merged = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [1.0]})
+
+    recipe._plot_merged_spectrum_qcs(merged, {"10-11": 11}, str(fluxCalPath), [], isBoxcar)
+
+    assert [kwargs["boxcarExtraction"] for kwargs in plotKwargs] == [isBoxcar, isBoxcar]

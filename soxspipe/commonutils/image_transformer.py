@@ -63,6 +63,10 @@ class image_transformer(base_util):
     - ``associatedFrame`` -- an example 2D frame to be rectified. This frame is used to determine detector binning, arm etc.
     - ``slitHalfLength`` -- half-length of the slit in detector pixels (sets extraction aperture). May end in .5.
       The rectified grid has ``2 * slitHalfLength`` rows (rounded half up), centred on the trace
+    - ``edgeSamples`` -- number of boundary sample points per cell edge. Default *1*
+    - ``fixedSlitCentreArcsec`` -- slit position (arcsec) on which every order is centred, ignoring the object trace
+      and the 2D map lookup. Only the ``order`` column of ``orderPixelTable`` is then needed. Default *None* (centre
+      each order on its own fitted object trace)
 
     **Return:**
 
@@ -96,8 +100,20 @@ class image_transformer(base_util):
     # THE CLASS DEFAULT IS UNBINNED, SO THE SOLUTION'S PIXEL POSITIONS ARE USED AS THEY ARE
     dispersionBinRatio = (1.0, 1.0)
 
+    # NO FIXED SLIT CENTRE BY DEFAULT: EACH ORDER'S CENTRE IS FITTED TO ITS OWN OBJECT-TRACE POINTS
+    fixedSlitCentreArcsec = None
+
     def __init__(
-        self, log, settings, orderPixelTable, twoDMapPath, dispersionMap, associatedFrame, slitHalfLength, edgeSamples=1
+        self,
+        log,
+        settings,
+        orderPixelTable,
+        twoDMapPath,
+        dispersionMap,
+        associatedFrame,
+        slitHalfLength,
+        edgeSamples=1,
+        fixedSlitCentreArcsec=None,
     ):
         super().__init__(
             log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath
@@ -107,6 +123,7 @@ class image_transformer(base_util):
         self.orderPixelTable = orderPixelTable
         self.twoDMapPath = twoDMapPath
         self.slitHalfLength = slitHalfLength
+        self.fixedSlitCentreArcsec = fixedSlitCentreArcsec
 
         # NUMBER OF BOUNDARY SAMPLE POINTS PER CELL EDGE — FIXED FOR THE LIFE OF THE INSTANCE SO THE
         # RESAMPLING GEOMETRY CAN BE PRECOMPUTED ONCE AND SHARED ACROSS ALL cache_image CALLS
@@ -538,11 +555,20 @@ class image_transformer(base_util):
         )
         return np.array([fallbackCentreArcsec]), True
 
-    def _determine_rectified_image_boundaries(self):
-        """*Setup the individual order dataframes for each order in the order pixel table*"""
-        self.log.debug("starting the ``_determine_rectified_image_boundaries`` method")
+    def _global_slit_centre(self):
+        """*determine the slit centre used by any order without a trace of its own*
+
+        Looks up the slit position and wavelength of every object-trace point in the 2D map (storing them on
+        ``orderPixelTable``), unless a fixed slit centre was requested.
+
+        **Return:**
+
+        - ``globalSlitCentreArcsec`` -- the fixed slit centre, or the mean finite slit position of all trace points
+        """
         import numpy as np
-        import pandas as pd
+
+        if self.fixedSlitCentreArcsec is not None:
+            return self.fixedSlitCentreArcsec
 
         # FOR EACH CONTINUUM-FITTED DATA-POINT, RETURN THE SLIT POSITION
         aArray = self.orderPixelTable[f"{self.axisA}coord_centre"].round().astype(int)
@@ -568,6 +594,61 @@ class image_transformer(base_util):
                 "Cannot determine any slit centre: every trace point's slit_position is missing "
                 "or non-finite across all orders. Check the 2D map / orderPixelTable inputs."
             )
+        return globalSlitCentreArcsec
+
+    def _order_slit_centre(self, order, globalSlitCentreArcsec):
+        """*find the polynomial giving the slit centre of one order as a function of wavelength*
+
+        **Key Arguments:**
+
+        - ``order`` -- the order number
+        - ``globalSlitCentreArcsec`` -- the constant centre used when the order has no usable trace
+
+        **Return:**
+
+        - ``centreCoeffs`` -- polynomial coefficients (highest power first) of slit centre against wavelength
+        - ``isFallback`` -- True if the constant global centre was used because the trace could not be fitted
+        """
+        import numpy as np
+
+        # A FIXED CENTRE IS A DELIBERATE CHOICE, NOT A FALLBACK
+        if self.fixedSlitCentreArcsec is not None:
+            return np.array([globalSlitCentreArcsec]), False
+
+        # FIT THIS ORDER'S OWN TRACE POINTS: SLIT POSITION AS A POLYNOMIAL FUNCTION OF WAVELENGTH
+        orderMask = self.orderPixelTable["order"] == order
+        orderTrace = self.orderPixelTable.loc[orderMask, ["slit_position", "wavelength"]]
+        # "VALID" MEANS FINITE ON BOTH COLUMNS — dropna() ALONE WOULD LET +/-INF THROUGH
+        finiteMask = np.isfinite(orderTrace["slit_position"]) & np.isfinite(orderTrace["wavelength"])
+        validTrace = orderTrace.loc[finiteMask]
+
+        if len(validTrace) == 0:
+            self.log.warning(
+                f"No valid trace points found for order {order}; falling back to the global "
+                f"mean slit position ({globalSlitCentreArcsec:.3f} arcsec) as a constant centre."
+            )
+            return np.array([globalSlitCentreArcsec]), True
+
+        # DEGREE IS CAPPED BY THE NUMBER OF *DISTINCT* WAVELENGTHS, NOT JUST THE POINT
+        # COUNT — REPEATED WAVELENGTHS AT DIFFERENT SLIT POSITIONS MAKE THE FIT
+        # RANK-DEFICIENT EVEN WHEN nValid IS LARGE
+        nUniqueWl = validTrace["wavelength"].nunique()
+        degree = min(SLIT_CENTRE_POLY_DEGREE, nUniqueWl - 1)
+        return self._fit_slit_centre_polynomial(
+            validTrace["wavelength"].to_numpy(),
+            validTrace["slit_position"].to_numpy(),
+            degree,
+            order,
+            globalSlitCentreArcsec,
+        )
+
+    def _determine_rectified_image_boundaries(self):
+        """*Setup the individual order dataframes for each order in the order pixel table*"""
+        self.log.debug("starting the ``_determine_rectified_image_boundaries`` method")
+        import numpy as np
+        import pandas as pd
+
+        globalSlitCentreArcsec = self._global_slit_centre()
         # KEPT FOR THE SLIT-DRIFT QC PLOT (THE SINGLE CENTRE USED BEFORE PER-ORDER TRACES)
         self.globalSlitCentreArcsec = globalSlitCentreArcsec
 
@@ -586,34 +667,7 @@ class image_transformer(base_util):
                 continue
             pixelRange = amax - amin
 
-            # FIT THIS ORDER'S OWN TRACE POINTS: SLIT POSITION AS A POLYNOMIAL FUNCTION OF WAVELENGTH
-            orderMask = self.orderPixelTable["order"] == order
-            orderTrace = self.orderPixelTable.loc[orderMask, ["slit_position", "wavelength"]]
-            # "VALID" MEANS FINITE ON BOTH COLUMNS — dropna() ALONE WOULD LET +/-INF THROUGH
-            finiteMask = np.isfinite(orderTrace["slit_position"]) & np.isfinite(orderTrace["wavelength"])
-            validTrace = orderTrace.loc[finiteMask]
-            nValid = len(validTrace)
-
-            if nValid == 0:
-                self.log.warning(
-                    f"No valid trace points found for order {order}; falling back to the global "
-                    f"mean slit position ({globalSlitCentreArcsec:.3f} arcsec) as a constant centre."
-                )
-                centreCoeffs = np.array([globalSlitCentreArcsec])
-                isFallback = True
-            else:
-                # DEGREE IS CAPPED BY THE NUMBER OF *DISTINCT* WAVELENGTHS, NOT JUST THE POINT
-                # COUNT — REPEATED WAVELENGTHS AT DIFFERENT SLIT POSITIONS MAKE THE FIT
-                # RANK-DEFICIENT EVEN WHEN nValid IS LARGE
-                nUniqueWl = validTrace["wavelength"].nunique()
-                degree = min(SLIT_CENTRE_POLY_DEGREE, nUniqueWl - 1)
-                centreCoeffs, isFallback = self._fit_slit_centre_polynomial(
-                    validTrace["wavelength"].to_numpy(),
-                    validTrace["slit_position"].to_numpy(),
-                    degree,
-                    order,
-                    globalSlitCentreArcsec,
-                )
+            centreCoeffs, isFallback = self._order_slit_centre(order, globalSlitCentreArcsec)
 
             fallbackFlags.append(isFallback)
             orderTraces.append((order, wlmin, wlmax, pixelRange, centreCoeffs))

@@ -842,6 +842,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
         extractionNotes: list = []
+        traceFallback: bool = False
 
         def __init__(self, **kwargs: object) -> None:
             calls.append("extractor")
@@ -1195,6 +1196,7 @@ def test_stare_generates_a_response_from_a_flux_standard(
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
         extractionNotes: list = []
+        traceFallback: bool = False
 
         def __init__(self, **kwargs: object) -> None:
             extractionArguments.append(kwargs)
@@ -1319,6 +1321,7 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
         extractionNotes: list = []
+        traceFallback: bool = False
         extractionNotes = [("WARNING", "Order skipped: 7")]
 
         def __init__(self, **kwargs: object) -> None:

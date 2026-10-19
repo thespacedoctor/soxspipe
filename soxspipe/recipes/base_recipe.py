@@ -1282,7 +1282,9 @@ class base_recipe:
         failedQcs = self.qc.loc[mask]
         failedQcs = failedQcs["qc_name"].tolist()
         if len(failedQcs):
-            forceFail = True
+            # KEEP AN EXPLICIT FAILURE MESSAGE SO IT STILL REACHES THE DATABASE
+            if not isinstance(forceFail, str):
+                forceFail = True
             if self.status == "pass":
                 passToFail = True
 

@@ -18,6 +18,7 @@ from soxspipe.commonutils.extraction_notes import extraction_note_logger
 from soxspipe.commonutils.horne_extraction import (
     _slit_edge_truncated_columns,
     _unsupported_pixel_mask,
+    compute_boxcar_extractions,
     compute_extractions,
     extract_single_order,
     fit_object_profile,
@@ -122,7 +123,9 @@ def _configure_synthetic_orchestration(
     extractor.dateObs = "2024-01-02T03:04:05"
     extractor.notFlattened = ""
     monkeypatch.setattr(transformerModule, "image_transformer", FakeTransformer)
-    monkeypatch.setattr(fundamentals, "fmultiprocess", lambda **kwargs: [extraction])
+    monkeypatch.setattr(
+        fundamentals, "fmultiprocess", lambda **kwargs: captured.update(multiprocessKwargs=kwargs) or [extraction]
+    )
     monkeypatch.setattr(
         toolkit,
         "add_snr_efficiency_qcs",
@@ -178,6 +181,80 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
     assert extractor.slitEdgeOrders == []
 
 
+def _extract_method_rows(qc: pd.DataFrame) -> pd.DataFrame:
+    if "qc_name" not in qc:
+        return qc
+    return qc.loc[qc["qc_name"] == "EXTRACT METHOD"]
+
+
+def test_extract_in_fallback_records_the_boxcar_method_and_centres_every_order_on_the_slit(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _, captured = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.noTraceFallback = True
+    extractor.traceFallback = True
+
+    qc, *_ = extractor.extract()
+
+    methodRows = _extract_method_rows(qc)
+    assert methodRows["qc_value"].tolist() == ["boxcar"]
+    assert methodRows["qc_unit"].tolist() == [None]
+    assert methodRows["to_header"].tolist() == [True]
+    assert qc["qc_name"].tolist() == ["EXTRACT METHOD", "N ORDERS SLIT EDGE"]
+    assert captured["transformer"]["fixedSlitCentreArcsec"] == 0.0
+    assert captured["multiprocessKwargs"]["boxcarOnly"] is True
+
+
+def test_extract_in_fallback_skips_the_slit_drift_plot_that_needs_a_fitted_trace(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _, captured = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.noTraceFallback = True
+    extractor.traceFallback = True
+
+    extractor.extract()
+
+    assert "slitDriftTransformer" not in captured
+
+
+def test_extract_with_a_trace_records_the_optimal_method_and_uses_the_fitted_trace(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _, captured = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.noTraceFallback = True
+
+    qc, *_ = extractor.extract()
+
+    assert _extract_method_rows(qc)["qc_value"].tolist() == ["optimal"]
+    assert captured["transformer"]["fixedSlitCentreArcsec"] is None
+    assert captured["multiprocessKwargs"]["boxcarOnly"] is False
+    assert captured["slitDriftTransformer"] is captured["transformerInstance"]
+
+
+@pytest.mark.parametrize(
+    ("recipeName", "notFlattened"),
+    [("soxs-nod", ""), ("soxs-offset", ""), ("soxs-stare", "_NOTFLAT")],
+    ids=["nod", "offset", "unflattened-re-extraction"],
+)
+def test_extract_without_the_fallback_option_or_for_the_unflattened_rerun_records_no_method_qc(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    recipeName: str,
+    notFlattened: str,
+) -> None:
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.recipeName = recipeName
+    extractor.notFlattened = notFlattened
+    extractor.noTraceFallback = notFlattened != ""
+
+    qc, *_ = extractor.extract()
+
+    assert _extract_method_rows(qc).empty
+
+
 def test_extract_returns_empty_results_when_no_order_trace_exists(log: object) -> None:
     """Return the compatibility tuple without collaborators when no trace was detected."""
     extractor = _extractor(log)
@@ -201,6 +278,8 @@ def _construct_extractor(
     locationSetIndex: object,
     slitLength: float = 8,
     binning: int = 1,
+    traceFound: bool = True,
+    noTraceFallback: bool = False,
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection."""
     import soxspipe.commonutils as commonutils
@@ -244,6 +323,7 @@ def _construct_extractor(
         self.kw = lambda name: name
         self.arm = "VIS"
         self.axisA = "x"
+        self.orderNums = np.array([10, 11, 12])
 
     class TraceDetector:
         """Synthetic trace detector exposing the public result tuple."""
@@ -252,6 +332,8 @@ def _construct_extractor(
             captured.update(kwargs)
 
         def get(self) -> tuple[str, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            if not traceFound:
+                return (None, pd.DataFrame({"qc_name": ["TRACE"]}), product_table().iloc[0:0], None, None, None)
             return (
                 "products/TRACE.fits",
                 pd.DataFrame({"qc_name": ["TRACE"]}),
@@ -294,6 +376,7 @@ def _construct_extractor(
         locationSetIndex=locationSetIndex,
         startNightDate="2024-01-02",
         turnOffMP=True,
+        noTraceFallback=noTraceFallback,
     )
 
     return extractor, captured
@@ -319,6 +402,85 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert extractor.imageMap["wavelength"].tolist() == [500.0]
     assert captured["recipeName"] == "soxs-stare"
     assert captured["locationSetIndex"] == 2
+
+
+def test_constructor_builds_a_table_of_every_order_when_no_trace_is_found_and_fallback_is_on(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        traceFound=False,
+        noTraceFallback=True,
+        slitLength=8,
+    )
+
+    assert extractor.traceFallback is True
+    assert extractor.orderPixelTable["order"].tolist() == [10, 11, 12]
+
+
+def test_constructor_warns_that_the_spectrum_is_a_boxcar_at_the_slit_centre_when_no_trace_is_found(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        traceFound=False,
+        noTraceFallback=True,
+        slitLength=8,
+    )
+
+    assert extractor.extractionNotes == [
+        (
+            "WARNING",
+            "No object trace was found, so optimal extraction is not possible. The spectrum is a robust boxcar "
+            "extraction of a 8-pixel aperture centred on the slit centre (slit position 0 arcsec). "
+            "Check that the object is on the slit.",
+        )
+    ]
+
+
+def test_constructor_keeps_no_order_table_when_no_trace_is_found_and_fallback_is_off(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        traceFound=False,
+    )
+
+    assert extractor.orderPixelTable is None
+    assert extractor.traceFallback is False
+    assert extractor.extractionNotes == []
+
+
+def test_constructor_does_not_flag_a_fallback_when_the_trace_is_found(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        noTraceFallback=True,
+    )
+
+    assert extractor.traceFallback is False
+    assert extractor.orderPixelTable["order"].tolist() == [10, 10]
 
 
 def test_odd_slit_length_setting_keeps_its_half_pixel_in_the_half_length(
@@ -1669,6 +1831,76 @@ def test_compute_extractions_returns_sorted_optimal_and_boxcar_spectra() -> None
     np.testing.assert_allclose(result["varianceSpectrum"], 2.0)
 
 
+def _boxcar_images() -> tuple[pd.DataFrame, dict[str, np.ndarray]]:
+    """Build four slices (one at zero wavelength, one with a masked pixel) and an order with no object profile."""
+    wavelengths = np.array([503.0, 501.0, -1.0, 502.0])
+    amplitudes = np.array([40.0, 80.0, 20.0, 60.0])
+    mask = np.zeros((3, 4), dtype=bool)
+    mask[0, 1] = True
+    images = {
+        "fluxRaw": np.tile(np.array([[0.25], [0.5], [0.25]]), (1, 4)) * amplitudes,
+        "fluxSky": np.tile(np.array([1.0, 2.0, 3.0, 4.0]), (3, 1)),
+        "variance": np.full((3, 4), 4.0),
+        "wavelength": np.tile(wavelengths, (3, 1)),
+        "mask": mask,
+    }
+    slices = pd.DataFrame({"order": np.full(4, 12), "pixelScaleNm": np.full(4, 0.1)})
+    return slices, images
+
+
+def test_compute_boxcar_extractions_sums_flux_and_variance_over_the_unmasked_pixels() -> None:
+    slices, images = _boxcar_images()
+
+    result = compute_boxcar_extractions(slices, images)
+
+    np.testing.assert_array_equal(result["wavelengthMean"], [501.0, 502.0, 503.0])
+    np.testing.assert_allclose(result["extractedFluxBoxcar"], [80.0, 60.0, 40.0])
+    np.testing.assert_allclose(result["extractedFluxBoxcarRobust"], [60.0, 60.0, 40.0])
+    np.testing.assert_allclose(result["varianceSpectrum"], [8.0, 12.0, 12.0])
+    np.testing.assert_allclose(result["skyFlux"], [2.0, 4.0, 1.0])
+
+
+def test_compute_boxcar_extractions_reports_the_robust_boxcar_as_the_optimal_flux_with_its_snr() -> None:
+    slices, images = _boxcar_images()
+
+    result = compute_boxcar_extractions(slices, images)
+
+    np.testing.assert_array_equal(result["extractedFluxOptimal"], result["extractedFluxBoxcarRobust"])
+    np.testing.assert_allclose(result["snr"], [60.0 / np.sqrt(8.0), 60.0 / np.sqrt(12.0), 40.0 / np.sqrt(12.0)])
+
+
+def test_compute_boxcar_extractions_drops_a_slice_whose_pixels_are_all_masked() -> None:
+    slices, images = _boxcar_images()
+    images["mask"][:, 3] = True
+
+    result = compute_boxcar_extractions(slices, images)
+
+    np.testing.assert_array_equal(result["wavelengthMean"], [501.0, 503.0])
+    assert not result[["extractedFluxOptimal", "varianceSpectrum", "snr"]].isna().any().any()
+
+
+def test_compute_extractions_keeps_its_columns_and_values_after_sharing_the_sort_and_drop_tail() -> None:
+    slices, images = _boxcar_images()
+    images["objectProfile"] = np.tile(np.array([[0.25], [0.5], [0.25]]), (1, 4))
+
+    result = compute_extractions(slices, images, order=12)
+
+    assert result.columns.tolist() == [
+        "order",
+        "pixelScaleNm",
+        "wavelengthMean",
+        "varianceSpectrum",
+        "extractedFluxOptimal",
+        "extractedFluxBoxcar",
+        "skyFlux",
+        "extractedFluxBoxcarRobust",
+        "snr",
+    ]
+    np.testing.assert_array_equal(result["wavelengthMean"], [501.0, 502.0, 503.0])
+    np.testing.assert_allclose(result["extractedFluxOptimal"], [80.0, 60.0, 40.0])
+    np.testing.assert_allclose(result["varianceSpectrum"], [12.8, 32.0 / 3.0, 32.0 / 3.0])
+
+
 def test_mask_generation_calculates_pixel_scale_and_propagates_bad_pixels() -> None:
     slices = pd.DataFrame(index=range(3))
     images = {
@@ -1996,6 +2228,52 @@ def test_single_order_extraction_returns_sorted_science_columns(log: object) -> 
     assert result["skyFlux"].isna().all()
 
 
+def _boxcar_only_order(log: object) -> pd.DataFrame | None:
+    """Run a boxcar-only extraction of a 2 x 5 order whose profile fit would fail if it were called."""
+    slices = pd.DataFrame({"order": [10] * 5})
+    images = {
+        "bpMask": np.zeros((2, 5), dtype=bool),
+        "fluxRaw": np.array([[1.0, 2.0, 3.0, 4.0, 5.0], [1.0, 2.0, 3.0, 4.0, 5.0]]),
+        "variance": np.ones((2, 5)),
+        "wavelength": np.array([[504.0, 503.0, 502.0, 501.0, 500.0], [504.0, 503.0, 502.0, 501.0, 500.0]]),
+    }
+    return extract_single_order(
+        (slices, images),
+        log,
+        slitHalfLength=1,
+        clippingSigma=3.0,
+        clippingIterationLimit=2,
+        globalClippingSigma=3.0,
+        axisA="y",
+        axisB="x",
+        hornePolyOrder=0,
+        boxcarOnly=True,
+    )
+
+
+def test_boxcar_only_order_extraction_returns_the_robust_boxcar_in_the_science_columns(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    horneModule = importlib.import_module("soxspipe.commonutils.horne_extraction")
+
+    def fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the object profile must not be fitted in a boxcar-only extraction")
+
+    monkeypatch.setattr(horneModule, "fit_object_profile", fail_if_called)
+
+    result = _boxcar_only_order(log)
+
+    assert result is not None
+    assert result["wavelengthMean"].tolist() == [501.0, 502.0, 503.0]
+    assert result["extractedFluxOptimal"].tolist() == [8.0, 6.0, 4.0]
+    assert result["extractedFluxBoxcarRobust"].tolist() == [8.0, 6.0, 4.0]
+    np.testing.assert_allclose(result["varianceSpectrum"], 2.0)
+    np.testing.assert_allclose(result["snr"], result["extractedFluxOptimal"] / np.sqrt(2.0))
+    assert result["slitEdgeTruncated"].tolist() == [False, False, False]
+    assert result["skyFlux"].isna().all()
+
+
 def test_single_order_extraction_marks_slices_where_the_object_spills_over_the_slit_edge(
     log: object,
 ) -> None:
@@ -2228,6 +2506,47 @@ def test_per_order_plot_labels_soxs_vis_orders_by_trace_number_and_band(
     extractor.plot_extracted_spectrum_qc([_plot_order(1), _plot_order(4, wavelengths=np.linspace(700.0, 723.0, 24))])
 
     assert probes == [["1 (r)", "4 (i)"]]
+
+
+def _top_row_legend_texts(figure: object) -> list[str]:
+    return [text.get_text() for text in figure.axes[0].get_legend().get_texts()]
+
+
+def test_per_order_plot_labels_the_top_spectrum_as_optimal_extraction_when_a_trace_was_found(
+    log: object, tmp_path: Path, monkeypatch
+) -> None:
+    probes = probe_on_savefig(monkeypatch, _top_row_legend_texts)
+    extractor = _plot_ready_extractor(log, tmp_path)
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(10)])
+
+    assert probes == [["Optimal Extraction"]]
+
+
+def test_per_order_plot_labels_the_top_spectrum_as_a_boxcar_when_no_trace_was_found(
+    log: object, tmp_path: Path, monkeypatch
+) -> None:
+    probes = probe_on_savefig(monkeypatch, _top_row_legend_texts)
+    extractor = _plot_ready_extractor(log, tmp_path)
+    extractor.traceFallback = True
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(10)])
+
+    assert probes == [["Robust Boxcar Extraction (no object trace)"]]
+
+
+@pytest.mark.parametrize(("traceFallback", "expectedAxes"), [(False, 4), (True, 3)], ids=["trace-found", "fallback"])
+def test_per_order_plot_drops_the_duplicate_boxcar_panel_only_in_the_fallback(
+    log: object, tmp_path: Path, monkeypatch, traceFallback: bool, expectedAxes: int
+) -> None:
+    probes = probe_on_savefig(monkeypatch, lambda figure: [axis.get_ylabel() for axis in figure.axes])
+    extractor = _plot_ready_extractor(log, tmp_path)
+    extractor.traceFallback = traceFallback
+
+    extractor.plot_extracted_spectrum_qc([_plot_order(10)])
+
+    assert len(probes[0]) == expectedAxes
+    assert ("boxcar flux ($e^{-}$)" in probes[0]) is (not traceFallback)
 
 
 def test_per_order_plot_labels_other_arm_orders_by_number_only(log: object, tmp_path: Path, monkeypatch) -> None:
