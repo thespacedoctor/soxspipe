@@ -23,6 +23,11 @@ The two `fluxcalMedian` values were re-recorded on 2026-10-18 from six bit-ident
 CI runs (39165616944, 39165618635, 39165620359, 39165622153, 39165623841 and
 39165625784), after the response curve became a log-space spline (DY-1614). The VIS
 median rose 2.9% and the NIR median fell 3.2%.
+
+The NIR `fluxcalMedian` was re-recorded on 2026-10-19 from six bit-identical CI runs
+(39290451388, 39290461991, 39290472137, 39290482158, 39290492461 and 39290503644),
+after the NIR response fit change (DY-1647). It rose 0.6%. The VIS values moved by
+0.02% or less, inside their bands, and were left as they are (DY-1648).
 """
 
 from __future__ import annotations
@@ -105,7 +110,7 @@ BASELINES = [
             waveMax=2032.02,
             waveStep=0.06,
             snrMedian=14.09,
-            fluxcalMedian=2.9836168959689136e-15,
+            fluxcalMedian=3.0002799985835773e-15,
             skyCountsMedian=17.42337417602539,
             skyModelMedian=20.28994369506836,
             skyModelP90=89.84078826904295,
