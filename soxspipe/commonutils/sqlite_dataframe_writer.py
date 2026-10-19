@@ -55,7 +55,7 @@ def _write_transaction(conn):
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield
-        # pandas may already have committed on a legacy connection, so COMMIT only an open transaction
+        # PANDAS MAY ALREADY HAVE COMMITTED ON A LEGACY CONNECTION, SO COMMIT ONLY AN OPEN TRANSACTION
         if conn.in_transaction:
             conn.execute("COMMIT")
     except BaseException:
