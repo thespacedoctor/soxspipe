@@ -157,19 +157,13 @@ def test_soxs_vis_1x2_bad_pixel_map_is_packaged() -> None:
     assert not (missing & KNOWN_MISSING)
 
 
-_XSH_SOURCE_COLUMN = pytest.mark.xfail(
-    strict=True,
-    reason="DY-1605: xsh/ThAr.fits names its column 'Source', not 'source'",
-)
-
-
 @pytest.mark.parametrize(
     ("instrument", "arm", "atlas"),
     [
         ("soxs", "VIS", "thar_murphy.fits"),
         ("soxs", "NIR", "ArHgNeXe.fits"),
-        pytest.param("xsh", "UVB", "ThAr.fits", marks=_XSH_SOURCE_COLUMN),
-        pytest.param("xsh", "VIS", "ThAr.fits", marks=_XSH_SOURCE_COLUMN),
+        ("xsh", "UVB", "ThAr.fits"),
+        ("xsh", "VIS", "ThAr.fits"),
         ("xsh", "NIR", "ArHgNeXe.fits"),
     ],
 )

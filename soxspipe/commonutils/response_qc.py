@@ -22,15 +22,19 @@ def measure_response_qcs(fit: Any, bands: Any) -> dict:
 
     **Return:**
 
-    - ``measures`` -- dictionary with ``clipFrac`` (fraction of bins clipped), ``maxGap`` (nm, widest stretch inside the
-      data range without a kept bin) and ``selfCal`` (list of ``(band, median(model / ratio) - 1)`` for every band that
-      holds unmasked samples). ``model / ratio`` is the self-calibrated flux over the catalogue flux of each sample, so
-      a positive residual means the calibrated standard is too bright. It is linear in the extracted counts, so
-      negative low-signal counts do not bias the median, and the median ignores narrow telluric lines.
+    - ``measures`` -- dictionary with ``clipFrac`` (fraction of the non-wing bins clipped by the sigma clip; telluric
+      wing bins are dropped by design and are left out of both the numerator and the denominator, and a fit with only
+      wing bins gives 0.0), ``maxGap`` (nm, widest stretch inside the data range without a kept bin) and
+      ``selfCal`` (list of ``(band, median(model / ratio) - 1)`` for every band that holds unmasked samples).
+      ``model / ratio`` is the self-calibrated flux over the catalogue flux of each sample, so a positive residual
+      means the calibrated standard is too bright. It is linear in the extracted counts, so negative low-signal
+      counts do not bias the median, and the median ignores narrow telluric lines.
     """
     import numpy as np
 
-    clipFrac = float(1.0 - np.count_nonzero(fit.keptMask) / fit.keptMask.size)
+    nonWing = ~fit.wingMask
+    nonWingCount = np.count_nonzero(nonWing)
+    clipFrac = float(np.count_nonzero(~fit.keptMask & nonWing) / nonWingCount) if nonWingCount else 0.0
 
     finiteWave = fit.wave[np.isfinite(fit.wave)]
     edges = np.concatenate([[finiteWave.min()], np.sort(fit.binWave[fit.keptMask]), [finiteWave.max()]])
