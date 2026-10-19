@@ -48,9 +48,12 @@ def _plot_fit_panels(raw: Any, fitPanel: Any, fit: Any, fitSettings: Any, stdExt
     _style_axis(raw, "Raw ratio", "wavelength (nm)", "Ratio $\\frac{F_{\\lambda}}{F_c}$")
 
     kept = fit.keptMask
+    wings = fit.wingMask
+    clipped = ~kept & ~wings
     fitPanel.scatter(fit.wave[finite], fit.ratio[finite], marker=".", s=1, c="grey", alpha=0.3)
     fitPanel.plot(fit.binWave[kept], np.exp(fit.binLog[kept]), ".", c="blue", ms=4, label="kept bins")
-    fitPanel.plot(fit.binWave[~kept], np.exp(fit.binLog[~kept]), "x", c="red", ms=5, label="clipped bins")
+    fitPanel.plot(fit.binWave[clipped], np.exp(fit.binLog[clipped]), "x", c="red", ms=5, label="clipped bins")
+    fitPanel.plot(fit.binWave[wings], np.exp(fit.binLog[wings]), "+", c="darkorange", ms=5, label="telluric wing bins")
     fitPanel.plot(stdExtWave, model, c="red", linewidth=1.5, alpha=0.8, label="response curve")
     _shade_masked_regions(fitPanel, fitSettings)
     fitPanel.set_ylim(0, topLimit)
