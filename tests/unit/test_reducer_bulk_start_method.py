@@ -47,7 +47,7 @@ def test_run_recipe_bulk_raises_before_starting_the_pool_when_logging_settings_a
     tmp_path: Path,
     log: Any,
 ) -> None:
-    """A spawned worker rebuilds its logger from `logging settings`, so the parent checks for them first."""
+    """A spawned worker takes its log level from `logging settings`, so the parent checks for them first."""
     # ARRANGE
     poolWasStarted = False
 
@@ -91,10 +91,10 @@ def test_run_recipe_bulk_leaves_the_global_start_method_alone(
 
 
 @pytest.fixture
-def isolated_root_logger(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple[str, int]]]:
-    """Restore the root logger afterwards, and stop `_worker_log` changing process-wide logging state.
+def added_log_levels(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple[str, int]]]:
+    """Keep `_worker_log` from changing process-wide logging state, and restore the root logger afterwards.
 
-    Yield the ``(name, number)`` pairs `addLoggingLevel` was asked to add.
+    Yield the list of ``(name, number)`` arguments that `addLoggingLevel` was called with.
     """
     rootLog = logging.getLogger()
     handlersBefore, levelBefore = list(rootLog.handlers), rootLog.level
@@ -108,7 +108,7 @@ def isolated_root_logger(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple
 
 def test_worker_log_sends_a_bare_loggers_records_to_the_queue_and_adds_no_file_handler(
     tmp_path: Path,
-    isolated_root_logger: list[tuple[str, int]],
+    added_log_levels: list[tuple[str, int]],
 ) -> None:
     """A bare logger gets the print level and a queue handler at the settings' root level, and no file handler."""
     # ARRANGE
@@ -123,8 +123,8 @@ def test_worker_log_sends_a_bare_loggers_records_to_the_queue_and_adds_no_file_h
 
     # ASSERT
     assert workerLog.name == "fundamentals.logs"
-    assert isolated_root_logger == [("PRINT", logging.INFO + 5)]
-    assert [record.getMessage() for record in [logQueue.get_nowait()]] == ["queued-marker"]
+    assert added_log_levels == [("PRINT", logging.INFO + 5)]
+    assert logQueue.get_nowait().getMessage() == "queued-marker"
     assert logQueue.empty()
     addedHandlers = [handler for handler in logging.getLogger().handlers if handler not in handlersBefore]
     assert [type(handler) for handler in addedHandlers] == [QueueHandler]
@@ -132,7 +132,7 @@ def test_worker_log_sends_a_bare_loggers_records_to_the_queue_and_adds_no_file_h
 
 def test_worker_log_returns_a_working_logger_unchanged(
     tmp_path: Path,
-    isolated_root_logger: list[tuple[str, int]],
+    added_log_levels: list[tuple[str, int]],
 ) -> None:
     """A logger that has handlers and a `print` method needs no queue handler."""
     # ARRANGE
@@ -148,11 +148,11 @@ def test_worker_log_returns_a_working_logger_unchanged(
     # ASSERT
     assert workerLog is workingLog
     assert logging.getLogger().handlers == handlersBefore
-    assert isolated_root_logger == []
+    assert added_log_levels == []
 
 
 def test_worker_log_returns_a_bare_logger_unchanged_when_settings_have_no_logging_block(
-    isolated_root_logger: list[tuple[str, int]],
+    added_log_levels: list[tuple[str, int]],
 ) -> None:
     """Without a `logging settings` block there is nothing to set the root level from."""
     # ARRANGE
@@ -166,4 +166,4 @@ def test_worker_log_returns_a_bare_logger_unchanged_when_settings_have_no_loggin
     # ASSERT
     assert workerLog is bareLog
     assert logging.getLogger().handlers == handlersBefore
-    assert isolated_root_logger == []
+    assert added_log_levels == []

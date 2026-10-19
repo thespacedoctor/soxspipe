@@ -113,7 +113,7 @@ def test_spawned_pool_runs_the_bulk_worker_and_returns_its_result_with_a_working
     """The worker payload survives a real spawn and the worker's records reach the parent's log file.
 
     A `logging.Logger` pickles by name, so the unpickled copy in a spawned worker has no
-    handlers and no `print` level. The worker must rebuild it and send its records to the parent.
+    handlers and no `print` level. The worker must give it the print level and send its records to the parent.
     """
     # ARRANGE
     logPath = tmp_path / "worker.log"
@@ -130,7 +130,7 @@ def test_reused_spawned_worker_logs_each_task_once_without_duplicate_handlers(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """One worker process handles both tasks, so a second rebuild would double every record."""
+    """One worker process handles both tasks, so a second queue handler would double every record."""
     # ARRANGE
     logPath = tmp_path / "reused.log"
 
@@ -144,12 +144,12 @@ def test_reused_spawned_worker_logs_each_task_once_without_duplicate_handlers(
     assert logText.count("Recipe Command: second-command") == 1
 
 
-def test_worker_logger_rebuilt_from_settings_has_print_level_and_queues_its_records(
+def test_worker_log_from_a_bare_logger_has_print_level_and_queues_its_records(
     tmp_path: Path,
 ) -> None:
     """A fresh process given only a by-name logger gets the print level and sends its records to the queue."""
     # ARRANGE
-    settings = logging_settings(tmp_path / "rebuilt.log")
+    settings = logging_settings(tmp_path / "bare.log")
 
     # ACT
     completed = _run_in_fresh_python(
@@ -170,7 +170,7 @@ def test_worker_logger_rebuilt_from_settings_has_print_level_and_queues_its_reco
     assert "QUEUED: ERROR errored from the worker" in completed.stdout
 
 
-def test_worker_logger_rebuilt_from_settings_writes_nothing_to_its_own_terminal(
+def test_worker_log_writes_nothing_to_its_own_terminal(
     tmp_path: Path,
 ) -> None:
     """The parent shows the warnings and errors, so a worker with its own terminal handler would show them twice."""
@@ -193,7 +193,7 @@ def test_worker_logger_rebuilt_from_settings_writes_nothing_to_its_own_terminal(
     assert "from the worker" not in completed.stdout
 
 
-def test_worker_logger_rebuilt_from_settings_leaves_the_shared_log_file_alone(
+def test_worker_log_leaves_the_shared_log_file_alone(
     tmp_path: Path,
 ) -> None:
     """Only the parent opens the shared log, so a worker that logs must not touch the file."""
@@ -218,7 +218,7 @@ def test_worker_logger_rebuilt_from_settings_leaves_the_shared_log_file_alone(
     assert sorted(path.name for path in tmp_path.glob("shared.log*")) == ["shared.log"]
 
 
-def test_worker_logger_rebuilt_from_settings_leaves_other_loggers_enabled(
+def test_worker_log_leaves_other_loggers_enabled(
     tmp_path: Path,
 ) -> None:
     """Rebuilding must not silence loggers that already exist in the worker, such as astropy's."""
@@ -240,10 +240,10 @@ def test_worker_logger_rebuilt_from_settings_leaves_other_loggers_enabled(
     assert "OTHER DISABLED: False" in completed.stdout
 
 
-def test_worker_logger_with_handlers_but_no_print_level_is_rebuilt(
+def test_worker_log_gives_a_logger_that_has_handlers_but_no_print_level_the_print_level(
     tmp_path: Path,
 ) -> None:
-    """A logger that has handlers but lacks `print` would still fail recipes, so it must be rebuilt."""
+    """A logger that has handlers but lacks `print` would still fail recipes, so it must be replaced."""
     # ARRANGE
     settings = logging_settings(tmp_path / "noprint.log")
 

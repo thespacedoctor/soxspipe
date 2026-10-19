@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import io
 import logging
+import multiprocessing
 import os
+import queue
 import signal
 import sqlite3
+from collections import Counter
 from collections.abc import Iterator
 from importlib import import_module
 from logging.handlers import QueueListener
@@ -27,14 +30,27 @@ TINY_MAX_BYTES = 4096
 # NO BACKUP IS EVER DISCARDED, SO EVERY RECORD CAN BE COUNTED
 KEEP_ALL_BACKUPS = 500
 CRASH_COMMAND = "crash"
+TRACEBACK_COMMAND = "traceback"
 RECORD_PREFIX = "RECORD"
 POOL_TIMEOUT_SECONDS = 120
 
 
 def log_lines(inputDict: dict[str, Any], log: Any, settings: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
-    """Log a numbered block of lines through the rebuilt worker logger, as a bulk worker does."""
+    """Log a numbered block of lines through the worker logger, as a bulk worker does."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
     workerLog = reducerModule._worker_log(log, settings, kwargs["logQueue"])
+    if inputDict["command"] == TRACEBACK_COMMAND:
+        try:
+            os.stat("/dy1534/no/such/path")
+        except FileNotFoundError:
+            workerLog.error(f"{RECORD_PREFIX} {inputDict['sof']} failed", exc_info=True)
+        return {
+            "status": "previous-pass",
+            "sof": inputDict["sof"],
+            "productPath": None,
+            "qcTable": None,
+            "error_message": None,
+        }
     if inputDict["command"] == CRASH_COMMAND:
         workerLog.info(f"{RECORD_PREFIX} {inputDict['sof']} before-crash")
         os.kill(os.getpid(), signal.SIGSEGV)
@@ -78,7 +94,7 @@ def parent_log(monkeypatch: pytest.MonkeyPatch) -> logging.Logger:
     return logging.getLogger("fundamentals.logs")
 
 
-def _run_bulk(tmp_path: Path, log: logging.Logger, logPath: Path, commands: list[str]) -> None:
+def _run_bulk(tmp_path: Path, log: Any, logPath: Path, commands: list[str], poolSize: int = WORKER_COUNT) -> None:
     """Run `run_recipe_bulk` for one SOF per command, with the shared log at ``logPath``."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
     settings = logging_settings(logPath)
@@ -95,7 +111,7 @@ def _run_bulk(tmp_path: Path, log: logging.Logger, logPath: Path, commands: list
         workspaceDirectory=str(tmp_path),
         conn=connection,
         sessionId="night1",
-        poolSize=WORKER_COUNT,
+        poolSize=poolSize,
     )
 
 
@@ -106,6 +122,13 @@ def _logged_records(logPath: Path) -> list[str]:
         if path.exists():
             lines.extend(line for line in path.read_text().splitlines() if RECORD_PREFIX in line)
     return lines
+
+
+def _log_text(logPath: Path) -> str:
+    """Return the text of the log file and all of its rolled-over backups."""
+    return "".join(
+        path.read_text() for path in [logPath, *sorted(logPath.parent.glob(f"{logPath.name}.*"))] if path.exists()
+    )
 
 
 def _sof_path(tmp_path: Path, index: int) -> str:
@@ -139,24 +162,130 @@ def test_workers_that_force_many_rollovers_lose_no_records(
     assert sorted(_logged_records(parent_log_file)) == sorted(_expected_records(tmp_path, range(SOF_COUNT)))
 
 
-def test_a_worker_killed_mid_batch_keeps_every_record_the_other_workers_logged(
+def test_a_worker_killed_mid_batch_keeps_each_record_of_the_other_sofs_exactly_once(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     parent_log: logging.Logger,
     parent_log_file: Path,
 ) -> None:
-    # ARRANGE
+    # ARRANGE: ONE WORKER RUNS THE SOFS IN TURN, SO THE CRASH FALLS ON THE SECOND AND THE THIRD NEVER STARTED
     monkeypatch.setattr(import_module("soxspipe.commonutils.reducer"), "_bulk_worker", log_lines)
-    expected = {
-        *_expected_records(tmp_path, [0, 2]),
-        f"INFO: {RECORD_PREFIX} {_sof_path(tmp_path, 1)} before-crash",
-    }
+    expected = Counter(
+        [
+            *_expected_records(tmp_path, [0, 2]),
+            f"INFO: {RECORD_PREFIX} {_sof_path(tmp_path, 1)} before-crash",
+        ]
+    )
 
     # ACT
-    _run_bulk(tmp_path, parent_log, parent_log_file, ["go", CRASH_COMMAND, "go"])
+    _run_bulk(tmp_path, parent_log, parent_log_file, ["go", CRASH_COMMAND, "go"], poolSize=1)
 
-    # ASSERT: A SOF RUN AGAIN AFTER THE POOL BROKE MAY LOG ITS RECORDS TWICE, SO THIS CHECKS NONE ARE MISSING
-    assert expected <= set(_logged_records(parent_log_file))
+    # ASSERT
+    assert Counter(_logged_records(parent_log_file)) == expected
+
+
+def test_a_worker_record_with_a_traceback_reaches_the_parent_file_with_the_traceback_text_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    parent_log: logging.Logger,
+    parent_log_file: Path,
+) -> None:
+    # ARRANGE: THE QUEUE HANDLER FOLDS THE TRACEBACK INTO THE MESSAGE AND DROPS exc_info
+    monkeypatch.setattr(import_module("soxspipe.commonutils.reducer"), "_bulk_worker", log_lines)
+
+    # ACT
+    _run_bulk(tmp_path, parent_log, parent_log_file, [TRACEBACK_COMMAND])
+
+    # ASSERT
+    logText = _log_text(parent_log_file)
+    assert logText.startswith(
+        f"ERROR: {RECORD_PREFIX} {_sof_path(tmp_path, 0)} failed\nTraceback (most recent call last):"
+    )
+    assert logText.count("Traceback (most recent call last):") == 1
+    assert logText.rstrip().endswith("No such file or directory: '/dy1534/no/such/path'")
+
+
+def test_a_listener_that_fails_to_stop_is_logged_and_the_bulk_run_still_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+    parent_log_file: Path,
+) -> None:
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", lambda **kwargs: [])
+
+    def fail_to_stop(listener: QueueListener) -> None:
+        raise OSError("the manager is gone")
+
+    monkeypatch.setattr(QueueListener, "stop", fail_to_stop)
+
+    # ACT
+    _run_bulk(tmp_path, log, parent_log_file, ["go"])
+
+    # ASSERT
+    errors = [message for level, message in log.messages if level == "error"]
+    assert len(errors) == 1
+    assert "stop the worker log listener" in errors[0]
+    assert "the manager is gone" in errors[0]
+    assert log.messages[-1] == ("debug", "completed the ``run_recipe_bulk`` method")
+
+
+def test_a_failure_to_stop_the_listener_does_not_replace_the_pool_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+    parent_log_file: Path,
+) -> None:
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+
+    def failing_pool(**kwargs: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("the pool failed")
+
+    def fail_to_stop(listener: QueueListener) -> None:
+        raise OSError("the manager is gone")
+
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", failing_pool)
+    monkeypatch.setattr(QueueListener, "stop", fail_to_stop)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="the pool failed"):
+        _run_bulk(tmp_path, log, parent_log_file, ["go"])
+
+    # ASSERT
+    assert any("stop the worker log listener" in message for level, message in log.messages if level == "error")
+
+
+def test_a_manager_that_fails_to_shut_down_is_logged_and_not_raised(
+    monkeypatch: pytest.MonkeyPatch,
+    log: Any,
+) -> None:
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+
+    class DeadManager:
+        def Queue(self) -> queue.Queue:  # noqa: N802
+            return queue.Queue()
+
+        def shutdown(self) -> None:
+            raise OSError("the manager process was killed")
+
+    class FakeContext:
+        def Manager(self) -> DeadManager:  # noqa: N802
+            return DeadManager()
+
+    monkeypatch.setattr(multiprocessing, "get_context", lambda method: FakeContext())
+
+    # ACT
+    with reducerModule._worker_log_queue(log):
+        pass
+
+    # ASSERT
+    errors = [message for level, message in log.messages if level == "error"]
+    assert len(errors) == 1
+    assert "shut down the worker log manager" in errors[0]
+    assert "the manager process was killed" in errors[0]
 
 
 def test_the_listener_writes_queued_records_then_stops_when_the_pool_raises(

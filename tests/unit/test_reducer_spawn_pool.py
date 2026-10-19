@@ -83,7 +83,7 @@ def crash_after_sibling_starts(inputDict: dict[str, Any], log: Any, **kwargs: An
 def print_and_warn(
     inputDict: dict[str, Any], log: Any, settings: dict[str, Any], logQueue: Any, **kwargs: Any
 ) -> dict[str, Any]:
-    """Print a plain line and log a warning, with the logger rebuilt from the settings as the real worker does."""
+    """Print a plain line and log a warning, with the logger set up from the settings as the real worker does."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
     workerLog = reducerModule._worker_log(log, settings, logQueue)
     print("PLAIN-PRINT-MARKER", flush=True)
@@ -387,7 +387,7 @@ def test_a_worker_warning_reaches_the_terminal_while_a_plain_print_does_not(
 
     # ACT
     try:
-        with reducerModule._worker_log_queue() as logQueue:
+        with reducerModule._worker_log_queue(parentLog) as logQueue:
             reducerModule._run_in_spawn_pool(
                 print_and_warn, _inputs("ok"), 1, parentLog, settings=settings, logQueue=logQueue
             )
