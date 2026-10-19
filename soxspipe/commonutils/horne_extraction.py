@@ -2228,6 +2228,7 @@ def extract_single_order(
         )
     else:
         extractions = _extract_optimal_order(
+            log=funclog,
             crossDispersionSlicesDF=crossDispersionSlicesDF,
             orderRectifiedImages=orderRectifiedImages,
             slitHalfLength=slitHalfLength,
@@ -2259,6 +2260,7 @@ def extract_single_order(
 
 
 def _extract_optimal_order(
+    log,
     crossDispersionSlicesDF,
     orderRectifiedImages,
     slitHalfLength,
@@ -2291,6 +2293,12 @@ def _extract_optimal_order(
         debug=debug,
         plt=plt,
     )
+    _log_profile_clip_cap(
+        log=log,
+        order=order,
+        clippingIterationLimit=clippingIterationLimit,
+        capRows=crossDispersionSlicesDF.attrs["profileClipCapRows"],
+    )
 
     # FLAG THE WAVELENGTH SLICES WHERE THE OBJECT IS CUT OFF BY THE SLIT EDGE
     # (MUST BE SET BEFORE THE SLICES ARE SORTED AND FILTERED)
@@ -2304,6 +2312,26 @@ def _extract_optimal_order(
 
     return compute_extractions(
         crossDispersionSlicesDF=crossDispersionSlicesDF, orderRectifiedImages=orderRectifiedImages, order=order
+    )
+
+
+def _log_profile_clip_cap(log, order, clippingIterationLimit, capRows):
+    """*log, once for the order, how many slit rows stopped at the profile clipping iteration limit*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``order`` -- the order number
+    - ``clippingIterationLimit`` -- iteration limit for the profile clipping
+    - ``capRows`` -- counts of slit rows that hit the limit while still clipping, as ``refitted`` and ``kept``
+    """
+    totalRows = capRows["refitted"] + capRows["kept"]
+    if not totalRows:
+        return
+    log.info(
+        f"fit_object_profile: order {order}: iteration limit of {clippingIterationLimit} reached with points still "
+        f"being clipped in {totalRows} slit rows; {capRows['refitted']} refitted to the surviving points, "
+        f"{capRows['kept']} kept their last fit because too few points survived"
     )
 
 
@@ -2545,6 +2573,8 @@ def fit_object_profile(
     from astropy.stats import sigma_clip
 
     crossSlitProfiles = []
+    # SLIT ROWS THAT STOPPED AT THE CLIPPING ITERATION LIMIT WHILE STILL CLIPPING
+    capRows = {"refitted": 0, "kept": 0}
 
     shape = orderRectifiedImages["fluxRaw"].shape
     ww = shape[1]
@@ -2605,8 +2635,12 @@ def fit_object_profile(
 
         # A CAP EXIT WITH POINTS STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE POINTS JUST REJECTED.
         # REFIT ONLY WHEN THE SURVIVORS CONSTRAIN EVERY COEFFICIENT; OTHERWISE KEEP THE LAST FIT
-        if len(coeff) and clipped_count > 0 and len(dispersionAxisPixels) > hornePolyOrder:
-            coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
+        if len(coeff) and clipped_count > 0:
+            if len(dispersionAxisPixels) > hornePolyOrder:
+                coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
+                capRows["refitted"] += 1
+            else:
+                capRows["kept"] += 1
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
         if len(coeff):
@@ -2647,6 +2681,8 @@ def fit_object_profile(
     with np.errstate(divide="ignore", invalid="ignore"):
         orderRectifiedImages["objectProfile"] = crossDispersionProfile / crossDispersionProfileSums[np.newaxis :]
     crossDispersionSlicesDF["objectProfile"] = [x for x in orderRectifiedImages["objectProfile"].T]
+    # THE COUNTS TRAVEL ON THE DATAFRAME, NOT IN orderRectifiedImages, WHICH HOLDS ONLY IMAGE LAYERS
+    crossDispersionSlicesDF.attrs["profileClipCapRows"] = capRows
 
     return crossDispersionSlicesDF, orderRectifiedImages
 

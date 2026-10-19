@@ -2768,3 +2768,107 @@ def test_debug_tuning_plots_every_iteration_of_the_diagnostic(log: object, tmp_p
     assert [call[-2] for call in plotCalls] == [0, 1, 2]
     assert {(call[-3], call[-1]) for call in plotCalls} == {("wavelength (nm)", "nm")}
     assert np.array_equal(plotCalls[0][6], CATALOGUE)
+
+
+def _noisy_order_images(slitRows: int, columns: int, seed: int = 3) -> dict[str, np.ndarray]:
+    """Build a rectified order of constant flux plus gaussian noise, ready for `extract_single_order`."""
+    rng = np.random.default_rng(seed)
+    flux = 1000.0 + rng.normal(0, 10, (slitRows, columns))
+    return {
+        "bpMask": np.zeros((slitRows, columns), dtype=bool),
+        "fluxRaw": flux,
+        "variance": np.ones((slitRows, columns)),
+        "wavelength": np.tile(600.0 - 0.1 * np.arange(columns), (slitRows, 1)),
+    }
+
+
+def _extract_noisy_order(
+    log: object, clippingSigma: float, clippingIterationLimit: int, hornePolyOrder: int, columns: int = 40
+) -> None:
+    """Extract a noisy 5-row order, discarding the spectrum, so a test can read what was logged."""
+    extract_single_order(
+        (pd.DataFrame({"order": [7] * columns}), _noisy_order_images(slitRows=5, columns=columns)),
+        log,
+        slitHalfLength=2,
+        clippingSigma=clippingSigma,
+        clippingIterationLimit=clippingIterationLimit,
+        globalClippingSigma=3.0,
+        axisA="y",
+        axisB="x",
+        hornePolyOrder=hornePolyOrder,
+    )
+
+
+def _fit_noisy_profile(clippingSigma: float, clippingIterationLimit: int, hornePolyOrder: int, columns: int) -> dict:
+    """Fit the profile of a noisy 5-row order and return the cap counts the fit reports."""
+    slices = pd.DataFrame({"x": range(columns)})
+    images = _noisy_order_images(slitRows=5, columns=columns)
+    images["mask"] = images["bpMask"]
+    fit_object_profile(
+        slices,
+        images,
+        slitHalfLength=2,
+        clippingSigma=clippingSigma,
+        clippingIterationLimit=clippingIterationLimit,
+        hornePolyOrder=hornePolyOrder,
+        axisB="x",
+        order=7,
+        debug=False,
+        plt=None,
+    )
+    return slices.attrs["profileClipCapRows"]
+
+
+def test_object_profile_counts_rows_refitted_when_the_clipping_cap_is_reached() -> None:
+    # ARRANGE / ACT: A ONE-SIGMA CLIP ALWAYS REJECTS POINTS, SO EVERY ROW STOPS AT THE ONE-PASS CAP WITH MANY SURVIVORS
+    counts = _fit_noisy_profile(clippingSigma=1.0, clippingIterationLimit=1, hornePolyOrder=0, columns=40)
+
+    # ASSERT
+    assert counts == {"refitted": 5, "kept": 0}
+
+
+def test_object_profile_counts_rows_that_keep_their_last_fit_when_too_few_points_survive() -> None:
+    # ARRANGE / ACT: TEN COLUMNS AND A DEGREE-7 FIT LEAVE TOO FEW POINTS FOR A REFIT AFTER A ONE-SIGMA CLIP
+    counts = _fit_noisy_profile(clippingSigma=1.0, clippingIterationLimit=1, hornePolyOrder=7, columns=10)
+
+    # ASSERT
+    assert counts == {"refitted": 0, "kept": 5}
+
+
+def test_object_profile_counts_nothing_when_every_row_converges() -> None:
+    # ARRANGE / ACT: A 7-SIGMA CLIP CANNOT REJECT ANY OF 40 POINTS (THE LARGEST POSSIBLE SAMPLE Z-SCORE IS ABOUT 6.2)
+    counts = _fit_noisy_profile(clippingSigma=7.0, clippingIterationLimit=1, hornePolyOrder=0, columns=40)
+
+    # ASSERT
+    assert counts == {"refitted": 0, "kept": 0}
+
+
+def test_single_order_extraction_logs_one_info_line_per_order_with_the_cap_counts(log: object) -> None:
+    # ARRANGE / ACT
+    _extract_noisy_order(log, clippingSigma=1.0, clippingIterationLimit=1, hornePolyOrder=0)
+
+    # ASSERT
+    assert log.messages == [
+        (
+            "info",
+            "fit_object_profile: order 7: iteration limit of 1 reached with points still being clipped in 5 slit "
+            "rows; 5 refitted to the surviving points, 0 kept their last fit because too few points survived",
+        )
+    ]
+
+
+def test_single_order_extraction_reports_rows_that_kept_their_last_fit(log: object) -> None:
+    # ARRANGE / ACT
+    _extract_noisy_order(log, clippingSigma=1.0, clippingIterationLimit=1, hornePolyOrder=7, columns=10)
+
+    # ASSERT
+    assert len(log.messages) == 1
+    assert "0 refitted to the surviving points, 5 kept their last fit" in log.messages[0][1]
+
+
+def test_single_order_extraction_logs_nothing_when_every_row_converges(log: object) -> None:
+    # ARRANGE / ACT
+    _extract_noisy_order(log, clippingSigma=7.0, clippingIterationLimit=1, hornePolyOrder=0)
+
+    # ASSERT
+    assert log.messages == []
