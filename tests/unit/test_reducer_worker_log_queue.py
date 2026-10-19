@@ -168,6 +168,7 @@ def test_a_worker_killed_mid_batch_keeps_each_record_of_the_other_sofs_exactly_o
     parent_log: logging.Logger,
     parent_log_file: Path,
 ) -> None:
+    """With one worker the run order is fixed, so no SOF is run twice and the counts are exact."""
     # ARRANGE: ONE WORKER RUNS THE SOFS IN TURN, SO THE CRASH FALLS ON THE SECOND AND THE THIRD NEVER STARTED
     monkeypatch.setattr(import_module("soxspipe.commonutils.reducer"), "_bulk_worker", log_lines)
     expected = Counter(
@@ -182,6 +183,32 @@ def test_a_worker_killed_mid_batch_keeps_each_record_of_the_other_sofs_exactly_o
 
     # ASSERT
     assert Counter(_logged_records(parent_log_file)) == expected
+
+
+def test_a_worker_killed_while_others_are_writing_loses_no_record_of_the_surviving_sofs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    parent_log: logging.Logger,
+    parent_log_file: Path,
+) -> None:
+    """Every record of a surviving SOF reaches the log at least once.
+
+    A SOF that was running when the pool broke is run again (DY-1615), so its records may appear more than once.
+    Duplicates are allowed here, and a lost record is not.
+    """
+    # ARRANGE: SEVERAL WORKERS WRITE AT ONCE WHILE ONE OF THEM IS KILLED
+    monkeypatch.setattr(import_module("soxspipe.commonutils.reducer"), "_bulk_worker", log_lines)
+    commands = ["go", "go", CRASH_COMMAND, "go"]
+    expected = {
+        *_expected_records(tmp_path, [0, 1, 3]),
+        f"INFO: {RECORD_PREFIX} {_sof_path(tmp_path, 2)} before-crash",
+    }
+
+    # ACT
+    _run_bulk(tmp_path, parent_log, parent_log_file, commands, poolSize=WORKER_COUNT)
+
+    # ASSERT
+    assert expected <= set(_logged_records(parent_log_file))
 
 
 def test_a_worker_record_with_a_traceback_reaches_the_parent_file_with_the_traceback_text_once(
@@ -205,6 +232,8 @@ def test_a_worker_record_with_a_traceback_reaches_the_parent_file_with_the_trace
     assert logText.rstrip().endswith("No such file or directory: '/dy1534/no/such/path'")
 
 
+# THE FAILED STOP LEAVES THE LISTENER THREAD BLOCKED ON THE QUEUE, AND IT RAISES WHEN THE MANAGER IS SHUT DOWN
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
 def test_a_listener_that_fails_to_stop_is_logged_and_the_bulk_run_still_finishes(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -231,6 +260,8 @@ def test_a_listener_that_fails_to_stop_is_logged_and_the_bulk_run_still_finishes
     assert log.messages[-1] == ("debug", "completed the ``run_recipe_bulk`` method")
 
 
+# THE FAILED STOP LEAVES THE LISTENER THREAD BLOCKED ON THE QUEUE, AND IT RAISES WHEN THE MANAGER IS SHUT DOWN
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
 def test_a_failure_to_stop_the_listener_does_not_replace_the_pool_exception(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
