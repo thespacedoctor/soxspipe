@@ -62,6 +62,17 @@ NOTE_ERROR_COLOUR = "#dc322f"
 NOTE_WARNING_COLOUR = "darkorange"
 NOTE_SUMMARY_COLOUR = "dimgrey"
 
+# SKY-LINE BLEND MERGE (DY-1645): FAINTEST CATALOGUE LINE THAT TAKES PART, IN THE CATALOGUE'S FLUX UNITS
+SKYLINE_MIN_LINE_FLUX = 0.5
+# CONSECUTIVE LINES CLOSER THAN THIS (nm) ARE ONE UNRESOLVED BLEND
+SKYLINE_MERGE_GAP_NM = 0.1
+# A MERGED LINE MUST HAVE MORE THAN THIS SUMMED FLUX TO BE USED FOR CALIBRATION
+SKYLINE_MIN_GROUP_FLUX = 5.0
+# A NEIGHBOUR WITHIN THIS DISTANCE (nm) ...
+SKYLINE_ISOLATION_NM = 0.35
+# ... WITH MORE THAN THIS FRACTION OF A LINE'S FLUX MEANS THE LINE IS NOT ISOLATED
+SKYLINE_NEIGHBOUR_FLUX_RATIO = 0.2
+
 
 def order_label(order: int | float, arm: str) -> str:
     """*the label for an echelle order: its number, plus its band letter for SOXS VIS*
@@ -3674,3 +3685,64 @@ def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightness
     mask = skylinesDF["FLUX"] > minBrightnessVIS if arm == "VIS" else skylinesDF["FLUX"] > minBrightnessNIR
 
     return skylinesDF.loc[mask]
+
+
+def merge_blended_skylines(
+    skylinesDF,
+    mergeNm=SKYLINE_MERGE_GAP_NM,
+    isolationNm=SKYLINE_ISOLATION_NM,
+    neighbourFluxRatio=SKYLINE_NEIGHBOUR_FLUX_RATIO,
+    minFlux=SKYLINE_MIN_LINE_FLUX,
+    minGroupFlux=SKYLINE_MIN_GROUP_FLUX,
+):
+    """*merge unresolved sky-line blends into flux-weighted centroids and keep the isolated, bright ones*
+
+    The catalogue lists OH lambda-doublets (for example 785.326 and 785.352 nm) as separate lines. Each component
+    matches one observed centre and is biased by 0.3-0.5 px, so the components are merged first. Rows with a
+    non-numeric, missing or non-finite wavelength or flux are dropped. Lines above ``minFlux`` are sorted by
+    wavelength and chained into a group while each gap is below ``mergeNm``. A group sits at the flux-weighted mean
+    wavelength and carries the summed flux. It is kept when its flux is above ``minGroupFlux``
+    and no other group with more than ``neighbourFluxRatio`` of its flux lies within ``isolationNm``.
+
+    **Key Arguments:**
+
+    - ``skylinesDF`` -- the sky-line table, with ``WAVELENGTH`` and ``FLUX`` columns. It must hold the faint lines too
+    - ``mergeNm`` -- the largest gap (nm) between two lines of one blend. Default *SKYLINE_MERGE_GAP_NM*
+    - ``isolationNm`` -- the neighbour search distance (nm). Default *SKYLINE_ISOLATION_NM*
+    - ``neighbourFluxRatio`` -- the neighbour to line flux ratio that rejects a line. Default
+      *SKYLINE_NEIGHBOUR_FLUX_RATIO*
+    - ``minFlux`` -- the faintest line that takes part. Default *SKYLINE_MIN_LINE_FLUX*
+    - ``minGroupFlux`` -- a merged line must be brighter than this. Default *SKYLINE_MIN_GROUP_FLUX*
+
+    **Return:**
+
+    - ``mergedDF`` -- a new dataframe with ``WAVELENGTH`` and ``FLUX`` columns, one row per kept merged line
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import merge_blended_skylines
+    calibrationLinesDF = merge_blended_skylines(skylinesDF)
+    ```
+    """
+    import numpy as np
+    import pandas as pd
+
+    table = skylinesDF[["WAVELENGTH", "FLUX"]].apply(pd.to_numeric, errors="coerce")
+    isUsable = np.isfinite(table["WAVELENGTH"]) & np.isfinite(table["FLUX"]) & (table["FLUX"] > minFlux)
+    lines = table.loc[isUsable].sort_values("WAVELENGTH")
+    if lines.empty:
+        return pd.DataFrame({"WAVELENGTH": [], "FLUX": []})
+
+    wavelengths = lines["WAVELENGTH"].to_numpy(dtype=float)
+    fluxes = lines["FLUX"].to_numpy(dtype=float)
+    groupIds = np.concatenate([[0], np.cumsum(np.diff(wavelengths) >= mergeNm)])
+    groupFlux = np.bincount(groupIds, weights=fluxes)
+    groupCentre = np.bincount(groupIds, weights=fluxes * wavelengths) / groupFlux
+
+    separation = np.abs(groupCentre[:, None] - groupCentre[None, :])
+    isNeighbour = (separation < isolationNm) & ~np.eye(len(groupCentre), dtype=bool)
+    isRejecting = isNeighbour & (groupFlux[None, :] > neighbourFluxRatio * groupFlux[:, None])
+    isKept = (groupFlux > minGroupFlux) & ~isRejecting.any(axis=1)
+
+    return pd.DataFrame({"WAVELENGTH": groupCentre[isKept], "FLUX": groupFlux[isKept]})

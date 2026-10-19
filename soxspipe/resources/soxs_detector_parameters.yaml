@@ -57,6 +57,18 @@ VIS:
     n_nights: 18
     absrot_range_deg: [-204.7, 186.9]
     source: "P32.11 hub output/rotated_mph_study/fit_transfer.py (72 VIS multi-pinhole arcs, leave-one-night-out rms u 0.96 px, g 1.14 px)"
+  # PREDICTS THE r (ORDER 1) DETECTOR SHIFT FROM THE SKY-MEASURED i SHIFT AND THE ROTATOR ANGLE (DY-1645)
+  # dy_r = i*di + cos*(cos(th_sci)-cos(th_cal)) + sin*(sin(th_sci)-sin(th_cal)); SAME CONVENTIONS AS ug-wavelength-transfer
+  # rms_px IS THE LEAVE-ONE-NIGHT-OUT RMS OF THE PREDICTION
+  r-from-i-transfer:
+    i: 1.104
+    cos: 0.554
+    sin: -0.12
+    rms_px: 0.364
+    fit_date: "2026-10-19"
+    n_arcs: 72
+    n_nights: 18
+    source: "P32.11 hub output/r_from_i_dy1645/fit_r_from_i.py (72 VIS multi-pinhole arcs, leave-one-night-out rms 0.364 px)"
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION

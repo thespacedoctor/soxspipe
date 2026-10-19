@@ -13,11 +13,16 @@ from soxspipe.commonutils.slit_illumination_qc import CALIBRATION_ROTATOR_PARK_A
 from soxspipe.commonutils.ug_wavelength_transfer import (
     MAX_SHIFT_SCATTER_PX,
     MIN_MATCHED_LINES,
+    MIN_MEASURED_SIGMA_PX,
     calibration_rotator_angle,
+    combine_r_shift_px,
     detector_px_to_nm_shift,
+    load_r_transfer_coefficients,
     load_ug_transfer_coefficients,
     nm_shift_to_detector_px,
+    predict_r_detector_shift,
     predict_ug_detector_shifts,
+    r_prediction_skip_reason,
     ug_skip_reason,
     usable_rotator_angle,
 )
@@ -277,3 +282,116 @@ def test_guards_fail_without_a_usable_science_angle() -> None:
 
     # ASSERT
     assert reason == "no usable science ABSROT"
+
+
+# THE 2026-10-19 HUB FIT (output/r_from_i_dy1645/results/r_from_i_coefficients.yaml)
+HUB_R_COEFFICIENTS = {"i": 1.104, "cos": 0.554, "sin": -0.12, "rms_px": 0.364}
+
+
+def test_r_predictor_reproduces_the_hub_formula() -> None:
+    # ARRANGE
+    # 1.104 * 0.5 + 0.554 * (cos(-19.76611 deg) - 1) - 0.12 * sin(-19.76611 deg)
+
+    # ACT
+    shift = predict_r_detector_shift(0.5, -19.76611, 0.0, HUB_R_COEFFICIENTS)
+
+    # ASSERT
+    assert shift == pytest.approx(0.5600, abs=0.001)
+
+
+def test_r_predictor_gives_only_the_scaled_i_shift_when_science_and_calibration_share_an_angle() -> None:
+    # ACT
+    shift = predict_r_detector_shift(2.0, 123.0, 123.0, HUB_R_COEFFICIENTS)
+
+    # ASSERT
+    assert shift == pytest.approx(1.104 * 2.0)
+
+
+def test_shipped_vis_parameters_carry_the_r_from_i_coefficients_and_their_provenance() -> None:
+    # ARRANGE
+    visParameters = _shipped_detector_parameters()["VIS"]
+
+    # ACT
+    coeffs = load_r_transfer_coefficients(visParameters)
+
+    # ASSERT
+    assert coeffs == HUB_R_COEFFICIENTS
+    block = visParameters["r-from-i-transfer"]
+    assert block["fit_date"] == "2026-10-19"
+    assert block["n_arcs"] == 72
+    assert block["n_nights"] == 18
+    assert "output/r_from_i_dy1645/fit_r_from_i.py" in block["source"]
+
+
+def test_detector_parameters_without_the_r_block_give_no_r_coefficients() -> None:
+    # ACT
+    coeffs = load_r_transfer_coefficients(_shipped_detector_parameters()["NIR"])
+
+    # ASSERT
+    assert coeffs is None
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param({"i": 1.0, "cos": 1.0, "sin": 1.0}, id="missing-rms"),
+        pytest.param({"i": "x", "cos": 1.0, "sin": 1.0, "rms_px": 0.3}, id="text"),
+        pytest.param({"i": float("nan"), "cos": 1.0, "sin": 1.0, "rms_px": 0.3}, id="nan"),
+        pytest.param({"i": 1.0, "cos": float("inf"), "sin": 1.0, "rms_px": 0.3}, id="inf"),
+        pytest.param({"i": 1.0, "cos": 1.0, "sin": 1.0, "rms_px": 0.0}, id="zero-rms"),
+        pytest.param("not a mapping", id="not-a-mapping"),
+    ],
+)
+def test_a_malformed_r_block_is_refused(block: object) -> None:
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="r-from-i-transfer"):
+        load_r_transfer_coefficients({"r-from-i-transfer": block})
+
+
+def test_r_prediction_guards_pass_for_a_well_measured_i_and_a_science_angle() -> None:
+    # ACT
+    reason = r_prediction_skip_reason(_stats(MIN_MATCHED_LINES[4], 0.1), scienceAngleDeg=-19.8)
+
+    # ASSERT
+    assert reason is None
+
+
+@pytest.mark.parametrize(
+    ("iStats", "angle", "expectedWords"),
+    [
+        pytest.param(None, -19.8, "order 4: no sky shift", id="i-not-measured"),
+        pytest.param(_stats(MIN_MATCHED_LINES[4] - 1, 0.1), -19.8, "order 4: 9 sky lines (min 10)", id="few-i-lines"),
+        pytest.param(_stats(10, MAX_SHIFT_SCATTER_PX + 0.01), -19.8, "order 4: shift scatter", id="i-scatter"),
+        pytest.param(_stats(10, 0.1), None, "no usable science ABSROT", id="no-angle"),
+    ],
+)
+def test_r_prediction_guards_name_the_failure(iStats: object, angle: object, expectedWords: str) -> None:
+    # ACT
+    reason = r_prediction_skip_reason(iStats, scienceAngleDeg=angle)
+
+    # ASSERT
+    assert reason is not None
+    assert expectedWords in reason
+
+
+def test_inverse_variance_combination_weights_the_estimates_by_their_sigmas() -> None:
+    # ARRANGE
+    # SIGMA 0.2 AGAINST 0.4 GIVES WEIGHTS 25 AND 6.25, SO THE MEAN SITS 80 PERCENT OF THE WAY TO THE MEASUREMENT
+
+    # ACT
+    combined = combine_r_shift_px(1.0, 0.2, 2.0, 0.4)
+
+    # ASSERT
+    assert combined == pytest.approx(1.2)
+
+
+def test_inverse_variance_combination_floors_a_vanishing_measured_sigma() -> None:
+    # ACT
+    combined = combine_r_shift_px(1.0, 0.0, 2.0, 0.364)
+
+    # ASSERT
+    weightMeasured = 1 / MIN_MEASURED_SIGMA_PX**2
+    weightPredicted = 1 / 0.364**2
+    assert combined == pytest.approx(
+        (weightMeasured * 1.0 + weightPredicted * 2.0) / (weightMeasured + weightPredicted)
+    )

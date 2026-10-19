@@ -280,6 +280,7 @@ def _construct_extractor(
     binning: int = 1,
     traceFound: bool = True,
     noTraceFallback: bool = False,
+    omitHeaderKeys: tuple[str, ...] = (),
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection."""
     import soxspipe.commonutils as commonutils
@@ -291,6 +292,8 @@ def _construct_extractor(
     header["MJDOBS"] = 60311.0
     for keyword, value in headerOverrides.items():
         header[keyword] = value
+    for keyword in omitHeaderKeys:
+        del header[keyword]
     frame = CCDData(
         np.ones((3, 3)),
         unit=u.electron,
@@ -483,6 +486,74 @@ def test_constructor_does_not_flag_a_fallback_when_the_trace_is_found(
     assert extractor.orderPixelTable["order"].tolist() == [10, 10]
 
 
+@pytest.mark.parametrize(
+    ("instrument", "expectedMeasurementOrder"),
+    [
+        pytest.param("SOXS", [4, 1], id="soxs-measures-i-before-r"),
+        pytest.param("XSHOOTER", [1, 4], id="xshooter-keeps-the-old-order"),
+    ],
+)
+def test_skyline_tuning_after_the_no_trace_fallback_knows_the_instrument(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    instrument: str,
+    expectedMeasurementOrder: list[int],
+) -> None:
+    # ARRANGE
+    # THE FALLBACK SKIPS THE TRACE UNPACKING, SO THE INSTRUMENT MUST COME FROM THE CONSTRUCTOR
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={"INSTRUME": instrument},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        traceFound=False,
+        noTraceFallback=True,
+    )
+    assert extractor.inst == instrument
+    measuredOrders: list[int] = []
+
+    def record_measurement(orderDF: pd.DataFrame, order: int, **kwargs: object) -> tuple[float, np.ndarray]:
+        measuredOrders.append(int(order))
+        return 0.0, np.array([0.0, 0.0])
+
+    extractor._measure_order_shift = record_measurement
+    extractor._signed_order_dispersions = lambda *args: {}
+    extractor._record_order_shift_qc = lambda *args, **kwargs: None
+    extraction = pd.DataFrame(
+        {"order": [1, 4], "wavelengthMean": [600.0, 750.0], "pixelScaleNm": [0.1, 0.1]},
+    )
+
+    # ACT
+    extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
+
+    # ASSERT
+    assert measuredOrders == expectedMeasurementOrder
+
+
+@pytest.mark.parametrize("noTraceFallback", [True, False], ids=["fallback-on", "fallback-off"])
+def test_constructor_accepts_a_no_trace_frame_without_an_instrument_keyword(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    noTraceFallback: bool,
+) -> None:
+    # ACT
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        traceFound=False,
+        noTraceFallback=noTraceFallback,
+        omitHeaderKeys=("INSTRUME",),
+    )
+
+    # ASSERT
+    assert extractor.inst == ""
+    assert extractor.traceFallback is noTraceFallback
+
+
 def test_odd_slit_length_setting_keeps_its_half_pixel_in_the_half_length(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -552,10 +623,12 @@ def test_constructor_names_products_without_a_sof_name(
 
     extraction_module = importlib.import_module("soxspipe.commonutils.horne_extraction")
 
+    header = instrument_header()
+    header["INSTRUME"] = "SOXS"
     frame = CCDData(
         np.ones((3, 3)),
         unit=u.electron,
-        meta=instrument_header(),
+        meta=header,
         mask=np.zeros((3, 3), dtype=bool),
         uncertainty=StdDevUncertainty(np.ones((3, 3)), unit=u.electron),
     )
@@ -570,6 +643,7 @@ def test_constructor_names_products_without_a_sof_name(
         self.log = receivedLog
         self.settings = settings
         self.dispersionMap = None
+        self.kw = lambda name: name
         self.binx = 1
         self.biny = 1
         self.detectorParams = {"dispersion-axis": "x"}
@@ -1065,7 +1139,8 @@ def test_skyline_tuning_recovers_the_offset_of_a_flat_topped_line_with_a_central
     extractor.detectorParams = {}
 
     # ACT
-    extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
+    # NIR, WHERE ONE MATCHED LINE STILL GIVES A SHIFT (THE VIS ARM NEEDS TWO)
+    extractor.tune_wavelength_calibration_to_skylines(extraction, "NIR")
 
     # ASSERT
     assert recordedShifts == [pytest.approx(-trueOffsetNm, abs=0.1 * SYNTHETIC_PIXEL_NM)]
@@ -1453,6 +1528,7 @@ def test_local_skylines_filters_wavelengths_and_projects_single_order(
 ) -> None:
     extractor = _extractor(log)
     extractor.dispersionMap = "synthetic-dispersion-map.fits"
+    extractor.arm = "NIR"
     extractor.skylinesDF = pd.DataFrame(
         {
             "WAVELENGTH": [499.0, 500.0, 501.0, 502.0],
@@ -1760,9 +1836,9 @@ def test_wavelength_tuning_shifts_only_the_orders_it_measures_and_leaves_vis_u_a
             "pixelScaleNm": [0.1, 0.1, 0.1, 0.1],
         }
     )
-    # ORDERS ARE MEASURED IN NUMBER ORDER. ORDER 1 (r) FINDS NO SKYLINES, ORDERS 2 AND 3 (u AND g) ARE NEVER MEASURED
-    # AND ORDER 4 (i) SHIFTS BY 0.1 NM IN EACH OF THREE ITERATIONS
-    measuredShifts = iter([0.0, 0.0, 0.0, 0.1, 0.1, 0.1])
+    # ORDER 4 (i) IS MEASURED FIRST AND SHIFTS BY 0.1 NM IN EACH OF THREE ITERATIONS. ORDER 1 (r) FINDS NO SKYLINES.
+    # ORDERS 2 AND 3 (u AND g) ARE NEVER MEASURED
+    measuredShifts = iter([0.1, 0.1, 0.1, 0.0, 0.0, 0.0])
     recordedOrders: list[tuple[int, float]] = []
 
     extractor._extract_order_arrays = lambda order: (
@@ -1786,12 +1862,15 @@ def test_wavelength_tuning_shifts_only_the_orders_it_measures_and_leaves_vis_u_a
         np.array([]),
         np.array([]),
         next(measuredShifts),
-        np.array([0.0]),
+        np.array([0.0, 0.0]),
     )
     extractor._record_order_shift_qc = lambda order, shift, shiftPx=None: recordedOrders.append((order, shift))
     # NO u/g TRANSFER COEFFICIENTS, SO u AND g STAY UNSHIFTED
     extractor._signed_order_dispersions = lambda *args: {}
     extractor.detectorParams = {}
+    extractor.inst = "SOXS"
+    # NO MAP FILE EXISTS, WHICH THE SOXS VIS PATH TOLERATES
+    extractor.dispersionMap = "no-such-dispersion-map.fits"
 
     result = extractor.tune_wavelength_calibration_to_skylines(extraction, "VIS")
 
@@ -2588,3 +2667,45 @@ def test_per_order_plot_still_works_when_the_log_is_not_a_collector(log: object,
     extractor.plot_extracted_spectrum_qc([_plot_order(10)])
 
     assert probes == [[]]
+
+
+def test_catalogue_without_an_isolated_column_gives_no_calibration_lines(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    import soxspipe.commonutils as commonutils
+
+    extractor = _extractor(log)
+    extractor.arm = "NIR"
+    extractor.dispersionMap = "synthetic-dispersion-map.fits"
+    extractor.skylinesDF = pd.DataFrame({"WAVELENGTH": [500.0, 500.5], "FLUX": [10.0, 20.0]})
+    monkeypatch.setattr(
+        commonutils, "dispersion_map_to_pixel_arrays", lambda **kwargs: kwargs["orderPixelTable"].assign(fit_x=1.0)
+    )
+
+    # ACT
+    localSkylines, calibrationSkylines = extractor._get_local_skylines_for_order(499.0, 501.0, 12, "fit_x")
+
+    # ASSERT
+    assert localSkylines.tolist() == [1.0, 1.0]
+    assert len(calibrationSkylines) == 0
+
+
+def test_debug_tuning_plots_every_iteration_of_the_diagnostic(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    from tests.unit._horne_vis_scene import CATALOGUE, build_extractor, build_orders, night_header
+
+    extractor = build_extractor(log, tmp_path, night_header(), detectorParams={"dispersion-axis": "y"})
+    extractor.debug = True
+    plotCalls: list[tuple] = []
+    extractor._plot_skyline_shift_diagnostic = lambda *args: plotCalls.append(args)
+    scene = build_orders()
+    scene = scene.loc[scene["order"] == 1]
+
+    # ACT
+    extractor.tune_wavelength_calibration_to_skylines(scene.copy(), "NIR")
+
+    # ASSERT
+    assert [call[-2] for call in plotCalls] == [0, 1, 2]
+    assert {(call[-3], call[-1]) for call in plotCalls} == {("wavelength (nm)", "nm")}
+    assert np.array_equal(plotCalls[0][6], CATALOGUE)
