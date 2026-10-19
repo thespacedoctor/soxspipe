@@ -80,10 +80,12 @@ def crash_after_sibling_starts(inputDict: dict[str, Any], log: Any, **kwargs: An
     return {"status": "pass", "sof": inputDict["sof"]}
 
 
-def print_and_warn(inputDict: dict[str, Any], log: Any, settings: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+def print_and_warn(
+    inputDict: dict[str, Any], log: Any, settings: dict[str, Any], logQueue: Any, **kwargs: Any
+) -> dict[str, Any]:
     """Print a plain line and log a warning, with the logger rebuilt from the settings as the real worker does."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
-    workerLog = reducerModule._worker_log(log, settings)
+    workerLog = reducerModule._worker_log(log, settings, logQueue)
     print("PLAIN-PRINT-MARKER", flush=True)
     workerLog.warning("WARNING-MARKER")
     return {"status": "pass", "sof": inputDict["sof"], "error_message": None}
@@ -373,16 +375,24 @@ def test_an_isolated_sof_whose_pool_cannot_start_fails_with_the_start_message(
 def test_a_worker_warning_reaches_the_terminal_while_a_plain_print_does_not(
     tmp_path: Path, log: Any, capfd: pytest.CaptureFixture[str]
 ) -> None:
-    # ARRANGE: THE SHIPPED CONSOLE HANDLER WRITES TO ext://sys.stdout
+    # ARRANGE: THE PARENT'S CONSOLE HANDLER IS THE ONLY TERMINAL OUTPUT, AS IN A REAL RUN
     import logging
+    import sys
 
     reducerModule = import_module("soxspipe.commonutils.reducer")
     settings = logging_settings(tmp_path / "worker.log")
+    parentLog = logging.getLogger("fundamentals.logs")
+    consoleHandler = logging.StreamHandler(sys.stdout)
+    parentLog.addHandler(consoleHandler)
 
     # ACT
-    reducerModule._run_in_spawn_pool(
-        print_and_warn, _inputs("ok"), 1, logging.getLogger("fundamentals.logs"), settings=settings
-    )
+    try:
+        with reducerModule._worker_log_queue() as logQueue:
+            reducerModule._run_in_spawn_pool(
+                print_and_warn, _inputs("ok"), 1, parentLog, settings=settings, logQueue=logQueue
+            )
+    finally:
+        parentLog.removeHandler(consoleHandler)
 
     # ASSERT
     terminalText = "".join(capfd.readouterr())

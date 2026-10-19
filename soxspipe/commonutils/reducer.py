@@ -10,6 +10,7 @@ Date Created
 """
 
 # from memory_profiler import profile
+import contextlib
 import logging
 import os
 import sys
@@ -557,52 +558,76 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     return productPath, qcTable
 
 
-def _worker_log(log, settings):
+def _worker_log(log, settings, logQueue):
     """*return a logger that can write from inside a spawned worker process*
 
     A `logging.Logger` pickles by name, so a spawned worker receives a bare logger with no
-    handlers and no ``print`` level. This rebuilds it from the ``logging settings`` block using
-    the standard logger setup. A logger that already works (it has handlers and a ``print``
+    handlers and no ``print`` level. This adds the ``print`` level, sets the root level from the
+    ``logging settings`` block and sends every record to the parent process through ``logQueue``,
+    where `_worker_log_queue` writes it. A worker owns no file handler, so only the parent writes
+    and rotates the shared log. A logger that already works (it has handlers and a ``print``
     method, as in a forked worker, a reused spawned worker, or a test double) is returned
     unchanged.
-
-    Known limitation: each spawned worker owns its own rotating file handler on the shared log
-    file, so a concurrent rollover can race (follow-up DY-1534).
 
     **Key Arguments:**
 
     - ``log`` -- the logger the worker was given
     - ``settings`` -- the settings dictionary, holding the ``logging settings`` block
+    - ``logQueue`` -- the queue that carries the worker's log records to the parent process
     """
-    import copy
-    import logging
-    import tempfile
+    from logging.handlers import QueueHandler
 
-    import yaml
     from fundamentals import logs
 
     isWorkingLogger = not isinstance(log, logging.Logger) or (hasattr(log, "print") and log.hasHandlers())
     if isWorkingLogger or "logging settings" not in settings:
         return log
 
-    # THE SHIPPED FILE HANDLER TRUNCATES ITS FILE ON OPEN ("w+"), WHICH WOULD WIPE THE SHARED LOG
-    loggingSettings = copy.deepcopy(settings["logging settings"])
-    # KEEP LOGGERS THAT ALREADY EXIST IN THE WORKER (ASTROPY, ETC.) ENABLED
-    loggingSettings["disable_existing_loggers"] = False
-    if "file" in loggingSettings.get("handlers", {}):
-        loggingSettings["handlers"]["file"]["mode"] = "a"
+    logs.addLoggingLevel("PRINT", logging.INFO + 5)
+    rootLog = logging.getLogger()
+    rootLog.setLevel(settings["logging settings"].get("root", {}).get("level", logging.INFO))
+    rootLog.addHandler(QueueHandler(logQueue))
+    logging.captureWarnings(True)
+    return logging.getLogger(logs.__name__)
 
-    with tempfile.TemporaryDirectory() as tempDirectory:
-        settingsPath = os.path.join(tempDirectory, "logging.yaml")
-        with open(settingsPath, "w") as settingsFile:
-            yaml.safe_dump({"logging settings": loggingSettings}, settingsFile)
-        rebuiltLog = logs.setup_dryx_logging(yaml_file=settingsPath)
 
-    # BULK WORKERS ARE MUTED: ONLY WARNINGS AND ABOVE MAY REACH THE TERMINAL (MIRRORS THE FMULTIPROCESS MUTE)
-    for handler in rebuiltLog.handlers:
-        if not isinstance(handler, logging.FileHandler):
-            handler.setLevel(logging.WARNING)
-    return rebuiltLog
+class _parent_log_forwarder(logging.Handler):
+    """Write the records that workers queued to the handlers the parent process already has.
+
+    Each record goes to the handlers of the logger it was logged on and of that logger's parents, as if the
+    parent had logged it. Bulk workers are muted: only warnings and above reach a terminal handler, while file
+    handlers keep their own level.
+    """
+
+    def emit(self, record):
+        logger = logging.getLogger(record.name)
+        while logger is not None:
+            for handler in logger.handlers:
+                isShown = isinstance(handler, logging.FileHandler) or record.levelno >= logging.WARNING
+                if isShown and record.levelno >= handler.level:
+                    handler.handle(record)
+            logger = logger.parent if logger.propagate else None
+
+
+@contextlib.contextmanager
+def _worker_log_queue():
+    """*run a listener in this process that writes the log records spawned workers queue, and yield the queue*
+
+    The queue comes from a manager process, so it pickles into any spawned worker and a worker killed
+    mid-record cannot leave a lock held that blocks the others. The listener stops, after it has written
+    every queued record, however the block ends.
+    """
+    import multiprocessing
+    from logging.handlers import QueueListener
+
+    with multiprocessing.get_context("spawn").Manager() as manager:
+        logQueue = manager.Queue()
+        listener = QueueListener(logQueue, _parent_log_forwarder())
+        listener.start()
+        try:
+            yield logQueue
+        finally:
+            listener.stop()
 
 
 POOL_TIMEOUT_SECONDS = 36000
@@ -625,6 +650,7 @@ def _bulk_worker(
     settings,
     overwrite,
     workspaceDirectory,
+    logQueue,
     wrapperTurnOffMP=True,
 ):
     """*run one recipe for one SOF inside a bulk worker process and describe the outcome*
@@ -637,6 +663,7 @@ def _bulk_worker(
     - ``settings`` -- the settings dictionary
     - ``overwrite`` -- overwrite existing reductions
     - ``workspaceDirectory`` -- path to the root of the workspace
+    - ``logQueue`` -- the queue that carries this worker's log records to the parent process
     - ``wrapperTurnOffMP`` -- turn off the multiprocessing inside the recipe. Default *True*.
 
     **Return:**
@@ -646,7 +673,7 @@ def _bulk_worker(
     """
     import traceback
 
-    log = _worker_log(log, settings)
+    log = _worker_log(log, settings, logQueue)
 
     returnDict = {
         "status": None,
@@ -965,6 +992,8 @@ def run_recipe_bulk(
 
     The reductions run in a pool of spawned worker processes, one task per SOF (see ``_run_in_spawn_pool``).
     A SOF whose worker process crashes is recorded as a failure and does not stop the rest of the batch.
+    The workers send their log records to this process, which writes them through its own log handlers (see
+    ``_worker_log_queue``), so only one process writes and rotates the log file.
     A ``ValueError`` is raised if ``settings`` has no ``logging settings`` block, because spawned workers
     rebuild their logger from it.
     """
@@ -997,17 +1026,19 @@ def run_recipe_bulk(
 
     log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
 
-    results = _run_in_spawn_pool(
-        function=_bulk_worker,
-        inputDicts=inputDicts,
-        poolSize=effectivePoolSize,
-        log=log,
-        settings=settings,
-        overwrite=overwrite,
-        recipe=recipe,
-        workspaceDirectory=workspaceDirectory,
-        wrapperTurnOffMP=wrapperTurnOffMP,
-    )
+    with _worker_log_queue() as logQueue:
+        results = _run_in_spawn_pool(
+            function=_bulk_worker,
+            inputDicts=inputDicts,
+            poolSize=effectivePoolSize,
+            log=log,
+            settings=settings,
+            overwrite=overwrite,
+            recipe=recipe,
+            workspaceDirectory=workspaceDirectory,
+            logQueue=logQueue,
+            wrapperTurnOffMP=wrapperTurnOffMP,
+        )
 
     passing = []
     failing = []
