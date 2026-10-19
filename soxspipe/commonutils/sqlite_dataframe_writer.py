@@ -22,6 +22,10 @@ MAX_ATTEMPTS = 7
 RETRY_DELAY_SECONDS = 1
 
 
+class SqliteTransactionOpenError(RuntimeError):
+    """*raised when a write starts on a connection that is already inside a transaction*"""
+
+
 @contextmanager
 def _write_transaction(conn):
     """*hold the database write lock for the length of one `with` block, then commit or roll back*
@@ -32,15 +36,21 @@ def _write_transaction(conn):
     `conn.commit()` when `to_sql` finishes: that is a no-op on an `autocommit=True` connection, and on a legacy one
     it commits this transaction early, so `conn.in_transaction` is checked before the final `COMMIT`.
 
-    A connection that is already inside a transaction belongs to its caller, who keeps control of the commit.
+    A `BaseException` (such as `KeyboardInterrupt`) rolls back this transaction and propagates at once.
 
     **Key Arguments:**
 
     - ``conn`` -- the `sqlite3` connection to write on
+
+    **Raises:**
+
+    - ``SqliteTransactionOpenError`` if the connection is already inside a transaction. pandas would commit or roll
+      back the caller's unrelated work as part of `to_sql`, so the write is refused before anything is written.
     """
     if conn.in_transaction:
-        yield
-        return
+        raise SqliteTransactionOpenError(
+            "the connection is already inside a transaction, so the write would commit or roll back the caller's work"
+        )
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield
@@ -52,17 +62,20 @@ def _write_transaction(conn):
         conn.execute("COMMIT")
 
 
-def _delete_existing_rows(conn, log, tableName):
-    """*delete every row of a table, treating a table that does not exist yet as already empty*"""
-    # THE TABLE NAME HAS PASSED `validate_sql_identifier`; A NAME CANNOT BE A BOUND PARAMETER.
-    sqlQuery = f"delete from {tableName};"  # noqa: S608
+def _delete_rows(conn, log, tableName, whereColumn=None, whereValues=()):
+    """*delete every row of a table, or the rows whose column value is in a list, treating a missing table as empty*"""
+    # THE TABLE AND COLUMN NAMES HAVE PASSED `validate_sql_identifier` (A NAME CANNOT BE A BOUND PARAMETER);
+    # EVERY VALUE IS BOUND.
+    sqlQuery = f"delete from {tableName}"  # noqa: S608
+    if whereColumn:
+        sqlQuery += f" where {whereColumn} in ({', '.join(['?'] * len(whereValues))})"
     with closing(conn.cursor()) as c:
         try:
-            c.execute(sqlQuery)
+            c.execute(sqlQuery + ";", list(whereValues))
         except sqlite3.OperationalError as e:
-            if "no such table" not in str(e):
+            if f"no such table: {tableName}" not in str(e):
                 raise
-            log.debug(f"_delete_existing_rows: `{tableName}` does not exist yet, nothing to delete: {e}")
+            log.debug(f"_delete_rows: `{tableName}` does not exist yet, nothing to delete: {e}")
 
 
 def write_dataframe_to_sqlite(
@@ -74,6 +87,7 @@ def write_dataframe_to_sqlite(
     sentinels=("--",),
     method=None,
     maxAttempts=MAX_ATTEMPTS,
+    deleteWhereIn=None,
 ):
     """*write a dataframe to a database table in one transaction, retrying a failed write*
 
@@ -89,26 +103,36 @@ def write_dataframe_to_sqlite(
     - ``replace`` -- if True, delete the table's existing rows first; otherwise append. Default: False
     - ``sentinels`` -- values in the dataframe that are written as NULL. Default: ("--",)
     - ``method`` -- the `DataFrame.to_sql` insertion method. Default: None (one `executemany`)
-    - ``maxAttempts`` -- how many times to try before re-raising the last error. Default: 7
+    - ``maxAttempts`` -- how many times to try before re-raising the last error. Default: `MAX_ATTEMPTS`
+    - ``deleteWhereIn`` -- a ``(column, values)`` pair: delete the rows whose column value is in ``values``, in the same
+      transaction, before the insert. The column name is validated and the values are bound. Ignored when
+      ``replace`` is True. Default: None
 
     **Raises:**
 
     - The error from the final attempt if every attempt fails.
+    - ``SqliteTransactionOpenError`` at once, without retrying, if the connection is already inside a transaction.
     - ``UnsafeSqlIdentifierError`` if ``tableName`` fails the safe-identifier grammar.
     """
     # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
     # THE SAFE-IDENTIFIER GRAMMAR ONCE HERE, BEFORE ANY SQL INTERPOLATES IT.
     tableName = validate_sql_identifier(tableName, "table name")
+    whereColumn, whereValues = None, ()
+    if deleteWhereIn and not replace:
+        whereColumn = validate_sql_identifier(deleteWhereIn[0], "delete column name")
+        whereValues = list(dict.fromkeys(deleteWhereIn[1]))
 
     for attempt in range(1, maxAttempts + 1):
         try:
             with _write_transaction(conn):
-                if replace:
-                    _delete_existing_rows(conn, log, tableName)
+                if replace or whereColumn:
+                    _delete_rows(conn, log, tableName, whereColumn, whereValues)
                 dataframe.replace(list(sentinels), None).to_sql(
                     tableName, con=conn, index=False, if_exists="append", method=method
                 )
             return
+        except SqliteTransactionOpenError:
+            raise
         except Exception:
             # RE-RAISE THE ORIGINAL ERROR AFTER THE FINAL ATTEMPT SO A LOST WRITE FAILS THE CALLER (DY-603)
             if attempt == maxAttempts:

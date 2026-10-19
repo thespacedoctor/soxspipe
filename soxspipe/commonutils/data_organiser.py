@@ -3513,7 +3513,9 @@ class data_organiser:
 
     def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
         """
-        Write a DataFrame to a database table in one transaction, retrying a failed write up to 7 times.
+        Write a DataFrame to a database table in one transaction, retrying a failed write.
+
+        The number of attempts is `sqlite_dataframe_writer.MAX_ATTEMPTS`.
 
         **Key Arguments:**
         - `dataframe` -- DataFrame containing rows to insert.
@@ -3521,7 +3523,8 @@ class data_organiser:
         - `replace` -- If True, replace existing entries in the same transaction; otherwise, append.
 
         **Raises:**
-        - Exception if the insertion fails after 7 attempts.
+        - Exception if every attempt fails.
+        - `SqliteTransactionOpenError` if the connection is already inside a transaction.
         - `UnsafeSqlIdentifierError` if `table_name` fails the safe-identifier grammar.
         """
         write_dataframe_to_sqlite(self.conn, self.log, dataframe, table_name, replace=replace, sentinels=("--", -99.99))

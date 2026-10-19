@@ -2228,13 +2228,9 @@ class base_recipe:
             )
             if self.conn:
                 sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
-                # A FALSE POSITIVE: THE F-STRING INTERPOLATES ONLY `?` PLACEHOLDERS,
-                # AND EVERY SOF NAME IS PASSED TO `execute` AS A BOUND PARAMETER.
-                sqlQuery = f"delete from quality_control where sof_name in ({', '.join(['?'] * len(sofNames))})"  # noqa: S608
-                c = self.conn.cursor()
-                c.execute(sqlQuery, sofNames)
-                c.close()
-                self._dataframe_to_sqlite(self.qc[dbColumns], "quality_control", replace=False)
+                # THE OLD ROWS FOR THESE SOFS ARE DELETED IN THE SAME TRANSACTION AS THE INSERT, SO A READER NEVER
+                # SEES THEM MISSING AND A FAILED INSERT KEEPS THEM
+                self._dataframe_to_sqlite(self.qc[dbColumns], "quality_control", delete_where_in=("sof_name", sofNames))
 
         self.log.debug("completed the ``report_output`` method")
         return self.qc[dbColumns]
@@ -2790,8 +2786,10 @@ class base_recipe:
         self.log.debug("completed the ``get_recipe_settings`` method")
         return recipeSettings
 
-    def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
-        """*write a dataframe to a database table in one transaction, retrying a failed write up to seven times*
+    def _dataframe_to_sqlite(self, dataframe, table_name, replace=False, delete_where_in=None):
+        """*write a dataframe to a database table in one transaction, retrying a failed write*
+
+        The number of attempts is `sqlite_dataframe_writer.MAX_ATTEMPTS`.
 
         **Key Arguments:**
 
@@ -2799,13 +2797,24 @@ class base_recipe:
         - ``table_name`` -- the name of the database table to insert into
         - ``replace`` -- if True, delete the table's existing rows in the same transaction; otherwise append. Default:
           False
+        - ``delete_where_in`` -- a ``(column, values)`` pair: delete the rows whose column value is in ``values`` in
+          the same transaction. Default: None
 
         **Raises:**
 
-        - Exception if the insert fails after seven attempts.
-        - ``UnsafeSqlIdentifierError`` if ``table_name`` fails the safe-identifier grammar.
+        - Exception if every attempt fails.
+        - ``SqliteTransactionOpenError`` if the connection is already inside a transaction.
+        - ``UnsafeSqlIdentifierError`` if ``table_name`` or the delete column fails the safe-identifier grammar.
         """
-        write_dataframe_to_sqlite(self.conn, self.log, dataframe, table_name, replace=replace, method="multi")
+        write_dataframe_to_sqlite(
+            self.conn,
+            self.log,
+            dataframe,
+            table_name,
+            replace=replace,
+            method="multi",
+            deleteWhereIn=delete_where_in,
+        )
 
     def add_qc(
         self,
