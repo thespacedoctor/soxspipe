@@ -222,7 +222,14 @@ def test_offset_trace_residual_products_point_to_different_files(
 
 SEQUENCED_RECIPES = pytest.mark.parametrize(
     ("recipeName", "noddingSequence"),
-    [("soxs-nod", "_A1"), ("soxs-nod", "_B1"), ("soxs-offset", "_STACK"), ("soxs-offset-std", "_STACK")],
+    [
+        ("soxs-nod", "_A1"),
+        ("soxs-nod", "_B1"),
+        ("soxs-offset", "_STACK"),
+        ("soxs-offset-std", "_STACK"),
+        ("soxs-stare", ""),
+        ("soxs-stare-std", ""),
+    ],
 )
 
 
@@ -233,10 +240,17 @@ def _run_flattened_then_not_flattened_trace_passes(
     *,
     recipeName: str,
     noddingSequence: str,
-) -> tuple[list[str], pd.DataFrame]:
-    """Run the trace of one sequence as the response curve does, flattened then not, and return both outputs."""
+) -> tuple[list[str], pd.DataFrame, list[str]]:
+    """Run the trace of one sequence as the response curve does, flattened then not.
+
+    Return the order-table names, the products table and the paths the table writer was asked to write.
+    """
     monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
-    monkeypatch.setattr("soxspipe.commonutils.phase3.write_fits_table_to_disk", lambda **_: None)
+    writes: list[str] = []
+    monkeypatch.setattr(
+        "soxspipe.commonutils.phase3.write_fits_table_to_disk",
+        lambda **kwargs: writes.append(Path(kwargs["filePath"]).name),
+    )
     pixels, _, clipped = _plot_inputs()
     products = pd.DataFrame()
     tableNames = []
@@ -250,7 +264,7 @@ def _run_flattened_then_not_flattened_trace_passes(
         monkeypatch.setattr(detector, "fit_global_polynomial", _fit_trace_stub(clipped))
         tablePath, _, products, *_ = detector.get()
         tableNames.append(Path(tablePath).name)
-    return tableNames, products
+    return tableNames, products, writes
 
 
 @SEQUENCED_RECIPES
@@ -261,14 +275,16 @@ def test_not_flattened_trace_pass_writes_its_own_residual_pdf_and_order_table(
     recipeName: str,
     noddingSequence: str,
 ) -> None:
-    tableNames, _ = _run_flattened_then_not_flattened_trace_passes(
+    tableNames, _, writes = _run_flattened_then_not_flattened_trace_passes(
         log, monkeypatch, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence
     )
 
-    assert tableNames == [
+    expectedTables = [
         f"{SOF_NAME}_OBJTRACE{noddingSequence}.fits",
         f"{SOF_NAME}_OBJTRACE{noddingSequence}_NOTFLAT.fits",
     ]
+    assert tableNames == expectedTables
+    assert writes == expectedTables
     assert sorted(path.name for path in (tmp_path / QC_DIR_NAME).glob("*.pdf")) == [
         f"{SOF_NAME}_OBJECT_TRACE_residuals{noddingSequence}_{POLY_ORDERS}.pdf",
         f"{SOF_NAME}_OBJECT_TRACE_residuals{noddingSequence}_NOTFLAT_{POLY_ORDERS}.pdf",
@@ -283,7 +299,7 @@ def test_not_flattened_trace_pass_adds_no_product_row(
     recipeName: str,
     noddingSequence: str,
 ) -> None:
-    _, products = _run_flattened_then_not_flattened_trace_passes(
+    _, products, _ = _run_flattened_then_not_flattened_trace_passes(
         log, monkeypatch, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence
     )
 

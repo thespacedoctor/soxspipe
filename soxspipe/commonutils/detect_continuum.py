@@ -62,7 +62,7 @@ def _order_colours(orders):
 
 
 class _base_detect:
-    # FILE-NAME SUFFIX OF THE NOT-FLATTENED REPEAT OF A TRACE. ONLY detect_continuum SETS IT
+    # FILE-NAME SUFFIX OF THE NOT-FLATTENED REPEAT OF A TRACE. ONLY DETECT_CONTINUUM SETS IT
     notFlattened = ""
 
     def fit_order_polynomial(self, pixelList, order, axisBDeg, axisACol, axisBCol, exponentsIncluded=False):
@@ -525,7 +525,7 @@ class _base_detect:
             filename = filename.upper().replace("FLAT", "OLOC").replace(".FITS", ".fits")
 
         elif "stare" in self.recipeName.lower():
-            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
+            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.notFlattened + ".fits"
         elif has_sequence_suffixed_traces(self.recipeName):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
             filename = (
@@ -604,8 +604,8 @@ class detect_continuum(_base_detect):
     - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``debug`` -- if *True* then extra debugging information is printed. Default *False*
-    - ``notFlattened`` -- if *True* the trace is the repeat made for the response curve: its files get a
-      ``_NOTFLAT`` suffix and it adds no product row. Default *False*
+    - ``notFlattened`` -- if *True* the trace is the repeat that a stare, nod or offset standard makes for the
+      response curve: its files get a ``_NOTFLAT`` suffix and it adds no product row. Default *False*
 
     **Usage:**
 
@@ -1533,7 +1533,7 @@ class detect_continuum(_base_detect):
             sequence = self.noddingSequence + self.notFlattened
             filename = self.sofName + "_OBJECT_TRACE_residuals" + sequence + f"_{polyOrders}.pdf"
         else:
-            filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
+            filename = self.sofName + f"_OBJECT_TRACE_residuals{self.notFlattened}_{polyOrders}.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
