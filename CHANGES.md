@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: `_dataframe_to_sqlite` (data organiser and recipes) now writes each dataframe in one `BEGIN IMMEDIATE` transaction, so a failed attempt leaves no partial rows, a `replace` never exposes an empty table, and inserts are about 100 times faster on the autocommit workspace connections; both copies share `sqlite_dataframe_writer` (DY-1515).
 * **ENHANCEMENT**: fit the response curve as a log-space spline with telluric and stellar-line masks, so the VIS u band is no longer 30-50% wrong; flux calibration reads the RESP `RESPONSE` table and new `RESP` QCs flag poorly constrained curves (DY-1614, DY-1388).
 * **ENHANCEMENT**: nod and offset align frames along the slit through the 2D map and stack them before extraction by default; new `stack_before_extraction` setting and `SLIT ALIGN FALLBACK NUM` QC (DY-1612).
 * **ENHANCEMENT**: stare SOFs hold all frames of one OB per arm; new `stack_before_extraction` setting (default `True`) stacks them or extracts each on its own (DY-1611).

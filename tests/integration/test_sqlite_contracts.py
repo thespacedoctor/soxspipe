@@ -174,6 +174,44 @@ def test_recipe_report_replaces_only_current_sof_qc_rows_in_workspace_database(t
     connection.close()
 
 
+def test_recipe_report_keeps_the_old_qc_rows_when_the_new_rows_cannot_be_written(tmp_path, log, monkeypatch) -> None:
+    """A QC write that fails on every attempt leaves the SOF's earlier QC rows in place."""
+    databasePath = tmp_path / "workspace.db"
+    connection = sqlite3.connect(databasePath, autocommit=True)
+    currentQc = qc_table().assign(qc_order="-1", qc_flag="pass", sof_name="current.sof")
+    databaseColumns = [column for column in currentQc.columns if column != "to_header"]
+    currentQc.assign(qc_value=999.0)[databaseColumns].to_sql("quality_control", connection, index=False)
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.verbose = True
+    recipe.conn = connection
+    recipe.sofName = "current"
+    recipe.dateObs = "2024-01-02T03:04:05.678"
+    recipe.recipeName = "soxs-mbias"
+    recipe.inst = "XSHOOTER"
+    recipe.recipeSettings = {}
+    recipe.qc = qc_table()
+    recipe.products = product_table()
+    originalToSql = pd.DataFrame.to_sql
+
+    def write_rows_then_fail(table, cursor, keys, dataIter):
+        table._execute_insert(cursor, keys, dataIter)
+        raise sqlite3.OperationalError("database is locked")
+
+    def insert_then_fail(self, *args, **kwargs):
+        return originalToSql(self, *args, **{**kwargs, "method": write_rows_then_fail})
+
+    monkeypatch.setattr(pd.DataFrame, "to_sql", insert_then_fail)
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        recipe.report_output()
+
+    rows = connection.execute("SELECT sof_name, qc_name, qc_value FROM quality_control").fetchall()
+    assert rows == [("current.sof", "RON", 999.0)]
+    connection.close()
+
+
 def test_raw_groups_add_only_selected_members_to_sof_map(tmp_path, log) -> None:
     """Explode selected group members and flag their raw rows as processed."""
     organiser = workspace_organiser(tmp_path, log=log)
@@ -184,6 +222,8 @@ def test_raw_groups_add_only_selected_members_to_sof_map(tmp_path, log) -> None:
         "INSERT INTO raw_frames VALUES (?, 0)",
         [("bias-1.fits",), ("bias-2.fits",), ("other.fits",)],
     )
+    # THE WRITER REFUSES A CONNECTION WITH AN OPEN TRANSACTION, AS THE PIPELINE'S AUTOCOMMIT CONNECTIONS NEVER HAVE ONE
+    organiser.conn.commit()
     rawGroups = pd.concat(
         [
             raw_group_table(),
