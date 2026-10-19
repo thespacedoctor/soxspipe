@@ -27,7 +27,14 @@ QC_DIR_NAME = "qc"
 PRODUCT_DIR_NAME = "products"
 
 
-def _detector(log: object, tmp_path: Path, *, recipeName: str, noddingSequence: str = "") -> detect_continuum:
+def _detector(
+    log: object,
+    tmp_path: Path,
+    *,
+    recipeName: str,
+    noddingSequence: str = "",
+    notFlattened: bool = False,
+) -> detect_continuum:
     """Return a continuum detector holding the state the file-naming code reads."""
     settings = pipeline_settings(tmp_path)
     settings["tune-pipeline"] = False
@@ -37,6 +44,7 @@ def _detector(log: object, tmp_path: Path, *, recipeName: str, noddingSequence: 
     detector.kw = keyword_lookup(log=log, settings=settings).get
     detector.recipeName = recipeName
     detector.noddingSequence = noddingSequence
+    detector.notFlattened = "_NOTFLAT" if notFlattened else ""
     detector.sofName = SOF_NAME
     detector.lampTag = False
     detector.inst = "SOXS"
@@ -212,6 +220,93 @@ def test_offset_trace_residual_products_point_to_different_files(
     assert residualRows["file_path"].nunique() == 2
 
 
+SEQUENCED_RECIPES = pytest.mark.parametrize(
+    ("recipeName", "noddingSequence"),
+    [
+        ("soxs-nod", "_A1"),
+        ("soxs-nod", "_B1"),
+        ("soxs-offset", "_STACK"),
+        ("soxs-offset-std", "_STACK"),
+        ("soxs-stare", ""),
+        ("soxs-stare-std", ""),
+    ],
+)
+
+
+def _run_flattened_then_not_flattened_trace_passes(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    recipeName: str,
+    noddingSequence: str,
+) -> tuple[list[str], pd.DataFrame, list[str]]:
+    """Run the trace of one sequence as the response curve does, flattened then not.
+
+    Return the order-table names, the products table and the paths the table writer was asked to write.
+    """
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+    writes: list[str] = []
+    monkeypatch.setattr(
+        "soxspipe.commonutils.phase3.write_fits_table_to_disk",
+        lambda **kwargs: writes.append(Path(kwargs["filePath"]).name),
+    )
+    pixels, _, clipped = _plot_inputs()
+    products = pd.DataFrame()
+    tableNames = []
+    for notFlattened in (False, True):
+        detector = _detector(
+            log, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence, notFlattened=notFlattened
+        )
+        detector.products = products
+        detector.orderPixelTable = pixels.drop(columns=["cont_x_fit_res"]).assign(mask=False)
+        detector.coeff_dict = {}
+        monkeypatch.setattr(detector, "fit_global_polynomial", _fit_trace_stub(clipped))
+        tablePath, _, products, *_ = detector.get()
+        tableNames.append(Path(tablePath).name)
+    return tableNames, products, writes
+
+
+@SEQUENCED_RECIPES
+def test_not_flattened_trace_pass_writes_its_own_residual_pdf_and_order_table(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recipeName: str,
+    noddingSequence: str,
+) -> None:
+    tableNames, _, writes = _run_flattened_then_not_flattened_trace_passes(
+        log, monkeypatch, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence
+    )
+
+    expectedTables = [
+        f"{SOF_NAME}_OBJTRACE{noddingSequence}.fits",
+        f"{SOF_NAME}_OBJTRACE{noddingSequence}_NOTFLAT.fits",
+    ]
+    assert tableNames == expectedTables
+    assert writes == expectedTables
+    assert sorted(path.name for path in (tmp_path / QC_DIR_NAME).glob("*.pdf")) == [
+        f"{SOF_NAME}_OBJECT_TRACE_residuals{noddingSequence}_{POLY_ORDERS}.pdf",
+        f"{SOF_NAME}_OBJECT_TRACE_residuals{noddingSequence}_NOTFLAT_{POLY_ORDERS}.pdf",
+    ]
+
+
+@SEQUENCED_RECIPES
+def test_not_flattened_trace_pass_adds_no_product_row(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recipeName: str,
+    noddingSequence: str,
+) -> None:
+    _, products, _ = _run_flattened_then_not_flattened_trace_passes(
+        log, monkeypatch, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence
+    )
+
+    assert products["product_label"].tolist() == [f"OBJECT_TRACE_RES{noddingSequence}"]
+    assert products["file_name"].tolist() == [f"{SOF_NAME}_OBJECT_TRACE_residuals{noddingSequence}_{POLY_ORDERS}.pdf"]
+
+
 OFFSET_HEADER = {"HIERARCH ESO SEQ FIXOFF RA": -2.0, "HIERARCH ESO SEQ FIXOFF DEC": 0.0}
 
 
@@ -223,6 +318,7 @@ def _constructed_detector(
     recipeName: str,
     headerOverrides: dict[str, object],
     locationSetIndex: object = False,
+    notFlattened: bool = False,
 ) -> detect_continuum:
     """Build a continuum detector through its real constructor."""
     monkeypatch.setattr(
@@ -248,6 +344,7 @@ def _constructed_detector(
         sofName=SOF_NAME,
         locationSetIndex=locationSetIndex,
         startNightDate="2024-01-02",
+        notFlattened=notFlattened,
     )
     detector.detectorParams = {"rotate-qc-plot": 0, "flip-qc-plot": 0, "dispersion-axis": "x"}
     detector.axisBDeg = 1
@@ -332,3 +429,31 @@ def test_two_offset_cycles_and_the_stacked_pair_write_three_sets_of_trace_files(
     assert len(set(pdfNames)) == 3
     assert len(set(tableNames)) == 3
     assert f"{SOF_NAME}.fits".upper() not in tableNames
+
+
+def test_constructor_suffixes_the_trace_files_of_a_not_flattened_offset_pass(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    detectors = [
+        _constructed_detector(
+            log,
+            monkeypatch,
+            tmp_path,
+            recipeName="soxs-offset",
+            headerOverrides=OFFSET_HEADER,
+            locationSetIndex=STACKED_LOCATION_SET,
+            notFlattened=notFlattened,
+        )
+        for notFlattened in (False, True)
+    ]
+
+    assert [_order_table_name(detector, monkeypatch) for detector in detectors] == [
+        f"{SOF_NAME}_OBJTRACE_STACK.fits",
+        f"{SOF_NAME}_OBJTRACE_STACK_NOTFLAT.fits",
+    ]
+    assert [_residual_pdf_name(detector, monkeypatch) for detector in detectors] == [
+        f"{SOF_NAME}_OBJECT_TRACE_residuals_STACK_{POLY_ORDERS}.pdf",
+        f"{SOF_NAME}_OBJECT_TRACE_residuals_STACK_NOTFLAT_{POLY_ORDERS}.pdf",
+    ]

@@ -281,6 +281,7 @@ def _construct_extractor(
     binning: int = 1,
     traceFound: bool = True,
     noTraceFallback: bool = False,
+    notFlattened: bool = False,
     omitHeaderKeys: tuple[str, ...] = (),
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection."""
@@ -381,6 +382,7 @@ def _construct_extractor(
         startNightDate="2024-01-02",
         turnOffMP=True,
         noTraceFallback=noTraceFallback,
+        notFlattened=notFlattened,
     )
 
     return extractor, captured
@@ -406,6 +408,24 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert extractor.imageMap["wavelength"].tolist() == [500.0]
     assert captured["recipeName"] == "soxs-stare"
     assert captured["locationSetIndex"] == 2
+
+
+@pytest.mark.parametrize("notFlattened", [False, True])
+def test_constructor_tells_trace_detection_whether_the_extraction_is_not_flattened(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    notFlattened: bool,
+) -> None:
+    _, captured = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={"HIERARCH ESO SEQ CUMOFF Y": 1.0},
+        recipeName="soxs-nod",
+        locationSetIndex=1,
+        notFlattened=notFlattened,
+    )
+
+    assert captured["notFlattened"] is notFlattened
 
 
 def test_constructor_builds_a_table_of_every_order_when_no_trace_is_found_and_fallback_is_on(
