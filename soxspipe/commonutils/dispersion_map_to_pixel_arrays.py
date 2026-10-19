@@ -60,6 +60,24 @@ def _read_dispersion_map_axes(resolvedPath, mtime):
     return axesData
 
 
+def read_dispersion_map_axes(dispersionMapPath):
+    """*read a dispersion map's per-axis polynomial data, cached per resolved path and modification time*
+
+    **Key Arguments:**
+
+    - ``dispersionMapPath`` -- path to the dispersion-map FITS file (``~`` is expanded)
+
+    **Return:**
+
+    - ``axesData`` -- dictionary keyed by axis ("x"/"y") of {"orderDeg", "wavelengthDeg", "slitDeg", "coeff"}
+
+    A missing or non-FITS file raises ``OSError`` and a file holding no table raises ``ValueError``.
+    """
+    home = expanduser("~")
+    resolvedPath = os.path.realpath(dispersionMapPath.replace("~", home))
+    return _read_dispersion_map_axes(resolvedPath, os.path.getmtime(resolvedPath))
+
+
 def dispersion_map_to_pixel_arrays(
     log,
     dispersionMapPath,
@@ -109,12 +127,7 @@ def dispersion_map_to_pixel_arrays(
 
     # READ THE FILE (CACHED PER RESOLVED PATH + MTIME SO REPEATED CALLS
     # AGAINST THE SAME MAP SKIP DISK I/O AND RE-PARSING)
-    home = expanduser("~")
-    dispersion_map = dispersionMapPath.replace("~", home)
-    resolvedPath = os.path.realpath(dispersion_map)
-    mtime = os.path.getmtime(resolvedPath)
-
-    axesData = _read_dispersion_map_axes(resolvedPath, mtime)
+    axesData = read_dispersion_map_axes(dispersionMapPath)
     coeff, poly = _load_axis_polynomials(log, axesData)
 
     # CONVERT THE ORDER-SORTED WAVELENGTH ARRAYS INTO ARRAYS OF PIXEL TUPLES

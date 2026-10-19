@@ -1,5 +1,10 @@
 """Predict the SOXS VIS u and g order wavelength shifts, which have no usable sky lines, from the r and i sky shifts.
 
+The r order has only 3-4 usable sky lines, so its shift is also predicted from the i shift and the rotator angle change
+(DY-1645):
+
+    dy_r = i * di + cos * (cos(th_sci) - cos(th_cal)) + sin * (sin(th_sci) - sin(th_cal))
+
 The u (order 2) and g (order 3) orders move against a daytime arc by up to 5-6 px at night. That motion is predicted
 from the mean sky-measured detector shift of the r (order 1) and i (order 4) orders plus the change in the derotator
 angle (``ESO ADA ABSROT``) between the science frame and the calibration frame (DY-1608):
@@ -27,8 +32,14 @@ MEASURED_ORDERS = (VIS_R_ORDER, VIS_I_ORDER)
 MIN_MATCHED_LINES = {VIS_R_ORDER: 2, VIS_I_ORDER: 10}
 # MAXIMUM STANDARD DEVIATION OF THE KEPT PER-LINE SHIFTS IN AN r/i ORDER
 MAX_SHIFT_SCATTER_PX = 1.5
+# MINIMUM SKY LINES KEPT AFTER CLIPPING FOR ANY VIS ORDER SHIFT TO BE APPLIED (DY-1645)
+MIN_SHIFT_LINES = 2
+# FLOOR ON THE MEASURED r SHIFT UNCERTAINTY, SO A CHANCE-IDENTICAL SET OF LINE SHIFTS CANNOT GIVE IT INFINITE WEIGHT
+MIN_MEASURED_SIGMA_PX = 0.05
 COEFFICIENTS_KEY = "ug-wavelength-transfer"
 MODEL_TERMS = ("m", "cos", "sin")
+R_COEFFICIENTS_KEY = "r-from-i-transfer"
+R_MODEL_TERMS = ("i", "cos", "sin", "rms_px")
 
 
 def load_ug_transfer_coefficients(detectorParams):
@@ -93,14 +104,103 @@ def predict_ug_detector_shifts(deltaRpx, deltaIpx, scienceAngleDeg, calibrationA
     ```
     """
     meanShift = (deltaRpx + deltaIpx) / 2
-    scienceAngle = math.radians(scienceAngleDeg)
-    calibrationAngle = math.radians(calibrationAngleDeg)
-    deltaCos = math.cos(scienceAngle) - math.cos(calibrationAngle)
-    deltaSin = math.sin(scienceAngle) - math.sin(calibrationAngle)
+    deltaCos, deltaSin = _rotator_terms(scienceAngleDeg, calibrationAngleDeg)
     return {
         order: coeffs[order]["m"] * meanShift + coeffs[order]["cos"] * deltaCos + coeffs[order]["sin"] * deltaSin
         for order in PREDICTED_ORDERS
     }
+
+
+def load_r_transfer_coefficients(detectorParams):
+    """*read the r-from-i transfer coefficients from the arm's detector parameters*
+
+    **Key Arguments:**
+
+    - ``detectorParams`` -- the arm's detector parameters (the ``VIS`` block of ``soxs_detector_parameters.yaml``)
+
+    **Return:**
+
+    - ``coeffs`` -- ``{"i": ..., "cos": ..., "sin": ..., "rms_px": ...}``, or *None* if the arm has no
+      ``r-from-i-transfer`` block
+
+    A block that is present but lacks a term, or holds a non-numeric, non-finite or (for ``rms_px``) non-positive
+    value, raises ``ValueError``.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.ug_wavelength_transfer import load_r_transfer_coefficients
+    coeffs = load_r_transfer_coefficients(self.detectorParams)
+    ```
+    """
+    block = detectorParams.get(R_COEFFICIENTS_KEY)
+    if block is None:
+        return None
+    try:
+        coeffs = {term: float(block[term]) for term in R_MODEL_TERMS}
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(
+            f"the {R_COEFFICIENTS_KEY} detector parameters need numeric {R_MODEL_TERMS} terms ({e})"
+        ) from e
+    if not all(math.isfinite(value) for value in coeffs.values()):
+        raise ValueError(f"the {R_COEFFICIENTS_KEY} detector parameters hold a non-finite term")
+    if coeffs["rms_px"] <= 0:
+        raise ValueError(f"the {R_COEFFICIENTS_KEY} detector parameters need a positive rms_px")
+    return coeffs
+
+
+def _rotator_terms(scienceAngleDeg, calibrationAngleDeg):
+    """*the change in cos and sin of the rotator angle between the science and calibration frames*"""
+    scienceAngle = math.radians(scienceAngleDeg)
+    calibrationAngle = math.radians(calibrationAngleDeg)
+    return (
+        math.cos(scienceAngle) - math.cos(calibrationAngle),
+        math.sin(scienceAngle) - math.sin(calibrationAngle),
+    )
+
+
+def predict_r_detector_shift(deltaIpx, scienceAngleDeg, calibrationAngleDeg, coeffs):
+    """*predict the r detector shift from the i shift and the two rotator angles*
+
+    **Key Arguments:**
+
+    - ``deltaIpx`` -- the measured i-order detector shift (px, science minus calibration)
+    - ``scienceAngleDeg`` -- the science-frame rotator angle (degrees)
+    - ``calibrationAngleDeg`` -- the calibration-frame rotator angle (degrees)
+    - ``coeffs`` -- the ``r-from-i-transfer`` coefficients, ``{"i": ..., "cos": ..., "sin": ..., "rms_px": ...}``
+
+    **Return:**
+
+    - ``shiftPx`` -- the predicted r detector shift in px
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.ug_wavelength_transfer import predict_r_detector_shift
+    shiftPx = predict_r_detector_shift(0.5, -19.8, 0.0, coeffs)
+    ```
+    """
+    deltaCos, deltaSin = _rotator_terms(scienceAngleDeg, calibrationAngleDeg)
+    return coeffs["i"] * deltaIpx + coeffs["cos"] * deltaCos + coeffs["sin"] * deltaSin
+
+
+def combine_r_shift_px(measuredPx, measuredSigmaPx, predictedPx, predictionSigmaPx):
+    """*combine the measured and predicted r shifts by inverse variance*
+
+    **Key Arguments:**
+
+    - ``measuredPx`` -- the r shift measured from the sky lines (px)
+    - ``measuredSigmaPx`` -- its uncertainty (px), floored at ``MIN_MEASURED_SIGMA_PX``
+    - ``predictedPx`` -- the r shift predicted from i and the rotator angle (px)
+    - ``predictionSigmaPx`` -- the model's rms (px)
+
+    **Return:**
+
+    - ``shiftPx`` -- the inverse-variance weighted mean (px)
+    """
+    weightMeasured = 1 / max(measuredSigmaPx, MIN_MEASURED_SIGMA_PX) ** 2
+    weightPredicted = 1 / predictionSigmaPx**2
+    return (weightMeasured * measuredPx + weightPredicted * predictedPx) / (weightMeasured + weightPredicted)
 
 
 def usable_rotator_angle(header, kw):
@@ -197,10 +297,23 @@ def detector_px_to_nm_shift(shiftPx, dispersionNmPerPx):
     return -dispersionNmPerPx * shiftPx
 
 
+def _order_guard_reason(order, stats):
+    """*why an r/i order's sky shift cannot drive a model, or None if its guards pass*"""
+    if stats is None:
+        return f"order {order}: no sky shift"
+    if stats["nLines"] < MIN_MATCHED_LINES[order]:
+        return f"order {order}: {stats['nLines']} sky lines (min {MIN_MATCHED_LINES[order]})"
+    scatter = stats["scatterPx"]
+    if not math.isfinite(scatter) or scatter > MAX_SHIFT_SCATTER_PX:
+        return f"order {order}: shift scatter {scatter:.2f} px (max {MAX_SHIFT_SCATTER_PX})"
+    return None
+
+
 def ug_skip_reason(orderStats, scienceAngleDeg):
     """*why the u/g model must not be applied, or None if every guard passes*
 
-    A guard failure never fails the recipe: u and g are then left unshifted and the reason is logged.
+    A guard failure never fails the recipe: u and g are then left unshifted and the reason is logged. An r order whose
+    shift came from the i order (``"transferred": True``) has no sky-line guards of its own.
 
     **Key Arguments:**
 
@@ -215,13 +328,31 @@ def ug_skip_reason(orderStats, scienceAngleDeg):
     """
     for order in MEASURED_ORDERS:
         stats = orderStats.get(order)
-        if stats is None:
-            return f"order {order}: no sky shift"
-        if stats["nLines"] < MIN_MATCHED_LINES[order]:
-            return f"order {order}: {stats['nLines']} sky lines (min {MIN_MATCHED_LINES[order]})"
-        scatter = stats["scatterPx"]
-        if not math.isfinite(scatter) or scatter > MAX_SHIFT_SCATTER_PX:
-            return f"order {order}: shift scatter {scatter:.2f} px (max {MAX_SHIFT_SCATTER_PX})"
+        if stats is not None and stats.get("transferred"):
+            continue
+        reason = _order_guard_reason(order, stats)
+        if reason is not None:
+            return reason
+    if scienceAngleDeg is None:
+        return "no usable science ABSROT"
+    return None
+
+
+def r_prediction_skip_reason(iStats, scienceAngleDeg):
+    """*why the r shift must not be predicted from i, or None if every guard passes*
+
+    **Key Arguments:**
+
+    - ``iStats`` -- the i-order sky-tuning statistics, ``{"nLines": int, "scatterPx": float}``, or *None*
+    - ``scienceAngleDeg`` -- the usable science rotator angle in degrees, or *None*
+
+    **Return:**
+
+    - ``reason`` -- a short reason (it fits a FITS header comment), or *None*
+    """
+    reason = _order_guard_reason(VIS_I_ORDER, iStats)
+    if reason is not None:
+        return reason
     if scienceAngleDeg is None:
         return "no usable science ABSROT"
     return None
