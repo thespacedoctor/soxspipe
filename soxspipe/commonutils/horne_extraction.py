@@ -10,7 +10,7 @@ Date Created
 """
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from .base_util import base_util
 from .extraction_notes import extraction_note_logger, format_extraction_notes
@@ -20,6 +20,14 @@ if TYPE_CHECKING:
     import pandas as pd
 
 os.environ["TERM"] = "vt100"
+
+
+class profile_clip_cap_rows(NamedTuple):
+    """Slit rows of one order that stopped at the profile clipping iteration limit while still clipping."""
+
+    refitted: int
+    kept: int
+
 
 # WIDTH IN COLUMNS OVER WHICH THE LOCAL FRACTION OF USABLE PIXELS IS MEASURED IN EACH SLIT ROW
 PROFILE_SUPPORT_WINDOW = 51
@@ -2227,7 +2235,7 @@ def extract_single_order(
             crossDispersionSlicesDF=crossDispersionSlicesDF, orderRectifiedImages=orderRectifiedImages
         )
     else:
-        extractions = _extract_optimal_order(
+        extractions, capRows = _extract_optimal_order(
             crossDispersionSlicesDF=crossDispersionSlicesDF,
             orderRectifiedImages=orderRectifiedImages,
             slitHalfLength=slitHalfLength,
@@ -2238,6 +2246,7 @@ def extract_single_order(
             order=order,
             debug=debug,
         )
+        _log_profile_clip_cap(log=funclog, order=order, clippingIterationLimit=clippingIterationLimit, capRows=capRows)
 
     if "skyFlux" not in extractions.columns:
         extractions["skyFlux"] = np.nan
@@ -2274,12 +2283,14 @@ def _extract_optimal_order(
     **Return:**
 
     - ``extractions`` -- the order's slices dataframe with the optimal and boxcar extraction columns added
+    - ``capRows`` -- a ``profile_clip_cap_rows`` count of the slit rows that stopped at the profile clipping iteration
+      limit while still clipping. The caller logs it; this function logs nothing
     """
     import matplotlib.pyplot as plt
 
     # 2) DETERMINING LOW-ORDER POLYNOMIALS FOR FITTING THE PROFILE ALONG THE WAVELENGTH AXIS - FITTING OF THE FRACTIONAL FLUX
     # ITERATE FIRST PIXEL IN EACH SLICE AND THEN MOVE TO NEXT
-    crossDispersionSlicesDF, orderRectifiedImages = fit_object_profile(
+    crossDispersionSlicesDF, orderRectifiedImages, capRows = fit_object_profile(
         crossDispersionSlicesDF=crossDispersionSlicesDF,
         orderRectifiedImages=orderRectifiedImages,
         slitHalfLength=slitHalfLength,
@@ -2302,8 +2313,31 @@ def _extract_optimal_order(
     if debug:
         plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
 
-    return compute_extractions(
+    extractions = compute_extractions(
         crossDispersionSlicesDF=crossDispersionSlicesDF, orderRectifiedImages=orderRectifiedImages, order=order
+    )
+    return extractions, capRows
+
+
+def _log_profile_clip_cap(log, order: int, clippingIterationLimit: int, capRows: profile_clip_cap_rows) -> None:
+    """*log, once for the order, how many slit rows stopped at the profile clipping iteration limit*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``order`` -- the order number
+    - ``clippingIterationLimit`` -- iteration limit for the profile clipping
+    - ``capRows`` -- counts of slit rows that hit the limit while still clipping, as ``refitted`` and ``kept``
+
+    Logs nothing when no row hit the limit.
+    """
+    totalRows = capRows.refitted + capRows.kept
+    if not totalRows:
+        return
+    log.info(
+        f"fit_object_profile: order {order}: iteration limit of {clippingIterationLimit} reached with points still "
+        f"being clipped in {totalRows} slit rows; {capRows.refitted} refitted to the surviving points, "
+        f"{capRows.kept} kept their last fit because too few points survived"
     )
 
 
@@ -2541,10 +2575,36 @@ def fit_object_profile(
     debug,
     plt,
 ):
+    """*fit the object profile of one order along the dispersion axis, row by row*
+
+    **Key Arguments:**
+
+    - ``crossDispersionSlicesDF`` -- the order's cross-dispersion slices dataframe. Gains an ``objectProfile`` column
+    - ``orderRectifiedImages`` -- the order's rectified images. Gains the ``objectProfile`` and ``unsupported`` layers
+    - ``slitHalfLength`` -- half-length of the extraction aperture in detector pixels
+    - ``clippingSigma`` -- sigma used to clip outliers when fitting the object profile
+    - ``clippingIterationLimit`` -- iteration limit for the profile clipping
+    - ``hornePolyOrder`` -- order of the polynomial fitted to each slit row along the dispersion axis
+    - ``axisB`` -- the cross-dispersion axis
+    - ``order`` -- the order number
+    - ``debug`` -- plot each row's fit. Default *False*
+    - ``plt`` -- matplotlib pyplot module
+
+    **Return:**
+
+    - ``crossDispersionSlicesDF`` -- the slices dataframe with the object profile added
+    - ``orderRectifiedImages`` -- the rectified images with the object profile added
+    - ``capRows`` -- a ``profile_clip_cap_rows`` count of the slit rows that stopped at ``clippingIterationLimit`` while
+      still clipping: ``refitted`` to the surviving points, or ``kept`` at their last fit because too few points
+      survived. The function itself logs nothing, since a message per row would fire thousands of times
+    """
     import numpy as np
     from astropy.stats import sigma_clip
 
     crossSlitProfiles = []
+    # SLIT ROWS THAT STOPPED AT THE CLIPPING ITERATION LIMIT WHILE STILL CLIPPING
+    refittedRows = 0
+    keptRows = 0
 
     shape = orderRectifiedImages["fluxRaw"].shape
     ww = shape[1]
@@ -2605,8 +2665,12 @@ def fit_object_profile(
 
         # A CAP EXIT WITH POINTS STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE POINTS JUST REJECTED.
         # REFIT ONLY WHEN THE SURVIVORS CONSTRAIN EVERY COEFFICIENT; OTHERWISE KEEP THE LAST FIT
-        if len(coeff) and clipped_count > 0 and len(dispersionAxisPixels) > hornePolyOrder:
-            coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
+        if len(coeff) and clipped_count > 0:
+            if len(dispersionAxisPixels) > hornePolyOrder:
+                coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
+                refittedRows += 1
+            else:
+                keptRows += 1
 
         # GENERATE THE FINAL FITTING PROFILE FOR THIS SLIT POSITION
         if len(coeff):
@@ -2648,7 +2712,7 @@ def fit_object_profile(
         orderRectifiedImages["objectProfile"] = crossDispersionProfile / crossDispersionProfileSums[np.newaxis :]
     crossDispersionSlicesDF["objectProfile"] = [x for x in orderRectifiedImages["objectProfile"].T]
 
-    return crossDispersionSlicesDF, orderRectifiedImages
+    return crossDispersionSlicesDF, orderRectifiedImages, profile_clip_cap_rows(refittedRows, keptRows)
 
 
 def _unsupported_pixel_mask(fluxRaw, mask):
