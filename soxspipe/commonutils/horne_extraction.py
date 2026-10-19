@@ -2368,7 +2368,8 @@ def compute_boxcar_extractions(crossDispersionSlicesDF, orderRectifiedImages):
 
     **Return:**
 
-    - ``crossDispersionSlicesDF`` -- the slices dataframe with the extracted columns added, sorted by wavelength.
+    - ``crossDispersionSlicesDF`` -- a filtered copy of the slices dataframe with the extracted columns added, sorted by
+      wavelength. The input dataframe is not modified.
       ``extractedFluxOptimal`` is a copy of ``extractedFluxBoxcarRobust``, and ``varianceSpectrum`` is the sum of the
       variance over the same unmasked pixels
     """

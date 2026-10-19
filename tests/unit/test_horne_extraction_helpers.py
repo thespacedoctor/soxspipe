@@ -17,6 +17,7 @@ from astropy.nddata import CCDData, StdDevUncertainty
 from soxspipe.commonutils.extraction_notes import extraction_note_logger
 from soxspipe.commonutils.horne_extraction import (
     _slit_edge_truncated_columns,
+    _sort_and_clean_extractions,
     _unsupported_pixel_mask,
     compute_boxcar_extractions,
     compute_extractions,
@@ -2001,6 +2002,21 @@ def test_compute_boxcar_extractions_leaves_the_callers_slices_frame_untouched() 
 
     pd.testing.assert_frame_equal(slices, before)
     assert result.index.tolist() == [1, 3, 0]
+
+
+def test_sort_and_clean_extractions_returns_a_filtered_sorted_copy_and_leaves_its_input_untouched() -> None:
+    columns = ["pixelScaleNm", "extractedFluxOptimal", "snr", "varianceSpectrum", "extractedFluxBoxcarRobust"]
+    slices = pd.DataFrame({"wavelengthMean": [503.0, 0.0, 501.0, 502.0, 504.0]})
+    for column in columns:
+        slices[column] = 1.0
+    slices.loc[4, "snr"] = np.nan
+    before = slices.copy(deep=True)
+
+    result = _sort_and_clean_extractions(slices)
+
+    pd.testing.assert_frame_equal(slices, before)
+    assert result.index.tolist() == [2, 3, 0]
+    np.testing.assert_array_equal(result["wavelengthMean"], [501.0, 502.0, 503.0])
 
 
 def test_mask_generation_calculates_pixel_scale_and_propagates_bad_pixels() -> None:
