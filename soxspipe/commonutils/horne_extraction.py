@@ -2310,6 +2310,9 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
     """Compute optimal and boxcar extracted spectra from cross-dispersion slices."""
     import numpy as np
 
+    # WORK ON A COPY SO THE CALLER'S SLICES FRAME IS NEVER MODIFIED
+    crossDispersionSlicesDF = crossDispersionSlicesDF.copy()
+
     # CALCULATE HORNE 86 NUMERATOR (EQU 8)
     orderRectifiedImages["horneNumerator"] = np.ma.masked_array(
         orderRectifiedImages["fluxRaw"] * orderRectifiedImages["objectProfile"] / orderRectifiedImages["variance"],
@@ -2371,6 +2374,8 @@ def compute_boxcar_extractions(crossDispersionSlicesDF, orderRectifiedImages):
     """
     import numpy as np
 
+    # WORK ON A COPY SO THE CALLER'S SLICES FRAME IS NEVER MODIFIED
+    crossDispersionSlicesDF = crossDispersionSlicesDF.copy()
     mask = orderRectifiedImages["mask"]
 
     wavelengthMasked = np.ma.masked_array(orderRectifiedImages["wavelength"], mask=mask)
@@ -2398,14 +2403,14 @@ def _sort_and_clean_extractions(crossDispersionSlicesDF):
 
     **Key Arguments:**
 
-    - ``crossDispersionSlicesDF`` -- the extracted slices. This dataframe is sorted in place by wavelength
+    - ``crossDispersionSlicesDF`` -- the extracted slices. This dataframe is not modified
 
     **Return:**
 
     - ``crossDispersionSlicesDF`` -- a filtered copy, without zero-wavelength or incomplete slices
     """
     # SORT BY COLUMN NAME
-    crossDispersionSlicesDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True, kind="stable")
+    crossDispersionSlicesDF = crossDispersionSlicesDF.sort_values(["wavelengthMean"], ascending=[True], kind="stable")
 
     # REMOVE 0 WAVELENGTH (A LOCAL COPY, SO THE IN-PLACE dropna BELOW NEVER TARGETS A SLICE)
     crossDispersionSlicesDF = crossDispersionSlicesDF.loc[crossDispersionSlicesDF["wavelengthMean"] > 0].copy()

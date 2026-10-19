@@ -1980,6 +1980,29 @@ def test_compute_extractions_keeps_its_columns_and_values_after_sharing_the_sort
     np.testing.assert_allclose(result["varianceSpectrum"], [12.8, 32.0 / 3.0, 32.0 / 3.0])
 
 
+def test_compute_extractions_leaves_the_callers_slices_frame_untouched() -> None:
+    slices, images = _boxcar_images()
+    images["objectProfile"] = np.tile(np.array([[0.25], [0.5], [0.25]]), (1, 4))
+    before = slices.copy(deep=True)
+
+    result = compute_extractions(slices, images, order=12)
+
+    pd.testing.assert_frame_equal(slices, before)
+    assert result.index.tolist() == [1, 3, 0]
+    np.testing.assert_array_equal(result["wavelengthMean"], [501.0, 502.0, 503.0])
+    np.testing.assert_allclose(result["extractedFluxOptimal"], [80.0, 60.0, 40.0])
+
+
+def test_compute_boxcar_extractions_leaves_the_callers_slices_frame_untouched() -> None:
+    slices, images = _boxcar_images()
+    before = slices.copy(deep=True)
+
+    result = compute_boxcar_extractions(slices, images)
+
+    pd.testing.assert_frame_equal(slices, before)
+    assert result.index.tolist() == [1, 3, 0]
+
+
 def test_mask_generation_calculates_pixel_scale_and_propagates_bad_pixels() -> None:
     slices = pd.DataFrame(index=range(3))
     images = {
