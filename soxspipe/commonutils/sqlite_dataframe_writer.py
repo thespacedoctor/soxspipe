@@ -36,7 +36,8 @@ def _write_transaction(conn):
     `conn.commit()` when `to_sql` finishes: that is a no-op on an `autocommit=True` connection, and on a legacy one
     it commits this transaction early, so `conn.in_transaction` is checked before the final `COMMIT`.
 
-    A `BaseException` (such as `KeyboardInterrupt`) rolls back this transaction and propagates at once.
+    Any failure in the block or in the final `COMMIT` rolls back this transaction and propagates. A `BaseException`
+    (such as `KeyboardInterrupt`) is never retried by the caller.
 
     **Key Arguments:**
 
@@ -54,12 +55,14 @@ def _write_transaction(conn):
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield
+        # pandas may already have committed on a legacy connection, so COMMIT only an open transaction
+        if conn.in_transaction:
+            conn.execute("COMMIT")
     except BaseException:
+        # A FAILED COMMIT (BUSY, INTERRUPT) ALSO LANDS HERE, SO THE WRITE LOCK IS NEVER LEFT HELD
         if conn.in_transaction:
             conn.execute("ROLLBACK")
         raise
-    if conn.in_transaction:
-        conn.execute("COMMIT")
 
 
 def _delete_rows(conn, log, tableName, whereColumn=None, whereValues=()):
@@ -73,7 +76,8 @@ def _delete_rows(conn, log, tableName, whereColumn=None, whereValues=()):
         try:
             c.execute(sqlQuery + ";", list(whereValues))
         except sqlite3.OperationalError as e:
-            if f"no such table: {tableName}" not in str(e):
+            # THE QUERY NAMES THE TABLE UNQUALIFIED, SO SQLITE REPORTS EXACTLY `no such table: <name>`
+            if str(e) != f"no such table: {tableName}":
                 raise
             log.debug(f"_delete_rows: `{tableName}` does not exist yet, nothing to delete: {e}")
 
@@ -105,20 +109,23 @@ def write_dataframe_to_sqlite(
     - ``method`` -- the `DataFrame.to_sql` insertion method. Default: None (one `executemany`)
     - ``maxAttempts`` -- how many times to try before re-raising the last error. Default: `MAX_ATTEMPTS`
     - ``deleteWhereIn`` -- a ``(column, values)`` pair: delete the rows whose column value is in ``values``, in the same
-      transaction, before the insert. The column name is validated and the values are bound. Ignored when
-      ``replace`` is True. Default: None
+      transaction, before the insert. The column name is validated and the values are bound. Cannot be combined
+      with ``replace``. Default: None
 
     **Raises:**
 
     - The error from the final attempt if every attempt fails.
     - ``SqliteTransactionOpenError`` at once, without retrying, if the connection is already inside a transaction.
+    - ``ValueError`` if both ``replace`` and ``deleteWhereIn`` are given.
     - ``UnsafeSqlIdentifierError`` if ``tableName`` fails the safe-identifier grammar.
     """
     # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
     # THE SAFE-IDENTIFIER GRAMMAR ONCE HERE, BEFORE ANY SQL INTERPOLATES IT.
     tableName = validate_sql_identifier(tableName, "table name")
+    if replace and deleteWhereIn:
+        raise ValueError("`replace` and `deleteWhereIn` cannot be combined: replace already deletes every row")
     whereColumn, whereValues = None, ()
-    if deleteWhereIn and not replace:
+    if deleteWhereIn:
         whereColumn = validate_sql_identifier(deleteWhereIn[0], "delete column name")
         whereValues = list(dict.fromkeys(deleteWhereIn[1]))
 

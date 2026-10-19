@@ -19,7 +19,7 @@ import pytest
 
 from soxspipe.commonutils.data_organiser import data_organiser
 from soxspipe.commonutils.sql_identifiers import UnsafeSqlIdentifierError
-from soxspipe.commonutils.sqlite_dataframe_writer import SqliteTransactionOpenError
+from soxspipe.commonutils.sqlite_dataframe_writer import SqliteTransactionOpenError, _delete_rows
 from soxspipe.recipes.base_recipe import base_recipe
 
 pytestmark = pytest.mark.unit
@@ -379,3 +379,101 @@ def test_delete_that_names_a_different_missing_table_is_not_swallowed(connection
     # ACT / ASSERT
     with pytest.raises(sqlite3.OperationalError, match="vanished"):
         owner._dataframe_to_sqlite(_frame(), "rows", replace=True)
+
+
+class CommitFaultConnection(sqlite3.Connection):
+    """A connection whose next `COMMIT` statements raise the queued errors, once each."""
+
+    commitErrors: list[BaseException]
+
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
+        if sql == "COMMIT" and self.commitErrors:
+            raise self.commitErrors.pop(0)
+        return super().execute(sql, *args)
+
+
+@pytest.fixture
+def commit_fault_connection(databasePath: Path) -> Iterator[CommitFaultConnection]:
+    """Yield an autocommit connection whose `COMMIT` can be made to fail."""
+    conn = sqlite3.connect(databasePath, autocommit=True, factory=CommitFaultConnection)
+    conn.commitErrors = []
+    yield conn
+    conn.close()
+
+
+def test_commit_that_fails_once_is_rolled_back_and_the_retry_writes_the_rows_once(
+    commit_fault_connection, write, databasePath, sleep_calls
+) -> None:
+    # ARRANGE
+    write(commit_fault_connection, _frame("old", 2))
+    commit_fault_connection.commitErrors = [sqlite3.OperationalError("database is locked")]
+
+    # ACT
+    write(commit_fault_connection, _frame(), replace=True)
+
+    # ASSERT
+    assert len(sleep_calls) == 1
+    assert commit_fault_connection.in_transaction is False
+    assert _labels(commit_fault_connection) == sorted(f"new{i}" for i in range(ROW_COUNT))
+
+
+def test_keyboard_interrupt_during_commit_rolls_back_and_is_not_retried(
+    commit_fault_connection, write, sleep_calls
+) -> None:
+    # ARRANGE
+    write(commit_fault_connection, _frame("old", 2))
+    commit_fault_connection.commitErrors = [KeyboardInterrupt()]
+
+    # ACT
+    with pytest.raises(KeyboardInterrupt):
+        write(commit_fault_connection, _frame(), replace=True)
+
+    # ASSERT
+    assert sleep_calls == []
+    assert commit_fault_connection.in_transaction is False
+    assert _labels(commit_fault_connection) == ["old0", "old1"]
+
+
+class _MissingTableConnection:
+    """A stand-in connection whose every statement fails with a fixed `no such table` message."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def cursor(self) -> _MissingTableConnection:
+        return self
+
+    def execute(self, sql: str, params: Any = ()) -> None:
+        raise sqlite3.OperationalError(self.message)
+
+    def close(self) -> None:
+        return None
+
+
+def test_delete_that_names_a_table_sharing_the_requested_name_prefix_is_not_swallowed(log) -> None:
+    # ARRANGE
+    stub = _MissingTableConnection("no such table: quality_control_old")
+
+    # ACT / ASSERT
+    with pytest.raises(sqlite3.OperationalError, match="quality_control_old"):
+        _delete_rows(stub, log, "quality_control")
+
+
+def test_delete_of_the_requested_missing_table_is_treated_as_already_empty(log) -> None:
+    # ARRANGE
+    stub = _MissingTableConnection("no such table: quality_control")
+
+    # ACT / ASSERT
+    _delete_rows(stub, log, "quality_control")
+
+
+def test_replace_combined_with_delete_where_in_is_rejected(connection, log, sleep_calls) -> None:
+    # ARRANGE
+    owner = base_recipe.__new__(base_recipe)
+    owner.log = log
+    owner.conn = connection
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="cannot be combined"):
+        owner._dataframe_to_sqlite(_frame(), "rows", replace=True, delete_where_in=("label", ["x"]))
+    assert sleep_calls == []
