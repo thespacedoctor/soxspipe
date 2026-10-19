@@ -16,11 +16,15 @@ PACKAGE_DIR = Path(soxspipe.__file__).parent
 REQUIRED_KEYS = {
     "bin_width_nm",
     "knot_spacing_nm",
+    "smoothing_penalty",
     "clip_sigma_low",
     "clip_sigma_high",
     "max_iteration",
     "min_bin_samples",
     "telluric_regions",
+    "telluric_wing_max_nm",
+    "telluric_wing_ref_nm",
+    "telluric_wing_threshold",
     "stellar_lines",
     "line_half_width_nm",
     "legacy_poly_order",
@@ -86,3 +90,41 @@ def test_a_missing_arm_block_resolves_to_the_packaged_defaults() -> None:
 
     # ASSERT
     assert set(resolved) == REQUIRED_KEYS
+
+
+@pytest.mark.parametrize("fileName", ["soxs_default_settings.yaml", "xsh_default_settings.yaml"])
+def test_the_smoothing_penalty_is_enabled_for_the_nir_arm_only(fileName: str) -> None:
+    # ARRANGE
+    settings = yaml.safe_load((PACKAGE_DIR / fileName).read_text())["soxs-response"]
+
+    # ACT
+    penalty = {arm: block["smoothing_penalty"] for arm, block in settings.items()}
+
+    # ASSERT
+    assert penalty["nir"] > 0
+    assert all(value == 0 for arm, value in penalty.items() if arm != "nir")
+
+
+@pytest.mark.parametrize("fileName", ["soxs_default_settings.yaml", "xsh_default_settings.yaml"])
+def test_wing_growth_is_enabled_for_the_nir_arm_only(fileName: str) -> None:
+    # ARRANGE
+    settings = yaml.safe_load((PACKAGE_DIR / fileName).read_text())["soxs-response"]
+
+    # ACT
+    wingReach = {arm: block["telluric_wing_max_nm"] for arm, block in settings.items()}
+
+    # ASSERT
+    assert wingReach["nir"] > 0
+    assert all(reach == 0 for arm, reach in wingReach.items() if arm != "nir")
+
+
+@pytest.mark.parametrize("fileName", ["soxs_default_settings.yaml", "xsh_default_settings.yaml"])
+def test_the_nir_telluric_regions_cover_the_925_to_980_nm_water_band(fileName: str) -> None:
+    # ARRANGE
+    settings = yaml.safe_load((PACKAGE_DIR / fileName).read_text())["soxs-response"]
+
+    # ACT
+    regions = settings["nir"]["telluric_regions"]
+
+    # ASSERT
+    assert any(lower <= 925 and upper >= 980 for lower, upper in regions)

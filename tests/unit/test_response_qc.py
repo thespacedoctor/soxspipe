@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -75,6 +77,39 @@ def test_clipped_bins_raise_the_clip_fraction() -> None:
     expected = 1.0 - fit.keptMask.sum() / fit.keptMask.size
     assert measures["clipFrac"] == pytest.approx(expected)
     assert measures["clipFrac"] > 0.0
+
+
+def test_telluric_wing_bins_do_not_count_as_clipped_bins() -> None:
+    # ARRANGE: TEN BINS, FOUR OF THEM WING (DROPPED BY DESIGN) AND TWO OF THE SIX OTHERS CLIPPED
+    binWave = np.arange(10.0) * 5.0 + 400.0
+    wingMask = np.array([True, True, True, True, False, False, False, False, False, False])
+    keptMask = np.array([False, False, False, False, True, False, True, True, False, True])
+    fit = SimpleNamespace(
+        wave=np.array([400.0, 450.0]), binWave=binWave, keptMask=keptMask, wingMask=wingMask, mask=np.zeros(2, bool)
+    )
+
+    # ACT
+    measures = measure_response_qcs(fit, [])
+
+    # ASSERT: 2 CLIPPED OF 6 NON-WING BINS
+    assert measures["clipFrac"] == pytest.approx(1.0 / 3.0)
+
+
+def test_a_fit_with_only_wing_bins_has_a_clip_fraction_of_zero() -> None:
+    # ARRANGE
+    fit = SimpleNamespace(
+        wave=np.array([400.0, 450.0]),
+        binWave=np.array([400.0, 405.0]),
+        keptMask=np.array([False, False]),
+        wingMask=np.array([True, True]),
+        mask=np.zeros(2, bool),
+    )
+
+    # ACT
+    measures = measure_response_qcs(fit, [])
+
+    # ASSERT
+    assert measures["clipFrac"] == 0.0
 
 
 def test_selfcal_residual_is_the_median_calibrated_over_catalogue_flux_minus_one_and_skips_empty_bands() -> None:

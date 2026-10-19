@@ -21,6 +21,12 @@ BIN_ERROR_FLOOR = 1e-3
 # FLOOR ON THE ROBUST SIGMA OF ERROR-SCALED RESIDUALS, SO OVERESTIMATED BIN ERRORS DO NOT TIGHTEN THE CLIP
 SCALED_SIGMA_FLOOR = 1.0
 MAD_TO_SIGMA = 1.4826
+# FEWEST REFERENCE BINS THAT DEFINE THE STRAIGHT-LINE CONTINUUM BESIDE A TELLURIC REGION
+WING_MIN_REFERENCE_BINS = 3
+# A WING BIN MUST SIT THIS MANY BIN ERRORS ABOVE THE CONTINUUM, WHATEVER THE FIXED THRESHOLD
+WING_ERROR_MULTIPLE = 3.0
+# THE WING WALK STOPS AT A STEP LARGER THAN THIS MANY MEDIAN BIN SPACINGS (A HOLE IN THE BINS)
+WING_MAX_STEP_BINS = 2
 
 
 class _ResponseFitConvergenceError(Exception):
@@ -125,6 +131,128 @@ def bin_log_response(wave: Any, ratio: Any, mask: Any, binWidth: float, minSampl
     return np.array(binWave), np.array(binLog), np.array(binErr)
 
 
+def _in_any_region(binWave: Any, telluricRegions: Any) -> Any:
+    """Return a mask of the bins that lie inside any telluric region."""
+    import numpy as np
+
+    inRegion = np.zeros(binWave.size, dtype=bool)
+    for lower, upper in telluricRegions:
+        inRegion |= (binWave >= lower) & (binWave <= upper)
+    return inRegion
+
+
+def _wing_side_mask(
+    binWave: Any,
+    binLog: Any,
+    binErr: Any,
+    isUsable: Any,
+    distance: Any,
+    wingLimits: tuple[float, float, float, float],
+    sideLabel: str,
+    log: Any,
+) -> Any:
+    """Return the wing bins on one side of a region edge, by walking outward from the edge over raised bins.
+
+    ``distance`` is each bin's distance (nm) outward from the edge, so it is positive on the outer side. The
+    reference window and the wing reach are measured in that distance. ``wingLimits`` holds the wing reach, the
+    reference width, the rise threshold and the largest step (nm) the walk may take between neighbouring bins.
+    """
+    import numpy as np
+
+    wingMaxNm, wingRefNm, wingThreshold, maxStepNm = wingLimits
+    wingMask = np.zeros(binWave.size, dtype=bool)
+    # THE REFERENCE WINDOW STARTS WHERE THE WING REACH ENDS
+    isReference = isUsable & (distance > wingMaxNm) & (distance <= wingMaxNm + wingRefNm)
+    if np.count_nonzero(isReference) < WING_MIN_REFERENCE_BINS:
+        if log is not None:
+            log.debug(
+                f"Skipped telluric wing growth on the {sideLabel}: fewer than {WING_MIN_REFERENCE_BINS} reference bins."
+            )
+        return wingMask
+
+    coefficients = np.polyfit(binWave[isReference], binLog[isReference], 1, w=1.0 / binErr[isReference])
+    # WALK OVER EVERY BIN IN REACH, USABLE OR NOT, SO A HOLE OR AN UNUSABLE BIN ENDS THE CONTIGUOUS WING
+    inReach = np.flatnonzero((distance > 0) & (distance <= wingMaxNm))
+    previousDistance = 0.0
+    for index in inReach[np.argsort(distance[inReach])]:
+        if not isUsable[index] or distance[index] - previousDistance > maxStepNm:
+            break
+        excess = binLog[index] - np.polyval(coefficients, binWave[index])
+        if not excess > max(wingThreshold, WING_ERROR_MULTIPLE * binErr[index]):
+            break
+        wingMask[index] = True
+        previousDistance = distance[index]
+    return wingMask
+
+
+def grow_telluric_wings(
+    binWave: Any,
+    binLog: Any,
+    binErr: Any,
+    telluricRegions: Any,
+    wingMaxNm: float,
+    wingRefNm: float,
+    wingThreshold: float,
+    log: Any = None,
+) -> Any:
+    """*flag the bins in the raised wings just outside each telluric region*
+
+    Absorption raises the response in the wings of a masked band. For each side of each region, a weighted straight
+    line is fitted to the bins in a reference window beyond the reach of the wing. Walking outward from the region
+    edge, a bin is flagged while it sits above that continuum by more than the larger of ``wingThreshold`` and
+    three times its own error. The walk stops at the first bin that is not raised, at the first unusable bin, and at
+    a hole in the bins wider than twice the median bin spacing. Only positive excursions count.
+
+    **Key Arguments:**
+
+    - ``binWave`` -- bin wavelengths (nm)
+    - ``binLog`` -- median log response of each bin
+    - ``binErr`` -- error of each bin
+    - ``telluricRegions`` -- list of ``[lower, upper]`` wavelength ranges (nm) that were masked
+    - ``wingMaxNm`` -- the furthest distance (nm) from a region edge a wing can reach. Zero or less disables growth
+    - ``wingRefNm`` -- width (nm) of the reference window that starts where the wing reach ends
+    - ``wingThreshold`` -- minimum rise (log units) above the continuum for a bin to count as wing
+    - ``log`` -- optional logger; a side with fewer than three reference bins is skipped with a debug message
+
+    **Return:**
+
+    - ``wingMask`` -- boolean array over the bins, True for wing bins to drop from the fit
+    """
+    import numpy as np
+
+    binWave = np.asarray(binWave, dtype=float)
+    binLog = np.asarray(binLog, dtype=float)
+    binErr = np.asarray(binErr, dtype=float)
+    wingMask = np.zeros(binWave.size, dtype=bool)
+    if wingMaxNm <= 0:
+        return wingMask
+
+    finiteWave = np.sort(binWave[np.isfinite(binWave)])
+    maxStepNm = WING_MAX_STEP_BINS * float(np.median(np.diff(finiteWave))) if finiteWave.size > 1 else np.inf
+    with np.errstate(invalid="ignore"):
+        isUsable = (
+            np.isfinite(binWave)
+            & np.isfinite(binLog)
+            & np.isfinite(binErr)
+            & (binErr > 0)
+            & ~_in_any_region(binWave, telluricRegions)
+        )
+        for lower, upper in telluricRegions:
+            sides = (("blue side", lower - binWave), ("red side", binWave - upper))
+            for sideName, distance in sides:
+                wingMask |= _wing_side_mask(
+                    binWave,
+                    binLog,
+                    binErr,
+                    isUsable,
+                    distance,
+                    (wingMaxNm, wingRefNm, wingThreshold, maxStepNm),
+                    f"{sideName} of the {lower:.0f}-{upper:.0f} nm region",
+                    log,
+                )
+    return wingMask
+
+
 def _interior_knots(x: Any, knotSpacing: float) -> Any:
     """Return a regular knot grid, keeping only knots with data on both sides within half a spacing."""
     import numpy as np
@@ -139,8 +267,8 @@ def _interior_knots(x: Any, knotSpacing: float) -> Any:
     return np.array(keep, dtype=float)
 
 
-def _fit_spline(binWave: Any, binLog: Any, binErr: Any, keep: Any, knotSpacing: float) -> Any:
-    """Fit the weighted least-squares cubic spline to the kept bins."""
+def _fit_lsq_spline(binWave: Any, binLog: Any, binErr: Any, keep: Any, knotSpacing: float) -> Any:
+    """Fit the weighted least-squares cubic spline to the kept bins, with interior knots only where data are."""
     from scipy.interpolate import LSQUnivariateSpline
 
     x = binWave[keep]
@@ -156,6 +284,74 @@ def _fit_spline(binWave: Any, binLog: Any, binErr: Any, keep: Any, knotSpacing: 
         return LSQUnivariateSpline(x, binLog[keep], knots, w=1.0 / binErr[keep], k=SPLINE_DEGREE)
     except Exception as error:
         raise _ResponseFitConvergenceError(error) from error
+
+
+def _second_difference_matrix(knots: Any, spacing: float) -> Any:
+    """Return the matrix of second divided differences of the B-spline coefficients, on the Greville abscissae.
+
+    On a uniform grid this equals the ordinary second difference. The clamped boundary knots make the Greville
+    abscissae uneven at the ends, and the divided differences keep every straight line exactly unpenalised there.
+    Rows are scaled by ``spacing**2`` so the penalty strength does not depend on the knot spacing.
+    """
+    import numpy as np
+
+    greville = np.array(
+        [np.mean(knots[index + 1 : index + SPLINE_DEGREE + 1]) for index in range(len(knots) - SPLINE_DEGREE - 1)]
+    )
+    coefficientCount = greville.size
+    difference = np.zeros((coefficientCount - 2, coefficientCount))
+    for row in range(coefficientCount - 2):
+        lowerStep = greville[row + 1] - greville[row]
+        upperStep = greville[row + 2] - greville[row + 1]
+        scale = 2.0 * spacing**2 / (greville[row + 2] - greville[row])
+        difference[row, row] = scale / lowerStep
+        difference[row, row + 1] = -scale * (1.0 / lowerStep + 1.0 / upperStep)
+        difference[row, row + 2] = scale / upperStep
+    return difference
+
+
+def _fit_penalised_spline(binWave: Any, binLog: Any, binErr: Any, keep: Any, knotSpacing: float, penalty: float) -> Any:
+    """Fit a cubic P-spline to the kept bins: a regular knot grid and a second-difference penalty on the coefficients.
+
+    The penalty is ``penalty * median(w**2)``, so it is dimensionless. Where no bin constrains the curve, the penalty
+    leaves the coefficients, and so the log curve, close to a straight line.
+    """
+    import numpy as np
+    from scipy.interpolate import BSpline
+
+    x = binWave[keep]
+    if x.size < SPLINE_DEGREE + 1:
+        raise _ResponseFitConvergenceError(
+            ValueError(
+                f"Only {x.size} response bins remain for a cubic P-spline; too few bins to fit the response function."
+            )
+        )
+    if x.max() <= x.min():
+        raise _ResponseFitConvergenceError(
+            ValueError("All remaining response bins lie at one wavelength; cannot fit a cubic P-spline.")
+        )
+    try:
+        segmentCount = max(int(np.ceil((x.max() - x.min()) / knotSpacing)), 1)
+        edges = np.linspace(x.min(), x.max(), segmentCount + 1)
+        knots = np.concatenate([np.full(SPLINE_DEGREE, edges[0]), edges, np.full(SPLINE_DEGREE, edges[-1])])
+        design = BSpline.design_matrix(x, knots, SPLINE_DEGREE).toarray()
+        weights = 1.0 / binErr[keep]
+        difference = _second_difference_matrix(knots, edges[1] - edges[0])
+        # AUGMENTED SYSTEM [W B; SQRT(LAMBDA) D] C = [W Y; 0] AVOIDS SQUARING THE CONDITION NUMBER
+        penaltyRoot = np.sqrt(penalty * np.median(weights**2))
+        augmentedMatrix = np.vstack([weights[:, None] * design, penaltyRoot * difference])
+        augmentedTarget = np.concatenate([weights * binLog[keep], np.zeros(difference.shape[0])])
+        coefficients = np.linalg.lstsq(augmentedMatrix, augmentedTarget, rcond=None)[0]
+        return BSpline(knots, coefficients, SPLINE_DEGREE)
+    except (np.linalg.LinAlgError, ValueError) as error:
+        raise _ResponseFitConvergenceError(error) from error
+
+
+def _fit_spline(binWave: Any, binLog: Any, binErr: Any, keep: Any, knotSpacing: float, penalty: float = 0.0) -> Any:
+    """Fit the weighted cubic spline to the kept bins, penalised when ``penalty`` is above zero."""
+    if penalty > 0:
+        return _fit_penalised_spline(binWave, binLog, binErr, keep, knotSpacing, penalty)
+    return _fit_lsq_spline(binWave, binLog, binErr, keep, knotSpacing)
 
 
 def _clip_mask(
@@ -192,7 +388,7 @@ def _usable_bins(binWave: Any, binLog: Any, binErr: Any) -> tuple[Any, Any, Any,
 
 
 def _refit_after_iteration_cap(
-    binWave: Any, binLog: Any, binErr: Any, keep: Any, knotSpacing: float, maxIterations: int, log: Any
+    binWave: Any, binLog: Any, binErr: Any, keep: Any, knotSpacing: float, maxIterations: int, log: Any, penalty: float
 ) -> Any:
     """Refit the bins that survived the last clip, because the spline in hand predates it."""
     if log is not None:
@@ -200,7 +396,7 @@ def _refit_after_iteration_cap(
             f"The response function fit reached the iteration cap ({int(maxIterations)}) while still "
             f"rejecting bins; refitting the {int(keep.sum())} surviving bins."
         )
-    return _fit_spline(binWave, binLog, binErr, keep, knotSpacing)
+    return _fit_spline(binWave, binLog, binErr, keep, knotSpacing, penalty)
 
 
 def fit_log_spline(
@@ -212,8 +408,10 @@ def fit_log_spline(
     clipSigmaHigh: float,
     maxIterations: int,
     log: Any = None,
+    excludeMask: Any = None,
+    penalty: float = 0.0,
 ) -> tuple[Any, Any]:
-    """*fit the log response with a clipped cubic least-squares spline*
+    """*fit the log response with a clipped cubic spline*
 
     The returned spline always fits the returned kept bins. If the iteration cap is reached while the clipping is
     still changing, the spline is refitted on the surviving bins and a warning is logged.
@@ -223,32 +421,40 @@ def fit_log_spline(
     - ``binWave`` -- bin wavelengths (nm), increasing
     - ``binLog`` -- median log response of each bin
     - ``binErr`` -- error of each bin, used as ``1/err`` weights
-    - ``knotSpacing`` -- spacing (nm) of the regular interior knot grid
+    - ``knotSpacing`` -- spacing (nm) of the regular interior knot grid. With ``penalty`` above zero the knots are a
+      dense regular grid over the kept bins, with no filter on where data lie
     - ``clipSigmaLow`` -- bins this many robust sigma below the fit are clipped
     - ``clipSigmaHigh`` -- bins this many robust sigma above the fit are clipped
     - ``maxIterations`` -- maximum number of clipping iterations
     - ``log`` -- optional logger
+    - ``excludeMask`` -- optional boolean array over the input bins, True for bins to leave out of the fit from the
+      start (for example telluric wing bins)
+    - ``penalty`` -- dimensionless weight of a second-difference penalty on the spline coefficients. Zero fits the
+      plain least-squares spline; above zero fits a penalised spline that is close to a straight line in log where
+      no bins constrain it
 
     **Return:**
 
-    - ``spline`` -- the fitted log-response spline
+    - ``spline`` -- the fitted log-response spline, a ``LSQUnivariateSpline`` or, with a penalty, a ``BSpline``
     - ``keptMask`` -- boolean array over the input bins, True for bins used by the final fit
     """
     import numpy as np
 
     binWave, binLog, binErr, usable = _usable_bins(binWave, binLog, binErr)
+    if excludeMask is not None:
+        usable = usable & ~np.asarray(excludeMask, dtype=bool)
     keep = usable.copy()
     safeWave = np.where(usable, binWave, 0.0)
 
     for _ in range(max(int(maxIterations), 1)):
-        spline = _fit_spline(binWave, binLog, binErr, keep, knotSpacing)
+        spline = _fit_spline(binWave, binLog, binErr, keep, knotSpacing, penalty)
         newKeep = usable & _clip_mask(spline, safeWave, binLog, binErr, keep, clipSigmaLow, clipSigmaHigh)
         if np.array_equal(newKeep, keep):
             return spline, keep
         keep = newKeep
 
     # THE CAP WAS REACHED MID-REJECTION: THE SPLINE PREDATES THE LAST CLIP, SO REFIT THE SURVIVORS
-    spline = _refit_after_iteration_cap(binWave, binLog, binErr, keep, knotSpacing, maxIterations, log)
+    spline = _refit_after_iteration_cap(binWave, binLog, binErr, keep, knotSpacing, maxIterations, log, penalty)
     return spline, keep
 
 
@@ -325,12 +531,13 @@ class ResponseFit:
     keptMask: Any
     spline: Any
     fitRange: tuple[float, float]
+    wingMask: Any
 
     def __post_init__(self) -> None:
         """Replace each array field with a read-only copy, so the fit cannot be changed through any alias."""
         import numpy as np
 
-        for field in ("wave", "ratio", "mask", "binWave", "binLog", "keptMask"):
+        for field in ("wave", "ratio", "mask", "binWave", "binLog", "keptMask", "wingMask"):
             frozenArray = np.array(getattr(self, field))
             frozenArray.flags.writeable = False
             object.__setattr__(self, field, frozenArray)
@@ -369,6 +576,17 @@ def fit_response_curve(wave: Any, ratio: Any, fitSettings: Any, log: Any = None)
     binWave, binLog, binErr = bin_log_response(
         wave, ratio, mask, fitSettings["bin_width_nm"], fitSettings["min_bin_samples"]
     )
+    # SETTINGS WITHOUT THE WING KEYS (HAND-BUILT BLOCKS) FIT WITH WING GROWTH DISABLED
+    wingMask = grow_telluric_wings(
+        binWave,
+        binLog,
+        binErr,
+        fitSettings["telluric_regions"],
+        fitSettings.get("telluric_wing_max_nm", 0),
+        fitSettings.get("telluric_wing_ref_nm", 0),
+        fitSettings.get("telluric_wing_threshold", 0),
+        log=log,
+    )
     spline, keptMask = fit_log_spline(
         binWave,
         binLog,
@@ -378,6 +596,8 @@ def fit_response_curve(wave: Any, ratio: Any, fitSettings: Any, log: Any = None)
         fitSettings["clip_sigma_high"],
         fitSettings["max_iteration"],
         log=log,
+        excludeMask=wingMask,
+        penalty=fitSettings.get("smoothing_penalty", 0.0),
     )
     fitRange = (float(binWave[keptMask].min()), float(binWave[keptMask].max()))
-    return ResponseFit(wave, ratio, mask, binWave, binLog, keptMask, spline, fitRange)
+    return ResponseFit(wave, ratio, mask, binWave, binLog, keptMask, spline, fitRange, wingMask)
