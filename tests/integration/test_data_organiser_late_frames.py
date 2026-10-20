@@ -181,7 +181,9 @@ def test_late_half_set_leaves_one_mflat_sof_holding_every_flat(workspace_with_fr
     assert counts == [(10,)]
 
 
-def test_rejoined_set_is_queued_again_in_every_session(workspace_with_frames) -> None:
+def test_rejoined_set_is_queued_again_in_the_active_session_and_in_each_other_session_when_it_regroups(
+    workspace_with_frames,
+) -> None:
     # ARRANGE
     organiser = workspace_with_frames(_flat_flats(FIRST_HALF))
     _seed_status(organiser, "science", MFLAT_FROM_EXPNO_1, "pass")
@@ -189,8 +191,11 @@ def test_rejoined_set_is_queued_again_in_every_session(workspace_with_frames) ->
 
     # ACT
     _late_prepare(organiser, _flat_flats(SECOND_HALF))
+    statusAfterPrepare = _status_row(organiser, MFLAT_FROM_EXPNO_1)
+    organiser.session_switch("archive")
 
-    # ASSERT
+    # ASSERT: EACH SESSION RESETS A SET WHEN IT GROUPS ITS OWN FRAMES (DY-274)
+    assert statusAfterPrepare == {(None, None, "fail", 1)}
     assert _status_row(organiser, MFLAT_FROM_EXPNO_1) == {(None, None, None, 1)}
 
 
@@ -288,7 +293,9 @@ def _warnings(organiser):
     return [message for level, message in organiser.log.messages if level == "warning"]
 
 
-def test_reset_clears_every_status_and_frees_the_frames_but_keeps_the_product_rows(workspace_with_frames) -> None:
+def test_reset_clears_this_sessions_status_and_frees_the_frames_but_keeps_the_product_rows(
+    workspace_with_frames,
+) -> None:
     # ARRANGE
     organiser = workspace_with_frames(_flat_flats(FIRST_HALF))
     _seed_status(organiser, "science", MFLAT_FROM_EXPNO_1, "pass")
@@ -307,7 +314,8 @@ def test_reset_clears_every_status_and_frees_the_frames_but_keeps_the_product_ro
     ).fetchone()
     processed = organiser.conn.execute("SELECT DISTINCT processed FROM raw_frames WHERE file LIKE 'flat-%'").fetchall()
     assert list(rejoined) == [MFLAT_FROM_EXPNO_1]
-    assert _status_row(organiser, MFLAT_FROM_EXPNO_1) == {(None, None, None, 0)}
+    # THE OTHER SESSION KEEPS ITS STATUS UNTIL IT GROUPS ITS OWN FRAMES (DY-274)
+    assert _status_row(organiser, MFLAT_FROM_EXPNO_1) == {(None, None, "fail", 0)}
     assert rowsAfter == rowsBefore
     assert processed == [(0,)]
     assert _members(organiser, MFLAT_FROM_EXPNO_1) == set()

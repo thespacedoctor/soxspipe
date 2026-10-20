@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
@@ -31,6 +32,9 @@ OB_GROUPED_TECHS = ("ECHELLE,SLIT,STARE",)
 
 # PRODUCTS WITH NO FILE OF THEIR OWN CARRY THIS PLACEHOLDER NAME
 PLACEHOLDER_PRODUCT_FILE = "XXXX"
+
+# THE TABLE EACH SESSION OWNS: `sof_map_` AND A SESSION ID (`[0-9A-Za-z_]{1,16}`)
+_SESSION_MAP_TABLE = re.compile(r"sof_map_[0-9A-Za-z_]{1,16}")
 
 # THE MOST VALUES BOUND TO ONE STATEMENT (SQLITE BUILDS OLDER THAN 3.32 ALLOW ONLY 999)
 MAX_BOUND_VALUES = 500
@@ -132,6 +136,114 @@ def _recipes_of(connection: sqlite3.Connection, sofs: Sequence[str]) -> dict[str
     return recipes
 
 
+def session_map_tables(connection: sqlite3.Connection) -> list[str]:
+    """*list the `sof_map_<id>` table of every session in the workspace database*
+
+    **Key Arguments:**
+
+    - ``connection`` -- open connection to the workspace database
+
+    **Return:**
+
+    - ``tables`` -- the validated table names, sorted
+    """
+    names = [row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table';")]
+    return sorted(
+        validate_sql_identifier(name, "sof map table name") for name in names if _SESSION_MAP_TABLE.fullmatch(name)
+    )
+
+
+def read_set_members(connection: sqlite3.Connection, sofMapTable: str) -> dict[str, tuple[str, frozenset[str]]]:
+    """*read the raw frames of every SOF in one session's SOF map*
+
+    The calibration products a SOF map lists next to the raw frames are left out. A SOF with no raw frame, or no
+    row in `product_frames` to name its recipe, is left out too.
+
+    **Key Arguments:**
+
+    - ``connection`` -- open connection to the workspace database
+    - ``sofMapTable`` -- a session's `sof_map_<id>` table (checked again by `validate_sql_identifier`)
+
+    **Return:**
+
+    - ``members`` -- SOF name to (recipe, frozenset of the raw frame filepaths the SOF holds)
+    """
+    sofMapTable = validate_sql_identifier(sofMapTable, "sof map table name")
+    # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier ABOVE
+    sqlQuery = (
+        f"SELECT DISTINCT sof, filepath FROM {sofMapTable} "  # noqa: S608
+        "WHERE sof IS NOT NULL AND filepath IN (SELECT filepath FROM raw_frames);"
+    )
+    membersBySof: dict[str, set[str]] = {}
+    for sof, filepath in connection.execute(sqlQuery):
+        membersBySof.setdefault(sof, set()).add(filepath)
+
+    recipes = _recipes_of(connection, list(membersBySof))
+    return {sof: (recipes[sof], frozenset(members)) for sof, members in sorted(membersBySof.items()) if sof in recipes}
+
+
+def collect_sof_name_pins(
+    connection: sqlite3.Connection,
+    sofMapTable: str,
+    pinned: Mapping[str, tuple[str, frozenset[str]]],
+) -> dict[str, tuple[str, frozenset[str]]]:
+    """*gather the SOF names a regroup of one session must keep*
+
+    A name is claimed first by ``pinned`` (sets that gained a late frame in this run), then by the session's own SOF
+    map, then by the map of every other session. When two sources claim one name, the earlier source keeps it. So a
+    regroup names a set as it was named before, in this session and in the sessions that share its product rows.
+
+    **Key Arguments:**
+
+    - ``connection`` -- open connection to the workspace database
+    - ``sofMapTable`` -- the regrouped session's `sof_map_<id>` table
+    - ``pinned`` -- the result of `find_rejoined_sofs` for this run, and for earlier runs of this instance
+
+    **Return:**
+
+    - ``pins`` -- SOF name to (recipe, frozenset of raw frame filepaths), ready for `pin_rejoined_sof_names`
+    """
+    sofMapTable = validate_sql_identifier(sofMapTable, "sof map table name")
+    otherTables = [table for table in session_map_tables(connection) if table != sofMapTable]
+    pins = dict(pinned)
+    for table in [sofMapTable, *otherTables]:
+        for sof, (recipe, members) in read_set_members(connection, table).items():
+            # SESSIONS CAN HOLD A SET AT DIFFERENT STAGES (A LATE FRAME JOINED IT IN ONE), SO THE FRAMES ARE JOINED
+            knownRecipe, knownMembers = pins.get(sof, (recipe, frozenset()))
+            if knownRecipe == recipe:
+                pins[sof] = (recipe, knownMembers | members)
+    return pins
+
+
+def partition_labels(
+    pins: Mapping[str, tuple[str, frozenset[str]]], recipe: str, excludedSofs: Iterable[str] = ()
+) -> dict[str, str]:
+    """*name the known set each raw frame belongs to, for one recipe*
+
+    Grouping alone cannot tell two template runs apart when they share every grouping key (for example, two flat
+    runs on one night), so the sets that are already known are kept apart by these labels.
+
+    **Key Arguments:**
+
+    - ``pins`` -- the result of `collect_sof_name_pins`
+    - ``recipe`` -- the recipe whose frames are grouped
+    - ``excludedSofs`` -- SOF names to leave out: the sets that gained a late frame, whose old members must group
+      with the new frame
+
+    **Return:**
+
+    - ``labels`` -- raw frame filepath to the SOF name of its known set
+    """
+    excluded = set(excludedSofs)
+    labels: dict[str, str] = {}
+    for sof, (pinRecipe, members) in pins.items():
+        if pinRecipe != recipe or sof in excluded:
+            continue
+        for filepath in members:
+            labels.setdefault(filepath, sof)
+    return labels
+
+
 def status_columns(connection: sqlite3.Connection) -> list[str]:
     """*list `status` and every per-session `status_<id>` column of `product_frames`*
 
@@ -161,9 +273,9 @@ def reset_rejoined_sofs(
 ) -> list[Path]:
     """*queue rejoined SOFs to be grouped and reduced again*
 
-    Marks each SOF's products incomplete with every status and `set_first_file` cleared, frees its raw frames to
-    be grouped again, and drops its rows from the SOF map and the raw frame sets. The `product_frames` rows
-    themselves are kept. Nothing is deleted from disk: the caller commits, then passes the returned paths to
+    Marks each SOF's products incomplete with this session's status and `set_first_file` cleared, frees its raw
+    frames to be grouped again, and drops its rows from the SOF map and the raw frame sets. The `product_frames`
+    rows themselves are kept. Nothing is deleted from disk: the caller commits, then passes the returned paths to
     `delete_stale_files`, so a failed commit never leaves a product deleted that the database still expects.
 
     **Key Arguments:**
@@ -184,7 +296,7 @@ def reset_rejoined_sofs(
     if not sofs:
         return []
 
-    _clear_product_state(connection, sofs)
+    _clear_product_state(connection, sofMapTable, sofs)
     filepaths = sorted({filepath for _, members in rejoined.values() for filepath in members})
     for chunk in _chunks(filepaths):
         # `_placeholders` IS ALWAYS LITERAL `?` MARKS; THE VALUES ARE BOUND
@@ -202,10 +314,24 @@ def reset_rejoined_sofs(
     return stale_product_paths(connection, sofs, workspaceRoot, validateOwnedPath, log)
 
 
-def _clear_product_state(connection: sqlite3.Connection, sofs: Sequence[str]) -> None:
-    """*mark the products of ``sofs`` incomplete and clear `set_first_file`, `status` and every `status_<id>` column*"""
+def _session_status_columns(connection: sqlite3.Connection, sofMapTable: str) -> list[str]:
+    """*list the `status` column and the `status_<id>` column of the session that owns ``sofMapTable``*
+
+    A column the table does not have (for example, a session that was never prepared) is left out.
+    """
+    sessionId = validate_sql_identifier(sofMapTable, "sof map table name").removeprefix("sof_map_")
+    wanted = {"status", f"status_{sessionId}"}
+    return [column for column in status_columns(connection) if column in wanted]
+
+
+def _clear_product_state(connection: sqlite3.Connection, sofMapTable: str, sofs: Sequence[str]) -> None:
+    """*mark the products of ``sofs`` incomplete and clear `set_first_file`, `status` and this session's `status_<id>`*
+
+    The `status_<id>` columns of the other sessions are kept: each session resets a set when it groups its own frames.
+    """
     assignments = ", ".join(
-        ["complete = 0", "set_first_file = NULL"] + [f"{column} = NULL" for column in status_columns(connection)]
+        ["complete = 0", "set_first_file = NULL"]
+        + [f"{column} = NULL" for column in _session_status_columns(connection, sofMapTable)]
     )
     for chunk in _chunks(sofs):
         # COLUMN NAMES CANNOT BE BOUND; EACH IS CHECKED BY validate_sql_identifier IN status_columns

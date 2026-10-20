@@ -1,4 +1,4 @@
-"""Unit contracts for the late-frame rejoin helpers (DY-263)."""
+"""Unit contracts for the late-frame rejoin and session regroup helpers (DY-263, DY-274)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,14 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.late_frame_rejoin import (
+    collect_sof_name_pins,
     delete_stale_files,
     find_rejoined_sofs,
     format_rejoin_summary,
+    partition_labels,
     pin_rejoined_sof_names,
+    read_set_members,
+    session_map_tables,
 )
 
 pytestmark = pytest.mark.unit
@@ -150,3 +154,97 @@ def test_a_nir_image_frame_with_a_null_type_is_hidden_like_any_other_off_frame()
     # ASSERT
     connection.close()
     assert rejoined == {}
+
+
+# SESSION REGROUP HELPERS (DY-274)
+
+
+def _workspace_with_two_sessions():
+    """A database where `alpha` holds a set of two raw frames and a calibration row, and `beta` holds one raw frame."""
+    connection = sqlite3.connect(":memory:")
+    connection.execute("CREATE TABLE raw_frames (filepath TEXT)")
+    connection.executemany("INSERT INTO raw_frames VALUES (?)", [("a.fits",), ("b.fits",), ("c.fits",)])
+    connection.execute("CREATE TABLE product_frames (sof TEXT, recipe TEXT)")
+    connection.executemany("INSERT INTO product_frames VALUES (?, ?)", [(OLD_SOF, "mflat"), ("NO_RAW.sof", "mflat")])
+    for table in ("sof_map_alpha", "sof_map_beta", "z_sof_map", "sof_map_not_a_session_name_that_is_far_too_long"):
+        connection.execute(f"CREATE TABLE {table} (file TEXT, tag TEXT, sof TEXT, filepath TEXT, complete INT)")  # noqa: S608
+    connection.executemany(
+        "INSERT INTO sof_map_alpha (sof, filepath) VALUES (?, ?)",
+        [(OLD_SOF, "a.fits"), (OLD_SOF, "b.fits"), (OLD_SOF, "./reduced/master_bias.fits"), ("NO_RAW.sof", "x.fits")],
+    )
+    connection.execute("INSERT INTO sof_map_beta (sof, filepath) VALUES (?, ?)", (OLD_SOF, "c.fits"))
+    return connection
+
+
+def test_session_map_tables_lists_only_the_tables_that_sessions_own() -> None:
+    # ARRANGE
+    connection = _workspace_with_two_sessions()
+
+    # ACT
+    tables = session_map_tables(connection)
+
+    # ASSERT
+    connection.close()
+    assert tables == ["sof_map_alpha", "sof_map_beta"]
+
+
+def test_read_set_members_leaves_out_calibration_rows_and_sets_without_a_recipe() -> None:
+    # ARRANGE
+    connection = _workspace_with_two_sessions()
+
+    # ACT
+    members = read_set_members(connection, "sof_map_alpha")
+
+    # ASSERT
+    connection.close()
+    assert members == {OLD_SOF: ("mflat", frozenset({"a.fits", "b.fits"}))}
+
+
+def test_collect_name_pins_joins_the_frames_a_set_has_in_each_session() -> None:
+    # ARRANGE
+    connection = _workspace_with_two_sessions()
+
+    # ACT
+    pins = collect_sof_name_pins(connection, "sof_map_beta", {})
+
+    # ASSERT
+    connection.close()
+    assert pins == {OLD_SOF: ("mflat", frozenset({"a.fits", "b.fits", "c.fits"}))}
+
+
+def test_collect_name_pins_keeps_the_pinned_names_first() -> None:
+    # ARRANGE
+    connection = _workspace_with_two_sessions()
+    pinned = {NEW_SOF: ("mflat", frozenset({"z.fits"}))}
+
+    # ACT
+    pins = collect_sof_name_pins(connection, "sof_map_alpha", pinned)
+
+    # ASSERT
+    connection.close()
+    assert list(pins) == [NEW_SOF, OLD_SOF]
+
+
+def test_partition_labels_name_the_known_set_of_each_frame_of_one_recipe() -> None:
+    # ARRANGE
+    pins = {
+        OLD_SOF: ("mflat", frozenset({"a.fits", "b.fits"})),
+        NEW_SOF: ("order_centres", frozenset({"c.fits"})),
+    }
+
+    # ACT
+    labels = partition_labels(pins, "mflat")
+
+    # ASSERT
+    assert labels == {"a.fits": OLD_SOF, "b.fits": OLD_SOF}
+
+
+def test_partition_labels_leave_out_the_excluded_sets() -> None:
+    # ARRANGE
+    pins = {OLD_SOF: ("mflat", MEMBERS), NEW_SOF: ("mflat", frozenset({"c.fits"}))}
+
+    # ACT
+    labels = partition_labels(pins, "mflat", excludedSofs=[OLD_SOF])
+
+    # ASSERT
+    assert labels == {"c.fits": NEW_SOF}
