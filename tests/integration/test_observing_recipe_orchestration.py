@@ -135,6 +135,8 @@ def _configure_nodding_recipe(
     recipe.debug = False
     recipe.qc = qc_table()
     recipe.products = _empty_products()
+    # produce_product SETS THIS FROM THE RAW FRAMES; FALSE LETS THE EXTRACTOR USE ITS OWN FRAME HEADER
+    recipe.scienceHeaders = False
 
 
 def _patch_nodding_collaborators(
@@ -324,6 +326,8 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
     recipe.arm = "VIS"
     recipe.kw = _keyword
     recipe.productDir = str(tmp_path)
+    # produce_product SETS THIS FROM THE RAW FRAMES; FALSE LETS THE EXTRACTOR USE ITS OWN FRAME HEADER
+    recipe.scienceHeaders = False
     calls: list[dict[str, object]] = []
 
     class Extractor:
@@ -1411,6 +1415,8 @@ def _cycle_recipe(
     recipe.arm = "VIS"
     recipe.kw = _keyword
     recipe.productDir = str(tmp_path)
+    # produce_product SETS THIS FROM THE RAW FRAMES; FALSE LETS THE EXTRACTOR USE ITS OWN FRAME HEADER
+    recipe.scienceHeaders = False
     reports = iter(extractorNotes)
 
     class Extractor:

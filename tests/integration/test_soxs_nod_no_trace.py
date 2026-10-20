@@ -223,6 +223,8 @@ def _extracting_nod_recipe(
     recipe.dispMap = "dispersion-map.fits"
     recipe.startNightDate = "2024-01-02"
     recipe.turnOffMP = True
+    # produce_product SETS THIS FROM THE RAW FRAMES; FALSE LETS THE EXTRACTOR USE ITS OWN FRAME HEADER
+    recipe.scienceHeaders = False
     callCount = {"count": 0}
 
     class StubExtractor:

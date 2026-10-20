@@ -82,6 +82,9 @@ class horne_extraction(base_util):
       centre (slit position 0 arcsec) instead of giving up. The fallback is flagged by ``traceFallback``, a warning in
       ``extractionNotes``, the ``EXTRACT METHOD`` QC and the plot label. Default *False* (no spectrum is extracted
       when there is no trace)
+    - ``scienceHeaders`` -- the headers of the raw science frames of the observation block. The attached-arc test
+      measures the arc from the first frame's start and the last frame's end (DY-1666). Default *False* uses the
+      header of ``skySubtractedFrame``
 
     **Usage:**
 
@@ -141,6 +144,7 @@ class horne_extraction(base_util):
         debug=False,
         turnOffMP=False,
         noTraceFallback=False,
+        scienceHeaders=False,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -204,6 +208,9 @@ class horne_extraction(base_util):
                 hdu_flags="FLAGS",
                 key_uncertainty_type="UTYPE",
             )
+
+        # THE RAW SCIENCE FRAMES OF THE OBSERVATION BLOCK, WHOSE FIRST START AND LAST END THE ATTACHED-ARC TEST USES
+        self.scienceHeaders = list(scienceHeaders) if scienceHeaders else [self.skySubtractedFrame.header]
 
         # THE INSTRUMENT, READ BEFORE THE TRACE BRANCH SO THE NO-TRACE FALLBACK HAS IT TOO
         self.inst = self.skySubtractedFrame.header.get(self.kw("INSTRUME"), "")
@@ -766,10 +773,10 @@ class horne_extraction(base_util):
         return group["FLUX_COUNTS"]
 
     def _arc_attachment(self):
-        """*the offsets ``(minutes, rotatorDegrees)`` of an attached SOXS arc from the science frame, or None*
+        """*the offsets ``(minutes, rotatorDegrees)`` of an attached SOXS arc from the science block, or None*
 
-        The arc is the dispersion map's primary header. X-Shooter, an unreadable header and an arc that is not
-        attached (``within_attached_arc_limits``) all give *None*.
+        The arc is the dispersion map's primary header and the block is ``self.scienceHeaders``. X-Shooter, an
+        unreadable header and an arc that is not attached (``within_attached_arc_limits``) all give *None*.
         """
         from soxspipe.commonutils.ug_wavelength_transfer import attached_arc_offsets, within_attached_arc_limits
 
@@ -778,7 +785,7 @@ class horne_extraction(base_util):
         arcHeader = self._dispersion_map_header()
         if arcHeader is None:
             return None
-        offsets = attached_arc_offsets(self.skySubtractedFrame.header, arcHeader, self.kw)
+        offsets = attached_arc_offsets(self.scienceHeaders, arcHeader, self.kw)
         return offsets if within_attached_arc_limits(offsets) else None
 
     def _tune_or_skip(self, extractedOrdersDF, arm):

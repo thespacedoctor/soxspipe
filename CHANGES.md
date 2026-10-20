@@ -1,5 +1,6 @@
 # Release Notes
 
+* **ENHANCEMENT**: the SOXS attached-arc test now measures the gap from the end of the earlier exposure to the start of the later, over every raw frame of the stare, nod or offset block, so an arc taken right after a long sequence is attached; NIR exposures end after `ESO DET SEQ1 EXPTIME`, not one DIT (DY-1666).
 * **ENHANCEMENT**: SOXS stare, nod and offset skip skyline wavelength tuning when the arc is attached (taken within 7 minutes and 5 degrees of rotator angle of the science frame), because the arc solution is more accurate; new `SKY TUNING` QC records `skylines` or `skipped: attached arc` (DY-1665).
 * **ENHANCEMENT**: the three package `__init__.py` files are exempt from the import sorter (`I001`), and a test fails if their import order breaks (DY-258).
 * **ENHANCEMENT**: `_dataframe_to_sqlite` (data organiser and recipes) now writes each dataframe in one `BEGIN IMMEDIATE` transaction, so a failed attempt leaves no partial rows, a `replace` never exposes an empty table, and inserts are about 100 times faster on the autocommit workspace connections; both copies share `sqlite_dataframe_writer` (DY-1515).

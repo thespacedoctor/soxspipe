@@ -304,6 +304,8 @@ class soxs_nod(base_recipe):
         productPath = None
 
         allObjectFrames, allFilenames = self._read_nod_object_frames(kw)
+        # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
+        self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
         master_flat, orderTablePath, responseFunctionPath = self._read_nod_calibration_inputs(kw, arm)
 
         quicklook_image(
@@ -1392,6 +1394,7 @@ class soxs_nod(base_recipe):
             debug=self.debug,
             notFlattened=notFlattened,
             turnOffMP=self.turnOffMP,
+            scienceHeaders=self.scienceHeaders,
         )
 
         self.qc, theseProducts, mergedSpectrumDF_A, orderJoins, extractionFITSPathA = optimalExtractor.extract()
@@ -1417,6 +1420,7 @@ class soxs_nod(base_recipe):
                 debug=self.debug,
                 notFlattened=notFlattened,
                 turnOffMP=self.turnOffMP,
+                scienceHeaders=self.scienceHeaders,
             )
             (
                 self.qc,
