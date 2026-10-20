@@ -187,6 +187,20 @@ def test_the_science_block_frames_may_come_in_any_order() -> None:
     assert _offsets(arc, list(reversed(block))) == pytest.approx(_offsets(arc, block))
 
 
+def test_an_arc_equidistant_from_two_frames_is_compared_with_the_earlier_whatever_the_order() -> None:
+    # ARRANGE: THE ARC (11.25 TO 11.75 MIN) IS 0.25 MIN FROM FRAME 3'S END AND FROM FRAME 4'S START
+    block = _nod_block()
+    arc = _header(minutesFromScience=11.25, absrot=SCIENCE_ABSROT + 4.0, exptime=ARC_EXPTIME)
+
+    # ACT
+    forward = _offsets(arc, block)
+    backward = _offsets(arc, list(reversed(block)))
+
+    # ASSERT
+    assert forward[1] == pytest.approx(0.0)
+    assert backward == pytest.approx(forward)
+
+
 def test_a_nir_frame_ends_after_its_whole_sequence_not_after_one_dit() -> None:
     # ARRANGE: A REAL NIR FRAME (2026-01-08T02:07:54) HAS EXPTIME 600 S (ONE DIT) AND A 2413 S SEQUENCE (NDIT 4)
     science = _header(exptime=600.0)

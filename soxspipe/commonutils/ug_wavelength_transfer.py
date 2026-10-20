@@ -302,7 +302,8 @@ def attached_arc_offsets(scienceHeaders, arcHeader, kw):
     is the gap from the end of the earlier exposure to the start of the later one (``exposure_window``): the arc end
     to the first frame's start for an arc before the block, the last frame's end to the arc start for an arc after
     it, and 0 for an arc that overlaps the block. The rotator offset is the wrap-aware difference between the arc and
-    the frame nearest to it in time (``usable_rotator_angle``), so 179 and -179 degrees are 2 degrees apart.
+    the frame nearest to it in time, the earlier on a tie (``usable_rotator_angle``), so 179 and -179 degrees are 2
+    degrees apart.
 
     **Key Arguments:**
 
@@ -331,7 +332,14 @@ def attached_arc_offsets(scienceHeaders, arcHeader, kw):
 
     blockWindow = (min(window[0] for window in scienceWindows), max(window[1] for window in scienceWindows))
     minutes = round(_window_gap_days(blockWindow, arcWindow) * MINUTES_PER_DAY, MINUTES_DECIMALS)
-    nearest = min(range(len(scienceWindows)), key=lambda index: _window_gap_days(scienceWindows[index], arcWindow))
+    # A TIE GOES TO THE EARLIER FRAME, SO THE ORDER OF THE HEADERS CANNOT CHANGE THE VERDICT
+    nearest = min(
+        range(len(scienceWindows)),
+        key=lambda index: (
+            round(_window_gap_days(scienceWindows[index], arcWindow) * MINUTES_PER_DAY, MINUTES_DECIMALS),
+            scienceWindows[index][0],
+        ),
+    )
     return minutes, rotator_angle_spread([scienceAngles[nearest], arcAngle])
 
 
