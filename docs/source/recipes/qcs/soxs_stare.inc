@@ -31,6 +31,7 @@
 | `SLIT ILLUM N ORDERS` | Number of orders with a usable slit offset | | - |
 | `SKY SHIFT O<N>` | Wavelength shift that the skyline tuning added to the wavelength solution of order N. Written for every order. For SOXS VIS orders 2 (u) and 3 (g) it is the modelled shift if the model applied, and 0 if not | nm | - |
 | `SKY SHIFT O<N> PX` | The same shift as detector motion along the dispersion axis, using the signed dispersion of the order. Positive means the features moved to larger pixel numbers. Not written for an order with no usable dispersion | px | - |
+| `SKY LINE SNR O<N>` | Combined signal-to-noise of the catalogue sky lines in order N. Written for each SOXS VIS order measured from its own sky lines (orders 1 and 4). The skyline tuning does not apply the shift of an order below 5.4 | | - |
 | `UG SHIFT SOURCE` | How the SOXS VIS u and g shifts were found: `model` (predicted from the r and i shifts and the rotator angle) or `none` (u and g left unshifted). The comment gives the reason. Written only for SOXS VIS | | - |
 
 :::

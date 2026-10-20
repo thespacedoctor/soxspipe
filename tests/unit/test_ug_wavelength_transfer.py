@@ -11,9 +11,10 @@ from astropy.io import fits
 import soxspipe
 from soxspipe.commonutils.slit_illumination_qc import CALIBRATION_ROTATOR_PARK_ANGLE_DEGREES
 from soxspipe.commonutils.ug_wavelength_transfer import (
-    MAX_SHIFT_SCATTER_PX,
     MIN_MATCHED_LINES,
     MIN_MEASURED_SIGMA_PX,
+    MIN_R_SECOND_LINE_SNR,
+    MIN_SKY_LINE_SNR,
     calibration_rotator_angle,
     combine_r_shift_px,
     detector_px_to_nm_shift,
@@ -23,6 +24,8 @@ from soxspipe.commonutils.ug_wavelength_transfer import (
     predict_r_detector_shift,
     predict_ug_detector_shifts,
     r_prediction_skip_reason,
+    r_second_line_snr_reason,
+    sky_line_snr_reason,
     ug_skip_reason,
     usable_rotator_angle,
 )
@@ -225,14 +228,17 @@ def test_a_malformed_block_is_refused(orders: dict) -> None:
         load_ug_transfer_coefficients({"ug-wavelength-transfer": {"orders": orders}})
 
 
-def _stats(nLines: int, scatterPx: float) -> dict:
-    return {"nLines": nLines, "scatterPx": scatterPx, "shiftPx": 0.5}
+def _stats(nLines: int, lineSnr: float) -> dict:
+    return {"nLines": nLines, "lineSnr": lineSnr, "shiftPx": 0.5}
+
+
+BRIGHT_SNR = 3 * MIN_SKY_LINE_SNR
 
 
 def _passing_stats() -> dict:
     return {
-        1: _stats(MIN_MATCHED_LINES[1], 0.1),
-        4: _stats(MIN_MATCHED_LINES[4], 0.1),
+        1: _stats(MIN_MATCHED_LINES[1], BRIGHT_SNR),
+        4: _stats(MIN_MATCHED_LINES[4], BRIGHT_SNR),
     }
 
 
@@ -253,10 +259,15 @@ def test_guards_pass_with_enough_well_agreeing_lines_and_a_science_angle() -> No
     ("change", "expectedWords"),
     [
         pytest.param({1: None}, "order 1: no sky shift", id="r-not-measured"),
-        pytest.param({4: _stats(MIN_MATCHED_LINES[4] - 1, 0.1)}, "order 4: 9 sky lines (min 10)", id="too-few-i-lines"),
-        pytest.param({1: _stats(MIN_MATCHED_LINES[1] - 1, 0.1)}, "order 1: 1 sky lines (min 2)", id="too-few-r-lines"),
-        pytest.param({1: _stats(10, MAX_SHIFT_SCATTER_PX + 0.01)}, "order 1: shift scatter", id="r-scatter"),
-        pytest.param({4: _stats(10, float("nan"))}, "order 4: shift scatter nan px", id="nan-scatter"),
+        pytest.param(
+            {4: _stats(MIN_MATCHED_LINES[4] - 1, BRIGHT_SNR)}, "order 4: 9 sky lines (min 10)", id="too-few-i-lines"
+        ),
+        pytest.param(
+            {1: _stats(MIN_MATCHED_LINES[1] - 1, BRIGHT_SNR)}, "order 1: 1 sky lines (min 2)", id="too-few-r-lines"
+        ),
+        pytest.param({1: _stats(10, MIN_SKY_LINE_SNR - 0.1)}, "order 1: sky-line SNR", id="faint-r-sky"),
+        pytest.param({4: _stats(10, MIN_SKY_LINE_SNR - 0.1)}, "order 4: sky-line SNR", id="faint-i-sky"),
+        pytest.param({4: _stats(10, float("nan"))}, "order 4: sky-line SNR nan", id="nan-snr"),
     ],
 )
 def test_guards_name_the_failing_sky_order(change: dict, expectedWords: str) -> None:
@@ -274,6 +285,42 @@ def test_guards_name_the_failing_sky_order(change: dict, expectedWords: str) -> 
     # ASSERT
     assert reason is not None
     assert expectedWords in reason
+
+
+@pytest.mark.parametrize(
+    ("lineSnr", "expected"),
+    [
+        pytest.param(MIN_SKY_LINE_SNR, None, id="at-threshold"),
+        pytest.param(MIN_SKY_LINE_SNR - 0.05, f"order 4: sky-line SNR {MIN_SKY_LINE_SNR - 0.05:.1f}", id="below"),
+        pytest.param(float("nan"), "order 4: sky-line SNR nan", id="nan"),
+    ],
+)
+def test_sky_line_snr_reason_refuses_only_a_faint_or_unknown_sky(lineSnr: float, expected: str | None) -> None:
+    # ACT
+    reason = sky_line_snr_reason(4, lineSnr)
+
+    # ASSERT
+    if expected is None:
+        assert reason is None
+    else:
+        assert reason.startswith(expected)
+        assert f"(min {MIN_SKY_LINE_SNR})" in reason
+
+
+@pytest.mark.parametrize(
+    ("secondLineSnr", "expected"),
+    [
+        pytest.param(MIN_R_SECOND_LINE_SNR, None, id="at-threshold"),
+        pytest.param(1.8, f"order 1: 2nd sky line SNR 1.8 (min {MIN_R_SECOND_LINE_SNR})", id="noise-level"),
+        pytest.param(float("nan"), f"order 1: 2nd sky line SNR nan (min {MIN_R_SECOND_LINE_SNR})", id="nan"),
+    ],
+)
+def test_r_second_line_reason_refuses_a_noise_level_second_line(secondLineSnr: float, expected: str | None) -> None:
+    # ACT
+    reason = r_second_line_snr_reason(secondLineSnr)
+
+    # ASSERT
+    assert reason == expected
 
 
 def test_guards_fail_without_a_usable_science_angle() -> None:
@@ -350,7 +397,7 @@ def test_a_malformed_r_block_is_refused(block: object) -> None:
 
 def test_r_prediction_guards_pass_for_a_well_measured_i_and_a_science_angle() -> None:
     # ACT
-    reason = r_prediction_skip_reason(_stats(MIN_MATCHED_LINES[4], 0.1), scienceAngleDeg=-19.8)
+    reason = r_prediction_skip_reason(_stats(MIN_MATCHED_LINES[4], BRIGHT_SNR), scienceAngleDeg=-19.8)
 
     # ASSERT
     assert reason is None
@@ -360,9 +407,11 @@ def test_r_prediction_guards_pass_for_a_well_measured_i_and_a_science_angle() ->
     ("iStats", "angle", "expectedWords"),
     [
         pytest.param(None, -19.8, "order 4: no sky shift", id="i-not-measured"),
-        pytest.param(_stats(MIN_MATCHED_LINES[4] - 1, 0.1), -19.8, "order 4: 9 sky lines (min 10)", id="few-i-lines"),
-        pytest.param(_stats(10, MAX_SHIFT_SCATTER_PX + 0.01), -19.8, "order 4: shift scatter", id="i-scatter"),
-        pytest.param(_stats(10, 0.1), None, "no usable science ABSROT", id="no-angle"),
+        pytest.param(
+            _stats(MIN_MATCHED_LINES[4] - 1, BRIGHT_SNR), -19.8, "order 4: 9 sky lines (min 10)", id="few-i-lines"
+        ),
+        pytest.param(_stats(10, MIN_SKY_LINE_SNR - 0.1), -19.8, "order 4: sky-line SNR", id="faint-i-sky"),
+        pytest.param(_stats(10, BRIGHT_SNR), None, "no usable science ABSROT", id="no-angle"),
     ],
 )
 def test_r_prediction_guards_name_the_failure(iStats: object, angle: object, expectedWords: str) -> None:

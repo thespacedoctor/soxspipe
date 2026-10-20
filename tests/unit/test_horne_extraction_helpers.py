@@ -540,8 +540,10 @@ def test_skyline_tuning_after_the_no_trace_fallback_knows_the_instrument(
         return 0.0, np.array([0.0, 0.0])
 
     extractor._measure_order_shift = record_measurement
+    extractor._order_sky_line_snrs = lambda *args: np.array([100.0, 100.0])
     extractor._signed_order_dispersions = lambda *args: {}
     extractor._record_order_shift_qc = lambda *args, **kwargs: None
+    extractor._record_line_snr_qc = lambda *args: None
     extraction = pd.DataFrame(
         {"order": [1, 4], "wavelengthMean": [600.0, 750.0], "pixelScaleNm": [0.1, 0.1]},
     )
@@ -1887,6 +1889,9 @@ def test_wavelength_tuning_shifts_only_the_orders_it_measures_and_leaves_vis_u_a
         np.array([0.0, 0.0]),
     )
     extractor._record_order_shift_qc = lambda order, shift, shiftPx=None: recordedOrders.append((order, shift))
+    # A BRIGHT SKY, SO THE DY-1663 SKY-LINE SNR GATE PASSES
+    extractor._order_sky_line_snrs = lambda *args: np.array([100.0, 100.0])
+    extractor._record_line_snr_qc = lambda *args: None
     # NO u/g TRANSFER COEFFICIENTS, SO u AND g STAY UNSHIFTED
     extractor._signed_order_dispersions = lambda *args: {}
     extractor.detectorParams = {}
