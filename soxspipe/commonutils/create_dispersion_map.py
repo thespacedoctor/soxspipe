@@ -327,7 +327,7 @@ class create_dispersion_map:
         self.turnOffMP = turnOffMP
 
     @property
-    def runSerially(self):  # noqa: N802
+    def runSerially(self) -> bool:  # noqa: N802
         """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
         return bool(self.turnOffMP or self.debug)
 
@@ -1687,7 +1687,7 @@ class create_dispersion_map:
             "fwhm_pin_px": [],  # MEASURED FWHM IN PIXELS
         }
 
-        # PROCESS ALL STAMPS USING MULTIPROCESSING (OR SERIAL IN DEBUG MODE)
+        # PROCESS ALL STAMPS SERIALLY: MULTIPROCESSING IS ALWAYS OFF HERE
         # NOTE: MULTIPROCESSING AND THREADING IS MUCH SLOWER! KEEP TURNED OFF
         results = fmultiprocess(
             log=self.log,
@@ -1697,7 +1697,7 @@ class create_dispersion_map:
             timeout=300,
             mute=False,
             progressBar=False,
-            turnOffMP=True,  # DISABLE MULTIPROCESSING IN DEBUG MODE
+            turnOffMP=True,
             windowHalf=self.windowHalf,
             iraf=iraf,
             sigmaLimit=sigmaLimit,

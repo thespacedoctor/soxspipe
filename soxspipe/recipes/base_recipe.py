@@ -190,7 +190,7 @@ class base_recipe:
         return
 
     @property
-    def runSerially(self):  # noqa: N802
+    def runSerially(self) -> bool:  # noqa: N802
         """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
         return bool(self.turnOffMP or self.debug)
 
