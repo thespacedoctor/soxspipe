@@ -20,6 +20,11 @@ pytest tests/unit tests/integration -m "not slow"   # the offline suite CI enfor
 pytest -k "test_horne_extraction" --pdb -v -s       # single test, drop into debugger on failure
 ```
 
+Check for new lint with the ratchet CI enforces. It compares changed lines with the base itself, so leave the worktree as it is:
+```bash
+python tools/lint_ratchet.py --compare-branch origin/develop
+```
+
 The real-data acceptance test is opt-in and needs a prepared workspace:
 ```bash
 SOXSPIPE_REAL_DATA_DIR=/absolute/path/to/workspace pytest tests/real_data
