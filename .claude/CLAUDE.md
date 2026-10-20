@@ -77,7 +77,7 @@ An older inline tree mirroring the source layout (`soxspipe/recipes/tests/`, `so
 
 ## Code style
 
-- Do not sort the imports in `soxspipe/__init__.py`, `soxspipe/commonutils/__init__.py`, or `soxspipe/recipes/__init__.py`. Their order works around a circular import: `keyword_lookup` and `detector_lookup` must load first, or submodules bind the submodule in place of the class and fail later with `TypeError: 'module' object is not callable`. These three files ignore `I001` in `pyproject.toml`. Never run an import sorter or `ruff check --fix` over them. `tests/unit/test_package_import_order.py` is the guard; if it fails, restore the original order rather than editing the test.
+- Do not sort the imports in `soxspipe/__init__.py`, `soxspipe/commonutils/__init__.py`, or `soxspipe/recipes/__init__.py`, and never run an import sorter or `ruff check --fix` over them. The order works around a circular import. `tests/unit/test_package_import_order.py` explains why and fails if the order breaks; if it fails, restore the order rather than editing the test.
 - Write all inline code comments in UPPERCASE (matches the existing codebase convention, e.g. `# GLOBAL IMPORTS`, `# SETUP AND TEARDOWN FIXTURE FUNCTIONS`).
 
 ## Agent skills
