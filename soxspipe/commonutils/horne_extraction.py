@@ -773,8 +773,9 @@ class horne_extraction(base_util):
     def tune_wavelength_calibration_to_skylines(self, extractedOrdersDF, arm, byOrder=True):
         """Skyline-based wavelength calibration tuning helper.
 
-        In the SOXS VIS arm, tuned order by order, the i order is measured before r and no order is shifted from
-        fewer than two sky lines (see ``_tune_vis_order``). The VIS u and g orders are never measured.
+        In the SOXS VIS arm, tuned order by order, the i order is measured before r, and no order is shifted from
+        fewer than two sky lines or from a sky too faint for its lines to be centred (``MIN_SKY_LINE_SNR``, DY-1663;
+        see ``_tune_vis_order``). The VIS u and g orders are never measured.
 
         **Key Arguments:**
 
@@ -800,7 +801,7 @@ class horne_extraction(base_util):
         isSoxsVis = byOrder and self._is_soxs_vis(arm)
         dispersions = self._order_dispersions(extractedOrdersDF, uniqueOrders, isSoxsVis) if byOrder else {}
         shiftsNm = dict.fromkeys(uniqueOrders, 0.0)
-        # SKY LINES KEPT AND THEIR SHIFT SCATTER IN THE LAST ITERATION, PER MEASURED ORDER (THE u/g MODEL GUARDS)
+        # SKY LINES KEPT, SHIFT SCATTER AND (SOXS VIS) SKY-LINE SNRS PER MEASURED ORDER (THE r AND u/g GUARDS)
         orderStats = {}
 
         # IN VIS i IS MEASURED FIRST, BECAUSE THE r SHIFT IS PREDICTED FROM IT
@@ -978,7 +979,7 @@ class horne_extraction(base_util):
         return medianShift, keptShifts
 
     def _tune_vis_order(self, orderDF, o, shiftsNm, orderStats, dispersions):
-        """*measure one VIS order's shift, refusing a shift from fewer than two sky lines*
+        """*measure one VIS order's shift, refusing a shift from fewer than two sky lines or from a faint sky*
 
         The r order may instead be predicted from the already measured i order (``_tune_vis_r_order``).
 
@@ -987,7 +988,8 @@ class horne_extraction(base_util):
         - ``orderDF`` -- the order's rows, sorted by wavelength
         - ``o`` -- the order
         - ``shiftsNm`` -- ``{order: wavelength shift (nm)}`` of the orders measured so far
-        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float}}`` of the orders measured so far
+        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float, "lineSnr": float, ...}}`` of the orders
+          measured so far
         - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
 
         **Return:**
@@ -1000,22 +1002,55 @@ class horne_extraction(base_util):
         if o == VIS_R_ORDER:
             return self._tune_vis_r_order(orderDF, shiftsNm, orderStats, dispersions)
         shiftNm, keptShifts = self._measure_order_shift(orderDF, o)
-        stats = self._order_stats(keptShifts)
-        reason = self._too_few_lines_reason(o, stats)
+        stats = self._with_line_snr(orderDF, o, self._order_stats(keptShifts))
+        reason = self._unusable_shift_reason(o, stats)
         if reason is not None:
             self.log.info(f"{reason}; no shift applied")
             shiftNm = 0.0
         return shiftNm, stats
 
+    def _with_line_snr(self, orderDF, o, stats):
+        """*return the order's sky-line statistics with its sky-line SNRs added, or None if it has no data*
+
+        ``lineSnr`` is the combined SNR of the order's calibration lines and ``secondLineSnr`` the SNR of its
+        second-brightest one (0 when it has fewer than two).
+        """
+        from soxspipe.commonutils.sky_line_snr import combine_line_snrs
+
+        if stats is None:
+            return None
+        snrs = self._order_sky_line_snrs(orderDF, o)
+        return {
+            **stats,
+            "lineSnr": combine_line_snrs(snrs),
+            "secondLineSnr": float(snrs[1]) if snrs.size > 1 else 0.0,
+        }
+
+    def _order_sky_line_snrs(self, orderDF, o):
+        """*the photon-noise SNR of each of the order's calibration sky lines at its arc-solution position, brightest
+        first*"""
+        import numpy as np
+        import pandas as pd
+
+        from soxspipe.commonutils.sky_line_snr import sky_line_snrs
+
+        wave = pd.to_numeric(orderDF["wavelengthMean"], errors="coerce")
+        sky = pd.to_numeric(orderDF["skyFlux"], errors="coerce")
+        if not wave.notna().any():
+            return np.array([])
+        _, calibrationSkylines = self._get_local_skylines_for_order(wave.min(), wave.max(), o, "wavelength")
+        return sky_line_snrs(wave, sky, calibrationSkylines, self.detectorParams["ron"])
+
     @staticmethod
-    def _too_few_lines_reason(o, stats):
-        """Return why an order's measured shift must not be applied, or None if enough sky lines were kept."""
-        from soxspipe.commonutils.ug_wavelength_transfer import MIN_SHIFT_LINES
+    def _unusable_shift_reason(o, stats):
+        """Return why an order's measured shift must not be applied, or None if enough sky lines were kept from a
+        bright enough sky."""
+        from soxspipe.commonutils.ug_wavelength_transfer import MIN_SHIFT_LINES, sky_line_snr_reason
 
         nLines = 0 if stats is None else stats["nLines"]
         if nLines < MIN_SHIFT_LINES:
             return f"order {o}: {nLines} sky lines kept (min {MIN_SHIFT_LINES})"
-        return None
+        return sky_line_snr_reason(o, stats["lineSnr"])
 
     def _tune_vis_r_order(self, orderDF, shiftsNm, orderStats, dispersions):
         """*decide the VIS r shift from its own sky lines and the shift predicted from i (DY-1645)*
@@ -1029,7 +1064,8 @@ class horne_extraction(base_util):
 
         - ``orderDF`` -- the r order's rows, sorted by wavelength
         - ``shiftsNm`` -- ``{order: wavelength shift (nm)}``, holding the i shift
-        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float}}``, holding the i statistics
+        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float, "lineSnr": float, ...}}``, holding the i
+          statistics
         - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
 
         **Return:**
@@ -1053,10 +1089,15 @@ class horne_extraction(base_util):
             tolerances=(R_SEEDED_TOLERANCE_NM,) * len(SKYLINE_TOLERANCES_NM),
         )
         stats = self._order_stats(keptShifts) or {"nLines": 0, "scatterNm": float("nan")}
+        stats = self._with_line_snr(orderDF, ug_transfer.VIS_R_ORDER, stats)
         nLines = stats["nLines"]
+        snrReason = ug_transfer.sky_line_snr_reason(ug_transfer.VIS_R_ORDER, stats["lineSnr"])
         if nLines < ug_transfer.MIN_SHIFT_LINES:
             source, shiftNm = "predicted", predictedNm
             comment = f"predicted from i and ABSROT; {nLines} sky lines kept"
+        elif snrReason is not None:
+            source, shiftNm = "predicted", predictedNm
+            comment = f"predicted from i and ABSROT; {snrReason}"
         else:
             measuredPx = ug_transfer.nm_shift_to_detector_px(measuredNm, dispersion)
             sigmaPx = stats["scatterNm"] / abs(dispersion) / nLines**0.5
@@ -1067,19 +1108,23 @@ class horne_extraction(base_util):
         return shiftNm, {**stats, "transferred": True}
 
     def _measure_r_alone(self, orderDF, hasCoefficients, reason):
-        """Measure the VIS r order without a prediction, applying it only when two or more sky lines are kept."""
-        from soxspipe.commonutils.ug_wavelength_transfer import VIS_R_ORDER
+        """Measure the VIS r order without a prediction, applying it only when two or more sky lines are kept from a
+        bright enough sky whose second-brightest line is above the noise."""
+        from soxspipe.commonutils.ug_wavelength_transfer import VIS_R_ORDER, r_second_line_snr_reason
 
         shiftNm, keptShifts = self._measure_order_shift(orderDF, VIS_R_ORDER)
-        stats = self._order_stats(keptShifts)
-        tooFewReason = self._too_few_lines_reason(VIS_R_ORDER, stats)
+        stats = self._with_line_snr(orderDF, VIS_R_ORDER, self._order_stats(keptShifts))
+        # NO STATS GIVES A "0 SKY LINES" REASON, SO THE SECOND-LINE CHECK ONLY EVER READS A MEASURED ORDER
+        unusableReason = self._unusable_shift_reason(VIS_R_ORDER, stats) or r_second_line_snr_reason(
+            stats["secondLineSnr"]
+        )
         if hasCoefficients:
             self.log.info(f"r shift not predicted from i: {reason}")
-        if tooFewReason is None:
+        if unusableReason is None:
             source, comment = "measured", f"measured from {stats['nLines']} sky lines"
         else:
-            self.log.info(f"{tooFewReason}; no shift applied")
-            source, comment, shiftNm = "none", tooFewReason, 0.0
+            self.log.info(f"{unusableReason}; no shift applied")
+            source, comment, shiftNm = "none", unusableReason, 0.0
         if hasCoefficients:
             self._record_shift_source_qc("R SHIFT SOURCE", source, comment)
         return shiftNm, stats
@@ -1090,7 +1135,8 @@ class horne_extraction(base_util):
         **Key Arguments:**
 
         - ``shiftsNm`` -- ``{order: wavelength shift (nm)}``, holding the i shift
-        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float}}``, holding the i statistics
+        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float, "lineSnr": float, ...}}``, holding the i
+          statistics
         - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
         - ``coeffs`` -- the ``r-from-i-transfer`` coefficients, or *None* for an arm without them
 
@@ -1109,7 +1155,7 @@ class horne_extraction(base_util):
         iStats = orderStats.get(ug_transfer.VIS_I_ORDER)
         iDispersion = dispersions[ug_transfer.VIS_I_ORDER]
         if iStats is not None:
-            iStats = {"nLines": iStats["nLines"], "scatterPx": iStats["scatterNm"] / abs(iDispersion)}
+            iStats = {"nLines": iStats["nLines"], "lineSnr": iStats["lineSnr"]}
         scienceAngle = ug_transfer.usable_rotator_angle(self.skySubtractedFrame.header, self.kw)
         reason = ug_transfer.r_prediction_skip_reason(iStats, scienceAngle)
         if reason is not None:
@@ -1286,6 +1332,23 @@ class horne_extraction(base_util):
                 qcOrder=int(order),
             )
 
+    def _record_line_snr_qc(self, order, lineSnr):
+        """Append the ``SKY LINE SNR O<n>`` QC: the order's combined sky-line signal-to-noise (DY-1663)."""
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName=f"SKY LINE SNR O{int(order)}",
+            qcValue=round(lineSnr, 1),
+            qcComment="Combined sky-line signal-to-noise",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
+            qcOrder=int(order),
+        )
+
     def _finalise_order_shifts(self, arm, uniqueOrders, shiftsNm, orderStats, dispersions):
         """*add the modelled VIS u/g shifts to the measured per-order shifts and record the sky-shift QCs*
 
@@ -1308,6 +1371,9 @@ class horne_extraction(base_util):
         for o in uniqueOrders:
             shiftPx = nm_shift_to_detector_px(shiftsNm[o], dispersions[o]) if o in dispersions else None
             self._record_order_shift_qc(o, shiftsNm[o], shiftPx)
+            lineSnr = orderStats.get(o, {}).get("lineSnr")
+            if lineSnr is not None:
+                self._record_line_snr_qc(o, lineSnr)
         return [shiftsNm[o] for o in uniqueOrders]
 
     def _apply_ug_transfer(self, shiftsNm, orderStats, dispersions):
@@ -1320,8 +1386,8 @@ class horne_extraction(base_util):
         **Key Arguments:**
 
         - ``shiftsNm`` -- ``{order: measured wavelength shift (nm)}``
-        - ``orderStats`` -- per measured order, ``{"nLines": int, "scatterNm": float}``; an r order whose shift
-          came from i also carries ``"transferred": True`` and passes its guards
+        - ``orderStats`` -- per measured order, ``{"nLines": int, "scatterNm": float, "lineSnr": float}``; an r order
+          whose shift came from i also carries ``"transferred": True`` and passes its guards
         - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
 
         **Return:**
@@ -1337,7 +1403,7 @@ class horne_extraction(base_util):
         statsPx = {
             o: {
                 "nLines": orderStats[o]["nLines"],
-                "scatterPx": orderStats[o]["scatterNm"] / abs(dispersions[o]),
+                "lineSnr": orderStats[o].get("lineSnr"),
                 "shiftPx": ug_transfer.nm_shift_to_detector_px(shiftsNm[o], dispersions[o]),
                 "transferred": orderStats[o].get("transferred", False),
             }

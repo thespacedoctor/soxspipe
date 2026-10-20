@@ -59,6 +59,24 @@ The final flux for each cross-dispersion slice is a weighted sum, as reported in
 
 The dispersion map is made from daytime calibration frames. At night, flexure moves the spectra on the detector by a small amount. After extraction, the utility corrects for this order by order. It matches the sky lines in each extracted order to the catalogue of sky lines, measures the offset of every matched line, clips the outliers, and adds the median offset to the wavelength solution of the order. Each order gets a `SKY SHIFT O<N>` QC (in nm) and a `SKY SHIFT O<N> PX` QC (the same shift in detector pixels along the dispersion axis).
 
+#### VIS r and i orders: sky-line signal-to-noise gate
+
+On a faint sky, the sky lines of a SOXS VIS order are too weak to centre, and the median shift of the matched lines is then a noise value. For each order that the utility measures from its own sky lines (the SOXS VIS r and i orders), it first computes the signal-to-noise ratio (SNR) of every catalogue calibration line in the `skyFlux` column, at the position the arc solution gives for the line:
+
+$$
+\mathrm{SNR}_{line} = \frac{\max(F_{\pm 4}) - \mathrm{median}(F_{\pm 25})}{\sqrt{\mathrm{median}(F_{\pm 25}) + \sigma_{RON}^{2}}}
+$$
+
+$F_{\pm 4}$ is the sky flux within 4 samples of the line position, and $F_{\pm 25}$ is the sky flux within 25 samples. $\sigma_{RON}$ is the read noise of the detector. The SNR values of the lines add in quadrature to give the combined SNR of the order.
+
+If the combined SNR is below `MIN_SKY_LINE_SNR` (5.4), the utility does not apply the shift of the order. The log has an info line like "order 4: sky-line SNR 4.7 (min 5.4); no shift applied". The same check decides whether the i shift can drive the r prediction, and whether the r and i shifts can drive the u and g model. Every SOXS VIS order measured from its own sky lines gets a `SKY LINE SNR O<N>` QC.
+
+If i fails the check, the utility measures r on its own. It applies that r shift only if the second-brightest catalogue line of the r order has an SNR of at least `MIN_R_SECOND_LINE_SNR` (2.5). The 557.7 nm line alone can carry the combined SNR of r above the limit, so two kept lines can be one real line and one noise peak. If the second line is too faint, r gets no shift, `R SHIFT SOURCE` is `none`, and its comment has the reason, for example "order 1: 2nd sky line SNR 1.8 (min 2.5)". If r is combined with the i prediction and its own combined SNR is below the limit, r uses the prediction alone, and `R SHIFT SOURCE` is `predicted`.
+
+This gate replaces an earlier limit on the scatter of the kept line shifts (1.5 px). The kept residuals lie in a window of 0.1 nm (2.1 px) either side of zero, so noise alone has a standard deviation of about 1.2 px, and that limit could never fire.
+
+On 25 VIS stare standards from 2026 June and July, only the frame 20260626T044348 changes. Its i and r orders get no shift, and the u and g orders stay unshifted. Its telluric residuals go from -0.56 and -0.62 Å (r and i) to +0.04 Å. The other 24 frames are unchanged. NIR and X-Shooter output is unchanged.
+
 #### VIS u and g orders
 
 The SOXS VIS u (order 2) and g (order 3) orders have no usable sky lines, so they cannot be measured in this way. The utility predicts their shift from the measured shifts of the r (order 1) and i (order 4) orders and from the change in the angle of the derotator (the `ESO ADA ABSROT` keyword) between the science frame and the calibration frame:
@@ -79,7 +97,7 @@ The model is applied only if all of these guards pass:
 | ----- | ----- |
 | Sky lines kept after clipping, order 1 (r) | at least 2 |
 | Sky lines kept after clipping, order 4 (i) | at least 10 |
-| Standard deviation of the kept line shifts, orders 1 and 4 | at most 1.5 px |
+| Combined sky-line SNR, orders 1 (r) and 4 (i) | at least 5.4 |
 | Science `ESO ADA ABSROT` | present and usable |
 
 The limit for r is 2, not 4, because the pipeline matches only isolated catalogue lines and keeps 2 or 3 r lines on well-attached frames. A shift from a single r line was a 7 px outlier in the real-data check.

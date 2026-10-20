@@ -30,8 +30,16 @@ MEASURED_ORDERS = (VIS_R_ORDER, VIS_I_ORDER)
 # THE PIPELINE MATCHES ONLY ISOLATED CATALOGUE LINES AND KEEPS 2-3 IN r ON EVERY WELL-ATTACHED 2026 JUNE/JULY FRAME;
 # THE ONE r SHIFT FROM A SINGLE LINE IN THAT SET WAS A +7 px OUTLIER (DY-1608 REAL-DATA CHECK)
 MIN_MATCHED_LINES = {VIS_R_ORDER: 2, VIS_I_ORDER: 10}
-# MAXIMUM STANDARD DEVIATION OF THE KEPT PER-LINE SHIFTS IN AN r/i ORDER
-MAX_SHIFT_SCATTER_PX = 1.5
+# MINIMUM COMBINED PHOTON-NOISE SIGNAL-TO-NOISE OF AN ORDER'S CATALOGUE SKY LINES (``sky_line_snr``) FOR ITS OWN SKY
+# SHIFT TO BE APPLIED OR TO DRIVE A MODEL (DY-1663). ON 25 JUNE/JULY 2026 VIS STARE STANDARDS THE ONE i SHIFT THAT
+# TELLURICS SHOW TO BE NOISE (20260626T044348) HAS 4.7; THE LOWEST VERIFIED-GOOD i SHIFTS ARE 6.2 AND 6.3 (5-ARCSEC
+# SLIT, r MEASURED ON ITS OWN AGREES) AND 8.8 (1-ARCSEC SLIT, ATTACHED ARC). 5.4 SITS ABOUT 15 PERCENT FROM EACH SIDE
+MIN_SKY_LINE_SNR = 5.4
+# MINIMUM SIGNAL-TO-NOISE OF THE SECOND-BRIGHTEST CATALOGUE LINE FOR A VIS r SHIFT MEASURED WITHOUT THE i PREDICTION
+# (DY-1663). THE 557.7 nm LINE ALONE CARRIES THE COMBINED r SNR PAST ``MIN_SKY_LINE_SNR``, SO TWO KEPT LINES CAN BE ONE
+# REAL LINE AND ONE NOISE PEAK. 20260626T044348 HAS 1.8 THERE AND A 1.2 px WRONG r SHIFT; THE OTHER r-ALONE FRAMES OF
+# THE SET HAVE 3.4 OR MORE. 2.5 IS THEIR GEOMETRIC MIDDLE (SQRT(1.8 * 3.4) = 2.47)
+MIN_R_SECOND_LINE_SNR = 2.5
 # MINIMUM SKY LINES KEPT AFTER CLIPPING FOR ANY VIS ORDER SHIFT TO BE APPLIED (DY-1645)
 MIN_SHIFT_LINES = 2
 # FLOOR ON THE MEASURED r SHIFT UNCERTAINTY, SO A CHANCE-IDENTICAL SET OF LINE SHIFTS CANNOT GIVE IT INFINITE WEIGHT
@@ -303,9 +311,42 @@ def _order_guard_reason(order, stats):
         return f"order {order}: no sky shift"
     if stats["nLines"] < MIN_MATCHED_LINES[order]:
         return f"order {order}: {stats['nLines']} sky lines (min {MIN_MATCHED_LINES[order]})"
-    scatter = stats["scatterPx"]
-    if not math.isfinite(scatter) or scatter > MAX_SHIFT_SCATTER_PX:
-        return f"order {order}: shift scatter {scatter:.2f} px (max {MAX_SHIFT_SCATTER_PX})"
+    # AN ORDER TUNED OUTSIDE THE SOXS VIS PATH (X-SHOOTER) CARRIES NO SKY-LINE SNR AND IS NOT GATED ON IT
+    if stats.get("lineSnr") is None:
+        return None
+    return sky_line_snr_reason(order, stats["lineSnr"])
+
+
+def sky_line_snr_reason(order, lineSnr):
+    """*why an order's sky is too faint for its own sky shift to be trusted, or None if it is bright enough*
+
+    **Key Arguments:**
+
+    - ``order`` -- the order
+    - ``lineSnr`` -- the order's combined sky-line signal-to-noise (``sky_line_snr.combine_line_snrs``)
+
+    **Return:**
+
+    - ``reason`` -- a short reason (it fits a FITS header comment), or *None*
+    """
+    if not math.isfinite(lineSnr) or lineSnr < MIN_SKY_LINE_SNR:
+        return f"order {order}: sky-line SNR {lineSnr:.1f} (min {MIN_SKY_LINE_SNR})"
+    return None
+
+
+def r_second_line_snr_reason(secondLineSnr):
+    """*why a VIS r shift measured on its own rests on a noise-level second line, or None if that line is bright enough*
+
+    **Key Arguments:**
+
+    - ``secondLineSnr`` -- the signal-to-noise of the r order's second-brightest catalogue line
+
+    **Return:**
+
+    - ``reason`` -- a short reason (it fits a FITS header comment), or *None*
+    """
+    if not math.isfinite(secondLineSnr) or secondLineSnr < MIN_R_SECOND_LINE_SNR:
+        return f"order {VIS_R_ORDER}: 2nd sky line SNR {secondLineSnr:.1f} (min {MIN_R_SECOND_LINE_SNR})"
     return None
 
 
@@ -317,9 +358,9 @@ def ug_skip_reason(orderStats, scienceAngleDeg):
 
     **Key Arguments:**
 
-    - ``orderStats`` -- per-order sky-tuning statistics, ``{order: {"nLines": int, "scatterPx": float, ...}}``;
-      ``nLines`` is the number of sky lines kept after clipping and ``scatterPx`` the standard deviation of their
-      shifts (px)
+    - ``orderStats`` -- per-order sky-tuning statistics, ``{order: {"nLines": int, "lineSnr": float, ...}}``;
+      ``nLines`` is the number of sky lines kept after clipping and ``lineSnr`` the order's combined sky-line
+      signal-to-noise
     - ``scienceAngleDeg`` -- the usable science rotator angle in degrees, or *None*
 
     **Return:**
@@ -343,7 +384,7 @@ def r_prediction_skip_reason(iStats, scienceAngleDeg):
 
     **Key Arguments:**
 
-    - ``iStats`` -- the i-order sky-tuning statistics, ``{"nLines": int, "scatterPx": float}``, or *None*
+    - ``iStats`` -- the i-order sky-tuning statistics, ``{"nLines": int, "lineSnr": float}``, or *None*
     - ``scienceAngleDeg`` -- the usable science rotator angle in degrees, or *None*
 
     **Return:**
