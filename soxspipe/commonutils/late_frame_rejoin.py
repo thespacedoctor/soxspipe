@@ -34,7 +34,7 @@ OB_GROUPED_TECHS = ("ECHELLE,SLIT,STARE",)
 PLACEHOLDER_PRODUCT_FILE = "XXXX"
 
 # A SET OF RAW FRAMES AS A SESSION HOLDS IT: THE RECIPE THAT PRODUCES IT AND THE FILEPATHS OF ITS RAW FRAMES
-SetClaim = tuple[str, frozenset[str]]
+type SetClaim = tuple[str, frozenset[str]]
 
 # THE TABLE EACH SESSION OWNS: `sof_map_` AND A SESSION ID (`[0-9A-Za-z_]{1,16}`)
 _SESSION_MAP_TABLE = re.compile(r"sof_map_[0-9A-Za-z_]{1,16}")

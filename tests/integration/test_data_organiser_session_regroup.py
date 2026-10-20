@@ -436,11 +436,89 @@ def test_a_stale_sof_symlink_is_skipped_and_its_target_survives(prepared_workspa
     # ACT
     _late_prepare(organiser)
 
-    # ASSERT
+    # ASSERT: THE TARGET IS INTACT AFTER THE FULL BUILD, NOT ONLY AFTER THE DELETION STEP
     warnings = [message for level, message in organiser.log.messages if level == "warning"]
     assert target.read_text() == "keep"
     assert (sofDir / MFLAT).is_symlink()
     assert any(MFLAT in message and "symlink" in message for message in warnings)
+
+
+def test_a_dangling_sof_symlink_is_not_written_through(prepared_workspace) -> None:
+    # ARRANGE
+    organiser = prepared_workspace(raw_frame_table())
+    sofDir = Path(organiser.sessionsDir) / "alpha" / "sof"
+    target = sofDir / "never_written.txt"
+    (sofDir / MBIAS).unlink()
+    (sofDir / MBIAS).symlink_to(target)
+
+    # ACT
+    organiser._write_sof_files()
+
+    # ASSERT
+    assert not target.exists()
+    assert (sofDir / MBIAS).is_symlink()
+
+
+def test_a_sof_name_with_a_path_component_is_refused_and_nothing_outside_sof_is_deleted(prepared_workspace) -> None:
+    # ARRANGE
+    organiser = prepared_workspace(raw_frame_table())
+    sessionDir = Path(organiser.sessionsDir) / "alpha"
+    outside = sessionDir / "outside.txt"
+    outside.write_text("keep")
+    absolute = sessionDir / "absolute.txt"
+    absolute.write_text("keep")
+
+    # ACT
+    organiser._delete_sof_files(sessionDir / "sof", ["../outside.txt", str(absolute), "..", "."])
+
+    # ASSERT
+    warnings = [message for level, message in organiser.log.messages if level == "warning"]
+    assert outside.read_text() == "keep"
+    assert absolute.read_text() == "keep"
+    assert len(warnings) == 4
+
+
+def test_a_stale_sof_file_is_deleted_by_name(prepared_workspace) -> None:
+    # ARRANGE
+    organiser = prepared_workspace(raw_frame_table())
+    sofPath = Path(organiser.sessionsDir) / "alpha" / "sof" / MBIAS
+    assert sofPath.is_file()
+
+    # ACT
+    organiser._delete_sof_files(sofPath.parent, [MBIAS, "already_gone.sof"])
+
+    # ASSERT
+    assert not sofPath.exists()
+
+
+# THE INSTRUMENT OF A NEW SESSION IS THE FIRST ONE THE FRAMES NAME
+
+
+def test_session_create_takes_the_instrument_from_the_first_frame_that_names_one(tmp_path, log, monkeypatch) -> None:
+    # ARRANGE
+    organiser = workspace_organiser(tmp_path, log=log)
+    connection, _ = organiser._get_or_create_db_connection()
+    organiser.conn = connection
+    frames = raw_frame_table()
+    frames["instrume"] = [None, "XSHOOTER"]
+    _insert_frames(connection, frames)
+    organiserModule = sys.modules["soxspipe.commonutils.data_organiser"]
+    defaultSettingsFiles = []
+
+    class RecordingTools:
+        def __init__(self, **kwargs):
+            defaultSettingsFiles.append(kwargs.get("defaultSettingsFile"))
+
+        def setup(self):
+            return None, {}, None, None
+
+    monkeypatch.setattr(organiserModule, "tools", RecordingTools)
+
+    # ACT
+    organiser.session_create("alpha", regroup=False)
+
+    # ASSERT
+    assert defaultSettingsFiles == ["xsh_default_settings.yaml"]
 
 
 # THE FIRST STEPS OF A REGROUP CHANGE THE DATABASE IN ONE TRANSACTION

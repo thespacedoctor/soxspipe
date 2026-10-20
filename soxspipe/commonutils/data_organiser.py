@@ -12,6 +12,7 @@ Date Created
 import os
 import shutil
 import sqlite3
+import stat
 import sys
 import traceback
 from contextlib import closing
@@ -1474,6 +1475,7 @@ class data_organiser:
         for name, group in df.groupby("sof"):
             if not isinstance(name, str) or Path(name).name != name:
                 raise _UnsafePathError("SOF filename must be a filename without directory components")
+            # A LINK THAT LEAVES THE SOF DIRECTORY IS REFUSED HERE
             sofPath = str(
                 _validate_owned_path(
                     Path(self.sofDir) / name,
@@ -1481,13 +1483,17 @@ class data_organiser:
                     "SOF path",
                 )
             )
-            if os.path.exists(sofPath):
+            # A SYMLINK IS NEVER WRITTEN THROUGH, WHETHER OR NOT ITS TARGET EXISTS
+            if (Path(self.sofDir) / name).is_symlink():
+                self.log.warning(f"_write_sof_files: the SOF file `{name}` is a symlink, not written")
                 continue
-            myFile = open(sofPath, "w")
+            # MODE "x" FAILS ON A FILE THAT EXISTS, SO AN EXISTING SOF IS KEPT
             content = tabulate(group[["filepath", "tag"]], tablefmt="plain", showindex=False)
-
-            myFile.write(content)
-            myFile.close()
+            try:
+                with open(sofPath, "x") as myFile:
+                    myFile.write(content)
+            except FileExistsError:
+                continue
 
         self.log.debug("completed the ``_write_sof_files`` method")
         return
@@ -1532,7 +1538,9 @@ class data_organiser:
             if regroup:
                 # REFUSE AN OUTDATED DATABASE BEFORE ANYTHING IS CREATED
                 self._require_calibration_matches_table()
-            instruments = self.conn.execute("select distinct instrume from raw_frames").fetchall()
+            instruments = self.conn.execute(
+                "select distinct instrume from raw_frames where instrume is not null order by instrume limit 1"
+            ).fetchall()
             if instruments and instruments[0][0]:
                 inst = instruments[0][0].lower()
 
@@ -3079,20 +3087,7 @@ class data_organiser:
             }
 
         # DELETE COMPROMISED SOF FILES
-        sofDir = Path(self.sessionPath) / "sof"
-        for sof in compromisedSofs:
-            sofPath = sofDir / sof
-            # A SYMLINK IS NEVER FOLLOWED, SO ITS TARGET SURVIVES
-            if sofPath.is_symlink():
-                self.log.warning(f"build_sof_files: the SOF file `{sof}` is a symlink, not deleted")
-                continue
-            try:
-                _validate_owned_path(sofPath, sofDir, "SOF path")
-                os.remove(sofPath)
-            except _UnsafePathError as e:
-                self.log.warning(f"build_sof_files: the SOF name `{sof}` is not a safe path, not deleted: {e}")
-            except OSError as e:
-                self.log.debug(f"build_sof_files: the SOF file `{sof}` could not be deleted, continuing: {e}")
+        self._delete_sof_files(Path(self.sessionPath) / "sof", compromisedSofs)
 
         # RESET ALL PRODUCTS TO INCOMPLETE
         c = self.conn.cursor()
@@ -3202,6 +3197,45 @@ class data_organiser:
         self._write_sof_files()
 
         return
+
+    def _delete_sof_files(self, sofDir, sofs):
+        """*delete the named `.sof` files from a session's `sof` directory, and nothing outside it*
+
+        A name must be a plain filename. A symlink is skipped, so its target survives. Each file is removed
+        relative to the open directory, so swapping a path component for a symlink while this runs cannot send the
+        delete elsewhere.
+
+        **Key Arguments:**
+
+        - ``sofDir`` -- the session's `sof` directory
+        - ``sofs`` -- the SOF filenames to delete; a name that is missing is skipped
+        """
+        try:
+            dirFd = os.open(sofDir, os.O_RDONLY | os.O_DIRECTORY)
+        except OSError as e:
+            self.log.debug(f"_delete_sof_files: the SOF directory could not be opened, continuing: {e}")
+            return
+        try:
+            for sof in sofs:
+                isPlainName = (
+                    isinstance(sof, str)
+                    and sof not in ("", ".", "..")
+                    and not os.path.isabs(sof)
+                    and os.sep not in sof
+                    and (os.altsep is None or os.altsep not in sof)
+                )
+                if not isPlainName:
+                    self.log.warning(f"build_sof_files: the SOF name `{sof}` is not a plain filename, not deleted")
+                    continue
+                try:
+                    if stat.S_ISLNK(os.stat(sof, dir_fd=dirFd, follow_symlinks=False).st_mode):
+                        self.log.warning(f"build_sof_files: the SOF file `{sof}` is a symlink, not deleted")
+                        continue
+                    os.unlink(sof, dir_fd=dirFd)
+                except OSError as e:
+                    self.log.debug(f"build_sof_files: the SOF file `{sof}` could not be deleted, continuing: {e}")
+        finally:
+            os.close(dirFd)
 
     def _start_session_regroup(self, sofMapTableName):
         """*prepare the shared tables for a regroup of the active session, in one transaction*
