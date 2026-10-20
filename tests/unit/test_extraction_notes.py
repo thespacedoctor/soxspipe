@@ -31,6 +31,17 @@ def test_collector_records_warning_and_error_in_the_order_they_arrive(log: objec
     assert collector.notes == [("WARNING", "first"), ("ERROR", "second"), ("WARNING", "third")]
 
 
+def test_collector_records_an_informational_note_without_forwarding_it(log: object) -> None:
+    collector = extraction_note_logger(log)
+
+    collector.warning("odd")
+    collector.note("tuning skipped")
+    collector.note("tuning skipped")
+
+    assert collector.notes == [("WARNING", "odd"), ("NOTE", "tuning skipped")]
+    assert log.messages == [("warning", "odd")]
+
+
 def test_collector_ignores_debug_info_and_print_but_still_forwards_them(log: object) -> None:
     collector = extraction_note_logger(log)
 

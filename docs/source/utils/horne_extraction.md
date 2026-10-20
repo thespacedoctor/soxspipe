@@ -59,6 +59,10 @@ The final flux for each cross-dispersion slice is a weighted sum, as reported in
 
 The dispersion map is made from daytime calibration frames. At night, flexure moves the spectra on the detector by a small amount. After extraction, the utility corrects for this order by order. It matches the sky lines in each extracted order to the catalogue of sky lines, measures the offset of every matched line, clips the outliers, and adds the median offset to the wavelength solution of the order. Each order gets a `SKY SHIFT O<N>` QC (in nm) and a `SKY SHIFT O<N> PX` QC (the same shift in detector pixels along the dispersion axis).
 
+#### Attached arc: no tuning
+
+For SOXS, the utility skips this step when the arc is attached to the science frame. An arc is attached when its `MJD-OBS` is within 7 minutes of the science frame (before or after) and its rotator angle (`ESO ADA ABSROT END`) differs by less than 5 degrees. A frame with no usable rotator angle is never attached. The arc wavelength solution is then accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned.
+
 #### VIS r and i orders: sky-line signal-to-noise gate
 
 On a faint sky, the sky lines of a SOXS VIS order are too weak to centre, and the median shift of the matched lines is then a noise value. For each order that the utility measures from its own sky lines (the SOXS VIS r and i orders), it first computes the signal-to-noise ratio (SNR) of every catalogue calibration line in the `skyFlux` column, at the position the arc solution gives for the line:
