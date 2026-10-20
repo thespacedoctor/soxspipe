@@ -77,6 +77,7 @@ An older inline tree mirroring the source layout (`soxspipe/recipes/tests/`, `so
 
 ## Code style
 
+- Do not sort the imports in `soxspipe/__init__.py`, `soxspipe/commonutils/__init__.py`, or `soxspipe/recipes/__init__.py`, and never run an import sorter or `ruff check --fix` over them. The order works around a circular import. `tests/unit/test_package_import_order.py` explains why and fails if the order breaks; if it fails, restore the order rather than editing the test.
 - Write all inline code comments in UPPERCASE (matches the existing codebase convention, e.g. `# GLOBAL IMPORTS`, `# SETUP AND TEARDOWN FIXTURE FUNCTIONS`).
 
 ## Agent skills

@@ -129,6 +129,11 @@ max-statements = 50
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
+# THE IMPORT ORDER IN THESE THREE FILES WORKS AROUND A CIRCULAR IMPORT. SORTING IT BINDS SUBMODULES IN PLACE OF CLASSES
+# (keyword_lookup, detector_lookup). tests/unit/test_package_import_order.py GUARDS THE ORDER.
+"soxspipe/__init__.py" = ["I001"]
+"soxspipe/commonutils/__init__.py" = ["I001"]
+"soxspipe/recipes/__init__.py" = ["I001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
