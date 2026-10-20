@@ -1523,15 +1523,18 @@ class data_organiser:
         if sessionId:
             sessionId = _validate_session_id(sessionId)
 
+        # A WORKSPACE WITH NO RAW FRAME YET HAS NO INSTRUMENT, SO IT GETS THE DEFAULT ONE
+        inst = "soxs"
         rootDbExists = os.path.exists(self.rootDbPath)
         if rootDbExists:
             # CREATE THE DATABASE CONNECTION
             self.conn, reset = self._get_or_create_db_connection()
-            c = self.conn.cursor()
-            sqlQuery = "select distinct instrume from raw_frames"
-            c.execute(sqlQuery)
-            inst = c.fetchall()[0][0].lower()
-            c.close()
+            if regroup:
+                # REFUSE AN OUTDATED DATABASE BEFORE ANYTHING IS CREATED
+                self._require_calibration_matches_table()
+            instruments = self.conn.execute("select distinct instrume from raw_frames").fetchall()
+            if instruments and instruments[0][0]:
+                inst = instruments[0][0].lower()
 
         # TEST SESSION DIRECTORY EXISTS
         exists = os.path.exists(self.sessionsDir)
@@ -1804,6 +1807,9 @@ class data_organiser:
                 self.sessionsDir,
                 "session path",
             )
+            # REFUSE AN OUTDATED DATABASE BEFORE ANYTHING IS CHANGED
+            self.conn, reset = self._get_or_create_db_connection()
+            self._require_calibration_matches_table()
             # POINT THE SHARED SOF_MAP VIEW AT THIS SESSION BEFORE MAKING IT ACTIVE
             self._ensure_session_database_objects(sessionId)
             # WRITE THE SESSION ID FILE
@@ -3050,9 +3056,10 @@ class data_organiser:
             c.execute(sqlQuery)
             c.close()
 
-        # EVERY SESSION GROUPS EVERY RAW FRAME (DY-274), SO `processed` IS RE-DERIVED FROM THIS SESSION'S OWN MAP
+        # EVERY SESSION GROUPS EVERY RAW FRAME (DY-274), SO `processed` IS RE-DERIVED FROM THIS SESSION'S OWN MAP, AND A
+        # SET THAT IS IN NO MAP OF THIS SESSION IS COMPLETED AGAIN BELOW, WHOEVER BUILT IT FIRST
         if rejoinLateFrames:
-            self._rebase_processed_on_session_map(sofMapTableName)
+            self._start_session_regroup(sofMapTableName)
 
         # A FRAME ADDED AFTER ITS SET WAS GROUPED REJOINS THAT SET, WHICH IS THEN GROUPED AND REDUCED AGAIN
         rejoined = self._rejoin_late_frames(sofMapTableName) if rejoinLateFrames else {}
@@ -3060,19 +3067,28 @@ class data_organiser:
 
         sofNamePins = self.pinnedSofNames
         regroupedSofs = set()
+        knownSetsByRecipe = {}
         if rejoinLateFrames:
-            # A SET THAT IS IN NO MAP OF THIS SESSION IS COMPLETED AGAIN BELOW, WHOEVER BUILT IT FIRST
-            self._requeue_products_outside_session_map(sofMapTableName)
             # SETS KEEP THE NAMES AND THE FRAMES THEY HAVE IN THIS SESSION AND IN THE OTHERS; A SET THAT GAINED A
             # LATE FRAME IS LEFT OUT OF THE FRAME LABELS SO ITS OLD FRAMES GROUP WITH THE NEW ONE
             sofNamePins = collect_sof_name_pins(self.conn, sofMapTableName, self.pinnedSofNames)
             regroupedSofs = set(rejoined) | set(self.pinnedSofNames)
+            knownSetsByRecipe = {
+                recipe: partition_labels(sofNamePins, recipe, regroupedSofs)
+                for recipe in {filters["recipe"] for filters in self.sofMapLookup.values()}
+            }
 
         # DELETE COMPROMISED SOF FILES
         sofDir = Path(self.sessionPath) / "sof"
         for sof in compromisedSofs:
+            sofPath = sofDir / sof
+            # A SYMLINK IS NEVER FOLLOWED, SO ITS TARGET SURVIVES
+            if sofPath.is_symlink():
+                self.log.warning(f"build_sof_files: the SOF file `{sof}` is a symlink, not deleted")
+                continue
             try:
-                os.remove(_validate_owned_path(sofDir / sof, sofDir, "SOF path"))
+                _validate_owned_path(sofPath, sofDir, "SOF path")
+                os.remove(sofPath)
             except _UnsafePathError as e:
                 self.log.warning(f"build_sof_files: the SOF name `{sof}` is not a safe path, not deleted: {e}")
             except OSError as e:
@@ -3101,7 +3117,7 @@ class data_organiser:
                     recipeOrder=recipeOrder,
                     filterName=name,
                     unprocessedOnly=not rejoinLateFrames,
-                    knownSets=partition_labels(sofNamePins, recipe, regroupedSofs) if rejoinLateFrames else None,
+                    knownSets=knownSetsByRecipe.get(recipe) if rejoinLateFrames else None,
                 )
                 rawGroups = pin_rejoined_sof_names(rawGroups, sofNamePins)
 
@@ -3187,43 +3203,43 @@ class data_organiser:
 
         return
 
-    def _rebase_processed_on_session_map(self, sofMapTableName):
-        """*set `raw_frames.processed` to 1 for the frames in this session's SOF map and to 0 for every other frame*
+    def _start_session_regroup(self, sofMapTableName):
+        """*prepare the shared tables for a regroup of the active session, in one transaction*
 
-        `processed` is one column shared by every session, so after another session's build it says nothing about
-        this session. It is only a cache of "this frame is in the active session's map", which the late-frame check
-        and `session_refresh` read.
+        1. Set `raw_frames.processed` to 1 for the frames in this session's SOF map and to 0 for every other frame.
+           `processed` is one column shared by every session, so after another session's build it says nothing about
+           this session. It is only a cache of "this frame is in the active session's map", which the late-frame
+           check and `session_refresh` read.
+        2. Mark incomplete every product SOF that is in none of this session's SOF map rows. `product_frames` is
+           shared by every session, so a set another session built is already complete there and would never be
+           mapped into this session. Marking it incomplete sends it through the same completeness check as a new
+           set. Its product row, status and SOF name are kept.
+
+        Either both changes are made or neither is. The rest of `build_sof_files` cannot join this transaction,
+        because `_dataframe_to_sqlite` refuses a connection that is inside one.
 
         **Key Arguments:**
 
         - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
         """
         # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier BY THE CALLER
-        sqlQuery = (
+        rebaseQuery = (
             "UPDATE raw_frames SET processed = CASE "  # noqa: S608
             f"WHEN filepath IN (SELECT filepath FROM {sofMapTableName}) THEN 1 ELSE 0 END;"
         )
-        self.conn.execute(sqlQuery)
-        self.conn.commit()
-
-    def _requeue_products_outside_session_map(self, sofMapTableName):
-        """*mark incomplete every product SOF that is in none of this session's SOF map rows*
-
-        `product_frames` is shared by every session, so a set another session built is already complete there and
-        would never be mapped into this session. Marking it incomplete sends it through the same completeness check
-        as a new set. Its product row, status and SOF name are kept.
-
-        **Key Arguments:**
-
-        - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
-        """
-        # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier BY THE CALLER
-        sqlQuery = (
+        requeueQuery = (
             "UPDATE product_frames SET complete = 0 WHERE complete != 0 "  # noqa: S608
             f"AND sof NOT IN (SELECT DISTINCT sof FROM {sofMapTableName} WHERE sof IS NOT NULL);"
         )
-        self.conn.execute(sqlQuery)
-        self.conn.commit()
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute(rebaseQuery)
+            self.conn.execute(requeueQuery)
+            self.conn.execute("COMMIT")
+        except BaseException:
+            if self.conn.in_transaction:
+                self.conn.execute("ROLLBACK")
+            raise
 
     def _rejoin_late_frames(self, sofMapTableName):
         """*reset every set that a late-arriving raw frame belongs to, so it is grouped and reduced again*
@@ -3412,7 +3428,9 @@ class data_organiser:
                 rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
             ]
         if len(rawPinholeFrames.index):
-            rawPinholeFrames = self._group_raw_frames(rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"])
+            rawPinholeFrames = self._group_raw_frames(
+                rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"], knownSets=knownSets
+            )
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 

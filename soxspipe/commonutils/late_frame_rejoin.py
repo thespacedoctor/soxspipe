@@ -33,6 +33,9 @@ OB_GROUPED_TECHS = ("ECHELLE,SLIT,STARE",)
 # PRODUCTS WITH NO FILE OF THEIR OWN CARRY THIS PLACEHOLDER NAME
 PLACEHOLDER_PRODUCT_FILE = "XXXX"
 
+# A SET OF RAW FRAMES AS A SESSION HOLDS IT: THE RECIPE THAT PRODUCES IT AND THE FILEPATHS OF ITS RAW FRAMES
+SetClaim = tuple[str, frozenset[str]]
+
 # THE TABLE EACH SESSION OWNS: `sof_map_` AND A SESSION ID (`[0-9A-Za-z_]{1,16}`)
 _SESSION_MAP_TABLE = re.compile(r"sof_map_[0-9A-Za-z_]{1,16}")
 
@@ -67,7 +70,7 @@ def _late_frame_exists(connection: sqlite3.Connection) -> bool:
 
 def find_rejoined_sofs(
     connection: sqlite3.Connection, sofMapTable: str, groupingKeys: Sequence[str]
-) -> dict[str, tuple[str, frozenset[str]]]:
+) -> dict[str, SetClaim]:
     """*find the SOFs that a frame added after they were grouped now belongs to*
 
     A late frame is unprocessed and in no SOF. It joins a SOF when it matches that SOF's frames on every grouping
@@ -89,6 +92,10 @@ def find_rejoined_sofs(
     import pandas as pd
 
     sofMapTable = validate_sql_identifier(sofMapTable, "sof map table name")
+    # NO FRAME CAN REJOIN A SET WHEN THE MAP HOLDS NO SET, SO THE FRAMES ARE NOT READ
+    # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier ABOVE
+    if connection.execute(f"SELECT 1 FROM {sofMapTable} LIMIT 1;").fetchone() is None:  # noqa: S608
+        return {}
     if not _late_frame_exists(connection):
         return {}
 
@@ -153,7 +160,7 @@ def session_map_tables(connection: sqlite3.Connection) -> list[str]:
     )
 
 
-def read_set_members(connection: sqlite3.Connection, sofMapTable: str) -> dict[str, tuple[str, frozenset[str]]]:
+def read_set_members(connection: sqlite3.Connection, sofMapTable: str) -> dict[str, SetClaim]:
     """*read the raw frames of every SOF in one session's SOF map*
 
     The calibration products a SOF map lists next to the raw frames are left out. A SOF with no raw frame, or no
@@ -185,8 +192,8 @@ def read_set_members(connection: sqlite3.Connection, sofMapTable: str) -> dict[s
 def collect_sof_name_pins(
     connection: sqlite3.Connection,
     sofMapTable: str,
-    pinned: Mapping[str, tuple[str, frozenset[str]]],
-) -> dict[str, tuple[str, frozenset[str]]]:
+    pinned: Mapping[str, SetClaim],
+) -> dict[str, SetClaim]:
     """*gather the SOF names a regroup of one session must keep*
 
     A name is claimed first by ``pinned`` (sets that gained a late frame in this run), then by the session's own SOF
@@ -215,9 +222,7 @@ def collect_sof_name_pins(
     return pins
 
 
-def partition_labels(
-    pins: Mapping[str, tuple[str, frozenset[str]]], recipe: str, excludedSofs: Iterable[str] = ()
-) -> dict[str, str]:
+def partition_labels(pins: Mapping[str, SetClaim], recipe: str, excludedSofs: Iterable[str] = ()) -> dict[str, str]:
     """*name the known set each raw frame belongs to, for one recipe*
 
     Grouping alone cannot tell two template runs apart when they share every grouping key (for example, two flat
@@ -266,7 +271,7 @@ def status_columns(connection: sqlite3.Connection) -> list[str]:
 def reset_rejoined_sofs(
     connection: sqlite3.Connection,
     sofMapTable: str,
-    rejoined: Mapping[str, tuple[str, frozenset[str]]],
+    rejoined: Mapping[str, SetClaim],
     workspaceRoot: str | os.PathLike,
     validateOwnedPath: Callable[[Path, Path, str], Path],
     log: logging.Logger,
@@ -406,7 +411,7 @@ def delete_stale_files(paths: Iterable[Path], log: logging.Logger) -> None:
             log.warning(f"late_frame_rejoin: stale file `{path}` could not be removed: {error}")
 
 
-def pin_rejoined_sof_names(rawGroups, rejoined: Mapping[str, tuple[str, frozenset[str]]]):
+def pin_rejoined_sof_names(rawGroups, rejoined: Mapping[str, SetClaim]):
     """*give each regrouped set the SOF name it had before its late frame arrived*
 
     A group takes an old name only when its recipe matches and it holds every frame the old SOF held.

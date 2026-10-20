@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import sqlite3
+import sys
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.data_organiser import OutdatedWorkspaceError
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from tests.factories import raw_flat_run_table, raw_frame_table, workspace_organiser
-from tests.integration.test_data_organiser_late_frames import _calibration_chain_frames, _insert_frames
+from tests.integration.test_data_organiser_late_frames import (
+    _calibration_chain_frames,
+    _insert_frames,
+    _pinhole_frame,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -324,3 +331,172 @@ def test_a_failed_set_keeps_its_status_and_its_map_rows_through_a_regroup(prepar
     # ASSERT
     assert _statuses(organiser, MBIAS) == {("fail", None, 1)}
     assert _sof_map_rows(organiser, "alpha") == mapBefore
+
+
+# TWO KNOWN PINHOLE SETS THAT SHARE EVERY KEY STAY TWO SOFS
+
+
+def test_two_pinhole_arcs_that_share_every_key_stay_two_sofs_in_every_session(prepared_workspace) -> None:
+    # ARRANGE: THE SECOND ARC ARRIVES AFTER THE FIRST WAS GROUPED AND HAS THE SAME KEYS, TEMPLATE START AND `mjd-obs`
+    organiser = prepared_workspace(_calibration_chain_frames())
+    secondArc = _pinhole_frame(raw_frame_table(), "arc-2", "LAMP,WAVE", "2024-01-02T04:04:00", "2024-01-02T04:04:09")
+    _insert_frames(organiser.conn, secondArc)
+    organiser.prepare(report=False)
+    alphaArcSofs = {row[2] for row in _sof_map_rows(organiser, "alpha") if "DISP_SOLUTION" in row[2]}
+    assert len(alphaArcSofs) == 2
+
+    # ACT
+    organiser.prepare(report=False)
+    organiser.session_create("beta")
+
+    # ASSERT
+    assert {row[2] for row in _sof_map_rows(organiser, "alpha") if "DISP_SOLUTION" in row[2]} == alphaArcSofs
+    assert {row[2] for row in _sof_map_rows(organiser, "beta") if "DISP_SOLUTION" in row[2]} == alphaArcSofs
+
+
+# AN OUT-OF-DATE WORKSPACE IS REFUSED BEFORE ANYTHING CHANGES
+
+
+def _workspace_state(organiser):
+    """Return what `session_create` and `session_switch` change: session directories, ID file, tables, view, links."""
+    sessionsDir = Path(organiser.sessionsDir)
+    rootDir = Path(organiser.rootDir)
+    return {
+        "sessions": sorted(path.name for path in sessionsDir.iterdir()),
+        "sessionId": Path(organiser.sessionIdFile).read_text(encoding="utf-8"),
+        "tables": sorted(row[0] for row in organiser.conn.execute("SELECT name FROM sqlite_master")),
+        "columns": sorted(row[1] for row in organiser.conn.execute("PRAGMA table_info(product_frames)")),
+        "view": organiser.conn.execute("SELECT sql FROM sqlite_master WHERE name = 'sof_map'").fetchone(),
+        "links": {name: Path(rootDir / name).resolve() for name in ("sof", "qc", "reduced", "soxspipe.yaml")},
+        "attributes": (organiser.sessionId, organiser.sessionPath),
+    }
+
+
+def test_session_create_refuses_an_outdated_workspace_before_it_changes_anything(prepared_workspace) -> None:
+    # ARRANGE
+    organiser = prepared_workspace(raw_frame_table())
+    organiser.conn.execute("DROP TABLE calibration_matches")
+    stateBefore = _workspace_state(organiser)
+
+    # ACT
+    with pytest.raises(OutdatedWorkspaceError):
+        organiser.session_create("beta")
+
+    # ASSERT
+    assert _workspace_state(organiser) == stateBefore
+
+
+def test_session_switch_refuses_an_outdated_workspace_before_it_changes_anything(prepared_workspace) -> None:
+    # ARRANGE
+    organiser = prepared_workspace(raw_frame_table())
+    organiser.session_create("beta")
+    organiser.session_switch("alpha")
+    organiser.conn.execute("DROP TABLE calibration_matches")
+    stateBefore = _workspace_state(organiser)
+
+    # ACT
+    with pytest.raises(OutdatedWorkspaceError):
+        organiser.session_switch("beta")
+
+    # ASSERT
+    assert _workspace_state(organiser) == stateBefore
+
+
+# A WORKSPACE WITH NO RAW FRAME CAN STILL GET A SESSION
+
+
+def test_session_create_works_in_a_workspace_with_no_raw_frames(tmp_path, log) -> None:
+    # ARRANGE
+    organiser = workspace_organiser(tmp_path, log=log)
+    connection, _ = organiser._get_or_create_db_connection()
+    organiser.conn = connection
+
+    # ACT
+    sessionId = organiser.session_create("alpha")
+
+    # ASSERT
+    assert sessionId == "alpha"
+    assert (Path(organiser.sessionsDir) / "alpha" / "soxspipe.yaml").is_file()
+    assert Path(organiser.sessionIdFile).read_text(encoding="utf-8") == "alpha"
+
+
+# A SYMLINK IN `sof/` IS NEVER FOLLOWED WHEN A STALE SOF FILE IS DELETED
+
+
+def test_a_stale_sof_symlink_is_skipped_and_its_target_survives(prepared_workspace) -> None:
+    # ARRANGE
+    frames = pd.concat([_calibration_chain_frames(), raw_flat_run_table(FIRST_HALF)])
+    organiser = prepared_workspace(frames)
+    sofDir = Path(organiser.sessionsDir) / "alpha" / "sof"
+    target = sofDir / "keep.txt"
+    target.write_text("keep")
+    (sofDir / MFLAT).unlink()
+    (sofDir / MFLAT).symlink_to(target)
+
+    # ACT
+    _late_prepare(organiser)
+
+    # ASSERT
+    warnings = [message for level, message in organiser.log.messages if level == "warning"]
+    assert target.read_text() == "keep"
+    assert (sofDir / MFLAT).is_symlink()
+    assert any(MFLAT in message and "symlink" in message for message in warnings)
+
+
+# THE FIRST STEPS OF A REGROUP CHANGE THE DATABASE IN ONE TRANSACTION
+
+
+class _FailsOnRequeue:
+    """Connection proxy that behaves like the real one except that the product requeue statement fails."""
+
+    def __init__(self, connection):
+        self._connection = connection
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def execute(self, sqlQuery, *args):
+        if "SET complete = 0 WHERE complete != 0" in sqlQuery:
+            raise sqlite3.OperationalError("simulated failure")
+        return self._connection.execute(sqlQuery, *args)
+
+
+def test_a_failed_regroup_start_leaves_processed_and_product_flags_as_they_were(prepared_workspace) -> None:
+    # ARRANGE
+    organiser = prepared_workspace(raw_frame_table())
+    organiser.conn.execute("UPDATE raw_frames SET processed = 5")
+    realConnection = organiser.conn
+    organiser.conn = _FailsOnRequeue(realConnection)
+
+    # ACT
+    with pytest.raises(sqlite3.OperationalError):
+        organiser.build_sof_files(rejoinLateFrames=True)
+
+    # ASSERT
+    organiser.conn = realConnection
+    assert organiser.conn.execute("SELECT DISTINCT processed FROM raw_frames").fetchall() == [(5,)]
+    assert not organiser.conn.in_transaction
+
+
+# GROUPING WORK IS NOT REPEATED
+
+
+def test_the_known_set_labels_are_built_once_per_recipe_in_a_regroup(prepared_workspace, monkeypatch) -> None:
+    # ARRANGE
+    organiser = prepared_workspace(raw_frame_table())
+    organiserModule = sys.modules["soxspipe.commonutils.data_organiser"]
+    realLabels = organiserModule.partition_labels
+    recipes = []
+
+    def counting_labels(pins, recipe, excludedSofs=()):
+        recipes.append(recipe)
+        return realLabels(pins, recipe, excludedSofs)
+
+    monkeypatch.setattr(organiserModule, "partition_labels", counting_labels)
+
+    # ACT
+    organiser.build_sof_files(rejoinLateFrames=True)
+
+    # ASSERT
+    assert recipes
+    assert len(recipes) == len(set(recipes))

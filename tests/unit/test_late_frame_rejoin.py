@@ -248,3 +248,16 @@ def test_partition_labels_leave_out_the_excluded_sets() -> None:
 
     # ASSERT
     assert labels == {"c.fits": NEW_SOF}
+
+
+def test_find_rejoined_sofs_does_not_read_the_frames_when_the_sof_map_is_empty() -> None:
+    # ARRANGE: THERE IS NO `raw_frames_valid` TABLE, SO READING THE FRAMES WOULD RAISE
+    connection = sqlite3.connect(":memory:")
+    connection.execute("CREATE TABLE sof_map_test (file TEXT, tag TEXT, sof TEXT, filepath TEXT, complete INT)")
+
+    # ACT
+    rejoined = find_rejoined_sofs(connection, "sof_map_test", ["eso seq arm"])
+
+    # ASSERT
+    connection.close()
+    assert rejoined == {}
