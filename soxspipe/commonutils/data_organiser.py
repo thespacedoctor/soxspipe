@@ -1539,7 +1539,7 @@ class data_organiser:
                 # REFUSE AN OUTDATED DATABASE BEFORE ANYTHING IS CREATED
                 self._require_calibration_matches_table()
             instruments = self.conn.execute(
-                "select distinct instrume from raw_frames where instrume is not null order by instrume limit 1"
+                "select instrume from raw_frames where instrume is not null order by rowid limit 1"
             ).fetchall()
             if instruments and instruments[0][0]:
                 inst = instruments[0][0].lower()
@@ -3232,8 +3232,11 @@ class data_organiser:
                         self.log.warning(f"build_sof_files: the SOF file `{sof}` is a symlink, not deleted")
                         continue
                     os.unlink(sof, dir_fd=dirFd)
+                except FileNotFoundError:
+                    continue
                 except OSError as e:
-                    self.log.debug(f"build_sof_files: the SOF file `{sof}` could not be deleted, continuing: {e}")
+                    # A STALE SOF THAT SURVIVES IS NEVER REWRITTEN, SO THE FAILURE MUST BE VISIBLE
+                    self.log.warning(f"build_sof_files: the stale SOF file `{sof}` could not be deleted: {e}")
         finally:
             os.close(dirFd)
 
