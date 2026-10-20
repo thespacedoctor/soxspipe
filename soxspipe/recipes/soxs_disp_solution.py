@@ -527,7 +527,7 @@ class soxs_disp_solution(base_recipe):
             products=self.products,
             sofName=self.sofName,
             lineDetectionTable=lineDetectionTable,
-            turnOffMP=self.turnOffMP or self.debug,
+            turnOffMP=self.runSerially,
             mute=True,
             progressBar=True,
         )

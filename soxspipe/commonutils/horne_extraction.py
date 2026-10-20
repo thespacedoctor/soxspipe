@@ -448,11 +448,6 @@ class horne_extraction(base_util):
 
         from fundamentals import fmultiprocess
 
-        if self.debug or self.turnOffMP:
-            turnOffMP = True
-        else:
-            turnOffMP = False
-
         inputArray = [[s, r] for s, r in zip(orderSlices, orderRectifiedImages)]
 
         # EXTRACTION RUNS IN-PROCESS (turnOffMP=True BELOW). WARNINGS LOGGED INSIDE WORKER PROCESSES WOULD NOT REACH

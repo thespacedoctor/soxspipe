@@ -659,7 +659,7 @@ class soxs_spatial_solution(base_recipe):
             sofName=self.sofName,
             lineDetectionTable=lineDetectionTable,
             debug=self.debug,
-            turnOffMP=self.turnOffMP or self.debug,
+            turnOffMP=self.runSerially,
             mute=True,
             progressBar=True,
         )
