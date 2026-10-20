@@ -43,6 +43,8 @@ SLIT_CENTRE_ARCSEC = 0.0
 
 # SHORT ENOUGH TO FIT ON THE FITS HEADER CARD NEXT TO THE HIERARCH KEYWORD AND THE TEXT VALUE
 EXTRACT_METHOD_QC_COMMENT = "Optimal, or boxcar if no trace"
+SKY_TUNING_QC_COMMENT = "Wavelength tuning to sky lines"
+SKY_TUNING_SKIPPED_QC_VALUE = "skipped: attached arc"
 
 # SKY-LINE MATCH TOLERANCES (nm) FOR THE THREE TUNING ITERATIONS OF AN ORDER MEASURED FROM SCRATCH
 SKYLINE_TOLERANCES_NM = (0.5, 0.1, 0.1)
@@ -490,9 +492,7 @@ class horne_extraction(base_util):
         extractedOrdersDF = extractedOrdersDF.loc[
             extractedOrdersDF["pixelScaleNm"] < 3
         ]  # FILTER OUT ANY REMAINING BAD PIXELS WITH UNREALISTICALLY LARGE PIXEL SCALE (I.E. WAVELENGTH JUMPS BETWEEN ADJACENT PIXELS)
-        if True:
-            extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
-            # extractedOrdersDF = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm, byOrder=False)
+        extractedOrdersDF = self._tune_or_skip(extractedOrdersDF, arm)
 
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
 
@@ -765,8 +765,74 @@ class horne_extraction(base_util):
 
         return group["FLUX_COUNTS"]
 
+    def _arc_attachment(self):
+        """*the offsets ``(minutes, rotatorDegrees)`` of an attached SOXS arc from the science frame, or None*
+
+        The arc is the dispersion map's primary header. X-Shooter, an unreadable header and an arc that is not
+        attached (``within_attached_arc_limits``) all give *None*.
+        """
+        from soxspipe.commonutils.ug_wavelength_transfer import attached_arc_offsets, within_attached_arc_limits
+
+        if self.inst.upper() != "SOXS":
+            return None
+        arcHeader = self._dispersion_map_header()
+        if arcHeader is None:
+            return None
+        offsets = attached_arc_offsets(self.skySubtractedFrame.header, arcHeader, self.kw)
+        return offsets if within_attached_arc_limits(offsets) else None
+
+    def _tune_or_skip(self, extractedOrdersDF, arm):
+        """*tune the wavelength solution to the sky lines, unless a SOXS arc is attached to the science frame*
+
+        With an attached arc (``_arc_attachment``) the arc solution is accurate enough that tuning only adds noise
+        (DY-1665), so the spectrum is returned unchanged and the skip is logged, noted on the QC plots and recorded
+        as the ``SKY TUNING`` QC.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``arm`` -- the arm of the instrument
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- the tuned data-frame, or the input if tuning was skipped
+        """
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        attachment = self._arc_attachment()
+        if attachment is None:
+            tuned = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
+            qcValue = "skylines"
+        else:
+            message = (
+                f"Attached arc (Δt {attachment[0]:0.1f} min, Δrot {attachment[1]:0.1f}°): "
+                "skyline wavelength tuning skipped"
+            )
+            self.log.print(message)
+            if isinstance(self.log, extraction_note_logger):
+                self.log.note(message)
+            tuned = extractedOrdersDF
+            qcValue = SKY_TUNING_SKIPPED_QC_VALUE
+
+        if not isinstance(self.qc, bool):
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName="SKY TUNING",
+                qcValue=qcValue,
+                qcComment=SKY_TUNING_QC_COMMENT,
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow_string(),
+                qcUnit=None,
+                toHeader=True,
+            )
+        return tuned
+
     def tune_wavelength_calibration_to_skylines(self, extractedOrdersDF, arm, byOrder=True):
         """Skyline-based wavelength calibration tuning helper.
+
+        Not called for a SOXS arc attached to the science frame (``_tune_or_skip``, DY-1665): its wavelength
+        solution is accurate enough that tuning only adds noise.
 
         In the SOXS VIS arm, tuned order by order, the i order is measured before r, and no order is shifted from
         fewer than two sky lines or from a sky too faint for its lines to be centred (``MIN_SKY_LINE_SNR``, DY-1663;

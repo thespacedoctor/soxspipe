@@ -103,6 +103,7 @@ def _configure_synthetic_orchestration(
     extractor.products = products
     extractor.kw = lambda key: key
     extractor.arm = "VIS"
+    extractor.inst = "SOXS"
     extractor.twoDMap = {
         "WAVELENGTH": CCDData(np.ones((2, 3)), unit=u.nm),
         "SLIT": CCDData(np.zeros((2, 3)), unit=u.one),
@@ -167,8 +168,9 @@ def test_extract_orchestrates_synthetic_orders_without_writing_products(
 
     qc, products, mergedSpectrum, joins, filePath = extractor.extract()
 
-    assert qc["qc_name"].tolist() == ["N ORDERS SLIT EDGE"]
+    assert qc["qc_name"].tolist() == ["N ORDERS SLIT EDGE", "SKY TUNING"]
     assert qc.loc[0, "qc_value"] == 0
+    assert qc.loc[1, "qc_value"] == "skylines"
     assert products is False
     assert filePath is False
     assert joins == {"10-11": 501.0}
@@ -203,7 +205,7 @@ def test_extract_in_fallback_records_the_boxcar_method_and_centres_every_order_o
     assert methodRows["qc_value"].tolist() == ["boxcar"]
     assert methodRows["qc_unit"].tolist() == [None]
     assert methodRows["to_header"].tolist() == [True]
-    assert qc["qc_name"].tolist() == ["EXTRACT METHOD", "N ORDERS SLIT EDGE"]
+    assert qc["qc_name"].tolist() == ["EXTRACT METHOD", "N ORDERS SLIT EDGE", "SKY TUNING"]
     assert captured["transformer"]["fixedSlitCentreArcsec"] == 0.0
     assert captured["multiprocessKwargs"]["boxcarOnly"] is True
 
@@ -2552,7 +2554,7 @@ def test_extract_reports_slit_edge_spill_from_the_per_order_extractions(
     qc, _, _, _, _ = extractor.extract()
 
     assert extractor.slitEdgeOrders == [(10, 500.0, 502.0, 1.0)]
-    assert qc["qc_value"].tolist() == [1]
+    assert qc.loc[qc["qc_name"] == "N ORDERS SLIT EDGE", "qc_value"].tolist() == [1]
     assert len([level for level, _ in log.messages if level == "error"]) == 1
 
 

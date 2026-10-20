@@ -18,13 +18,13 @@ os.environ["TERM"] = "vt100"
 
 class extraction_note_logger:
     """
-    *a logger proxy that remembers the warnings and errors it is given, then forwards every call unchanged*
+    *a logger proxy that remembers the warnings, errors and notes it is given, and forwards every call but ``note``*
 
-    Only ``warning`` and ``error`` are recorded. Every other call (``debug``, ``info``, ``print``, ``warn``,
-    ``critical``, ``exception``, ``log(level, ...)`` ...) and every attribute (``handlers`` ...) is forwarded to
-    the wrapped logger without being recorded, so the proxy can stand in for it. ``notes`` keeps first-seen
-    order and drops exact duplicates. A message given with arguments is recorded as ``msg % args``, as
-    ``logging`` formats it.
+    Only ``warning``, ``error`` and ``note`` are recorded (``note`` is not forwarded). Every other call
+    (``debug``, ``info``, ``print``, ``warn``, ``critical``, ``exception``, ``log(level, ...)`` ...) and every
+    attribute (``handlers`` ...) is forwarded to the wrapped logger without being recorded, so the proxy can stand
+    in for it. ``notes`` keeps first-seen order and drops exact duplicates. A message given with arguments is
+    recorded as ``msg % args``, as ``logging`` formats it.
 
     **Key Arguments:**
 
@@ -86,6 +86,15 @@ class extraction_note_logger:
         """
         self._record("ERROR", msg, args)
         return self._log.error(msg, *args, **kwargs)
+
+    def note(self, msg: object) -> None:
+        """*record an informational note for the QC plots; it is not forwarded to the wrapped logger*
+
+        **Key Arguments:**
+
+        - ``msg`` -- the note text
+        """
+        self._record("NOTE", msg, ())
 
     def _record(self, level: str, msg: object, args: tuple[object, ...] | Mapping[str, object]) -> None:
         text = str(msg)
