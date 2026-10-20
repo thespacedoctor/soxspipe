@@ -326,6 +326,11 @@ class create_dispersion_map:
         self.debug = debug
         self.turnOffMP = turnOffMP
 
+    @property
+    def runSerially(self):  # noqa: N802
+        """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
+        return bool(self.turnOffMP or self.debug)
+
     def _setup_keywords_and_metadata(self):
         """*Initialize keyword lookup and extract frame header metadata*"""
         from soxspipe.commonutils.toolkit import get_calibration_lamp
@@ -1682,11 +1687,6 @@ class create_dispersion_map:
             "fwhm_pin_px": [],  # MEASURED FWHM IN PIXELS
         }
 
-        if self.debug or self.turnOffMP:
-            turnOffMP = True
-        else:
-            turnOffMP = False
-
         # PROCESS ALL STAMPS USING MULTIPROCESSING (OR SERIAL IN DEBUG MODE)
         # NOTE: MULTIPROCESSING AND THREADING IS MUCH SLOWER! KEEP TURNED OFF
         results = fmultiprocess(
@@ -2936,20 +2936,14 @@ class create_dispersion_map:
             if order in theseOrders
         ]
 
-        if self.debug or self.turnOffMP:
-            turnOffMP = True
-
-        else:
-            turnOffMP = False
-
-        if turnOffMP:
+        if self.runSerially:
             results = fmultiprocess(
                 log=self.log,
                 function=self.order_to_image,
                 inputArray=inputArray,
                 poolSize=6,
                 timeout=3600,
-                turnOffMP=turnOffMP,
+                turnOffMP=True,
             )
         else:
             # NUMPY CAN BE TRICKY WITH MP
@@ -2963,7 +2957,7 @@ class create_dispersion_map:
                 inputArray=inputArray,
                 poolSize=6,
                 timeout=3600,
-                turnOffMP=turnOffMP,
+                turnOffMP=False,
             )
             del os.environ["OPENBLAS_NUM_THREADS"]
             del os.environ["OMP_NUM_THREADS"]

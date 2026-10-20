@@ -189,6 +189,11 @@ class base_recipe:
 
         return
 
+    @property
+    def runSerially(self):  # noqa: N802
+        """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
+        return bool(self.turnOffMP or self.debug)
+
     def _resolve_product_path(self, log, inputFrames, verbose, overwrite):
         """*predict where this recipe's product will be written, and refuse to run over one that is already there*
 
