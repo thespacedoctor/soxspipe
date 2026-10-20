@@ -48,12 +48,14 @@ MIN_R_SECOND_LINE_SNR = 2.5
 MIN_SHIFT_LINES = 2
 # FLOOR ON THE MEASURED r SHIFT UNCERTAINTY, SO A CHANCE-IDENTICAL SET OF LINE SHIFTS CANNOT GIVE IT INFINITE WEIGHT
 MIN_MEASURED_SIGMA_PX = 0.05
-# AN ARC IS ATTACHED TO A SCIENCE FRAME WHEN IT IS TAKEN WITHIN THIS MANY MINUTES (START TO START, EITHER SIDE) AND WITH
-# A ROTATOR ANGLE WITHIN THIS MANY DEGREES (WRAP-AWARE). THESE ARE THE WELL-ATTACHED TEST OF THE HUB STUDY
-# ``output/arc_transfer/report.md`` (``MAX_MINUTES = 7`` WITH ``<=``, ``MAX_DROT_DEG = 5`` WITH ``<``); DY-1665
+# AN ARC IS ATTACHED TO A SCIENCE BLOCK WHEN THE GAP FROM THE END OF THE EARLIER EXPOSURE TO THE START OF THE LATER IS
+# WITHIN THIS MANY MINUTES AND ITS ROTATOR ANGLE IS WITHIN THIS MANY DEGREES (WRAP-AWARE). THESE ARE THE WELL-ATTACHED
+# TEST OF THE HUB STUDY ``output/arc_transfer/report.md`` (``MAX_MINUTES = 7`` WITH ``<=``, ``MAX_DROT_DEG = 5`` WITH
+# ``<``); DY-1665. DAVE RULED THE END-TO-START GAP AND KEPT 7 MIN ON IT (DY-1666)
 MAX_ATTACHED_ARC_MINUTES = 7.0
 MAX_ATTACHED_ARC_ROTATOR_DEGREES = 5.0
 MINUTES_PER_DAY = 1440.0
+SECONDS_PER_DAY = 86400.0
 # MJD-OBS IS ~61000 DAYS, SO ITS FLOAT RESOLUTION IS ~1E-6 MINUTES; ROUNDING KEEPS A GAP OF EXACTLY THE LIMIT ON IT
 MINUTES_DECIMALS = 6
 COEFFICIENTS_KEY = "ug-wavelength-transfer"
@@ -255,51 +257,94 @@ def usable_rotator_angle(header, kw):
     return angle
 
 
-def attached_arc_offsets(scienceHeader, arcHeader, kw):
-    """*how far an arc is from a science frame in time and rotator angle, or None if either cannot be measured*
+def exposure_window(header, kw):
+    """*the start and end of a frame's exposure as MJDs, or None if either cannot be read*
 
-    The time offset is the absolute difference of the two ``MJD-OBS`` start times. The rotator offset is the
-    wrap-aware difference of the two usable rotator angles (``usable_rotator_angle``), so 179 and -179 degrees are 2
-    degrees apart.
+    The start is ``MJD-OBS``. The duration is ``ESO DET SEQ1 EXPTIME`` when the frame has it: on NIR, ``EXPTIME`` is
+    one DIT and the sequence of NDIT reads lasts much longer (600 s against 2413 s with NDIT 4). VIS frames lack it,
+    and their ``EXPTIME`` is the whole exposure (DY-1666).
 
     **Key Arguments:**
 
-    - ``scienceHeader`` -- the science frame header
+    - ``header`` -- the FITS header to read
+    - ``kw`` -- the keyword lookup, mapping an alias such as ``MJDOBS`` to the header keyword
+
+    **Return:**
+
+    - ``window`` -- ``(startMjd, endMjd)``, or *None* if the start or a non-negative duration cannot be read
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.ug_wavelength_transfer import exposure_window
+    startMjd, endMjd = exposure_window(frame.header, self.kw)
+    ```
+    """
+    # ``read_rotator_angle`` READS ANY FINITE NUMBER FROM A HEADER, NOT ONLY AN ANGLE
+    start = read_rotator_angle(header, kw("MJDOBS"))
+    duration = read_rotator_angle(header, kw("SEQ_EXPTIME"))
+    if duration is None:
+        duration = read_rotator_angle(header, kw("EXPTIME"))
+    if start is None or duration is None or duration < 0:
+        return None
+    return start, start + duration / SECONDS_PER_DAY
+
+
+def _window_gap_days(window, otherWindow):
+    """*the days from the end of the earlier window to the start of the later one; 0 if they overlap*"""
+    return max(0.0, otherWindow[0] - window[1], window[0] - otherWindow[1])
+
+
+def attached_arc_offsets(scienceHeaders, arcHeader, kw):
+    """*how far an arc is from a block of science frames in time and rotator angle, or None if not measurable*
+
+    The block is every science frame of the observation block (one frame for a single stare frame). The time offset
+    is the gap from the end of the earlier exposure to the start of the later one (``exposure_window``): the arc end
+    to the first frame's start for an arc before the block, the last frame's end to the arc start for an arc after
+    it, and 0 for an arc that overlaps the block. The rotator offset is the wrap-aware difference between the arc and
+    the frame nearest to it in time (``usable_rotator_angle``), so 179 and -179 degrees are 2 degrees apart.
+
+    **Key Arguments:**
+
+    - ``scienceHeaders`` -- the headers of the raw science frames of the block, in any order
     - ``arcHeader`` -- the arc header (the dispersion-map primary header)
     - ``kw`` -- the keyword lookup, mapping an alias such as ``ABSROT`` to the header keyword
 
     **Return:**
 
-    - ``offsets`` -- ``(minutes, rotatorDegrees)``, or *None* if a frame has no finite ``MJD-OBS`` or usable angle
+    - ``offsets`` -- ``(minutes, rotatorDegrees)``, or *None* if the block is empty or a frame has no readable
+      exposure window or usable angle
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.ug_wavelength_transfer import attached_arc_offsets
-    offsets = attached_arc_offsets(frame.header, arcHeader, self.kw)
+    offsets = attached_arc_offsets(scienceHeaders, arcHeader, self.kw)
     ```
     """
-    # ``read_rotator_angle`` READS ANY FINITE NUMBER FROM A HEADER, NOT ONLY AN ANGLE
-    scienceMjd = read_rotator_angle(scienceHeader, kw("MJDOBS"))
-    arcMjd = read_rotator_angle(arcHeader, kw("MJDOBS"))
-    scienceAngle = usable_rotator_angle(scienceHeader, kw)
+    arcWindow = exposure_window(arcHeader, kw)
     arcAngle = usable_rotator_angle(arcHeader, kw)
-    if None in (scienceMjd, arcMjd, scienceAngle, arcAngle):
+    scienceWindows = [exposure_window(header, kw) for header in scienceHeaders]
+    scienceAngles = [usable_rotator_angle(header, kw) for header in scienceHeaders]
+    if not scienceHeaders or arcWindow is None or arcAngle is None or None in scienceWindows + scienceAngles:
         return None
-    minutes = round(abs(scienceMjd - arcMjd) * MINUTES_PER_DAY, MINUTES_DECIMALS)
-    return minutes, rotator_angle_spread([scienceAngle, arcAngle])
+
+    blockWindow = (min(window[0] for window in scienceWindows), max(window[1] for window in scienceWindows))
+    minutes = round(_window_gap_days(blockWindow, arcWindow) * MINUTES_PER_DAY, MINUTES_DECIMALS)
+    nearest = min(range(len(scienceWindows)), key=lambda index: _window_gap_days(scienceWindows[index], arcWindow))
+    return minutes, rotator_angle_spread([scienceAngles[nearest], arcAngle])
 
 
-def is_attached_arc(scienceHeader, arcHeader, kw):
-    """*whether an arc is attached to a science frame: close in time and in rotator angle*
+def is_attached_arc(scienceHeaders, arcHeader, kw):
+    """*whether an arc is attached to a block of science frames: close in time and in rotator angle*
 
-    An arc is attached when it is at most ``MAX_ATTACHED_ARC_MINUTES`` from the science frame and less than
-    ``MAX_ATTACHED_ARC_ROTATOR_DEGREES`` from its rotator angle. A frame whose offsets cannot be measured
-    (``attached_arc_offsets``) is never attached.
+    An arc is attached when it is at most ``MAX_ATTACHED_ARC_MINUTES`` from the block and less than
+    ``MAX_ATTACHED_ARC_ROTATOR_DEGREES`` from the rotator angle of the frame nearest to it (``attached_arc_offsets``).
+    A block whose offsets cannot be measured is never attached.
 
     **Key Arguments:**
 
-    - ``scienceHeader`` -- the science frame header
+    - ``scienceHeaders`` -- the headers of the raw science frames of the block
     - ``arcHeader`` -- the arc header (the dispersion-map primary header)
     - ``kw`` -- the keyword lookup, mapping an alias such as ``ABSROT`` to the header keyword
 
@@ -311,10 +356,10 @@ def is_attached_arc(scienceHeader, arcHeader, kw):
 
     ```python
     from soxspipe.commonutils.ug_wavelength_transfer import is_attached_arc
-    isAttached = is_attached_arc(frame.header, arcHeader, self.kw)
+    isAttached = is_attached_arc(scienceHeaders, arcHeader, self.kw)
     ```
     """
-    return within_attached_arc_limits(attached_arc_offsets(scienceHeader, arcHeader, kw))
+    return within_attached_arc_limits(attached_arc_offsets(scienceHeaders, arcHeader, kw))
 
 
 def within_attached_arc_limits(offsets):

@@ -23,7 +23,13 @@ UG_DISPERSION = -0.025
 R_LINE_OFFSET_NM = 0.03
 I_LINE_OFFSET_NM = 0.04
 SCIENCE_ABSROT = -19.76611
-KEYWORDS = {"ABSROT": "ESO ADA ABSROT END", "PAR_ANG_START": "ESO TEL PARANG START", "MJDOBS": "MJD-OBS"}
+KEYWORDS = {
+    "ABSROT": "ESO ADA ABSROT END",
+    "PAR_ANG_START": "ESO TEL PARANG START",
+    "MJDOBS": "MJD-OBS",
+    "EXPTIME": "EXPTIME",
+    "SEQ_EXPTIME": "ESO DET SEQ1 EXPTIME",
+}
 CATALOGUE = 501.0 + 1.5 * np.arange(12)
 
 
@@ -85,6 +91,7 @@ def build_extractor(
     extractor.dispersionMap = dispersion_map(tmp_path)
     extractor.detectorParams = vis_parameters() if detectorParams is None else detectorParams
     extractor.skySubtractedFrame = SimpleNamespace(header=fits.Header(scienceHeader))
+    extractor.scienceHeaders = [extractor.skySubtractedFrame.header]
     extractor.kw = KEYWORDS.__getitem__
     extractor.qc = pd.DataFrame()
     extractor.recipeName = "soxs-stare"

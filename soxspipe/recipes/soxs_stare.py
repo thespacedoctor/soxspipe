@@ -356,6 +356,8 @@ class soxs_stare(base_recipe):
         self.subtractSky = self.recipeSettings["sky-subtraction"]["subtract_sky"]
 
         allObjectFrames, allObjectNames = self._read_stare_object_frames(kw)
+        # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
+        self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
 
         extractEach = self._should_extract_each_frame(allObjectFrames)
         self._delete_other_mode_qc_rows(extractEach)
@@ -599,6 +601,7 @@ class soxs_stare(base_recipe):
             debug=self.debug,
             turnOffMP=self.turnOffMP,
             noTraceFallback=True,
+            scienceHeaders=self.scienceHeaders,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
         slitEdgeSpill = bool(optimalExtractor.slitEdgeOrders)
@@ -1342,6 +1345,7 @@ class soxs_stare(base_recipe):
             debug=self.debug,
             notFlattened=True,
             turnOffMP=self.turnOffMP,
+            scienceHeaders=self.scienceHeaders,
         )
         self.qc, self.products, _, _, extractionPath_notflat = optimalExtractor.extract()
 

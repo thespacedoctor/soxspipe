@@ -29,7 +29,7 @@
 | `SLIT ILLUM OFFSET O<N>` | Along-slit offset of the sky image from the master flat (order N). Written for each order with a usable offset, and only if `slit-illumination: measure-offset` is on. Positive when the sky image sits toward +SLIT | arcsec | - |
 | `SLIT ILLUM APPLIED` | 1 if the slit offsets were used to mask the sky model, 0 if no order had a usable offset | | - |
 | `SLIT ILLUM N ORDERS` | Number of orders with a usable slit offset | | - |
-| `SKY TUNING` | `skylines` if the wavelength solution was tuned to the sky lines, `skipped: attached arc` if a SOXS arc taken within 7 minutes and 5 degrees of rotator angle of the science frame made the tuning unnecessary | | - |
+| `SKY TUNING` | `skylines` if the wavelength solution was tuned to the sky lines, `skipped: attached arc` if a SOXS arc taken within 7 minutes of the science exposures (end of the earlier exposure to start of the later) and within 5 degrees of rotator angle made the tuning unnecessary | | - |
 | `SKY SHIFT O<N>` | Wavelength shift that the skyline tuning added to the wavelength solution of order N. Written for every order. For SOXS VIS orders 2 (u) and 3 (g) it is the modelled shift if the model applied, and 0 if not | nm | - |
 | `SKY SHIFT O<N> PX` | The same shift as detector motion along the dispersion axis, using the signed dispersion of the order. Positive means the features moved to larger pixel numbers. Not written for an order with no usable dispersion | px | - |
 | `SKY LINE SNR O<N>` | Combined signal-to-noise of the catalogue sky lines in order N. Written for each SOXS VIS order measured from its own sky lines (orders 1 and 4). The skyline tuning does not apply the shift of an order below 5.4 | | - |

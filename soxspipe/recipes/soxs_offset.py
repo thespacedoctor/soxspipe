@@ -170,6 +170,8 @@ class soxs_offset(soxs_nod):
         productPath = None
 
         allObjectFrames, allFilenames = self._read_offset_object_frames(kw)
+        # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
+        self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
         master_flat, orderTablePath, responseFunctionPath = self._read_calibration_inputs(kw, arm)
 
         quicklook_image(

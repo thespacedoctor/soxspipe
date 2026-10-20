@@ -286,6 +286,7 @@ def _construct_extractor(
     noTraceFallback: bool = False,
     notFlattened: bool = False,
     omitHeaderKeys: tuple[str, ...] = (),
+    scienceHeaders: object = False,
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection."""
     import soxspipe.commonutils as commonutils
@@ -386,6 +387,7 @@ def _construct_extractor(
         turnOffMP=True,
         noTraceFallback=noTraceFallback,
         notFlattened=notFlattened,
+        scienceHeaders=scienceHeaders,
     )
 
     return extractor, captured
@@ -411,6 +413,35 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert extractor.imageMap["wavelength"].tolist() == [500.0]
     assert captured["recipeName"] == "soxs-stare"
     assert captured["locationSetIndex"] == 2
+
+
+def test_constructor_keeps_the_science_block_headers_for_the_attached_arc_test(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    block = (fits.Header({"MJD-OBS": 61217.0}), fits.Header({"MJD-OBS": 61217.01}))
+
+    # ACT
+    extractor, _ = _construct_extractor(
+        log, monkeypatch, headerOverrides={}, recipeName="soxs-nod", locationSetIndex=1, scienceHeaders=block
+    )
+
+    # ASSERT
+    assert extractor.scienceHeaders == list(block)
+
+
+def test_constructor_measures_the_attached_arc_from_the_extracted_frame_without_a_science_block(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ACT
+    extractor, _ = _construct_extractor(
+        log, monkeypatch, headerOverrides={}, recipeName="soxs-stare", locationSetIndex=1
+    )
+
+    # ASSERT
+    assert extractor.scienceHeaders == [extractor.skySubtractedFrame.header]
 
 
 @pytest.mark.parametrize("notFlattened", [False, True])

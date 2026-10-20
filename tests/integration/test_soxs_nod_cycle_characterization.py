@@ -51,6 +51,8 @@ def _cycle_recipe(
     recipe.startNightDate = "2024-01-02"
     recipe.turnOffMP = True
     recipe.arm = "VIS"
+    # produce_product SETS THIS FROM THE RAW FRAMES; FALSE LETS THE EXTRACTOR USE ITS OWN FRAME HEADER
+    recipe.scienceHeaders = False
     productDir = tmp_path / "products"
     productDir.mkdir(exist_ok=True)
     recipe.productDir = str(productDir)

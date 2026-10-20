@@ -61,7 +61,14 @@ The dispersion map is made from daytime calibration frames. At night, flexure mo
 
 #### Attached arc: no tuning
 
-For SOXS, the utility skips this step when the arc is attached to the science frame. An arc is attached when its `MJD-OBS` is within 7 minutes of the science frame (before or after) and its rotator angle (`ESO ADA ABSROT END`) differs by less than 5 degrees. A frame with no usable rotator angle is never attached. The arc wavelength solution is then accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned.
+For SOXS, the utility skips this step when the arc is attached to the science exposures. An arc is attached when two conditions are true:
+
+- The time from the end of the earlier exposure to the start of the later one is 7 minutes or less. For an arc taken before the science, this is the time from the end of the arc to the start of the first science frame. For an arc taken after the science, it is the time from the end of the last science frame to the start of the arc. An arc that overlaps the science exposures is 0 minutes away.
+- Its rotator angle (`ESO ADA ABSROT END`) differs by less than 5 degrees from the science frame nearest to it in time: the first frame for an arc taken before, and the last frame for an arc taken after.
+
+The science exposures are all the raw science frames of the observation block: one frame for a single stare frame, or every frame of a nod, offset, or stacked stare sequence. Each exposure starts at `MJD-OBS`. It ends `ESO DET SEQ1 EXPTIME` seconds later when the frame has that keyword (NIR, where `EXPTIME` is one DIT and not the whole exposure), and `EXPTIME` seconds later when it does not (VIS). A frame with no usable rotator angle, start time or exposure time is never attached.
+
+The wavelength solution of an attached arc is accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned.
 
 #### VIS r and i orders: sky-line signal-to-noise gate
 
