@@ -13,7 +13,10 @@ was re-recorded on 2026-10-18 from six bit-identical CI runs (39165616944,
 response curve became a log-space spline (DY-1614). It fell 3.0%. It was
 re-recorded on 2026-10-19 from six bit-identical CI runs (39290451388, 39290461991,
 39290472137, 39290482158, 39290492461 and 39290503644), after the NIR response fit
-change (DY-1647), and rose 0.6% (DY-1648).
+change (DY-1647), and rose 0.6% (DY-1648). It was re-recorded on 2026-10-21 from six
+bit-identical CI runs (39680454564, 39680459968, 39680464192, 39680468399, 39680472907
+and 39680476407), after the nod shift-and-add (DY-1674) and the flux-conserving slit
+shift (DY-1679), and rose 0.15%. The SNR median did not move (DY-1691).
 """
 
 from __future__ import annotations
@@ -121,7 +124,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     assert snrMedian == pytest.approx(149.8, abs=2.0)
     assert fluxcalRows == pytest.approx(20_614, abs=25)
     assert fluxcalRows == mergedRows
-    assert fluxcalMedian == pytest.approx(8.230442151388087e-15, rel=0.05)
+    assert fluxcalMedian == pytest.approx(8.243045025961036e-15, rel=0.05)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
     assert nOrders == 15
     assert detectedFraction == pytest.approx(0.984, abs=0.02)

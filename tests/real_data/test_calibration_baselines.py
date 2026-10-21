@@ -45,6 +45,18 @@ The extinction correction became linear instead of a staircase on 2026-10-21 (DY
 In gate run 39616315251 the VIS response median fell 0.44%, 450 nm fell 0.58%, 520 nm
 fell 0.25% and 750 nm fell 0.42%. All stay inside their bands and were left as they are.
 NIR does not use the extinction correction and is unchanged.
+
+Both standard-star reductions were re-recorded on 2026-10-21 from six bit-identical CI
+runs (39680454564, 39680459968, 39680464192, 39680468399, 39680472907 and 39680476407),
+after the nod shift-and-add (DY-1674), the variance of the median stack (DY-1675), the
+flux-conserving slit shift (DY-1679), the flat-pass sky shifts reused by the
+not-flattened pass (DY-1680) and the linear extinction correction (DY-1684). The `SNR
+MEDIAN` of both standards rose by about the square root of 2 (VIS 41.2%, NIR 40.1%),
+because the stacked nod path now averages A-B and B-A before extraction (DY-1674). Both
+standards combined the nod pair (`NOD COMBINED` 1, `NOD COMBINE FALLBACK NUM` 0), so
+DY-1675 adds nothing. The VIS response values moved by -0.2% to -0.6% (DY-1684) and the
+VIS `EFF MEDIAN` by -0.3%. The NIR response values moved by 0.2% or less: DY-1674 raised
+them by up to 0.5% and DY-1679 and DY-1680 took most of that back (DY-1690, DY-1691).
 """
 
 from __future__ import annotations
@@ -317,10 +329,10 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-nod-std",
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         values={
-            "EFF MEDIAN": level(0.141),
+            "EFF MEDIAN": level(0.1406),
             # 167.53 UNTIL 2026-10-16; 207.34 IN CI RUNS 38915352201 AND 38915356992 AND ON develop
-            # ITSELF (38918109330), SO THE MOVE PREDATES DY-1612
-            "SNR MEDIAN": level(207.34),
+            # ITSELF (38918109330), SO THE MOVE PREDATES DY-1612. 292.84 SINCE 2026-10-21 (DY-1674)
+            "SNR MEDIAN": level(292.84),
             "N ORDERS": count(4),
         },
     ),
@@ -329,7 +341,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         values={
             "EFF MEDIAN": level(0.1181),
-            "SNR MEDIAN": level(50.06),
+            "SNR MEDIAN": level(70.14),
             "N ORDERS": count(15),
         },
     ),
@@ -340,22 +352,22 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
         sofName="20250901T030144_VIS_1X1_1_NOD_STD_FLUX_SLIT5_0_300_0S_SOXS.sof",
         gridStart=400.0,
         gridStop=800.0,
-        median=level(6.661637817078883e-16),
+        median=level(6.631187603114011e-16),
         points={
-            450.0: level(2.550369112212454e-16),
-            520.0: level(4.423952693380799e-16),
-            750.0: level(1.0117094255316914e-15),
+            450.0: level(2.535990712539509e-16),
+            520.0: level(4.413322319722507e-16),
+            750.0: level(1.007297831677685e-15),
         },
     ),
     ResponseBaseline(
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         gridStart=1000.0,
         gridStop=1800.0,
-        median=level(2.360261004443862e-16),
+        median=level(2.3624028979488e-16),
         points={
-            1050.0: level(2.9690871250476074e-16),
-            1250.0: level(2.8199095522010097e-16),
-            1650.0: level(1.830674363922343e-16),
+            1050.0: level(2.966543301877743e-16),
+            1250.0: level(2.813704561775645e-16),
+            1650.0: level(1.8297532492538825e-16),
         },
     ),
 )
