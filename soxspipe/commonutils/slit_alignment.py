@@ -460,6 +460,7 @@ class slit_alignment_result:
     frames: tuple
     shifts: pd.DataFrame
     fallbackCount: int
+    mapImages: two_d_map_images | None = None
 
 
 @dataclass(frozen=True)
@@ -519,7 +520,16 @@ def align_frames_along_slit(
 
 
 def align_frame_groups_along_slit(
-    log, groups, twoDMapPath, dispersionMap, settings, recipeSettings, recipeName, perOrder, startNightDate=""
+    log,
+    groups,
+    twoDMapPath,
+    dispersionMap,
+    settings,
+    recipeSettings,
+    recipeName,
+    perOrder,
+    startNightDate="",
+    measureSingleFrames=False,
 ):
     """*align each group of frames along the slit to the first frame of the group in time*
 
@@ -541,11 +551,15 @@ def align_frame_groups_along_slit(
     - ``recipeName`` -- the recipe name
     - ``perOrder`` -- if True, every order of a frame has its own shift. If False, a frame has one shift
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
+    - ``measureSingleFrames`` -- if True, a group of one frame has its trace position measured too, so its shift
+      table holds the position of its one frame. The frame is not resampled and no shift counts as a fallback.
+      Default *False*
 
     **Return:**
 
     - ``results`` -- a ``slit_alignment_result`` for each group: its aligned frames, the shift table of
-      ``slit_shifts`` and the number of shifts that were not measured
+      ``slit_shifts``, the number of shifts that were not measured, and the 2D map images when the group was
+      measured (else *None*)
     """
     from soxspipe.commonutils.keyword_lookup import keyword_lookup
 
@@ -556,14 +570,15 @@ def align_frame_groups_along_slit(
             raise ValueError(f"{len(group.frames)} frames cannot be paired with {len(group.partnerFrames)} partners")
     names = [_frame_names(group.frames, group.frameNames) for group in groups]
     isAligned = [len(group.frames) > 1 for group in groups]
+    isMeasured = [True] * len(groups) if measureSingleFrames else isAligned
 
     mapImages, measured = None, [None] * len(groups)
-    if any(isAligned):
-        firstGroup = groups[isAligned.index(True)]
+    if any(isMeasured):
+        firstGroup = groups[isMeasured.index(True)]
         binx, biny = _frame_binning(log, firstGroup.frames[0], kw)
         mapImages = read_two_d_map_images(twoDMapPath, binx, biny, kw)
         for index, group in enumerate(groups):
-            if isAligned[index]:
+            if isMeasured[index]:
                 positions = _measure_group(
                     log, group, names[index], mjdKey, mapImages, dispersionMap, settings, recipeSettings, recipeName,
                     startNightDate,
@@ -575,16 +590,24 @@ def align_frame_groups_along_slit(
     results = []
     for index, group in enumerate(groups):
         if not isAligned[index]:
-            results.append(
-                slit_alignment_result(tuple(group.frames), _unshifted(group.frames, names[index], mjdKey), 0)
-            )
+            results.append(_unaligned_result(group, names[index], mjdKey, measured[index], mapImages))
             continue
         shifts, fallbackCount = measured[index]
         for frameIndex in range(len(group.frames)):
             orderShifts = _order_shifts(shifts, names[index][frameIndex], mapImages.orders)
             group.frames[frameIndex] = shift_frame_along_slit(group.frames[frameIndex], orderShifts, mapImages)
-        results.append(slit_alignment_result(tuple(group.frames), shifts, fallbackCount))
+        results.append(slit_alignment_result(tuple(group.frames), shifts, fallbackCount, mapImages))
     return results
+
+
+def _unaligned_result(group, names, mjdKey, measurement, mapImages):
+    """*the result for a group of one frame: the frame as it is, with its measured positions when it was measured*
+
+    A group of one frame has nothing to align to, so none of its shifts count as a fallback.
+    """
+    if measurement is None:
+        return slit_alignment_result(tuple(group.frames), _unshifted(group.frames, names, mjdKey), 0)
+    return slit_alignment_result(tuple(group.frames), measurement[0], 0, mapImages)
 
 
 def _measure_group(
