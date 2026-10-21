@@ -28,6 +28,10 @@ The NIR `fluxcalMedian` was re-recorded on 2026-10-19 from six bit-identical CI 
 (39290451388, 39290461991, 39290472137, 39290482158, 39290492461 and 39290503644),
 after the NIR response fit change (DY-1647). It rose 0.6%. The VIS values moved by
 0.01% or less, inside their bands, and were left as they are (DY-1648).
+
+The extinction correction became linear instead of a staircase on 2026-10-21 (DY-1684).
+In gate run 39616315251 the VIS `fluxcalMedian` fell 0.41%, inside its band, and was left
+as it is. NIR does not use the extinction correction.
 """
 
 from __future__ import annotations
