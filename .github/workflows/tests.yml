@@ -64,8 +64,6 @@ jobs:
       - name: Enforce ruff format
         run: ruff format --check .
 
-      # -n logical, NOT -n auto: WITH psutil INSTALLED, auto COUNTS PHYSICAL CORES AND STARTS
-      # ONLY 2 WORKERS ON THE 4-vCPU RUNNER
       - name: Run required suite
         run: |
           mkdir -p reports
@@ -96,7 +94,7 @@ jobs:
               test ! -w soxspipe
               exec "$PYTHON_PATH" -m pytest tests/unit tests/integration \
                 -m "not slow" \
-                -n logical \
+                -n auto \
                 --cov=soxspipe \
                 --cov=tools \
                 --cov-branch \

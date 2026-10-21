@@ -35,9 +35,9 @@ def test_format_gate_runs_after_install_and_before_the_suite() -> None:
 
 
 def test_required_suite_runs_under_xdist_on_every_runner_core() -> None:
-    """The required suite runs on every logical CPU (`-n logical`) to stay inside the job's 20-minute cap."""
+    """The required suite runs in parallel (`-n auto`) to stay inside the job's 20-minute cap."""
     commands = load_step_commands()
     suiteCommand = next((command for command in commands if "-m pytest" in command), None)
 
     assert suiteCommand is not None, "no workflow step runs the required suite"
-    assert re.search(r"(?:^|\s)-n logical(?:\s|$)", suiteCommand)
+    assert re.search(r"(?:^|\s)-n auto(?:\s|$)", suiteCommand)
