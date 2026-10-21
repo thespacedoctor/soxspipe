@@ -1,5 +1,6 @@
 """Contracts for the steps of the required-tests workflow."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -31,3 +32,12 @@ def test_format_gate_runs_after_install_and_before_the_suite() -> None:
 
     assert any("pip install" in command for command in commands[:formatIndex])
     assert all("pytest" not in command for command in commands[:formatIndex])
+
+
+def test_required_suite_runs_under_xdist_on_every_runner_core() -> None:
+    """The required suite runs in parallel (`-n auto`) to stay inside the job's 20-minute cap."""
+    commands = load_step_commands()
+    suiteCommand = next((command for command in commands if "-m pytest" in command), None)
+
+    assert suiteCommand is not None, "no workflow step runs the required suite"
+    assert re.search(r"(?:^|\s)-n auto(?:\s|$)", suiteCommand)

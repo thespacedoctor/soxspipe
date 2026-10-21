@@ -94,6 +94,7 @@ jobs:
               test ! -w soxspipe
               exec "$PYTHON_PATH" -m pytest tests/unit tests/integration \
                 -m "not slow" \
+                -n auto \
                 --cov=soxspipe \
                 --cov=tools \
                 --cov-branch \
