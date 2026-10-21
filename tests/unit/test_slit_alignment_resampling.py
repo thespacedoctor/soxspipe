@@ -188,6 +188,87 @@ def test_pixels_whose_source_lies_beyond_the_detector_edge_are_flagged_bad() -> 
     assert not aligned.mask[:, :-6].any()
 
 
+# THE STRETCHED-SLIT SCENE: SLIT = PIXEL_ARCSEC * (OFFSET + STRETCH * OFFSET**2), OFFSET IN COLUMNS FROM THE CENTRE
+STRETCH = 0.0017
+STRETCHED_SHAPE = (40, 80)
+STRETCHED_CENTRE_COLUMN = 39.5
+STRETCHED_OBJECT_SIGMA = 0.6
+# THE NOD THROW OF DY-1679'S REAL STANDARD, AND THE TWO OBJECT POSITIONS SYMMETRIC ABOUT THE SLIT CENTRE
+THROW = 4.6
+NOD_B_SLIT = THROW / 2
+NOD_A_SLIT = -THROW / 2
+
+
+def _stretched_arcsec_per_column(slit):
+    """The analytic arcsec per column of the stretched-slit scene at a slit coordinate, from inverting its quadratic."""
+    offset = (-1 + np.sqrt(1 + 4 * STRETCH * slit / PIXEL_ARCSEC)) / (2 * STRETCH)
+    return PIXEL_ARCSEC * (1 + 2 * STRETCH * offset)
+
+
+def _stretched_slit_scene(objectSlit, totalFlux):
+    """A one-order map whose plate scale grows along the slit, and a frame holding a Gaussian object.
+
+    The slit runs along the columns and the wavelength along the rows. The arcsec per column rises by about 1.7% per
+    arcsec of slit, as at the red end of the SOXS NIR order 10, where a pixel spans about 8% more at nod B than at
+    nod A. Each pixel holds the object flux that falls on it, so every row sums to ``totalFlux``.
+    """
+    rows, columns = np.mgrid[0 : STRETCHED_SHAPE[0], 0 : STRETCHED_SHAPE[1]]
+    offset = columns - STRETCHED_CENTRE_COLUMN
+    slit = PIXEL_ARCSEC * (offset + STRETCH * offset**2)
+    arcsecPerColumn = PIXEL_ARCSEC * (1 + 2 * STRETCH * offset)
+    sigma = STRETCHED_OBJECT_SIGMA
+    profile = np.exp(-0.5 * ((slit - objectSlit) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
+    mapImages = build_two_d_map_images(1000.0 + 0.02 * rows, slit, np.ones(rows.shape))
+    frame = CCDData(
+        totalFlux * profile * arcsecPerColumn,
+        unit="electron",
+        mask=np.zeros(rows.shape, dtype=bool),
+        uncertainty=StdDevUncertainty(np.ones(rows.shape)),
+    )
+    return mapImages, frame
+
+
+def test_a_shift_keeps_the_object_flux_where_the_plate_scale_changes_along_the_slit() -> None:
+    # ARRANGE: THE OBJECT SITS AT +2.3 ARCSEC, WHERE A COLUMN SPANS MORE SLIT THAN AT -2.3 ARCSEC (DY-1679)
+    mapImages, frame = _stretched_slit_scene(objectSlit=NOD_B_SLIT, totalFlux=1000.0)
+
+    # ACT: MOVE IT TO -2.3 ARCSEC, AS THE NOD SHIFT-AND-ADD MOVES THE B-A TRACE ONTO THE A-B TRACE
+    aligned = shift_frame_along_slit(frame, {1: THROW}, mapImages)
+
+    # ASSERT: EVERY ROW STILL HOLDS THE OBJECT'S 1000 ELECTRONS. ABOUT 0.4% IS LEFT FROM THE BILINEAR INTERPOLATION
+    # OF THE CURVED PROFILE; WITHOUT THE AREA RESCALING THE ERROR IS ABOUT 8%
+    rowSums = np.sum(np.where(aligned.mask, 0.0, aligned.data), axis=1)
+    np.testing.assert_allclose(rowSums, 1000.0, rtol=0.005)
+
+
+def test_a_shift_lands_the_object_on_its_target_where_the_plate_scale_changes_along_the_slit() -> None:
+    # ARRANGE: THE MAP IS NOT LINEAR ACROSS THE 4.6 ARCSEC THROW, SO ONE STEP ALONG THE TARGET'S GRADIENTS OVERSHOOTS
+    mapImages, frame = _stretched_slit_scene(objectSlit=NOD_B_SLIT, totalFlux=1000.0)
+
+    # ACT
+    aligned = shift_frame_along_slit(frame, {1: THROW}, mapImages)
+
+    # ASSERT: THE OBJECT'S FLUX-WEIGHTED SLIT POSITION IS -2.3 ARCSEC IN EVERY ROW
+    flux = np.where(aligned.mask, 0.0, aligned.data)
+    centroids = np.sum(flux * mapImages.slit, axis=1) / np.sum(flux, axis=1)
+    np.testing.assert_allclose(centroids, NOD_A_SLIT, atol=0.02)
+
+
+def test_a_shifted_uncertainty_scales_with_the_pixel_area_where_the_plate_scale_changes_along_the_slit() -> None:
+    # ARRANGE: A UNIFORM UNCERTAINTY OF 1, SO ONLY THE AREA RESCALING CAN CHANGE IT
+    mapImages, frame = _stretched_slit_scene(objectSlit=NOD_B_SLIT, totalFlux=1000.0)
+    expected = _stretched_arcsec_per_column(NOD_A_SLIT) / _stretched_arcsec_per_column(NOD_B_SLIT)
+
+    # ACT
+    aligned = shift_frame_along_slit(frame, {1: THROW}, mapImages)
+
+    # ASSERT: AT THE TARGET, THE UNCERTAINTY IS THE TARGET-TO-SOURCE AREA RATIO, SO THE VARIANCE IS ITS SQUARE
+    atTarget = np.abs(mapImages.slit - NOD_A_SLIT) < 0.05
+    assert atTarget.any()
+    np.testing.assert_allclose(aligned.uncertainty.array[atTarget], expected, rtol=0.003)
+    assert expected == pytest.approx(0.92, abs=0.01)
+
+
 def test_a_nan_pixel_the_input_mask_does_not_flag_is_flagged_in_the_output(scene, two_d_map) -> None:
     # ARRANGE: A NAN IN THE DATA AND ANOTHER IN THE UNCERTAINTY, NEITHER FLAGGED IN THE MASK
     frame = synthetic_nod_frame(scene, objectSlit=0.0, mjd=60000.0)
