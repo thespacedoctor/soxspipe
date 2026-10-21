@@ -422,19 +422,75 @@ class soxs_nod(base_recipe):
         - ``shiftAndAdd`` -- the ``shift_and_add_plan`` that combines the A-B and B-A differences, or *None* when the
           object position was not measured at both nod positions
         """
-        from soxspipe.commonutils.nod_shift_and_add import build_shift_and_add_plan
+        from soxspipe.commonutils.nod_shift_and_add import build_shift_and_add_plan, plan_clears_aperture
         from soxspipe.commonutils.slit_alignment import frame_group
 
         results = self._align_frame_groups(
             [frame_group(allFrameA, allFrameB, allFrameANames), frame_group(allFrameB, allFrameA, allFrameBNames)],
             measureSingleFrames=True,
         )
-        self._record_slit_alignment(
-            results,
-            obsDateUtc=allFrameA[0].header[self.kw("DATE_OBS")],
-            hasShifts=len(allFrameA) > 1,
+        obsDateUtc = allFrameA[0].header[self.kw("DATE_OBS")]
+        self._record_slit_alignment(results, obsDateUtc=obsDateUtc, hasShifts=len(allFrameA) > 1)
+        shiftAndAdd = build_shift_and_add_plan(self.log, *results)
+        if shiftAndAdd is not None and not plan_clears_aperture(
+            self.log, shiftAndAdd, self._horne_aperture_pixels(allFrameA[0])
+        ):
+            shiftAndAdd = None
+        self._record_nod_combination(shiftAndAdd, obsDateUtc)
+        return allFrameA, allFrameB, shiftAndAdd
+
+    def _horne_aperture_pixels(self, frame):
+        """*the full length of the Horne extraction aperture in binned pixels of a frame*
+
+        **Key Arguments:**
+
+        - ``frame`` -- a frame whose header gives the binning
+
+        **Return:**
+
+        - ``aperturePixels`` -- the aperture length, with the binning divided out as ``horne_extraction`` does
+        """
+        from soxspipe.commonutils.nod_shift_and_add import horne_aperture_pixels
+
+        binx = biny = 1
+        try:
+            binx = int(frame.header[self.kw("WIN_BINX")])
+            biny = int(frame.header[self.kw("WIN_BINY")])
+        except (KeyError, TypeError, ValueError) as e:
+            self.log.debug(f"_horne_aperture_pixels: no usable binning in the header, so 1 by 1 is used: {e}")
+        return horne_aperture_pixels(
+            self.recipeSettings["horne-extraction-slit-length"], self.detectorParams["dispersion-axis"], binx, biny
         )
-        return allFrameA, allFrameB, build_shift_and_add_plan(self.log, *results)
+
+    def _record_nod_combination(self, shiftAndAdd, obsDateUtc):
+        """*record in the QC table whether the nod pair was combined, and how many shifts were median-filled*
+
+        Updates ``self.qc``.
+
+        **Key Arguments:**
+
+        - ``shiftAndAdd`` -- the ``shift_and_add_plan``, or *None* when the pair is extracted as two differences
+        - ``obsDateUtc`` -- the observation date to record against the QCs
+        """
+        reductionDateUtc = utcnow_string()
+        self.add_qc(
+            qcName="NOD COMBINED",
+            qcValue=int(shiftAndAdd is not None),
+            qcComment="1 if the A-B and B-A differences were combined and extracted once, 0 if extracted separately",
+            reductionDateUtc=reductionDateUtc,
+            qcUnit=None,
+            toHeader=True,
+            obsDateUtc=obsDateUtc,
+        )
+        self.add_qc(
+            qcName="NOD COMBINE FALLBACK NUM",
+            qcValue=0 if shiftAndAdd is None else shiftAndAdd.fallbackCount,
+            qcComment="Number of orders whose nod shift is the median of the others, as a nod position was unmeasured",
+            reductionDateUtc=reductionDateUtc,
+            qcUnit=None,
+            toHeader=True,
+            obsDateUtc=obsDateUtc,
+        )
 
     def _align_frame_groups(self, groups, measureSingleFrames=False):
         """*align each group of frames along the slit, to the first of them in time*
@@ -1153,7 +1209,7 @@ class soxs_nod(base_recipe):
         )
 
         combinedFrames = self._combined_cycle_frames(
-            A_minus_B, B_minus_A, A_minus_B_notflattened, combinedNotFlattened, shiftAndAdd
+            A_minus_B, B_minus_A, A_minus_B_notflattened, combinedNotFlattened, (aFrame, bFrame), shiftAndAdd
         )
 
         mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins, theseProducts = self._extract_cycle_spectra(
@@ -1276,10 +1332,14 @@ class soxs_nod(base_recipe):
             self._write_combined_difference_frame(combined, locationSetIndex)
         return combined
 
-    def _combined_cycle_frames(self, abDifference, baDifference, abUnflattened, combinedUnflattened, shiftAndAdd):
-        """*the combined frame to extract and the combined frame to trace, for a cycle with a plan*
+    def _combined_cycle_frames(
+        self, abDifference, baDifference, abUnflattened, combinedUnflattened, abFrames, shiftAndAdd
+    ):
+        """*the frames to extract and to trace, and the sky frame, for a cycle with a plan*
 
-        The two are one frame when the differences were not flat-fielded.
+        The sky frame is built as the science frame is: the B frame averaged with the A frame shifted by the same
+        slit shifts. The combined frame and its unflattened counterpart are one frame when the differences were not
+        flat-fielded.
 
         **Key Arguments:**
 
@@ -1287,17 +1347,22 @@ class soxs_nod(base_recipe):
         - ``baDifference`` -- the B-A difference to extract
         - ``abUnflattened`` -- the unflattened A-B difference
         - ``combinedUnflattened`` -- the combined unflattened frame, or *None* when there is no plan
+        - ``abFrames`` -- the A frame and the B frame, flat-fielded as the differences are
         - ``shiftAndAdd`` -- the ``shift_and_add_plan`` of the pair, or *None*
 
         **Return:**
 
-        - ``combinedFrames`` -- the combined frame and its unflattened counterpart, or *None* when there is no plan
+        - ``combinedFrames`` -- the combined frame, its unflattened counterpart and the sky frame, or *None* when
+          there is no plan
         """
         if shiftAndAdd is None:
             return None
+        aFrame, bFrame = abFrames
+        skyFrame = self._combine_cycle_differences(bFrame, aFrame, shiftAndAdd)
         if abDifference is abUnflattened:
-            return combinedUnflattened, combinedUnflattened
-        return self._combine_cycle_differences(abDifference, baDifference, shiftAndAdd), combinedUnflattened
+            return combinedUnflattened, combinedUnflattened, skyFrame
+        combined = self._combine_cycle_differences(abDifference, baDifference, shiftAndAdd)
+        return combined, combinedUnflattened, skyFrame
 
     def _write_combined_difference_frame(self, combined, locationSetIndex):
         """*in debug mode, write the combined difference frame and add it to the products*
@@ -1516,8 +1581,8 @@ class soxs_nod(base_recipe):
         - ``locationSetIndex`` -- the cycle index (int), or the ``STACKED_LOCATION_SET`` label (str)
           that a stacked offset pair passes
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data
-        - ``combinedFrames`` -- the combined frame and its unflattened counterpart, or *None* to extract the
-          differences on their own. Default *None*
+        - ``combinedFrames`` -- the combined frame, its unflattened counterpart and the sky frame, or *None* to
+          extract the differences on their own. Default *None*
 
         **Return:**
 
@@ -1529,9 +1594,9 @@ class soxs_nod(base_recipe):
         - ``theseProducts`` -- the products table the extractions returned
         """
         # EXTRACT THE A MINUS B FRAME, OR THE COMBINED FRAME WHICH CARRIES THE A HEADER TOO
-        skySubtractedFrame, unflattenedFrame = combinedFrames or (A_minus_B, A_minus_B_notflattened)
+        skySubtractedFrame, unflattenedFrame, skyFrame = combinedFrames or (A_minus_B, A_minus_B_notflattened, bFrame)
         theseProducts, mergedSpectrumDF_A, orderJoins = self._extract_difference(
-            skySubtractedFrame, unflattenedFrame, bFrame, theseProducts, locationSetIndex, notFlattened
+            skySubtractedFrame, unflattenedFrame, skyFrame, theseProducts, locationSetIndex, notFlattened
         )
         if combinedFrames is not None or "nod" not in self.recipeName:
             return mergedSpectrumDF_A, False, orderJoins, theseProducts

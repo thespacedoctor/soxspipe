@@ -31,6 +31,8 @@
 | `SKY SHIFT O<N> PX` | The same shift as detector motion along the dispersion axis, using the signed dispersion of the order. Positive means the features moved to larger pixel numbers. Not written for an order with no usable dispersion | px | - |
 | `SKY LINE SNR O<N>` | Combined signal-to-noise of the catalogue sky lines in order N. Written for each SOXS VIS order measured from its own sky lines (orders 1 and 4). The skyline tuning does not apply the shift of an order below 5.4 | | - |
 | `SLIT ALIGN FALLBACK NUM` | Number of slit shifts that took the median shift of the other orders or frames, because no reliable object trace was found. Written to the header | | - |
+| `NOD COMBINED` | 1 if the stacked A-B and B-A differences were combined and extracted once, 0 if they were extracted separately. Written to the header | | - |
+| `NOD COMBINE FALLBACK NUM` | Number of orders whose shift between the nod positions took the median of the other orders, because a nod position had no reliable object trace. Written to the header | | - |
 | `UG SHIFT SOURCE` | How the SOXS VIS u and g shifts were found: `model` (predicted from the r and i shifts and the rotator angle) or `none` (u and g left unshifted). The comment gives the reason. Written only for SOXS VIS | | - |
 
 :::

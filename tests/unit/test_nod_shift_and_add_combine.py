@@ -185,17 +185,45 @@ def test_a_difference_without_a_mask_gives_a_combination_with_a_mask_of_the_shif
     assert not combined.mask[300, 30]
 
 
+def _snapshot(frame) -> dict:
+    """Return copies of everything a frame holds, to compare after a call."""
+    return {
+        "data": frame.data.copy(),
+        "mask": None if frame.mask is None else frame.mask.copy(),
+        "uncertainty": frame.uncertainty.array.copy(),
+        "uncertaintyUnit": frame.uncertainty.unit,
+        "unit": frame.unit,
+        "header": dict(frame.header),
+    }
+
+
+def _assert_unchanged(frame, before: dict) -> None:
+    after = _snapshot(frame)
+    np.testing.assert_array_equal(after["data"], before["data"])
+    np.testing.assert_array_equal(after["mask"], before["mask"])
+    np.testing.assert_array_equal(after["uncertainty"], before["uncertainty"])
+    assert after["uncertaintyUnit"] == before["uncertaintyUnit"]
+    assert after["unit"] == before["unit"]
+    assert after["header"] == before["header"]
+
+
 def test_the_inputs_are_not_changed(scene, two_d_map) -> None:
-    # ARRANGE
+    # ARRANGE: BOTH DIFFERENCES CARRY A MASK, AN UNCERTAINTY, A UNIT AND A HEADER
     abDifference, baDifference = _differences(scene, NOD_A, NOD_B)
-    abBefore, baBefore = abDifference.data.copy(), baDifference.data.copy()
+    abDifference.mask = np.zeros(abDifference.shape, dtype=bool)
+    abDifference.mask[300, 20] = True
+    baDifference.mask = np.zeros(baDifference.shape, dtype=bool)
+    baDifference.mask[300, 40] = True
+    abBefore, baBefore = _snapshot(abDifference), _snapshot(baDifference)
 
     # ACT
-    combine_nod_differences(abDifference, baDifference, dict.fromkeys(scene.orders, -3.0), two_d_map)
+    combined = combine_nod_differences(abDifference, baDifference, dict.fromkeys(scene.orders, -3.0), two_d_map)
+    combined.header["ADDED"] = 1
+    combined.mask[0, 0] = not combined.mask[0, 0]
 
     # ASSERT
-    np.testing.assert_array_equal(abDifference.data, abBefore)
-    np.testing.assert_array_equal(baDifference.data, baBefore)
+    _assert_unchanged(abDifference, abBefore)
+    _assert_unchanged(baDifference, baBefore)
 
 
 def test_a_difference_with_no_uncertainty_is_refused(scene, two_d_map) -> None:

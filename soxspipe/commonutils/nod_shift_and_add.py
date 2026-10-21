@@ -8,6 +8,8 @@ averaged, so one extraction replaces the two the pair needed before.
 
 import copy
 from dataclasses import dataclass
+from types import MappingProxyType
+from collections.abc import Mapping
 
 import numpy as np
 
@@ -21,10 +23,18 @@ NO_PLAN_MESSAGE = (
 
 @dataclass(frozen=True)
 class shift_and_add_plan:
-    """The slit shift of each order from the B-A difference to the A-B difference, and the map it applies through."""
+    """The slit shift of each order from the B-A difference to the A-B difference, and the map it applies through.
 
-    orderShifts: dict
+    ``orderShifts`` is copied into a read-only mapping. ``fallbackCount`` is the number of orders that took the median
+    of the measured shifts because one of the two nod positions was not measured there.
+    """
+
+    orderShifts: Mapping
     mapImages: object
+    fallbackCount: int = 0
+
+    def __post_init__(self):
+        object.__setattr__(self, "orderShifts", MappingProxyType(dict(self.orderShifts)))
 
 
 def combine_nod_differences(abDifference, baDifference, orderShifts, mapImages):
@@ -126,5 +136,75 @@ def build_shift_and_add_plan(log, resultA, resultB):
             f"so their shift between the nod positions is the median of the other orders ({medianShift:+.3f} arcsec)."
         )
     return shift_and_add_plan(
-        {order: shift if np.isfinite(shift) else medianShift for order, shift in orderShifts.items()}, mapImages
+        {order: shift if np.isfinite(shift) else medianShift for order, shift in orderShifts.items()},
+        mapImages,
+        len(unmeasured),
     )
+
+
+def horne_aperture_pixels(slitLength, dispersionAxis, binx, biny):
+    """*the full length of the Horne extraction aperture in binned detector pixels*
+
+    The length is divided by the binning along the axis ``horne_extraction`` divides by.
+
+    **Key Arguments:**
+
+    - ``slitLength`` -- the ``horne-extraction-slit-length`` setting
+    - ``dispersionAxis`` -- the dispersion axis of the detector, ``x`` or ``y``
+    - ``binx`` -- the binning along the x-axis
+    - ``biny`` -- the binning along the y-axis
+
+    **Return:**
+
+    - ``aperturePixels`` -- the aperture length in binned pixels
+    """
+    if binx > 1 or biny > 1:
+        return slitLength / (binx if dispersionAxis == "x" else biny)
+    return float(slitLength)
+
+
+def slit_pixel_scale(mapImages, order):
+    """*the change of the slit coordinate in arcsec per pixel along the slit, in the middle of an order*
+
+    **Key Arguments:**
+
+    - ``mapImages`` -- the ``two_d_map_images`` of the frames' binning
+    - ``order`` -- the order number
+
+    **Return:**
+
+    - ``scale`` -- the median over the order of the length of the gradient of the SLIT image
+    """
+    isOrder = mapImages.order == order
+    return float(np.median(np.hypot(mapImages.slitRow[isOrder], mapImages.slitCol[isOrder])))
+
+
+def plan_clears_aperture(log, plan, aperturePixels):
+    """*check that every order's throw between the nod positions is at least as long as the extraction aperture*
+
+    The half-size negative traces of the combined frame sit one throw from the positive trace, so a shorter throw
+    would put them inside the aperture. The aperture in arcsec is its pixel length times the local slit scale.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``plan`` -- the ``shift_and_add_plan`` to check
+    - ``aperturePixels`` -- the full aperture length in binned pixels, from ``horne_aperture_pixels``
+
+    **Return:**
+
+    - ``clears`` -- True when every order's throw is at least the aperture. Otherwise False, after a warning that
+      names the orders
+    """
+    tooShort = [
+        order
+        for order, shift in plan.orderShifts.items()
+        if abs(shift) < aperturePixels * slit_pixel_scale(plan.mapImages, order)
+    ]
+    if tooShort:
+        log.warning(
+            f"The throw between the nod positions is shorter than the extraction aperture in orders "
+            f"{', '.join(str(order) for order in tooShort)}, so the A-B and B-A differences are extracted separately "
+            "instead of being combined."
+        )
+    return not tooShort

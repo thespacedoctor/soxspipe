@@ -76,6 +76,12 @@ def _install_alignment(monkeypatch: pytest.MonkeyPatch, positionA: float, positi
     return received
 
 
+def _set_aperture(recipe: Any, slitLength: float = 10) -> None:
+    """Give the recipe the settings the throw guard reads: the Horne aperture length and the dispersion axis."""
+    recipe.recipeSettings = {**recipe.recipeSettings, "horne-extraction-slit-length": slitLength}
+    recipe.detectorParams = {"dispersion-axis": "y"}
+
+
 def _real_cycle(recipe: Any, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
     """Run the real cycle method with a recording Horne extractor, and return the extractor constructions."""
     monkeypatch.delattr(recipe, "process_single_ab_nodding_cycle")
@@ -92,9 +98,12 @@ def _stacked_run(
     isStandard: bool,
     positions: tuple[float, float] | None = (1.5, -1.5),
     debug: bool = False,
+    slitLength: float = 10,
 ):
     recipe, _ = _nod_recipe(log, tmp_path, SINGLE_PAIR)
     recipe.debug = debug
+    # THE STUB MAP HAS 0.2 ARCSEC PIXELS, SO THE DEFAULT 10 PIXEL APERTURE IS 2 ARCSEC AND THE 3 ARCSEC THROW CLEARS IT
+    _set_aperture(recipe, slitLength)
     recipe.generateReponseCurve = isStandard
     _, captured = _patch(recipe, monkeypatch, tmp_path)
     if positions is not None:
@@ -131,9 +140,21 @@ def test_the_one_extraction_reads_the_combined_frame_with_the_error_of_a_mean(
     combined = extraction["skySubtractedFrame"]
     assert combined.uncertainty.array[16, 8] == pytest.approx(COMBINED_SIGMA, rel=1e-5)
     assert extraction["unflattenedFrame"].uncertainty.array[16, 8] == pytest.approx(COMBINED_SIGMA, rel=1e-5)
-    assert extraction["subtractedFrame"].header["ESO SEQ CUMOFF Y"] == -3.0
     assert combined.header["ESO SEQ CUMOFF Y"] == 3.0
     assert extraction["notFlattened"] is False
+
+
+def test_the_sky_frame_is_the_b_frame_averaged_with_the_a_frame_shifted_the_same_way(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE AND ACT
+    _, constructions, _ = _stacked_run(log, tmp_path, monkeypatch, isStandard=True)
+
+    # ASSERT: BOTH PASSES, WITH THE ERROR OF THE MEAN OF TWO FRAMES AND THE B HEADER
+    for extraction in constructions:
+        sky = extraction["subtractedFrame"]
+        assert sky.uncertainty.array[16, 8] == pytest.approx(FRAME_SIGMA / np.sqrt(2), rel=1e-5)
+        assert sky.header["ESO SEQ CUMOFF Y"] == -3.0
 
 
 def test_a_standard_star_is_extracted_twice_once_flattened_and_once_not(
@@ -172,6 +193,50 @@ def test_debug_writes_the_combined_frame_as_a_product(
     assert labels.count("AB_COMBINED") == 1
 
 
+def _qc_values(recipe: Any) -> dict[str, object]:
+    return dict(zip(recipe.qc["qc_name"], recipe.qc["qc_value"], strict=True))
+
+
+def test_the_qcs_record_a_combined_pass_and_no_median_filled_shift(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE AND ACT
+    recipe, _, _ = _stacked_run(log, tmp_path, monkeypatch, isStandard=False)
+
+    # ASSERT
+    values = _qc_values(recipe)
+    assert int(values["NOD COMBINED"]) == 1
+    assert int(values["NOD COMBINE FALLBACK NUM"]) == 0
+
+
+def test_a_throw_shorter_than_the_aperture_extracts_the_differences_separately_and_warns(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE AND ACT: A 20 PIXEL APERTURE IS 4 ARCSEC AND THE THROW IS 3 ARCSEC
+    recipe, constructions, captured = _stacked_run(log, tmp_path, monkeypatch, isStandard=False, slitLength=20)
+
+    # ASSERT
+    assert len(constructions) == 2
+    assert [len(call["args"][0]) for call in captured["stack_extractions"]] == [2]
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("shorter than the extraction aperture" in message for message in warnings)
+    values = _qc_values(recipe)
+    assert int(values["NOD COMBINED"]) == 0
+    assert int(values["NOD COMBINE FALLBACK NUM"]) == 0
+
+
+def test_without_a_measured_position_the_qcs_record_no_combination(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE AND ACT
+    recipe, _, _ = _stacked_run(log, tmp_path, monkeypatch, isStandard=False, positions=None)
+
+    # ASSERT
+    values = _qc_values(recipe)
+    assert int(values["NOD COMBINED"]) == 0
+    assert int(values["NOD COMBINE FALLBACK NUM"]) == 0
+
+
 @pytest.mark.parametrize(("isStandard", "expectedExtractions"), [(False, 2), (True, 4)])
 def test_without_a_measured_position_each_pass_extracts_the_ab_and_ba_differences_and_warns(
     log: Any,
@@ -193,6 +258,7 @@ def test_without_a_measured_position_each_pass_extracts_the_ab_and_ba_difference
 def test_the_alignment_measures_groups_of_one_frame(log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # ARRANGE
     recipe, _ = _nod_recipe(log, tmp_path, SINGLE_PAIR)
+    _set_aperture(recipe)
     _patch(recipe, monkeypatch, tmp_path)
     received = _install_alignment(monkeypatch, 1.5, -1.5)
     _real_cycle(recipe, monkeypatch)
@@ -210,6 +276,7 @@ def test_both_passes_of_a_standard_receive_the_same_plan(
     # ARRANGE
     recipe, _ = _nod_recipe(log, tmp_path, SINGLE_PAIR)
     recipe.generateReponseCurve = True
+    _set_aperture(recipe)
     _, captured = _patch(recipe, monkeypatch, tmp_path)
     _install_alignment(monkeypatch, 1.5, -1.5)
     monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", _StubResponse)
@@ -275,6 +342,8 @@ def test_a_flat_fielded_pass_extracts_the_combination_of_the_flat_fielded_differ
     # ASSERT: THE FLAT DOUBLES THE ERROR OF THE COMBINATION THAT THE TRACE IS FOUND ON
     assert arguments["unflattenedFrame"].uncertainty.array[1, 1] == pytest.approx(FRAME_SIGMA)
     assert arguments["skySubtractedFrame"].uncertainty.array[1, 1] == pytest.approx(2 * FRAME_SIGMA)
+    # THE SKY FRAME IS BUILT FROM THE FLAT-FIELDED A AND B FRAMES, WHICH THE STUB FLAT DOUBLES
+    assert arguments["subtractedFrame"].uncertainty.array[1, 1] == pytest.approx(2 * FRAME_SIGMA / np.sqrt(2))
 
 
 def test_a_not_flattened_pass_extracts_the_one_unflattened_combination(
@@ -286,6 +355,7 @@ def test_a_not_flattened_pass_extracts_the_one_unflattened_combination(
     # ASSERT
     assert arguments["skySubtractedFrame"] is arguments["unflattenedFrame"]
     assert arguments["skySubtractedFrame"].uncertainty.array[1, 1] == pytest.approx(FRAME_SIGMA)
+    assert arguments["subtractedFrame"].uncertainty.array[1, 1] == pytest.approx(FRAME_SIGMA / np.sqrt(2))
     assert arguments["notFlattened"] is True
 
 

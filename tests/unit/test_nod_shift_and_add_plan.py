@@ -8,8 +8,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.nod_shift_and_add import build_shift_and_add_plan
-from soxspipe.commonutils.slit_alignment import SHIFT_COLUMNS, WHOLE_FRAME, slit_alignment_result
+from soxspipe.commonutils.nod_shift_and_add import (
+    build_shift_and_add_plan,
+    horne_aperture_pixels,
+    plan_clears_aperture,
+    shift_and_add_plan,
+)
+from soxspipe.commonutils.slit_alignment import (
+    SHIFT_COLUMNS,
+    WHOLE_FRAME,
+    build_two_d_map_images,
+    slit_alignment_result,
+)
+from tests.factories.slit_alignment import PIXEL_ARCSEC, synthetic_alignment_map
 
 pytestmark = pytest.mark.unit
 
@@ -129,3 +140,94 @@ def test_the_shifts_are_plain_floats(log) -> None:
     # ASSERT
     assert all(type(shift) is float for shift in plan.orderShifts.values())
     assert not any(np.isnan(shift) for shift in plan.orderShifts.values())
+
+
+def test_the_plan_counts_the_orders_that_took_the_median_shift(log) -> None:
+    # ARRANGE: ORDERS 3 AND 4 LACK A POSITION IN ONE GROUP
+    resultA = _result(_per_order("a0", [1.5, 1.5, NAN, 1.5]))
+    resultB = _result(_per_order("b0", [-1.5, -1.9, -1.5, NAN]))
+
+    # ACT
+    plan = build_shift_and_add_plan(log, resultA, resultB)
+
+    # ASSERT
+    assert plan.fallbackCount == 2
+
+
+def test_a_plan_with_every_shift_measured_counts_no_fallback(log) -> None:
+    # ARRANGE AND ACT
+    plan = build_shift_and_add_plan(log, _result(_per_order("a0", [1.5] * 4)), _result(_per_order("b0", [-1.5] * 4)))
+
+    # ASSERT
+    assert plan.fallbackCount == 0
+
+
+def test_the_shifts_of_a_plan_cannot_be_changed_through_the_plan_or_the_dict_it_was_built_from() -> None:
+    # ARRANGE
+    shifts = {1: -3.0, 2: -3.0}
+    plan = shift_and_add_plan(shifts, MAP_IMAGES)
+
+    # ACT
+    shifts[1] = 99.0
+
+    # ASSERT
+    assert plan.orderShifts[1] == -3.0
+    with pytest.raises(TypeError):
+        plan.orderShifts[1] = 0.0
+
+
+@pytest.mark.parametrize(
+    ("binx", "biny", "dispersionAxis", "expected"),
+    [(1, 1, "y", 15.0), (2, 4, "x", 7.5), (2, 4, "y", 3.75)],
+)
+def test_the_aperture_is_the_horne_slit_length_divided_by_the_binning_along_the_dispersion_axis(
+    binx: int, biny: int, dispersionAxis: str, expected: float
+) -> None:
+    # ARRANGE AND ACT
+    aperture = horne_aperture_pixels(15, dispersionAxis, binx, biny)
+
+    # ASSERT
+    assert aperture == pytest.approx(expected)
+
+
+@pytest.fixture
+def real_map(tmp_path):
+    scene = synthetic_alignment_map(tmp_path)
+    return build_two_d_map_images(scene.wavelength, scene.slit, scene.orderMap)
+
+
+# 15 PIXELS OF 0.2 ARCSEC ARE A 3 ARCSEC APERTURE
+APERTURE_PIXELS = 15.0
+
+
+@pytest.mark.parametrize(("throw", "expected"), [(-3.3, True), (3.3, True), (-2.7, False), (2.7, False)])
+def test_a_throw_clears_the_aperture_only_when_it_is_at_least_the_aperture_length(
+    log, real_map, throw: float, expected: bool
+) -> None:
+    # ARRANGE
+    apertureArcsec = APERTURE_PIXELS * PIXEL_ARCSEC
+    assert apertureArcsec == pytest.approx(3.0)
+    plan = shift_and_add_plan(dict.fromkeys(real_map.orders, throw), real_map)
+
+    # ACT
+    clears = plan_clears_aperture(log, plan, APERTURE_PIXELS)
+
+    # ASSERT
+    assert clears is expected
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert bool(warnings) is (not expected)
+
+
+def test_one_order_with_a_short_throw_stops_the_combination_and_the_warning_names_it(log, real_map) -> None:
+    # ARRANGE
+    shifts = dict.fromkeys(real_map.orders, -3.3)
+    shifts[3] = -1.0
+    plan = shift_and_add_plan(shifts, real_map)
+
+    # ACT
+    clears = plan_clears_aperture(log, plan, APERTURE_PIXELS)
+
+    # ASSERT
+    assert clears is False
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("orders 3," in message and "extracted separately" in message for message in warnings)
