@@ -444,8 +444,13 @@ def measure_trace_slit_positions(
         log.warning(f"The object trace could not be sampled ({error}).")
         orderPixelTable, detectionPercent = None, 0.0
     if orderPixelTable is None or detectionPercent < MIN_DETECTION_PERCENT:
-        return order_slit_positions(pd.DataFrame(columns=TRACE_COLUMNS), mapImages)
+        return order_slit_positions(_no_trace_samples(), mapImages)
     return order_slit_positions(orderPixelTable, mapImages)
+
+
+def _no_trace_samples():
+    """*an empty trace-sample table with numeric columns, which ``order_slit_positions`` can test for finite values*"""
+    return pd.DataFrame({column: pd.Series(dtype=float) for column in TRACE_COLUMNS})
 
 
 @dataclass(frozen=True)
