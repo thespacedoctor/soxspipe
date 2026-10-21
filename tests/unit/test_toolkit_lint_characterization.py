@@ -446,7 +446,7 @@ def test_max_filter_returns_none_not_false_for_records_above_the_limit() -> None
 # ---------------------------------------------------------------------------
 #
 # ALREADY PINNED END-TO-END AGAINST A REAL FITS EXTINCTION TABLE BY
-# `tests/integration/test_toolkit_fits.py::test_extinction_correction_reads_fits_table_and_uses_next_sample`
+# `tests/integration/test_toolkit_fits.py::test_extinction_correction_reads_fits_table_and_interpolates_linearly`
 # -- NOT DUPLICATED HERE.
 
 
