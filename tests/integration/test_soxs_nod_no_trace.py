@@ -299,3 +299,37 @@ def test_nod_cycle_raises_when_neither_position_found_a_trace(
 
     with pytest.raises(Exception, match="No object trace was found in either nod position"):
         _run_real_nod_cycle(recipe)
+
+
+def test_nod_stack_stacks_the_one_combined_extraction_of_a_shift_and_add_pass(
+    log: Any, tmp_path: Path, passthrough_snr_qcs: None
+) -> None:
+    """A shift-and-add pass hands the stack one spectrum, whose median is itself (DY-1674)."""
+    recipe = _stack_recipe(log, tmp_path, recipeName="soxs-nod")
+    first, _ = _spectrum_frames()
+
+    stacked, fitsPath = recipe.stack_extractions([first], orderJoins={"10-11": 1})
+
+    assert list(stacked["FLUX_COUNTS"]) == [9.0, 55.0, 42.0]
+    assert Path(fitsPath).is_file()
+
+
+def test_nod_stack_raises_a_clear_error_when_the_combined_extraction_found_no_trace(
+    log: Any, tmp_path: Path, passthrough_snr_qcs: None
+) -> None:
+    recipe = _stack_recipe(log, tmp_path, recipeName="soxs-nod")
+
+    with pytest.raises(Exception, match="No object trace was found in either nod position"):
+        recipe.stack_extractions([None], orderJoins=None)
+
+
+@pytest.mark.parametrize(
+    ("spectrumB", "expectedLength"),
+    [(False, 1), (None, 2), ("spectrum", 2)],
+)
+def test_only_a_pass_that_made_one_extraction_stacks_one_spectrum(spectrumB: object, expectedLength: int) -> None:
+    """A B spectrum of `False` means no B extraction was made; `None` means one was made and found no trace."""
+    spectra = soxs_nod._spectra_to_stack("spectrum A", spectrumB)
+
+    assert len(spectra) == expectedLength
+    assert spectra[0] == "spectrum A"

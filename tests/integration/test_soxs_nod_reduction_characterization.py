@@ -607,6 +607,9 @@ def test_a_single_location_standard_builds_a_response_from_an_unflattened_extrac
     firstCycle, secondCycle = captured["extract_cycle"]
     assert "notFlattened" not in firstCycle
     assert secondCycle["notFlattened"] is True
+    # THE ALIGNMENT STUB REPORTS NO OBJECT POSITION, SO NEITHER PASS GETS A SHIFT-AND-ADD PLAN (DY-1674)
+    assert firstCycle["shiftAndAdd"] is None
+    assert secondCycle["shiftAndAdd"] is None
     assert secondCycle["aFrame"] is firstCycle["aFrame"]
     assert secondCycle["bFrame"] is firstCycle["bFrame"]
     assert captured["stack_extractions"][1]["notFlattened"] is True
