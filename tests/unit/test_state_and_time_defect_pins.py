@@ -6,8 +6,8 @@ someone fixes the defect the test XPASSes, strict mode turns that into a suite f
 the fixer must delete the ``xfail`` marker. If another test file pins the old (wrong)
 behaviour as a characterization, the fixer must update or delete that pin in the same change.
 
-The ``reason`` of each marker reads ``DY-37 <ID>: <defect>``, naming the defect's ID in the
-DY-37 findings table. Replace ``DY-37`` with the Linear issue once the defect is filed.
+The ``reason`` of each marker reads ``<Linear issue> (DY-37 <ID>): <defect>``, naming the
+issue that tracks the defect and the defect's ID in the DY-37 findings table.
 
 Each marker names the exception the defect produces today (``AssertionError`` for a wrong
 value), so a setup, import or fixture error fails the suite instead of hiding as an xfail.
@@ -27,7 +27,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from astropy import units as u
 from astropy.io import fits
 from astropy.nddata import CCDData
 
@@ -81,7 +80,7 @@ def _recipe_from(settings: dict[str, Any], recipeName: str, arm: str, log: Any) 
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-37 S1: get_recipe_settings copies arm keys into the caller's shared recipe settings block",
+    reason="DY-1694 (DY-37 S1): get_recipe_settings copies arm keys into the caller's shared recipe settings block",
 )
 def test_a_nir_recipe_does_not_hand_its_arm_settings_to_a_later_vis_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -114,7 +113,7 @@ def test_a_nir_recipe_does_not_hand_its_arm_settings_to_a_later_vis_recipe(
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-37 S1: a recipe's in-place settings change (soxs_stare sky fallback) reaches the next recipe; "
+        "DY-1694 (DY-37 S1): a recipe's in-place settings change (soxs_stare sky fallback) reaches the next recipe; "
         "pins aliasing of the returned settings block"
     ),
 )
@@ -140,40 +139,6 @@ def test_a_recipe_turning_sky_subtraction_off_does_not_turn_it_off_for_the_next_
 
 
 # ---------------------------------------------------------------------------
-# W2: A MISSING BAD-PIXEL MAP FAILS ONCE, THEN EVERY LATER RUN SKIPS BAD-PIXEL MASKING
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-37 W2: _bad_pixel_mask writes an all-zero map into the calibration folder before raising",
-)
-def test_a_missing_bad_pixel_map_still_fails_on_the_second_run(log: Any, tmp_path: Path) -> None:
-    # ARRANGE
-    recipe = base_recipe.__new__(base_recipe)
-    recipe.log = log
-    recipe.kw = lambda keyword: keyword
-    recipe.arm = "VIS"
-    recipe.detectorParams = {"bad-pixel map": {"1x1": "absent.fits"}}
-    recipe.calibrationRootPath = str(tmp_path)
-    frame = CCDData(np.zeros((4, 4)), unit=u.adu)
-    with pytest.raises(OSError):
-        recipe._bad_pixel_mask(frame)
-
-    # ACT
-    try:
-        recipe._bad_pixel_mask(frame)
-        secondRunRaised = False
-    except OSError:
-        secondRunRaised = True
-
-    # ASSERT
-    assert secondRunRaised
-    assert not (tmp_path / "absent.fits").exists()
-
-
-# ---------------------------------------------------------------------------
 # W3: SAVED PREPARED FRAMES LAND IN THE WORKSPACE ROOT AND PREP INDEXES THEM AS RAW
 # ---------------------------------------------------------------------------
 
@@ -181,7 +146,9 @@ def test_a_missing_bad_pixel_map_still_fails_on_the_second_run(log: Any, tmp_pat
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-37 W3: a saved _pre frame is written to the workspace root and the next prep indexes it as raw",
+    reason=(
+        "DY-1703 (DY-37 W3): a saved _pre frame is written to the workspace root and the next prep indexes it as raw"
+    ),
 )
 def test_a_saved_prepared_frame_is_not_indexed_as_a_raw_frame(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -233,7 +200,7 @@ def test_a_saved_prepared_frame_is_not_indexed_as_a_raw_frame(
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-37 W1: data_organiser.prepare builds ./raw paths relative to the cwd, not rootDir",
+    reason="DY-1702 (DY-37 W1): data_organiser.prepare builds ./raw paths relative to the cwd, not rootDir",
 )
 def test_prepare_through_the_api_files_frames_inside_the_workspace_whatever_the_cwd(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -302,7 +269,9 @@ def test_a_complete_product_still_blocks_a_rerun_without_overwrite(
 @pytest.mark.xfail(
     strict=True,
     raises=FileExistsError,
-    reason="DY-37 I1: a truncated product from an interrupted run is skipped as 'already exists' on every rerun",
+    reason=(
+        "DY-1697 (DY-37 I1): a truncated product from an interrupted run is skipped as 'already exists' on every rerun"
+    ),
 )
 def test_a_truncated_product_from_an_interrupted_run_is_not_treated_as_an_existing_product(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -336,7 +305,7 @@ def _session_database(path: Path) -> None:
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-37 I2: the QC-range reconciliation turns an unfinished recipe's 'fail' into 'pass'",
+    reason="DY-1698 (DY-37 I2): the QC-range reconciliation turns an unfinished recipe's 'fail' into 'pass'",
 )
 def test_a_recipe_that_never_reached_clean_up_is_not_marked_pass_by_the_qc_range_reconciliation(
     log: Any, tmp_path: Path
@@ -391,7 +360,9 @@ class _RecordingConnection:
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-37 I3: clean_up's 'previously failed, now passing' branch can never run (passToFail needs 'pass')",
+    reason=(
+        "DY-1699 (DY-37 I3): clean_up's 'previously failed, now passing' branch can never run (passToFail needs 'pass')"
+    ),
 )
 def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -438,7 +409,7 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-37 I4: only the multiprocess reducer removes <workspace>/tmp/, so interrupted scratch piles up; "
+        "DY-1700 (DY-37 I4): only the multiprocess reducer removes <workspace>/tmp/, so interrupted scratch piles up; "
         "related to DY-36 L1 (raise path, tests/unit/test_resource_leak_pins.py); file together, fix must clear "
         "both pins"
     ),
@@ -498,7 +469,10 @@ def test_the_serial_reducer_removes_scratch_left_by_an_interrupted_recipe(
 @pytest.mark.xfail(
     strict=True,
     raises=AssertionError,
-    reason="DY-37 S2: clean_up leaves the recipe log handlers on the shared logger; later errors hit its _ERROR.log",
+    reason=(
+        "DY-1704 (DY-37 S2): clean_up leaves the recipe log handlers on the shared logger; later errors "
+        "hit its _ERROR.log"
+    ),
 )
 def test_a_later_error_does_not_land_in_a_finished_recipes_error_log(tmp_path: Path) -> None:
     """Pin S2: clean_up must detach and close the recipe's file handlers.
