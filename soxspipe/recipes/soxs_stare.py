@@ -629,6 +629,7 @@ class soxs_stare(base_recipe):
                     dispMap,
                     extractionPath,
                     orderJoins,
+                    optimalExtractor.flatPassHandoff,
                 )
                 or slitEdgeSpill
             )
@@ -1308,6 +1309,7 @@ class soxs_stare(base_recipe):
         dispMap,
         extractionPath,
         orderJoins,
+        flatPass=None,
     ):
         """*extract the unflattened standard-star spectrum and compute the response function from it*
 
@@ -1321,6 +1323,8 @@ class soxs_stare(base_recipe):
         - ``dispMap`` -- the path to the dispersion map table
         - ``extractionPath`` -- the path to the flat-fielded extraction of the standard
         - ``orderJoins`` -- the order joins of the flat-fielded extraction
+        - ``flatPass`` -- the flat-fielded extraction's ``FlatPassHandoff``, whose sky shifts the unflattened
+          extraction applies instead of tuning its own (DY-1680). Default *None*
 
         **Return:**
 
@@ -1346,6 +1350,7 @@ class soxs_stare(base_recipe):
             notFlattened=True,
             turnOffMP=self.turnOffMP,
             scienceHeaders=self.scienceHeaders,
+            flatPass=flatPass,
         )
         self.qc, self.products, _, _, extractionPath_notflat = optimalExtractor.extract()
 
