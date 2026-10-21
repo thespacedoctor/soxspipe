@@ -3147,7 +3147,6 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     """
     import numpy as np
     from astropy.table import Table
-    from scipy.interpolate import interp1d
 
     # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
     # DATA IS ORGANIZED AS FOLLOWS:
@@ -3156,16 +3155,21 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     extinctionData = extinctionData.to_pandas()
 
     # CONVERT ANG TO NM
-    wave_ext = extinctionData["WAVE"] / 10
-    # INTERPOLATING ON THE REQUIRED WAVE SCALE
-    refitted_ext = interp1d(
-        np.array(wave_ext),
-        np.array(extinctionData["MAG_AIRMASS"]),
-        kind="next",
-        fill_value="extrapolate",
+    tableWaveNm = np.asarray(extinctionData["WAVE"], dtype=float) / 10
+    magPerAirmass = np.asarray(extinctionData["MAG_AIRMASS"], dtype=float)
+
+    # PIECEWISE-LINEAR INTERPOLATION BETWEEN THE TABLE WAVELENGTHS (DY-1684). A STEP INTERPOLATOR
+    # PUT A ~5% SAW-TOOTH INTO EVERY RESPONSE AND FLUX-CALIBRATED SPECTRUM. OUTSIDE THE TABLE THE
+    # OLD BEHAVIOR IS KEPT: BELOW THE FIRST WAVELENGTH HOLD THE FIRST VALUE, ABOVE THE LAST RETURN NAN
+    interpolatedMagPerAirmass = np.interp(
+        np.asarray(wave, dtype=float),
+        tableWaveNm,
+        magPerAirmass,
+        left=magPerAirmass[0],
+        right=np.nan,
     )
 
-    return 10 ** (0.4 * refitted_ext(wave) * airmass)
+    return 10 ** (0.4 * interpolatedMagPerAirmass * airmass)
 
 
 def frame_to_32(frame):

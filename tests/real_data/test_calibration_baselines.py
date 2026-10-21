@@ -40,6 +40,11 @@ runs (39290451388, 39290461991, 39290472137, 39290482158, 39290492461 and
 and a smoothing penalty (DY-1647). The NIR median rose 2.8%, 1050 nm rose 2.3%,
 1250 nm fell 0.3% and 1650 nm fell 1.3%. The VIS curve moved by about 0.02% and was
 left as it is (DY-1648).
+
+The extinction correction became linear instead of a staircase on 2026-10-21 (DY-1684).
+In gate run 39616315251 the VIS response median fell 0.44%, 450 nm fell 0.58%, 520 nm
+fell 0.25% and 750 nm fell 0.42%. All stay inside their bands and were left as they are.
+NIR does not use the extinction correction and is unchanged.
 """
 
 from __future__ import annotations
