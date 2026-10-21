@@ -7,9 +7,9 @@ averaged, so one extraction replaces the two the pair needed before.
 """
 
 import copy
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from collections.abc import Mapping
 
 import numpy as np
 
@@ -35,6 +35,10 @@ class shift_and_add_plan:
 
     def __post_init__(self):
         object.__setattr__(self, "orderShifts", MappingProxyType(dict(self.orderShifts)))
+
+    def __reduce__(self):
+        """*rebuild the plan from a plain dictionary, as a mapping proxy cannot be pickled*"""
+        return shift_and_add_plan, (dict(self.orderShifts), self.mapImages, self.fallbackCount)
 
 
 def combine_nod_differences(abDifference, baDifference, orderShifts, mapImages):

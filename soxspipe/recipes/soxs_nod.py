@@ -485,7 +485,7 @@ class soxs_nod(base_recipe):
         self.add_qc(
             qcName="NOD COMBINE FALLBACK NUM",
             qcValue=0 if shiftAndAdd is None else shiftAndAdd.fallbackCount,
-            qcComment="Number of orders whose nod shift is the median of the others, as a nod position was unmeasured",
+            qcComment="Orders with a median-filled nod shift, as a nod position was unmeasured. 0 if NOD COMBINED is 0",
             reductionDateUtc=reductionDateUtc,
             qcUnit=None,
             toHeader=True,
@@ -1337,9 +1337,11 @@ class soxs_nod(base_recipe):
     ):
         """*the frames to extract and to trace, and the sky frame, for a cycle with a plan*
 
-        The sky frame is built as the science frame is: the B frame averaged with the A frame shifted by the same
-        slit shifts. The combined frame and its unflattened counterpart are one frame when the differences were not
-        flat-fielded.
+        The sky frame is built as the science frame is, with the same slit shifts: the B frame, which at the A
+        position holds sky only, averaged with the A frame shifted so that its sky at the B position lands on the A
+        position. Both halves sample sky at the A position, where the object of the combined frame lies, so the
+        arguments must not be swapped. The combined frame and its unflattened counterpart are one frame when the
+        differences were not flat-fielded.
 
         **Key Arguments:**
 

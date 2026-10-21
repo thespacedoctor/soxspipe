@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pickle
 from types import SimpleNamespace
 
 import numpy as np
@@ -231,3 +232,19 @@ def test_one_order_with_a_short_throw_stops_the_combination_and_the_warning_name
     assert clears is False
     warnings = [message for level, message in log.messages if level == "warning"]
     assert any("orders 3," in message and "extracted separately" in message for message in warnings)
+
+
+def test_a_plan_survives_a_pickle_round_trip_with_read_only_shifts(real_map) -> None:
+    # ARRANGE
+    plan = shift_and_add_plan({1: -3.0, 2: -3.1}, real_map, 1)
+
+    # ACT
+    restored = pickle.loads(pickle.dumps(plan))  # noqa: S301  THE BYTES ARE THIS TEST'S OWN
+
+    # ASSERT
+    assert restored.orderShifts == plan.orderShifts
+    assert restored.fallbackCount == 1
+    assert restored.mapImages.orders == real_map.orders
+    np.testing.assert_array_equal(restored.mapImages.slit, real_map.slit)
+    with pytest.raises(TypeError):
+        restored.orderShifts[1] = 0.0

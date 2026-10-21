@@ -234,3 +234,46 @@ def test_a_difference_with_no_uncertainty_is_refused(scene, two_d_map) -> None:
     # ACT AND ASSERT
     with pytest.raises(ValueError, match="uncertainty"):
         combine_nod_differences(abDifference, baDifference, {1: -3.0}, two_d_map)
+
+
+SKY_LEVEL = 50.0
+# THE OBJECT PROFILE HAS A SIGMA OF 0.3 ARCSEC, SO THIS HALF-WIDTH HOLDS ALL OF ITS FLUX
+APERTURE_HALF_WIDTH = 0.8
+
+
+def _sky_and_object_frames(scene):
+    """Return an A frame with its object at NOD_A and a B frame with its object at NOD_B, on one flat sky."""
+    frameA = synthetic_nod_frame(scene, objectSlit=NOD_A, mjd=60000.0, offset=3.0, hasSky=False)
+    frameB = synthetic_nod_frame(scene, objectSlit=NOD_B, mjd=60000.1, offset=-3.0, hasSky=False)
+    frameA.data[:] = np.where(np.isfinite(scene.orderMap), frameA.data + SKY_LEVEL, 0.0)
+    frameB.data[:] = np.where(np.isfinite(scene.orderMap), frameB.data + SKY_LEVEL, 0.0)
+    return frameA, frameB
+
+
+def _aperture_mean(scene, frame, order: int, slitPosition: float) -> float:
+    """Return the mean count of the middle rows inside an aperture centred on a slit position of an order."""
+    inAperture = (scene.orderMap == order) & (np.abs(scene.slit - slitPosition) <= APERTURE_HALF_WIDTH)
+    return float(frame.data[MIDDLE_ROWS][inAperture[MIDDLE_ROWS]].mean())
+
+
+def test_the_sky_frame_holds_no_object_at_the_a_position_where_the_science_object_lands(scene, two_d_map) -> None:
+    # ARRANGE: THE SAME SHIFT MOVES THE B-A TRACE FROM NOD B TO NOD A AND THE A FRAME'S SKY AT NOD B ONTO NOD A
+    frameA, frameB = _sky_and_object_frames(scene)
+    orderShifts = dict.fromkeys(scene.orders, NOD_B - NOD_A)
+    abDifference = frameA.subtract(frameB)
+    abDifference.header = frameA.header
+    baDifference = frameB.subtract(frameA)
+    baDifference.header = frameB.header
+
+    # ACT
+    science = combine_nod_differences(abDifference, baDifference, orderShifts, two_d_map)
+    sky = combine_nod_differences(frameB, frameA, orderShifts, two_d_map)
+    swappedSky = combine_nod_differences(frameA, frameB, orderShifts, two_d_map)
+
+    # ASSERT: THE SCIENCE OBJECT IS AT NOD A, THE SKY APERTURE AT NOD A IS SKY ONLY, AND SWAPPING THE FRAMES WOULD PUT
+    # THE OBJECT OF THE A FRAME INTO IT
+    for order in scene.orders:
+        oneDifference = _extreme_near(scene, abDifference, order, NOD_A)
+        assert _extreme_near(scene, science, order, NOD_A) == pytest.approx(oneDifference, rel=0.06)
+        assert _aperture_mean(scene, sky, order, NOD_A) == pytest.approx(SKY_LEVEL, abs=0.5)
+        assert _aperture_mean(scene, swappedSky, order, NOD_A) > SKY_LEVEL + 10
