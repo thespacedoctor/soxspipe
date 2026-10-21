@@ -572,21 +572,60 @@ def align_frame_groups_along_slit(
     isAligned = [len(group.frames) > 1 for group in groups]
     isMeasured = [True] * len(groups) if measureSingleFrames else isAligned
 
-    mapImages, measured = None, [None] * len(groups)
-    if any(isMeasured):
-        firstGroup = groups[isMeasured.index(True)]
-        binx, biny = _frame_binning(log, firstGroup.frames[0], kw)
-        mapImages = read_two_d_map_images(twoDMapPath, binx, biny, kw)
-        for index, group in enumerate(groups):
-            if isMeasured[index]:
-                positions = _measure_group(
-                    log, group, names[index], mjdKey, mapImages, dispersionMap, settings, recipeSettings, recipeName,
-                    startNightDate,
-                )  # fmt: skip
-                shifts, fallbackCount = slit_shifts(log, positions, perOrder)
-                _log_shifts(log, shifts)
-                measured[index] = (shifts, fallbackCount)
+    mapImages, measured = _measure_groups(
+        log, groups, names, isMeasured, (twoDMapPath, dispersionMap, settings, recipeSettings, recipeName),
+        perOrder, startNightDate, kw,
+    )  # fmt: skip
+    return _resample_groups(groups, names, isAligned, measured, mapImages, mjdKey)
 
+
+def _measure_groups(log, groups, names, isMeasured, inputs, perOrder, startNightDate, kw):
+    """*measure the trace position and the slit shifts of every group that is to be measured*
+
+    **Key Arguments:**
+
+    - ``groups`` -- the ``frame_group`` objects
+    - ``names`` -- the frame names of each group
+    - ``isMeasured`` -- True for each group to measure
+    - ``inputs`` -- the 2D map path, the dispersion map path, the settings, the recipe settings and the recipe name
+    - ``perOrder`` -- if True, every order of a frame has its own shift
+    - ``startNightDate`` -- YYYY-MM-DD date of the observation night
+    - ``kw`` -- the fits keyword lookup
+
+    **Return:**
+
+    - ``mapImages`` -- the ``two_d_map_images`` read for the measurement, or *None* when no group is measured
+    - ``measured`` -- for each group, ``(shifts, fallbackCount)``, or *None* for a group that was not measured
+    """
+    twoDMapPath, dispersionMap, settings, recipeSettings, recipeName = inputs
+    mapImages, measured = None, [None] * len(groups)
+    if not any(isMeasured):
+        return mapImages, measured
+    firstGroup = groups[isMeasured.index(True)]
+    binx, biny = _frame_binning(log, firstGroup.frames[0], kw)
+    mapImages = read_two_d_map_images(twoDMapPath, binx, biny, kw)
+    for index, group in enumerate(groups):
+        if not isMeasured[index]:
+            continue
+        positions = _measure_group(
+            log, group, names[index], kw("MJDOBS"), mapImages, dispersionMap, settings, recipeSettings, recipeName,
+            startNightDate,
+        )  # fmt: skip
+        shifts, fallbackCount = slit_shifts(log, positions, perOrder)
+        _log_shifts(log, shifts)
+        measured[index] = (shifts, fallbackCount)
+    return mapImages, measured
+
+
+def _resample_groups(groups, names, isAligned, measured, mapImages, mjdKey):
+    """*resample each group of more than one frame by its shifts, and build the result of every group*
+
+    Each aligned frame replaces its original in the group's ``frames`` list.
+
+    **Return:**
+
+    - ``results`` -- a ``slit_alignment_result`` for each group
+    """
     results = []
     for index, group in enumerate(groups):
         if not isAligned[index]:
