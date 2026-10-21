@@ -60,8 +60,8 @@ def median_stack_variance(spectra):
     import numpy as np
     import pandas as pd
 
-    # PLAIN FLOAT ARRAYS: THE EXTRACTION'S COLUMNS ARE ASTROPY QUANTITIES IN MIXED UNITS, AND CONCATENATED SPECTRA
-    # REPEAT INDEX LABELS, SO NEITHER THE ORIGINAL COLUMNS NOR THEIR INDEX CAN BE ALIGNED SAFELY
+    # WORK ON PLAIN FLOAT ARRAYS IN FRESH SERIES. COPYING THE FRAME CONSOLIDATES ITS ASTROPY QUANTITY COLUMNS,
+    # WHICH FAILS ON THEIR MIXED UNITS, AND CONCATENATED SPECTRA REPEAT INDEX LABELS, WHICH BREAKS ALIGNMENT
     flux = np.asarray(spectra["FLUX_COUNTS"].to_numpy(), dtype=np.float64)
     contributing = pd.Series(~np.isnan(flux))
     variance = pd.Series(np.asarray(spectra["VARIANCE"].to_numpy(), dtype=np.float64)).where(contributing)
@@ -1794,7 +1794,7 @@ class soxs_nod(base_recipe):
         groupedDataframe = merged_dataframe.groupby(by="WAVE", as_index=False).median()
         # THE FLUX IS THE MEDIAN, BUT THE MEDIAN OF THE INPUT VARIANCES IS THE ERROR OF ONE SPECTRUM, NOT OF THE STACK
         # KEEP THE EXTRACTION'S FLOAT32 VARIANCE COLUMN TYPE; INTEGER OR FLOAT64 INPUT GIVES FLOAT64
-        varianceType = np.promote_types(merged_dataframe["VARIANCE"].dtype, np.float32)
+        varianceType = np.promote_types(np.asarray(merged_dataframe["VARIANCE"].to_numpy()).dtype, np.float32)
         groupedDataframe["VARIANCE"] = (
             groupedDataframe["WAVE"].map(median_stack_variance(merged_dataframe)).astype(varianceType)
         )
