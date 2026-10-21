@@ -333,12 +333,15 @@ class soxs_nod(base_recipe):
 
         forceFailure = False
         if self._should_align_and_stack():
-            allFrameA, allFrameB = self._align_ab_frames(allFrameA, allFrameB, allFrameANames, allFrameBNames)
+            allFrameA, allFrameB, shiftAndAdd = self._align_ab_frames(
+                allFrameA, allFrameB, allFrameANames, allFrameBNames
+            )
             stackedSpectrum, orderJoins, forceFailure = self._reduce_stacked_ab_pair(
                 allFrameA,
                 allFrameB,
                 orderTablePath=orderTablePath,
                 master_flat=master_flat,
+                shiftAndAdd=shiftAndAdd,
             )
         else:
             stackedSpectrum, orderJoins = self._reduce_each_nodding_cycle(
@@ -402,6 +405,9 @@ class soxs_nod(base_recipe):
         resampled. The two lists are changed in place: each original frame is replaced by its aligned frame as soon
         as that exists. Updates ``self.qc`` and ``self.products``.
 
+        The position of the object in the reference frame of each group is measured here too, even for a group of one
+        frame. Their difference is the slit shift that puts the B-A difference onto the A-B difference.
+
         **Key Arguments:**
 
         - ``allFrameA`` -- the A frames
@@ -413,25 +419,30 @@ class soxs_nod(base_recipe):
 
         - ``allFrameA`` -- the aligned A frames
         - ``allFrameB`` -- the aligned B frames
+        - ``shiftAndAdd`` -- the ``shift_and_add_plan`` that combines the A-B and B-A differences, or *None* when the
+          object position was not measured at both nod positions
         """
+        from soxspipe.commonutils.nod_shift_and_add import build_shift_and_add_plan
         from soxspipe.commonutils.slit_alignment import frame_group
 
         results = self._align_frame_groups(
-            [frame_group(allFrameA, allFrameB, allFrameANames), frame_group(allFrameB, allFrameA, allFrameBNames)]
+            [frame_group(allFrameA, allFrameB, allFrameANames), frame_group(allFrameB, allFrameA, allFrameBNames)],
+            measureSingleFrames=True,
         )
         self._record_slit_alignment(
             results,
             obsDateUtc=allFrameA[0].header[self.kw("DATE_OBS")],
             hasShifts=len(allFrameA) > 1,
         )
-        return allFrameA, allFrameB
+        return allFrameA, allFrameB, build_shift_and_add_plan(self.log, *results)
 
-    def _align_frame_groups(self, groups):
+    def _align_frame_groups(self, groups, measureSingleFrames=False):
         """*align each group of frames along the slit, to the first of them in time*
 
         **Key Arguments:**
 
         - ``groups`` -- the ``frame_group`` objects to align. Their ``frames`` lists are changed in place
+        - ``measureSingleFrames`` -- if True, a group of one frame has its trace position measured too. Default *False*
 
         **Return:**
 
@@ -449,6 +460,7 @@ class soxs_nod(base_recipe):
             recipeName=self.recipeName,
             perOrder=self._aligns_each_order(),
             startNightDate=self.startNightDate,
+            measureSingleFrames=measureSingleFrames,
         )
 
     def _record_slit_alignment(self, results, obsDateUtc, hasShifts):
@@ -862,8 +874,11 @@ class soxs_nod(base_recipe):
         found = [spectrum for spectrum in (spectra, newSpectrum) if spectrum is not None]
         return pd.concat(found) if found else None
 
-    def _reduce_stacked_ab_pair(self, allFrameA, allFrameB, orderTablePath, master_flat):
+    def _reduce_stacked_ab_pair(self, allFrameA, allFrameB, orderTablePath, master_flat, shiftAndAdd=None):
         """*stack the A and B frames, extract the pair, and build a response curve when requested*
+
+        With a ``shiftAndAdd`` plan, the B-A difference is shifted onto the A-B difference and the two are averaged,
+        so each pass makes one extraction. Without one, each pass extracts the A-B and the B-A difference.
 
         **Key Arguments:**
 
@@ -871,12 +886,13 @@ class soxs_nod(base_recipe):
         - ``allFrameB`` -- the B frames
         - ``orderTablePath`` -- the path to the order table
         - ``master_flat`` -- the master flat, or False
+        - ``shiftAndAdd`` -- the ``shift_and_add_plan`` that combines the two differences, or *None*. Default *None*
 
         **Return:**
 
         - ``stackedSpectrum`` -- the stacked extraction
         - ``orderJoins`` -- the order joins of the B-A extraction, or of the A-B extraction when the B-A
-          extraction found no object trace
+          extraction found no object trace. With a ``shiftAndAdd`` plan, those of the one extraction
         - ``forceFailure`` -- the response curve's failure flag, or False when no response was built
         """
         forceFailure = False
@@ -908,9 +924,10 @@ class soxs_nod(base_recipe):
             locationSetIndex=1,
             orderTablePath=orderTablePath,
             masterFlat=masterFlat,
+            shiftAndAdd=shiftAndAdd,
         )
         stackedSpectrum, extractionPath = self.stack_extractions(
-            [mergedSpectrumDF_A, mergedSpectrumDF_B], orderJoins=orderJoins
+            self._spectra_to_stack(mergedSpectrumDF_A, mergedSpectrumDF_B), orderJoins=orderJoins
         )
 
         if self.generateReponseCurve:
@@ -923,9 +940,10 @@ class soxs_nod(base_recipe):
                 orderTablePath=orderTablePath,
                 notFlattened=True,
                 masterFlat=masterFlat,
+                shiftAndAdd=shiftAndAdd,
             )
             stackedSpectrum_notflat, extractionPath_notflat = self.stack_extractions(
-                [mergedSpectrumDF_A, mergedSpectrumDF_B],
+                self._spectra_to_stack(mergedSpectrumDF_A, mergedSpectrumDF_B),
                 notFlattened=True,
                 orderJoins=orderJoins,
             )
@@ -946,6 +964,24 @@ class soxs_nod(base_recipe):
             self.qc, self.products, forceFailure = response.get()
 
         return stackedSpectrum, orderJoins, forceFailure
+
+    @staticmethod
+    def _spectra_to_stack(mergedSpectrumDF_A, mergedSpectrumDF_B):
+        """*the extractions of one pass that go into the stack: both nod positions, or the one combined extraction*
+
+        **Key Arguments:**
+
+        - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A, or of the combined frame
+        - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B, or False when the pass made one
+          extraction
+
+        **Return:**
+
+        - ``spectra`` -- the list of spectra to stack
+        """
+        if mergedSpectrumDF_B is False:
+            return [mergedSpectrumDF_A]
+        return [mergedSpectrumDF_A, mergedSpectrumDF_B]
 
     def _flux_calibrate_nod_stack(self, responseFunctionPath, stackedSpectrum, allFrameA):
         """*flux calibrate the stacked extraction and record its products*
@@ -1055,6 +1091,7 @@ class soxs_nod(base_recipe):
         orderTablePath,
         notFlattened=False,
         masterFlat=False,
+        shiftAndAdd=None,
     ):
         """*process a single AB nodding cycle*
 
@@ -1067,15 +1104,20 @@ class soxs_nod(base_recipe):
         - ``orderTablePath`` -- path to the order table
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data. Default *False*
         - ``masterFlat`` -- path to the master flat frame. Default *False*
+        - ``shiftAndAdd`` -- the ``shift_and_add_plan`` of a stacked nod pair, or *None*. With a plan, the B-A
+          difference is shifted onto the A-B difference, the two are averaged, and that one frame is extracted,
+          tagged as the A sequence. Default *None*, for one extraction of each difference
 
 
         **Return:**
 
-        - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe)
+        - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe), or of the combined
+          frame when there is a ``shiftAndAdd`` plan
         - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe), or False
-          outside nodding mode
+          outside nodding mode or when there is a ``shiftAndAdd`` plan
         - ``orderJoins`` -- the order joins of the B-A extraction, or of the A-B extraction when the B-A
-          extraction found no object trace (*None* if neither did). An offset run has the A-B extraction only
+          extraction found no object trace (*None* if neither did). An offset run has the A-B extraction only, and a
+          ``shiftAndAdd`` run the one extraction of the combined frame
 
         **Usage:**
 
@@ -1094,16 +1136,11 @@ class soxs_nod(base_recipe):
 
         self._run_cycle_quality_checks(A_minus_B_notflattened, orderTablePath)
 
-        # THIS `== False` AND THE `== True` AT THE SAVE BELOW ARE NOT COMPLEMENTARY, AND THAT IS PINNED
-        # BEHAVIOUR. test_save_single_frame_extractions_e712_comparison_controls_the_products_table WALKS SIX
-        # SETTING VALUES AND SHOWS THAT A VALUE CAN SEND `False` TO THE EXTRACTOR HERE AND STILL HAVE ITS
-        # RESULT DROPPED BELOW, OR THE REVERSE. REWRITING EITHER AS `not ...` OR `if ...:` COLLAPSES ONE HALF
-        # OF THAT. SIM108 IS SUPPRESSED WITH IT: THE TERNARY FORM PLUS THIS SUPPRESSION GOES PAST 120
-        # CHARACTERS.
-        if self.recipeSettings["save_single_frame_extractions"] == False:  # noqa: E712, SIM108
-            theseProducts = False
-        else:
-            theseProducts = self.products
+        combinedNotFlattened = self._combine_unflattened_differences(
+            A_minus_B_notflattened, B_minus_A_notflattened, shiftAndAdd, locationSetIndex, notFlattened
+        )
+
+        theseProducts = self._single_frame_products_table()
 
         A_minus_B, B_minus_A, aFrame, bFrame = self._detrend_cycle_frames(
             A_minus_B_notflattened,
@@ -1113,6 +1150,10 @@ class soxs_nod(base_recipe):
             notFlattened=notFlattened,
             masterFlat=masterFlat,
             orderTablePath=orderTablePath,
+        )
+
+        combinedFrames = self._combined_cycle_frames(
+            A_minus_B, B_minus_A, A_minus_B_notflattened, combinedNotFlattened, shiftAndAdd
         )
 
         mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins, theseProducts = self._extract_cycle_spectra(
@@ -1125,14 +1166,35 @@ class soxs_nod(base_recipe):
             theseProducts=theseProducts,
             locationSetIndex=locationSetIndex,
             notFlattened=notFlattened,
+            combinedFrames=combinedFrames,
         )
 
-        # THE `== True` COMPARISON IS THE OTHER HALF OF THE ASYMMETRY PINNED ABOVE, SO IT IS NOT `if ...:`.
+        # THE `== True` COMPARISON IS THE OTHER HALF OF THE ASYMMETRY PINNED IN _single_frame_products_table, SO IT IS
+        # NOT `if ...:`.
         if self.recipeSettings["save_single_frame_extractions"] == True:  # noqa: E712
             self.products = theseProducts
 
         self.log.debug("completed the ``process_single_ab_nodding_cycle`` method")
         return mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins
+
+    def _single_frame_products_table(self):
+        """*the products table the extractions add their single-frame products to, or False when they add none*
+
+        **Return:**
+
+        - ``theseProducts`` -- ``self.products``, or False when ``save_single_frame_extractions`` is False
+        """
+        # THIS `== False` AND THE `== True` AT THE SAVE IN process_single_ab_nodding_cycle ARE NOT COMPLEMENTARY,
+        # AND THAT IS PINNED BEHAVIOUR.
+        # test_save_single_frame_extractions_e712_comparison_controls_the_products_table WALKS SIX SETTING VALUES
+        # AND SHOWS THAT A VALUE CAN SEND `False` TO THE EXTRACTOR HERE AND STILL HAVE ITS RESULT DROPPED THERE,
+        # OR THE REVERSE. REWRITING EITHER AS `not ...` OR `if ...:` COLLAPSES ONE HALF OF THAT. SIM108 IS
+        # SUPPRESSED WITH IT: THE TERNARY FORM PLUS THIS SUPPRESSION GOES PAST 120 CHARACTERS.
+        if self.recipeSettings["save_single_frame_extractions"] == False:  # noqa: E712, SIM108
+            theseProducts = False
+        else:
+            theseProducts = self.products
+        return theseProducts
 
     def _difference_cycle_frames(self, aFrame, bFrame):
         """*subtract the two frames of the cycle from each other and reapply their headers*
@@ -1174,6 +1236,94 @@ class soxs_nod(base_recipe):
             B_minus_A_notflattened.header = hdr_B
 
         return A_minus_B_notflattened, B_minus_A_notflattened
+
+    def _combine_cycle_differences(self, abDifference, baDifference, shiftAndAdd):
+        """*average the A-B difference with the B-A difference shifted onto it along the slit*
+
+        **Key Arguments:**
+
+        - ``abDifference`` -- the A-B difference
+        - ``baDifference`` -- the B-A difference
+        - ``shiftAndAdd`` -- the ``shift_and_add_plan`` of the pair
+
+        **Return:**
+
+        - ``combined`` -- the combined frame, carrying the A header
+        """
+        from soxspipe.commonutils.nod_shift_and_add import combine_nod_differences
+
+        return combine_nod_differences(abDifference, baDifference, shiftAndAdd.orderShifts, shiftAndAdd.mapImages)
+
+    def _combine_unflattened_differences(self, abDifference, baDifference, shiftAndAdd, locationSetIndex, notFlattened):
+        """*combine the unflattened differences of a cycle, and in debug mode write the result*
+
+        **Key Arguments:**
+
+        - ``abDifference`` -- the unflattened A-B difference
+        - ``baDifference`` -- the unflattened B-A difference
+        - ``shiftAndAdd`` -- the ``shift_and_add_plan`` of the pair, or *None*
+        - ``locationSetIndex`` -- the cycle index
+        - ``notFlattened`` -- if True, the cycle is the unflattened repeat, which writes nothing
+
+        **Return:**
+
+        - ``combined`` -- the combined unflattened frame, or *None* when there is no plan
+        """
+        if shiftAndAdd is None:
+            return None
+        combined = self._combine_cycle_differences(abDifference, baDifference, shiftAndAdd)
+        if not notFlattened:
+            self._write_combined_difference_frame(combined, locationSetIndex)
+        return combined
+
+    def _combined_cycle_frames(self, abDifference, baDifference, abUnflattened, combinedUnflattened, shiftAndAdd):
+        """*the combined frame to extract and the combined frame to trace, for a cycle with a plan*
+
+        The two are one frame when the differences were not flat-fielded.
+
+        **Key Arguments:**
+
+        - ``abDifference`` -- the A-B difference to extract
+        - ``baDifference`` -- the B-A difference to extract
+        - ``abUnflattened`` -- the unflattened A-B difference
+        - ``combinedUnflattened`` -- the combined unflattened frame, or *None* when there is no plan
+        - ``shiftAndAdd`` -- the ``shift_and_add_plan`` of the pair, or *None*
+
+        **Return:**
+
+        - ``combinedFrames`` -- the combined frame and its unflattened counterpart, or *None* when there is no plan
+        """
+        if shiftAndAdd is None:
+            return None
+        if abDifference is abUnflattened:
+            return combinedUnflattened, combinedUnflattened
+        return self._combine_cycle_differences(abDifference, baDifference, shiftAndAdd), combinedUnflattened
+
+    def _write_combined_difference_frame(self, combined, locationSetIndex):
+        """*in debug mode, write the combined difference frame and add it to the products*
+
+        Updates ``self.products``.
+
+        **Key Arguments:**
+
+        - ``combined`` -- the combined frame
+        - ``locationSetIndex`` -- the cycle index
+        """
+        if not self.debug:
+            return
+        filename = self.sofName + f"_AB_COMBINED_{locationSetIndex}.fits"
+        filePath = f"{self.productDir}/{filename}"
+        combined.write(filePath, overwrite=True, checksum=True)
+        self.add_product(
+            productLabel="AB_COMBINED",
+            fileName=filename,
+            filePath=filePath,
+            productDesc="The A-B difference averaged with the B-A difference shifted onto it along the slit",
+            reductionDateUtc=utcnow_string(),
+            fileType="FITS",
+            label="PROD",
+            obsDateUtc=combined.header[self.kw("DATE_OBS")],
+        )
 
     def _write_cycle_difference_frames(
         self, A_minus_B_notflattened, B_minus_A_notflattened, locationSetIndex, notFlattened
@@ -1347,10 +1497,12 @@ class soxs_nod(base_recipe):
         theseProducts,
         locationSetIndex,
         notFlattened,
+        combinedFrames=None,
     ):
         """*optimally extract the cycle's difference frames*
 
-        Sets ``self.qc``. An offset run extracts the A-B difference only.
+        Sets ``self.qc``. An offset run extracts the A-B difference only. With ``combinedFrames``, the one combined
+        frame is extracted in place of both differences.
 
         **Key Arguments:**
 
@@ -1364,23 +1516,66 @@ class soxs_nod(base_recipe):
         - ``locationSetIndex`` -- the cycle index (int), or the ``STACKED_LOCATION_SET`` label (str)
           that a stacked offset pair passes
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data
+        - ``combinedFrames`` -- the combined frame and its unflattened counterpart, or *None* to extract the
+          differences on their own. Default *None*
 
         **Return:**
 
-        - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe)
+        - ``mergedSpectrumDF_A`` -- the order merged spectrum of nodding location A (dataframe), or of the combined
+          frame
         - ``mergedSpectrumDF_B`` -- the order merged spectrum of nodding location B (dataframe), or False
         - ``orderJoins`` -- the order joins of the B-A extraction, or of the A-B extraction when the B-A
           extraction found no object trace (*None* if neither did). An offset run has the A-B extraction only
         - ``theseProducts`` -- the products table the extractions returned
         """
+        # EXTRACT THE A MINUS B FRAME, OR THE COMBINED FRAME WHICH CARRIES THE A HEADER TOO
+        skySubtractedFrame, unflattenedFrame = combinedFrames or (A_minus_B, A_minus_B_notflattened)
+        theseProducts, mergedSpectrumDF_A, orderJoins = self._extract_difference(
+            skySubtractedFrame, unflattenedFrame, bFrame, theseProducts, locationSetIndex, notFlattened
+        )
+        if combinedFrames is not None or "nod" not in self.recipeName:
+            return mergedSpectrumDF_A, False, orderJoins, theseProducts
+
+        # EXTRACT THE B MINUS A FRAME
+        theseProducts, mergedSpectrumDF_B, orderJoinsB = self._extract_difference(
+            B_minus_A, B_minus_A_notflattened, aFrame, theseProducts, locationSetIndex, notFlattened
+        )
+        # AN EXTRACTION WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO IT MUST NOT ERASE THOSE OF THE OTHER
+        # POSITION
+        if orderJoinsB is not None:
+            orderJoins = orderJoinsB
+
+        return mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins, theseProducts
+
+    def _extract_difference(
+        self, skySubtractedFrame, unflattenedFrame, subtractedFrame, theseProducts, locationSetIndex, notFlattened
+    ):
+        """*optimally extract one difference frame*
+
+        Sets ``self.qc`` and ``self.extractionNotes``.
+
+        **Key Arguments:**
+
+        - ``skySubtractedFrame`` -- the difference frame to extract
+        - ``unflattenedFrame`` -- the same difference without flat-fielding, on which the object trace is found
+        - ``subtractedFrame`` -- the frame that was subtracted, whose flux gives the sky spectrum
+        - ``theseProducts`` -- the products table to add the extraction to, or False
+        - ``locationSetIndex`` -- the cycle index (int), or the ``STACKED_LOCATION_SET`` label (str)
+        - ``notFlattened`` -- if True, the extraction is performed on non-flattened data
+
+        **Return:**
+
+        - ``theseProducts`` -- the products table the extraction returned
+        - ``mergedSpectrumDF`` -- the order merged spectrum (dataframe), or *None* when no object trace was found
+        - ``orderJoins`` -- the order joins (*None* when no object trace was found)
+        """
         from soxspipe.commonutils import horne_extraction
 
-        # EXTRACT THE A MINUS B FRAME
         optimalExtractor = horne_extraction(
             log=self.log,
-            skySubtractedFrame=A_minus_B,
-            unflattenedFrame=A_minus_B_notflattened,
-            subtractedFrame=bFrame,
+            skySubtractedFrame=skySubtractedFrame,
+            unflattenedFrame=unflattenedFrame,
+            subtractedFrame=subtractedFrame,
             twoDMapPath=self.twoDMap,
             settings=self.settings,
             recipeName=self.recipeName,
@@ -1396,48 +1591,9 @@ class soxs_nod(base_recipe):
             turnOffMP=self.turnOffMP,
             scienceHeaders=self.scienceHeaders,
         )
-
-        self.qc, theseProducts, mergedSpectrumDF_A, orderJoins, extractionFITSPathA = optimalExtractor.extract()
+        self.qc, theseProducts, mergedSpectrumDF, orderJoins, _ = optimalExtractor.extract()
         self._collect_extraction_notes(optimalExtractor, notFlattened)
-
-        # EXTRACT THE B MINUS A FRAME
-        if "nod" in self.recipeName:
-            optimalExtractor = horne_extraction(
-                log=self.log,
-                skySubtractedFrame=B_minus_A,
-                unflattenedFrame=B_minus_A_notflattened,
-                subtractedFrame=aFrame,
-                twoDMapPath=self.twoDMap,
-                settings=self.settings,
-                recipeName=self.recipeName,
-                recipeSettings=self.recipeSettings,
-                qcTable=self.qc,
-                productsTable=theseProducts,
-                dispersionMap=self.dispMap,
-                sofName=self.sofName,
-                locationSetIndex=locationSetIndex,
-                startNightDate=self.startNightDate,
-                debug=self.debug,
-                notFlattened=notFlattened,
-                turnOffMP=self.turnOffMP,
-                scienceHeaders=self.scienceHeaders,
-            )
-            (
-                self.qc,
-                theseProducts,
-                mergedSpectrumDF_B,
-                orderJoinsB,
-                extractionFITSPathB,
-            ) = optimalExtractor.extract()
-            self._collect_extraction_notes(optimalExtractor, notFlattened)
-            # AN EXTRACTION WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO IT MUST NOT ERASE THOSE OF THE OTHER
-            # POSITION
-            if orderJoinsB is not None:
-                orderJoins = orderJoinsB
-        else:
-            mergedSpectrumDF_B = False
-
-        return mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins, theseProducts
+        return theseProducts, mergedSpectrumDF, orderJoins
 
     def _collect_extraction_notes(self, extractor, notFlattened):
         """*add an extractor's warnings and errors to the notes printed on the merged QC plots*
