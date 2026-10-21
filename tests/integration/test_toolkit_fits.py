@@ -17,6 +17,12 @@ from soxspipe.commonutils import toolkit
 
 pytestmark = pytest.mark.integration
 
+LASILLA_EXTINCTION_PATH = (
+    Path(toolkit.__file__).resolve().parent.parent / "resources/static_calibrations/soxs/extinction_lasilla.fits"
+)
+# A STEP OF THIS FRACTION BETWEEN NEIGHBOURING DENSE-GRID SAMPLES IS A JUMP, NOT THE CURVE'S SLOPE
+MAX_DENSE_GRID_STEP = 1e-3
+
 
 def _write_2d_map(path: Path) -> Path:
     wavelength = np.array([[500.0, 501.0], [0.0, 503.0]], dtype=np.float32)
@@ -60,15 +66,57 @@ def test_two_d_map_dataframe_preserves_associated_frame_arrays(tmp_path: Path, l
     assert_array_equal(interOrderMask, [[0.0, 0.0], [1.0, 0.0]])
 
 
-def test_extinction_correction_reads_fits_table_and_uses_next_sample(
+def test_extinction_correction_reads_fits_table_and_interpolates_linearly(
     tmp_path: Path,
 ) -> None:
+    # ARRANGE
     extinctionPath = tmp_path / "extinction.fits"
     Table({"WAVE": [4000.0, 5000.0, 6000.0], "MAG_AIRMASS": [0.1, 0.2, 0.3]}).write(extinctionPath)
 
+    # ACT
     factors = toolkit.extinction_correction_factor(np.array([400.0, 450.0, 600.0]), str(extinctionPath), airmass=2.0)
 
-    assert_allclose(factors, 10 ** (0.8 * np.array([0.1, 0.2, 0.3])))
+    # ASSERT: 450 NM IS HALFWAY BETWEEN THE 0.1 AND 0.2 MAG/AIRMASS NODES
+    assert_allclose(factors, 10 ** (0.8 * np.array([0.1, 0.15, 0.3])))
+
+
+def test_extinction_correction_has_no_jump_at_table_wavelengths_and_hits_table_values() -> None:
+    # ARRANGE
+    table = Table.read(LASILLA_EXTINCTION_PATH)
+    nodesNm = np.asarray(table["WAVE"], float) / 10
+    magPerAirmass = np.asarray(table["MAG_AIRMASS"], float)
+    airmass = 1.37
+    epsilonNm = 1e-6
+    interiorNodes = nodesNm[1:-1]
+
+    # ACT
+    atNodes = toolkit.extinction_correction_factor(nodesNm, str(LASILLA_EXTINCTION_PATH), airmass)
+    justBelow = toolkit.extinction_correction_factor(interiorNodes - epsilonNm, str(LASILLA_EXTINCTION_PATH), airmass)
+    justAbove = toolkit.extinction_correction_factor(interiorNodes + epsilonNm, str(LASILLA_EXTINCTION_PATH), airmass)
+    denseWave = np.linspace(nodesNm[0], nodesNm[-1], 200001)
+    denseFactors = toolkit.extinction_correction_factor(denseWave, str(LASILLA_EXTINCTION_PATH), airmass)
+
+    # ASSERT: EQUAL TO THE TABLE AT EVERY NODE
+    assert_allclose(atNodes, 10 ** (0.4 * magPerAirmass * airmass), rtol=1e-6)
+    # ASSERT: CONTINUOUS ACROSS EVERY INTERIOR NODE (THE OLD STAIRCASE JUMPED BY OVER 50% AT 320 NM)
+    assert_allclose(justBelow, justAbove, rtol=1e-5)
+    # ASSERT: NO STEP ANYWHERE ON A DENSE GRID (0.003 NM SPACING; STEEPEST SLOPE IS ~0.07 %/0.003 NM AT 310-320 NM)
+    assert np.max(np.abs(np.diff(denseFactors) / denseFactors[:-1])) < MAX_DENSE_GRID_STEP
+
+
+def test_extinction_correction_keeps_out_of_range_behavior(tmp_path: Path) -> None:
+    # ARRANGE
+    extinctionPath = tmp_path / "extinction.fits"
+    Table({"WAVE": [4000.0, 5000.0, 6000.0], "MAG_AIRMASS": [0.1, 0.2, 0.3]}).write(extinctionPath)
+    # A NAN WAVELENGTH GIVES NAN (SCIPY'S STEP INTERPOLATOR RETURNED THE LAST TABLE VALUE)
+    wave = np.array([300.0, 399.0, 601.0, 900.0, np.nan])
+
+    # ACT
+    factors = toolkit.extinction_correction_factor(wave, str(extinctionPath), airmass=2.0)
+
+    # ASSERT: BELOW THE TABLE HOLDS THE FIRST VALUE; ABOVE THE TABLE IS NAN, AS WITH THE OLD KIND="NEXT" INTERPOLATOR
+    assert_allclose(factors[:2], 10 ** (0.8 * 0.1))
+    assert np.isnan(factors[2:]).all()
 
 
 def test_read_spectral_format_selects_full_or_reduced_wavelengths(
