@@ -26,7 +26,7 @@ from .base_recipe import base_recipe
 
 os.environ["TERM"] = "vt100"
 
-# TODO: WHEN COMBINING SPECTRA AT THE END, WE USE A SIMPLE SUM. IF WE USE SIGMA-CLIPPING FOLLOWED BY A MEAN
+# TODO: WHEN COMBINING SPECTRA AT THE END, WE TAKE THE MEDIAN. IF WE USE SIGMA-CLIPPING FOLLOWED BY A MEAN
 # COMBINE, WE CAN REMOVE CRHS FOR DATA SETS WITH MORE THAN 1 AB CYCLE.
 
 # UP TO THIS MANY SPECTRA, THE MEDIAN IS THE MEAN, SO ITS VARIANCE IS SUM(VAR) / N**2
@@ -64,12 +64,12 @@ def median_stack_variance(spectra):
     contributing = spectra["FLUX_COUNTS"].notna()
     variance = spectra["VARIANCE"].astype(np.float64).where(contributing)
     byWave = spectra["WAVE"]
-    count = contributing.groupby(byWave).sum()
-    unknown = (contributing & variance.isna()).groupby(byWave).any()
-    total = variance.groupby(byWave).sum(min_count=1).mask(unknown)
-    meanVariance = total / count**2
-    medianVariance = MEDIAN_VARIANCE_FACTOR * (total / count) / count
-    return meanVariance.where(count <= MEDIAN_IS_MEAN_MAX_SPECTRA, medianVariance)
+    contributorCount = contributing.groupby(byWave).sum()
+    hasMissingVariance = (contributing & variance.isna()).groupby(byWave).any()
+    varianceSum = variance.groupby(byWave).sum(min_count=1).mask(hasMissingVariance)
+    meanVariance = varianceSum / contributorCount**2
+    medianVariance = MEDIAN_VARIANCE_FACTOR * (varianceSum / contributorCount) / contributorCount
+    return meanVariance.where(contributorCount <= MEDIAN_IS_MEAN_MAX_SPECTRA, medianVariance)
 
 
 class soxs_nod(base_recipe):
@@ -1784,7 +1784,7 @@ class soxs_nod(base_recipe):
             raise Exception(error)
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGEDSPECTRUMDF_B INTO A SINGLE DATAFRAME, THEN
-        # GROUP BY WAVE AND SUM THE FLUXES
+        # GROUP BY WAVE AND TAKE THE MEDIAN OF EACH COLUMN
 
         merged_dataframe = pd.concat(dataFrameList)
         # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGTH TO THE 4 DIGITS
@@ -1793,8 +1793,9 @@ class soxs_nod(base_recipe):
         # THE FLUX IS THE MEDIAN, BUT THE MEDIAN OF THE INPUT VARIANCES IS THE ERROR OF ONE SPECTRUM, NOT OF THE STACK
         # KEEP THE EXTRACTION'S FLOAT32 VARIANCE COLUMN TYPE; INTEGER OR FLOAT64 INPUT GIVES FLOAT64
         varianceType = np.promote_types(merged_dataframe["VARIANCE"].dtype, np.float32)
-        groupedDataframe["VARIANCE"] = groupedDataframe["WAVE"].map(median_stack_variance(merged_dataframe))
-        groupedDataframe["VARIANCE"] = groupedDataframe["VARIANCE"].astype(varianceType)
+        groupedDataframe["VARIANCE"] = (
+            groupedDataframe["WAVE"].map(median_stack_variance(merged_dataframe)).astype(varianceType)
+        )
 
         self.filenameTemplate = self.sofName + ".fits"
 
