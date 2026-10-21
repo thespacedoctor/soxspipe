@@ -376,3 +376,27 @@ def test_a_cycle_without_a_plan_still_makes_two_extractions(
     assert len(extractCalls) == 2
     assert mergedA is not False
     assert mergedB is not False
+
+
+@pytest.mark.parametrize(
+    ("header", "slitLength", "dispersionAxis", "expected"),
+    [
+        ({}, 15, "y", 15.0),
+        ({"WIN_BINX": 2, "WIN_BINY": 4}, 15, "y", 3.75),
+        ({"WIN_BINX": "x", "WIN_BINY": 4}, 15, "y", 15.0),
+    ],
+)
+def test_the_aperture_uses_the_binning_in_the_header_and_one_by_one_without_it(
+    log: Any, tmp_path: Path, header: dict[str, object], slitLength: float, dispersionAxis: str, expected: float
+) -> None:
+    # ARRANGE
+    recipe, _ = _nod_recipe(log, tmp_path, SINGLE_PAIR)
+    recipe.recipeSettings = {**recipe.recipeSettings, "horne-extraction-slit-length": slitLength}
+    recipe.detectorParams = {"dispersion-axis": dispersionAxis}
+    frame = SimpleNamespace(header=header)
+
+    # ACT
+    aperture = recipe._horne_aperture_pixels(frame)
+
+    # ASSERT
+    assert aperture == pytest.approx(expected)

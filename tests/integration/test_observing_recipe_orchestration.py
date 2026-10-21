@@ -465,7 +465,15 @@ def test_nod_success_records_qc_and_characterizes_none_product_path(
     expectedQc = pd.concat([originalQc, extractionQc], ignore_index=True)
     isAlignQc = returnedQc["qc_name"] == "SLIT ALIGN FALLBACK NUM"
     assert returnedQc.loc[isAlignQc, "qc_value"].tolist() == [0]
-    pd.testing.assert_frame_equal(returnedQc.loc[~isAlignQc].reset_index(drop=True), expectedQc, check_dtype=False)
+    # THE ALIGNMENT STUB REPORTS NO OBJECT POSITION, SO THE PAIR IS NOT COMBINED AND NO SHIFT IS MEDIAN-FILLED (DY-1674)
+    isCombineQc = returnedQc["qc_name"].isin(["NOD COMBINED", "NOD COMBINE FALLBACK NUM"])
+    assert dict(zip(returnedQc.loc[isCombineQc, "qc_name"], returnedQc.loc[isCombineQc, "qc_value"], strict=True)) == {
+        "NOD COMBINED": 0,
+        "NOD COMBINE FALLBACK NUM": 0,
+    }
+    pd.testing.assert_frame_equal(
+        returnedQc.loc[~isAlignQc & ~isCombineQc].reset_index(drop=True), expectedQc, check_dtype=False
+    )
     _assert_merged_product(recipe.products, plotPath)
     assert calls == [
         "stack",

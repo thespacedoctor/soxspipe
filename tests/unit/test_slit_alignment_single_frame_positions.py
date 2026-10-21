@@ -85,3 +85,38 @@ def test_an_unreliable_single_frame_trace_is_not_counted_as_a_fallback(log, tmp_
     # ASSERT
     assert resultA.shifts["position_arcsec"].isna().all()
     assert resultA.fallbackCount == 0
+
+
+def test_a_group_of_several_frames_is_measured_while_a_single_frame_group_is_not_by_default(
+    log, tmp_path, monkeypatch
+) -> None:
+    # ARRANGE: TWO A FRAMES AND ONE B FRAME
+    scene = synthetic_alignment_map(tmp_path)
+    _use_synthetic_trace_samples(monkeypatch, scene)
+    framesA = [
+        synthetic_nod_frame(scene, objectSlit=A_POSITION, mjd=60000.0 + 0.01 * index, hasSky=False)
+        for index in range(2)
+    ]
+    frameB = synthetic_nod_frame(scene, objectSlit=B_POSITION, mjd=60000.005, offset=-3.0, hasSky=False)
+
+    # ACT
+    resultA, resultB = align_frame_groups_along_slit(
+        log=log,
+        groups=[
+            frame_group(framesA, [frameB, frameB], ["A0.fits", "A1.fits"]),
+            frame_group([frameB], framesA[:1], ["B0.fits"]),
+        ],
+        twoDMapPath=scene.path,
+        dispersionMap="unused.fits",
+        settings=pipeline_settings(tmp_path),
+        recipeSettings={"detect-continuum": DETECT_CONTINUUM_SETTINGS},
+        recipeName="soxs-nod",
+        perOrder=True,
+        startNightDate="2024-01-02",
+    )
+
+    # ASSERT
+    assert resultA.shifts["position_arcsec"].notna().all()
+    assert resultA.mapImages is not None
+    assert resultB.shifts["position_arcsec"].isna().all()
+    assert resultB.mapImages is None
