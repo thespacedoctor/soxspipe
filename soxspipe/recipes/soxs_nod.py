@@ -58,12 +58,14 @@ def median_stack_variance(spectra):
     ```
     """
     import numpy as np
+    import pandas as pd
 
-    # CONCATENATED SPECTRA REPEAT INDEX LABELS, WHICH WOULD BREAK THE INDEX ALIGNMENT BELOW
-    spectra = spectra.reset_index(drop=True)
-    contributing = spectra["FLUX_COUNTS"].notna()
-    variance = spectra["VARIANCE"].astype(np.float64).where(contributing)
-    byWave = spectra["WAVE"]
+    # PLAIN FLOAT ARRAYS: THE EXTRACTION'S COLUMNS ARE ASTROPY QUANTITIES IN MIXED UNITS, AND CONCATENATED SPECTRA
+    # REPEAT INDEX LABELS, SO NEITHER THE ORIGINAL COLUMNS NOR THEIR INDEX CAN BE ALIGNED SAFELY
+    flux = np.asarray(spectra["FLUX_COUNTS"].to_numpy(), dtype=np.float64)
+    contributing = pd.Series(~np.isnan(flux))
+    variance = pd.Series(np.asarray(spectra["VARIANCE"].to_numpy(), dtype=np.float64)).where(contributing)
+    byWave = pd.Series(np.asarray(spectra["WAVE"].to_numpy(), dtype=np.float64))
     contributorCount = contributing.groupby(byWave).sum()
     hasMissingVariance = (contributing & variance.isna()).groupby(byWave).any()
     varianceSum = variance.groupby(byWave).sum(min_count=1).mask(hasMissingVariance)

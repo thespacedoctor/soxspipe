@@ -182,3 +182,27 @@ def test_the_variance_column_keeps_the_extraction_float32_type(recipe: soxs_nod)
 
     assert stacked["VARIANCE"].dtype == np.float32
     assert _row(stacked, 500.0)["VARIANCE"] == pytest.approx(6.25)
+
+
+def _extraction_spectrum(waves: list[float], fluxes: list[float], variances: list[float]) -> pd.DataFrame:
+    """Return a spectrum built the way `horne_extraction` builds its merged orders: float32 astropy quantities."""
+    spectrum = pd.DataFrame()
+    spectrum["WAVE"] = np.array(waves) * u.nm
+    spectrum["FLUX_COUNTS"] = np.array(fluxes, dtype=np.float32) * u.electron
+    spectrum["VARIANCE"] = np.array(variances, dtype=np.float32) * u.electron
+    spectrum["SKY_COUNTS"] = np.zeros(len(waves), dtype=np.float32) * u.electron
+    spectrum["SNR"] = spectrum["FLUX_COUNTS"].values / np.sqrt(spectrum["VARIANCE"].values)
+    spectrum["FLUX_DENSITY_COUNTS"] = np.array(fluxes, dtype=np.float32) * u.electron / u.nm
+    return spectrum
+
+
+def test_spectra_built_like_the_extraction_output_stack(recipe: soxs_nod) -> None:
+    """Real extractions hold float32 quantities in mixed units; stacking two of them gives sum(var) / 4."""
+    first = _extraction_spectrum([500.0, 510.0], [10.0, 30.0], [9.0, 4.0])
+    second = _extraction_spectrum([500.0, 510.0], [20.0, 50.0], [16.0, 12.0])
+
+    stacked, _ = recipe.stack_extractions([first, second])
+
+    assert _row(stacked, 500.0)["VARIANCE"] == pytest.approx(6.25)
+    assert _row(stacked, 510.0)["VARIANCE"] == pytest.approx(4.0)
+    assert _row(stacked, 510.0)["FLUX_COUNTS"] == pytest.approx(40.0)
