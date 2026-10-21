@@ -620,7 +620,8 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
     assert stacked["WAVE"].tolist() == pytest.approx([500.12, 500.12, 700.0], rel=1e-12)
     assert stacked["FLUX_COUNTS"].tolist() == pytest.approx([12.346, 55.0, 50.0], rel=1e-12)
     assert stacked["FLUX_DENSITY_COUNTS"].tolist() == pytest.approx([2.222, 3.001, 10.0], rel=1e-12)
-    assert stacked["SNR"].tolist() == pytest.approx([4.12, 27.5, 7.14], rel=1e-12)
+    # THE VARIANCE OF A TWO-SPECTRUM MEDIAN IS SUM(VAR) / 4 (DY-1675): 12.34565 / SQRT(4.5) AND 50 / SQRT(24.5)
+    assert stacked["SNR"].tolist() == pytest.approx([5.82, 27.5, 10.10], rel=1e-12)
 
 
 def test_stack_extractions_writes_notflat_suffixed_files_when_requested(
@@ -819,7 +820,7 @@ def test_stack_extractions_calls_add_snr_efficiency_qcs_and_writes_its_qc_to_the
     assert qcCalls[0]["recipeName"] == "soxs-nod"
     assert qcCalls[0]["arm"] == "VIS"
     assert qcCalls[0]["dateObs"] == recipe.dateObs
-    assert list(qcCalls[0]["spectrumDF"]["SNR"]) == pytest.approx([4.12, 27.5, 7.14], rel=1e-12)
+    assert list(qcCalls[0]["spectrumDF"]["SNR"]) == pytest.approx([5.82, 27.5, 10.10], rel=1e-12)
     assert recipe.qc is returnedQc
     with fits.open(fitsPath) as hdus:
         assert hdus[0].header["ESO QC SYNTHETIC QC"] == pytest.approx(42.0)

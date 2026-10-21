@@ -28,6 +28,8 @@ MAD_TO_SIGMA = 1.4826
 MIN_DETECTION_PERCENT = 10
 # A MASK OR COVERAGE VALUE THIS CLOSE TO ITS CLEAN VALUE COUNTS AS CLEAN
 INTERPOLATION_TOLERANCE = 1e-6
+# HOW MANY TIMES A SLIT-SHIFT SOURCE IS RE-STEPPED FROM ITSELF, FOR A MAP WHOSE PLATE SCALE CHANGES ACROSS THE SHIFT
+SOURCE_REFINEMENTS = 2
 # THE ORDER VALUE OF A SHIFT THAT BELONGS TO A WHOLE FRAME
 WHOLE_FRAME = -1
 
@@ -262,7 +264,9 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     are interpolated bilinearly, with the edge value beyond the detector edge. A pixel is flagged bad when any pixel
     that contributes to it is bad, when its interpolated value or variance is not finite, when its source lies
     outside the order, or when its source lies off the detector. Orders with no shift, and pixels outside every
-    order, are copied unchanged.
+    order, are copied unchanged. A shifted value is multiplied by the ratio of the target pixel's area in the
+    (wavelength, slit) plane to the source's, and its variance by the square of that ratio, so the object keeps its
+    flux where the plate scale changes along the slit.
 
     The variance is interpolated bilinearly too, so a resampled pixel carries the weighted mean of the contributing
     variances, the sum of ``w * sigma**2``. Independent noise would give the smaller ``sum(w**2 * sigma**2)``. The
@@ -299,18 +303,31 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     badness = newIsBad.astype(np.float32)
 
     height, width = data.shape
+    pixelAreas = None
     for order, shift in orderShifts.items():
         if shift == 0:
             continue
+        if pixelAreas is None:
+            pixelAreas = _pixel_areas(mapImages)
         targets, (rows, columns) = _order_sources(mapImages, order, shift)
         sources = [rows, columns]
         isInBounds = (rows >= 0) & (rows <= height - 1) & (columns >= 0) & (columns <= width - 1)
         coverage = _interpolate((mapImages.order == order).astype(np.float32), sources, mode="constant")
-        newData[targets] = _interpolate(data, sources)
+        # A PIXEL HOLDS THE FLUX THAT FALLS ON ITS AREA OF THE (WAVELENGTH, SLIT) PLANE. THAT AREA CHANGES ALONG THE
+        # SLIT, BY ABOUT 8% OVER A NOD THROW AT THE RED END OF THE SOXS NIR ORDER 10, SO THE VALUE IS RESCALED TO THE
+        # TARGET'S AREA TO KEEP THE OBJECT FLUX (DY-1679)
+        # A SOURCE OFF THE ORDER HAS NO AREA. ITS PIXEL IS FLAGGED BAD AND KEEPS THE UNSCALED VALUE, NOT A NaN.
+        # NEXT TO THE ORDER EDGE THE INTERPOLATED SOURCE AREA MIXES IN ZERO AREA AND THE RATIO IS TOO LARGE; THOSE
+        # PIXELS STAY SAFE ONLY BECAUSE THE COVERAGE TEST BELOW FLAGS THEM BAD
+        with np.errstate(divide="ignore", invalid="ignore"):
+            areaRatio = pixelAreas[targets] / _interpolate(pixelAreas, sources)
+        hasArea = np.isfinite(areaRatio) & (areaRatio > 0)
+        areaRatio = np.where(hasArea, areaRatio, np.float32(1.0))
+        newData[targets] = _interpolate(data, sources) * areaRatio
         isBad = (_interpolate(badness, sources) > INTERPOLATION_TOLERANCE) | (coverage < 1.0 - INTERPOLATION_TOLERANCE)
-        isBad |= ~isInBounds | ~np.isfinite(newData[targets])
+        isBad |= ~isInBounds | ~np.isfinite(newData[targets]) | ~hasArea
         if variance is not None:
-            newVariance[targets] = _interpolate(variance, sources)
+            newVariance[targets] = _interpolate(variance, sources) * areaRatio**2
             isBad |= ~np.isfinite(newVariance[targets])
         newIsBad[targets] = isBad
 
@@ -318,6 +335,19 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     if hasUncertainty:
         uncertainty = StdDevUncertainty(np.sqrt(newVariance), unit=frame.uncertainty.unit)
     return CCDData(newData, unit=frame.unit, meta=copy.deepcopy(frame.meta), mask=newIsBad, uncertainty=uncertainty)
+
+
+def _pixel_areas(mapImages):
+    """*the area of each pixel in the (wavelength, slit) plane, in nm arcsec, from the map gradients*
+
+    The area is the absolute determinant of the gradients. It is zero outside the orders, where the gradients are.
+    """
+    return np.abs(_gradient_determinant(*_gradient_images(mapImages))).astype(np.float32)
+
+
+def _gradient_determinant(wavelengthRow, wavelengthCol, slitRow, slitCol):
+    """*the determinant of the wavelength and slit gradients: the signed (wavelength, slit) area of a pixel*"""
+    return wavelengthRow * slitCol - wavelengthCol * slitRow
 
 
 def _interpolate(image, sources, mode="nearest"):
@@ -360,8 +390,11 @@ def _order_sources(mapImages, order, shift):
     """*where each pixel of an order takes its value from, for a slit shift in arcsec*
 
     The source is a step of ``shift`` in slit coordinate at fixed wavelength, taken along the local gradients of the
-    wavelength and slit images. The step is exact for a map that is locally linear, and the map is smooth across the
-    few pixels of a shift.
+    wavelength and slit images. The plate scale can change across a nod throw, by about 8% at the red end of the SOXS
+    NIR order 10, so one step from the target overshoots. The step is then repeated from the source, along the
+    gradients there, for the slit coordinate still missing, ``SOURCE_REFINEMENTS`` times. Only the slit coordinate is
+    refined: on a tilted, curved map the source can drift in wavelength by a second-order amount, 0.013 nm (about a
+    tenth of a pixel) at the red end of the SOXS NIR order 10.
 
     **Return:**
 
@@ -369,14 +402,44 @@ def _order_sources(mapImages, order, shift):
     - ``sources`` -- the (rows, columns) source coordinates of those pixels
     """
     targets = np.nonzero(mapImages.order == order)
-    wavelengthRow, wavelengthCol = mapImages.wavelengthRow[targets], mapImages.wavelengthCol[targets]
-    determinant = wavelengthRow * mapImages.slitCol[targets] - wavelengthCol * mapImages.slitRow[targets]
+    gradients = [image[targets] for image in _gradient_images(mapImages)]
+    rows, columns = _slit_step(targets[0], targets[1], gradients, shift)
+    targetSlit = mapImages.slit[targets] + shift
+    for _ in range(SOURCE_REFINEMENTS):
+        sources = [rows, columns]
+        missing = targetSlit - _interpolate(mapImages.slit, sources)
+        gradients = [_interpolate(image, sources) for image in _gradient_images(mapImages)]
+        newRows, newColumns = _slit_step(rows, columns, gradients, missing)
+        # A SOURCE THAT CANNOT BE REFINED, AS IT LIES OFF THE ORDER, KEEPS ITS FIRST STEP. THE CALLER FLAGS IT BAD
+        isRefined = np.isfinite(newRows) & np.isfinite(newColumns)
+        rows, columns = np.where(isRefined, newRows, rows), np.where(isRefined, newColumns, columns)
+    return targets, [rows, columns]
+
+
+def _gradient_images(mapImages):
+    """*the wavelength row, wavelength column, slit row and slit column gradient images, in that order*"""
+    return (mapImages.wavelengthRow, mapImages.wavelengthCol, mapImages.slitRow, mapImages.slitCol)
+
+
+def _slit_step(rows, columns, gradients, slitStep):
+    """*the pixel coordinates a step of ``slitStep`` arcsec along the slit away, at fixed wavelength*
+
+    **Key Arguments:**
+
+    - ``rows``, ``columns`` -- the coordinates to step from
+    - ``gradients`` -- the wavelength row, wavelength column, slit row and slit column gradients at those coordinates
+    - ``slitStep`` -- the slit step in arcsec, a scalar or one value per coordinate
+
+    **Return:**
+
+    - ``rows``, ``columns`` -- the new coordinates
+    """
+    wavelengthRow, wavelengthCol, _, _ = gradients
+    determinant = _gradient_determinant(*gradients)
     # A ZERO DETERMINANT GIVES AN INFINITE OR NaN SOURCE. THE CALLER FLAGS THAT PIXEL BAD, AND
     # _safe_sources KEEPS THE NON-FINITE VALUE FROM BEING READ AS A MEMORY OFFSET
     with np.errstate(divide="ignore", invalid="ignore"):
-        rows = targets[0] - wavelengthCol * shift / determinant
-        columns = targets[1] + wavelengthRow * shift / determinant
-    return targets, [rows, columns]
+        return rows - wavelengthCol * slitStep / determinant, columns + wavelengthRow * slitStep / determinant
 
 
 def read_two_d_map_images(twoDMapPath, binx, biny, kw):
