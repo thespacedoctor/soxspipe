@@ -35,7 +35,7 @@ def test_format_gate_runs_after_install_and_before_the_suite() -> None:
 
 
 def test_required_suite_runs_under_xdist_on_every_runner_core() -> None:
-    """The required suite runs in parallel (`-n auto`) to stay inside the job's 20-minute cap."""
+    """The required suite runs in parallel (`-n auto`) to stay inside the job's 30-minute cap."""
     commands = load_step_commands()
     suiteCommand = next((command for command in commands if "-m pytest" in command), None)
 
