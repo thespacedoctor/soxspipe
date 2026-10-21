@@ -5,9 +5,8 @@ CORRECT behaviour, so it fails today and is marked ``xfail(strict=True)``. When 
 the leak the test XPASSes, strict mode turns that into a suite failure, and the fixer must
 delete the ``xfail`` marker.
 
-The ``reason`` of each marker reads ``DY-36 <ID>: <defect>``, naming the leak's ID in the
-DY-36 findings table. Replace ``DY-36`` with the Linear issue that tracks the leak once it is
-filed.
+The ``reason`` of each marker reads ``<Linear issue> (DY-36 <ID>): <defect>``, naming the
+issue that tracks the leak and the leak's ID in the DY-36 findings table.
 
 Each marker names the exception the leak produces today (``AssertionError``), so a setup,
 import or fixture error fails the suite instead of hiding as an xfail. Each pin also asserts
@@ -90,7 +89,7 @@ def _resource_warnings_for(path: Path, caught: list[warnings.WarningMessage]) ->
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-36 L1: a recipe that raises skips clean_up, so its workspace tmp/ scratch directory and the "
+        "DY-1700 (DY-36 L1): a recipe that raises skips clean_up, so its workspace tmp/ scratch directory and the "
         "prepared frames in it are never removed on the serial `reduce` path; related to DY-37 I4 (kill path, "
         "tests/unit/test_state_and_time_defect_pins.py); file together, fix must clear both pins"
     ),
@@ -149,7 +148,7 @@ def test_a_recipe_that_raises_removes_its_scratch_directory(
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-36 L2: after run_recipe returns, the finished recipe and every array it holds stay alive "
+        "DY-1707 (DY-36 L2): after run_recipe returns, the finished recipe and every array it holds stay alive "
         "until a cyclic gc pass, because the recipe is reachable from frames in reference cycles"
     ),
 )
@@ -238,7 +237,7 @@ def _stop_children_not_in(childrenBefore: set[int]) -> None:
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-36 L3: fundamentals.fmultiprocess skips Pool.close/join when a task raises, so the pool's "
+        "DY-1701 (DY-36 L3): fundamentals.fmultiprocess skips Pool.close/join when a task raises, so the pool's "
         "worker processes stay alive until a cyclic gc pass (an upstream defect in fundamentals)"
     ),
 )
@@ -281,7 +280,7 @@ def test_fmultiprocess_stops_its_workers_when_a_task_raises(log: Any, cyclic_gc_
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-36 L4: cl_utils.main opens a data_organiser (and its soxspipe.db connection) to look up the "
+        "DY-1708 (DY-36 L4): cl_utils.main opens a data_organiser (and its soxspipe.db connection) to look up the "
         "session and never closes it, so it stays open for the whole reduction"
     ),
 )
@@ -324,7 +323,7 @@ def test_cli_reduce_closes_the_session_lookup_organiser_before_reducing(
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-36 L5: twoD_disp_map_image_to_dataframe never closes the HDUList it opens on success; the "
+        "DY-1709 (DY-36 L5): twoD_disp_map_image_to_dataframe never closes the HDUList it opens on success; the "
         "file is closed only when the object is garbage collected, with a ResourceWarning"
     ),
 )
@@ -378,7 +377,7 @@ def _standard_star_extraction(tmp_path: Path) -> tuple[Path, Path]:
     strict=True,
     raises=AssertionError,
     reason=(
-        "DY-36 L5: response_function.__init__ opens the standard-star extraction to read its header and "
+        "DY-1709 (DY-36 L5): response_function.__init__ opens the standard-star extraction to read its header and "
         "never closes it; the file is closed only by the garbage collector, with a ResourceWarning"
     ),
 )
