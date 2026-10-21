@@ -10,6 +10,7 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
+import math
 import os
 import sys
 
@@ -27,6 +28,48 @@ os.environ["TERM"] = "vt100"
 
 # TODO: WHEN COMBINING SPECTRA AT THE END, WE USE A SIMPLE SUM. IF WE USE SIGMA-CLIPPING FOLLOWED BY A MEAN
 # COMBINE, WE CAN REMOVE CRHS FOR DATA SETS WITH MORE THAN 1 AB CYCLE.
+
+# UP TO THIS MANY SPECTRA, THE MEDIAN IS THE MEAN, SO ITS VARIANCE IS SUM(VAR) / N**2
+MEDIAN_IS_MEAN_MAX_SPECTRA = 2
+# THE LARGE-N VARIANCE OF THE MEDIAN OF GAUSSIAN SAMPLES IS THIS FACTOR TIMES THE VARIANCE OF THEIR MEAN
+MEDIAN_VARIANCE_FACTOR = math.pi / 2
+
+
+def median_stack_variance(spectra):
+    """*the variance of the per-wavelength median of a set of stacked spectra*
+
+    A row contributes at its wavelength when it has a flux, as for the flux median, so N is counted per
+    wavelength. For N <= 2 the median is the mean and the variance is sum(var) / N**2. For larger N it is
+    (pi / 2) * mean(var) / N, the large-N variance of the median of Gaussian samples. The variance is NaN where
+    no row contributes, or where a contributing row has no variance.
+
+    **Key Arguments:**
+
+    - ``spectra`` -- the concatenated spectra (dataframe) with rounded ``WAVE``, ``FLUX_COUNTS`` and ``VARIANCE``
+
+    **Return:**
+
+    - ``variance`` -- the variance of the median at each ``WAVE`` (series indexed by ``WAVE``, sorted ascending)
+
+    **Usage:**
+
+    ```python
+    variance = median_stack_variance(mergedDataframe)
+    ```
+    """
+    import numpy as np
+
+    # CONCATENATED SPECTRA REPEAT INDEX LABELS, WHICH WOULD BREAK THE INDEX ALIGNMENT BELOW
+    spectra = spectra.reset_index(drop=True)
+    contributing = spectra["FLUX_COUNTS"].notna()
+    variance = spectra["VARIANCE"].astype(np.float64).where(contributing)
+    byWave = spectra["WAVE"]
+    count = contributing.groupby(byWave).sum()
+    unknown = (contributing & variance.isna()).groupby(byWave).any()
+    total = variance.groupby(byWave).sum(min_count=1).mask(unknown)
+    meanVariance = total / count**2
+    medianVariance = MEDIAN_VARIANCE_FACTOR * (total / count) / count
+    return meanVariance.where(count <= MEDIAN_IS_MEAN_MAX_SPECTRA, medianVariance)
 
 
 class soxs_nod(base_recipe):
@@ -1747,6 +1790,11 @@ class soxs_nod(base_recipe):
         # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGTH TO THE 4 DIGITS
         merged_dataframe["WAVE"] = merged_dataframe["WAVE"].apply(lambda x: round(float(x.value), 4))
         groupedDataframe = merged_dataframe.groupby(by="WAVE", as_index=False).median()
+        # THE FLUX IS THE MEDIAN, BUT THE MEDIAN OF THE INPUT VARIANCES IS THE ERROR OF ONE SPECTRUM, NOT OF THE STACK
+        # KEEP THE EXTRACTION'S FLOAT32 VARIANCE COLUMN TYPE; INTEGER OR FLOAT64 INPUT GIVES FLOAT64
+        varianceType = np.promote_types(merged_dataframe["VARIANCE"].dtype, np.float32)
+        groupedDataframe["VARIANCE"] = groupedDataframe["WAVE"].map(median_stack_variance(merged_dataframe))
+        groupedDataframe["VARIANCE"] = groupedDataframe["VARIANCE"].astype(varianceType)
 
         self.filenameTemplate = self.sofName + ".fits"
 

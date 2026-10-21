@@ -417,7 +417,8 @@ def test_nod_stack_extractions_writes_merged_fits_and_ascii_products(
     assert Path(fitsPath).is_file()
     assert Path(fitsPath.replace(".fits", ".txt")).is_file()
     assert stacked["FLUX_COUNTS"].tolist() == [12.0, 18.0]
-    assert stacked["SNR"].tolist() == [4.0, 9.0]
+    # TWO SPECTRA: THE VARIANCE IS SUM(VAR) / 4, SO SNR IS 12 / SQRT(4.5) AND 18 / SQRT(2) (DY-1675)
+    assert stacked["SNR"].tolist() == [5.66, 12.73]
     assert recipe.products["product_label"].tolist() == [
         "EXTRACTED_MERGED_TABLE",
         "EXTRACTED_MERGED_ASCII",
