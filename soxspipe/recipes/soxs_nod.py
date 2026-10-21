@@ -13,6 +13,7 @@ Date Created
 import math
 import os
 import sys
+from types import MappingProxyType
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.toolkit import (
@@ -105,6 +106,11 @@ class soxs_nod(base_recipe):
     # EXTRACTION WARNINGS AND ERRORS FOR THE MERGED QC PLOTS.
     # AN IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) WHEN NOTES ARE ADDED
     extractionNotes = ()
+
+    # {(locationSetIndex, slot): FlatPassHandoff} OF THE FLATTENED EXTRACTIONS, READ BY THE NOT-FLATTENED PASS OF THE
+    # SAME DIFFERENCE (DY-1680). AN IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) WHEN A FLAT EXTRACTION RUNS
+    # THE FLAT PASS OF A PAIR ALWAYS RUNS FIRST, AND A NEW FLAT PASS REPLACES ITS KEY BEFORE ITS NOT-FLAT PASS READS IT
+    flatPassHandoffs = MappingProxyType({})
 
     # THE UVB/VIS MASTER BIAS THAT TAKES THE BIAS PEDESTAL OUT OF THE A AND B ERRORS, OR False (DY-1390)
     masterBias = False
@@ -1643,14 +1649,14 @@ class soxs_nod(base_recipe):
         # EXTRACT THE A MINUS B FRAME, OR THE COMBINED FRAME WHICH CARRIES THE A HEADER TOO
         skySubtractedFrame, unflattenedFrame, skyFrame = combinedFrames or (A_minus_B, A_minus_B_notflattened, bFrame)
         theseProducts, mergedSpectrumDF_A, orderJoins = self._extract_difference(
-            skySubtractedFrame, unflattenedFrame, skyFrame, theseProducts, locationSetIndex, notFlattened
+            skySubtractedFrame, unflattenedFrame, skyFrame, theseProducts, (locationSetIndex, "A"), notFlattened
         )
         if combinedFrames is not None or "nod" not in self.recipeName:
             return mergedSpectrumDF_A, False, orderJoins, theseProducts
 
         # EXTRACT THE B MINUS A FRAME
         theseProducts, mergedSpectrumDF_B, orderJoinsB = self._extract_difference(
-            B_minus_A, B_minus_A_notflattened, aFrame, theseProducts, locationSetIndex, notFlattened
+            B_minus_A, B_minus_A_notflattened, aFrame, theseProducts, (locationSetIndex, "B"), notFlattened
         )
         # AN EXTRACTION WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO IT MUST NOT ERASE THOSE OF THE OTHER
         # POSITION
@@ -1660,11 +1666,13 @@ class soxs_nod(base_recipe):
         return mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins, theseProducts
 
     def _extract_difference(
-        self, skySubtractedFrame, unflattenedFrame, subtractedFrame, theseProducts, locationSetIndex, notFlattened
+        self, skySubtractedFrame, unflattenedFrame, subtractedFrame, theseProducts, extractionKey, notFlattened
     ):
         """*optimally extract one difference frame*
 
-        Sets ``self.qc`` and ``self.extractionNotes``.
+        Sets ``self.qc`` and ``self.extractionNotes``. A flattened extraction stores its ``FlatPassHandoff`` in
+        ``self.flatPassHandoffs`` under ``extractionKey``; the not-flattened extraction with the same key reads it, so
+        it applies the flattened sky shifts instead of tuning its own (DY-1680).
 
         **Key Arguments:**
 
@@ -1672,7 +1680,8 @@ class soxs_nod(base_recipe):
         - ``unflattenedFrame`` -- the same difference without flat-fielding, on which the object trace is found
         - ``subtractedFrame`` -- the frame that was subtracted, whose flux gives the sky spectrum
         - ``theseProducts`` -- the products table to add the extraction to, or False
-        - ``locationSetIndex`` -- the cycle index (int), or the ``STACKED_LOCATION_SET`` label (str)
+        - ``extractionKey`` -- ``(locationSetIndex, slot)``: the cycle index (int) or the ``STACKED_LOCATION_SET``
+          label (str), and ``"A"`` for the A-B difference (or the combined frame) or ``"B"`` for the B-A difference
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data
 
         **Return:**
@@ -1683,6 +1692,7 @@ class soxs_nod(base_recipe):
         """
         from soxspipe.commonutils import horne_extraction
 
+        locationSetIndex = extractionKey[0]
         optimalExtractor = horne_extraction(
             log=self.log,
             skySubtractedFrame=skySubtractedFrame,
@@ -1702,8 +1712,13 @@ class soxs_nod(base_recipe):
             notFlattened=notFlattened,
             turnOffMP=self.turnOffMP,
             scienceHeaders=self.scienceHeaders,
+            flatPass=self.flatPassHandoffs.get(extractionKey) if notFlattened else None,
         )
         self.qc, theseProducts, mergedSpectrumDF, orderJoins, _ = optimalExtractor.extract()
+        if not notFlattened:
+            self.flatPassHandoffs = MappingProxyType(
+                {**self.flatPassHandoffs, extractionKey: optimalExtractor.flatPassHandoff}
+            )
         self._collect_extraction_notes(optimalExtractor, notFlattened)
         return theseProducts, mergedSpectrumDF, orderJoins
 

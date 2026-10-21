@@ -228,6 +228,7 @@ def _extracting_nod_recipe(
     callCount = {"count": 0}
 
     class StubExtractor:
+        flatPassHandoff = None
         noddingSequence = ""
         extractionNotes: tuple = ()
 

@@ -731,6 +731,7 @@ class SpillingExtractor:
     """Stand-in for `horne_extraction` that reports a chosen slit-edge verdict."""
 
     traceFallback = False
+    flatPassHandoff = "flat-pass hand-off"
 
     def __init__(self, slitEdgeOrders: list[tuple[int, float, float, float]], **_: object) -> None:
         self.slitEdgeOrders = slitEdgeOrders
@@ -754,7 +755,7 @@ def _produce_product_recipe(
 
     - the recipe, and a dictionary recording the `clean_up` and `_generate_response_curve` calls.
     """
-    calls: dict[str, Any] = {"clean_up": [], "response": 0}
+    calls: dict[str, Any] = {"clean_up": [], "response": 0, "responseArgs": []}
     frame = synthetic_ccd()
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
@@ -782,8 +783,9 @@ def _produce_product_recipe(
     recipe.report_output = lambda: "qcTable"
     recipe.clean_up = lambda forceFail=False: calls["clean_up"].append(forceFail)
 
-    def generate_response_curve(*_: object) -> bool:
+    def generate_response_curve(*args: object) -> bool:
         calls["response"] += 1
+        calls["responseArgs"].append(args)
         return responseFailure
 
     recipe._generate_response_curve = generate_response_curve
@@ -842,6 +844,68 @@ def test_a_centred_standard_star_keeps_the_response_verdict(
     assert passingCalls["clean_up"] == [False]
     assert failingCalls["clean_up"] == [True]
     assert [message for level, message in log.messages if level == "error"] == []
+
+
+def test_the_response_curve_gets_the_flat_extraction_hand_off(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: the not-flattened response extraction reuses the flattened extraction's sky shifts."""
+    # ARRANGE
+    recipe, calls = _produce_product_recipe(log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=True)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls["responseArgs"][0][-1] == SpillingExtractor.flatPassHandoff
+
+
+def test_the_not_flattened_response_extraction_is_handed_the_flat_pass(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: `_generate_response_curve` builds its not-flattened extractor with the flat pass's hand-off."""
+    # ARRANGE
+    built: list[dict[str, Any]] = []
+
+    class RecordingExtractor:
+        def __init__(self, **kwargs: object) -> None:
+            built.append(kwargs)
+
+        def extract(self) -> tuple[str, str, None, None, str]:
+            return "qc", "products", None, None, "notflat.fits"
+
+    class StubResponse:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def get(self) -> tuple[str, str, bool]:
+            return "qc", "products", False
+
+    monkeypatch.setattr(commonutils, "horne_extraction", RecordingExtractor)
+    monkeypatch.setattr(commonutils, "response_function", StubResponse)
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.settings = {}
+    recipe.recipeSettings = {}
+    recipe.recipeName = "soxs-stare"
+    recipe.sofName = "stare"
+    recipe.startNightDate = "2024-01-02"
+    recipe.debug = False
+    recipe.turnOffMP = True
+    recipe.qc = "qc"
+    recipe.products = "products"
+    recipe.scienceHeaders = []
+    handoff = object()
+
+    # ACT
+    recipe._generate_response_curve("frame", "sky", "map.fits", "disp.fits", "flat.fits", {}, handoff)
+
+    # ASSERT
+    assert len(built) == 1
+    assert built[0]["notFlattened"] is True
+    assert built[0]["flatPass"] is handoff
 
 
 def _sky_call_recorder(recipe: soxs_stare) -> list[tuple[Any, ...]]:

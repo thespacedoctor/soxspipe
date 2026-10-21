@@ -10,6 +10,9 @@ Date Created
 """
 
 import os
+from collections.abc import Mapping
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple
 
 from .base_util import base_util
@@ -51,6 +54,36 @@ SKYLINE_TOLERANCES_NM = (0.5, 0.1, 0.1)
 # MATCH TOLERANCE (nm) FOR EACH ITERATION OF THE VIS r ORDER WHEN IT STARTS AT THE SHIFT PREDICTED FROM i (DY-1645)
 R_SEEDED_TOLERANCE_NM = 0.05
 
+
+@dataclass(frozen=True)
+class FlatPassHandoff:
+    """*what the flattened extraction of a frame hands to the not-flattened extraction of the same frame (DY-1680)*
+
+    The not-flattened (response) extraction runs no skyline peak matching. It applies the per-order shifts that the
+    flattened extraction of the same frame or nod pair measured. A later hand-off (e.g. the object trace, DY-1650)
+    belongs here as a new field.
+
+    **Key Arguments:**
+
+    - ``skyShiftsNm`` -- ``{order: wavelength shift (nm)}`` that the flattened extraction applied, or *None* when it
+      skipped skyline tuning (attached arc, DY-1665)
+    """
+
+    skyShiftsNm: Mapping[int | str, float] | None
+
+    # COMPARABLE BUT NOT HASHABLE: THE SHIFTS ARE A READ-ONLY MAPPING, WHICH HAS NO HASH
+    __hash__ = None
+
+    def __post_init__(self) -> None:
+        if self.skyShiftsNm is not None:
+            object.__setattr__(self, "skyShiftsNm", MappingProxyType(dict(self.skyShiftsNm)))
+
+    def __reduce__(self):
+        # A MAPPINGPROXY CANNOT BE PICKLED, SO PICKLE (AND DEEP-COPY) THROUGH A PLAIN DICT
+        shifts = None if self.skyShiftsNm is None else dict(self.skyShiftsNm)
+        return (type(self), (shifts,))
+
+
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
 
 
@@ -85,6 +118,9 @@ class horne_extraction(base_util):
     - ``scienceHeaders`` -- the headers of the raw science frames of the observation block. The attached-arc test
       measures the arc from the first frame's start and the last frame's end (DY-1666). Default *False* uses the
       header of ``skySubtractedFrame``
+    - ``flatPass`` -- the ``FlatPassHandoff`` of the flattened extraction of the same frame, read only when
+      ``notFlattened`` is set. The not-flattened extraction applies its sky shifts and runs no skyline peak matching
+      (DY-1680). Default *None* leaves the not-flattened wavelengths untuned
 
     **Usage:**
 
@@ -124,6 +160,12 @@ class horne_extraction(base_util):
     # BLEND-MERGED VIS CALIBRATION SKYLINES, BUILT ON FIRST USE (SEE ``_merged_skylines``)
     _mergedSkylinesDF = None
 
+    # THE FLATTENED PASS'S HAND-OFF READ BY A NOT-FLATTENED EXTRACTION (__init__), AND THE ONE THIS EXTRACTION BUILT
+    flatPass = None
+    flatPassHandoff = None
+    # {ORDER: SHIFT (nm)} APPLIED BY THE LAST SKYLINE TUNING, OR None WHEN TUNING WAS SKIPPED
+    skyShiftsNm = None
+
     def __init__(
         self,
         log,
@@ -145,6 +187,7 @@ class horne_extraction(base_util):
         turnOffMP=False,
         noTraceFallback=False,
         scienceHeaders=False,
+        flatPass=None,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -174,6 +217,7 @@ class horne_extraction(base_util):
         self.turnOffMP = turnOffMP
         self.subtractedFrame = subtractedFrame
         self.noTraceFallback = noTraceFallback
+        self.flatPass = flatPass
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -499,7 +543,7 @@ class horne_extraction(base_util):
         extractedOrdersDF = extractedOrdersDF.loc[
             extractedOrdersDF["pixelScaleNm"] < 3
         ]  # FILTER OUT ANY REMAINING BAD PIXELS WITH UNREALISTICALLY LARGE PIXEL SCALE (I.E. WAVELENGTH JUMPS BETWEEN ADJACENT PIXELS)
-        extractedOrdersDF = self._tune_or_skip(extractedOrdersDF, arm)
+        extractedOrdersDF = self._correct_wavelengths(extractedOrdersDF, arm)
 
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
 
@@ -788,6 +832,82 @@ class horne_extraction(base_util):
         offsets = attached_arc_offsets(self.scienceHeaders, arcHeader, self.kw)
         return offsets if within_attached_arc_limits(offsets) else None
 
+    def _correct_wavelengths(self, extractedOrdersDF, arm):
+        """*tune the flattened extraction to the sky lines, or give the not-flattened one the flattened pass's shifts*
+
+        The flattened extraction tunes (or skips, ``_tune_or_skip``) and keeps the result as ``flatPassHandoff``. The
+        not-flattened extraction runs no skyline peak matching and records no sky QCs, so the reported SKY SHIFT QCs
+        are those of the flattened extraction (DY-1680).
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``arm`` -- the arm of the instrument
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- the wavelength-corrected data-frame
+        """
+        if self.notFlattened:
+            return self._apply_flat_pass_shifts(extractedOrdersDF, arm)
+        # CLEARED FIRST, SO A REPEATED extract() NEVER HANDS ON AN EARLIER CALL'S SHIFTS
+        self.skyShiftsNm = None
+        tuned = self._tune_or_skip(extractedOrdersDF, arm)
+        self.flatPassHandoff = FlatPassHandoff(skyShiftsNm=self.skyShiftsNm)
+        return tuned
+
+    def _apply_flat_pass_shifts(self, extractedOrdersDF, arm):
+        """*shift each order by the sky shift the flattened extraction of the same frame applied (DY-1680)*
+
+        Orders the flattened pass did not shift are left as they are. With no hand-off, or a flattened pass that
+        skipped tuning, the spectrum is returned unchanged.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``arm`` -- the arm of the instrument
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- the shifted data-frame
+        """
+        if self.flatPass is None:
+            self.log.warning(
+                "No sky shifts were handed on from the flattened extraction, so the not-flattened extraction is "
+                "left untuned"
+            )
+            return extractedOrdersDF
+        if self.flatPass.skyShiftsNm is None:
+            self.log.print("\tSkyline tuning was skipped in the flattened extraction, so it is skipped here too")
+            return extractedOrdersDF
+
+        return self._shift_orders(
+            extractedOrdersDF, self.flatPass.skyShiftsNm.items(), arm, source=" (from the flattened extraction)"
+        )
+
+    def _shift_orders(self, extractedOrdersDF, orderShifts, arm, source=""):
+        """*add each order's wavelength shift to its ``wavelengthMean`` rows, logging one line per order*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders (shifted in place and returned)
+        - ``orderShifts`` -- ``(order, shift nm)`` pairs; the order ``"all"`` shifts every order
+        - ``arm`` -- the arm of the instrument
+        - ``source`` -- text naming where the shifts came from, for the log. Default ""
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- the shifted data-frame
+        """
+        from soxspipe.commonutils.toolkit import order_label
+
+        for o, s in orderShifts:
+            mask = self._order_mask(extractedOrdersDF, o)
+            orderText = o if o == "all" else order_label(o, arm)
+            self.log.print(f"\t\t{s:0.2f} nm shift{source} applied to order {orderText}")
+            extractedOrdersDF.loc[mask, "wavelengthMean"] += s
+        return extractedOrdersDF
+
     def _tune_or_skip(self, extractedOrdersDF, arm):
         """*tune the wavelength solution to the sky lines, unless a SOXS arc is attached to the science frame*
 
@@ -820,6 +940,7 @@ class horne_extraction(base_util):
                 self.log.note(message)
             tuned = extractedOrdersDF
             qcValue = SKY_TUNING_SKIPPED_QC_VALUE
+            self.skyShiftsNm = None
 
         if not isinstance(self.qc, bool):
             self.qc = append_qc(
@@ -860,7 +981,6 @@ class horne_extraction(base_util):
 
         import numpy as np
 
-        from soxspipe.commonutils.toolkit import order_label
         from soxspipe.commonutils.ug_wavelength_transfer import PREDICTED_ORDERS, VIS_I_ORDER
 
         uniqueOrders = ["all"] if not byOrder else np.sort(extractedOrdersDF["order"].unique())
@@ -892,11 +1012,10 @@ class horne_extraction(base_util):
             orderShifts = [shiftsNm[o] for o in uniqueOrders]
 
         # APPLY PER-ORDER SHIFTS TO WAVELENGTH COLUMN IN FULL DATAFRAME
-        for o, s in zip(uniqueOrders, orderShifts, strict=True):
-            mask = self._order_mask(extractedOrdersDF, o)
-            orderText = o if o == "all" else order_label(o, arm)
-            self.log.print(f"\t\t{s:0.2f} nm shift applied to order {orderText}")
-            extractedOrdersDF.loc[mask, "wavelengthMean"] += s
+        self.skyShiftsNm = {
+            (o if o == "all" else int(o)): float(s) for o, s in zip(uniqueOrders, orderShifts, strict=True)
+        }
+        self._shift_orders(extractedOrdersDF, zip(uniqueOrders, orderShifts, strict=True), arm)
 
         return extractedOrdersDF
 

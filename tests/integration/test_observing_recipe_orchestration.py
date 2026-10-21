@@ -331,6 +331,8 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
     calls: list[dict[str, object]] = []
 
     class Extractor:
+        flatPassHandoff = None
+
         def __init__(self, **kwargs: object) -> None:
             calls.append(kwargs)
 
@@ -852,6 +854,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
             return skyModel, skySubtracted, residuals, recipe.qc, recipe.products
 
     class FakeExtractor:
+        flatPassHandoff = None
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
         extractionNotes: list = []
@@ -1206,6 +1209,7 @@ def test_stare_generates_a_response_from_a_flux_standard(
     )
 
     class FakeExtractor:
+        flatPassHandoff = None
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
         extractionNotes: list = []
@@ -1331,6 +1335,7 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     monkeypatch.setattr(recipe, "clean_up", lambda **kwargs: calls.append(f"clean_up:{kwargs['forceFail']}"))
 
     class FakeExtractor:
+        flatPassHandoff = None
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
         extractionNotes: list = []
@@ -1429,6 +1434,8 @@ def _cycle_recipe(
     reports = iter(extractorNotes)
 
     class Extractor:
+        flatPassHandoff = None
+
         def __init__(self, **kwargs: object) -> None:
             self.noddingSequence, self.extractionNotes = next(reports)
 

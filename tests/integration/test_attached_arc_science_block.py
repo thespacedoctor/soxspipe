@@ -92,6 +92,7 @@ def _patch_extractor(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]
     captured: list[dict[str, object]] = []
 
     class RecordingExtractor:
+        flatPassHandoff = None
         noddingSequence = ""
         extractionNotes: list = []
 

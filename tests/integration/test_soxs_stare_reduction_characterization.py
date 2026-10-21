@@ -162,6 +162,8 @@ def _patch_stare(
         # NO SLIT-EDGE SPILL, MATCHING horne_extraction.slitEdgeOrders
         slitEdgeOrders: list = []
         extractionNotes: list = []
+        # NO SKY SHIFTS TO HAND ON, MATCHING horne_extraction.flatPassHandoff BEFORE extract() TUNES (DY-1680)
+        flatPassHandoff = None
 
         def __init__(self, **kwargs: object) -> None:
             captured["extractor"].append(kwargs)

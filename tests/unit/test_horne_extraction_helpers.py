@@ -24,6 +24,7 @@ from soxspipe.commonutils.horne_extraction import (
     extract_single_order,
     fit_object_profile,
     generate_masks,
+    FlatPassHandoff,
     horne_extraction,
     profile_clip_cap_rows,
 )
@@ -257,6 +258,55 @@ def test_extract_without_the_fallback_option_or_for_the_unflattened_rerun_record
     qc, *_ = extractor.extract()
 
     assert _extract_method_rows(qc).empty
+
+
+def test_the_not_flattened_extract_applies_the_flat_pass_shifts_and_tunes_nothing(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: extract() routes the not-flattened pass to the flat pass's shifts, never to skyline tuning."""
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.notFlattened = "_NOTFLAT"
+    extractor.flatPass = FlatPassHandoff(skyShiftsNm={10: 0.25})
+    merged: list[pd.DataFrame] = []
+    realMerge = extractor.merge_extracted_orders
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the not-flattened pass must not tune or test the arc")
+
+    extractor.tune_wavelength_calibration_to_skylines = forbidden
+    extractor._arc_attachment = forbidden
+    extractor.merge_extracted_orders = lambda orders: merged.append(orders.copy()) or realMerge(orders)
+
+    # ACT
+    qc, *_ = extractor.extract()
+
+    # ASSERT: THE 4 nm/px ROW IS FILTERED OUT BEFORE THE SHIFT
+    assert merged[0]["wavelengthMean"].tolist() == [500.25, 502.25]
+    assert not [name for name in qc.get("qc_name", []) if name.startswith("SKY")]
+
+
+def test_the_flattened_extract_hands_on_what_it_tuned(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: after extract(), the flattened pass's hand-off carries the shifts its tuning applied."""
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor._arc_attachment = lambda: None
+
+    def tune(orders: pd.DataFrame, arm: str) -> pd.DataFrame:
+        extractor.skyShiftsNm = {10: -0.125}
+        return orders
+
+    extractor.tune_wavelength_calibration_to_skylines = tune
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm={10: -0.125})
 
 
 def test_extract_returns_empty_results_when_no_order_trace_exists(log: object) -> None:

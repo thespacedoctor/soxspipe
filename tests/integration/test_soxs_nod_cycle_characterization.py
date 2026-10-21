@@ -89,6 +89,8 @@ def _patch_extraction_collaborators(
 
         def __init__(self, **kwargs: object) -> None:
             extractCalls.append(kwargs)
+            # A DISTINCT HAND-OFF PER EXTRACTION, SO A TEST CAN TELL WHICH FLAT PASS A NOT-FLAT PASS WAS GIVEN
+            self.flatPassHandoff = ("flat-pass hand-off", len(extractCalls) - 1)
 
         def extract(self) -> tuple[Any, Any, pd.DataFrame, dict[int, int], str]:
             index = len(extractCalls) - 1
@@ -365,6 +367,7 @@ def test_save_single_frame_extractions_e712_comparison_controls_the_products_tab
     class SequencedExtractor:
         noddingSequence = ""
         extractionNotes: list = []
+        flatPassHandoff = None
 
         def __init__(self, **kwargs: object) -> None:
             productsSeen.append(kwargs["productsTable"])
@@ -431,6 +434,119 @@ def test_process_cycle_returns_order_joins_from_the_last_extraction(
     )
 
     assert orderJoins == {"20-21": 2}
+
+
+@pytest.mark.parametrize("locationSetIndex", [1, "STACK"])
+def test_the_not_flattened_nod_pass_gets_the_flat_hand_off_of_the_same_difference(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    locationSetIndex: object,
+) -> None:
+    """DY-1680: the not-flat A-B and B-A extractions reuse the sky shifts of the flat A-B and B-A extractions."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path)
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+
+    # ACT
+    for notFlattened in (False, True):
+        recipe.process_single_ab_nodding_cycle(
+            aFrame=aFrame,
+            bFrame=bFrame,
+            locationSetIndex=locationSetIndex,
+            orderTablePath="orders.fits",
+            notFlattened=notFlattened,
+        )
+
+    # ASSERT: EXTRACTIONS 0/1 ARE FLAT A-B/B-A, 2/3 NOT-FLAT A-B/B-A
+    assert [call["flatPass"] for call in extractCalls] == [
+        None,
+        None,
+        ("flat-pass hand-off", 0),
+        ("flat-pass hand-off", 1),
+    ]
+
+
+def test_the_not_flattened_offset_pass_gets_the_flat_hand_off(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: an offset run has one difference per pass, and its not-flat extraction reuses the flat one."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path, recipeName="soxs-offset")
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+
+    # ACT
+    for notFlattened in (False, True):
+        recipe.process_single_ab_nodding_cycle(
+            aFrame=aFrame,
+            bFrame=bFrame,
+            locationSetIndex="STACK",
+            orderTablePath="orders.fits",
+            notFlattened=notFlattened,
+        )
+
+    # ASSERT
+    assert [call["flatPass"] for call in extractCalls] == [None, ("flat-pass hand-off", 0)]
+
+
+def test_a_combined_nod_frame_hands_its_flat_pass_to_the_combined_not_flat_extraction(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: with shift-and-add, each pass extracts one combined frame, and the hand-off pairs them."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path)
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+    combinedFrames = (aFrame, aFrame, bFrame)
+
+    # ACT
+    for notFlattened in (False, True):
+        recipe._extract_cycle_spectra(
+            aFrame,
+            bFrame,
+            aFrame,
+            bFrame,
+            aFrame,
+            bFrame,
+            theseProducts=False,
+            locationSetIndex=1,
+            notFlattened=notFlattened,
+            combinedFrames=combinedFrames,
+        )
+
+    # ASSERT
+    assert [call["flatPass"] for call in extractCalls] == [None, ("flat-pass hand-off", 0)]
+
+
+def test_a_new_flat_pass_replaces_the_hand_off_of_an_earlier_one(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second flat pass over the same cycle hands on its own shifts, not those of the first."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path, recipeName="soxs-offset")
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+
+    # ACT
+    for notFlattened in (False, False, True):
+        recipe.process_single_ab_nodding_cycle(
+            aFrame=aFrame,
+            bFrame=bFrame,
+            locationSetIndex=1,
+            orderTablePath="orders.fits",
+            notFlattened=notFlattened,
+        )
+
+    # ASSERT
+    assert extractCalls[-1]["flatPass"] == ("flat-pass hand-off", 1)
 
 
 @pytest.fixture
