@@ -19,7 +19,7 @@ The order table is a FITS file with three binary-table extensions.
 2. HDU 2 holds the order metadata: the order number and the fitted range of each order along both axes.
 3. HDU 3, named `ORDER_TRACES`, lists the pixel coordinates of each order trace. Read it by name, not by number.
 
-`ORDER_TRACES` is one long table with one row for each pixel along the dispersion axis, inside the fitted range of each order. The coordinates are in unbinned detector pixels. The columns are named after the detector axes. For the NIR arm, where the traces are solved as `x` for each `y`, the columns are:
+`ORDER_TRACES` is one long table with one row for each pixel along the dispersion axis, inside the fitted range of each order. The sampled range runs from the lower limit of the order up to, but not including, its upper limit. This is the same range that `unpack_order_table` returns when it samples every pixel. The coordinates are in unbinned detector pixels, whatever the binning of the frame that the order table was measured on. The columns are named after the detector axes. For the NIR arm, where the traces are solved as `x` for each `y`, the columns are:
 
 | Column | Content |
 | --- | --- |

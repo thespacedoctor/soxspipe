@@ -567,7 +567,7 @@ class _base_detect:
             and "offset" not in self.recipeName.lower()
         ):
             header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
-            tables.append(self.build_order_traces_extension(orderPolyTable, orderMetaTable))
+            tables.append(self.build_order_traces_extension(frame, orderPolyTable, orderMetaTable))
         else:
             header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()
 
@@ -585,11 +585,12 @@ class _base_detect:
         self.log.debug("completed the ``write_order_table_to_file`` method")
         return order_table_path
 
-    def build_order_traces_extension(self, orderPolyTable, orderMetaTable):
+    def build_order_traces_extension(self, frame, orderPolyTable, orderMetaTable):
         """*sample the order traces at every unbinned pixel, as the ``ORDER_TRACES`` table extension*
 
         **Key Arguments:**
 
+        - ``frame`` -- the calibration frame used to generate order location data
         - ``orderPolyTable`` -- data-frame containing centre location coefficients (and possibly also order edge coeffs)
         - ``orderMetaTable`` -- order meta data, with the fitted range of each order
 
@@ -601,21 +602,51 @@ class _base_detect:
 
         from astropy.table import Table
 
-        # ONLY THE MASTER-FLAT TABLE IS MEASURED ON A PRE-BINNED FRAME
+        tableBinx, tableBiny, limitsBinx, limitsBiny = self._order_table_binning(frame)
         orderTraces = Table.from_pandas(
             order_traces_table(
                 log=self.log,
                 orderPolyTable=orderPolyTable,
                 orderMetaTable=orderMetaTable,
-                binx=self.binx,
-                biny=self.biny,
-                prebinned="mflat" in self.recipeName.lower(),
+                tableBinx=tableBinx,
+                tableBiny=tableBiny,
+                limitsBinx=limitsBinx,
+                limitsBiny=limitsBiny,
             )
         )
         orderTraces.meta["EXTNAME"] = ORDER_TRACES_EXTNAME
 
         self.log.debug("completed the ``build_order_traces_extension`` method")
         return orderTraces
+
+    def _order_table_binning(self, frame):
+        """*find the absolute binning of the pixel scale of the table's coefficients and of its metadata limits*
+
+        An order-centre table is measured on its frame, so ``self.binx`` and ``self.biny`` (the frame's binning)
+        apply to both. The master-flat detector gets only the ratio of the flat's binning to the order-centre
+        table's, so the order-centre table's binning is the flat's binning (from its header) over that ratio. The
+        flat's own binning applies to the metadata limits, which are the flat's frame shape.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the calibration frame used to generate order location data
+
+        **Return:**
+
+        - ``tableBinx``, ``tableBiny`` -- the binning of the pixel scale the coefficients are in
+        - ``limitsBinx``, ``limitsBiny`` -- the binning of the frame the metadata limits were measured on
+        """
+        if "mflat" not in self.recipeName.lower():
+            return self.binx, self.biny, self.binx, self.biny
+
+        try:
+            limitsBinx = int(frame.header[self.kw("WIN_BINX")])
+            limitsBiny = int(frame.header[self.kw("WIN_BINY")])
+        except KeyError as e:
+            self.log.debug(f"_order_table_binning: no binning in the flat header, assuming none: {e}")
+            limitsBinx = limitsBiny = 1
+
+        return round(limitsBinx / self.binx), round(limitsBiny / self.biny), limitsBinx, limitsBiny
 
 
 class detect_continuum(_base_detect):

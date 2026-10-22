@@ -745,15 +745,19 @@ def unpack_order_table(
 
     axisA, axisB, axisAbin, axisBbin = _order_table_axes(orderPolyTable, binx, biny)
 
-    orderPixelTable = _evaluate_order_pixel_table(
-        log=log,
-        orderPolyTable=orderPolyTable,
+    orderPixelTable = _order_table_pixel_grid(
         orderMetaTable=orderMetaTable,
-        axisA=axisA,
         axisB=axisB,
         ratio=axisBbin if prebinned else 1,
         extend=extend,
         pixelDelta=pixelDelta,
+    )
+    orderPixelTable = _evaluate_order_pixel_table(
+        log=log,
+        orderPolyTable=orderPolyTable,
+        orderPixelTable=orderPixelTable,
+        axisA=axisA,
+        axisB=axisB,
     )
 
     orderPixelTable, orderMetaTable = _rescale_order_tables_for_binning(
@@ -769,26 +773,27 @@ def unpack_order_table(
     return orderPolyTable, orderPixelTable, orderMetaTable
 
 
-def order_traces_table(log, orderPolyTable, orderMetaTable, binx=1, biny=1, prebinned=False):
+def order_traces_table(log, orderPolyTable, orderMetaTable, tableBinx=1, tableBiny=1, limitsBinx=1, limitsBiny=1):
     """*sample every order's centre trace, and its edge traces where fitted, at each unbinned pixel*
 
     This is the table written to the ``ORDER_TRACES`` extension of an order location table. It holds the rows
-    ``unpack_order_table`` returns with ``pixelDelta=1``, in unbinned detector pixels.
+    ``unpack_order_table`` returns with ``pixelDelta=1``, in unbinned detector pixels. The sampled range runs from
+    each order's lower limit up to, but not including, its upper limit.
 
     **Key Arguments:**
 
     - ``log`` -- logger
     - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
     - ``orderMetaTable`` -- the order table's metadata dataframe
-    - ``binx`` -- binning in the x-axis of the frame the metadata limits were measured on. Default *1*
-    - ``biny`` -- binning in the y-axis of the frame the metadata limits were measured on. Default *1*
-    - ``prebinned`` -- were the metadata limits measured on a pre-binned frame (typically only for mflats).
-      Default *False*
+    - ``tableBinx`` -- x binning of the pixel scale the polynomial coefficients are in. Default *1*
+    - ``tableBiny`` -- y binning of the pixel scale the polynomial coefficients are in. Default *1*
+    - ``limitsBinx`` -- x binning of the frame the metadata limits were measured on. Default *1*
+    - ``limitsBiny`` -- y binning of the frame the metadata limits were measured on. Default *1*
 
     **Return:**
 
     - ``orderTraces`` -- a dataframe with the sampled axis-B coordinate, the order number and the axis-A coordinate
-      of the centre (and of the upper and lower edges, when fitted)
+      of the centre (and of the upper and lower edges, when fitted), all in unbinned pixels
 
     **Usage:**
 
@@ -799,52 +804,65 @@ def order_traces_table(log, orderPolyTable, orderMetaTable, binx=1, biny=1, preb
     """
     log.debug("starting the ``order_traces_table`` function")
 
-    axisA, axisB, _, axisBbin = _order_table_axes(orderPolyTable, binx, biny)
+    axisA, axisB, tableAbin, tableBbin = _order_table_axes(orderPolyTable, tableBinx, tableBiny)
+    limitsBbin = _order_table_axes(orderPolyTable, limitsBinx, limitsBiny)[3]
+
+    # SAMPLE EVERY UNBINNED PIXEL, THEN EVALUATE THE POLYNOMIALS ON THE PIXEL SCALE THEY WERE FITTED ON
+    orderTraces = _order_table_pixel_grid(
+        orderMetaTable=orderMetaTable, axisB=axisB, ratio=limitsBbin, extend=0.0, pixelDelta=1
+    )
+    unbinnedCoords = orderTraces[f"{axisB}coord"].copy()
+    orderTraces[f"{axisB}coord"] = unbinnedCoords / tableBbin
     orderTraces = _evaluate_order_pixel_table(
         log=log,
         orderPolyTable=orderPolyTable,
-        orderMetaTable=orderMetaTable,
+        orderPixelTable=orderTraces,
         axisA=axisA,
         axisB=axisB,
-        ratio=axisBbin if prebinned else 1,
-        extend=0.0,
-        pixelDelta=1,
         includeStd=False,
     )
+
+    orderTraces[f"{axisB}coord"] = unbinnedCoords
+    for column in orderTraces.columns[orderTraces.columns.str.startswith(f"{axisA}coord_")]:
+        orderTraces[column] *= tableAbin
 
     log.debug("completed the ``order_traces_table`` function")
     return orderTraces
 
 
-def _evaluate_order_pixel_table(
-    log, orderPolyTable, orderMetaTable, axisA, axisB, ratio, extend, pixelDelta, includeStd=True
-):
-    """*sample the order table's polynomials at every pixel of each order's fitted range*
+def _evaluate_order_pixel_table(log, orderPolyTable, orderPixelTable, axisA, axisB, includeStd=True):
+    """*evaluate the order table's polynomials at each sampled coordinate of the order-pixel dataframe*
 
     **Key Arguments:**
 
     - ``log`` -- logger
     - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
-    - ``orderMetaTable`` -- the order table's metadata dataframe
+    - ``orderPixelTable`` -- the axis-B coordinate and order of each sample; the evaluated columns are added to it
     - ``axisA`` -- the axis the order traces are solved for
     - ``axisB`` -- the axis the order traces are sampled along
-    - ``ratio`` -- the factor the metadata limits are scaled by before sampling
-    - ``extend`` -- fractional increase to the order area along axis B
-    - ``pixelDelta`` -- space between sampled coordinates
     - ``includeStd`` -- also evaluate the trace-width polynomial, when the table carries one. Default *True*
 
     **Return:**
 
-    - ``orderPixelTable`` -- the axis-B coordinate and order of each sample, with the centre, width and edge columns
+    - ``orderPixelTable`` -- the input with the centre, width and edge columns added
     """
-    orderPixelTable = _order_table_pixel_grid(
-        orderMetaTable=orderMetaTable,
-        axisB=axisB,
-        ratio=ratio,
-        extend=extend,
-        pixelDelta=pixelDelta,
-    )
+    _evaluate_centre_columns(log, orderPolyTable, orderPixelTable, axisA, axisB, includeStd)
+    _evaluate_edge_columns(log, orderPolyTable, orderPixelTable, axisA, axisB)
+    return orderPixelTable
 
+
+def _evaluate_centre_columns(log, orderPolyTable, orderPixelTable, axisA, axisB, includeStd):
+    """*add the centre-trace column, and the trace-width column when wanted and fitted, to the order-pixel dataframe*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``orderPixelTable`` -- the order-pixel dataframe, extended in place
+    - ``axisA`` -- the axis the order traces are solved for
+    - ``axisB`` -- the axis the order traces are sampled along
+    - ``includeStd`` -- also evaluate the trace-width polynomial, when the table carries one
+    """
     orderPixelTable[f"{axisA}coord_centre"] = _evaluate_order_polynomial(
         log=log,
         orderPolyTable=orderPolyTable,
@@ -866,6 +884,18 @@ def _evaluate_order_pixel_table(
             coefficients=std_coeff,
         )
 
+
+def _evaluate_edge_columns(log, orderPolyTable, orderPixelTable, axisA, axisB):
+    """*add the upper and lower edge-trace columns that the order table carries to the order-pixel dataframe*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``orderPixelTable`` -- the order-pixel dataframe, extended in place
+    - ``axisA`` -- the axis the order traces are solved for
+    - ``axisB`` -- the axis the order traces are sampled along
+    """
     for edge in ["edgeup", "edgelow"]:
         if f"deg{axisB}_{edge}" in orderPolyTable.columns:
             orderPixelTable[f"{axisA}coord_{edge}"] = _evaluate_order_polynomial(
@@ -876,8 +906,6 @@ def _evaluate_order_pixel_table(
                 degreeSuffix=edge,
                 coefficients=_order_polynomial_coefficients(orderPolyTable, f"{edge}_"),
             )
-
-    return orderPixelTable
 
 
 def _order_table_axes(orderPolyTable, binx, biny):
