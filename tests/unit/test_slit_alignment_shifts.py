@@ -149,7 +149,7 @@ def test_a_whole_frame_with_no_trace_takes_the_median_shift_of_the_other_frames_
     assert "c.fits" in warnings[0]
 
 
-def test_a_reference_order_with_no_trace_is_warned_about_and_counted(log: object) -> None:
+def test_a_reference_order_with_no_trace_is_logged_and_counted(log: object) -> None:
     # ARRANGE: THE FIRST FRAME IN TIME HAS NO TRACE IN ORDER 2, SO NO OTHER FRAME CAN BE MEASURED AGAINST IT THERE
     positions = _positions(
         {
@@ -168,11 +168,11 @@ def test_a_reference_order_with_no_trace_is_warned_about_and_counted(log: object
         {"frame": "b.fits", "order": 2},
     ]
     assert fallbackCount == 2
-    warnings = [message for level, message in log.messages if level == "warning"]
-    assert any("reference" in message and "a.fits" in message and "order 2" in message for message in warnings)
+    infos = [message for level, message in log.messages if level == "info"]
+    assert any("reference" in message and "a.fits" in message and "order 2" in message for message in infos)
 
 
-def test_a_reference_frame_with_no_trace_is_warned_about_and_counted_in_whole_frame_mode(log: object) -> None:
+def test_a_reference_frame_with_no_trace_is_logged_and_counted_in_whole_frame_mode(log: object) -> None:
     # ARRANGE
     positions = _positions(
         {
@@ -187,5 +187,5 @@ def test_a_reference_frame_with_no_trace_is_warned_about_and_counted_in_whole_fr
     # ASSERT
     assert shifts.loc[shifts["is_reference"], "is_fallback"].tolist() == [True]
     assert fallbackCount == 2
-    warnings = [message for level, message in log.messages if level == "warning"]
-    assert any("reference" in message and "a.fits" in message for message in warnings)
+    infos = [message for level, message in log.messages if level == "info"]
+    assert any("reference" in message and "a.fits" in message for message in infos)

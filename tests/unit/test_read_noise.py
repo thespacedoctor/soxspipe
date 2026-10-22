@@ -72,7 +72,7 @@ def test_the_measured_read_noise_replaces_the_nominal_one(log: Any) -> None:
         (True, "a boolean"),
     ],
 )
-def test_an_unusable_measured_value_falls_back_to_the_nominal_value_with_a_warning(
+def test_an_unusable_measured_value_falls_back_to_the_nominal_value_and_logs_it(
     log: Any, ron: object, reason: str
 ) -> None:
     # ACT
@@ -81,7 +81,7 @@ def test_an_unusable_measured_value_falls_back_to_the_nominal_value_with_a_warni
     # ASSERT
     assert result.singleFrame == pytest.approx(NOMINAL_RON), reason
     assert result.source == "raw-frame header"
-    assert len(_warnings(log)) == 1
+    assert len(_infos(log)) == 1
 
 
 def test_a_master_bias_without_datancom_is_an_old_product_and_falls_back_to_nominal(log: Any) -> None:
@@ -94,7 +94,7 @@ def test_a_master_bias_without_datancom_is_an_old_product_and_falls_back_to_nomi
     # ASSERT
     assert result.singleFrame == pytest.approx(NOMINAL_RON)
     assert result.source == "raw-frame header"
-    assert any("DATANCOM" in message for message in _warnings(log))
+    assert any("DATANCOM" in message for message in _infos(log))
 
 
 def test_the_old_detector_ron_keyword_is_never_read(log: Any) -> None:
@@ -127,7 +127,7 @@ def test_a_missing_nominal_value_falls_back_to_the_detector_default(log: Any) ->
     # ASSERT
     assert result.singleFrame == pytest.approx(DEFAULT_RON)
     assert result.source == "detector default"
-    assert len(_warnings(log)) == 1
+    assert len(_infos(log)) == 1
 
 
 def test_a_measured_value_over_fifteen_percent_from_nominal_is_logged_as_info_and_used(log: Any) -> None:
@@ -188,8 +188,8 @@ def test_the_sky_fit_noise_adds_the_master_bias_noise_in_quadrature(
     assert result.skyFit == pytest.approx(expectedSkyFit, rel=1e-6)
 
 
-def test_the_resolver_labels_a_master_dark_in_its_source_and_warnings(log: Any) -> None:
-    # ARRANGE: NO USABLE RAW RON, SO THE WARNING MUST NAME THE MASTER DARK
+def test_the_resolver_labels_a_master_dark_in_its_source_and_log_message(log: Any) -> None:
+    # ARRANGE: NO USABLE RAW RON, SO THE LOG MESSAGE MUST NAME THE MASTER DARK
     header = _header(ron=None)
 
     # ACT
@@ -198,7 +198,7 @@ def test_the_resolver_labels_a_master_dark_in_its_source_and_warnings(log: Any) 
 
     # ASSERT
     assert result.source == "detector default"
-    assert any("master dark" in message and "master bias" not in message for message in _warnings(log))
+    assert any("master dark" in message and "master bias" not in message for message in _infos(log))
     assert measured.source == "master dark"
 
 

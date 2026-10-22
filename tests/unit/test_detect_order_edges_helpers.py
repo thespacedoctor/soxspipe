@@ -141,11 +141,12 @@ def _get_detector(
     detector.recipeName = "soxs-mflat"
     detector.dateObs = "2024-01-01T00:00:00"
     detector.tag = ""
+    orderPolynomials = pd.DataFrame({"degorder_cent": [0], "degy_cent": [0], "cent_00": [5.0]})
     orderMeta = pd.DataFrame({"order": orderPixels["order"].unique()})
     monkeypatch.setattr(
         orderEdgesModule,
         "unpack_order_table",
-        lambda **kwargs: (pd.DataFrame({"existing": [1]}), orderPixels, orderMeta),
+        lambda **kwargs: (orderPolynomials, orderPixels, orderMeta),
     )
 
     def with_thresholds(row: pd.Series, **kwargs: object) -> pd.Series:

@@ -108,21 +108,20 @@ def test_the_progress_message_names_the_user_pool_size(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     log: Any,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The user can see the number of worker processes in use."""
     # ACT
     _pool_size_for(monkeypatch, tmp_path, log, "mbias", poolSize=5)
 
     # ASSERT
-    assert "with a pool size of 5" in capsys.readouterr().out
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("with a pool size of 5" in message for message in printed)
 
 
 def test_the_progress_message_names_the_cpu_default_pool_size(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     log: Any,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Without a user value, a light recipe's message names the one-per-CPU pool size."""
     # ARRANGE
@@ -132,4 +131,5 @@ def test_the_progress_message_names_the_cpu_default_pool_size(
     _pool_size_for(monkeypatch, tmp_path, log, "mbias")
 
     # ASSERT
-    assert "with a pool size of 7" in capsys.readouterr().out
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("with a pool size of 7" in message for message in printed)
