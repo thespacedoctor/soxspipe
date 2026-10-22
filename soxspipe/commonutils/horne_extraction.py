@@ -671,6 +671,9 @@ class horne_extraction(base_util):
                 ("SNR", 2),
                 ("FLUX_DENSITY_COUNTS", 3),
             ]:
+                # ONLY THE NOT-FLATTENED SPECTRUM HAS A FLUX DENSITY COLUMN
+                if col not in mergedSpectumDF.columns:
+                    continue
                 mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: _round_scalar_or_quantity(x, decimals))
 
             mergedTable = Table.from_pandas(mergedSpectumDF)
@@ -2061,7 +2064,11 @@ class horne_extraction(base_util):
 
         # merged_orders = calculate_rolling_snr(dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300)
 
-        merged_orders["FLUX_DENSITY_COUNTS"] = fluxDensity_resampled * u.electron / u.nm
+        # THE MASTER FLAT KEEPS THE PIXEL SCALE, SO A FLAT-FIELDED SPECTRUM HAS ALREADY BEEN DIVIDED BY IT. DIVIDING
+        # AGAIN WOULD COUNT THE DISPERSION TWICE, SO ONLY THE NOT-FLATTENED SPECTRUM (USED FOR THE EFFICIENCY) GETS THE
+        # FLUX DENSITY COLUMN
+        if self.notFlattened:
+            merged_orders["FLUX_DENSITY_COUNTS"] = fluxDensity_resampled * u.electron / u.nm
 
         if False:
             self.products, filePath = plot_merged_spectrum_qc(

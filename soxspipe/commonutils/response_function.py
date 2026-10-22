@@ -12,6 +12,13 @@
 import os
 from typing import Any
 
+from soxspipe.commonutils.response_basis import (
+    RESPONSE_BASIS,
+    RESPONSE_BASIS_COMMENT,
+    RESPONSE_BASIS_KEYWORD,
+    counts_per_unbinned_pixel,
+    dispersion_binning,
+)
 from soxspipe.commonutils.response_fit import (
     _ResponseFitConvergenceError,
     fit_response_curve,
@@ -61,7 +68,8 @@ def _sampled_response_table(wavelength: Any, response: Any) -> Any:
     """Return the response at each finite wavelength, sorted by wavelength, as a WAVE/RESPONSE table.
 
     RESPONSE carries the scale flux calibration applies: flux = counts / exptime * RESPONSE * 1e-17. The counts are
-    electrons; the unit uses ``ct`` because the FITS unit standard has no electron.
+    flat-fielded electrons per unbinned pixel (see ``response_basis``); the unit uses ``ct`` because the FITS unit
+    standard has no electron.
     """
     import astropy.units as u
     import numpy as np
@@ -158,6 +166,7 @@ class response_function:
         self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
         self.dateObs = self.header[kw("DATE_OBS")]
         self.texp = float(self.header[kw("EXPTIME")])
+        self.dispersionBinning = dispersion_binning(self.header, self.arm, kw)
 
         # CONVERTING EXTRACTION (BACK) TO DATAFRAME
         self.stdExtractionDF = Table.read(self.stdExtractionPath, format="fits")
@@ -246,7 +255,8 @@ class response_function:
 
         # GET THE EXTRACTED STANDARD STAR'S WAVELENGTH AND FLUX
         stdExtWave = self.stdExtractionDF["WAVE"].values
-        stdExtFlux = self.stdExtractionDF["FLUX_COUNTS"].values
+        # FLAT-FIELDED ELECTRONS PER UNBINNED PIXEL: THE FLAT HAS ALREADY DIVIDED OUT THE PIXEL SCALE
+        stdExtFlux = counts_per_unbinned_pixel(self.stdExtractionDF, self.dispersionBinning)
         stdExtWaveNotFlat = self.stdExtractionNotFlatDF["WAVE"].values
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF["FLUX_DENSITY_COUNTS"].values
 
@@ -273,7 +283,7 @@ class response_function:
             fill_value="extrapolate",
         )
 
-        # INTEGRATING THE EXTRACTED STANDARD IN xx nm BIN-WIDE FILTERS (CONVERTING BACK IN A/PX)
+        # THE NOT-FLATTENED FLUX DENSITY IS ELECTRONS PER NM; DIVIDING BY 10 CONVERTS IT TO ELECTRONS PER ANGSTROM
         stdExtFluxNotFlat = stdExtFluxNotFlat / 10.0
 
         # NOW DIVIDING FOR THE EXPOSURE TIME
@@ -313,7 +323,7 @@ class response_function:
             # EXTRACT WAVELENGTH VALUES AND COMPUTE ABSOLUTE FLUX
             wavelength = stdExtWaveNotFlat
             abs_flux = self.std_wavelength_to_abs_flux(wavelength) * 10**-17
-            # CONVERT WAVELENGTH FROM ÅNGSTRÖM TO CM
+            # CONVERT WAVELENGTH FROM NM TO CM
             wavelength_in_cm = wavelength * 10**-7
 
             # COMPUTE THE ABSOLUTE PHOTON FLUX OF THE STANDARD STAR
@@ -542,7 +552,7 @@ class response_function:
 
         - ``stdExtWave`` -- the extracted standard star wavelength
         - ``stdExtWaveNotFlat`` -- the extracted standard star wavelength (not flattened)
-        - ``stdExtFlux`` -- the extracted standard star flux, in counts per second and extinction corrected
+        - ``stdExtFlux`` -- the flat-fielded standard star flux, in e-/s per unbinned pixel and extinction corrected
         - ``fit`` -- the ``ResponseFit``
         - ``fitSettings`` -- the settings for this arm, which hold the masked regions
         - ``stdEfficiencyEstimate`` -- the estimated instrument efficiency
@@ -637,6 +647,7 @@ class response_function:
         header[kw("SEQ_ARM").upper()] = arm
         header[kw("PRO_TYPE").upper()] = "REDUCED"
         header[kw("PRO_CATG").upper()] = f"RESP_TAB_{arm}".upper()
+        header[RESPONSE_BASIS_KEYWORD] = (RESPONSE_BASIS, RESPONSE_BASIS_COMMENT)
 
         # WRITE QCs TO HEADERS
         add_qc_to_header(header, self.qc)

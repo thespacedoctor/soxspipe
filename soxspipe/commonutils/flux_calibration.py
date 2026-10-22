@@ -56,8 +56,9 @@ def _response_factors_from_table(wavelengths: Any, tableWave: Any, tableResponse
 def load_response_factors(responseFunction: str, wavelengths: Any, log: Any) -> Any:
     """*read the response product and return the response factor at each wavelength*
 
-    The ``RESPONSE`` curve extension is interpolated in log space; wavelengths outside it get NaN. A product from an
-    older release has no such extension, so its polynomial coefficients are evaluated instead and a warning is logged.
+    The ``RESPONSE`` curve extension is interpolated in log space; wavelengths outside it get NaN. The factor scales
+    flat-fielded electrons per second per unbinned pixel. A product from an older release has no basis card (see
+    ``response_basis``) and is refused with a ValueError that asks for the response to be rebuilt.
 
     **Key Arguments:**
 
@@ -73,24 +74,17 @@ def load_response_factors(responseFunction: str, wavelengths: Any, log: Any) -> 
     from astropy.io import fits
     from astropy.table import Table
 
+    from soxspipe.commonutils.response_basis import require_response_basis
+
     with fits.open(responseFunction) as hdul:
-        hasCurve = "RESPONSE" in [hdu.name for hdu in hdul]
+        require_response_basis(hdul[0].header, responseFunction)
 
-    if hasCurve:
-        curve = Table.read(responseFunction, format="fits", hdu="RESPONSE")
-        factors = _response_factors_from_table(wavelengths, np.asarray(curve["WAVE"]), np.asarray(curve["RESPONSE"]))
-        outsideCount = int(np.count_nonzero(np.isnan(factors) & ~np.isnan(np.asarray(wavelengths, dtype=float))))
-        if outsideCount > 0:
-            log.warning(f"{outsideCount} science samples lie outside the response curve range and were set to NaN.")
-        return factors
-
-    log.warning(
-        "The response product has no RESPONSE curve extension (it predates the spline fit); "
-        "evaluating its polynomial coefficients instead."
-    )
-    coefficients = Table.read(responseFunction, format="fits", hdu=1)
-    polyCoeffs = [coefficients[f"c{index}"][0] for index in range(int(coefficients["polyOrder"][0]) + 1)]
-    return np.polyval(polyCoeffs, np.asarray(wavelengths, dtype=float))
+    curve = Table.read(responseFunction, format="fits", hdu="RESPONSE")
+    factors = _response_factors_from_table(wavelengths, np.asarray(curve["WAVE"]), np.asarray(curve["RESPONSE"]))
+    outsideCount = int(np.count_nonzero(np.isnan(factors) & ~np.isnan(np.asarray(wavelengths, dtype=float))))
+    if outsideCount > 0:
+        log.warning(f"{outsideCount} science samples lie outside the response curve range and were set to NaN.")
+    return factors
 
 
 # OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
@@ -209,6 +203,7 @@ class flux_calibration:
         import pandas as pd
 
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+        from soxspipe.commonutils.response_basis import counts_per_unbinned_pixel, dispersion_binning
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
         flux_calibration = None
@@ -232,8 +227,10 @@ class flux_calibration:
         # APPLY RESPNSE FUNCTION
         responseFactors = load_response_factors(self.responseFunction, self.extractedSpectrum["WAVE"], self.log)
 
+        # THE RESPONSE SCALES FLAT-FIELDED ELECTRONS PER UNBINNED PIXEL, SO A BINNED SPECTRUM IS SCALED DOWN FIRST
+        counts = counts_per_unbinned_pixel(self.extractedSpectrum, dispersion_binning(self.header, self.arm, self.kw))
         flux_calibration = _calculate_flux_calibration(
-            self.extractedSpectrum["FLUX_COUNTS"],
+            counts,
             self.exptime,
             responseFactors,
             extinctionCorrectionFactor,

@@ -17,7 +17,7 @@ $$
 fluxCorrected_{\lambda} = fluxObserved_{\lambda} \times 10^{AM \times mag_{airmass}}
 $$
 
-Then, the value (in counts) for each wavelength is divided by the dispersion of the spectrograph and by the exposure time reported in the `EXPTIME` keyword. At this stage, the 1D spectrum of the scientific object has units of $ADU$ $s^{-1}$ $A^{-1}$. To finalize the flux calibration, the utility loads the FITS table that contains the fit parameters for the response function given in input to compute the flux calibrated spectrum for each wavelength, applying the formula
+Then, the flat-fielded `FLUX_COUNTS` value for each wavelength is divided by the detector binning along the dispersion axis (`ESO DET BINY` on the VIS arm; the NIR arm is not binned) and by the exposure time reported in the `EXPTIME` keyword. At this stage, the 1D spectrum of the scientific object has units of electrons $s^{-1}$ per unbinned pixel. It is not divided by the dispersion of the spectrograph, because the flat-fielding has already done that. The response product must carry the card `ESO PRO RESP BASIS = PER_UNBINNED_PIXEL` (see [`response_function`](../utils/response_function.md)); a response product without it is refused. To finalize the flux calibration, the utility loads the FITS table that contains the fit parameters for the response function given in input to compute the flux calibrated spectrum for each wavelength, applying the formula
 
 $$
 F(\lambda) = \frac{C(\lambda)}{S(\lambda)}

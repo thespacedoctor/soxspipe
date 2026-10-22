@@ -60,14 +60,7 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    responsePath = tmp_path / "response.fits"
-    Table(
-        {
-            "polyOrder": [1],
-            "c0": [0.01],
-            "c1": [2.0],
-        }
-    ).write(responsePath)
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([7.0, 8.0]))
     originalHeader = fits.Header({"DATE-OBS": "2024-01-02T03:04:05.678"})
     calibration = object.__new__(flux_calibration)
     calibration.log = log
@@ -111,16 +104,10 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
 
     assert outputPath == str(tmp_path / "synthetic_FLUXCAL.fits")
     outputTable = captured["tables"][0]
-    expected = (
-        calibration.extractedSpectrum["FLUX_COUNTS"]
-        / calibration.exptime
-        * np.polyval([0.01, 2.0], calibration.extractedSpectrum["WAVE"])
-        * 1e-17
-    )
+    expected = calibration.extractedSpectrum["FLUX_COUNTS"] / calibration.exptime * np.array([7.0, 8.0]) * 1e-17
     np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], expected, rtol=1e-14, atol=0)
     np.testing.assert_array_equal(outputTable["WAVE"], [500.0, 600.0])
     assert originalHeader == fits.Header({"DATE-OBS": "2024-01-02T03:04:05.678"})
-    assert any(level == "warning" and "polynomial" in message for level, message in log.messages)
     assert products.loc[0, "product_label"] == "EXTRACTED_FLUXCAL_SPECTRUM"
     assert products.loc[0, "file_path"] == outputPath
 
@@ -133,8 +120,7 @@ def test_calibrate_applies_vis_extinction_factor(
     """Apply the wavelength-dependent extinction correction for VIS spectra."""
     import soxspipe.commonutils.toolkit as toolkit
 
-    responsePath = tmp_path / "response.fits"
-    Table({"polyOrder": [0], "c0": [2.0]}).write(responsePath)
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([2.0, 2.0]))
     calibration = object.__new__(flux_calibration)
     calibration.log = log
     calibration.settings = {}
@@ -145,7 +131,7 @@ def test_calibrate_applies_vis_extinction_factor(
     calibration.extinctionPath = "extinction.fits"
     calibration.arm = "VIS"
     calibration.debug = False
-    calibration.header = fits.Header({"DATE-OBS": "2024-01-02T03:04:05"})
+    calibration.header = fits.Header({"DATE-OBS": "2024-01-02T03:04:05", "ESO DET BINY": 1})
     calibration.recipeName = "soxs-stare"
     calibration.sofName = "synthetic"
     calibration.productDir = str(tmp_path)
@@ -161,6 +147,7 @@ def test_calibrate_applies_vis_extinction_factor(
         "PRO_TYPE": "ESO PRO TYPE",
         "PRO_CATG": "ESO PRO CATG",
         "PRO_AIRM_MEAN": "ESO PRO AIRM MEAN",
+        "WIN_BINY": "ESO DET BINY",
     }.__getitem__
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -176,7 +163,7 @@ def test_calibrate_applies_vis_extinction_factor(
     outputPath, _ = calibration.calibrate()
 
     outputTable = captured["tables"][0]
-    np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], [6.0e-17, 16.0e-17], rtol=0, atol=0)
+    np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], [6.0e-17, 16.0e-17], rtol=1e-14, atol=0)
     assert outputPath == str(tmp_path / "synthetic_FLUXCAL.fits")
 
 
@@ -187,8 +174,7 @@ def test_calibrate_records_the_airmass_it_used_in_the_product_header(
 ) -> None:
     """The flux-calibrated product header records the mean airmass of the extinction correction (DY-1695)."""
     # ARRANGE
-    responsePath = tmp_path / "response.fits"
-    Table({"polyOrder": [0], "c0": [2.0]}).write(responsePath)
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([2.0, 2.0]))
     calibration = _nir_calibration(tmp_path, log, responsePath)
     calibration.airmass = 1.37
     captured: dict[str, object] = {}
@@ -212,8 +198,7 @@ def test_calibrate_writes_no_airmass_card_when_no_airmass_is_known(
 ) -> None:
     """When no contributing frame has a readable airmass, the product header gets no airmass card (DY-1695)."""
     # ARRANGE
-    responsePath = tmp_path / "response.fits"
-    Table({"polyOrder": [0], "c0": [2.0]}).write(responsePath)
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([2.0, 2.0]))
     calibration = _nir_calibration(tmp_path, log, responsePath)
     calibration.airmass = None
     captured: dict[str, object] = {}
@@ -235,8 +220,7 @@ def test_calibrate_refuses_a_vis_spectrum_with_no_airmass(
 ) -> None:
     """UVB and VIS need an airmass for the extinction correction, so none is a clear error (DY-1695)."""
     # ARRANGE
-    responsePath = tmp_path / "response.fits"
-    Table({"polyOrder": [0], "c0": [2.0]}).write(responsePath)
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([2.0, 2.0]))
     calibration = _nir_calibration(tmp_path, log, responsePath)
     calibration.arm = "VIS"
     calibration.airmass = None

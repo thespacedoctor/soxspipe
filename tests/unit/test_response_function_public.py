@@ -30,6 +30,7 @@ def test_response_constructor_reads_and_normalizes_synthetic_standard(
     header = fits.Header(
         {
             "SEQ_ARM": "VIS",
+            "WIN_BINY": 1,
             "DATE_OBS": "2024-01-02T03:04:05",
             "EXPTIME": 30.0,
             "OBJECT": "CD-30 17706",
@@ -266,6 +267,7 @@ def test_get_writes_response_when_optional_efficiency_is_unavailable(
     wavelengths = np.linspace(1000.0, 2400.0, 3000)
     response = object.__new__(response_function)
     response.log = log
+    response.dispersionBinning = 1
     response.stdExtractionDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_COUNTS": np.full(3000, 10.0)})
     # A THREE-SAMPLE UNFLATTENED SPECTRUM IS TOO SHORT FOR THE EFFICIENCY SMOOTHING, SO NO EFFICIENCY IS PRODUCED
     response.stdExtractionNotFlatDF = pd.DataFrame(

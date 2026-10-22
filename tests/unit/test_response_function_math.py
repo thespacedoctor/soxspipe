@@ -20,6 +20,7 @@ phase3Module = importlib.import_module("soxspipe.commonutils.phase3")
 def test_response_get_rejects_an_unknown_standard_star(log: object) -> None:
     response = object.__new__(response_function)
     response.log = log
+    response.dispersionBinning = 1
     response.stdExtractionDF = pd.DataFrame({"WAVE": [500.0], "FLUX_COUNTS": [10.0]})
     response.stdExtractionNotFlatDF = pd.DataFrame({"WAVE": [500.0], "FLUX_DENSITY_COUNTS": [10.0]})
     response.stdAbsFluxDF = pd.DataFrame({"WAVE": [500.0], "KNOWN_STAR": [1.0]})
@@ -41,6 +42,7 @@ def _vis_response(log: object, monkeypatch: pytest.MonkeyPatch, absFlux: float =
     wavelengths = np.linspace(400.0, 800.0, 4000)
     response = object.__new__(response_function)
     response.log = log
+    response.dispersionBinning = 1
     response.stdExtractionDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_COUNTS": np.full(4000, 10.0)})
     response.stdExtractionNotFlatDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_DENSITY_COUNTS": np.full(4000, 10.0)})
     response.stdAbsFluxDF = pd.DataFrame({"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(4000, absFlux)})
