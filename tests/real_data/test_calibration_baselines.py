@@ -455,6 +455,16 @@ def test_standard_star_response_curve_matches_approved_baseline(
     report(f"{stem} response median", curveMedian)
     for wavelength, value in pointValues.items():
         report(f"{stem} response at {wavelength:g} nm", value)
+    # TEMPORARY (DY-1712): REPORT THE NIR K-BAND END WITHOUT ASSERTING IT
+    if "_NIR_" in stem:
+        from astropy.table import Table
+
+        curveTable = Table.read(responsePaths[0], format="fits", hdu="RESPONSE")
+        report(f"{stem} response table wave min", float(np.min(curveTable["WAVE"])))
+        report(f"{stem} response table wave max", float(np.max(curveTable["WAVE"])))
+        probe = _response_curve(responsePaths[0], np.array([2000.0, 2020.0, 2030.0]))
+        for probeWavelength, probeValue in zip((2000.0, 2020.0, 2030.0), probe.tolist(), strict=True):
+            report(f"{stem} response probe at {probeWavelength:g} nm", probeValue)
 
     assert curveMedian == pytest.approx(baseline.median.centre, rel=baseline.median.relTol, abs=baseline.median.absTol)
     for wavelength, band in baseline.points.items():
