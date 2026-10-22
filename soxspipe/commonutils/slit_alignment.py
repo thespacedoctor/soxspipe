@@ -30,6 +30,9 @@ MIN_DETECTION_PERCENT = 10
 INTERPOLATION_TOLERANCE = 1e-6
 # HOW MANY TIMES A SLIT-SHIFT SOURCE IS RE-STEPPED FROM ITSELF, FOR A MAP WHOSE PLATE SCALE CHANGES ACROSS THE SHIFT
 SOURCE_REFINEMENTS = 2
+# THE WAVELENGTH RESIDUAL IS TRUSTED IN A SOURCE STEP ONLY WHERE THE SINE OF THE ANGLE BETWEEN THE WAVELENGTH AND SLIT
+# GRADIENTS IS AT LEAST THIS. THE REAL MAPS HAVE A SINE NEAR 1
+MIN_JACOBIAN_SINE = 1e-3
 # THE ORDER VALUE OF A SHIFT THAT BELONGS TO A WHOLE FRAME
 WHOLE_FRAME = -1
 
@@ -40,13 +43,14 @@ TRACE_COLUMNS = ["order", "cont_x", "cont_y", "pre-clipped"]
 
 @dataclass(frozen=True)
 class two_d_map_images:
-    """The SLIT and ORDER images of a 2D map, with the local gradients of the WAVELENGTH and SLIT images.
+    """The WAVELENGTH, SLIT and ORDER images of a 2D map, with the local gradients of the WAVELENGTH and SLIT images.
 
     The gradient images (``wavelengthRow``, ``wavelengthCol``, ``slitRow``, ``slitCol``) hold the change of the
     wavelength and of the slit coordinate per pixel step along the rows and the columns. They are measured inside
     each order only, and are valid in the pixels of an order. ``orders`` lists the order numbers the map holds.
     """
 
+    wavelength: np.ndarray
     slit: np.ndarray
     order: np.ndarray
     wavelengthRow: np.ndarray
@@ -67,8 +71,8 @@ def build_two_d_map_images(wavelength, slit, orderMap):
 
     **Return:**
 
-    - ``mapImages`` -- a frozen ``two_d_map_images``, holding float32 copies of the slit and order images and the
-      gradients of the wavelength and slit images
+    - ``mapImages`` -- a frozen ``two_d_map_images``, holding float32 copies of the wavelength, slit and order
+      images and the gradients of the wavelength and slit images
     """
     images = [np.asarray(image, dtype=np.float32) for image in (wavelength, slit, orderMap)]
     terms = [np.zeros(images[0].shape, dtype=np.float32) for _ in range(4)]
@@ -85,7 +89,7 @@ def build_two_d_map_images(wavelength, slit, orderMap):
         ]
         for term, gradient in zip(terms, gradients, strict=True):
             term[box][local] = gradient[local]
-    return two_d_map_images(slitImage, orderImage, *terms, tuple(int(order) for order in orders))
+    return two_d_map_images(wavelengthImage, slitImage, orderImage, *terms, tuple(int(order) for order in orders))
 
 
 def _bounding_box(mask):
@@ -389,12 +393,13 @@ def _safe_sources(sources, shape):
 def _order_sources(mapImages, order, shift):
     """*where each pixel of an order takes its value from, for a slit shift in arcsec*
 
-    The source is a step of ``shift`` in slit coordinate at fixed wavelength, taken along the local gradients of the
-    wavelength and slit images. The plate scale can change across a nod throw, by about 8% at the red end of the SOXS
-    NIR order 10, so one step from the target overshoots. The step is then repeated from the source, along the
-    gradients there, for the slit coordinate still missing, ``SOURCE_REFINEMENTS`` times. Only the slit coordinate is
-    refined: on a tilted, curved map the source can drift in wavelength by a second-order amount, 0.013 nm (about a
-    tenth of a pixel) at the red end of the SOXS NIR order 10.
+    The source is the position that has the target's wavelength and a slit coordinate ``shift`` arcsec higher. It is
+    found with Newton steps on the two residuals, wavelength and slit, using the 2x2 inverse of the local gradients
+    (see ``_newton_step``). The first step starts from the target, where the wavelength residual is zero. The plate
+    scale can change across a nod throw, by about 8% at the red end of the SOXS NIR order 10, and the map is tilted
+    and curved, so one step overshoots in the slit coordinate and drifts in wavelength, by 0.013 nm (about a tenth of
+    a pixel) at the red end of the SOXS NIR order 10. The step is then repeated from the source, along the gradients
+    there, for the wavelength and slit residuals still left, ``SOURCE_REFINEMENTS`` times.
 
     **Return:**
 
@@ -402,14 +407,16 @@ def _order_sources(mapImages, order, shift):
     - ``sources`` -- the (rows, columns) source coordinates of those pixels
     """
     targets = np.nonzero(mapImages.order == order)
+    targetWavelength = mapImages.wavelength[targets].astype(np.float64)
+    targetSlit = mapImages.slit[targets].astype(np.float64) + shift
     gradients = [image[targets] for image in _gradient_images(mapImages)]
-    rows, columns = _slit_step(targets[0], targets[1], gradients, shift)
-    targetSlit = mapImages.slit[targets] + shift
+    rows, columns = _newton_step(targets[0], targets[1], gradients, 0.0, shift)
     for _ in range(SOURCE_REFINEMENTS):
         sources = [rows, columns]
-        missing = targetSlit - _interpolate(mapImages.slit, sources)
+        wavelengthMissing = targetWavelength - _interpolate(mapImages.wavelength, sources)
+        slitMissing = targetSlit - _interpolate(mapImages.slit, sources)
         gradients = [_interpolate(image, sources) for image in _gradient_images(mapImages)]
-        newRows, newColumns = _slit_step(rows, columns, gradients, missing)
+        newRows, newColumns = _newton_step(rows, columns, gradients, wavelengthMissing, slitMissing)
         # A SOURCE THAT CANNOT BE REFINED, AS IT LIES OFF THE ORDER, KEEPS ITS FIRST STEP. THE CALLER FLAGS IT BAD
         isRefined = np.isfinite(newRows) & np.isfinite(newColumns)
         rows, columns = np.where(isRefined, newRows, rows), np.where(isRefined, newColumns, columns)
@@ -421,25 +428,39 @@ def _gradient_images(mapImages):
     return (mapImages.wavelengthRow, mapImages.wavelengthCol, mapImages.slitRow, mapImages.slitCol)
 
 
-def _slit_step(rows, columns, gradients, slitStep):
-    """*the pixel coordinates a step of ``slitStep`` arcsec along the slit away, at fixed wavelength*
+def _newton_step(rows, columns, gradients, wavelengthStep, slitStep):
+    """*the pixel coordinates a Newton step away that closes a wavelength and a slit residual*
+
+    The step solves ``J @ (dRow, dColumn) = (wavelengthStep, slitStep)``, where ``J`` is the 2x2 matrix of the
+    wavelength and slit gradients, by its inverse: ``dRow = (slitColumn * wavelengthStep - wavelengthColumn *
+    slitStep) / det`` and ``dColumn = (wavelengthRow * slitStep - slitRow * wavelengthStep) / det``.
+
+    The wavelength residual is trusted only where ``J`` is well conditioned, where the sine of the angle between
+    the wavelength and slit gradients is at least ``MIN_JACOBIAN_SINE``. Elsewhere the step is the slit-only step,
+    ``wavelengthStep`` taken as zero, so a noisy wavelength residual is not amplified by a near-zero determinant. A
+    zero determinant, or non-finite gradients, still give a non-finite coordinate, never a finite wrong one. The
+    caller flags that pixel bad, and ``_safe_sources`` keeps the non-finite value from being read as a memory offset.
 
     **Key Arguments:**
 
     - ``rows``, ``columns`` -- the coordinates to step from
     - ``gradients`` -- the wavelength row, wavelength column, slit row and slit column gradients at those coordinates
-    - ``slitStep`` -- the slit step in arcsec, a scalar or one value per coordinate
+    - ``wavelengthStep`` -- the wavelength still missing in nm, a scalar or one value per coordinate
+    - ``slitStep`` -- the slit coordinate still missing in arcsec, a scalar or one value per coordinate
 
     **Return:**
 
     - ``rows``, ``columns`` -- the new coordinates
     """
-    wavelengthRow, wavelengthCol, _, _ = gradients
+    wavelengthRow, wavelengthCol, slitRow, slitCol = gradients
     determinant = _gradient_determinant(*gradients)
-    # A ZERO DETERMINANT GIVES AN INFINITE OR NaN SOURCE. THE CALLER FLAGS THAT PIXEL BAD, AND
-    # _safe_sources KEEPS THE NON-FINITE VALUE FROM BEING READ AS A MEMORY OFFSET
     with np.errstate(divide="ignore", invalid="ignore"):
-        return rows - wavelengthCol * slitStep / determinant, columns + wavelengthRow * slitStep / determinant
+        sine = np.abs(determinant) / (np.hypot(wavelengthRow, wavelengthCol) * np.hypot(slitRow, slitCol))
+        isWellConditioned = sine >= MIN_JACOBIAN_SINE
+        wavelengthStep = np.where(isWellConditioned, wavelengthStep, 0.0)
+        newRows = rows + (slitCol * wavelengthStep - wavelengthCol * slitStep) / determinant
+        newColumns = columns + (wavelengthRow * slitStep - slitRow * wavelengthStep) / determinant
+    return newRows, newColumns
 
 
 def read_two_d_map_images(twoDMapPath, binx, biny, kw):
