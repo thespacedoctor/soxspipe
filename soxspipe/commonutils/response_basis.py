@@ -99,3 +99,18 @@ def require_response_basis(header: Any, responsePath: str) -> None:
             f"(found {basis!r}). It was made by an older soxspipe release that did not correct for the detector "
             "binning. Please rebuild the response from the standard star with this release, then flux calibrate again."
         )
+
+
+def require_response_product_basis(responsePath: str) -> None:
+    """*raise a ValueError unless the RESP product at ``responsePath`` states the per-unbinned-pixel basis*
+
+    The observing recipes call this as soon as they locate a RESP product, so an old product fails before any
+    extraction runs. The flux calibration checks the same card again when it reads the response.
+
+    **Key Arguments:**
+
+    - ``responsePath`` -- the path of the RESP product
+    """
+    from astropy.io import fits
+
+    require_response_basis(fits.getheader(responsePath, 0), responsePath)

@@ -32,8 +32,7 @@
 | `slit-illumination: profile-bin-arcsec` | slit bin width of the skyline profiles (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: max-offset-arcsec` | largest order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: max-order-scatter-arcsec` | largest uncertainty on a fitted order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
-| `response: max_iteration` | maximum number of iterations used to fit the polynomial to the response function | int | settings file | [`response_function`](../utils/response_function.md) |
-| `response: poly_order` | degree of the polynomial used to fit the response function | int | settings file | [`response_function`](../utils/response_function.md) |
+| `response: max_iteration` | maximum number of clipping iterations of the response spline fit | int | settings file | [`response_function`](../utils/response_function.md) |
 
 
 :::

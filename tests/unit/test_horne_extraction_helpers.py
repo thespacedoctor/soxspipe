@@ -1753,6 +1753,34 @@ def test_order_merge_writes_flux_density_only_for_the_not_flattened_extraction(
         np.testing.assert_allclose(merged["FLUX_DENSITY_COUNTS"].values.value, [700.0 / 3, 1000.0 / 3], rtol=1e-6)
 
 
+def test_flat_fielded_merge_matches_the_not_flattened_merge_without_the_flux_density(log: object) -> None:
+    """The flux density is computed only for the not-flattened spectrum; every other merged column is the same for a
+    flat-fielded spectrum of the same counts (DY-1719)."""
+    # ARRANGE: TWO OVERLAPPING VIS ORDERS WITH A PIXEL SCALE THAT CHANGES ALONG EACH ORDER
+    spec = [
+        (1, [600.00, 600.03, 600.06, 600.09, 600.12], [12.0, 18.0, 24.0, 30.0, 36.0]),
+        (4, [599.94, 599.97, 600.00, 600.03, 600.05], [5.0, 7.0, 9.0, 11.0, 13.0]),
+    ]
+    extractedOrders = _merge_rows(spec, pixelScale=0.03)
+    extractedOrders["pixelScaleNm"] = np.linspace(0.02, 0.04, len(extractedOrders))
+    merged = {}
+    for notFlattened in ("", "_NOTFLAT"):
+        extractor = _extractor(log)
+        extractor.arm = "VIS"
+        extractor.kw = lambda key: key
+        extractor.notFlattened = notFlattened
+
+        # ACT
+        merged[notFlattened], _ = extractor.merge_extracted_orders(extractedOrders.copy())
+
+    # ASSERT
+    flat, notFlat = merged[""], merged["_NOTFLAT"]
+    assert "FLUX_DENSITY_COUNTS" in notFlat.columns
+    assert list(flat.columns) == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR"]
+    for column in flat.columns:
+        np.testing.assert_array_equal(flat[column].values, notFlat[column].values)
+
+
 def test_merge_grid_keeps_bins_inside_the_range_at_both_ends() -> None:
     # 500.013 ROUNDS DOWN TO 500.02 ON THE 0.02 NM STEP AND 500.187 ROUNDS UP TO 500.20, BOTH OUTSIDE THE DATA
     grid = horne_extraction._resample_grid(500.013, 500.187, ratio=50.0)

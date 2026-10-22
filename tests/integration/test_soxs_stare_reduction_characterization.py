@@ -34,7 +34,7 @@ from soxspipe.commonutils.slit_illumination import (
 )
 from soxspipe.commonutils.slit_illumination_mask import overlap_exclude_mask
 from soxspipe.recipes import soxs_stare
-from tests.factories import pipeline_settings, qc_table, synthetic_ccd
+from tests.factories import pipeline_settings, qc_table, response_product_fits, synthetic_ccd
 from tests.factories.slit_illumination import write_map_images
 from tests.integration.test_observing_recipe_orchestration import (
     RouteCollection,
@@ -1068,7 +1068,7 @@ def test_a_science_frame_without_an_object_trace_is_still_flux_calibrated_when_a
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(tmp_path / "RESP_TAB_VIS.fits")]}
+    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(response_product_fits(tmp_path / "RESP_TAB_VIS.fits"))]}
     recipe = _stare_recipe(log, tmp_path, extraRoutes=routes)
     captured = _patch_stare(recipe, monkeypatch, tmp_path, traceFallback=True)
     calls = _spy_response_and_plot(recipe, monkeypatch)
@@ -1088,7 +1088,7 @@ def test_a_standard_star_without_an_object_trace_is_flux_calibrated_and_not_fail
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A supplied response table is applied to the boxcar like it is to a science frame (no response curve is built)."""
-    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(tmp_path / "RESP_TAB_VIS.fits")]}
+    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(response_product_fits(tmp_path / "RESP_TAB_VIS.fits"))]}
     recipe = _stare_recipe(log, tmp_path, extraRoutes=routes)
     recipe.generateReponseCurve = True
     captured = _patch_stare(recipe, monkeypatch, tmp_path, traceFallback=True)

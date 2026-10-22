@@ -18,6 +18,7 @@ from .files import (
     order_table_fits,
     prepared_fits,
     raw_fits,
+    response_product_fits,
     sof_file,
 )
 from .frames import StubInputFrames, instrument_header, noise_frame_pair, synthetic_ccd
@@ -49,6 +50,7 @@ __all__ = [
     "raw_flat_run_table",
     "raw_frame_table",
     "raw_group_table",
+    "response_product_fits",
     "sof_file",
     "synthetic_ccd",
     "synthetic_illumination_scene",

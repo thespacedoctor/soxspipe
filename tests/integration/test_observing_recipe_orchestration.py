@@ -19,6 +19,7 @@ from tests.factories import (
     product_table,
     qc_row,
     qc_table,
+    response_product_fits,
     synthetic_ccd,
 )
 
@@ -1296,8 +1297,7 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
             "EXPTIME": 120.0,
         },
     )
-    responsePath = tmp_path / "RESP_TAB_VIS.fits"
-    responsePath.touch()
+    responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
     fluxPath = tmp_path / "OBJECT_VIS_FLUXCAL.fits"
     Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
     recipe = soxs_stare.__new__(soxs_stare)

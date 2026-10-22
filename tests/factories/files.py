@@ -10,6 +10,8 @@ import pandas as pd
 from astropy.io import fits
 from astropy.table import Table
 
+from soxspipe.commonutils.response_basis import RESPONSE_BASIS, RESPONSE_BASIS_KEYWORD
+
 from .dataframes import dispersion_table
 from .frames import synthetic_ccd
 
@@ -102,6 +104,17 @@ def prepared_fits(
     )
     hdus[0].name = "FLUX"
     hdus.writeto(destination)
+    return destination
+
+
+def response_product_fits(destination: Path, *, basis: str | None = RESPONSE_BASIS) -> Path:
+    """Write a RESP product with the given basis card (none when ``basis`` is None) and return its path."""
+    header = fits.Header()
+    if basis is not None:
+        header[RESPONSE_BASIS_KEYWORD] = basis
+    curve = fits.table_to_hdu(Table({"WAVE": [400.0, 900.0], "RESPONSE": [1.0, 1.0]}))
+    curve.name = "RESPONSE"
+    fits.HDUList([fits.PrimaryHDU(header=header), curve]).writeto(destination)
     return destination
 
 
