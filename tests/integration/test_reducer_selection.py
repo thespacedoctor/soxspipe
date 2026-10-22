@@ -79,15 +79,19 @@ def test_select_all_filters_orders_limits_and_builds_commands(
     ]
 
 
+def _insert_product_row(databasePath: Path, sofName: str | None, fileName: str, status: str | None) -> None:
+    """Add one product file row of a SOF, with the given session status."""
+    insertSql = f"INSERT INTO product_frames (sof, file, complete, {STATUS_COLUMN}) VALUES (?, ?, 1, ?)"  # noqa: S608
+    with sqlite3.connect(databasePath) as connection:
+        connection.execute(insertSql, (sofName, fileName, status))
+
+
 def _seed_statuses(databasePath: Path, statuses: dict[str, str | None]) -> None:
     """Add a complete stare SOF to the selection database for each name, with the given session status."""
-    with sqlite3.connect(databasePath) as connection:
-        for sofName, status in statuses.items():
+    for sofName, status in statuses.items():
+        with sqlite3.connect(databasePath) as connection:
             connection.execute("INSERT INTO raw_frame_sets VALUES (1, 1, 'stare_obj', ?, 'VIS')", (sofName,))
-            connection.execute(
-                f"INSERT INTO product_frames (sof, file, complete, {STATUS_COLUMN}) VALUES (?, ?, 1, ?)",  # noqa: S608
-                (sofName, f"{sofName}.fits", status),
-            )
+        _insert_product_row(databasePath, sofName, f"{sofName}.fits", status)
 
 
 def test_select_all_skips_a_sof_that_already_passed_this_session(tmp_path: Path, log: Any) -> None:
@@ -112,6 +116,35 @@ def test_select_all_retries_a_sof_that_failed_or_never_ran(tmp_path: Path, log: 
     selected = collection.select_sof_files_to_process(reductionTarget="all")
 
     assert selected["sof"].tolist() == ["retry.sof"]
+
+
+def test_select_all_skips_a_passed_sof_even_when_another_passing_row_has_no_sof(tmp_path: Path, log: Any) -> None:
+    """A NULL `sof` in `product_frames` must not make every candidate unknown, so nothing else is selected."""
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    _seed_statuses(databasePath, {"done.sof": "pass", "retry.sof": "fail"})
+    _insert_product_row(databasePath, None, "x.fits", "pass")
+    collection = _uninitialized_reducer(log, databasePath)
+
+    selected = collection.select_sof_files_to_process(reductionTarget="all")
+
+    assert selected["sof"].tolist() == ["retry.sof"]
+
+
+@pytest.mark.parametrize("otherStatus", ["fail", None])
+def test_select_all_retries_a_sof_when_only_some_of_its_product_rows_passed(
+    tmp_path: Path, log: Any, otherStatus: str | None
+) -> None:
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    _seed_statuses(databasePath, {"partial.sof": "pass", "done.sof": "pass"})
+    _insert_product_row(databasePath, "partial.sof", "second.fits", otherStatus)
+    _insert_product_row(databasePath, "done.sof", "second.fits", "pass")
+    collection = _uninitialized_reducer(log, databasePath)
+
+    selected = collection.select_sof_files_to_process(reductionTarget="all")
+
+    assert selected["sof"].tolist() == ["partial.sof"]
 
 
 def test_select_all_with_overwrite_selects_a_sof_that_already_passed(tmp_path: Path, log: Any) -> None:
