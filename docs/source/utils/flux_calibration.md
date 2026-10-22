@@ -9,7 +9,7 @@ The algorithm used flux to calibrate a scientific spectrum by applying a respons
 :::
 
 In detail, the airmass is the mean airmass of every raw frame that contributes to the spectrum: all frames of a stare stack, the A and B frames of a nod, and the ON frames of an offset. Each frame contributes the average of `ESO TEL AIRM START` and `ESO TEL AIRM END`, and frames are weighted by their exposure time (`ESO DET SEQ1 EXPTIME` when the frame has it, else `EXPTIME`). A frame that lacks one of the two airmass keywords uses the other, with a warning. The value used is written to the `ESO PRO AIRM MEAN` card of the flux-calibrated product.
-Then, the utility loads the extinction curve (a table with wavelength and extinction coefficient $mag_{airmass}$) and rescales it to the airmass calculated before. The extinction curve is then interpolated on a finer grid, which is suitable for application to the extracted scientific spectrum using a nearest neighbour interpolation schema.
+Then, the utility loads the extinction curve (a table with wavelength and extinction coefficient $mag_{airmass}$) and rescales it to the airmass calculated before. The extinction curve is then interpolated on a finer grid, which is suitable for application to the extracted scientific spectrum using a linear interpolation schema. The curve covers 310 to 900 nm. Outside this range the end values are held: below 310 nm the first value, and above 900 nm the last value (about 0.01 $mag_{airmass}$), so spectra above 900 nm are not blanked.
 
 The extracted scientific spectrum is then corrected for airmass for each wavelength as follows:
 
