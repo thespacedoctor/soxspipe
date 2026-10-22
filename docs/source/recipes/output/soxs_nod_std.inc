@@ -8,7 +8,7 @@
 | `EXTRACTED ORDERS TABLE`    | Table of the extracted source in each order  | FITS      |     `SCI_SLIT_FLUX_NIR`      |      `REDUCED`     |     `ECHELLE,SLIT`      |
 | `EXTRACTED MERGED TABLE`    | Table of the extracted, order-merged         | FITS      |     `SCI_SLIT_FLUX_NIR`      |      `REDUCED`     |     `ECHELLE,SLIT`      |
 | `EXTRACTED FLUXCAL SPECTRUM` | Table of the flux calibrated extracted spectrum | FITS | `SCI_SLIT_FLUX_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
-| `RESPONSE_FUNC` | Response function coefficients | FITS | `RESP_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
+| `RESPONSE_FUNC` | Response curve | FITS | `RESP_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `EFFICIENCY` | Efficiency estimate | FITS | `EFFICIENCY_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `EXTRACTED MERGED ASCII`    | Ascii version of extracted source spectrum   | TXT       |     -       |    -       |     -      |
 | `OBJECT TRACE RES`          | Residuals of the object trace polynomial fit | PDF       |     -       |    -       |     -      |

@@ -27,7 +27,6 @@ REQUIRED_KEYS = {
     "telluric_wing_threshold",
     "stellar_lines",
     "line_half_width_nm",
-    "legacy_poly_order",
     "selfcal_bands",
     "clip_frac_max",
     "max_gap_nm_max",
@@ -68,20 +67,21 @@ def test_an_old_workspace_block_is_filled_from_the_packaged_defaults() -> None:
     assert set(resolved) == REQUIRED_KEYS
     assert resolved["knot_spacing_nm"] == 40
     assert resolved["max_iteration"] == 5
-    assert resolved["legacy_poly_order"] == 4
+    # THE OLD poly_order SET THE LEGACY POLYNOMIAL, WHICH IS NO LONGER FITTED (DY-1719)
+    assert "poly_order" not in resolved
 
 
 def test_workspace_values_override_the_packaged_defaults() -> None:
     # ARRANGE
-    block = {"nir": {"knot_spacing_nm": 90, "legacy_poly_order": 3}}
+    block = {"nir": {"knot_spacing_nm": 90, "bin_width_nm": 7}}
 
     # ACT
     resolved = resolve_response_settings(block, "NIR", "soxs")
 
     # ASSERT
     assert resolved["knot_spacing_nm"] == 90
-    assert resolved["legacy_poly_order"] == 3
-    assert resolved["bin_width_nm"] == 5
+    assert resolved["bin_width_nm"] == 7
+    assert set(resolved) == REQUIRED_KEYS
 
 
 def test_a_missing_arm_block_resolves_to_the_packaged_defaults() -> None:

@@ -723,6 +723,12 @@ class soxs_nod(base_recipe):
             self.log.debug(f"produce_product: no response function frame for this arm, continuing: {e}")
             responseFunctionPath = False
 
+        # REFUSE A RESP PRODUCT OF AN OLD BASIS NOW, NOT AFTER THE FULL EXTRACTION
+        if responseFunctionPath:
+            from soxspipe.commonutils.response_basis import require_response_product_basis
+
+            require_response_product_basis(responseFunctionPath)
+
         return master_flat, orderTablePath, responseFunctionPath
 
     def _read_master_bias(self, kw, arm):

@@ -490,8 +490,8 @@ def evaluate_log_spline(spline: Any, wave: Any, fitRange: tuple[float, float]) -
 def resolve_response_settings(recipeSettings: Any, arm: str, instrument: str) -> dict:
     """*return the response fit settings for one arm, with missing keys filled from the packaged defaults*
 
-    A workspace ``soxspipe.yaml`` written by an older release has no spline keys. Its ``poly_order`` becomes
-    ``legacy_poly_order`` and every other missing key comes from the packaged default settings.
+    A workspace ``soxspipe.yaml`` written by an older release has no spline keys. Its ``poly_order``, which set the
+    retired polynomial fit, is dropped, and every missing key comes from the packaged default settings.
 
     **Key Arguments:**
 
@@ -513,9 +513,7 @@ def resolve_response_settings(recipeSettings: Any, arm: str, instrument: str) ->
         defaults = yaml.safe_load(stream)["soxs-response"].get(arm.lower(), {})
 
     workspace = dict((recipeSettings or {}).get(arm.lower(), {}))
-    if "poly_order" in workspace:
-        legacyOrder = workspace.pop("poly_order")
-        workspace.setdefault("legacy_poly_order", legacyOrder)
+    workspace.pop("poly_order", None)
     return {**defaults, **workspace}
 
 

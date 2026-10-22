@@ -24,7 +24,7 @@ from astropy.table import Table
 
 from soxspipe.recipes import soxs_offset
 from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
-from tests.factories import synthetic_ccd
+from tests.factories import response_product_fits, synthetic_ccd
 from tests.integration.test_observing_recipe_orchestration import (
     RouteCollection,
     _configure_nodding_recipe,
@@ -325,7 +325,7 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
 ) -> None:
     """Flux calibration uses the mean airmass of the ON frames only, adds its products, and draws a second plot."""
     # ARRANGE
-    responsePath = tmp_path / "RESP_TAB_VIS.fits"
+    responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
     headers = [
         {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
         {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 1.7, "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},

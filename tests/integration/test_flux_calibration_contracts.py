@@ -260,7 +260,7 @@ def _nir_calibration(tmp_path: Path, log: object, responsePath: Path) -> flux_ca
 
 
 def _write_response_product(tmp_path: Path, log: object, wave: np.ndarray, response: np.ndarray) -> Path:
-    """Write a RESP product with a coefficient table and a RESPONSE curve extension."""
+    """Write a RESP product with its RESPONSE curve extension."""
     from soxspipe.commonutils.response_function import response_function
     from tests.factories import product_table, qc_table
 
@@ -275,11 +275,7 @@ def _write_response_product(tmp_path: Path, log: object, wave: np.ndarray, respo
     writer.products = product_table().iloc[0:0]
     writer.recipeName = "soxs-stare"
     writer.dateObs = "2024-01-02T03:04:05"
-    return Path(
-        writer.write_response_function_to_file(
-            responseFuncCoeffs=np.array([0.0, 1.0]), polyOrder=1, wavelength=wave, response=response
-        )
-    )
+    return Path(writer.write_response_function_to_file(wavelength=wave, response=response))
 
 
 def test_calibrate_uses_the_response_table_and_logs_no_fallback_warning(

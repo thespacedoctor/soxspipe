@@ -1982,29 +1982,11 @@ class horne_extraction(base_util):
         extractedOrdersDF["pixelScaleNm"] = extractedOrdersDF["pixelScaleNm"].values * u.nm
         extractedOrdersDF["wavelengthMean"] = extractedOrdersDF["wavelengthMean"].values * u.nm
 
-        # SAVE THE FLUX DENSITY COUNTS BY DIVING FOR THE PROPER PIXEL SIZE IN WAVELENGTH SPACE - COUNTS ARE THEN E-/NM
-        extractedOrdersDF["extractedFluxDensityOptimal"] = (
-            extractedOrdersDF["extractedFluxOptimal"].values / extractedOrdersDF["pixelScaleNm"].values
-        )
-        extractedOrdersDF["extractedFluxDensityBoxcar"] = (
-            extractedOrdersDF["extractedFluxBoxcar"].values / extractedOrdersDF["pixelScaleNm"].values
-        )
-        extractedOrdersDF["extractedFluxDensityBoxcarRobust"] = (
-            extractedOrdersDF["extractedFluxBoxcarRobust"].values / extractedOrdersDF["pixelScaleNm"].values
-        )
-
         flux_orig = extractedOrdersDF["extractedFluxOptimal"].values
         spectrum_orig = Spectrum1D(
             flux=flux_orig,
             spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
-            bin_specification="center",
-        )
-
-        fluxDensity_orig = extractedOrdersDF["extractedFluxDensityOptimal"].values
-        spectrumFD_orig = Spectrum1D(
-            flux=fluxDensity_orig,
-            spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             bin_specification="center",
         )
 
@@ -2021,7 +2003,6 @@ class horne_extraction(base_util):
         flux_in = spectrum_orig.flux.to_value(u.electron)
         var_in = spectrum_orig.uncertainty.array
         sky_in = spectrumSky_orig.flux.to_value(u.electron)
-        fluxDensity_in = spectrumFD_orig.flux.to_value(u.electron / u.nm)
 
         # Deduplicate wavelengths that may overlap at order join boundaries
         _, unique_idx = np.unique(wave_in, return_index=True)
@@ -2029,13 +2010,6 @@ class horne_extraction(base_util):
             wave_resample_grid,
             wave_in[unique_idx],
             flux_in[unique_idx],
-            left=0.0,
-            right=0.0,
-        ).astype(np.float32)
-        fluxDensity_resampled = np.interp(
-            wave_resample_grid,
-            wave_in[unique_idx],
-            fluxDensity_in[unique_idx],
             left=0.0,
             right=0.0,
         ).astype(np.float32)
@@ -2066,9 +2040,13 @@ class horne_extraction(base_util):
 
         # THE MASTER FLAT KEEPS THE PIXEL SCALE, SO A FLAT-FIELDED SPECTRUM HAS ALREADY BEEN DIVIDED BY IT. DIVIDING
         # AGAIN WOULD COUNT THE DISPERSION TWICE, SO ONLY THE NOT-FLATTENED SPECTRUM (USED FOR THE EFFICIENCY) GETS THE
-        # FLUX DENSITY COLUMN
+        # FLUX DENSITY COLUMN, AND ONLY IT PAYS FOR COMPUTING ONE
         if self.notFlattened:
-            merged_orders["FLUX_DENSITY_COUNTS"] = fluxDensity_resampled * u.electron / u.nm
+            merged_orders["FLUX_DENSITY_COUNTS"] = (
+                self._resampled_flux_density(extractedOrdersDF, wave_in, unique_idx, wave_resample_grid)
+                * u.electron
+                / u.nm
+            )
 
         if False:
             self.products, filePath = plot_merged_spectrum_qc(
@@ -2086,6 +2064,34 @@ class horne_extraction(base_util):
             )
 
         return merged_orders, orderJoins
+
+    def _resampled_flux_density(self, extractedOrdersDF, waveIn, uniqueIdx, waveGrid):
+        """*return the optimal-extraction flux density (e-/nm), linearly resampled onto the merge grid*
+
+        The order rows also gain the ``extractedFluxDensityOptimal``, ``extractedFluxDensityBoxcar`` and
+        ``extractedFluxDensityBoxcarRobust`` columns: each extracted flux divided by the pixel size in wavelength.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- the extracted orders, with flux and pixel-scale quantity columns
+        - ``waveIn`` -- the order wavelengths (nm) as plain values
+        - ``uniqueIdx`` -- the indices of the first row at each distinct wavelength
+        - ``waveGrid`` -- the merge grid (nm)
+
+        **Return:**
+
+        - ``fluxDensity`` -- the resampled flux density, as float32 values
+        """
+        import astropy.units as u
+        import numpy as np
+
+        pixelScale = extractedOrdersDF["pixelScaleNm"].values
+        for method in ("Optimal", "Boxcar", "BoxcarRobust"):
+            extractedOrdersDF[f"extractedFluxDensity{method}"] = (
+                extractedOrdersDF[f"extractedFlux{method}"].values / pixelScale
+            )
+        fluxDensityIn = extractedOrdersDF["extractedFluxDensityOptimal"].values.to_value(u.electron / u.nm)
+        return np.interp(waveGrid, waveIn[uniqueIdx], fluxDensityIn[uniqueIdx], left=0.0, right=0.0).astype(np.float32)
 
     def _pinhole_offset_labels(self):
         """*the legend labels for the science frame's obs-time and rotator-angle offsets from the multi-pinhole frame*

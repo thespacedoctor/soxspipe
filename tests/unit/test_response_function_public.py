@@ -106,12 +106,10 @@ def test_write_response_function_to_file_preserves_fits_and_product_contract(
     tmp_path: Path,
     log: object,
 ) -> None:
-    """Write response coefficients, header QC values, and product metadata."""
+    """Write the response curve, header QC values, and product metadata."""
     response = _response_writer(tmp_path, log)
 
     filePath = response.write_response_function_to_file(
-        responseFuncCoeffs=np.array([0.5, 2.0]),
-        polyOrder=1,
         wavelength=np.array([500.0, 600.0]),
         response=np.array([250.5, 302.0]),
     )
@@ -124,9 +122,6 @@ def test_write_response_function_to_file_preserves_fits_and_product_contract(
         assert hdul[0].header["PRO_CATG"] == "RESP_TAB_VIS"
         assert hdul[0].header["ESO QC RON"] == 3.2
         assert hdul[0].header.comments["ESO QC RON"] == "Synthetic read noise"
-        assert hdul[1].data["polyOrder"][0] == 1
-        np.testing.assert_allclose(hdul[1].data["c0"], [0.5])
-        np.testing.assert_allclose(hdul[1].data["c1"], [2.0])
 
     assert response.products.to_dict("records") == [
         {
@@ -136,7 +131,7 @@ def test_write_response_function_to_file_preserves_fits_and_product_contract(
             "file_type": "FITS",
             "obs_date_utc": "2024-01-02T03:04:05",
             "reduction_date_utc": response.products.loc[0, "reduction_date_utc"],
-            "product_desc": "Response function coeffs.",
+            "product_desc": "Response function curve.",
             "file_path": filePath,
             "label": "PROD",
         }
@@ -204,28 +199,24 @@ def test_plot_response_curve_writes_qc_pdf_and_product_row(
     ]
 
 
-def test_write_response_function_to_file_adds_sampled_response_curve_extension(
+def test_write_response_function_to_file_writes_only_the_sampled_response_curve_extension(
     tmp_path: Path,
     log: object,
 ) -> None:
-    """The RESP product carries the fitted curve as a WAVE/RESPONSE table after the coefficient table (DY-1378)."""
+    """The RESP product carries the fitted curve as its one WAVE/RESPONSE table (DY-1378), with no legacy
+    polynomial coefficient table (DY-1719)."""
     # ARRANGE
     response = _response_writer(tmp_path, log)
 
     # ACT
     filePath = response.write_response_function_to_file(
-        responseFuncCoeffs=np.array([0.5, 2.0]),
-        polyOrder=1,
         wavelength=np.array([600.0, np.nan, 500.0, 550.0]),
         response=np.array([302.0, 999.0, 252.0, 277.0]),
     )
 
     # ASSERT
     with fits.open(filePath, checksum=True) as hdul:
-        assert [hdu.name for hdu in hdul] == ["PRIMARY", "", "RESPONSE"]
-        assert hdul[1].data["polyOrder"][0] == 1
-        np.testing.assert_allclose(hdul[1].data["c0"], [0.5])
-        np.testing.assert_allclose(hdul[1].data["c1"], [2.0])
+        assert [hdu.name for hdu in hdul] == ["PRIMARY", "RESPONSE"]
     curve = Table.read(filePath, hdu="RESPONSE")
     assert curve.colnames == ["WAVE", "RESPONSE"]
     assert str(curve["WAVE"].unit) == "nm"
@@ -248,8 +239,6 @@ def test_write_response_function_to_file_skips_nan_qc_values(
 
     # ACT
     filePath = response.write_response_function_to_file(
-        responseFuncCoeffs=np.array([0.5, 2.0]),
-        polyOrder=1,
         wavelength=np.array([500.0, 600.0]),
         response=np.array([250.5, 302.0]),
     )
@@ -296,8 +285,8 @@ def test_get_writes_response_when_optional_efficiency_is_unavailable(
     assert recipeError is False
     assert "RESP BIN CLIP FRAC" in qc["qc_name"].tolist()
     assert products.empty
-    # THE OLD-STYLE poly_order IN THE WORKSPACE BLOCK IS HONOURED AS THE LEGACY POLYNOMIAL ORDER
-    assert captured["response_write"]["polyOrder"] == 2
+    # NO LEGACY POLYNOMIAL IS FITTED OR WRITTEN, WHATEVER THE OLD-STYLE poly_order IN THE WORKSPACE BLOCK (DY-1719)
+    assert set(captured["response_write"]) == {"wavelength", "response"}
     np.testing.assert_allclose(captured["response_write"]["response"], 2.0e17, rtol=1e-6)
     np.testing.assert_array_equal(captured["response_write"]["wavelength"], wavelengths)
     assert captured["plot"]["stdEfficiencyEstimate"] is None

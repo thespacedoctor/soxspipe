@@ -79,7 +79,7 @@ def _vis_response(log: object, monkeypatch: pytest.MonkeyPatch, absFlux: float =
     return response
 
 
-def test_response_get_writes_the_spline_curve_and_legacy_coefficients(
+def test_response_get_writes_only_the_spline_curve(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -92,13 +92,11 @@ def test_response_get_writes_the_spline_curve_and_legacy_coefficients(
     # ACT
     qc, products, recipeError = response.get()
 
-    # ASSERT: A FLAT RATIO OF 2E17 GIVES A FLAT SPLINE AND AN ORDER-5 LEGACY POLYNOMIAL THAT IS FLAT TOO
+    # ASSERT: A FLAT RATIO OF 2E17 GIVES A FLAT SPLINE, AND NO LEGACY POLYNOMIAL IS HANDED TO THE WRITER (DY-1719)
     write = captured["responseWrite"]
     assert recipeError is False
-    assert write["polyOrder"] == 5
-    assert len(write["responseFuncCoeffs"]) == 6
+    assert set(write) == {"wavelength", "response"}
     np.testing.assert_allclose(write["response"], 2.0e17, rtol=1e-6)
-    np.testing.assert_allclose(np.polyval(write["responseFuncCoeffs"], 600.0), 2.0e17, rtol=1e-6)
     np.testing.assert_array_equal(write["wavelength"], response.stdExtractionDF["WAVE"].values)
     assert products["product_label"].tolist() == ["EFFICIENCY"]
     assert captured["plot"]["qcWarnings"] == []
