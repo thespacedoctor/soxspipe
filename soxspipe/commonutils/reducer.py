@@ -305,6 +305,9 @@ class reducer:
     def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False, arm=False):
         """*select all of the SOF files still requiring processing*
 
+        With the target ``all``, a SOF whose ``status_<session>`` is ``pass`` is left out unless the reducer was
+        given ``overwrite``. A SOF that failed or has not run is selected again. A named SOF is always selected.
+
         **Key Arguments:**
             - ``recipe`` -- the name of the recipe to filter by (optional)
             - ``reductionTarget`` -- target for reduction: "all", "sof", "ob" (default: False)
@@ -328,6 +331,7 @@ class reducer:
         import pandas as pd
 
         from soxspipe.commonutils.data_organiser import _validate_owned_path
+        from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
         databasePath = _validate_owned_path(self.sessionDB, self.workspaceDirectory, "database path")
         conn = sql.connect(databasePath, timeout=300, autocommit=True, check_same_thread=False)
@@ -361,9 +365,17 @@ class reducer:
             # TEXT OR A `:name` PLACEHOLDER -- NEVER A RAW VALUE -- SO THE
             # ACTUAL `recipe`/`arm`/`batch` VALUES REACH SQLITE ONLY THROUGH
             # `allBranchParams` BELOW.
+            # THE PRODUCT FILE CANNOT MARK A SOF AS DONE, AS A STARE SOF REDUCED FRAME BY FRAME NEVER WRITES THE
+            # PREDICTED PRODUCT. THE SESSION STATUS CAN, AND `-x` ASKS FOR EVERYTHING TO RUN AGAIN.
+            passedText = ""
+            if not self.overwrite:
+                statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
+                passedText = f" and sof not in (select sof from product_frames where {statusColumn} = 'pass') "  # noqa: S608
+
             rawGroups = pd.read_sql(
                 f"SELECT * FROM raw_frame_sets where recipe_order is not null "  # noqa: S608
-                f"and complete = 1 and recipe {recipeText} {armText}  order by recipe_order, sof {limitText}",
+                f"and complete = 1 and recipe {recipeText} {armText} {passedText} "  # noqa: S608
+                f"order by recipe_order, sof {limitText}",
                 con=conn,
                 params=allBranchParams,
             )

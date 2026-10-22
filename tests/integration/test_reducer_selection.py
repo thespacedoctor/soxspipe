@@ -12,6 +12,9 @@ import pytest
 
 pytestmark = pytest.mark.integration
 
+SESSION_ID = "20261022t120000"
+STATUS_COLUMN = f"status_{SESSION_ID}"
+
 
 def _uninitialized_reducer(log: Any, databasePath: Path) -> object:
     reducerModule = import_module("soxspipe.commonutils.reducer")
@@ -20,6 +23,8 @@ def _uninitialized_reducer(log: Any, databasePath: Path) -> object:
     collection.sessionDB = str(databasePath)
     collection.workspaceDirectory = str(databasePath.parent)
     collection.pathToSettings = False
+    collection.sessionId = SESSION_ID
+    collection.overwrite = False
     return collection
 
 
@@ -28,7 +33,7 @@ def _create_selection_database(databasePath: Path) -> None:
         connection.execute(
             'CREATE TABLE raw_frame_sets (recipe_order INTEGER, complete INTEGER, recipe TEXT, sof TEXT, "eso seq arm" TEXT)'
         )
-        connection.execute("CREATE TABLE product_frames (sof TEXT, file TEXT, complete INTEGER)")
+        connection.execute(f"CREATE TABLE product_frames (sof TEXT, file TEXT, complete INTEGER, {STATUS_COLUMN} TEXT)")
         connection.execute("CREATE TABLE sof_map_base (sof TEXT, file TEXT)")
 
 
@@ -74,6 +79,77 @@ def test_select_all_filters_orders_limits_and_builds_commands(
     ]
 
 
+def _seed_statuses(databasePath: Path, statuses: dict[str, str | None]) -> None:
+    """Add a complete stare SOF to the selection database for each name, with the given session status."""
+    with sqlite3.connect(databasePath) as connection:
+        for sofName, status in statuses.items():
+            connection.execute("INSERT INTO raw_frame_sets VALUES (1, 1, 'stare_obj', ?, 'VIS')", (sofName,))
+            connection.execute(
+                f"INSERT INTO product_frames (sof, file, complete, {STATUS_COLUMN}) VALUES (?, ?, 1, ?)",  # noqa: S608
+                (sofName, f"{sofName}.fits", status),
+            )
+
+
+def test_select_all_skips_a_sof_that_already_passed_this_session(tmp_path: Path, log: Any) -> None:
+    """A per-frame stare SOF writes no predicted product, so the session status is what marks it as done (DY-1705)."""
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    _seed_statuses(databasePath, {"done.sof": "pass"})
+    collection = _uninitialized_reducer(log, databasePath)
+
+    selected = collection.select_sof_files_to_process(reductionTarget="all")
+
+    assert selected.empty
+
+
+@pytest.mark.parametrize("status", ["fail", None])
+def test_select_all_retries_a_sof_that_failed_or_never_ran(tmp_path: Path, log: Any, status: str | None) -> None:
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    _seed_statuses(databasePath, {"retry.sof": status, "done.sof": "pass"})
+    collection = _uninitialized_reducer(log, databasePath)
+
+    selected = collection.select_sof_files_to_process(reductionTarget="all")
+
+    assert selected["sof"].tolist() == ["retry.sof"]
+
+
+def test_select_all_with_overwrite_selects_a_sof_that_already_passed(tmp_path: Path, log: Any) -> None:
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    _seed_statuses(databasePath, {"done.sof": "pass"})
+    collection = _uninitialized_reducer(log, databasePath)
+    collection.overwrite = True
+
+    selected = collection.select_sof_files_to_process(reductionTarget="all")
+
+    assert selected["sof"].tolist() == ["done.sof"]
+
+
+def test_select_all_selects_a_set_that_has_no_product_row(tmp_path: Path, log: Any) -> None:
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    with sqlite3.connect(databasePath) as connection:
+        connection.execute("INSERT INTO raw_frame_sets VALUES (1, 1, 'mbias', 'bias.sof', 'VIS')")
+    collection = _uninitialized_reducer(log, databasePath)
+
+    selected = collection.select_sof_files_to_process(reductionTarget="all")
+
+    assert selected["sof"].tolist() == ["bias.sof"]
+
+
+def test_select_sof_target_still_returns_a_sof_that_already_passed(tmp_path: Path, log: Any) -> None:
+    """Naming a SOF on the command line is an explicit request, so the status filter is for `reduce all` only."""
+    databasePath = tmp_path / "session.db"
+    _create_selection_database(databasePath)
+    _seed_statuses(databasePath, {"done.sof": "pass"})
+    collection = _uninitialized_reducer(log, databasePath)
+
+    selected = collection.select_sof_files_to_process(reductionTarget="done.sof")
+
+    assert selected["sof"].tolist() == ["done.sof"]
+
+
 def test_select_sof_includes_recursive_calibration_dependencies(
     tmp_path: Path,
     log: Any,
@@ -91,7 +167,7 @@ def test_select_sof_includes_recursive_calibration_dependencies(
             ],
         )
         connection.executemany(
-            "INSERT INTO product_frames VALUES (?, ?, ?)",
+            "INSERT INTO product_frames (sof, file, complete) VALUES (?, ?, ?)",
             [
                 ("bias.sof", "bias.fits", 1),
                 ("flat.sof", "flat.fits", 1),
@@ -241,7 +317,7 @@ def test_select_sof_files_binds_a_hostile_sof_reduction_target_as_a_parameter(
     _create_selection_database(databasePath)
     with sqlite3.connect(databasePath) as connection:
         connection.execute("INSERT INTO raw_frame_sets VALUES (1, 1, 'mbias', 'target.sof', 'UVB')")
-        connection.execute("INSERT INTO product_frames VALUES ('target.sof', 'target.fits', 1)")
+        connection.execute("INSERT INTO product_frames (sof, file, complete) VALUES ('target.sof', 'target.fits', 1)")
     collection = _uninitialized_reducer(log, databasePath)
     # BALANCED QUOTES, NO COMMENT MARKER: THE RECURSIVE QUERY-BUILDING LOOP
     # RE-EMBEDS THIS SAME STRING FOUR MORE TIMES, SO AN UNBALANCED PAYLOAD (E.G.
