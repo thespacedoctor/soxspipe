@@ -168,8 +168,7 @@ class response_function:
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
         kw = self.kw
 
-        hdul = fits.open(self.stdExtractionPath)
-        self.header = hdul[0].header
+        self.header = fits.getheader(self.stdExtractionPath)
         self.arm = self.header[kw("SEQ_ARM")].strip().upper()  # KW lookup
         self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
         self.dateObs = self.header[kw("DATE_OBS")]

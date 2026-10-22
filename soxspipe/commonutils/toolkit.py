@@ -1474,7 +1474,13 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
     mapKw = kw if associatedFrame else None
     hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny, kw=mapKw)
 
-    mapDF = pd.DataFrame.from_dict(_disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame))
+    # THE MAP FILE IS CLOSED ONCE THE PIXEL COLUMNS AND THE INTER-ORDER MASK ARE COPIED OUT OF IT
+    try:
+        mapDF = pd.DataFrame.from_dict(_disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame))
+        interOrderMask = hdul["ORDER"].data.copy()
+    finally:
+        hdul.close()
+
     if removeMaskedPixels:
         mask = mapDF["mask"].eq(False)
         mapDF = mapDF.loc[mask]
@@ -1483,7 +1489,6 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
     mask = mapDF["wavelength"] == 0
     mapDF = mapDF.loc[~mask]
 
-    interOrderMask = hdul["ORDER"].data.copy()
     interOrderMask = np.where(interOrderMask > 0, 0, interOrderMask)
     interOrderMask = np.where(np.isnan(interOrderMask), 1, interOrderMask)
 
