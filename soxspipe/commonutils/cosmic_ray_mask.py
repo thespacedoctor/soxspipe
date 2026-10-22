@@ -39,6 +39,30 @@ def new_cosmic_ray_mask(maskBefore, maskAfter):
     return (np.asarray(maskAfter, dtype=bool) & ~np.asarray(maskBefore, dtype=bool)).astype(np.uint8)
 
 
+def cosmic_ray_entry_order(entry):
+    """*return the sort key that puts the cosmic-ray mask entries in observation order*
+
+    Frames with a numeric ``mjdObs`` come first, by observation time. Frames without one come after them, by file name.
+
+    **Key Arguments:**
+
+    - ``entry`` -- a cosmic-ray mask entry, as in `cosmic_ray_mask_hdulist`
+
+    **Return:**
+
+    - ``key`` -- the tuple to sort on
+
+    **Usage:**
+
+    ```python
+    entries = sorted(self.cosmicRayMasks, key=cosmic_ray_entry_order)
+    ```
+    """
+    if entry["mjdObs"] is None:
+        return (1, 0.0, entry["fileName"])
+    return (0, entry["mjdObs"], entry["fileName"])
+
+
 def cosmic_ray_mask_hdulist(entries):
     """*build the multi-extension FITS file of cosmic-ray masks, one image extension per frame*
 

@@ -54,7 +54,7 @@ def _raw_object_frame(
     tmpPath: Path,
     name: str,
     rays: tuple[tuple[int, int], ...],
-    mjdObs: float,
+    mjdObs: float | str,
     seed: int,
 ) -> str:
     """Write a noisy 64x64 raw frame with a spike on the bad pixel and on each ray position."""
@@ -108,6 +108,15 @@ def _recipe(log: Any, tmpPath: Path, recipeSettings: dict[str, Any] | None = Non
     return recipe
 
 
+def _report(recipe: base_recipe) -> pd.DataFrame:
+    """Run the real `report_output` on the stub recipe."""
+    recipe.verbose = False
+    recipe.conn = None
+    recipe.inst = "XSHOOTER"
+    recipe.dateObs = "2024-01-02T03:04:05.000"
+    return recipe.report_output()
+
+
 def _mask_path(recipe: base_recipe) -> Path:
     return Path(recipe.qcDir) / f"{recipe.sofName}_LACOSMIC_MASK.fits"
 
@@ -136,13 +145,14 @@ def test_a_cosmic_ray_is_written_to_the_qc_mask_and_the_bad_pixel_is_not(log: An
         assert header["NCRPIX"] == 1
 
 
-def test_the_mask_product_and_its_qc_value_are_registered(log: Any, tmp_path: Path) -> None:
+def test_the_mask_product_and_its_qc_value_are_registered_when_the_recipe_reports(log: Any, tmp_path: Path) -> None:
     # ARRANGE
     recipe = _recipe(log, tmp_path)
     recipe._prepare_single_frame(_raw_object_frame(tmp_path, "raw_1.fits", (FIRST_RAY,), 60000.5, seed=1))
+    recipe._write_cosmic_ray_mask_product()
 
     # ACT
-    recipe._write_cosmic_ray_mask_product()
+    qcTable = _report(recipe)
 
     # ASSERT
     assert len(recipe.products) == 1
@@ -150,10 +160,41 @@ def test_the_mask_product_and_its_qc_value_are_registered(log: Any, tmp_path: Pa
     assert product["product_label"] == MASK_PRODUCT_LABEL
     assert product["label"] == "QC"
     assert product["file_name"] == "OBJECT_VIS_LACOSMIC_MASK.fits"
-    assert product["file_path"] == str(_mask_path(recipe))
     assert product["obs_date_utc"] == "2024-01-02T03:04:05.000"
-    assert recipe.qc["qc_name"].tolist() == [MASK_QC_NAME]
-    assert recipe.qc["qc_value"].tolist() == [1]
+    assert qcTable["qc_name"].tolist() == [MASK_QC_NAME]
+    assert qcTable["qc_value"].tolist() == [1]
+    assert qcTable["sof_name"].tolist() == ["OBJECT_VIS.sof"]
+
+
+def test_the_rows_are_registered_once_and_under_the_real_sof_name_when_each_frame_is_reported_on_its_own(
+    log: Any, tmp_path: Path
+) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path)
+    recipe._prepare_single_frame(_raw_object_frame(tmp_path, "raw_1.fits", (FIRST_RAY,), 60000.5, seed=1))
+    recipe._write_cosmic_ray_mask_product()
+    recipe.add_qc(
+        qcName="OTHER", qcValue=1, qcComment="another QC", reductionDateUtc="2024-01-02T00:00:00", toHeader=False
+    )
+    recipe.sofName = "OBJECT_VIS_F1"
+
+    # ACT
+    firstPass = _report(recipe)
+    recipe.qc = pd.DataFrame({column: [] for column in QC_COLUMNS})
+    recipe.products = pd.DataFrame({column: [] for column in PRODUCT_COLUMNS})
+    recipe.add_qc(
+        qcName="OTHER", qcValue=2, qcComment="another QC", reductionDateUtc="2024-01-02T00:00:00", toHeader=False
+    )
+    recipe.sofName = "OBJECT_VIS_F2"
+    secondPass = _report(recipe)
+
+    # ASSERT
+    assert firstPass.set_index("qc_name")["sof_name"].to_dict() == {
+        MASK_QC_NAME: "OBJECT_VIS.sof",
+        "OTHER": "OBJECT_VIS_F1.sof",
+    }
+    assert secondPass["qc_name"].tolist() == ["OTHER"]
+    assert recipe.products.empty
 
 
 def test_a_multi_frame_sof_gives_one_file_with_one_extension_per_frame_in_order(log: Any, tmp_path: Path) -> None:
@@ -174,7 +215,7 @@ def test_a_multi_frame_sof_gives_one_file_with_one_extension_per_frame_in_order(
         assert hdus[1].data[SECOND_RAY] == 0
         assert hdus[2].data[SECOND_RAY] == 1
         assert hdus[2].data[FIRST_RAY] == 0
-    assert recipe.qc["qc_value"].tolist() == [2]
+    assert _report(recipe)["qc_value"].tolist() == [2]
 
 
 def test_no_file_and_no_qc_value_are_written_when_lacosmic_is_off(log: Any, tmp_path: Path) -> None:
@@ -184,11 +225,12 @@ def test_no_file_and_no_qc_value_are_written_when_lacosmic_is_off(log: Any, tmp_
 
     # ACT
     recipe._write_cosmic_ray_mask_product()
+    qcTable = _report(recipe)
 
     # ASSERT
     assert list(Path(recipe.qcDir).iterdir()) == []
     assert recipe.products.empty
-    assert recipe.qc.empty
+    assert qcTable.empty
 
 
 def test_a_frame_with_no_cosmic_rays_still_gets_an_empty_extension_and_a_zero_count(log: Any, tmp_path: Path) -> None:
@@ -198,12 +240,13 @@ def test_a_frame_with_no_cosmic_rays_still_gets_an_empty_extension_and_a_zero_co
 
     # ACT
     recipe._write_cosmic_ray_mask_product()
+    qcTable = _report(recipe)
 
     # ASSERT
     with fits.open(_mask_path(recipe)) as hdus:
         assert hdus[1].data.sum() == 0
         assert hdus[1].header["NCRPIX"] == 0
-    assert recipe.qc["qc_value"].tolist() == [0]
+    assert qcTable["qc_value"].tolist() == [0]
 
 
 def test_extensions_follow_observation_time_whatever_the_order_the_frames_were_prepared_in(
@@ -253,3 +296,33 @@ def test_only_the_pixels_cleaning_newly_flagged_are_in_the_new_mask() -> None:
     # ASSERT
     assert newMask.dtype == np.uint8
     assert newMask.tolist() == [[0, 1], [0, 0]]
+
+
+def test_a_non_numeric_mjd_obs_sorts_after_the_numeric_ones_instead_of_raising(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path)
+    recipe._prepare_single_frame(_raw_object_frame(tmp_path, "raw_a_bad.fits", (FIRST_RAY,), "not a number", seed=1))
+    recipe._prepare_single_frame(_raw_object_frame(tmp_path, "raw_z_good.fits", (SECOND_RAY,), 60000.9, seed=2))
+
+    # ACT
+    recipe._write_cosmic_ray_mask_product()
+
+    # ASSERT
+    with fits.open(_mask_path(recipe)) as hdus:
+        assert [hdu.header["ORIGFILE"] for hdu in hdus[1:]] == ["raw_z_good.fits", "raw_a_bad.fits"]
+        assert "MJD-OBS" not in hdus[2].header
+
+
+def test_a_path_object_keeps_its_file_name(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path)
+    rawPath = Path(_raw_object_frame(tmp_path, "raw_1.fits", (FIRST_RAY,), 60000.5, seed=1))
+    frame = CCDData.read(str(rawPath), unit=u.adu)
+    frame.mask = np.zeros(frame.data.shape, dtype=bool)
+    frame.uncertainty = None
+
+    # ACT
+    entry = recipe._cosmic_ray_entry(frame, frame.mask.copy(), rawPath)
+
+    # ASSERT
+    assert entry["fileName"] == "raw_1.fits"
