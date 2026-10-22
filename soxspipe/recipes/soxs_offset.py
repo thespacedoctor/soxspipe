@@ -665,7 +665,8 @@ class soxs_offset(soxs_nod):
 
         - ``responseFunctionPath`` -- the path to the response table
         - ``stackedSpectrum`` -- the stacked extraction
-        - ``allFrameON`` -- the ON frames; the first one's header supplies the airmass and exposure time
+        - ``allFrameON`` -- the ON frames; the first one's header supplies the exposure time, and their mean airmass
+          is used (the OFF frames hold only sky)
 
         **Return:**
 
@@ -675,15 +676,16 @@ class soxs_offset(soxs_nod):
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
+        from soxspipe.commonutils.sequence_airmass import mean_airmass
 
         self.log.print("# PERFORMING FLUX CALIBRATION\n")
-        # TODO CHECK IF TAKING THE HEADER OF ONE FRAME IS OK
+        # TODO CHECK IF TAKING THE HEADER AND EXPOSURE TIME OF ONE FRAME IS OK (THE AIRMASS IS THE MEAN, DY-1695)
         fluxCalibrator = flux_calibration(
             log=self.log,
             responseFunction=responseFunctionPath,
             extractedSpectrum=stackedSpectrum,
             settings=self.settings,
-            airmass=allFrameON[0].header.get("HIERARCH ESO TEL AIRM END"),
+            airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
             exptime=allFrameON[0].header.get("EXPTIME"),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,

@@ -630,12 +630,12 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Flux calibration reads the first A frame's header, adds its products, and draws a second QC plot."""
+    """Flux calibration uses the mean airmass of every A and B frame, adds its products, and draws a second plot."""
     # ARRANGE
     responsePath = tmp_path / "RESP_TAB_VIS.fits"
     headers = [
-        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
-        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},
+        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 2.1, "HIERARCH ESO TEL AIRM END": 2.3, "EXPTIME": 60.0},
     ]
     recipe, _ = _nod_recipe(
         log,
@@ -671,7 +671,8 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     assert calls[-6:] == ["flux_calibrator", "calibrate", "plot", "plot", "report", "clean_up"]
     arguments = calibratorArguments[0]
     assert arguments["responseFunction"] == str(responsePath)
-    assert arguments["airmass"] == 1.3
+    # BOTH NOD POSITIONS HOLD THE OBJECT: (300 S x 1.2 + 60 S x 2.2) / 360 S (DY-1695)
+    assert arguments["airmass"] == pytest.approx(492.0 / 360.0)
     assert arguments["exptime"] == 300.0
     assert arguments["extinctionPath"] == "/cal/extinction.dat"
     assert arguments["arm"] == "VIS"

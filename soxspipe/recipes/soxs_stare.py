@@ -612,7 +612,9 @@ class soxs_stare(base_recipe):
 
         forceFailure = False
         if responseFunctionPath:
-            filePath_fluxcal = self._flux_calibrate_spectrum(responseFunctionPath, mergedSpectumDF, combined_object)
+            filePath_fluxcal = self._flux_calibrate_spectrum(
+                responseFunctionPath, mergedSpectumDF, combined_object, allObjectFrames
+            )
 
         elif self.generateReponseCurve and optimalExtractor.traceFallback:
             # A BOXCAR AT THE SLIT CENTRE IS NOT A STANDARD-STAR SPECTRUM TO FIT A RESPONSE CURVE TO
@@ -1255,7 +1257,7 @@ class soxs_stare(base_recipe):
 
         return unflattenedSkySubtractedCCDData
 
-    def _flux_calibrate_spectrum(self, responseFunctionPath, mergedSpectumDF, combined_object):
+    def _flux_calibrate_spectrum(self, responseFunctionPath, mergedSpectumDF, combined_object, objectFrames):
         """*flux calibrate the merged spectrum with the supplied response function*
 
         Updates ``self.products``.
@@ -1264,7 +1266,8 @@ class soxs_stare(base_recipe):
 
         - ``responseFunctionPath`` -- the path to the response table
         - ``mergedSpectumDF`` -- the merged extracted spectrum
-        - ``combined_object`` -- the detrended object frame, whose header supplies the airmass and exposure time
+        - ``combined_object`` -- the detrended object frame, whose header supplies the exposure time
+        - ``objectFrames`` -- the raw object frames stacked into ``combined_object``; their mean airmass is used
 
         **Return:**
 
@@ -1273,6 +1276,7 @@ class soxs_stare(base_recipe):
         import pandas as pd
 
         from soxspipe.commonutils import flux_calibration
+        from soxspipe.commonutils.sequence_airmass import mean_airmass
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
@@ -1284,7 +1288,7 @@ class soxs_stare(base_recipe):
             responseFunction=responseFunctionPath,
             extractedSpectrum=mergedSpectumDF,
             settings=self.settings,
-            airmass=combined_object.header.get("HIERARCH ESO TEL AIRM END"),
+            airmass=mean_airmass([frame.header for frame in objectFrames], self.kw, self.log),
             exptime=combined_object.header.get("EXPTIME"),
             extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
             arm=self.arm,

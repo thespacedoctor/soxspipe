@@ -84,6 +84,9 @@ def _keyword(keyword: str) -> str:
         "NOD_CUMULATIVE_OFFSETY": "ESO SEQ CUMOFF Y",
         "OFFSET_RA": "HIERARCH ESO SEQ FIXOFF RA",
         "OFFSET_DEC": "HIERARCH ESO SEQ FIXOFF DEC",
+        "AIRMASS_START": "ESO TEL AIRM START",
+        "AIRMASS_END": "ESO TEL AIRM END",
+        "SEQ_EXPTIME": "ESO DET SEQ1 EXPTIME",
     }.get(keyword, keyword)
 
 
@@ -1288,6 +1291,7 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         headerOverrides={
             "DPR_TYPE": "OBJECT",
             "DPR_TECH": "ECHELLE,SLIT,STARE",
+            "HIERARCH ESO TEL AIRM START": 1.0,
             "HIERARCH ESO TEL AIRM END": 1.2,
             "EXPTIME": 120.0,
         },
@@ -1353,7 +1357,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     class FakeFluxCalibrator:
         def __init__(self, **kwargs: object) -> None:
             assert kwargs["responseFunction"] == str(responsePath)
-            assert kwargs["airmass"] == 1.2
+            # THE RAW FRAME'S START AND END MIDPOINT, NOT THE END AIRMASS ON THE STACKED HEADER (DY-1695)
+            assert kwargs["airmass"] == pytest.approx(1.1)
             assert kwargs["exptime"] == 120.0
             calls.append("flux_calibrator")
 

@@ -218,6 +218,11 @@ class flux_calibration:
 
         # APPLY EXTINCTION CORRECTION FACTOR
         if self.arm == "UVB" or self.arm == "VIS":
+            if self.airmass is None:
+                raise ValueError(
+                    f"No airmass is known for this {self.arm} spectrum, so it cannot be corrected for extinction; "
+                    "check the ESO TEL AIRM START and END cards of its raw frames"
+                )
             extinctionCorrectionFactor = extinction_correction_factor(
                 self.extractedSpectrum["WAVE"], self.extinctionPath, self.airmass
             )
@@ -266,6 +271,11 @@ class flux_calibration:
         header[self.kw("SEQ_ARM")] = self.arm
         header["HIERARCH " + self.kw("PRO_TYPE")] = "REDUCED"
         header["HIERARCH " + self.kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        if self.airmass is not None:
+            header["HIERARCH " + self.kw("PRO_AIRM_MEAN")] = (
+                float(self.airmass),
+                "mean airmass of the frames in the product",
+            )
 
         filename = f"{self.sofName}_FLUXCAL.fits"
         filePath = f"{self.productDir}/{filename}"

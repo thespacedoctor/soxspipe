@@ -323,12 +323,12 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Flux calibration reads the first ON frame's header, adds its products, and draws a second QC plot."""
+    """Flux calibration uses the mean airmass of the ON frames only, adds its products, and draws a second plot."""
     # ARRANGE
     responsePath = tmp_path / "RESP_TAB_VIS.fits"
     headers = [
-        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
-        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},
+        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 1.7, "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},
     ]
     recipe, _ = _offset_recipe(
         log,
@@ -364,7 +364,8 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     assert calls[-7:] == ["stack_extractions", "flux_calibrator", "calibrate", "plot", "plot", "report", "clean_up"]
     arguments = calibratorArguments[0]
     assert arguments["responseFunction"] == str(responsePath)
-    assert arguments["airmass"] == 1.3
+    # THE OFF FRAME IS SKY ONLY, SO ONLY THE ON FRAME'S START AND END MIDPOINT COUNTS (DY-1695)
+    assert arguments["airmass"] == pytest.approx(1.2)
     assert arguments["exptime"] == 300.0
     assert arguments["extinctionPath"] == "/cal/extinction.dat"
     assert arguments["header"]["HIERARCH ESO SEQ FIXOFF RA"] == -2.0
