@@ -8,7 +8,7 @@ The [`flux_calibration`](#soxspipe.commonutils.flux_calibration) utility flux ca
 The algorithm used flux to calibrate a scientific spectrum by applying a response function.
 :::
 
-In detail, the airmass at the time of observation is computed as an average between its values at the beginning and end of the observation, using the FITS header of the extracted 1D scientific spectrum.
+In detail, the airmass is the mean airmass of every raw frame that contributes to the spectrum: all frames of a stare stack, the A and B frames of a nod, and the ON frames of an offset. Each frame contributes the average of `ESO TEL AIRM START` and `ESO TEL AIRM END`, and frames are weighted by their exposure time (`ESO DET SEQ1 EXPTIME` when the frame has it, else `EXPTIME`). A frame that lacks one of the two airmass keywords uses the other, with a warning. The value used is written to the `ESO PRO AIRM MEAN` card of the flux-calibrated product.
 Then, the utility loads the extinction curve (a table with wavelength and extinction coefficient $mag_{airmass}$) and rescales it to the airmass calculated before. The extinction curve is then interpolated on a finer grid, which is suitable for application to the extracted scientific spectrum using a nearest neighbour interpolation schema.
 
 The extracted scientific spectrum is then corrected for airmass for each wavelength as follows:

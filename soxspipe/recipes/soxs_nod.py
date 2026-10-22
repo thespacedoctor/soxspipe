@@ -407,7 +407,9 @@ class soxs_nod(base_recipe):
         # CHECK IF FLUX CALIBRATION IS REQUESTED
         filePath_fluxcal = None
         if responseFunctionPath:
-            filePath_fluxcal = self._flux_calibrate_nod_stack(responseFunctionPath, stackedSpectrum, allFrameA)
+            filePath_fluxcal = self._flux_calibrate_nod_stack(
+                responseFunctionPath, stackedSpectrum, allFrameA, allFrameB
+            )
 
         self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePath_fluxcal)
 
@@ -1090,14 +1092,16 @@ class soxs_nod(base_recipe):
             return [mergedSpectrumDF_A]
         return [mergedSpectrumDF_A, mergedSpectrumDF_B]
 
-    def _flux_calibrate_nod_stack(self, responseFunctionPath, stackedSpectrum, allFrameA):
+    def _flux_calibrate_nod_stack(self, responseFunctionPath, stackedSpectrum, allFrameA, allFrameB):
         """*flux calibrate the stacked extraction and record its products*
 
         **Key Arguments:**
 
         - ``responseFunctionPath`` -- the path to the response table
         - ``stackedSpectrum`` -- the stacked extraction
-        - ``allFrameA`` -- the A frames; the first one's header supplies the airmass and exposure time
+        - ``allFrameA`` -- the A frames; the first one's header supplies the exposure time
+        - ``allFrameB`` -- the B frames. Both nod positions hold the object, so the mean airmass of every A and B
+          frame is used
 
         **Return:**
 
@@ -1107,15 +1111,16 @@ class soxs_nod(base_recipe):
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
+        from soxspipe.commonutils.sequence_airmass import mean_airmass
 
         self.log.print("# PERFORMING FLUX CALIBRATION\n")
-        # TODO CHECK IF TAKING THE HEADER OF ONE FRAME IS OK
+        # TODO CHECK IF TAKING THE HEADER AND EXPOSURE TIME OF ONE FRAME IS OK (THE AIRMASS IS THE MEAN, DY-1695)
         fluxCalibrator = flux_calibration(
             log=self.log,
             responseFunction=responseFunctionPath,
             extractedSpectrum=stackedSpectrum,
             settings=self.settings,
-            airmass=allFrameA[0].header.get("HIERARCH ESO TEL AIRM END"),
+            airmass=mean_airmass([frame.header for frame in allFrameA + allFrameB], self.kw, self.log),
             exptime=allFrameA[0].header.get("EXPTIME"),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,

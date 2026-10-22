@@ -94,6 +94,7 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
         "SEQ_ARM": "ESO SEQ ARM",
         "PRO_TYPE": "ESO PRO TYPE",
         "PRO_CATG": "ESO PRO CATG",
+        "PRO_AIRM_MEAN": "ESO PRO AIRM MEAN",
     }
     calibration.kw = keywordNames.__getitem__
     captured: dict[str, object] = {}
@@ -159,6 +160,7 @@ def test_calibrate_applies_vis_extinction_factor(
         "SEQ_ARM": "ESO SEQ ARM",
         "PRO_TYPE": "ESO PRO TYPE",
         "PRO_CATG": "ESO PRO CATG",
+        "PRO_AIRM_MEAN": "ESO PRO AIRM MEAN",
     }.__getitem__
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -176,6 +178,72 @@ def test_calibrate_applies_vis_extinction_factor(
     outputTable = captured["tables"][0]
     np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], [6.0e-17, 16.0e-17], rtol=0, atol=0)
     assert outputPath == str(tmp_path / "synthetic_FLUXCAL.fits")
+
+
+def test_calibrate_records_the_airmass_it_used_in_the_product_header(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The flux-calibrated product header records the mean airmass of the extinction correction (DY-1695)."""
+    # ARRANGE
+    responsePath = tmp_path / "response.fits"
+    Table({"polyOrder": [0], "c0": [2.0]}).write(responsePath)
+    calibration = _nir_calibration(tmp_path, log, responsePath)
+    calibration.airmass = 1.37
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "soxspipe.commonutils.phase3.write_fits_table_to_disk",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    # ACT
+    calibration.calibrate()
+
+    # ASSERT
+    assert captured["header"]["HIERARCH ESO PRO AIRM MEAN"] == 1.37
+    assert "ESO PRO AIRM MEAN" not in calibration.header
+
+
+def test_calibrate_writes_no_airmass_card_when_no_airmass_is_known(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When no contributing frame has a readable airmass, the product header gets no airmass card (DY-1695)."""
+    # ARRANGE
+    responsePath = tmp_path / "response.fits"
+    Table({"polyOrder": [0], "c0": [2.0]}).write(responsePath)
+    calibration = _nir_calibration(tmp_path, log, responsePath)
+    calibration.airmass = None
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(
+        "soxspipe.commonutils.phase3.write_fits_table_to_disk",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    # ACT
+    calibration.calibrate()
+
+    # ASSERT
+    assert "ESO PRO AIRM MEAN" not in captured["header"]
+
+
+def test_calibrate_refuses_a_vis_spectrum_with_no_airmass(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    """UVB and VIS need an airmass for the extinction correction, so none is a clear error (DY-1695)."""
+    # ARRANGE
+    responsePath = tmp_path / "response.fits"
+    Table({"polyOrder": [0], "c0": [2.0]}).write(responsePath)
+    calibration = _nir_calibration(tmp_path, log, responsePath)
+    calibration.arm = "VIS"
+    calibration.airmass = None
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="airmass"):
+        calibration.calibrate()
 
 
 def _nir_calibration(tmp_path: Path, log: object, responsePath: Path) -> flux_calibration:
@@ -202,6 +270,7 @@ def _nir_calibration(tmp_path: Path, log: object, responsePath: Path) -> flux_ca
         "SEQ_ARM": "ESO SEQ ARM",
         "PRO_TYPE": "ESO PRO TYPE",
         "PRO_CATG": "ESO PRO CATG",
+        "PRO_AIRM_MEAN": "ESO PRO AIRM MEAN",
     }.__getitem__
     return calibration
 
