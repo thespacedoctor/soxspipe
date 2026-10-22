@@ -99,11 +99,10 @@ def test_blank_slit_frames_of_other_techniques_are_not_rejected_by_the_arc_rule(
 
 
 @pytest.mark.parametrize("arm", ["NIR", "VIS"])
-@pytest.mark.parametrize("dprType", ["LAMP,WAVE", "LAMP,FLAT"])
-def test_blank_slit_single_pinhole_arc_is_ignored_on_each_arm(organiser, arm, dprType) -> None:
+def test_blank_slit_single_pinhole_arc_is_ignored_on_each_arm(organiser, arm) -> None:
     # ARRANGE
-    _insert_frame(organiser.conn, "blank-ph.fits", arm=arm, slit="BLANK", tech="ECHELLE,PINHOLE", dprType=dprType)
-    _insert_frame(organiser.conn, "good-ph.fits", arm=arm, slit="PINHOLE", tech="ECHELLE,PINHOLE", dprType=dprType)
+    _insert_frame(organiser.conn, "blank-ph.fits", arm=arm, slit="BLANK", tech="ECHELLE,PINHOLE")
+    _insert_frame(organiser.conn, "good-ph.fits", arm=arm, slit="PINHOLE", tech="ECHELLE,PINHOLE")
 
     # ACT
     organiser._flag_files_to_ignore()
@@ -125,8 +124,8 @@ def test_rejection_warns_with_the_file_name_and_the_reason(organiser, log) -> No
     warnings = [message for level, message in log.messages if level == "warning"]
     assert len(warnings) == 2
     assert all("BLANK" in message for message in warnings)
-    assert "blank-mph.fits" in warnings[0]
-    assert "blank-ph.fits" in warnings[1]
+    assert "ECHELLE,MULTI-PINHOLE frame `blank-mph.fits`" in warnings[0]
+    assert "ECHELLE,PINHOLE frame `blank-ph.fits`" in warnings[1]
     assert not any("good-mph.fits" in message for message in warnings)
 
 

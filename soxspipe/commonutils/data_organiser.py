@@ -2870,17 +2870,18 @@ class data_organiser:
 
         c = self.conn.cursor()
         c.execute(
-            "SELECT uuid, file, `eso seq arm` FROM raw_frames "
-            "WHERE `eso dpr tech` IN ('ECHELLE,PINHOLE', 'ECHELLE,MULTI-PINHOLE') AND `slit` = 'BLANK' AND ignore = 0"
+            "SELECT uuid, file, `eso seq arm`, `eso dpr tech` FROM raw_frames "
+            "WHERE `eso dpr tech` IN ('ECHELLE,PINHOLE', 'ECHELLE,MULTI-PINHOLE') AND `slit` = 'BLANK' AND ignore = 0 "
+            "ORDER BY file"
         )
         rejected = c.fetchall()
-        c.executemany("UPDATE raw_frames SET ignore = 1 WHERE uuid = ?", [(uuid,) for uuid, _, _ in rejected])
+        c.executemany("UPDATE raw_frames SET ignore = 1 WHERE uuid = ?", [(row[0],) for row in rejected])
         self.conn.commit()
         c.close()
 
-        for _, fileName, arm in rejected:
+        for _, fileName, arm, tech in rejected:
             self.log.warning(
-                f"rejected the pinhole arc `{fileName}` ({arm} arm): its slit wheel reads BLANK, "
+                f"rejected the {tech} frame `{fileName}` ({arm} arm): its slit wheel reads BLANK, "
                 "so it has no pinhole spots and is not used to build a dispersion-solution or spatial-solution SOF"
             )
 
