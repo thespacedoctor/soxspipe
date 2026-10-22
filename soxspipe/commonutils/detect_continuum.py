@@ -10,12 +10,15 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
+from __future__ import annotations
+
 import copy
 import math
 import os
 import sys
 from contextlib import suppress
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
@@ -41,8 +44,13 @@ from soxspipe.commonutils.toolkit import (
     qc_image_panel_height,
     qc_table_heights,
     read_spectral_format,
-    utcnow_string,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import numpy as np
+    import pandas as pd
 
 os.environ["TERM"] = "vt100"
 
@@ -52,7 +60,10 @@ ORDER_TRACES_EXTNAME = "ORDER_TRACES"
 DEFAULT_MAX_UNSAMPLED_TRACE_FRACTION = 0.2
 
 
-def longest_unsampled_stretch(sampledWavelengths, acceptedWavelengths):
+def longest_unsampled_stretch(
+    sampledWavelengths: Sequence[float] | np.ndarray | pd.Series,
+    acceptedWavelengths: Sequence[float] | np.ndarray | pd.Series,
+) -> tuple[float, float, float]:
     """*find the longest stretch of an order that no accepted trace sample covers*
 
     The stretch runs between two neighbouring accepted samples, or from an end of the order to the nearest accepted
@@ -947,7 +958,7 @@ class detect_continuum(_base_detect):
                     raise e
 
         if "wavelength" in backupOrderPixelTable.columns:
-            self.warn_on_extrapolated_traces(backupOrderPixelTable, orderPixelTable)
+            self.check_trace_extrapolation(backupOrderPixelTable, orderPixelTable)
 
         utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -1336,7 +1347,7 @@ class detect_continuum(_base_detect):
         self.log.debug("completed the ``build_order_metadata`` method")
         return orderMetaTable
 
-    def warn_on_extrapolated_traces(self, sampledTable, acceptedTable):
+    def check_trace_extrapolation(self, sampledTable: pd.DataFrame, acceptedTable: pd.DataFrame) -> None:
         """*warn when the fitted trace of an order is extrapolated across a long stretch with no accepted samples*
 
         Records the longest sample-free stretch of each order as the ``SAMPLES GAP MAX O<n>`` QC. The QC is not
@@ -1350,13 +1361,13 @@ class detect_continuum(_base_detect):
         **Usage:**
 
         ```python
-        self.warn_on_extrapolated_traces(backupOrderPixelTable, orderPixelTable)
+        self.check_trace_extrapolation(backupOrderPixelTable, orderPixelTable)
         ```
         """
-        self.log.debug("starting the ``warn_on_extrapolated_traces`` method")
+        self.log.debug("starting the ``check_trace_extrapolation`` method")
 
         maxFraction = self.recipeSettings.get("max-unsampled-trace-fraction", DEFAULT_MAX_UNSAMPLED_TRACE_FRACTION)
-        reductionDate = utcnow_string()
+        reductionDate = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         for order, orderSamples in sampledTable.groupby("order"):
             acceptedWavelengths = acceptedTable.loc[acceptedTable["order"] == order, "wavelength"]
@@ -1380,7 +1391,7 @@ class detect_continuum(_base_detect):
                     "Check the object and order positions."
                 )
 
-        self.log.debug("completed the ``warn_on_extrapolated_traces`` method")
+        self.log.debug("completed the ``check_trace_extrapolation`` method")
 
     def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
@@ -1986,8 +1997,12 @@ class detect_continuum(_base_detect):
 
             return orderPixelTable, medianShift, medianStddev
 
-        def sample_order(orderTable, everyN):
-            """*sample one order with its own shift and window, or return None if a denser probe is needed*"""
+        def sample_order(orderTable: pd.DataFrame, everyN: int) -> tuple[pd.DataFrame, bool]:
+            """*sample one order with its own shift and window*
+
+            Returns the sampled order and whether a denser probe (``everyN`` of 1) is needed first. When it is, the
+            returned table is the input, unsampled.
+            """
             junk, medianShift, medianStddev = find_centre_points(
                 orderPixelTable=orderTable.iloc[::everyN],
                 medianShift=False,
@@ -2001,15 +2016,18 @@ class detect_continuum(_base_detect):
                     medianStddev=False,
                 )
 
-            if (not (medianShift) or np.isnan(medianShift)) and everyN > 1:
-                return None
+            # `find_centre_points` RETURNS False FOR "NO SIGNIFICANT SHIFT" (UNDER 1 PIXEL OR NOISY) AND NaN FOR
+            # "TOO FEW SAMPLES"; BOTH MEAN THE SPARSE PROBE FOUND NO USABLE SHIFT. A FLOAT 0.0 IS NEVER RETURNED
+            isShiftMissing = medianShift is False or np.isnan(medianShift)
+            if isShiftMissing and everyN > 1:
+                return orderTable, True
 
             orderTable, medianShift, medianStddev = find_centre_points(
                 orderPixelTable=orderTable,
                 medianShift=medianShift,
                 medianStddev=medianStddev,
             )
-            return orderTable
+            return orderTable, False
 
         allLines = len(orderPixelTable.index)
         tmpOrderPixelTable = orderPixelTable.copy()
@@ -2022,17 +2040,17 @@ class detect_continuum(_base_detect):
                 # EACH VIS ORDER GETS ITS OWN SHIFT AND WINDOW: THE ORDERS SIT AT DIFFERENT OFFSETS FROM THE MAP,
                 # SO A SHARED MEDIAN SHIFT LEAVES THE TRACE OF ONE ORDER OUTSIDE THE WINDOW OF ANOTHER (DY-1716)
                 orderTables = []
+                needsDenserProbe = False
                 for order in sorted(tmpOrderPixelTable["order"].unique()):
-                    orderTable = sample_order(
+                    orderTable, needsDenserProbe = sample_order(
                         tmpOrderPixelTable.loc[tmpOrderPixelTable["order"] == order].copy(),
                         everyN,
                     )
-                    if orderTable is None:
+                    if needsDenserProbe:
                         break
                     orderTables.append(orderTable)
 
-                if len(orderTables) < tmpOrderPixelTable["order"].nunique():
-                    sanityCheck = False
+                if needsDenserProbe:
                     everyN = 1
                     continue
 

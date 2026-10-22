@@ -512,9 +512,13 @@ def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(
 
 
 class _TraceFrame(np.ma.MaskedArray):
-    """A masked image that carries the empty `header` the sampler reads."""
+    """A masked image that carries the empty `header` the sampler reads, one per instance."""
 
-    header: dict = {}
+    header: dict
+
+    def __array_finalize__(self, obj: object) -> None:
+        super().__array_finalize__(obj)
+        self.header = {}
 
 
 VIS_ORDER_CENTRES = {1.0: 60.0, 2.0: 150.0, 3.0: 240.0, 4.0: 330.0}
@@ -651,7 +655,7 @@ def test_extrapolated_trace_warning_names_the_order_and_wavelength_range(log: ob
     sampled, accepted = _two_order_samples(gapOrder=2.0)
 
     # ACT
-    detector.warn_on_extrapolated_traces(sampled, accepted)
+    detector.check_trace_extrapolation(sampled, accepted)
 
     # ASSERT: ONE WARNING, FOR ORDER 2 ONLY
     warnings = [message for level, message in log.messages if level == "warning"]
@@ -667,7 +671,7 @@ def test_extrapolated_trace_warning_is_silent_on_a_normal_trace(log: object) -> 
     sampled, accepted = _two_order_samples(gapOrder=None)
 
     # ACT
-    detector.warn_on_extrapolated_traces(sampled, accepted)
+    detector.check_trace_extrapolation(sampled, accepted)
 
     # ASSERT
     assert [message for level, message in log.messages if level == "warning"] == []
@@ -679,7 +683,7 @@ def test_extrapolated_trace_check_records_the_longest_gap_of_each_order_as_a_qc(
     sampled, accepted = _two_order_samples(gapOrder=2.0)
 
     # ACT
-    detector.warn_on_extrapolated_traces(sampled, accepted)
+    detector.check_trace_extrapolation(sampled, accepted)
 
     # ASSERT: A GAP OF 26 NM IN 40 AND THE 1 NM SAMPLE SPACING OF THE COMPLETE ORDER
     qc = detector.qc.set_index("qc_name")
@@ -696,7 +700,7 @@ def test_extrapolated_trace_check_falls_back_to_the_default_threshold_for_older_
     sampled, accepted = _two_order_samples(gapOrder=2.0)
 
     # ACT
-    detector.warn_on_extrapolated_traces(sampled, accepted)
+    detector.check_trace_extrapolation(sampled, accepted)
 
     # ASSERT
     assert len([m for level, m in log.messages if level == "warning"]) == 1
