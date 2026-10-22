@@ -217,8 +217,9 @@ def test_grouping_raw_frames_leaves_the_global_chained_assignment_option_at_the_
 
 LINE_LIST_COLUMNS = [
     "wavelength", "order", "slit_index", "slit_position", "detector_x", "detector_y", "observed_x", "observed_y",
-    "x_diff", "y_diff", "fit_x", "fit_y", "residuals_x", "residuals_y", "residuals_xy", "sigma_clipped", "sharpness",
-    "roundness1", "roundness2", "npix", "sky", "peak", "flux", "fwhm_pin_px", "R_pin", "pixelScaleNm",
+    "x_diff", "y_diff", "fit_x", "fit_y", "residuals_x", "residuals_y", "residuals_xy", "sigma_clipped",
+    "set_offset_clipped", "sharpness", "roundness1", "roundness2", "npix", "sky", "peak", "flux", "fwhm_pin_px",
+    "R_pin", "pixelScaleNm",
     "detector_x_shifted", "detector_y_shifted", "R_slit", "fwhm_slit_px",
 ]  # fmt: skip
 

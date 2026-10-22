@@ -72,6 +72,8 @@ soxs-spat-solution:
         poly-fitting-residual-clipping-sigma: 9
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9

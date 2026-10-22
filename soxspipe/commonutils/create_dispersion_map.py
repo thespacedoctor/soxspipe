@@ -88,6 +88,13 @@ NO_LINES_SURVIVED_MESSAGE = (
 )
 
 
+def _set_offset_flag(lines):
+    """*return the ``set_offset_clipped`` column as booleans, False where it is missing or unset*"""
+    if "set_offset_clipped" not in lines.columns:
+        return False
+    return lines["set_offset_clipped"].eq(True)
+
+
 def plot_xy_residual_histogram(ax: "Axes", values: "npt.ArrayLike") -> None:
     """*draw a histogram of xy residuals, or a short note when there is nothing to draw*
 
@@ -1574,6 +1581,7 @@ class create_dispersion_map:
             "residuals_y",
             "residuals_xy",
             "sigma_clipped",
+            "set_offset_clipped",
             "sharpness",
             "roundness1",
             "roundness2",
@@ -1598,6 +1606,9 @@ class create_dispersion_map:
         clippedLinesTable["sigma_clipped"] = True
         clippedLinesTable["R"] = np.nan
         clippedLinesTable["pixelScaleNm"] = np.nan
+        # A LINE DROPPED BEFORE THE FIT NEVER RECEIVED THE SET-OFFSET FLAG
+        goodLinesTable = goodLinesTable.assign(set_offset_clipped=_set_offset_flag(goodLinesTable))
+        clippedLinesTable = clippedLinesTable.assign(set_offset_clipped=_set_offset_flag(clippedLinesTable))
 
         # COMBINE GOOD AND CLIPPED LINES
         if len(clippedLinesTable.index):
@@ -2514,8 +2525,11 @@ class create_dispersion_map:
         allClippedLines.append(orderPixelTable.loc[mask])
         # THE FIT WORKS ON ITS OWN COPY: ITS COLUMNS AND CLIPPING FLAGS NEVER BELONG IN THE CALLER'S TABLE
         orderPixelTable = orderPixelTable.loc[~mask].copy()
+        orderPixelTable["set_offset_clipped"] = False
 
         import pandas as pd
+
+        from soxspipe.commonutils.pinhole_set_offsets import OFFSET_SET_CLIP_SIGMA, flag_offset_pinhole_sets
 
         arm = self.arm
         dp = self.detectorParams
@@ -2576,6 +2590,8 @@ class create_dispersion_map:
             clipOnMphSets = True
         else:
             clipOnMphSets = False
+        # OLDER WORKSPACE SETTINGS FILES PREDATE THIS KEY (DY-1526)
+        setOffsetSigma = self.recipeSettings.get("poly-clipping-set-offset-sigma", OFFSET_SET_CLIP_SIGMA)
 
         self.log.print("\n# FINDING DISPERSION SOLUTION")
 
@@ -2776,6 +2792,16 @@ class create_dispersion_map:
                             "sigma_clipped",
                         ] = True
 
+            # DROP WHOLE MULTI-PINHOLE SETS THAT SIT OFF THE MODEL BY THE SAME AMOUNT IN EVERY PINHOLE.
+            # THE CLIPS ABOVE JUDGE EACH PINHOLE (OR SET MEAN) AGAINST A NON-ROBUST SPREAD, WHICH SUCH A SET SURVIVES.
+            # THE TEST RUNS ON THE FIRST FIT ONLY: EACH REFIT WITHOUT OUTLIERS TIGHTENS THE SPREAD, SO REPEATING IT
+            # WOULD DROP SETS THAT ARE NOT OUTLIERS OF THE FIRST FIT (DY-1526)
+            if iteration == 1:
+                offsetSets = flag_offset_pinhole_sets(orderPixelTable, sigmaLimit=setOffsetSigma)
+                if offsetSets.any():
+                    orderPixelTable.loc[offsetSets, ["sigma_clipped", "set_offset_clipped"]] = True
+                    self._log_offset_pinhole_sets(orderPixelTable.loc[offsetSets])
+
             # COUNT THE CLIPPED LINES
             mask = orderPixelTable["sigma_clipped"] == True
             allClippedLines.append(orderPixelTable.loc[mask])
@@ -2830,6 +2856,20 @@ class create_dispersion_map:
 
         self.log.debug("completed the ``fit_polynomials`` method")
         return xcoeff, ycoeff, orderPixelTable, allClippedLines
+
+    def _log_offset_pinhole_sets(self, offsetLines):
+        """*log how many multi-pinhole sets the set-offset test dropped, order by order*
+
+        **Key Arguments:**
+
+        - ``offsetLines`` -- the rows (one per pinhole) of the dropped sets
+        """
+        perOrder = offsetLines.groupby("order")["wavelength"].nunique()
+        breakdown = ", ".join(f"order {order:g}: {count}" for order, count in perOrder.items())
+        self.log.info(
+            f"fit_polynomials: dropped {perOrder.sum()} multi-pinhole set(s) offset "
+            f"consistently in every pinhole ({breakdown})"
+        )
 
     def create_placeholder_images(self, order=False, plot=False, reverse=False):
         """*create CCDData objects as placeholders to host the 2D images of the wavelength and spatial solutions from dispersion solution map*
