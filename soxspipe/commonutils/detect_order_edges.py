@@ -394,13 +394,6 @@ class detect_order_edges(_base_detect):
         cols_to_use = orderEdgePolyTable.columns.difference(orderPolyTable.columns)
         orderPolyTable = orderPolyTable.join(orderEdgePolyTable[cols_to_use])
 
-        # WRITE OUT THE FITS TO THE ORDER LOCATION TABLE
-        orderTablePath = self.write_order_table_to_file(
-            frame=self.flatFrame,
-            orderPolyTable=orderPolyTable,
-            orderMetaTable=orderMetaTable,
-        )
-
         allResiduals = np.concatenate(
             (
                 orderPixelTableLower[f"{self.axisA}coord_lower_fit_res"],
@@ -476,6 +469,13 @@ class detect_order_edges(_base_detect):
                 ],
                 ignore_index=True,
             )
+
+        # WRITE OUT THE FITS TO THE ORDER LOCATION TABLE, AFTER THE EDGE-FIT QCs ARE RECORDED SO IT CARRIES THEM
+        orderTablePath = self.write_order_table_to_file(
+            frame=self.flatFrame,
+            orderPolyTable=orderPolyTable,
+            orderMetaTable=orderMetaTable,
+        )
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
         self.log.print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
