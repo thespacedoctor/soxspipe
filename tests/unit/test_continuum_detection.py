@@ -239,6 +239,57 @@ def test_get_records_fitted_trace_qc_product_and_order_table(
     assert writeCalls[0]["orderMetaTable"] is orderMeta
 
 
+def test_get_warns_when_the_fitted_trace_is_extrapolated_across_a_sample_free_stretch(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public continuum seam reports an order whose accepted samples stop short of the order end (DY-1716)."""
+    # ARRANGE: ORDER 2 IS SAMPLED OVER 400-440 NM BUT ONLY 400-420 NM SURVIVES THE FIT
+    wavelengths = np.arange(400.0, 441.0)
+    detector = _detector(log, orderDeg=1, axisBDeg=1)
+    detector.orderPixelTable = pd.DataFrame(
+        {
+            "order": 2.0,
+            "wavelength": wavelengths,
+            "cont_x": 2.0,
+            "cont_y": wavelengths,
+            "gauss_stddev": 1.0,
+            "mask": False,
+        }
+    )
+    detector.coeff_dict = {}
+    detector.recipeName = "soxs-stare"
+    detector.inst = "SOXS"
+    detector.dateObs = "2024-01-02T00:00:00"
+    detector.settings = {"tune-pipeline": False}
+    detector.qc = pd.DataFrame({"qc_name": []})
+    detector.products = False
+    detector.noddingSequence = ""
+    detector.notFlattened = ""
+    detector.traceFrame = object()
+    detector.recipeSettings["max-unsampled-trace-fraction"] = 0.2
+
+    def fit_trace(**kwargs: object) -> tuple[list[float], pd.DataFrame, pd.DataFrame]:
+        fitted = kwargs["pixelList"]
+        fitted = fitted.loc[fitted["wavelength"] <= 420.0].copy()
+        fitted[f"{kwargs['axisACol']}_fit_res"] = 0.0
+        return [1.0, 2.0, 3.0, 4.0], fitted, pd.DataFrame()
+
+    monkeypatch.setattr(detector, "fit_global_polynomial", fit_trace)
+    monkeypatch.setattr(detector, "plot_results", lambda **kwargs: "/qc/continuum.pdf")
+    monkeypatch.setattr(detector, "build_order_metadata", lambda **kwargs: pd.DataFrame({"axis": ["x"]}))
+    monkeypatch.setattr(detector, "write_order_table_to_file", lambda **kwargs: "/products/orders.fits")
+
+    # ACT
+    detector.get()
+
+    # ASSERT
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "order 2" in warnings[0]
+    assert "420.0 nm and 440.0 nm" in warnings[0]
+
+
 def test_gaussian_slice_fit_recovers_trace_and_leaves_low_signal_unfitted(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -458,6 +509,197 @@ def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(
 
     assert detectionPercentage == pytest.approx(100.0)
     assert result.groupby("order").size().to_dict() == {1.0: 50, 2.0: 50, 3.0: 50, 4.0: 50}
+
+
+class _TraceFrame(np.ma.MaskedArray):
+    """A masked image that carries the empty `header` the sampler reads."""
+
+    header: dict = {}
+
+
+VIS_ORDER_CENTRES = {1.0: 60.0, 2.0: 150.0, 3.0: 240.0, 4.0: 330.0}
+VIS_ORDER_SAMPLE_COUNTS = {1.0: 30, 2.0: 50, 3.0: 100, 4.0: 30}
+VIS_TRACE_SIGMA = 1.2
+
+
+def _vis_samples() -> pd.DataFrame:
+    """Return the sample grid of four VIS orders, each one a vertical stripe at its own map position."""
+    frames = []
+    for order, count in VIS_ORDER_SAMPLE_COUNTS.items():
+        frames.append(
+            pd.DataFrame(
+                {
+                    "order": order,
+                    "wavelength": np.linspace(400.0, 400.0 + count, count),
+                    "fit_x": VIS_ORDER_CENTRES[order],
+                    "fit_y": np.linspace(10.0, 10.0 + count - 1, count),
+                }
+            )
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+def _vis_trace_frame(offsets: dict[float, float]) -> _TraceFrame:
+    """Return a noisy frame whose order traces sit `offsets[order]` pixels from the map position."""
+    rng = np.random.default_rng(1716)
+    columns = np.arange(400, dtype=float)
+    image = rng.normal(0.0, 1.0, (120, 400))
+    for order, centre in VIS_ORDER_CENTRES.items():
+        profile = 100.0 * np.exp(-0.5 * ((columns - centre - offsets[order]) / VIS_TRACE_SIGMA) ** 2)
+        image += profile[np.newaxis, :]
+    return np.ma.masked_array(image, mask=np.zeros(image.shape, dtype=bool)).view(_TraceFrame)
+
+
+def _vis_sampling_detector(log: object, offsets: dict[float, float]) -> detect_continuum:
+    """Return a SOXS VIS detector that samples the synthetic frame with the real slice fitter."""
+    detector = _detector(log)
+    detector.inst = "SOXS"
+    detector.arm = "VIS"
+    detector.recipeName = "soxs-stare"
+    detector.traceFrame = _vis_trace_frame(offsets)
+    detector.kw = lambda key: {"DPR_TYPE": "DPR TYPE", "WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
+    detector.recipeSettings.update({"slice-length": 70, "peak-sigma-limit": 3.0, "slice-width": 3})
+    detector.debug = False
+    detector.qc = pd.DataFrame()
+    detector.dateObs = "2024-01-02T03:04:05"
+    detector.sliceAxis = "x"
+    detector.sliceAntiAxis = "y"
+    detector.detectorParams = {"dispersion-axis": "x"}
+    detector.create_pixel_arrays = lambda: (_vis_samples(), 1, 1)
+    return detector
+
+
+def test_sample_trace_follows_u_and_g_traces_that_sit_6_5_px_apart_relative_to_the_map(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each VIS order gets its own shift and window, so a u trace 6.5 px from g keeps its samples (DY-1716)."""
+    # ARRANGE: THE LONGER G ORDER SETS THE MEDIAN SHIFT OF THE PAIR, AND THE U TRACE SITS 6.5 PX FROM IT
+    offsets = {1.0: 0.0, 2.0: 9.5, 3.0: 3.0, 4.0: 0.0}
+    detector = _vis_sampling_detector(log, offsets)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **_: None)
+
+    # ACT
+    result, _ = detector.sample_trace()
+
+    # ASSERT: EVERY ORDER IS DETECTED ALONG ITS FULL LENGTH, ON THE TRUE TRACE
+    for order, offset in offsets.items():
+        rows = result[result["order"] == order]
+        assert rows["cont_x"].notna().mean() >= 0.95, f"order {order:.0f} lost samples"
+        assert rows["cont_x"].median() == pytest.approx(VIS_ORDER_CENTRES[order] + offset, abs=0.2)
+
+
+def test_longest_unsampled_stretch_spans_the_gap_between_neighbouring_accepted_samples() -> None:
+    # ARRANGE: AN ORDER SAMPLED EVERY NM FROM 400 TO 440, WITH 410-434 NM NEVER ACCEPTED
+    sampled = np.arange(400.0, 441.0)
+    accepted = sampled[(sampled < 410.0) | (sampled > 434.0)]
+
+    # ACT
+    fraction, startNm, endNm = continuumModule.longest_unsampled_stretch(sampled, accepted)
+
+    # ASSERT: THE POLYNOMIAL MUST CROSS 409-435 NM WITHOUT A SAMPLE, 26 NM OF AN ORDER 40 NM LONG
+    assert (startNm, endNm) == (409.0, 435.0)
+    assert fraction == pytest.approx(26.0 / 40.0)
+
+
+def test_longest_unsampled_stretch_counts_the_ends_of_the_order() -> None:
+    # ARRANGE: NO SAMPLE IS ACCEPTED ABOVE 420 NM, SO THE FIT EXTRAPOLATES TO THE RED END
+    sampled = np.arange(400.0, 441.0)
+    accepted = sampled[sampled <= 420.0]
+
+    # ACT
+    fraction, startNm, endNm = continuumModule.longest_unsampled_stretch(sampled, accepted)
+
+    # ASSERT
+    assert (startNm, endNm) == (420.0, 440.0)
+    assert fraction == pytest.approx(0.5)
+
+
+def test_longest_unsampled_stretch_is_the_whole_order_when_no_sample_is_accepted() -> None:
+    # ARRANGE
+    sampled = np.arange(400.0, 441.0)
+
+    # ACT
+    fraction, startNm, endNm = continuumModule.longest_unsampled_stretch(sampled, np.array([]))
+
+    # ASSERT
+    assert (fraction, startNm, endNm) == (1.0, 400.0, 440.0)
+
+
+def _two_order_samples(gapOrder: float | None, gapStartNm: float = 410.0, gapEndNm: float = 434.0) -> tuple:
+    """Return the sampled and accepted tables of orders 2 and 3, with a sample-free stretch in `gapOrder`."""
+    sampled = pd.concat(
+        [pd.DataFrame({"order": order, "wavelength": np.arange(400.0, 441.0)}) for order in (2.0, 3.0)],
+        ignore_index=True,
+    )
+    isGap = (sampled["order"] == gapOrder) & sampled["wavelength"].between(gapStartNm, gapEndNm)
+    return sampled, sampled.loc[~isGap].reset_index(drop=True)
+
+
+def _extrapolation_detector(log: object, **recipeSettings: float) -> detect_continuum:
+    detector = _detector(log)
+    detector.recipeName = "soxs-stare"
+    detector.dateObs = "2024-01-02T03:04:05"
+    detector.qc = pd.DataFrame()
+    detector.recipeSettings.update(recipeSettings)
+    return detector
+
+
+def test_extrapolated_trace_warning_names_the_order_and_wavelength_range(log: object) -> None:
+    # ARRANGE: THE U ORDER (2) HAS NO ACCEPTED SAMPLE OVER 410-434 NM
+    detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
+    sampled, accepted = _two_order_samples(gapOrder=2.0)
+
+    # ACT
+    detector.warn_on_extrapolated_traces(sampled, accepted)
+
+    # ASSERT: ONE WARNING, FOR ORDER 2 ONLY
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "order 2" in warnings[0]
+    assert "409.0" in warnings[0]
+    assert "435.0" in warnings[0]
+
+
+def test_extrapolated_trace_warning_is_silent_on_a_normal_trace(log: object) -> None:
+    # ARRANGE: EVERY SAMPLE IS ACCEPTED
+    detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
+    sampled, accepted = _two_order_samples(gapOrder=None)
+
+    # ACT
+    detector.warn_on_extrapolated_traces(sampled, accepted)
+
+    # ASSERT
+    assert [message for level, message in log.messages if level == "warning"] == []
+
+
+def test_extrapolated_trace_check_records_the_longest_gap_of_each_order_as_a_qc(log: object) -> None:
+    # ARRANGE
+    detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
+    sampled, accepted = _two_order_samples(gapOrder=2.0)
+
+    # ACT
+    detector.warn_on_extrapolated_traces(sampled, accepted)
+
+    # ASSERT: A GAP OF 26 NM IN 40 AND THE 1 NM SAMPLE SPACING OF THE COMPLETE ORDER
+    qc = detector.qc.set_index("qc_name")
+    assert qc.loc["SAMPLES GAP MAX O2", "qc_value"] == 0.65
+    assert qc.loc["SAMPLES GAP MAX O3", "qc_value"] == 0.025
+    assert qc.loc["SAMPLES GAP MAX O2", "qc_order"] == 2
+    assert not qc["to_header"].any()
+    assert pd.api.types.is_numeric_dtype(detector.qc["qc_value"])
+
+
+def test_extrapolated_trace_check_falls_back_to_the_default_threshold_for_older_settings(log: object) -> None:
+    # ARRANGE: A WORKSPACE settings FILE WRITTEN BEFORE THE KEY EXISTED
+    detector = _extrapolation_detector(log)
+    sampled, accepted = _two_order_samples(gapOrder=2.0)
+
+    # ACT
+    detector.warn_on_extrapolated_traces(sampled, accepted)
+
+    # ASSERT
+    assert len([m for level, m in log.messages if level == "warning"]) == 1
 
 
 def _plot_ready_detector(tmp_path: Path, log: object, *, orderDeg: int = 0, axisBDeg: int = 1) -> detect_continuum:
