@@ -172,6 +172,9 @@ class base_recipe:
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc, self.products = self._empty_qc_and_product_tables(pd)
 
+        # THE COSMIC-RAY PIXELS L.A.COSMIC FLAGGED IN EACH RAW FRAME, WRITTEN OUT ONCE FRAME PREPARATION ENDS
+        self.cosmicRayMasks = []
+
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
@@ -474,7 +477,7 @@ class base_recipe:
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
                 self.generateReponseCurve = True
 
-        frame = self._clean_cosmic_rays(frame)
+        frame = self._clean_cosmic_rays(frame, filepath)
 
         filePath = self._write_prepared_frame(frame, filepath, save)
 
@@ -599,18 +602,25 @@ class base_recipe:
 
         return boolMask
 
-    def _clean_cosmic_rays(self, frame):
-        """*flag cosmic rays in the frame, if the recipe settings ask for it*
+    def _clean_cosmic_rays(self, frame, filepath):
+        """*flag cosmic rays in the frame, if the recipe settings ask for it, and keep the pixels newly flagged*
 
         **Key Arguments:**
 
         - ``frame`` -- the frame to clean (CCDData object)
+        - ``filepath`` -- the path of the raw frame it was read from
 
         **Return:**
 
         - ``frame`` -- the cleaned frame, or the frame unchanged when cleaning is switched off
+
+        The pixels L.A.Cosmic newly flagged, without the pixels already in the bad-pixel mask, are appended to
+        ``self.cosmicRayMasks`` for `_write_cosmic_ray_mask_product`.
         """
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.cosmic_ray_mask import new_cosmic_ray_mask
+
+        kw = self.kw
 
         if (
             "use_lacosmic" in self.recipeSettings
@@ -618,8 +628,7 @@ class base_recipe:
             and "lacosmic-sigma" in self.recipeSettings[self.arm.lower()]
             and self.recipeSettings[self.arm.lower()]["lacosmic-sigma"]
         ):
-            # oldCount = frame.mask.sum()
-            # oldMask = frame.mask.copy()
+            maskBefore = frame.mask.copy()
 
             from ccdproc import cosmicray_lacosmic
 
@@ -634,9 +643,17 @@ class base_recipe:
                 cleantype="meanmask",
             )
             toolkit.frame_to_32(frame)
-            # newCount = self.skySubtractedFrame.mask.sum()
-            # self.laCosmicClippedCount = newCount - oldCount
-            # frame.mask = oldMask | frame.mask
+
+            mjdObs = frame.header.get(kw("MJDOBS"))
+            self.cosmicRayMasks.append(
+                {
+                    "fileName": os.path.basename(filepath) if isinstance(filepath, str) else "unknown",
+                    "mjdObs": None if mjdObs is None else float(mjdObs),
+                    "dateObs": frame.header.get(kw("DATE_OBS")),
+                    "mask": new_cosmic_ray_mask(maskBefore, frame.mask),
+                }
+            )
+
             from soxspipe.commonutils.toolkit import quicklook_image
 
             quicklook_image(
@@ -652,6 +669,49 @@ class base_recipe:
             )
 
         return frame
+
+    def _write_cosmic_ray_mask_product(self):
+        """*write the cosmic-ray masks of the cleaned frames as one QC product, and report the pixels flagged*
+
+        Writes nothing when no frame was cleaned. Otherwise writes ``<sof name>_LACOSMIC_MASK.fits`` to the QC
+        directory, one image extension per cleaned frame in observation order. Adds it to the products with the
+        label ``QC``, and adds the total number of pixels flagged, over all frames, as the QC
+        ``COSMIC RAY PIX NUM``. The number in each frame is in the header of its extension.
+        """
+        if not self.cosmicRayMasks:
+            return
+
+        from soxspipe.commonutils.cosmic_ray_mask import cosmic_ray_mask_hdulist
+        from soxspipe.commonutils.toolkit import utcnow_string
+
+        # OBSERVATION ORDER, NOT THE ORDER THE FRAMES WERE LISTED IN, SO THE EXTENSIONS ARE ALWAYS IN THE SAME ORDER
+        entries = sorted(
+            self.cosmicRayMasks,
+            key=lambda entry: (float("inf") if entry["mjdObs"] is None else entry["mjdObs"], entry["fileName"]),
+        )
+        filename = f"{self.sofName}_LACOSMIC_MASK.fits"
+        filePath = os.path.join(self.qcDir, filename)
+        cosmic_ray_mask_hdulist(entries).writeto(filePath, overwrite=True)
+
+        utcnow = utcnow_string()
+        self.add_product(
+            productLabel="LACOSMIC_MASK",
+            fileName=filename,
+            filePath=filePath,
+            productDesc="Pixels L.A.Cosmic flagged as cosmic rays in each raw frame, one image extension per frame",
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="QC",
+            obsDateUtc=entries[0]["dateObs"],
+        )
+        self.add_qc(
+            qcName="COSMIC RAY PIX NUM",
+            qcValue=sum(int(entry["mask"].sum()) for entry in entries),
+            qcComment="Number of pixels L.A.Cosmic flagged as cosmic rays, over all raw frames",
+            reductionDateUtc=utcnow,
+            qcUnit="pixel",
+            toHeader=False,
+        )
 
     def _write_prepared_frame(self, frame, filepath, save):
         """*stamp the prepared frame with its preparation time and write it to disk*
@@ -781,6 +841,7 @@ class base_recipe:
         preframes = []
         preframes[:] = [self._prepare_single_frame(frame=frame, save=save) for frame in filepaths]
         preframes = [f for f in preframes if f is not None]
+        self._write_cosmic_ray_mask_product()
 
         sof = set_of_files(
             log=self.log,

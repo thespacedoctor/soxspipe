@@ -146,19 +146,25 @@ def test_prepare_frames_preserves_processing_order_then_sorts_by_observation_tim
     sourcePaths = [str(laterPath), str(earlierPath)]
     recipe.inputFrames = SimpleNamespace(files_filtered=lambda include_path: sourcePaths.copy())
     recipe.recipeSettings = {"use_lacosmic": False}
+    recipe.cosmicRayMasks = []
     recipe.verbose = False
     recipe.arm = "VIS"
     processedPaths: list[str] = []
+    steps: list[str] = []
 
     def prepare(frame: str, save: bool) -> str:
         processedPaths.append(frame)
+        steps.append("prepare")
         return frame
 
     recipe._prepare_single_frame = prepare
+    recipe._write_cosmic_ray_mask_product = lambda: steps.append("write cosmic-ray masks")
 
     collection = recipe.prepare_frames()
 
     assert processedPaths == sourcePaths
+    # THE MASKS ARE WRITTEN ONCE, AFTER EVERY FRAME HAS BEEN CLEANED
+    assert steps == ["prepare", "prepare", "write cosmic-ray masks"]
     assert list(collection.summary[recipe.kw("MJDOBS")]) == [60_000.0, 60_001.0]
     assert list(collection.summary["filename"]) == ["earlier.fits", "later.fits"]
 
