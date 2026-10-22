@@ -60,6 +60,15 @@ When `stack_before_extraction` is `False`, the recipe extracts each AB cycle on 
 
 Standard stars are the exception. The `soxs_nod_std` recipe, and any flux-standard input, always aligns and stacks the frames, even when the setting is `False`. The recipe logs a warning when this happens. This gives one response curve for each standard star SOF.
 
+### Extract each cycle with `--no-stack`
+
+The `--no-stack` option sets `stack_before_extraction` to `False` for one run. It does not change your settings file. It works on `soxspipe reduce all`, `soxspipe reduce sof`, `soxspipe nod` and `soxspipe nod_std`. It has no short form.
+
+- For a science SOF, the recipe extracts each AB cycle on its own, as described above.
+- For a standard star SOF, the stacked pass runs first and writes the response curve (`<sof name>_RESP.fits`). If the SOF has two or more cycles, a second pass then extracts each cycle on its own, under the name `<sof name>_CYCLES`, for inspection. This pass makes no response curve and no flux calibration. The recipe logs no warning.
+- If any pass fails a QC, the whole SOF fails, and science SOFs do not use its response curve.
+- The reducer skips SOFs that it already reduced. Add `-x` (overwrite) to reduce them again.
+
 Note a boxcar extraction is also preformed alongside the Horne extraction. Use the `horne-extraction-slit-length` to control the size of the aperture used to preform the boxcar extraction on the object trace.
 
 ## Output

@@ -198,7 +198,14 @@ class soxs_offset(soxs_nod):
         self._check_on_off_balance(allFrameONOffsets, allFrameOFFOffsets)
 
         forceFailure = False
-        if self._should_align_and_stack():
+        shouldStack = self._should_align_and_stack()
+        # THE ALIGNMENT REPLACES THE ON FRAMES OF THE STACKED PASS, SO THE INSPECTION PASS KEEPS THE ORIGINALS FIRST
+        cycleFrames = self._copy_frames_for_cycle_pass(
+            allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, shouldStack
+        )
+        # A ROW LEFT BY AN EARLIER RUN WOULD DECIDE THE STATUS OF THIS SOF IF THIS RUN'S CYCLE PASS FAILS OR IS EMPTY
+        self._delete_stale_cycle_qc_rows()
+        if shouldStack:
             allFrameON = self._align_on_frames(allFrameON, allFrameOFF, allFrameONNames)
             stackedSpectrum, productPath, orderJoins, forceFailure = self._reduce_stacked_offset_pair(
                 allFrameON,
@@ -226,11 +233,32 @@ class soxs_offset(soxs_nod):
             productPath = filePath_fluxcal
 
         qcTable = self.report_output()
+        if cycleFrames:
+            qcTable = self._extract_each_cycle_as_well(cycleFrames, qcTable, orderTablePath, master_flat)
         self.clean_up(forceFail=forceFailure)
 
         self.log.debug("completed the ``produce_product`` method")
 
         return productPath, qcTable
+
+    def _inspect_each_cycle(self, cycleFrames, orderTablePath, master_flat):
+        """*extract, plot and report each ON-OFF cycle on its own, without flux calibration or a response curve*
+
+        **Key Arguments:**
+
+        - ``cycleFrames`` -- the ON frames, OFF frames and their file names
+        - ``orderTablePath`` -- the path to the order table
+        - ``master_flat`` -- the master flat, or False
+
+        **Return:**
+
+        - ``qcTable`` -- the QCs of the cycle pass
+        """
+        stackedSpectrum, _, orderJoins = self._reduce_each_offset_cycle(
+            *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
+        )
+        self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
+        return self.report_output()
 
     def _align_on_frames(self, allFrameON, allFrameOFF, allFrameONNames):
         """*align the ON frames to each other along the slit; the OFF frames are stacked without alignment*

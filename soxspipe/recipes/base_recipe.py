@@ -2766,6 +2766,36 @@ class base_recipe:
         self.log.debug("completed the ``update_fits_keywords`` method")
         return
 
+    @staticmethod
+    def _concat_qc_tables(qcTables):
+        """*join QC tables into one, skipping empty tables so their all-NA columns do not decide the dtypes*
+
+        **Key Arguments:**
+
+        - ``qcTables`` -- the QC tables to join
+
+        **Return:**
+
+        - ``qcTable`` -- the joined QC table. Empty when every table is empty, or when there are no tables
+        """
+        import pandas as pd
+
+        if not qcTables:
+            return pd.DataFrame()
+        return pd.concat([table for table in qcTables if len(table.index)] or qcTables, ignore_index=True)
+
+    def _stacking_override_requested(self):
+        """*check whether the user asked on the command line to extract each frame or cycle on its own (``--no-stack``)*
+
+        A ``stack_before_extraction`` value in the settings file does not count. Only the command-line option sets the
+        ``no-stack`` setting, and only then may a standard star be extracted frame by frame or cycle by cycle.
+
+        **Return:**
+
+        - ``isRequested`` -- True when ``--no-stack`` was given
+        """
+        return bool(self.settings.get("no-stack", False))
+
     def get_recipe_settings(self):
         """*get the recipe and arm specific settings*
 

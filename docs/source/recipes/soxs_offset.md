@@ -28,6 +28,15 @@ The recipe resamples the ON frames through the 2D map so the object lines up alo
 
 When `stack_before_extraction` is `False`, the recipe extracts each ON/OFF cycle on its own and combines the extracted spectra. Standard stars (the `-std` recipes) always align and stack, even when the setting is `False`, with a warning.
 
+### Extract each cycle with `--no-stack`
+
+The `--no-stack` option sets `stack_before_extraction` to `False` for one run. It does not change your settings file. It works on `soxspipe reduce all`, `soxspipe reduce sof` and `soxspipe offset`. It has no short form.
+
+- For a science SOF, the recipe extracts each ON/OFF cycle on its own.
+- For a standard star SOF, the stacked pass runs first and writes the response curve. If the SOF has two or more cycles, a second pass then extracts each cycle on its own, under the name `<sof name>_CYCLES`, for inspection. This pass makes no response curve and no flux calibration. The recipe logs no warning.
+- If any pass fails a QC, the whole SOF fails, and science SOFs do not use its response curve.
+- The reducer skips SOFs that it already reduced. Add `-x` (overwrite) to reduce them again.
+
 
 :::{figure-md} soxs_offset_diagram
 ![](soxs_offset.png){width=600px}

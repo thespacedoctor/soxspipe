@@ -143,6 +143,57 @@ def _configure_nodding_recipe(
     recipe.scienceHeaders = False
 
 
+def _record_nodding_passes(recipe: Any, monkeypatch: pytest.MonkeyPatch, tmpPath: Path) -> dict[str, list[Any]]:
+    """Wrap the stubbed collaborators so each call records the SOF name it ran under (DY-1723).
+
+    Call this after `_patch_nodding_collaborators`. Every pass reports its own QC row, and each stacked extraction
+    returns a path named after the SOF, so two passes that shared a name would also share a product path.
+    """
+    seen: dict[str, list[Any]] = {
+        "extract": [],
+        "stack": [],
+        "report": [],
+        "cleanUpSofs": [],
+        "cleanUpTemplates": [],
+        "notesAtPlot": [],
+    }
+    extract = recipe.process_single_ab_nodding_cycle
+    stack = recipe.stack_extractions
+    plot = import_module("soxspipe.commonutils.toolkit").plot_merged_spectrum_qc
+    cleanUp = recipe.clean_up
+
+    def recording_extract(**kwargs: object) -> Any:
+        seen["extract"].append((recipe.sofName, kwargs["locationSetIndex"], kwargs.get("notFlattened", False)))
+        if not recipe.sofName.endswith("_CYCLES"):
+            recipe.extractionNotes = ("note from the stacked pass",)
+        return extract(**kwargs)
+
+    def recording_stack(*args: object, **kwargs: object) -> tuple[Any, str]:
+        seen["stack"].append(recipe.sofName)
+        stacked, _ = stack(*args, **kwargs)
+        return stacked, str(tmpPath / f"{recipe.sofName}_EXTRACTED_MERGED.fits")
+
+    def recording_report() -> pd.DataFrame:
+        seen["report"].append(recipe.sofName)
+        return pd.DataFrame({"qc_name": ["QC"], "sof_name": [f"{recipe.sofName}.sof"], "qc_flag": ["pass"]})
+
+    def recording_plot(**kwargs: object) -> Any:
+        seen["notesAtPlot"].append(kwargs["extractionNotes"])
+        return plot(**kwargs)
+
+    def recording_clean_up(**kwargs: object) -> None:
+        seen["cleanUpSofs"].append(sorted(recipe.qc["sof_name"]) if "sof_name" in recipe.qc else None)
+        seen["cleanUpTemplates"].append(recipe.sofName)
+        cleanUp(**kwargs)
+
+    monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", recording_extract)
+    monkeypatch.setattr(recipe, "stack_extractions", recording_stack)
+    monkeypatch.setattr(recipe, "report_output", recording_report)
+    monkeypatch.setattr(recipe, "clean_up", recording_clean_up)
+    monkeypatch.setattr(import_module("soxspipe.commonutils.toolkit"), "plot_merged_spectrum_qc", recording_plot)
+    return seen
+
+
 def _patch_nodding_collaborators(
     recipe: Any,
     *,

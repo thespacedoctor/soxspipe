@@ -173,10 +173,15 @@ def _validate_session_id(sessionId):
     return sessionId
 
 
-# A STARE SOF EXTRACTED FRAME BY FRAME REPORTS EACH FRAME'S QCS UNDER `<sof>_F<N>.sof` (DY-1611). THIS SELECTS THE
-# PARENT `<sof>.sof` OF EVERY SUCH QC ROW, SO A FRAME'S QC DECIDES THE STATUS OF THE SOF THAT PRODUCED IT. A ROW
-# COUNTS ONLY WHEN ITS NAME, LESS `.sof`, ENDS IN `_F` FOLLOWED BY ONE OR MORE DIGITS. EVERY PART IS A FIXED LITERAL;
-# NO VALUE FROM A FILE OR SETTING ENTERS THE SQL TEXT
+# A SOF'S SUB-SOF QC ROWS DECIDE THE STATUS OF THE SOF THAT PRODUCED THEM. TWO NAMES COUNT, AND THIS SELECTS THE PARENT
+# `<sof>.sof` OF EACH QC ROW THAT HAS ONE:
+# - `<sof>_F<N>.sof`, THE QCS OF FRAME N OF A STARE SOF EXTRACTED FRAME BY FRAME (DY-1611). THE NAME, LESS `.sof`,
+#   MUST END IN `_F` FOLLOWED BY ONE OR MORE DIGITS
+# - `<sof>_CYCLES.sof`, THE QCS OF THE PER-CYCLE INSPECTION PASS OF A NOD OR OFFSET STANDARD STAR REDUCED WITH
+#   `--no-stack` (DY-1723). THE NAME, LESS `.sof`, MUST END IN EXACTLY `_CYCLES`. THE SUFFIX IS REPEATED HERE AS A
+#   LITERAL (IT IS `CYCLE_INSPECTION_SUFFIX` IN `soxspipe/recipes/soxs_nod.py`) BECAUSE THIS SQL IS BUILT FROM FIXED
+#   TEXT WHEN THE MODULE LOADS AND THE COMMON UTILITIES DO NOT IMPORT THE RECIPES. A TEST KEEPS THE TWO EQUAL
+# EVERY PART IS A FIXED LITERAL; NO VALUE FROM A FILE OR SETTING ENTERS THE SQL TEXT
 _FRAME_QC_STEM = "substr(sof_name, 1, length(sof_name) - 4)"
 _FRAME_QC_TRIMMED = f"rtrim({_FRAME_QC_STEM}, '0123456789')"
 _FRAME_QC_PARENT_SOFS = (
@@ -184,6 +189,13 @@ _FRAME_QC_PARENT_SOFS = (
     f"where sof_name like '%.sof' and {_FRAME_QC_TRIMMED} != {_FRAME_QC_STEM} "
     f"and substr({_FRAME_QC_TRIMMED}, -2) = '_F'"
 )
+_CYCLES_QC_PARENT_SOFS = (
+    f"select substr({_FRAME_QC_STEM}, 1, length({_FRAME_QC_STEM}) - 7) || '.sof' from quality_control "  # noqa: S608
+    f"where sof_name like '%.sof' and substr({_FRAME_QC_STEM}, -7) = '_CYCLES'"
+)
+# THE CALLER FORMATS `{extra}` WITH A FIXED LITERAL CONDITION (OR NOTHING) THAT IS APPENDED TO BOTH SELECTS. IT MUST
+# NEVER BE A VALUE FROM DATA, A FILE OR A SETTING
+_SUB_QC_PARENT_SOFS = f"{_FRAME_QC_PARENT_SOFS}{{extra}} union {_CYCLES_QC_PARENT_SOFS}{{extra}}"
 
 
 class data_organiser:
@@ -665,7 +677,7 @@ class data_organiser:
             (
                 f'update product_frames set {statusColumn} = "pass" '  # noqa: S608
                 f'where {statusColumn} = "fail" and (sof in (select sof_name from quality_control) '
-                f"or sof in ({_FRAME_QC_PARENT_SOFS}));",
+                f"or sof in ({_SUB_QC_PARENT_SOFS.format(extra='')}));",
                 (),
             ),
             (
@@ -722,7 +734,7 @@ class data_organiser:
             (
                 f'update product_frames set {statusColumn} = "fail" '  # noqa: S608
                 'where sof in (select sof_name from quality_control where qc_flag = "fail") '
-                f"""or sof in ({_FRAME_QC_PARENT_SOFS} and qc_flag = "fail");""",
+                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=' and qc_flag = "fail"')});""",
                 (),
             ),
         ]

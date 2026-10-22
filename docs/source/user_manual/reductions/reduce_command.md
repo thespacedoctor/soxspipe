@@ -28,6 +28,23 @@ Each recipe generates products written to the products folder within the workspa
 Recipe products, files and plots are written to the workspace `reduced` folder.
 :::
 
+## Extract each frame or cycle on its own
+
+By default, stare, nod and offset SOFs are stacked before extraction (the `stack_before_extraction` setting). To extract each frame or cycle on its own for one run, add the `--no-stack` option:
+
+```bash
+soxspipe reduce all . --no-stack
+```
+
+The option does not change your settings file. It also works with `soxspipe reduce sof`, and with the `stare`, `stare_std`, `nod`, `nod_std` and `offset` recipe commands. It has no short form.
+
+- Science SOFs: a stare SOF extracts each frame (`<sof>_F<N>`). Nod and offset SOFs extract each cycle.
+- Standard star SOFs: the recipe first runs the normal stacked pass, which writes the response curve (`<sof>_RESP.fits`) that later science SOFs read. A stare standard then also extracts each frame as `<sof>_F<N>`, each with its own response curve and QCs. A nod or offset standard then also runs a per-cycle inspection pass under `<sof>_CYCLES`, which makes no response curve and no flux calibration.
+- If any pass fails a QC, the whole SOF fails, and science SOFs do not use its response curve.
+- The reducer skips SOFs that it already reduced. Add `-x` (overwrite) to reduce them again.
+
+If you set `stack_before_extraction: False` in the settings file and do not use `--no-stack`, science SOFs are extracted frame by frame or cycle by cycle. Standard stars are still stacked, and the recipe logs a warning.
+
 ## Speed up Reductions with Multiprocessing
 
 If you have a large dataset, you can dramatically speed up reductions by using the `--multiprocess` (`-m`) flag. In this mode, the reduce command will reduce recipes in parallel. Instead of seeing each recipe's output logs in the terminal, the user will see a progress bar showing the pipeline's progress as it reduces all the sof files for each recipe.
