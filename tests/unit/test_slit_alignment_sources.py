@@ -6,13 +6,8 @@ import numpy as np
 import pytest
 from astropy.nddata import CCDData
 
-from soxspipe.commonutils.slit_alignment import (
-    _interpolate,
-    _newton_step,
-    _order_sources,
-    build_two_d_map_images,
-    shift_frame_along_slit,
-)
+from soxspipe.commonutils.slit_alignment import build_two_d_map_images, shift_frame_along_slit
+from soxspipe.commonutils.slit_alignment_sources import _interpolate, _newton_step, _order_sources
 from tests.factories.slit_alignment import PIXEL_ARCSEC
 
 pytestmark = pytest.mark.unit
@@ -28,16 +23,23 @@ NM_PER_ROW = 0.02
 NM_PER_COLUMN = 0.004
 NM_PER_COLUMN_SQUARED = 4e-5
 NM_PER_ROW_COLUMN = 2e-5
-# A SHIFT OF SEVERAL ARCSEC, ABOUT 15 COLUMNS, LIKE A NOD THROW
+# SHIFTS OF SEVERAL ARCSEC (15 TO 23 COLUMNS), LIKE A NOD THROW. 4.6 ARCSEC IS THE THROW OF DY-1679'S STANDARD
+SHIFTS_ARCSEC = [3.0, -3.0, 4.6]
 SHIFT_ARCSEC = 3.0
-# THE WAVELENGTH TOLERANCE IS ABOUT 1/40 OF A ROW AND ABOUT THE FLOAT32 PRECISION OF THE WAVELENGTH IMAGE
+# THE WAVELENGTH TOLERANCE IS ABOUT 1/40 OF A ROW AND ABOUT 8 TIMES THE FLOAT32 PRECISION OF THE WAVELENGTH IMAGE
 WAVELENGTH_TOLERANCE_NM = 5e-4
 SLIT_TOLERANCE_ARCSEC = 2e-3
 
 
+def _grid() -> tuple[np.ndarray, np.ndarray]:
+    """The (rows, columns) index grids of the test detector."""
+    rows, columns = np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]]
+    return rows, columns
+
+
 def _tilted_curved_map():
     """A one-order map whose wavelength depends on the column and whose slit coordinate is curved and tilted."""
-    rows, columns = np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]]
+    rows, columns = _grid()
     offset = columns - CENTRE_COLUMN
     slit = PIXEL_ARCSEC * (offset + STRETCH * offset**2) + SLIT_PER_ROW * (rows - SHAPE[0] / 2)
     wavelength = (
@@ -50,42 +52,77 @@ def _tilted_curved_map():
     return build_two_d_map_images(wavelength, slit, np.ones(SHAPE))
 
 
-def _interior_pixels(mapImages, targets, sources):
-    """The mask of target pixels whose source lies well inside the detector."""
+def _interior_pixels(sources: list[np.ndarray]) -> np.ndarray:
+    """The mask of target pixels whose source and its bilinear stencil lie well inside the detector."""
     rows, columns = sources
     return (rows > 2) & (rows < SHAPE[0] - 3) & (columns > 2) & (columns < SHAPE[1] - 3)
 
 
-def test_a_shifted_source_keeps_the_target_wavelength_on_a_tilted_curved_map() -> None:
+@pytest.mark.parametrize("shift", SHIFTS_ARCSEC)
+def test_a_shifted_source_keeps_the_target_wavelength_on_a_tilted_curved_map(shift: float) -> None:
     # ARRANGE: THE WAVELENGTH GRADIENT HAS A COLUMN COMPONENT, SO A SLIT-ONLY STEP DRIFTS IN WAVELENGTH
     mapImages = _tilted_curved_map()
 
     # ACT
-    targets, sources = _order_sources(mapImages, 1, SHIFT_ARCSEC)
+    targets, sources = _order_sources(mapImages, 1, shift)
 
     # ASSERT
-    isInterior = _interior_pixels(mapImages, targets, sources)
+    isInterior = _interior_pixels(sources)
     wavelengthError = _interpolate(mapImages.wavelength, sources) - mapImages.wavelength[targets]
     assert isInterior.sum() > 1000
     assert np.abs(wavelengthError[isInterior]).max() < WAVELENGTH_TOLERANCE_NM
 
 
-def test_a_shifted_source_lies_the_shift_above_the_target_in_slit_coordinate_on_a_tilted_curved_map() -> None:
+@pytest.mark.parametrize("shift", SHIFTS_ARCSEC)
+def test_a_shifted_source_lies_the_shift_above_the_target_in_slit_coordinate_on_a_tilted_curved_map(
+    shift: float,
+) -> None:
     # ARRANGE
     mapImages = _tilted_curved_map()
 
     # ACT
-    targets, sources = _order_sources(mapImages, 1, SHIFT_ARCSEC)
+    targets, sources = _order_sources(mapImages, 1, shift)
 
     # ASSERT
-    isInterior = _interior_pixels(mapImages, targets, sources)
-    slitError = _interpolate(mapImages.slit, sources) - (mapImages.slit[targets] + SHIFT_ARCSEC)
+    isInterior = _interior_pixels(sources)
+    slitError = _interpolate(mapImages.slit, sources) - (mapImages.slit[targets] + shift)
+    assert isInterior.sum() > 1000
     assert np.abs(slitError[isInterior]).max() < SLIT_TOLERANCE_ARCSEC
+
+
+def test_a_source_next_to_the_order_edge_is_not_thrown_far_by_the_zero_wavelength_outside_the_order() -> None:
+    # ARRANGE: THE ORDER FILLS COLUMNS 20 TO 99. AS IN THE REAL 2D MAP, THE WAVELENGTH AND SLIT ARE ZERO OUTSIDE IT
+    rows, columns = _grid()
+    isOrder = (columns >= 20) & (columns < 100)
+    wavelength = np.where(isOrder, 1000.0 + NM_PER_ROW * rows, 0.0)
+    slit = np.where(isOrder, PIXEL_ARCSEC * (columns - CENTRE_COLUMN), 0.0)
+    mapImages = build_two_d_map_images(wavelength, slit, np.where(isOrder, 1.0, 0.0))
+
+    # ACT
+    targets, (sourceRows, sourceColumns) = _order_sources(mapImages, 1, SHIFT_ARCSEC)
+
+    # ASSERT: EVERY SOURCE STAYS WITHIN A PIXEL OF THE ANALYTIC ONE, THE SAME ROW AND THE SHIFT AWAY IN COLUMNS
+    np.testing.assert_allclose(sourceRows, targets[0], atol=1)
+    np.testing.assert_allclose(sourceColumns, targets[1] + SHIFT_ARCSEC / PIXEL_ARCSEC, atol=1)
+
+
+def test_the_wavelength_image_is_not_a_number_outside_the_orders() -> None:
+    # ARRANGE: THE REAL 2D MAP HOLDS ZERO WAVELENGTH OUTSIDE THE ORDERS
+    rows, columns = _grid()
+    isOrder = columns < 60
+    wavelength = np.where(isOrder, 1000.0 + NM_PER_ROW * rows, 0.0)
+
+    # ACT
+    mapImages = build_two_d_map_images(wavelength, 0.2 * columns, np.where(isOrder, 1.0, 0.0))
+
+    # ASSERT
+    assert np.isnan(mapImages.wavelength[~isOrder]).all()
+    assert np.isfinite(mapImages.wavelength[isOrder]).all()
 
 
 def test_a_pixel_with_parallel_wavelength_and_slit_gradients_is_flagged_bad_not_given_a_finite_wrong_value() -> None:
     # ARRANGE: THE WAVELENGTH AND SLIT IMAGES VARY ONLY ALONG THE COLUMNS, SO THE 2X2 JACOBIAN IS SINGULAR
-    rows, columns = np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]]
+    _, columns = _grid()
     mapImages = build_two_d_map_images(
         1000.0 + 0.02 * columns, PIXEL_ARCSEC * (columns - CENTRE_COLUMN), np.ones(SHAPE)
     )
@@ -101,7 +138,7 @@ def test_a_pixel_with_parallel_wavelength_and_slit_gradients_is_flagged_bad_not_
 
 def test_a_well_conditioned_map_with_a_slit_aligned_to_the_columns_still_shifts_by_the_slit_step() -> None:
     # ARRANGE: THE SLIT RUNS ALONG THE COLUMNS AND THE WAVELENGTH ALONG THE ROWS, SO THE JACOBIAN IS DIAGONAL
-    rows, columns = np.mgrid[0 : SHAPE[0], 0 : SHAPE[1]]
+    rows, columns = _grid()
     mapImages = build_two_d_map_images(1000.0 + 0.02 * rows, PIXEL_ARCSEC * (columns - CENTRE_COLUMN), np.ones(SHAPE))
 
     # ACT
