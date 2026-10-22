@@ -100,6 +100,7 @@ def _build_response_product(tmp_path: Path, log: object, monkeypatch: pytest.Mon
         startNightDate="2024-01-02",
         stdNotFlatExtractionPath=str(unflattenedPath),
         orderJoins={"1-3": 600.0},
+        airmass=1.0,
     )
     response.get()
     return tmp_path / "products" / "SYNTHETIC_RESP.fits"

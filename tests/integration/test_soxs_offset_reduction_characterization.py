@@ -318,6 +318,38 @@ def test_a_single_location_standard_builds_a_response_from_an_unflattened_extrac
     assert captured["clean_up"] == [{"forceFail": "synthetic response failure"}]
 
 
+def test_the_response_of_a_standard_uses_the_mean_airmass_of_the_on_frames_only(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The OFF frames are sky only, so their airmass does not enter the response curve (DY-1713)."""
+    # ARRANGE
+    headers = [
+        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 1.7, "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},
+    ]
+    recipe, _ = _offset_recipe(log, tmp_path, headers)
+    recipe.generateReponseCurve = True
+    _patch(recipe, monkeypatch, tmp_path)
+    responseArguments: list[dict[str, object]] = []
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            responseArguments.append(kwargs)
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+            return recipe.qc, recipe.products, False
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", FakeResponse)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: THE ON FRAME'S START AND END MIDPOINT; WITH THE OFF FRAME IT WOULD BE (300 x 1.2 + 60 x 1.8) / 360
+    assert responseArguments[0]["airmass"] == pytest.approx(1.2)
+
+
 def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_path(
     log: Any,
     tmp_path: Path,

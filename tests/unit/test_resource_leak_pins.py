@@ -414,6 +414,7 @@ def test_response_function_closes_the_standard_extraction_file(
             sofName="SYNTHETIC",
             startNightDate="2024-01-02",
             orderJoins=["12"],
+            airmass=1.2,
         )
         gc.collect()
 

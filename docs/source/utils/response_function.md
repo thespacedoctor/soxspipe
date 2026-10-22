@@ -10,7 +10,7 @@ The general algorithm and steps performed by [`response_function`](#soxspipe.com
 The algorithm used to compute the spectrograph's response function.
 :::
 
-In detail, this utility first determines the average airmass at which the standard star, provided as input, has been observed. Then, it loads the standard extinction curve, supplied as a FITS table with wavelength and $mag_{airmass}$ for the observing site (La Silla for NTT/SOXS), and corrects the observed flux (in counts) accordingly, applying the formula:
+In detail, this utility first takes the airmass at which the standard star was observed. The recipe passes it in: it is the same mean airmass that [`flux_calibration`](flux_calibration.md) uses, over every raw frame that contributes to the standard's extraction (all frames of a stare stack, the A and B frames of a nod, and only the ON frames of an offset). A UVB or VIS standard with no known airmass stops with an error. Then, it loads the standard extinction curve, supplied as a FITS table with wavelength and $mag_{airmass}$ for the observing site (La Silla for NTT/SOXS), and corrects the observed flux (in counts) accordingly, applying the formula:
 
 $$
 fluxCorrected_{\lambda} = fluxObserved_{\lambda} \times 10^{AM \times mag_{airmass}}

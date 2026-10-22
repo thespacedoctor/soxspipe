@@ -992,7 +992,7 @@ class soxs_nod(base_recipe):
         **Key Arguments:**
 
         - ``allFrameA`` -- the A frames
-        - ``allFrameB`` -- the B frames
+        - ``allFrameB`` -- the B frames. A response curve uses the mean airmass of every A and B frame
         - ``orderTablePath`` -- the path to the order table
         - ``master_flat`` -- the master flat, or False
         - ``shiftAndAdd`` -- the ``shift_and_add_plan`` that combines the two differences, or *None*. Default *None*
@@ -1041,6 +1041,7 @@ class soxs_nod(base_recipe):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
+            from soxspipe.commonutils.sequence_airmass import mean_airmass
 
             mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
                 aFrame=aFrame,
@@ -1069,6 +1070,7 @@ class soxs_nod(base_recipe):
                 startNightDate=self.startNightDate,
                 stdNotFlatExtractionPath=extractionPath_notflat,
                 orderJoins=orderJoins,
+                airmass=mean_airmass([frame.header for frame in allFrameA + allFrameB], self.kw, self.log),
             )
             self.qc, self.products, forceFailure = response.get()
 

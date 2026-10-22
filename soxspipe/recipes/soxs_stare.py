@@ -632,6 +632,7 @@ class soxs_stare(base_recipe):
                     extractionPath,
                     orderJoins,
                     optimalExtractor.flatPassHandoff,
+                    objectFrames=allObjectFrames,
                 )
                 or slitEdgeSpill
             )
@@ -1314,6 +1315,8 @@ class soxs_stare(base_recipe):
         extractionPath,
         orderJoins,
         flatPass=None,
+        *,
+        objectFrames,
     ):
         """*extract the unflattened standard-star spectrum and compute the response function from it*
 
@@ -1329,6 +1332,8 @@ class soxs_stare(base_recipe):
         - ``orderJoins`` -- the order joins of the flat-fielded extraction
         - ``flatPass`` -- the flat-fielded extraction's ``FlatPassHandoff``, whose sky shifts the unflattened
           extraction applies instead of tuning its own (DY-1680). Default *None*
+        - ``objectFrames`` -- the raw standard-star frames stacked into the extraction; the response uses their mean
+          airmass, as flux calibration does (DY-1713)
 
         **Return:**
 
@@ -1360,6 +1365,7 @@ class soxs_stare(base_recipe):
 
         # GETTING THE RESPONSE
         from soxspipe.commonutils import response_function
+        from soxspipe.commonutils.sequence_airmass import mean_airmass
 
         self.log.print("# CALCULATING RESPONSE FUNCTION\n")
         response = response_function(
@@ -1373,6 +1379,7 @@ class soxs_stare(base_recipe):
             startNightDate=self.startNightDate,
             stdNotFlatExtractionPath=extractionPath_notflat,
             orderJoins=orderJoins,
+            airmass=mean_airmass([frame.header for frame in objectFrames], self.kw, self.log),
         )
         self.qc, self.products, forceFailure = response.get()
 
