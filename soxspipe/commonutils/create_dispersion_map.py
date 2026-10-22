@@ -74,6 +74,9 @@ os.environ["TERM"] = "vt100"
 # THAN THE ~1e-16 NOISE A LEAST-SQUARES SOLVE VARIES BY BETWEEN MACHINES
 RESIDUAL_QUANTISATION_DECIMALS = 9
 
+# NUMBER OF PINHOLES IN THE MULTI-PINHOLE MASK
+FULL_PINHOLE_COUNT = 9
+
 FIT_NOT_CONVERGED_MESSAGE = (
     "Could not converge on a good fit to the dispersion solution. "
     "Please check the quality of your data or adjust your fitting parameters."
@@ -716,9 +719,17 @@ class create_dispersion_map:
 
         # CHECK IF SHIFT IS SIGNIFICANT (> 0.4 PIXELS)
         if abs(centreATop - centreABottom) > 0.4:
-            # USE LARGER SHIFT
-            shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
-            # print(f"{order_num} APPLYING BIG SHIFT {shift}")
+            if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+                # A JUMP AT ONE SLIT END IS A REAL ONE-PINHOLE OFFSET OR A MISSING END PINHOLE; THE SLIT EDGES DECIDE
+                shift = self._slit_centred_pinhole_shift(orderPixelTable, mask)
+                self.log.info(
+                    f"multi-pinhole shift group {order_num}: end shifts {centreABottom:0.2f} (bottom) and "
+                    f"{centreATop:0.2f} (top) px; the slit-centred pinhole identification needs a shift of "
+                    f"{shift:0.2f} px"
+                )
+            else:
+                # USE LARGER SHIFT
+                shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
 
             # APPLY CORRECTION
             orderPixelTable.loc[mask, f"detector_{self.axisA}_shifted"] = (
@@ -733,6 +744,74 @@ class create_dispersion_map:
             _plot_slit_index_comparisons(orderPixelTable.loc[mask])
 
         return orderPixelTable
+
+    def _pinhole_count_passes_qc(self):
+        """*return True when the minimum pinhole count lies inside the PINHOLE COUNT MIN QC range*
+
+        Without a ``pinhole-count-min`` QC range all 9 pinholes are required. The range can admit fewer because an
+        end pinhole can be vignetted in one order, as in the SOXS VIS u order (DY-1618).
+        """
+        qcRanges = self.recipeSettings.get("qc-acceptable-ranges", {})
+        lowerLimit, upperLimit = qcRanges.get("pinhole-count-min", [FULL_PINHOLE_COUNT, FULL_PINHOLE_COUNT])
+        return lowerLimit <= self.minpin <= upperLimit
+
+    def _slit_centred_pinhole_shift(self, orderPixelTable, mask):
+        """*return the shift that centres the predicted pinhole pattern between the order's slit edges*
+
+        The candidates are no shift and one pinhole spacing either way. A missing end pinhole and a real one-pinhole
+        offset between the first-guess map and the multi-pinhole frame give the same end-to-end shift signature,
+        because every other pinhole window lands on a real pinhole. Only the position of the pattern in the slit tells
+        them apart: the multi-pinhole mask is centred on the slit (DY-1618).
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, with predicted (``detector_<axis>_shifted``) positions
+        - ``mask`` -- the rows of the shift group with a detection
+
+        **Return:**
+
+        - ``shift`` -- the value to subtract from the predicted cross-dispersion positions (0.0 when undecided)
+        """
+        import numpy as np
+
+        axisA, axisB = self.axisA, self.axisB
+        lines = orderPixelTable.loc[mask]
+        middleIndex = 0.5 * (lines["slit_index"].min() + lines["slit_index"].max())
+
+        binx, biny = self._get_binning_params()
+        _, orderGeometry, _ = unpack_order_table(log=self.log, orderTablePath=self.orderTable, binx=binx, biny=biny)
+        orderGeometry = orderGeometry.assign(
+            slitMid=0.5 * (orderGeometry[f"{axisA}coord_edgeup"] + orderGeometry[f"{axisA}coord_edgelow"])
+        )
+
+        # FOR EACH ARC LINE: THE PREDICTED PATTERN CENTRE AND PINHOLE SPACING, AND THE SLIT MID-POINT AT THAT ROW
+        spacings, slitCentreOffsets = [], []
+        for (_wavelength, order), lineSet in lines.groupby(["wavelength", "order"]):
+            orderEdges = orderGeometry.loc[orderGeometry["order"] == order].sort_values(f"{axisB}coord")
+            lineSet = lineSet.loc[np.isfinite(lineSet[f"detector_{axisA}_shifted"])]
+            if lineSet["slit_index"].nunique() < 2 or orderEdges.empty:
+                continue
+            spacing, intercept = np.polyfit(lineSet["slit_index"], lineSet[f"detector_{axisA}_shifted"], 1)
+            # ROWS BEYOND THE ORDER TABLE'S RANGE TAKE THE SLIT MID-POINT OF THE NEAREST TABULATED ROW
+            slitMid = np.interp(
+                lineSet[f"detector_{axisB}_shifted"].mean(), orderEdges[f"{axisB}coord"], orderEdges["slitMid"]
+            )
+            slitCentreOffset = intercept + spacing * middleIndex - slitMid
+            if not (np.isfinite(spacing) and np.isfinite(slitCentreOffset)) or spacing == 0:
+                continue
+            spacings.append(spacing)
+            slitCentreOffsets.append(slitCentreOffset)
+
+        if not slitCentreOffsets:
+            self.log.warning(
+                "No slit edges match the multi-pinhole lines; the first-iteration pinhole shift is skipped."
+            )
+            return 0.0
+
+        spacing = float(np.median(spacings))
+        offset = float(np.median(slitCentreOffsets))
+        candidates = [0.0, spacing, -spacing]
+        return min(candidates, key=lambda candidate: abs(offset - candidate))
 
     def _raise_if_no_lines_survived(self, orderPixelTable, detectedLines):
         """*raise a clear error when every detected line was dropped before the polynomial fit*
@@ -1133,7 +1212,7 @@ class create_dispersion_map:
             mapPath = None
             self.create2DMap = False
 
-        if self.firstGuessMap and self.orderTable and self.create2DMap and self.minpin == 9:
+        if self.firstGuessMap and self.orderTable and self.create2DMap and self._pinhole_count_passes_qc():
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath, orders=list(goodLinesTable["order"].unique()))
             res_plots = self._create_dispersion_map_qc_plot(
                 xcoeff=popt_x,

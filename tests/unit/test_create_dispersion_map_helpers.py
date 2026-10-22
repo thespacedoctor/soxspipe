@@ -472,8 +472,9 @@ def test_multipinhole_shift_corrects_the_axis_with_the_larger_end_shift(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A material slit-end displacement is removed from every selected line."""
+    """Outside SOXS VIS, a material slit-end displacement is removed from every selected line."""
     mapper = _mapper(log)
+    mapper.arm = "NIR"
     mapper.axisA = "x"
     mapper.axisB = "y"
     mapper.debug = False
@@ -788,7 +789,9 @@ def test_output_filenames_derive_line_list_names_from_frame(
 def test_multipinhole_shift_corrects_larger_first_iteration_offset(
     log: object,
 ) -> None:
+    """Outside SOXS VIS, the larger end shift is applied (SOXS VIS is covered by test_multipinhole_big_shift.py)."""
     mapper = _mapper(log)
+    mapper.arm = "NIR"
     mapper.axisA = "x"
     mapper.axisB = "y"
     slitIndexes = [8] * 25 + [0] * 25
