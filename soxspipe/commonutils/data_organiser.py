@@ -2852,6 +2852,41 @@ class data_organiser:
             self.conn.commit()
         c.close()
 
+        self._reject_blank_slit_pinhole_arcs()
+
+    def _reject_blank_slit_pinhole_arcs(self) -> None:
+        """*flag SOXS pinhole and multi-pinhole arcs taken with a blank slit to ignore, and warn about each one*
+
+        The slit-wheel keyword of the frame's arm (`ESO INS NISE NAME` on the NIR, `ESO INS VISE NAME` on the VIS) is
+        held in the `slit` column. A pinhole (`ECHELLE,PINHOLE`) or multi-pinhole (`ECHELLE,MULTI-PINHOLE`) arc whose
+        slit wheel reads `BLANK` carries no pinhole spots, so no dispersion-solution or spatial-solution SOF may be
+        built from it. The flag lives in the `raw_frames` table, which `raw_frames_valid`
+        filters on, so a later `prepare` does not group the frame again. X-Shooter frames are not touched.
+        """
+        self.log.debug("starting the ``_reject_blank_slit_pinhole_arcs`` method")
+
+        if self.instrument.lower() != "soxs":
+            return
+
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT uuid, file, `eso seq arm`, `eso dpr tech` FROM raw_frames "
+            "WHERE `eso dpr tech` IN ('ECHELLE,PINHOLE', 'ECHELLE,MULTI-PINHOLE') AND `slit` = 'BLANK' AND ignore = 0 "
+            "ORDER BY file"
+        )
+        rejected = c.fetchall()
+        c.executemany("UPDATE raw_frames SET ignore = 1 WHERE uuid = ?", [(row[0],) for row in rejected])
+        self.conn.commit()
+        c.close()
+
+        for _, fileName, arm, tech in rejected:
+            self.log.warning(
+                f"rejected the {tech} frame `{fileName}` ({arm} arm): its slit wheel reads BLANK, "
+                "so it has no pinhole spots and is not used to build a dispersion-solution or spatial-solution SOF"
+            )
+
+        self.log.debug("completed the ``_reject_blank_slit_pinhole_arcs`` method")
+
     def _require_calibration_matches_table(self):
         """*stop with a clear message when the workspace database predates the `calibration_matches` table*
 
