@@ -32,7 +32,7 @@ The algorithm used in the `soxs_stare` and `soxs_stare_std` recipes is shown in 
 The `soxs_stare`/`soxs_stare_std` recipe algorithm. At the top of the diagram, NIR input data is found on the right and VIS on the left. 
 :::
 
-The `soxs_stare_std` recipe uses the same `slit-illumination` step as `soxs_stare`, with its own `soxs-stare-std` settings block. The `stack_before_extraction` setting also works the same way, and a flux standard is always stacked. See [`soxs_stare`](./soxs_stare.md) for more details.
+The `soxs_stare_std` recipe uses the same `slit-illumination` step as `soxs_stare`, with its own `soxs-stare-std` settings block. The `stack_before_extraction` setting also works the same way. A flux standard is always stacked first, because the stacked pass writes the response curve. With `--no-stack`, the recipe then also extracts each frame as `<sof name>_F<N>`. See [`soxs_stare`](./soxs_stare.md) for more details.
 
 ## Output
 

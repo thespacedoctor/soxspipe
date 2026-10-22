@@ -32,7 +32,7 @@ During the running of each pipeline recipe, Quality Control (QC) metrics are gen
 
 ### Stare-mode frames
 
-The DO puts all stare science frames (`ECHELLE,SLIT,STARE`) of one observation block (`eso obs id`) and arm into one SOF, if they have the same slit, binning, readout speed, exposure time and other grouping keywords. Frames that differ in any of these keys go into separate SOFs. The SOF is named after the earliest frame. The `soxs_stare` recipe stacks the frames of the SOF by default. See the `stack_before_extraction` setting in [`soxs_stare`](../recipes/soxs_stare.md).
+The DO puts all stare science frames (`ECHELLE,SLIT,STARE`) of one observation block (`eso obs id`) and arm into one SOF, if they have the same slit, binning, readout speed, exposure time and other grouping keywords. Frames that differ in any of these keys go into separate SOFs. The SOF is named after the earliest frame. The `soxs_stare` recipe stacks the frames of the SOF by default. See the `stack_before_extraction` setting in [`soxs_stare`](../recipes/soxs_stare.md). To extract each frame on its own for one run, use the `--no-stack` option of `soxspipe reduce`.
 
 ### Sessions group every raw frame
 

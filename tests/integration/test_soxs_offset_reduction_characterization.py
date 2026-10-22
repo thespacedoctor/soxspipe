@@ -30,6 +30,7 @@ from tests.integration.test_observing_recipe_orchestration import (
     _configure_nodding_recipe,
     _empty_products,
     _patch_nodding_collaborators,
+    _record_nodding_passes,
     _route,
     _write_prepared_frame,
 )
@@ -603,3 +604,308 @@ def test_the_offset_fallback_count_is_a_header_qc_and_the_on_shifts_get_one_pdf_
     assert captured["align_plot"][0]["shifts"]["frame"].tolist() == ["offset-0.fits", "offset-1.fits"]
     plotRow = recipe.products.loc[recipe.products["product_label"] == "SLIT_ALIGNMENT_QC_PLOT"].iloc[0]
     assert plotRow["file_path"] == str(tmp_path / "qc" / "OBJECT_VIS_SLIT_ALIGN_QC_PLOT.pdf")
+
+
+class _RecordingResponse:
+    """A response-curve builder that records its arguments and reports a chosen failure."""
+
+    calls: list[dict[str, Any]] = []
+    failure: Any = False
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.calls.append(kwargs)
+        self.qcTable = kwargs["qcTable"]
+        self.productsTable = kwargs["productsTable"]
+
+    def get(self) -> tuple[Any, Any, Any]:
+        return self.qcTable, self.productsTable, self.failure
+
+
+def _no_stack_standard(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    headers: list[dict[str, object]] = TWO_LOCATIONS,
+    failure: Any = False,
+    noStack: bool = True,
+    stackSetting: bool = False,
+) -> tuple[soxs_offset, dict[str, list[Any]], dict[str, Any]]:
+    """Return an offset standard with `--no-stack` set or not, and recorders for the passes it runs."""
+    recipe, _ = _offset_recipe(log, tmp_path, headers)
+    recipe.recipeSettings = {"use_flat": False, "stack_before_extraction": stackSetting}
+    recipe.settings = {**recipe.settings, "no-stack": noStack}
+    recipe.generateReponseCurve = True
+    _, captured = _patch(recipe, monkeypatch, tmp_path)
+    seen = _record_nodding_passes(recipe, monkeypatch, tmp_path)
+    _RecordingResponse.calls = []
+    _RecordingResponse.failure = failure
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", _RecordingResponse)
+    return recipe, seen, captured
+
+
+def test_with_no_stack_an_offset_standard_is_stacked_first_and_then_extracted_cycle_by_cycle(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stacked pass keeps the SOF-level products; the per-cycle pass follows for inspection."""
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["extract"] == [
+        ("OBJECT_VIS", STACKED_LOCATION_SET, False),
+        ("OBJECT_VIS", STACKED_LOCATION_SET, True),
+        ("OBJECT_VIS_CYCLES", 1, False),
+        ("OBJECT_VIS_CYCLES", 2, False),
+    ]
+    assert len(captured["align"]) == 1
+    # THE ALIGNMENT REPLACES THE ORIGINAL FRAMES, SO THE PER-CYCLE PASS MUST HAVE BEEN GIVEN THE LISTS KEPT BEFORE IT
+    assert not any("ALIGNED" in entry["aFrame"].header for entry in captured["extract_cycle"][-2:])
+
+
+def test_with_no_stack_the_response_comes_from_the_stacked_pass_only(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert [call["sofName"] for call in _RecordingResponse.calls] == ["OBJECT_VIS"]
+
+
+def test_with_no_stack_the_per_cycle_products_are_named_apart_from_the_stacked_ones(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every product name starts with the SOF name, so the two passes must not share one."""
+    # ARRANGE
+    recipe, seen, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["stack"] == ["OBJECT_VIS", "OBJECT_VIS", "OBJECT_VIS_CYCLES"]
+    assert recipe.sofName == "OBJECT_VIS"
+    assert recipe.filenameTemplate == "OBJECT_VIS.fits"
+
+
+def test_with_no_stack_the_qcs_of_both_passes_are_kept_and_the_recipe_cleans_up_once(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    _, qcTable = recipe.produce_product()
+
+    # ASSERT
+    assert seen["report"] == ["OBJECT_VIS", "OBJECT_VIS_CYCLES"]
+    assert sorted(qcTable["sof_name"]) == ["OBJECT_VIS.sof", "OBJECT_VIS_CYCLES.sof"]
+    assert seen["cleanUpSofs"] == [["OBJECT_VIS.sof", "OBJECT_VIS_CYCLES.sof"]]
+    assert seen["cleanUpTemplates"] == ["OBJECT_VIS"]
+    assert captured["clean_up"] == [{"forceFail": False}]
+
+
+def test_with_no_stack_a_failed_response_fails_the_recipe(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, captured = _no_stack_standard(log, tmp_path, monkeypatch, failure="response failed")
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["clean_up"] == [{"forceFail": "response failed"}]
+
+
+def test_with_no_stack_the_per_cycle_plot_does_not_repeat_the_notes_of_the_stacked_pass(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seen, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["notesAtPlot"] == [["note from the stacked pass"], []]
+
+
+def test_with_no_stack_a_failing_per_cycle_pass_leaves_the_names_and_the_stacked_tables_restored(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+    extract = recipe.process_single_ab_nodding_cycle
+    stackedTables: dict[str, Any] = {}
+    emptyTables = recipe._empty_qc_and_product_tables
+
+    def remembering_empty_tables(pd: Any) -> Any:
+        stackedTables.update(qc=recipe.qc, products=recipe.products)
+        return emptyTables(pd)
+
+    monkeypatch.setattr(recipe, "_empty_qc_and_product_tables", remembering_empty_tables)
+
+    def failing_cycle(**kwargs: object) -> Any:
+        if recipe.sofName.endswith("_CYCLES"):
+            raise RuntimeError("cycle failed")
+        return extract(**kwargs)
+
+    monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", failing_cycle)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="cycle failed"):
+        recipe.produce_product()
+
+    # ASSERT
+    assert recipe.sofName == "OBJECT_VIS"
+    assert recipe.filenameTemplate == "OBJECT_VIS.fits"
+    # THE QCS AND PRODUCTS OF THE STACKED PASS ARE NOT LOST TO THE PASS THAT FAILED
+    assert recipe.qc is stackedTables["qc"]
+    assert recipe.products is stackedTables["products"]
+
+
+def test_with_no_stack_a_single_cycle_standard_is_stacked_only(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One cycle gives the same extraction either way, so a second pass would only repeat the first."""
+    # ARRANGE
+    recipe, seen, _ = _no_stack_standard(log, tmp_path, monkeypatch, headers=SINGLE_PAIR)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert {sofName for sofName, _, _ in seen["extract"]} == {"OBJECT_VIS"}
+    assert seen["report"] == ["OBJECT_VIS"]
+
+
+def test_with_no_stack_an_offset_standard_is_not_warned_about(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert not any("stack_before_extraction" in message for message in warnings)
+
+
+def test_without_no_stack_an_offset_standard_is_stacked_only_with_a_warning(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A settings-file `False` alone keeps the guard: the standard stacks once and the log says why."""
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch, noStack=False)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert {sofName for sofName, _, _ in seen["extract"]} == {"OBJECT_VIS"}
+    assert len(captured["align"]) == 1
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("stack_before_extraction" in message and "response" in message for message in warnings)
+
+
+def test_with_no_stack_a_science_sof_is_extracted_cycle_by_cycle_only(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch, stackSetting=True)
+    recipe.generateReponseCurve = False
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["extract"] == [("OBJECT_VIS", 1, False), ("OBJECT_VIS", 2, False)]
+    assert captured["align"] == []
+    assert _RecordingResponse.calls == []
+    assert seen["report"] == ["OBJECT_VIS"]
+
+
+def test_with_no_stack_an_offset_standard_returns_the_stacked_product_path(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reducer predicts the SOF-level product, so that is the path it gets back."""
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    productPath, _ = recipe.produce_product()
+
+    # ASSERT
+    assert productPath == str(tmp_path / "OBJECT_VIS_EXTRACTED_MERGED.fits")
+
+
+def _qc_database(sofNames: list[str]) -> Any:
+    import sqlite3
+
+    # THE PRODUCTION CONNECTION IS AUTOCOMMIT
+    connection = sqlite3.connect(":memory:", autocommit=True)
+    connection.execute("create table quality_control (qc_name text, sof_name text)")
+    connection.executemany("insert into quality_control values ('SNR MEDIAN', ?)", [(name,) for name in sofNames])
+    return connection
+
+
+STALE_QC_SOFS = ["OBJECT_VIS.sof", "OBJECT_VIS_CYCLES.sof", "OBJECT_VIS_CYCLESX.sof", "OTHER_CYCLES.sof"]
+KEPT_QC_SOFS = ["OBJECT_VIS.sof", "OBJECT_VIS_CYCLESX.sof", "OTHER_CYCLES.sof"]
+
+
+@pytest.mark.parametrize(
+    ("noStack", "isStandard"),
+    [(True, True), (False, True), (True, False)],
+    ids=["inspection-pass-runs", "run-without-the-flag", "science-with-the-flag"],
+)
+def test_the_cycles_qc_row_of_an_earlier_no_stack_run_is_removed_whatever_this_run_does(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, noStack: bool, isStandard: bool
+) -> None:
+    """A `<sof>_CYCLES.sof` row fails its SOF, so a stale one must not outlive any later run."""
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch, noStack=noStack, stackSetting=not noStack)
+    recipe.generateReponseCurve = isStandard
+    recipe.conn = _qc_database(STALE_QC_SOFS)
+    connection = recipe.conn
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    remaining = sorted(row[0] for row in connection.execute("select sof_name from quality_control"))
+    assert remaining == sorted(KEPT_QC_SOFS)
+
+
+def test_the_cycles_qc_row_of_an_earlier_run_is_removed_even_when_the_cycle_pass_fails(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+    recipe.conn = _qc_database(STALE_QC_SOFS)
+    connection = recipe.conn
+    extract = recipe.process_single_ab_nodding_cycle
+
+    def failing_cycle(**kwargs: object) -> Any:
+        if recipe.sofName.endswith("_CYCLES"):
+            raise RuntimeError("cycle failed")
+        return extract(**kwargs)
+
+    monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", failing_cycle)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="cycle failed"):
+        recipe.produce_product()
+
+    # ASSERT
+    remaining = sorted(row[0] for row in connection.execute("select sof_name from quality_control"))
+    assert remaining == sorted(KEPT_QC_SOFS)

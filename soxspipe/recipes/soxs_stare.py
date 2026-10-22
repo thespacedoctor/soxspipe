@@ -13,6 +13,7 @@ Date Created
 import os
 import re
 import sys
+from contextlib import closing
 
 from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
 from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
@@ -360,8 +361,11 @@ class soxs_stare(base_recipe):
         self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
 
         extractEach = self._should_extract_each_frame(allObjectFrames)
-        self._delete_other_mode_qc_rows(extractEach)
-        if extractEach:
+        alsoExtractEachStandard = self._also_extract_each_standard_frame(allObjectFrames)
+        self._delete_stale_qc_rows(extractEach, alsoExtractEachStandard)
+        if alsoExtractEachStandard:
+            productPath, qcTable = self._reduce_stacked_then_each_object_frame(allObjectFrames, allObjectNames)
+        elif extractEach:
             productPath, qcTable = self._reduce_each_object_frame(allObjectFrames, allObjectNames)
         else:
             productPath, forceFailure = self._reduce_object_frames(allObjectFrames)
@@ -374,9 +378,11 @@ class soxs_stare(base_recipe):
     def _should_extract_each_frame(self, allObjectFrames):
         """*decide whether to extract each object frame on its own instead of stacking them (DY-1611)*
 
-        The `stack_before_extraction` recipe setting (default True) chooses. A flux standard is always stacked,
-        because the reducer predicts one response curve per SOF and later SOFs read it. Frames that are not stare
-        frames (the PAE flat-lamp and nodding-standard fallbacks) are always stacked too.
+        The `stack_before_extraction` recipe setting (default True) chooses, and the command-line option
+        ``--no-stack`` overrides it. A flux standard is always stacked here, because the reducer predicts one
+        response curve per SOF and later SOFs read it. With ``--no-stack`` its frames are extracted on their own as
+        well (see `_also_extract_each_standard_frame`). Frames that are not stare frames (the PAE flat-lamp and
+        nodding-standard fallbacks) are always stacked too.
 
         **Key Arguments:**
 
@@ -386,45 +392,74 @@ class soxs_stare(base_recipe):
 
         - ``extractEach`` -- True to extract each frame on its own
         """
-        if self.recipeSettings.get("stack_before_extraction", True) or len(allObjectFrames) < 2:
+        isOverridden = self._stacking_override_requested()
+        isStacking = self.recipeSettings.get("stack_before_extraction", True) and not isOverridden
+        if isStacking or len(allObjectFrames) < 2:
             return False
         if not getattr(self, "readStareFrames", False):
             return False
         if self.generateReponseCurve:
-            self.log.warning(
-                "`stack_before_extraction` is False, but flux-standard frames are always stacked so that the SOF "
-                "gives one response curve."
-            )
+            if not isOverridden:
+                self.log.warning(
+                    "`stack_before_extraction` is False, but flux-standard frames are always stacked so that the SOF "
+                    "gives one response curve."
+                )
             return False
         return True
 
-    def _delete_other_mode_qc_rows(self, extractEach):
-        """*delete the QC rows an earlier run of this SOF wrote in the other stacking mode*
+    def _also_extract_each_standard_frame(self, allObjectFrames):
+        """*decide whether a stacked flux standard is extracted frame by frame as well (``--no-stack``)*
 
-        A frame's `<sof>_F<N>.sof` QC rows decide the status of `<sof>.sof` when the QC ranges are applied again,
-        so rows left by a per-frame run must go when the SOF is stacked, and the reverse.
+        The stacked pass always runs, because it writes the SOF-level response curve that later SOFs read. The
+        command-line option ``--no-stack`` adds a pass over each frame on its own, with its own response curve.
+
+        **Key Arguments:**
+
+        - ``allObjectFrames`` -- the object frames of the SOF
+
+        **Return:**
+
+        - ``alsoExtractEach`` -- True to follow the stacked pass with a pass over each frame
+        """
+        return bool(
+            self._stacking_override_requested()
+            and self.generateReponseCurve
+            and getattr(self, "readStareFrames", False)
+            and len(allObjectFrames) >= 2
+        )
+
+    def _delete_stale_qc_rows(self, extractEach, alsoExtractEachStandard):
+        """*delete the QC rows an earlier run of this SOF left that this run will not rewrite*
+
+        A frame's `<sof>_F<N>.sof` QC rows decide the status of `<sof>.sof` when the QC ranges are applied again.
+        There are three paths:
+
+        - stacked: the SOF's own rows are rewritten, so the earlier run's frame rows go
+        - frame by frame: the frame rows are rewritten and the SOF has none, so its own rows go
+        - stacked, then frame by frame (``--no-stack`` on a standard): both are rewritten, but an earlier run with
+          more frames left rows beyond this run's frames, so every frame row goes and the SOF's own rows stay
 
         **Key Arguments:**
 
         - ``extractEach`` -- True when this run extracts each frame on its own
+        - ``alsoExtractEachStandard`` -- True when this run is stacked and then extracts each frame on its own
         """
         if not getattr(self, "conn", None):
             return
-        cursor = self.conn.cursor()
-        # PLAIN TUPLES, WHATEVER ROW FACTORY THE CONNECTION CARRIES
-        cursor.row_factory = None
-        if extractEach:
-            staleNames = [f"{self.sofName}.sof"]
-        else:
-            framePrefix = f"{self.sofName}_F"
-            rows = cursor.execute(
-                "select distinct sof_name from quality_control where substr(sof_name, 1, ?) = ?",
-                (len(framePrefix), framePrefix),
-            ).fetchall()
-            frameName = re.compile(re.escape(framePrefix) + r"\d+\.sof")
-            staleNames = [name for (name,) in rows if frameName.fullmatch(name)]
-        cursor.executemany("delete from quality_control where sof_name = ?", [(name,) for name in staleNames])
-        cursor.close()
+        with closing(self.conn.cursor()) as cursor:
+            # PLAIN TUPLES, WHATEVER ROW FACTORY THE CONNECTION CARRIES
+            cursor.row_factory = None
+            if extractEach and not alsoExtractEachStandard:
+                staleNames = [f"{self.sofName}.sof"]
+            else:
+                framePrefix = f"{self.sofName}_F"
+                rows = cursor.execute(
+                    "select distinct sof_name from quality_control where substr(sof_name, 1, ?) = ?",
+                    (len(framePrefix), framePrefix),
+                ).fetchall()
+                frameName = re.compile(re.escape(framePrefix) + r"\d+\.sof")
+                staleNames = [name for (name,) in rows if frameName.fullmatch(name)]
+            cursor.executemany("delete from quality_control where sof_name = ?", [(name,) for name in staleNames])
 
     def _reduce_each_object_frame(self, allObjectFrames, allObjectNames):
         """*reduce and extract each object frame on its own, with its own products and QCs*
@@ -443,13 +478,72 @@ class soxs_stare(base_recipe):
         - ``productPath`` -- the path to the last frame's product
         - ``qcTable`` -- the QCs of every frame
         """
+        productPath, self.qc, forceFailure = self._extract_frames_on_their_own(allObjectFrames, allObjectNames)
+        self.clean_up(forceFail=forceFailure)
+        return productPath, self.qc
+
+    def _reduce_stacked_then_each_object_frame(self, allObjectFrames, allObjectNames):
+        """*reduce the stacked flux standard, then each of its frames on its own (``--no-stack``)*
+
+        The stacked pass writes the SOF-level response curve and gives the product path. The frame passes write the
+        ``<sof>_F<N>`` products, each with its own response curve and QCs. The QCs of both passes are kept, and one
+        failed pass fails the SOF. The recipe cleans up once, at the end.
+
+        **Key Arguments:**
+
+        - ``allObjectFrames`` -- the object frames, in observation order
+        - ``allObjectNames`` -- the raw file names of those frames
+
+        **Return:**
+
+        - ``productPath`` -- the path to the stacked product
+        - ``qcTable`` -- the QCs of the stacked pass and of every frame
+        """
+        import copy
+
+        import pandas as pd
+
+        # THE RECIPE SETTINGS ARE settings[recipeName] ITSELF AND THE SKY-MODEL FALLBACK EDITS THEM IN PLACE, SO THE
+        # STACKED PASS RUNS ON A COPY AND THE ORIGINAL IS RESTORED, UNTOUCHED, FOR THE FRAMES AND THE CALLER
+        recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
+        try:
+            self.recipeSettings = copy.deepcopy(recipeSettings)
+            productPath, stackedFailure = self._reduce_object_frames(allObjectFrames)
+            stackedQc = self.report_output()
+        finally:
+            self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
+        self.qc, self.products = self._empty_qc_and_product_tables(pd)
+
+        _, frameQc, frameFailure = self._extract_frames_on_their_own(allObjectFrames, allObjectNames)
+        self.qc = self._concat_qc_tables([stackedQc, frameQc])
+        self.clean_up(forceFail=self._combine_failures(stackedFailure, frameFailure))
+        return productPath, self.qc
+
+    def _extract_frames_on_their_own(self, allObjectFrames, allObjectNames):
+        """*reduce and extract each object frame on its own, leaving the cleaning up to the caller*
+
+        Frame N of the SOF is named ``<sof>_F<N>`` while it is reduced. The SOF name, filename template, recipe
+        settings and sky flag are restored afterwards, whatever happens.
+
+        **Key Arguments:**
+
+        - ``allObjectFrames`` -- the object frames, in observation order
+        - ``allObjectNames`` -- the raw file names of those frames
+
+        **Return:**
+
+        - ``productPath`` -- the path to the last frame's product
+        - ``qcTable`` -- the QCs of every frame
+        - ``forceFailure`` -- the combined failure of the frames: False, True or a message
+        """
         import copy
 
         import pandas as pd
 
         sofName, filenameTemplate = self.sofName, self.filenameTemplate
-        # THE SKY-MODEL FALLBACK EDITS THESE, SO EACH FRAME STARTS FROM THE VALUES THE RUN BEGAN WITH
-        recipeSettings, subtractSky = copy.deepcopy(self.recipeSettings), self.subtractSky
+        # THE SKY-MODEL FALLBACK EDITS THE SETTINGS IN PLACE, SO EACH FRAME RUNS ON A COPY OF THE ORIGINAL, WHICH IS
+        # RESTORED UNTOUCHED
+        recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
         templateStem, templateExtension = os.path.splitext(filenameTemplate)
         qcTables = []
         productPath = None
@@ -468,10 +562,7 @@ class soxs_stare(base_recipe):
             self.sofName, self.filenameTemplate = sofName, filenameTemplate
             self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
 
-        # SKIP EMPTY TABLES SO THEIR ALL-NA COLUMNS DO NOT DECIDE THE DTYPES
-        self.qc = pd.concat([table for table in qcTables if len(table.index)] or qcTables, ignore_index=True)
-        self.clean_up(forceFail=forceFailure)
-        return productPath, self.qc
+        return productPath, self._concat_qc_tables(qcTables), forceFailure
 
     @staticmethod
     def _combine_failures(current, new):

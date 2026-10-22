@@ -6,7 +6,7 @@
 
 | Parameter                                         | Description                                                                                                 | Type  | Entry Point   | Related Util                                       |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----- | ------------- | -------------------------------------------------- |
-| `stack_before_extraction` | `True`: stack (sigma-clipped mean) all object frames of the SOF, then detrend, subtract the sky and extract once. `False`: reduce and extract each object frame on its own. Flux-standard frames are always stacked | bool | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
+| `stack_before_extraction` | `True`: stack (sigma-clipped mean) all object frames of the SOF, then detrend, subtract the sky and extract once. `False`: reduce and extract each object frame on its own. Flux-standard frames are always stacked first. The `--no-stack` command-line option sets this to `False` for one run | bool | settings file | [`clip_and_stack`](../utils/clip_and_stack.md) |
 | `use_flat`                                          | divide image by master flat frame                                                                           | bool  | settings file | -                                                  |
 | `subtract_background`                               | fit and subtract the intra-order background light                                                           | bool  | settings file | -                                                  |
 | `use_lacosmic` | use la cosmic to remove CRHs before extraction | bool | settings file | - |

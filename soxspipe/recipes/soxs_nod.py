@@ -13,6 +13,7 @@ Date Created
 import math
 import os
 import sys
+from contextlib import closing
 from types import MappingProxyType
 
 from soxspipe.commonutils import keyword_lookup
@@ -73,6 +74,11 @@ def median_stack_variance(spectra):
     meanVariance = varianceSum / contributorCount**2
     medianVariance = MEDIAN_VARIANCE_FACTOR * (varianceSum / contributorCount) / contributorCount
     return meanVariance.where(contributorCount <= MEDIAN_IS_MEAN_MAX_SPECTRA, medianVariance)
+
+
+# THE SUFFIX OF THE SOF NAME THE PER-CYCLE INSPECTION PASS OF A STANDARD STAR RUNS UNDER (--no-stack, DY-1723). EVERY
+# PRODUCT AND QC NAME STARTS WITH THE SOF NAME, SO THIS KEEPS THE PASS'S PRODUCTS FROM OVERWRITING THE STACKED ONES
+CYCLE_INSPECTION_SUFFIX = "_CYCLES"
 
 
 class soxs_nod(base_recipe):
@@ -383,7 +389,14 @@ class soxs_nod(base_recipe):
         self._check_ab_balance(allFrameAOffsets, allFrameBOffsets)
 
         forceFailure = False
-        if self._should_align_and_stack():
+        shouldStack = self._should_align_and_stack()
+        # THE ALIGNMENT REPLACES THE FRAMES OF THE STACKED PASS, SO THE INSPECTION PASS KEEPS THE ORIGINALS FIRST
+        cycleFrames = self._copy_frames_for_cycle_pass(
+            allFrameA, allFrameB, allFrameANames, allFrameBNames, shouldStack
+        )
+        # A ROW LEFT BY AN EARLIER RUN WOULD DECIDE THE STATUS OF THIS SOF IF THIS RUN'S CYCLE PASS FAILS OR IS EMPTY
+        self._delete_stale_cycle_qc_rows()
+        if shouldStack:
             allFrameA, allFrameB, shiftAndAdd = self._align_ab_frames(
                 allFrameA, allFrameB, allFrameANames, allFrameBNames
             )
@@ -414,6 +427,8 @@ class soxs_nod(base_recipe):
         self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePath_fluxcal)
 
         qcTable = self.report_output()
+        if cycleFrames:
+            qcTable = self._extract_each_cycle_as_well(cycleFrames, qcTable, orderTablePath, master_flat)
         self.clean_up(forceFail=forceFailure)
 
         self.log.debug("completed the ``produce_product`` method")
@@ -423,22 +438,138 @@ class soxs_nod(base_recipe):
     def _should_align_and_stack(self):
         """*decide whether to align and stack the frames before extraction, or to extract each cycle on its own*
 
-        The ``stack_before_extraction`` recipe setting decides, and defaults to True. A standard star is always
-        aligned and stacked, so that its SOF still yields one response curve.
+        The ``stack_before_extraction`` recipe setting decides, and defaults to True. A standard star is aligned
+        and stacked whatever the setting says, so that its SOF still yields one response curve. The command-line
+        option ``--no-stack`` overrides the setting: a science SOF is extracted cycle by cycle, and a standard is
+        still stacked, without a warning, and then also extracted cycle by cycle (see
+        `_extract_each_cycle_as_well`).
 
         **Return:**
 
         - ``shouldStack`` -- True to align the frames along the slit and stack them before extraction
         """
         isEnabled = bool(self.recipeSettings.get("stack_before_extraction", True))
-        isStandard = self.generateReponseCurve or "-std" in self.recipeName
-        if isStandard and not isEnabled:
-            self.log.warning(
-                "stack_before_extraction is off, but a standard star is always aligned and stacked so that the SOF "
-                "still yields one response curve."
-            )
+        isOverridden = self._stacking_override_requested()
+        if self._is_standard_star() and (isOverridden or not isEnabled):
+            if not isOverridden:
+                self.log.warning(
+                    "stack_before_extraction is off, but a standard star is always aligned and stacked so that the "
+                    "SOF still yields one response curve."
+                )
             return True
-        return isEnabled
+        return isEnabled and not isOverridden
+
+    def _is_standard_star(self):
+        """*check whether the SOF is a standard star, whose SOF gives one response curve*
+
+        **Return:**
+
+        - ``isStandard`` -- True for a standard star
+        """
+        return bool(self.generateReponseCurve or "-std" in self.recipeName)
+
+    def _copy_frames_for_cycle_pass(self, allFrameA, allFrameB, allFrameANames, allFrameBNames, shouldStack):
+        """*keep the frames the per-cycle inspection pass of a stacked standard star will need*
+
+        The alignment of the stacked pass replaces the entries of the frame lists with aligned frames. This keeps
+        lists that still hold the original frames, without copying the frames themselves.
+
+        A stacked standard star is also extracted cycle by cycle when the user asked for it with ``--no-stack`` and
+        the SOF holds at least two cycles. One cycle gives the same extraction either way.
+
+        **Key Arguments:**
+
+        - ``allFrameA`` -- the A frames
+        - ``allFrameB`` -- the B frames
+        - ``allFrameANames`` -- the A frames' file names
+        - ``allFrameBNames`` -- the B frames' file names
+        - ``shouldStack`` -- True when the SOF is aligned and stacked
+
+        **Return:**
+
+        - ``cycleFrames`` -- the frame lists and the file names, or *None* when there is no inspection pass
+        """
+        if not (shouldStack and self._stacking_override_requested() and self._is_standard_star()):
+            return None
+        if len(allFrameA) < 2:
+            return None
+        # THE ALIGNMENT BUILDS NEW FRAMES AND LEAVES ITS SOURCES UNCHANGED, SO COPYING THE LISTS IS ENOUGH
+        return list(allFrameA), list(allFrameB), list(allFrameANames), list(allFrameBNames)
+
+    def _delete_stale_cycle_qc_rows(self):
+        """*delete the ``<sof>_CYCLES.sof`` QC rows an earlier ``--no-stack`` run of this SOF wrote*
+
+        Those rows decide the status of ``<sof>.sof`` when the QC ranges are applied again, so no run may leave them
+        behind. They go before any pass runs, so a cycle pass that fails or finds nothing cannot leave an old row to
+        decide the status.
+        """
+        if not getattr(self, "conn", None):
+            return
+        staleName = f"{self.sofName}{CYCLE_INSPECTION_SUFFIX}.sof"
+        # THE CONNECTION IS AUTOCOMMIT, SO THE DELETE NEEDS NO COMMIT
+        with closing(self.conn.cursor()) as cursor:
+            cursor.execute("delete from quality_control where sof_name = ?", (staleName,))
+
+    def _extract_each_cycle_as_well(self, cycleFrames, stackedQc, orderTablePath, master_flat):
+        """*extract each cycle of a stacked standard star on its own, for inspection only (``--no-stack``)*
+
+        The stacked pass has written the SOF-level products and the response curve. This pass builds no response.
+        It runs under the SOF name with ``_CYCLES`` appended, so its products and QC rows sit beside the stacked
+        ones and overwrite none of them. The names are restored afterwards, whatever happens. If this pass fails, the
+        QC and product tables of the stacked pass are restored too. An exception in this pass is not caught: it
+        aborts the run, as it does in the per-frame pass of a stare standard.
+
+        **Key Arguments:**
+
+        - ``cycleFrames`` -- the frames and file names from `_copy_frames_for_cycle_pass`
+        - ``stackedQc`` -- the QC table the stacked pass reported
+        - ``orderTablePath`` -- the path to the order table
+        - ``master_flat`` -- the master flat, or False
+
+        **Return:**
+
+        - ``qcTable`` -- the QCs of the stacked pass and of the cycle pass. Also set as ``self.qc``
+        """
+        import pandas as pd
+
+        sofName, filenameTemplate, extractionNotes = self.sofName, self.filenameTemplate, self.extractionNotes
+        stackedTables = (self.qc, self.products)
+        templateStem, templateExtension = os.path.splitext(filenameTemplate)
+        self.qc, self.products = self._empty_qc_and_product_tables(pd)
+        self.extractionNotes = ()
+        isDone = False
+        try:
+            self.sofName = f"{sofName}{CYCLE_INSPECTION_SUFFIX}"
+            self.filenameTemplate = f"{templateStem}{CYCLE_INSPECTION_SUFFIX}{templateExtension}"
+            self.log.print(f"\n# EXTRACTING EACH CYCLE ON ITS OWN ({self.sofName}), FOR INSPECTION")
+            cycleQc = self._inspect_each_cycle(cycleFrames, orderTablePath, master_flat)
+            isDone = True
+        finally:
+            self.sofName, self.filenameTemplate, self.extractionNotes = sofName, filenameTemplate, extractionNotes
+            # A PASS THAT FAILED MUST NOT TAKE THE QCS AND PRODUCTS OF THE STACKED PASS WITH IT
+            if not isDone:
+                self.qc, self.products = stackedTables
+        self.qc = self._concat_qc_tables([stackedQc, cycleQc])
+        return self.qc
+
+    def _inspect_each_cycle(self, cycleFrames, orderTablePath, master_flat):
+        """*extract, plot and report each cycle on its own, without flux calibration or a response curve*
+
+        **Key Arguments:**
+
+        - ``cycleFrames`` -- the A frames, B frames and their file names
+        - ``orderTablePath`` -- the path to the order table
+        - ``master_flat`` -- the master flat, or False
+
+        **Return:**
+
+        - ``qcTable`` -- the QCs of the cycle pass
+        """
+        stackedSpectrum, orderJoins = self._reduce_each_nodding_cycle(
+            *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
+        )
+        self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
+        return self.report_output()
 
     def _aligns_each_order(self):
         """*decide whether each order of a frame gets its own slit shift*
