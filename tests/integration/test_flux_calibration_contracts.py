@@ -321,7 +321,7 @@ def test_calibrate_sets_samples_outside_the_response_table_to_nan_and_logs_the_c
 
     # ASSERT: BOTH SCIENCE SAMPLES (500 AND 600 NM) LIE OUTSIDE 520-580 NM
     assert captured[0]["FLUX_CALIBRATED"].isna().all()
-    assert any(level == "warning" and "2 " in message for level, message in log.messages)
+    assert any(level == "info" and "2 " in message for level, message in log.messages)
 
 
 def test_calibrate_counts_only_science_samples_outside_the_valid_response_range(
@@ -350,4 +350,4 @@ def test_calibrate_counts_only_science_samples_outside_the_valid_response_range(
 
     # ASSERT: THE SCIENCE SAMPLES AT 500 AND 600 NM ARE OUTSIDE 520-580 NM
     assert captured[0]["FLUX_CALIBRATED"].isna().all()
-    assert any(level == "warning" and message.startswith("2 science samples") for level, message in log.messages)
+    assert any(level == "info" and message.startswith("2 science samples") for level, message in log.messages)

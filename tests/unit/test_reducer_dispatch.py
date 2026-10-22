@@ -238,7 +238,8 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
     ]
     assert not temporaryPath.exists()
     output = capsys.readouterr().out
-    assert "pool size of 3" in output
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("pool size of 3" in message for message in printed)
     assert "Number of successful mflat reductions: 1" in output
     assert "Number of failed mflat reductions: 3" in output
     assert "Number of pre-existing mflat reductions: 2" in output

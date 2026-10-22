@@ -114,7 +114,7 @@ def test_a_nir_recipe_without_a_master_dark_keeps_the_yaml_read_noise(tmp_path: 
     ],
     ids=["old product without DATANCOM", "single raw frame without a RAW RON", "no cards at all"],
 )
-def test_an_unusable_master_dark_falls_back_to_the_yaml_value_with_a_warning(
+def test_an_unusable_master_dark_falls_back_to_the_yaml_value_and_logs_it(
     tmp_path: Path, log: Any, masterCards: dict[str, object]
 ) -> None:
     # ARRANGE
@@ -127,7 +127,7 @@ def test_an_unusable_master_dark_falls_back_to_the_yaml_value_with_a_warning(
     # ASSERT
     assert recipe.detectorParams["ron"].value == pytest.approx(YAML_RON)
     assert recipe.readNoise.source == "detector default"
-    assert any("master dark" in message for message in _warnings(log))
+    assert any("master dark" in message for message in _infos(log))
 
 
 def test_a_single_raw_master_dark_gives_the_sky_fit_its_full_master_noise_term(tmp_path: Path, log: Any) -> None:
