@@ -389,15 +389,9 @@ class response_function:
         fit, fitSettings = self._fit_response(stdExtWave, self.response_function_raw)
         self.response_function_raw = fit.ratio
         qcWarnings = self._add_response_qcs(fit, fitSettings)
-        responseFuncCoeffs, polyOrder, responseCurve = self._legacy_coefficients(fit, fitSettings, stdExtWave)
 
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
-        self.write_response_function_to_file(
-            responseFuncCoeffs=responseFuncCoeffs,
-            polyOrder=polyOrder,
-            wavelength=stdExtWave,
-            response=responseCurve,
-        )
+        self.write_response_function_to_file(wavelength=stdExtWave, response=fit.evaluate(stdExtWave))
 
         if stdEfficiencyEstimate is not None:
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
@@ -524,23 +518,6 @@ class response_function:
             self.log.warning(f"Response QC out of tolerance: {message}")
         return qcWarnings
 
-    def _legacy_coefficients(self, fit, fitSettings, stdExtWave):
-        """*evaluate the spline and fit the legacy polynomial coefficients to it*
-
-        **Return:**
-
-        - ``responseFuncCoeffs`` -- polynomial coefficients, highest power first
-        - ``polyOrder`` -- the polynomial order
-        - ``responseCurve`` -- the spline response at each wavelength in ``stdExtWave``
-        """
-        import numpy as np
-
-        polyOrder = int(fitSettings["legacy_poly_order"])
-        responseCurve = fit.evaluate(stdExtWave)
-        isFinite = np.isfinite(stdExtWave) & np.isfinite(responseCurve)
-        responseFuncCoeffs = np.polyfit(stdExtWave[isFinite], responseCurve[isFinite], deg=polyOrder)
-        return responseFuncCoeffs, polyOrder, responseCurve
-
     def plot_response_curve(
         self,
         stdExtWave,
@@ -599,19 +576,14 @@ class response_function:
         self.log.debug("completed the ``plot_response_curve`` method")
         return plotFilePath
 
-    def write_response_function_to_file(
-        self, responseFuncCoeffs: Any, polyOrder: int, wavelength: Any, response: Any
-    ) -> str:
-        """*write out the response curve and the legacy polynomial coefficients fitted to it*
+    def write_response_function_to_file(self, wavelength: Any, response: Any) -> str:
+        """*write out the response curve*
 
-        The first table extension holds the legacy polynomial coefficients. A second extension, ``RESPONSE``, holds
-        the fitted spline response at each finite ``wavelength``, sorted by wavelength. Flux calibration reads the
-        ``RESPONSE`` extension.
+        The one table extension, ``RESPONSE``, holds the fitted spline response at each finite ``wavelength``, sorted
+        by wavelength. Flux calibration reads it.
 
         **Key Arguments:**
 
-        - ``responseFuncCoeffs`` -- the legacy polynomial coefficients, highest power first
-        - ``polyOrder`` -- the order of the legacy polynomial
         - ``wavelength`` -- the wavelengths (nm) of the extracted standard-star spectrum
         - ``response`` -- the fitted response at each of those wavelengths
 
@@ -623,31 +595,18 @@ class response_function:
 
         import copy
 
-        import pandas as pd
         from astropy.io import fits
-        from astropy.table import Table
 
         from soxspipe.commonutils.phase3 import add_qc_to_header
 
         arm = self.arm
         kw = self.kw
 
-        coeffDict = {}
-        coeffDict["polyOrder"] = polyOrder
-        n_coeff = 0
-        for i in range(0, polyOrder + 1):
-            coeffDict[f"c{i}"] = responseFuncCoeffs[n_coeff]
-            n_coeff += 1
-
         filename = self.sofName + "_RESP.fits"
 
         header = copy.deepcopy(self.header)
 
         filePath = f"{self.productDir}/{filename}"
-        df = pd.DataFrame([coeffDict])
-        t = Table.from_pandas(df)
-
-        BinTableHDU = fits.table_to_hdu(t)
 
         header[kw("SEQ_ARM").upper()] = arm
         header[kw("PRO_TYPE").upper()] = "REDUCED"
@@ -662,11 +621,11 @@ class response_function:
         curveHDU = fits.table_to_hdu(_sampled_response_table(wavelength, response))
         curveHDU.name = "RESPONSE"
 
-        hduList = fits.HDUList([priHDU, BinTableHDU, curveHDU])
+        hduList = fits.HDUList([priHDU, curveHDU])
         hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
-        self._register_product("RESPONSE_FUNC", filename, "FITS", "Response function coeffs.", filePath, "PROD")
+        self._register_product("RESPONSE_FUNC", filename, "FITS", "Response function curve.", filePath, "PROD")
 
         self.log.debug("completed the ``write_response_function_to_file`` method")
         return filePath

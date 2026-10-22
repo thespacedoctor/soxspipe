@@ -867,6 +867,12 @@ class soxs_stare(base_recipe):
             self.log.debug(f"produce_product: no response function frame for this arm, continuing: {e}")
             responseFunctionPath = False
 
+        # REFUSE A RESP PRODUCT OF AN OLD BASIS NOW, NOT AFTER THE FULL EXTRACTION
+        if responseFunctionPath:
+            from soxspipe.commonutils.response_basis import require_response_product_basis
+
+            require_response_product_basis(responseFunctionPath)
+
         return orderTablePath, dispMap, twoDMap, responseFunctionPath
 
     def _slit_illumination_exclude_mask(self, combined_object, master_flat, twoDMap, allObjectFrames):

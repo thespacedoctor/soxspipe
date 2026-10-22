@@ -11,7 +11,7 @@
 | `SKY SUBTRACTED OBJECT`     | The sky-subtracted object                    | FITS      |       -       |    -       |     -      |
 | `SKY MODEL`                 | The sky background model                     | FITS      |         -       |    -       |     -      |
 | `SKY SUB RESIDUALS`         | The sky subtraction residuals                | FITS      |        -       |    -       |     -      |
-| `RESPONSE_FUNC` | Response function coefficients | FITS | `RESP_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
+| `RESPONSE_FUNC` | Response curve | FITS | `RESP_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `EFFICIENCY` | Efficiency estimate | FITS | `EFFICIENCY_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `EXTRACTED MERGED ASCII`    | Ascii version of extracted source spectrum   | TXT       |       -       |    -       |     -      |
 | `BKGROUND`                  | Fitted intra-order image background          | PDF     |     -       |    -       |     -      |
