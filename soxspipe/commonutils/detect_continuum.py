@@ -10,12 +10,15 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
+from __future__ import annotations
+
 import copy
 import math
 import os
 import sys
 from contextlib import suppress
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
@@ -31,6 +34,7 @@ from soxspipe.commonutils.toolkit import (
     QC_PLOT_DECORATION_HEIGHT_INCHES,
     QC_RESIDUAL_ROW_HEIGHT_INCHES,
     QC_STRIP_ROW_HEIGHT_INCHES,
+    append_qc,
     cut_image_slice,
     get_calibration_lamp,
     has_sequence_suffixed_traces,
@@ -42,9 +46,61 @@ from soxspipe.commonutils.toolkit import (
     read_spectral_format,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import numpy as np
+    import pandas as pd
+
 os.environ["TERM"] = "vt100"
 
 ORDER_TRACES_EXTNAME = "ORDER_TRACES"
+
+# FALLBACK FOR SETTINGS FILES WRITTEN BEFORE `max-unsampled-trace-fraction` EXISTED; MATCHES THE DEFAULT SETTINGS
+DEFAULT_MAX_UNSAMPLED_TRACE_FRACTION = 0.2
+
+
+def longest_unsampled_stretch(
+    sampledWavelengths: Sequence[float] | np.ndarray | pd.Series,
+    acceptedWavelengths: Sequence[float] | np.ndarray | pd.Series,
+) -> tuple[float, float, float]:
+    """*find the longest stretch of an order that no accepted trace sample covers*
+
+    The stretch runs between two neighbouring accepted samples, or from an end of the order to the nearest accepted
+    sample. The fitted trace is interpolated or extrapolated across it.
+
+    **Key Arguments:**
+
+    - ``sampledWavelengths`` -- the wavelengths (nm) of every sample position along the order
+    - ``acceptedWavelengths`` -- the wavelengths (nm) of the samples kept after the trace fit
+
+    **Return:**
+
+    - ``fraction`` -- the length of the stretch as a fraction of the sampled length of the order
+    - ``startNm`` -- the wavelength (nm) at the blue end of the stretch
+    - ``endNm`` -- the wavelength (nm) at the red end of the stretch
+
+    **Usage:**
+
+    ```python
+    fraction, startNm, endNm = longest_unsampled_stretch(sampled, accepted)
+    ```
+    """
+    import numpy as np
+
+    sampled = np.asarray(sampledWavelengths, dtype=float)
+    sampled = sampled[np.isfinite(sampled)]
+    accepted = np.asarray(acceptedWavelengths, dtype=float)
+    accepted = accepted[np.isfinite(accepted)]
+
+    lowNm, highNm = sampled.min(), sampled.max()
+    edges = np.concatenate([[lowNm], np.sort(accepted), [highNm]])
+    gaps = np.diff(edges)
+    longest = int(np.argmax(gaps))
+    orderLengthNm = highNm - lowNm
+    fraction = float(gaps[longest] / orderLengthNm) if orderLengthNm > 0 else 0.0
+
+    return fraction, float(edges[longest]), float(edges[longest + 1])
 
 
 def _order_colours(orders):
@@ -901,6 +957,9 @@ class detect_continuum(_base_detect):
                 if self.settings["tune-pipeline"]:
                     raise e
 
+        if "wavelength" in backupOrderPixelTable.columns:
+            self.check_trace_extrapolation(backupOrderPixelTable, orderPixelTable)
+
         utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         try:
@@ -1287,6 +1346,52 @@ class detect_continuum(_base_detect):
 
         self.log.debug("completed the ``build_order_metadata`` method")
         return orderMetaTable
+
+    def check_trace_extrapolation(self, sampledTable: pd.DataFrame, acceptedTable: pd.DataFrame) -> None:
+        """*warn when the fitted trace of an order is extrapolated across a long stretch with no accepted samples*
+
+        Records the longest sample-free stretch of each order as the ``SAMPLES GAP MAX O<n>`` QC. The QC is not
+        written to the product header and has no acceptable range, so it never fails a recipe.
+
+        **Key Arguments:**
+
+        - ``sampledTable`` -- the table of every sample position, with ``order`` and ``wavelength`` columns
+        - ``acceptedTable`` -- the samples kept after the trace fit, with the same columns
+
+        **Usage:**
+
+        ```python
+        self.check_trace_extrapolation(backupOrderPixelTable, orderPixelTable)
+        ```
+        """
+        self.log.debug("starting the ``check_trace_extrapolation`` method")
+
+        maxFraction = self.recipeSettings.get("max-unsampled-trace-fraction", DEFAULT_MAX_UNSAMPLED_TRACE_FRACTION)
+        reductionDate = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+
+        for order, orderSamples in sampledTable.groupby("order"):
+            acceptedWavelengths = acceptedTable.loc[acceptedTable["order"] == order, "wavelength"]
+            fraction, startNm, endNm = longest_unsampled_stretch(orderSamples["wavelength"], acceptedWavelengths)
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName=f"SAMPLES GAP MAX O{int(order)}",
+                qcValue=round(fraction, 3),
+                qcComment="Longest stretch of the order with no accepted trace sample, as a fraction of the order",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=reductionDate,
+                qcUnit=None,
+                toHeader=False,
+                qcOrder=int(order),
+            )
+            if fraction > maxFraction:
+                self.log.warning(
+                    f"The trace of order {int(order)} has no accepted samples between {startNm:.1f} nm and "
+                    f"{endNm:.1f} nm ({fraction:.0%} of the order), so the fitted trace is extrapolated there. "
+                    "Check the object and order positions."
+                )
+
+        self.log.debug("completed the ``check_trace_extrapolation`` method")
 
     def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
@@ -1892,6 +1997,38 @@ class detect_continuum(_base_detect):
 
             return orderPixelTable, medianShift, medianStddev
 
+        def sample_order(orderTable: pd.DataFrame, everyN: int) -> tuple[pd.DataFrame, bool]:
+            """*sample one order with its own shift and window*
+
+            Returns the sampled order and whether a denser probe (``everyN`` of 1) is needed first. When it is, the
+            returned table is the input, unsampled.
+            """
+            junk, medianShift, medianStddev = find_centre_points(
+                orderPixelTable=orderTable.iloc[::everyN],
+                medianShift=False,
+                medianStddev=False,
+            )
+
+            if np.isnan(medianShift):
+                junk, medianShift, medianStddev = find_centre_points(
+                    orderPixelTable=orderTable.iloc[::everyN],
+                    medianShift=medianShift,
+                    medianStddev=False,
+                )
+
+            # `find_centre_points` RETURNS False FOR "NO SIGNIFICANT SHIFT" (UNDER 1 PIXEL OR NOISY) AND NaN FOR
+            # "TOO FEW SAMPLES"; BOTH MEAN THE SPARSE PROBE FOUND NO USABLE SHIFT. A FLOAT 0.0 IS NEVER RETURNED
+            isShiftMissing = medianShift is False or np.isnan(medianShift)
+            if isShiftMissing and everyN > 1:
+                return orderTable, True
+
+            orderTable, medianShift, medianStddev = find_centre_points(
+                orderPixelTable=orderTable,
+                medianShift=medianShift,
+                medianStddev=medianStddev,
+            )
+            return orderTable, False
+
         allLines = len(orderPixelTable.index)
         tmpOrderPixelTable = orderPixelTable.copy()
 
@@ -1900,67 +2037,25 @@ class detect_continuum(_base_detect):
 
         while not sanityCheck:
             if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
-                # TREAT ORDERS 2&3 SEPARATELY FROM 1&4 THEN RECOMBINE THE orderPixelTable AT THE END
-                mask_23 = tmpOrderPixelTable["order"].isin([2, 3])
-                mask_14 = tmpOrderPixelTable["order"].isin([1, 4])
-
-                orderPixelTable_23 = tmpOrderPixelTable.loc[mask_23].copy()
-                orderPixelTable_14 = tmpOrderPixelTable.loc[mask_14].copy()
-
-                # PROCESS 2 & 3
-                junk, medianShift_23, medianStddev_23 = find_centre_points(
-                    orderPixelTable=orderPixelTable_23.iloc[::everyN],
-                    medianShift=False,
-                    medianStddev=False,
-                )
-
-                if np.isnan(medianShift_23):
-                    junk, medianShift_23, medianStddev_23 = find_centre_points(
-                        orderPixelTable=orderPixelTable_23.iloc[::everyN],
-                        medianShift=medianShift_23,
-                        medianStddev=False,
+                # EACH VIS ORDER GETS ITS OWN SHIFT AND WINDOW: THE ORDERS SIT AT DIFFERENT OFFSETS FROM THE MAP,
+                # SO A SHARED MEDIAN SHIFT LEAVES THE TRACE OF ONE ORDER OUTSIDE THE WINDOW OF ANOTHER (DY-1716)
+                orderTables = []
+                needsDenserProbe = False
+                for order in sorted(tmpOrderPixelTable["order"].unique()):
+                    orderTable, needsDenserProbe = sample_order(
+                        tmpOrderPixelTable.loc[tmpOrderPixelTable["order"] == order].copy(),
+                        everyN,
                     )
+                    if needsDenserProbe:
+                        break
+                    orderTables.append(orderTable)
 
-                if (not (medianShift_23) or np.isnan(medianShift_23)) and everyN > 1:
-                    sanityCheck = False
+                if needsDenserProbe:
                     everyN = 1
-                    # print("Reducing everyN to 1")
                     continue
-
-                orderPixelTable_23, medianShift_23, medianStddev_23 = find_centre_points(
-                    orderPixelTable=orderPixelTable_23,
-                    medianShift=medianShift_23,
-                    medianStddev=medianStddev_23,
-                )
-
-                # PROCESS 1 & 4
-                junk, medianShift_14, medianStddev_14 = find_centre_points(
-                    orderPixelTable=orderPixelTable_14.iloc[::everyN],
-                    medianShift=False,
-                    medianStddev=False,
-                )
-
-                if np.isnan(medianShift_14):
-                    junk, medianShift_14, medianStddev_14 = find_centre_points(
-                        orderPixelTable=orderPixelTable_14.iloc[::everyN],
-                        medianShift=medianShift_14,
-                        medianStddev=False,
-                    )
-
-                if (not (medianShift_14) or np.isnan(medianShift_14)) and everyN > 1:
-                    sanityCheck = False
-                    everyN = 1
-                    # print("Reducing everyN to 1")
-                    continue
-
-                orderPixelTable_14, medianShift_14, medianStddev_14 = find_centre_points(
-                    orderPixelTable=orderPixelTable_14,
-                    medianShift=medianShift_14,
-                    medianStddev=medianStddev_14,
-                )
 
                 # RECOMBINE
-                orderPixelTable = pd.concat([orderPixelTable_23, orderPixelTable_14], ignore_index=True)
+                orderPixelTable = pd.concat(orderTables, ignore_index=True)
             else:
                 tmpOrderPixelTable = orderPixelTable.copy()
                 junk, medianShift, medianStddev = find_centre_points(
