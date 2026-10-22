@@ -1047,8 +1047,9 @@ class soxs_nod(base_recipe):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
-            from soxspipe.commonutils.sequence_airmass import mean_airmass
+            from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
+            require_equal_exposure_times([frame.header for frame in allFrameA + allFrameB], self.kw)
             mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
                 aFrame=aFrame,
                 bFrame=bFrame,
@@ -1108,8 +1109,8 @@ class soxs_nod(base_recipe):
         - ``responseFunctionPath`` -- the path to the response table
         - ``stackedSpectrum`` -- the stacked extraction
         - ``allFrameA`` -- the A frames; the first one's header supplies the exposure time
-        - ``allFrameB`` -- the B frames. Both nod positions hold the object, so the mean airmass of every A and B
-          frame is used
+        - ``allFrameB`` -- the B frames. Every A and B frame must have the same exposure time (DY-1714). Both nod
+          positions hold the object, so the mean airmass of every A and B frame is used
 
         **Return:**
 
@@ -1119,10 +1120,11 @@ class soxs_nod(base_recipe):
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
-        from soxspipe.commonutils.sequence_airmass import mean_airmass
+        from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
         self.log.print("# PERFORMING FLUX CALIBRATION\n")
-        # TODO CHECK IF TAKING THE HEADER AND EXPOSURE TIME OF ONE FRAME IS OK (THE AIRMASS IS THE MEAN, DY-1695)
+        # EVERY EXPOSURE IS THE SAME LENGTH, SO THE FIRST FRAME'S HEADER AND EXPOSURE TIME STAND FOR THEM ALL
+        require_equal_exposure_times([frame.header for frame in allFrameA + allFrameB], self.kw)
         fluxCalibrator = flux_calibration(
             log=self.log,
             responseFunction=responseFunctionPath,

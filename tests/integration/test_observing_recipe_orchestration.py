@@ -1314,15 +1314,85 @@ def test_stare_response_uses_the_mean_airmass_of_every_stacked_standard_frame(
                 "EXPTIME": exptime,
             },
         )
-        for index, (start, exptime) in enumerate([(1.1, 300.0), (2.1, 60.0)])
+        for index, (start, exptime) in enumerate([(1.1, 300.0), (2.1, 300.0)])
     ]
     recipe, _, _, responseArguments = _stare_standard_recipe(log, tmp_path, monkeypatch, standardPaths)
 
     # ACT
     recipe.produce_product()
 
-    # ASSERT: (300 S x 1.2 + 60 S x 2.2) / 360 S, NOT THE FIRST FRAME'S MIDPOINT OF 1.2
-    assert responseArguments[0]["airmass"] == pytest.approx(492.0 / 360.0)
+    # ASSERT: THE MEAN OF THE MIDPOINTS 1.2 AND 2.2, NOT THE FIRST FRAME'S MIDPOINT OF 1.2 (THE EXPOSURES ARE EQUAL)
+    assert responseArguments[0]["airmass"] == pytest.approx(1.7)
+
+
+def test_stare_response_refuses_standard_frames_with_unequal_exposure_times(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response divides by one exposure time, so standard frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    standardPaths = [
+        _write_prepared_frame(
+            tmp_path / f"response-standard-{index}.fits",
+            seed=72 + index,
+            headerOverrides={
+                "DPR_TYPE": "STD,FLUX",
+                "DPR_TECH": "ECHELLE,SLIT,STARE",
+                "ARCFILE": f"SOXS.STD{index}.fits",
+                "EXPTIME": exptime,
+            },
+        )
+        for index, exptime in enumerate([300.0, 60.0])
+    ]
+    recipe, _, _, responseArguments = _stare_standard_recipe(log, tmp_path, monkeypatch, standardPaths)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.STD1\.fits \(60"):
+        recipe.produce_product()
+    assert responseArguments == []
+
+
+def test_stare_flux_calibration_refuses_object_frames_with_unequal_exposure_times(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flux calibration divides by one exposure time, so object frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.kw = _keyword
+    recipe.arm = "VIS"
+    recipe.settings = pipeline_settings(tmp_path)
+    recipe.recipeName = "soxs-stare"
+    recipe.sofName = "OBJECT_VIS"
+    recipe.startNightDate = "2024-01-02"
+    recipe.debug = False
+    frames = [
+        synthetic_ccd(
+            seed=70 + index, prepared=True, headerOverrides={"ARCFILE": f"SOXS.OBJ{index}.fits", "EXPTIME": exptime}
+        )
+        for index, exptime in enumerate([300.0, 60.0])
+    ]
+
+    class FakeFluxCalibrator:
+        def __init__(self, **kwargs: object) -> None:
+            pytest.fail("a spectrum was flux calibrated from frames of unequal exposure time")
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "flux_calibration", FakeFluxCalibrator)
+    monkeypatch.setattr(
+        import_module("soxspipe.recipes.soxs_stare"), "get_calibrations_path", lambda **_: str(tmp_path)
+    )
+    monkeypatch.setattr(
+        import_module("soxspipe.recipes.soxs_stare"),
+        "detector_lookup",
+        lambda **_: type("Lookup", (), {"get": lambda _, __: {"extinction": "extinction.dat"}})(),
+    )
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.OBJ1\.fits \(60"):
+        recipe._flux_calibrate_spectrum("RESP_TAB_VIS.fits", pd.DataFrame(), frames[0], frames)
 
 
 def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
