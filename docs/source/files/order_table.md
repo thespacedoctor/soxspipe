@@ -19,7 +19,7 @@ The order table is a FITS file with three binary-table extensions.
 2. HDU 2 holds the order metadata: the order number and the fitted range of each order along both axes.
 3. HDU 3, named `ORDER_TRACES`, lists the pixel coordinates of each order trace. Read it by name, not by number.
 
-`ORDER_TRACES` is one long table with one row for each pixel along the dispersion axis, inside the fitted range of each order. The sampled range runs from the lower limit of the order up to, but not including, its upper limit. This is the same range that `unpack_order_table` returns when it samples every pixel. The coordinates are in unbinned detector pixels, whatever the binning of the frame that the order table was measured on. The columns are named after the detector axes. For the NIR arm, where the traces are solved as `x` for each `y`, the columns are:
+`ORDER_TRACES` is one long table with one row for each pixel along the dispersion axis, inside the fitted range of each order. The sampled range runs from the lower limit of the order up to, but not including, its upper limit. This is the same range that `unpack_order_table` returns when it samples every pixel. The coordinates are in unbinned detector pixels, whatever the binning of the frame that the order table was measured on. The columns are named after the detector axes. For the SOXS VIS arm and every X-Shooter arm, where the traces are solved as `x` for each `y`, the columns are:
 
 | Column | Content |
 | --- | --- |
@@ -29,4 +29,6 @@ The order table is a FITS file with three binary-table extensions.
 | `xcoord_edgeup` | the position of the upper order edge |
 | `xcoord_edgelow` | the position of the lower order edge |
 
-The `xcoord_edgeup` and `xcoord_edgelow` columns are only in the order table that [`soxs_mflat`](../recipes/soxs_mflat.md) writes. The table from [`soxs_order_centres`](../recipes/soxs_order_centres.md) has the centre column only. Order tables written before this extension existed have two extensions. The object trace tables (`OBJECT_TAB_*`) do not have an `ORDER_TRACES` extension.
+For the SOXS NIR arm, the traces are solved as `y` for each `x`, so the axes swap: the columns are `xcoord`, `order`, `ycoord_centre`, `ycoord_edgeup` and `ycoord_edgelow`.
+
+The edge columns are only in the order table that [`soxs_mflat`](../recipes/soxs_mflat.md) writes. The table from [`soxs_order_centres`](../recipes/soxs_order_centres.md) has the centre column only. Order tables written before this extension existed have two extensions. The object trace tables (`OBJECT_TAB_*`) do not have an `ORDER_TRACES` extension.
