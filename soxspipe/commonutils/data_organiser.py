@@ -2852,6 +2852,38 @@ class data_organiser:
             self.conn.commit()
         c.close()
 
+        self._reject_blank_slit_multi_pinhole_arcs()
+
+    def _reject_blank_slit_multi_pinhole_arcs(self):
+        """*flag SOXS multi-pinhole arcs taken with a blank slit to ignore, and warn about each one*
+
+        The slit-wheel keyword of the frame's arm (`ESO INS NISE NAME` on the NIR, `ESO INS VISE NAME` on the VIS) is
+        held in the `slit` column. A multi-pinhole arc whose slit wheel reads `BLANK` carries no pinhole spots, so no
+        spatial-solution SOF may be built from it. The flag lives in the `raw_frames` table, which `raw_frames_valid`
+        filters on, so a later `prepare` does not group the frame again. X-Shooter frames are not touched.
+        """
+        if getattr(self, "instrument", "").upper() != "SOXS":
+            return
+
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT file, `eso seq arm` FROM raw_frames "
+            "WHERE `eso dpr tech` = 'ECHELLE,MULTI-PINHOLE' AND `slit` = 'BLANK' AND ignore = 0"
+        )
+        rejected = c.fetchall()
+        c.execute(
+            "UPDATE raw_frames SET ignore = 1 "
+            "WHERE `eso dpr tech` = 'ECHELLE,MULTI-PINHOLE' AND `slit` = 'BLANK' AND ignore = 0"
+        )
+        self.conn.commit()
+        c.close()
+
+        for fileName, arm in rejected:
+            self.log.warning(
+                f"rejected the multi-pinhole arc `{fileName}` ({arm} arm): its slit wheel reads BLANK, "
+                "so it has no pinhole spots and is not used to build a spatial-solution SOF"
+            )
+
     def _require_calibration_matches_table(self):
         """*stop with a clear message when the workspace database predates the `calibration_matches` table*
 
