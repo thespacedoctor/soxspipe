@@ -99,7 +99,7 @@ def resolve_read_noise(masterHeader, nominalRon, defaultRon, kw, log, masterLabe
 
     singleFrame, source = _fallback(nominal, defaultRon)
     reason = _unusable_reason(measured, datancom, kw)
-    log.warning(
+    log.info(
         f"The {masterLabel} has no usable measured read noise ({reason}); using the {source} value of {singleFrame} e-."
     )
     return ReadNoise(singleFrame, nCombined, _sky_fit_ron(singleFrame, nCombined), source)

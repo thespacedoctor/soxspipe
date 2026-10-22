@@ -1052,15 +1052,13 @@ def run_recipe_bulk(
     runningMessage = f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode"
     if poolSize is not None:
         effectivePoolSize = poolSize
-        print(f"{runningMessage} with a pool size of {effectivePoolSize}...")
+        log.print(f"{runningMessage} with a pool size of {effectivePoolSize}...")
     elif "mflat" in recipe or "stare" in recipe or "nod" in recipe or "offset" in recipe:
         effectivePoolSize = 3
-        print(f"{runningMessage} with a pool size of {effectivePoolSize} to avoid memory issues...")
+        log.print(f"{runningMessage} with a pool size of {effectivePoolSize} to avoid memory issues...")
     else:
         effectivePoolSize = os.cpu_count() or 1
-        print(f"{runningMessage} with a pool size of {os.cpu_count()}...")
-
-    log.print(f"Running {len(inputDicts)} reductions for the {recipe.upper()} recipe in multiprocessing mode...")
+        log.print(f"{runningMessage} with a pool size of {os.cpu_count()}...")
 
     with _worker_log_queue(log) as logQueue:
         results = _run_in_spawn_pool(

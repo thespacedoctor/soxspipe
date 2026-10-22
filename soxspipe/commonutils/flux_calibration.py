@@ -83,7 +83,7 @@ def load_response_factors(responseFunction: str, wavelengths: Any, log: Any) -> 
     factors = _response_factors_from_table(wavelengths, np.asarray(curve["WAVE"]), np.asarray(curve["RESPONSE"]))
     outsideCount = int(np.count_nonzero(np.isnan(factors) & ~np.isnan(np.asarray(wavelengths, dtype=float))))
     if outsideCount > 0:
-        log.warning(f"{outsideCount} science samples lie outside the response curve range and were set to NaN.")
+        log.info(f"{outsideCount} science samples lie outside the response curve range and were set to NaN.")
     return factors
 
 

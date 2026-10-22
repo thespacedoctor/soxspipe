@@ -225,7 +225,7 @@ def _warn_unmeasured_reference(log, shifts):
     """
     for _, row in shifts.loc[shifts["is_fallback"]].iterrows():
         where = f"order {int(row['order'])} of " if row["order"] != WHOLE_FRAME else ""
-        log.warning(
+        log.info(
             f"No reliable object trace in {where}the reference frame {row['frame']}, so no other frame can be "
             "measured against it there."
         )
