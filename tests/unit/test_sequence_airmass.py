@@ -8,7 +8,7 @@ import pytest
 from astropy.io import fits
 
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-from soxspipe.commonutils.sequence_airmass import mean_airmass
+from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
 pytestmark = pytest.mark.unit
 
@@ -182,3 +182,82 @@ def test_an_airmass_below_one_counts_as_missing(log: Any, soxs_kw: Any, sentinel
     # ASSERT
     assert airmass == pytest.approx(1.3)
     assert _warnings(log)
+
+
+def test_equal_exposure_times_pass_the_check(soxs_kw: Any) -> None:
+    # ARRANGE
+    headers = [_header(exptime=300.0), _header(exptime=300.0), _header(exptime=300.0)]
+
+    # ACT / ASSERT
+    require_equal_exposure_times(headers, soxs_kw)
+
+
+def test_exposure_times_that_differ_within_the_tolerance_pass_the_check(soxs_kw: Any) -> None:
+    # ARRANGE: A TENTH OF A MILLISECOND IS FLOAT NOISE, NOT A DIFFERENT EXPOSURE
+    headers = [_header(exptime=300.0), _header(exptime=300.0001)]
+
+    # ACT / ASSERT
+    require_equal_exposure_times(headers, soxs_kw)
+
+
+def test_unequal_exposure_times_raise_an_error_naming_each_frame_and_its_exposure_time(soxs_kw: Any) -> None:
+    # ARRANGE
+    first, second, third = _header(exptime=300.0), _header(exptime=60.0), _header(exptime=300.0)
+    first["ARCFILE"] = "SOXS.2026-01-01T00:00:00.000.fits"
+    second["ORIGFILE"] = "SOXS.2026-01-01T00:10:00.000.fits"
+
+    # ACT
+    with pytest.raises(ValueError, match="exposure time") as excinfo:
+        require_equal_exposure_times([first, second, third], soxs_kw)
+
+    # ASSERT: FILE NAMES WHEN THE HEADER HAS THEM, THE POSITION WHEN NOT
+    message = str(excinfo.value)
+    assert "SOXS.2026-01-01T00:00:00.000.fits (300" in message
+    assert "SOXS.2026-01-01T00:10:00.000.fits (60" in message
+    assert "frame 3 (300" in message
+
+
+def test_a_frame_without_a_readable_exposure_time_raises_an_error_naming_the_frame(soxs_kw: Any) -> None:
+    # ARRANGE
+    headers = [_header(exptime=300.0), _header(start=1.1)]
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="frame 2"):
+        require_equal_exposure_times(headers, soxs_kw)
+
+
+@pytest.mark.parametrize("badValue", [0.0, -300.0, float("nan"), float("inf"), float("-inf"), "sixty"])
+def test_an_exposure_time_that_cannot_divide_the_counts_raises_an_error_naming_the_frame(
+    soxs_kw: Any, badValue: object
+) -> None:
+    # ARRANGE: PLAIN DICTS, BECAUSE A FITS HEADER REFUSES NAN AND INF; EVERY FRAME CARRIES THE SAME BAD VALUE
+    headers = [{"EXPTIME": badValue}, {"EXPTIME": badValue}]
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"no readable EXPTIME in: frame 1, frame 2$"):
+        require_equal_exposure_times(headers, soxs_kw)
+
+
+def test_exposure_times_spread_wider_than_the_tolerance_raise_even_when_each_is_close_to_the_first(
+    soxs_kw: Any,
+) -> None:
+    # ARRANGE: EACH IS WITHIN THE TOLERANCE OF THE FIRST, BUT THE LAST TWO DIFFER BY 0.0018 S
+    headers = [_header(exptime=300.0), _header(exptime=300.0009), _header(exptime=299.9991)]
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="they differ"):
+        require_equal_exposure_times(headers, soxs_kw)
+
+
+def test_the_exposure_time_is_read_through_the_keyword_map(log: Any) -> None:
+    # ARRANGE: THE X-SHOOTER AND SOXS MAPS BOTH POINT EXPTIME AT EXPTIME, SO MAP IT TO A KEY ONLY THE LOOKUP KNOWS
+    seen: list[str] = []
+
+    def spy_kw(alias: str) -> str:
+        seen.append(alias)
+        return "MAPPED_EXPTIME"
+
+    # ACT / ASSERT: THE MAPPED KEY DIFFERS, SO THE CHECK RAISES ONLY IF IT READS THROUGH THE LOOKUP
+    with pytest.raises(ValueError, match="they differ"):
+        require_equal_exposure_times([{"MAPPED_EXPTIME": 1.0}, {"MAPPED_EXPTIME": 2.0}], spy_kw)
+    assert seen and set(seen) == {"EXPTIME"}

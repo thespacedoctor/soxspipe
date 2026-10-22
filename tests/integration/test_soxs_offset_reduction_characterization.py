@@ -49,6 +49,8 @@ def _offset_header(ra: float, dec: float, mjd: float, **extra: object) -> dict[s
         "HIERARCH ESO SEQ FIXOFF RA": ra,
         "HIERARCH ESO SEQ FIXOFF DEC": dec,
         "MJD-OBS": mjd,
+        # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BE FLUX CALIBRATED (DY-1714)
+        "EXPTIME": 300.0,
         **extra,
     }
 
@@ -348,6 +350,66 @@ def test_the_response_of_a_standard_uses_the_mean_airmass_of_the_on_frames_only(
 
     # ASSERT: THE ON FRAME'S START AND END MIDPOINT; WITH THE OFF FRAME IT WOULD BE (300 x 1.2 + 60 x 1.8) / 360
     assert responseArguments[0]["airmass"] == pytest.approx(1.2)
+
+
+# TWO ON FRAMES OF 300 S AND 60 S, THEN TWO OFF FRAMES: THE ON FRAMES ARE THE ONES THE COUNTS ARE DIVIDED BY.
+UNEQUAL_ON_EXPOSURES = [
+    {**TWO_LOCATIONS[0], "ARCFILE": "SOXS.ON1.fits", "EXPTIME": 300.0},
+    {**TWO_LOCATIONS[1], "ARCFILE": "SOXS.ON2.fits", "EXPTIME": 60.0},
+    {**TWO_LOCATIONS[2], "EXPTIME": 300.0},
+    {**TWO_LOCATIONS[3], "EXPTIME": 300.0},
+]
+
+
+def test_a_standard_with_unequal_on_exposure_times_cannot_make_a_response(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response divides by one exposure time, so ON frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    recipe, _ = _offset_recipe(log, tmp_path, UNEQUAL_ON_EXPOSURES)
+    recipe.generateReponseCurve = True
+    _patch(recipe, monkeypatch, tmp_path)
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            pytest.fail("a response was built from frames of unequal exposure time")
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", FakeResponse)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.ON2\.fits \(60"):
+        recipe.produce_product()
+
+
+def test_an_offset_stack_with_unequal_on_exposure_times_cannot_be_flux_calibrated(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flux calibration divides by one exposure time, so ON frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
+    recipe, _ = _offset_recipe(
+        log,
+        tmp_path,
+        UNEQUAL_ON_EXPOSURES,
+        extraRoutes={_route(PRO_CATG="RESP_TAB_VIS"): [str(responsePath)]},
+    )
+    recipe.detectorParams = {"extinction": "extinction.dat"}
+    _patch(recipe, monkeypatch, tmp_path)
+
+    class FakeFluxCalibrator:
+        def __init__(self, **kwargs: object) -> None:
+            pytest.fail("a spectrum was flux calibrated from frames of unequal exposure time")
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils.flux_calibration"), "flux_calibration", FakeFluxCalibrator)
+    monkeypatch.setattr(import_module("soxspipe.recipes.soxs_offset"), "get_calibrations_path", lambda **_: "/cal")
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.ON2\.fits \(60"):
+        recipe.produce_product()
 
 
 def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_path(

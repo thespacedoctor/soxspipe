@@ -50,7 +50,8 @@ CUMULATIVE_OFFSET = "ESO SEQ CUMOFF Y"
 
 def _nod_header(offset: float, mjd: float, **extra: object) -> dict[str, object]:
     """Return the header overrides for one nodding frame."""
-    return {CUMULATIVE_OFFSET: offset, "MJD-OBS": mjd, **extra}
+    # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BE FLUX CALIBRATED (DY-1714)
+    return {CUMULATIVE_OFFSET: offset, "MJD-OBS": mjd, "EXPTIME": 300.0, **extra}
 
 
 def _calibration_routes(tmpPath: Path) -> dict[frozenset[tuple[str, object]], list[str]]:
@@ -634,7 +635,7 @@ def test_the_response_of_a_standard_uses_the_mean_airmass_of_every_a_and_b_frame
     # ARRANGE
     headers = [
         {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
-        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 2.1, "HIERARCH ESO TEL AIRM END": 2.3, "EXPTIME": 60.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 2.1, "HIERARCH ESO TEL AIRM END": 2.3, "EXPTIME": 300.0},
     ]
     recipe, _ = _nod_recipe(log, tmp_path, headers)
     recipe.generateReponseCurve = True
@@ -653,8 +654,67 @@ def test_the_response_of_a_standard_uses_the_mean_airmass_of_every_a_and_b_frame
     # ACT
     recipe.produce_product()
 
-    # ASSERT: (300 S x 1.2 + 60 S x 2.2) / 360 S, NOT THE FIRST FRAME'S MIDPOINT OF 1.2
-    assert responseArguments[0]["airmass"] == pytest.approx(492.0 / 360.0)
+    # ASSERT: THE MEAN OF THE MIDPOINTS 1.2 AND 2.2, NOT THE FIRST FRAME'S MIDPOINT OF 1.2 (THE EXPOSURES ARE EQUAL)
+    assert responseArguments[0]["airmass"] == pytest.approx(1.7)
+
+
+def test_a_standard_with_unequal_exposure_times_cannot_make_a_response(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response divides by one exposure time, so A and B frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    headers = [
+        {**SINGLE_PAIR[0], "ARCFILE": "SOXS.A.fits", "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "ARCFILE": "SOXS.B.fits", "EXPTIME": 60.0},
+    ]
+    recipe, _ = _nod_recipe(log, tmp_path, headers)
+    recipe.generateReponseCurve = True
+    _patch(recipe, monkeypatch, tmp_path)
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            pytest.fail("a response was built from frames of unequal exposure time")
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", FakeResponse)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.B\.fits \(60"):
+        recipe.produce_product()
+
+
+def test_a_nod_stack_with_unequal_exposure_times_cannot_be_flux_calibrated(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flux calibration divides by one exposure time, so A and B frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
+    headers = [
+        {**SINGLE_PAIR[0], "ARCFILE": "SOXS.A.fits", "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "ARCFILE": "SOXS.B.fits", "EXPTIME": 60.0},
+    ]
+    recipe, _ = _nod_recipe(
+        log,
+        tmp_path,
+        headers,
+        extraRoutes={_route(PRO_CATG="RESP_TAB_VIS"): [str(responsePath)]},
+    )
+    recipe.detectorParams = {"extinction": "extinction.dat"}
+    _patch(recipe, monkeypatch, tmp_path)
+
+    class FakeFluxCalibrator:
+        def __init__(self, **kwargs: object) -> None:
+            pytest.fail("a spectrum was flux calibrated from frames of unequal exposure time")
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils.flux_calibration"), "flux_calibration", FakeFluxCalibrator)
+    monkeypatch.setattr(import_module("soxspipe.recipes.soxs_nod"), "get_calibrations_path", lambda **_: "/cal")
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.B\.fits \(60"):
+        recipe.produce_product()
 
 
 def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
@@ -667,7 +727,7 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
     headers = [
         {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
-        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 2.1, "HIERARCH ESO TEL AIRM END": 2.3, "EXPTIME": 60.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 2.1, "HIERARCH ESO TEL AIRM END": 2.3, "EXPTIME": 300.0},
     ]
     recipe, _ = _nod_recipe(
         log,
@@ -703,8 +763,8 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     assert calls[-6:] == ["flux_calibrator", "calibrate", "plot", "plot", "report", "clean_up"]
     arguments = calibratorArguments[0]
     assert arguments["responseFunction"] == str(responsePath)
-    # BOTH NOD POSITIONS HOLD THE OBJECT: (300 S x 1.2 + 60 S x 2.2) / 360 S (DY-1695)
-    assert arguments["airmass"] == pytest.approx(492.0 / 360.0)
+    # BOTH NOD POSITIONS HOLD THE OBJECT: THE MEAN OF THE MIDPOINTS 1.2 AND 2.2 (DY-1695)
+    assert arguments["airmass"] == pytest.approx(1.7)
     assert arguments["exptime"] == 300.0
     assert arguments["extinctionPath"] == "/cal/extinction.dat"
     assert arguments["arm"] == "VIS"

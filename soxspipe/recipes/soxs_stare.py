@@ -1274,7 +1274,8 @@ class soxs_stare(base_recipe):
         - ``responseFunctionPath`` -- the path to the response table
         - ``mergedSpectumDF`` -- the merged extracted spectrum
         - ``combined_object`` -- the detrended object frame, whose header supplies the exposure time
-        - ``objectFrames`` -- the raw object frames stacked into ``combined_object``; their mean airmass is used
+        - ``objectFrames`` -- the raw object frames stacked into ``combined_object``; they must share one exposure
+          time (DY-1714), and their mean airmass is used
 
         **Return:**
 
@@ -1283,8 +1284,9 @@ class soxs_stare(base_recipe):
         import pandas as pd
 
         from soxspipe.commonutils import flux_calibration
-        from soxspipe.commonutils.sequence_airmass import mean_airmass
+        from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
+        require_equal_exposure_times([frame.header for frame in objectFrames], self.kw)
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
 
         detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
@@ -1296,7 +1298,7 @@ class soxs_stare(base_recipe):
             extractedSpectrum=mergedSpectumDF,
             settings=self.settings,
             airmass=mean_airmass([frame.header for frame in objectFrames], self.kw, self.log),
-            exptime=combined_object.header.get("EXPTIME"),
+            exptime=combined_object.header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
             arm=self.arm,
             header=combined_object.header,
@@ -1338,8 +1340,8 @@ class soxs_stare(base_recipe):
         - ``orderJoins`` -- the order joins of the flat-fielded extraction
         - ``flatPass`` -- the flat-fielded extraction's ``FlatPassHandoff``, whose sky shifts the unflattened
           extraction applies instead of tuning its own (DY-1680). Default *None*
-        - ``objectFrames`` -- the raw standard-star frames stacked into the extraction; the response uses their mean
-          airmass, as flux calibration does (DY-1713)
+        - ``objectFrames`` -- the raw standard-star frames stacked into the extraction; they must share one exposure
+          time (DY-1714), and the response uses their mean airmass, as flux calibration does (DY-1713)
 
         **Return:**
 
@@ -1371,8 +1373,9 @@ class soxs_stare(base_recipe):
 
         # GETTING THE RESPONSE
         from soxspipe.commonutils import response_function
-        from soxspipe.commonutils.sequence_airmass import mean_airmass
+        from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
+        require_equal_exposure_times([frame.header for frame in objectFrames], self.kw)
         self.log.print("# CALCULATING RESPONSE FUNCTION\n")
         response = response_function(
             log=self.log,

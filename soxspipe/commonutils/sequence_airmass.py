@@ -1,14 +1,20 @@
-"""*the airmass of a sequence of frames, for the extinction correction of the product they make (DY-1695)*
+"""*the airmass and exposure time of a sequence of frames, for the flux calibration of the product they make (DY-1695)*
 
 A stacked product collects light over every frame that contributes to it, so its extinction correction uses the mean
 airmass of those frames, not the airmass at the end of the first one. Each frame contributes the midpoint of its
 ``ESO TEL AIRM START`` and ``ESO TEL AIRM END``, and frames are weighted by how long each exposure lasted.
+
+The same frames must also share one exposure time, because flux calibration and the response curve divide the counts
+of the product by it (DY-1714).
 """
 
 import math
 
 # AN AIRMASS IS AT LEAST 1 (THE ZENITH); LOWER VALUES ARE SENTINELS SUCH AS THE DATA ORGANISER'S -99.99
 MINIMUM_AIRMASS = 1.0
+
+# TWO EXPOSURE TIMES THIS CLOSE (IN SECONDS) ARE THE SAME EXPOSURE; THEY DIFFER BY FLOAT NOISE
+EXPOSURE_TIME_TOLERANCE_SECONDS = 1e-3
 
 
 def _finite_float(header, keyword):
@@ -100,3 +106,62 @@ def mean_airmass(headers, kw, log):
         )
         weights = [1.0] * len(framesUsed)
     return sum(airmass * weight for (airmass, _), weight in zip(framesUsed, weights, strict=True)) / sum(weights)
+
+
+def _exposure_time(header, keyword):
+    """*one frame's exposure time as a float, or None when it is missing, not a finite number, or not positive*"""
+    value = _finite_float(header, keyword)
+    return value if value is not None and value > 0 else None
+
+
+def _frame_label(header, frameNumber):
+    """*the raw file name of a frame, or its position in the sequence when its header has none*"""
+    for keyword in ("ARCFILE", "ORIGFILE"):
+        name = str(header.get(keyword, "")).strip()
+        if name:
+            return name
+    return f"frame {frameNumber}"
+
+
+def require_equal_exposure_times(headers, kw):
+    """*raise an error unless every frame that contributes to a product has the same exposure time*
+
+    Stacked frames are mean-combined and nod and offset extractions median-combined, so the counts of the product
+    are per single exposure. Flux calibration and the response curve divide them by one frame's ``EXPTIME``, which
+    is right only when every exposure lasted that long. ``EXPTIME`` is the divisor, so it is the value compared:
+    on SOXS NIR it is one DIT.
+
+    **Key Arguments:**
+
+    - ``headers`` -- the FITS headers of the frames that contribute to the product
+    - ``kw`` -- the keyword lookup, mapping an alias such as ``EXPTIME`` to the header keyword
+
+    **Return:**
+
+    - None
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.sequence_airmass import require_equal_exposure_times
+    require_equal_exposure_times([frame.header for frame in allObjectFrames], self.kw)
+    ```
+    """
+    exptimes = [_exposure_time(header, kw("EXPTIME")) for header in headers]
+    if not exptimes:
+        return
+    labels = [_frame_label(header, frameNumber) for frameNumber, header in enumerate(headers, start=1)]
+    unreadable = [label for label, exptime in zip(labels, exptimes, strict=True) if exptime is None]
+    if unreadable:
+        raise ValueError(
+            f"Flux calibration needs the exposure time of every frame, but there is no readable {kw('EXPTIME')} "
+            f"in: {', '.join(unreadable)}"
+        )
+    # COMPARE THE WHOLE SPREAD, SO FRAMES EACH CLOSE TO THE FIRST CANNOT DIFFER FROM EACH OTHER BY MORE
+    if max(exptimes) - min(exptimes) <= EXPOSURE_TIME_TOLERANCE_SECONDS:
+        return
+    frames = ", ".join(f"{label} ({exptime:g} s)" for label, exptime in zip(labels, exptimes, strict=True))
+    raise ValueError(
+        "Flux calibration divides the counts by one exposure time, so every frame of the sequence must have the "
+        f"same exposure time, but they differ: {frames}"
+    )

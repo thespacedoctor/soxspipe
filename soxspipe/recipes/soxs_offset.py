@@ -630,8 +630,9 @@ class soxs_offset(soxs_nod):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
-            from soxspipe.commonutils.sequence_airmass import mean_airmass
+            from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
+            require_equal_exposure_times([frame.header for frame in allFrameON], self.kw)
             mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
                 aFrame=aFrame,
                 bFrame=bFrame,
@@ -673,8 +674,8 @@ class soxs_offset(soxs_nod):
 
         - ``responseFunctionPath`` -- the path to the response table
         - ``stackedSpectrum`` -- the stacked extraction
-        - ``allFrameON`` -- the ON frames; the first one's header supplies the exposure time, and their mean airmass
-          is used (the OFF frames hold only sky)
+        - ``allFrameON`` -- the ON frames, which must share one exposure time (DY-1714); the first one's header supplies
+          it, and their mean airmass is used (the OFF frames hold only sky)
 
         **Return:**
 
@@ -684,17 +685,18 @@ class soxs_offset(soxs_nod):
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
-        from soxspipe.commonutils.sequence_airmass import mean_airmass
+        from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
         self.log.print("# PERFORMING FLUX CALIBRATION\n")
-        # TODO CHECK IF TAKING THE HEADER AND EXPOSURE TIME OF ONE FRAME IS OK (THE AIRMASS IS THE MEAN, DY-1695)
+        # EVERY ON EXPOSURE IS THE SAME LENGTH, SO THE FIRST FRAME'S HEADER AND EXPOSURE TIME STAND FOR THEM ALL
+        require_equal_exposure_times([frame.header for frame in allFrameON], self.kw)
         fluxCalibrator = flux_calibration(
             log=self.log,
             responseFunction=responseFunctionPath,
             extractedSpectrum=stackedSpectrum,
             settings=self.settings,
             airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
-            exptime=allFrameON[0].header.get("EXPTIME"),
+            exptime=allFrameON[0].header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,
             header=allFrameON[0].header,
