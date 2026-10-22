@@ -77,7 +77,7 @@ def build_two_d_map_images(wavelength, slit, orderMap):
     - ``mapImages`` -- a frozen ``two_d_map_images``, holding float32 copies of the wavelength, slit and order
       images and the gradients of the wavelength and slit images
     """
-    images = [np.asarray(image, dtype=np.float32) for image in (wavelength, slit, orderMap)]
+    images = [np.array(image, dtype=np.float32, copy=True) for image in (wavelength, slit, orderMap)]
     terms = [np.zeros(images[0].shape, dtype=np.float32) for _ in range(4)]
     wavelengthImage, slitImage, orderImage = images
     isOrder = np.isfinite(orderImage) & (orderImage > 0) & (orderImage == np.round(orderImage))

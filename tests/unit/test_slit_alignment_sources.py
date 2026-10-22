@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from astropy.nddata import CCDData
+from astropy.nddata import CCDData, block_reduce
 
 from soxspipe.commonutils.slit_alignment import build_two_d_map_images, shift_frame_along_slit
 from soxspipe.commonutils.slit_alignment_sources import _interpolate, _newton_step, _order_sources
@@ -120,6 +120,37 @@ def test_the_wavelength_image_is_not_a_number_outside_the_orders() -> None:
     assert np.isfinite(mapImages.wavelength[isOrder]).all()
 
 
+def test_a_block_reduced_map_has_nan_wavelength_in_its_fractional_order_blocks_and_sources_are_not_thrown_far() -> None:
+    # ARRANGE: AN ORDER 3 BAND ON AN UNBINNED MAP THAT HOLDS ZERO OUTSIDE IT, REDUCED 2X2 WITH A MEAN AS
+    # toolkit._open_disp_map_hdus DOES FOR A MORE-BINNED FRAME. THE BAND EDGE FALLS IN THE MIDDLE OF A BLOCK, SO
+    # THAT BLOCK HOLDS 1.5, NOT AN ORDER NUMBER
+    rows, columns = np.mgrid[0 : SHAPE[0] * 2, 0 : SHAPE[1] * 2]
+    isOrder = (columns >= 41) & (columns < 201)
+    fullMaps = [
+        np.where(isOrder, 1000.0 + NM_PER_ROW * rows, 0.0),
+        np.where(isOrder, PIXEL_ARCSEC * (columns - 120.0), 0.0),
+        np.where(isOrder, 3.0, 0.0),
+    ]
+    wavelength, slit, orderMap = (block_reduce(image, (2, 2), func=np.mean) for image in fullMaps)
+    isFractional = (orderMap > 0) & (orderMap != np.round(orderMap))
+
+    # ACT
+    mapImages = build_two_d_map_images(wavelength, slit, orderMap)
+    targets, (sourceRows, sourceColumns) = _order_sources(mapImages, 3, SHIFT_ARCSEC)
+
+    # ASSERT: THE NaN BAND IS THE INTEGER-ORDER MASK, NOT "WAVELENGTH == 0": THE FRACTIONAL BLOCKS HOLD A MEAN
+    # WAVELENGTH THAT IS NEITHER 0 NOR AN ORDER WAVELENGTH. EVERY SOURCE IS NON-FINITE OR WITHIN A PIXEL OF ITS
+    # ANALYTIC POSITION, THE SAME ROW AND THE SHIFT AWAY IN COLUMNS (0.4 ARCSEC PER BINNED COLUMN)
+    assert isFractional.any()
+    assert np.isnan(mapImages.wavelength[isFractional]).all()
+    assert np.isfinite(mapImages.wavelength[orderMap == 3]).all()
+    isFinite = np.isfinite(sourceRows) & np.isfinite(sourceColumns)
+    assert isFinite.any()
+    np.testing.assert_allclose(sourceRows[isFinite], targets[0][isFinite], atol=1)
+    expectedColumns = targets[1] + SHIFT_ARCSEC / (2 * PIXEL_ARCSEC)
+    np.testing.assert_allclose(sourceColumns[isFinite], expectedColumns[isFinite], atol=1)
+
+
 def test_a_pixel_with_parallel_wavelength_and_slit_gradients_is_flagged_bad_not_given_a_finite_wrong_value() -> None:
     # ARRANGE: THE WAVELENGTH AND SLIT IMAGES VARY ONLY ALONG THE COLUMNS, SO THE 2X2 JACOBIAN IS SINGULAR
     _, columns = _grid()
@@ -181,6 +212,35 @@ def test_a_newton_step_ignores_the_wavelength_residual_where_the_gradient_matrix
 def test_a_newton_step_gives_a_non_finite_coordinate_not_a_finite_wrong_one_for_a_zero_determinant() -> None:
     # ARRANGE
     gradients = [np.array([0.02]), np.array([0.004]), np.array([0.02]), np.array([0.004])]
+
+    # ACT
+    with np.errstate(all="raise"):
+        newRows, newColumns = _newton_step(np.array([10.0]), np.array([20.0]), gradients, 0.03, 1.5)
+
+    # ASSERT
+    assert not np.isfinite(newRows).any()
+    assert not np.isfinite(newColumns).any()
+
+
+def test_the_map_images_are_copies_of_float32_input_arrays() -> None:
+    # ARRANGE
+    rows, columns = _grid()
+    slit = (PIXEL_ARCSEC * (columns - CENTRE_COLUMN)).astype(np.float32)
+    orderMap = np.ones(SHAPE, dtype=np.float32)
+
+    # ACT
+    mapImages = build_two_d_map_images(1000.0 + NM_PER_ROW * rows, slit, orderMap)
+    slit[0, 0] = 99.0
+    orderMap[0, 0] = 7.0
+
+    # ASSERT
+    assert mapImages.slit[0, 0] != 99.0
+    assert mapImages.order[0, 0] == 1.0
+
+
+def test_a_newton_step_with_non_finite_gradients_gives_a_non_finite_step_under_a_raising_errstate() -> None:
+    # ARRANGE
+    gradients = [np.array([np.inf]), np.array([0.004]), np.array([0.01]), np.array([0.2])]
 
     # ACT
     with np.errstate(all="raise"):

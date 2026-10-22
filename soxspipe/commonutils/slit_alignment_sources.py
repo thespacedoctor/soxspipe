@@ -121,11 +121,14 @@ def _newton_step(rows, columns, gradients, wavelengthResidual, slitResidual):
     - ``rows``, ``columns`` -- the new coordinates
     """
     wavelengthRow, wavelengthCol, slitRow, slitCol = gradients
-    determinant = _gradient_determinant(*gradients)
     with np.errstate(divide="ignore", invalid="ignore"):
+        determinant = _gradient_determinant(*gradients)
         sine = np.abs(determinant) / (np.hypot(wavelengthRow, wavelengthCol) * np.hypot(slitRow, slitCol))
         isWellConditioned = sine >= MIN_JACOBIAN_SINE
         wavelengthResidual = np.where(isWellConditioned, wavelengthResidual, 0.0)
         newRows = rows + (slitCol * wavelengthResidual - wavelengthCol * slitResidual) / determinant
         newColumns = columns + (wavelengthRow * slitResidual - slitRow * wavelengthResidual) / determinant
+        # AN INFINITE GRADIENT WOULD GIVE AN INFINITE DETERMINANT AND A ZERO STEP IN ONE AXIS, A FINITE WRONG SOURCE
+        isFinite = np.isfinite(determinant)
+        newRows, newColumns = np.where(isFinite, newRows, np.nan), np.where(isFinite, newColumns, np.nan)
     return newRows, newColumns
