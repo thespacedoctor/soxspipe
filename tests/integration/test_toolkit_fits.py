@@ -104,19 +104,34 @@ def test_extinction_correction_has_no_jump_at_table_wavelengths_and_hits_table_v
     assert np.max(np.abs(np.diff(denseFactors) / denseFactors[:-1])) < MAX_DENSE_GRID_STEP
 
 
-def test_extinction_correction_keeps_out_of_range_behavior(tmp_path: Path) -> None:
+def test_extinction_correction_holds_end_values_outside_the_table(tmp_path: Path) -> None:
     # ARRANGE
     extinctionPath = tmp_path / "extinction.fits"
     Table({"WAVE": [4000.0, 5000.0, 6000.0], "MAG_AIRMASS": [0.1, 0.2, 0.3]}).write(extinctionPath)
-    # A NAN WAVELENGTH GIVES NAN (SCIPY'S STEP INTERPOLATOR RETURNED THE LAST TABLE VALUE)
-    wave = np.array([300.0, 399.0, 601.0, 900.0, np.nan])
+    # A NAN WAVELENGTH GIVES NAN, SO A MASKED PIXEL STAYS MASKED
+    wave = np.array([300.0, 399.0, 601.0, 900.0, 1020.0, np.nan])
 
     # ACT
     factors = toolkit.extinction_correction_factor(wave, str(extinctionPath), airmass=2.0)
 
-    # ASSERT: BELOW THE TABLE HOLDS THE FIRST VALUE; ABOVE THE TABLE IS NAN, AS WITH THE OLD KIND="NEXT" INTERPOLATOR
+    # ASSERT: BELOW THE TABLE HOLDS THE FIRST VALUE; ABOVE THE TABLE HOLDS THE LAST VALUE (DY-1688)
     assert_allclose(factors[:2], 10 ** (0.8 * 0.1))
-    assert np.isnan(factors[2:]).all()
+    assert_allclose(factors[2:5], 10 ** (0.8 * 0.3))
+    assert np.isnan(factors[5])
+
+
+def test_extinction_correction_is_finite_above_the_lasilla_table_end() -> None:
+    # ARRANGE
+    table = Table.read(LASILLA_EXTINCTION_PATH)
+    lastMagPerAirmass = float(np.asarray(table["MAG_AIRMASS"], float)[-1])
+    airmass = 1.3
+    xshooterVisWaveNm = np.linspace(900.5, 1020.0, 50)
+
+    # ACT
+    factors = toolkit.extinction_correction_factor(xshooterVisWaveNm, str(LASILLA_EXTINCTION_PATH), airmass)
+
+    # ASSERT: THE X-SHOOTER VIS RANGE ABOVE 900 NM IS NOT BLANKED (DY-1688)
+    assert_allclose(factors, 10 ** (0.4 * lastMagPerAirmass * airmass))
 
 
 def test_read_spectral_format_selects_full_or_reduced_wavelengths(

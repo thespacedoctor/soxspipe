@@ -3134,6 +3134,10 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     - ``extinctionTablePath`` -- path to the observatory extinction curve FITS table (wavelength in Angstrom)
     - ``airmass`` -- the airmass of the observation
 
+    The curve is linearly interpolated between the table wavelengths. Outside the table the end values
+    are held: the first value below the first wavelength, the last value above the last wavelength. A NaN
+    wavelength gives NaN.
+
     **Return:**
 
     - ``extCorrectionFactor`` -- the multiplicative correction factor at each wavelength
@@ -3159,14 +3163,15 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     magPerAirmass = np.asarray(extinctionData["MAG_AIRMASS"], dtype=float)
 
     # PIECEWISE-LINEAR INTERPOLATION BETWEEN THE TABLE WAVELENGTHS (DY-1684). A STEP INTERPOLATOR
-    # PUT A ~5% SAW-TOOTH INTO EVERY RESPONSE AND FLUX-CALIBRATED SPECTRUM. OUTSIDE THE TABLE THE
-    # OLD BEHAVIOR IS KEPT: BELOW THE FIRST WAVELENGTH HOLD THE FIRST VALUE, ABOVE THE LAST RETURN NAN
+    # PUT A ~5% SAW-TOOTH INTO EVERY RESPONSE AND FLUX-CALIBRATED SPECTRUM. OUTSIDE THE TABLE HOLD
+    # THE END VALUES: THE FIRST BELOW THE FIRST WAVELENGTH, THE LAST ABOVE THE LAST (900 NM, ~0.01
+    # MAG/AIRMASS). RETURNING NAN ABOVE 900 NM BLANKED X-SHOOTER VIS ABOVE 900 NM (DY-1688)
     interpolatedMagPerAirmass = np.interp(
         np.asarray(wave, dtype=float),
         tableWaveNm,
         magPerAirmass,
         left=magPerAirmass[0],
-        right=np.nan,
+        right=magPerAirmass[-1],
     )
 
     return 10 ** (0.4 * interpolatedMagPerAirmass * airmass)
