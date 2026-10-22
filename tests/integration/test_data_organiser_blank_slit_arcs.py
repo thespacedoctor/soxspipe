@@ -1,4 +1,4 @@
-"""Integration contracts for rejecting multi-pinhole arcs taken with a blank slit (DY-1577)."""
+"""Integration contracts for rejecting pinhole and multi-pinhole arcs taken with a blank slit (DY-1577)."""
 
 from __future__ import annotations
 
@@ -90,7 +90,6 @@ def test_blank_slit_frames_of_other_techniques_are_not_rejected_by_the_arc_rule(
         tech="ECHELLE,SLIT,STARE",
         dprType="OBJECT",
     )
-    _insert_frame(organiser.conn, "blank-pinhole.fits", arm="NIR", slit="BLANK", tech="ECHELLE,PINHOLE")
 
     # ACT
     organiser._flag_files_to_ignore()
@@ -99,9 +98,24 @@ def test_blank_slit_frames_of_other_techniques_are_not_rejected_by_the_arc_rule(
     assert _ignored(organiser) == set()
 
 
+@pytest.mark.parametrize("arm", ["NIR", "VIS"])
+@pytest.mark.parametrize("dprType", ["LAMP,WAVE", "LAMP,FLAT"])
+def test_blank_slit_single_pinhole_arc_is_ignored_on_each_arm(organiser, arm, dprType) -> None:
+    # ARRANGE
+    _insert_frame(organiser.conn, "blank-ph.fits", arm=arm, slit="BLANK", tech="ECHELLE,PINHOLE", dprType=dprType)
+    _insert_frame(organiser.conn, "good-ph.fits", arm=arm, slit="PINHOLE", tech="ECHELLE,PINHOLE", dprType=dprType)
+
+    # ACT
+    organiser._flag_files_to_ignore()
+
+    # ASSERT
+    assert _ignored(organiser) == {"blank-ph.fits"}
+
+
 def test_rejection_warns_with_the_file_name_and_the_reason(organiser, log) -> None:
     # ARRANGE
     _insert_frame(organiser.conn, "blank-mph.fits", arm="NIR", slit="BLANK")
+    _insert_frame(organiser.conn, "blank-ph.fits", arm="VIS", slit="BLANK", tech="ECHELLE,PINHOLE")
     _insert_frame(organiser.conn, "good-mph.fits", arm="NIR", slit="MULTPIN")
 
     # ACT
@@ -109,10 +123,11 @@ def test_rejection_warns_with_the_file_name_and_the_reason(organiser, log) -> No
 
     # ASSERT
     warnings = [message for level, message in log.messages if level == "warning"]
-    assert len(warnings) == 1
+    assert len(warnings) == 2
+    assert all("BLANK" in message for message in warnings)
     assert "blank-mph.fits" in warnings[0]
-    assert "BLANK" in warnings[0]
-    assert "good-mph.fits" not in warnings[0]
+    assert "blank-ph.fits" in warnings[1]
+    assert not any("good-mph.fits" in message for message in warnings)
 
 
 def test_a_second_pass_keeps_the_frame_ignored_and_does_not_warn_again(organiser, log) -> None:
@@ -129,10 +144,11 @@ def test_a_second_pass_keeps_the_frame_ignored_and_does_not_warn_again(organiser
     assert [message for level, message in log.messages if level == "warning"] == []
 
 
-def test_x_shooter_multi_pinhole_frames_are_left_alone(organiser) -> None:
+def test_x_shooter_pinhole_frames_are_left_alone(organiser) -> None:
     # ARRANGE
     organiser.instrument = "XSH"
     _insert_frame(organiser.conn, "xsh-mph.fits", arm="VIS", slit="BLANK")
+    _insert_frame(organiser.conn, "xsh-ph.fits", arm="VIS", slit="BLANK", tech="ECHELLE,PINHOLE")
 
     # ACT
     organiser._flag_files_to_ignore()
