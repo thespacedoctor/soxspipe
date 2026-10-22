@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 from types import ModuleType
 from typing import NamedTuple
@@ -553,3 +555,246 @@ def test_the_ruff_runners_do_not_depend_on_the_path(monkeypatch):
         ["/somewhere/python", "-m", "ruff", "check"],
         ["/somewhere/python", "-m", "ruff", "check"],
     ]
+
+
+GIT_IDENTITY = {
+    "GIT_AUTHOR_NAME": "Test",
+    "GIT_AUTHOR_EMAIL": "test@example.com",
+    "GIT_COMMITTER_NAME": "Test",
+    "GIT_COMMITTER_EMAIL": "test@example.com",
+}
+
+
+def _git(repoPath: Path, *arguments: str) -> None:
+    """*run git in a temporary repository with a fixed identity*
+
+    **Key Arguments:**
+
+    - ``repoPath`` -- the repository to run git in
+    - ``arguments`` -- the git arguments
+    """
+    environment = {**os.environ, **GIT_IDENTITY}
+    subprocess.run(["git", *arguments], cwd=repoPath, env=environment, check=True, capture_output=True)  # noqa: S603, S607
+
+
+@pytest.fixture
+def worktree_repo(tmp_path) -> Path:
+    """*a git repository with a `main` branch holding a.py and a .gitignore, checked out on `feature`*
+
+    **Return:**
+
+    - ``repoPath`` -- the repository root
+    """
+    repoPath = tmp_path / "repo"
+    repoPath.mkdir()
+    _git(repoPath, "init", "-b", "main")
+    (repoPath / "a.py").write_text("one = 1\ntwo = 2\nthree = 3\n", encoding="utf-8")
+    (repoPath / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+    _git(repoPath, "add", "-A")
+    _git(repoPath, "commit", "-m", "base")
+    _git(repoPath, "checkout", "-b", "feature")
+
+    return repoPath
+
+
+def test_worktree_lines_marks_an_uncommitted_edit_as_changed(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "a.py").write_text("one = 1\ntwo = 22\nthree = 3\n", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {"a.py": {2}}
+
+
+def test_worktree_lines_marks_an_untracked_file_as_fully_added(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "new.py").write_text("x = 1\ny = 2\nz = 3\n", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {"new.py": {1, 2, 3}}
+
+
+def test_worktree_lines_skips_an_ignored_file(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "ignored.py").write_text("x = 1\n", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {}
+
+
+def test_worktree_lines_includes_committed_work_since_the_merge_base(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "a.py").write_text("one = 1\ntwo = 2\nthree = 33\n", encoding="utf-8")
+    _git(worktree_repo, "commit", "-am", "edit three")
+    (worktree_repo / "a.py").write_text("one = 11\ntwo = 2\nthree = 33\n", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {"a.py": {1, 3}}
+
+
+def test_worktree_lines_ignores_untracked_files_ruff_does_not_lint(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "notes.txt").write_text("hello\n", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {}
+
+
+def test_worktree_lines_gives_an_empty_untracked_file_no_changed_lines(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "empty.py").write_text("", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {}
+
+
+def test_worktree_lines_raises_when_the_base_branch_does_not_exist(worktree_repo):
+    # ACT, ASSERT
+    with pytest.raises(lint_ratchet.RatchetError):
+        lint_ratchet.worktree_changed_lines("origin/nope", worktree_repo)
+
+
+def test_main_gates_a_finding_in_an_untracked_file_in_worktree_mode(worktree_repo, monkeypatch, capsys):
+    # ARRANGE
+    (worktree_repo / "new.py").write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.chdir(worktree_repo)
+    report = json.dumps(
+        [
+            {
+                "filename": str(worktree_repo.resolve() / "new.py"),
+                "location": {"row": 1, "column": 1},
+                "end_location": {"row": 1, "column": 2},
+                "code": "E501",
+                "message": "Line too long",
+            }
+        ]
+    )
+    monkeypatch.setattr(lint_ratchet, "run_ruff", lambda paths, repoRoot: report)
+
+    # ACT
+    status = lint_ratchet.main(["--worktree", "main"])
+
+    # ASSERT
+    assert status == lint_ratchet.EXIT_FINDINGS
+    assert "new.py:1: E501 Line too long" in capsys.readouterr().out
+
+
+def test_worktree_mode_cannot_be_combined_with_the_other_modes():
+    # ACT, ASSERT
+    with pytest.raises(SystemExit):
+        lint_ratchet.main(["--worktree", "origin/develop", "--staged"])
+    with pytest.raises(SystemExit):
+        lint_ratchet.main(["--worktree", "origin/develop", "--compare-branch", "origin/develop"])
+
+
+def test_worktree_lines_skips_an_untracked_path_that_is_not_a_regular_file(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "dangling.py").symlink_to(worktree_repo / "nowhere.py")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {}
+
+
+def test_worktree_lines_skip_a_symlink_to_an_existing_file_outside_the_repository(worktree_repo, tmp_path):
+    # ARRANGE
+    outside = tmp_path / "outside.py"
+    outside.write_text("x = 1\ny = 2\n", encoding="utf-8")
+    (worktree_repo / "link.py").symlink_to(outside)
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {}
+
+
+def test_worktree_lines_keep_an_untracked_filename_that_contains_a_newline(worktree_repo):
+    # ARRANGE
+    oddName = "we\nird.py"
+    try:
+        (worktree_repo / oddName).write_text("x = 1\ny = 2\n", encoding="utf-8")
+    except OSError:
+        pytest.skip("this filesystem does not allow a newline in a filename")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {oddName: {1, 2}}
+
+
+def test_worktree_lines_keep_an_untracked_filename_with_non_ascii_characters(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "naïve.py").write_text("x = 1\n", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {"naïve.py": {1}}
+
+
+def test_worktree_lines_merge_an_edit_and_an_untracked_file(worktree_repo):
+    # ARRANGE
+    (worktree_repo / "a.py").write_text("one = 1\ntwo = 22\nthree = 3\n", encoding="utf-8")
+    (worktree_repo / "new.py").write_text("x = 1\n", encoding="utf-8")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {"a.py": {2}, "new.py": {1}}
+
+
+def test_worktree_lines_count_lines_by_the_endings_ruff_counts(worktree_repo):
+    # ARRANGE
+    # A FORM FEED, A VERTICAL TAB, FILE SEPARATORS AND NEXT-LINE ARE NOT LINE ENDINGS FOR RUFF
+    (worktree_repo / "odd.py").write_bytes(b"x = 1\x0c\x0b\x1c\x1d\x1e\xc2\x85y = 2\n")
+    (worktree_repo / "mixed.py").write_bytes(b"a = 1\r\nb = 2\rc = 3\nd = 4")
+
+    # ACT
+    changedLines = lint_ratchet.worktree_changed_lines("main", worktree_repo)
+
+    # ASSERT
+    assert changedLines == {"odd.py": {1}, "mixed.py": {1, 2, 3, 4}}
+
+
+@pytest.mark.parametrize("mode", [["--staged"], ["--worktree", "main"]])
+def test_main_reports_a_tool_error_when_the_git_output_is_not_utf8(monkeypatch, capsys, mode):
+    # ARRANGE
+    monkeypatch.setattr(lint_ratchet, "repository_root", lambda start: REPO_ROOT)
+
+    def undecodable(*arguments):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(lint_ratchet, "run_git_diff", undecodable)
+    monkeypatch.setattr(lint_ratchet, "run_worktree_diff", undecodable)
+
+    # ACT
+    status = lint_ratchet.main(mode)
+
+    # ASSERT
+    errorLines = capsys.readouterr().err.strip().splitlines()
+    assert status == lint_ratchet.EXIT_TOOL_ERROR
+    assert len(errorLines) == 1
+    assert "not valid UTF-8" in errorLines[0]
