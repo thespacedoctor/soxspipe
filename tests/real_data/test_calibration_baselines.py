@@ -62,6 +62,14 @@ standards combined the nod pair (`NOD COMBINED` 1, `NOD COMBINE FALLBACK NUM` 0)
 DY-1675 adds nothing. The VIS response values moved by -0.2% to -0.6% (DY-1684) and the
 VIS `EFF MEDIAN` by -0.3%. The NIR response values moved by 0.2% or less: DY-1674 raised
 them by up to 0.5% and DY-1679 and DY-1680 took most of that back (DY-1690, DY-1691).
+
+The VIS and the 2025-11-28 NIR spatial solution entries were re-recorded on 2026-10-22
+from local arm64 reductions of develop and of the DY-1526 branch, which match CI
+exactly since DY-1525. The branch drops multi-pinhole sets that sit off the model by the
+same amount in every pinhole, once, on the first fit. It dropped 3 of 131 sets on VIS
+(`XY RES MEDIAN` 0.18952 to 0.16849, `GOODLINES FRAC` 0.868533 to 0.844784), 4 of 390
+on NIR 2025-11-28 (`XY RES MEDIAN` 0.23585 to 0.22101) and 6 of 443 on NIR 2025-05-14
+(0.21581 to 0.21303, inside its band and left as it is).
 """
 
 from __future__ import annotations
@@ -316,8 +324,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20250831T030421_VIS_1X1_1_SSOL_MULTPIN_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.18952),
-            "GOODLINES FRAC": fraction(0.868533),
+            "XY RES MEDIAN": level(0.16849),
+            "GOODLINES FRAC": fraction(0.844784),
             "PINHOLE COUNT MIN": count(9),
         },
     ),
@@ -325,7 +333,7 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20251128T122217_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.23585),
+            "XY RES MEDIAN": level(0.22101),
             "GOODLINES FRAC": fraction(0.458308),
             "PINHOLE COUNT MIN": count(9),
         },

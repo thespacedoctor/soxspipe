@@ -55,6 +55,8 @@ soxs-disp-solution:
         poly-fitting-residual-clipping-sigma: 7
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
         qc-acceptable-ranges:
             detlines-frac: [0.9,1.01]
             fwhm-pin-sd: [0.1,0.2]
@@ -80,6 +82,8 @@ soxs-disp-solution:
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 5
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
         qc-acceptable-ranges:
             detlines-frac: [0.9,1.01]
             fwhm-pin-sd: [0,0.211]
@@ -236,6 +240,8 @@ soxs-spat-solution:
         poly-fitting-residual-clipping-sigma: 7
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: False
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
         # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
@@ -268,6 +274,8 @@ soxs-spat-solution:
         poly-clipping-iteration-limit: 5
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: False
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
         # MAXIMUM DISTANCE ALLOWED FROM THE PIXEL CENTRE WHEN CALCULATING WAVELENGTH, ORDER AND SLIT-POSITION FOR 2D DISP-SOL IMAGE
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
