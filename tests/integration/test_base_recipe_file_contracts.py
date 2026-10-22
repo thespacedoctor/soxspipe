@@ -111,10 +111,8 @@ def test_update_fits_keywords_records_recipe_provenance(
     assert header["ESO PRO REC1 PARAM2 VALUE"] == "median"
 
 
-def test_prepare_frames_preserves_processing_order_then_sorts_by_observation_time(
-    tmp_path: Path,
-    log: object,
-) -> None:
+def _prepare_frames_recipe(tmp_path: Path, log: object) -> base_recipe:
+    """Build a recipe whose `prepare_frames` can run with a stubbed `_prepare_single_frame`."""
     recipe = _recipe(tmp_path, log)
     recipe.settings = pipeline_settings(
         tmp_path,
@@ -139,28 +137,70 @@ def test_prepare_frames_preserves_processing_order_then_sorts_by_observation_tim
         },
     )
     recipe.kw = keyword_lookup(log=log, settings=recipe.settings).get
+    recipe.recipeSettings = {"use_lacosmic": False}
+    recipe.cosmicRayMasks = []
+    recipe.verbose = False
+    recipe.arm = "VIS"
+    return recipe
+
+
+def test_prepare_frames_preserves_processing_order_then_sorts_by_observation_time(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    recipe = _prepare_frames_recipe(tmp_path, log)
     laterPath = prepared_fits(tmp_path / "later.fits", seed=2)
     earlierPath = prepared_fits(tmp_path / "earlier.fits", seed=1)
     fits.setval(laterPath, recipe.kw("MJDOBS"), value=60_001.0)
     fits.setval(earlierPath, recipe.kw("MJDOBS"), value=60_000.0)
     sourcePaths = [str(laterPath), str(earlierPath)]
     recipe.inputFrames = SimpleNamespace(files_filtered=lambda include_path: sourcePaths.copy())
-    recipe.recipeSettings = {"use_lacosmic": False}
-    recipe.verbose = False
-    recipe.arm = "VIS"
     processedPaths: list[str] = []
+    steps: list[str] = []
 
     def prepare(frame: str, save: bool) -> str:
         processedPaths.append(frame)
+        steps.append("prepare")
         return frame
 
     recipe._prepare_single_frame = prepare
+    recipe._write_cosmic_ray_mask_product = lambda: steps.append("write cosmic-ray masks")
 
     collection = recipe.prepare_frames()
 
     assert processedPaths == sourcePaths
+    # THE MASKS ARE WRITTEN ONCE, AFTER EVERY FRAME HAS BEEN CLEANED
+    assert steps == ["prepare", "prepare", "write cosmic-ray masks"]
     assert list(collection.summary[recipe.kw("MJDOBS")]) == [60_000.0, 60_001.0]
     assert list(collection.summary["filename"]) == ["earlier.fits", "later.fits"]
+
+
+def test_a_second_prepare_frames_call_does_not_duplicate_the_cosmic_ray_masks(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    recipe = _prepare_frames_recipe(tmp_path, log)
+    recipe.sofName = "synthetic"
+    recipe.qcDir = str(tmp_path)
+    recipe.cosmicRayMasks = []
+    recipe.cosmicRayProduct = None
+    recipe.inputFrames = SimpleNamespace(files_filtered=lambda include_path: ["raw.fits"])
+    preparedPath = str(prepared_fits(tmp_path / "prepared.fits", seed=1))
+
+    def prepare(frame: str, save: bool) -> str:
+        recipe.cosmicRayMasks.append(
+            {"fileName": frame, "mjdObs": 60_000.0, "dateObs": None, "mask": np.zeros((4, 4), dtype=np.uint8)}
+        )
+        return preparedPath
+
+    recipe._prepare_single_frame = prepare
+
+    recipe.prepare_frames()
+    recipe.prepare_frames()
+
+    assert len(recipe.cosmicRayMasks) == 1
+    with fits.open(tmp_path / "synthetic_LACOSMIC_MASK.fits") as hdus:
+        assert len(hdus) == 2
 
 
 def test_write_round_trip_preserves_prepared_extensions(
