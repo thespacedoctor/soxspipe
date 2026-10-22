@@ -1266,6 +1266,8 @@ def test_stare_generates_a_response_from_a_flux_standard(
         headerOverrides={
             "DPR_TYPE": "STD,FLUX",
             "DPR_TECH": "ECHELLE,SLIT,STARE",
+            # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BUILD A RESPONSE (DY-1714)
+            "EXPTIME": 300.0,
         },
     )
     recipe, calls, extractionArguments, responseArguments = _stare_standard_recipe(

@@ -50,7 +50,8 @@ CUMULATIVE_OFFSET = "ESO SEQ CUMOFF Y"
 
 def _nod_header(offset: float, mjd: float, **extra: object) -> dict[str, object]:
     """Return the header overrides for one nodding frame."""
-    return {CUMULATIVE_OFFSET: offset, "MJD-OBS": mjd, **extra}
+    # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BE FLUX CALIBRATED (DY-1714)
+    return {CUMULATIVE_OFFSET: offset, "MJD-OBS": mjd, "EXPTIME": 300.0, **extra}
 
 
 def _calibration_routes(tmpPath: Path) -> dict[frozenset[tuple[str, object]], list[str]]:

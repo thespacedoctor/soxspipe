@@ -1298,7 +1298,7 @@ class soxs_stare(base_recipe):
             extractedSpectrum=mergedSpectumDF,
             settings=self.settings,
             airmass=mean_airmass([frame.header for frame in objectFrames], self.kw, self.log),
-            exptime=combined_object.header.get("EXPTIME"),
+            exptime=combined_object.header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
             arm=self.arm,
             header=combined_object.header,

@@ -226,16 +226,38 @@ def test_a_frame_without_a_readable_exposure_time_raises_an_error_naming_the_fra
         require_equal_exposure_times(headers, soxs_kw)
 
 
+@pytest.mark.parametrize("badValue", [0.0, -300.0, float("nan"), float("inf"), float("-inf"), "sixty"])
+def test_an_exposure_time_that_cannot_divide_the_counts_raises_an_error_naming_the_frame(
+    soxs_kw: Any, badValue: object
+) -> None:
+    # ARRANGE: PLAIN DICTS, BECAUSE A FITS HEADER REFUSES NAN AND INF; EVERY FRAME CARRIES THE SAME BAD VALUE
+    headers = [{"EXPTIME": badValue}, {"EXPTIME": badValue}]
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"no readable EXPTIME in: frame 1, frame 2$"):
+        require_equal_exposure_times(headers, soxs_kw)
+
+
+def test_exposure_times_spread_wider_than_the_tolerance_raise_even_when_each_is_close_to_the_first(
+    soxs_kw: Any,
+) -> None:
+    # ARRANGE: EACH IS WITHIN THE TOLERANCE OF THE FIRST, BUT THE LAST TWO DIFFER BY 0.0018 S
+    headers = [_header(exptime=300.0), _header(exptime=300.0009), _header(exptime=299.9991)]
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="they differ"):
+        require_equal_exposure_times(headers, soxs_kw)
+
+
 def test_the_exposure_time_is_read_through_the_keyword_map(log: Any) -> None:
-    # ARRANGE: THE X-SHOOTER AND SOXS MAPS BOTH POINT EXPTIME AT EXPTIME, SO PROVE THE LOOKUP IS USED
+    # ARRANGE: THE X-SHOOTER AND SOXS MAPS BOTH POINT EXPTIME AT EXPTIME, SO MAP IT TO A KEY ONLY THE LOOKUP KNOWS
     seen: list[str] = []
 
     def spy_kw(alias: str) -> str:
         seen.append(alias)
-        return "EXPTIME"
+        return "MAPPED_EXPTIME"
 
-    # ACT
-    require_equal_exposure_times([_header(exptime=1.0), _header(exptime=1.0)], spy_kw)
-
-    # ASSERT
+    # ACT / ASSERT: THE MAPPED KEY DIFFERS, SO THE CHECK RAISES ONLY IF IT READS THROUGH THE LOOKUP
+    with pytest.raises(ValueError, match="they differ"):
+        require_equal_exposure_times([{"MAPPED_EXPTIME": 1.0}, {"MAPPED_EXPTIME": 2.0}], spy_kw)
     assert seen and set(seen) == {"EXPTIME"}

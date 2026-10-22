@@ -1131,7 +1131,7 @@ class soxs_nod(base_recipe):
             extractedSpectrum=stackedSpectrum,
             settings=self.settings,
             airmass=mean_airmass([frame.header for frame in allFrameA + allFrameB], self.kw, self.log),
-            exptime=allFrameA[0].header.get("EXPTIME"),
+            exptime=allFrameA[0].header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,
             header=allFrameA[0].header,

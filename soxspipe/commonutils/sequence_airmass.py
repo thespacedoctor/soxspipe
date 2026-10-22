@@ -108,6 +108,12 @@ def mean_airmass(headers, kw, log):
     return sum(airmass * weight for (airmass, _), weight in zip(framesUsed, weights, strict=True)) / sum(weights)
 
 
+def _exposure_time(header, keyword):
+    """*one frame's exposure time as a float, or None when it is missing, not a finite number, or not positive*"""
+    value = _finite_float(header, keyword)
+    return value if value is not None and value > 0 else None
+
+
 def _frame_label(header, frameNumber):
     """*the raw file name of a frame, or its position in the sequence when its header has none*"""
     for keyword in ("ARCFILE", "ORIGFILE"):
@@ -141,7 +147,9 @@ def require_equal_exposure_times(headers, kw):
     require_equal_exposure_times([frame.header for frame in allObjectFrames], self.kw)
     ```
     """
-    exptimes = [_finite_float(header, kw("EXPTIME")) for header in headers]
+    exptimes = [_exposure_time(header, kw("EXPTIME")) for header in headers]
+    if not exptimes:
+        return
     labels = [_frame_label(header, frameNumber) for frameNumber, header in enumerate(headers, start=1)]
     unreadable = [label for label, exptime in zip(labels, exptimes, strict=True) if exptime is None]
     if unreadable:
@@ -149,7 +157,8 @@ def require_equal_exposure_times(headers, kw):
             f"Flux calibration needs the exposure time of every frame, but there is no readable {kw('EXPTIME')} "
             f"in: {', '.join(unreadable)}"
         )
-    if all(abs(exptime - exptimes[0]) <= EXPOSURE_TIME_TOLERANCE_SECONDS for exptime in exptimes):
+    # COMPARE THE WHOLE SPREAD, SO FRAMES EACH CLOSE TO THE FIRST CANNOT DIFFER FROM EACH OTHER BY MORE
+    if max(exptimes) - min(exptimes) <= EXPOSURE_TIME_TOLERANCE_SECONDS:
         return
     frames = ", ".join(f"{label} ({exptime:g} s)" for label, exptime in zip(labels, exptimes, strict=True))
     raise ValueError(

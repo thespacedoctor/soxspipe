@@ -49,6 +49,8 @@ def _offset_header(ra: float, dec: float, mjd: float, **extra: object) -> dict[s
         "HIERARCH ESO SEQ FIXOFF RA": ra,
         "HIERARCH ESO SEQ FIXOFF DEC": dec,
         "MJD-OBS": mjd,
+        # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BE FLUX CALIBRATED (DY-1714)
+        "EXPTIME": 300.0,
         **extra,
     }
 

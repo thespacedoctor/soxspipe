@@ -696,7 +696,7 @@ class soxs_offset(soxs_nod):
             extractedSpectrum=stackedSpectrum,
             settings=self.settings,
             airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
-            exptime=allFrameON[0].header.get("EXPTIME"),
+            exptime=allFrameON[0].header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,
             header=allFrameON[0].header,
