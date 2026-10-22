@@ -32,6 +32,12 @@ after the NIR response fit change (DY-1647). It rose 0.6%. The VIS values moved 
 The extinction correction became linear instead of a staircase on 2026-10-21 (DY-1684).
 In gate run 39616315251 the VIS `fluxcalMedian` fell 0.41%, inside its band, and was left
 as it is. NIR does not use the extinction correction.
+
+Both `fluxcalMedian` values were re-recorded on 2026-10-21 from six bit-identical CI
+runs (39680454564, 39680459968, 39680464192, 39680468399, 39680472907 and 39680476407),
+after DY-1674, DY-1675, DY-1679, DY-1680 and DY-1684 changed the standard-star
+responses. The VIS median fell 0.42% (DY-1684) and the NIR median rose 0.12% (DY-1690,
+DY-1691).
 """
 
 from __future__ import annotations
@@ -92,7 +98,7 @@ BASELINES = [
             waveMax=850.04,
             waveStep=0.02,
             snrMedian=156.8,
-            fluxcalMedian=6.10426333845815e-14,
+            fluxcalMedian=6.078459105261144e-14,
             skyCountsMedian=6.347151279449463,
             skyModelMedian=9.057429313659668,
             skyModelP90=93.78917541503911,
@@ -114,7 +120,7 @@ BASELINES = [
             waveMax=2032.02,
             waveStep=0.06,
             snrMedian=14.09,
-            fluxcalMedian=3.0002799985835773e-15,
+            fluxcalMedian=3.003861084057503e-15,
             skyCountsMedian=17.42337417602539,
             skyModelMedian=20.28994369506836,
             skyModelP90=89.84078826904295,
