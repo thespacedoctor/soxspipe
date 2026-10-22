@@ -11,6 +11,7 @@
 | `RESPONSE_FUNC` | Response curve | FITS | `RESP_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `EFFICIENCY` | Efficiency estimate | FITS | `EFFICIENCY_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `EXTRACTED MERGED ASCII`    | Ascii version of extracted source spectrum   | TXT       |     -       |    -       |     -      |
+| `LACOSMIC_MASK` | QC product: the pixels L.A.Cosmic flagged as cosmic rays, without the default bad-pixel mask. One `CRMASK` image extension (1 = flagged, 0 = not) per raw frame in observation time order. Each header gives the raw file name (`ORIGFILE`), `MJD-OBS`, `DATE-OBS` and the flagged-pixel count (`NCRPIX`). Written to the QC directory as `_LACOSMIC_MASK.fits`, only if `use_lacosmic` is on | FITS      |     -       |    -       |     -      |
 | `OBJECT TRACE RES`          | Residuals of the object trace polynomial fit | PDF       |     -       |    -       |     -      |
 | `BKGROUND`                  | Fitted intra-order image background          | PDF       |     -       |    -       |     -      |
 | `EXTRACTED ORDERS QC PLOT`  | QC plot of extracted source                  | PDF       |     -       |    -       |     -      |

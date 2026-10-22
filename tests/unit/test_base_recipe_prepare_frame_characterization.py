@@ -134,6 +134,7 @@ def _recipe(
     recipe.startNightDate = "2024-01-02"
     recipe.qc = pd.DataFrame({column: [] for column in QC_COLUMNS})
     recipe.generateReponseCurve = False
+    recipe.cosmicRayMasks = []
     return recipe
 
 

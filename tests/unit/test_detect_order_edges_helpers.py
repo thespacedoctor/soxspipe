@@ -198,6 +198,82 @@ def test_get_records_edge_fits_qc_and_product_contracts(
     assert products["file_name"].tolist() == ["edges.fits", "edges.pdf"]
 
 
+def _fit_with_residuals(residuals: list[float]) -> object:
+    def fit_edge(
+        *,
+        pixelList: pd.DataFrame,
+        axisACol: str,
+        **kwargs: object,
+    ) -> tuple[list[float], pd.DataFrame, pd.DataFrame]:
+        fitted = pixelList.copy()
+        fitted["x_fit"] = fitted[axisACol]
+        fitted["x_fit_res"] = residuals
+        return [3.0], fitted, fitted.iloc[:0].copy()
+
+    return fit_edge
+
+
+def _use_real_order_table_writer(
+    detector: detect_order_edges,
+    tmp_path: Path,
+) -> None:
+    detector.kw = keyword_lookup(log=detector.log, settings={"instrument": "soxs"}).get
+    detector.settings = pipeline_settings(tmp_path)
+    detector.productDir = str(tmp_path)
+    detector.sofName = "synthetic_flat"
+    detector.lampTag = False
+    detector.inst = "SOXS"
+    detector.flatFrame = CCDData(np.zeros((5, 10)), unit=u.electron, meta=instrument_header(arm="VIS"))
+    detector.write_order_table_to_file = detector.__class__.write_order_table_to_file.__get__(detector)
+
+
+def _qc_cards(header: fits.Header) -> dict[str, object]:
+    return {key: header[key] for key in header if key.startswith("ESO QC ")}
+
+
+def test_get_writes_edge_fit_residual_qcs_to_the_order_table_header(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE: THE REAL WRITER, AND AN EARLIER QC ALREADY ON THE TABLE
+    orderPixels = pd.DataFrame({"order": [10, 10], "xcoord_centre": [5.0, 5.0], "ycoord": [1.0, 3.0]})
+    detector = _get_detector(log, monkeypatch, tmp_path, orderPixels)
+    _use_real_order_table_writer(detector, tmp_path)
+    detector.qc = qc_table()
+    detector.fit_global_polynomial = _fit_with_residuals([-0.123456789, 0.5])
+
+    # ACT
+    _, qc, _ = detector.get()
+
+    # ASSERT: THE TABLE HEADER CARRIES EVERY QC RETURNED, WITH THE SAME VALUES
+    with fits.open(tmp_path / "SYNTHETIC_OLOC.fits") as product:
+        cards = _qc_cards(product[0].header)
+    qcValues = dict(zip(qc["qc_name"], qc["qc_value"], strict=True))
+    assert set(cards) == {f"ESO QC {name}" for name in qcValues}
+    assert {"ESO QC X RES MIN", "ESO QC X RES MAX", "ESO QC X RES SD"} <= set(cards)
+    for name, value in qcValues.items():
+        assert cards[f"ESO QC {name}"] == pytest.approx(value)
+
+
+def test_get_leaves_non_finite_residual_qcs_out_of_the_order_table_header(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    orderPixels = pd.DataFrame({"order": [10, 10], "xcoord_centre": [5.0, 5.0], "ycoord": [1.0, 3.0]})
+    detector = _get_detector(log, monkeypatch, tmp_path, orderPixels)
+    _use_real_order_table_writer(detector, tmp_path)
+    detector.fit_global_polynomial = _fit_with_residuals([np.nan, 0.5])
+
+    _, qc, _ = detector.get()
+
+    with fits.open(tmp_path / "SYNTHETIC_OLOC.fits") as product:
+        cards = _qc_cards(product[0].header)
+    assert qc["qc_value"].isna().all()
+    assert cards == {}
+
+
 def test_get_fits_lower_edge_using_only_rows_with_finite_lower_positions(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

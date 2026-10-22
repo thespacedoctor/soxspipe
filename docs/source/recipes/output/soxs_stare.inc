@@ -15,6 +15,7 @@
 | `BKGROUND`                  | Fitted intra-order image background          | PDF     |     -       |    -       |     -      |
 | `SKY MODEL QC PLOTS`        | QC plots for the sky-background modelling    | PDF       |     -       |    -       |     -      |
 | `SKY SUBTRACTION QUICKLOOK` | Sky-subtraction quicklook                    | PDF       |     -       |    -       |     -      |
+| `LACOSMIC_MASK` | QC product: the pixels L.A.Cosmic flagged as cosmic rays, without the default bad-pixel mask. One `CRMASK` image extension (1 = flagged, 0 = not) per raw frame in observation time order. Each header gives the raw file name (`ORIGFILE`), `MJD-OBS`, `DATE-OBS` and the flagged-pixel count (`NCRPIX`). Written to the QC directory as `_LACOSMIC_MASK.fits`, only if `use_lacosmic` is on | FITS      |     -       |    -       |     -      |
 | `OBJECT TRACE RES`          | Residuals of the object trace polynomial fit | PDF       |     -       |    -       |     -      |
 | `EXTRACTED ORDERS QC PLOT`  | QC plot of extracted source                  | PDF       |     -       |    -       |     -      |
 | `SLIT DRIFT QC PLOT`      | QC plot of the object slit position against wavelength before rectification. The legend gives the slit drift, the science minus multi-pinhole observation time, and the science minus multi-pinhole `ABSROT` (the multi-pinhole angle is assumed to be 0 deg when its frame has no `ABSROT`). A vertical line marks where the trace crosses slit position 0 | PDF       |     -       |    -       |     -      |

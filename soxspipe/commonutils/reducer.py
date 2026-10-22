@@ -302,8 +302,32 @@ class reducer:
         self.log.debug("completed the ``reduce`` method")
         return
 
+    def _passed_this_session_clause(self):
+        """*return the SQL condition that leaves out the SOFs that already passed this session*
+
+        The product file cannot mark a SOF as done, as a stare SOF reduced frame by frame never writes the predicted
+        product. The session status can. ``product_frames`` holds one row per product file, so a SOF is left out only
+        when it has a passing row and no row that is not passing. The match is on ``sof`` with ``=``, so a row with
+        no ``sof`` matches nothing.
+
+        **Return:**
+
+        - ``clause`` -- text starting with ``and``, to append to a query on ``raw_frame_sets``
+        """
+        from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+
+        statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
+        rowsOfThisSof = "select 1 from product_frames p where p.sof = raw_frame_sets.sof"
+        return (
+            f" and not (exists ({rowsOfThisSof} and p.{statusColumn} = 'pass') "  # noqa: S608
+            f"and not exists ({rowsOfThisSof} and p.{statusColumn} is not 'pass')) "  # noqa: S608
+        )
+
     def select_sof_files_to_process(self, recipe=False, reductionTarget=False, batch=False, arm=False):
         """*select all of the SOF files still requiring processing*
+
+        With the target ``all``, a SOF whose ``status_<session>`` is ``pass`` is left out unless the reducer was
+        given ``overwrite``. A SOF that failed or has not run is selected again. A named SOF is always selected.
 
         **Key Arguments:**
             - ``recipe`` -- the name of the recipe to filter by (optional)
@@ -361,9 +385,12 @@ class reducer:
             # TEXT OR A `:name` PLACEHOLDER -- NEVER A RAW VALUE -- SO THE
             # ACTUAL `recipe`/`arm`/`batch` VALUES REACH SQLITE ONLY THROUGH
             # `allBranchParams` BELOW.
+            passedText = "" if self.overwrite else self._passed_this_session_clause()
+
             rawGroups = pd.read_sql(
                 f"SELECT * FROM raw_frame_sets where recipe_order is not null "  # noqa: S608
-                f"and complete = 1 and recipe {recipeText} {armText}  order by recipe_order, sof {limitText}",
+                f"and complete = 1 and recipe {recipeText} {armText} {passedText} "  # noqa: S608
+                f"order by recipe_order, sof {limitText}",
                 con=conn,
                 params=allBranchParams,
             )

@@ -573,3 +573,29 @@ def test_the_settings_of_the_run_are_unchanged_after_a_sky_fallback(
     # ASSERT
     assert recipe.settings[recipe.recipeName]["sky-subtraction"]["subtract_sky"] is True
     assert recipe.recipeSettings is original
+
+
+def test_without_stacking_the_cosmic_ray_qc_is_reported_under_the_sof_name(
+    log: Any, tmp_path: Path, monkeypatch
+) -> None:
+    # ARRANGE
+    recipe, captured = _recipe(log, tmp_path, monkeypatch, stack=False)
+    monkeypatch.delattr(recipe, "report_output")
+    recipe.verbose = False
+    recipe.conn = None
+    recipe.inst = "XSHOOTER"
+    recipe.cosmicRayProduct = {
+        "sofName": recipe.sofName,
+        "fileName": f"{recipe.sofName}_LACOSMIC_MASK.fits",
+        "filePath": str(tmp_path / "mask.fits"),
+        "dateObs": None,
+        "count": 7,
+    }
+
+    # ACT
+    _, qcTable = recipe.produce_product()
+
+    # ASSERT
+    cosmicRows = qcTable[qcTable["qc_name"] == "COSMIC RAY PIX NUM"]
+    assert cosmicRows["qc_value"].tolist() == [7]
+    assert cosmicRows["sof_name"].tolist() == ["OBJECT_VIS.sof"]

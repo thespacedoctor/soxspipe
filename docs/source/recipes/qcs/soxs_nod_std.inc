@@ -9,6 +9,7 @@
 | `INNER ORDER PIX MEAN` | Mean inner-order pixel value                          | electrons | VIS: [-40,60], NIR: [-40,60] |
 | `INNER ORDER PIX SUM`  | Sum of all inner-order pixel values                   | electrons | - |
 | `BADPIX NUM`         | Number of bad pixels                                       |           | - |
+| `COSMIC RAY PIX NUM` | Total number of pixels L.A.Cosmic flagged as cosmic rays, over all raw frames. Written only if `use_lacosmic` is on. The count in each frame is in the header of its extension of the `LACOSMIC_MASK` product | pixel | - |
 | `N ORDERS`              | Number of orders containing an object trace                |           | VIS: 4 , NIR: 15 |
 | `SAMPLES DET NUM`                | Number of samples where a continuum is detected            |           | - |
 | `SAMPLES DET FRAC`                | Fraction of samples where a continuum is detected        |           | VIS: [0.93,1.0] NIR: [0.7,1.0] |
