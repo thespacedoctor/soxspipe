@@ -16,7 +16,15 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import distance_transform_edt, map_coordinates
+from scipy.ndimage import distance_transform_edt
+
+from soxspipe.commonutils.slit_alignment_sources import (
+    _gradient_determinant,
+    _gradient_images,
+    _interpolate,
+    _map_coordinates,
+    _order_sources,
+)
 
 # A TRACE NEEDS AT LEAST THIS MANY SAMPLES IN AN ORDER TO GIVE THE ORDER A SLIT POSITION
 MIN_TRACE_SAMPLES = 10
@@ -28,8 +36,6 @@ MAD_TO_SIGMA = 1.4826
 MIN_DETECTION_PERCENT = 10
 # A MASK OR COVERAGE VALUE THIS CLOSE TO ITS CLEAN VALUE COUNTS AS CLEAN
 INTERPOLATION_TOLERANCE = 1e-6
-# HOW MANY TIMES A SLIT-SHIFT SOURCE IS RE-STEPPED FROM ITSELF, FOR A MAP WHOSE PLATE SCALE CHANGES ACROSS THE SHIFT
-SOURCE_REFINEMENTS = 2
 # THE ORDER VALUE OF A SHIFT THAT BELONGS TO A WHOLE FRAME
 WHOLE_FRAME = -1
 
@@ -40,13 +46,14 @@ TRACE_COLUMNS = ["order", "cont_x", "cont_y", "pre-clipped"]
 
 @dataclass(frozen=True)
 class two_d_map_images:
-    """The SLIT and ORDER images of a 2D map, with the local gradients of the WAVELENGTH and SLIT images.
+    """The WAVELENGTH, SLIT and ORDER images of a 2D map, with the local gradients of the WAVELENGTH and SLIT images.
 
     The gradient images (``wavelengthRow``, ``wavelengthCol``, ``slitRow``, ``slitCol``) hold the change of the
     wavelength and of the slit coordinate per pixel step along the rows and the columns. They are measured inside
     each order only, and are valid in the pixels of an order. ``orders`` lists the order numbers the map holds.
     """
 
+    wavelength: np.ndarray
     slit: np.ndarray
     order: np.ndarray
     wavelengthRow: np.ndarray
@@ -61,19 +68,22 @@ def build_two_d_map_images(wavelength, slit, orderMap):
 
     **Key Arguments:**
 
-    - ``wavelength`` -- the WAVELENGTH image
+    - ``wavelength`` -- the WAVELENGTH image. The copy in the return is NaN outside the orders
     - ``slit`` -- the SLIT image, in arcsec
     - ``orderMap`` -- the ORDER image, zero or NaN outside the orders
 
     **Return:**
 
-    - ``mapImages`` -- a frozen ``two_d_map_images``, holding float32 copies of the slit and order images and the
-      gradients of the wavelength and slit images
+    - ``mapImages`` -- a frozen ``two_d_map_images``, holding float32 copies of the wavelength, slit and order
+      images and the gradients of the wavelength and slit images
     """
-    images = [np.asarray(image, dtype=np.float32) for image in (wavelength, slit, orderMap)]
+    images = [np.array(image, dtype=np.float32, copy=True) for image in (wavelength, slit, orderMap)]
     terms = [np.zeros(images[0].shape, dtype=np.float32) for _ in range(4)]
     wavelengthImage, slitImage, orderImage = images
     isOrder = np.isfinite(orderImage) & (orderImage > 0) & (orderImage == np.round(orderImage))
+    # THE 2D MAP HOLDS ZERO WAVELENGTH OUTSIDE THE ORDERS. NaN KEEPS A SOURCE STENCIL THAT TOUCHES AN OFF-ORDER PIXEL
+    # FROM READING A WAVELENGTH RESIDUAL OF ABOUT 1000 NM
+    wavelengthImage = np.where(isOrder, wavelengthImage, np.float32(np.nan))
     orders = np.unique(orderImage[isOrder])
     for order in orders:
         onOrder = orderImage == order
@@ -85,7 +95,7 @@ def build_two_d_map_images(wavelength, slit, orderMap):
         ]
         for term, gradient in zip(terms, gradients, strict=True):
             term[box][local] = gradient[local]
-    return two_d_map_images(slitImage, orderImage, *terms, tuple(int(order) for order in orders))
+    return two_d_map_images(wavelengthImage, slitImage, orderImage, *terms, tuple(int(order) for order in orders))
 
 
 def _bounding_box(mask):
@@ -343,103 +353,6 @@ def _pixel_areas(mapImages):
     The area is the absolute determinant of the gradients. It is zero outside the orders, where the gradients are.
     """
     return np.abs(_gradient_determinant(*_gradient_images(mapImages))).astype(np.float32)
-
-
-def _gradient_determinant(wavelengthRow, wavelengthCol, slitRow, slitCol):
-    """*the determinant of the wavelength and slit gradients: the signed (wavelength, slit) area of a pixel*"""
-    return wavelengthRow * slitCol - wavelengthCol * slitRow
-
-
-def _interpolate(image, sources, mode="nearest"):
-    """*the bilinear interpolation of a float32 image at (row, column) sources*
-
-    Beyond the image edge, ``mode`` ``"nearest"`` takes the edge value and ``"constant"`` takes zero.
-    """
-    return _map_coordinates(image, sources, mode=mode)
-
-
-def _map_coordinates(image, sources, mode):
-    """*bilinear ``map_coordinates`` of an image, with every source made safe to read first*"""
-    return map_coordinates(image, _safe_sources(sources, image.shape), order=1, mode=mode, cval=0.0)
-
-
-def _safe_sources(sources, shape):
-    """*the (row, column) sources, made safe for ``map_coordinates``, as new arrays*
-
-    scipy's ``map_coordinates`` converts each coordinate to a 64-bit integer index without a range check in
-    ``mode="nearest"``. A coordinate of ``+inf``, or a finite one above about ``9.2e18``, overflows that index, and
-    the read lands just before the image: a crash when the page there is unmapped, and a garbage value otherwise.
-
-    A non-finite coordinate becomes NaN, which gives NaN for ``"nearest"`` and ``cval`` for ``"constant"``. A finite
-    coordinate is clipped to one pixel beyond the image, which keeps the edge value for ``"nearest"`` and ``cval``
-    for ``"constant"``, since bilinear weight at -1 or ``n`` lies wholly outside the image.
-
-    **Key Arguments:**
-
-    - ``sources`` -- the (rows, columns) coordinate arrays
-    - ``shape`` -- the (height, width) of the image they index
-    """
-    safe = []
-    for coordinates, size in zip(sources, shape, strict=True):
-        coordinates = np.asarray(coordinates, dtype=float)
-        safe.append(np.where(np.isfinite(coordinates), np.clip(coordinates, -1, size), np.nan))
-    return safe
-
-
-def _order_sources(mapImages, order, shift):
-    """*where each pixel of an order takes its value from, for a slit shift in arcsec*
-
-    The source is a step of ``shift`` in slit coordinate at fixed wavelength, taken along the local gradients of the
-    wavelength and slit images. The plate scale can change across a nod throw, by about 8% at the red end of the SOXS
-    NIR order 10, so one step from the target overshoots. The step is then repeated from the source, along the
-    gradients there, for the slit coordinate still missing, ``SOURCE_REFINEMENTS`` times. Only the slit coordinate is
-    refined: on a tilted, curved map the source can drift in wavelength by a second-order amount, 0.013 nm (about a
-    tenth of a pixel) at the red end of the SOXS NIR order 10.
-
-    **Return:**
-
-    - ``targets`` -- the (rows, columns) index arrays of the order's pixels
-    - ``sources`` -- the (rows, columns) source coordinates of those pixels
-    """
-    targets = np.nonzero(mapImages.order == order)
-    gradients = [image[targets] for image in _gradient_images(mapImages)]
-    rows, columns = _slit_step(targets[0], targets[1], gradients, shift)
-    targetSlit = mapImages.slit[targets] + shift
-    for _ in range(SOURCE_REFINEMENTS):
-        sources = [rows, columns]
-        missing = targetSlit - _interpolate(mapImages.slit, sources)
-        gradients = [_interpolate(image, sources) for image in _gradient_images(mapImages)]
-        newRows, newColumns = _slit_step(rows, columns, gradients, missing)
-        # A SOURCE THAT CANNOT BE REFINED, AS IT LIES OFF THE ORDER, KEEPS ITS FIRST STEP. THE CALLER FLAGS IT BAD
-        isRefined = np.isfinite(newRows) & np.isfinite(newColumns)
-        rows, columns = np.where(isRefined, newRows, rows), np.where(isRefined, newColumns, columns)
-    return targets, [rows, columns]
-
-
-def _gradient_images(mapImages):
-    """*the wavelength row, wavelength column, slit row and slit column gradient images, in that order*"""
-    return (mapImages.wavelengthRow, mapImages.wavelengthCol, mapImages.slitRow, mapImages.slitCol)
-
-
-def _slit_step(rows, columns, gradients, slitStep):
-    """*the pixel coordinates a step of ``slitStep`` arcsec along the slit away, at fixed wavelength*
-
-    **Key Arguments:**
-
-    - ``rows``, ``columns`` -- the coordinates to step from
-    - ``gradients`` -- the wavelength row, wavelength column, slit row and slit column gradients at those coordinates
-    - ``slitStep`` -- the slit step in arcsec, a scalar or one value per coordinate
-
-    **Return:**
-
-    - ``rows``, ``columns`` -- the new coordinates
-    """
-    wavelengthRow, wavelengthCol, _, _ = gradients
-    determinant = _gradient_determinant(*gradients)
-    # A ZERO DETERMINANT GIVES AN INFINITE OR NaN SOURCE. THE CALLER FLAGS THAT PIXEL BAD, AND
-    # _safe_sources KEEPS THE NON-FINITE VALUE FROM BEING READ AS A MEMORY OFFSET
-    with np.errstate(divide="ignore", invalid="ignore"):
-        return rows - wavelengthCol * slitStep / determinant, columns + wavelengthRow * slitStep / determinant
 
 
 def read_two_d_map_images(twoDMapPath, binx, biny, kw):

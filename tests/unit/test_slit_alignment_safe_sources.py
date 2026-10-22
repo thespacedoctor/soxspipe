@@ -14,7 +14,8 @@ import numpy as np
 import pytest
 from scipy.ndimage import map_coordinates
 
-from soxspipe.commonutils.slit_alignment import _interpolate, build_two_d_map_images, shift_frame_along_slit
+from soxspipe.commonutils.slit_alignment import build_two_d_map_images, shift_frame_along_slit
+from soxspipe.commonutils.slit_alignment_sources import _interpolate
 from tests.factories.slit_alignment import synthetic_alignment_map, synthetic_nod_frame
 
 pytestmark = pytest.mark.unit
@@ -30,7 +31,7 @@ GUARD_PAGE_SCRIPT = textwrap.dedent(
     """
     import ctypes, mmap, sys
     import numpy as np
-    from soxspipe.commonutils.slit_alignment import _interpolate
+    from soxspipe.commonutils.slit_alignment_sources import _interpolate
 
     PAGE = mmap.PAGESIZE
     height, width = 8, 16
