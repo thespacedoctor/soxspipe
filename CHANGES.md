@@ -1,5 +1,6 @@
 # Release Notes
 
+* **FEATURE**: the order location tables from `soxs_order_centres` and `soxs_mflat` get a third extension, `ORDER_TRACES`, listing the unbinned pixel coordinates of each order's centre trace (and upper and lower edges, for the master flat) at every pixel along the dispersion axis; object trace tables are unchanged (DY-1726).
 * **FEATURE**: new `--no-stack` option on `reduce all`, `reduce sof`, `stare`, `stare_std`, `nod`, `nod_std` and `offset` extracts each frame or cycle on its own for one run; standards still write the stacked response first, then also extract each frame (`_F<N>`) or cycle (`_CYCLES`, inspection only) (DY-1723).
 * **ENHANCEMENT**: **RESP product format change**: the RESP product no longer holds the legacy table of polynomial coefficients as its first extension; its only table is `RESPONSE`, which is now HDU 1, so any external code that reads HDU 1 by number gets the curve instead of the coefficients and must read `RESPONSE` by name. The `legacy_poly_order` setting is removed and an old workspace `poly_order` is ignored (DY-1719).
 * **ENHANCEMENT**: stare, nod and offset now check the `ESO PRO RESP BASIS` card as soon as they find a RESP product in the SOF, so an old-basis RESP fails before any extraction with the same message as flux calibration, which still checks it again (DY-1719).

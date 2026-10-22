@@ -36,12 +36,15 @@ from soxspipe.commonutils.toolkit import (
     has_sequence_suffixed_traces,
     legend_below_axis,
     nodding_sequence_suffix,
+    order_traces_table,
     qc_image_panel_height,
     qc_table_heights,
     read_spectral_format,
 )
 
 os.environ["TERM"] = "vt100"
+
+ORDER_TRACES_EXTNAME = "ORDER_TRACES"
 
 
 def _order_colours(orders):
@@ -557,12 +560,14 @@ class _base_detect:
 
         header[kw("SEQ_ARM")] = arm
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
+        tables = [orderPolyTable, orderMetaTable]
         if (
             "stare" not in self.recipeName.lower()
             and "nod" not in self.recipeName.lower()
             and "offset" not in self.recipeName.lower()
         ):
             header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+            tables.append(self.build_order_traces_extension(orderPolyTable, orderMetaTable))
         else:
             header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()
 
@@ -572,13 +577,45 @@ class _base_detect:
             log=self.log,
             settings=self.settings,
             header=header,
-            tables=[orderPolyTable, orderMetaTable],
+            tables=tables,
             filePath=order_table_path,
             qc=self.qc,
         )
 
         self.log.debug("completed the ``write_order_table_to_file`` method")
         return order_table_path
+
+    def build_order_traces_extension(self, orderPolyTable, orderMetaTable):
+        """*sample the order traces at every unbinned pixel, as the ``ORDER_TRACES`` table extension*
+
+        **Key Arguments:**
+
+        - ``orderPolyTable`` -- data-frame containing centre location coefficients (and possibly also order edge coeffs)
+        - ``orderMetaTable`` -- order meta data, with the fitted range of each order
+
+        **Return:**
+
+        - ``orderTraces`` -- astropy table named ``ORDER_TRACES``, one row per order and sampled pixel
+        """
+        self.log.debug("starting the ``build_order_traces_extension`` method")
+
+        from astropy.table import Table
+
+        # ONLY THE MASTER-FLAT TABLE IS MEASURED ON A PRE-BINNED FRAME
+        orderTraces = Table.from_pandas(
+            order_traces_table(
+                log=self.log,
+                orderPolyTable=orderPolyTable,
+                orderMetaTable=orderMetaTable,
+                binx=self.binx,
+                biny=self.biny,
+                prebinned="mflat" in self.recipeName.lower(),
+            )
+        )
+        orderTraces.meta["EXTNAME"] = ORDER_TRACES_EXTNAME
+
+        self.log.debug("completed the ``build_order_traces_extension`` method")
+        return orderTraces
 
 
 class detect_continuum(_base_detect):

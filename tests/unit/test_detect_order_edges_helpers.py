@@ -515,12 +515,28 @@ def test_write_order_table_preserves_mflat_fits_contract(
     detector.lampTag = False
     detector.inst = "SOXS"
     detector.qc = qc_table()
+    detector.binx = detector.biny = 1
     header = instrument_header(arm="VIS")
     frame = CCDData(np.ones((8, 8)), unit=u.electron, meta=header)
+    polynomials = pd.DataFrame(
+        [
+            {
+                "degorder_cent": 0,
+                "degy_cent": 0,
+                "cent_00": 14.0,
+                "degorder_edgeup": 0,
+                "degy_edgeup": 0,
+                "edgeup_00": 20.0,
+                "degorder_edgelow": 0,
+                "degy_edgelow": 0,
+                "edgelow_00": 8.0,
+            }
+        ]
+    )
 
     outputPath = detector.write_order_table_to_file(
         frame,
-        pd.DataFrame({"edgeup_0": [20.0], "edgelow_0": [8.0]}),
+        polynomials,
         pd.DataFrame({"order": [10], "ymin": [0.0], "ymax": [7.0]}),
     )
 
@@ -528,5 +544,7 @@ def test_write_order_table_preserves_mflat_fits_contract(
         assert Path(outputPath).name == "SYNTHETIC_OLOC.fits"
         assert product[0].header["ESO SEQ ARM"] == "VIS"
         assert product[0].header["HIERARCH ESO PRO CATG"] == "ORDER_TAB_VIS"
-        assert product[1].data["edgeup_0"][0] == pytest.approx(20.0)
+        assert product[1].data["edgeup_00"][0] == pytest.approx(20.0)
         assert product[2].data["order"][0] == 10
+        assert product[3].name == "ORDER_TRACES"
+        assert product[3].data["xcoord_edgeup"][0] == pytest.approx(20.0)
