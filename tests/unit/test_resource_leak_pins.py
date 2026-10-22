@@ -315,18 +315,10 @@ def test_cli_reduce_closes_the_session_lookup_organiser_before_reducing(
 
 
 # ---------------------------------------------------------------------------
-# L5: TWO READERS NEVER CLOSE THE FITS FILE THEY OPEN
+# L5: TWO READERS MUST CLOSE THE FITS FILE THEY OPEN (FIXED IN DY-1709; THESE ARE REGRESSION TESTS)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1709 (DY-36 L5): twoD_disp_map_image_to_dataframe never closes the HDUList it opens on success; the "
-        "file is closed only when the object is garbage collected, with a ResourceWarning"
-    ),
-)
 def test_disp_map_dataframe_reader_closes_the_map_file(log: Any, tmp_path: Path) -> None:
     """Reading a 2D dispersion map must close the map file before returning."""
     # ARRANGE
@@ -374,14 +366,6 @@ def _standard_star_extraction(tmp_path: Path) -> tuple[Path, Path]:
     return extractedPath, standardsPath
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1709 (DY-36 L5): response_function.__init__ opens the standard-star extraction to read its header and "
-        "never closes it; the file is closed only by the garbage collector, with a ResourceWarning"
-    ),
-)
 def test_response_function_closes_the_standard_extraction_file(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
