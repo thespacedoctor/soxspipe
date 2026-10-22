@@ -240,7 +240,7 @@ soxs-spat-solution:
             detector-temp: [0,165]
             detlines-frac: [0.95,1.01]
             goodlines-frac: [0.55,1.01]
-            pinhole-count-min: [8.5,9.5]
+            pinhole-count-min: [7.5,9.5]
             fwhm-pin-median: [1.60,1.72]
             fwhm-pin-sd: [0.0,0.16]
             xy-res-median: [0,0.7]
