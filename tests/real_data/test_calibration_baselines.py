@@ -17,8 +17,13 @@ an electron wide; it holds only because the CI runs are bit-identical.
 The check reads the response curve from the `RESPONSE` table of the response product,
 the way flux calibration does. It evaluates the curve on a fixed 1 nm grid inside each
 arm with the pipeline's own flux-calibration function, and bands the median and three
-fixed wavelengths. The grids stop well short of the arm edges, where the curve is
-extrapolated.
+fixed wavelengths inside the grid. The grids stop well short of the arm edges, where
+the curve is extrapolated. NIR also bands one point outside its grid, at 2020 nm in the
+K band. The DY-1647 telluric masks blank that region, so no data constrain the curve
+there and the value is the spline's extrapolation. The point guards it anyway, because
+the DY-1674 and DY-1679 regressions moved it. Its centre was recorded on 2026-10-22 from
+six bit-identical CI runs (39770082366, 39770085713, 39770089302, 39770092950,
+39770096520 and 39770099985) of develop 55faf0fd plus a report-only probe (DY-1712).
 
 Bands follow the stare convention: levels, residuals and RMS values to 5% relative,
 fractions to ±0.02 absolute, and counts exactly. The centres were re-recorded on
@@ -368,6 +373,9 @@ RESPONSE_BASELINES: tuple[ResponseBaseline, ...] = (
             1050.0: level(2.966543301877743e-16),
             1250.0: level(2.813704561775645e-16),
             1650.0: level(1.8297532492538825e-16),
+            # EXTRAPOLATED, MASKED-REGION GUARD: 2020 NM LIES INSIDE A DY-1647 K-BAND TELLURIC
+            # MASK, SO NO DATA CONSTRAIN THE CURVE HERE (DY-1712)
+            2020.0: level(1.0080307076018144e-16),
         },
     ),
 )
@@ -455,16 +463,6 @@ def test_standard_star_response_curve_matches_approved_baseline(
     report(f"{stem} response median", curveMedian)
     for wavelength, value in pointValues.items():
         report(f"{stem} response at {wavelength:g} nm", value)
-    # TEMPORARY (DY-1712): REPORT THE NIR K-BAND END WITHOUT ASSERTING IT
-    if "_NIR_" in stem:
-        from astropy.table import Table
-
-        curveTable = Table.read(responsePaths[0], format="fits", hdu="RESPONSE")
-        report(f"{stem} response table wave min", float(np.min(curveTable["WAVE"])))
-        report(f"{stem} response table wave max", float(np.max(curveTable["WAVE"])))
-        probe = _response_curve(responsePaths[0], np.array([2000.0, 2020.0, 2030.0]))
-        for probeWavelength, probeValue in zip((2000.0, 2020.0, 2030.0), probe.tolist(), strict=True):
-            report(f"{stem} response probe at {probeWavelength:g} nm", probeValue)
 
     assert curveMedian == pytest.approx(baseline.median.centre, rel=baseline.median.relTol, abs=baseline.median.absTol)
     for wavelength, band in baseline.points.items():
