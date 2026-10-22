@@ -62,7 +62,9 @@ def test_the_not_flattened_pass_applies_the_flat_shifts_without_peak_matching(
     log: object, tmp_path: Path, arm: str
 ) -> None:
     # ARRANGE
-    extractor = _extractor(log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm=FLAT_SHIFTS_NM))
+    extractor = _extractor(
+        log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm=FLAT_SHIFTS_NM, objectTracePath=None)
+    )
     before = _spectrum()
 
     # ACT
@@ -76,7 +78,9 @@ def test_the_not_flattened_pass_applies_the_flat_shifts_without_peak_matching(
 
 def test_the_not_flattened_pass_records_no_sky_qcs(log: object, tmp_path: Path) -> None:
     # ARRANGE
-    extractor = _extractor(log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm=FLAT_SHIFTS_NM))
+    extractor = _extractor(
+        log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm=FLAT_SHIFTS_NM, objectTracePath=None)
+    )
 
     # ACT
     extractor._correct_wavelengths(_spectrum(), "NIR")
@@ -94,12 +98,14 @@ def test_the_flattened_pass_tunes_and_hands_its_shifts_on(log: object, tmp_path:
 
     # ASSERT
     assert ("tune", "NIR") in extractor.calls
-    assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm=FLAT_SHIFTS_NM)
+    assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm=FLAT_SHIFTS_NM, objectTracePath=None)
 
 
 def test_an_order_the_flat_pass_did_not_shift_is_left_unshifted(log: object, tmp_path: Path) -> None:
     # ARRANGE
-    extractor = _extractor(log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm={16: 0.21}))
+    extractor = _extractor(
+        log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm={16: 0.21}, objectTracePath=None)
+    )
     before = _spectrum(orders=(16, 17))
 
     # ACT
@@ -112,7 +118,9 @@ def test_an_order_the_flat_pass_did_not_shift_is_left_unshifted(log: object, tmp
 
 def test_a_skipped_flat_tuning_leaves_the_not_flattened_pass_untuned(log: object, tmp_path: Path) -> None:
     # ARRANGE: THE FLAT PASS SKIPPED TUNING FOR AN ATTACHED ARC, SO IT HANDS ON NO SHIFTS
-    extractor = _extractor(log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm=None))
+    extractor = _extractor(
+        log, tmp_path, notFlattened=True, flatPass=FlatPassHandoff(skyShiftsNm=None, objectTracePath=None)
+    )
     before = _spectrum()
 
     # ACT
@@ -180,7 +188,7 @@ def test_real_flat_tuning_hands_the_not_flattened_pass_the_same_wavelengths(
 def test_the_hand_off_cannot_be_changed_after_the_flat_pass(log: object, tmp_path: Path) -> None:
     # ARRANGE
     shifts = {16: 0.21}
-    handoff = FlatPassHandoff(skyShiftsNm=shifts)
+    handoff = FlatPassHandoff(skyShiftsNm=shifts, objectTracePath=None)
 
     # ACT
     shifts[16] = 9.0
@@ -193,15 +201,15 @@ def test_the_hand_off_cannot_be_changed_after_the_flat_pass(log: object, tmp_pat
 
 def test_the_hand_off_survives_pickling_and_deep_copy() -> None:
     # ARRANGE
-    handoff = FlatPassHandoff(skyShiftsNm={16: 0.21, "all": 0.0})
+    handoff = FlatPassHandoff(skyShiftsNm={16: 0.21, "all": 0.0}, objectTracePath=None)
 
     # ACT
     restored = pickle.loads(pickle.dumps(handoff))  # noqa: S301 - ROUND-TRIPS AN OBJECT THIS TEST BUILT
-    copied = copy.deepcopy(FlatPassHandoff(skyShiftsNm=None))
+    copied = copy.deepcopy(FlatPassHandoff(skyShiftsNm=None, objectTracePath=None))
 
     # ASSERT
     assert restored == handoff
-    assert copied == FlatPassHandoff(skyShiftsNm=None)
+    assert copied == FlatPassHandoff(skyShiftsNm=None, objectTracePath=None)
 
 
 def test_a_repeated_flat_extraction_does_not_hand_on_the_earlier_shifts(log: object, tmp_path: Path) -> None:
@@ -214,4 +222,4 @@ def test_a_repeated_flat_extraction_does_not_hand_on_the_earlier_shifts(log: obj
     extractor._correct_wavelengths(_spectrum(), "NIR")
 
     # ASSERT
-    assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm=None)
+    assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm=None, objectTracePath=None)

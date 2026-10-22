@@ -60,16 +60,20 @@ class FlatPassHandoff:
     """*what the flattened extraction of a frame hands to the not-flattened extraction of the same frame (DY-1680)*
 
     The not-flattened (response) extraction runs no skyline peak matching. It applies the per-order shifts that the
-    flattened extraction of the same frame or nod pair measured. A later hand-off (e.g. the object trace, DY-1650)
-    belongs here as a new field.
+    flattened extraction of the same frame or nod pair measured. Both extractions trace the same unflattened frame, so
+    the not-flattened extraction also reuses the flattened extraction's object trace instead of detecting it again
+    (DY-1650).
 
     **Key Arguments:**
 
     - ``skyShiftsNm`` -- ``{order: wavelength shift (nm)}`` that the flattened extraction applied, or *None* when it
       skipped skyline tuning (attached arc, DY-1665)
+    - ``objectTracePath`` -- path to the object-trace table the flattened extraction wrote, or *None* when it found
+      no object trace
     """
 
     skyShiftsNm: Mapping[int | str, float] | None
+    objectTracePath: str | None
 
     # COMPARABLE BUT NOT HASHABLE: THE SHIFTS ARE A READ-ONLY MAPPING, WHICH HAS NO HASH
     __hash__ = None
@@ -81,7 +85,7 @@ class FlatPassHandoff:
     def __reduce__(self):
         # A MAPPINGPROXY CANNOT BE PICKLED, SO PICKLE (AND DEEP-COPY) THROUGH A PLAIN DICT
         shifts = None if self.skyShiftsNm is None else dict(self.skyShiftsNm)
-        return (type(self), (shifts,))
+        return (type(self), (shifts, self.objectTracePath))
 
 
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
@@ -120,7 +124,8 @@ class horne_extraction(base_util):
       header of ``skySubtractedFrame``
     - ``flatPass`` -- the ``FlatPassHandoff`` of the flattened extraction of the same frame, read only when
       ``notFlattened`` is set. The not-flattened extraction applies its sky shifts and runs no skyline peak matching
-      (DY-1680). Default *None* leaves the not-flattened wavelengths untuned
+      (DY-1680), and it reuses its object trace instead of detecting the trace again (DY-1650). Default *None* leaves
+      the not-flattened wavelengths untuned and detects the trace again
 
     **Usage:**
 
@@ -165,6 +170,10 @@ class horne_extraction(base_util):
     flatPassHandoff = None
     # {ORDER: SHIFT (nm)} APPLIED BY THE LAST SKYLINE TUNING, OR None WHEN TUNING WAS SKIPPED
     skyShiftsNm = None
+    # PATH TO THE OBJECT-TRACE TABLE THIS EXTRACTION USED, OR None WHEN NO TRACE WAS FOUND
+    objectTracePath = None
+    # THE TRACE'S PIXEL TABLE, OR None WHEN THERE IS NOTHING TO EXTRACT
+    orderPixelTable = None
 
     def __init__(
         self,
@@ -192,8 +201,7 @@ class horne_extraction(base_util):
         from astropy import units as u
         from astropy.nddata import CCDData
 
-        from soxspipe.commonutils import detect_continuum
-        from soxspipe.commonutils.toolkit import nodding_sequence_suffix, unpack_order_table
+        from soxspipe.commonutils.toolkit import nodding_sequence_suffix
 
         # COLLECT THE WARNINGS AND ERRORS OF THE EXTRACTION AND THE HELPERS IT BUILDS, TO PRINT ON THE QC PLOTS
         log = extraction_note_logger(log)
@@ -303,38 +311,8 @@ class horne_extraction(base_util):
         mask = (self.imageMap["wavelength"] == 0) & (self.imageMap["slit_position"] == 0)
         self.imageMap = self.imageMap.loc[~mask]
 
-        # FIND THE OBJECT TRACE IN EACH ORDER
-        detector = detect_continuum(
-            log=self.log,
-            traceFrame=self.unflattenedFrame,
-            dispersion_map=self.dispersionMap,
-            settings=self.settings,
-            recipeSettings=self.recipeSettings,
-            sofName=self.sofName,
-            recipeName=self.recipeName,
-            qcTable=self.qc,
-            productsTable=self.products,
-            locationSetIndex=locationSetIndex,
-            startNightDate=self.startNightDate,
-            debug=self.debug,
-            notFlattened=bool(self.notFlattened),
-        )
-        (
-            productPath,
-            self.qc,
-            self.products,
-            orderPolyTable,
-            self.orderPixelTable,
-            orderMetaTable,
-        ) = detector.get()
-
-        if productPath is None:
-            # FAILED TO FIND THE TRACE
-            if not self.noTraceFallback:
-                return
-            self._use_slit_centre_boxcar_fallback()
-        else:
-            self._unpack_trace(productPath, unpack_order_table)
+        if not self._find_object_trace(locationSetIndex):
+            return
 
         # CHECK DIFFERENCE IN TIME BETWEEN OBJECT AND MPH FRAME
         mjdDispMap = self.twoDMap["WAVELENGTH"].header[self.kw("MJDOBS")]
@@ -342,6 +320,61 @@ class horne_extraction(base_util):
         self.log.print(f"\nTime difference between object and dispersion map: {mjdObject - mjdDispMap:.4f} days")
 
         # xpd-update-filter-dataframe-column-values
+
+    def _find_object_trace(self, locationSetIndex) -> bool:
+        """*find the object trace in each order, or reuse the trace the flattened extraction found (DY-1650)*
+
+        Sets ``orderPixelTable`` and ``objectTracePath``. A flattened extraction also starts its ``flatPassHandoff``
+        with the trace, so the not-flattened extraction of the same frame can reuse it even when this extraction finds
+        no trace and stops early. A not-flattened extraction with a ``flatPass`` runs no continuum detection and adds
+        no trace files, products or QCs.
+
+        **Key Arguments:**
+
+        - ``locationSetIndex`` -- the index of the AB cycle locations, or the offset stack's own index
+
+        **Return:**
+
+        - ``hasTrace`` -- *False* when no trace was found and there is no slit-centre fallback, so nothing can be
+          extracted
+        """
+        from soxspipe.commonutils import detect_continuum
+        from soxspipe.commonutils.toolkit import unpack_order_table
+
+        if self.notFlattened and self.flatPass is not None:
+            # BOTH PASSES TRACE THE SAME UNFLATTENED FRAME, SO THE FLATTENED PASS'S TRACE IS READ, NOT FOUND AGAIN
+            productPath = self.flatPass.objectTracePath
+            self.orderPixelTable = None
+        else:
+            detector = detect_continuum(
+                log=self.log,
+                traceFrame=self.unflattenedFrame,
+                dispersion_map=self.dispersionMap,
+                settings=self.settings,
+                recipeSettings=self.recipeSettings,
+                sofName=self.sofName,
+                recipeName=self.recipeName,
+                qcTable=self.qc,
+                productsTable=self.products,
+                locationSetIndex=locationSetIndex,
+                startNightDate=self.startNightDate,
+                debug=self.debug,
+                notFlattened=bool(self.notFlattened),
+            )
+            productPath, self.qc, self.products, _, self.orderPixelTable, _ = detector.get()
+
+        self.objectTracePath = productPath
+        if not self.notFlattened:
+            self.flatPassHandoff = FlatPassHandoff(skyShiftsNm=None, objectTracePath=productPath)
+
+        if productPath is None:
+            # FAILED TO FIND THE TRACE
+            if not self.noTraceFallback:
+                return False
+            self._use_slit_centre_boxcar_fallback()
+        else:
+            self._unpack_trace(productPath, unpack_order_table)
+        return True
 
     def _use_slit_centre_boxcar_fallback(self):
         """*prepare a robust boxcar extraction at the slit centre, for when no object trace was found*
@@ -853,7 +886,7 @@ class horne_extraction(base_util):
         # CLEARED FIRST, SO A REPEATED extract() NEVER HANDS ON AN EARLIER CALL'S SHIFTS
         self.skyShiftsNm = None
         tuned = self._tune_or_skip(extractedOrdersDF, arm)
-        self.flatPassHandoff = FlatPassHandoff(skyShiftsNm=self.skyShiftsNm)
+        self.flatPassHandoff = FlatPassHandoff(skyShiftsNm=self.skyShiftsNm, objectTracePath=self.objectTracePath)
         return tuned
 
     def _apply_flat_pass_shifts(self, extractedOrdersDF, arm):
