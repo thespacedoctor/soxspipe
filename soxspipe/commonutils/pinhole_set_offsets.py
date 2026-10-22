@@ -6,8 +6,18 @@ survives clips that judge each pinhole on its own. This module finds such sets b
 residual with the robust spread of set offsets in the same order.
 """
 
-import numpy as np
+from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    # TYPING-ONLY IMPORTS. NUMPY IS IMPORTED INSIDE THE FUNCTION THAT USES IT, AS IN create_dispersion_map
+    import numpy as np
+    import numpy.typing as npt
+    import pandas as pd
+
+# THE FITTED_LINES COLUMN THAT MARKS THE LINES OF A SET DROPPED BY THIS TEST
+SET_OFFSET_COLUMN = "set_offset_clipped"
 # DEFAULT CUT, IN MAD-SIGMA OF THE SET OFFSETS IN AN ORDER (DY-1526 RULING)
 OFFSET_SET_CLIP_SIGMA = 5.0
 # FEWER SETS THAN THIS GIVE NO MEANINGFUL MAD, SO THE ORDER IS SKIPPED
@@ -19,7 +29,11 @@ SET_KEYS = ["wavelength", "order"]
 RESIDUAL_COLUMNS = ["residuals_x", "residuals_y"]
 
 
-def flag_offset_pinhole_sets(lines, sigmaLimit=OFFSET_SET_CLIP_SIGMA, minSets=MIN_SETS_PER_ORDER):
+def flag_offset_pinhole_sets(
+    lines: pd.DataFrame,
+    sigmaLimit: float = OFFSET_SET_CLIP_SIGMA,
+    minSets: int = MIN_SETS_PER_ORDER,
+) -> npt.NDArray[np.bool_]:
     """*flag the multi-pinhole sets whose signed offset from the model is an outlier within their order*
 
     For each set (one arc line, all its pinholes) the median signed residual is taken separately in x and in y. Within
@@ -45,6 +59,8 @@ def flag_offset_pinhole_sets(lines, sigmaLimit=OFFSET_SET_CLIP_SIGMA, minSets=MI
     flagged = flag_offset_pinhole_sets(orderPixelTable, sigmaLimit=5)
     ```
     """
+    import numpy as np
+
     if lines.empty:
         return np.zeros(0, dtype=bool)
 

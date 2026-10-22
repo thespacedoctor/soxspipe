@@ -37,6 +37,8 @@ soxs-disp-solution:
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
     vis:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
         pixel-window-size: 10
@@ -50,6 +52,8 @@ soxs-disp-solution:
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 10
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
     nir:
         # SIZE OF STAMP USED TO IDENTIFY ARC-LINES IN PINHOLE IMAGE
         pixel-window-size: 10
@@ -63,6 +67,8 @@ soxs-disp-solution:
         poly-fitting-residual-clipping-sigma: 5
         # SIGMA CLIPPING LIMIT WHEN FITTING GLOBAL POLYNOMIAL TO THE DISPERSION SOLUTION
         poly-clipping-iteration-limit: 7
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
 
 soxs-order-centres:
     uvb:

@@ -11,13 +11,11 @@ from soxspipe.commonutils.pinhole_set_offsets import (
     OFFSET_SET_CLIP_SIGMA,
     flag_offset_pinhole_sets,
 )
+from tests.unit._pinhole_sets import NOISE_OFFSETS, PINHOLES
 
 pytestmark = pytest.mark.unit
 
-PINHOLES = 9
 WITHIN_SET_SCATTER = 0.1
-# ELEVEN SET OFFSETS SPREAD EVENLY OVER +-0.3 PX: A MAD-SIGMA OF ABOUT 0.27 PX
-NOISE_OFFSETS = np.linspace(-0.3, 0.3, 11)
 
 
 def _sets(order: int, offsetsY, offsetsX=None, firstWavelength: float = 500.0) -> pd.DataFrame:

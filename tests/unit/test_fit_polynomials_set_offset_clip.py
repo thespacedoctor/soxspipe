@@ -11,49 +11,16 @@ import pytest
 import yaml
 
 import soxspipe
-from soxspipe.commonutils.create_dispersion_map import create_dispersion_map
-from soxspipe.commonutils.pinhole_set_offsets import OFFSET_SET_CLIP_SIGMA
+from soxspipe.commonutils.create_dispersion_map import FITTED_LINE_COLUMNS, _set_offset_flag, create_dispersion_map
+from soxspipe.commonutils.pinhole_set_offsets import OFFSET_SET_CLIP_SIGMA, SET_OFFSET_COLUMN
+from tests.unit._pinhole_sets import NOISE_OFFSETS, PINHOLES
 
 pytestmark = pytest.mark.unit
 
-PINHOLES = 9
-NOISE_OFFSETS = np.linspace(-0.3, 0.3, 11)
 OFFSET_WAVELENGTH = 511.0
 # THE SOXS DEFAULTS: A 7-SIGMA PER-PINHOLE CLIP THAT A CONSISTENT +2 PX SET SURVIVES
 SOXS_CLIPPING_SIGMA = 7.0
 WELL_FITTING_LIMIT = 0.5
-LINE_LIST_COLUMNS = [
-    "wavelength",
-    "order",
-    "slit_index",
-    "slit_position",
-    "detector_x",
-    "detector_y",
-    "observed_x",
-    "observed_y",
-    "x_diff",
-    "y_diff",
-    "fit_x",
-    "fit_y",
-    "residuals_x",
-    "residuals_y",
-    "residuals_xy",
-    "sigma_clipped",
-    "sharpness",
-    "roundness1",
-    "roundness2",
-    "npix",
-    "sky",
-    "peak",
-    "flux",
-    "fwhm_pin_px",
-    "R_pin",
-    "pixelScaleNm",
-    "detector_x_shifted",
-    "detector_y_shifted",
-    "R_slit",
-    "fwhm_slit_px",
-]
 
 
 def _mapper(log: object, **settings: object) -> create_dispersion_map:
@@ -143,8 +110,8 @@ def test_a_set_offset_in_every_pinhole_is_dropped_whichever_clip_branch_runs(
     assert OFFSET_WAVELENGTH not in set(retained["wavelength"])
     offsetRows = clipped.loc[clipped["wavelength"] == OFFSET_WAVELENGTH]
     assert len(offsetRows) == PINHOLES
-    assert offsetRows["set_offset_clipped"].all()
-    assert not retained["set_offset_clipped"].any()
+    assert offsetRows[SET_OFFSET_COLUMN].all()
+    assert not retained[SET_OFFSET_COLUMN].any()
 
 
 def test_the_existing_seven_sigma_clip_alone_keeps_the_offset_set(
@@ -222,45 +189,65 @@ def test_the_dropped_set_count_is_logged(
 def test_fitted_lines_output_carries_the_set_offset_flag(log: object) -> None:
     # ARRANGE: A LINE DROPPED BEFORE THE FIT HAS NO FLAG COLUMN AT ALL
     mapper = _mapper(log)
-    good = pd.DataFrame([dict.fromkeys(LINE_LIST_COLUMNS, 0.0)]).assign(wavelength=500.0, set_offset_clipped=False)
-    clipped = pd.DataFrame([dict.fromkeys(LINE_LIST_COLUMNS, 0.0)] * 2).assign(
-        wavelength=[501.0, 502.0], set_offset_clipped=[True, np.nan]
+    good = pd.DataFrame([dict.fromkeys(FITTED_LINE_COLUMNS, 0.0)]).assign(
+        wavelength=500.0, **{SET_OFFSET_COLUMN: False}
+    )
+    clipped = pd.DataFrame([dict.fromkeys(FITTED_LINE_COLUMNS, 0.0)] * 2).assign(
+        wavelength=[501.0, 502.0], **{SET_OFFSET_COLUMN: [True, np.nan]}
     )
 
     # ACT
     combined, goodOut = mapper._prepare_line_list_columns(good, clipped)
 
     # ASSERT
-    flags = dict(zip(combined["wavelength"], combined["set_offset_clipped"], strict=True))
+    flags = dict(zip(combined["wavelength"], combined[SET_OFFSET_COLUMN], strict=True))
     assert flags == {500.0: False, 501.0: True, 502.0: False}
-    assert combined["set_offset_clipped"].dtype == bool
-    assert goodOut["set_offset_clipped"].tolist() == [False]
+    assert combined[SET_OFFSET_COLUMN].dtype == bool
+    assert goodOut[SET_OFFSET_COLUMN].tolist() == [False]
 
 
 def test_lines_dropped_before_the_fit_are_written_as_not_set_offset_clipped(log: object) -> None:
     # ARRANGE: NEITHER TABLE HAS THE FLAG COLUMN, AS WHEN EVERY LINE WAS DROPPED BEFORE THE FIT
     mapper = _mapper(log)
-    good = pd.DataFrame([dict.fromkeys(LINE_LIST_COLUMNS, 0.0)]).assign(sigma_clipped=False)
-    clipped = pd.DataFrame([dict.fromkeys(LINE_LIST_COLUMNS, 0.0)]).assign(sigma_clipped=True)
+    columns = [name for name in FITTED_LINE_COLUMNS if name != SET_OFFSET_COLUMN]
+    good = pd.DataFrame([dict.fromkeys(columns, 0.0)]).assign(sigma_clipped=False)
+    clipped = pd.DataFrame([dict.fromkeys(columns, 0.0)]).assign(sigma_clipped=True)
 
     # ACT
     combined, goodOut = mapper._prepare_line_list_columns(good, clipped)
 
     # ASSERT
-    assert combined["set_offset_clipped"].tolist() == [False, False]
-    assert goodOut["set_offset_clipped"].tolist() == [False]
+    assert combined[SET_OFFSET_COLUMN].tolist() == [False, False]
+    assert goodOut[SET_OFFSET_COLUMN].tolist() == [False]
 
 
+def test_the_set_offset_flag_is_a_boolean_series_even_when_the_column_is_missing() -> None:
+    # ARRANGE
+    lines = pd.DataFrame({"wavelength": [500.0, 501.0, 502.0]}, index=[4, 7, 9])
+
+    # ACT
+    flag = _set_offset_flag(lines)
+
+    # ASSERT
+    assert isinstance(flag, pd.Series)
+    assert flag.dtype == bool
+    assert flag.index.tolist() == [4, 7, 9]
+    assert not flag.any()
+
+
+@pytest.mark.parametrize("recipeBlock", ["soxs-disp-solution", "soxs-spat-solution"])
 @pytest.mark.parametrize(
     ("settingsFile", "arms"),
     [("soxs_default_settings.yaml", ["vis", "nir"]), ("xsh_default_settings.yaml", ["uvb", "vis", "nir"])],
 )
-def test_default_settings_set_the_cut_to_five_mad_sigma(settingsFile: str, arms: list[str]) -> None:
+def test_default_settings_set_the_cut_to_the_code_fallback(
+    settingsFile: str, arms: list[str], recipeBlock: str
+) -> None:
     # ARRANGE
     settings = yaml.safe_load((Path(soxspipe.__file__).parent / settingsFile).read_text())
 
     # ACT
-    cuts = {arm: settings["soxs-spat-solution"][arm]["poly-clipping-set-offset-sigma"] for arm in arms}
+    cuts = {arm: settings[recipeBlock][arm]["poly-clipping-set-offset-sigma"] for arm in arms}
 
     # ASSERT
     assert cuts == dict.fromkeys(arms, OFFSET_SET_CLIP_SIGMA)

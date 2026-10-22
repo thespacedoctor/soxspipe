@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     # RUNTIME, SO THIS BLOCK COSTS NOTHING AT IMPORT TIME
     import numpy as np
     import numpy.typing as npt
+    import pandas as pd
     from matplotlib.axes import Axes
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
@@ -48,6 +49,11 @@ from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
 from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.pinhole_set_offsets import (
+    OFFSET_SET_CLIP_SIGMA,
+    SET_OFFSET_COLUMN,
+    flag_offset_pinhole_sets,
+)
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 from soxspipe.commonutils.toolkit import (
     QC_PLOT_DECORATION_HEIGHT_INCHES,
@@ -88,11 +94,49 @@ NO_LINES_SURVIVED_MESSAGE = (
 )
 
 
-def _set_offset_flag(lines):
-    """*return the ``set_offset_clipped`` column as booleans, False where it is missing or unset*"""
-    if "set_offset_clipped" not in lines.columns:
-        return False
-    return lines["set_offset_clipped"].eq(True)
+# THE COLUMNS OF THE FITTED-LINES TABLE, IN OUTPUT ORDER
+FITTED_LINE_COLUMNS = (
+    "wavelength",
+    "order",
+    "slit_index",
+    "slit_position",
+    "detector_x",
+    "detector_y",
+    "observed_x",
+    "observed_y",
+    "x_diff",
+    "y_diff",
+    "fit_x",
+    "fit_y",
+    "residuals_x",
+    "residuals_y",
+    "residuals_xy",
+    "sigma_clipped",
+    SET_OFFSET_COLUMN,
+    "sharpness",
+    "roundness1",
+    "roundness2",
+    "npix",
+    "sky",
+    "peak",
+    "flux",
+    "fwhm_pin_px",
+    "R_pin",
+    "pixelScaleNm",
+    "detector_x_shifted",
+    "detector_y_shifted",
+    "R_slit",
+    "fwhm_slit_px",
+)
+
+
+def _set_offset_flag(lines: "pd.DataFrame") -> "pd.Series":
+    """*return the set-offset flag column as booleans, all False where it is missing or unset*"""
+    import pandas as pd
+
+    if SET_OFFSET_COLUMN not in lines.columns:
+        return pd.Series(False, index=lines.index)
+    return lines[SET_OFFSET_COLUMN].eq(True)
 
 
 def plot_xy_residual_histogram(ax: "Axes", values: "npt.ArrayLike") -> None:
@@ -1564,39 +1608,7 @@ class create_dispersion_map:
         import pandas as pd
 
         # DEFINE COLUMNS TO KEEP
-        keepColumns = [
-            "wavelength",
-            "order",
-            "slit_index",
-            "slit_position",
-            "detector_x",
-            "detector_y",
-            "observed_x",
-            "observed_y",
-            "x_diff",
-            "y_diff",
-            "fit_x",
-            "fit_y",
-            "residuals_x",
-            "residuals_y",
-            "residuals_xy",
-            "sigma_clipped",
-            "set_offset_clipped",
-            "sharpness",
-            "roundness1",
-            "roundness2",
-            "npix",
-            "sky",
-            "peak",
-            "flux",
-            "fwhm_pin_px",
-            "R_pin",
-            "pixelScaleNm",
-            "detector_x_shifted",
-            "detector_y_shifted",
-            "R_slit",
-            "fwhm_slit_px",
-        ]
+        keepColumns = list(FITTED_LINE_COLUMNS)
 
         # ADD ION COLUMN IF PRESENT
         if "ion" in goodLinesTable.columns:
@@ -1607,8 +1619,8 @@ class create_dispersion_map:
         clippedLinesTable["R"] = np.nan
         clippedLinesTable["pixelScaleNm"] = np.nan
         # A LINE DROPPED BEFORE THE FIT NEVER RECEIVED THE SET-OFFSET FLAG
-        goodLinesTable = goodLinesTable.assign(set_offset_clipped=_set_offset_flag(goodLinesTable))
-        clippedLinesTable = clippedLinesTable.assign(set_offset_clipped=_set_offset_flag(clippedLinesTable))
+        goodLinesTable = goodLinesTable.assign(**{SET_OFFSET_COLUMN: _set_offset_flag(goodLinesTable)})
+        clippedLinesTable = clippedLinesTable.assign(**{SET_OFFSET_COLUMN: _set_offset_flag(clippedLinesTable)})
 
         # COMBINE GOOD AND CLIPPED LINES
         if len(clippedLinesTable.index):
@@ -2525,11 +2537,9 @@ class create_dispersion_map:
         allClippedLines.append(orderPixelTable.loc[mask])
         # THE FIT WORKS ON ITS OWN COPY: ITS COLUMNS AND CLIPPING FLAGS NEVER BELONG IN THE CALLER'S TABLE
         orderPixelTable = orderPixelTable.loc[~mask].copy()
-        orderPixelTable["set_offset_clipped"] = False
+        orderPixelTable[SET_OFFSET_COLUMN] = False
 
         import pandas as pd
-
-        from soxspipe.commonutils.pinhole_set_offsets import OFFSET_SET_CLIP_SIGMA, flag_offset_pinhole_sets
 
         arm = self.arm
         dp = self.detectorParams
@@ -2799,7 +2809,7 @@ class create_dispersion_map:
             if iteration == 1:
                 offsetSets = flag_offset_pinhole_sets(orderPixelTable, sigmaLimit=setOffsetSigma)
                 if offsetSets.any():
-                    orderPixelTable.loc[offsetSets, ["sigma_clipped", "set_offset_clipped"]] = True
+                    orderPixelTable.loc[offsetSets, ["sigma_clipped", SET_OFFSET_COLUMN]] = True
                     self._log_offset_pinhole_sets(orderPixelTable.loc[offsetSets])
 
             # COUNT THE CLIPPED LINES
@@ -2857,7 +2867,7 @@ class create_dispersion_map:
         self.log.debug("completed the ``fit_polynomials`` method")
         return xcoeff, ycoeff, orderPixelTable, allClippedLines
 
-    def _log_offset_pinhole_sets(self, offsetLines):
+    def _log_offset_pinhole_sets(self, offsetLines: "pd.DataFrame") -> None:
         """*log how many multi-pinhole sets the set-offset test dropped, order by order*
 
         **Key Arguments:**
