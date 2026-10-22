@@ -107,6 +107,8 @@ def _order_table_name(detector: detect_continuum, monkeypatch: pytest.MonkeyPatc
         "soxspipe.commonutils.phase3.write_fits_table_to_disk",
         lambda **kwargs: written.append(kwargs["filePath"]),
     )
+    # THE NAME DOES NOT DEPEND ON THE TRACE SAMPLING, WHICH NEEDS REAL COEFFICIENTS
+    monkeypatch.setattr(detector, "build_order_traces_extension", lambda *_: pd.DataFrame())
     detector.write_order_table_to_file(
         frame=detector.traceFrame,
         orderPolyTable=pd.DataFrame(),
