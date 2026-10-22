@@ -23,9 +23,15 @@ pytest -k "test_horne_extraction" --pdb -v -s       # single test, drop into deb
 
 `-n` needs `pytest-xdist`, which the `tests` and `dev` extras install. Use `-n 4` locally, not `-n auto`: the 4 workers of the offline suite use about 3.7 GB together at peak, against about 2.3 GB for a serial run. Do not use `-n` on `tests/real_data`; real-data reductions run one at a time. Coverage (`--cov`) combines across workers without extra flags.
 
+Approximate the CI test job in one command: the lint ratchet, the changelog check, `ruff format --check`, the offline suite with coverage, the coverage floor and `diff-cover` at 80% against the base. It uses the CI thread-count settings and `PYTHONHASHSEED=0`, judges the working tree (uncommitted and untracked files included), runs every step, and exits nonzero if any failed. It is not CI: it does not reproduce the read-only package directory, network isolation, the runner user id or `-n auto` (it uses `-n 4`, the memory cap). A green run is a strong signal, not a guarantee. It deletes `.coverage` and `.coverage.*` in the repo root first. Every tool runs through `$PYTHON`, so they all come from one environment:
+```bash
+PYTHON=~/anaconda/envs/soxspipe/bin/python tools/ci_local.sh   # CI_LOCAL_BASE, CI_LOCAL_WORKERS and CI_LOCAL_REPORTS override the defaults
+```
+
 Check for new lint with the ratchet CI enforces. It compares changed lines with the base itself, so leave the worktree as it is:
 ```bash
 python tools/lint_ratchet.py --compare-branch origin/develop
+python tools/lint_ratchet.py --worktree origin/develop   # the same, but counts uncommitted edits and untracked files
 ```
 
 The real-data acceptance test is opt-in and needs a prepared workspace:
