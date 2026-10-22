@@ -68,7 +68,6 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
             "VARIANCE",
             "SKY_COUNTS",
             "SNR",
-            "FLUX_DENSITY_COUNTS",
         }
         mergedRows = len(merged_table)
         mergedWave = np.asarray(merged_table["WAVE"], dtype=float)

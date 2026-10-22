@@ -37,6 +37,7 @@ pytestmark = pytest.mark.unit
 def _extractor(log: object) -> horne_extraction:
     extractor = object.__new__(horne_extraction)
     extractor.log = log
+    extractor.notFlattened = ""
     return extractor
 
 
@@ -1728,6 +1729,28 @@ def test_order_merge_resamples_nir_flux_and_preserves_variance(log: object) -> N
     np.testing.assert_allclose(merged["SKY_COUNTS"].values.value, [4.0 / 3, 7.0 / 3])
     np.testing.assert_allclose(merged["SNR"].values.value, [6.0, 9.0])
     assert joins == {}
+
+
+@pytest.mark.parametrize(("notFlattened", "hasDensity"), [("", False), ("_NOTFLAT", True)])
+def test_order_merge_writes_flux_density_only_for_the_not_flattened_extraction(
+    log: object, notFlattened: str, hasDensity: bool
+) -> None:
+    """The flat already divides out the pixel scale, so a flat-fielded spectrum has no flux density (DY-1622)."""
+    # ARRANGE
+    extractor = _extractor(log)
+    extractor.arm = "NIR"
+    extractor.kw = lambda key: key
+    extractor.notFlattened = notFlattened
+    extractedOrders = _merge_rows([(10, [1000.00, 1000.06, 1000.12], [12.0, 18.0, 24.0])], pixelScale=0.06)
+
+    # ACT
+    merged, _ = extractor.merge_extracted_orders(extractedOrders)
+
+    # ASSERT: 12, 18 AND 24 ELECTRONS IN 0.06 NM PIXELS ARE 200, 300 AND 400 ELECTRONS PER NM, LINEARLY RESAMPLED
+    # ONTO THE 1000.02 AND 1000.08 NM GRID POINTS: 200 + 100/3 AND 300 + 100/3
+    assert ("FLUX_DENSITY_COUNTS" in merged.columns) is hasDensity
+    if hasDensity:
+        np.testing.assert_allclose(merged["FLUX_DENSITY_COUNTS"].values.value, [700.0 / 3, 1000.0 / 3], rtol=1e-6)
 
 
 def test_merge_grid_keeps_bins_inside_the_range_at_both_ends() -> None:

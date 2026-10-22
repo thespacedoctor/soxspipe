@@ -198,6 +198,7 @@ def _merge_one_order(log: object, firstWavelength: float) -> tuple[np.ndarray, p
     extractor.log = log
     extractor.arm = "VIS"
     extractor.kw = lambda key: key
+    extractor.notFlattened = ""
     wavelength = firstWavelength + 0.02 * np.arange(10)
     count = len(wavelength)
     extraction = pd.DataFrame(

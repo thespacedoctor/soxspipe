@@ -166,7 +166,6 @@ def _measure_stare_reduction(
             "VARIANCE",
             "SKY_COUNTS",
             "SNR",
-            "FLUX_DENSITY_COUNTS",
         }
         merged_wave = np.asarray(merged_table["WAVE"], dtype=float)
         measured = {

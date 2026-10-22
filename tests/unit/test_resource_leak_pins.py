@@ -360,6 +360,7 @@ def _standard_star_extraction(tmp_path: Path) -> tuple[Path, Path]:
     header = fits.Header(
         {
             "SEQ_ARM": "VIS",
+            "WIN_BINY": 1,
             "DATE_OBS": "2024-01-02T03:04:05",
             "EXPTIME": 30.0,
             "OBJECT": "CD-30 17706",

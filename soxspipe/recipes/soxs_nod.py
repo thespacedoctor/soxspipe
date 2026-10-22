@@ -1856,6 +1856,9 @@ class soxs_nod(base_recipe):
             ("SNR", 2),
             ("FLUX_DENSITY_COUNTS", 3),
         ]:
+            # ONLY A NOT-FLATTENED STACK HAS A FLUX DENSITY COLUMN (DY-1622)
+            if col not in groupedDataframe.columns:
+                continue
             # `decimals` IS BOUND IN A DEFAULT ARGUMENT SO THE LAMBDA CANNOT SEE A LATER LOOP VALUE. `.apply`
             # CALLS IT WITHIN THE SAME ITERATION, SO THIS CHANGES NOTHING; IT ONLY MAKES THAT EXPLICIT.
             groupedDataframe[col] = groupedDataframe[col].apply(lambda x, decimals=decimals: round(float(x), decimals))
