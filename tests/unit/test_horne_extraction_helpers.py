@@ -268,7 +268,7 @@ def test_the_not_flattened_extract_applies_the_flat_pass_shifts_and_tunes_nothin
     # ARRANGE
     extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
     extractor.notFlattened = "_NOTFLAT"
-    extractor.flatPass = FlatPassHandoff(skyShiftsNm={10: 0.25})
+    extractor.flatPass = FlatPassHandoff(skyShiftsNm={10: 0.25}, objectTracePath=None)
     merged: list[pd.DataFrame] = []
     realMerge = extractor.merge_extracted_orders
 
@@ -306,7 +306,7 @@ def test_the_flattened_extract_hands_on_what_it_tuned(
     extractor.extract()
 
     # ASSERT
-    assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm={10: -0.125})
+    assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm={10: -0.125}, objectTracePath=None)
 
 
 def test_extract_returns_empty_results_when_no_order_trace_exists(log: object) -> None:
