@@ -2043,7 +2043,9 @@ class horne_extraction(base_util):
         # FLUX DENSITY COLUMN, AND ONLY IT PAYS FOR COMPUTING ONE
         if self.notFlattened:
             merged_orders["FLUX_DENSITY_COUNTS"] = (
-                self._resampled_flux_density(extractedOrdersDF, wave_in, unique_idx, wave_resample_grid)
+                self._add_and_resample_flux_density(
+                    extractedOrdersDF, wave_in[unique_idx], unique_idx, wave_resample_grid
+                )
                 * u.electron
                 / u.nm
             )
@@ -2065,17 +2067,19 @@ class horne_extraction(base_util):
 
         return merged_orders, orderJoins
 
-    def _resampled_flux_density(self, extractedOrdersDF, waveIn, uniqueIdx, waveGrid):
-        """*return the optimal-extraction flux density (e-/nm), linearly resampled onto the merge grid*
+    def _add_and_resample_flux_density(self, extractedOrdersDF, uniqueWave, uniqueIdx, waveGrid):
+        """*add the flux density columns to the order rows and return the optimal one resampled onto the merge grid*
 
-        The order rows also gain the ``extractedFluxDensityOptimal``, ``extractedFluxDensityBoxcar`` and
+        The order rows gain the ``extractedFluxDensityOptimal``, ``extractedFluxDensityBoxcar`` and
         ``extractedFluxDensityBoxcarRobust`` columns: each extracted flux divided by the pixel size in wavelength.
+        The columns are added in place, as they were before DY-1719, so the not-flattened ``_EXTRACTED_ORDERS``
+        table keeps them unchanged when the merge works on the caller's frame.
 
         **Key Arguments:**
 
         - ``extractedOrdersDF`` -- the extracted orders, with flux and pixel-scale quantity columns
-        - ``waveIn`` -- the order wavelengths (nm) as plain values
-        - ``uniqueIdx`` -- the indices of the first row at each distinct wavelength
+        - ``uniqueWave`` -- the distinct order wavelengths (nm) as plain values
+        - ``uniqueIdx`` -- the row index of each of those wavelengths
         - ``waveGrid`` -- the merge grid (nm)
 
         **Return:**
@@ -2091,7 +2095,7 @@ class horne_extraction(base_util):
                 extractedOrdersDF[f"extractedFlux{method}"].values / pixelScale
             )
         fluxDensityIn = extractedOrdersDF["extractedFluxDensityOptimal"].values.to_value(u.electron / u.nm)
-        return np.interp(waveGrid, waveIn[uniqueIdx], fluxDensityIn[uniqueIdx], left=0.0, right=0.0).astype(np.float32)
+        return np.interp(waveGrid, uniqueWave, fluxDensityIn[uniqueIdx], left=0.0, right=0.0).astype(np.float32)
 
     def _pinhole_offset_labels(self):
         """*the legend labels for the science frame's obs-time and rotator-angle offsets from the multi-pinhole frame*

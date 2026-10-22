@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from soxspipe.commonutils.response_basis import RESPONSE_BASIS, require_response_basis
+from soxspipe.commonutils.response_basis import RESPONSE_BASIS, RESPONSE_BASIS_KEYWORD, require_response_basis
 from tests.factories import response_product_fits
 from tests.integration.test_observing_recipe_orchestration import _route
 from tests.integration.test_soxs_nod_reduction_characterization import SINGLE_PAIR as NOD_PAIR
@@ -42,7 +42,7 @@ def _old_response(tmpPath: Path, basis: str | None) -> tuple[Path, dict[frozense
 
 def _expected_message(responsePath: Path, basis: str | None) -> str:
     """Return the message `require_response_basis` gives for this product."""
-    header = {} if basis is None else {"ESO PRO RESP BASIS": basis}
+    header = {} if basis is None else {RESPONSE_BASIS_KEYWORD: basis}
     with pytest.raises(ValueError) as caught:
         require_response_basis(header, str(responsePath))
     return str(caught.value)
