@@ -984,7 +984,7 @@ NO_TRACE_STANDARD_MESSAGE = (
 def _spy_response_and_plot(recipe: soxs_stare, monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple[Any, ...]]]:
     """Replace the response-curve, flux-calibration and merged-plot steps with call recorders."""
     calls: dict[str, list[tuple[Any, ...]]] = {"response": [], "fluxCal": [], "plot": []}
-    monkeypatch.setattr(recipe, "_generate_response_curve", lambda *args: calls["response"].append(args) or False)
+    monkeypatch.setattr(recipe, "_generate_response_curve", lambda *args, **_: calls["response"].append(args) or False)
     monkeypatch.setattr(
         recipe, "_flux_calibrate_spectrum", lambda *args: calls["fluxCal"].append(args) or str(Path("fluxcal.fits"))
     )

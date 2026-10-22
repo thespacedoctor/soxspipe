@@ -783,7 +783,7 @@ def _produce_product_recipe(
     recipe.report_output = lambda: "qcTable"
     recipe.clean_up = lambda forceFail=False: calls["clean_up"].append(forceFail)
 
-    def generate_response_curve(*args: object) -> bool:
+    def generate_response_curve(*args: object, **_: object) -> bool:
         calls["response"] += 1
         calls["responseArgs"].append(args)
         return responseFailure
@@ -897,10 +897,11 @@ def test_the_not_flattened_response_extraction_is_handed_the_flat_pass(
     recipe.qc = "qc"
     recipe.products = "products"
     recipe.scienceHeaders = []
+    recipe.kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
     handoff = object()
 
     # ACT
-    recipe._generate_response_curve("frame", "sky", "map.fits", "disp.fits", "flat.fits", {}, handoff)
+    recipe._generate_response_curve("frame", "sky", "map.fits", "disp.fits", "flat.fits", {}, handoff, objectFrames=[])
 
     # ASSERT
     assert len(built) == 1

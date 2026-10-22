@@ -625,6 +625,38 @@ def test_a_single_location_standard_builds_a_response_from_an_unflattened_extrac
     assert captured["clean_up"] == [{"forceFail": "synthetic response failure"}]
 
 
+def test_the_response_of_a_standard_uses_the_mean_airmass_of_every_a_and_b_frame(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response curve corrects extinction at the same mean airmass flux calibration uses (DY-1713)."""
+    # ARRANGE
+    headers = [
+        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 2.1, "HIERARCH ESO TEL AIRM END": 2.3, "EXPTIME": 60.0},
+    ]
+    recipe, _ = _nod_recipe(log, tmp_path, headers)
+    recipe.generateReponseCurve = True
+    _patch(recipe, monkeypatch, tmp_path)
+    responseArguments: list[dict[str, object]] = []
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            responseArguments.append(kwargs)
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+            return recipe.qc, recipe.products, False
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", FakeResponse)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: (300 S x 1.2 + 60 S x 2.2) / 360 S, NOT THE FIRST FRAME'S MIDPOINT OF 1.2
+    assert responseArguments[0]["airmass"] == pytest.approx(492.0 / 360.0)
+
+
 def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     log: Any,
     tmp_path: Path,

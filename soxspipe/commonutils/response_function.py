@@ -99,6 +99,9 @@ class response_function:
         - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
         - ``stdNotFlatExtractionPath`` -- fits binary table containing the extracted standard spectrum without flat correction. Default "".
         - ``orderJoins`` -- a list of tuples indicating the orders to be joined together in the response function fitting. Default None.
+        - ``airmass`` -- the airmass of the standard for the UVB/VIS extinction correction: the ``mean_airmass`` of the
+          raw frames that contributed to its extraction, as flux calibration uses (DY-1713). Required for UVB and VIS.
+          Default None.
 
     **Usage:**
 
@@ -108,6 +111,9 @@ class response_function:
 
     ```python
     from soxspipe.commonutils import response_function
+    from soxspipe.commonutils.sequence_airmass import mean_airmass
+    # THE RAW FRAMES THAT CONTRIBUTED TO THE STANDARD'S EXTRACTION
+    airmass = mean_airmass([frame.header for frame in standardFrames], kw, log)
     response = response_function(
         log=log,
         settings=settings,
@@ -119,6 +125,7 @@ class response_function:
         startNightDate=startNightDate
         stdNotFlatExtractionPath=stdNotFlatExtractionPath,
         orderJoins=orderJoins,
+        airmass=airmass,
     )
     qcTable, productsTable = response.get()
     ```
@@ -136,6 +143,7 @@ class response_function:
         startNightDate="",
         stdNotFlatExtractionPath="",
         orderJoins=None,
+        airmass=None,
     ):
         self.log = log
         log.debug("instansiating a new 'response_function' object")
@@ -215,15 +223,12 @@ class response_function:
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
 
         self.log.print(f"STANDARD-STAR: {self.std_objName}")
-        # USING THE AVERAGE AIR MASS
-        if self.instrument == "soxs":
-            # NEED TO UPDATE THE LOOKUP TABLE EVENTUALLY
-            airmass_start = float(self.header["HIERARCH ESO TEL AIRM START"])
-            airmass_end = float(self.header["HIERARCH ESO TEL AIRM END"])
-        else:
-            airmass_start = float(self.header[kw("AIRM_START")])
-            airmass_end = float(self.header[kw("AIRM_END")])
-        self.airmass = (airmass_start + airmass_end) / 2
+        if airmass is None and self.arm in ("UVB", "VIS"):
+            raise ValueError(
+                f"No airmass is known for this {self.arm} standard star, so it cannot be corrected for extinction; "
+                "check the ESO TEL AIRM START and END cards of its raw frames"
+            )
+        self.airmass = airmass
 
         from soxspipe.commonutils.toolkit import utility_setup
 

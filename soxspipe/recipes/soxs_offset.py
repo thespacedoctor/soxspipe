@@ -578,8 +578,8 @@ class soxs_offset(soxs_nod):
 
         **Key Arguments:**
 
-        - ``allFrameON`` -- the ON frames
-        - ``allFrameOFF`` -- the OFF frames
+        - ``allFrameON`` -- the ON frames. A response curve uses their mean airmass
+        - ``allFrameOFF`` -- the OFF frames, which hold only sky, so their airmass is not used
         - ``orderTablePath`` -- the path to the order table
         - ``master_flat`` -- the master flat, or False
 
@@ -630,6 +630,7 @@ class soxs_offset(soxs_nod):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
+            from soxspipe.commonutils.sequence_airmass import mean_airmass
 
             mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
                 aFrame=aFrame,
@@ -659,6 +660,7 @@ class soxs_offset(soxs_nod):
                 startNightDate=self.startNightDate,
                 stdNotFlatExtractionPath=extractionPath_notflat,
                 orderJoins=orderJoins,
+                airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
             )
             self.qc, self.products, forceFailure = response.get()
 

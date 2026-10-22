@@ -18,12 +18,10 @@ from tests.factories import product_table, qc_table
 pytestmark = pytest.mark.unit
 
 
-def test_response_constructor_reads_and_normalizes_synthetic_standard(
-    tmp_path: Path,
-    log: object,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Initialize response state from temporary extracted and reference spectra."""
+def _build_vis_response(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, **kwargs: object
+) -> response_function:
+    """Construct a VIS response_function from synthetic files whose header airmass midpoint is 1.2."""
     extractedPath = tmp_path / "standard.fits"
     unflattenedPath = tmp_path / "standard-unflattened.fits"
     standardsPath = tmp_path / "standards.fits"
@@ -64,7 +62,7 @@ def test_response_constructor_reads_and_normalizes_synthetic_standard(
         lambda **_: (str(tmp_path / "qc"), str(tmp_path / "products")),
     )
 
-    response = response_function(
+    return response_function(
         log=log,
         stdExtractionPath=str(extractedPath),
         recipeName="soxs-response",
@@ -75,15 +73,48 @@ def test_response_constructor_reads_and_normalizes_synthetic_standard(
         startNightDate="2024-01-02",
         stdNotFlatExtractionPath=str(unflattenedPath),
         orderJoins=["12"],
+        **kwargs,
     )
+
+
+def test_response_constructor_reads_and_normalizes_synthetic_standard(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Initialize response state from temporary extracted and reference spectra."""
+    response = _build_vis_response(tmp_path, log, monkeypatch, airmass=1.37)
 
     assert response.arm == "VIS"
     assert response.std_objName == "LTT7987"
     assert response.stdExtractionDF["WAVE"].to_list() == [500.0, 600.0]
     assert response.stdExtractionNotFlatDF["WAVE"].to_list() == [500.0, 600.0]
-    assert response.airmass == pytest.approx(1.2)
     assert response.qcDir == str(tmp_path / "qc")
     assert response.productDir == str(tmp_path / "products")
+
+
+def test_response_uses_the_airmass_its_caller_passes_not_the_extraction_header(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The caller passes the mean airmass of the contributing frames, not the first frame's midpoint (DY-1713)."""
+    # ACT
+    response = _build_vis_response(tmp_path, log, monkeypatch, airmass=1.37)
+
+    # ASSERT: THE EXTRACTION HEADER'S START AND END MIDPOINT IS 1.2
+    assert response.airmass == pytest.approx(1.37)
+
+
+def test_a_vis_response_with_no_known_airmass_is_a_clear_error(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """UVB and VIS need an airmass for the extinction correction, so none is a clear error (DY-1713)."""
+    # ACT / ASSERT: mean_airmass RETURNS NONE WHEN NO CONTRIBUTING FRAME HAS A READABLE AIRMASS
+    with pytest.raises(ValueError, match="airmass"):
+        _build_vis_response(tmp_path, log, monkeypatch, airmass=None)
 
 
 def _response_writer(tmp_path: Path, log: object) -> response_function:

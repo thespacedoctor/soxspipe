@@ -1155,20 +1155,16 @@ def test_stare_selects_supported_non_object_fallbacks(
     assert recipe.subtractSky is expectedSkySubtraction
 
 
-def test_stare_generates_a_response_from_a_flux_standard(
+def _stare_standard_recipe(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A flux standard takes the unflattened extraction through response creation."""
-    standardPath = _write_prepared_frame(
-        tmp_path / "response-standard.fits",
-        seed=72,
-        headerOverrides={
-            "DPR_TYPE": "STD,FLUX",
-            "DPR_TECH": "ECHELLE,SLIT,STARE",
-        },
-    )
+    standardPaths: list[Path],
+) -> tuple[Any, list[str], list[dict[str, object]], list[dict[str, object]]]:
+    """Return a stare recipe reading ``standardPaths`` as flux-standard frames, with the extractor and response faked.
+
+    Also returns the call log, the extractor arguments and the response arguments the fakes record.
+    """
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
     recipe.arm = "VIS"
@@ -1178,7 +1174,7 @@ def test_stare_generates_a_response_from_a_flux_standard(
         {
             _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [],
             _route(DPR_TYPE="OBJECT,ASYNC", DPR_TECH="ECHELLE,SLIT,STARE"): [],
-            _route(DPR_TYPE="STD,FLUX", DPR_TECH="ECHELLE,SLIT,STARE"): [str(standardPath)],
+            _route(DPR_TYPE="STD,FLUX", DPR_TECH="ECHELLE,SLIT,STARE"): [str(path) for path in standardPaths],
             _route(PRO_CATG="ORDER_TAB_VIS"): [str(tmp_path / "ORDER_TAB_VIS.fits")],
             _route(PRO_CATG="DISP_TAB_VIS"): [str(tmp_path / "DISP_TAB_VIS.fits")],
             _route(PRO_CATG="DISP_IMAGE_VIS"): [str(tmp_path / "DISP_IMAGE_VIS.fits")],
@@ -1255,6 +1251,27 @@ def test_stare_generates_a_response_from_a_flux_standard(
         lambda **kwargs: (kwargs["products"], str(tmp_path / "merged.pdf")),
     )
 
+    return recipe, calls, extractionArguments, responseArguments
+
+
+def test_stare_generates_a_response_from_a_flux_standard(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A flux standard takes the unflattened extraction through response creation."""
+    standardPath = _write_prepared_frame(
+        tmp_path / "response-standard.fits",
+        seed=72,
+        headerOverrides={
+            "DPR_TYPE": "STD,FLUX",
+            "DPR_TECH": "ECHELLE,SLIT,STARE",
+        },
+    )
+    recipe, calls, extractionArguments, responseArguments = _stare_standard_recipe(
+        log, tmp_path, monkeypatch, [standardPath]
+    )
+
     productPath, returnedQc = recipe.produce_product()
 
     assert productPath is None
@@ -1276,6 +1293,36 @@ def test_stare_generates_a_response_from_a_flux_standard(
     assert responseArguments[0]["stdExtractionPath"] == str(tmp_path / "extracted-1.fits")
     assert responseArguments[0]["stdNotFlatExtractionPath"] == str(tmp_path / "extracted-2.fits")
     assert responseArguments[0]["orderJoins"] == {"10-11": 11}
+
+
+def test_stare_response_uses_the_mean_airmass_of_every_stacked_standard_frame(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response curve corrects extinction at the same mean airmass flux calibration uses (DY-1713)."""
+    # ARRANGE
+    standardPaths = [
+        _write_prepared_frame(
+            tmp_path / f"response-standard-{index}.fits",
+            seed=72 + index,
+            headerOverrides={
+                "DPR_TYPE": "STD,FLUX",
+                "DPR_TECH": "ECHELLE,SLIT,STARE",
+                "HIERARCH ESO TEL AIRM START": start,
+                "HIERARCH ESO TEL AIRM END": start + 0.2,
+                "EXPTIME": exptime,
+            },
+        )
+        for index, (start, exptime) in enumerate([(1.1, 300.0), (2.1, 60.0)])
+    ]
+    recipe, _, _, responseArguments = _stare_standard_recipe(log, tmp_path, monkeypatch, standardPaths)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: (300 S x 1.2 + 60 S x 2.2) / 360 S, NOT THE FIRST FRAME'S MIDPOINT OF 1.2
+    assert responseArguments[0]["airmass"] == pytest.approx(492.0 / 360.0)
 
 
 def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
