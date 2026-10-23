@@ -193,7 +193,8 @@ def test_a_newton_step_solves_both_residuals_with_the_inverse_of_the_gradient_ma
 
     # ASSERT
     expected = np.linalg.solve(jacobian, residuals)
-    np.testing.assert_allclose([newRows[0] - 10.0, newColumns[0] - 20.0], expected, rtol=1e-12)
+    # THE ROW STEP IS EXACTLY 0 AND solve GIVES ~1e-16 ON SOME BLAS BUILDS, SO rtol ALONE CANNOT MATCH IT
+    np.testing.assert_allclose([newRows[0] - 10.0, newColumns[0] - 20.0], expected, rtol=1e-12, atol=1e-12)
 
 
 def test_a_newton_step_ignores_the_wavelength_residual_where_the_gradient_matrix_is_ill_conditioned() -> None:
