@@ -18,13 +18,14 @@ import numpy as np
 import pandas as pd
 import pytest
 from astropy import units as u
-from astropy.nddata import CCDData, NDData, StdDevUncertainty
+from astropy.nddata import CCDData, NDData
 from astropy.stats import sigma_clipped_stats
 from matplotlib.figure import Figure
 
 import soxspipe.commonutils as commonutils
 from soxspipe.commonutils import toolkit
 from tests.unit._plot_spies import quiet_show, spy_figures
+from tests.unit._qc_plot_builders import quicklook_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -32,22 +33,6 @@ pytestmark = pytest.mark.unit
 def _image_axis(figure: Figure):
     """Return the first axis on `figure` that holds an `AxesImage`."""
     return next(axis for axis in figure.axes if axis.images)
-
-
-def _ccd(instrument: str = "SOXS", shape: tuple[int, int] = (8, 8), extraHeader: dict | None = None) -> CCDData:
-    size = shape[0] * shape[1]
-    data = np.arange(size, dtype=float).reshape(shape)
-    mask = np.zeros(shape, dtype=bool)
-    header = {"INSTRUME": instrument}
-    if extraHeader:
-        header.update(extraHeader)
-    return CCDData(
-        data,
-        unit=u.electron,
-        mask=mask,
-        uncertainty=StdDevUncertainty(np.ones(shape)),
-        meta=header,
-    )
 
 
 class _StubKeywordLookup:
@@ -138,7 +123,7 @@ def test_quicklook_image_orients_pixels_and_sets_clim_per_instrument(
     rotation convention and the sigma-clipped-stats-derived `vmin`/`vmax`."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
-    ccd = _ccd(instrument)
+    ccd = quicklook_ccd(instrument)
 
     toolkit.quicklook_image(log, ccd, show=True)
 
@@ -156,7 +141,7 @@ def test_quicklook_image_clim_respects_custom_std_window(monkeypatch: pytest.Mon
     """A non-default `stdWindow` scales the colour-limit half-width."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
-    ccd = _ccd("SOXS")
+    ccd = quicklook_ccd("SOXS")
 
     toolkit.quicklook_image(log, ccd, show=True, stdWindow=7)
 
@@ -288,7 +273,7 @@ def test_quicklook_image_inst_argument_overrides_header_instrume(monkeypatch: py
     """An explicit `inst=` argument takes precedence over `header['INSTRUME']`."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
-    ccd = _ccd("SOXS")
+    ccd = quicklook_ccd("SOXS")
 
     toolkit.quicklook_image(log, ccd, show=True, inst="XSHOOTER")
 
@@ -370,7 +355,7 @@ def test_quicklook_image_dispmap_branch_forwards_arguments_and_draws_grid_lines(
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
     captured = _stub_grid_lines(monkeypatch)
-    ccd = _ccd(instrument, extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd(instrument, extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     settings = {"instrument": "soxs"}
 
     toolkit.quicklook_image(log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings=settings)
@@ -415,7 +400,7 @@ def test_quicklook_image_dispmap_branch_masks_inter_order_pixels(
     interOrderMask = np.asarray(captured["interOrderMask"])
     assert interOrderMask.any()  # THE STUB MASK HAS SOME TRUE PIXELS
     assert not np.array_equal(orient(interOrderMask), np.flipud(interOrderMask))  # ORIENTATION ERRORS SHOW
-    ccd = _ccd(instrument, shape=(6, 10), extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd(instrument, shape=(6, 10), extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
 
     toolkit.quicklook_image(
         log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings={"instrument": "soxs"}
@@ -438,7 +423,7 @@ def test_quicklook_image_dispmap_branch_excludes_inter_order_pixels_from_colour_
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
     captured = _stub_grid_lines(monkeypatch)
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     # HIGH, BUT INSIDE THE 50 SIGMA CLIP, SO AN UNMASKED SCALE WOULD INCLUDE THEM AND SHIFT THE MEDIAN
     ccd.data[captured["interOrderMask"]] = 1000.0
     maskedFrame = np.ma.masked_array(ccd.data, mask=captured["interOrderMask"])
@@ -466,7 +451,7 @@ def test_quicklook_image_dispmap_branch_does_not_mutate_the_caller_frame(
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
     _stub_grid_lines(monkeypatch)
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     dataBefore = ccd.data.copy()
     maskBefore = ccd.mask.copy()
 
@@ -488,7 +473,7 @@ def test_quicklook_image_dispmap_branch_excludes_inter_order_pixels_from_surface
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
     captured = _stub_grid_lines(monkeypatch)
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     ccd.data[captured["interOrderMask"]] = 1000.0
     maskedMax = np.nanmax(np.ma.masked_array(ccd.data, mask=captured["interOrderMask"]))
 
@@ -519,7 +504,7 @@ def test_quicklook_image_dispmap_branch_survives_a_mismatched_inter_order_mask(
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
     _stub_grid_lines(monkeypatch, maskShape=(5, 7))
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
 
     toolkit.quicklook_image(
         log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings={"instrument": "soxs"}
@@ -564,7 +549,7 @@ def test_apply_inter_order_mask_keeps_the_mask_the_frame_already_carries(
 def test_quicklook_frame_array_returns_masked_copy_of_ccddata_when_ext_is_false() -> None:
     """With ``ext=False`` a CCDData is returned as a masked view of its data
     that carries a copy of its mask, not as the CCDData object itself."""
-    ccd = _ccd("SOXS")
+    ccd = quicklook_ccd("SOXS")
     ccd.mask[3, 4] = True
 
     frame = toolkit._quicklook_frame_array(ccd, False)
@@ -625,7 +610,7 @@ def test_quicklook_image_dispmap_branch_plots_a_ccddata_passed_with_ext_false(
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
     captured = _stub_grid_lines(monkeypatch)
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     ccd.mask[7, 7] = True
     dataBefore = ccd.data.copy()
     maskBefore = ccd.mask.copy()
@@ -665,7 +650,7 @@ def test_quicklook_image_skylines_true_forwards_dataframe_to_grid_lines_helper(
         return skylinesDF
 
     monkeypatch.setattr(toolkit, "get_skylines_dataframe", _stub_skylines)
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     settings = {"instrument": "soxs"}
 
     toolkit.quicklook_image(
@@ -691,7 +676,7 @@ def test_quicklook_image_dispmap_without_settings_skips_the_overlay_and_warns(
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
     captured = _stub_grid_lines(monkeypatch)
-    ccd = _ccd("SOXS")
+    ccd = quicklook_ccd("SOXS")
 
     toolkit.quicklook_image(log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits")
 
@@ -713,7 +698,7 @@ def test_quicklook_image_skylines_without_settings_skips_the_lookup_and_warns(
     quiet_show(monkeypatch)
     skylineCalls: list[tuple] = []
     monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda *args, **kwargs: skylineCalls.append(args))
-    ccd = _ccd("SOXS")
+    ccd = quicklook_ccd("SOXS")
 
     toolkit.quicklook_image(log, ccd, show=True, skylines=True)
 
@@ -732,7 +717,7 @@ def test_quicklook_image_without_settings_and_without_overlays_does_not_warn(
     spy_figures(monkeypatch)
     quiet_show(monkeypatch)
 
-    toolkit.quicklook_image(log, _ccd("SOXS"), show=True)
+    toolkit.quicklook_image(log, quicklook_ccd("SOXS"), show=True)
 
     assert [message for level, message in log.messages if level == "warning"] == []
 

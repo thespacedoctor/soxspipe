@@ -24,6 +24,7 @@ from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
@@ -1393,6 +1394,7 @@ class detect_continuum(_base_detect):
 
         self.log.debug("completed the ``check_trace_extrapolation`` method")
 
+    @closes_its_figures
     def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
 
@@ -1742,6 +1744,7 @@ class detect_continuum(_base_detect):
         self.log.debug("completed the ``plot_results`` method")
         return filePath
 
+    @closes_its_figures
     def sample_trace(self):
         """*take many cross-dispersion samples across each order to try and find an object trace*
 

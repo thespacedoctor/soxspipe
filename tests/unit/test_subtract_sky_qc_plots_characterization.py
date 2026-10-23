@@ -13,72 +13,10 @@ from astropy.nddata import CCDData
 from scipy.interpolate import splrep
 
 import soxspipe.commonutils.toolkit as toolkit
-from soxspipe.commonutils.subtract_sky import subtract_sky
 from tests.unit._plot_spies import image_interpolations, probe_on_savefig, quiet_show, spy_figures
+from tests.unit._qc_plot_builders import order_strip, strip_subtractor
 
 pytestmark = pytest.mark.unit
-
-FLAG_COLUMNS = (
-    "flagged_all_clipped",
-    "flagged_object_clipped",
-    "flagged_bad_pixel_clipped",
-    "flagged_edge_clipped",
-    "flagged_bspline_clipped",
-)
-
-
-def _subtractor(
-    log: Any,
-    outputPath: Path,
-    *,
-    dispersionAxis: str,
-    rotate: int | bool,
-    flip: int | bool = False,
-    shape: tuple[int, int] = (16, 16),
-) -> subtract_sky:
-    subtractor = subtract_sky.__new__(subtract_sky)
-    subtractor.log = log
-    subtractor.arm = "VIS"
-    # THE CONSTRUCTOR SWAPS THE AXES FOR A Y-DISPERSION ARM
-    subtractor.axisA, subtractor.axisB = ("x", "y") if dispersionAxis == "x" else ("y", "x")
-    subtractor.filenameTemplate = "science.fits"
-    subtractor.qcDir = str(outputPath)
-    subtractor.detectorParams = {
-        "dispersion-axis": dispersionAxis,
-        "flip-qc-plot": flip,
-        "rotate-qc-plot": rotate,
-    }
-    subtractor.objectFrame = CCDData(
-        np.arange(np.prod(shape), dtype=float).reshape(shape),
-        unit="electron",
-        mask=np.zeros(shape, dtype=bool),
-    )
-    return subtractor
-
-
-def _order_strip(
-    *, pixelCount: int = 64, columns: int = 4, flagged: bool = True, largeScatter: bool = False
-) -> pd.DataFrame:
-    """An order `columns` pixels wide running down the rows, with every ninth pixel flagged."""
-    index = np.arange(pixelCount)
-    pixels = pd.DataFrame(
-        {
-            "x": index % columns,
-            "y": index // columns,
-            "wavelength": np.linspace(500.0, 510.0, pixelCount),
-            "flux": 12.0 + np.sin(index),
-            "slit_position": np.linspace(-1.0, 1.0, pixelCount),
-            "residual_windowed_std": np.full(pixelCount, 3000.0 if largeScatter else 1.0),
-            "residual_global_sigma": np.cos(index),
-            "flux_percentile_smoothed": np.full(pixelCount, 12.0),
-            "sky_model": 100.0 + index,
-            "sky_subtracted_flux": np.sin(index / 3.0),
-            "sky_subtracted_flux_weighted": np.sin(index / 3.0),
-        }
-    )
-    for column in FLAG_COLUMNS:
-        pixels[column] = (index % 9 == 0) if flagged else False
-    return pixels
 
 
 @pytest.fixture
@@ -136,8 +74,8 @@ def test_every_sky_qc_panel_places_its_pixels_on_the_true_detector_rows_and_colu
     """An order in columns 0-3 fills columns 0-3 of every panel, whichever way the arm disperses."""
     outputPath = tmp_path / f"{dispersionAxis}_dispersion_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=False)
-    strip = _order_strip()
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=False)
+    strip = order_strip()
 
     filePath = subtractor.plot_sky_sampling(order=11, imageMapOrderDF=strip, knotLocations=np.array([502.0, 508.0]))
 
@@ -153,8 +91,8 @@ def test_a_y_dispersion_order_on_a_non_square_frame_renders_its_panels(log: Any,
     """A 20-pixel-wide order on a 16-row, 24-column y-dispersion frame plots without error."""
     outputPath = tmp_path / "non_square_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis="y", rotate=False, shape=(16, 24))
-    strip = _order_strip(pixelCount=80, columns=20)
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis="y", rotate=False, shape=(16, 24))
+    strip = order_strip(pixelCount=80, columns=20)
 
     filePath = subtractor.plot_sky_sampling(order=11, imageMapOrderDF=strip, knotLocations=np.array([502.0]))
 
@@ -213,8 +151,8 @@ def test_every_image_panel_layer_follows_the_rotate_and_flip_qc_plot_settings(
     shape = (16, 24)
     outputPath = tmp_path / "oriented_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=rotate, flip=flip, shape=shape)
-    strip = _order_strip()
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=rotate, flip=flip, shape=shape)
+    strip = order_strip()
     displayedStrip = {display(row, column, shape) for row, column in _strip_positions(strip)}
     flaggedPixels = _strip_positions(strip.loc[strip["flagged_object_clipped"]])
     displayedFlaggedPixels = {display(row, column, shape) for row, column in flaggedPixels}
@@ -274,7 +212,7 @@ def test_every_image_comparison_panel_follows_the_rotate_and_flip_qc_plot_settin
     shape = (6, 8)
     outputPath = tmp_path / "comparison_orientation"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=rotate, flip=flip, shape=shape)
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=rotate, flip=flip, shape=shape)
     subtractor.mapDF = pd.DataFrame({"x": [1, 2], "y": [1, 4]})
     objectFrame = subtractor.objectFrame
     skyModelFrame = CCDData(objectFrame.data * 2.0 + 0.5, unit="electron", mask=np.zeros(shape, dtype=bool))
@@ -292,7 +230,7 @@ def test_every_image_comparison_panel_follows_the_rotate_and_flip_qc_plot_settin
 
 def test_a_rotate_qc_plot_that_is_not_a_multiple_of_90_degrees_is_rejected(log: Any, tmp_path: Path) -> None:
     """A 45-degree rotation cannot be drawn as quarter turns, so the plot raises instead of truncating it."""
-    subtractor = _subtractor(log, tmp_path, dispersionAxis="x", rotate=45)
+    subtractor = strip_subtractor(log, tmp_path, dispersionAxis="x", rotate=45)
 
     with pytest.raises(ValueError, match="multiple of 90 degrees, not 45"):
         subtractor._qc_display_image(np.zeros((2, 3)))
@@ -309,8 +247,8 @@ def test_a_rotated_spline_plot_without_clipped_rows_falls_back_on_every_limit(
     """
     outputPath = tmp_path / "rotated_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=90)
-    pixels = _order_strip(flagged=False, largeScatter=True)
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis="x", rotate=90)
+    pixels = order_strip(flagged=False, largeScatter=True)
     spline = splrep(pixels["wavelength"], pixels["flux"], k=3, s=len(pixels) * 4)
 
     filePath = subtractor.plot_sky_sampling(
@@ -350,7 +288,7 @@ def test_image_comparison_falls_back_to_plain_statistics_when_nan_statistics_fai
     """A failing `np.nanstd` on the object and sky-subtracted panels is logged and replaced."""
     outputPath = tmp_path / "comparison_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=False, shape=(4, 4))
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis="x", rotate=False, shape=(4, 4))
     subtractor.mapDF = pd.DataFrame({"x": [0, 1], "y": [0, 1]})
     frame = subtractor.objectFrame
     realNanstd = np.nanstd
@@ -384,7 +322,7 @@ def test_image_comparison_order_mask_covers_the_true_detector_pixels_of_the_orde
     """The statistics of the object panel are taken over the order's own (row, column) pixels."""
     outputPath = tmp_path / f"{dispersionAxis}_comparison_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=False, shape=(6, 8))
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis=dispersionAxis, rotate=False, shape=(6, 8))
     subtractor.mapDF = pd.DataFrame({"x": [7, 6], "y": [1, 4]})
     frame = subtractor.objectFrame
     realNanstd = np.nanstd
@@ -407,9 +345,9 @@ def test_sky_sampling_images_and_mask_overlays_are_embedded_without_resampling(
     """Embed every panel and flag overlay at native resolution so vector markers line up with pixels when zoomed."""
     outputPath = tmp_path / "interpolation_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=False)
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis="x", rotate=False)
 
-    subtractor.plot_sky_sampling(order=11, imageMapOrderDF=_order_strip(), knotLocations=np.array([502.0, 508.0]))
+    subtractor.plot_sky_sampling(order=11, imageMapOrderDF=order_strip(), knotLocations=np.array([502.0, 508.0]))
 
     [figure] = figures
     interpolations = image_interpolations(figure)
@@ -423,7 +361,7 @@ def test_image_comparison_images_are_embedded_without_resampling(
     """Embed the object, sky-model and sky-subtracted panels at native resolution."""
     outputPath = tmp_path / "comparison_interpolation_plots"
     outputPath.mkdir()
-    subtractor = _subtractor(log, outputPath, dispersionAxis="x", rotate=False, shape=(4, 4))
+    subtractor = strip_subtractor(log, outputPath, dispersionAxis="x", rotate=False, shape=(4, 4))
     subtractor.mapDF = pd.DataFrame({"x": [0, 1], "y": [0, 1]})
     frame = subtractor.objectFrame
     probes = probe_on_savefig(monkeypatch, image_interpolations)

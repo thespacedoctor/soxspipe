@@ -22,36 +22,10 @@ from astropy import units as u
 from astropy.stats import sigma_clip, sigma_clipped_stats
 
 from soxspipe.commonutils import toolkit
-from tests.factories import product_table
 from tests.unit._plot_spies import probe_on_savefig, spy_figures
+from tests.unit._qc_plot_builders import call_plot_merged_spectrum_qc, stub_merged_skylines, synthetic_merged_orders
 
 pytestmark = pytest.mark.unit
-
-
-def _synthetic_merged_orders(*, includeSky: bool = True) -> pd.DataFrame:
-    """~50-row synthetic merged spectrum with a couple of outliers in FLUX and
-    SNR, deterministic (no RNG) so sigma-clipped statistics can be
-    recomputed independently in each test."""
-    wave = np.linspace(500.0, 600.0, 50)
-    flux = 10.0 + 2.0 * np.sin(np.linspace(0.0, 10.0, 50))
-    flux[5] = 500.0
-    flux[40] = -500.0
-    snr = 5.0 + 0.1 * np.arange(50)
-    snr[10] = 200.0
-    columns = {"WAVE": wave, "FLUX_COUNTS": flux, "SNR": snr}
-    if includeSky:
-        columns["SKY_COUNTS"] = 10.0 + np.linspace(0.0, 5.0, 50)
-    return pd.DataFrame(columns)
-
-
-def _stub_skylines(monkeypatch: pytest.MonkeyPatch, extra: tuple = ()) -> None:
-    wavelengths = [520.0, 540.0, *extra]
-    isolated = [True, False] + [False] * len(extra)
-    monkeypatch.setattr(
-        toolkit,
-        "get_skylines_dataframe",
-        lambda log, settings, arm: pd.DataFrame({"WAVELENGTH": wavelengths, "ISOLATED": isolated}),
-    )
 
 
 def _expected_flux_ylims(flux: np.ndarray) -> tuple[tuple[float, float], tuple[float, float]]:
@@ -69,31 +43,6 @@ def _expected_snr_ylim(snr: np.ndarray) -> tuple[float, float]:
     return (0.0, mean + 4 * std)
 
 
-def _call_plot_merged_spectrum_qc(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    log: object,
-    merged: pd.DataFrame,
-    **overrides: object,
-) -> tuple[pd.DataFrame, str]:
-    kwargs: dict[str, object] = {
-        "products": product_table().iloc[0:0].copy(),
-        "log": log,
-        "qcDir": str(tmp_path),
-        "filenameTemplate": "synthetic.fits",
-        "noddingSequence": "_AB",
-        "dateObs": "2024-01-02T03:04:05",
-        "arm": "VIS",
-        "recipeName": "soxs-nod",
-        "orderJoins": {"11-12": 550.0},
-        "fluxCalibrated": False,
-        "qcTable": False,
-        "settings": {},
-    }
-    kwargs.update(overrides)
-    return toolkit.plot_merged_spectrum_qc(merged, **kwargs)
-
-
 @pytest.mark.parametrize("fluxCalibrated", [False, True])
 def test_plot_merged_spectrum_qc_figure_layout_size_dpi_and_axis_order(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, fluxCalibrated: bool
@@ -101,10 +50,10 @@ def test_plot_merged_spectrum_qc_figure_layout_size_dpi_and_axis_order(
     """The figure is 14x10in at 180dpi with exactly four axes, created in
     top/middle/bottom(SNR)/sky order."""
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
 
     figure = figures[-1]
     assert tuple(figure.get_size_inches()) == (14.0, 10.0)
@@ -122,10 +71,10 @@ def test_plot_merged_spectrum_qc_xlim_matches_wave_range_on_every_panel(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, fluxCalibrated: bool
 ) -> None:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
 
     for axis in figures[-1].axes:
         assert axis.get_xlim() == pytest.approx((500.0, 600.0), rel=1e-12)
@@ -140,15 +89,15 @@ def test_plot_merged_spectrum_qc_wave_as_quantity_column_raises_type_error(
     that fallback at all -- `ax.plot()` itself raises `TypeError` while
     building the line path, before any `set_xlim()` call runs. Pinned as a
     crash, not a `.value` codepath."""
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
     merged["WAVE"] = pd.Series([value * u.nm for value in merged["WAVE"]])
 
     # THE TypeError FIRES AFTER THE FIGURE IS CREATED BUT BEFORE THE FUNCTION'S
     # OWN plt.close("all"), SO CLOSE IT HERE TO KEEP LATER TESTS ISOLATED
     try:
         with pytest.raises(TypeError):
-            _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged)
+            call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged)
     finally:
         plt.close("all")
 
@@ -158,10 +107,10 @@ def test_plot_merged_spectrum_qc_ylim_and_yscale_pin_sigma_clipped_statistics(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, fluxCalibrated: bool
 ) -> None:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
 
     top, middle, bottom, sky = figures[-1].axes
     expectedTopYlim, expectedMiddleYlim = _expected_flux_ylims(merged["FLUX_COUNTS"].to_numpy())
@@ -185,10 +134,10 @@ def test_plot_merged_spectrum_qc_sky_panel_has_no_line_and_pinned_default_ylim_w
     axis (recorded here as a literal, since it is not derived from the
     input data at all)."""
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders(includeSky=False)
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders(includeSky=False)
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins=False)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins=False)
 
     sky = figures[-1].axes[3]
     # ONLY THE TWO SKYLINE AXVLINES ARE PRESENT; NO SKY-FLUX LINE IS DRAWN
@@ -213,10 +162,10 @@ def test_plot_merged_spectrum_qc_labels_title_and_line_colours(
     expectedSkyColour: str,
 ) -> None:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated)
 
     top, middle, bottom, sky = figures[-1].axes
     assert top.get_ylabel() == expectedLabelSuffix
@@ -233,10 +182,10 @@ def test_plot_merged_spectrum_qc_labels_title_and_line_colours(
 
 def _snr_text_for(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: object, qcTable: pd.DataFrame, arm: str) -> str:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
+    stub_merged_skylines(monkeypatch)
 
-    _call_plot_merged_spectrum_qc(
-        monkeypatch, tmp_path, log, _synthetic_merged_orders(), qcTable=qcTable, orderJoins=False, arm=arm
+    call_plot_merged_spectrum_qc(
+        monkeypatch, tmp_path, log, synthetic_merged_orders(), qcTable=qcTable, orderJoins=False, arm=arm
     )
 
     bottom = figures[-1].axes[2]
@@ -291,10 +240,10 @@ def test_plot_merged_spectrum_qc_snr_text_absent_when_qc_table_is_false(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, qcTable=False, orderJoins=False)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, qcTable=False, orderJoins=False)
 
     bottom = figures[-1].axes[2]
     assert len(bottom.texts) == 0
@@ -304,11 +253,11 @@ def test_plot_merged_spectrum_qc_snr_text_absent_when_no_snr_median_rows(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
     qcTable = pd.DataFrame({"qc_name": ["OTHER"], "qc_order": ["GLOBAL"], "qc_value": [1.0]})
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, qcTable=qcTable, orderJoins=False)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, qcTable=qcTable, orderJoins=False)
 
     bottom = figures[-1].axes[2]
     assert len(bottom.texts) == 0
@@ -322,10 +271,10 @@ def test_plot_merged_spectrum_qc_order_joins_draw_axvline_and_text_on_three_pane
     the text placed at `(v + 5, 0.9 * ylim[1])` using each panel's own ylim
     at that point."""
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins={"11-12": 550.0})
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins={"11-12": 550.0})
 
     top, middle, bottom, sky = figures[-1].axes
     expectedTopYlim, expectedMiddleYlim = _expected_flux_ylims(merged["FLUX_COUNTS"].to_numpy())
@@ -363,9 +312,9 @@ def test_plot_merged_spectrum_qc_skylines_isolated_vs_other_colour_and_label(
         "get_skylines_dataframe",
         lambda log, settings, arm: pd.DataFrame({"WAVELENGTH": [520.0, 540.0], "ISOLATED": [True, False]}),
     )
-    merged = _synthetic_merged_orders()
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins=False)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins=False)
 
     top = figures[-1].axes[0]
     isolatedLine = next(line for line in top.lines if line.get_xdata()[0] == pytest.approx(520.0))
@@ -393,9 +342,9 @@ def test_plot_merged_spectrum_qc_skylines_drops_non_numeric_wavelengths(
         "get_skylines_dataframe",
         lambda log, settings, arm: pd.DataFrame({"WAVELENGTH": [520.0, "not-a-number"], "ISOLATED": [True, True]}),
     )
-    merged = _synthetic_merged_orders()
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins=False)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, orderJoins=False)
 
     top = figures[-1].axes[0]
     skylineLines = [line for line in top.lines if line.get_color() == "blue"]
@@ -415,10 +364,10 @@ def test_plot_merged_spectrum_qc_debug_calls_show_before_savefig(
         return realSavefig(*args, **kwargs)
 
     monkeypatch.setattr(plt, "savefig", _savefig_spy)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, debug=True)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, debug=True)
 
     assert order == ["show", "savefig"]
 
@@ -431,10 +380,10 @@ def test_plot_merged_spectrum_qc_filename_suffix_reflects_nodding_sequence(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, noddingSequence, expectedSuffix: str
 ) -> None:
     spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
 
-    _, outputPath = _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, noddingSequence=noddingSequence)
+    _, outputPath = call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged, noddingSequence=noddingSequence)
 
     assert outputPath == str(tmp_path / f"synthetic_EXTRACTED_MERGED_QC_PLOT{expectedSuffix}.pdf")
 
@@ -444,11 +393,11 @@ def test_plot_merged_spectrum_qc_prints_extraction_notes_under_the_figure(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, fluxCalibrated: bool
 ) -> None:
     probes = probe_on_savefig(monkeypatch, lambda figure: [text.get_text() for text in figure.texts])
-    _stub_skylines(monkeypatch)
-    merged = _synthetic_merged_orders()
+    stub_merged_skylines(monkeypatch)
+    merged = synthetic_merged_orders()
     notes = ["[A1] WARNING: Order skipped: 12", "[B1] ERROR: spill"]
 
-    _call_plot_merged_spectrum_qc(
+    call_plot_merged_spectrum_qc(
         monkeypatch, tmp_path, log, merged, fluxCalibrated=fluxCalibrated, extractionNotes=notes
     )
 
@@ -459,10 +408,10 @@ def test_plot_merged_spectrum_qc_with_notes_keeps_the_four_axes(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
+    stub_merged_skylines(monkeypatch)
 
-    _call_plot_merged_spectrum_qc(
-        monkeypatch, tmp_path, log, _synthetic_merged_orders(), extractionNotes=["WARNING: note"]
+    call_plot_merged_spectrum_qc(
+        monkeypatch, tmp_path, log, synthetic_merged_orders(), extractionNotes=["WARNING: note"]
     )
 
     assert len(figures[-1].axes) == 4
@@ -473,9 +422,9 @@ def test_plot_merged_spectrum_qc_without_notes_draws_no_figure_text(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, notes: object
 ) -> None:
     probes = probe_on_savefig(monkeypatch, lambda figure: list(figure.texts))
-    _stub_skylines(monkeypatch)
+    stub_merged_skylines(monkeypatch)
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, _synthetic_merged_orders(), extractionNotes=notes)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, synthetic_merged_orders(), extractionNotes=notes)
 
     assert probes == [[]]
 
@@ -496,8 +445,8 @@ def test_plot_merged_spectrum_qc_title_names_the_extraction_method(
     expectedTitle: str,
 ) -> None:
     figures = spy_figures(monkeypatch)
-    _stub_skylines(monkeypatch)
+    stub_merged_skylines(monkeypatch)
 
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, _synthetic_merged_orders(), **overrides)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, synthetic_merged_orders(), **overrides)
 
     assert figures[-1].axes[0].get_title() == expectedTitle

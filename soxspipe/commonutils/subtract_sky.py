@@ -17,6 +17,7 @@ import sys
 from datetime import datetime
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import quicklook_image, twoD_disp_map_image_to_dataframe
 
@@ -793,6 +794,7 @@ class subtract_sky:
         self.log.debug("completed the ``get_over_sampled_sky_from_order`` method")
         return imageMapOrder
 
+    @closes_its_figures
     def plot_sky_sampling(self, order, imageMapOrderDF, tck=False, knotLocations=False):
         """*generate a plot of sky sampling*
 
@@ -2584,6 +2586,7 @@ class subtract_sky:
         skymodelCCDData.mask[rows, columns] = True
         return skymodelCCDData, skySubtractedCCDData, skySubtractedResidualsCCDData
 
+    @closes_its_figures
     def plot_image_comparison(self, objectFrame, skyModelFrame, skySubFrame):
         """*generate a plot of original image, sky-model and sky-subtraction image*
 
@@ -2985,6 +2988,7 @@ class subtract_sky:
         self.log.debug("completed the ``determine_residual_floor`` method")
         return imageMapOrder, residualFloor
 
+    @closes_its_figures
     def plot_order_skymodel_fitting_quicklook(self, imageMapOrder, tck, title=None, knots=False):
         """Quick-look diagnostic plot of the sky-model fit for a single order."""
         import matplotlib.pyplot as plt

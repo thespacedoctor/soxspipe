@@ -21,6 +21,7 @@ from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
 )
@@ -206,6 +207,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     return sliceOut, slice_length_offset, slice_width_centre
 
 
+@closes_its_figures
 def quicklook_image(
     log,
     CCDObject,
@@ -2722,6 +2724,7 @@ def _note_colour(note: str) -> str:
     return NOTE_WARNING_COLOUR
 
 
+@closes_its_figures
 def plot_merged_spectrum_qc(
     merged_orders,
     products,
