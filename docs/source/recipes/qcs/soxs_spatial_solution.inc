@@ -10,7 +10,7 @@
 | `DETLINES FRAC` | Proportion of input line-list lines detected on single pinhole frame |       | VIS: [0.95,1.0]| 
 | `DETLINES TOT` | Total number of line in single line-list                             | lines | - |
 | `GOODLINES FRAC` | Proportion of good, unclipped lines in single pinhole frame | lines | VIS: [0.55,1.0] NIR: [0.4,1.0] |
-| `PINHOLE COUNT MIN` | The minimum number of pinholes found across all orders (9 in the mask; the top VIS u-order pinhole can be vignetted) | pinholes | VIS: 8 or 9, NIR: 9 |
+| `PINHOLE COUNT MIN` | The minimum number of pinholes found across all orders (9 in the mask; an end pinhole that is vignetted in an order, such as the top VIS u-order pinhole, is dropped from every set of that order and the count is 8) | pinholes | VIS: 8 or 9, NIR: 9 |
 | `X RES MAX`              | Maximum residual in fitting of pinholes along x-axis (global)  | pixels    | - |
 | `X RES MIN`              | Minimum residual in fitting of pinholes along x-axis (global)  | pixels    | - |
 | `X RES MEDIAN` | Median of absolute residuals in fitting of pinholes along x-axis (global) | pixels | - |

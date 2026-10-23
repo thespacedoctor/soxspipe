@@ -84,6 +84,15 @@ RESIDUAL_QUANTISATION_DECIMALS = 9
 # NUMBER OF PINHOLES IN THE MULTI-PINHOLE MASK
 FULL_PINHOLE_COUNT = 9
 
+# A DETECTED END PINHOLE SITS ONE PINHOLE SPACING FROM ITS NEIGHBOUR; BEYOND THIS FRACTION OF A SPACING IT IS WRONG
+END_PINHOLE_SPACING_TOLERANCE = 0.25
+
+# AN END PINHOLE IS VIGNETTED IN AN ORDER WHEN MORE THAN THIS FRACTION OF ITS SETS BREAK THE SPACING TOLERANCE
+VIGNETTED_END_PINHOLE_FRACTION = 0.45
+
+# FEWEST SETS WITH BOTH THE END PINHOLE AND ITS NEIGHBOUR DETECTED FOR AN ORDER'S END PINHOLE TO BE JUDGED
+VIGNETTED_END_PINHOLE_MIN_SETS = 5
+
 FIT_NOT_CONVERGED_MESSAGE = (
     "Could not converge on a good fit to the dispersion solution. "
     "Please check the quality of your data or adjust your fitting parameters."
@@ -822,6 +831,62 @@ class create_dispersion_map:
         )
         return shift
 
+    def _drop_vignetted_end_pinholes(self, orderPixelTable):
+        """*return the line table with the detections of any vignetted end pinhole removed*
+
+        A missing end pinhole of an order has no signal, so its detection window latches onto the neighbouring pinhole
+        or onto noise. After DY-1618 stopped the first-iteration shift from hiding this by moving the order by one
+        pinhole, those detections stay in the fit as outliers several pixels away and inflate the residuals, which
+        stops the sigma clip from removing them (DY-1735). An end pinhole whose detection is not one spacing from its
+        neighbour's in more than ``VIGNETTED_END_PINHOLE_FRACTION`` of the sets of an order is treated as absent for
+        that whole order. Only sets whose neighbour and next pinhole are one spacing apart are judged, so a noisy
+        neighbour in a faint order does not condemn a good end pinhole.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, one row per predicted line, with ``observed_x`` and ``observed_y``
+
+        **Return:**
+
+        - ``orderPixelTable`` -- a copy with ``observed_x`` and ``observed_y`` set to NaN for the vignetted end pinholes
+        """
+        import numpy as np
+
+        def spacings_between(lines, first, second):
+            """The distance between two pinholes of each set, in units of their predicted spacing."""
+            rows = {
+                index: lines.loc[lines["slit_index"] == index]
+                .set_index("wavelength")
+                .loc[lambda f: ~f.index.duplicated(keep=False)]
+                for index in (first, second)
+            }
+            predicted = (rows[first]["detector_x_shifted"] - rows[second]["detector_x_shifted"]).abs()
+            return ((rows[first]["observed_x"] - rows[second]["observed_x"]).abs() / predicted).dropna()
+
+        orderPixelTable = orderPixelTable.copy()
+        for order, orderLines in orderPixelTable.groupby("order"):
+            ends = ((orderLines["slit_index"].min(), 1), (orderLines["slit_index"].max(), -1))
+            for endIndex, direction in ends:
+                endToNeighbour = spacings_between(orderLines, endIndex, endIndex + direction)
+                neighbourToNext = spacings_between(orderLines, endIndex + direction, endIndex + 2 * direction)
+                judged = endToNeighbour.loc[
+                    endToNeighbour.index.intersection(
+                        neighbourToNext.index[(neighbourToNext - 1.0).abs() <= END_PINHOLE_SPACING_TOLERANCE]
+                    )
+                ]
+                if len(judged) < VIGNETTED_END_PINHOLE_MIN_SETS:
+                    continue
+                offSpacing = (judged - 1.0).abs() > END_PINHOLE_SPACING_TOLERANCE
+                if offSpacing.mean() <= VIGNETTED_END_PINHOLE_FRACTION:
+                    continue
+                self.log.info(
+                    f"order {order}: the end pinhole with slit index {endIndex} is off the pinhole spacing from its "
+                    f"neighbour in {offSpacing.mean():0.0%} of {len(judged)} sets; treating it as vignetted"
+                )
+                vignetted = (orderPixelTable["order"] == order) & (orderPixelTable["slit_index"] == endIndex)
+                orderPixelTable.loc[vignetted, ["observed_x", "observed_y"]] = np.nan
+        return orderPixelTable
+
     def _pinhole_count_passes_qc(self):
         """*return True when the minimum pinhole count lies inside the PINHOLE COUNT MIN QC range*
 
@@ -1128,6 +1193,9 @@ class create_dispersion_map:
                         ignore_index=True,
                     )
                     bigShift = True
+
+                if "SPAT" in self.recipeName.upper() and self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+                    orderPixelTable = self._drop_vignetted_end_pinholes(orderPixelTable)
 
             # MAKE A CLEAN COPY OF THE DETECTION TABLE ... USED FOR PIPELINE TUNING ONLY
             lineDetectionTable = orderPixelTable.copy()

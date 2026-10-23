@@ -193,6 +193,115 @@ def test_order_missing_from_the_order_table_is_not_shifted(log: object, tmp_path
     assert any(level == "warning" and "No slit edges match" in message for level, message in log.messages)
 
 
+def _detection_table(order: int, latchedSets: int, totalSets: int = 20, latchedEnd: int = 8) -> pd.DataFrame:
+    """Return ``totalSets`` 9-pinhole sets; the first ``latchedSets`` detect the end pinhole on its neighbour."""
+    rows = []
+    for setIndex in range(totalSets):
+        for slitIndex in range(9):
+            predictedX = 100.0 + slitIndex * PINHOLE_SPACING
+            observedSlitIndex = slitIndex
+            if setIndex < latchedSets and slitIndex == latchedEnd:
+                observedSlitIndex = 7 if latchedEnd == 8 else 1
+            rows.append(
+                {
+                    "wavelength": 400.0 + setIndex,
+                    "order": order,
+                    "slit_index": slitIndex,
+                    "detector_x_shifted": predictedX,
+                    "observed_x": 100.0 + observedSlitIndex * PINHOLE_SPACING,
+                    "observed_y": 10.0 * setIndex,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_end_pinhole_that_is_mostly_detected_on_its_neighbour_is_dropped_from_every_set_of_the_order(
+    log: object, tmp_path: Path
+) -> None:
+    """The top pinhole of order 2 is vignetted: 12 of 20 sets latch it onto pinhole 7, so all 20 lose it."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    table = pd.concat([_detection_table(2, latchedSets=12), _detection_table(3, latchedSets=0)], ignore_index=True)
+
+    # ACT
+    result = mapper._drop_vignetted_end_pinholes(table)
+
+    # ASSERT
+    topOfOrder2 = (result["order"] == 2) & (result["slit_index"] == 8)
+    assert result.loc[topOfOrder2, "observed_x"].isna().all()
+    assert result.loc[~topOfOrder2, "observed_x"].notna().all()
+    assert result.loc[topOfOrder2, "observed_y"].isna().all()
+
+
+def test_bottom_end_pinhole_that_is_mostly_detected_on_its_neighbour_is_dropped(log: object, tmp_path: Path) -> None:
+    """The same rule holds at the bottom of the slit."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    table = _detection_table(2, latchedSets=12, latchedEnd=0)
+
+    # ACT
+    result = mapper._drop_vignetted_end_pinholes(table)
+
+    # ASSERT
+    bottom = result["slit_index"] == 0
+    assert result.loc[bottom, "observed_x"].isna().all()
+    assert result.loc[~bottom, "observed_x"].notna().all()
+
+
+def test_occasional_double_detection_at_an_end_keeps_the_end_pinhole(log: object, tmp_path: Path) -> None:
+    """Two latched sets in 20 are single bad detections for the fit to clip, not a vignetted pinhole."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    table = _detection_table(2, latchedSets=2)
+
+    # ACT
+    result = mapper._drop_vignetted_end_pinholes(table)
+
+    # ASSERT
+    assert result["observed_x"].notna().all()
+
+
+def test_good_end_pinhole_is_kept_when_its_neighbour_is_noisy_in_most_sets(log: object, tmp_path: Path) -> None:
+    """A faint order whose pinhole 7 is mostly noise does not make the well-detected top pinhole look vignetted."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    table = _detection_table(2, latchedSets=0)
+    noisyNeighbour = (table["slit_index"] == 7) & (table["wavelength"] < 415.0)
+    table.loc[noisyNeighbour, "observed_x"] = 100.0 + 6 * PINHOLE_SPACING
+
+    # ACT
+    result = mapper._drop_vignetted_end_pinholes(table)
+
+    # ASSERT
+    assert result["observed_x"].notna().all()
+
+
+def test_end_pinhole_is_kept_when_too_few_sets_can_be_judged(log: object, tmp_path: Path) -> None:
+    """Three latched sets are too few to call an end pinhole vignetted."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    table = _detection_table(2, latchedSets=3, totalSets=3)
+
+    # ACT
+    result = mapper._drop_vignetted_end_pinholes(table)
+
+    # ASSERT
+    assert result["observed_x"].notna().all()
+
+
+def test_dropping_end_pinholes_does_not_change_the_input_table(log: object, tmp_path: Path) -> None:
+    """The caller's table keeps its detections: the result is a new table."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    table = _detection_table(2, latchedSets=12)
+
+    # ACT
+    mapper._drop_vignetted_end_pinholes(table)
+
+    # ASSERT
+    assert table["observed_x"].notna().all()
+
+
 def _bootstrapping_mapper(log: object, pinholeCount: int, pinholeCountRange: list[float]) -> create_dispersion_map:
     """Return a spatial-solution mapper whose fit finds ``pinholeCount`` pinholes for a single arc line."""
     mapper = create_dispersion_map.__new__(create_dispersion_map)
