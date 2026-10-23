@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from astropy.nddata import CCDData
 
 from soxspipe.commonutils.create_dispersion_map import create_dispersion_map
 from tests.factories import order_table_fits
@@ -47,9 +48,15 @@ def _order_table(tmp_path: Path, orders: tuple[int, ...] = (2, 3)) -> str:
     return str(order_table_fits(tmp_path / "orders.fits", polynomials=polynomials, metadata=metadata))
 
 
-def _mapper(log: object, orderTable: str) -> create_dispersion_map:
-    """Return a SOXS VIS multi-pinhole mapper that reads only what the shift step needs."""
+def _mapper(log: object, orderTable: str, pinholeFrame: CCDData | None = None) -> create_dispersion_map:
+    """Return a SOXS VIS multi-pinhole mapper that reads only what the shift step needs.
+
+    With a ``pinholeFrame`` the mapper can also look for pinholes in the image, as the detection loop leaves it.
+    """
     mapper = create_dispersion_map.__new__(create_dispersion_map)
+    mapper.pinholeFrameMasked = pinholeFrame
+    mapper.windowHalf = 15
+    mapper.turnOffMP = True
     mapper.log = log
     mapper.debug = False
     mapper.arm = "VIS"
@@ -62,16 +69,23 @@ def _mapper(log: object, orderTable: str) -> create_dispersion_map:
     return mapper
 
 
-def _line_table(predictedCentre: float, observedSlitIndex: dict[int, int], order: int = 2) -> pd.DataFrame:
+def _line_table(
+    predictedCentre: float,
+    observedSlitIndex: dict[int, int],
+    order: int = 2,
+    lineRows: np.ndarray = LINE_ROWS,
+    observedOffset: float = 0.0,
+) -> pd.DataFrame:
     """Return 9-pinhole line sets for ``order`` whose predictions are centred on ``predictedCentre``.
 
-    ``observedSlitIndex`` maps each predicted slit index to the index of the real pinhole its window detected.
+    ``observedSlitIndex`` maps each predicted slit index to the index of the real pinhole its window detected, and
+    ``observedOffset`` moves every detection along the axis.
     """
     rows = []
-    for wavelengthIndex, y in enumerate(LINE_ROWS):
+    for wavelengthIndex, y in enumerate(lineRows):
         for slitIndex in range(9):
             predictedX = predictedCentre + (slitIndex - 4) * PINHOLE_SPACING
-            observedX = SLIT_CENTRE + (observedSlitIndex[slitIndex] - 4) * PINHOLE_SPACING
+            observedX = SLIT_CENTRE + (observedSlitIndex[slitIndex] - 4) * PINHOLE_SPACING + observedOffset
             rows.append(
                 {
                     "wavelength": 400.0 + wavelengthIndex,
@@ -176,6 +190,86 @@ def test_shift_log_line_reports_the_whole_spacing_part_and_the_remainder(log: ob
     assert len(messages) == 1
     assert "whole-spacing part -1 x 4.00 = -4.00 px" in messages[0]
     assert "remainder -1.00 px" in messages[0]
+
+
+FRAME_ROWS = np.arange(12.0, 90.0, 12.0)
+PINHOLE_FLUX = 800.0
+REMAINDER = 0.8
+
+
+def _pinhole_frame(firstSpotIndex: int, lastSpotIndex: int, offset: float) -> CCDData:
+    """Return a frame with a Gaussian spot for each real pinhole of every row of arc-line sets.
+
+    Pinhole ``j`` sits at ``SLIT_CENTRE + (j - 4) * PINHOLE_SPACING + offset``, for ``j`` from ``firstSpotIndex`` to
+    ``lastSpotIndex``.
+    """
+    rng = np.random.default_rng(1735)
+    yy, xx = np.mgrid[0:110, 0:170]
+    image = rng.normal(0.0, 4.0, size=yy.shape)
+    for y in FRAME_ROWS:
+        for j in range(firstSpotIndex, lastSpotIndex + 1):
+            x = SLIT_CENTRE + (j - 4) * PINHOLE_SPACING + offset
+            image += PINHOLE_FLUX * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * 1.2**2))
+    return CCDData(image, unit="adu", mask=np.zeros(image.shape, dtype=bool))
+
+
+def _latched_top_table() -> pd.DataFrame:
+    """Return sets whose predictions are centred on the slit and whose top window latched onto pinhole 7."""
+    observed = {slitIndex: slitIndex for slitIndex in range(8)} | {8: 7}
+    return _line_table(SLIT_CENTRE, observed, lineRows=FRAME_ROWS, observedOffset=-REMAINDER)
+
+
+def test_nine_visible_pinholes_one_spacing_off_the_prediction_move_the_order_a_whole_spacing(
+    log: object, tmp_path: Path
+) -> None:
+    """All 9 real pinholes lie one spacing low of the slit-centred prediction, so the top window had no pinhole."""
+    # ARRANGE
+    frame = _pinhole_frame(0, 8, offset=-PINHOLE_SPACING - REMAINDER)
+    mapper = _mapper(log, _order_table(tmp_path), frame)
+    table = _latched_top_table()
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(
+        result["detector_x_shifted"], table["detector_x_shifted"] - PINHOLE_SPACING - REMAINDER, atol=0.3
+    )
+    assert any("pinhole visible one spacing beyond the opposite end" in message for _, message in log.messages)
+
+
+def test_sets_without_a_detection_at_the_opposite_end_are_left_out_of_the_pinhole_search(
+    log: object, tmp_path: Path
+) -> None:
+    """Two sets lack their pinhole 0 detection; the search looks at the other sets and still finds the shift."""
+    # ARRANGE
+    frame = _pinhole_frame(0, 8, offset=-PINHOLE_SPACING - REMAINDER)
+    mapper = _mapper(log, _order_table(tmp_path), frame)
+    table = _latched_top_table()
+    undetected = table["wavelength"].isin(table["wavelength"].unique()[:2]) & (table["slit_index"] == 0)
+    table = table.loc[~undetected].reset_index(drop=True)
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(
+        result["detector_x_shifted"], table["detector_x_shifted"] - PINHOLE_SPACING - REMAINDER, atol=0.3
+    )
+
+
+def test_eight_visible_pinholes_keep_the_slit_centred_identification(log: object, tmp_path: Path) -> None:
+    """The top pinhole is really absent: no pinhole shows beyond the opposite end, so no whole spacing is applied."""
+    # ARRANGE
+    frame = _pinhole_frame(0, 7, offset=-REMAINDER)
+    mapper = _mapper(log, _order_table(tmp_path), frame)
+    table = _latched_top_table()
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] - REMAINDER)
 
 
 def test_order_missing_from_the_order_table_is_not_shifted(log: object, tmp_path: Path) -> None:
