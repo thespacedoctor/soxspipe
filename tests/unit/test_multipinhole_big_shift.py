@@ -131,6 +131,53 @@ def test_real_one_pinhole_offset_is_still_corrected(log: object, tmp_path: Path)
     np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] + PINHOLE_SPACING)
 
 
+def test_sub_spacing_offset_is_measured_when_the_end_shifts_have_opposite_signs(log: object, tmp_path: Path) -> None:
+    """The prediction sits 1.5 px off and the top pinhole is missing: the shift is the 1.5 px, not 0 and not 2.5 px."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    offset = 1.5
+    observed = {slitIndex: slitIndex for slitIndex in range(8)} | {8: 7}
+    table = _line_table(SLIT_CENTRE - offset, observed)
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] + offset)
+
+
+def test_one_pinhole_offset_plus_a_sub_spacing_remainder_is_corrected_in_full(log: object, tmp_path: Path) -> None:
+    """The first guess sits one spacing and 1 px low: the whole spacing and the 1 px both move the order."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    remainder = 1.0
+    observed = {0: 0} | {slitIndex: slitIndex - 1 for slitIndex in range(1, 9)}
+    table = _line_table(SLIT_CENTRE - PINHOLE_SPACING - remainder, observed)
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] + PINHOLE_SPACING + remainder)
+
+
+def test_shift_log_line_reports_the_whole_spacing_part_and_the_remainder(log: object, tmp_path: Path) -> None:
+    """The log line gives the whole-spacing part (in spacings and px) and the sub-spacing remainder."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    observed = {0: 0} | {slitIndex: slitIndex - 1 for slitIndex in range(1, 9)}
+    table = _line_table(SLIT_CENTRE - PINHOLE_SPACING - 1.0, observed)
+
+    # ACT
+    _run(mapper, table)
+
+    # ASSERT
+    messages = [message for level, message in log.messages if level == "info" and "multi-pinhole shift" in message]
+    assert len(messages) == 1
+    assert "whole-spacing part -1 x 4.00 = -4.00 px" in messages[0]
+    assert "remainder -1.00 px" in messages[0]
+
+
 def test_order_missing_from_the_order_table_is_not_shifted(log: object, tmp_path: Path) -> None:
     """Without slit edges for the order the shift cannot be decided, so none is applied and a warning says so."""
     # ARRANGE

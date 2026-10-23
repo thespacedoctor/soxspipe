@@ -772,13 +772,7 @@ class create_dispersion_map:
         # CHECK IF SHIFT IS SIGNIFICANT (> 0.4 PIXELS)
         if abs(centreATop - centreABottom) > 0.4:
             if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
-                # A JUMP AT ONE SLIT END IS A REAL ONE-PINHOLE OFFSET OR A MISSING END PINHOLE; THE SLIT EDGES DECIDE
-                shift = self._slit_centred_pinhole_shift(orderPixelTable, mask)
-                self.log.info(
-                    f"multi-pinhole shift group {order_num}: end shifts {centreABottom:0.2f} (bottom) and "
-                    f"{centreATop:0.2f} (top) px; the slit-centred pinhole identification needs a shift of "
-                    f"{shift:0.2f} px"
-                )
+                shift = self._vis_pinhole_shift(orderPixelTable, mask, order_num, centreABottom, centreATop)
             else:
                 # USE LARGER SHIFT
                 shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
@@ -796,6 +790,37 @@ class create_dispersion_map:
             _plot_slit_index_comparisons(orderPixelTable.loc[mask])
 
         return orderPixelTable
+
+    def _vis_pinhole_shift(self, orderPixelTable, mask, order_num, centreABottom, centreATop):
+        """*return the first-iteration multi-pinhole shift for SOXS VIS: whole pinhole spacings plus a remainder*
+
+        A jump at one slit end is a real one-pinhole offset or a missing end pinhole, so the slit edges decide the
+        whole-spacing part. A missing end pinhole also makes the two end shifts differ by about one spacing, so the
+        end shifts cannot measure the sub-spacing remainder; the median over all pinholes does, because the end
+        pinholes are a minority (DY-1735).
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, with predicted and measured positions
+        - ``mask`` -- the rows of the shift group with a detection
+        - ``order_num`` -- the shift group, for the log line
+        - ``centreABottom`` -- the shift measured at the bottom end of the slit, for the log line
+        - ``centreATop`` -- the shift measured at the top end of the slit, for the log line
+
+        **Return:**
+
+        - ``shift`` -- the value to subtract from the predicted cross-dispersion positions
+        """
+        wholeShift, spacing = self._slit_centred_pinhole_shift(orderPixelTable, mask)
+        wholeSpacings = round(wholeShift / spacing) if spacing else 0
+        remainder = float(orderPixelTable.loc[mask][f"{self.axisA}_diff"].median())
+        shift = wholeShift + remainder
+        self.log.info(
+            f"multi-pinhole shift group {order_num}: end shifts {centreABottom:0.2f} (bottom) and "
+            f"{centreATop:0.2f} (top) px; whole-spacing part {wholeSpacings:+d} x {spacing:0.2f} = {wholeShift:0.2f} "
+            f"px, remainder {remainder:0.2f} px, shift {shift:0.2f} px"
+        )
+        return shift
 
     def _pinhole_count_passes_qc(self):
         """*return True when the minimum pinhole count lies inside the PINHOLE COUNT MIN QC range*
@@ -822,7 +847,9 @@ class create_dispersion_map:
 
         **Return:**
 
-        - ``shift`` -- the value to subtract from the predicted cross-dispersion positions (0.0 when undecided)
+        - ``shift`` -- the whole-spacing shift to subtract from the predicted cross-dispersion positions (0.0 when
+          undecided)
+        - ``spacing`` -- the median predicted pinhole spacing (0.0 when undecided)
         """
         import numpy as np
 
@@ -856,14 +883,15 @@ class create_dispersion_map:
 
         if not slitCentreOffsets:
             self.log.warning(
-                "No slit edges match the multi-pinhole lines; the first-iteration pinhole shift is skipped."
+                "No slit edges match the multi-pinhole lines; the whole-spacing part of the first-iteration pinhole "
+                "shift is skipped."
             )
-            return 0.0
+            return 0.0, 0.0
 
         spacing = float(np.median(spacings))
         offset = float(np.median(slitCentreOffsets))
         candidates = [0.0, spacing, -spacing]
-        return min(candidates, key=lambda candidate: abs(offset - candidate))
+        return min(candidates, key=lambda candidate: abs(offset - candidate)), spacing
 
     def _raise_if_no_lines_survived(self, orderPixelTable, detectedLines):
         """*raise a clear error when every detected line was dropped before the polynomial fit*
