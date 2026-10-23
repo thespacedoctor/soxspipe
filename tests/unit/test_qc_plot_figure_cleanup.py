@@ -9,6 +9,7 @@ registered in pyplot.
 from __future__ import annotations
 
 import importlib
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,27 +24,26 @@ from astropy.nddata import CCDData
 
 import soxspipe.commonutils.toolkit as toolkit
 from soxspipe.commonutils.create_dispersion_map import _plot_slit_index_comparisons, create_dispersion_map
+from soxspipe.commonutils.detect_continuum import detect_continuum
 from soxspipe.commonutils.detect_order_edges import detect_order_edges
 from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.horne_extraction import horne_extraction, plot_rectified_images
 from tests.factories import qc_table
 from tests.unit._plot_spies import spy_figures
-from tests.unit.test_continuum_trace_file_names import _detector as continuum_detector
-from tests.unit.test_continuum_trace_file_names import _plot_inputs as continuum_plot_inputs
-from tests.unit.test_merged_spectrum_qc_characterization import (
-    _call_plot_merged_spectrum_qc,
-    _stub_skylines,
-    _synthetic_merged_orders,
+from tests.unit._qc_plot_builders import (
+    call_plot_merged_spectrum_qc,
+    continuum_detector,
+    continuum_plot_inputs,
+    order_strip,
+    quicklook_ccd,
+    quicklook_order_pixels,
+    quicklook_skylines,
+    quicklook_spline,
+    quicklook_subtractor,
+    strip_subtractor,
+    stub_merged_skylines,
+    synthetic_merged_orders,
 )
-from tests.unit.test_quicklook_image_characterization import _ccd
-from tests.unit.test_subtract_sky_qc_plots_characterization import _order_strip
-from tests.unit.test_subtract_sky_qc_plots_characterization import _subtractor as strip_subtractor
-from tests.unit.test_subtract_sky_quicklook_characterization import (
-    _order_pixels,
-    _skylines,
-    _spline,
-)
-from tests.unit.test_subtract_sky_quicklook_characterization import _subtractor as quicklook_subtractor
 
 pytestmark = pytest.mark.unit
 
@@ -82,7 +82,7 @@ def failing_output(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _quicklook_image(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    toolkit.quicklook_image(log, _ccd(), show=True)
+    toolkit.quicklook_image(log, quicklook_ccd(), show=True)
 
 
 def _quicklook_image_surface(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -91,8 +91,8 @@ def _quicklook_image_surface(tmp_path: Path, log: object, monkeypatch: pytest.Mo
 
 
 def _plot_merged_spectrum_qc(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_skylines(monkeypatch)
-    _call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, _synthetic_merged_orders())
+    stub_merged_skylines(monkeypatch)
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, synthetic_merged_orders())
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ def _plot_sky_sampling(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPa
     # THE SURFACE QUICKLOOK OF THE OBJECT FRAME OPENS AND CLOSES ITS OWN FIGURE
     monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: None)
     subtractor = strip_subtractor(log, tmp_path, dispersionAxis="x", rotate=False)
-    subtractor.plot_sky_sampling(order=11, imageMapOrderDF=_order_strip(), knotLocations=np.array([502.0, 508.0]))
+    subtractor.plot_sky_sampling(order=11, imageMapOrderDF=order_strip(), knotLocations=np.array([502.0, 508.0]))
 
 
 def _plot_image_comparison(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,9 +118,11 @@ def _plot_image_comparison(tmp_path: Path, log: object, monkeypatch: pytest.Monk
 
 
 def _plot_order_skymodel_fitting_quicklook(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda log, settings, arm: _skylines())
+    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda log, settings, arm: quicklook_skylines())
     subtractor = quicklook_subtractor(log)
-    subtractor.plot_order_skymodel_fitting_quicklook(_order_pixels(), _spline(), knots=np.array([503.0, 507.0]))
+    subtractor.plot_order_skymodel_fitting_quicklook(
+        quicklook_order_pixels(), quicklook_spline(), knots=np.array([503.0, 507.0])
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -362,7 +364,7 @@ def test_a_qc_plot_that_closes_its_figure_early_closes_it_once(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, failing_output: None
 ) -> None:
     # ARRANGE: WITHOUT A SPLINE THE QUICKLOOK PAUSES, CLOSES EVERYTHING AND RETURNS EARLY
-    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda log, settings, arm: _skylines())
+    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda log, settings, arm: quicklook_skylines())
     closeCalls: list[object] = []
     realClose = plt.close
 
@@ -374,7 +376,7 @@ def test_a_qc_plot_that_closes_its_figure_early_closes_it_once(
     figureNumbersBefore = plt.get_fignums()
 
     # ACT
-    quicklook_subtractor(log).plot_order_skymodel_fitting_quicklook(_order_pixels(), None, title="clipping")
+    quicklook_subtractor(log).plot_order_skymodel_fitting_quicklook(quicklook_order_pixels(), None, title="clipping")
 
     # ASSERT
     assert closeCalls == [("all",)]
@@ -434,4 +436,126 @@ def test_the_guard_does_not_close_again_a_figure_the_function_closed_itself(
 
     # ASSERT
     assert len(closeCalls) == 1
+    assert plt.get_fignums() == []
+
+
+def test_the_guard_closes_a_new_figure_that_reuses_the_number_of_a_figure_closed_inside_the_call() -> None:
+    # ARRANGE: PYPLOT HANDS OUT THE NUMBER OF A CLOSED FIGURE AGAIN
+    unrelatedFigure = plt.figure()
+
+    @closes_its_figures
+    def close_everything_then_plot_and_raise() -> None:
+        plt.close("all")
+        newFigure = plt.figure()
+        assert newFigure.number == unrelatedFigure.number
+        raise OutputFailureError
+
+    # ACT
+    with pytest.raises(OutputFailureError):
+        close_everything_then_plot_and_raise()
+
+    # ASSERT
+    assert plt.get_fignums() == []
+
+
+def test_a_guarded_function_inside_a_guarded_function_closes_the_figure_after_a_real_close_all() -> None:
+    # ARRANGE
+    unrelatedFigure = plt.figure()
+
+    @closes_its_figures
+    def inner() -> None:
+        plt.close("all")
+        plt.figure()
+        raise OutputFailureError
+
+    @closes_its_figures
+    def outer() -> None:
+        plt.figure()
+        inner()
+
+    # ACT
+    with pytest.raises(OutputFailureError):
+        outer()
+
+    # ASSERT
+    assert unrelatedFigure.number == 1
+    assert plt.get_fignums() == []
+
+
+def test_a_failure_while_closing_a_figure_does_not_mask_the_original_error(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # ARRANGE
+    @closes_its_figures
+    def plot_and_raise() -> None:
+        plt.figure()
+        raise OutputFailureError("the plot failed")
+
+    def failing_close(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("the close failed")
+
+    # ACT: THE PATCH ENDS WITH THE BLOCK, BEFORE THE FIXTURE THAT CLOSES EVERY FIGURE RUNS
+    with monkeypatch.context() as patch, caplog.at_level("WARNING"):
+        patch.setattr(plt, "close", failing_close)
+        with pytest.raises(OutputFailureError, match="the plot failed"):
+            plot_and_raise()
+
+    # ASSERT
+    assert "could not close figure" in caplog.text
+
+
+def test_a_failure_while_closing_one_figure_does_not_stop_the_others_closing(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    realClose = plt.close
+    attempts: list[object] = []
+
+    def close_first_fails(figure: object) -> None:
+        attempts.append(figure)
+        if len(attempts) == 1:
+            raise RuntimeError("the close failed")
+        realClose(figure)
+
+    @closes_its_figures
+    def plot_two_figures() -> None:
+        plt.figure()
+        plt.figure()
+
+    # ACT: THE PATCH ENDS WITH THE BLOCK, BEFORE THE FIXTURE THAT CLOSES EVERY FIGURE RUNS
+    with monkeypatch.context() as patch:
+        patch.setattr(plt, "close", close_first_fails)
+        plot_two_figures()
+
+    # ASSERT
+    assert len(attempts) == 2
+    assert len(plt.get_fignums()) == 1
+
+
+def test_the_guard_does_not_import_pyplot_when_the_function_never_plots(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE: HIDE PYPLOT, AS IT IS IN A RUN THAT HAS NOT PLOTTED YET
+    monkeypatch.delitem(sys.modules, "matplotlib.pyplot")
+
+    # ACT
+    result = closes_its_figures(lambda: "no plot")()
+
+    # ASSERT
+    assert result == "no plot"
+    assert "matplotlib.pyplot" not in sys.modules
+
+
+def test_sample_trace_closes_a_figure_that_it_opens_when_it_raises(log: object) -> None:
+    # ARRANGE: THE DEBUG PLOTS ARE DEEP IN A LONG BODY, SO AN EARLY CALL OPENS THE FIGURE AND FAILS
+    detector = object.__new__(detect_continuum)
+    detector.log = log
+
+    def open_a_figure_and_fail() -> None:
+        plt.figure()
+        raise OutputFailureError
+
+    detector.create_pixel_arrays = open_a_figure_and_fail
+
+    # ACT
+    with pytest.raises(OutputFailureError):
+        detector.sample_trace()
+
+    # ASSERT
     assert plt.get_fignums() == []

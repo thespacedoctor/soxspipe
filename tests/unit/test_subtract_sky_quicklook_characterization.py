@@ -8,69 +8,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
-from scipy.interpolate import splrep
 
 import soxspipe.commonutils.toolkit as toolkit
-from soxspipe.commonutils.subtract_sky import subtract_sky
 from tests.unit._plot_spies import quiet_show, spy_figures
+from tests.unit._qc_plot_builders import (
+    quicklook_order_pixels,
+    quicklook_skylines,
+    quicklook_spline,
+    quicklook_subtractor,
+)
 
 pytestmark = pytest.mark.unit
-
-PIXEL_COUNT = 200
-
-
-def _subtractor(log: Any) -> subtract_sky:
-    subtractor = subtract_sky.__new__(subtract_sky)
-    subtractor.log = log
-    subtractor.settings = {}
-    subtractor.arm = "VIS"
-    return subtractor
-
-
-def _skylines(*, empty: bool = False) -> pd.DataFrame:
-    if empty:
-        return pd.DataFrame({"WAVELENGTH": [], "FLUX": [], "ISOLATED": []})
-    return pd.DataFrame(
-        {
-            "WAVELENGTH": [502.0, 505.0, 508.0],
-            "FLUX": [10.0, 20.0, 30.0],
-            "ISOLATED": [True, False, True],
-        }
-    )
-
-
-def _order_pixels() -> pd.DataFrame:
-    index = np.arange(PIXEL_COUNT)
-    flux = 100.0 + 20.0 * np.sin(index / 7.0)
-    flux[::37] = -80.0
-    skyLine = np.where(index % 11 == 0, "line", np.where(index % 13 == 0, "node", "")).astype(object)
-    skyLine[skyLine == ""] = False
-    return pd.DataFrame(
-        {
-            "wavelength": np.linspace(500.0, 510.0, PIXEL_COUNT),
-            "flux": flux,
-            "flagged_object_clipped": index % 41 == 0,
-            "flagged_all_clipped": index % 29 == 0,
-            "flagged_bad_pixel_clipped": index % 53 == 0,
-            "flagged_edge_clipped": index < 3,
-            "flux_percentile_smoothed": 100.0 + np.cos(index / 5.0),
-            "flux_minus_smoothed_residual": 4.0 * np.sin(index / 3.0),
-            "flux_minus_smoothed_residual_upper_limit": np.full(PIXEL_COUNT, 12.0),
-            "flux_upper_limit": np.full(PIXEL_COUNT, 112.0),
-            "flagged_noisy_region": index % 17 == 0,
-            "flagged_sky_line": skyLine,
-            "flagged_bspline_clipped": index % 19 == 0,
-            "sky_residuals": 3.0 * np.abs(np.cos(index / 4.0)),
-            "sky_residual_floor": np.full(PIXEL_COUNT, 1.5),
-            "sky_residual_rolling_average": 2.0 * np.abs(np.sin(index / 9.0)),
-        }
-    )
-
-
-def _spline() -> tuple:
-    index = np.arange(PIXEL_COUNT)
-    wavelength = np.linspace(500.0, 510.0, PIXEL_COUNT)
-    return splrep(wavelength, 100.0 + 20.0 * np.sin(index / 7.0), k=3, s=PIXEL_COUNT * 400)
 
 
 @pytest.fixture
@@ -92,7 +40,7 @@ def skylines(monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
 
     def fake_skylines(log: Any, settings: Any, arm: str) -> pd.DataFrame:
         calls.append((settings, arm))
-        return _skylines()
+        return quicklook_skylines()
 
     monkeypatch.setattr(toolkit, "get_skylines_dataframe", fake_skylines)
     return calls
@@ -102,9 +50,9 @@ def test_clipping_view_without_a_spline_pauses_and_returns_before_the_model(
     log: Any, plot_recorders: dict[str, list], skylines: list[tuple]
 ) -> None:
     """Without a spline the plot shows the clipping stage only, pauses, and closes."""
-    subtractor = _subtractor(log)
+    subtractor = quicklook_subtractor(log)
 
-    result = subtractor.plot_order_skymodel_fitting_quicklook(_order_pixels(), None, title="clipping")
+    result = subtractor.plot_order_skymodel_fitting_quicklook(quicklook_order_pixels(), None, title="clipping")
 
     assert result is None
     assert skylines == [({}, "VIS")]
@@ -143,10 +91,10 @@ def test_fitting_view_with_a_spline_draws_the_model_and_shows_the_figure(
     log: Any, plot_recorders: dict[str, list], skylines: list[tuple]
 ) -> None:
     """With a spline the plot adds sky-line, noise, and model layers and calls show."""
-    subtractor = _subtractor(log)
+    subtractor = quicklook_subtractor(log)
 
     result = subtractor.plot_order_skymodel_fitting_quicklook(
-        _order_pixels(), _spline(), knots=np.array([503.0, 507.0])
+        quicklook_order_pixels(), quicklook_spline(), knots=np.array([503.0, 507.0])
     )
 
     assert result is None
@@ -199,9 +147,9 @@ def test_fitting_view_without_knots_omits_the_knot_markers(
     log: Any, plot_recorders: dict[str, list], skylines: list[tuple]
 ) -> None:
     """The boolean default for `knots` skips the knot scatter on the residual panel."""
-    subtractor = _subtractor(log)
+    subtractor = quicklook_subtractor(log)
 
-    subtractor.plot_order_skymodel_fitting_quicklook(_order_pixels(), _spline())
+    subtractor.plot_order_skymodel_fitting_quicklook(quicklook_order_pixels(), quicklook_spline())
 
     [figure] = plot_recorders["figures"]
     _, residualAxis = figure.axes
@@ -212,10 +160,10 @@ def test_an_empty_skyline_table_adds_no_skyline_legend_entries(
     log: Any, plot_recorders: dict[str, list], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Without listed skylines there are no vertical lines and no skyline proxies."""
-    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda log, settings, arm: _skylines(empty=True))
-    subtractor = _subtractor(log)
+    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda log, settings, arm: quicklook_skylines(empty=True))
+    subtractor = quicklook_subtractor(log)
 
-    subtractor.plot_order_skymodel_fitting_quicklook(_order_pixels(), _spline())
+    subtractor.plot_order_skymodel_fitting_quicklook(quicklook_order_pixels(), quicklook_spline())
 
     [figure] = plot_recorders["figures"]
     fluxAxis, residualAxis = figure.axes
@@ -244,8 +192,8 @@ def test_limit_statistics_receive_only_unclipped_values_above_floor(
         return realStats(data, **kwargs)
 
     monkeypatch.setattr(astropy.stats, "sigma_clipped_stats", record_stats)
-    subtractor = _subtractor(log)
-    pixels = _order_pixels()
+    subtractor = quicklook_subtractor(log)
+    pixels = quicklook_order_pixels()
     # Include an explicitly unclipped value below the floor in each panel.
     assert not pixels.loc[1, ["flagged_all_clipped", "flagged_object_clipped"]].any()
     pixels.loc[1, ["flux", "flux_minus_smoothed_residual", "sky_residuals"]] = -50.0
@@ -253,7 +201,7 @@ def test_limit_statistics_receive_only_unclipped_values_above_floor(
     assert int((~(pixels["flagged_all_clipped"] | pixels["flagged_object_clipped"])).sum()) == 189
 
     subtractor.plot_order_skymodel_fitting_quicklook(pixels, None)
-    subtractor.plot_order_skymodel_fitting_quicklook(pixels, _spline())
+    subtractor.plot_order_skymodel_fitting_quicklook(pixels, quicklook_spline())
 
     # Five other unclipped flux rows are below the floor in the synthetic data.
     assert sampleSizes == [183, 188, 183, 188]

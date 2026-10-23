@@ -2883,7 +2883,6 @@ class create_dispersion_map:
             f"consistently in every pinhole ({breakdown})"
         )
 
-    @closes_its_figures
     def create_placeholder_images(self, order=False, plot=False, reverse=False):
         """*create CCDData objects as placeholders to host the 2D images of the wavelength and spatial solutions from dispersion solution map*
 

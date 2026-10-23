@@ -12,89 +12,28 @@ from astropy import units as u
 from astropy.nddata import CCDData
 
 from soxspipe.commonutils.detect_continuum import detect_continuum
-from soxspipe.commonutils.keyword_lookup import keyword_lookup
 from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories import instrument_header, pipeline_settings, qc_table
+from tests.unit._qc_plot_builders import (
+    PRODUCT_DIR_NAME,
+    QC_DIR_NAME,
+    SOF_NAME,
+    continuum_detector,
+    continuum_plot_inputs,
+)
 
 pytestmark = pytest.mark.unit
 
 # THE PACKAGE RE-EXPORTS THE detect_continuum CLASS UNDER THE MODULE'S OWN NAME, SO THE MODULE NEEDS importlib.
 continuumModule = importlib.import_module("soxspipe.commonutils.detect_continuum")
 
-SOF_NAME = "SOXS_VIS_FLAT_SOF"
 POLY_ORDERS = "01"
-QC_DIR_NAME = "qc"
-PRODUCT_DIR_NAME = "products"
-
-
-def _detector(
-    log: object,
-    tmp_path: Path,
-    *,
-    recipeName: str,
-    noddingSequence: str = "",
-    notFlattened: bool = False,
-) -> detect_continuum:
-    """Return a continuum detector holding the state the file-naming code reads."""
-    settings = pipeline_settings(tmp_path)
-    settings["tune-pipeline"] = False
-    detector = object.__new__(detect_continuum)
-    detector.log = log
-    detector.settings = settings
-    detector.kw = keyword_lookup(log=log, settings=settings).get
-    detector.recipeName = recipeName
-    detector.noddingSequence = noddingSequence
-    detector.notFlattened = "_NOTFLAT" if notFlattened else ""
-    detector.sofName = SOF_NAME
-    detector.lampTag = False
-    detector.inst = "SOXS"
-    detector.arm = "VIS"
-    detector.axisA = "x"
-    detector.axisB = "y"
-    detector.orderDeg = 0
-    detector.axisBDeg = 1
-    detector.sliceLength = 10
-    detector.exptime = 60.0
-    detector.lamp = ""
-    detector.debug = False
-    detector.recipeSettings = {}
-    detector.qc = qc_table()
-    detector.dateObs = "2024-01-02T03:04:05.678"
-    detector.products = pd.DataFrame()
-    detector.qcDir = str(tmp_path / QC_DIR_NAME)
-    detector.productDir = str(tmp_path / PRODUCT_DIR_NAME)
-    Path(detector.qcDir).mkdir(exist_ok=True)
-    detector.detectorParams = {"rotate-qc-plot": 0, "flip-qc-plot": 0, "dispersion-axis": "x"}
-    detector.traceFrame = CCDData(
-        np.full((32, 32), 20.0),
-        unit=u.electron,
-        meta=instrument_header(arm="VIS", overrides={"EXPTIME": 60.0}),
-    )
-    return detector
-
-
-def _plot_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Return a one-order pixel table, polynomial table and clipped-sample table for ``plot_results``."""
-    yValues = np.arange(3.0, 30.0, 3.0)
-    pixels = pd.DataFrame(
-        {
-            "order": np.full(len(yValues), 10.0),
-            "cont_x": np.full(len(yValues), 16.0),
-            "cont_y": yValues,
-            "cont_x_fit_res": np.zeros(len(yValues)),
-            "wavelength": np.linspace(500.0, 510.0, len(yValues)),
-            "gauss_stddev_fit": np.full(len(yValues), 2.0),
-        }
-    )
-    polynomials = pd.DataFrame([{"cent_00": 16.0, "cent_01": 0.0, "std_00": 2.0, "std_01": 0.0}])
-    clipped = pd.DataFrame({"cont_x": [17.0], "cont_y": [6.0], "fit_x": [16.0], "fit_y": [6.0]})
-    return pixels, polynomials, clipped
 
 
 def _residual_pdf_name(detector: detect_continuum, monkeypatch: pytest.MonkeyPatch) -> str:
     """Run the real ``plot_results`` and return the name of the PDF it writes."""
     monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
-    pixels, polynomials, clipped = _plot_inputs()
+    pixels, polynomials, clipped = continuum_plot_inputs()
     filePath = detector.plot_results(orderPixelTable=pixels, orderPolyTable=polynomials, clippedData=clipped)
     assert Path(filePath).read_bytes().startswith(b"%PDF")
     return Path(filePath).name
@@ -138,7 +77,7 @@ def test_residual_pdf_name_follows_recipe_and_nodding_sequence(
     noddingSequence: str,
     expectedName: str,
 ) -> None:
-    detector = _detector(log, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence)
+    detector = continuum_detector(log, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence)
 
     assert _residual_pdf_name(detector, monkeypatch) == expectedName
 
@@ -164,7 +103,7 @@ def test_order_table_name_follows_recipe_and_nodding_sequence(
     noddingSequence: str,
     expectedName: str,
 ) -> None:
-    detector = _detector(log, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence)
+    detector = continuum_detector(log, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence)
 
     assert _order_table_name(detector, monkeypatch) == expectedName
 
@@ -175,7 +114,8 @@ def test_offset_sequences_write_distinct_residual_pdfs_and_order_tables(
     tmp_path: Path,
 ) -> None:
     detectors = [
-        _detector(log, tmp_path, recipeName="soxs-offset", noddingSequence=sequence) for sequence in ("_A1", "_B2")
+        continuum_detector(log, tmp_path, recipeName="soxs-offset", noddingSequence=sequence)
+        for sequence in ("_A1", "_B2")
     ]
 
     pdfNames = [_residual_pdf_name(detector, monkeypatch) for detector in detectors]
@@ -207,9 +147,9 @@ def test_offset_trace_residual_products_point_to_different_files(
     productsPerSequence = []
     monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
     monkeypatch.setattr("soxspipe.commonutils.phase3.write_fits_table_to_disk", lambda **_: None)
-    pixels, _, clipped = _plot_inputs()
+    pixels, _, clipped = continuum_plot_inputs()
     for sequence in ("_A1", "_B2"):
-        detector = _detector(log, tmp_path, recipeName="soxs-offset", noddingSequence=sequence)
+        detector = continuum_detector(log, tmp_path, recipeName="soxs-offset", noddingSequence=sequence)
         detector.orderPixelTable = pixels.drop(columns=["cont_x_fit_res"]).assign(mask=False)
         detector.coeff_dict = {}
         monkeypatch.setattr(detector, "fit_global_polynomial", _fit_trace_stub(clipped))
@@ -253,11 +193,11 @@ def _run_flattened_then_not_flattened_trace_passes(
         "soxspipe.commonutils.phase3.write_fits_table_to_disk",
         lambda **kwargs: writes.append(Path(kwargs["filePath"]).name),
     )
-    pixels, _, clipped = _plot_inputs()
+    pixels, _, clipped = continuum_plot_inputs()
     products = pd.DataFrame()
     tableNames = []
     for notFlattened in (False, True):
-        detector = _detector(
+        detector = continuum_detector(
             log, tmp_path, recipeName=recipeName, noddingSequence=noddingSequence, notFlattened=notFlattened
         )
         detector.products = products
