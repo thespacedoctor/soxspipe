@@ -8,6 +8,7 @@ shift and one pinhole spacing either way by centring the 9-pinhole pattern betwe
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -27,6 +28,13 @@ LINE_ROWS = np.arange(10.0, 70.0, 2.0)
 FRAME_ROWS = np.arange(6.0, 100.0, 6.0)
 PINHOLE_FLUX = 800.0
 REMAINDER = 0.8
+FRAME_SHAPE = (110, 170)
+SPOT_SIGMA = 1.2
+# SLIT EDGES TOO NARROW FOR THE PROBE POSITION BEYOND THE PATTERN END TO LIE WITHIN THEIR MARGIN
+NARROW_SLIT_LOW_EDGE = 114.0
+NARROW_SLIT_HIGH_EDGE = 126.0
+# WHERE THE OPPOSITE-END SEARCH LOOKS IN THE LATCHED-TOP TABLE: ONE SPACING BEYOND PINHOLE 0, SHIFTED BY THE REMAINDER
+BEYOND_END_PROBE_X = SLIT_LOW_EDGE + REMAINDER
 
 
 def _order_table(
@@ -62,6 +70,7 @@ def _mapper(log: object, orderTable: str, pinholeFrame: np.ma.MaskedArray | None
     """
     mapper = create_dispersion_map.__new__(create_dispersion_map)
     mapper.pinholeFrameMasked = pinholeFrame
+    mapper.orderGeometryCache = None
     mapper.windowHalf = 15
     mapper.turnOffMP = True
     mapper.log = log
@@ -199,6 +208,12 @@ def test_shift_log_line_reports_the_whole_spacing_part_and_the_remainder(log: ob
     assert "remainder -1.00 px" in messages[0]
 
 
+def _add_spot(image: np.ndarray, x: float, y: float) -> None:
+    """Add one Gaussian pinhole spot centred on ``x``, ``y`` to ``image`` in place."""
+    yy, xx = np.mgrid[0 : image.shape[0], 0 : image.shape[1]]
+    image += PINHOLE_FLUX * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * SPOT_SIGMA**2))
+
+
 def _pinhole_frame(
     firstSpotIndex: int, lastSpotIndex: int, offset: float, rows: np.ndarray = FRAME_ROWS
 ) -> np.ma.MaskedArray:
@@ -208,12 +223,10 @@ def _pinhole_frame(
     ``lastSpotIndex``.
     """
     rng = np.random.default_rng(1735)
-    yy, xx = np.mgrid[0:110, 0:170]
-    image = rng.normal(0.0, 4.0, size=yy.shape)
+    image = rng.normal(0.0, 4.0, size=FRAME_SHAPE)
     for y in rows:
         for j in range(firstSpotIndex, lastSpotIndex + 1):
-            x = SLIT_CENTRE + (j - 4) * PINHOLE_SPACING + offset
-            image += PINHOLE_FLUX * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * 1.2**2))
+            _add_spot(image, SLIT_CENTRE + (j - 4) * PINHOLE_SPACING + offset, y)
     return np.ma.array(image, mask=np.zeros(image.shape, dtype=bool))
 
 
@@ -302,7 +315,7 @@ def test_a_pinhole_beyond_the_slit_edge_of_the_order_is_not_counted(log: object,
     """A source one spacing beyond the end but 3.7 spacings outside the order's slit edges is not a pinhole of it."""
     # ARRANGE
     frame = _pinhole_frame(0, 8, offset=-PINHOLE_SPACING - REMAINDER)
-    narrowSlit = _order_table(tmp_path, lowEdge=114.0, highEdge=126.0)
+    narrowSlit = _order_table(tmp_path, lowEdge=NARROW_SLIT_LOW_EDGE, highEdge=NARROW_SLIT_HIGH_EDGE)
     mapper = _mapper(log, narrowSlit, frame)
     table = _latched_top_table()
 
@@ -315,12 +328,11 @@ def test_a_pinhole_beyond_the_slit_edge_of_the_order_is_not_counted(log: object,
 
 
 def test_chance_sources_beyond_the_end_in_a_minority_of_sets_are_not_a_pinhole(log: object, tmp_path: Path) -> None:
-    """Bright blobs at the probe position in 3 of 15 sets, as cosmic rays would leave, do not move the order."""
+    """Bright blobs at the probe position in 3 of 16 sets, as cosmic rays would leave, do not move the order."""
     # ARRANGE
     frame = _pinhole_frame(0, 7, offset=-REMAINDER)
-    yy, xx = np.mgrid[0:110, 0:170]
     for y in FRAME_ROWS[:3]:
-        frame += PINHOLE_FLUX * np.exp(-((xx - (100.0 + REMAINDER)) ** 2 + (yy - y) ** 2) / (2 * 1.2**2))
+        _add_spot(frame.data, BEYOND_END_PROBE_X, y)
     mapper = _mapper(log, _order_table(tmp_path), frame)
     table = _latched_top_table()
 
@@ -332,22 +344,53 @@ def test_chance_sources_beyond_the_end_in_a_minority_of_sets_are_not_a_pinhole(l
     assert any("from the slit-centred pinhole identification" in message for _, message in log.messages)
 
 
-def test_an_end_two_spacings_off_the_interior_is_reported_rather_than_silently_under_corrected(
-    log: object, tmp_path: Path
+TWO_SPACING_TEXT = "spacings from the interior pinholes"
+FAR_END_TEXT = "that pinhole is missing or the order is still offset"
+
+
+def _warnings(log: object) -> list[str]:
+    """Return the warning messages logged so far."""
+    return [message for level, message in log.messages if level == "warning"]
+
+
+@pytest.mark.parametrize(
+    ("predictedCentre", "observedOffset", "appliedText", "appliedShift"),
+    [
+        (
+            SLIT_CENTRE,
+            2 * PINHOLE_SPACING,
+            "whole-spacing part applied is +0 x 4.00 = 0.00 px from the slit-centred",
+            0.0,
+        ),
+        (
+            SLIT_CENTRE - PINHOLE_SPACING,
+            PINHOLE_SPACING,
+            "whole-spacing part applied is -1 x 4.00 = -4.00 px from the slit-centred",
+            -PINHOLE_SPACING,
+        ),
+    ],
+    ids=["slit-centred-step-applies-nothing", "slit-centred-step-applies-one-spacing"],
+)
+def test_an_end_two_spacings_off_the_interior_says_which_shift_was_applied(
+    log: object, tmp_path: Path, predictedCentre: float, observedOffset: float, appliedText: str, appliedShift: float
 ) -> None:
-    """The real pattern lies two spacings above the prediction, so the low end window is 2 spacings out: warn."""
+    """The low end window is 2 spacings out: the warning gives the whole-spacing part that was then applied."""
     # ARRANGE
-    twoSpacings = 2 * PINHOLE_SPACING
-    frame = _pinhole_frame(0, 8, offset=twoSpacings)
+    frame = _pinhole_frame(0, 8, offset=observedOffset)
     mapper = _mapper(log, _order_table(tmp_path), frame)
     observed = {0: 0, 1: 0} | {slitIndex: slitIndex - 2 for slitIndex in range(2, 9)}
-    table = _line_table(SLIT_CENTRE, observed, lineRows=FRAME_ROWS, observedOffset=twoSpacings)
+    table = _line_table(predictedCentre, observed, lineRows=FRAME_ROWS, observedOffset=observedOffset)
 
     # ACT
-    _run(mapper, table)
+    result = _run(mapper, table)
 
     # ASSERT
-    assert any(level == "warning" and "two or more spacings" in message for level, message in log.messages)
+    warnings = _warnings(log)
+    assert len(warnings) == 1
+    assert TWO_SPACING_TEXT in warnings[0]
+    assert FAR_END_TEXT not in warnings[0]
+    assert appliedText in warnings[0]
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] - appliedShift)
 
 
 def test_a_far_end_without_a_pinhole_after_the_whole_spacing_shift_is_reported(log: object, tmp_path: Path) -> None:
@@ -361,7 +404,56 @@ def test_a_far_end_without_a_pinhole_after_the_whole_spacing_shift_is_reported(l
     _run(mapper, table)
 
     # ASSERT
-    assert any(level == "warning" and "two or more spacings" in message for level, message in log.messages)
+    warnings = _warnings(log)
+    assert len(warnings) == 1
+    assert FAR_END_TEXT in warnings[0]
+    assert TWO_SPACING_TEXT not in warnings[0]
+
+
+def test_a_latched_end_with_too_few_sets_is_not_checked_after_the_whole_spacing_shift(
+    log: object, tmp_path: Path
+) -> None:
+    """Only 9 sets have a detection at the latched end: no far-end warning, and a debug line says it was skipped."""
+    # ARRANGE
+    frame = _pinhole_frame(0, 7, offset=-PINHOLE_SPACING - REMAINDER)
+    mapper = _mapper(log, _order_table(tmp_path), frame)
+    table = _latched_top_table()
+    firstSets = table["wavelength"].unique()[: len(FRAME_ROWS) - (PINHOLE_BEYOND_END_MIN_SETS - 1)]
+    table = table.loc[~(table["wavelength"].isin(firstSets) & (table["slit_index"] == 8))].reset_index(drop=True)
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    assert not _warnings(log)
+    assert any(level == "debug" and "is skipped" in message for level, message in log.messages)
+    np.testing.assert_allclose(
+        result["detector_x_shifted"], table["detector_x_shifted"] - PINHOLE_SPACING - REMAINDER, atol=0.3
+    )
+
+
+def test_the_order_table_is_read_once_however_many_probes_look_at_the_image(
+    log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The opposite-end search and the far-end check both probe the image; the order table is read once."""
+    # ARRANGE
+    module = sys.modules[create_dispersion_map.__module__]
+    reads: list[str] = []
+    realUnpack = module.unpack_order_table
+
+    def counting_unpack(**kwargs: object) -> object:
+        reads.append(str(kwargs["orderTablePath"]))
+        return realUnpack(**kwargs)
+
+    monkeypatch.setattr(module, "unpack_order_table", counting_unpack)
+    frame = _pinhole_frame(0, 8, offset=-PINHOLE_SPACING - REMAINDER)
+    mapper = _mapper(log, _order_table(tmp_path), frame)
+
+    # ACT
+    _run(mapper, _latched_top_table())
+
+    # ASSERT
+    assert len(reads) == 1
 
 
 def test_order_missing_from_the_order_table_is_not_shifted(log: object, tmp_path: Path) -> None:

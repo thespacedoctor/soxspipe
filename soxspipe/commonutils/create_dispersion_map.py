@@ -134,6 +134,18 @@ class WholeSpacingShift(NamedTuple):
     fraction: float | None = None
 
 
+class OppositeEndSearch(NamedTuple):
+    """*the result of the opposite-end search for a whole-spacing shift*
+
+    - ``whole`` -- the whole-spacing shift the image shows, or ``None`` when it shows none
+    - ``farEnds`` -- an ``(endIndex, jump)`` pair for each end detection 1.5 or more spacings from the interior
+      pinholes, ``jump`` in spacings
+    """
+
+    whole: WholeSpacingShift | None
+    farEnds: tuple[tuple[int, float], ...] = ()
+
+
 class PinholePattern(NamedTuple):
     """*the predicted pinhole pattern of one shift group, as the opposite-end search needs it*
 
@@ -449,6 +461,8 @@ class create_dispersion_map:
         self.turnOffMP = turnOffMP
         # SET WHEN THE PINHOLE FRAME IS PREPARED FOR LINE DETECTION
         self.pinholeFrameMasked = None
+        # THE ORDER TABLE'S EDGE GEOMETRY, READ ON FIRST USE
+        self.orderGeometryCache = None
 
     @property
     def runSerially(self) -> bool:  # noqa: N802
@@ -880,13 +894,21 @@ class create_dispersion_map:
 
         - ``shift`` -- the value to subtract from the predicted cross-dispersion positions
         """
-        whole = self._pinhole_beyond_end_shift(orderPixelTable, mask, order_num)
+        search = self._pinhole_beyond_end_shift(orderPixelTable, mask, order_num)
+        whole = search.whole
         if whole is None:
             whole = self._slit_centred_pinhole_shift(orderPixelTable, mask)
             basis = "from the slit-centred pinhole identification"
         else:
             basis = f"from a pinhole visible one spacing beyond the opposite end in {whole.fraction:0.0%} of the sets"
         wholeSpacings = round(whole.shift / whole.spacing) if whole.spacing else 0
+        for endIndex, jump in search.farEnds:
+            self.log.warning(
+                f"multi-pinhole shift group {order_num}: the end pinhole at slit index {endIndex} is {jump:0.1f} "
+                "spacings from the interior pinholes; the order may be off by two or more spacings, which the "
+                f"whole-spacing step cannot fully correct; the whole-spacing part applied is {wholeSpacings:+d} x "
+                f"{whole.spacing:0.2f} = {whole.shift:0.2f} px {basis}"
+            )
         remainder = float(orderPixelTable.loc[mask][f"{self.axisA}_diff"].median())
         shift = whole.shift + remainder
         self.log.info(
@@ -902,7 +924,8 @@ class create_dispersion_map:
         When an end detection sits one spacing from the interior pinholes, either that end pinhole is absent or the
         whole predicted pattern is one spacing off, so the real pattern has a pinhole beyond the opposite end. This
         looks for that pinhole one spacing past the opposite end in the image. An end two or more spacings out is
-        reported and left alone. After a shift, the end that had latched is checked for a pinhole at its new position.
+        returned for the caller to report, together with the shift that is then applied. After a shift, the end that
+        had latched is checked for a pinhole at its new position.
 
         **Key Arguments:**
 
@@ -912,16 +935,16 @@ class create_dispersion_map:
 
         **Return:**
 
-        - ``whole`` -- a ``WholeSpacingShift``, or ``None`` when there is no image, no end detection is one spacing off,
-          or the pinhole is not there
+        - ``search`` -- an ``OppositeEndSearch``: its ``whole`` is ``None`` when there is no image, no end detection is
+          one spacing off, or the pinhole is not there
         """
         lines = orderPixelTable.loc[mask]
         slitIndexes = sorted(lines["slit_index"].unique())
         if self.pinholeFrameMasked is None or len(slitIndexes) < MIN_SLIT_INDEXES_FOR_END_TEST:
-            return None
+            return OppositeEndSearch(None)
         spacing = self._median_pinhole_spacing(lines)
         if not spacing:
-            return None
+            return OppositeEndSearch(None)
 
         axisA, axisB = self.axisA, self.axisB
         firstIndex, lastIndex = slitIndexes[0], slitIndexes[-1]
@@ -938,6 +961,7 @@ class create_dispersion_map:
         )
         endOffsetsA = lines.groupby("slit_index")[f"{axisA}_diff"].median()
 
+        farEnds = []
         for endIndex, oppositeIndex, nextIndex in (
             (firstIndex, lastIndex, lastIndex - 1),
             (lastIndex, firstIndex, firstIndex + 1),
@@ -946,16 +970,12 @@ class create_dispersion_map:
             if jump <= END_OFFSET_TOLERANCE_SPACINGS:
                 continue
             if jump >= TWO_SPACING_JUMP:
-                self.log.warning(
-                    f"multi-pinhole shift group {order_num}: the end pinhole at slit index {endIndex} is {jump:0.1f} "
-                    "spacings from the interior pinholes; the order may be off by two or more spacings, which the "
-                    "first-iteration shift does not correct"
-                )
+                farEnds.append((endIndex, float(jump)))
                 continue
             whole = self._whole_shift_from_pinhole_beyond(pattern, (endIndex, oppositeIndex, nextIndex), order_num)
             if whole is not None:
-                return whole
-        return None
+                return OppositeEndSearch(whole, tuple(farEnds))
+        return OppositeEndSearch(None, tuple(farEnds))
 
     def _whole_shift_from_pinhole_beyond(self, pattern, indexes, order_num):
         """*return the whole-spacing shift when a pinhole shows one spacing beyond the end opposite a latched one*
@@ -976,10 +996,11 @@ class create_dispersion_map:
         beyondA = 2 * predictedA[oppositeIndex] - predictedA[nextIndex] - pattern.interiorOffsetA
         beyondB = 2 * predictedB[oppositeIndex] - predictedB[nextIndex] - pattern.interiorOffsetB
         fraction = self._fraction_of_sets_with_a_pinhole_at(beyondA, beyondB, abs(pattern.spacing))
-        if fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
+        if fraction is None or fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
             return None
-        shift = float((predictedA[nextIndex] - predictedA[oppositeIndex]).median())
-        self._warn_if_shifted_end_has_no_pinhole(pattern, endIndex, shift, order_num)
+        # THE PATTERN MOVES BY ONE SIGNED SPACING, TOWARDS THE OPPOSITE END: THE SAME SPACING AS THE SLIT-CENTRED STEP
+        shift = pattern.spacing if nextIndex > oppositeIndex else -pattern.spacing
+        self._check_shifted_end_for_a_pinhole(pattern, endIndex, shift, order_num)
         return WholeSpacingShift(shift, pattern.spacing, fraction)
 
     def _predicted_pinhole_positions(self, lines):
@@ -1022,10 +1043,11 @@ class create_dispersion_map:
         spacings = [spacing for spacing in spacings if np.isfinite(spacing)]
         return float(np.median(spacings)) if spacings else 0.0
 
-    def _warn_if_shifted_end_has_no_pinhole(self, pattern, endIndex, shift, order_num):
-        """*warn when, after the whole-spacing shift, the end that had latched still finds no pinhole*
+    def _check_shifted_end_for_a_pinhole(self, pattern, endIndex, shift, order_num):
+        """*warn when, after the whole-spacing shift, the end that had latched finds no pinhole*
 
-        A pattern two or more spacings out can pass the one-spacing search yet still be off at the other end.
+        The end pinhole may be missing, or the pattern may still be offset, for example by two or more spacings. The
+        check is skipped, with a debug line only, when too few sets have a position at that end to judge it.
 
         **Key Arguments:**
 
@@ -1037,10 +1059,15 @@ class create_dispersion_map:
         newA = pattern.predictedA[endIndex] - shift - pattern.interiorOffsetA
         newB = pattern.predictedB[endIndex] - pattern.interiorOffsetB
         fraction = self._fraction_of_sets_with_a_pinhole_at(newA, newB, abs(pattern.spacing))
-        if fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
+        if fraction is None:
+            self.log.debug(
+                f"multi-pinhole shift group {order_num}: the check for a pinhole at slit index {endIndex} after the "
+                f"whole-spacing shift is skipped, because fewer than {PINHOLE_BEYOND_END_MIN_SETS} sets have a position"
+            )
+        elif fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
             self.log.warning(
                 f"multi-pinhole shift group {order_num}: after the whole-spacing shift only {fraction:0.0%} of the "
-                f"sets show a pinhole at slit index {endIndex}; the order may be off by two or more spacings"
+                f"sets show a pinhole at slit index {endIndex}; that pinhole is missing or the order is still offset"
             )
 
     def _fraction_of_sets_with_a_pinhole_at(self, positionsA, positionsB, spacing):
@@ -1060,8 +1087,8 @@ class create_dispersion_map:
 
         **Return:**
 
-        - ``fraction`` -- the fraction of the sets with a source, or 0.0 when fewer than the minimum number of sets
-          have a position
+        - ``fraction`` -- the fraction of the sets with a source, or ``None`` when fewer than the minimum number of
+          sets have a position
         """
         import pandas as pd
 
@@ -1069,7 +1096,7 @@ class create_dispersion_map:
         hasPosition = positionsA.notna() & positionsB.notna()
         positionsA, positionsB = positionsA[hasPosition], positionsB[hasPosition]
         if len(positionsA.index) < PINHOLE_BEYOND_END_MIN_SETS:
-            return 0.0
+            return None
 
         orders = positionsA.index.get_level_values("order").to_numpy()
         isInside = self._is_inside_order(positionsA.to_numpy(), positionsB.to_numpy(), orders, spacing)
@@ -1136,15 +1163,19 @@ class create_dispersion_map:
     def _order_geometry(self):
         """*return the order table's edge geometry with the slit mid-point of each row added*
 
+        The order table is read on the first call only, as it does not change during a recipe run.
+
         **Return:**
 
         - ``orderGeometry`` -- one row per order and tabulated row, with the edges and ``slitMid``
         """
-        binx, biny = self._get_binning_params()
-        _, orderGeometry, _ = unpack_order_table(log=self.log, orderTablePath=self.orderTable, binx=binx, biny=biny)
-        return orderGeometry.assign(
-            slitMid=0.5 * (orderGeometry[f"{self.axisA}coord_edgeup"] + orderGeometry[f"{self.axisA}coord_edgelow"])
-        )
+        if self.orderGeometryCache is None:
+            binx, biny = self._get_binning_params()
+            _, orderGeometry, _ = unpack_order_table(log=self.log, orderTablePath=self.orderTable, binx=binx, biny=biny)
+            self.orderGeometryCache = orderGeometry.assign(
+                slitMid=0.5 * (orderGeometry[f"{self.axisA}coord_edgeup"] + orderGeometry[f"{self.axisA}coord_edgelow"])
+            )
+        return self.orderGeometryCache
 
     def _pinhole_count_passes_qc(self):
         """*return True when the minimum pinhole count lies inside the PINHOLE COUNT MIN QC range*
@@ -1182,7 +1213,7 @@ class create_dispersion_map:
         orderGeometry = self._order_geometry()
 
         # FOR EACH ARC LINE: THE PREDICTED PATTERN CENTRE AND PINHOLE SPACING, AND THE SLIT MID-POINT AT THAT ROW
-        spacings, slitCentreOffsets = [], []
+        slitCentreOffsets = []
         for (_wavelength, order), lineSet in lines.groupby(["wavelength", "order"]):
             orderEdges = orderGeometry.loc[orderGeometry["order"] == order].sort_values(f"{axisB}coord")
             if orderEdges.empty:
@@ -1198,7 +1229,6 @@ class create_dispersion_map:
             slitCentreOffset = intercept + spacing * middleIndex - slitMid
             if not (np.isfinite(spacing) and np.isfinite(slitCentreOffset)) or spacing == 0:
                 continue
-            spacings.append(spacing)
             slitCentreOffsets.append(slitCentreOffset)
 
         if not slitCentreOffsets:
@@ -1208,7 +1238,7 @@ class create_dispersion_map:
             )
             return WholeSpacingShift(0.0, 0.0)
 
-        spacing = float(np.median(spacings))
+        spacing = self._median_pinhole_spacing(lines)
         offset = float(np.median(slitCentreOffsets))
         candidates = [0.0, spacing, -spacing]
         return WholeSpacingShift(min(candidates, key=lambda candidate: abs(offset - candidate)), spacing)
