@@ -11,7 +11,11 @@ The estimate has five steps:
 2. The residual of the pixels near the centre gives the object spectrum G(λ), by a rolling median along wavelength.
 3. The residual over G, binned along the slit, gives a non-parametric spatial profile P(s). Only the pixels the
    first sky fit used go into it, because a clipped fit did not see the brighter wing pixels.
-4. The faintest 1 arcsec of the profile is taken to hold no object light. Its level P0 is the zero point.
+4. The faintest 1 arcsec of the profile is taken to hold no object light. Its level P0 is the zero point. Flexure can
+   leave the end of the order mask dark, where the residual is minus the whole sky and not object light. A dark bin
+   shifts the profile by minus the sky over G(λ), which matters only when the object is faint. In that case (sky over
+   G above ``DARK_SHIFT_LIMIT``) the bins that hold less than ``LIT_BIN_MIN_FRACTION`` of the sky fit's light, and the
+   bins next to them, are left out of the search (DY-1734).
 5. If the zero point is negative and significant, the first sky fit holds object light of -P0·G(λ). The wing model is
    G(λ)·(P(s) − P0), which is to be subtracted from the sky pixels before the sky is refitted.
 
@@ -33,6 +37,8 @@ CORE_MEDIAN_WINDOW = 201
 MIN_CORE_PIXELS = 201
 MIN_PIXELS_PER_PROFILE_BIN = 20
 WING_BIAS_SIGNIFICANCE = 5
+LIT_BIN_MIN_FRACTION = 0.9
+DARK_SHIFT_LIMIT = 0.07
 
 
 @dataclass(frozen=True, eq=False)
@@ -187,11 +193,42 @@ def slit_profile(slitPosition, residual, error, coreSpectrum):
     return binCentres, profile, profileNoise
 
 
-def faint_end_zero_point(binCentres, profile, profileNoise):
+def lit_slit_bins(slitPosition, flux, skyModel, error):
+    """*find the slit bins that hold the light of the sky fit, as against bins that flexure left dark*
+
+    In a faint-object order the sky fit follows the flux, so a lit bin holds about the sky fit's light. A bin is dark
+    when its summed flux is below ``LIT_BIN_MIN_FRACTION`` of its summed sky fit, by more than
+    ``WING_BIAS_SIGNIFICANCE`` times the summed error in quadrature. The edge of the lit slit is soft, so every bin
+    within ``FAINT_RUN_ARCSEC`` of a dark bin is left out too. Bins with too few pixels are not judged.
+
+    **Key Arguments:**
+
+    - ``slitPosition`` -- the slit position in arcsec of each pixel
+    - ``flux`` -- the flux of each pixel
+    - ``skyModel`` -- the first sky fit evaluated at each pixel
+    - ``error`` -- the flux error of each pixel
+
+    **Return:**
+
+    - ``isLit`` -- True for each bin of ``slit_profile`` that is lit and clear of the dark end
+    """
+    import numpy as np
+
+    binIndex, binCentres = _slit_bin_layout(slitPosition)
+    nBins = len(binCentres)
+    counts = np.bincount(binIndex, minlength=nBins)
+    shortfall = np.bincount(binIndex, weights=LIT_BIN_MIN_FRACTION * skyModel - flux, minlength=nBins)
+    noise = np.sqrt(np.bincount(binIndex, weights=error**2, minlength=nBins))
+    isDark = (counts >= MIN_PIXELS_PER_PROFILE_BIN) & (shortfall > WING_BIAS_SIGNIFICANCE * noise)
+    nEdge = round(FAINT_RUN_ARCSEC / PROFILE_BIN_ARCSEC)
+    return np.convolve(isDark, np.ones(2 * nEdge + 1), mode="same") == 0
+
+
+def faint_end_zero_point(binCentres, profile, profileNoise, isLit=None):
     """*find the faintest part of the slit profile and its level*
 
-    Every run of ``FAINT_RUN_ARCSEC`` of consecutive bins that are all finite is a candidate. The zero point is the
-    lowest mean of the profile over a run, and its noise is the quadrature sum of the bin noises over that run,
+    Every run of ``FAINT_RUN_ARCSEC`` of consecutive bins that are all finite and lit is a candidate. The zero point is
+    the lowest mean of the profile over a run, and its noise is the quadrature sum of the bin noises over that run,
     divided by the number of bins.
 
     **Key Arguments:**
@@ -199,10 +236,11 @@ def faint_end_zero_point(binCentres, profile, profileNoise):
     - ``binCentres`` -- the centre of every slit bin in arcsec
     - ``profile`` -- the profile in every bin, with NaN for empty bins
     - ``profileNoise`` -- the noise of the profile in every bin
+    - ``isLit`` -- True for each bin that holds light (``lit_slit_bins``). Default *None*, which is every bin
 
     **Return:**
 
-    - ``zeroPoint`` -- the mean profile over the faintest run. NaN if no run is complete
+    - ``zeroPoint`` -- the mean profile over the faintest run. NaN if no run is complete and lit
     - ``zeroNoise`` -- the noise of ``zeroPoint``
     - ``runCentre`` -- the slit position in arcsec of the middle of the faintest run
     """
@@ -212,8 +250,9 @@ def faint_end_zero_point(binCentres, profile, profileNoise):
     nRun = round(FAINT_RUN_ARCSEC / PROFILE_BIN_ARCSEC)
     if len(profile) < nRun:
         return float("nan"), float("nan"), float("nan")
+    isCandidate = np.isfinite(profile) if isLit is None else np.isfinite(profile) & isLit
     windows = sliding_window_view(profile, nRun)
-    isComplete = np.isfinite(windows).all(axis=1)
+    isComplete = sliding_window_view(isCandidate, nRun).all(axis=1)
     if not isComplete.any():
         return float("nan"), float("nan"), float("nan")
     means = np.where(isComplete, windows.mean(axis=1), np.inf)
@@ -359,15 +398,18 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
         slitPosition[isProfile], residual[isProfile], error[isProfile], spectrum[isProfile]
     )
     estimate = replace(estimate, binCentres=binCentres, profile=profile)
-    zeroPoint, zeroNoise, _ = faint_end_zero_point(binCentres, profile, profileNoise)
+    medianSpectrum = float(np.median(spectrum[isUsable]))
+    skyLevel = float(np.median(skyModel[isUsable]))
+    # A DARK BIN SHIFTS THE PROFILE BY MINUS SKY OVER G, SO IT ONLY MATTERS WHEN THE OBJECT IS FAINT; NAN FAILS THE TEST
+    isFaintObject = skyLevel > DARK_SHIFT_LIMIT * medianSpectrum
+    isLit = lit_slit_bins(slitPosition[isProfile], flux[isProfile], skyModel[isProfile], error[isProfile])
+    zeroPoint, zeroNoise, _ = faint_end_zero_point(binCentres, profile, profileNoise, isLit if isFaintObject else None)
     if np.isnan(zeroPoint):
         return replace(
-            estimate, reason=f"no run of {FAINT_RUN_ARCSEC:g} arcsec of finite profile bins for the zero point"
+            estimate, reason=f"no run of {FAINT_RUN_ARCSEC:g} arcsec of finite, lit profile bins for the zero point"
         )
-    medianSpectrum = float(np.median(spectrum[isUsable]))
     biasLevel = -zeroPoint * medianSpectrum
     biasNoise = zeroNoise * medianSpectrum
-    skyLevel = float(np.median(skyModel[isUsable]))
     reason = _no_correction_reason(zeroPoint, biasLevel, biasNoise, skyLevel, gateFraction)
     # THE SLIT LOSS NEEDS THE WHOLE OBJECT, AND THE FIT DID NOT USE THE OBJECT CORE
     slitProfile = profile

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pytest
@@ -11,6 +11,7 @@ from soxspipe.commonutils.object_wing_model import (
     core_spectrum,
     estimate_object_wings,
     faint_end_zero_point,
+    lit_slit_bins,
     profile_peak,
     slit_profile,
     wing_model,
@@ -687,3 +688,133 @@ def test_estimate_without_any_pixel_the_first_fit_used_is_not_corrected():
     # ASSERT
     assert not estimate.isCorrected
     assert "first sky fit" in estimate.reason
+
+
+FLEXURE_PEAK = 500.0
+UNLIT_END_ARCSEC = 1.5
+SHORT_LIT_HALF_WIDTH_ARCSEC = 0.4
+UNLIT_ESTIMATE_SEED = 11
+
+
+def _with_unlit_slit(order, isUnlit):
+    """Return the order with the ``isUnlit`` pixels dark: no sky and no object light, only noise, as after flexure."""
+    rng = np.random.default_rng(UNLIT_ESTIMATE_SEED)
+    darkFlux = rng.normal(0.0, 1.0, order.flux.size) * order.error
+    return replace(order, flux=np.where(isUnlit, darkFlux, order.flux))
+
+
+def test_faint_object_with_an_unlit_slit_end_does_not_take_its_zero_point_from_the_unlit_end():
+    # ARRANGE
+    order = _build_order(peak=FLEXURE_PEAK, biasFraction=0.0)
+    order = _with_unlit_slit(order, order.slitPosition < order.slitPosition.min() + UNLIT_END_ARCSEC)
+
+    # ACT
+    estimate = order.estimate()
+    wings = wing_model(estimate, order.slitPosition)
+
+    # ASSERT
+    # THE UNLIT END HOLDS -SKY/G, ABOUT -0.1, WHICH IS FAR BELOW THE LIT SLIT, WHERE THE SKY FIT HOLDS NO OBJECT LIGHT
+    assert not estimate.isCorrected
+    assert estimate.zeroPoint > -0.02
+    assert not wings.any()
+
+
+def test_slit_with_no_lit_run_of_one_arcsec_is_not_corrected_and_the_reason_says_so():
+    # ARRANGE
+    order = _build_order(peak=FLEXURE_PEAK, biasFraction=0.0)
+    order = _with_unlit_slit(order, np.abs(order.slitPosition) > SHORT_LIT_HALF_WIDTH_ARCSEC)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert "lit" in estimate.reason
+
+
+SOFT_EDGE_ARCSEC = 1.5
+
+
+def test_faint_object_with_a_soft_lit_edge_does_not_take_its_zero_point_from_the_edge():
+    # ARRANGE
+    order = _build_order(peak=FLEXURE_PEAK, biasFraction=0.0)
+    illumination = np.clip((order.slitPosition - order.slitPosition.min()) / SOFT_EDGE_ARCSEC, 0.0, 1.0)
+    order = replace(order, flux=order.flux * illumination)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert estimate.zeroPoint > -0.02
+
+
+def test_bright_standard_keeps_the_zero_point_it_had_before_the_dark_end_guard():
+    # ARRANGE
+    order = _build_order()
+    darkOrder = _with_unlit_slit(order, order.slitPosition < order.slitPosition.min() + UNLIT_END_ARCSEC)
+
+    # ACT
+    estimate = darkOrder.estimate()
+
+    # ASSERT
+    # A DARK BIN SHIFTS THE PROFILE BY MINUS SKY OVER G, ABOUT -0.0005 HERE, SO THE GUARD LEAVES THE SEARCH ALONE
+    unguarded, _, _ = faint_end_zero_point(estimate.binCentres, estimate.profile, np.zeros(estimate.profile.shape))
+    assert estimate.isCorrected, estimate.reason
+    assert estimate.zeroPoint == pytest.approx(unguarded)
+    assert estimate.biasLevel == pytest.approx(-unguarded * np.median(estimate.coreSpectrum))
+
+
+def test_lit_slit_bins_leaves_out_dark_bins_and_the_arcsec_next_to_them():
+    # ARRANGE
+    binValues = np.array([0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+    slitPosition, _, error, _ = _profile_scene(binValues)
+    skyModel = np.full(slitPosition.shape, 100.0)
+    flux = skyModel * np.repeat(binValues, PIXELS_PER_BIN)
+
+    # ACT
+    isLit = lit_slit_bins(slitPosition, flux, skyModel, error)
+
+    # ASSERT
+    expected = np.arange(len(binValues)) > 5
+    np.testing.assert_array_equal(isLit, expected)
+
+
+def test_lit_slit_bins_keeps_every_bin_when_the_flux_follows_the_sky_fit():
+    # ARRANGE
+    slitPosition, _, error, _ = _profile_scene(np.zeros(12))
+    skyModel = np.full(slitPosition.shape, 100.0)
+
+    # ACT
+    isLit = lit_slit_bins(slitPosition, skyModel * 0.95, skyModel, error)
+
+    # ASSERT
+    assert isLit.all()
+
+
+def test_lit_slit_bins_does_not_call_a_noisy_bin_dark():
+    # ARRANGE
+    slitPosition, _, _, _ = _profile_scene(np.zeros(12))
+    skyModel = np.full(slitPosition.shape, 100.0)
+    error = np.full(slitPosition.shape, 1.0e4)
+
+    # ACT
+    isLit = lit_slit_bins(slitPosition, np.zeros(slitPosition.shape), skyModel, error)
+
+    # ASSERT
+    assert isLit.all()
+
+
+def test_faint_end_zero_point_skips_runs_that_contain_a_bin_that_is_not_lit():
+    # ARRANGE
+    profile = np.array([-1.0, -1.0, -1.0, -1.0, -1.0, 0.1, 0.1, 0.1, 0.1, 0.1])
+    profileNoise = np.full(profile.shape, 0.02)
+    binCentres = BIN_ARCSEC * np.arange(profile.size)
+    isLit = np.arange(profile.size) > 2
+
+    # ACT
+    zeroPoint, _, runCentre = faint_end_zero_point(binCentres, profile, profileNoise, isLit)
+
+    # ASSERT
+    assert zeroPoint == pytest.approx(-0.45)
+    assert runCentre == pytest.approx(binCentres[3:7].mean())

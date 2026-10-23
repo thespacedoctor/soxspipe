@@ -77,6 +77,8 @@ If the zero point is negative, the first fit holds object light. The pipeline co
 
 This method cannot tell light that is constant along the whole slit from sky. It assumes that the faintest 1 arcsec of the slit has no object light.
 
+Flexure can leave one end of the slit dark in the VIS u and g orders, so the flux there is close to zero and not the sky. The residual of a dark bin is minus the whole sky, which would set a zero point far below the true one. The pipeline therefore leaves some bins out of the search for the faintest 1 arcsec. This happens only when the sky level is more than 0.07 times the object's core spectrum, because a dark bin shifts the profile by the sky over the core spectrum, and that shift is small for a bright star. A bin is left out when its summed flux is below 90% of its summed first sky fit by more than 5 times the noise, and so is every bin within 1 arcsec of it. If no 1 arcsec run of lit bins remains, the order keeps the first fit and the debug log gives the reason.
+
 To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on and the gate fraction is 0.1.
 
 ### Utility API
