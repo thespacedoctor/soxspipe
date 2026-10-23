@@ -8,6 +8,7 @@ public functions ``skyline_slit_profiles`` and ``continuum_slit_profiles`` are a
 """
 
 import warnings
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -33,6 +34,8 @@ LOCAL_STEP_PIXELS = 1000
 # THE STANDARD ERROR OF A MEDIAN IS THIS MANY TIMES THE STANDARD ERROR OF THE MEAN
 MEDIAN_ERROR_FACTOR = np.sqrt(np.pi / 2)
 MAD_TO_SIGMA = 1.4826
+# NLINES IS THE NUMBER OF SKYLINES BEHIND A BIN OF A SKYLINE PROFILE, AND THE NUMBER OF WAVELENGTH CHUNKS BEHIND A BIN
+# OF A CONTINUUM PROFILE. THE OFFSET FIT DOES NOT USE IT
 PROFILE_COLUMNS = ["order", "slit", "profile", "profileErr", "nLines"]
 
 # THE CONTINUUM-EDGE PROFILE (ORDERS WITH NO SKYLINES) SPLITS AN ORDER INTO THIS MANY EQUAL-COUNT WAVELENGTH CHUNKS
@@ -161,6 +164,53 @@ class _order_pixels:
         """*the slice of pixels with wavelength in ``[lowWavelength, highWavelength)``*"""
         first, last = np.searchsorted(self.wavelength, [lowWavelength, highWavelength])
         return slice(first, last)
+
+
+class _order_setup(NamedTuple):
+    """The per-order inputs that the skyline and the continuum profile builders share."""
+
+    centres: np.ndarray
+    flatProfile: np.ndarray
+    isInterior: np.ndarray
+    isPixel: np.ndarray
+    binIndex: np.ndarray
+
+
+def _prepare_order(data, errs, isUsable, flatData, slit, isOrder, binArcsec):
+    """*the shared setup of one order, or None with the reason the order cannot be profiled*
+
+    **Return:**
+
+    - ``setup`` -- an ``_order_setup``, or *None*
+    - ``note`` -- why there is no setup, or an empty string
+    """
+    centres, flatProfile, reason = normalised_flat_profile(flatData, slit, isOrder, binArcsec)
+    isPixel = isOrder & isUsable & np.isfinite(data) & np.isfinite(errs)
+    if reason or not isPixel.any():
+        return None, f"the flat profile is unusable: {reason}" if reason else "the order has no usable pixels"
+    firstIndex, _, isInterior = _bin_geometry(slit[isOrder], binArcsec)
+    binIndex = np.floor(slit[isPixel] / binArcsec).astype(int) - firstIndex
+    return _order_setup(centres, flatProfile, isInterior, isPixel, binIndex), ""
+
+
+def _profile_piece(order, setup, profile, profileErr, counts, isKept=None):
+    """*the profile rows (``PROFILE_COLUMNS``) of the finite bins of one combined profile, times the flat profile*
+
+    ``isKept`` optionally limits the rows to some bins, as the object mask does.
+    """
+    piece = pd.DataFrame(
+        {
+            "order": int(order),
+            "slit": setup.centres,
+            "profile": profile * setup.flatProfile,
+            "profileErr": profileErr * setup.flatProfile,
+            "nLines": counts,
+        }
+    )
+    isValid = np.isfinite(piece["profile"]) & np.isfinite(piece["profileErr"]) & (piece["profileErr"] > 0)
+    if isKept is not None:
+        isValid &= isKept
+    return piece.loc[isValid][PROFILE_COLUMNS]
 
 
 def _line_difference(pixels, lineWavelength, step, nBins):
@@ -308,36 +358,21 @@ def skyline_slit_profiles(
     lineWavelengths = lineWavelengths[np.isfinite(lineWavelengths)]
     pieces, notes = [], {}
     for order in np.unique(orderMap[isInOrder]):
-        isOrder = isInOrder & (orderMap == order)
-        centres, flatProfile, reason = normalised_flat_profile(flatData, slit, isOrder, binArcsec)
-        isPixel = isOrder & isUsable & np.isfinite(data) & np.isfinite(errs)
-        if reason or not isPixel.any():
-            notes[int(order)] = (
-                f"the flat profile is unusable: {reason}" if reason else "the order has no usable pixels"
-            )
+        setup, note = _prepare_order(data, errs, isUsable, flatData, slit, isInOrder & (orderMap == order), binArcsec)
+        if setup is None:
+            notes[int(order)] = note
             continue
-        firstIndex, _, isInterior = _bin_geometry(slit[isOrder], binArcsec)
-        binIndex = np.floor(slit[isPixel] / binArcsec).astype(int) - firstIndex
-        pixels = _order_pixels(wavelength[isPixel], binIndex, data[isPixel], errs[isPixel] ** 2, step[isPixel])
-        combined, note = _order_skyline_profile(pixels, len(centres), lineWavelengths, isInterior)
+        isPixel = setup.isPixel
+        pixels = _order_pixels(wavelength[isPixel], setup.binIndex, data[isPixel], errs[isPixel] ** 2, step[isPixel])
+        combined, note = _order_skyline_profile(pixels, len(setup.centres), lineWavelengths, setup.isInterior)
         if combined is None:
             notes[int(order)] = note
             continue
-        profile, profileErr, nLines = combined
-        piece = pd.DataFrame(
-            {
-                "order": int(order),
-                "slit": centres,
-                "profile": profile * flatProfile,
-                "profileErr": profileErr * flatProfile,
-                "nLines": nLines,
-            }
-        )
-        isValid = np.isfinite(piece["profile"]) & np.isfinite(piece["profileErr"]) & (piece["profileErr"] > 0)
-        if not isValid.any():
+        piece = _profile_piece(order, setup, *combined)
+        if piece.empty:
             notes[int(order)] = f"no slit bin holds at least {MIN_LINES_PER_BIN} usable skylines"
             continue
-        pieces.append(piece.loc[isValid])
+        pieces.append(piece)
     if not pieces:
         return pd.DataFrame(columns=PROFILE_COLUMNS), notes
     return pd.concat(pieces, ignore_index=True)[PROFILE_COLUMNS], notes
@@ -404,52 +439,47 @@ def _find_object(centres, profile, lower, upper):
     return float(centres[isInside][peak]) if significance >= OBJECT_SIGNIFICANCE else None
 
 
-def _continuum_piece(order, centres, combined, flatProfile, isKept):
-    """*the profile rows (``PROFILE_COLUMNS``) of the kept, finite bins of one combined continuum profile*"""
-    profile, profileErr, nChunks = combined
-    piece = pd.DataFrame(
-        {
-            "order": int(order),
-            "slit": centres,
-            "profile": profile * flatProfile,
-            "profileErr": profileErr * flatProfile,
-            "nLines": nChunks,
-        }
-    )
-    isValid = isKept & np.isfinite(piece["profile"]) & np.isfinite(piece["profileErr"]) & (piece["profileErr"] > 0)
-    return piece.loc[isValid][PROFILE_COLUMNS]
+class continuum_chunking(NamedTuple):
+    """How a continuum profile is built: the chunk count, the fewest chunks per bin and the object mask half-width."""
+
+    nChunks: int
+    minChunksPerBin: int
+    objectMaskArcsec: float
 
 
-def _order_continuum_profiles(pixels, centres, isInterior, flatProfile, flatEdge, settings):
+def _order_continuum_profiles(pixels, setup, order, flatEdge, chunking):
     """*the full, blue-half and red-half continuum profiles of one order, or None with the reason there are none*
+
+    ``pixels`` is the order's ``_order_pixels``, which is sorted by wavelength, so equal-count chunks of it are
+    wavelength chunks.
 
     **Return:**
 
     - ``profiles`` -- ``(full, blue, red)`` dataframes of ``PROFILE_COLUMNS``, or *None*
     - ``note`` -- why there is no profile, or an empty string
     """
-    order, binIndex, wavelength, values, errs2 = pixels
-    nChunks, minChunksPerBin, objectMaskArcsec = settings
-    if len(values) < nChunks * MIN_CHUNK_PIXELS_PER_BIN:
-        return None, f"too few usable pixels ({len(values)}) for {nChunks} wavelength chunks"
-    chunks = np.array_split(np.argsort(wavelength, kind="stable"), nChunks)
-    medians, errors2 = _chunk_bin_medians(binIndex, values, errs2, chunks, len(centres))
+    nChunks, minChunksPerBin, objectMaskArcsec = chunking
+    nPixels = len(pixels.values)
+    if nPixels < nChunks * MIN_CHUNK_PIXELS_PER_BIN:
+        return None, f"too few usable pixels ({nPixels}) for {nChunks} wavelength chunks"
+    nBins = len(setup.centres)
+    chunks = np.array_split(np.arange(nPixels), nChunks)
+    medians, errors2 = _chunk_bin_medians(pixels.binIndex, pixels.values, pixels.errs2, chunks, nBins)
     allChunks = np.ones(nChunks, dtype=bool)
     # PASS 1 NORMALISES ON THE WHOLE INTERIOR TO FIND THE OBJECT. PASS 2 NORMALISES ON THE SKY INTERIOR ONLY
-    firstPass = _combine_chunks(medians, errors2, isInterior, allChunks, minChunksPerBin)
-    objectCentre = _find_object(centres, firstPass[0], flatEdge[0], flatEdge[1])
-    isSky = np.ones(len(centres), dtype=bool)
+    firstPass = _combine_chunks(medians, errors2, setup.isInterior, allChunks, minChunksPerBin)
+    objectCentre = _find_object(setup.centres, firstPass[0], flatEdge[0], flatEdge[1])
+    isSky = np.ones(nBins, dtype=bool)
     if objectCentre is not None:
-        isSky = np.abs(centres - objectCentre) > objectMaskArcsec
-    isSkyInterior = isInterior & isSky
+        isSky = np.abs(setup.centres - objectCentre) > objectMaskArcsec
+    isSkyInterior = setup.isInterior & isSky
     firstHalf = np.arange(nChunks) < nChunks // 2
     profiles = tuple(
-        _continuum_piece(
+        _profile_piece(
             order,
-            centres,
-            _combine_chunks(medians, errors2, isSkyInterior, isSelected, minChunksPerBin),
-            flatProfile,
-            isSky,
+            setup,
+            *_combine_chunks(medians, errors2, isSkyInterior, isSelected, minChunksPerBin),
+            isKept=isSky,
         )
         for isSelected in (allChunks, firstHalf, ~firstHalf)
     )
@@ -499,8 +529,8 @@ def continuum_slit_profiles(
 
     **Return:**
 
-    - ``profiles`` -- dataframe with the columns of ``PROFILE_COLUMNS``, where ``nLines`` is the number of chunks in
-      the bin. Empty if no order has a profile
+    - ``profiles`` -- dataframe with the columns of ``PROFILE_COLUMNS``, where ``nLines`` holds the number of chunks in
+      the bin (for a skyline profile it holds the number of skylines). Empty if no order has a profile
     - ``halfProfiles`` -- the ``(blue, red)`` dataframes of the same layout, built from the first and the second half
       of the chunks in wavelength
     - ``notes`` -- ``{order: reason}`` for each order that has no profile rows
@@ -516,23 +546,21 @@ def continuum_slit_profiles(
     """
     edgeByOrder = {int(row["order"]): (row["lower"], row["upper"]) for _, row in flatEdges.iterrows()}
     isInOrder = in_order_pixels(orderMap, slit, wavelength)
+    step = _wavelength_step(wavelength)
+    chunking = continuum_chunking(nChunks, minChunksPerBin, objectMaskArcsec)
     pieces, notes = ([], [], []), {}
     for order in orders:
-        isOrder = isInOrder & (orderMap == order)
-        centres, flatProfile, reason = normalised_flat_profile(flatData, slit, isOrder, binArcsec)
-        isPixel = isOrder & isUsable & np.isfinite(data) & np.isfinite(errs)
+        setup, note = _prepare_order(data, errs, isUsable, flatData, slit, isInOrder & (orderMap == order), binArcsec)
         edge = edgeByOrder.get(int(order), (np.nan, np.nan))
-        if reason or not isPixel.any() or not np.isfinite(edge).all():
-            notes[int(order)] = (
-                f"the flat profile is unusable: {reason}" if reason else "the order has no usable pixels or flat edges"
+        if setup is not None and not np.isfinite(edge).all():
+            setup, note = None, "the order has no finite flat edges"
+        built = None
+        if setup is not None:
+            isPixel = setup.isPixel
+            pixels = _order_pixels(
+                wavelength[isPixel], setup.binIndex, data[isPixel], errs[isPixel] ** 2, step[isPixel]
             )
-            continue
-        firstIndex, _, isInterior = _bin_geometry(slit[isOrder], binArcsec)
-        binIndex = np.floor(slit[isPixel] / binArcsec).astype(int) - firstIndex
-        pixels = (order, binIndex, wavelength[isPixel], data[isPixel], errs[isPixel] ** 2)
-        built, note = _order_continuum_profiles(
-            pixels, centres, isInterior, flatProfile, edge, (nChunks, minChunksPerBin, objectMaskArcsec)
-        )
+            built, note = _order_continuum_profiles(pixels, setup, order, edge, chunking)
         if built is None or built[0].empty:
             notes[int(order)] = note or f"no slit bin holds at least {minChunksPerBin} usable wavelength chunks"
             continue

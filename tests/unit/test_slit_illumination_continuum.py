@@ -35,6 +35,11 @@ def _continuum_scene(tmp_path, *, delta=0.8, **kwargs):
     return replace(scene, skylinesDF=NO_LINES_TABLE)
 
 
+def _messages(log, level):
+    """The messages the recording logger took at one level."""
+    return [message for kind, message in log.messages if kind == level]
+
+
 def _scene_profiles(scene, **kwargs):
     """Run ``continuum_slit_profiles`` on a scene with flat edges fitted from its master flat."""
     flatData = np.asarray(scene.masterFlat.data, dtype=float)
@@ -288,3 +293,111 @@ def test_continuum_offsets_cover_only_the_requested_orders():
     rows = fit_continuum_offsets(profiles, (blue, blue), flatEdges, [12], 3.0, 0.3, HALVES_LIMIT)
 
     assert list(rows["order"]) == [12]
+
+
+@pytest.mark.parametrize("slitName", ["SLIT5.0", "SLIT1.5", None])
+def test_other_slits_never_build_a_continuum_profile_and_fall_back_as_before(tmp_path, log, monkeypatch, slitName):
+    scene = _continuum_scene(tmp_path, delta=0.8, slitName=slitName)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the continuum builder must run on SLIT1.0 only")
+
+    monkeypatch.setattr(slit_illumination, "continuum_slit_profiles", forbidden)
+    result = _measure(scene, tmp_path, log, monkeypatch)
+
+    row = _offsets(result).loc[11]
+    assert row["status"] == "failed"
+    assert row["method"] == "skyline"
+    assert row["reason"].startswith("the skyline table has no lines between")
+    assert not result.isApplied
+    assert any("SLIT1.0" in message for message in _messages(log, "info"))
+
+
+def test_the_slit_gate_message_names_the_frame_slit(tmp_path, log, monkeypatch):
+    scene = _continuum_scene(tmp_path, delta=0.8, slitName="SLIT5.0")
+
+    _measure(scene, tmp_path, log, monkeypatch)
+
+    assert any("SLIT5.0" in message and "continuum" in message for message in _messages(log, "info"))
+
+
+def test_a_continuum_offset_is_never_borrowed_by_a_partner_order():
+    rows = [
+        {**_profile_row(11, "fitted", "continuum", 0.8)},
+        {**_profile_row(12, "failed", "skyline", np.nan)},
+    ]
+
+    result = slit_illumination._borrow_from_partners(rows, {12: 11})
+
+    assert result[1]["status"] == "failed"
+    assert result[1]["borrowedFrom"] != 11
+
+
+def test_a_skyline_offset_is_still_borrowed_by_a_partner_order():
+    rows = [
+        {**_profile_row(11, "fitted", "skyline", 0.8)},
+        {**_profile_row(12, "failed", "skyline", np.nan)},
+    ]
+
+    result = slit_illumination._borrow_from_partners(rows, {12: 11})
+
+    assert result[1]["status"] == "borrowed"
+    assert result[1]["offset"] == 0.8
+
+
+def _profile_row(order, status, method, offset):
+    """An offsets-table row as a dictionary."""
+    return {
+        "order": order,
+        "offset": offset,
+        "offsetErr": 0.02,
+        "scienceWidth": 0.2,
+        "nBins": 100,
+        "status": status,
+        "reason": "" if status == "fitted" else "no lines",
+        "borrowedFrom": np.nan,
+        "method": method,
+    }
+
+
+@pytest.mark.parametrize("key", ["continuum-chunks", "continuum-min-chunks-per-bin"])
+@pytest.mark.parametrize("value", [0.5, 1, 0, -3, 2.5, True, "20", None, float("nan")])
+def test_unusable_continuum_count_settings_warn_and_use_the_default(tmp_path, log, monkeypatch, key, value):
+    scene = _continuum_scene(tmp_path, delta=0.8)
+
+    result = _measure(scene, tmp_path, log, monkeypatch, illuminationSettings={key: value})
+
+    assert any(key in message for message in _messages(log, "warning"))
+    assert _offsets(result).loc[11, "status"] == "fitted"
+
+
+def test_a_whole_number_float_is_a_usable_continuum_count(tmp_path, log, monkeypatch):
+    scene = _continuum_scene(tmp_path, delta=0.8)
+
+    result = _measure(scene, tmp_path, log, monkeypatch, illuminationSettings={"continuum-chunks": 20.0})
+
+    assert not any("continuum-chunks" in message for message in _messages(log, "warning"))
+    assert _offsets(result).loc[11, "status"] == "fitted"
+
+
+def test_halves_that_cannot_reach_the_minimum_chunks_per_bin_are_warned_about(tmp_path, log, monkeypatch):
+    scene = _continuum_scene(tmp_path, delta=0.8)
+
+    result = _measure(
+        scene,
+        tmp_path,
+        log,
+        monkeypatch,
+        illuminationSettings={"continuum-chunks": 8, "continuum-min-chunks-per-bin": 5},
+    )
+
+    assert any("halves" in message and "continuum-chunks" in message for message in _messages(log, "warning"))
+    assert _offsets(result).loc[11, "status"] == "failed"
+
+
+def test_the_default_continuum_settings_give_no_halves_warning(tmp_path, log, monkeypatch):
+    scene = _continuum_scene(tmp_path, delta=0.8)
+
+    _measure(scene, tmp_path, log, monkeypatch)
+
+    assert not _messages(log, "warning")

@@ -13,8 +13,9 @@ The measurement has three steps:
    toward +SLIT.
 
 An order that the skyline table has no lines in (the SOXS VIS u and g orders) takes step 2 from the sky continuum
-instead: the order is split into wavelength chunks, each chunk is binned along the slit, and the combined profile is
-fitted with the object masked. That offset is accepted only if the blue and red halves of the order agree (DY-1516).
+instead, on the SLIT1.0 only: the order is split into wavelength chunks, each chunk is binned along the slit, and
+the combined profile is fitted with the object masked. That offset is accepted only if the blue and red halves of
+the order agree (DY-1516).
 """
 
 import math
@@ -90,6 +91,11 @@ SKYLINE_MIN_FLUX_VIS = 1.0
 
 # THE TWO HALVES (BLUE AND RED CHUNKS) OF A CONTINUUM PROFILE MUST GIVE OFFSETS THIS CLOSE, OR THE ORDER IS REJECTED
 CONTINUUM_MAX_HALVES_DIFF_ARCSEC = 0.15
+# THE CONTINUUM OFFSET IS VALIDATED ON THE SLIT1.0 ONLY. OTHER SLITS KEEP THE SKYLINE RESULT (NO MASK FOR AN ORDER WITH
+# NO SKYLINES), BECAUSE BRIGHT-STAR WINGS AND WIDER SLITS CHANGE THE CONTINUUM PROFILE
+CONTINUUM_SLIT_NAME = "SLIT1.0"
+# THE CHUNK COUNT AND THE CHUNKS-PER-BIN LIMIT MUST BE WHOLE NUMBERS OF AT LEAST THIS, SO EACH HALF HOLDS A MEDIAN
+MIN_CONTINUUM_COUNT = 2
 
 STATUS_FITTED = "fitted"
 STATUS_BORROWED = "borrowed"
@@ -325,7 +331,9 @@ def _borrow_from_partners(rows, partners):
     borrowed = []
     for row in rows:
         partner = byOrder.get((partners or {}).get(row["order"]))
-        if row["status"] != STATUS_FAILED or partner is None or partner["status"] != STATUS_FITTED:
+        # ONLY A SKYLINE OFFSET CAN BE LENT. A CONTINUUM OFFSET IS VALIDATED FOR ITS OWN ORDER ONLY
+        isLender = partner is not None and partner["status"] == STATUS_FITTED and partner["method"] == METHOD_SKYLINE
+        if row["status"] != STATUS_FAILED or not isLender:
             borrowed.append(row)
             continue
         reason = f"borrowed from order {partner['order']}; own fit failed: {row['reason']}"
@@ -517,18 +525,45 @@ ILLUMINATION_SETTINGS = {
 }
 
 
+# SETTINGS KEYS THAT MUST BE WHOLE NUMBERS OF AT LEAST MIN_CONTINUUM_COUNT
+COUNT_SETTINGS = ("continuum-chunks", "continuum-min-chunks-per-bin")
+
+
+def _is_usable_setting(key, value, mayBeZero):
+    """*True if a ``slit-illumination`` value is a finite number in the range its key allows*"""
+    if not (isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value)):
+        return False
+    if key in COUNT_SETTINGS:
+        return float(value).is_integer() and value >= MIN_CONTINUUM_COUNT
+    return value > 0 or (mayBeZero and value == 0)
+
+
 def _resolve_settings(log, illuminationSettings):
-    """*the measurement settings: each ``slit-illumination`` key if it holds a usable number, else its default*"""
+    """*the measurement settings: each ``slit-illumination`` key if it holds a usable number, else its default*
+
+    The two continuum count keys must be whole numbers of at least 2. A configuration whose halves cannot hold the
+    minimum number of chunks per bin is logged as a warning, as the halves gate then rejects every continuum order.
+    """
     config = {name: default for name, default, _ in ILLUMINATION_SETTINGS.values()}
     for key, (name, default, mayBeZero) in ILLUMINATION_SETTINGS.items():
         if key not in (illuminationSettings or {}):
             continue
         value = illuminationSettings[key]
-        isNumber = isinstance(value, Real) and not isinstance(value, bool) and math.isfinite(value)
-        if isNumber and (value > 0 or (mayBeZero and value == 0)):
-            config[name] = float(value)
+        if _is_usable_setting(key, value, mayBeZero):
+            config[name] = int(value) if key in COUNT_SETTINGS else float(value)
         else:
-            log.warning(f"slit-illumination setting {key} = {value!r} is not usable, so the default {default} is used")
+            requirement = f" (a whole number of at least {MIN_CONTINUUM_COUNT})" if key in COUNT_SETTINGS else ""
+            log.warning(
+                f"slit-illumination setting {key} = {value!r} is not usable{requirement}, "
+                f"so the default {default} is used"
+            )
+    halfChunks = config["continuumChunks"] // 2
+    if halfChunks < config["continuumMinChunksPerBin"]:
+        log.warning(
+            f"slit-illumination continuum-chunks = {config['continuumChunks']} leaves {halfChunks} chunks in each "
+            f"half, fewer than continuum-min-chunks-per-bin = {config['continuumMinChunksPerBin']}, so the halves gate "
+            "rejects every continuum order"
+        )
     return config
 
 
@@ -597,17 +632,26 @@ def _not_applied(log, reason, config, flatEdges=None, profiles=None, offsets=Non
     )
 
 
-def _continuum_rows(frame, flatData, mapImages, flatEdges, profileNotes, config):
-    """*the continuum-edge profiles and offset rows of the orders whose skyline fit has no lines to use*
+def _continuum_orders(log, profileNotes, slitName):
+    """*the orders to measure from the sky continuum: those with no skylines in the table, on the SLIT1.0 only*"""
+    orders = sorted(order for order, note in profileNotes.items() if has_no_skylines_note(note))
+    if orders and slitName != CONTINUUM_SLIT_NAME:
+        log.info(
+            f"the continuum slit offset is measured on {CONTINUUM_SLIT_NAME} only (this frame: {slitName}), so "
+            f"orders {orders} have no slit offset"
+        )
+        return []
+    return orders
+
+
+def _continuum_rows(frame, flatData, mapImages, flatEdges, orders, profileNotes, config):
+    """*the continuum-edge profiles and offset rows of the given orders*
 
     **Return:**
 
     - ``profiles`` -- the continuum profile rows, empty if there are none
     - ``rows`` -- the offset rows, as dictionaries. A rejected row also carries the skyline note of its order
     """
-    orders = sorted(order for order, note in profileNotes.items() if has_no_skylines_note(note))
-    if not orders:
-        return pd.DataFrame(columns=PROFILE_COLUMNS), []
     wavelength, slit, orderMap = mapImages
     profiles, halfProfiles, notes = continuum_slit_profiles(
         np.asarray(frame.data, dtype=float),
@@ -620,8 +664,8 @@ def _continuum_rows(frame, flatData, mapImages, flatEdges, profileNotes, config)
         flatEdges,
         orders,
         binArcsec=config["binArcsec"],
-        nChunks=int(config["continuumChunks"]),
-        minChunksPerBin=int(config["continuumMinChunksPerBin"]),
+        nChunks=config["continuumChunks"],
+        minChunksPerBin=config["continuumMinChunksPerBin"],
         objectMaskArcsec=config["continuumObjectMaskArcsec"],
     )
     offsets = fit_continuum_offsets(
@@ -641,11 +685,11 @@ def _continuum_rows(frame, flatData, mapImages, flatEdges, profileNotes, config)
     return profiles, rows
 
 
-def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners):
+def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners, slitName):
     """*the flat edges, slit profiles and offsets of every order, for inputs that passed the checks*
 
     Skylines give the offset of every order that has lines in the skyline table. An order the table has no lines in
-    (the SOXS VIS u and g orders) gets its offset from the sky-continuum edges instead.
+    (the SOXS VIS u and g orders) gets its offset from the sky-continuum edges instead, on the SLIT1.0 only.
     """
     from soxspipe.commonutils.toolkit import get_skylines_dataframe
 
@@ -671,7 +715,12 @@ def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, pa
         config["maxOffsetErrArcsec"],
         profileNotes=profileNotes,
     )
-    continuumProfiles, continuumRows = _continuum_rows(frame, flatData, mapImages, flatEdges, profileNotes, config)
+    continuumOrders = _continuum_orders(log, profileNotes, slitName)
+    continuumProfiles, continuumRows = pd.DataFrame(columns=PROFILE_COLUMNS), []
+    if continuumOrders:
+        continuumProfiles, continuumRows = _continuum_rows(
+            frame, flatData, mapImages, flatEdges, continuumOrders, profileNotes, config
+        )
     if continuumRows:
         byOrder = {row["order"]: row for row in continuumRows}
         rows = [byOrder.get(row["order"], row) for row in offsets.to_dict("records")]
@@ -751,7 +800,10 @@ def measure_slit_illumination(
     problem = _input_problem(frame, masterFlat, mapImages)
     if problem:
         return _not_applied(log, problem, config)
-    flatEdges, profiles, offsets = _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners)
+    slitName = frame.header.get(kw(f"SLIT_{arm.upper()}"))
+    flatEdges, profiles, offsets = _measure_orders(
+        log, frame, masterFlat, mapImages, settings, arm, config, partners, slitName
+    )
     for _, row in offsets.iterrows():
         if row["status"] != STATUS_FITTED:
             log.info(f"slit illumination offset of order {row['order']} is {row['status']}: {row['reason']}")

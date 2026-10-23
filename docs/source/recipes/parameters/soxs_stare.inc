@@ -32,8 +32,8 @@
 | `slit-illumination: profile-bin-arcsec` | slit bin width of the skyline and continuum profiles (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: max-offset-arcsec` | largest order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: max-order-scatter-arcsec` | largest uncertainty on a fitted order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
-| `slit-illumination: continuum-chunks` | number of wavelength chunks that each order with no skylines is split into, to build its sky-continuum slit profile | int | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
-| `slit-illumination: continuum-min-chunks-per-bin` | fewest chunks that a slit bin of the continuum profile needs | int | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: continuum-chunks` | number of wavelength chunks that each order with no skylines is split into, to build its sky-continuum slit profile (whole number, at least 2) | int | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: continuum-min-chunks-per-bin` | fewest chunks that a slit bin of the continuum profile needs (whole number, at least 2) | int | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: continuum-object-mask-arcsec` | bins within this distance of the object are left out of the continuum profile (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: continuum-halves-max-diff-arcsec` | largest difference between the offsets of the blue and red halves of an order that still accepts its continuum offset (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 
