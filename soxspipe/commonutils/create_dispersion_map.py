@@ -988,7 +988,8 @@ class create_dispersion_map:
 
         **Return:**
 
-        - ``whole`` -- a ``WholeSpacingShift``, or ``None`` when too few sets show a pinhole there
+        - ``whole`` -- a ``WholeSpacingShift``, or ``None`` when too few sets have a position to judge or too few
+          show a pinhole there
         """
         endIndex, oppositeIndex, nextIndex = indexes
         predictedA, predictedB = pattern.predictedA, pattern.predictedB
@@ -1212,7 +1213,7 @@ class create_dispersion_map:
         middleIndex = 0.5 * (lines["slit_index"].min() + lines["slit_index"].max())
         orderGeometry = self._order_geometry()
 
-        # FOR EACH ARC LINE: THE PREDICTED PATTERN CENTRE AND PINHOLE SPACING, AND THE SLIT MID-POINT AT THAT ROW
+        # FOR EACH ARC LINE: HOW FAR THE PREDICTED PATTERN CENTRE SITS FROM THE SLIT MID-POINT AT THAT ROW
         slitCentreOffsets = []
         for (_wavelength, order), lineSet in lines.groupby(["wavelength", "order"]):
             orderEdges = orderGeometry.loc[orderGeometry["order"] == order].sort_values(f"{axisB}coord")
