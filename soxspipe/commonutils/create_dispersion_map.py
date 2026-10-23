@@ -34,7 +34,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     # TYPING-ONLY IMPORT. NUMPY IS IMPORTED INSIDE THE FUNCTIONS THAT USE IT AT
@@ -84,15 +84,72 @@ RESIDUAL_QUANTISATION_DECIMALS = 9
 # NUMBER OF PINHOLES IN THE MULTI-PINHOLE MASK
 FULL_PINHOLE_COUNT = 9
 
+# THE OPPOSITE-END SEARCH FOR A WHOLE-SPACING SHIFT (DY-1735).
+# FEWEST ARC-LINE SETS THAT MUST HAVE A POSITION TO LOOK AT. THE 9 REAL ARCS WITH AN END JUMP HAVE 30 TO 34 SETS PER
+# ORDER, SO 10 KEEPS A THREEFOLD MARGIN. NO CHANCE HIT WAS SEEN IN THE 66 SETS WHERE NO PINHOLE IS THERE. AT AN ASSUMED
+# CHANCE RATE OF 3% PER SET, 5 OR MORE HITS IN 10 SETS HAS A PROBABILITY OF ABOUT 5E-6, WHILE 1 HIT IN 2 SETS IS NOT
+# EVIDENCE AT ALL
+PINHOLE_BEYOND_END_MIN_SETS = 10
+
 # A PINHOLE MUST SHOW IN AT LEAST THIS FRACTION OF THE SETS, ONE SPACING BEYOND THE END OF THE PREDICTED PATTERN, FOR
-# THE PATTERN TO COUNT AS ONE WHOLE SPACING OFF THE REAL ONE (DY-1735)
+# THE PATTERN TO COUNT AS ONE WHOLE SPACING OFF THE REAL ONE. MEASURED ON 9 REAL VIS ARCS: 77 TO 100% OF THE SETS ON
+# ALL 20 END GROUPS WHERE A PINHOLE IS REALLY THERE, 0% (0 OF 34) ON THE DY-1618 U ORDER WHERE THE TOP PINHOLE IS
+# ABSENT, AND 0% (0 OF 32) AT THE ONE OTHER END WITH A JUMP (20250910T044053 ORDER 3). NOTHING WAS SEEN BETWEEN 0 AND
+# 77%, SO ANY THRESHOLD IN THAT GAP SEPARATES THEM. 50% IS ITS MIDDLE
 PINHOLE_BEYOND_END_MIN_FRACTION = 0.5
 
 # DETECTION THRESHOLD OF THAT SEARCH (THE FIRST-ITERATION DETECTION SIGMA) AND ITS TOLERANCES AS FRACTIONS OF THE
-# PINHOLE SPACING, ALONG THE SLIT AND ACROSS IT
+# PINHOLE SPACING, ALONG THE SLIT AND ACROSS IT. THE MEASURED HITS LIE WITHIN 0.9 PX ALONG AND 2.3 PX ACROSS
 PINHOLE_PROBE_SIGMA = 5
 PINHOLE_PROBE_TOLERANCE_A = 0.3
 PINHOLE_PROBE_TOLERANCE_B = 0.5
+
+# HOW FAR OUTSIDE THE ORDER'S SLIT EDGES, IN PINHOLE SPACINGS, A PROBE POSITION MAY LIE. A PATTERN ONE SPACING OFF PUTS
+# ITS REAL END PINHOLE 0.6 TO 1.4 SPACINGS OUTSIDE THE EDGES OF THE FLAT (MEASURED), SO THE EDGES THEMSELVES ARE TOO
+# TIGHT. THE NEIGHBOURING ORDER IS ABOUT 30 SPACINGS AWAY
+PINHOLE_PROBE_EDGE_MARGIN = 2.0
+
+# AN END PINHOLE NEEDS TWO INTERIOR PINHOLES AND TWO ENDS TO BE COMPARED WITH THEM
+MIN_SLIT_INDEXES_FOR_END_TEST = 4
+
+# AN END DETECTION THIS FAR FROM THE INTERIOR PINHOLES, IN SPACINGS, IS OFF THE PATTERN. A LOST OR LATCHED END IS ONE
+# SPACING OUT (0.85 TO 1.04 ON THE 9 REAL ARCS), SO HALF A SPACING SEPARATES IT FROM NOISE
+END_OFFSET_TOLERANCE_SPACINGS = 0.5
+
+# AN END DETECTION THIS FAR OUT, MIDWAY BETWEEN ONE SPACING AND TWO, MEANS AN OFFSET OF TWO OR MORE SPACINGS
+TWO_SPACING_JUMP = 1.5
+
+
+class WholeSpacingShift(NamedTuple):
+    """*the whole-pinhole-spacing part of a first-iteration multi-pinhole shift*
+
+    - ``shift`` -- the value to subtract from the predicted positions
+    - ``spacing`` -- the signed pinhole spacing it is a multiple of (0.0 when undecided)
+    - ``fraction`` -- the fraction of sets with a pinhole beyond the opposite end, or ``None`` when the slit edges
+      decided
+    """
+
+    shift: float
+    spacing: float
+    fraction: float | None = None
+
+
+class PinholePattern(NamedTuple):
+    """*the predicted pinhole pattern of one shift group, as the opposite-end search needs it*
+
+    - ``predictedA`` and ``predictedB`` -- predicted positions along and across the slit, one row per set and one column
+      per slit index
+    - ``interiorOffsetA`` and ``interiorOffsetB`` -- the median predicted-minus-measured offsets of the pinholes
+      between the ends
+    - ``spacing`` -- the signed pinhole spacing
+    """
+
+    predictedA: "pd.DataFrame"
+    predictedB: "pd.DataFrame"
+    interiorOffsetA: float
+    interiorOffsetB: float
+    spacing: float
+
 
 FIT_NOT_CONVERGED_MESSAGE = (
     "Could not converge on a good fit to the dispersion solution. "
@@ -390,6 +447,8 @@ class create_dispersion_map:
         self.arcFrame = arcFrame
         self.debug = debug
         self.turnOffMP = turnOffMP
+        # SET WHEN THE PINHOLE FRAME IS PREPARED FOR LINE DETECTION
+        self.pinholeFrameMasked = None
 
     @property
     def runSerially(self) -> bool:  # noqa: N802
@@ -806,9 +865,8 @@ class create_dispersion_map:
 
         A jump at one slit end is a real offset of one pinhole spacing or a missing end pinhole. The image decides the
         whole-spacing part when it can: a real pinhole beyond the opposite end of the predicted pattern means the
-        pattern is one spacing off. Otherwise the slit edges decide (DY-1618). The median over all pinholes measures the
-        sub-spacing remainder, because a lost end pinhole is a minority and makes the two end shifts differ by about one
-        spacing (DY-1735).
+        pattern is one spacing off. Otherwise the slit edges decide (DY-1618). The remainder, the median over all
+        pinholes, measures the sub-spacing part, because a lost end pinhole is a minority (DY-1735).
 
         **Key Arguments:**
 
@@ -822,111 +880,214 @@ class create_dispersion_map:
 
         - ``shift`` -- the value to subtract from the predicted cross-dispersion positions
         """
-        visibleShift = self._pinhole_beyond_end_shift(orderPixelTable, mask)
-        if visibleShift is None:
-            wholeShift, spacing = self._slit_centred_pinhole_shift(orderPixelTable, mask)
+        whole = self._pinhole_beyond_end_shift(orderPixelTable, mask, order_num)
+        if whole is None:
+            whole = self._slit_centred_pinhole_shift(orderPixelTable, mask)
             basis = "from the slit-centred pinhole identification"
         else:
-            wholeShift, spacing, fraction = visibleShift
-            basis = f"from a pinhole visible one spacing beyond the opposite end in {fraction:0.0%} of the sets"
-        wholeSpacings = round(wholeShift / spacing) if spacing else 0
+            basis = f"from a pinhole visible one spacing beyond the opposite end in {whole.fraction:0.0%} of the sets"
+        wholeSpacings = round(whole.shift / whole.spacing) if whole.spacing else 0
         remainder = float(orderPixelTable.loc[mask][f"{self.axisA}_diff"].median())
-        shift = wholeShift + remainder
+        shift = whole.shift + remainder
         self.log.info(
             f"multi-pinhole shift group {order_num}: end shifts {centreABottom:0.2f} (bottom) and "
-            f"{centreATop:0.2f} (top) px; whole-spacing part {wholeSpacings:+d} x {spacing:0.2f} = {wholeShift:0.2f} "
-            f"px {basis}, remainder {remainder:0.2f} px, shift {shift:0.2f} px"
+            f"{centreATop:0.2f} (top) px; whole-spacing part {wholeSpacings:+d} x {whole.spacing:0.2f} = "
+            f"{whole.shift:0.2f} px {basis}, remainder {remainder:0.2f} px, shift {shift:0.2f} px"
         )
         return shift
 
-    def _pinhole_beyond_end_shift(self, orderPixelTable, mask):
+    def _pinhole_beyond_end_shift(self, orderPixelTable, mask, order_num):
         """*return the whole-spacing shift the image shows when a pinhole lies beyond the end of the predicted pattern*
 
-        When an end detection sits one spacing from the other pinholes, either that end pinhole is absent or the whole
-        predicted pattern is one spacing off, so the real pattern has a pinhole beyond the opposite end. This looks for
-        that pinhole one spacing past the opposite end, where the interior pinholes say it would be, in the image.
+        When an end detection sits one spacing from the interior pinholes, either that end pinhole is absent or the
+        whole predicted pattern is one spacing off, so the real pattern has a pinhole beyond the opposite end. This
+        looks for that pinhole one spacing past the opposite end in the image. An end two or more spacings out is
+        reported and left alone. After a shift, the end that had latched is checked for a pinhole at its new position.
 
         **Key Arguments:**
 
         - ``orderPixelTable`` -- the line table, with predicted and measured positions
         - ``mask`` -- the rows of the shift group with a detection
+        - ``order_num`` -- the shift group, for the log lines
 
         **Return:**
 
-        - ``(shift, spacing, fraction)`` -- the whole-spacing shift to subtract from the predicted positions, the
-          signed pinhole spacing and the fraction of sets with a pinhole there, or ``None`` when there is no image,
-          no end detection is one spacing off, or the pinhole is not there
+        - ``whole`` -- a ``WholeSpacingShift``, or ``None`` when there is no image, no end detection is one spacing off,
+          or the pinhole is not there
         """
-        if getattr(self, "pinholeFrameMasked", None) is None:
+        lines = orderPixelTable.loc[mask]
+        slitIndexes = sorted(lines["slit_index"].unique())
+        if self.pinholeFrameMasked is None or len(slitIndexes) < MIN_SLIT_INDEXES_FOR_END_TEST:
+            return None
+        spacing = self._median_pinhole_spacing(lines)
+        if not spacing:
             return None
 
         axisA, axisB = self.axisA, self.axisB
-        lines = orderPixelTable.loc[mask]
-        slitIndexes = sorted(lines["slit_index"].unique())
         firstIndex, lastIndex = slitIndexes[0], slitIndexes[-1]
-        if len(slitIndexes) < 4:
-            return None
+        # PLAIN MEDIANS: A LATCHED END IS THE WHOLE END OF EVERY SET, NOT AN OUTLIER SET. A 3-SIGMA CLIPPED MEDIAN MOVED
+        # THE END JUMPS BY AT MOST 0.08 SPACINGS AND THE INTERIOR OFFSET BY AT MOST 0.13 PX ON 9 REAL ARCS
+        isInterior = lines["slit_index"].between(firstIndex + 1, lastIndex - 1)
+        predictedA, predictedB = self._predicted_pinhole_positions(lines)
+        pattern = PinholePattern(
+            predictedA,
+            predictedB,
+            float(lines.loc[isInterior][f"{axisA}_diff"].median()),
+            float(lines.loc[isInterior][f"{axisB}_diff"].median()),
+            spacing,
+        )
+        endOffsetsA = lines.groupby("slit_index")[f"{axisA}_diff"].median()
 
-        # THE REMAINDER OF THE SHIFT, FROM THE PINHOLES BETWEEN THE ENDS, AND THE PREDICTED POSITIONS OF EACH SET
-        isInterior = (lines["slit_index"] > firstIndex) & (lines["slit_index"] < lastIndex)
-        interiorA = lines.loc[isInterior][f"{axisA}_diff"].median()
-        interiorB = lines.loc[isInterior][f"{axisB}_diff"].median()
-        endDiffsA = lines.groupby("slit_index")[f"{axisA}_diff"].median()
+        for endIndex, oppositeIndex, nextIndex in (
+            (firstIndex, lastIndex, lastIndex - 1),
+            (lastIndex, firstIndex, firstIndex + 1),
+        ):
+            jump = abs(endOffsetsA[endIndex] - pattern.interiorOffsetA) / abs(pattern.spacing)
+            if jump <= END_OFFSET_TOLERANCE_SPACINGS:
+                continue
+            if jump >= TWO_SPACING_JUMP:
+                self.log.warning(
+                    f"multi-pinhole shift group {order_num}: the end pinhole at slit index {endIndex} is {jump:0.1f} "
+                    "spacings from the interior pinholes; the order may be off by two or more spacings, which the "
+                    "first-iteration shift does not correct"
+                )
+                continue
+            whole = self._whole_shift_from_pinhole_beyond(pattern, (endIndex, oppositeIndex, nextIndex), order_num)
+            if whole is not None:
+                return whole
+        return None
+
+    def _whole_shift_from_pinhole_beyond(self, pattern, indexes, order_num):
+        """*return the whole-spacing shift when a pinhole shows one spacing beyond the end opposite a latched one*
+
+        **Key Arguments:**
+
+        - ``pattern`` -- the predicted pattern of the shift group
+        - ``indexes`` -- the slit indexes of the end that latched, the opposite end and the pinhole next to it
+        - ``order_num`` -- the shift group, for the log line
+
+        **Return:**
+
+        - ``whole`` -- a ``WholeSpacingShift``, or ``None`` when too few sets show a pinhole there
+        """
+        endIndex, oppositeIndex, nextIndex = indexes
+        predictedA, predictedB = pattern.predictedA, pattern.predictedB
+        # SETS WITHOUT A DETECTION AT EITHER PINHOLE HAVE NO POSITION TO LOOK AT
+        beyondA = 2 * predictedA[oppositeIndex] - predictedA[nextIndex] - pattern.interiorOffsetA
+        beyondB = 2 * predictedB[oppositeIndex] - predictedB[nextIndex] - pattern.interiorOffsetB
+        fraction = self._fraction_of_sets_with_a_pinhole_at(beyondA, beyondB, abs(pattern.spacing))
+        if fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
+            return None
+        shift = float((predictedA[nextIndex] - predictedA[oppositeIndex]).median())
+        self._warn_if_shifted_end_has_no_pinhole(pattern, endIndex, shift, order_num)
+        return WholeSpacingShift(shift, pattern.spacing, fraction)
+
+    def _predicted_pinhole_positions(self, lines):
+        """*return the predicted positions of each arc-line set, one column per slit index*
+
+        **Key Arguments:**
+
+        - ``lines`` -- the line table rows of one shift group
+
+        **Return:**
+
+        - ``(predictedA, predictedB)`` -- predicted positions along and across the slit, one row per
+          (wavelength, order) set and one column per slit index
+        """
+        axisA, axisB = self.axisA, self.axisB
         predicted = lines.pivot_table(
             index=["wavelength", "order"],
             columns="slit_index",
             values=[f"detector_{axisA}_shifted", f"detector_{axisB}_shifted"],
             aggfunc="median",
         )
-        predictedA = predicted[f"detector_{axisA}_shifted"]
-        predictedB = predicted[f"detector_{axisB}_shifted"]
-        spacing = float(((predictedA[lastIndex] - predictedA[firstIndex]) / (lastIndex - firstIndex)).median())
+        return predicted[f"detector_{axisA}_shifted"], predicted[f"detector_{axisB}_shifted"]
 
-        for endIndex, oppositeIndex, nextIndex in (
-            (firstIndex, lastIndex, lastIndex - 1),
-            (lastIndex, firstIndex, firstIndex + 1),
-        ):
-            if abs(endDiffsA[endIndex] - interiorA) <= 0.5 * abs(spacing):
-                continue
-            # SETS WITHOUT A DETECTION AT EITHER PINHOLE HAVE NO POSITION TO LOOK AT
-            beyondA = 2 * predictedA[oppositeIndex] - predictedA[nextIndex] - interiorA
-            beyondB = 2 * predictedB[oppositeIndex] - predictedB[nextIndex] - interiorB
-            hasPosition = beyondA.notna() & beyondB.notna()
-            if not hasPosition.any():
-                continue
-            beyondA, beyondB = beyondA[hasPosition], beyondB[hasPosition]
-            fraction = self._fraction_of_sets_with_a_pinhole_at(beyondA, beyondB, abs(spacing))
-            if fraction >= PINHOLE_BEYOND_END_MIN_FRACTION:
-                shift = float((predictedA[nextIndex] - predictedA[oppositeIndex]).median())
-                return shift, spacing, fraction
-        return None
-
-    def _fraction_of_sets_with_a_pinhole_at(self, positionsA, positionsB, spacing):
-        """*return the fraction of the positions with a detected source in the pinhole frame*
+    def _median_pinhole_spacing(self, lines):
+        """*return the signed pinhole spacing: the median over sets of a straight-line fit of position on slit index*
 
         **Key Arguments:**
 
-        - ``positionsA`` -- the positions to look at along the slit, one per arc-line set
+        - ``lines`` -- the line table rows of one shift group
+
+        **Return:**
+
+        - ``spacing`` -- the median spacing, or 0.0 when no set gives one
+        """
+        import numpy as np
+
+        spacings = [
+            _pinhole_pattern_fit(lineSet, self.axisA)[0] for _, lineSet in lines.groupby(["wavelength", "order"])
+        ]
+        spacings = [spacing for spacing in spacings if np.isfinite(spacing)]
+        return float(np.median(spacings)) if spacings else 0.0
+
+    def _warn_if_shifted_end_has_no_pinhole(self, pattern, endIndex, shift, order_num):
+        """*warn when, after the whole-spacing shift, the end that had latched still finds no pinhole*
+
+        A pattern two or more spacings out can pass the one-spacing search yet still be off at the other end.
+
+        **Key Arguments:**
+
+        - ``pattern`` -- the predicted pattern of the shift group
+        - ``endIndex`` -- the slit index whose detection had latched onto its neighbour
+        - ``shift`` -- the whole-spacing shift just chosen
+        - ``order_num`` -- the shift group, for the log line
+        """
+        newA = pattern.predictedA[endIndex] - shift - pattern.interiorOffsetA
+        newB = pattern.predictedB[endIndex] - pattern.interiorOffsetB
+        fraction = self._fraction_of_sets_with_a_pinhole_at(newA, newB, abs(pattern.spacing))
+        if fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
+            self.log.warning(
+                f"multi-pinhole shift group {order_num}: after the whole-spacing shift only {fraction:0.0%} of the "
+                f"sets show a pinhole at slit index {endIndex}; the order may be off by two or more spacings"
+            )
+
+    def _fraction_of_sets_with_a_pinhole_at(self, positionsA, positionsB, spacing):
+        """*return the fraction of the sets with a detected source at the given position inside the order*
+
+        A source counts only within a tolerance of the position in both axes, with the position inside the order's slit
+        edges plus a margin, and away from the border of the detection window. Neighbouring-order light lies about 30
+        spacings away, far outside both the tolerance and the order. A cosmic ray would have to fall on the same
+        position in half of 10 or more sets on different rows to pass the fraction test.
+
+        **Key Arguments:**
+
+        - ``positionsA`` -- the positions to look at along the slit, one per arc-line set, indexed by
+          (wavelength, order)
         - ``positionsB`` -- the positions to look at across the slit, one per arc-line set
         - ``spacing`` -- the pinhole spacing, which sets how far a source may lie from a position and still count
 
         **Return:**
 
-        - ``fraction`` -- the fraction of the positions with a source within the tolerance
+        - ``fraction`` -- the fraction of the sets with a source, or 0.0 when fewer than the minimum number of sets
+          have a position
         """
         import pandas as pd
 
         axisA, axisB = self.axisA, self.axisB
+        hasPosition = positionsA.notna() & positionsB.notna()
+        positionsA, positionsB = positionsA[hasPosition], positionsB[hasPosition]
+        if len(positionsA.index) < PINHOLE_BEYOND_END_MIN_SETS:
+            return 0.0
+
+        orders = positionsA.index.get_level_values("order").to_numpy()
+        isInside = self._is_inside_order(positionsA.to_numpy(), positionsB.to_numpy(), orders, spacing)
         probes = pd.DataFrame(
-            {f"detector_{axisA}_shifted": positionsA.to_numpy(), f"detector_{axisB}_shifted": positionsB.to_numpy()}
+            {
+                f"detector_{axisA}_shifted": positionsA.to_numpy()[isInside],
+                f"detector_{axisB}_shifted": positionsB.to_numpy()[isInside],
+            }
         )
+        if probes.empty:
+            return 0.0
         probes = self.detect_pinhole_arc_lines(
             orderPixelTable=probes,
             iraf=False,
             sigmaLimit=PINHOLE_PROBE_SIGMA,
             iteration=1,
             brightest=False,
-            exclude_border=False,
+            exclude_border=True,
             returnAll=True,
         )
         hits = 0
@@ -938,7 +1099,52 @@ class create_dispersion_map:
                 and abs(b - getattr(probe, f"detector_{axisB}_shifted")) <= PINHOLE_PROBE_TOLERANCE_B * spacing
                 for a, b in zip(foundA, foundB, strict=True)
             )
-        return hits / len(probes.index) if len(probes.index) else 0.0
+        return hits / len(positionsA.index)
+
+    def _is_inside_order(self, positionsA, positionsB, orders, spacing):
+        """*return which positions lie within the slit edges of their order, plus the probe margin*
+
+        **Key Arguments:**
+
+        - ``positionsA`` -- the positions along the slit
+        - ``positionsB`` -- the positions across the slit
+        - ``orders`` -- the order of each position
+        - ``spacing`` -- the absolute pinhole spacing, which sets the margin
+
+        **Return:**
+
+        - ``isInside`` -- a boolean array, False for orders missing from the order table
+        """
+        import numpy as np
+
+        axisA, axisB = self.axisA, self.axisB
+        orderGeometry = self._order_geometry()
+        isInside = np.zeros(len(positionsA), dtype=bool)
+        margin = PINHOLE_PROBE_EDGE_MARGIN * spacing
+        for order in np.unique(orders):
+            edges = orderGeometry.loc[orderGeometry["order"] == order].sort_values(f"{axisB}coord")
+            if edges.empty:
+                continue
+            isOrder = orders == order
+            edgeOne = np.interp(positionsB[isOrder], edges[f"{axisB}coord"], edges[f"{axisA}coord_edgelow"])
+            edgeTwo = np.interp(positionsB[isOrder], edges[f"{axisB}coord"], edges[f"{axisA}coord_edgeup"])
+            isInside[isOrder] = (positionsA[isOrder] >= np.minimum(edgeOne, edgeTwo) - margin) & (
+                positionsA[isOrder] <= np.maximum(edgeOne, edgeTwo) + margin
+            )
+        return isInside
+
+    def _order_geometry(self):
+        """*return the order table's edge geometry with the slit mid-point of each row added*
+
+        **Return:**
+
+        - ``orderGeometry`` -- one row per order and tabulated row, with the edges and ``slitMid``
+        """
+        binx, biny = self._get_binning_params()
+        _, orderGeometry, _ = unpack_order_table(log=self.log, orderTablePath=self.orderTable, binx=binx, biny=biny)
+        return orderGeometry.assign(
+            slitMid=0.5 * (orderGeometry[f"{self.axisA}coord_edgeup"] + orderGeometry[f"{self.axisA}coord_edgelow"])
+        )
 
     def _pinhole_count_passes_qc(self):
         """*return True when the minimum pinhole count lies inside the PINHOLE COUNT MIN QC range*
@@ -965,30 +1171,26 @@ class create_dispersion_map:
 
         **Return:**
 
-        - ``shift`` -- the whole-spacing shift to subtract from the predicted cross-dispersion positions (0.0 when
-          undecided)
-        - ``spacing`` -- the median predicted pinhole spacing (0.0 when undecided)
+        - ``whole`` -- a ``WholeSpacingShift`` with the whole-spacing shift to subtract from the predicted
+          cross-dispersion positions and the median pinhole spacing (both 0.0 when undecided)
         """
         import numpy as np
 
         axisA, axisB = self.axisA, self.axisB
         lines = orderPixelTable.loc[mask]
         middleIndex = 0.5 * (lines["slit_index"].min() + lines["slit_index"].max())
-
-        binx, biny = self._get_binning_params()
-        _, orderGeometry, _ = unpack_order_table(log=self.log, orderTablePath=self.orderTable, binx=binx, biny=biny)
-        orderGeometry = orderGeometry.assign(
-            slitMid=0.5 * (orderGeometry[f"{axisA}coord_edgeup"] + orderGeometry[f"{axisA}coord_edgelow"])
-        )
+        orderGeometry = self._order_geometry()
 
         # FOR EACH ARC LINE: THE PREDICTED PATTERN CENTRE AND PINHOLE SPACING, AND THE SLIT MID-POINT AT THAT ROW
         spacings, slitCentreOffsets = [], []
         for (_wavelength, order), lineSet in lines.groupby(["wavelength", "order"]):
             orderEdges = orderGeometry.loc[orderGeometry["order"] == order].sort_values(f"{axisB}coord")
-            lineSet = lineSet.loc[np.isfinite(lineSet[f"detector_{axisA}_shifted"])]
-            if lineSet["slit_index"].nunique() < 2 or orderEdges.empty:
+            if orderEdges.empty:
                 continue
-            spacing, intercept = np.polyfit(lineSet["slit_index"], lineSet[f"detector_{axisA}_shifted"], 1)
+            spacing, intercept = _pinhole_pattern_fit(lineSet, axisA)
+            if not np.isfinite(spacing):
+                continue
+            lineSet = lineSet.loc[np.isfinite(lineSet[f"detector_{axisA}_shifted"])]
             # ROWS BEYOND THE ORDER TABLE'S RANGE TAKE THE SLIT MID-POINT OF THE NEAREST TABULATED ROW
             slitMid = np.interp(
                 lineSet[f"detector_{axisB}_shifted"].mean(), orderEdges[f"{axisB}coord"], orderEdges["slitMid"]
@@ -1004,12 +1206,12 @@ class create_dispersion_map:
                 "No slit edges match the multi-pinhole lines; the whole-spacing part of the first-iteration pinhole "
                 "shift is skipped."
             )
-            return 0.0, 0.0
+            return WholeSpacingShift(0.0, 0.0)
 
         spacing = float(np.median(spacings))
         offset = float(np.median(slitCentreOffsets))
         candidates = [0.0, spacing, -spacing]
-        return min(candidates, key=lambda candidate: abs(offset - candidate)), spacing
+        return WholeSpacingShift(min(candidates, key=lambda candidate: abs(offset - candidate)), spacing)
 
     def _raise_if_no_lines_survived(self, orderPixelTable, detectedLines):
         """*raise a clear error when every detected line was dropped before the polynomial fit*
@@ -4795,6 +4997,30 @@ class create_dispersion_map:
 
     # use the tab-trigger below for new method
     # xt-class-method
+
+
+def _pinhole_pattern_fit(lineSet, axisA):
+    """*return the pinhole spacing and intercept of one arc-line set: a straight-line fit of position on slit index*
+
+    This is the one definition of "pinhole spacing" used by both whole-spacing decisions (DY-1735).
+
+    **Key Arguments:**
+
+    - ``lineSet`` -- the line table rows of one (wavelength, order) set
+    - ``axisA`` -- the axis along the slit
+
+    **Return:**
+
+    - ``(spacing, intercept)`` -- the fitted slope and intercept, both NaN when fewer than two slit indexes have a
+      finite predicted position
+    """
+    import numpy as np
+
+    finite = lineSet.loc[np.isfinite(lineSet[f"detector_{axisA}_shifted"])]
+    if finite["slit_index"].nunique() < 2:
+        return float("nan"), float("nan")
+    spacing, intercept = np.polyfit(finite["slit_index"], finite[f"detector_{axisA}_shifted"], 1)
+    return float(spacing), float(intercept)
 
 
 def measure_line_position(
