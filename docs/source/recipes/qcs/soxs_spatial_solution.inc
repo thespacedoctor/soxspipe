@@ -18,11 +18,11 @@
 | `Y RES MAX`              | Maximum residual in fitting of pinholes along y-axis (global)  | pixels    | - |
 | `Y RES MIN`              | Minimum residual in fitting of pinholes along y-axis (global)  | pixels    | - |
 | `Y RES MEDIAN` | Median of absolute residuals in fitting of pinholes along y-axis (global) | pixels | - |
-| `Y RES SD`              | Std-dev of residuals in fitting of pinholes along y-axis (global)  | pixels    | VIS: [0,0.48], NIR: [0,0.12] |
+| `Y RES SD`              | Std-dev of residuals in fitting of pinholes along y-axis (global)  | pixels    | VIS: [0,0.48], NIR: [0,0.2] |
 | `XY RES MAX`              | Maximum residual in fitting of pinholes (global)  | pixels    | - |
 | `XY RES MIN`              | Minimum residual in fitting of pinholes (global)  | pixels    | - |
 | `XY RES MEDIAN` | Median residual in fitting of pinholes (global) | pixels | VIS: [0,0.7], NIR: [0,0.3] |
-| `XY RES SD`              | Std-dev of residuals in fitting of pinholes (global)  | pixels    | VIS: [0,0.5], NIR: [0,0.4] |
+| `XY RES SD`              | Std-dev of residuals in fitting of pinholes (global)  | pixels    | VIS: [0,0.5], NIR: [0,0.5] |
 | `X DIFF MEDIAN` | Median difference between observed and predicted pinhole detector locations along the x-axis (global)  | pixels    | - |
 | `X DIFF SD` | Standard deviation in difference between observed and predicted pinhole detector locations along the x-axis (global) | pixels | - |
 | `Y DIFF MEDIAN` | SMedian difference between observed and predicted pinhole detector locations along the y-axis (global)  | pixels    | - |
