@@ -117,12 +117,14 @@ def synthetic_illumination_scene(
     lineAmplitude: float = 600.0,
     seed: int = 3,
     hasNoise: bool = True,
+    slitName: str | None = "SLIT1.0",
 ) -> illumination_scene:
     """Return a detrended frame whose lit slit is shifted by ``offsets[order]`` arcsec from the master flat.
 
     The raw counts are (sky lines + continuum + optional object) x the shifted top-hat x a blaze. The master flat
     is the unshifted top-hat x the same blaze. The frame is raw / flat, with StdDev uncertainty, and is masked
-    where the flat is below half its slit-profile maximum, as the master flat's own quality mask does.
+    where the flat is below half its slit-profile maximum, as the master flat's own quality mask does. The frame
+    header names the slit (``slitName``, or no slit keyword if *None*) as the VIS slit keyword does.
     """
     shifts = dict(offsets or {})
     lower, upper, flatWidth = flatEdges
@@ -153,6 +155,7 @@ def synthetic_illumination_scene(
         unit=u.electron,
         mask=isMasked,
         uncertainty=StdDevUncertainty(errs, unit=u.electron),
+        meta={} if slitName is None else {"ESO INS VISE NAME": slitName},
     )
     masterFlat = CCDData(np.nan_to_num(flat), unit=u.dimensionless_unscaled, mask=~np.isfinite(slit))
     mapPath = write_map_images(workspacePath / "scene" / "twoDMap.fits", wavelength, slit, orderMap)

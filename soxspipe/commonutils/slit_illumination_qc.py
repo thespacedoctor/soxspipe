@@ -1,14 +1,15 @@
 """QC for the slit-illumination measurement: the per-order QC plot and the rotator-angle spread.
 
-The plot shows, for every order, the skyline slit profile the offset was fitted to against the master flat's lit slit
-range, so a poor fit or a failed order can be seen at a glance.
+The plot shows, for every order, the slit profile the offset was fitted to (from skylines, or from the sky continuum
+for an order with no skylines) against the master flat's lit slit range, so a poor fit or a failed order can be seen at
+a glance.
 """
 
 import math
 
 import numpy as np
 
-from soxspipe.commonutils.slit_illumination import top_hat
+from soxspipe.commonutils.slit_illumination import METHOD_SKYLINE, top_hat
 from soxspipe.commonutils.slit_illumination_mask import kept_slit_range, usable_flat_edges, usable_offsets
 
 __all__ = ["plot_slit_illumination_qc", "read_rotator_angle", "rotator_angle_spread"]
@@ -102,8 +103,14 @@ def _slit_grid(profile, flatEdge):
     return np.linspace(low, high, CURVE_SAMPLES)
 
 
-def _draw_profile(axis, profile):
-    """*draw the measured skyline profile with its errors; return the level the top-hats are scaled to*"""
+def _order_method(offsetRow):
+    """*the method that measured an order's profile (``skyline`` or ``continuum``), ``skyline`` if none is recorded*"""
+    method = None if offsetRow is None else offsetRow.get("method")
+    return method if isinstance(method, str) else METHOD_SKYLINE
+
+
+def _draw_profile(axis, profile, method):
+    """*draw the measured slit profile with its errors; return the level the top-hats are scaled to*"""
     if not len(profile):
         return 1.0
     axis.errorbar(
@@ -114,7 +121,7 @@ def _draw_profile(axis, profile):
         ms=3,
         color="black",
         lw=0.5,
-        label="skyline profile",
+        label=f"{method} profile",
     )
     values = profile["profile"].to_numpy(dtype=float)
     level = np.nanpercentile(values, PROFILE_LEVEL_PERCENTILE) if np.isfinite(values).any() else 1.0
@@ -146,6 +153,8 @@ def _panel_title(order, offsetRow):
     if offsetRow is None:
         return f"order {order}: no offset measured"
     title = f"order {order}: {offsetRow['status']}"
+    if isinstance(offsetRow.get("method"), str):
+        title = f"{title} ({offsetRow['method']})"
     return f"{title} ({offsetRow['reason']})" if offsetRow["reason"] else title
 
 
@@ -156,7 +165,7 @@ def _draw_order(axis, order, result, usableOffsets, flatByOrder, flatWidths):
     offsetRow = offsetRows.iloc[0] if len(offsetRows) else None
     flatEdge = flatByOrder.get(order)
     grid = _slit_grid(profile, flatEdge)
-    level = _draw_profile(axis, profile)
+    level = _draw_profile(axis, profile, _order_method(offsetRow))
     _draw_hats(
         axis, grid, level, flatEdge, flatWidths.get(order, 0.15), usableOffsets.get(order), result.overlapMarginArcsec
     )
@@ -168,11 +177,11 @@ def _draw_order(axis, order, result, usableOffsets, flatByOrder, flatWidths):
 
 
 def plot_slit_illumination_qc(result, title, filePath):
-    """*plot, for every order, the skyline slit profile against the master flat's lit range and the fitted offset*
+    """*plot, for every order, the slit profile against the master flat's lit range and the fitted offset*
 
-    Each panel shows the measured skyline profile with its errors, the flat's top-hat, the top-hat shifted by the
-    order's offset (when the offset is usable), and the slit range kept by the overlap mask. The panel title gives the
-    order's status and, for a failed or borrowed order, the reason.
+    Each panel shows the measured skyline or continuum profile with its errors, the flat's top-hat, the top-hat shifted
+    by the order's offset (when the offset is usable), and the slit range kept by the overlap mask. The panel title
+    gives the order's status, the method that measured it and, for a failed or borrowed order, the reason.
 
     **Key Arguments:**
 

@@ -29,9 +29,13 @@
 | `background_subtraction: gaussian_blur_sigma` | Standard deviation of Gaussian kernel used to smooth background image (if `subtract_background` == True)  | int  | settings file                 | [`subtract_background`](../utils/subtract_background.md) |
 | `slit-illumination: measure-offset` | measure the along-slit offset of the sky image from the master flat for each order, and leave the slit ends that are not lit in both out of the sky model. `True` for SOXS VIS and NIR, `False` for X-Shooter. If the `slit-illumination` block is missing, the offset is not measured | bool | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: overlap-margin-arcsec` | how far inside the range lit in both the sky image and the master flat the mask edges sit (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
-| `slit-illumination: profile-bin-arcsec` | slit bin width of the skyline profiles (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: profile-bin-arcsec` | slit bin width of the skyline and continuum profiles (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: max-offset-arcsec` | largest order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: max-order-scatter-arcsec` | largest uncertainty on a fitted order offset accepted (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: continuum-chunks` | number of wavelength chunks that each order with no skylines is split into, to build its sky-continuum slit profile (whole number, at least 2) | int | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: continuum-min-chunks-per-bin` | fewest chunks that a slit bin of the continuum profile needs (whole number, at least 2) | int | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: continuum-object-mask-arcsec` | bins within this distance of the object are left out of the continuum profile (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `slit-illumination: continuum-halves-max-diff-arcsec` | largest difference between the offsets of the blue and red halves of an order that still accepts its continuum offset (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 
 
 :::
