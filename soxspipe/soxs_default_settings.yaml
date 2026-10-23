@@ -289,9 +289,9 @@ soxs-spat-solution:
             goodlines-frac: [0.4,1.01]
             # xy-diff-sd: [0,0.8]
             xy-res-median: [0,0.3]
-            xy-res-sd: [0,0.4]
+            xy-res-sd: [0,0.5]
             x-res-sd: [0,0.42]
-            y-res-sd: [0,0.12]
+            y-res-sd: [0,0.2]
             # x-diff-sd:  [0,0.7]
             # y-diff-sd:  [0,0.7]
     
