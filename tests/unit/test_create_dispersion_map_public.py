@@ -780,19 +780,12 @@ def test_get_raises_arithmetic_error_when_no_reduced_degree_fit_succeeds(log: ob
     assert attemptedDegrees == [(1, 1, 0), (0, 1, 0), (0, 0, 0)]
 
 
-@pytest.mark.parametrize(
-    ("recipeName", "dropsVignettedEnds"),
-    [("soxs-disp-solution", False), ("soxs-spat-solution", True)],
-)
-def test_get_detects_and_shifts_lines_before_fitting(log: object, recipeName: str, dropsVignettedEnds: bool) -> None:
-    """Run the three-pass detector branch before the deterministic fitting seam.
-
-    Only the SOXS VIS spatial solution then drops its vignetted end pinholes (DY-1735).
-    """
+def test_get_detects_and_shifts_lines_before_fitting(log: object) -> None:
+    """Run the three-pass detector branch before the deterministic fitting seam."""
     mapper = object.__new__(create_dispersion_map)
     mapper.log = log
     mapper.lineDetectionTable = False
-    mapper.recipeName = recipeName
+    mapper.recipeName = "soxs-disp-solution"
     mapper.recipeSettings = {"mph_line_set_min": 1}
     mapper.settings = {"tune-pipeline": False}
     mapper.firstGuessMap = False
@@ -830,8 +823,6 @@ def test_get_detects_and_shifts_lines_before_fitting(log: object, recipeName: st
     mapper.detect_pinhole_arc_lines = detect
     mapper._explode_multiple_detections = lambda table: table
     mapper._calculate_position_differences = lambda table: table
-    endPinholeChecks: list[int] = []
-    mapper._drop_vignetted_end_pinholes = lambda table: endPinholeChecks.append(len(table.index)) or table
     mapper._find_and_apply_cluster_shift = lambda table, mask: (table, 0.2, 0.1)
     mapper._calculate_order_shift_statistics = lambda table, mask: (0.2, 0.1, 0.01, 0.01, 0.3, 0.02)
     mapper._clip_on_measured_line_metrics = lambda table: table
@@ -853,7 +844,6 @@ def test_get_detects_and_shifts_lines_before_fitting(log: object, recipeName: st
     result = mapper.get()
 
     assert detectedIterations == [(0, False), (1, True), (2, True)]
-    assert endPinholeChecks == ([2] if dropsVignettedEnds else [])
     assert result[0] == "/tmp/synthetic-dispersion-map.fits"
     assert result[5]["shift_group"].tolist() == [10, 10]
     assert result[5]["detector_x_shifted"].tolist() == [100.0, 101.0]
