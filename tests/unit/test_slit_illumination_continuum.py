@@ -330,7 +330,7 @@ def test_a_continuum_offset_is_never_borrowed_by_a_partner_order():
     result = slit_illumination._borrow_from_partners(rows, {12: 11})
 
     assert result[1]["status"] == "failed"
-    assert result[1]["borrowedFrom"] != 11
+    assert pd.isna(result[1]["borrowedFrom"])
 
 
 def test_a_skyline_offset_is_still_borrowed_by_a_partner_order():

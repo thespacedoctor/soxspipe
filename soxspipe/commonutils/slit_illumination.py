@@ -767,8 +767,10 @@ def measure_slit_illumination(
     - ``binx`` -- binning in the x-axis
     - ``biny`` -- binning in the y-axis
     - ``illuminationSettings`` -- the ``slit-illumination`` settings block, with the keys ``profile-bin-arcsec``,
-      ``max-offset-arcsec``, ``max-order-scatter-arcsec`` (the largest accepted uncertainty on an offset) and
-      ``overlap-margin-arcsec``. A missing key means the module constant. Default *None*
+      ``max-offset-arcsec``, ``max-order-scatter-arcsec`` (the largest accepted uncertainty on an offset),
+      ``overlap-margin-arcsec``, ``continuum-chunks``, ``continuum-min-chunks-per-bin``,
+      ``continuum-object-mask-arcsec`` and ``continuum-halves-max-diff-arcsec``. A missing key means the module
+      constant. Default *None*
     - ``partners`` -- optional ``{order: partnerOrder}`` from which a failed order may borrow an offset. Default *None*
 
     **Return:**
