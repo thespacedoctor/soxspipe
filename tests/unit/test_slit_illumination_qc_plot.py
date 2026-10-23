@@ -147,6 +147,50 @@ def test_handles_an_order_with_profile_rows_but_no_offset_row_and_no_flat_edges(
     assert filePath.stat().st_size > 1000
 
 
+def _panel_texts(tmp_path, monkeypatch, result):
+    """The title and legend labels of every panel drawn for ``result``."""
+    import matplotlib.pyplot as plt
+
+    figures = []
+    realSubplots = plt.subplots
+
+    def recording_subplots(*args, **kwargs):
+        fig, axes = realSubplots(*args, **kwargs)
+        figures.append(axes)
+        return fig, axes
+
+    monkeypatch.setattr(plt, "subplots", recording_subplots)
+    plot_slit_illumination_qc(result, "title", str(tmp_path / "qc.pdf"))
+    [axes] = figures
+    return [(axis.get_title(), [text.get_text() for text in axis.get_legend().get_texts()]) for axis in axes.ravel()]
+
+
+def test_each_panel_names_the_method_that_measured_its_order(tmp_path, monkeypatch):
+    skylineRow = {**_offset_row(11, 0.8, STATUS_FITTED), "method": "skyline"}
+    continuumRow = {**_offset_row(12, 0.5, STATUS_FITTED), "method": "continuum"}
+    result = _result(
+        [skylineRow, continuumRow],
+        [_edge_row(11), _edge_row(12)],
+        pd.concat([_profile_rows(11, 0.8), _profile_rows(12, 0.5)], ignore_index=True),
+    )
+
+    [(skylineTitle, skylineLabels), (continuumTitle, continuumLabels)] = _panel_texts(tmp_path, monkeypatch, result)
+
+    assert skylineTitle == "order 11: fitted (skyline)"
+    assert "skyline profile" in skylineLabels
+    assert continuumTitle == "order 12: fitted (continuum)"
+    assert "continuum profile" in continuumLabels
+
+
+def test_a_panel_without_a_recorded_method_keeps_its_plain_title(tmp_path, monkeypatch):
+    result = _result([_offset_row(11, 0.8, STATUS_FITTED)], [_edge_row(11)], _profile_rows(11, 0.8))
+
+    [(title, labels)] = _panel_texts(tmp_path, monkeypatch, result)
+
+    assert title == "order 11: fitted"
+    assert "skyline profile" in labels
+
+
 def test_hides_the_unused_panels_of_the_last_row(tmp_path, monkeypatch):
     import matplotlib.pyplot as plt
 

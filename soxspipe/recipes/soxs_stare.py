@@ -994,8 +994,9 @@ class soxs_stare(base_recipe):
             return None
         binx, biny = self._read_frame_binning(combined_object)
         self._check_rotator_angles(combined_object, allObjectFrames)
-        # PARTNERS ARE DELIBERATELY NOT PASSED. VIS ORDERS 2 AND 3 CAN NEVER BE MEASURED (NO SKYLINES BELOW 557.7 NM)
-        # AND THE R AND I ORDERS MOVE WITH THE OPPOSITE SIGN, SO A BORROWED OFFSET WOULD BE WRONG
+        # PARTNERS ARE DELIBERATELY NOT PASSED. VIS ORDERS 2 AND 3 HAVE NO SKYLINES BELOW 557.7 NM, SO THEY ARE MEASURED
+        # FROM THE SKY-CONTINUUM EDGES (DY-1516) AND FALL BACK UNMASKED IF THAT FAILS. THE R AND I ORDERS MOVE WITH THE
+        # OPPOSITE SIGN, SO A BORROWED OFFSET WOULD BE WRONG
         result = measure_slit_illumination(
             log=self.log,
             frame=combined_object,

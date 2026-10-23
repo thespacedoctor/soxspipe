@@ -345,6 +345,14 @@ soxs-stare:
             max-offset-arcsec: 3.0
             # LARGEST UNCERTAINTY ON A FITTED ORDER OFFSET ACCEPTED (ARCSEC)
             max-order-scatter-arcsec: 0.3
+            # WAVELENGTH CHUNKS EACH ORDER IS SPLIT INTO TO BUILD THE SKY-CONTINUUM SLIT PROFILE OF AN ORDER THAT HAS NO SKYLINES (SOXS VIS U AND G)
+            continuum-chunks: 20
+            # FEWEST CHUNKS A SLIT BIN OF THE CONTINUUM PROFILE NEEDS
+            continuum-min-chunks-per-bin: 5
+            # BINS WITHIN THIS DISTANCE OF THE OBJECT ARE LEFT OUT OF THE CONTINUUM PROFILE (ARCSEC)
+            continuum-object-mask-arcsec: 2.5
+            # LARGEST DIFFERENCE BETWEEN THE OFFSETS OF THE BLUE AND RED HALVES OF AN ORDER THAT STILL ACCEPTS ITS CONTINUUM OFFSET (ARCSEC)
+            continuum-halves-max-diff-arcsec: 0.15
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
@@ -417,6 +425,14 @@ soxs-stare:
             max-offset-arcsec: 3.0
             # LARGEST UNCERTAINTY ON A FITTED ORDER OFFSET ACCEPTED (ARCSEC)
             max-order-scatter-arcsec: 0.3
+            # WAVELENGTH CHUNKS EACH ORDER IS SPLIT INTO TO BUILD THE SKY-CONTINUUM SLIT PROFILE OF AN ORDER THAT HAS NO SKYLINES (SOXS VIS U AND G)
+            continuum-chunks: 20
+            # FEWEST CHUNKS A SLIT BIN OF THE CONTINUUM PROFILE NEEDS
+            continuum-min-chunks-per-bin: 5
+            # BINS WITHIN THIS DISTANCE OF THE OBJECT ARE LEFT OUT OF THE CONTINUUM PROFILE (ARCSEC)
+            continuum-object-mask-arcsec: 2.5
+            # LARGEST DIFFERENCE BETWEEN THE OFFSETS OF THE BLUE AND RED HALVES OF AN ORDER THAT STILL ACCEPTS ITS CONTINUUM OFFSET (ARCSEC)
+            continuum-halves-max-diff-arcsec: 0.15
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True
@@ -489,6 +505,14 @@ soxs-stare:
             max-offset-arcsec: 3.0
             # LARGEST UNCERTAINTY ON A FITTED ORDER OFFSET ACCEPTED (ARCSEC)
             max-order-scatter-arcsec: 0.3
+            # WAVELENGTH CHUNKS EACH ORDER IS SPLIT INTO TO BUILD THE SKY-CONTINUUM SLIT PROFILE OF AN ORDER THAT HAS NO SKYLINES (SOXS VIS U AND G)
+            continuum-chunks: 20
+            # FEWEST CHUNKS A SLIT BIN OF THE CONTINUUM PROFILE NEEDS
+            continuum-min-chunks-per-bin: 5
+            # BINS WITHIN THIS DISTANCE OF THE OBJECT ARE LEFT OUT OF THE CONTINUUM PROFILE (ARCSEC)
+            continuum-object-mask-arcsec: 2.5
+            # LARGEST DIFFERENCE BETWEEN THE OFFSETS OF THE BLUE AND RED HALVES OF AN ORDER THAT STILL ACCEPTS ITS CONTINUUM OFFSET (ARCSEC)
+            continuum-halves-max-diff-arcsec: 0.15
         sky-subtraction:
             # MODEL AND SUBTRACT THE SKY BEFORE OBJECT EXTRACTION
             subtract_sky: True

@@ -11,6 +11,10 @@ The measurement has three steps:
    subtracted from the core median, which removes the object and the sky continuum without an object mask.
 3. The science profile is fitted as the flat's top-hat shifted by δ. A positive δ means the science image sits
    toward +SLIT.
+
+An order that the skyline table has no lines in (the SOXS VIS u and g orders) takes step 2 from the sky continuum
+instead: the order is split into wavelength chunks, each chunk is binned along the slit, and the combined profile is
+fitted with the object masked. That offset is accepted only if the blue and red halves of the order agree (DY-1516).
 """
 
 import math
@@ -24,8 +28,13 @@ from scipy.optimize import OptimizeWarning, curve_fit
 from scipy.special import ndtr
 
 from soxspipe.commonutils.slit_illumination_profiles import (
+    CONTINUUM_CHUNKS,
+    CONTINUUM_MIN_CHUNKS_PER_BIN,
+    CONTINUUM_OBJECT_MASK_ARCSEC,
     PROFILE_BIN_ARCSEC,
     PROFILE_COLUMNS,
+    continuum_slit_profiles,
+    has_no_skylines_note,
     in_order_pixels,
     normalised_flat_profile,
     skyline_slit_profiles,
@@ -33,6 +42,8 @@ from soxspipe.commonutils.slit_illumination_profiles import (
 
 __all__ = [
     "FLAT_EDGE_COLUMNS",
+    "METHOD_CONTINUUM",
+    "METHOD_SKYLINE",
     "OFFSET_COLUMNS",
     "PROFILE_BIN_ARCSEC",
     "PROFILE_COLUMNS",
@@ -40,6 +51,8 @@ __all__ = [
     "STATUS_BORROWED",
     "STATUS_FAILED",
     "STATUS_FITTED",
+    "continuum_slit_profiles",
+    "fit_continuum_offsets",
     "fit_order_offsets",
     "flat_slit_edges",
     "measure_slit_illumination",
@@ -75,11 +88,26 @@ MAX_WIDTH_RATIO = 4.0
 # NIR THRESHOLD IS LEFT AT THE TABLE LOADER'S DEFAULT
 SKYLINE_MIN_FLUX_VIS = 1.0
 
+# THE TWO HALVES (BLUE AND RED CHUNKS) OF A CONTINUUM PROFILE MUST GIVE OFFSETS THIS CLOSE, OR THE ORDER IS REJECTED
+CONTINUUM_MAX_HALVES_DIFF_ARCSEC = 0.15
+
 STATUS_FITTED = "fitted"
 STATUS_BORROWED = "borrowed"
 STATUS_FAILED = "failed"
 FLAT_EDGE_COLUMNS = ["order", "lower", "upper", "width", "reason"]
-OFFSET_COLUMNS = ["order", "offset", "offsetErr", "scienceWidth", "nBins", "status", "reason", "borrowedFrom"]
+METHOD_SKYLINE = "skyline"
+METHOD_CONTINUUM = "continuum"
+OFFSET_COLUMNS = [
+    "order",
+    "offset",
+    "offsetErr",
+    "scienceWidth",
+    "nBins",
+    "status",
+    "reason",
+    "borrowedFrom",
+    "method",
+]
 
 
 def top_hat(slit, amplitude, lower, upper, width):
@@ -273,6 +301,7 @@ def _fit_one_order(orderProfile, flatRow, maxOffsetArcsec, maxOffsetErrArcsec, n
         "status": STATUS_FAILED,
         "reason": "",
         "borrowedFrom": np.nan,
+        "method": METHOD_SKYLINE,
     }
     flatProblem = _flat_edge_problem(flatRow)
     if flatProblem:
@@ -344,8 +373,8 @@ def fit_order_offsets(
     **Return:**
 
     - ``offsets`` -- dataframe sorted by order with the columns ``order``, ``offset``, ``offsetErr``,
-      ``scienceWidth``, ``nBins``, ``status`` (``fitted``, ``borrowed`` or ``failed``), ``reason`` and
-      ``borrowedFrom``. A failed order has a NaN offset
+      ``scienceWidth``, ``nBins``, ``status`` (``fitted``, ``borrowed`` or ``failed``), ``reason``,
+      ``borrowedFrom`` and ``method`` (always ``skyline`` here). An order that failed before a fit has a NaN offset
 
     **Usage:**
 
@@ -365,13 +394,94 @@ def fit_order_offsets(
     return pd.DataFrame(_borrow_from_partners(rows, partners), columns=OFFSET_COLUMNS)
 
 
+def _half_description(row):
+    """*how a half-profile fit reads in a halves-gate reason: its offset, or why it failed*"""
+    if row is not None and row["status"] == STATUS_FITTED:
+        return f"{row['offset']:+.2f} arcsec"
+    return f"failed ({'no fit' if row is None else row['reason']})"
+
+
+def _halves_failure_reason(blueRow, redRow, maxHalvesDiffArcsec):
+    """*why the blue and red halves of a continuum profile do not confirm the offset, or an empty string*"""
+    reason = f"halves-stability gate: blue half {_half_description(blueRow)}, red half {_half_description(redRow)}"
+    isFitted = [row is not None and row["status"] == STATUS_FITTED for row in (blueRow, redRow)]
+    if not all(isFitted):
+        return reason
+    difference = abs(blueRow["offset"] - redRow["offset"])
+    if difference > maxHalvesDiffArcsec:
+        return f"{reason}; they differ by {difference:.2f} arcsec (maximum {maxHalvesDiffArcsec:.2f} arcsec)"
+    return ""
+
+
+def fit_continuum_offsets(
+    profiles,
+    halfProfiles,
+    flatEdges,
+    orders,
+    maxOffsetArcsec=MAX_OFFSET_ARCSEC,
+    maxOffsetErrArcsec=MAX_OFFSET_ERR_ARCSEC,
+    maxHalvesDiffArcsec=CONTINUUM_MAX_HALVES_DIFF_ARCSEC,
+    profileNotes=None,
+):
+    """*fit the continuum-edge profile of the given orders as the flat's top-hat shifted by δ, with a halves check*
+
+    Each order's profile is fitted with ``fit_order_offsets``, so it must pass the same gates as a skyline offset. A
+    fitted order is then accepted only if the offsets of its blue half and its red half, fitted the same way, differ
+    by no more than ``maxHalvesDiffArcsec``. An order is rejected if either half fails to fit. A rejected order has the
+    status ``failed``, and its reason names the gate and both half values.
+
+    **Key Arguments:**
+
+    - ``profiles`` -- dataframe from ``continuum_slit_profiles`` with ``order``, ``slit``, ``profile``, ``profileErr``
+    - ``halfProfiles`` -- the ``(blue, red)`` dataframes from ``continuum_slit_profiles``
+    - ``flatEdges`` -- dataframe from ``flat_slit_edges``
+    - ``orders`` -- the order numbers to return rows for
+    - ``maxOffsetArcsec`` -- the largest accepted |δ| in arcsec. Default *MAX_OFFSET_ARCSEC*
+    - ``maxOffsetErrArcsec`` -- the largest accepted uncertainty on δ in arcsec. Default *MAX_OFFSET_ERR_ARCSEC*
+    - ``maxHalvesDiffArcsec`` -- the largest accepted difference between the two halves in arcsec. Default
+      *CONTINUUM_MAX_HALVES_DIFF_ARCSEC*
+    - ``profileNotes`` -- optional ``{order: reason}`` from ``continuum_slit_profiles``, used as the failure reason of
+      an order that has no profile. Default *None*
+
+    **Return:**
+
+    - ``offsets`` -- dataframe in the layout of ``fit_order_offsets``, one row per order in ``orders``, with ``method``
+      set to ``continuum``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_illumination import fit_continuum_offsets
+    offsets = fit_continuum_offsets(profiles, (blue, red), flatEdges, [2, 3])
+    ```
+    """
+    fitted = fit_order_offsets(profiles, flatEdges, maxOffsetArcsec, maxOffsetErrArcsec, profileNotes=profileNotes)
+    blueRows, redRows = (
+        {
+            row["order"]: row
+            for row in fit_order_offsets(half, flatEdges, maxOffsetArcsec, maxOffsetErrArcsec).to_dict("records")
+        }
+        for half in halfProfiles
+    )
+    rows = []
+    for row in fitted.loc[fitted["order"].isin(orders)].to_dict("records"):
+        reason = row["reason"]
+        if row["status"] == STATUS_FITTED:
+            reason = _halves_failure_reason(blueRows.get(row["order"]), redRows.get(row["order"]), maxHalvesDiffArcsec)
+        elif reason:
+            reason = f"continuum edge fit: {reason}"
+        status = STATUS_FITTED if row["status"] == STATUS_FITTED and not reason else STATUS_FAILED
+        rows.append({**row, "status": status, "reason": reason, "method": METHOD_CONTINUUM})
+    return pd.DataFrame(rows, columns=OFFSET_COLUMNS)
+
+
 @dataclass(frozen=True, eq=False)
 class slit_illumination_result:
     """The outcome of ``measure_slit_illumination``.
 
     - ``offsets`` -- per-order dataframe from ``fit_order_offsets``, empty if nothing could be measured
     - ``flatEdges`` -- per-order dataframe from ``flat_slit_edges``, empty if there was no flat
-    - ``profiles`` -- the per-order, per-bin skyline slit profiles that were fitted
+    - ``profiles`` -- the per-order, per-bin skyline or sky-continuum slit profiles that were fitted
     - ``isApplied`` -- True only if at least one order has a usable offset (fitted or borrowed)
     - ``reason`` -- why ``isApplied`` is False, or an empty string
     - ``overlapMarginArcsec`` -- the margin, from the settings, for the overlap mask that uses these offsets
@@ -400,6 +510,10 @@ ILLUMINATION_SETTINGS = {
     "max-offset-arcsec": ("maxOffsetArcsec", MAX_OFFSET_ARCSEC, False),
     "max-order-scatter-arcsec": ("maxOffsetErrArcsec", MAX_OFFSET_ERR_ARCSEC, False),
     "overlap-margin-arcsec": ("overlapMarginArcsec", OVERLAP_MARGIN_ARCSEC, True),
+    "continuum-chunks": ("continuumChunks", CONTINUUM_CHUNKS, False),
+    "continuum-min-chunks-per-bin": ("continuumMinChunksPerBin", CONTINUUM_MIN_CHUNKS_PER_BIN, False),
+    "continuum-object-mask-arcsec": ("continuumObjectMaskArcsec", CONTINUUM_OBJECT_MASK_ARCSEC, True),
+    "continuum-halves-max-diff-arcsec": ("continuumHalvesMaxDiffArcsec", CONTINUUM_MAX_HALVES_DIFF_ARCSEC, False),
 }
 
 
@@ -483,8 +597,56 @@ def _not_applied(log, reason, config, flatEdges=None, profiles=None, offsets=Non
     )
 
 
+def _continuum_rows(frame, flatData, mapImages, flatEdges, profileNotes, config):
+    """*the continuum-edge profiles and offset rows of the orders whose skyline fit has no lines to use*
+
+    **Return:**
+
+    - ``profiles`` -- the continuum profile rows, empty if there are none
+    - ``rows`` -- the offset rows, as dictionaries. A rejected row also carries the skyline note of its order
+    """
+    orders = sorted(order for order, note in profileNotes.items() if has_no_skylines_note(note))
+    if not orders:
+        return pd.DataFrame(columns=PROFILE_COLUMNS), []
+    wavelength, slit, orderMap = mapImages
+    profiles, halfProfiles, notes = continuum_slit_profiles(
+        np.asarray(frame.data, dtype=float),
+        np.asarray(frame.uncertainty.array, dtype=float),
+        _usable_pixels(frame),
+        flatData,
+        wavelength,
+        slit,
+        orderMap,
+        flatEdges,
+        orders,
+        binArcsec=config["binArcsec"],
+        nChunks=int(config["continuumChunks"]),
+        minChunksPerBin=int(config["continuumMinChunksPerBin"]),
+        objectMaskArcsec=config["continuumObjectMaskArcsec"],
+    )
+    offsets = fit_continuum_offsets(
+        profiles,
+        halfProfiles,
+        flatEdges,
+        orders,
+        config["maxOffsetArcsec"],
+        config["maxOffsetErrArcsec"],
+        config["continuumHalvesMaxDiffArcsec"],
+        profileNotes=notes,
+    )
+    rows = [
+        row if row["status"] == STATUS_FITTED else {**row, "reason": f"{row['reason']}; {profileNotes[row['order']]}"}
+        for row in offsets.to_dict("records")
+    ]
+    return profiles, rows
+
+
 def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners):
-    """*the flat edges, skyline profiles and offsets of every order, for inputs that passed the checks*"""
+    """*the flat edges, slit profiles and offsets of every order, for inputs that passed the checks*
+
+    Skylines give the offset of every order that has lines in the skyline table. An order the table has no lines in
+    (the SOXS VIS u and g orders) gets its offset from the sky-continuum edges instead.
+    """
     from soxspipe.commonutils.toolkit import get_skylines_dataframe
 
     wavelength, slit, orderMap = mapImages
@@ -507,9 +669,17 @@ def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, pa
         flatEdges,
         config["maxOffsetArcsec"],
         config["maxOffsetErrArcsec"],
-        partners=partners,
         profileNotes=profileNotes,
     )
+    continuumProfiles, continuumRows = _continuum_rows(frame, flatData, mapImages, flatEdges, profileNotes, config)
+    if continuumRows:
+        byOrder = {row["order"]: row for row in continuumRows}
+        rows = [byOrder.get(row["order"], row) for row in offsets.to_dict("records")]
+        offsets = pd.DataFrame(rows, columns=OFFSET_COLUMNS)
+        if len(continuumProfiles):
+            pieces = [piece for piece in (profiles, continuumProfiles) if len(piece)]
+            profiles = pd.concat(pieces, ignore_index=True).sort_values("order", kind="stable", ignore_index=True)
+    offsets = pd.DataFrame(_borrow_from_partners(offsets.to_dict("records"), partners), columns=OFFSET_COLUMNS)
     return flatEdges, profiles, offsets
 
 
@@ -582,8 +752,14 @@ def measure_slit_illumination(
     if problem:
         return _not_applied(log, problem, config)
     flatEdges, profiles, offsets = _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners)
-    for _, row in offsets.loc[offsets["status"] != STATUS_FITTED].iterrows():
-        log.info(f"slit illumination offset of order {row['order']} is {row['status']}: {row['reason']}")
+    for _, row in offsets.iterrows():
+        if row["status"] != STATUS_FITTED:
+            log.info(f"slit illumination offset of order {row['order']} is {row['status']}: {row['reason']}")
+        elif row["method"] == METHOD_CONTINUUM:
+            log.info(
+                f"slit illumination offset of order {row['order']} is {row['offset']:+.3f} arcsec, measured from the "
+                "sky-continuum edges because the order has no skylines"
+            )
     isApplied = bool((offsets["status"] != STATUS_FAILED).any())
     if not isApplied:
         return _not_applied(log, _unusable_reason(offsets), config, flatEdges, profiles, offsets)

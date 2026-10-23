@@ -1,4 +1,4 @@
-"""Each stare arm has a ``slit-illumination`` default block: on for SOXS, off for XSH (DY-1280)."""
+"""Each stare arm has a ``slit-illumination`` default block: on for SOXS, off for XSH (DY-1280, DY-1516)."""
 
 from __future__ import annotations
 
@@ -17,6 +17,10 @@ BLOCK_NUMBERS = {
     "profile-bin-arcsec": 0.1,
     "max-offset-arcsec": 3.0,
     "max-order-scatter-arcsec": 0.3,
+    "continuum-chunks": 20,
+    "continuum-min-chunks-per-bin": 5,
+    "continuum-object-mask-arcsec": 2.5,
+    "continuum-halves-max-diff-arcsec": 0.15,
 }
 CASES = [
     ("soxs_default_settings.yaml", "soxs-stare", "vis", True),

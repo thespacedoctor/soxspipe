@@ -526,9 +526,13 @@ def test_says_why_an_order_without_skylines_in_the_table_fails(tmp_path, log, mo
     scene = synthetic_illumination_scene(tmp_path, offsets={11: 1.0, 12: 1.0})
     scene = replace(scene, skylinesDF=scene.skylinesDF.iloc[:14])
 
-    result = _measure(scene, tmp_path, log, monkeypatch)
+    # THE HALVES LIMIT IS TINY, SO THE CONTINUUM-EDGE OFFSET (DY-1516) IS REJECTED AND THE ORDER FALLS BACK
+    result = _measure(
+        scene, tmp_path, log, monkeypatch, illuminationSettings={"continuum-halves-max-diff-arcsec": 1e-9}
+    )
 
     assert result.isApplied
+    assert _offsets(result).loc[12, "status"] == "failed"
     assert "no lines between 600 and 612 nm" in _offsets(result).loc[12, "reason"]
 
 
