@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 
 from soxspipe.commonutils import _base_detect, detector_lookup, keyword_lookup
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
 from soxspipe.commonutils.toolkit import (
@@ -543,6 +544,7 @@ class detect_order_edges(_base_detect):
 
         return self.products, self.qc, orderDetectionCounts
 
+    @closes_its_figures
     def plot_results(
         self,
         orderPixelTableUpper,

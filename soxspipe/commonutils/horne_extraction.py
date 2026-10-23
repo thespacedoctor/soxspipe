@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 from .base_util import base_util
 from .extraction_notes import extraction_note_logger, format_extraction_notes
+from .figure_guard import closes_its_figures
 from .filenamer import filenamer
 
 if TYPE_CHECKING:
@@ -1737,6 +1738,7 @@ class horne_extraction(base_util):
             self.log.debug(f"could not read the multi-pinhole header from the dispersion map ({type(e).__name__}: {e})")
             return None
 
+    @closes_its_figures
     def _plot_skyline_shift_diagnostic(
         self,
         shiftArray,
@@ -2229,6 +2231,7 @@ class horne_extraction(base_util):
                 toHeader=True,
             )
 
+    @closes_its_figures
     def plot_extracted_spectrum_qc(self, extractions):
         """*plot extracted spectrum QC plot*
 
@@ -2770,6 +2773,7 @@ def _sort_and_clean_extractions(crossDispersionSlicesDF):
     return crossDispersionSlicesDF
 
 
+@closes_its_figures
 def plot_rectified_images(orderRectifiedImages, order):
     """Plot available rectified order image layers for debug inspection."""
 

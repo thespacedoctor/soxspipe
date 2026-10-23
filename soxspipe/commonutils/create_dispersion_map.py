@@ -48,6 +48,7 @@ from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.pinhole_set_offsets import (
     OFFSET_SET_CLIP_SIGMA,
@@ -1535,6 +1536,7 @@ class create_dispersion_map:
 
         return df
 
+    @closes_its_figures
     def _plot_predicted_line_windows(self, orderPixelTable, pinholeFrameMasked):
         """*Plot predicted line positions with detection windows overlaid*"""
         import matplotlib.pyplot as plt
@@ -2881,6 +2883,7 @@ class create_dispersion_map:
             f"consistently in every pinhole ({breakdown})"
         )
 
+    @closes_its_figures
     def create_placeholder_images(self, order=False, plot=False, reverse=False):
         """*create CCDData objects as placeholders to host the 2D images of the wavelength and spatial solutions from dispersion solution map*
 
@@ -3245,6 +3248,7 @@ class create_dispersion_map:
         self.log.debug("completed the ``order_to_image`` method")
         return slitMap, wlMap
 
+    @closes_its_figures
     def convert_and_fit(self, order, bigWlArray, bigSlitArray, slitMap, wlMap, iteration, plots=False):
         """*convert wavelength and slit position grids to pixels*
 
@@ -3392,6 +3396,7 @@ class create_dispersion_map:
         self.log.debug("completed the ``convert_and_fit`` method")
         return orderPixelTable, remainingCount
 
+    @closes_its_figures
     def _create_dispersion_map_qc_plot(
         self,
         xcoeff,
@@ -4144,6 +4149,7 @@ class create_dispersion_map:
         self.log.debug("completed the ``create_dispersion_map_qc_plot`` method")
         return res_plots
 
+    @closes_its_figures
     def _clip_on_measured_line_metrics(self, orderPixelTable):
         """*clip lines & sets of lines based on measured line metrics (from daostarfinder etc)*
 
@@ -4931,6 +4937,7 @@ def straighten_mph_sets(group):
     return group
 
 
+@closes_its_figures
 def _plot_slit_index_comparisons(df):
     """
     Plot slit_index vs xy_diff, x_diff, and y_diff, color-coded by slit_index.
