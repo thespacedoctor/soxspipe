@@ -738,6 +738,8 @@ class detect_continuum(_base_detect):
     - ``debug`` -- if *True* then extra debugging information is printed. Default *False*
     - ``notFlattened`` -- if *True* the trace is the repeat that a stare, nod or offset standard makes for the
       response curve: its files get a ``_NOTFLAT`` suffix and it adds no product row. Default *False*
+    - ``slitOffsetsArcsec`` -- ``{order: offset}`` slit-illumination offsets in arcsec, used to anchor a faint VIS
+      order on its bright neighbour. Default *None*
 
     **Usage:**
 
@@ -780,6 +782,7 @@ class detect_continuum(_base_detect):
         startNightDate="",
         debug=False,
         notFlattened=False,
+        slitOffsetsArcsec=None,
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -805,6 +808,7 @@ class detect_continuum(_base_detect):
         self.orderPixelTable = orderPixelTable
         self.startNightDate = startNightDate
         self.debug = debug
+        self.slitOffsetsArcsec = slitOffsetsArcsec
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER

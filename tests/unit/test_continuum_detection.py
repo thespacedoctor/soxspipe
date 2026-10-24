@@ -386,6 +386,33 @@ def test_constructor_resolves_trace_orientation_and_nodding_metadata(
     assert (detector.qcDir, detector.productDir) == (str(qcPath), str(productPath))
 
 
+def test_constructor_keeps_the_slit_offsets_it_is_given(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.utility_setup", lambda **_: (str(tmp_path), str(tmp_path)))
+    monkeypatch.setattr(continuumModule, "get_calibration_lamp", lambda **_: "QTH")
+    frame = CCDData(np.ones((32, 32)), unit=u.electron, meta=instrument_header(arm="VIS"))
+    arguments = {
+        "log": log,
+        "traceFrame": frame,
+        "dispersion_map": "dispersion.fits",
+        "settings": pipeline_settings(tmp_path),
+        "recipeSettings": {"detect-continuum": {"disp-axis-deg": 2, "order-deg": 1}},
+        "recipeName": "soxs-stare",
+    }
+
+    # ACT
+    withOffsets = detect_continuum(**arguments, slitOffsetsArcsec={2: 0.4})
+    without = detect_continuum(**arguments)
+
+    # ASSERT
+    assert withOffsets.slitOffsetsArcsec == {2: 0.4}
+    assert without.slitOffsetsArcsec is None
+
+
 def test_create_pixel_arrays_samples_each_spectral_order(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

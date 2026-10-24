@@ -1142,3 +1142,53 @@ def test_both_merged_spectrum_plots_are_told_whether_the_spectrum_is_a_boxcar(
     recipe._plot_merged_spectrum_qcs(merged, {"10-11": 11}, str(fluxCalPath), [], isBoxcar)
 
     assert [kwargs["boxcarExtraction"] for kwargs in plotKwargs] == [isBoxcar, isBoxcar]
+
+
+def test_the_measured_slit_offsets_reach_the_extractor_for_the_faint_order_trace(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The usable offsets of the slit-illumination measurement go to the Horne extraction as `slitOffsetsArcsec`."""
+    # ARRANGE
+    routes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(_calibration_path(tmp_path, "MASTER_FLAT_VIS", FLAT_SEED))]}
+    recipe = _stare_recipe(
+        log, tmp_path, extraRoutes=routes, recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK)
+    )
+    _write_illumination_map(tmp_path)
+    Path(recipe.qcDir).mkdir()
+    _stub_measurement(monkeypatch, _illumination_result())
+    captured = _patch_stare(
+        recipe,
+        monkeypatch,
+        tmp_path,
+        detrended=synthetic_ccd(seed=550, prepared=True, headerOverrides={"WIN_BINX": 1, "WIN_BINY": 1}),
+        skyResult=tuple(synthetic_ccd(seed=560 + n, prepared=True) for n in range(3)),
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["extractor"][0]["slitOffsetsArcsec"] == OFFSET_ARCSEC
+
+
+def test_a_frame_whose_offsets_are_not_measured_hands_the_extractor_no_offsets_from_an_earlier_frame(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-frame mode reuses the recipe object, so a stale offset dictionary must not outlive its frame."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=_illumination_recipe_settings(None))
+    recipe.slitIlluminationOffsets = {11: 9.9}
+    captured = _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=540 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["extractor"][0]["slitOffsetsArcsec"] is None
+    assert recipe.slitIlluminationOffsets is None

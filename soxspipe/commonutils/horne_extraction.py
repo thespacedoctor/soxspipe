@@ -163,6 +163,9 @@ class horne_extraction(base_util):
     noTraceFallback = False
     traceFallback = False
 
+    # {ORDER: SLIT-ILLUMINATION OFFSET (arcsec)} FOR THE FAINT-ORDER TRACE, OR None WHEN NOT MEASURED
+    slitOffsetsArcsec = None
+
     # BLEND-MERGED VIS CALIBRATION SKYLINES, BUILT ON FIRST USE (SEE ``_merged_skylines``)
     _mergedSkylinesDF = None
 
@@ -198,6 +201,7 @@ class horne_extraction(base_util):
         noTraceFallback=False,
         scienceHeaders=False,
         flatPass=None,
+        slitOffsetsArcsec=None,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -227,6 +231,7 @@ class horne_extraction(base_util):
         self.subtractedFrame = subtractedFrame
         self.noTraceFallback = noTraceFallback
         self.flatPass = flatPass
+        self.slitOffsetsArcsec = slitOffsetsArcsec
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -361,6 +366,7 @@ class horne_extraction(base_util):
                 startNightDate=self.startNightDate,
                 debug=self.debug,
                 notFlattened=bool(self.notFlattened),
+                slitOffsetsArcsec=self.slitOffsetsArcsec,
             )
             productPath, self.qc, self.products, _, self.orderPixelTable, _ = detector.get()
 

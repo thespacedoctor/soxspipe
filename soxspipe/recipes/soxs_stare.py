@@ -693,6 +693,7 @@ class soxs_stare(base_recipe):
             turnOffMP=self.turnOffMP,
             noTraceFallback=True,
             scienceHeaders=self.scienceHeaders,
+            slitOffsetsArcsec=self.slitIlluminationOffsets,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
         slitEdgeSpill = bool(optimalExtractor.slitEdgeOrders)
@@ -987,8 +988,10 @@ class soxs_stare(base_recipe):
         from astropy.nddata import CCDData
 
         from soxspipe.commonutils.slit_illumination import measure_slit_illumination
-        from soxspipe.commonutils.slit_illumination_mask import exclude_mask_from_result
+        from soxspipe.commonutils.slit_illumination_mask import exclude_mask_from_result, usable_offsets
 
+        # A RECIPE OBJECT SERVES EVERY FRAME OF A PER-FRAME RUN, SO NO FRAME KEEPS THE OFFSETS OF AN EARLIER ONE
+        self.slitIlluminationOffsets = None
         illuminationSettings = self._slit_illumination_settings()
         if illuminationSettings is None:
             return None
@@ -1009,6 +1012,7 @@ class soxs_stare(base_recipe):
             illuminationSettings=illuminationSettings,
             partners=None,
         )
+        self.slitIlluminationOffsets = usable_offsets(result.offsets)
         self._record_slit_illumination_qcs(result)
         self._write_slit_illumination_qc_plot(result)
         return exclude_mask_from_result(self.log, result, twoDMap, binx, biny, self.kw)
