@@ -24,6 +24,12 @@ from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.faint_order_profile import frame_to_nan_array
+from soxspipe.commonutils.faint_order_trace import (
+    faint_trace_settings,
+    make_pixels_at,
+    transfer_faint_orders,
+)
 from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import (
@@ -749,6 +755,10 @@ class detect_continuum(_base_detect):
     ```
     """
 
+    # THE FRAME-TO-MAP BINNING, SET WHEN THE TRACE IS SAMPLED, AND THE SLIT-ILLUMINATION OFFSET OF EACH ORDER (IF KNOWN)
+    mapBinning = None
+    slitOffsetsArcsec = None
+
     def __init__(
         self,
         log,
@@ -876,6 +886,7 @@ class detect_continuum(_base_detect):
                     "Could not converge on a good fit to the continuum. Please check the quality of your data."
                 )
                 return None, self.qc, self.products, None, None, None
+            orderPixelTable = self._transfer_faint_order_traces(orderPixelTable)
         else:
             orderPixelTable = self.orderPixelTable
 
@@ -1091,6 +1102,40 @@ class detect_continuum(_base_detect):
             orderPixelTable,
             orderMetaTable,
         )
+
+    def _transfer_faint_order_traces(self, orderPixelTable):
+        """*replace the sampled trace of each faint SOXS VIS order by one anchored to its bright neighbour*
+
+        The transfer runs only for the VIS arm of SOXS, in a recipe that is not an order-centre one, and only when the
+        ``faint-order-trace`` setting is on. Otherwise, and when no faint order has a bright partner, the table comes
+        back as the same object.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the table of sampled trace positions
+
+        **Return:**
+
+        - ``orderPixelTable`` -- the table to fit
+        """
+        settings = faint_trace_settings.from_block(self.recipeSettings)
+        isVisTrace = self.inst.upper() == "SOXS" and self.arm.upper() == "VIS"
+        if not (settings.isEnabled and isVisTrace and "order" not in self.recipeName.lower()):
+            return orderPixelTable
+
+        pixelsAt = make_pixels_at(
+            self.log, self.dispersion_map, self.mapBinning or {"x": 1.0, "y": 1.0}, self.axisA, self.axisB
+        )
+        orderPixelTable, reports = transfer_faint_orders(
+            orderPixelTable,
+            frame_to_nan_array(self.traceFrame),
+            pixelsAt,
+            self.slitOffsetsArcsec,
+            settings,
+            self.axisA,
+            self.axisB,
+        )
+        return orderPixelTable
 
     def create_pixel_arrays(self):
         """*create a pixel array for the approximate centre of each order*
@@ -1768,6 +1813,8 @@ class detect_continuum(_base_detect):
             biny = self.traceFrame.header[self.kw("WIN_BINY")] / dmBiny
         except KeyError as e:
             self.log.debug(f"sample_trace: `binx = self.traceFrame.header[self.kw('WIN_BIN...` failed, continuing: {e}")
+
+        self.mapBinning = {"x": binx, "y": biny}
 
         # FIT_X AND FIT_Y FROM DISP-SOLUTION
         orderPixelTable["fit_x"] = orderPixelTable["fit_x"] / binx

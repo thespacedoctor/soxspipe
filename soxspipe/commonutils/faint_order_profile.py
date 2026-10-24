@@ -105,3 +105,21 @@ def fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr):
     if amplitude[best] / rms < minSnr or isOnEdge:
         return None
     return float(grid[best])
+
+
+def frame_to_nan_array(frame):
+    """*the pixels of a frame as a float array, NaN where the frame is masked*
+
+    **Key Arguments:**
+
+    - ``frame`` -- a masked array or a ``CCDData`` frame, whose ``mask`` may be missing
+
+    **Return:**
+
+    - ``image`` -- a new 2D float array
+    """
+    data = np.array(getattr(frame, "data", frame), dtype=float)
+    mask = getattr(frame, "mask", None)
+    if mask is not None:
+        data[np.broadcast_to(np.asarray(mask, dtype=bool), data.shape)] = np.nan
+    return data

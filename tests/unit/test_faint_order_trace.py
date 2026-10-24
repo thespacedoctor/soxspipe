@@ -7,8 +7,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from astropy import units as u
+from astropy.nddata import CCDData
 
-from soxspipe.commonutils.faint_order_profile import collapse_bin_profile, fit_fixed_width_gaussian
+from soxspipe.commonutils.faint_order_profile import collapse_bin_profile, fit_fixed_width_gaussian, frame_to_nan_array
 from soxspipe.commonutils.faint_order_trace import (
     VIS_BAND_GROUPS,
     anchor_neighbours,
@@ -541,3 +543,29 @@ def test_fit_fixed_width_gaussian_is_deterministic() -> None:
 
     # ASSERT
     assert first == second
+
+
+def test_frame_to_nan_array_marks_masked_pixels_of_a_masked_array() -> None:
+    # ARRANGE
+    frame = np.ma.masked_array(np.arange(6.0).reshape(2, 3), mask=[[False, True, False], [False, False, True]])
+
+    # ACT
+    image = frame_to_nan_array(frame)
+
+    # ASSERT
+    assert type(image) is np.ndarray
+    np.testing.assert_array_equal(np.isnan(image), frame.mask)
+    assert image[0, 0] == 0.0
+
+
+def test_frame_to_nan_array_marks_masked_pixels_of_a_ccd_frame_and_copes_with_no_mask() -> None:
+    # ARRANGE
+    masked = CCDData(np.ones((2, 2)), unit=u.electron, mask=np.array([[True, False], [False, False]]))
+    unmasked = CCDData(np.ones((2, 2)), unit=u.electron)
+
+    # ACT
+    maskedImage, unmaskedImage = frame_to_nan_array(masked), frame_to_nan_array(unmasked)
+
+    # ASSERT
+    assert np.isnan(maskedImage[0, 0]) and np.isfinite(maskedImage).sum() == 3
+    assert np.isfinite(unmaskedImage).all()
