@@ -197,17 +197,20 @@ def test_synthetic_rows_still_count_toward_the_polynomial_fit(log: object) -> No
     assert withSynthetic[0] != pytest.approx(alone[0], abs=1e-6)
 
 
-def test_a_table_of_only_synthetic_rows_still_fits_and_reports_its_residuals(log: object) -> None:
-    # ARRANGE: NO MEASURED ROW IS LEFT TO SET THE CLIPPING SPREAD OR THE QC STATISTICS
+def test_a_table_of_only_synthetic_rows_is_never_clipped_and_reports_its_residuals(log: object) -> None:
+    # ARRANGE: NO MEASURED ROW IS LEFT TO SET THE CLIPPING SPREAD, AND FOUR SYNTHETIC ROWS SIT FAR OFF THE TRACE, WHERE
+    # A PLAIN SIGMA-CLIP OF ALL THE ROWS WOULD CLIP THEM
     table = _with_transferred_order(_measured_rows().iloc[0:0], offsetPx=0.0)
+    table.loc[list(OUTLIER_ROWS), "cont_x"] += list(OUTLIER_ROWS.values())
     detector = _detector(log)
     detector.orderDeg, detector.axisBDeg = 0, 2
 
     # ACT
     coefficients, fitted, clipped, qcs = _fit(detector, table)
 
-    # ASSERT: ALL THE ROWS ARE KEPT, AND THE QCS FALL BACK TO THEIR RESIDUALS
+    # ASSERT: ALL THE ROWS ARE KEPT, AND THE QCS FALL BACK TO THE RESIDUALS OF THE SYNTHETIC ROWS
     assert coefficients is not None
     assert len(fitted) == ROWS_PER_ORDER
     assert len(clipped) == 0
-    assert abs(qcs["X RES MAX"]) < 1e-3
+    assert qcs["X RES MAX"] == round(float(fitted["cont_x_fit_res"].max()), 3)
+    assert qcs["X RES MAX"] > 1.0
