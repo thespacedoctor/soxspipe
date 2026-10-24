@@ -6,7 +6,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.faint_order_trace import faint_trace_settings, find_faint_orders
+from soxspipe.commonutils.faint_order_trace import (
+    VIS_BAND_GROUPS,
+    anchor_neighbours,
+    faint_trace_settings,
+    find_faint_orders,
+)
+from soxspipe.commonutils.toolkit import SOXS_VIS_ORDERS_BLUE_TO_RED
 
 pytestmark = pytest.mark.unit
 
@@ -131,3 +137,67 @@ def test_find_faint_orders_uses_the_limits_in_the_settings() -> None:
     # ASSERT
     assert faintDefault == {}
     assert list(faintStrict) == [2.0]
+
+
+def _orders_table(*orders: float) -> pd.DataFrame:
+    return pd.DataFrame({"order": [float(order) for order in orders for _ in range(3)]})
+
+
+def test_band_groups_are_the_adjacent_pairs_of_the_blue_to_red_order_list() -> None:
+    # ARRANGE
+    blueToRed = SOXS_VIS_ORDERS_BLUE_TO_RED
+
+    # ACT
+    pairs = [tuple(blueToRed[start : start + 2]) for start in (0, 2)]
+
+    # ASSERT
+    assert tuple(pairs) == VIS_BAND_GROUPS
+
+
+@pytest.mark.parametrize(
+    ("faintOrder", "expected"),
+    [(2.0, 3.0), (4.0, 1.0), (3.0, 2.0), (1.0, 4.0)],
+    ids=["u-from-g", "i-from-r", "g-from-u", "r-from-i"],
+)
+def test_anchor_neighbours_takes_the_other_order_of_the_band_group(faintOrder: float, expected: float) -> None:
+    # ARRANGE
+    table = _orders_table(1, 2, 3, 4)
+
+    # ACT
+    anchors = anchor_neighbours(table, {faintOrder: None})
+
+    # ASSERT
+    assert anchors == {faintOrder: expected}
+
+
+def test_anchor_neighbours_gives_no_anchor_when_both_orders_of_a_group_are_faint() -> None:
+    # ARRANGE: U AND G ARE BOTH FAINT, AND R IS BRIGHT BUT ACROSS THE BAND-GROUP BOUNDARY FROM G
+    table = _orders_table(1, 2, 3, 4)
+
+    # ACT
+    anchors = anchor_neighbours(table, {2.0: None, 3.0: None, 4.0: None})
+
+    # ASSERT: ONLY I GETS AN ANCHOR
+    assert anchors == {4.0: 1.0}
+
+
+def test_anchor_neighbours_skips_an_order_whose_partner_is_not_in_the_table() -> None:
+    # ARRANGE
+    table = _orders_table(2, 1, 4)
+
+    # ACT
+    anchors = anchor_neighbours(table, {2.0: None})
+
+    # ASSERT
+    assert anchors == {}
+
+
+def test_anchor_neighbours_ignores_orders_outside_the_vis_band_groups() -> None:
+    # ARRANGE
+    table = _orders_table(11, 12)
+
+    # ACT
+    anchors = anchor_neighbours(table, {11.0: None})
+
+    # ASSERT
+    assert anchors == {}

@@ -61,6 +61,9 @@ class faint_trace_settings:
         )
 
 
+# THE SOXS VIS BAND GROUPS, EACH FROM THE BLUER ORDER TO THE REDDER: (u, g) AND (r, i). THIS MATCHES THE LIST IN
+# `toolkit.SOXS_VIS_ORDERS_BLUE_TO_RED`, WHICH THIS MODULE DOES NOT IMPORT TO STAY LIGHT
+VIS_BAND_GROUPS = ((2, 3), (1, 4))
 # THE SMALLEST NUMBER OF ACCEPTED SAMPLES THAT FIXES A DEGREE-2 CURVE WITH ONE SAMPLE TO SPARE
 MIN_FIT_SAMPLES = 4
 # THE DEGREE OF THE CENTRE-SHIFT CURVE THAT SEPARATES SCATTER FROM A SMOOTH TRACE
@@ -158,3 +161,28 @@ def find_faint_orders(table, axisA, settings):
         if stats.detectionFraction < settings.minDetectionFraction or isScattered:
             faintOrders[order] = stats
     return faintOrders
+
+
+def anchor_neighbours(table, faintOrders):
+    """*pair each faint order with the bright order next to it in its band group*
+
+    The SOXS VIS orders come in two band groups, u and g, then r and i, and a trace is never carried across the
+    boundary between the groups. A faint order whose partner is also faint, or is not in the table, gets no anchor.
+
+    **Key Arguments:**
+
+    - ``table`` -- the sampled order table
+    - ``faintOrders`` -- the faint orders, keyed by order number
+
+    **Return:**
+
+    - ``anchors`` -- the bright partner of each faint order that has one, keyed by the faint order
+    """
+    present = set(table["order"].unique())
+    anchors = {}
+    for group in VIS_BAND_GROUPS:
+        for faint, partner in (group, group[::-1]):
+            isUsable = faint in faintOrders and partner in present and partner not in faintOrders
+            if isUsable:
+                anchors[float(faint)] = float(partner)
+    return anchors
