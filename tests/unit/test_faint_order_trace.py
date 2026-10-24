@@ -12,6 +12,7 @@ from soxspipe.commonutils.faint_order_trace import (
     VIS_BAND_GROUPS,
     anchor_neighbours,
     bright_edge_anchor,
+    collapse_bin_profile,
     faint_trace_settings,
     find_faint_orders,
     make_pixels_at,
@@ -319,3 +320,80 @@ def test_pixels_per_arcsec_is_the_signed_slit_scale_of_the_map(log: object, tmp_
 
     # ASSERT
     np.testing.assert_allclose(scale, [vis_slit_scale(4.0)] * 2, atol=1e-3)
+
+
+def _gaussian_image(centre: float, sigma: float = 1.5, shape: tuple = (60, 80), amplitude: float = 50.0) -> np.ndarray:
+    """Return an image with a vertical stripe: a Gaussian across x centred at `centre` in every row."""
+    columns = np.arange(shape[1], dtype=float)
+    return np.tile(amplitude * np.exp(-0.5 * ((columns - centre) / sigma) ** 2), (shape[0], 1))
+
+
+def _centroid(offsets: np.ndarray, profile: np.ndarray) -> float:
+    weights = np.clip(profile, 0.0, None)
+    return float((offsets * weights).sum() / weights.sum())
+
+
+def test_collapse_bin_profile_centres_the_profile_on_the_track_with_sub_pixel_accuracy() -> None:
+    # ARRANGE: THE STRIPE SITS 1.3 PX ABOVE A TRACK THAT RUNS ALONG x = 40.3 FOR 20 ROWS
+    image = _gaussian_image(41.6)
+    trackA, trackB = np.full(20, 40.3), np.arange(10.0, 30.0)
+
+    # ACT
+    offsets, profile = collapse_bin_profile(image, trackA, trackB, 8, "x")
+
+    # ASSERT
+    np.testing.assert_array_equal(offsets, np.arange(-8.0, 9.0))
+    assert _centroid(offsets, profile) == pytest.approx(1.3, abs=0.05)
+
+
+def test_collapse_bin_profile_cuts_along_the_axis_it_is_told() -> None:
+    # ARRANGE: THE SAME STRIPE ON A TRANSPOSED IMAGE, WITH THE PROFILE CUT ALONG y
+    trackA, trackB = np.full(20, 40.3), np.arange(10.0, 30.0)
+    _, expected = collapse_bin_profile(_gaussian_image(41.6), trackA, trackB, 8, "x")
+
+    # ACT
+    _, profile = collapse_bin_profile(_gaussian_image(41.6).T.copy(), trackA, trackB, 8, "y")
+
+    # ASSERT
+    np.testing.assert_allclose(profile, expected)
+
+
+def test_collapse_bin_profile_ignores_a_cosmic_ray_row() -> None:
+    # ARRANGE: ONE ROW HOLDS A 10000-COUNT HIT NEXT TO THE TRACE
+    image = _gaussian_image(40.0)
+    image[15, 38:42] += 10000.0
+    trackA, trackB = np.full(20, 40.0), np.arange(10.0, 30.0)
+
+    # ACT
+    offsets, profile = collapse_bin_profile(image, trackA, trackB, 8, "x")
+
+    # ASSERT
+    assert profile.max() == pytest.approx(50.0, rel=0.02)
+    assert _centroid(offsets, profile) == pytest.approx(0.0, abs=0.02)
+
+
+def test_collapse_bin_profile_skips_masked_pixels_and_samples_off_the_image() -> None:
+    # ARRANGE: NaN MARKS MASKED PIXELS, AND THE LAST TRACK POINTS LIE ABOVE THE IMAGE
+    image = _gaussian_image(40.0)
+    image[12:14, :] = np.nan
+    trackA, trackB = np.full(24, 40.0), np.arange(10.0, 34.0) + np.r_[np.zeros(20), np.full(4, 100.0)]
+
+    # ACT
+    offsets, profile = collapse_bin_profile(image, trackA, trackB, 8, "x")
+
+    # ASSERT
+    assert np.isfinite(profile).all()
+    assert _centroid(offsets, profile) == pytest.approx(0.0, abs=0.02)
+
+
+def test_collapse_bin_profile_is_nan_where_no_row_has_a_value() -> None:
+    # ARRANGE: THE TRACK RUNS ALONG THE LEFT EDGE, SO THE OFFSETS BELOW -2 LIE OFF THE IMAGE
+    image = _gaussian_image(2.0)
+    trackA, trackB = np.full(10, 2.0), np.arange(10.0, 20.0)
+
+    # ACT
+    _, profile = collapse_bin_profile(image, trackA, trackB, 6, "x")
+
+    # ASSERT
+    assert np.isnan(profile[:4]).all()
+    assert np.isfinite(profile[4:]).all()

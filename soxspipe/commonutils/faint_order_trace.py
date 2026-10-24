@@ -7,6 +7,7 @@ faint order into a few wavelength bins and fit one fixed-width Gaussian per bin 
 anchor. The module needs numpy and pandas only, and runs no least-squares optimiser.
 """
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -286,3 +287,41 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt):
     nearEdge = accepted.loc[isNearEdge] if isNearEdge.sum() >= MIN_EDGE_SAMPLES else accepted
     sigmaPx = float(np.median(nearEdge["gauss_stddev"].to_numpy(float)))
     return float(-curve(edgeNm) / scale), abs(sigmaPx / scale)
+
+
+def collapse_bin_profile(image, trackA, trackB, halfLength, sliceAxis):
+    """*collapse the rows along an anchor track into one profile, by their median*
+
+    Each track point gives one cross-dispersion cut, ``2 * halfLength + 1`` pixels long and centred on the point,
+    read from ``image`` by linear interpolation. The profile is the median of the cuts, so a cosmic-ray hit in one
+    row does not move it. A pixel that is NaN or off the image does not count, and an offset with no value in any cut
+    is NaN.
+
+    **Key Arguments:**
+
+    - ``image`` -- the 2D frame, NaN where masked
+    - ``trackA`` -- the cross-dispersion position of each track point, in pixels
+    - ``trackB`` -- the dispersion position of each track point, in pixels
+    - ``halfLength`` -- the half-length of the cut, in pixels
+    - ``sliceAxis`` -- the image axis the cut runs along, ``"x"`` (columns) or ``"y"`` (rows)
+
+    **Return:**
+
+    - ``offsets`` -- the pixel offsets from the track, ``-halfLength`` to ``+halfLength``
+    - ``profile`` -- the median profile at those offsets
+    """
+    data = image if sliceAxis == "x" else image.T
+    offsets = np.arange(-halfLength, halfLength + 1, dtype=float)
+    rowIndex = np.rint(np.asarray(trackB, dtype=float)).astype(int)
+    position = np.asarray(trackA, dtype=float)[:, np.newaxis] + offsets[np.newaxis, :]
+    lower = np.floor(position).astype(int)
+    fraction = position - lower
+    isRowInside = ((rowIndex >= 0) & (rowIndex < data.shape[0]))[:, np.newaxis]
+    isValid = isRowInside & (lower >= 0) & (lower + 1 < data.shape[1])
+    rows = np.clip(rowIndex, 0, data.shape[0] - 1)[:, np.newaxis]
+    left = np.clip(lower, 0, data.shape[1] - 1)
+    right = np.clip(lower + 1, 0, data.shape[1] - 1)
+    cuts = np.where(isValid, (1.0 - fraction) * data[rows, left] + fraction * data[rows, right], np.nan)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return offsets, np.nanmedian(cuts, axis=0)
