@@ -102,3 +102,55 @@ def test_every_block_carries_the_shipped_numbers_or_none_at_all(recipe: str, arm
         if key in block and key != "faint-order-trace":
             assert block[key] == default
     assert settings.isEnabled is (arm == "vis" and recipe in ON_RECIPES)
+
+
+BOOLEAN_KEY = "faint-order-trace"
+NUMBER_KEYS = (
+    "faint-order-min-detection-fraction",
+    "faint-order-max-scatter-px",
+    "faint-order-max-anchor-scatter-px",
+    "faint-order-min-bin-snr",
+    "same-source-max-join-arcsec",
+)
+INTEGER_KEY = "faint-order-bin-count"
+
+
+@pytest.mark.parametrize("value", ["False", "true", 0, 1, 1.0, [True]])
+def test_from_block_rejects_a_switch_that_is_not_a_real_bool_and_names_the_key(value: object) -> None:
+    # ACT / ASSERT: A QUOTED "False" IS A NON-EMPTY STRING AND WOULD TURN THE TRACE ON IF IT WERE CAST
+    with pytest.raises(ValueError, match=BOOLEAN_KEY):
+        faint_trace_settings.from_block({BOOLEAN_KEY: value})
+
+
+@pytest.mark.parametrize("key", NUMBER_KEYS)
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), 0, 0.0, -1.5, "1.5", True, [1.0]])
+def test_from_block_rejects_a_number_that_is_not_finite_and_positive_and_names_the_key(key: str, value: object) -> None:
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=key):
+        faint_trace_settings.from_block({key: value})
+
+
+@pytest.mark.parametrize("value", [0, -3, 9.5, 15.0, "15", True, float("nan")])
+def test_from_block_rejects_a_bin_count_that_is_not_a_positive_integer_and_names_the_key(value: object) -> None:
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=INTEGER_KEY):
+        faint_trace_settings.from_block({INTEGER_KEY: value})
+
+
+@pytest.mark.parametrize("key", [BOOLEAN_KEY, *NUMBER_KEYS, INTEGER_KEY])
+def test_from_block_uses_the_default_for_a_key_set_to_none(key: str) -> None:
+    # ACT
+    settings = faint_trace_settings.from_block({key: None})
+
+    # ASSERT
+    assert settings == faint_trace_settings.from_block({})
+
+
+def test_from_block_accepts_whole_numbers_for_the_float_settings() -> None:
+    # ACT
+    settings = faint_trace_settings.from_block({"faint-order-max-scatter-px": 2, "faint-order-bin-count": 8})
+
+    # ASSERT
+    assert settings.maxScatterPx == 2.0
+    assert isinstance(settings.maxScatterPx, float)
+    assert settings.binCount == 8

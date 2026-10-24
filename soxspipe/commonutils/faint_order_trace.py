@@ -7,7 +7,9 @@ faint order into a few wavelength bins and fit one fixed-width Gaussian per bin 
 anchor. The module needs numpy and pandas only, and runs no least-squares optimiser.
 """
 
+import math
 from dataclasses import dataclass
+from numbers import Real
 
 import numpy as np
 import pandas as pd
@@ -26,6 +28,31 @@ FAINT_TRACE_DEFAULTS = {
     "faint-order-min-bin-snr": 3.0,
     "same-source-max-join-arcsec": 2.0,
 }
+
+
+def _checked_bool(values, key):
+    """*the setting ``key`` as a bool, raising a ``ValueError`` that names it when it is not a real bool*"""
+    value = values[key]
+    if not isinstance(value, bool):
+        raise ValueError(f"The setting `{key}` must be true or false, not {value!r}.")
+    return value
+
+
+def _checked_positive(values, key):
+    """*the setting ``key`` as a float, raising a ``ValueError`` that names it unless it is finite and above zero*"""
+    value = values[key]
+    isNumber = isinstance(value, Real) and not isinstance(value, bool)
+    if not isNumber or not math.isfinite(value) or value <= 0:
+        raise ValueError(f"The setting `{key}` must be a finite number above zero, not {value!r}.")
+    return float(value)
+
+
+def _checked_positive_integer(values, key):
+    """*the setting ``key`` as an int, raising a ``ValueError`` that names it unless it is an integer above zero*"""
+    value = values[key]
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"The setting `{key}` must be a whole number above zero, not {value!r}.")
+    return value
 
 
 @dataclass(frozen=True)
@@ -57,16 +84,23 @@ class faint_trace_settings:
         **Return:**
 
         - ``settings`` -- the frozen settings, off when the block has no ``faint-order-trace`` key
+
+        A key that is missing or *None* takes its default. A malformed value raises a ``ValueError`` that names the key:
+        the switch must be a bool, the bin count a whole number above zero, and every other number finite and above
+        zero.
         """
-        values = {**FAINT_TRACE_DEFAULTS, **(block or {})}
+        block = block or {}
+        values = {
+            key: default if block.get(key) is None else block[key] for key, default in FAINT_TRACE_DEFAULTS.items()
+        }
         return cls(
-            isEnabled=bool(values["faint-order-trace"]),
-            minDetectionFraction=float(values["faint-order-min-detection-fraction"]),
-            maxScatterPx=float(values["faint-order-max-scatter-px"]),
-            maxAnchorScatterPx=float(values["faint-order-max-anchor-scatter-px"]),
-            binCount=int(values["faint-order-bin-count"]),
-            minBinSnr=float(values["faint-order-min-bin-snr"]),
-            maxJoinArcsec=float(values["same-source-max-join-arcsec"]),
+            isEnabled=_checked_bool(values, "faint-order-trace"),
+            minDetectionFraction=_checked_positive(values, "faint-order-min-detection-fraction"),
+            maxScatterPx=_checked_positive(values, "faint-order-max-scatter-px"),
+            maxAnchorScatterPx=_checked_positive(values, "faint-order-max-anchor-scatter-px"),
+            binCount=_checked_positive_integer(values, "faint-order-bin-count"),
+            minBinSnr=_checked_positive(values, "faint-order-min-bin-snr"),
+            maxJoinArcsec=_checked_positive(values, "same-source-max-join-arcsec"),
         )
 
 
