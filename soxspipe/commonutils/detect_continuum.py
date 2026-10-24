@@ -47,6 +47,7 @@ from soxspipe.commonutils.toolkit import (
     has_sequence_suffixed_traces,
     legend_below_axis,
     nodding_sequence_suffix,
+    order_label,
     order_traces_table,
     qc_image_panel_height,
     qc_table_heights,
@@ -1135,7 +1136,37 @@ class detect_continuum(_base_detect):
             self.axisA,
             self.axisB,
         )
+        self._record_faint_trace_qc(reports)
         return orderPixelTable
+
+    def _record_faint_trace_qc(self, reports):
+        """*record the transferred orders: a header QC, a log line each and an extraction note each*
+
+        Nothing is written when no order was transferred, so a bright frame keeps the headers it always had.
+
+        **Key Arguments:**
+
+        - ``reports`` -- the ``transfer_report`` of each transferred order
+        """
+        if not reports:
+            return
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName="N ORDERS FAINT TRACE",
+            qcValue=len(reports),
+            qcComment="Number of faint orders whose trace was transferred from a bright neighbour",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+            qcUnit=None,
+            toHeader=True,
+        )
+        note = getattr(self.log, "note", None)
+        for report in reports:
+            line = report.describe(order_label(report.order, self.arm), order_label(report.anchorOrder, self.arm))
+            self.log.print(line)
+            if note is not None:
+                note(line)
 
     def create_pixel_arrays(self):
         """*create a pixel array for the approximate centre of each order*

@@ -225,3 +225,95 @@ def test_sample_trace_keeps_the_frame_to_map_binning_for_the_faint_order_pixels(
 
     # ASSERT
     assert detector.mapBinning == {"x": 2.0, "y": 3.0}
+
+
+class _NoteLog:
+    """A recording logger that also takes extraction notes, as the Horne extraction's logger does."""
+
+    def __init__(self, log: object) -> None:
+        self.log = log
+        self.notes: list[str] = []
+
+    def note(self, message: str) -> None:
+        self.notes.append(message)
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self.log, name)
+
+
+def test_get_records_the_count_of_transferred_orders_as_a_header_qc(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    sampled, image = _scene((2.0,))
+
+    # ACT
+    run = _run_get(log, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+
+    # ASSERT
+    qc = run.detector.qc
+    row = qc.loc[qc["qc_name"] == FAINT_QC].iloc[0]
+    assert row["qc_value"] == 1
+    assert bool(row["to_header"]) is True
+    assert row["soxspipe_recipe"] == "soxs-stare"
+
+
+def test_get_adds_the_qc_only_when_an_order_was_transferred(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE: U AND G ARE BOTH FAINT, SO NEITHER HAS A BRIGHT PARTNER
+    sampled, image = _scene((2.0, 3.0))
+
+    # ACT
+    run = _run_get(log, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+
+    # ASSERT
+    _assert_untouched(run)
+
+
+def test_get_prints_and_notes_one_line_for_each_transferred_order(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    sampled, image = _scene((2.0, 4.0))
+    noteLog = _NoteLog(log)
+
+    # ACT
+    _run_get(noteLog, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+
+    # ASSERT
+    assert len(noteLog.notes) == 2
+    assert noteLog.notes[0].startswith("Order 2 (u) trace transferred from 3 (g): ")
+    assert noteLog.notes[1].startswith("Order 4 (i) trace transferred from 1 (r): ")
+    assert "/15 bins, deg " in noteLog.notes[0]
+    printed = [message for level, message in log.messages if level == "print" and "trace transferred" in message]
+    assert printed == noteLog.notes
+
+
+def test_get_runs_without_a_note_method_on_the_logger(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    sampled, image = _scene((2.0,))
+
+    # ACT
+    run = _run_get(log, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+
+    # ASSERT
+    assert FAINT_QC in run.detector.qc["qc_name"].tolist()
+    assert any("Order 2 (u) trace transferred from 3 (g)" in message for _, message in log.messages)
+
+
+def test_get_says_so_when_a_faint_order_falls_back_to_the_anchor_track(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE: NOTHING AT ALL IS IN THE u ORDER
+    sampled, _ = _scene((2.0,))
+    image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
+    noteLog = _NoteLog(log)
+
+    # ACT
+    _run_get(noteLog, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+
+    # ASSERT
+    assert noteLog.notes == ["Order 2 (u) trace transferred from 3 (g): no bin kept, anchor track used"]

@@ -319,6 +319,23 @@ class transfer_report:
     isAnchorTrack: bool
     slitArcsec: float
 
+    def describe(self, orderLabel, anchorLabel):
+        """*the one-line account of the transfer for the log and the extraction notes*
+
+        **Key Arguments:**
+
+        - ``orderLabel`` -- the faint order's label, such as ``"2 (u)"``
+        - ``anchorLabel`` -- the bright neighbour's label, such as ``"3 (g)"``
+
+        **Return:**
+
+        - ``line`` -- the sentence
+        """
+        head = f"Order {orderLabel} trace transferred from {anchorLabel}: "
+        if self.isAnchorTrack:
+            return head + "no bin kept, anchor track used"
+        return head + f"{self.binsKept}/{self.binCount} bins, deg {self.degree}"
+
 
 def _shared_edge_nm(brightRows, anchorOrder, order):
     """*the wavelength at the end of the bright order that faces the faint order*"""
