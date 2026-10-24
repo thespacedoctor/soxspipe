@@ -927,7 +927,15 @@ class detect_continuum(_base_detect):
                     exponentsIncluded=True,
                     writeQCs=True,
                 )
-                mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
+                # THE GATES JUDGE THE MEASURED ROWS: SYNTHETIC ROWS LIE ON THE TRACE AND WOULD HIDE A BAD FIT
+                mean_res = np.mean(
+                    np.abs(
+                        measured_residuals(
+                            orderPixelTable[f"cont_{self.axisA}_fit_res"].values,
+                            transferred_row_mask(orderPixelTable),
+                        )
+                    )
+                )
 
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
