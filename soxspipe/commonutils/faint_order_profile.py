@@ -116,9 +116,11 @@ def frame_to_nan_array(frame):
 
     **Return:**
 
-    - ``image`` -- a new 2D float array
+    - ``image`` -- a new 2D float array: a floating dtype is kept, and an integer one becomes float64
     """
-    data = np.array(getattr(frame, "data", frame), dtype=float)
+    data = np.array(getattr(frame, "data", frame))
+    if not np.issubdtype(data.dtype, np.floating):
+        data = data.astype(np.float64)
     mask = getattr(frame, "mask", None)
     if mask is not None:
         data[np.broadcast_to(np.asarray(mask, dtype=bool), data.shape)] = np.nan

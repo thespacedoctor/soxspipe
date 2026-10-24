@@ -226,7 +226,7 @@ def _vv_table() -> pd.DataFrame:
 
 
 def test_find_faint_orders_marks_which_faint_orders_could_anchor_a_neighbour() -> None:
-    # ARRANGE: THE VV4580Sgr FRAME, WHERE U IS TOO SPARSELY DETECTED TO ANCHOR AND G IS FAINT BUT STILL USABLE
+    # ARRANGE: THE VV4580SGR FRAME, WHERE U IS TOO SPARSELY DETECTED TO ANCHOR AND G IS FAINT BUT STILL USABLE
     table = _vv_table()
 
     # ACT
@@ -250,7 +250,7 @@ def test_a_faint_order_cannot_anchor_when_its_scatter_is_over_the_anchor_limit()
 
 
 def test_a_faint_order_with_too_few_accepted_samples_cannot_anchor() -> None:
-    # ARRANGE: THREE ACCEPTED SAMPLES GIVE NO SCATTER, SO NaN MUST NOT PASS THE ANCHOR LIMIT
+    # ARRANGE: THREE ACCEPTED SAMPLES GIVE NO SCATTER, SO NAN MUST NOT PASS THE ANCHOR LIMIT
     table = _table(_order_rows(3.0, count=6, detectedFraction=0.5))
 
     # ACT
@@ -387,7 +387,7 @@ def test_bright_edge_anchor_converts_the_centre_shift_to_slit_arcsec_with_the_si
 
 
 def test_bright_edge_anchor_evaluates_the_smooth_centre_shift_at_the_requested_edge() -> None:
-    # ARRANGE: THE SHIFT IS 2 + 4 u^2 PX WITH u RUNNING -1 TO +1 ACROSS THE ORDER, SO IT IS 6 PX AT EACH END
+    # ARRANGE: THE SHIFT IS 2 + 4 U^2 PX WITH U RUNNING -1 TO +1 ACROSS THE ORDER, SO IT IS 6 PX AT EACH END
     rows = _order_rows(3.0, curvaturePx=4.0, scatterPx=0.05)
 
     # ACT
@@ -447,7 +447,7 @@ def _centroid(offsets: np.ndarray, profile: np.ndarray) -> float:
 
 
 def test_collapse_bin_profile_centres_the_profile_on_the_track_with_sub_pixel_accuracy() -> None:
-    # ARRANGE: THE STRIPE SITS 1.3 PX ABOVE A TRACK THAT RUNS ALONG x = 40.3 FOR 20 ROWS
+    # ARRANGE: THE STRIPE SITS 1.3 PX ABOVE A TRACK THAT RUNS ALONG X = 40.3 FOR 20 ROWS
     image = _gaussian_image(41.6)
     trackA, trackB = np.full(20, 40.3), np.arange(10.0, 30.0)
 
@@ -460,7 +460,7 @@ def test_collapse_bin_profile_centres_the_profile_on_the_track_with_sub_pixel_ac
 
 
 def test_collapse_bin_profile_cuts_along_the_axis_it_is_told() -> None:
-    # ARRANGE: THE SAME STRIPE ON A TRANSPOSED IMAGE, WITH THE PROFILE CUT ALONG y
+    # ARRANGE: THE SAME STRIPE ON A TRANSPOSED IMAGE, WITH THE PROFILE CUT ALONG Y
     trackA, trackB = np.full(20, 40.3), np.arange(10.0, 30.0)
     _, expected = collapse_bin_profile(_gaussian_image(41.6), trackA, trackB, 8, "x")
 
@@ -486,7 +486,7 @@ def test_collapse_bin_profile_ignores_a_cosmic_ray_row() -> None:
 
 
 def test_collapse_bin_profile_skips_masked_pixels_and_samples_off_the_image() -> None:
-    # ARRANGE: NaN MARKS MASKED PIXELS, AND THE LAST TRACK POINTS LIE ABOVE THE IMAGE
+    # ARRANGE: NAN MARKS MASKED PIXELS, AND THE LAST TRACK POINTS LIE ABOVE THE IMAGE
     image = _gaussian_image(40.0)
     image[12:14, :] = np.nan
     trackA, trackB = np.full(24, 40.0), np.arange(10.0, 34.0) + np.r_[np.zeros(20), np.full(4, 100.0)]
@@ -703,6 +703,43 @@ def test_frame_to_nan_array_marks_masked_pixels_of_a_ccd_frame_and_copes_with_no
     # ASSERT
     assert np.isnan(maskedImage[0, 0]) and np.isfinite(maskedImage).sum() == 3
     assert np.isfinite(unmaskedImage).all()
+
+
+def test_frame_to_nan_array_keeps_a_single_precision_frame_single_precision() -> None:
+    # ARRANGE
+    frame = np.ma.masked_array(np.ones((2, 2), dtype=np.float32), mask=[[True, False], [False, False]])
+
+    # ACT
+    image = frame_to_nan_array(frame)
+
+    # ASSERT
+    assert image.dtype == np.float32
+    assert np.isnan(image[0, 0])
+
+
+def test_frame_to_nan_array_promotes_an_integer_frame_to_double_precision() -> None:
+    # ARRANGE
+    frame = np.arange(4, dtype=np.int16).reshape(2, 2)
+
+    # ACT
+    image = frame_to_nan_array(frame)
+
+    # ASSERT
+    assert image.dtype == np.float64
+    np.testing.assert_array_equal(image, frame)
+
+
+def test_frame_to_nan_array_returns_a_copy_that_leaves_the_frame_alone() -> None:
+    # ARRANGE
+    frame = np.ma.masked_array(np.ones((2, 2), dtype=np.float32), mask=[[True, False], [False, False]])
+
+    # ACT
+    image = frame_to_nan_array(frame)
+    image[1, 1] = 5.0
+
+    # ASSERT
+    assert frame.data[1, 1] == 1.0
+    assert frame.data[0, 0] == 1.0
 
 
 def test_fit_fixed_width_gaussian_returns_none_for_a_flat_profile() -> None:

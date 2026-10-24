@@ -1234,7 +1234,7 @@ class detect_continuum(_base_detect):
         for report in reports:
             line = report.describe(order_label(report.order, self.arm), order_label(report.anchorOrder, self.arm))
             self.log.print(line)
-            if note is not None:
+            if callable(note):
                 note(line)
 
     def create_pixel_arrays(self):

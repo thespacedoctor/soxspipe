@@ -166,7 +166,7 @@ GATE_OFF_CASES = [
 def test_get_changes_nothing_where_the_trace_is_off(
     log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, block: dict, options: dict
 ) -> None:
-    # ARRANGE: A FRAME WITH A FAINT u ORDER, WHICH WOULD BE TRANSFERRED IF THE TRACE WERE ON
+    # ARRANGE: A FRAME WITH A FAINT U ORDER, WHICH WOULD BE TRANSFERRED IF THE TRACE WERE ON
     sampled, image = _scene((2.0,))
     before = sampled.copy()
 
@@ -200,7 +200,7 @@ def test_the_trace_never_runs_for_a_gate_that_is_off(
 def test_sample_trace_keeps_the_frame_to_map_binning_for_the_faint_order_pixels(
     log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ARRANGE: THE FRAME IS BINNED 2 IN x AND 3 IN y RELATIVE TO THE MAP
+    # ARRANGE: THE FRAME IS BINNED 2 IN X AND 3 IN Y RELATIVE TO THE MAP
     detector = object.__new__(detect_continuum)
     detector.log = log
     detector.inst, detector.arm, detector.recipeName = "XSH", "VIS", "soxs-stare"
@@ -309,10 +309,29 @@ def test_get_runs_without_a_note_method_on_the_logger(
     assert any("Order 2 (u) trace transferred from 3 (g)" in message for _, message in log.messages)
 
 
+class _NonCallableNoteLog(_NoteLog):
+    """A logger whose `note` attribute exists but cannot be called."""
+
+    note = "not a method"
+
+
+def test_get_runs_when_the_logger_note_attribute_is_not_callable(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    sampled, image = _scene((2.0,))
+
+    # ACT
+    run = _run_get(_NonCallableNoteLog(log), monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+
+    # ASSERT
+    assert FAINT_QC in run.detector.qc["qc_name"].tolist()
+
+
 def test_get_says_so_when_a_faint_order_falls_back_to_the_anchor_track(
     log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # ARRANGE: NOTHING AT ALL IS IN THE u ORDER
+    # ARRANGE: NOTHING AT ALL IS IN THE U ORDER
     sampled, _ = _scene((2.0,))
     image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
     noteLog = _NoteLog(log)
@@ -338,7 +357,7 @@ def _join_warnings(log: object) -> list[str]:
 def test_get_warns_when_adjacent_orders_follow_different_sources(
     log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # ARRANGE: THE FITTED u TRACE SITS 2.5 ARCSEC ABOVE THE g TRACE, WITH THE OTHER ORDERS ON ONE SOURCE
+    # ARRANGE: THE FITTED U TRACE SITS 2.5 ARCSEC ABOVE THE G TRACE, WITH THE OTHER ORDERS ON ONE SOURCE
     sampled, image = _scene((2.0,))
     slits = {1.0: 0.4, 2.0: 2.9, 3.0: 0.4, 4.0: 0.4}
 
@@ -422,7 +441,7 @@ def test_get_removes_the_slit_offsets_before_it_compares_the_joins(
 def test_get_makes_no_join_check_where_the_trace_is_off(
     log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, block: dict, options: dict
 ) -> None:
-    # ARRANGE: THE SAME u JUMP THAT WARNS WHEN THE TRACE IS ON
+    # ARRANGE: THE SAME U JUMP THAT WARNS WHEN THE TRACE IS ON
     sampled, image = _scene(())
     slits = {1.0: 0.4, 2.0: 2.9, 3.0: 0.4, 4.0: 0.4}
 
