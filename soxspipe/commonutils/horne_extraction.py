@@ -163,7 +163,7 @@ class horne_extraction(base_util):
     noTraceFallback = False
     traceFallback = False
 
-    # {ORDER: SLIT-ILLUMINATION OFFSET (arcsec)} FOR THE FAINT-ORDER TRACE, OR None WHEN NOT MEASURED
+    # {ORDER: SLIT-ILLUMINATION OFFSET (ARCSEC)} FOR THE FAINT-ORDER TRACE, OR NONE WHEN NOT MEASURED
     slitOffsetsArcsec = None
 
     # BLEND-MERGED VIS CALIBRATION SKYLINES, BUILT ON FIRST USE (SEE ``_merged_skylines``)

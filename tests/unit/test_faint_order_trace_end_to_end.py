@@ -95,7 +95,7 @@ def _trace_error(detector: detect_continuum, polyTable: pd.DataFrame, order: flo
 def test_the_fitted_u_trace_lands_within_0_3_px_of_the_target_at_a_snr_of_0_5(
     log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # ARRANGE: THE u PEAK IS HALF THE NOISE PER PIXEL, AND TWO SOURCES 3.7 ARCSEC AWAY ARE BRIGHTER THAN IT
+    # ARRANGE: THE U PEAK IS HALF THE NOISE PER PIXEL, AND TWO SOURCES 3.7 ARCSEC AWAY ARE BRIGHTER THAN IT
 
     # ACT
     detector, result = _run(log, monkeypatch, tmp_path, FAINT_U_AMPLITUDES, isOn=True)
@@ -124,7 +124,7 @@ def test_the_bright_orders_barely_move_when_u_is_transferred(
     onDetector, onResult = _run(log, monkeypatch, tmp_path / "on", FAINT_U_AMPLITUDES, isOn=True)
     offDetector, offResult = _run(log, monkeypatch, tmp_path / "off", FAINT_U_AMPLITUDES, isOn=False)
 
-    # ASSERT: g, r AND i DIFFER BY LESS THAN 0.05 PX BETWEEN THE TWO RUNS
+    # ASSERT: G, R AND I DIFFER BY LESS THAN 0.05 PX BETWEEN THE TWO RUNS
     for order in (1.0, 3.0, 4.0):
         moved = _trace_error(onDetector, onResult[3], order) - _trace_error(offDetector, offResult[3], order)
         assert np.abs(moved).max() < 0.05

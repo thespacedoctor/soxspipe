@@ -267,7 +267,7 @@ def test_transfer_holds_the_trace_flat_beyond_the_last_kept_bin(pixelsAt: object
 def test_transfer_rows_are_refitted_exactly_by_the_global_polynomial(
     faintUScene: tuple, pixelsAt: object, log: object
 ) -> None:
-    # ARRANGE: A DEGREE-3 FIT TO THE u ROWS ALONE, WITH THE SAME CLIPPING SETTINGS AS THE SHIPPED STARE BLOCK
+    # ARRANGE: A DEGREE-3 FIT TO THE U ROWS ALONE, WITH THE SAME CLIPPING SETTINGS AS THE SHIPPED STARE BLOCK
     result, _ = _transfer(faintUScene, pixelsAt)
     detector = object.__new__(detect_continuum)
     detector.log, detector.arm, detector.axisA, detector.axisB = log, "VIS", "x", "y"

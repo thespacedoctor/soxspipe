@@ -14,20 +14,20 @@ pytestmark = pytest.mark.unit
 
 
 def test_make_pixels_at_reads_the_dispersion_map_in_frame_pixels(log: object, tmp_path: Path) -> None:
-    # ARRANGE: THE FRAME IS BINNED 2 IN y RELATIVE TO THE MAP, AND THE SLIT RUNS ALONG x
+    # ARRANGE: THE FRAME IS BINNED 2 IN Y RELATIVE TO THE MAP, AND THE SLIT RUNS ALONG X
     mapPath = vis_dispersion_map(tmp_path)
     pixelsAt = make_pixels_at(log, mapPath, {"x": 1.0, "y": 2.0}, "x", "y")
 
     # ACT
     axisA, axisB = pixelsAt(3.0, np.array([610.0, 630.0]), 0.5)
 
-    # ASSERT: x = -30 + 90 * 3 + 0.5 * SCALE(3) AND y = ROW(WAVELENGTH) / 2
+    # ASSERT: X = -30 + 90 * 3 + 0.5 * SCALE(3) AND Y = ROW(WAVELENGTH) / 2
     np.testing.assert_allclose(axisA, 240.0 + 0.5 * vis_slit_scale(3.0), atol=1e-3)
     np.testing.assert_allclose(axisB, vis_row(3.0, np.array([610.0, 630.0])) / 2.0, atol=1e-3)
 
 
 def test_make_pixels_at_keeps_samples_that_fall_off_the_detector(log: object, tmp_path: Path) -> None:
-    # ARRANGE: A SLIT POSITION 100 ARCSEC OUT PUTS x BELOW ZERO
+    # ARRANGE: A SLIT POSITION 100 ARCSEC OUT PUTS X BELOW ZERO
     pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "x", "y")
 
     # ACT

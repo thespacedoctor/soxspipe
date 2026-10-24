@@ -56,13 +56,13 @@ def test_join_slit_mismatches_is_silent_when_every_order_traces_the_same_source(
 
 
 def test_join_slit_mismatches_reports_a_trace_that_jumps_by_more_than_the_limit(pixelsAt: object) -> None:
-    # ARRANGE: THE u TRACE SITS 2.5 ARCSEC ABOVE THE g TRACE AT THEIR JOIN
+    # ARRANGE: THE U TRACE SITS 2.5 ARCSEC ABOVE THE G TRACE AT THEIR JOIN
     slits = _same_source(o2=0.4 + 2.5)
 
     # ACT
     found = _mismatches(pixelsAt, slits)
 
-    # ASSERT: THE DIFFERENCE IS RED MINUS BLUE, SO g IS 2.5 ARCSEC BELOW u
+    # ASSERT: THE DIFFERENCE IS RED MINUS BLUE, SO G IS 2.5 ARCSEC BELOW U
     assert [(m.blueOrder, m.redOrder) for m in found] == [(2.0, 3.0)]
     assert found[0].differenceArcsec == pytest.approx(-2.5, abs=0.01)
 
@@ -84,20 +84,20 @@ def test_join_slit_mismatches_is_silent_at_or_below_the_limit(pixelsAt: object) 
 
 
 def test_join_slit_mismatches_checks_the_join_across_the_band_groups(pixelsAt: object) -> None:
-    # ARRANGE: g AND r ARE THE ORDERS EITHER SIDE OF THE u/g TO r/i BOUNDARY
+    # ARRANGE: G AND R ARE THE ORDERS EITHER SIDE OF THE U/G TO R/I BOUNDARY
     slits = _same_source(o1=0.4 + 3.0)
 
     # ACT
     found = _mismatches(pixelsAt, slits)
 
-    # ASSERT: r IS 3 ARCSEC ABOVE g, AND i, WHICH MATCHES g, IS 3 ARCSEC BELOW r
+    # ASSERT: R IS 3 ARCSEC ABOVE G, AND I, WHICH MATCHES G, IS 3 ARCSEC BELOW R
     assert [(m.blueOrder, m.redOrder) for m in found] == [(3.0, 1.0), (1.0, 4.0)]
     assert found[0].differenceArcsec == pytest.approx(3.0, abs=0.01)
     assert found[1].differenceArcsec == pytest.approx(-3.0, abs=0.01)
 
 
 def test_join_slit_mismatches_removes_the_slit_offsets_both_orders_report(pixelsAt: object) -> None:
-    # ARRANGE: THE u TRACE LOOKS 2.5 ARCSEC OFF, BUT THE SKY SAYS THE WHOLE u IMAGE IS 2.5 ARCSEC OFF
+    # ARRANGE: THE U TRACE LOOKS 2.5 ARCSEC OFF, BUT THE SKY SAYS THE WHOLE U IMAGE IS 2.5 ARCSEC OFF
     slits = _same_source(o2=0.4 + 2.5)
 
     # ACT
@@ -114,12 +114,12 @@ def test_join_slit_mismatches_ignores_the_offset_of_a_single_order(pixelsAt: obj
     # ACT
     found = _mismatches(pixelsAt, slits, offsets={2: 2.5})
 
-    # ASSERT: WITH NO OFFSET FOR g THE RAW DIFFERENCE STANDS
+    # ASSERT: WITH NO OFFSET FOR G THE RAW DIFFERENCE STANDS
     assert len(found) == 1
 
 
 def test_join_slit_mismatches_skips_a_pair_with_an_order_missing_from_the_table(pixelsAt: object) -> None:
-    # ARRANGE: NO g ROWS, SO THE u/g AND g/r JOINS CANNOT BE CHECKED
+    # ARRANGE: NO G ROWS, SO THE U/G AND G/R JOINS CANNOT BE CHECKED
     table = _table()
     table = table.loc[table["order"] != 3.0]
     slits = _same_source(o2=0.4 + 2.5)

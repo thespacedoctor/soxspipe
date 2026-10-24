@@ -117,7 +117,7 @@ INTEGER_KEY = "faint-order-bin-count"
 
 @pytest.mark.parametrize("value", ["False", "true", 0, 1, 1.0, [True]])
 def test_from_block_rejects_a_switch_that_is_not_a_real_bool_and_names_the_key(value: object) -> None:
-    # ACT / ASSERT: A QUOTED "False" IS A NON-EMPTY STRING AND WOULD TURN THE TRACE ON IF IT WERE CAST
+    # ACT / ASSERT: A QUOTED "FALSE" IS A NON-EMPTY STRING AND WOULD TURN THE TRACE ON IF IT WERE CAST
     with pytest.raises(ValueError, match=BOOLEAN_KEY):
         faint_trace_settings.from_block({BOOLEAN_KEY: value})
 
