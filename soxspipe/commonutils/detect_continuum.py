@@ -1556,8 +1556,8 @@ class detect_continuum(_base_detect):
         - ``orderPixelTable`` -- the fitted trace table, with a ``faint_transfer`` column when an order was transferred
         """
         measured, transferred = orderPixelTable, orderPixelTable.iloc[0:0]
-        if "faint_transfer" in orderPixelTable.columns:
-            isTransferred = orderPixelTable["faint_transfer"].astype(bool)
+        isTransferred = transferred_row_mask(orderPixelTable)
+        if isTransferred is not None:
             measured, transferred = orderPixelTable.loc[~isTransferred], orderPixelTable.loc[isTransferred]
         axis.scatter(
             measured[f"cont_{self.axisB}"],

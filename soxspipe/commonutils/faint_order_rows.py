@@ -20,10 +20,13 @@ def transferred_row_mask(table):
     **Return:**
 
     - ``isTransferred`` -- one boolean per row, or *None* when the table has no ``faint_transfer`` column
+
+    A row is synthetic only when its flag is *True*. A missing flag (NaN, *None* or ``NA``) and any other value are
+    measured rows.
     """
     if TRANSFER_COLUMN not in table.columns:
         return None
-    return table[TRANSFER_COLUMN].to_numpy(dtype=bool)
+    return table[TRANSFER_COLUMN].eq(True).fillna(False).to_numpy(dtype=bool)
 
 
 def clip_measured_residuals(residuals, isTransferred, sigmaLow, sigmaHigh):
@@ -44,9 +47,9 @@ def clip_measured_residuals(residuals, isTransferred, sigmaLow, sigmaHigh):
     - ``isClipped`` -- one boolean per row, *True* where the row is clipped
     """
 
-    def clip(values):
-        from astropy.stats import sigma_clip
+    from astropy.stats import sigma_clip
 
+    def clip(values):
         return sigma_clip(
             values, sigma_lower=sigmaLow, sigma_upper=sigmaHigh, maxiters=2, cenfunc="mean", stdfunc="std"
         )
