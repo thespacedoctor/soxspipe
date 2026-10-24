@@ -8,14 +8,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.faint_order_profile import collapse_bin_profile, fit_fixed_width_gaussian
 from soxspipe.commonutils.faint_order_trace import (
     VIS_BAND_GROUPS,
     anchor_neighbours,
     bright_edge_anchor,
-    collapse_bin_profile,
     faint_trace_settings,
     find_faint_orders,
-    fit_fixed_width_gaussian,
     make_pixels_at,
     pixels_per_arcsec,
 )
@@ -415,8 +414,8 @@ def _profile(
     return values + np.random.default_rng(seed).normal(0.0, noise, values.shape) if noise else values
 
 
-def _fit(profile: np.ndarray, **kwargs: object) -> float | None:
-    return fit_fixed_width_gaussian(profile, PROFILE_OFFSETS, PROFILE_SIGMA, PROFILE_WINDOW, **kwargs)
+def _fit(profile: np.ndarray, minSnr: float = 3.0) -> float | None:
+    return fit_fixed_width_gaussian(profile, PROFILE_OFFSETS, PROFILE_SIGMA, PROFILE_WINDOW, minSnr)
 
 
 @pytest.mark.parametrize("truth", [-3.2, 0.0, 2.7])
