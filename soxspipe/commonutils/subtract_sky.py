@@ -714,7 +714,11 @@ class subtract_sky:
         )
         order = int(preFitOrder["order"].values[0])
         if not estimate.isCorrected:
-            self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")
+            # A CROWDED-SLIT SKIP COULD BE MISTAKEN FOR A MISSED CORRECTION, SO IT IS PRINTED (DY-1933)
+            if estimate.isCrowdedSlit:
+                self.log.print(f"\n\tORDER {order}: NO OBJECT-WING CORRECTION - {estimate.reason.upper()}\n")
+            else:
+                self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")
             return fitResult
 
         # LABEL THE WINGS NOW: THE REFIT SORTS ITS INPUT IN PLACE, SO ITS INDEX NO LONGER MATCHES THE ARRAY ORDER

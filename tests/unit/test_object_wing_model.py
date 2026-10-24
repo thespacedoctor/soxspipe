@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pytest
@@ -12,6 +12,7 @@ from soxspipe.commonutils.object_wing_model import (
     estimate_object_wings,
     faint_end_zero_point,
     profile_peak,
+    profile_sources,
     slit_profile,
     wing_model,
 )
@@ -687,3 +688,255 @@ def test_estimate_without_any_pixel_the_first_fit_used_is_not_corrected():
     # ASSERT
     assert not estimate.isCorrected
     assert "first sky fit" in estimate.reason
+
+
+COMPANION_OFFSET_ARCSEC = 3.0
+
+
+def _source_profile(binCentres, sources, noise=0.001, seed=3):
+    """Return a binned profile of unit-width Gaussian sources, (centre, height) pairs, with Gaussian noise."""
+    rng = np.random.default_rng(seed)
+    profile = np.zeros(binCentres.shape)
+    for centre, height in sources:
+        profile += height * np.exp(-0.5 * ((binCentres - centre) / 0.45) ** 2)
+    profileNoise = np.full(binCentres.shape, noise)
+    return profile + rng.normal(0.0, noise, binCentres.shape), profileNoise
+
+
+SLIT_BINS = np.arange(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH + BIN_ARCSEC / 2, BIN_ARCSEC)
+
+
+def test_profile_sources_finds_one_source_in_a_single_star_profile():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(0.5, 1.0)])
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [0.5], atol=BIN_ARCSEC)
+
+
+def test_profile_sources_finds_every_bright_source_on_a_crowded_slit_brightest_first():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(-3.5, 0.6), (0.0, 1.0), (3.5, 0.4)])
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [0.0, -3.5, 3.5], atol=BIN_ARCSEC)
+
+
+def test_profile_sources_ignores_a_faint_bump_that_is_a_small_fraction_of_the_profile():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(0.0, 1.0), (-3.0, 0.08)])
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    assert len(sources) == 1
+
+
+def test_profile_sources_ignores_a_bump_that_is_not_significant_against_its_noise():
+    # ARRANGE
+    profile, _ = _source_profile(SLIT_BINS, [(0.0, 1.0), (3.0, 0.5)])
+    profileNoise = np.full(SLIT_BINS.shape, 0.2)
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    assert len(sources) == 1
+
+
+def test_profile_sources_merges_peaks_closer_than_the_minimum_separation():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(0.0, 1.0), (1.0, 0.9)], noise=0.0001)
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    assert len(sources) == 1
+
+
+def test_profile_sources_skips_empty_bins():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(-3.0, 0.7), (2.0, 1.0)])
+    profile[10] = np.nan
+    profileNoise[10] = np.nan
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [2.0, -3.0], atol=BIN_ARCSEC)
+
+
+def test_profile_sources_is_empty_without_finite_bins():
+    # ARRANGE
+    profile = np.full(SLIT_BINS.shape, np.nan)
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profile.copy())
+
+    # ASSERT
+    assert sources.size == 0
+
+
+def _with_companion(order, fraction):
+    """Return the order with a second star, ``fraction`` as bright as the first, added to its flux."""
+    companion = fraction * order.spectrum * _object_profile(order.slitPosition - COMPANION_OFFSET_ARCSEC, 0.0)
+    return replace(order, flux=order.flux + companion)
+
+
+def test_bright_star_with_a_companion_on_the_slit_is_not_corrected_and_the_reason_names_the_sources():
+    # ARRANGE
+    order = _with_companion(_build_order(), 0.5)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert estimate.isCrowdedSlit
+    assert "2 sources" in estimate.reason
+    np.testing.assert_allclose(np.sort(estimate.sourceCentres), [0.0, COMPANION_OFFSET_ARCSEC], atol=BIN_ARCSEC)
+    assert estimate.biasLevel > 0
+
+
+def test_corrected_bright_star_reports_its_one_source():
+    # ARRANGE
+    order = _build_order()
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert not estimate.isCrowdedSlit
+    np.testing.assert_allclose(estimate.sourceCentres, [0.0], atol=BIN_ARCSEC)
+
+
+def test_crowded_slit_that_another_gate_already_stops_is_not_flagged_as_crowded():
+    # ARRANGE
+    order = _with_companion(_build_order(), 0.5)
+
+    # ACT
+    estimate = order.estimate(gateFraction=1.0e6)
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert not estimate.isCrowdedSlit
+    assert "gate fraction" in estimate.reason
+    assert len(estimate.sourceCentres) == 2
+
+
+def test_profile_sources_still_finds_a_companion_when_an_unlit_slit_end_sits_far_below_the_profile():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(-3.5, 1.0), (0.2, 0.6)])
+    profile[:2] = [-3.3, -1.8]
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [-3.5, 0.2], atol=BIN_ARCSEC)
+
+
+def test_profile_sources_bridges_empty_bins_at_the_peak_of_a_source():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(-3.0, 1.0), (1.5, 0.8)])
+    gap = np.abs(SLIT_BINS - 1.5) < 0.3
+    profile[gap] = np.nan
+    profileNoise[gap] = np.nan
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    assert len(sources) == 2
+    assert sources[0] == pytest.approx(-3.0, abs=BIN_ARCSEC)
+    # A BRIDGED PEAK CAN LAND ANYWHERE FROM ONE VALID FLANK OF THE GAP TO THE OTHER
+    assert abs(sources[1] - 1.5) <= 0.3 + BIN_ARCSEC
+
+
+def test_profile_sources_does_not_make_a_peak_where_a_falling_profile_has_a_gap():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(-3.0, 1.0)])
+    profile = profile - 0.05 * SLIT_BINS
+    gap = np.abs(SLIT_BINS - 1.5) < 0.6
+    profile[gap] = np.nan
+    profileNoise[gap] = np.nan
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [-3.0], atol=BIN_ARCSEC)
+
+
+def test_profile_sources_skips_bins_without_a_positive_noise():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(0.0, 1.0), (3.0, 0.5)])
+    profileNoise[SLIT_BINS > 2.0] = 0.0
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [0.0], atol=BIN_ARCSEC)
+
+
+def _invalidate(profile, profileNoise, isInvalid, how):
+    """Return copies of the profile and noise with the chosen bins made invalid in the chosen way."""
+    profile, profileNoise = profile.copy(), profileNoise.copy()
+    if how == "nan":
+        profile[isInvalid] = np.nan
+    else:
+        profileNoise[isInvalid] = 0.0
+    return profile, profileNoise
+
+
+@pytest.mark.parametrize("how", ["nan", "zero noise"])
+@pytest.mark.parametrize(
+    "isInvalid",
+    [SLIT_BINS < -4.0, SLIT_BINS > 4.0, np.abs(SLIT_BINS + 1.0) < 0.2],
+    ids=["leading", "trailing", "interior"],
+)
+def test_profile_sources_finds_both_sources_whatever_the_invalid_bins(isInvalid, how):
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(-2.5, 1.0), (1.5, 0.7)])
+    profile, profileNoise = _invalidate(profile, profileNoise, isInvalid, how)
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [-2.5, 1.5], atol=BIN_ARCSEC)
+
+
+@pytest.mark.parametrize("nValid", [0, 1])
+def test_profile_sources_is_empty_with_fewer_than_two_valid_bins(nValid):
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(0.0, 1.0)])
+    profileNoise[nValid:] = 0.0
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    assert sources.size == 0
+
+
+def test_profile_sources_does_not_report_a_source_in_the_last_valid_bin():
+    # ARRANGE
+    profile, profileNoise = _source_profile(SLIT_BINS, [(0.0, 1.0), (SLIT_BINS[-1], 0.8)])
+
+    # ACT
+    sources = profile_sources(SLIT_BINS, profile, profileNoise)
+
+    # ASSERT
+    np.testing.assert_allclose(sources, [0.0], atol=BIN_ARCSEC)

@@ -15,7 +15,9 @@ The estimate has five steps:
 5. If the zero point is negative and significant, the first sky fit holds object light of -P0·G(λ). The wing model is
    G(λ)·(P(s) − P0), which is to be subtracted from the sky pixels before the sky is refitted.
 
-A negative zero point that is small against the sky or against its noise is not corrected.
+A negative zero point that is small against the sky or against its noise is not corrected. Nor is an order whose
+slit profile shows more than one significant source (DY-1933): on a crowded slit no part of the slit is free of
+object light, so the faintest 1 arcsec does not measure the sky.
 """
 
 from __future__ import annotations
@@ -33,6 +35,13 @@ CORE_MEDIAN_WINDOW = 201
 MIN_CORE_PIXELS = 201
 MIN_PIXELS_PER_PROFILE_BIN = 20
 WING_BIAS_SIGNIFICANCE = 5
+# A SOURCE IS A PROFILE PEAK WHOSE PROMINENCE IS ABOVE THIS MANY TIMES ITS BIN NOISE (DY-1933)
+SOURCE_SIGNIFICANCE = 5
+# ... AND ABOVE THIS FRACTION OF THE PROFILE'S PEAK ABOVE ITS MEDIAN, SO A FAINT HALO BUMP NEXT TO A BRIGHT STAR IS NOT
+# A SOURCE. THE MEDIAN, NOT THE MINIMUM, BECAUSE AN UNLIT SLIT END CAN SIT FAR BELOW THE REST OF THE PROFILE
+MIN_SOURCE_FRACTION = 0.2
+# ... AND AT LEAST THIS FAR FROM A BRIGHTER SOURCE, SO A NOISY CORE IS NOT SPLIT IN TWO
+MIN_SOURCE_SEPARATION_ARCSEC = 1.5
 
 
 @dataclass(frozen=True, eq=False)
@@ -53,6 +62,10 @@ class object_wing_estimate:
     - ``biasNoise`` -- the noise of ``biasLevel``
     - ``skyLevel`` -- the median sky fit over the usable pixels
     - ``slitLossFraction`` -- the estimated share of the slit's object light that the sky fit removes
+    - ``sourceCentres`` -- the slit positions in arcsec of the significant sources in the profile of every usable
+      pixel, most prominent first. Empty if the profile was not measured
+    - ``isCrowdedSlit`` -- True if every other gate passed but the order is not corrected because the profile shows
+      more than one source
     """
 
     isCorrected: bool
@@ -66,6 +79,8 @@ class object_wing_estimate:
     biasNoise: float
     skyLevel: float
     slitLossFraction: float
+    sourceCentres: np.ndarray
+    isCrowdedSlit: bool = False
 
 
 def _slit_bin_layout(slitPosition):
@@ -223,6 +238,50 @@ def faint_end_zero_point(binCentres, profile, profileNoise):
     return float(means[start]), float(noise), float(runCentre)
 
 
+def profile_sources(binCentres, profile, profileNoise):
+    """*find the significant sources in a slit profile (DY-1933)*
+
+    A source is a local maximum of the profile whose prominence is above ``SOURCE_SIGNIFICANCE`` times the noise of
+    its bin and above ``MIN_SOURCE_FRACTION`` of the profile's maximum minus its median. A source closer than
+    ``MIN_SOURCE_SEPARATION_ARCSEC`` to a more prominent one is dropped. A bin that is not finite or has no positive
+    noise is invalid. Invalid bins at the slit ends are dropped, and the profile and noise are linearly interpolated
+    across invalid bins inside the slit, so an empty bin neither hides a peak nor makes one. A maximum in the first or
+    last valid bin is not a peak.
+
+    **Key Arguments:**
+
+    - ``binCentres`` -- the centre of every slit bin in arcsec
+    - ``profile`` -- the profile in every bin, with NaN for empty bins
+    - ``profileNoise`` -- the noise of the profile in every bin
+
+    **Return:**
+
+    - ``sourceCentres`` -- the slit positions in arcsec of the sources, most prominent first
+    """
+    import numpy as np
+    from scipy.signal import find_peaks
+
+    isValid = np.isfinite(profile) & np.isfinite(profileNoise) & (profileNoise > 0)
+    if not isValid.any():
+        return np.array([])
+    validIndex = np.flatnonzero(isValid)
+    span = slice(validIndex[0], validIndex[-1] + 1)
+    centres = binCentres[span]
+    values = np.interp(centres, binCentres[isValid], profile[isValid])
+    noise = np.interp(centres, binCentres[isValid], profileNoise[isValid])
+    peaks, properties = find_peaks(values, prominence=0)
+    prominences = properties["prominences"]
+    isSource = (prominences > SOURCE_SIGNIFICANCE * noise[peaks]) & (
+        prominences > MIN_SOURCE_FRACTION * (values.max() - np.median(values))
+    )
+    candidates = centres[peaks][isSource][np.argsort(-prominences[isSource], kind="stable")]
+    sources = []
+    for centre in candidates:
+        if all(abs(centre - kept) >= MIN_SOURCE_SEPARATION_ARCSEC for kept in sources):
+            sources.append(centre)
+    return np.array(sources, dtype=float)
+
+
 def _slit_loss_fraction(profile, zeroPoint):
     """*estimate the share of the slit's object light that the sky fit removes*
 
@@ -300,6 +359,7 @@ def _blank_estimate(reason, nPixels):
         biasNoise=nan,
         skyLevel=nan,
         slitLossFraction=nan,
+        sourceCentres=np.array([]),
     )
 
 
@@ -369,11 +429,19 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
     biasNoise = zeroNoise * medianSpectrum
     skyLevel = float(np.median(skyModel[isUsable]))
     reason = _no_correction_reason(zeroPoint, biasLevel, biasNoise, skyLevel, gateFraction)
-    # THE SLIT LOSS NEEDS THE WHOLE OBJECT, AND THE FIT DID NOT USE THE OBJECT CORE
-    slitProfile = profile
+    # THE SLIT LOSS AND THE SOURCE COUNT NEED THE WHOLE OBJECT, AND THE FIT DID NOT USE THE OBJECT CORE
+    slitBins, slitProfile, slitNoise = binCentres, profile, profileNoise
     if isFitted is not None:
-        _, slitProfile, _ = slit_profile(
+        slitBins, slitProfile, slitNoise = slit_profile(
             slitPosition[isUsable], residual[isUsable], error[isUsable], spectrum[isUsable]
+        )
+    sourceCentres = profile_sources(slitBins, slitProfile, slitNoise)
+    isCrowdedSlit = reason == "" and len(sourceCentres) > 1
+    if isCrowdedSlit:
+        positions = ", ".join(f"{centre:+.2f}" for centre in sourceCentres)
+        reason = (
+            f"the slit profile shows {len(sourceCentres)} sources (at {positions} arcsec), so no part of the slit "
+            "is free of object light"
         )
     return replace(
         estimate,
@@ -384,6 +452,8 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
         biasNoise=biasNoise,
         skyLevel=skyLevel,
         slitLossFraction=_slit_loss_fraction(slitProfile, zeroPoint),
+        sourceCentres=sourceCentres,
+        isCrowdedSlit=isCrowdedSlit,
     )
 
 

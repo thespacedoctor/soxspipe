@@ -77,6 +77,8 @@ If the zero point is negative, the first fit holds object light. The pipeline co
 
 This method cannot tell light that is constant along the whole slit from sky. It assumes that the faintest 1 arcsec of the slit has no object light.
 
+On a crowded slit that assumption fails, because light from the other sources fills the faintest 1 arcsec. So the pipeline also counts the sources in the profile of all usable pixels. A source is a peak whose prominence is more than 5 times the noise of its bin and more than 0.2 of the profile's maximum above its median, and that is at least 1.5 arcsec from a brighter source. If an order passes the two tests above but its profile shows more than one source, the pipeline does not correct it, and the log names the order and the slit positions of the sources.
+
 To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on and the gate fraction is 0.1.
 
 ### Utility API
