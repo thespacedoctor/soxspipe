@@ -47,9 +47,22 @@ def faint_u_scene() -> tuple:
     return vis_transfer_image(AMPLITUDES, FLANKS), vis_transfer_table((2.0,))
 
 
+def _transfer_rows(table: pd.DataFrame, image: np.ndarray, pixelsAt: object, offsets: dict | None = None) -> tuple:
+    return transfer_faint_orders(table, image, pixelsAt, slitOffsets=offsets, settings=SETTINGS, axisA="x", axisB="y")
+
+
 def _transfer(scene: tuple, pixelsAt: object, offsets: dict | None = None) -> tuple:
     image, table = scene
-    return transfer_faint_orders(table, image, pixelsAt, offsets, SETTINGS, "x", "y")
+    return _transfer_rows(table, image, pixelsAt, offsets)
+
+
+def test_transfer_takes_the_offsets_settings_and_axes_by_keyword_only(faintUScene: tuple, pixelsAt: object) -> None:
+    # ARRANGE
+    image, table = faintUScene
+
+    # ACT / ASSERT: SEVEN POSITIONAL ARGUMENTS INVITE A SWAPPED PAIR OF AXES
+    with pytest.raises(TypeError):
+        transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
 
 
 def test_transfer_puts_the_faint_trace_within_a_third_of_a_pixel_of_the_truth(
@@ -115,7 +128,7 @@ def test_transfer_returns_the_same_table_when_no_order_is_faint(pixelsAt: object
     image = vis_transfer_image(AMPLITUDES | {2.0: BRIGHT}, FLANKS)
 
     # ACT
-    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    result, reports = _transfer_rows(table, image, pixelsAt)
 
     # ASSERT
     assert result is table
@@ -129,7 +142,7 @@ def test_transfer_returns_the_same_table_when_both_orders_of_a_group_are_faint(p
     image = vis_transfer_image(AMPLITUDES, FLANKS)
 
     # ACT
-    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    result, reports = _transfer_rows(table, image, pixelsAt)
 
     # ASSERT: U AND G ARE BOTH FAINT, SO THEY HAVE NO ANCHOR, AND NOTHING IS CARRIED ACROSS FROM R
     assert result is table
@@ -153,7 +166,7 @@ def test_transfer_anchors_a_faint_u_on_a_faint_but_usable_g_and_leaves_g_untouch
     image = vis_transfer_image(AMPLITUDES, FLANKS)
 
     # ACT
-    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    result, reports = _transfer_rows(table, image, pixelsAt)
 
     # ASSERT: U IS TRANSFERRED FROM G, AND G, R AND I KEEP THEIR OWN SAMPLED ROWS
     assert [(report.order, report.anchorOrder) for report in reports] == [(2.0, 3.0)]
@@ -168,7 +181,7 @@ def test_transfer_gives_the_same_table_when_both_orders_are_over_the_anchor_limi
     image = vis_transfer_image(AMPLITUDES, FLANKS)
 
     # ACT
-    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    result, reports = _transfer_rows(table, image, pixelsAt)
 
     # ASSERT
     assert result is table
@@ -181,7 +194,7 @@ def test_transfer_anchors_i_on_r(pixelsAt: object) -> None:
     image = vis_transfer_image(AMPLITUDES | {2.0: BRIGHT, 4.0: FAINT_PEAK}, FLANKS | {4.0: FAINT_FLANK})
 
     # ACT
-    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    result, reports = _transfer_rows(table, image, pixelsAt)
 
     # ASSERT
     iRows = result[result["order"] == 4.0]
@@ -196,7 +209,7 @@ def test_transfer_falls_back_to_the_anchor_track_when_no_bin_has_a_signal(pixels
     image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
 
     # ACT
-    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    result, reports = _transfer_rows(table, image, pixelsAt)
 
     # ASSERT: EVERY ROW SITS ON THE SAME SLIT POSITION AS THE BRIGHT NEIGHBOUR AT THE SHARED EDGE
     uRows = result[result["order"] == 2.0]
@@ -211,10 +224,10 @@ def test_transfer_moves_the_anchor_by_the_difference_of_the_slit_offsets(pixelsA
     # ARRANGE: THE SKY SAYS THE U SLIT IMAGE IS 0.5 ARCSEC ABOVE THE G ONE, WITH NOTHING IN U TO FIT
     table = vis_transfer_table((2.0,))
     image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
-    plain, _ = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    plain, _ = _transfer_rows(table, image, pixelsAt)
 
     # ACT
-    shifted, _ = transfer_faint_orders(table, image, pixelsAt, {2.0: 0.5, 3.0: 0.0}, SETTINGS, "x", "y")
+    shifted, _ = _transfer_rows(table, image, pixelsAt, {2.0: 0.5, 3.0: 0.0})
 
     # ASSERT: ANCHOR = S_BRIGHT - DELTA_BRIGHT + DELTA_FAINT, SO THE FAINT TRACK MOVES 0.5 ARCSEC
     uPlain = plain.loc[plain["order"] == 2.0, "cont_x"].to_numpy()
@@ -226,10 +239,10 @@ def test_transfer_ignores_offsets_that_miss_one_of_the_two_orders(pixelsAt: obje
     # ARRANGE
     table = vis_transfer_table((2.0,))
     image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
-    plain, _ = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    plain, _ = _transfer_rows(table, image, pixelsAt)
 
     # ACT
-    partial, _ = transfer_faint_orders(table, image, pixelsAt, {2.0: 0.5}, SETTINGS, "x", "y")
+    partial, _ = _transfer_rows(table, image, pixelsAt, {2.0: 0.5})
 
     # ASSERT
     pd.testing.assert_frame_equal(partial, plain)
@@ -242,7 +255,7 @@ def test_transfer_holds_the_trace_flat_beyond_the_last_kept_bin(pixelsAt: object
     image[1010:2010, 90:210] = noise[:1000]
 
     # ACT
-    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+    result, reports = _transfer_rows(table, image, pixelsAt)
 
     # ASSERT: THE POLYNOMIAL IS NOT EXTRAPOLATED, SO THE LAST HALF OF THE ORDER FOLLOWS ONE CONSTANT OFFSET
     uRows = result[result["order"] == 2.0]

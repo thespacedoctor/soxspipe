@@ -1150,10 +1150,10 @@ class detect_continuum(_base_detect):
             orderPixelTable,
             frame_to_nan_array(self.traceFrame),
             self._make_pixels_at(),
-            self.slitOffsetsArcsec,
-            settings,
-            self.axisA,
-            self.axisB,
+            slitOffsets=self.slitOffsetsArcsec,
+            settings=settings,
+            axisA=self.axisA,
+            axisB=self.axisB,
         )
         self._record_faint_trace_qc(reports)
         return orderPixelTable

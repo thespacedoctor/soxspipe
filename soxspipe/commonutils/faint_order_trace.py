@@ -476,7 +476,7 @@ def _synthetic_rows(rows, geometry, offsetCurve, pixelsAt, axisA, axisB):
     }
 
 
-def _transfer_one_order(table, order, anchorOrder, image, pixelsAt, slitOffsets, settings, axisA, axisB):
+def _transfer_one_order(table, order, anchorOrder, *, image, pixelsAt, slitOffsets, settings, axisA, axisB):
     """*the replacement values and the report for one faint order*"""
     rows = table.loc[table["order"] == order]
     brightRows = table.loc[table["order"] == anchorOrder]
@@ -495,7 +495,7 @@ def _transfer_one_order(table, order, anchorOrder, image, pixelsAt, slitOffsets,
     return rows.index, values, report
 
 
-def transfer_faint_orders(table, image, pixelsAt, slitOffsets, settings, axisA, axisB):
+def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axisA, axisB):
     """*replace the rows of each faint order by a trace anchored to its bright neighbour and fitted on binned profiles*
 
     Each order that has an anchor in its band group (see ``anchor_neighbours``) is split into wavelength bins. Every
@@ -527,7 +527,15 @@ def transfer_faint_orders(table, image, pixelsAt, slitOffsets, settings, axisA, 
     reports = []
     for order, anchorOrder in anchors.items():
         index, values, report = _transfer_one_order(
-            table, order, anchorOrder, image, pixelsAt, slitOffsets, settings, axisA, axisB
+            table,
+            order,
+            anchorOrder,
+            image=image,
+            pixelsAt=pixelsAt,
+            slitOffsets=slitOffsets,
+            settings=settings,
+            axisA=axisA,
+            axisB=axisB,
         )
         for column, value in values.items():
             result.loc[index, column] = value
