@@ -152,13 +152,17 @@ def vis_transfer_image(
     return image
 
 
-def vis_transfer_table(faintOrders: tuple[float, ...]) -> pd.DataFrame:
-    """Return the sampled table of the four orders: clean traces, and noise fits for the orders in `faintOrders`."""
+def vis_transfer_table(faintOrders: tuple[float, ...], fitOffsetArcsec: float = 0.0) -> pd.DataFrame:
+    """Return the sampled table of the four orders: clean traces, and noise fits for the orders in `faintOrders`.
+
+    `fitOffsetArcsec` puts the `fit_x` of every order that far from the map's slit zero, as the second sampling pass
+    does when it moves `fit_x` onto an order's median trace. `centre_shift` stays `fit_x - cont_x`.
+    """
     rng = np.random.default_rng(7)
     frames = []
     for order in sorted(VIS_START_NM):
         wavelength = VIS_START_NM[order] + np.linspace(0.0, 200.0, VIS_ORDER_SAMPLES, endpoint=False)
-        fitX = np.full(VIS_ORDER_SAMPLES, -30.0 + 90.0 * order)
+        fitX = np.full(VIS_ORDER_SAMPLES, -30.0 + 90.0 * order + vis_slit_scale(order) * fitOffsetArcsec)
         isFaint = order in faintOrders
         centre = fitX + rng.normal(0.0, 6.0, VIS_ORDER_SAMPLES) if isFaint else vis_true_centre(order, wavelength)
         centre = centre + (0.0 if isFaint else rng.normal(0.0, 0.1, VIS_ORDER_SAMPLES))

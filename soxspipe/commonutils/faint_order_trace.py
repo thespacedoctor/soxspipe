@@ -304,35 +304,42 @@ def pixels_per_arcsec(pixelsAt, order, wavelengths):
     return (np.asarray(upper, dtype=float) - np.asarray(lower, dtype=float)) / 2.0
 
 
-def bright_edge_anchor(rows, edgeNm, pixelsAt):
+def bright_edge_anchor(rows, edgeNm, pixelsAt, *, axisA):
     """*the slit position and width of an anchor order's trace at the wavelength edge it shares with a faint order*
 
-    The centre shift of the accepted samples is fitted against wavelength with a MAD-clipped degree-2 curve and
-    evaluated at ``edgeNm``. The shift is the distance of the map's slit-zero track from the trace, so the slit position
-    is minus the shift over the pixel scale. The width is the median Gaussian standard deviation of the accepted
-    samples in the quarter of the order's wavelength range nearest the edge.
+    The slit position of each accepted sample is its measured centre minus the map's slit-zero pixel at the sample's
+    wavelength, over the pixel scale. The ``fit_<axisA>`` and ``centre_shift`` columns cannot give it: on the second
+    sampling pass ``detect_continuum`` moves ``fit_<axisA>`` of each order onto the order's median trace, so
+    ``centre_shift`` is measured from that trace and not from the map's slit zero. The offset of the samples from the
+    slit-zero pixel is fitted against wavelength with a MAD-clipped degree-2 curve and evaluated at ``edgeNm``. The
+    width is the median Gaussian standard deviation of the accepted samples in the quarter of the order's wavelength
+    range nearest the edge.
 
     **Key Arguments:**
 
     - ``rows`` -- the sampled rows of one anchor order
     - ``edgeNm`` -- the wavelength (nm) of the edge it shares with the faint order
     - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
+    - ``axisA`` -- the cross-dispersion axis, ``"x"`` or ``"y"``
 
     **Return:**
 
-    - ``slitArcsec`` -- the trace's slit position at the edge, in arcsec
+    - ``slitArcsec`` -- the trace's slit position at the edge, in arcsec from the map's slit zero
     - ``sigmaArcsec`` -- the trace's Gaussian standard deviation near the edge, in arcsec
     """
-    accepted = rows.loc[rows["centre_shift"].notna() & ~rows["pre-clipped"].astype(bool)]
+    order = rows["order"].iloc[0]
+    accepted = rows.loc[rows[f"cont_{axisA}"].notna() & ~rows["pre-clipped"].astype(bool)]
     wavelength = accepted["wavelength"].to_numpy(float)
-    curve, _ = clipped_polynomial_residuals(wavelength, accepted["centre_shift"].to_numpy(float), SCATTER_FIT_DEGREE)
-    scale = float(pixels_per_arcsec(pixelsAt, rows["order"].iloc[0], np.array([edgeNm]))[0])
+    zeroPixels, _ = pixelsAt(order, wavelength, 0.0)
+    offsetPx = accepted[f"cont_{axisA}"].to_numpy(float) - np.asarray(zeroPixels, dtype=float)
+    curve, _ = clipped_polynomial_residuals(wavelength, offsetPx, SCATTER_FIT_DEGREE)
+    scale = float(pixels_per_arcsec(pixelsAt, order, np.array([edgeNm]))[0])
 
     span = rows["wavelength"].max() - rows["wavelength"].min()
     isNearEdge = np.abs(wavelength - edgeNm) <= EDGE_FRACTION * span
     nearEdge = accepted.loc[isNearEdge] if isNearEdge.sum() >= MIN_EDGE_SAMPLES else accepted
     sigmaPx = float(np.median(nearEdge["gauss_stddev"].to_numpy(float)))
-    return float(-curve(edgeNm) / scale), abs(sigmaPx / scale)
+    return float(curve(edgeNm) / scale), abs(sigmaPx / scale)
 
 
 @dataclass(frozen=True)
@@ -449,10 +456,10 @@ def _offset_curve(binWavelength, binCentre, marginNm):
     return (lambda wavelength: curve(np.clip(wavelength, low, high))), degree
 
 
-def _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt):
+def _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt, axisA):
     """*the anchor geometry of a faint order: slit position and width of the anchor trace at the shared edge*"""
     edgeNm = _shared_edge_nm(brightRows, anchorOrder, order)
-    slitArcsec, sigmaArcsec = bright_edge_anchor(brightRows, edgeNm, pixelsAt)
+    slitArcsec, sigmaArcsec = bright_edge_anchor(brightRows, edgeNm, pixelsAt, axisA=axisA)
     offsets = slitOffsets or {}
     if np.isfinite(offsets.get(order, np.nan)) and np.isfinite(offsets.get(anchorOrder, np.nan)):
         slitArcsec = slitArcsec - offsets[anchorOrder] + offsets[order]
@@ -482,7 +489,7 @@ def _transfer_one_order(table, order, anchorOrder, *, image, pixelsAt, slitOffse
     """*the replacement values and the report for one faint order*"""
     rows = table.loc[table["order"] == order]
     brightRows = table.loc[table["order"] == anchorOrder]
-    slitArcsec, sigmaArcsec, edgeNm = _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt)
+    slitArcsec, sigmaArcsec, edgeNm = _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt, axisA)
     geometry = _anchor_geometry(
         order, slitArcsec, sigmaArcsec, search_window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr
     )

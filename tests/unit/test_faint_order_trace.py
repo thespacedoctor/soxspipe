@@ -380,10 +380,44 @@ def test_bright_edge_anchor_converts_the_centre_shift_to_slit_arcsec_with_the_si
     rows = _order_rows(3.0)
 
     # ACT
-    slitArcsec, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(pixelsPerArcsec))
+    slitArcsec, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(pixelsPerArcsec), axisA="x")
 
     # ASSERT: CENTRE = FIT - SHIFT, SO THE TRACE IS AT SLIT = -SHIFT / SCALE
     assert slitArcsec == pytest.approx(expectedSlit)
+
+
+def _second_pass_rows(order: float, medianSlitArcsec: float, pixelsPerArcsec: float) -> pd.DataFrame:
+    """Return the rows of an order after the second sampling pass, which moves `fit_x` onto the order's median trace.
+
+    The trace sits `medianSlitArcsec` from the map's slit zero at the middle of the order and drifts 0.3 arcsec either
+    way across it, so the remaining `centre_shift` is small whatever the trace's real slit position.
+    """
+    rows = _order_rows(order)
+    unit = (rows["wavelength"].to_numpy() - 450.0) / 50.0
+    mapCentre = 100.0 * order
+    trueSlit = medianSlitArcsec + 0.3 * unit
+    rows["cont_x"] = mapCentre + pixelsPerArcsec * trueSlit
+    rows["fit_x"] = mapCentre + pixelsPerArcsec * medianSlitArcsec
+    rows["centre_shift"] = rows["fit_x"] - rows["cont_x"]
+    return rows
+
+
+@pytest.mark.parametrize("pixelsPerArcsec", [-4.0, 4.0], ids=["flipped", "unflipped"])
+@pytest.mark.parametrize("medianSlitArcsec", [0.5, 1.5, -0.9], ids=["half", "one_and_half", "negative"])
+def test_bright_edge_anchor_measures_the_slit_from_the_map_zero_not_from_the_shifted_fit_column(
+    medianSlitArcsec: float, pixelsPerArcsec: float
+) -> None:
+    # ARRANGE: THE SECOND SAMPLING PASS SHIFTED FIT_X ONTO THE MEDIAN TRACE, SO CENTRE_SHIFT IS SMALL BUT THE TRACE
+    # IS FAR FROM THE MAP'S SLIT ZERO
+    rows = _second_pass_rows(3.0, medianSlitArcsec, pixelsPerArcsec)
+
+    # ACT
+    blueSlit, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(pixelsPerArcsec), axisA="x")
+    redSlit, _ = bright_edge_anchor(rows, 500.0, _stub_pixels_at(pixelsPerArcsec), axisA="x")
+
+    # ASSERT: THE TRUE POSITION, MEASURED FROM SLIT ZERO OF THE MAP
+    assert blueSlit == pytest.approx(medianSlitArcsec - 0.3, abs=0.01)
+    assert redSlit == pytest.approx(medianSlitArcsec + 0.3, abs=0.01)
 
 
 def test_bright_edge_anchor_evaluates_the_smooth_centre_shift_at_the_requested_edge() -> None:
@@ -391,8 +425,8 @@ def test_bright_edge_anchor_evaluates_the_smooth_centre_shift_at_the_requested_e
     rows = _order_rows(3.0, curvaturePx=4.0, scatterPx=0.05)
 
     # ACT
-    blueSlit, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0))
-    middleSlit, _ = bright_edge_anchor(rows, 450.0, _stub_pixels_at(-4.0))
+    blueSlit, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0), axisA="x")
+    middleSlit, _ = bright_edge_anchor(rows, 450.0, _stub_pixels_at(-4.0), axisA="x")
 
     # ASSERT
     assert blueSlit == pytest.approx(1.5, abs=0.05)
@@ -402,10 +436,10 @@ def test_bright_edge_anchor_evaluates_the_smooth_centre_shift_at_the_requested_e
 def test_bright_edge_anchor_is_not_pulled_by_clipped_outliers() -> None:
     # ARRANGE
     rows = _order_rows(3.0, scatterPx=0.1)
-    rows.loc[::10, "centre_shift"] = 40.0
+    rows.loc[::10, "cont_x"] = rows["fit_x"] - 40.0
 
     # ACT
-    slitArcsec, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0))
+    slitArcsec, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0), axisA="x")
 
     # ASSERT
     assert slitArcsec == pytest.approx(0.5, abs=0.05)
@@ -416,8 +450,8 @@ def test_bright_edge_anchor_takes_the_width_from_the_samples_nearest_the_edge_in
     rows = _order_rows(3.0)
 
     # ACT
-    _, blueSigma = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0))
-    _, redSigma = bright_edge_anchor(rows, 500.0, _stub_pixels_at(-4.0))
+    _, blueSigma = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0), axisA="x")
+    _, redSigma = bright_edge_anchor(rows, 500.0, _stub_pixels_at(-4.0), axisA="x")
 
     # ASSERT: THE MEDIAN OF THE NEAREST QUARTER OF THE ORDER, DIVIDED BY 4 PX/ARCSEC
     assert blueSigma == pytest.approx(1.25 / 4.0, abs=0.02)

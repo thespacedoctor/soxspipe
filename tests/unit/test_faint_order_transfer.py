@@ -88,6 +88,25 @@ def test_transfer_puts_the_faint_trace_within_a_third_of_a_pixel_of_the_truth(
     assert len(result) == len(table)
 
 
+@pytest.mark.parametrize("fitOffsetArcsec", [0.5, 1.5], ids=["half_arcsec", "one_and_half_arcsec"])
+def test_transfer_anchors_on_the_true_source_when_fit_x_sits_off_the_map_slit_zero(
+    fitOffsetArcsec: float, pixelsAt: object
+) -> None:
+    # ARRANGE: THE SECOND SAMPLING PASS LEFT FIT_X OF EVERY ORDER OFF THE MAP'S SLIT ZERO, SO CENTRE_SHIFT IS NOT
+    # MEASURED FROM IT. THE G TRACE STARTS AT 600 NM, THE EDGE IT SHARES WITH U
+    image = vis_transfer_image(AMPLITUDES, FLANKS)
+    table = vis_transfer_table((2.0,), fitOffsetArcsec=fitOffsetArcsec)
+
+    # ACT
+    result, reports = _transfer_rows(table, image, pixelsAt)
+
+    # ASSERT: THE ANCHOR IS THE TARGET'S SLIT POSITION, AND THE U TRACE LANDS ON THE TARGET
+    assert reports[0].slitArcsec == pytest.approx(float(vis_target_slit(600.0)), abs=0.05)
+    uRows = result[result["order"] == 2.0]
+    error = uRows["cont_x"].to_numpy() - vis_true_centre(2.0, uRows["wavelength"].to_numpy())
+    assert np.abs(error).max() < 0.3
+
+
 def test_transfer_replaces_the_faint_rows_one_for_one_and_marks_them(faintUScene: tuple, pixelsAt: object) -> None:
     # ARRANGE
     _, table = faintUScene
