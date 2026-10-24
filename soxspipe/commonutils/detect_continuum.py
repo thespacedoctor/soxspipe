@@ -431,7 +431,8 @@ class _base_detect:
         uniqueorders = len(orderPixelTable["order"].unique())
 
         # CALCULATE COMBINED RESIDUALS AND STATS, OVER THE MEASURED ROWS ONLY WHEN A FAINT TRACE WAS TRANSFERRED
-        statRes = measured_residuals(res, transferred_row_mask(orderPixelTable))
+        isTransferred = transferred_row_mask(orderPixelTable)
+        statRes = measured_residuals(res, isTransferred)
         res_mean = np.ma.mean(np.ma.abs(statRes))
         res_std = np.ma.std(statRes)
         res_median = np.ma.median(np.ma.abs(statRes))
@@ -529,6 +530,9 @@ class _base_detect:
                 c = "Number of order centre traces found"
             else:
                 c = "Number of orders containing an object trace"
+                if isTransferred is not None and isTransferred.any():
+                    # THE COUNT INCLUDES A TRANSFERRED FAINT ORDER ON PURPOSE
+                    c += ", a transferred faint order included"
 
             self.qc = pd.concat(
                 [

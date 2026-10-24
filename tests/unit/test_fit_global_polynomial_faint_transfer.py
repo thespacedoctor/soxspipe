@@ -182,6 +182,61 @@ def test_synthetic_rows_are_left_out_of_the_x_res_qcs(log: object) -> None:
     assert qcs["N ORDERS"] == len(ORDERS) + 1
 
 
+@pytest.mark.parametrize("axisACol", ["cont_x", "gauss_stddev"])
+def test_an_all_false_transfer_column_gives_bit_identical_fits_to_a_table_without_the_column(
+    log: object, axisACol: str
+) -> None:
+    # ARRANGE: THE SAME MEASURED ROWS, ONE TABLE WITH AN ALL-FALSE FAINT_TRANSFER COLUMN AND ONE WITHOUT IT
+    plain = _measured_rows()
+    marked = plain.assign(faint_transfer=False)
+    plainDetector, markedDetector = _detector(log), _detector(log)
+
+    # ACT
+    plainResult = plainDetector.fit_global_polynomial(plain, axisACol=axisACol, writeQCs=True)
+    markedResult = markedDetector.fit_global_polynomial(marked, axisACol=axisACol, writeQCs=True)
+
+    # ASSERT: EXACTLY THE SAME COEFFICIENTS, CLIPPED ROWS, FITTED RESIDUALS AND QCS
+    assert np.array_equal(plainResult[0], markedResult[0])
+    assert plainResult[2]["row_id"].tolist() == markedResult[2]["row_id"].tolist()
+    assert np.array_equal(plainResult[1][f"{axisACol}_fit_res"], markedResult[1][f"{axisACol}_fit_res"])
+    pd.testing.assert_frame_equal(
+        plainDetector.qc.drop(columns="reduction_date_utc"),
+        markedDetector.qc.drop(columns="reduction_date_utc"),
+        check_exact=True,
+    )
+
+
+def _qc_comment(detector: detect_continuum, name: str) -> str:
+    return detector.qc.set_index("qc_name").loc[name, "qc_comment"]
+
+
+def test_the_n_orders_comment_says_a_transferred_order_counts(log: object) -> None:
+    # ARRANGE
+    detector = _detector(log)
+    table = _with_transferred_order(_measured_rows())
+
+    # ACT
+    _fit(detector, table)
+
+    # ASSERT: THE COUNT INCLUDES THE TRANSFERRED ORDER ON PURPOSE, AND THE COMMENT SAYS SO
+    assert _qc_comment(detector, "N ORDERS") == (
+        "Number of orders containing an object trace, a transferred faint order included"
+    )
+
+
+@pytest.mark.parametrize("hasColumn", [False, True], ids=["no_column", "all_false_column"])
+def test_the_n_orders_comment_is_unchanged_when_no_row_is_synthetic(log: object, hasColumn: bool) -> None:
+    # ARRANGE
+    detector = _detector(log)
+    table = _measured_rows().assign(faint_transfer=False) if hasColumn else _measured_rows()
+
+    # ACT
+    _fit(detector, table)
+
+    # ASSERT
+    assert _qc_comment(detector, "N ORDERS") == "Number of orders containing an object trace"
+
+
 def test_synthetic_rows_still_count_toward_the_polynomial_fit(log: object) -> None:
     # ARRANGE: WITH A DEGREE-0 FIT IN BOTH AXES THE FIT IS THE MEAN, SO ROWS FAR FROM THE REST MOVE IT
     detector = _detector(log)
