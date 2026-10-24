@@ -33,6 +33,7 @@ def test_from_block_is_off_with_the_shipped_numbers_when_the_block_has_no_faint_
     assert settings.isEnabled is False
     assert settings.minDetectionFraction == 0.5
     assert settings.maxScatterPx == 1.5
+    assert settings.maxAnchorScatterPx == 3.0
     assert settings.binCount == 15
     assert settings.minBinSnr == 3.0
     assert settings.maxJoinArcsec == 2.0
@@ -44,6 +45,7 @@ def test_from_block_reads_every_faint_key() -> None:
         "faint-order-trace": True,
         "faint-order-min-detection-fraction": 0.4,
         "faint-order-max-scatter-px": 2.5,
+        "faint-order-max-anchor-scatter-px": 4.5,
         "faint-order-bin-count": 9,
         "faint-order-min-bin-snr": 4.0,
         "same-source-max-join-arcsec": 3.0,
@@ -54,7 +56,13 @@ def test_from_block_reads_every_faint_key() -> None:
 
     # ASSERT
     assert settings == faint_trace_settings(
-        isEnabled=True, minDetectionFraction=0.4, maxScatterPx=2.5, binCount=9, minBinSnr=4.0, maxJoinArcsec=3.0
+        isEnabled=True,
+        minDetectionFraction=0.4,
+        maxScatterPx=2.5,
+        maxAnchorScatterPx=4.5,
+        binCount=9,
+        minBinSnr=4.0,
+        maxJoinArcsec=3.0,
     )
 
 
@@ -69,6 +77,15 @@ def test_from_block_is_off_when_the_block_is_missing() -> None:
 @pytest.mark.parametrize("recipe", ON_RECIPES)
 def test_the_science_vis_blocks_switch_the_trace_on(recipe: str) -> None:
     assert _shipped_block(recipe, "vis")["faint-order-trace"] is True
+
+
+@pytest.mark.parametrize("recipe", ON_RECIPES)
+def test_the_science_vis_blocks_carry_the_anchor_scatter_limit(recipe: str) -> None:
+    assert _shipped_block(recipe, "vis")["faint-order-max-anchor-scatter-px"] == 3.0
+
+
+def test_the_code_fallbacks_include_the_anchor_scatter_limit() -> None:
+    assert FAINT_TRACE_DEFAULTS["faint-order-max-anchor-scatter-px"] == 3.0
 
 
 @pytest.mark.parametrize("recipe", ON_RECIPES + OFF_RECIPES)

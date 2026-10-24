@@ -135,6 +135,45 @@ def test_transfer_returns_the_same_table_when_both_orders_of_a_group_are_faint(p
     assert reports == []
 
 
+def _noisy_g_table(scatterPx: float) -> pd.DataFrame:
+    """Return the table with u faint and g's centres scattered by `scatterPx`, as in VV4580Sgr."""
+    table = vis_transfer_table((2.0,))
+    rng = np.random.default_rng(4580)
+    isG = (table["order"] == 3.0).to_numpy()
+    noise = rng.normal(0.0, scatterPx, int(isG.sum()))
+    table.loc[isG, "cont_x"] = table.loc[isG, "cont_x"] + noise
+    table.loc[isG, "centre_shift"] = table.loc[isG, "centre_shift"] - noise
+    return table
+
+
+def test_transfer_anchors_a_faint_u_on_a_faint_but_usable_g_and_leaves_g_untouched(pixelsAt: object) -> None:
+    # ARRANGE: G IS DETECTED EVERYWHERE BUT SCATTERS BY 2.5 PX, WHICH IS FAINT (OVER 1.5) AND STILL AN ANCHOR (UNDER 3)
+    table = _noisy_g_table(2.5)
+    image = vis_transfer_image(AMPLITUDES, FLANKS)
+
+    # ACT
+    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+
+    # ASSERT: U IS TRANSFERRED FROM G, AND G, R AND I KEEP THEIR OWN SAMPLED ROWS
+    assert [(report.order, report.anchorOrder) for report in reports] == [(2.0, 3.0)]
+    kept = result["order"] != 2.0
+    pd.testing.assert_frame_equal(result.loc[kept].drop(columns="faint_transfer"), table.loc[kept])
+    assert result["faint_transfer"].tolist() == (result["order"] == 2.0).tolist()
+
+
+def test_transfer_gives_the_same_table_when_both_orders_are_over_the_anchor_limit(pixelsAt: object) -> None:
+    # ARRANGE: G SCATTERS BY 3.5 PX, OVER THE 3 PX ANCHOR LIMIT, AND U IS FAINT TOO
+    table = _noisy_g_table(3.5)
+    image = vis_transfer_image(AMPLITUDES, FLANKS)
+
+    # ACT
+    result, reports = transfer_faint_orders(table, image, pixelsAt, None, SETTINGS, "x", "y")
+
+    # ASSERT
+    assert result is table
+    assert reports == []
+
+
 def test_transfer_anchors_i_on_r(pixelsAt: object) -> None:
     # ARRANGE
     table = vis_transfer_table((4.0,))

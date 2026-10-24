@@ -21,6 +21,7 @@ FAINT_TRACE_DEFAULTS = {
     "faint-order-trace": False,
     "faint-order-min-detection-fraction": 0.5,
     "faint-order-max-scatter-px": 1.5,
+    "faint-order-max-anchor-scatter-px": 3.0,
     "faint-order-bin-count": 15,
     "faint-order-min-bin-snr": 3.0,
     "same-source-max-join-arcsec": 2.0,
@@ -31,13 +32,16 @@ FAINT_TRACE_DEFAULTS = {
 class faint_trace_settings:
     """The ``detect-continuum`` settings of the faint-order trace.
 
-    ``isEnabled`` switches the whole feature. ``minDetectionFraction`` and ``maxScatterPx`` flag a faint order,
-    ``binCount`` and ``minBinSnr`` shape the binned fit, and ``maxJoinArcsec`` is the same-source warning limit.
+    ``isEnabled`` switches the whole feature. ``minDetectionFraction`` and ``maxScatterPx`` flag a faint order.
+    ``maxAnchorScatterPx`` is the largest scatter at which a faint order can still anchor its neighbour, provided it
+    meets ``minDetectionFraction``. ``binCount`` and ``minBinSnr`` shape the binned fit, and ``maxJoinArcsec`` is the
+    same-source warning limit.
     """
 
     isEnabled: bool
     minDetectionFraction: float
     maxScatterPx: float
+    maxAnchorScatterPx: float
     binCount: int
     minBinSnr: float
     maxJoinArcsec: float
@@ -59,6 +63,7 @@ class faint_trace_settings:
             isEnabled=bool(values["faint-order-trace"]),
             minDetectionFraction=float(values["faint-order-min-detection-fraction"]),
             maxScatterPx=float(values["faint-order-max-scatter-px"]),
+            maxAnchorScatterPx=float(values["faint-order-max-anchor-scatter-px"]),
             binCount=int(values["faint-order-bin-count"]),
             minBinSnr=float(values["faint-order-min-bin-snr"]),
             maxJoinArcsec=float(values["same-source-max-join-arcsec"]),
@@ -105,10 +110,13 @@ class order_trace_stats:
 
     ``detectionFraction`` is the fraction of the order's samples with a detected continuum. ``scatterPx`` is the MAD
     scatter of the centre shift of the accepted samples about a degree-2 curve, or NaN when too few were accepted.
+    ``canAnchor`` is *True* when the order is detected often enough and scatters little enough to anchor a faint
+    neighbour.
     """
 
     detectionFraction: float
     scatterPx: float
+    canAnchor: bool = False
 
 
 def clipped_polynomial_residuals(x, y, degree):
@@ -181,35 +189,63 @@ def find_faint_orders(table, axisA, settings):
     for order, rows in table.groupby("order", sort=True):
         isDetected = rows[f"cont_{axisA}"].notna()
         accepted = rows.loc[isDetected & ~rows["pre-clipped"].astype(bool)]
-        stats = order_trace_stats(float(isDetected.mean()), _scatter_px(accepted))
-        isScattered = np.isnan(stats.scatterPx) or stats.scatterPx > settings.maxScatterPx
-        if stats.detectionFraction < settings.minDetectionFraction or isScattered:
-            faintOrders[order] = stats
+        detectionFraction, scatterPx = float(isDetected.mean()), _scatter_px(accepted)
+        isScattered = np.isnan(scatterPx) or scatterPx > settings.maxScatterPx
+        if detectionFraction < settings.minDetectionFraction or isScattered:
+            canAnchor = detectionFraction >= settings.minDetectionFraction and scatterPx <= settings.maxAnchorScatterPx
+            faintOrders[order] = order_trace_stats(detectionFraction, scatterPx, bool(canAnchor))
     return faintOrders
 
 
+def _scatter_rank(stats):
+    """*the sort key of an order's scatter, with a missing estimate ranked worst*"""
+    return np.inf if stats is None or np.isnan(stats.scatterPx) else stats.scatterPx
+
+
+def _anchor_for_group(group, faintOrders, present):
+    """*the (faint order, anchor order) pair of a band group, or None when the group has no transfer*
+
+    When one order is faint, its partner is the anchor. When both are faint, the one with the lower scatter is the
+    better order, and it anchors the other only if it ``canAnchor``.
+    """
+    bluer, redder = group
+    if bluer not in present or redder not in present:
+        return None
+    isBluerFaint, isRedderFaint = bluer in faintOrders, redder in faintOrders
+    if isBluerFaint != isRedderFaint:
+        return (bluer, redder) if isBluerFaint else (redder, bluer)
+    if not isBluerFaint:
+        return None
+    better = min(group, key=lambda order: _scatter_rank(faintOrders[order]))
+    stats = faintOrders[better]
+    if stats is None or not stats.canAnchor:
+        return None
+    return (redder, bluer) if better == bluer else (bluer, redder)
+
+
 def anchor_neighbours(table, faintOrders):
-    """*pair each faint order with the bright order next to it in its band group*
+    """*pair each faint order with the order in its band group that anchors it*
 
     The SOXS VIS orders come in two band groups, u and g, then r and i, and a trace is never carried across the
-    boundary between the groups. A faint order whose partner is also faint, or is not in the table, gets no anchor.
+    boundary between the groups. A faint order whose partner is bright is anchored by that partner. When both orders
+    of a group are faint, the one with the lower scatter anchors the other, provided it ``canAnchor``, and it keeps
+    its own sampled rows. When it cannot, or when a partner is not in the table, the group gets no transfer.
 
     **Key Arguments:**
 
     - ``table`` -- the sampled order table
-    - ``faintOrders`` -- the faint orders, keyed by order number
+    - ``faintOrders`` -- the ``order_trace_stats`` of each faint order, keyed by order number
 
     **Return:**
 
-    - ``anchors`` -- the bright partner of each faint order that has one, keyed by the faint order
+    - ``anchors`` -- the anchor of each order to transfer, keyed by that order
     """
     present = set(table["order"].unique())
     anchors = {}
     for group in VIS_BAND_GROUPS:
-        for faint, partner in (group, group[::-1]):
-            isUsable = faint in faintOrders and partner in present and partner not in faintOrders
-            if isUsable:
-                anchors[float(faint)] = float(partner)
+        pair = _anchor_for_group(group, faintOrders, present)
+        if pair is not None:
+            anchors[float(pair[0])] = float(pair[1])
     return anchors
 
 
@@ -454,11 +490,11 @@ def _transfer_one_order(table, order, anchorOrder, image, pixelsAt, slitOffsets,
 def transfer_faint_orders(table, image, pixelsAt, slitOffsets, settings, axisA, axisB):
     """*replace the rows of each faint order by a trace anchored to its bright neighbour and fitted on binned profiles*
 
-    Each faint order that has a bright partner in its band group is split into wavelength bins. Every bin is collapsed
-    along the anchor track into one profile, and a Gaussian of the bright neighbour's width is fitted inside a narrow
-    window around the anchor. A low-degree curve through the kept bins gives the trace, and the order's rows are
-    replaced one for one with exact samples of that curve, marked in a new ``faint_transfer`` column. When no order
-    is faint, or none has a bright partner, the table is returned as it is.
+    Each order that has an anchor in its band group (see ``anchor_neighbours``) is split into wavelength bins. Every
+    bin is collapsed along the anchor track into one profile, and a Gaussian of the anchor's width is fitted inside a
+    narrow window around the anchor. A low-degree curve through the kept bins gives the trace, and the order's rows
+    are replaced one for one with exact samples of that curve, marked in a new ``faint_transfer`` column. When no
+    order is faint, or none has an anchor, the table is returned as it is.
 
     **Key Arguments:**
 

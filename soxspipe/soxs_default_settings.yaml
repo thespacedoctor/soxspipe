@@ -539,6 +539,8 @@ soxs-stare:
             faint-order-min-detection-fraction: 0.5
             # AN ORDER IS FAINT WHEN THE MAD SCATTER OF ITS CENTRE SHIFT ABOUT A DEGREE-2 FIT EXCEEDS THIS (PIXELS)
             faint-order-max-scatter-px: 1.5
+            # A FAINT ORDER CAN STILL ANCHOR ITS FAINT NEIGHBOUR WHEN IT IS DETECTED OFTEN ENOUGH AND ITS SCATTER IS AT MOST THIS (PIXELS)
+            faint-order-max-anchor-scatter-px: 3.0
             # NUMBER OF WAVELENGTH BINS A FAINT ORDER IS COLLAPSED INTO
             faint-order-bin-count: 15
             # A BIN IS KEPT ONLY WHEN ITS PEAK SIGNAL-TO-NOISE RATIO IS AT LEAST THIS
@@ -831,6 +833,8 @@ soxs-nod:
             faint-order-min-detection-fraction: 0.5
             # AN ORDER IS FAINT WHEN THE MAD SCATTER OF ITS CENTRE SHIFT ABOUT A DEGREE-2 FIT EXCEEDS THIS (PIXELS)
             faint-order-max-scatter-px: 1.5
+            # A FAINT ORDER CAN STILL ANCHOR ITS FAINT NEIGHBOUR WHEN IT IS DETECTED OFTEN ENOUGH AND ITS SCATTER IS AT MOST THIS (PIXELS)
+            faint-order-max-anchor-scatter-px: 3.0
             # NUMBER OF WAVELENGTH BINS A FAINT ORDER IS COLLAPSED INTO
             faint-order-bin-count: 15
             # A BIN IS KEPT ONLY WHEN ITS PEAK SIGNAL-TO-NOISE RATIO IS AT LEAST THIS
@@ -913,6 +917,8 @@ soxs-offset:
             faint-order-min-detection-fraction: 0.5
             # AN ORDER IS FAINT WHEN THE MAD SCATTER OF ITS CENTRE SHIFT ABOUT A DEGREE-2 FIT EXCEEDS THIS (PIXELS)
             faint-order-max-scatter-px: 1.5
+            # A FAINT ORDER CAN STILL ANCHOR ITS FAINT NEIGHBOUR WHEN IT IS DETECTED OFTEN ENOUGH AND ITS SCATTER IS AT MOST THIS (PIXELS)
+            faint-order-max-anchor-scatter-px: 3.0
             # NUMBER OF WAVELENGTH BINS A FAINT ORDER IS COLLAPSED INTO
             faint-order-bin-count: 15
             # A BIN IS KEPT ONLY WHEN ITS PEAK SIGNAL-TO-NOISE RATIO IS AT LEAST THIS

@@ -18,6 +18,7 @@ from soxspipe.commonutils.faint_order_trace import (
     faint_trace_settings,
     find_faint_orders,
     make_pixels_at,
+    order_trace_stats,
     pixels_per_arcsec,
 )
 from soxspipe.commonutils.toolkit import SOXS_VIS_ORDERS_BLUE_TO_RED
@@ -211,6 +212,152 @@ def test_anchor_neighbours_ignores_orders_outside_the_vis_band_groups() -> None:
 
     # ASSERT
     assert anchors == {}
+
+
+def _vv_table() -> pd.DataFrame:
+    """Return the four orders of VV4580Sgr as the A/B run measured them: detection fraction and scatter in px."""
+    return _table(
+        _order_rows(2.0, count=1000, detectedFraction=0.30, scatterPx=3.5),
+        _order_rows(3.0, count=1000, detectedFraction=0.503, scatterPx=2.5),
+        _order_rows(1.0, count=1000, detectedFraction=0.527, scatterPx=1.31),
+        _order_rows(4.0, count=1000, detectedFraction=0.671, scatterPx=0.94),
+    )
+
+
+def test_find_faint_orders_marks_which_faint_orders_could_anchor_a_neighbour() -> None:
+    # ARRANGE: THE VV4580Sgr FRAME, WHERE U IS TOO SPARSELY DETECTED TO ANCHOR AND G IS FAINT BUT STILL USABLE
+    table = _vv_table()
+
+    # ACT
+    faint = find_faint_orders(table, "x", SETTINGS)
+
+    # ASSERT: R AND I ARE NOT FAINT AT ALL
+    assert sorted(faint) == [2.0, 3.0]
+    assert faint[2.0].canAnchor is False
+    assert faint[3.0].canAnchor is True
+
+
+def test_a_faint_order_cannot_anchor_when_its_scatter_is_over_the_anchor_limit() -> None:
+    # ARRANGE: THE SAME DETECTION FRACTION AS G ABOVE, BUT A SCATTER OF 3.5 PX AGAINST A LIMIT OF 3
+    table = _table(_order_rows(3.0, count=1000, detectedFraction=0.6, scatterPx=3.5))
+
+    # ACT
+    faint = find_faint_orders(table, "x", SETTINGS)
+
+    # ASSERT
+    assert faint[3.0].canAnchor is False
+
+
+def test_a_faint_order_with_too_few_accepted_samples_cannot_anchor() -> None:
+    # ARRANGE: THREE ACCEPTED SAMPLES GIVE NO SCATTER, SO NaN MUST NOT PASS THE ANCHOR LIMIT
+    table = _table(_order_rows(3.0, count=6, detectedFraction=0.5))
+
+    # ACT
+    faint = find_faint_orders(table, "x", SETTINGS)
+
+    # ASSERT
+    assert np.isnan(faint[3.0].scatterPx)
+    assert faint[3.0].canAnchor is False
+
+
+def test_find_faint_orders_uses_the_anchor_limit_in_the_settings() -> None:
+    # ARRANGE
+    table = _table(_order_rows(3.0, count=1000, detectedFraction=0.6, scatterPx=3.5))
+    wider = faint_trace_settings.from_block({"faint-order-trace": True, "faint-order-max-anchor-scatter-px": 4.0})
+
+    # ACT
+    faint = find_faint_orders(table, "x", wider)
+
+    # ASSERT
+    assert faint[3.0].canAnchor is True
+
+
+def test_anchor_neighbours_anchors_the_vv4580sgr_u_order_on_g_and_leaves_g_alone() -> None:
+    # ARRANGE
+    table = _vv_table()
+    faint = find_faint_orders(table, "x", SETTINGS)
+
+    # ACT
+    anchors = anchor_neighbours(table, faint)
+
+    # ASSERT: U TAKES G AS ITS ANCHOR, G KEEPS ITS OWN ROWS, AND R AND I (NOT FAINT) ARE UNCHANGED
+    assert anchors == {2.0: 3.0}
+
+
+def _stats(detection: float, scatter: float, canAnchor: bool) -> order_trace_stats:
+    return order_trace_stats(detection, scatter, canAnchor)
+
+
+def test_anchor_neighbours_gives_no_anchor_when_both_orders_are_over_the_anchor_limit() -> None:
+    # ARRANGE: U AND G ARE BOTH FAINT, AND NEITHER CAN ANCHOR
+    table = _orders_table(1, 2, 3, 4)
+    faint = {2.0: _stats(0.30, 3.5, False), 3.0: _stats(0.55, 3.4, False)}
+
+    # ACT
+    anchors = anchor_neighbours(table, faint)
+
+    # ASSERT
+    assert anchors == {}
+
+
+@pytest.mark.parametrize(
+    ("uScatter", "gScatter", "expected"),
+    [(3.0, 2.0, {2.0: 3.0}), (2.0, 3.0, {3.0: 2.0})],
+    ids=["g-is-better", "u-is-better"],
+)
+def test_anchor_neighbours_takes_the_lower_scatter_order_as_the_anchor(
+    uScatter: float, gScatter: float, expected: dict
+) -> None:
+    # ARRANGE: BOTH ORDERS ARE FAINT AND BOTH COULD ANCHOR
+    table = _orders_table(1, 2, 3, 4)
+    faint = {2.0: _stats(0.9, uScatter, True), 3.0: _stats(0.9, gScatter, True)}
+
+    # ACT
+    anchors = anchor_neighbours(table, faint)
+
+    # ASSERT
+    assert anchors == expected
+
+
+def test_anchor_neighbours_gives_no_anchor_when_the_lower_scatter_order_cannot_anchor() -> None:
+    # ARRANGE: U HAS THE LOWER SCATTER BUT TOO FEW DETECTIONS, AND G COULD ANCHOR BUT IS THE WORSE ORDER
+    table = _orders_table(1, 2, 3, 4)
+    faint = {2.0: _stats(0.4, 1.0, False), 3.0: _stats(0.9, 2.0, True)}
+
+    # ACT
+    anchors = anchor_neighbours(table, faint)
+
+    # ASSERT
+    assert anchors == {}
+
+
+def test_anchor_neighbours_ignores_a_nan_scatter_when_choosing_the_better_order() -> None:
+    # ARRANGE: U HAS NO SCATTER ESTIMATE, SO G IS THE BETTER ORDER
+    table = _orders_table(1, 2, 3, 4)
+    faint = {2.0: _stats(0.9, float("nan"), False), 3.0: _stats(0.9, 2.0, True)}
+
+    # ACT
+    anchors = anchor_neighbours(table, faint)
+
+    # ASSERT
+    assert anchors == {2.0: 3.0}
+
+
+def test_anchor_neighbours_never_carries_an_anchor_across_the_band_groups() -> None:
+    # ARRANGE: U AND G ARE FAINT WITH NO USABLE ANCHOR, AND R AND I ARE BOTH FAINT WITH I ABLE TO ANCHOR
+    table = _orders_table(1, 2, 3, 4)
+    faint = {
+        2.0: _stats(0.3, 3.5, False),
+        3.0: _stats(0.55, 3.4, False),
+        1.0: _stats(0.6, 2.0, False),
+        4.0: _stats(0.9, 1.6, True),
+    }
+
+    # ACT
+    anchors = anchor_neighbours(table, faint)
+
+    # ASSERT: ONLY R GETS AN ANCHOR, AND IT IS I, NEVER G
+    assert anchors == {1.0: 4.0}
 
 
 def _stub_pixels_at(pixelsPerArcsec: float):
