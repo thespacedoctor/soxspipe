@@ -343,8 +343,6 @@ soxs-stare-std:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
-            # THE FAINT-ORDER TRACE IS FOR SCIENCE FRAMES ONLY
-            faint-order-trace: False
         slit-illumination:
             # MEASURE THE ALONG-SLIT OFFSET OF EACH ORDER'S SKY IMAGE FROM THE MASTER FLAT'S AND MASK THE SLIT ENDS THAT ARE NOT LIT IN BOTH
             measure-offset: True
@@ -736,8 +734,6 @@ soxs-nod-std:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
-            # THE FAINT-ORDER TRACE IS FOR SCIENCE FRAMES ONLY
-            faint-order-trace: False
         qc-acceptable-ranges:
             detector-temp: [0,165]
             badpix-frac: [-0.001,0.01]
@@ -993,8 +989,6 @@ soxs-offset-std:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
-            # THE FAINT-ORDER TRACE IS FOR SCIENCE FRAMES ONLY
-            faint-order-trace: False
         qc-acceptable-ranges:
             detector-temp: [0,165]
     nir:

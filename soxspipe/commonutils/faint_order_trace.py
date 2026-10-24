@@ -47,6 +47,14 @@ def _checked_positive(values, key):
     return float(value)
 
 
+def _checked_fraction(values, key):
+    """*the setting ``key`` as a float, raising a ``ValueError`` that names it unless it is in (0, 1]*"""
+    value = _checked_positive(values, key)
+    if value > 1:
+        raise ValueError(f"The setting `{key}` must be a fraction above zero and at most one, not {values[key]!r}.")
+    return value
+
+
 def _checked_positive_integer(values, key):
     """*the setting ``key`` as an int, raising a ``ValueError`` that names it unless it is an integer above zero*"""
     value = values[key]
@@ -86,8 +94,8 @@ class faint_trace_settings:
         - ``settings`` -- the frozen settings, off when the block has no ``faint-order-trace`` key
 
         A key that is missing or *None* takes its default. A malformed value raises a ``ValueError`` that names the key:
-        the switch must be a bool, the bin count a whole number above zero, and every other number finite and above
-        zero.
+        the switch must be a bool, the bin count a whole number above zero, the detection fraction above zero and at
+        most one, and every other number finite and above zero.
         """
         block = block or {}
         values = {
@@ -95,7 +103,7 @@ class faint_trace_settings:
         }
         return cls(
             isEnabled=_checked_bool(values, "faint-order-trace"),
-            minDetectionFraction=_checked_positive(values, "faint-order-min-detection-fraction"),
+            minDetectionFraction=_checked_fraction(values, "faint-order-min-detection-fraction"),
             maxScatterPx=_checked_positive(values, "faint-order-max-scatter-px"),
             maxAnchorScatterPx=_checked_positive(values, "faint-order-max-anchor-scatter-px"),
             binCount=_checked_positive_integer(values, "faint-order-bin-count"),

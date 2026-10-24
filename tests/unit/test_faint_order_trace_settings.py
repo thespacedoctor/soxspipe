@@ -104,6 +104,7 @@ def test_every_block_carries_the_shipped_numbers_or_none_at_all(recipe: str, arm
     assert settings.isEnabled is (arm == "vis" and recipe in ON_RECIPES)
 
 
+FRACTION_KEY = "faint-order-min-detection-fraction"
 BOOLEAN_KEY = "faint-order-trace"
 NUMBER_KEYS = (
     "faint-order-min-detection-fraction",
@@ -130,6 +131,22 @@ def test_from_block_rejects_a_number_that_is_not_finite_and_positive_and_names_t
         faint_trace_settings.from_block({key: value})
 
 
+@pytest.mark.parametrize("value", [1.0001, 1.5, 2, 50.0])
+def test_from_block_rejects_a_detection_fraction_above_one_and_names_the_key(value: object) -> None:
+    # ACT / ASSERT: A FRACTION OF SAMPLES CANNOT EXCEED 1, SO A LIMIT ABOVE IT WOULD FLAG EVERY ORDER FAINT
+    with pytest.raises(ValueError, match=FRACTION_KEY):
+        faint_trace_settings.from_block({FRACTION_KEY: value})
+
+
+@pytest.mark.parametrize("value", [1, 1.0, 0.5, 1e-6])
+def test_from_block_accepts_a_detection_fraction_in_the_range_above_zero_up_to_one(value: float) -> None:
+    # ACT
+    settings = faint_trace_settings.from_block({FRACTION_KEY: value})
+
+    # ASSERT
+    assert settings.minDetectionFraction == float(value)
+
+
 @pytest.mark.parametrize("value", [0, -3, 9.5, 15.0, "15", True, float("nan")])
 def test_from_block_rejects_a_bin_count_that_is_not_a_positive_integer_and_names_the_key(value: object) -> None:
     # ACT / ASSERT
@@ -154,3 +171,16 @@ def test_from_block_accepts_whole_numbers_for_the_float_settings() -> None:
     assert settings.maxScatterPx == 2.0
     assert isinstance(settings.maxScatterPx, float)
     assert settings.binCount == 8
+
+
+@pytest.mark.parametrize("recipe", ON_RECIPES + OFF_RECIPES)
+@pytest.mark.parametrize("arm", ["vis", "nir"])
+def test_every_shipped_block_has_no_faint_order_keys_or_exactly_the_default_keys(recipe: str, arm: str) -> None:
+    # ARRANGE
+    block = _shipped_block(recipe, arm)
+
+    # ACT
+    faintKeys = {key for key in block if key in FAINT_TRACE_DEFAULTS}
+
+    # ASSERT: A HALF-WRITTEN BLOCK WOULD SILENTLY TAKE THE CODE FALLBACK FOR THE MISSING KEYS
+    assert faintKeys in (set(), set(FAINT_TRACE_DEFAULTS))
