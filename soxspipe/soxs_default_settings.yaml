@@ -343,6 +343,8 @@ soxs-stare-std:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+            # THE FAINT-ORDER TRACE IS FOR SCIENCE FRAMES ONLY
+            faint-order-trace: False
         slit-illumination:
             # MEASURE THE ALONG-SLIT OFFSET OF EACH ORDER'S SKY IMAGE FROM THE MASTER FLAT'S AND MASK THE SLIT ENDS THAT ARE NOT LIT IN BOTH
             measure-offset: True
@@ -531,6 +533,18 @@ soxs-stare:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+            # ANCHOR THE TRACE OF A FAINT VIS ORDER TO ITS BRIGHT NEIGHBOUR AND REFIT IT ON BINNED PROFILES
+            faint-order-trace: True
+            # AN ORDER IS FAINT WHEN FEWER THAN THIS FRACTION OF ITS SAMPLES ARE DETECTED
+            faint-order-min-detection-fraction: 0.5
+            # AN ORDER IS FAINT WHEN THE MAD SCATTER OF ITS CENTRE SHIFT ABOUT A DEGREE-2 FIT EXCEEDS THIS (PIXELS)
+            faint-order-max-scatter-px: 1.5
+            # NUMBER OF WAVELENGTH BINS A FAINT ORDER IS COLLAPSED INTO
+            faint-order-bin-count: 15
+            # A BIN IS KEPT ONLY WHEN ITS PEAK SIGNAL-TO-NOISE RATIO IS AT LEAST THIS
+            faint-order-min-bin-snr: 3.0
+            # WARN WHEN ADJACENT ORDERS DISAGREE ON THE SLIT POSITION OF THE TRACE AT THEIR JOIN BY MORE THAN THIS (ARCSEC)
+            same-source-max-join-arcsec: 2.0
         slit-illumination:
             # MEASURE THE ALONG-SLIT OFFSET OF EACH ORDER'S SKY IMAGE FROM THE MASTER FLAT'S AND MASK THE SLIT ENDS THAT ARE NOT LIT IN BOTH
             measure-offset: True
@@ -720,6 +734,8 @@ soxs-nod-std:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+            # THE FAINT-ORDER TRACE IS FOR SCIENCE FRAMES ONLY
+            faint-order-trace: False
         qc-acceptable-ranges:
             detector-temp: [0,165]
             badpix-frac: [-0.001,0.01]
@@ -809,6 +825,18 @@ soxs-nod:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+            # ANCHOR THE TRACE OF A FAINT VIS ORDER TO ITS BRIGHT NEIGHBOUR AND REFIT IT ON BINNED PROFILES
+            faint-order-trace: True
+            # AN ORDER IS FAINT WHEN FEWER THAN THIS FRACTION OF ITS SAMPLES ARE DETECTED
+            faint-order-min-detection-fraction: 0.5
+            # AN ORDER IS FAINT WHEN THE MAD SCATTER OF ITS CENTRE SHIFT ABOUT A DEGREE-2 FIT EXCEEDS THIS (PIXELS)
+            faint-order-max-scatter-px: 1.5
+            # NUMBER OF WAVELENGTH BINS A FAINT ORDER IS COLLAPSED INTO
+            faint-order-bin-count: 15
+            # A BIN IS KEPT ONLY WHEN ITS PEAK SIGNAL-TO-NOISE RATIO IS AT LEAST THIS
+            faint-order-min-bin-snr: 3.0
+            # WARN WHEN ADJACENT ORDERS DISAGREE ON THE SLIT POSITION OF THE TRACE AT THEIR JOIN BY MORE THAN THIS (ARCSEC)
+            same-source-max-join-arcsec: 2.0
     nir:
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
@@ -879,6 +907,18 @@ soxs-offset:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+            # ANCHOR THE TRACE OF A FAINT VIS ORDER TO ITS BRIGHT NEIGHBOUR AND REFIT IT ON BINNED PROFILES
+            faint-order-trace: True
+            # AN ORDER IS FAINT WHEN FEWER THAN THIS FRACTION OF ITS SAMPLES ARE DETECTED
+            faint-order-min-detection-fraction: 0.5
+            # AN ORDER IS FAINT WHEN THE MAD SCATTER OF ITS CENTRE SHIFT ABOUT A DEGREE-2 FIT EXCEEDS THIS (PIXELS)
+            faint-order-max-scatter-px: 1.5
+            # NUMBER OF WAVELENGTH BINS A FAINT ORDER IS COLLAPSED INTO
+            faint-order-bin-count: 15
+            # A BIN IS KEPT ONLY WHEN ITS PEAK SIGNAL-TO-NOISE RATIO IS AT LEAST THIS
+            faint-order-min-bin-snr: 3.0
+            # WARN WHEN ADJACENT ORDERS DISAGREE ON THE SLIT POSITION OF THE TRACE AT THEIR JOIN BY MORE THAN THIS (ARCSEC)
+            same-source-max-join-arcsec: 2.0
     nir:
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
@@ -947,6 +987,8 @@ soxs-offset-std:
             poly-fitting-residual-clipping-sigma: 4
             # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING GLOBAL POLYNOMIAL TO ORDER CENTRES
             poly-clipping-iteration-limit: 5
+            # THE FAINT-ORDER TRACE IS FOR SCIENCE FRAMES ONLY
+            faint-order-trace: False
         qc-acceptable-ranges:
             detector-temp: [0,165]
     nir:
