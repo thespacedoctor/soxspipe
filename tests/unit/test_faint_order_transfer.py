@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.detect_continuum import detect_continuum
 from soxspipe.commonutils.faint_order_trace import faint_trace_settings, make_pixels_at, transfer_faint_orders
 from tests.unit._continuum_vis_scene import (
     VIS_FLANK_SEPARATION_ARCSEC,
@@ -208,3 +209,23 @@ def test_transfer_holds_the_trace_flat_beyond_the_last_kept_bin(pixelsAt: object
     lastHalf = uRows.loc[uRows["fit_y"] > 1300, "cont_x"]
     assert 4 <= reports[0].binsKept < reports[0].binCount
     assert np.ptp(lastHalf.to_numpy()) < 1e-6
+
+
+def test_transfer_rows_are_refitted_exactly_by_the_global_polynomial(
+    faintUScene: tuple, pixelsAt: object, log: object
+) -> None:
+    # ARRANGE: A DEGREE-3 FIT TO THE u ROWS ALONE, WITH THE SAME CLIPPING SETTINGS AS THE SHIPPED STARE BLOCK
+    result, _ = _transfer(faintUScene, pixelsAt)
+    detector = object.__new__(detect_continuum)
+    detector.log, detector.arm, detector.axisA, detector.axisB = log, "VIS", "x", "y"
+    detector.orderDeg, detector.axisBDeg = 0, 3
+    detector.recipeSettings = {"poly-fitting-residual-clipping-sigma": 4, "poly-clipping-iteration-limit": 5}
+    uRows = result[result["order"] == 2.0]
+
+    # ACT
+    _, fitted, clipped = detector.fit_global_polynomial(uRows)
+
+    # ASSERT: NOTHING IS CLIPPED, AND THE RESIDUALS ARE ROUNDING ERROR
+    assert len(clipped) == 0
+    assert len(fitted) == len(uRows)
+    assert np.abs(fitted["cont_x_fit_res"]).max() < 1e-3

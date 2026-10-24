@@ -389,16 +389,18 @@ def _fit_bin(image, pixelsAt, geometry, lowNm, highNm, axisA):
     return None if centre is None else (float(wavelength.mean()), centre)
 
 
-def _offset_curve(binWavelength, binCentre):
+def _offset_curve(binWavelength, binCentre, marginNm):
     """*the curve of the trace's offset from the anchor track against wavelength, and its degree*
 
-    The curve is flat beyond the first and last kept bins, so it cannot swing away where nothing was measured.
+    The polynomial is used up to ``marginNm`` (one bin width) beyond the first and last kept bins, which covers the
+    ends of the order when its end bins are kept. Beyond that the curve is flat, so it cannot swing away where
+    nothing was measured.
     """
     count = len(binWavelength)
     if count == 0:
         return (lambda wavelength: np.zeros_like(wavelength, dtype=float)), 0
     degree = 0 if count < MIN_CURVE_BINS else (1 if count < MIN_PARABOLA_BINS else 2)
-    low, high = binWavelength.min(), binWavelength.max()
+    low, high = binWavelength.min() - marginNm, binWavelength.max() + marginNm
     curve = np.polynomial.Polynomial.fit(binWavelength, binCentre, degree)
     return (lambda wavelength: curve(np.clip(wavelength, low, high))), degree
 
@@ -443,7 +445,7 @@ def _transfer_one_order(table, order, anchorOrder, image, pixelsAt, slitOffsets,
         _fit_bin(image, pixelsAt, geometry, low, high, axisA) for low, high in zip(edges[:-1], edges[1:], strict=True)
     ]
     kept = np.array([fit for fit in fits if fit is not None], dtype=float).reshape(-1, 2)
-    curve, degree = _offset_curve(kept[:, 0], kept[:, 1])
+    curve, degree = _offset_curve(kept[:, 0], kept[:, 1], (edges[-1] - edges[0]) / len(fits))
     values = _synthetic_rows(rows, geometry, curve, pixelsAt, axisA, axisB)
     report = transfer_report(order, anchorOrder, len(kept), len(fits), degree, len(kept) == 0, float(slitArcsec))
     return rows.index, values, report
