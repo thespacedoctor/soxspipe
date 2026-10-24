@@ -20,6 +20,7 @@ from soxspipe.commonutils.faint_order_trace import (
     make_pixels_at,
     order_trace_stats,
     pixels_per_arcsec,
+    search_window_arcsec,
 )
 from soxspipe.commonutils.toolkit import SOXS_VIS_ORDERS_BLUE_TO_RED
 from tests.unit._continuum_vis_scene import vis_dispersion_map, vis_row, vis_slit_scale
@@ -642,8 +643,31 @@ def test_fit_fixed_width_gaussian_never_picks_a_negative_lobe() -> None:
     # ACT
     centre = _fit(profile)
 
+    # ASSERT: A NEGATIVE-ONLY PROFILE HAS NO TRACE TO FIT
+    assert centre is None
+
+
+def test_fit_fixed_width_gaussian_lands_on_the_positive_trace_of_a_nod_difference_image() -> None:
+    # ARRANGE: AN A-MINUS-B FRAME HOLDS THE TARGET AT +1 PX AND THE PARTNER NOD'S NEGATIVE COPY OF EQUAL SIZE 13 PX
+    # AWAY, BEYOND THE WINDOW
+    profile = _profile(((1.0, 20.0), (-12.0, -20.0)), noise=0.5)
+
+    # ACT
+    centre = _fit(profile)
+
     # ASSERT
-    assert centre is None or abs(centre + 4.0) > 2.0
+    assert centre == pytest.approx(1.0, abs=0.3)
+
+
+def test_fit_fixed_width_gaussian_never_picks_the_negative_nod_copy_inside_the_window() -> None:
+    # ARRANGE: THE NEGATIVE COPY IS EQUAL AND OPPOSITE AND SITS 6 PX AWAY, INSIDE THE WINDOW
+    profile = _profile(((1.0, 12.0), (-5.0, -12.0)), noise=0.5)
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT: THE FIT EITHER REFUSES OR STAYS ON THE POSITIVE TRACE
+    assert centre is None or centre == pytest.approx(1.0, abs=0.3)
 
 
 def test_fit_fixed_width_gaussian_keeps_the_positive_trace_beside_a_negative_lobe() -> None:
@@ -727,3 +751,33 @@ def test_fit_fixed_width_gaussian_returns_none_for_a_flat_profile() -> None:
 
     # ASSERT
     assert centre is None
+
+
+def test_search_window_never_falls_below_1_5_arcsec() -> None:
+    # ARRANGE: THREE WIDTHS OF A 0.2 ARCSEC TRACE IS 0.6 ARCSEC
+    sigmaArcsec = 0.2
+
+    # ACT
+    window = search_window_arcsec(sigmaArcsec)
+
+    # ASSERT
+    assert window == 1.5
+
+
+def test_search_window_never_exceeds_1_8_arcsec() -> None:
+    # ARRANGE: THREE WIDTHS OF A 1 ARCSEC TRACE IS 3 ARCSEC, WHICH WOULD REACH A SOURCE 3.7 ARCSEC AWAY
+    sigmaArcsec = 1.0
+
+    # ACT
+    window = search_window_arcsec(sigmaArcsec)
+
+    # ASSERT
+    assert window == 1.8
+
+
+def test_search_window_is_three_widths_between_the_floor_and_the_ceiling() -> None:
+    # ACT
+    window = search_window_arcsec(0.55)
+
+    # ASSERT
+    assert window == pytest.approx(1.65)

@@ -416,8 +416,20 @@ def _shared_edge_nm(brightRows, anchorOrder, order):
     return float(wavelength.min() if isBrightRedder else wavelength.max())
 
 
-def _window_arcsec(sigmaArcsec):
-    """*the half-width of the search window around the anchor, in arcsec*"""
+def search_window_arcsec(sigmaArcsec):
+    """*the half-width of the search window around the anchor, in arcsec*
+
+    The window is three widths either side of the anchor, but never under 1.5 arcsec and never over 1.8 arcsec, so it
+    cannot reach a source 3.7 arcsec away.
+
+    **Key Arguments:**
+
+    - ``sigmaArcsec`` -- the Gaussian standard deviation of the bright trace, in arcsec
+
+    **Return:**
+
+    - ``windowArcsec`` -- the half-width of the window, in arcsec
+    """
     return min(max(WINDOW_WIDTHS * sigmaArcsec, WINDOW_MIN_ARCSEC), WINDOW_MAX_ARCSEC)
 
 
@@ -509,7 +521,9 @@ def _transfer_one_order(table, order, anchorOrder, image, pixelsAt, slitOffsets,
     rows = table.loc[table["order"] == order]
     brightRows = table.loc[table["order"] == anchorOrder]
     slitArcsec, sigmaArcsec, edgeNm = _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt)
-    geometry = _anchor_geometry(order, slitArcsec, sigmaArcsec, _window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr)
+    geometry = _anchor_geometry(
+        order, slitArcsec, sigmaArcsec, search_window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr
+    )
     edges = _bin_edges(rows["wavelength"].to_numpy(float), settings.binCount)
     fits = [
         _fit_bin(image, pixelsAt, geometry, low, high, axisA) for low, high in zip(edges[:-1], edges[1:], strict=True)
