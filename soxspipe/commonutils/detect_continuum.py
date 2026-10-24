@@ -27,6 +27,7 @@ from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
 from soxspipe.commonutils.faint_order_profile import frame_to_nan_array
 from soxspipe.commonutils.faint_order_trace import (
     faint_trace_settings,
+    join_slit_mismatches,
     make_pixels_at,
     transfer_faint_orders,
 )
@@ -892,8 +893,10 @@ class detect_continuum(_base_detect):
                     "Could not converge on a good fit to the continuum. Please check the quality of your data."
                 )
                 return None, self.qc, self.products, None, None, None
-            orderPixelTable = self._transfer_faint_order_traces(orderPixelTable)
+            faintSettings = self._faint_trace_settings()
+            orderPixelTable = self._transfer_faint_order_traces(orderPixelTable, faintSettings)
         else:
+            faintSettings = None
             orderPixelTable = self.orderPixelTable
 
         foundLines = len(orderPixelTable.index)
@@ -1039,6 +1042,7 @@ class detect_continuum(_base_detect):
         coeffColumns = coeff_dict.keys()
 
         orderPolyTable = pd.DataFrame([coeff_dict])
+        self._warn_on_join_slit_jumps(orderPixelTable, orderPolyTable, faintSettings)
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=["mask"], inplace=True)
@@ -1109,33 +1113,44 @@ class detect_continuum(_base_detect):
             orderMetaTable,
         )
 
-    def _transfer_faint_order_traces(self, orderPixelTable):
-        """*replace the sampled trace of each faint SOXS VIS order by one anchored to its bright neighbour*
+    def _faint_trace_settings(self):
+        """*the faint-order trace settings, or None where the trace is off*
 
-        The transfer runs only for the VIS arm of SOXS, in a recipe that is not an order-centre one, and only when the
-        ``faint-order-trace`` setting is on. Otherwise, and when no faint order has a bright partner, the table comes
-        back as the same object.
+        The trace is on for the VIS arm of SOXS, in a recipe that is not an order-centre one, when the
+        ``faint-order-trace`` setting is on.
+        """
+        settings = faint_trace_settings.from_block(self.recipeSettings)
+        isVisTrace = self.inst.upper() == "SOXS" and self.arm.upper() == "VIS"
+        isOn = settings.isEnabled and isVisTrace and "order" not in self.recipeName.lower()
+        return settings if isOn else None
+
+    def _make_pixels_at(self):
+        """*the function that turns an order, wavelengths and a slit position into pixels of the trace frame*"""
+        return make_pixels_at(
+            self.log, self.dispersion_map, self.mapBinning or {"x": 1.0, "y": 1.0}, self.axisA, self.axisB
+        )
+
+    def _transfer_faint_order_traces(self, orderPixelTable, settings):
+        """*replace the sampled trace of each faint order by one anchored to its bright neighbour*
+
+        When the trace is off (``settings`` is None), or no faint order has a bright partner, the table comes back as
+        the same object.
 
         **Key Arguments:**
 
         - ``orderPixelTable`` -- the table of sampled trace positions
+        - ``settings`` -- the ``faint_trace_settings``, or None where the trace is off
 
         **Return:**
 
         - ``orderPixelTable`` -- the table to fit
         """
-        settings = faint_trace_settings.from_block(self.recipeSettings)
-        isVisTrace = self.inst.upper() == "SOXS" and self.arm.upper() == "VIS"
-        if not (settings.isEnabled and isVisTrace and "order" not in self.recipeName.lower()):
+        if settings is None:
             return orderPixelTable
-
-        pixelsAt = make_pixels_at(
-            self.log, self.dispersion_map, self.mapBinning or {"x": 1.0, "y": 1.0}, self.axisA, self.axisB
-        )
         orderPixelTable, reports = transfer_faint_orders(
             orderPixelTable,
             frame_to_nan_array(self.traceFrame),
-            pixelsAt,
+            self._make_pixels_at(),
             self.slitOffsetsArcsec,
             settings,
             self.axisA,
@@ -1143,6 +1158,55 @@ class detect_continuum(_base_detect):
         )
         self._record_faint_trace_qc(reports)
         return orderPixelTable
+
+    def _fitted_trace(self, orderPolyTable):
+        """*the function that evaluates the fitted order-centre polynomial: ``trace(order, axisBPixels)``*"""
+        import numpy as np
+        import pandas as pd
+
+        poly = chebyshev_order_xy_polynomials(
+            log=self.log,
+            axisBCol=self.axisB,
+            orderCol="order",
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+        ).poly
+        centCoeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
+
+        def trace(order, axisBPixels):
+            axisBPixels = np.asarray(axisBPixels, dtype=float)
+            return np.asarray(poly(pd.DataFrame({self.axisB: axisBPixels, "order": float(order)}), *centCoeff))
+
+        return trace
+
+    def _warn_on_join_slit_jumps(self, orderPixelTable, orderPolyTable, settings):
+        """*warn when adjacent VIS orders put the fitted trace at different slit positions where they join*
+
+        The check only logs a warning, which the extraction also keeps as a note, and changes nothing else.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the fitted trace table
+        - ``orderPolyTable`` -- the fitted order-centre polynomial coefficients
+        - ``settings`` -- the ``faint_trace_settings``, or None where the trace is off
+        """
+        if settings is None or "wavelength" not in orderPixelTable.columns:
+            return
+        mismatches = join_slit_mismatches(
+            orderPixelTable,
+            self._fitted_trace(orderPolyTable),
+            self._make_pixels_at(),
+            self.slitOffsetsArcsec,
+            settings.maxJoinArcsec,
+        )
+        for mismatch in mismatches:
+            blue = order_label(mismatch.blueOrder, self.arm)
+            red = order_label(mismatch.redOrder, self.arm)
+            self.log.warning(
+                f"The fitted traces of orders {blue} and {red} differ by {mismatch.differenceArcsec:+.1f} arcsec at "
+                f"their join, more than {settings.maxJoinArcsec:.1f} arcsec, so they may follow different sources. "
+                "Check the object trace."
+            )
 
     def _record_faint_trace_qc(self, reports):
         """*record the transferred orders: a header QC, a log line each and an extraction note each*

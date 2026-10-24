@@ -68,6 +68,7 @@ class faint_trace_settings:
 # THE SOXS VIS BAND GROUPS, EACH FROM THE BLUER ORDER TO THE REDDER: (u, g) AND (r, i). THIS MATCHES THE LIST IN
 # `toolkit.SOXS_VIS_ORDERS_BLUE_TO_RED`, WHICH THIS MODULE DOES NOT IMPORT TO STAY LIGHT
 VIS_BAND_GROUPS = ((2, 3), (1, 4))
+VIS_ORDERS_BLUE_TO_RED = tuple(order for group in VIS_BAND_GROUPS for order in group)
 # THE SMALLEST NUMBER OF ACCEPTED SAMPLES THAT FIXES A DEGREE-2 CURVE WITH ONE SAMPLE TO SPARE
 MIN_FIT_SAMPLES = 4
 # THE DEGREE OF THE CENTRE-SHIFT CURVE THAT SEPARATES SCATTER FROM A SMOOTH TRACE
@@ -486,3 +487,60 @@ def transfer_faint_orders(table, image, pixelsAt, slitOffsets, settings, axisA, 
             result.loc[index, column] = value
         reports.append(report)
     return result, reports
+
+
+@dataclass(frozen=True)
+class join_mismatch:
+    """Two adjacent orders that put the trace at different slit positions where they join.
+
+    ``differenceArcsec`` is the slit position in the redder order minus the one in the bluer order, after the
+    slit-illumination offsets are removed.
+    """
+
+    blueOrder: float
+    redOrder: float
+    differenceArcsec: float
+
+
+def _trace_slit_arcsec(table, order, edge, trace, pixelsAt):
+    """*the slit position of the fitted trace at one end of an order, in arcsec from the map's slit-zero track*"""
+    wavelength = table.loc[table["order"] == order, "wavelength"]
+    edgeNm = np.array([wavelength.min() if edge == "blue" else wavelength.max()])
+    mapA, mapB = pixelsAt(order, edgeNm, 0.0)
+    scale = pixels_per_arcsec(pixelsAt, order, edgeNm)
+    return float(((np.asarray(trace(order, mapB)) - mapA) / scale)[0])
+
+
+def join_slit_mismatches(table, trace, pixelsAt, slitOffsets, limitArcsec):
+    """*find adjacent VIS orders whose fitted traces sit at different slit positions where the orders join*
+
+    The traces of the four orders must follow one source. At each join, from the bluer order's red end to the redder
+    order's blue end, the fitted trace is converted to a slit position through the dispersion map. The
+    slit-illumination offsets are removed when both orders have one. A difference above ``limitArcsec`` is reported.
+
+    **Key Arguments:**
+
+    - ``table`` -- the fitted order table, with ``order`` and ``wavelength``
+    - ``trace`` -- the function ``trace(order, axisBPixels)`` giving the fitted cross-dispersion pixel
+    - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
+    - ``slitOffsets`` -- the slit-illumination offset of each order in arcsec, or *None*
+    - ``limitArcsec`` -- the largest difference that is not reported
+
+    **Return:**
+
+    - ``mismatches`` -- one ``join_mismatch`` for each join over the limit, from blue to red
+    """
+    present = set(table["order"].unique())
+    offsets = slitOffsets or {}
+    mismatches = []
+    for blue, red in zip(VIS_ORDERS_BLUE_TO_RED[:-1], VIS_ORDERS_BLUE_TO_RED[1:], strict=True):
+        if blue not in present or red not in present:
+            continue
+        difference = _trace_slit_arcsec(table, red, "blue", trace, pixelsAt) - _trace_slit_arcsec(
+            table, blue, "red", trace, pixelsAt
+        )
+        if blue in offsets and red in offsets:
+            difference = difference - (offsets[red] - offsets[blue])
+        if abs(difference) > limitArcsec:
+            mismatches.append(join_mismatch(float(blue), float(red), float(difference)))
+    return mismatches

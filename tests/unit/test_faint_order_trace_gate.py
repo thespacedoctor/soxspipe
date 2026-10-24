@@ -15,6 +15,7 @@ from soxspipe.commonutils.detect_continuum import detect_continuum
 from tests.unit._continuum_vis_scene import (
     TraceFrame,
     vis_dispersion_map,
+    vis_slit_scale,
     vis_transfer_image,
     vis_transfer_table,
 )
@@ -63,12 +64,16 @@ def _run_get(
     arm: str = "VIS",
     recipe: str = "soxs-stare",
     suppliedTable: bool = False,
+    coefficients: list[float] | None = None,
+    degrees: tuple[int, int] = (1, 1),
+    slitOffsets: dict | None = None,
 ) -> _Run:
     detector = object.__new__(detect_continuum)
     detector.log = log
     detector.inst, detector.arm, detector.recipeName = inst, arm, recipe
     detector.axisA, detector.axisB = "x", "y"
-    detector.orderDeg = detector.axisBDeg = 1
+    detector.orderDeg, detector.axisBDeg = degrees
+    detector.slitOffsetsArcsec = slitOffsets
     detector.recipeSettings = block
     detector.settings = {"tune-pipeline": False}
     detector.dateObs = "2024-01-02T00:00:00"
@@ -87,7 +92,7 @@ def _run_get(
         run.fitted.append(kwargs["pixelList"])
         fitted = kwargs["pixelList"].copy()
         fitted[f"{kwargs['axisACol']}_fit_res"] = 0.0
-        return [1.0, 2.0, 3.0, 4.0], fitted, pd.DataFrame()
+        return (coefficients or [1.0, 2.0, 3.0, 4.0]), fitted, pd.DataFrame()
 
     monkeypatch.setattr(detector, "sample_trace", lambda: (sampled, 100.0))
     monkeypatch.setattr(detector, "fit_global_polynomial", fit_trace)
@@ -317,3 +322,122 @@ def test_get_says_so_when_a_faint_order_falls_back_to_the_anchor_track(
 
     # ASSERT
     assert noteLog.notes == ["Order 2 (u) trace transferred from 3 (g): no bin kept, anchor track used"]
+
+
+def _cubic_trace_coefficients(slitByOrder: dict[float, float]) -> list[float]:
+    """Return the order-cubic fit (order power outermost, no dispersion term) of traces at `slitByOrder` arcsec."""
+    orders = sorted(slitByOrder)
+    centres = [-30.0 + 90.0 * order + vis_slit_scale(order) * slitByOrder[order] for order in orders]
+    return [float(c) for c in np.polyfit(orders, centres, 3)[::-1]]
+
+
+def _join_warnings(log: object) -> list[str]:
+    return [message for level, message in log.messages if level == "warning" and "join" in message]
+
+
+def test_get_warns_when_adjacent_orders_follow_different_sources(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE: THE FITTED u TRACE SITS 2.5 ARCSEC ABOVE THE g TRACE, WITH THE OTHER ORDERS ON ONE SOURCE
+    sampled, image = _scene((2.0,))
+    slits = {1.0: 0.4, 2.0: 2.9, 3.0: 0.4, 4.0: 0.4}
+
+    # ACT
+    run = _run_get(
+        log,
+        monkeypatch,
+        tmp_path,
+        block=_block(),
+        sampled=sampled,
+        image=image,
+        coefficients=_cubic_trace_coefficients(slits),
+        degrees=(3, 0),
+    )
+
+    # ASSERT
+    warnings = _join_warnings(log)
+    assert len(warnings) == 1
+    assert "orders 2 (u) and 3 (g)" in warnings[0]
+    assert "-2.5 arcsec" in warnings[0]
+    assert FAINT_QC in run.detector.qc["qc_name"].tolist()
+
+
+def test_get_does_not_warn_when_every_order_follows_one_source(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    sampled, image = _scene(())
+    slits = {1.0: 0.4, 2.0: 0.4, 3.0: 0.4, 4.0: 0.4}
+
+    # ACT
+    run = _run_get(
+        log,
+        monkeypatch,
+        tmp_path,
+        block=_block(),
+        sampled=sampled,
+        image=image,
+        coefficients=_cubic_trace_coefficients(slits),
+        degrees=(3, 0),
+    )
+
+    # ASSERT: NO WARNING, AND NO QC ROW OF ITS OWN FOR THE CHECK
+    assert _join_warnings(log) == []
+    assert run.detector.qc["qc_name"].str.contains("JOIN").sum() == 0
+
+
+def test_get_removes_the_slit_offsets_before_it_compares_the_joins(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    sampled, image = _scene(())
+    slits = {1.0: 0.4, 2.0: 2.9, 3.0: 0.4, 4.0: 0.4}
+
+    # ACT
+    _run_get(
+        log,
+        monkeypatch,
+        tmp_path,
+        block=_block(),
+        sampled=sampled,
+        image=image,
+        coefficients=_cubic_trace_coefficients(slits),
+        degrees=(3, 0),
+        slitOffsets={2: 2.5, 3: 0.0},
+    )
+
+    # ASSERT
+    assert _join_warnings(log) == []
+
+
+@pytest.mark.parametrize(
+    ("block", "options"),
+    [
+        pytest.param(_block(**{"faint-order-trace": False}), {}, id="switched off"),
+        pytest.param(_block(), {"arm": "NIR"}, id="NIR arm"),
+        pytest.param(_block(), {"recipe": "soxs-order-centres"}, id="order-centres recipe"),
+        pytest.param(_block(), {"suppliedTable": True}, id="table supplied for tuning"),
+    ],
+)
+def test_get_makes_no_join_check_where_the_trace_is_off(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, block: dict, options: dict
+) -> None:
+    # ARRANGE: THE SAME u JUMP THAT WARNS WHEN THE TRACE IS ON
+    sampled, image = _scene(())
+    slits = {1.0: 0.4, 2.0: 2.9, 3.0: 0.4, 4.0: 0.4}
+
+    # ACT
+    _run_get(
+        log,
+        monkeypatch,
+        tmp_path,
+        block=block,
+        sampled=sampled,
+        image=image,
+        coefficients=_cubic_trace_coefficients(slits),
+        degrees=(3, 0),
+        **options,
+    )
+
+    # ASSERT
+    assert _join_warnings(log) == []
