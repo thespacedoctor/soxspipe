@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+from soxspipe.commonutils.faint_order_profile import FIT_MARGIN_SIGMAS, collapse_bin_profile, fit_fixed_width_gaussian
 
 # CODE FALLBACKS FOR SETTINGS FILES WRITTEN BEFORE THE FAINT-ORDER KEYS EXISTED. THE TRACE IS OFF BY DEFAULT, SO OLD
 # SETTINGS FILES AND THE -STD RECIPES DO NOT CHANGE
@@ -80,6 +81,19 @@ EDGE_FRACTION = 0.25
 MIN_EDGE_SAMPLES = 3
 # THE CLIPPING WIDTH NEVER FALLS BELOW THIS (PIXELS), SO NOISE-FREE DATA ARE NOT CLIPPED AT ROUNDING ERROR
 MIN_CLIP_SIGMA = 1e-9
+# THE SEARCH WINDOW AROUND THE ANCHOR IS THREE WIDTHS EITHER SIDE, NEVER UNDER 1.5 ARCSEC AND NEVER OVER 1.8 ARCSEC, SO
+# IT CANNOT REACH A SOURCE 3.7 ARCSEC AWAY
+WINDOW_WIDTHS = 3.0
+WINDOW_MIN_ARCSEC = 1.5
+WINDOW_MAX_ARCSEC = 1.8
+# SEEING WIDENS AS WAVELENGTH TO THIS POWER, SO A WIDTH IS CARRIED ACROSS THE ORDER BOUNDARY WITH IT
+WIDTH_EXPONENT = -0.2
+# THE POLYNOMIAL THROUGH THE BIN CENTRES: NO CURVE BELOW THIS MANY KEPT BINS, A STRAIGHT LINE BELOW THE SECOND LIMIT
+# AND A PARABOLA FROM IT
+MIN_CURVE_BINS = 4
+MIN_PARABOLA_BINS = 7
+# A BIN IS SAMPLED EVERY DISPERSION PIXEL, WITH AT LEAST THIS MANY SAMPLES
+MIN_BIN_TRACK_POINTS = 2
 # CONVERTS A MEDIAN ABSOLUTE DEVIATION TO A STANDARD DEVIATION FOR GAUSSIAN NOISE
 MAD_TO_SIGMA = 1.4826
 
@@ -286,3 +300,172 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt):
     nearEdge = accepted.loc[isNearEdge] if isNearEdge.sum() >= MIN_EDGE_SAMPLES else accepted
     sigmaPx = float(np.median(nearEdge["gauss_stddev"].to_numpy(float)))
     return float(-curve(edgeNm) / scale), abs(sigmaPx / scale)
+
+
+@dataclass(frozen=True)
+class transfer_report:
+    """What the transfer did for one faint order.
+
+    ``binsKept`` of ``binCount`` bins gave a centre, and ``degree`` is the degree of the curve through them.
+    ``isAnchorTrack`` is *True* when no bin survived and the rows follow the anchor track. ``slitArcsec`` is that
+    track's slit position.
+    """
+
+    order: float
+    anchorOrder: float
+    binsKept: int
+    binCount: int
+    degree: int
+    isAnchorTrack: bool
+    slitArcsec: float
+
+
+def _shared_edge_nm(brightRows, anchorOrder, order):
+    """*the wavelength at the end of the bright order that faces the faint order*"""
+    group = next(group for group in VIS_BAND_GROUPS if order in group)
+    isBrightRedder = group.index(anchorOrder) > group.index(order)
+    wavelength = brightRows["wavelength"]
+    return float(wavelength.min() if isBrightRedder else wavelength.max())
+
+
+def _window_arcsec(sigmaArcsec):
+    """*the half-width of the search window around the anchor, in arcsec*"""
+    return min(max(WINDOW_WIDTHS * sigmaArcsec, WINDOW_MIN_ARCSEC), WINDOW_MAX_ARCSEC)
+
+
+def _bin_edges(wavelength, binCount):
+    """*the wavelength edges of ``binCount`` bins that hold equal numbers of samples, covering the whole order*"""
+    ordered = np.sort(wavelength)
+    groups = np.array_split(ordered, min(binCount, len(ordered)))
+    inner = [(left[-1] + right[0]) / 2.0 for left, right in zip(groups[:-1], groups[1:], strict=True)]
+    return np.array([ordered[0], *inner, ordered[-1]])
+
+
+@dataclass(frozen=True)
+class _anchor_geometry:
+    """The faint order's anchor: its slit position, the bright width, the search window and the shared edge."""
+
+    order: float
+    slitArcsec: float
+    sigmaArcsec: float
+    windowArcsec: float
+    edgeNm: float
+    minSnr: float
+
+
+def _fit_bin(image, pixelsAt, geometry, lowNm, highNm, axisA):
+    """*the centre, in pixels from the anchor track, of the trace in one wavelength bin, or None*"""
+    order, slitArcsec, sigmaArcsec = geometry.order, geometry.slitArcsec, geometry.sigmaArcsec
+    windowArcsec, edgeNm, minSnr = geometry.windowArcsec, geometry.edgeNm, geometry.minSnr
+    _, ends = pixelsAt(order, np.array([lowNm, highNm]), slitArcsec)
+    pointCount = max(int(abs(ends[1] - ends[0])) + 1, MIN_BIN_TRACK_POINTS)
+    wavelength = np.linspace(lowNm, highNm, pointCount)
+    middleNm = float((lowNm + highNm) / 2.0)
+    scale = abs(float(pixels_per_arcsec(pixelsAt, order, np.array([middleNm]))[0]))
+    sigmaPx = sigmaArcsec * scale * (middleNm / edgeNm) ** WIDTH_EXPONENT
+    windowPx = windowArcsec * scale
+    trackA, trackB = pixelsAt(order, wavelength, slitArcsec)
+    halfLength = int(np.ceil(windowPx + FIT_MARGIN_SIGMAS * sigmaPx)) + 1
+    offsets, profile = collapse_bin_profile(image, trackA, trackB, halfLength, axisA)
+    centre = fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr)
+    return None if centre is None else (float(wavelength.mean()), centre)
+
+
+def _offset_curve(binWavelength, binCentre):
+    """*the curve of the trace's offset from the anchor track against wavelength, and its degree*
+
+    The curve is flat beyond the first and last kept bins, so it cannot swing away where nothing was measured.
+    """
+    count = len(binWavelength)
+    if count == 0:
+        return (lambda wavelength: np.zeros_like(wavelength, dtype=float)), 0
+    degree = 0 if count < MIN_CURVE_BINS else (1 if count < MIN_PARABOLA_BINS else 2)
+    low, high = binWavelength.min(), binWavelength.max()
+    curve = np.polynomial.Polynomial.fit(binWavelength, binCentre, degree)
+    return (lambda wavelength: curve(np.clip(wavelength, low, high))), degree
+
+
+def _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt):
+    """*the anchor geometry of a faint order: slit position and width of the bright trace at the shared edge*"""
+    edgeNm = _shared_edge_nm(brightRows, anchorOrder, order)
+    slitArcsec, sigmaArcsec = bright_edge_anchor(brightRows, edgeNm, pixelsAt)
+    offsets = slitOffsets or {}
+    if np.isfinite(offsets.get(order, np.nan)) and np.isfinite(offsets.get(anchorOrder, np.nan)):
+        slitArcsec = slitArcsec - offsets[anchorOrder] + offsets[order]
+    return slitArcsec, sigmaArcsec, edgeNm
+
+
+def _synthetic_rows(rows, geometry, offsetCurve, pixelsAt, axisA, axisB):
+    """*the replacement values of a faint order's rows: the anchor track plus the fitted offset curve*"""
+    wavelength = rows["wavelength"].to_numpy(float)
+    scale = pixels_per_arcsec(pixelsAt, geometry.order, wavelength)
+    slitArcsec = geometry.slitArcsec + offsetCurve(wavelength) / scale
+    contA, contB = pixelsAt(geometry.order, wavelength, slitArcsec)
+    widthPx = geometry.sigmaArcsec * np.abs(scale) * (wavelength / geometry.edgeNm) ** WIDTH_EXPONENT
+    return {
+        f"cont_{axisA}": contA,
+        f"cont_{axisB}": contB,
+        "gauss_stddev": widthPx,
+        "gauss_amplitude": np.nan,
+        "gauss_mean": np.nan,
+        "pre-clipped": False,
+        "centre_shift": rows[f"fit_{axisA}"].to_numpy(float) - contA,
+        "faint_transfer": True,
+    }
+
+
+def _transfer_one_order(table, order, anchorOrder, image, pixelsAt, slitOffsets, settings, axisA, axisB):
+    """*the replacement values and the report for one faint order*"""
+    rows = table.loc[table["order"] == order]
+    brightRows = table.loc[table["order"] == anchorOrder]
+    slitArcsec, sigmaArcsec, edgeNm = _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt)
+    geometry = _anchor_geometry(order, slitArcsec, sigmaArcsec, _window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr)
+    edges = _bin_edges(rows["wavelength"].to_numpy(float), settings.binCount)
+    fits = [
+        _fit_bin(image, pixelsAt, geometry, low, high, axisA) for low, high in zip(edges[:-1], edges[1:], strict=True)
+    ]
+    kept = np.array([fit for fit in fits if fit is not None], dtype=float).reshape(-1, 2)
+    curve, degree = _offset_curve(kept[:, 0], kept[:, 1])
+    values = _synthetic_rows(rows, geometry, curve, pixelsAt, axisA, axisB)
+    report = transfer_report(order, anchorOrder, len(kept), len(fits), degree, len(kept) == 0, float(slitArcsec))
+    return rows.index, values, report
+
+
+def transfer_faint_orders(table, image, pixelsAt, slitOffsets, settings, axisA, axisB):
+    """*replace the rows of each faint order by a trace anchored to its bright neighbour and fitted on binned profiles*
+
+    Each faint order that has a bright partner in its band group is split into wavelength bins. Every bin is collapsed
+    along the anchor track into one profile, and a Gaussian of the bright neighbour's width is fitted inside a narrow
+    window around the anchor. A low-degree curve through the kept bins gives the trace, and the order's rows are
+    replaced one for one with exact samples of that curve, marked in a new ``faint_transfer`` column. When no order
+    is faint, or none has a bright partner, the table is returned as it is.
+
+    **Key Arguments:**
+
+    - ``table`` -- the sampled order table
+    - ``image`` -- the 2D frame, NaN where masked
+    - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
+    - ``slitOffsets`` -- the slit-illumination offset of each order in arcsec, or *None*
+    - ``settings`` -- the ``faint_trace_settings``
+    - ``axisA`` -- the cross-dispersion axis, ``"x"`` or ``"y"``
+    - ``axisB`` -- the dispersion axis, ``"x"`` or ``"y"``
+
+    **Return:**
+
+    - ``table`` -- the same table object when nothing was transferred, otherwise an edited copy
+    - ``reports`` -- one ``transfer_report`` per transferred order
+    """
+    anchors = anchor_neighbours(table, find_faint_orders(table, axisA, settings))
+    if not anchors:
+        return table, []
+    result = table.copy()
+    result["faint_transfer"] = False
+    reports = []
+    for order, anchorOrder in anchors.items():
+        index, values, report = _transfer_one_order(
+            table, order, anchorOrder, image, pixelsAt, slitOffsets, settings, axisA, axisB
+        )
+        for column, value in values.items():
+            result.loc[index, column] = value
+        reports.append(report)
+    return result, reports

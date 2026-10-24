@@ -19,7 +19,7 @@ from soxspipe.commonutils.faint_order_trace import (
     pixels_per_arcsec,
 )
 from soxspipe.commonutils.toolkit import SOXS_VIS_ORDERS_BLUE_TO_RED
-from tests.unit._continuum_vis_scene import vis_dispersion_map, vis_slit_scale
+from tests.unit._continuum_vis_scene import vis_dispersion_map, vis_row, vis_slit_scale
 
 pytestmark = pytest.mark.unit
 
@@ -280,11 +280,11 @@ def test_make_pixels_at_reads_the_dispersion_map_in_frame_pixels(log: object, tm
     pixelsAt = make_pixels_at(log, mapPath, {"x": 1.0, "y": 2.0}, "x", "y")
 
     # ACT
-    axisA, axisB = pixelsAt(3.0, np.array([410.0, 430.0]), 0.5)
+    axisA, axisB = pixelsAt(3.0, np.array([610.0, 630.0]), 0.5)
 
-    # ASSERT: x = -30 + 90 * 3 + 0.5 * SCALE(3) AND y = (WAVELENGTH - 390) / 2
+    # ASSERT: x = -30 + 90 * 3 + 0.5 * SCALE(3) AND y = ROW(WAVELENGTH) / 2
     np.testing.assert_allclose(axisA, 240.0 + 0.5 * vis_slit_scale(3.0), atol=1e-3)
-    np.testing.assert_allclose(axisB, [10.0, 20.0], atol=1e-3)
+    np.testing.assert_allclose(axisB, vis_row(3.0, np.array([610.0, 630.0])) / 2.0, atol=1e-3)
 
 
 def test_make_pixels_at_keeps_samples_that_fall_off_the_detector(log: object, tmp_path: Path) -> None:
@@ -292,7 +292,7 @@ def test_make_pixels_at_keeps_samples_that_fall_off_the_detector(log: object, tm
     pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "x", "y")
 
     # ACT
-    axisA, axisB = pixelsAt(1.0, np.array([410.0, 420.0]), 100.0)
+    axisA, axisB = pixelsAt(1.0, np.array([810.0, 820.0]), 100.0)
 
     # ASSERT
     assert len(axisA) == len(axisB) == 2
@@ -307,7 +307,7 @@ def test_make_pixels_at_follows_the_axis_roles_it_is_given(log: object, tmp_path
     axisA, axisB = pixelsAt(2.0, np.array([410.0]), 0.0)
 
     # ASSERT
-    np.testing.assert_allclose(axisA, [20.0], atol=1e-3)
+    np.testing.assert_allclose(axisA, vis_row(2.0, np.array([410.0])), atol=1e-3)
     np.testing.assert_allclose(axisB, [150.0], atol=1e-3)
 
 
@@ -316,7 +316,7 @@ def test_pixels_per_arcsec_is_the_signed_slit_scale_of_the_map(log: object, tmp_
     pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "x", "y")
 
     # ACT
-    scale = pixels_per_arcsec(pixelsAt, 4.0, np.array([400.0, 420.0]))
+    scale = pixels_per_arcsec(pixelsAt, 4.0, np.array([1000.0, 1020.0]))
 
     # ASSERT
     np.testing.assert_allclose(scale, [vis_slit_scale(4.0)] * 2, atol=1e-3)
