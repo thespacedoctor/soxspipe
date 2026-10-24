@@ -759,6 +759,7 @@ class detect_continuum(_base_detect):
     # THE FRAME-TO-MAP BINNING, SET WHEN THE TRACE IS SAMPLED, AND THE SLIT-ILLUMINATION OFFSET OF EACH ORDER (IF KNOWN)
     mapBinning = None
     slitOffsetsArcsec = None
+    faintTransferReports = ()
 
     def __init__(
         self,
@@ -1150,6 +1151,7 @@ class detect_continuum(_base_detect):
         """
         if not reports:
             return
+        self.faintTransferReports = tuple(reports)
         self.qc = append_qc(
             self.qc,
             recipeName=self.recipeName,
@@ -1470,6 +1472,41 @@ class detect_continuum(_base_detect):
 
         self.log.debug("completed the ``check_trace_extrapolation`` method")
 
+    def _scatter_trace_peaks(self, axis, orderPixelTable):
+        """*scatter the fitted peak positions, drawing the rows of a transferred faint trace apart in their own marker*
+
+        **Key Arguments:**
+
+        - ``axis`` -- the matplotlib axis to draw on
+        - ``orderPixelTable`` -- the fitted trace table, with a ``faint_transfer`` column when an order was transferred
+        """
+        measured, transferred = orderPixelTable, orderPixelTable.iloc[0:0]
+        if "faint_transfer" in orderPixelTable.columns:
+            isTransferred = orderPixelTable["faint_transfer"].astype(bool)
+            measured, transferred = orderPixelTable.loc[~isTransferred], orderPixelTable.loc[isTransferred]
+        axis.scatter(
+            measured[f"cont_{self.axisB}"],
+            measured[f"cont_{self.axisA}"],
+            marker="o",
+            c="green",
+            s=0.3,
+            alpha=0.6,
+            label="cross-dispersion 1D gaussian peak-position",
+        )
+        anchors = {report.order: report.anchorOrder for report in self.faintTransferReports}
+        for order, rows in transferred.groupby("order"):
+            anchor = anchors.get(order)
+            source = "a bright neighbouring order" if anchor is None else f"order {int(anchor)}"
+            axis.scatter(
+                rows[f"cont_{self.axisB}"],
+                rows[f"cont_{self.axisA}"],
+                marker="^",
+                c="tab:blue",
+                s=1.5,
+                alpha=0.6,
+                label=f"trace transferred from {source}",
+            )
+
     @closes_its_figures
     def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
@@ -1549,15 +1586,7 @@ class detect_continuum(_base_detect):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
         toprow.set_title("1D gaussian peak positions (post-clipping)", fontsize=10)
-        toprow.scatter(
-            orderPixelTable[f"cont_{self.axisB}"],
-            orderPixelTable[f"cont_{self.axisA}"],
-            marker="o",
-            c="green",
-            s=0.3,
-            alpha=0.6,
-            label="cross-dispersion 1D gaussian peak-position",
-        )
+        self._scatter_trace_peaks(toprow, orderPixelTable)
 
         # PLOT WHERE A CONTINUUM WAS NOT FOUND - WITH SLICE LENGTH SHOWN
         mask = clippedData["cont_x"].isna() | clippedData["cont_y"].isna()

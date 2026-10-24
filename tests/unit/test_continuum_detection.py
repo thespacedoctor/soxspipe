@@ -14,6 +14,7 @@ from astropy.io import fits
 from astropy.nddata import CCDData
 
 from soxspipe.commonutils.detect_continuum import detect_continuum
+from soxspipe.commonutils.faint_order_trace import transfer_report
 from tests.factories import instrument_header, pipeline_settings, qc_table
 from tests.unit._continuum_vis_scene import VIS_ORDER_CENTRES, vis_sampling_detector
 from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
@@ -1195,3 +1196,74 @@ def test_order_colours_assigns_a_stable_distinct_colour_per_order_and_wraps_afte
     assert colours[orders[len(cycle)]] == cycle[0]
     assert colours[orders[len(cycle) + 1]] == cycle[1]
     assert colours == continuumModule._order_colours(orders)
+
+
+def _top_panel_scatters(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Record `{label: point count}` of the scatter collections on the first (top) axis each time a plot is saved."""
+    return probe_on_savefig(
+        monkeypatch,
+        lambda figure: {c.get_label(): len(c.get_offsets()) for c in figure.axes[0].collections},
+    )
+
+
+def _plot_transfer_pixels() -> pd.DataFrame:
+    pixels = _trace_pixels([10.0, 11.0], slope=0.2, intercept=8.0)
+    return pixels.assign(faint_transfer=pixels["order"] == 11.0)
+
+
+def _plot_coefficients() -> pd.DataFrame:
+    return pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
+
+
+def test_plot_results_draws_the_transferred_rows_apart_and_names_the_bright_order(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, False, 0.4),)
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(_plot_transfer_pixels(), _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: ORDER 10 KEEPS THE GREEN PEAKS, AND THE 24 ROWS OF ORDER 11 GET THEIR OWN NAMED MARKER
+    assert scatters[0]["cross-dispersion 1D gaussian peak-position"] == 24
+    assert scatters[0]["trace transferred from order 10"] == 24
+
+
+def test_plot_results_draws_one_scatter_for_a_table_with_no_transfer(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels().drop(columns="faint_transfer")
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: THE PLOT OF A BRIGHT FRAME HAS THE ONE GREEN SCATTER IT ALWAYS HAD
+    peakLabels = {
+        label: count for label, count in scatters[0].items() if "gaussian peak" in label or "transferred" in label
+    }
+    assert peakLabels == {"cross-dispersion 1D gaussian peak-position": 48}
+
+
+def test_plot_results_still_marks_transferred_rows_when_no_report_is_known(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(_plot_transfer_pixels(), _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT
+    assert scatters[0]["trace transferred from a bright neighbouring order"] == 24
