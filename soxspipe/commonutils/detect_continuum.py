@@ -24,12 +24,12 @@ from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.faint_order_map import make_pixels_at
 from soxspipe.commonutils.faint_order_profile import frame_to_nan_array
 from soxspipe.commonutils.faint_order_rows import clip_measured_residuals, measured_residuals, transferred_row_mask
 from soxspipe.commonutils.faint_order_trace import (
     faint_trace_settings,
     join_slit_mismatches,
-    make_pixels_at,
     transfer_faint_orders,
 )
 from soxspipe.commonutils.figure_guard import closes_its_figures

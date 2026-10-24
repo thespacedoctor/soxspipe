@@ -7,7 +7,8 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.detect_continuum import detect_continuum
-from soxspipe.commonutils.faint_order_trace import faint_trace_settings, make_pixels_at, transfer_faint_orders
+from soxspipe.commonutils.faint_order_map import make_pixels_at
+from soxspipe.commonutils.faint_order_trace import faint_trace_settings, transfer_faint_orders
 from tests.unit._continuum_vis_scene import (
     VIS_FLANK_SEPARATION_ARCSEC,
     VIS_SEEING_SIGMA_PX,

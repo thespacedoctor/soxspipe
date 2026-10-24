@@ -11,7 +11,7 @@ import yaml
 
 import soxspipe
 from soxspipe.commonutils.detect_continuum import detect_continuum
-from soxspipe.commonutils.faint_order_trace import make_pixels_at
+from soxspipe.commonutils.faint_order_map import make_pixels_at
 from tests.unit._continuum_vis_scene import (
     VIS_ORDER_SAMPLES,
     VIS_START_NM,

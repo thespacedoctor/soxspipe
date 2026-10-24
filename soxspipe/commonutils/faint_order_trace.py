@@ -4,7 +4,8 @@ The slice-by-slice Gaussian fit of ``detect_continuum`` follows a bright order w
 signal-to-noise ratio near 0.5 it fits noise, and a degree-5 polynomial through that noise wanders by arcseconds. The
 functions here find the faint orders, take the slit position of the adjacent bright order as an anchor, collapse the
 faint order into a few wavelength bins and fit one fixed-width Gaussian per bin inside a narrow window around the
-anchor. The module needs numpy and pandas only, and runs no least-squares optimiser.
+anchor. The module imports numpy only, takes its tables as pandas data-frames, reads the dispersion map through a
+``pixelsAt`` function from ``faint_order_map``, and runs no least-squares optimiser.
 """
 
 import math
@@ -12,9 +13,7 @@ from dataclasses import dataclass
 from numbers import Real
 
 import numpy as np
-import pandas as pd
 
-from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 from soxspipe.commonutils.faint_order_profile import FIT_MARGIN_SIGMAS, collapse_bin_profile, fit_fixed_width_gaussian
 
 # CODE FALLBACKS FOR SETTINGS FILES WRITTEN BEFORE THE FAINT-ORDER KEYS EXISTED. THE TRACE IS OFF BY DEFAULT, SO OLD
@@ -281,45 +280,6 @@ def anchor_neighbours(table, faintOrders):
         if pair is not None:
             anchors[float(pair[0])] = float(pair[1])
     return anchors
-
-
-def make_pixels_at(log, dispersionMap, mapBinning, axisA, axisB):
-    """*build the function that turns an order, wavelengths and a slit position into frame pixels*
-
-    The dispersion map gives pixels at the map's binning, so they are divided by ``mapBinning`` to land on the frame.
-    Samples off the detector are kept, because a search window can reach past the edge of an order.
-
-    **Key Arguments:**
-
-    - ``log`` -- logger
-    - ``dispersionMap`` -- path to the dispersion map
-    - ``mapBinning`` -- the frame's binning over the map's binning, ``{"x": ..., "y": ...}``
-    - ``axisA`` -- the cross-dispersion axis, ``"x"`` or ``"y"``
-    - ``axisB`` -- the dispersion axis, ``"x"`` or ``"y"``
-
-    **Return:**
-
-    - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
-    """
-
-    def pixels_at(order, wavelengths, slitArcsec):
-        wavelengths = np.asarray(wavelengths, dtype=float)
-        table = pd.DataFrame(
-            {
-                "order": float(order),
-                "wavelength": wavelengths,
-                "slit_position": np.broadcast_to(np.asarray(slitArcsec, dtype=float), wavelengths.shape),
-            }
-        )
-        table = dispersion_map_to_pixel_arrays(
-            log=log, dispersionMapPath=dispersionMap, orderPixelTable=table, removeOffDetectorLocation=False
-        )
-        return (
-            table[f"fit_{axisA}"].to_numpy(float) / mapBinning[axisA],
-            table[f"fit_{axisB}"].to_numpy(float) / mapBinning[axisB],
-        )
-
-    return pixels_at
 
 
 def pixels_per_arcsec(pixelsAt, order, wavelengths):

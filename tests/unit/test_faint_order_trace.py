@@ -10,6 +10,7 @@ import pytest
 from astropy import units as u
 from astropy.nddata import CCDData
 
+from soxspipe.commonutils.faint_order_map import make_pixels_at
 from soxspipe.commonutils.faint_order_profile import collapse_bin_profile, fit_fixed_width_gaussian, frame_to_nan_array
 from soxspipe.commonutils.faint_order_trace import (
     VIS_BAND_GROUPS,
@@ -17,13 +18,12 @@ from soxspipe.commonutils.faint_order_trace import (
     bright_edge_anchor,
     faint_trace_settings,
     find_faint_orders,
-    make_pixels_at,
     order_trace_stats,
     pixels_per_arcsec,
     search_window_arcsec,
 )
 from soxspipe.commonutils.toolkit import SOXS_VIS_ORDERS_BLUE_TO_RED
-from tests.unit._continuum_vis_scene import vis_dispersion_map, vis_row, vis_slit_scale
+from tests.unit._continuum_vis_scene import vis_dispersion_map, vis_slit_scale
 
 pytestmark = pytest.mark.unit
 
@@ -422,43 +422,6 @@ def test_bright_edge_anchor_takes_the_width_from_the_samples_nearest_the_edge_in
     # ASSERT: THE MEDIAN OF THE NEAREST QUARTER OF THE ORDER, DIVIDED BY 4 PX/ARCSEC
     assert blueSigma == pytest.approx(1.25 / 4.0, abs=0.02)
     assert redSigma == pytest.approx(2.75 / 4.0, abs=0.02)
-
-
-def test_make_pixels_at_reads_the_dispersion_map_in_frame_pixels(log: object, tmp_path: Path) -> None:
-    # ARRANGE: THE FRAME IS BINNED 2 IN y RELATIVE TO THE MAP, AND THE SLIT RUNS ALONG x
-    mapPath = vis_dispersion_map(tmp_path)
-    pixelsAt = make_pixels_at(log, mapPath, {"x": 1.0, "y": 2.0}, "x", "y")
-
-    # ACT
-    axisA, axisB = pixelsAt(3.0, np.array([610.0, 630.0]), 0.5)
-
-    # ASSERT: x = -30 + 90 * 3 + 0.5 * SCALE(3) AND y = ROW(WAVELENGTH) / 2
-    np.testing.assert_allclose(axisA, 240.0 + 0.5 * vis_slit_scale(3.0), atol=1e-3)
-    np.testing.assert_allclose(axisB, vis_row(3.0, np.array([610.0, 630.0])) / 2.0, atol=1e-3)
-
-
-def test_make_pixels_at_keeps_samples_that_fall_off_the_detector(log: object, tmp_path: Path) -> None:
-    # ARRANGE: A SLIT POSITION 100 ARCSEC OUT PUTS x BELOW ZERO
-    pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "x", "y")
-
-    # ACT
-    axisA, axisB = pixelsAt(1.0, np.array([810.0, 820.0]), 100.0)
-
-    # ASSERT
-    assert len(axisA) == len(axisB) == 2
-    assert (axisA < 0).all()
-
-
-def test_make_pixels_at_follows_the_axis_roles_it_is_given(log: object, tmp_path: Path) -> None:
-    # ARRANGE: THE SAME MAP WITH THE ROLES OF THE AXES SWAPPED
-    pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "y", "x")
-
-    # ACT
-    axisA, axisB = pixelsAt(2.0, np.array([410.0]), 0.0)
-
-    # ASSERT
-    np.testing.assert_allclose(axisA, vis_row(2.0, np.array([410.0])), atol=1e-3)
-    np.testing.assert_allclose(axisB, [150.0], atol=1e-3)
 
 
 def test_pixels_per_arcsec_is_the_signed_slit_scale_of_the_map(log: object, tmp_path: Path) -> None:

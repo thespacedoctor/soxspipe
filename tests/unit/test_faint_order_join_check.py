@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.faint_order_trace import join_slit_mismatches, make_pixels_at
+from soxspipe.commonutils.faint_order_map import make_pixels_at
+from soxspipe.commonutils.faint_order_trace import join_slit_mismatches
 from tests.unit._continuum_vis_scene import VIS_START_NM, vis_dispersion_map, vis_slit_scale
 
 pytestmark = pytest.mark.unit
