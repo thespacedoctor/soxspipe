@@ -25,6 +25,7 @@ from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
 from soxspipe.commonutils.faint_order_profile import frame_to_nan_array
+from soxspipe.commonutils.faint_order_rows import clip_measured_residuals, measured_residuals, transferred_row_mask
 from soxspipe.commonutils.faint_order_trace import (
     faint_trace_settings,
     join_slit_mismatches,
@@ -262,7 +263,6 @@ class _base_detect:
 
         import numpy as np
         import pandas as pd
-        from astropy.stats import sigma_clip
 
         arm = self.arm
 
@@ -337,16 +337,10 @@ class _base_detect:
             pixelList[f"{axisACol}_fit_res"] = res
             pixelList[f"{axisACol}_fit"] = xfit
 
-            # SIGMA-CLIP THE DATA
-            masked_residuals = sigma_clip(
-                res,
-                sigma_lower=clippingSigmaLow,
-                sigma_upper=clippingSigmaHigh,
-                maxiters=2,
-                cenfunc="mean",
-                stdfunc="std",
+            # SIGMA-CLIP THE DATA, LEAVING OUT THE SYNTHETIC ROWS OF A TRANSFERRED FAINT TRACE
+            pixelList["mask"] = clip_measured_residuals(
+                res, transferred_row_mask(pixelList), clippingSigmaLow, clippingSigmaHigh
             )
-            pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
             removeMask = pixelList["mask"] == True
@@ -436,10 +430,11 @@ class _base_detect:
         # GET UNIQUE VALUES IN COLUMN
         uniqueorders = len(orderPixelTable["order"].unique())
 
-        # CALCULATE COMBINED RESIDUALS AND STATS
-        res_mean = np.ma.mean(np.ma.abs(res))
-        res_std = np.ma.std(res)
-        res_median = np.ma.median(np.ma.abs(res))
+        # CALCULATE COMBINED RESIDUALS AND STATS, OVER THE MEASURED ROWS ONLY WHEN A FAINT TRACE WAS TRANSFERRED
+        statRes = measured_residuals(res, transferred_row_mask(orderPixelTable))
+        res_mean = np.ma.mean(np.ma.abs(statRes))
+        res_std = np.ma.std(statRes)
+        res_median = np.ma.median(np.ma.abs(statRes))
 
         if writeQCs:
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -456,7 +451,7 @@ class _base_detect:
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": f"{self.axisA.upper()} RES MIN",
-                                "qc_value": round(float(res.min()), 3),
+                                "qc_value": round(float(statRes.min()), 3),
                                 "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
                                 "qc_unit": "px",
                                 "obs_date_utc": self.dateObs,
@@ -476,7 +471,7 @@ class _base_detect:
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": f"{self.axisA.upper()} RES MAX",
-                                "qc_value": round(float(res.max()), 3),
+                                "qc_value": round(float(statRes.max()), 3),
                                 "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
                                 "qc_unit": "px",
                                 "obs_date_utc": self.dateObs,
@@ -899,7 +894,11 @@ class detect_continuum(_base_detect):
             faintSettings = None
             orderPixelTable = self.orderPixelTable
 
+        # THE SYNTHETIC ROWS OF A TRANSFERRED FAINT TRACE ARE NOT DETECTED SAMPLES
         foundLines = len(orderPixelTable.index)
+        isTransferred = transferred_row_mask(orderPixelTable)
+        if isTransferred is not None:
+            foundLines -= int(isTransferred.sum())
 
         self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 

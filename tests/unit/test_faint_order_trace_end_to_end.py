@@ -147,3 +147,17 @@ def test_a_bright_only_frame_gives_the_same_fit_and_qcs_with_the_trace_on_or_off
     pd.testing.assert_frame_equal(onResult[4], offResult[4], check_exact=True)
     assert "faint_transfer" not in onResult[4].columns
     assert FAINT_QC not in onResult[1]["qc_name"].tolist()
+
+
+def test_the_clip_fraction_counts_only_the_measured_samples_of_a_transferred_frame(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ACT
+    _, result = _run(log, monkeypatch, tmp_path, FAINT_U_AMPLITUDES, isOn=True)
+
+    # ASSERT: THE U ROWS ARE SYNTHETIC, SO THE FRACTION IS OVER THE OTHER THREE ORDERS' SAMPLES
+    qcs = result[1].set_index("qc_name")["qc_value"]
+    clipped = qcs["SAMPLES CLIP NUM"]
+    assert clipped > 0
+    assert qcs["SAMPLES CLIP FRAC"] == round(clipped / (3 * VIS_ORDER_SAMPLES), 3)
+    assert qcs["SAMPLES CLIP FRAC"] != round(clipped / (4 * VIS_ORDER_SAMPLES), 3)

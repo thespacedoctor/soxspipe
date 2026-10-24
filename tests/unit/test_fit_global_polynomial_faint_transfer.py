@@ -11,6 +11,8 @@ from soxspipe.commonutils.detect_continuum import detect_continuum
 pytestmark = pytest.mark.unit
 
 ORDERS = (1.0, 2.0, 3.0)
+SYNTHETIC_ORDER = 4.0
+SMALL_SYNTHETIC_COUNT = 12
 ROWS_PER_ORDER = 60
 OUTLIER_ROWS = {5: 4.0, 17: -5.0, 33: 6.5, 48: -4.5}
 
@@ -112,3 +114,100 @@ def test_a_table_without_the_faint_transfer_column_gives_the_pre_round_two_stdde
     np.testing.assert_allclose(coefficients, BASELINE_STDDEV_COEFFICIENTS, rtol=1e-12, atol=0)
     assert sorted(clipped["row_id"]) == BASELINE_STDDEV_CLIPPED_ROWS
     assert len(fitted) == len(table) - len(BASELINE_STDDEV_CLIPPED_ROWS)
+
+
+def _with_transferred_order(table: pd.DataFrame, offsetPx: float = 0.0, count: int = ROWS_PER_ORDER) -> pd.DataFrame:
+    """Return `table` plus `count` rows of one more order on the noise-free trace, marked `faint_transfer`.
+
+    `offsetPx` moves the synthetic rows off that trace.
+    """
+    y = np.linspace(0.0, 2000.0, count)
+    synthetic = pd.DataFrame(
+        {
+            "order": SYNTHETIC_ORDER,
+            "cont_x": 50.0 * SYNTHETIC_ORDER + 0.01 * y + 1.0e-6 * y**2 + offsetPx,
+            "cont_y": y,
+            "gauss_stddev": 1.5 + 0.0001 * y,
+            "pre-clipped": False,
+            "row_id": range(len(table), len(table) + count),
+        }
+    )
+    return pd.concat([table.assign(faint_transfer=False), synthetic.assign(faint_transfer=True)], ignore_index=True)
+
+
+def _measured_only(frame: pd.DataFrame) -> pd.DataFrame:
+    return frame.loc[~frame["faint_transfer"].astype(bool)]
+
+
+def test_synthetic_rows_are_never_clipped_however_far_they_sit_from_the_fit(log: object) -> None:
+    # ARRANGE: TWELVE SYNTHETIC ROWS 8 PX OFF THE TRACE, FAR BEYOND THE 2-SIGMA CLIP OF 180 MEASURED ROWS
+    table = _with_transferred_order(_measured_rows(), offsetPx=8.0, count=SMALL_SYNTHETIC_COUNT)
+
+    # ACT
+    _, fitted, clipped, _ = _fit(_detector(log), table)
+
+    # ASSERT
+    assert not clipped["faint_transfer"].astype(bool).any()
+    assert fitted["faint_transfer"].astype(bool).sum() == SMALL_SYNTHETIC_COUNT
+
+
+def test_a_bright_order_keeps_its_samples_when_synthetic_rows_are_added(log: object) -> None:
+    # ARRANGE: EXACT SYNTHETIC ROWS ON THE TRACE WOULD SHRINK THE CLIPPING SPREAD IF THEY COUNTED IN IT
+    measured = _measured_rows()
+    withSynthetic = _with_transferred_order(measured)
+
+    # ACT
+    _, fittedAlone, _, _ = _fit(_detector(log), measured.assign(faint_transfer=False))
+    _, fittedWith, _, _ = _fit(_detector(log), withSynthetic)
+
+    # ASSERT: THE KEPT COUNT OF EACH MEASURED ORDER DOES NOT DROP
+    keptAlone = fittedAlone.groupby("order").size()
+    keptWith = _measured_only(fittedWith).groupby("order").size()
+    assert (keptWith >= keptAlone).all()
+
+
+def test_synthetic_rows_are_left_out_of_the_x_res_qcs(log: object) -> None:
+    # ARRANGE: SYNTHETIC ROWS 8 PX OFF THE TRACE WOULD DOMINATE THE RESIDUAL STATISTICS
+    table = _with_transferred_order(_measured_rows(), offsetPx=8.0)
+
+    # ACT
+    _, fitted, _, qcs = _fit(_detector(log), table)
+
+    # ASSERT: THE QCS ARE THE STATISTICS OF THE MEASURED RESIDUALS, AND THE SYNTHETIC ORDER STILL COUNTS AS AN ORDER
+    residuals = _measured_only(fitted)["cont_x_fit_res"].to_numpy()
+    assert qcs["X RES MIN"] == round(float(residuals.min()), 3)
+    assert qcs["X RES MAX"] == round(float(residuals.max()), 3)
+    assert qcs["X RES SD"] == round(float(residuals.std()), 3)
+    assert qcs["X RES MEDIAN"] == round(float(np.abs(residuals).mean()), 3)
+    assert qcs["N ORDERS"] == len(ORDERS) + 1
+
+
+def test_synthetic_rows_still_count_toward_the_polynomial_fit(log: object) -> None:
+    # ARRANGE: WITH A DEGREE-0 FIT IN BOTH AXES THE FIT IS THE MEAN, SO ROWS FAR FROM THE REST MOVE IT
+    detector = _detector(log)
+    detector.orderDeg, detector.axisBDeg = 0, 0
+    measured = _measured_rows().assign(faint_transfer=False)
+    shifted = _with_transferred_order(_measured_rows(), offsetPx=8.0)
+
+    # ACT
+    alone, _, _ = _detector(log).fit_global_polynomial(measured)
+    withSynthetic, _, _ = detector.fit_global_polynomial(shifted)
+
+    # ASSERT
+    assert withSynthetic[0] != pytest.approx(alone[0], abs=1e-6)
+
+
+def test_a_table_of_only_synthetic_rows_still_fits_and_reports_its_residuals(log: object) -> None:
+    # ARRANGE: NO MEASURED ROW IS LEFT TO SET THE CLIPPING SPREAD OR THE QC STATISTICS
+    table = _with_transferred_order(_measured_rows().iloc[0:0], offsetPx=0.0)
+    detector = _detector(log)
+    detector.orderDeg, detector.axisBDeg = 0, 2
+
+    # ACT
+    coefficients, fitted, clipped, qcs = _fit(detector, table)
+
+    # ASSERT: ALL THE ROWS ARE KEPT, AND THE QCS FALL BACK TO THEIR RESIDUALS
+    assert coefficients is not None
+    assert len(fitted) == ROWS_PER_ORDER
+    assert len(clipped) == 0
+    assert abs(qcs["X RES MAX"]) < 1e-3
