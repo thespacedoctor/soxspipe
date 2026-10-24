@@ -1,11 +1,12 @@
-"""Anchor the trace of a faint VIS order to its bright neighbour and refit it on binned profiles.
+"""Anchor the trace of a faint VIS order to its anchor order and refit it on binned profiles.
 
 The slice-by-slice Gaussian fit of ``detect_continuum`` follows a bright order well and a faint order badly: at a
 signal-to-noise ratio near 0.5 it fits noise, and a degree-5 polynomial through that noise wanders by arcseconds. The
-functions here find the faint orders, take the slit position of the adjacent bright order as an anchor, collapse the
-faint order into a few wavelength bins and fit one fixed-width Gaussian per bin inside a narrow window around the
-anchor. The module imports numpy only, takes its tables as pandas data-frames, reads the dispersion map through a
-``pixelsAt`` function from ``faint_order_map``, and runs no least-squares optimiser.
+functions here find the faint orders, take the slit position of the anchor order (the adjacent bright order, or the
+better of two faint ones) as an anchor, collapse the faint order into a few wavelength bins and fit one fixed-width
+Gaussian per bin inside a narrow window around the anchor. The module imports numpy only, takes its tables as pandas
+data-frames, reads the dispersion map through a ``pixelsAt`` function from ``faint_order_map``, and runs no
+least-squares optimiser.
 """
 
 import math
@@ -238,8 +239,8 @@ def _scatter_rank(stats):
 def _anchor_for_group(group, faintOrders, present):
     """*the (faint order, anchor order) pair of a band group, or None when the group has no transfer*
 
-    When one order is faint, its partner is the anchor. When both are faint, the one with the lower scatter is the
-    better order, and it anchors the other only if it ``canAnchor``.
+    When one order is faint, its partner is the anchor. When both are faint, the anchor is the one that ``canAnchor``,
+    and the one with the lower scatter when both can. When neither can, the group has no transfer.
     """
     bluer, redder = group
     if bluer not in present or redder not in present:
@@ -249,10 +250,10 @@ def _anchor_for_group(group, faintOrders, present):
         return (bluer, redder) if isBluerFaint else (redder, bluer)
     if not isBluerFaint:
         return None
-    better = min(group, key=lambda order: _scatter_rank(faintOrders[order]))
-    stats = faintOrders[better]
-    if stats is None or not stats.canAnchor:
+    candidates = [order for order in group if faintOrders[order] is not None and faintOrders[order].canAnchor]
+    if not candidates:
         return None
+    better = min(candidates, key=lambda order: _scatter_rank(faintOrders[order]))
     return (redder, bluer) if better == bluer else (bluer, redder)
 
 
@@ -261,8 +262,9 @@ def anchor_neighbours(table, faintOrders):
 
     The SOXS VIS orders come in two band groups, u and g, then r and i, and a trace is never carried across the
     boundary between the groups. A faint order whose partner is bright is anchored by that partner. When both orders
-    of a group are faint, the one with the lower scatter anchors the other, provided it ``canAnchor``, and it keeps
-    its own sampled rows. When it cannot, or when a partner is not in the table, the group gets no transfer.
+    of a group are faint, the best of them that ``canAnchor`` (the one with the lower scatter when both can) anchors
+    the other and keeps its own sampled rows. When neither can, or when a partner is not in the table, the group gets
+    no transfer.
 
     **Key Arguments:**
 
@@ -303,7 +305,7 @@ def pixels_per_arcsec(pixelsAt, order, wavelengths):
 
 
 def bright_edge_anchor(rows, edgeNm, pixelsAt):
-    """*the slit position and width of a bright order's trace at the wavelength edge it shares with a faint order*
+    """*the slit position and width of an anchor order's trace at the wavelength edge it shares with a faint order*
 
     The centre shift of the accepted samples is fitted against wavelength with a MAD-clipped degree-2 curve and
     evaluated at ``edgeNm``. The shift is the distance of the map's slit-zero track from the trace, so the slit position
@@ -312,7 +314,7 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt):
 
     **Key Arguments:**
 
-    - ``rows`` -- the sampled rows of one bright order
+    - ``rows`` -- the sampled rows of one anchor order
     - ``edgeNm`` -- the wavelength (nm) of the edge it shares with the faint order
     - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
 
@@ -356,7 +358,7 @@ class transfer_report:
         **Key Arguments:**
 
         - ``orderLabel`` -- the faint order's label, such as ``"2 (u)"``
-        - ``anchorLabel`` -- the bright neighbour's label, such as ``"3 (g)"``
+        - ``anchorLabel`` -- the anchor order's label, such as ``"3 (g)"``
 
         **Return:**
 
@@ -369,7 +371,7 @@ class transfer_report:
 
 
 def _shared_edge_nm(brightRows, anchorOrder, order):
-    """*the wavelength at the end of the bright order that faces the faint order*"""
+    """*the wavelength at the end of the anchor order that faces the faint order*"""
     group = next(group for group in VIS_BAND_GROUPS if order in group)
     isBrightRedder = group.index(anchorOrder) > group.index(order)
     wavelength = brightRows["wavelength"]
@@ -384,7 +386,7 @@ def search_window_arcsec(sigmaArcsec):
 
     **Key Arguments:**
 
-    - ``sigmaArcsec`` -- the Gaussian standard deviation of the bright trace, in arcsec
+    - ``sigmaArcsec`` -- the Gaussian standard deviation of the anchor trace, in arcsec
 
     **Return:**
 
@@ -403,7 +405,7 @@ def _bin_edges(wavelength, binCount):
 
 @dataclass(frozen=True)
 class _anchor_geometry:
-    """The faint order's anchor: its slit position, the bright width, the search window and the shared edge."""
+    """The faint order's anchor: its slit position, the anchor width, the search window and the shared edge."""
 
     order: float
     slitArcsec: float
@@ -448,7 +450,7 @@ def _offset_curve(binWavelength, binCentre, marginNm):
 
 
 def _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt):
-    """*the anchor geometry of a faint order: slit position and width of the bright trace at the shared edge*"""
+    """*the anchor geometry of a faint order: slit position and width of the anchor trace at the shared edge*"""
     edgeNm = _shared_edge_nm(brightRows, anchorOrder, order)
     slitArcsec, sigmaArcsec = bright_edge_anchor(brightRows, edgeNm, pixelsAt)
     offsets = slitOffsets or {}
@@ -496,7 +498,7 @@ def _transfer_one_order(table, order, anchorOrder, *, image, pixelsAt, slitOffse
 
 
 def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axisA, axisB):
-    """*replace the rows of each faint order by a trace anchored to its bright neighbour and fitted on binned profiles*
+    """*replace the rows of each faint order by a trace anchored to its anchor order and fitted on binned profiles*
 
     Each order that has an anchor in its band group (see ``anchor_neighbours``) is split into wavelength bins. Every
     bin is collapsed along the anchor track into one profile, and a Gaussian of the anchor's width is fitted inside a

@@ -320,8 +320,8 @@ def test_anchor_neighbours_takes_the_lower_scatter_order_as_the_anchor(
     assert anchors == expected
 
 
-def test_anchor_neighbours_gives_no_anchor_when_the_lower_scatter_order_cannot_anchor() -> None:
-    # ARRANGE: U HAS THE LOWER SCATTER BUT TOO FEW DETECTIONS, AND G COULD ANCHOR BUT IS THE WORSE ORDER
+def test_anchor_neighbours_takes_the_only_order_that_can_anchor_even_when_it_scatters_more() -> None:
+    # ARRANGE: U HAS THE LOWER SCATTER BUT TOO FEW DETECTIONS TO ANCHOR, SO G IS THE BEST ORDER THAT CAN
     table = _orders_table(1, 2, 3, 4)
     faint = {2.0: _stats(0.4, 1.0, False), 3.0: _stats(0.9, 2.0, True)}
 
@@ -329,7 +329,7 @@ def test_anchor_neighbours_gives_no_anchor_when_the_lower_scatter_order_cannot_a
     anchors = anchor_neighbours(table, faint)
 
     # ASSERT
-    assert anchors == {}
+    assert anchors == {2.0: 3.0}
 
 
 def test_anchor_neighbours_ignores_a_nan_scatter_when_choosing_the_better_order() -> None:
