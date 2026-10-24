@@ -15,6 +15,7 @@ from soxspipe.commonutils.faint_order_trace import (
     collapse_bin_profile,
     faint_trace_settings,
     find_faint_orders,
+    fit_fixed_width_gaussian,
     make_pixels_at,
     pixels_per_arcsec,
 )
@@ -397,3 +398,147 @@ def test_collapse_bin_profile_is_nan_where_no_row_has_a_value() -> None:
     # ASSERT
     assert np.isnan(profile[:4]).all()
     assert np.isfinite(profile[4:]).all()
+
+
+PROFILE_OFFSETS = np.arange(-16.0, 17.0)
+PROFILE_SIGMA = 1.5
+PROFILE_WINDOW = 6.5
+
+
+def _profile(
+    sources: tuple = ((0.0, 50.0),), noise: float = 0.0, seed: int = 1941, baseline: float = 0.0
+) -> np.ndarray:
+    """Return a collapsed profile: Gaussian sources given as (centre, amplitude) pairs, plus Gaussian noise."""
+    values = np.full(PROFILE_OFFSETS.shape, baseline)
+    for centre, amplitude in sources:
+        values = values + amplitude * np.exp(-0.5 * ((PROFILE_OFFSETS - centre) / PROFILE_SIGMA) ** 2)
+    return values + np.random.default_rng(seed).normal(0.0, noise, values.shape) if noise else values
+
+
+def _fit(profile: np.ndarray, **kwargs: object) -> float | None:
+    return fit_fixed_width_gaussian(profile, PROFILE_OFFSETS, PROFILE_SIGMA, PROFILE_WINDOW, **kwargs)
+
+
+@pytest.mark.parametrize("truth", [-3.2, 0.0, 2.7])
+def test_fit_fixed_width_gaussian_recovers_the_centre_of_a_clean_profile(truth: float) -> None:
+    # ARRANGE
+    profile = _profile(((truth, 50.0),), baseline=3.0)
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT
+    assert centre == pytest.approx(truth, abs=0.05)
+
+
+def test_fit_fixed_width_gaussian_is_unbiased_for_a_peak_six_times_the_noise() -> None:
+    # ARRANGE: THE LIMIT ON ONE PROFILE'S CENTRE IS 0.22 PX AT A PEAK SNR OF 6, SO TEST THE MEAN OF FORTY
+    centres = [_fit(_profile(((1.5, 12.0),), noise=2.0, seed=seed)) for seed in range(40)]
+
+    # ACT
+    errors = np.array([centre - 1.5 for centre in centres if centre is not None])
+
+    # ASSERT: ALMOST NO PROFILE IS REJECTED, AND THEIR MEAN LANDS ON THE TRUTH
+    assert len(errors) >= 38
+    assert abs(errors.mean()) < 0.1
+    assert np.median(np.abs(errors)) < 0.25
+
+
+def test_fit_fixed_width_gaussian_returns_none_for_pure_noise() -> None:
+    # ACT
+    centres = [_fit(_profile(((0.0, 0.0),), noise=1.0, seed=seed)) for seed in range(40)]
+
+    # ASSERT
+    assert centres == [None] * 40
+
+
+def test_fit_fixed_width_gaussian_returns_none_below_the_snr_limit_and_keeps_it_above() -> None:
+    # ARRANGE: A PEAK OF 4 OVER NOISE OF 2 HAS A PEAK SNR OF ABOUT 2
+    profile = _profile(((0.0, 4.0),), noise=2.0, seed=3)
+
+    # ACT
+    strict = _fit(profile, minSnr=3.0)
+    lenient = _fit(profile, minSnr=1.0)
+
+    # ASSERT
+    assert strict is None
+    assert lenient is not None
+
+
+def test_fit_fixed_width_gaussian_does_not_land_on_a_brighter_source_beyond_the_window() -> None:
+    # ARRANGE: THE TARGET IS AT +1 PX, AND A BRIGHTER SOURCE SITS 3.7 ARCSEC (13.3 PX) AWAY
+    profile = _profile(((1.0, 5.0), (13.3, 12.0)), noise=0.5)
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT
+    assert centre == pytest.approx(1.0, abs=0.3)
+
+
+def test_fit_fixed_width_gaussian_returns_none_when_only_a_source_beyond_the_window_is_present() -> None:
+    # ARRANGE
+    profile = _profile(((13.3, 12.0),), noise=0.5)
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT: THE BEST CENTRE INSIDE THE WINDOW IS ITS EDGE, WHICH IS NOT A TRACE
+    assert centre is None
+
+
+def test_fit_fixed_width_gaussian_never_picks_a_negative_lobe() -> None:
+    # ARRANGE: THE PARTNER NOD'S NEGATIVE TRACE FALLS INSIDE THE WINDOW AT -4 PX, WITH NO POSITIVE TRACE AT ALL
+    profile = _profile(((-4.0, -30.0),), noise=0.5)
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT
+    assert centre is None or abs(centre + 4.0) > 2.0
+
+
+def test_fit_fixed_width_gaussian_keeps_the_positive_trace_beside_a_negative_lobe() -> None:
+    # ARRANGE: THE NEGATIVE LOBE SITS AT -9 PX, AT THE EDGE OF THE FITTED RANGE
+    profile = _profile(((1.0, 20.0), (-9.0, -30.0)), noise=0.5)
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT
+    assert centre == pytest.approx(1.0, abs=0.3)
+
+
+def test_fit_fixed_width_gaussian_skips_nan_samples() -> None:
+    # ARRANGE
+    profile = _profile(((2.0, 40.0),), noise=0.5)
+    profile[::5] = np.nan
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT
+    assert centre == pytest.approx(2.0, abs=0.1)
+
+
+def test_fit_fixed_width_gaussian_returns_none_when_too_few_samples_are_valid() -> None:
+    # ARRANGE
+    profile = _profile(((0.0, 50.0),))
+    profile[3:] = np.nan
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT
+    assert centre is None
+
+
+def test_fit_fixed_width_gaussian_is_deterministic() -> None:
+    # ARRANGE
+    profile = _profile(((1.7, 9.0),), noise=2.0, seed=5)
+
+    # ACT
+    first, second = _fit(profile), _fit(profile.copy())
+
+    # ASSERT
+    assert first == second

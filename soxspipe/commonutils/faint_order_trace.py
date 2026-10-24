@@ -65,6 +65,7 @@ class faint_trace_settings:
         )
 
 
+DEFAULT_MIN_BIN_SNR = FAINT_TRACE_DEFAULTS["faint-order-min-bin-snr"]
 # THE SOXS VIS BAND GROUPS, EACH FROM THE BLUER ORDER TO THE REDDER: (u, g) AND (r, i). THIS MATCHES THE LIST IN
 # `toolkit.SOXS_VIS_ORDERS_BLUE_TO_RED`, WHICH THIS MODULE DOES NOT IMPORT TO STAY LIGHT
 VIS_BAND_GROUPS = ((2, 3), (1, 4))
@@ -81,6 +82,12 @@ EDGE_FRACTION = 0.25
 MIN_EDGE_SAMPLES = 3
 # THE CLIPPING WIDTH NEVER FALLS BELOW THIS (PIXELS), SO NOISE-FREE DATA ARE NOT CLIPPED AT ROUNDING ERROR
 MIN_CLIP_SIGMA = 1e-9
+# THE BINNED GAUSSIAN FIT: THE SAMPLES USED REACH THIS MANY WIDTHS BEYOND THE SEARCH WINDOW, THE FEWEST SAMPLES THAT CAN
+# BE FITTED, THE SPACING OF THE GRID OF TRIAL CENTRES (PIXELS) AND THE FITTED PARAMETERS (CENTRE, AMPLITUDE, BASELINE)
+FIT_MARGIN_SIGMAS = 2.0
+MIN_PROFILE_SAMPLES = 8
+CENTRE_GRID_STEP = 0.05
+FIT_PARAMETER_COUNT = 3
 # CONVERTS A MEDIAN ABSOLUTE DEVIATION TO A STANDARD DEVIATION FOR GAUSSIAN NOISE
 MAD_TO_SIGMA = 1.4826
 
@@ -325,3 +332,55 @@ def collapse_bin_profile(image, trackA, trackB, halfLength, sliceAxis):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         return offsets, np.nanmedian(cuts, axis=0)
+
+
+def fit_fixed_width_gaussian(
+    profile, offsets, sigmaPx, windowPx, minSnr=FAINT_TRACE_DEFAULTS["faint-order-min-bin-snr"]
+):
+    """*find the centre of a Gaussian of fixed width in a profile, inside a window around the anchor*
+
+    The centre runs over a fixed grid across the window. At each centre the amplitude and a flat baseline come from
+    a linear least-squares solve, and the amplitude must not be negative. The centre with the smallest residual wins,
+    so the answer is the same on every run. There is no iterative optimiser.
+
+    The fit uses the samples within ``FIT_MARGIN_SIGMAS`` widths beyond the window. The peak signal-to-noise ratio is
+    the amplitude over the rms residual. A fit that fails the limit, or whose best centre sits on the window edge
+    (the sign of a source beyond the window), returns *None*.
+
+    **Key Arguments:**
+
+    - ``profile`` -- the collapsed profile, NaN where unknown
+    - ``offsets`` -- the pixel offsets of the profile from the anchor track
+    - ``sigmaPx`` -- the fixed Gaussian standard deviation, in pixels
+    - ``windowPx`` -- the half-width of the search window around the anchor, in pixels
+    - ``minSnr`` -- the smallest accepted peak signal-to-noise ratio
+
+    **Return:**
+
+    - ``centre`` -- the fitted centre, in pixels from the anchor track, or *None*
+    """
+    offsets = np.asarray(offsets, dtype=float)
+    profile = np.asarray(profile, dtype=float)
+    isUsed = np.isfinite(profile) & (np.abs(offsets) <= windowPx + FIT_MARGIN_SIGMAS * sigmaPx)
+    if isUsed.sum() < MIN_PROFILE_SAMPLES:
+        return None
+    x, y = offsets[isUsed], profile[isUsed]
+
+    grid = np.arange(-windowPx, windowPx + CENTRE_GRID_STEP / 2, CENTRE_GRID_STEP)
+    shapes = np.exp(-0.5 * ((x[np.newaxis, :] - grid[:, np.newaxis]) / sigmaPx) ** 2)
+    shapes = shapes - shapes.mean(axis=1, keepdims=True)
+    centred = y - y.mean()
+    cross = shapes @ centred
+    power = (shapes**2).sum(axis=1)
+    amplitude = cross / power
+    gain = np.where(amplitude > 0, cross**2 / power, -np.inf)
+    best = int(np.argmax(gain))
+    if not np.isfinite(gain[best]):
+        return None
+
+    residualSumSquares = max(float(centred @ centred - gain[best]), 0.0)
+    rms = max(np.sqrt(residualSumSquares / (len(x) - FIT_PARAMETER_COUNT)), MIN_CLIP_SIGMA)
+    isOnEdge = abs(grid[best]) > windowPx - CENTRE_GRID_STEP
+    if amplitude[best] / rms < minSnr or isOnEdge:
+        return None
+    return float(grid[best])
