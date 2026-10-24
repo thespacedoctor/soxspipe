@@ -10,6 +10,9 @@ anchor. The module needs numpy and pandas only, and runs no least-squares optimi
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
+
+from soxspipe.commonutils.dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
 
 # CODE FALLBACKS FOR SETTINGS FILES WRITTEN BEFORE THE FAINT-ORDER KEYS EXISTED. THE TRACE IS OFF BY DEFAULT, SO OLD
 # SETTINGS FILES AND THE -STD RECIPES DO NOT CHANGE
@@ -71,6 +74,12 @@ SCATTER_FIT_DEGREE = 2
 # MAD-CLIPPING OF THE CENTRE-SHIFT CURVE: SIGMA LIMIT AND ITERATION COUNT
 CLIP_SIGMA = 3.0
 CLIP_ITERATIONS = 5
+# THE WIDTH OF A BRIGHT TRACE IS TAKEN FROM THIS FRACTION OF THE ORDER NEAREST THE SHARED EDGE, AND FROM THE WHOLE
+# ORDER WHEN THAT HOLDS FEWER THAN `MIN_EDGE_SAMPLES` ACCEPTED SAMPLES
+EDGE_FRACTION = 0.25
+MIN_EDGE_SAMPLES = 3
+# THE CLIPPING WIDTH NEVER FALLS BELOW THIS (PIXELS), SO NOISE-FREE DATA ARE NOT CLIPPED AT ROUNDING ERROR
+MIN_CLIP_SIGMA = 1e-9
 # CONVERTS A MEDIAN ABSOLUTE DEVIATION TO A STANDARD DEVIATION FOR GAUSSIAN NOISE
 MAD_TO_SIGMA = 1.4826
 
@@ -108,8 +117,9 @@ def clipped_polynomial_residuals(x, y, degree):
     for _ in range(CLIP_ITERATIONS):
         curve = np.polynomial.Polynomial.fit(x[keep], y[keep], degree)
         residuals = y - curve(x)
-        sigma = MAD_TO_SIGMA * np.median(np.abs(residuals[keep] - np.median(residuals[keep])))
-        newKeep = np.abs(residuals) <= CLIP_SIGMA * max(sigma, np.finfo(float).tiny)
+        centre = np.median(residuals[keep])
+        sigma = MAD_TO_SIGMA * np.median(np.abs(residuals[keep] - centre))
+        newKeep = np.abs(residuals - centre) <= CLIP_SIGMA * max(sigma, MIN_CLIP_SIGMA)
         if newKeep.sum() < degree + 1 or np.array_equal(newKeep, keep):
             break
         keep = newKeep
@@ -186,3 +196,93 @@ def anchor_neighbours(table, faintOrders):
             if isUsable:
                 anchors[float(faint)] = float(partner)
     return anchors
+
+
+def make_pixels_at(log, dispersionMap, mapBinning, axisA, axisB):
+    """*build the function that turns an order, wavelengths and a slit position into frame pixels*
+
+    The dispersion map gives pixels at the map's binning, so they are divided by ``mapBinning`` to land on the frame.
+    Samples off the detector are kept, because a search window can reach past the edge of an order.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``dispersionMap`` -- path to the dispersion map
+    - ``mapBinning`` -- the frame's binning over the map's binning, ``{"x": ..., "y": ...}``
+    - ``axisA`` -- the cross-dispersion axis, ``"x"`` or ``"y"``
+    - ``axisB`` -- the dispersion axis, ``"x"`` or ``"y"``
+
+    **Return:**
+
+    - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
+    """
+
+    def pixels_at(order, wavelengths, slitArcsec):
+        wavelengths = np.asarray(wavelengths, dtype=float)
+        table = pd.DataFrame(
+            {
+                "order": float(order),
+                "wavelength": wavelengths,
+                "slit_position": np.broadcast_to(np.asarray(slitArcsec, dtype=float), wavelengths.shape),
+            }
+        )
+        table = dispersion_map_to_pixel_arrays(
+            log=log, dispersionMapPath=dispersionMap, orderPixelTable=table, removeOffDetectorLocation=False
+        )
+        return (
+            table[f"fit_{axisA}"].to_numpy(float) / mapBinning[axisA],
+            table[f"fit_{axisB}"].to_numpy(float) / mapBinning[axisB],
+        )
+
+    return pixels_at
+
+
+def pixels_per_arcsec(pixelsAt, order, wavelengths):
+    """*the signed cross-dispersion pixels per slit arcsec of an order, from the map at slit +1 and -1 arcsec*
+
+    The sign is negative where the slit runs against the pixel axis, as it does on the VIS detector.
+
+    **Key Arguments:**
+
+    - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
+    - ``order`` -- the order number
+    - ``wavelengths`` -- the wavelengths (nm) at which to measure the scale
+
+    **Return:**
+
+    - ``scale`` -- one signed scale per wavelength
+    """
+    upper, _ = pixelsAt(order, wavelengths, 1.0)
+    lower, _ = pixelsAt(order, wavelengths, -1.0)
+    return (np.asarray(upper, dtype=float) - np.asarray(lower, dtype=float)) / 2.0
+
+
+def bright_edge_anchor(rows, edgeNm, pixelsAt):
+    """*the slit position and width of a bright order's trace at the wavelength edge it shares with a faint order*
+
+    The centre shift of the accepted samples is fitted against wavelength with a MAD-clipped degree-2 curve and
+    evaluated at ``edgeNm``. The shift is the distance of the map's slit-zero track from the trace, so the slit position
+    is minus the shift over the pixel scale. The width is the median Gaussian standard deviation of the accepted
+    samples in the quarter of the order's wavelength range nearest the edge.
+
+    **Key Arguments:**
+
+    - ``rows`` -- the sampled rows of one bright order
+    - ``edgeNm`` -- the wavelength (nm) of the edge it shares with the faint order
+    - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
+
+    **Return:**
+
+    - ``slitArcsec`` -- the trace's slit position at the edge, in arcsec
+    - ``sigmaArcsec`` -- the trace's Gaussian standard deviation near the edge, in arcsec
+    """
+    accepted = rows.loc[rows["centre_shift"].notna() & ~rows["pre-clipped"].astype(bool)]
+    wavelength = accepted["wavelength"].to_numpy(float)
+    curve, _ = clipped_polynomial_residuals(wavelength, accepted["centre_shift"].to_numpy(float), SCATTER_FIT_DEGREE)
+    scale = float(pixels_per_arcsec(pixelsAt, rows["order"].iloc[0], np.array([edgeNm]))[0])
+
+    span = rows["wavelength"].max() - rows["wavelength"].min()
+    isNearEdge = np.abs(wavelength - edgeNm) <= EDGE_FRACTION * span
+    nearEdge = accepted.loc[isNearEdge] if isNearEdge.sum() >= MIN_EDGE_SAMPLES else accepted
+    sigmaPx = float(np.median(nearEdge["gauss_stddev"].to_numpy(float)))
+    return float(-curve(edgeNm) / scale), abs(sigmaPx / scale)

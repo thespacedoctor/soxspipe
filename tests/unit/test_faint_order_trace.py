@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -9,10 +11,14 @@ import pytest
 from soxspipe.commonutils.faint_order_trace import (
     VIS_BAND_GROUPS,
     anchor_neighbours,
+    bright_edge_anchor,
     faint_trace_settings,
     find_faint_orders,
+    make_pixels_at,
+    pixels_per_arcsec,
 )
 from soxspipe.commonutils.toolkit import SOXS_VIS_ORDERS_BLUE_TO_RED
+from tests.unit._continuum_vis_scene import vis_dispersion_map, vis_slit_scale
 
 pytestmark = pytest.mark.unit
 
@@ -45,6 +51,7 @@ def _order_rows(
             "cont_x": np.where(isDetected, fitX - shift, np.nan),
             "cont_y": np.where(isDetected, np.linspace(10.0, 10.0 + count - 1, count), np.nan),
             "centre_shift": np.where(isDetected, shift, np.nan),
+            "gauss_stddev": np.where(isDetected, 1.0 + 2.0 * (wavelength - 400.0) / 100.0, np.nan),
             "pre-clipped": ~isDetected,
         }
     )
@@ -201,3 +208,114 @@ def test_anchor_neighbours_ignores_orders_outside_the_vis_band_groups() -> None:
 
     # ASSERT
     assert anchors == {}
+
+
+def _stub_pixels_at(pixelsPerArcsec: float):
+    """Return a `pixelsAt` for a map with order `n` at 100 n px and a slit of `pixelsPerArcsec` px per arcsec."""
+
+    def pixels_at(order: float, wavelengths: np.ndarray, slitArcsec: float | np.ndarray) -> tuple:
+        wavelengths = np.asarray(wavelengths, dtype=float)
+        slit = np.broadcast_to(np.asarray(slitArcsec, dtype=float), wavelengths.shape)
+        return 100.0 * order + pixelsPerArcsec * slit, wavelengths - 390.0
+
+    return pixels_at
+
+
+@pytest.mark.parametrize(("pixelsPerArcsec", "expectedSlit"), [(-4.0, 0.5), (4.0, -0.5)], ids=["flipped", "unflipped"])
+def test_bright_edge_anchor_converts_the_centre_shift_to_slit_arcsec_with_the_sign_of_the_map(
+    pixelsPerArcsec: float, expectedSlit: float
+) -> None:
+    # ARRANGE: THE TRACE SITS 2 PX FROM THE MAP'S SLIT-ZERO TRACK AT EVERY WAVELENGTH
+    rows = _order_rows(3.0)
+
+    # ACT
+    slitArcsec, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(pixelsPerArcsec))
+
+    # ASSERT: CENTRE = FIT - SHIFT, SO THE TRACE IS AT SLIT = -SHIFT / SCALE
+    assert slitArcsec == pytest.approx(expectedSlit)
+
+
+def test_bright_edge_anchor_evaluates_the_smooth_centre_shift_at_the_requested_edge() -> None:
+    # ARRANGE: THE SHIFT IS 2 + 4 u^2 PX WITH u RUNNING -1 TO +1 ACROSS THE ORDER, SO IT IS 6 PX AT EACH END
+    rows = _order_rows(3.0, curvaturePx=4.0, scatterPx=0.05)
+
+    # ACT
+    blueSlit, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0))
+    middleSlit, _ = bright_edge_anchor(rows, 450.0, _stub_pixels_at(-4.0))
+
+    # ASSERT
+    assert blueSlit == pytest.approx(1.5, abs=0.05)
+    assert middleSlit == pytest.approx(0.5, abs=0.05)
+
+
+def test_bright_edge_anchor_is_not_pulled_by_clipped_outliers() -> None:
+    # ARRANGE
+    rows = _order_rows(3.0, scatterPx=0.1)
+    rows.loc[::10, "centre_shift"] = 40.0
+
+    # ACT
+    slitArcsec, _ = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0))
+
+    # ASSERT
+    assert slitArcsec == pytest.approx(0.5, abs=0.05)
+
+
+def test_bright_edge_anchor_takes_the_width_from_the_samples_nearest_the_edge_in_arcsec() -> None:
+    # ARRANGE: THE STDDEV GROWS FROM 1 PX AT 400 NM TO 3 PX AT 500 NM
+    rows = _order_rows(3.0)
+
+    # ACT
+    _, blueSigma = bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0))
+    _, redSigma = bright_edge_anchor(rows, 500.0, _stub_pixels_at(-4.0))
+
+    # ASSERT: THE MEDIAN OF THE NEAREST QUARTER OF THE ORDER, DIVIDED BY 4 PX/ARCSEC
+    assert blueSigma == pytest.approx(1.25 / 4.0, abs=0.02)
+    assert redSigma == pytest.approx(2.75 / 4.0, abs=0.02)
+
+
+def test_make_pixels_at_reads_the_dispersion_map_in_frame_pixels(log: object, tmp_path: Path) -> None:
+    # ARRANGE: THE FRAME IS BINNED 2 IN y RELATIVE TO THE MAP, AND THE SLIT RUNS ALONG x
+    mapPath = vis_dispersion_map(tmp_path)
+    pixelsAt = make_pixels_at(log, mapPath, {"x": 1.0, "y": 2.0}, "x", "y")
+
+    # ACT
+    axisA, axisB = pixelsAt(3.0, np.array([410.0, 430.0]), 0.5)
+
+    # ASSERT: x = -30 + 90 * 3 + 0.5 * SCALE(3) AND y = (WAVELENGTH - 390) / 2
+    np.testing.assert_allclose(axisA, 240.0 + 0.5 * vis_slit_scale(3.0), atol=1e-3)
+    np.testing.assert_allclose(axisB, [10.0, 20.0], atol=1e-3)
+
+
+def test_make_pixels_at_keeps_samples_that_fall_off_the_detector(log: object, tmp_path: Path) -> None:
+    # ARRANGE: A SLIT POSITION 100 ARCSEC OUT PUTS x BELOW ZERO
+    pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "x", "y")
+
+    # ACT
+    axisA, axisB = pixelsAt(1.0, np.array([410.0, 420.0]), 100.0)
+
+    # ASSERT
+    assert len(axisA) == len(axisB) == 2
+    assert (axisA < 0).all()
+
+
+def test_make_pixels_at_follows_the_axis_roles_it_is_given(log: object, tmp_path: Path) -> None:
+    # ARRANGE: THE SAME MAP WITH THE ROLES OF THE AXES SWAPPED
+    pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "y", "x")
+
+    # ACT
+    axisA, axisB = pixelsAt(2.0, np.array([410.0]), 0.0)
+
+    # ASSERT
+    np.testing.assert_allclose(axisA, [20.0], atol=1e-3)
+    np.testing.assert_allclose(axisB, [150.0], atol=1e-3)
+
+
+def test_pixels_per_arcsec_is_the_signed_slit_scale_of_the_map(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    pixelsAt = make_pixels_at(log, vis_dispersion_map(tmp_path), {"x": 1.0, "y": 1.0}, "x", "y")
+
+    # ACT
+    scale = pixels_per_arcsec(pixelsAt, 4.0, np.array([400.0, 420.0]))
+
+    # ASSERT
+    np.testing.assert_allclose(scale, [vis_slit_scale(4.0)] * 2, atol=1e-3)
