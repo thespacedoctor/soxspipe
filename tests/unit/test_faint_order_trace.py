@@ -569,3 +569,14 @@ def test_frame_to_nan_array_marks_masked_pixels_of_a_ccd_frame_and_copes_with_no
     # ASSERT
     assert np.isnan(maskedImage[0, 0]) and np.isfinite(maskedImage).sum() == 3
     assert np.isfinite(unmaskedImage).all()
+
+
+def test_fit_fixed_width_gaussian_returns_none_for_a_flat_profile() -> None:
+    # ARRANGE: A CONSTANT PROFILE HAS NO CENTRE WITH A POSITIVE AMPLITUDE
+    profile = _profile(((0.0, 0.0),), baseline=5.0)
+
+    # ACT
+    centre = _fit(profile)
+
+    # ASSERT
+    assert centre is None
