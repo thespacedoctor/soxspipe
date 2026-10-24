@@ -233,6 +233,34 @@ def test_a_refit_that_fails_keeps_the_first_fit_and_logs_a_warning(log: Any, mon
     assert any("FITPACK FAILED" in message and f"order {STAR_ORDER}" in message for message in warnings)
 
 
+# A SECOND STAR ON THE SLIT, 3 ARCSEC FROM THE FIRST AND HALF AS BRIGHT (DY-1933)
+COMPANION_OFFSET_ARCSEC = 3.0
+COMPANION_FRACTION = 0.5
+
+
+def _crowded_order() -> pd.DataFrame:
+    """The bright-star order with a companion star added to its flux."""
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    slitGrid = np.linspace(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH, SLIT_PIXELS)
+    companion = (
+        COMPANION_FRACTION * BRIGHT_STAR_FLUX_PER_COLUMN * _moffat_slit_profile(slitGrid - COMPANION_OFFSET_ARCSEC)
+    )
+    slitPixel = np.rint((order["slit_position"] + SLIT_HALF_LENGTH) / (slitGrid[1] - slitGrid[0])).astype(int)
+    order["flux"] = order["flux"] + companion[slitPixel]
+    return order
+
+
+def test_a_crowded_slit_is_not_corrected_and_the_skip_is_logged_with_its_reason(log: Any) -> None:
+    order = _crowded_order()
+    uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order)
+
+    modelled = _modelled(_bare_subtractor(log), order)
+
+    pd.testing.assert_frame_equal(modelled, uncorrected)
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any(f"ORDER {STAR_ORDER}" in message and "2 SOURCES" in message for message in printed)
+
+
 def test_at_the_shipped_gate_a_very_bright_star_is_corrected_and_a_fainter_star_is_not(log: Any) -> None:
     shippedGate = _sky_settings()["object_wing_gate_fraction"]
     standard = _modelled(
