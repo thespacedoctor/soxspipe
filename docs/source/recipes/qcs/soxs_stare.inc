@@ -11,6 +11,7 @@
 | `BADPIX NUM`         | Number of bad pixels                                       |           | - |
 | `COSMIC RAY PIX NUM` | Total number of pixels L.A.Cosmic flagged as cosmic rays, over all raw frames. Written only if `use_lacosmic` is on. The count in each frame is in the header of its extension of the `LACOSMIC_MASK` product | pixel | - |
 | `N ORDERS`              | Number of orders containing an object trace                |           | - |
+| `N ORDERS FAINT TRACE` | Number of faint SOXS VIS orders whose trace was transferred from the neighbouring order. Written to the header only when above 0. See [`detect_continuum`](../utils/detect_continuum.md) | | - |
 | `SAMPLES DET NUM`                | Number of samples where a continuum is detected            |           | - |
 | `SAMPLES DET FRAC`                | Fraction of samples where a continuum is detected        |           | - |
 | `SAMPLES TOT NUM`                | Total number of samples along orders                       |           | - |

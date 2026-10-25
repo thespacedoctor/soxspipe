@@ -338,6 +338,7 @@ def _construct_extractor(
     notFlattened: bool = False,
     omitHeaderKeys: tuple[str, ...] = (),
     scienceHeaders: object = False,
+    slitOffsetsArcsec: object = None,
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection."""
     import soxspipe.commonutils as commonutils
@@ -439,6 +440,7 @@ def _construct_extractor(
         noTraceFallback=noTraceFallback,
         notFlattened=notFlattened,
         scienceHeaders=scienceHeaders,
+        slitOffsetsArcsec=slitOffsetsArcsec,
     )
 
     return extractor, captured
@@ -464,6 +466,39 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert extractor.imageMap["wavelength"].tolist() == [500.0]
     assert captured["recipeName"] == "soxs-stare"
     assert captured["locationSetIndex"] == 2
+
+
+def test_constructor_hands_the_slit_offsets_to_trace_detection(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    offsets = {2: 0.3, 3: -0.1}
+
+    # ACT
+    extractor, captured = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        slitOffsetsArcsec=offsets,
+    )
+
+    # ASSERT
+    assert captured["slitOffsetsArcsec"] == offsets
+    assert extractor.slitOffsetsArcsec == offsets
+
+
+def test_constructor_gives_trace_detection_no_slit_offsets_when_it_is_given_none(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ACT
+    _, captured = _construct_extractor(log, monkeypatch, headerOverrides={}, recipeName="soxs-nod", locationSetIndex=1)
+
+    # ASSERT
+    assert captured["slitOffsetsArcsec"] is None
 
 
 def test_constructor_keeps_the_science_block_headers_for_the_attached_arc_test(

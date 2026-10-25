@@ -24,6 +24,14 @@ from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.faint_order_map import make_pixels_at
+from soxspipe.commonutils.faint_order_profile import frame_to_nan_array
+from soxspipe.commonutils.faint_order_rows import clip_measured_residuals, measured_residuals, transferred_row_mask
+from soxspipe.commonutils.faint_order_trace import (
+    faint_trace_settings,
+    join_slit_mismatches,
+    transfer_faint_orders,
+)
 from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import (
@@ -41,6 +49,7 @@ from soxspipe.commonutils.toolkit import (
     has_sequence_suffixed_traces,
     legend_below_axis,
     nodding_sequence_suffix,
+    order_label,
     order_traces_table,
     qc_image_panel_height,
     qc_table_heights,
@@ -254,7 +263,6 @@ class _base_detect:
 
         import numpy as np
         import pandas as pd
-        from astropy.stats import sigma_clip
 
         arm = self.arm
 
@@ -329,16 +337,10 @@ class _base_detect:
             pixelList[f"{axisACol}_fit_res"] = res
             pixelList[f"{axisACol}_fit"] = xfit
 
-            # SIGMA-CLIP THE DATA
-            masked_residuals = sigma_clip(
-                res,
-                sigma_lower=clippingSigmaLow,
-                sigma_upper=clippingSigmaHigh,
-                maxiters=2,
-                cenfunc="mean",
-                stdfunc="std",
+            # SIGMA-CLIP THE DATA, LEAVING OUT THE SYNTHETIC ROWS OF A TRANSFERRED FAINT TRACE
+            pixelList["mask"] = clip_measured_residuals(
+                res, transferred_row_mask(pixelList), clippingSigmaLow, clippingSigmaHigh
             )
-            pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
             removeMask = pixelList["mask"] == True
@@ -428,10 +430,12 @@ class _base_detect:
         # GET UNIQUE VALUES IN COLUMN
         uniqueorders = len(orderPixelTable["order"].unique())
 
-        # CALCULATE COMBINED RESIDUALS AND STATS
-        res_mean = np.ma.mean(np.ma.abs(res))
-        res_std = np.ma.std(res)
-        res_median = np.ma.median(np.ma.abs(res))
+        # CALCULATE COMBINED RESIDUALS AND STATS, OVER THE MEASURED ROWS ONLY WHEN A FAINT TRACE WAS TRANSFERRED
+        isTransferred = transferred_row_mask(orderPixelTable)
+        statRes = measured_residuals(res, isTransferred)
+        res_mean = np.ma.mean(np.ma.abs(statRes))
+        res_std = np.ma.std(statRes)
+        res_median = np.ma.median(np.ma.abs(statRes))
 
         if writeQCs:
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -448,7 +452,7 @@ class _base_detect:
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": f"{self.axisA.upper()} RES MIN",
-                                "qc_value": round(float(res.min()), 3),
+                                "qc_value": round(float(statRes.min()), 3),
                                 "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
                                 "qc_unit": "px",
                                 "obs_date_utc": self.dateObs,
@@ -468,7 +472,7 @@ class _base_detect:
                             {
                                 "soxspipe_recipe": self.recipeName,
                                 "qc_name": f"{self.axisA.upper()} RES MAX",
-                                "qc_value": round(float(res.max()), 3),
+                                "qc_value": round(float(statRes.max()), 3),
                                 "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
                                 "qc_unit": "px",
                                 "obs_date_utc": self.dateObs,
@@ -526,6 +530,9 @@ class _base_detect:
                 c = "Number of order centre traces found"
             else:
                 c = "Number of orders containing an object trace"
+                if isTransferred is not None and isTransferred.any():
+                    # THE COUNT INCLUDES A TRANSFERRED FAINT ORDER ON PURPOSE
+                    c += ", a transferred faint order included"
 
             self.qc = pd.concat(
                 [
@@ -731,6 +738,8 @@ class detect_continuum(_base_detect):
     - ``debug`` -- if *True* then extra debugging information is printed. Default *False*
     - ``notFlattened`` -- if *True* the trace is the repeat that a stare, nod or offset standard makes for the
       response curve: its files get a ``_NOTFLAT`` suffix and it adds no product row. Default *False*
+    - ``slitOffsetsArcsec`` -- ``{order: offset}`` slit-illumination offsets in arcsec, used to anchor a faint VIS
+      order on its bright neighbour. Default *None*
 
     **Usage:**
 
@@ -748,6 +757,11 @@ class detect_continuum(_base_detect):
     order_table_path = detector.get()
     ```
     """
+
+    # THE FRAME-TO-MAP BINNING, SET WHEN THE TRACE IS SAMPLED, AND THE SLIT-ILLUMINATION OFFSET OF EACH ORDER (IF KNOWN)
+    mapBinning = None
+    slitOffsetsArcsec = None
+    faintTransferReports = ()
 
     def __init__(
         self,
@@ -768,6 +782,7 @@ class detect_continuum(_base_detect):
         startNightDate="",
         debug=False,
         notFlattened=False,
+        slitOffsetsArcsec=None,
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -793,6 +808,7 @@ class detect_continuum(_base_detect):
         self.orderPixelTable = orderPixelTable
         self.startNightDate = startNightDate
         self.debug = debug
+        self.slitOffsetsArcsec = slitOffsetsArcsec
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -876,10 +892,17 @@ class detect_continuum(_base_detect):
                     "Could not converge on a good fit to the continuum. Please check the quality of your data."
                 )
                 return None, self.qc, self.products, None, None, None
+            faintSettings = self._faint_trace_settings()
+            orderPixelTable = self._transfer_faint_order_traces(orderPixelTable, faintSettings)
         else:
+            faintSettings = None
             orderPixelTable = self.orderPixelTable
 
+        # THE SYNTHETIC ROWS OF A TRANSFERRED FAINT TRACE ARE NOT DETECTED SAMPLES
         foundLines = len(orderPixelTable.index)
+        isTransferred = transferred_row_mask(orderPixelTable)
+        if isTransferred is not None:
+            foundLines -= int(isTransferred.sum())
 
         self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
@@ -908,7 +931,15 @@ class detect_continuum(_base_detect):
                     exponentsIncluded=True,
                     writeQCs=True,
                 )
-                mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
+                # THE GATES JUDGE THE MEASURED ROWS: SYNTHETIC ROWS LIE ON THE TRACE AND WOULD HIDE A BAD FIT
+                mean_res = np.mean(
+                    np.abs(
+                        measured_residuals(
+                            orderPixelTable[f"cont_{self.axisA}_fit_res"].values,
+                            transferred_row_mask(orderPixelTable),
+                        )
+                    )
+                )
 
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
@@ -1022,6 +1053,7 @@ class detect_continuum(_base_detect):
         coeffColumns = coeff_dict.keys()
 
         orderPolyTable = pd.DataFrame([coeff_dict])
+        self._warn_on_join_slit_jumps(orderPixelTable, orderPolyTable, faintSettings)
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=["mask"], inplace=True)
@@ -1090,6 +1122,134 @@ class detect_continuum(_base_detect):
             orderPolyTable,
             orderPixelTable,
             orderMetaTable,
+        )
+
+    def _faint_trace_settings(self):
+        """*the faint-order trace settings, or None where the trace is off*
+
+        The trace is on for the VIS arm of SOXS, in a recipe that is not an order-centre one, when the
+        ``faint-order-trace`` setting is on.
+        """
+        settings = faint_trace_settings.from_block(self.recipeSettings)
+        isVisTrace = self.inst.upper() == "SOXS" and self.arm.upper() == "VIS"
+        isOn = settings.isEnabled and isVisTrace and "order" not in self.recipeName.lower()
+        return settings if isOn else None
+
+    def _make_pixels_at(self):
+        """*the function that turns an order, wavelengths and a slit position into pixels of the trace frame*"""
+        return make_pixels_at(
+            self.log, self.dispersion_map, self.mapBinning or {"x": 1.0, "y": 1.0}, self.axisA, self.axisB
+        )
+
+    def _transfer_faint_order_traces(self, orderPixelTable, settings):
+        """*replace the sampled trace of each faint order by one anchored to its bright neighbour*
+
+        When the trace is off (``settings`` is None), or no faint order has a bright partner, the table comes back as
+        the same object.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the table of sampled trace positions
+        - ``settings`` -- the ``faint_trace_settings``, or None where the trace is off
+
+        **Return:**
+
+        - ``orderPixelTable`` -- the table to fit
+        """
+        if settings is None:
+            return orderPixelTable
+        orderPixelTable, reports = transfer_faint_orders(
+            orderPixelTable,
+            frame_to_nan_array(self.traceFrame),
+            self._make_pixels_at(),
+            slitOffsets=self.slitOffsetsArcsec,
+            settings=settings,
+            axisA=self.axisA,
+            axisB=self.axisB,
+        )
+        self._record_faint_trace_qc(reports)
+        return orderPixelTable
+
+    def _fitted_trace(self, orderPolyTable):
+        """*the function that evaluates the fitted order-centre polynomial: ``trace(order, axisBPixels)``*"""
+        import numpy as np
+        import pandas as pd
+
+        poly = chebyshev_order_xy_polynomials(
+            log=self.log,
+            axisBCol=self.axisB,
+            orderCol="order",
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+        ).poly
+        centCoeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
+
+        def trace(order, axisBPixels):
+            axisBPixels = np.asarray(axisBPixels, dtype=float)
+            return np.asarray(poly(pd.DataFrame({self.axisB: axisBPixels, "order": float(order)}), *centCoeff))
+
+        return trace
+
+    def _warn_on_join_slit_jumps(self, orderPixelTable, orderPolyTable, settings):
+        """*warn when adjacent VIS orders put the fitted trace at different slit positions where they join*
+
+        The check only logs a warning, which the extraction also keeps as a note, and changes nothing else.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the fitted trace table
+        - ``orderPolyTable`` -- the fitted order-centre polynomial coefficients
+        - ``settings`` -- the ``faint_trace_settings``, or None where the trace is off
+        """
+        if settings is None or "wavelength" not in orderPixelTable.columns:
+            return
+        mismatches = join_slit_mismatches(
+            orderPixelTable,
+            self._fitted_trace(orderPolyTable),
+            self._make_pixels_at(),
+            self.slitOffsetsArcsec,
+            settings.maxJoinArcsec,
+        )
+        for mismatch in mismatches:
+            blue = order_label(mismatch.blueOrder, self.arm)
+            red = order_label(mismatch.redOrder, self.arm)
+            self.log.warning(
+                f"The fitted traces of orders {blue} and {red} differ by {mismatch.differenceArcsec:+.1f} arcsec at "
+                f"their join, more than {settings.maxJoinArcsec:.1f} arcsec, so they may follow different sources. "
+                "Check the object trace."
+            )
+
+    def _record_faint_trace_qc(self, reports):
+        """*record the faint orders that were tried: a log line and an extraction note each, and a header QC*
+
+        The QC counts only the orders whose rows were replaced. Nothing is written to the header when no order was
+        transferred, so a bright frame keeps the headers it always had. A skipped order still gets its log line and
+        extraction note, on purpose, as an audit trail of why its trace was left as measured.
+
+        **Key Arguments:**
+
+        - ``reports`` -- the ``transfer_report`` of each faint order that had an anchor
+        """
+        note = getattr(self.log, "note", None)
+        for report in reports:
+            line = report.describe(order_label(report.order, self.arm), order_label(report.anchorOrder, self.arm))
+            self.log.print(line)
+            if callable(note):
+                note(line)
+        transferred = tuple(report for report in reports if report.is_transferred)
+        if not transferred:
+            return
+        self.faintTransferReports = transferred
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName="N ORDERS FAINT TRACE",
+            qcValue=len(transferred),
+            qcComment="Number of faint orders whose trace was transferred from a bright neighbour",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+            qcUnit=None,
+            toHeader=True,
         )
 
     def create_pixel_arrays(self):
@@ -1394,6 +1554,41 @@ class detect_continuum(_base_detect):
 
         self.log.debug("completed the ``check_trace_extrapolation`` method")
 
+    def _scatter_trace_peaks(self, axis, orderPixelTable):
+        """*scatter the fitted peak positions, drawing the rows of a transferred faint trace apart in their own marker*
+
+        **Key Arguments:**
+
+        - ``axis`` -- the matplotlib axis to draw on
+        - ``orderPixelTable`` -- the fitted trace table, with a ``faint_transfer`` column when an order was transferred
+        """
+        measured, transferred = orderPixelTable, orderPixelTable.iloc[0:0]
+        isTransferred = transferred_row_mask(orderPixelTable)
+        if isTransferred is not None:
+            measured, transferred = orderPixelTable.loc[~isTransferred], orderPixelTable.loc[isTransferred]
+        axis.scatter(
+            measured[f"cont_{self.axisB}"],
+            measured[f"cont_{self.axisA}"],
+            marker="o",
+            c="green",
+            s=0.3,
+            alpha=0.6,
+            label="cross-dispersion 1D gaussian peak-position",
+        )
+        anchors = {report.order: report.anchorOrder for report in self.faintTransferReports}
+        for order, rows in transferred.groupby("order"):
+            anchor = anchors.get(order)
+            source = "a bright neighbouring order" if anchor is None else f"order {int(anchor)}"
+            axis.scatter(
+                rows[f"cont_{self.axisB}"],
+                rows[f"cont_{self.axisA}"],
+                marker="^",
+                c="tab:blue",
+                s=1.5,
+                alpha=0.6,
+                label=f"trace transferred from {source}",
+            )
+
     @closes_its_figures
     def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
@@ -1473,15 +1668,7 @@ class detect_continuum(_base_detect):
         toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
         midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
         toprow.set_title("1D gaussian peak positions (post-clipping)", fontsize=10)
-        toprow.scatter(
-            orderPixelTable[f"cont_{self.axisB}"],
-            orderPixelTable[f"cont_{self.axisA}"],
-            marker="o",
-            c="green",
-            s=0.3,
-            alpha=0.6,
-            label="cross-dispersion 1D gaussian peak-position",
-        )
+        self._scatter_trace_peaks(toprow, orderPixelTable)
 
         # PLOT WHERE A CONTINUUM WAS NOT FOUND - WITH SLICE LENGTH SHOWN
         mask = clippedData["cont_x"].isna() | clippedData["cont_y"].isna()
@@ -1676,8 +1863,12 @@ class detect_continuum(_base_detect):
             settingsAx=settingsAx,
         )
 
-        mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
-        std_res = np.std(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
+        # THE TITLE STATISTICS COME FROM THE MEASURED ROWS, SO EXACT SYNTHETIC ROWS DO NOT FLATTER THE FIT
+        statRes = measured_residuals(
+            orderPixelTable[f"cont_{self.axisA}_fit_res"].values, transferred_row_mask(orderPixelTable)
+        )
+        mean_res = np.mean(np.abs(statRes))
+        std_res = np.std(statRes)
         res_min = np.min(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_max = np.max(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_range = res_max - res_min
@@ -1768,6 +1959,8 @@ class detect_continuum(_base_detect):
             biny = self.traceFrame.header[self.kw("WIN_BINY")] / dmBiny
         except KeyError as e:
             self.log.debug(f"sample_trace: `binx = self.traceFrame.header[self.kw('WIN_BIN...` failed, continuing: {e}")
+
+        self.mapBinning = {"x": binx, "y": biny}
 
         # FIT_X AND FIT_Y FROM DISP-SOLUTION
         orderPixelTable["fit_x"] = orderPixelTable["fit_x"] / binx

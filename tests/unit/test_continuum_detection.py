@@ -14,7 +14,9 @@ from astropy.io import fits
 from astropy.nddata import CCDData
 
 from soxspipe.commonutils.detect_continuum import detect_continuum
+from soxspipe.commonutils.faint_order_trace import transfer_report
 from tests.factories import instrument_header, pipeline_settings, qc_table
+from tests.unit._continuum_vis_scene import VIS_ORDER_CENTRES, vis_sampling_detector
 from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
 
 pytestmark = pytest.mark.unit
@@ -384,6 +386,33 @@ def test_constructor_resolves_trace_orientation_and_nodding_metadata(
     assert (detector.qcDir, detector.productDir) == (str(qcPath), str(productPath))
 
 
+def test_constructor_keeps_the_slit_offsets_it_is_given(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.utility_setup", lambda **_: (str(tmp_path), str(tmp_path)))
+    monkeypatch.setattr(continuumModule, "get_calibration_lamp", lambda **_: "QTH")
+    frame = CCDData(np.ones((32, 32)), unit=u.electron, meta=instrument_header(arm="VIS"))
+    arguments = {
+        "log": log,
+        "traceFrame": frame,
+        "dispersion_map": "dispersion.fits",
+        "settings": pipeline_settings(tmp_path),
+        "recipeSettings": {"detect-continuum": {"disp-axis-deg": 2, "order-deg": 1}},
+        "recipeName": "soxs-stare",
+    }
+
+    # ACT
+    withOffsets = detect_continuum(**arguments, slitOffsetsArcsec={2: 0.4})
+    without = detect_continuum(**arguments)
+
+    # ASSERT
+    assert withOffsets.slitOffsetsArcsec == {2: 0.4}
+    assert without.slitOffsetsArcsec is None
+
+
 def test_create_pixel_arrays_samples_each_spectral_order(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -511,68 +540,6 @@ def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(
     assert result.groupby("order").size().to_dict() == {1.0: 50, 2.0: 50, 3.0: 50, 4.0: 50}
 
 
-class _TraceFrame(np.ma.MaskedArray):
-    """A masked image that carries the empty `header` the sampler reads, one per instance."""
-
-    header: dict
-
-    def __array_finalize__(self, obj: object) -> None:
-        super().__array_finalize__(obj)
-        self.header = {}
-
-
-VIS_ORDER_CENTRES = {1.0: 60.0, 2.0: 150.0, 3.0: 240.0, 4.0: 330.0}
-VIS_ORDER_SAMPLE_COUNTS = {1.0: 30, 2.0: 50, 3.0: 100, 4.0: 30}
-VIS_TRACE_SIGMA = 1.2
-
-
-def _vis_samples() -> pd.DataFrame:
-    """Return the sample grid of four VIS orders, each one a vertical stripe at its own map position."""
-    frames = []
-    for order, count in VIS_ORDER_SAMPLE_COUNTS.items():
-        frames.append(
-            pd.DataFrame(
-                {
-                    "order": order,
-                    "wavelength": np.linspace(400.0, 400.0 + count, count),
-                    "fit_x": VIS_ORDER_CENTRES[order],
-                    "fit_y": np.linspace(10.0, 10.0 + count - 1, count),
-                }
-            )
-        )
-    return pd.concat(frames, ignore_index=True)
-
-
-def _vis_trace_frame(offsets: dict[float, float]) -> _TraceFrame:
-    """Return a noisy frame whose order traces sit `offsets[order]` pixels from the map position."""
-    rng = np.random.default_rng(1716)
-    columns = np.arange(400, dtype=float)
-    image = rng.normal(0.0, 1.0, (120, 400))
-    for order, centre in VIS_ORDER_CENTRES.items():
-        profile = 100.0 * np.exp(-0.5 * ((columns - centre - offsets[order]) / VIS_TRACE_SIGMA) ** 2)
-        image += profile[np.newaxis, :]
-    return np.ma.masked_array(image, mask=np.zeros(image.shape, dtype=bool)).view(_TraceFrame)
-
-
-def _vis_sampling_detector(log: object, offsets: dict[float, float]) -> detect_continuum:
-    """Return a SOXS VIS detector that samples the synthetic frame with the real slice fitter."""
-    detector = _detector(log)
-    detector.inst = "SOXS"
-    detector.arm = "VIS"
-    detector.recipeName = "soxs-stare"
-    detector.traceFrame = _vis_trace_frame(offsets)
-    detector.kw = lambda key: {"DPR_TYPE": "DPR TYPE", "WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
-    detector.recipeSettings.update({"slice-length": 70, "peak-sigma-limit": 3.0, "slice-width": 3})
-    detector.debug = False
-    detector.qc = pd.DataFrame()
-    detector.dateObs = "2024-01-02T03:04:05"
-    detector.sliceAxis = "x"
-    detector.sliceAntiAxis = "y"
-    detector.detectorParams = {"dispersion-axis": "x"}
-    detector.create_pixel_arrays = lambda: (_vis_samples(), 1, 1)
-    return detector
-
-
 def test_sample_trace_follows_u_and_g_traces_that_sit_6_5_px_apart_relative_to_the_map(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -580,7 +547,7 @@ def test_sample_trace_follows_u_and_g_traces_that_sit_6_5_px_apart_relative_to_t
     """Each VIS order gets its own shift and window, so a u trace 6.5 px from g keeps its samples (DY-1716)."""
     # ARRANGE: THE LONGER G ORDER SETS THE MEDIAN SHIFT OF THE PAIR, AND THE U TRACE SITS 6.5 PX FROM IT
     offsets = {1.0: 0.0, 2.0: 9.5, 3.0: 3.0, 4.0: 0.0}
-    detector = _vis_sampling_detector(log, offsets)
+    detector = vis_sampling_detector(_detector(log), offsets)
     monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **_: None)
 
     # ACT
@@ -1256,3 +1223,137 @@ def test_order_colours_assigns_a_stable_distinct_colour_per_order_and_wraps_afte
     assert colours[orders[len(cycle)]] == cycle[0]
     assert colours[orders[len(cycle) + 1]] == cycle[1]
     assert colours == continuumModule._order_colours(orders)
+
+
+def _top_panel_scatters(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Record `{label: point count}` of the scatter collections on the first (top) axis each time a plot is saved."""
+    return probe_on_savefig(
+        monkeypatch,
+        lambda figure: {c.get_label(): len(c.get_offsets()) for c in figure.axes[0].collections},
+    )
+
+
+def _plot_transfer_pixels() -> pd.DataFrame:
+    pixels = _trace_pixels([10.0, 11.0], slope=0.2, intercept=8.0)
+    return pixels.assign(faint_transfer=pixels["order"] == 11.0)
+
+
+def _plot_coefficients() -> pd.DataFrame:
+    return pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
+
+
+def test_plot_results_draws_the_transferred_rows_apart_and_names_the_bright_order(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, 0.4),)
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(_plot_transfer_pixels(), _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: ORDER 10 KEEPS THE GREEN PEAKS, AND THE 24 ROWS OF ORDER 11 GET THEIR OWN NAMED MARKER
+    assert scatters[0]["cross-dispersion 1D gaussian peak-position"] == 24
+    assert scatters[0]["trace transferred from order 10"] == 24
+
+
+def test_plot_results_reads_a_missing_transfer_flag_as_a_measured_row(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE FLAG COLUMN IS OBJECT-TYPED, WITH A NAN ON EVERY ROW OF ORDER 10 AND TRUE ON EVERY ROW OF ORDER 11
+    detector = _plot_ready_detector(tmp_path, log)
+    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, 0.4),)
+    pixels = _plot_transfer_pixels()
+    pixels["faint_transfer"] = pd.Series(np.where(pixels["order"] == 11.0, True, np.nan), index=pixels.index).astype(
+        object
+    )
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: A NAN IS NOT A TRANSFERRED ROW
+    assert scatters[0]["cross-dispersion 1D gaussian peak-position"] == 24
+    assert scatters[0]["trace transferred from order 10"] == 24
+
+
+def test_plot_results_draws_one_scatter_for_a_table_with_no_transfer(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels().drop(columns="faint_transfer")
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: THE PLOT OF A BRIGHT FRAME HAS THE ONE GREEN SCATTER IT ALWAYS HAD
+    peakLabels = {
+        label: count for label, count in scatters[0].items() if "gaussian peak" in label or "transferred" in label
+    }
+    assert peakLabels == {"cross-dispersion 1D gaussian peak-position": 48}
+
+
+def _plot_suptitle(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Record the figure title each time a plot is saved."""
+    return probe_on_savefig(monkeypatch, lambda figure: figure._suptitle.get_text())
+
+
+def test_plot_results_titles_the_residual_statistics_from_the_measured_rows_only(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE MEASURED ROWS OF ORDER 10 ARE OFF BY 1 PX, AND THE SYNTHETIC ROWS OF ORDER 11 ARE EXACT
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels()
+    pixels["cont_x_fit_res"] = np.where(pixels["order"] == 11.0, 0.0, 1.0)
+    titles = _plot_suptitle(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: THE EXACT ROWS DO NOT DILUTE THE MEAN OR WIDEN THE STANDARD DEVIATION
+    assert "mean res: 1.00 pix, res stdev: 0.00" in titles[0]
+
+
+def test_plot_results_titles_the_residual_statistics_from_every_row_when_there_is_no_transfer(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: NO TRANSFER COLUMN, AND RESIDUALS OF 1 AND 3 PX
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels().drop(columns="faint_transfer")
+    pixels["cont_x_fit_res"] = np.where(pixels["order"] == 11.0, 3.0, 1.0)
+    titles = _plot_suptitle(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT
+    assert "mean res: 2.00 pix, res stdev: 1.00" in titles[0]
+
+
+def test_plot_results_still_marks_transferred_rows_when_no_report_is_known(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(_plot_transfer_pixels(), _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT
+    assert scatters[0]["trace transferred from a bright neighbouring order"] == 24
