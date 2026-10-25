@@ -192,7 +192,7 @@ def fit_bin(image, pixelsAt, geometry, lowNm, highNm, axisA):
     trackA, trackB = pixelsAt(order, wavelength, slitArcsec)
     halfLength = int(np.ceil(windowPx + geometry.marginSigmas * sigmaPx)) + 1
     offsets, profile = collapse_bin_profile(image, trackA, trackB, halfLength, axisA)
-    centre = fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr, geometry.marginSigmas)
+    centre = fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr, marginSigmas=geometry.marginSigmas)
     return None if centre is None else (float(wavelength.mean()), centre)
 
 

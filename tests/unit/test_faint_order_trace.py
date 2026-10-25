@@ -669,6 +669,15 @@ def test_fit_fixed_width_gaussian_with_no_margin_ignores_a_bright_source_just_be
     assert withoutMargin == pytest.approx(1.0, abs=0.3)
 
 
+def test_fit_fixed_width_gaussian_takes_the_margin_by_keyword_only() -> None:
+    # ARRANGE
+    profile = _profile()
+
+    # ACT / ASSERT: A SIXTH POSITIONAL NUMBER IS EASILY TAKEN FOR THE WINDOW OR THE SNR LIMIT
+    with pytest.raises(TypeError):
+        fit_fixed_width_gaussian(profile, PROFILE_OFFSETS, PROFILE_SIGMA, PROFILE_WINDOW, 3.0, 0.0)
+
+
 def test_fit_fixed_width_gaussian_never_picks_a_negative_lobe() -> None:
     # ARRANGE: THE PARTNER NOD'S NEGATIVE TRACE FALLS INSIDE THE WINDOW AT -4 PX, WITH NO POSITIVE TRACE AT ALL
     profile = _profile(((-4.0, -30.0),), noise=0.5)

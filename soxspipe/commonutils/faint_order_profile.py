@@ -57,7 +57,7 @@ def collapse_bin_profile(image, trackA, trackB, halfLength, sliceAxis):
         return offsets, np.nanmedian(cuts, axis=0)
 
 
-def fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr, marginSigmas=FIT_MARGIN_SIGMAS):
+def fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr, *, marginSigmas=FIT_MARGIN_SIGMAS):
     """*find the centre of a Gaussian of fixed width in a profile, inside a window around the anchor*
 
     The centre runs over a fixed grid across the window. At each centre the amplitude and a flat baseline come from
