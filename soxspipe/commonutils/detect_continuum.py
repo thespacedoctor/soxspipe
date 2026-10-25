@@ -1223,7 +1223,8 @@ class detect_continuum(_base_detect):
         """*record the faint orders that were tried: a log line and an extraction note each, and a header QC*
 
         The QC counts only the orders whose rows were replaced. Nothing is written to the header when no order was
-        transferred, so a bright frame keeps the headers it always had.
+        transferred, so a bright frame keeps the headers it always had. A skipped order still gets its log line and
+        extraction note, on purpose, as an audit trail of why its trace was left as measured.
 
         **Key Arguments:**
 
