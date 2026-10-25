@@ -1112,10 +1112,14 @@ class horne_extraction(base_util):
         dispersions = self._signed_order_dispersions(extractedOrdersDF, orders)
         shiftsNm, orderStats = self._measure_orders(extractedOrdersDF, orders, arm, False, dispersions)
         geometry, orderLines = self._nir_order_lines(extractedOrdersDF, orders, dispersions)
-        seedPx = nir_sky_refit.global_seed_px(
-            shiftsNm, {o: stats["nLines"] for o, stats in orderStats.items()}, dispersions
+        lineCounts = {o: stats["nLines"] for o, stats in orderStats.items()}
+        result = nir_sky_refit.fit_with_iterated_matching(
+            orderLines,
+            geometry,
+            nir_sky_refit.global_seed_px(shiftsNm, lineCounts, dispersions),
+            self.nirSkyTuning,
+            ownSeedsPx=nir_sky_refit.own_seeds_px(shiftsNm, lineCounts, dispersions),
         )
-        result = nir_sky_refit.fit_with_iterated_matching(orderLines, geometry, seedPx, self.nirSkyTuning)
 
         if result.fallbackReason is not None:
             self._print_and_note(f"Global sky-line fit not used ({result.fallbackReason}): tuning each order alone")
@@ -1158,7 +1162,13 @@ class horne_extraction(base_util):
                 self.log.info(f"order {o}: no dispersion; no sky shift applied")
                 continue
             orderDF = self._order_slice(extractedOrdersDF, o)
-            geometry[int(o)] = geometry_from_rows(orderDF["wavelengthMean"], orderDF["pixelScaleNm"], dispersions[o])
+            try:
+                geometry[int(o)] = geometry_from_rows(
+                    orderDF["wavelengthMean"], orderDF["pixelScaleNm"], dispersions[o]
+                )
+            except ValueError as e:
+                self.log.info(f"order {o}: {e}; no sky shift applied")
+                continue
             lines = self._detect_nir_order_lines(orderDF, o, dispersions[o], arcRmsPx)
             if lines is not None:
                 orderLines[int(o)] = lines
@@ -1172,13 +1182,15 @@ class horne_extraction(base_util):
         from soxspipe.commonutils.sky_line_snr import combine_line_snrs
         from soxspipe.commonutils.ug_wavelength_transfer import sky_line_snr_reason
 
+        orderDF["wavelength_shifted"] = orderDF["wavelengthMean"]
+        wave, sky, objectFlux = self._extract_order_arrays(orderDF)
+        valid = wave.notna() & sky.notna()
+        if not valid.any():
+            return None
         reason = sky_line_snr_reason(o, combine_line_snrs(self._order_sky_line_snrs(orderDF, o)))
         if reason is not None:
             self.log.info(f"{reason}; the order supplies no sky lines to the global fit")
             return None
-        orderDF["wavelength_shifted"] = orderDF["wavelengthMean"]
-        wave, sky, objectFlux = self._extract_order_arrays(orderDF)
-        valid = wave.notna() & sky.notna()
         _, skyVals, peaks, waveVals, _ = self._detect_sky_peaks(wave, sky, objectFlux, valid)
         peakNm = np.asarray(self._measure_peak_centres(waveVals, skyVals, peaks), dtype=float)
         _, catalogueNm = self._get_local_skylines_for_order(np.nanmin(waveVals), np.nanmax(waveVals), o, "wavelength")
@@ -1825,6 +1837,9 @@ class horne_extraction(base_util):
         """Sigma-clip matched shift distribution and return outlier arrays, median shift and the kept shifts."""
         import numpy as np
         from astropy.stats import sigma_clip
+
+        if len(matchedShifts) == 0:
+            return np.array([]), np.array([]), 0.0, np.array([])
 
         maskedShifts = sigma_clip(
             matchedShifts, sigma_lower=2.5, sigma_upper=2.5, maxiters=5, cenfunc="mean", stdfunc="std"

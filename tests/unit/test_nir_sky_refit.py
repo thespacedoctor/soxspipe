@@ -854,3 +854,16 @@ def test_order_lines_hold_read_only_copies_of_their_arrays():
     assert lines.peakNm[0] == 1500.0
     with pytest.raises(ValueError, match="read-only"):
         lines.peakNm[1] = 0.0
+
+
+def test_a_row_without_a_usable_pixel_scale_keeps_a_finite_correction_at_the_median_scale():
+    # ARRANGE
+    result = fit_nir_sky_model(_lines(), _geometry(), SETTINGS)
+    correction = result.corrections[12]
+    wavelengths = np.full(3, _geometry()[12].centreNm)
+
+    # ACT
+    shifts = correction.correction_nm(wavelengths, np.array([np.nan, 0.0, -1.0]))
+
+    # ASSERT
+    assert shifts == pytest.approx(correction.correction_nm(wavelengths))

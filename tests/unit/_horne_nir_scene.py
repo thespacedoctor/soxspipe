@@ -40,12 +40,13 @@ def order_start_nm(order: int) -> float:
     return 1000.0 + 30.0 * (order - 11)
 
 
-def true_shift_px(order: int) -> float:
-    return TRUE_A0 + TRUE_A1 * (order - ORDER_MID) / ORDER_HALF
+def true_shift_px(order: int, offsets: dict | None = None) -> float:
+    """*the detector motion (px) of an order's sky lines, plus the genuine offset of its arc solution if it has one*"""
+    return TRUE_A0 + TRUE_A1 * (order - ORDER_MID) / ORDER_HALF + (offsets or {}).get(order, 0.0)
 
 
-def true_shift_nm(order: int) -> float:
-    return detector_px_to_nm_shift(true_shift_px(order), DISPERSION)
+def true_shift_nm(order: int, offsets: dict | None = None) -> float:
+    return detector_px_to_nm_shift(true_shift_px(order, offsets), DISPERSION)
 
 
 def catalogue_nm(order: int) -> np.ndarray:
@@ -74,13 +75,14 @@ def sky_flux(wavelength: np.ndarray, centres: np.ndarray) -> np.ndarray:
     return 1.0 + LINE_HEIGHT * lines
 
 
-def build_orders(linelessOrders=(), linesOnly=None) -> pd.DataFrame:
-    """*the extracted NIR orders; ``linelessOrders`` have a flat sky, ``linesOnly`` keeps lines in only those orders*"""
+def build_orders(linelessOrders=(), linesOnly=None, offsets=None) -> pd.DataFrame:
+    """*the extracted NIR orders; ``linelessOrders`` have a flat sky, ``linesOnly`` keeps lines in only those orders,
+    ``offsets`` is ``{order: genuine offset of the arc solution (px)}``*"""
     frames = []
     for order in ORDERS:
         wavelength = order_start_nm(order) + PIXEL_NM * np.arange(int(ORDER_WIDTH_NM / PIXEL_NM))
         hasLines = order not in linelessOrders and (linesOnly is None or order in linesOnly)
-        observed = catalogue_nm(order) - true_shift_nm(order)
+        observed = catalogue_nm(order) - true_shift_nm(order, offsets)
         skyFlux = sky_flux(wavelength, observed) if hasLines else np.ones_like(wavelength)
         frames.append(
             pd.DataFrame({"order": order, "wavelengthMean": wavelength, "pixelScaleNm": PIXEL_NM, "skyFlux": skyFlux})

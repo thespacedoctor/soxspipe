@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -37,7 +38,7 @@ def _spy_global_fit(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     original = nir_sky_refit.fit_with_iterated_matching
 
     def spy(orderLines, geometry, seedPx, settings, **kwargs):
-        calls.append({"orderLines": orderLines, "geometry": geometry, "seedPx": seedPx})
+        calls.append({"orderLines": orderLines, "geometry": geometry, "seedPx": seedPx, **kwargs})
         return original(orderLines, geometry, seedPx, settings, **kwargs)
 
     monkeypatch.setattr(nir_sky_refit, "fit_with_iterated_matching", spy)
@@ -511,3 +512,136 @@ def test_an_order_with_no_detectable_peaks_supplies_no_lines(log, tmp_path, monk
 
     # ASSERT
     assert quiet not in calls[0]["orderLines"]
+
+
+# PER-ORDER OFFSETS AND OWN SEEDS
+
+
+OFFSET_ORDER = 12
+GENUINE_OFFSETS = {OFFSET_ORDER: 8.0}
+
+
+def test_an_order_with_a_genuine_arc_offset_is_tuned_from_its_own_measurement(log, tmp_path):
+    # ARRANGE: ORDER 12 SITS 8 px FROM THE DETECTOR SHIFT OF ITS NEIGHBOURS, 4 TIMES THE TIGHT TOLERANCE
+    extractor = build_extractor(log, tmp_path)
+    scene = build_orders(offsets=GENUINE_OFFSETS)
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert qc_by_name(extractor, "SKY TUNING")["qc_value"] == "skylines-global"
+    assert extractor.skyCorrections[OFFSET_ORDER].perOrderOffsetPx > 6.0
+    for order in ORDERS:
+        expected = true_shift_nm(order, GENUINE_OFFSETS)
+        assert applied_shift(scene, tuned, order) == pytest.approx(
+            expected, abs=0.02 if order == OFFSET_ORDER else 0.01
+        )
+
+
+def test_each_order_offers_its_own_measured_shift_as_a_seed(log, tmp_path, monkeypatch):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    calls = _spy_global_fit(monkeypatch)
+
+    # ACT
+    _tune(extractor, build_orders(offsets=GENUINE_OFFSETS))
+
+    # ASSERT
+    ownSeeds = calls[0]["ownSeedsPx"]
+    assert set(ownSeeds) == set(ORDERS)
+    assert ownSeeds[OFFSET_ORDER] == pytest.approx(true_shift_px(OFFSET_ORDER, GENUINE_OFFSETS), abs=0.5)
+
+
+# UNUSABLE ORDERS
+
+
+def test_an_order_with_a_dispersion_but_a_single_wavelength_is_skipped_and_left_unshifted(log, tmp_path):
+    # ARRANGE: THE DISPERSION MAP GIVES THE ORDER A DISPERSION, BUT ITS WAVELENGTH COLUMN HAS NO RANGE
+    flat = ORDERS[-1]
+    extractor = build_extractor(log, tmp_path)
+    realDispersions = extractor._signed_order_dispersions
+    extractor._signed_order_dispersions = lambda df, orders: {**realDispersions(df, orders), flat: -0.05}
+    scene = build_orders()
+    scene.loc[scene["order"] == flat, "wavelengthMean"] = 1500.0
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert applied_shift(scene, tuned, flat) == 0.0
+    assert flat not in extractor.skyCorrections
+    assert applied_shift(scene, tuned, ORDERS[0]) == pytest.approx(true_shift_nm(ORDERS[0]), abs=SHIFT_TOLERANCE_NM)
+
+
+def test_an_order_with_an_all_nan_sky_supplies_no_lines(log, tmp_path, monkeypatch):
+    # ARRANGE
+    blind = ORDERS[-1]
+    extractor = build_extractor(log, tmp_path)
+    scene = build_orders()
+    scene.loc[scene["order"] == blind, "skyFlux"] = np.nan
+    calls = _spy_global_fit(monkeypatch)
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert blind not in calls[0]["orderLines"]
+    assert applied_shift(scene, tuned, blind) == pytest.approx(true_shift_nm(blind), abs=0.02)
+
+
+def test_an_order_with_missing_pixel_scales_does_not_stop_the_fit(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    scene = build_orders()
+    patchy = (scene["order"] == ORDERS[2]) & (scene.index % 3 == 0)
+    scene.loc[patchy, "pixelScaleNm"] = np.nan
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert qc_by_name(extractor, "SKY TUNING")["qc_value"] == "skylines-global"
+    assert np.isfinite(tuned["wavelengthMean"]).all()
+
+
+def test_an_order_with_only_missing_pixel_scales_is_left_unshifted(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    scene = build_orders()
+    scene.loc[scene["order"] == ORDERS[2], "pixelScaleNm"] = np.nan
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert applied_shift(scene, tuned, ORDERS[2]) == 0.0
+    assert ORDERS[2] not in extractor.skyCorrections
+
+
+def test_global_tuning_raises_no_numpy_warnings(log, tmp_path):
+    # ARRANGE
+    import warnings
+
+    extractor = build_extractor(log, tmp_path)
+
+    # ACT / ASSERT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        _tune(extractor, build_orders(linelessOrders=(ORDERS[-1],)))
+
+
+def test_the_clipped_shift_of_an_order_with_no_matches_is_zero_without_a_warning(log, tmp_path):
+    # ARRANGE
+    import warnings
+
+    extractor = build_extractor(log, tmp_path)
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        _, _, medianShift, keptShifts = extractor._compute_clipped_shift([], [])
+
+    # ASSERT
+    assert medianShift == 0.0
+    assert len(keptShifts) == 0

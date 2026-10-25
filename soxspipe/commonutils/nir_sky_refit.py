@@ -152,17 +152,18 @@ class order_sky_correction:
     def correction_nm(self, wavelengthNm, pixelScaleNm=None) -> np.ndarray:
         """*the wavelength shift (nm) to add to each row of the order*
 
-        The detector motion at the row's position along the order, times the row's local signed dispersion. The local
-        dispersion is the order's median dispersion scaled by the row's ``pixelScaleNm`` over the median.
+          The detector motion at the row's position along the order, times the row's local signed dispersion. The local
+          dispersion is the order's median dispersion scaled by the row's ``pixelScaleNm`` over the median.
 
-        **Key Arguments:**
+          **Key Arguments:**
 
-        - ``wavelengthNm`` -- the rows' wavelengths (nm), before the correction
-        - ``pixelScaleNm`` -- the rows' ``pixelScaleNm``. Default *None* uses the order's median for every row
+          - ``wavelengthNm`` -- the rows' wavelengths (nm), before the correction
+          - ``pixelScaleNm`` -- the rows' ``pixelScaleNm``. Default *None* uses the order's median for every row, and so
+        does a row whose scale is not finite and positive
 
-        **Return:**
+          **Return:**
 
-        - ``shiftNm`` -- the shift (nm) of each row
+          - ``shiftNm`` -- the shift (nm) of each row
         """
         geometry = self.geometry
         wavelengths = np.asarray(wavelengthNm, dtype=float)
@@ -171,7 +172,10 @@ class order_sky_correction:
         if pixelScaleNm is None:
             dispersion = geometry.dispersionNmPerPx
         else:
-            scale = np.asarray(pixelScaleNm, dtype=float) / geometry.medianPixelScaleNm
+            scales = np.asarray(pixelScaleNm, dtype=float)
+            # A ROW WITH NO USABLE PIXEL SCALE TAKES THE ORDER'S MEDIAN, SO IT KEEPS A FINITE WAVELENGTH
+            scale = np.where(np.isfinite(scales) & (scales > 0), scales, geometry.medianPixelScaleNm)
+            scale = scale / geometry.medianPixelScaleNm
             dispersion = geometry.dispersionNmPerPx * scale
         return -dispersion * shiftPx
 
