@@ -332,9 +332,8 @@ def test_continuum_offsets_cover_only_the_requested_orders():
     assert list(rows["order"]) == [12]
 
 
-@pytest.mark.parametrize("slitName", ["SLIT1.0", "SLIT5.0", "SLIT1.5", None])
-def test_an_order_without_skylines_is_measured_from_the_continuum_on_any_slit(tmp_path, log, monkeypatch, slitName):
-    scene = _continuum_scene(tmp_path, delta=0.8, slitName=slitName)
+def test_an_order_without_skylines_is_measured_from_the_continuum_on_the_slit_1_0(tmp_path, log, monkeypatch):
+    scene = _continuum_scene(tmp_path, delta=0.8, slitName="SLIT1.0")
 
     result = _measure(scene, tmp_path, log, monkeypatch)
 
@@ -343,6 +342,37 @@ def test_an_order_without_skylines_is_measured_from_the_continuum_on_any_slit(tm
     assert row["method"] == "continuum"
     assert row["offset"] == pytest.approx(0.8, abs=0.1)
     assert result.isApplied
+
+
+@pytest.mark.parametrize("slitName", ["SLIT5.0", "SLIT1.5", None])
+def test_an_order_without_skylines_is_not_measured_from_the_continuum_on_other_slits(
+    tmp_path, log, monkeypatch, slitName
+):
+    scene = _continuum_scene(tmp_path, delta=0.8, slitName=slitName)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the no-skylines continuum builder must run on SLIT1.0 only")
+
+    monkeypatch.setattr(slit_illumination, "continuum_slit_profiles", forbidden)
+    result = _measure(scene, tmp_path, log, monkeypatch)
+
+    row = _offsets(result).loc[11]
+    assert row["status"] == "failed"
+    assert row["method"] == "skyline"
+    assert row["reason"].startswith("the skyline table has no lines between")
+    assert not result.isApplied
+
+
+@pytest.mark.parametrize("slitName", ["SLIT5.0", "SLIT1.5", None])
+def test_the_skipped_no_skylines_orders_are_logged_with_the_slit(tmp_path, log, monkeypatch, slitName):
+    scene = _continuum_scene(tmp_path, delta=0.8, slitName=slitName)
+
+    _measure(scene, tmp_path, log, monkeypatch)
+
+    assert any(
+        f"measured on SLIT1.0 only (this frame: {slitName})" in message and "[11]" in message
+        for message in _messages(log, "info")
+    )
 
 
 @pytest.mark.parametrize("slitName", ["SLIT1.0", "SLIT5.0", None])
@@ -357,6 +387,25 @@ def test_an_order_whose_skylines_are_all_blended_is_measured_from_the_continuum_
     assert row["status"] == "fitted"
     assert row["method"] == "continuum"
     assert row["offset"] == pytest.approx(0.8, abs=0.1)
+    assert result.isApplied
+
+
+def test_a_wide_slit_frame_measures_the_blended_order_and_skips_the_order_without_skylines(tmp_path, log, monkeypatch):
+    scene = synthetic_illumination_scene(
+        tmp_path, orders=(11, 12), offsets={11: 0.8, 12: -0.6}, lineAmplitude=0.0, slitName="SLIT5.0"
+    )
+    centres = np.arange(601.0, 611.0, 2.0)
+    pairs = np.sort(np.concatenate([centres, centres + 0.05]))
+    scene = replace(scene, skylinesDF=pd.DataFrame({"WAVELENGTH": pairs, "FLUX": 1.0}))
+
+    result = _measure(scene, tmp_path, log, monkeypatch)
+
+    offsets = _offsets(result)
+    assert offsets.loc[11, "status"] == "failed"
+    assert offsets.loc[11, "reason"].startswith("the skyline table has no lines between")
+    assert offsets.loc[12, "status"] == "fitted"
+    assert offsets.loc[12, "method"] == "continuum"
+    assert offsets.loc[12, "offset"] == pytest.approx(-0.6, abs=0.1)
     assert result.isApplied
 
 
@@ -412,7 +461,7 @@ def test_an_order_whose_skyline_fit_failed_for_another_reason_never_builds_a_con
     assert not result.isApplied
 
 
-def test_only_the_no_lines_and_all_blended_orders_are_sent_to_the_continuum_fit():
+def test_only_the_no_lines_and_all_blended_orders_are_sent_to_the_continuum_fit(log):
     notes = {
         10: "the skyline table has no lines between 500 and 512 nm",
         11: "every skyline in the order is blended with a neighbour or too close to the end of the order",
@@ -421,7 +470,8 @@ def test_only_the_no_lines_and_all_blended_orders_are_sent_to_the_continuum_fit(
         14: None,
     }
 
-    assert slit_illumination._continuum_orders(notes) == [10, 11]
+    assert slit_illumination._continuum_orders(log, notes, "SLIT1.0") == [10, 11]
+    assert slit_illumination._continuum_orders(log, notes, "SLIT5.0") == [11]
 
 
 def test_a_continuum_offset_is_never_borrowed_by_a_partner_order():

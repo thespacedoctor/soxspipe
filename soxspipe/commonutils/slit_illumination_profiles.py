@@ -2,7 +2,8 @@
 
 This module holds the code that turns a flat-fielded frame and a skyline list into one raw-like sky profile along the
 slit for each order, plus the slit-binning helpers it shares with the flat-edge fit in ``slit_illumination``. For an
-order the skyline list has no lines in, ``continuum_slit_profiles`` builds the profile from the sky continuum. The
+order the skyline list has no lines in, or in which every line is blended or too close to the order end,
+``continuum_slit_profiles`` builds the profile from the sky continuum. The
 public functions ``skyline_slit_profiles`` and ``continuum_slit_profiles`` are also importable from
 ``soxspipe.commonutils.slit_illumination``.
 """

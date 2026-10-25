@@ -12,11 +12,13 @@ The measurement has three steps:
 3. The science profile is fitted as the flat's top-hat shifted by δ. A positive δ means the science image sits
    toward +SLIT.
 
-An order whose skyline profile cannot be built because the skyline table has no lines in it (the SOXS VIS u and g
-orders), or because every line in it is blended with a neighbour or too close to the order end (every line of a wide
-slit), takes step 2 from the sky continuum instead, on any slit: the order is split into wavelength chunks, each
-chunk is binned along the slit, and the combined profile is fitted with the object masked. That offset is accepted
-only if the blue and red halves of the order agree (DY-1516).
+An order whose skyline profile cannot be built takes step 2 from the sky continuum instead: the order is split into
+wavelength chunks, each chunk is binned along the slit, and the combined profile is fitted with the object masked.
+That offset is accepted only if the blue and red halves of the order agree (DY-1516). There are two such cases. An
+order in which every line is blended with a neighbour or too close to the order end (every line of a wide slit) is
+line-dominated, so it takes the continuum fallback on any slit. An order that the skyline table has no lines in (the
+SOXS VIS u and g orders) takes it on the SLIT1.0 only, because on a wider slit the wings of a bright object dominate
+its continuum (DY-1955).
 """
 
 import math
@@ -93,6 +95,10 @@ SKYLINE_MIN_FLUX_VIS = 1.0
 
 # THE TWO HALVES (BLUE AND RED CHUNKS) OF A CONTINUUM PROFILE MUST GIVE OFFSETS THIS CLOSE, OR THE ORDER IS REJECTED
 CONTINUUM_MAX_HALVES_DIFF_ARCSEC = 0.15
+# AN ORDER WITH NO LINES IN THE SKYLINE TABLE IS MEASURED FROM THE CONTINUUM ON THIS SLIT ONLY, BECAUSE THE WINGS OF A
+# BRIGHT OBJECT DOMINATE ITS CONTINUUM ON A WIDER SLIT. AN ORDER WHOSE SKYLINES ARE ALL BLENDED IS LINE-DOMINATED, SO IT
+# IS MEASURED FROM THE CONTINUUM ON ANY SLIT
+CONTINUUM_SLIT_NAME = "SLIT1.0"
 # THE CHUNK COUNT AND THE CHUNKS-PER-BIN LIMIT MUST BE WHOLE NUMBERS OF AT LEAST THIS, SO EACH HALF HOLDS A MEDIAN
 MIN_CONTINUUM_COUNT = 2
 
@@ -635,16 +641,22 @@ def _not_applied(log, reason, config, flatEdges=None, profiles=None, offsets=Non
     )
 
 
-def _continuum_orders(profileNotes):
-    """*the orders to measure from the sky continuum, on any slit*
+def _continuum_orders(log, profileNotes, slitName):
+    """*the orders to measure from the sky continuum*
 
-    These are the orders whose skyline profile failed because the skyline table has no lines in the order, or because
-    every line in it is blended or too close to the order end. An order that failed for any other reason is not
-    included.
+    An order whose skylines are all blended or too close to the order end is included on any slit. An order that the
+    skyline table has no lines in is included on the SLIT1.0 only; on another slit (or with no slit name) it is left
+    out and the skipped orders are logged. An order that failed for any other reason is never included.
     """
-    return sorted(
-        order for order, note in profileNotes.items() if has_no_skylines_note(note) or has_all_blended_note(note)
-    )
+    blended = [order for order, note in profileNotes.items() if has_all_blended_note(note)]
+    noLines = [order for order, note in profileNotes.items() if has_no_skylines_note(note)]
+    if noLines and slitName != CONTINUUM_SLIT_NAME:
+        log.info(
+            f"the continuum slit offset of an order with no skylines is measured on {CONTINUUM_SLIT_NAME} only (this "
+            f"frame: {slitName}), so orders {sorted(noLines)} have no slit offset"
+        )
+        noLines = []
+    return sorted(blended + noLines)
 
 
 def _continuum_rows(frame, flatData, mapImages, flatEdges, orders, profileNotes, config):
@@ -688,12 +700,12 @@ def _continuum_rows(frame, flatData, mapImages, flatEdges, orders, profileNotes,
     return profiles, rows
 
 
-def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners):
+def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners, slitName):
     """*the flat edges, slit profiles and offsets of every order, for inputs that passed the checks*
 
-    Skylines give the offset of every order that has a usable skyline. An order the table has no lines in (the SOXS VIS
-    u and g orders), or in which every line is blended or too close to the order end (every line of a wide slit), gets
-    its offset from the sky-continuum edges instead, on any slit.
+    Skylines give the offset of every order that has a usable skyline. An order in which every line is blended or too
+    close to the order end (every line of a wide slit) gets its offset from the sky-continuum edges instead, on any
+    slit. So does an order the table has no lines in (the SOXS VIS u and g orders), on the SLIT1.0 only.
     """
     from soxspipe.commonutils.toolkit import get_skylines_dataframe
 
@@ -719,7 +731,7 @@ def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, pa
         config["maxOffsetErrArcsec"],
         profileNotes=profileNotes,
     )
-    continuumOrders = _continuum_orders(profileNotes)
+    continuumOrders = _continuum_orders(log, profileNotes, slitName)
     continuumProfiles, continuumRows = pd.DataFrame(columns=PROFILE_COLUMNS), []
     if continuumOrders:
         continuumProfiles, continuumRows = _continuum_rows(
@@ -806,7 +818,10 @@ def measure_slit_illumination(
     problem = _input_problem(frame, masterFlat, mapImages)
     if problem:
         return _not_applied(log, problem, config)
-    flatEdges, profiles, offsets = _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, partners)
+    slitName = frame.header.get(kw(f"SLIT_{arm.upper()}"))
+    flatEdges, profiles, offsets = _measure_orders(
+        log, frame, masterFlat, mapImages, settings, arm, config, partners, slitName
+    )
     for _, row in offsets.iterrows():
         if row["status"] != STATUS_FITTED:
             log.info(f"slit illumination offset of order {row['order']} is {row['status']}: {row['reason']}")
