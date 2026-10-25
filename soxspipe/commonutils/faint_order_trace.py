@@ -344,8 +344,9 @@ def _offset_curve(binWavelength, binCentre, marginNm):
 def _edge_profile_slit(table, order, anchorOrder, curveEstimate, *, image, pixelsAt, settings, axisA):
     """*the slit position of a faint anchor from its edge profile, and where it came from*
 
-    The profile is collapsed from the anchor's rows within one faint-order bin width of the shared edge, and a fixed
-    width Gaussian is fitted around the curve estimate. When that fit fails the curve estimate stands.
+    The profile is collapsed from the anchor's rows within ``EDGE_PROFILE_BIN_WIDTHS`` (three) faint-order bin widths
+    of the shared edge, and a fixed width Gaussian is fitted around the curve estimate. When that fit fails the curve
+    estimate stands.
     """
     slitArcsec, sigmaArcsec, edgeNm = curveEstimate
     widthNm = (
