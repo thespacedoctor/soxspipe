@@ -1243,6 +1243,8 @@ class horne_extraction(base_util):
             )
             self._record_order_shift_qc(o, correction.shift_nm, correction.shiftPx)
         self._record_global_fit_qcs(result)
+        if self.debug:
+            self._plot_nir_sky_fit(result)
         return apply_sky_corrections(extractedOrdersDF, corrections)
 
     def _record_global_fit_qcs(self, result):
@@ -2057,6 +2059,32 @@ class horne_extraction(base_util):
         except (OSError, KeyError, ValueError, TypeError) as e:
             self.log.debug(f"could not read the multi-pinhole header from the dispersion map ({type(e).__name__}: {e})")
             return None
+
+    @closes_its_figures
+    def _plot_nir_sky_fit(self, result):
+        """Two-panel debug plot of the NIR global sky-line fit: each line's offset (px) against wavelength, coloured
+        by order, before and after the model, with the lines the fit clipped marked by crosses."""
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.use("MacOSX")
+        fig, (before, after) = plt.subplots(2, 1, figsize=(12, 8), dpi=180, sharex=True)
+        lines = result.lines
+        panels = (
+            (before, lines["residualPx"], "before the fit"),
+            (after, lines["residualPx"] - lines["modelPx"], "after the fit"),
+        )
+        for ax, offsets, label in panels:
+            points = ax.scatter(lines["observedNm"], offsets, c=lines["order"], cmap="viridis", s=14)
+            clipped = lines["clipped"].to_numpy()
+            ax.scatter(lines.loc[clipped, "observedNm"], offsets[clipped], c="red", marker="x", s=30)
+            ax.axhline(0, color="k", linestyle="--", linewidth=0.7)
+            ax.set_ylabel(f"offset {label} (px)")
+        fig.colorbar(points, ax=[before, after], label="order")
+        after.set_xlabel("wavelength (nm)")
+        fig.suptitle(f"NIR global sky-line fit: {result.nLines} lines kept, rms {result.rmsPx:0.3f} px")
+        plt.show()
+        plt.close(fig)
 
     @closes_its_figures
     def _plot_skyline_shift_diagnostic(

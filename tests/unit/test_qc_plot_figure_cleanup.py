@@ -166,6 +166,21 @@ def _plot_skyline_shift_diagnostic(tmp_path: Path, log: object, monkeypatch: pyt
     )
 
 
+def _plot_nir_sky_fit(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    extractor = object.__new__(horne_extraction)
+    extractor.log = log
+    lines = pd.DataFrame(
+        {
+            "order": [11, 12],
+            "observedNm": [1000.0, 1030.0],
+            "residualPx": [0.1, -0.2],
+            "modelPx": [0.0, 0.0],
+            "clipped": [False, True],
+        }
+    )
+    extractor._plot_nir_sky_fit(SimpleNamespace(lines=lines, nLines=1, rmsPx=0.1))
+
+
 def _plot_rectified_images(tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch) -> None:
     plot_rectified_images(orderRectifiedImages={"flux": np.arange(12.0).reshape(3, 4)}, order=10)
 
@@ -312,6 +327,7 @@ CASES: list[tuple[str, CaseRunner, type[Exception]]] = [
     ("subtract_sky.plot_order_skymodel_fitting_quicklook", _plot_order_skymodel_fitting_quicklook, OutputFailureError),
     ("horne_extraction.plot_extracted_spectrum_qc", _plot_extracted_spectrum_qc, ValueError),
     ("horne_extraction._plot_skyline_shift_diagnostic", _plot_skyline_shift_diagnostic, OutputFailureError),
+    ("horne_extraction._plot_nir_sky_fit", _plot_nir_sky_fit, OutputFailureError),
     ("horne_extraction.plot_rectified_images", _plot_rectified_images, OutputFailureError),
     ("detect_continuum.plot_results", _continuum_plot_results, OutputFailureError),
     ("detect_order_edges.plot_results", _order_edges_plot_results, KeyError),

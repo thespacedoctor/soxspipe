@@ -364,3 +364,65 @@ def test_the_blend_merge_reads_the_catalogue_without_its_brightness_cut(log, tmp
     assert seen == [{"arm": arm, keyword: SKYLINE_MIN_LINE_FLUX}]
     assert len(merged) == 1
     assert merged["WAVELENGTH"].iloc[0] == pytest.approx(1010.015)
+
+
+# DEBUG PLOT
+
+
+def test_debug_tuning_plots_the_global_fit_residuals_once(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    extractor.debug = True
+    extractor._plot_skyline_shift_diagnostic = lambda *args: None
+    plotted: list[object] = []
+    extractor._plot_nir_sky_fit = plotted.append
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    assert len(plotted) == 1
+    assert plotted[0].fallbackReason is None
+
+
+def test_tuning_without_debug_draws_no_fit_plot(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    plotted: list[object] = []
+    extractor._plot_nir_sky_fit = plotted.append
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    assert plotted == []
+
+
+def test_the_fit_plot_shows_the_offset_before_and_after_the_model_for_every_line(log, tmp_path, monkeypatch):
+    # ARRANGE
+    import matplotlib
+    import matplotlib.pyplot as plt
+
+    from tests.unit._plot_spies import quiet_show, spy_figures
+
+    extractor = build_extractor(log, tmp_path)
+    extractor.debug = True
+    extractor._plot_skyline_shift_diagnostic = lambda *args: None
+    fits: list[object] = []
+    extractor._plot_nir_sky_fit = fits.append
+    _tune(extractor, build_orders())
+    result = fits[0]
+    del extractor._plot_nir_sky_fit
+    monkeypatch.setattr(matplotlib, "use", lambda *args, **kwargs: None)
+    figures = spy_figures(monkeypatch)
+    shown = quiet_show(monkeypatch)
+
+    # ACT
+    extractor._plot_nir_sky_fit(result)
+
+    # ASSERT
+    assert len(shown) == 1
+    before, after = figures[0].axes[:2]
+    assert len(before.collections[0].get_offsets()) == len(result.lines)
+    assert len(after.collections[0].get_offsets()) == len(result.lines)
+    assert plt.get_fignums() == []
