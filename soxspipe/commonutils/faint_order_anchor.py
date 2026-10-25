@@ -6,7 +6,7 @@ slit position and width of an anchor at the edge it shares with a faint order, t
 wavelength bin. The module imports numpy only and takes the dispersion map as a ``pixelsAt`` function.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -34,6 +34,9 @@ WINDOW_MAX_ARCSEC = 1.8
 WIDTH_EXPONENT = -0.2
 # A BIN IS SAMPLED EVERY DISPERSION PIXEL, WITH AT LEAST THIS MANY SAMPLES
 MIN_BIN_TRACK_POINTS = 2
+# THE EDGE PROFILE OF A FAINT ANCHOR FITS THE SEARCH WINDOW ALONE. A BRIGHT SOURCE JUST OUTSIDE THE WINDOW, SUCH AS THE
+# FLANKING SOURCE OF VV4580SGR, WOULD OTHERWISE SET THE RESIDUAL AND FAIL THE SIGNAL-TO-NOISE LIMIT
+EDGE_PROFILE_MARGIN_SIGMAS = 0.0
 # CONVERTS A MEDIAN ABSOLUTE DEVIATION TO A STANDARD DEVIATION FOR GAUSSIAN NOISE
 MAD_TO_SIGMA = 1.4826
 
@@ -156,7 +159,7 @@ def search_window_arcsec(sigmaArcsec):
 
 @dataclass(frozen=True)
 class bin_geometry:
-    """Where to look for a trace: order, slit position, width, search window, shared edge and SNR limit."""
+    """Where to look for a trace: order, slit position, width, search window, shared edge, SNR limit and fit margin."""
 
     order: float
     slitArcsec: float
@@ -164,6 +167,7 @@ class bin_geometry:
     windowArcsec: float
     edgeNm: float
     minSnr: float
+    marginSigmas: float = FIT_MARGIN_SIGMAS
 
 
 def fit_bin(image, pixelsAt, geometry, lowNm, highNm, axisA):
@@ -178,7 +182,45 @@ def fit_bin(image, pixelsAt, geometry, lowNm, highNm, axisA):
     sigmaPx = sigmaArcsec * scale * (middleNm / edgeNm) ** WIDTH_EXPONENT
     windowPx = windowArcsec * scale
     trackA, trackB = pixelsAt(order, wavelength, slitArcsec)
-    halfLength = int(np.ceil(windowPx + FIT_MARGIN_SIGMAS * sigmaPx)) + 1
+    halfLength = int(np.ceil(windowPx + geometry.marginSigmas * sigmaPx)) + 1
     offsets, profile = collapse_bin_profile(image, trackA, trackB, halfLength, axisA)
-    centre = fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr)
+    centre = fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr, geometry.marginSigmas)
     return None if centre is None else (float(wavelength.mean()), centre)
+
+
+def profile_edge_slit(image, pixelsAt, geometry, *, anchorWavelengths, widthNm, axisA):
+    """*the slit position of an anchor order at the edge it shares with a faint order, from one collapsed profile*
+
+    The rows of the anchor order within ``widthNm`` of the shared edge are collapsed along the anchor's map track at
+    the curve estimate into one median profile, and a Gaussian of the anchor's width is fitted inside the search
+    window around that track. This is the same single-bin fit that measures a faint order, except that it reads the
+    window alone, with no margin beyond it. It reads the whole stretch of rows next to the edge, where a degree-2 curve
+    through the anchor's scattered samples, extrapolated to the end of the order, does not.
+
+    **Key Arguments:**
+
+    - ``image`` -- the 2D frame, NaN where masked
+    - ``pixelsAt`` -- the function ``pixelsAt(order, wavelengths, slitArcsec)``, giving the (axisA, axisB) pixels
+    - ``geometry`` -- the ``bin_geometry`` of the anchor order: its curve-estimate slit position, width, search
+      window and shared edge
+    - ``anchorWavelengths`` -- the wavelengths (nm) of the anchor order's sampled rows
+    - ``widthNm`` -- the width (nm) of the stretch next to the shared edge
+    - ``axisA`` -- the cross-dispersion axis, ``"x"`` or ``"y"``
+
+    **Return:**
+
+    - ``slitArcsec`` -- the anchor's slit position from the map's slit zero, in arcsec, or *None* when the fit fails
+    """
+    first, last = float(np.min(anchorWavelengths)), float(np.max(anchorWavelengths))
+    edgeNm = geometry.edgeNm
+    if abs(edgeNm - first) <= abs(edgeNm - last):
+        lowNm, highNm = edgeNm, min(edgeNm + widthNm, last)
+    else:
+        lowNm, highNm = max(edgeNm - widthNm, first), edgeNm
+    windowOnly = replace(geometry, marginSigmas=EDGE_PROFILE_MARGIN_SIGMAS)
+    fit = fit_bin(image, pixelsAt, windowOnly, lowNm, highNm, axisA)
+    if fit is None:
+        return None
+    middleNm, centrePx = fit
+    scale = float(pixels_per_arcsec(pixelsAt, geometry.order, np.array([middleNm]))[0])
+    return float(geometry.slitArcsec + centrePx / scale)

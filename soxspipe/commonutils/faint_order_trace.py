@@ -25,6 +25,7 @@ from soxspipe.commonutils.faint_order_anchor import (
     clipped_polynomial_residuals,
     fit_bin,
     pixels_per_arcsec,
+    profile_edge_slit,
     search_window_arcsec,
 )
 
@@ -127,6 +128,15 @@ class faint_trace_settings:
 # `toolkit.SOXS_VIS_ORDERS_BLUE_TO_RED`, WHICH THIS MODULE DOES NOT IMPORT TO STAY LIGHT
 VIS_BAND_GROUPS = ((2, 3), (1, 4))
 VIS_ORDERS_BLUE_TO_RED = tuple(order for group in VIS_BAND_GROUPS for order in group)
+# WHERE AN ANCHOR'S SLIT POSITION CAME FROM: ITS CLIPPED CURVE, ITS EDGE PROFILE, OR THE CURVE AFTER THE PROFILE FIT
+# FAILED
+ANCHOR_CURVE = "curve"
+ANCHOR_PROFILE = "profile"
+ANCHOR_FALLBACK = "curve after profile failed"
+# THE EDGE PROFILE OF A FAINT ANCHOR COVERS THIS MANY FAINT-ORDER BIN WIDTHS NEXT TO THE SHARED EDGE. ON VV4580SGR THE
+# ANCHOR'S FIRST 5.5 NM ARE MASKED AND ONE BIN WIDTH IS 6.2 NM, SO A SINGLE WIDTH HOLDS NO DATA AND TWO FAIL THE
+# SIGNAL-TO-NOISE LIMIT. THREE (18.6 NM) PASS, AND THE CENTRE MOVES BY ABOUT 0.05 ARCSEC BETWEEN 15 AND 60 NM
+EDGE_PROFILE_BIN_WIDTHS = 3.0
 # THE POLYNOMIAL THROUGH THE BIN CENTRES: NO CURVE BELOW THIS MANY KEPT BINS, A STRAIGHT LINE BELOW THE SECOND LIMIT
 # AND A PARABOLA FROM IT
 MIN_CURVE_BINS = 4
@@ -249,12 +259,21 @@ def anchor_neighbours(table, faintOrders):
     return anchors
 
 
+ANCHOR_NOTES = {
+    ANCHOR_CURVE: "",
+    ANCHOR_PROFILE: ", anchor from the edge profile",
+    ANCHOR_FALLBACK: ", edge profile fit failed so the anchor is the curve estimate",
+}
+
+
 @dataclass(frozen=True)
 class transfer_report:
     """What the transfer did for one faint order.
 
     ``binsKept`` of ``binCount`` bins gave a centre, and ``degree`` is the degree of the curve through them. An order
-    that kept no bin is left as it was measured. ``slitArcsec`` is the anchor's slit position.
+    that kept no bin is left as it was measured. ``slitArcsec`` is the anchor's slit position and ``anchorSource``
+    says how it was found: from the anchor's clipped curve (``"curve"``), from a profile collapsed at the shared edge
+    because the anchor is itself faint (``"profile"``), or from the curve after that profile fit failed.
     """
 
     order: float
@@ -263,6 +282,7 @@ class transfer_report:
     binCount: int
     degree: int
     slitArcsec: float
+    anchorSource: str = ANCHOR_CURVE
 
     @property
     def is_transferred(self):
@@ -281,10 +301,11 @@ class transfer_report:
 
         - ``line`` -- the sentence
         """
+        suffix = ANCHOR_NOTES[self.anchorSource]
         if not self.is_transferred:
-            return f"Order {orderLabel} from anchor {anchorLabel}: no bin kept, trace left as measured"
+            return f"Order {orderLabel} from anchor {anchorLabel}: no bin kept, trace left as measured{suffix}"
         head = f"Order {orderLabel} trace transferred from {anchorLabel}"
-        return f"{head}: {self.binsKept}/{self.binCount} bins, deg {self.degree}"
+        return f"{head}: {self.binsKept}/{self.binCount} bins, deg {self.degree}{suffix}"
 
 
 def _shared_edge_nm(brightRows, anchorOrder, order):
@@ -317,14 +338,56 @@ def _offset_curve(binWavelength, binCentre, marginNm):
     return (lambda wavelength: curve(np.clip(wavelength, low, high))), degree
 
 
-def _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt, axisA):
-    """*the anchor geometry of a faint order: slit position and width of the anchor trace at the shared edge*"""
+def _edge_profile_slit(table, order, anchorOrder, curveEstimate, *, image, pixelsAt, settings, axisA):
+    """*the slit position of a faint anchor from its edge profile, and where it came from*
+
+    The profile is collapsed from the anchor's rows within one faint-order bin width of the shared edge, and a fixed
+    width Gaussian is fitted around the curve estimate. When that fit fails the curve estimate stands.
+    """
+    slitArcsec, sigmaArcsec, edgeNm = curveEstimate
+    widthNm = (
+        EDGE_PROFILE_BIN_WIDTHS * float(np.ptp(table.loc[table["order"] == order, "wavelength"])) / settings.binCount
+    )
+    geometry = bin_geometry(
+        anchorOrder, slitArcsec, sigmaArcsec, search_window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr
+    )
+    measured = profile_edge_slit(
+        image,
+        pixelsAt,
+        geometry,
+        anchorWavelengths=table.loc[table["order"] == anchorOrder, "wavelength"].to_numpy(float),
+        widthNm=widthNm,
+        axisA=axisA,
+    )
+    return (slitArcsec, ANCHOR_FALLBACK) if measured is None else (measured, ANCHOR_PROFILE)
+
+
+def _anchor_slit_arcsec(table, order, anchorOrder, *, isAnchorFaint, image, pixelsAt, slitOffsets, settings, axisA):
+    """*the anchor of a faint order: slit position, width, shared edge and where the slit position came from*
+
+    A bright anchor takes its slit position from its clipped curve at the shared edge. An anchor that is faint itself
+    takes it from a profile collapsed next to the edge, because its curve through scattered samples is not reliable
+    there. The slit-illumination offsets of the two orders are then applied.
+    """
+    brightRows = table.loc[table["order"] == anchorOrder]
     edgeNm = _shared_edge_nm(brightRows, anchorOrder, order)
     slitArcsec, sigmaArcsec = bright_edge_anchor(brightRows, edgeNm, pixelsAt, axisA=axisA)
+    source = ANCHOR_CURVE
+    if isAnchorFaint:
+        slitArcsec, source = _edge_profile_slit(
+            table,
+            order,
+            anchorOrder,
+            (slitArcsec, sigmaArcsec, edgeNm),
+            image=image,
+            pixelsAt=pixelsAt,
+            settings=settings,
+            axisA=axisA,
+        )
     offsets = slitOffsets or {}
     if np.isfinite(offsets.get(order, np.nan)) and np.isfinite(offsets.get(anchorOrder, np.nan)):
         slitArcsec = slitArcsec - offsets[anchorOrder] + offsets[order]
-    return slitArcsec, sigmaArcsec, edgeNm
+    return slitArcsec, sigmaArcsec, edgeNm, source
 
 
 def _synthetic_rows(rows, geometry, offsetCurve, pixelsAt, axisA, axisB):
@@ -346,11 +409,22 @@ def _synthetic_rows(rows, geometry, offsetCurve, pixelsAt, axisA, axisB):
     }
 
 
-def _transfer_one_order(table, order, anchorOrder, *, image, pixelsAt, slitOffsets, settings, axisA, axisB):
+def _transfer_one_order(
+    table, order, anchorOrder, *, isAnchorFaint, image, pixelsAt, slitOffsets, settings, axisA, axisB
+):
     """*the rows, the replacement values (None when no bin was kept) and the report for one faint order*"""
     rows = table.loc[table["order"] == order]
-    brightRows = table.loc[table["order"] == anchorOrder]
-    slitArcsec, sigmaArcsec, edgeNm = _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt, axisA)
+    slitArcsec, sigmaArcsec, edgeNm, source = _anchor_slit_arcsec(
+        table,
+        order,
+        anchorOrder,
+        isAnchorFaint=isAnchorFaint,
+        image=image,
+        pixelsAt=pixelsAt,
+        slitOffsets=slitOffsets,
+        settings=settings,
+        axisA=axisA,
+    )
     geometry = bin_geometry(
         order, slitArcsec, sigmaArcsec, search_window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr
     )
@@ -359,11 +433,12 @@ def _transfer_one_order(table, order, anchorOrder, *, image, pixelsAt, slitOffse
         fit_bin(image, pixelsAt, geometry, low, high, axisA) for low, high in zip(edges[:-1], edges[1:], strict=True)
     ]
     kept = np.array([fit for fit in fits if fit is not None], dtype=float).reshape(-1, 2)
+    slit, binCount = float(slitArcsec), len(fits)
     if len(kept) == 0:
-        return rows.index, None, transfer_report(order, anchorOrder, 0, len(fits), 0, float(slitArcsec))
-    curve, degree = _offset_curve(kept[:, 0], kept[:, 1], (edges[-1] - edges[0]) / len(fits))
+        return rows.index, None, transfer_report(order, anchorOrder, 0, binCount, 0, slit, source)
+    curve, degree = _offset_curve(kept[:, 0], kept[:, 1], (edges[-1] - edges[0]) / binCount)
     values = _synthetic_rows(rows, geometry, curve, pixelsAt, axisA, axisB)
-    return rows.index, values, transfer_report(order, anchorOrder, len(kept), len(fits), degree, float(slitArcsec))
+    return rows.index, values, transfer_report(order, anchorOrder, len(kept), binCount, degree, slit, source)
 
 
 def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axisA, axisB):
@@ -391,12 +466,14 @@ def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axis
     - ``table`` -- the same table object when nothing was transferred, otherwise an edited copy
     - ``reports`` -- one ``transfer_report`` per order that has an anchor, including those that kept no bin
     """
-    anchors = anchor_neighbours(table, find_faint_orders(table, axisA, settings))
+    faintOrders = find_faint_orders(table, axisA, settings)
+    anchors = anchor_neighbours(table, faintOrders)
     outcomes = [
         _transfer_one_order(
             table,
             order,
             anchorOrder,
+            isAnchorFaint=anchorOrder in faintOrders,
             image=image,
             pixelsAt=pixelsAt,
             slitOffsets=slitOffsets,
