@@ -276,25 +276,31 @@ def test_transfer_still_transfers_an_order_that_keeps_one_bin_as_a_constant_offs
 def test_transfer_moves_the_anchor_by_the_difference_of_the_slit_offsets(pixelsAt: object) -> None:
     # ARRANGE: THE SKY SAYS THE U SLIT IMAGE IS 0.5 ARCSEC ABOVE THE G ONE
     image, table = vis_transfer_image(AMPLITUDES, FLANKS), vis_transfer_table((2.0,))
-    _, plain = _transfer_rows(table, image, pixelsAt)
+    plainTable, plain = _transfer_rows(table, image, pixelsAt)
 
     # ACT
-    _, shifted = _transfer_rows(table, image, pixelsAt, {2.0: 0.5, 3.0: 0.0})
+    shiftedTable, shifted = _transfer_rows(table, image, pixelsAt, {2.0: 0.5, 3.0: 0.0})
 
     # ASSERT: ANCHOR = S_BRIGHT - DELTA_BRIGHT + DELTA_FAINT
     assert shifted[0].slitArcsec - plain[0].slitArcsec == pytest.approx(0.5, abs=1e-6)
+    # THE BINS READ THE TARGET WHEREVER THE TRACK STARTS, SO THE OFFSET CURVE TAKES UP THE 0.5 ARCSEC. THE TRANSFERRED
+    # CENTRE STAYS ON THE TARGET, WITHIN A TENTH OF THE 0.5 * SLIT SCALE (1.9 PX) THAT THE TRACK MOVED
+    plainX = plainTable.loc[plainTable["order"] == 2.0, "cont_x"].to_numpy()
+    shiftedX = shiftedTable.loc[shiftedTable["order"] == 2.0, "cont_x"].to_numpy()
+    assert np.abs(shiftedX - plainX).max() < 0.1 * abs(0.5 * vis_slit_scale(2.0))
 
 
 def test_transfer_ignores_offsets_that_miss_one_of_the_two_orders(pixelsAt: object) -> None:
     # ARRANGE
     image, table = vis_transfer_image(AMPLITUDES, FLANKS), vis_transfer_table((2.0,))
-    _, plain = _transfer_rows(table, image, pixelsAt)
+    plainTable, plain = _transfer_rows(table, image, pixelsAt)
 
     # ACT
-    _, partial = _transfer_rows(table, image, pixelsAt, {2.0: 0.5})
+    partialTable, partial = _transfer_rows(table, image, pixelsAt, {2.0: 0.5})
 
-    # ASSERT
+    # ASSERT: THE ANCHOR AND EVERY TRANSFERRED CENTRE ARE EXACTLY THOSE OF THE RUN WITH NO OFFSETS
     assert partial[0].slitArcsec == plain[0].slitArcsec
+    pd.testing.assert_frame_equal(partialTable, plainTable)
 
 
 def test_transfer_holds_the_trace_flat_beyond_the_last_kept_bin(pixelsAt: object) -> None:
