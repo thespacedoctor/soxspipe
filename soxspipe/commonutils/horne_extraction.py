@@ -1024,13 +1024,37 @@ class horne_extraction(base_util):
 
         import numpy as np
 
-        from soxspipe.commonutils.ug_wavelength_transfer import PREDICTED_ORDERS, VIS_I_ORDER
-
         uniqueOrders = ["all"] if not byOrder else np.sort(extractedOrdersDF["order"].unique())
-        isVis = arm.upper() == "VIS"
         # THE DY-1645 VIS BEHAVIOUR IS FOR SOXS ONLY, AND ONLY WHEN TUNING ORDER BY ORDER
         isSoxsVis = byOrder and self._is_soxs_vis(arm)
         dispersions = self._order_dispersions(extractedOrdersDF, uniqueOrders, isSoxsVis) if byOrder else {}
+        shiftsNm, orderStats = self._measure_orders(extractedOrdersDF, uniqueOrders, arm, isSoxsVis, dispersions)
+        return self._apply_per_order_shifts(
+            extractedOrdersDF, arm, uniqueOrders, shiftsNm, orderStats, dispersions, byOrder
+        )
+
+    def _measure_orders(self, extractedOrdersDF, uniqueOrders, arm, isSoxsVis, dispersions):
+        """*measure every order's wavelength shift from its own sky lines*
+
+        In the SOXS VIS arm the i order is measured before r, because the r shift is predicted from it. The VIS u and
+        g orders are never measured.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``uniqueOrders`` -- the orders to measure (``["all"]`` to measure every order together)
+        - ``arm`` -- the arm of the instrument
+        - ``isSoxsVis`` -- whether the SOXS VIS guards apply
+        - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
+
+        **Return:**
+
+        - ``shiftsNm`` -- ``{order: measured wavelength shift (nm)}``, 0 for an order that was not measured
+        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float, ...}}`` for each measured order
+        """
+        from soxspipe.commonutils.ug_wavelength_transfer import PREDICTED_ORDERS, VIS_I_ORDER
+
+        isVis = arm.upper() == "VIS"
         shiftsNm = dict.fromkeys(uniqueOrders, 0.0)
         # SKY LINES KEPT, SHIFT SCATTER AND (SOXS VIS) SKY-LINE SNRS PER MEASURED ORDER (THE r AND u/g GUARDS)
         orderStats = {}
@@ -1048,7 +1072,25 @@ class horne_extraction(base_util):
                 stats = self._order_stats(keptShifts)
             if stats is not None:
                 orderStats[o] = stats
+        return shiftsNm, orderStats
 
+    def _apply_per_order_shifts(self, extractedOrdersDF, arm, uniqueOrders, shiftsNm, orderStats, dispersions, byOrder):
+        """*finalise the measured per-order shifts, record their QCs and add them to the wavelengths*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders (shifted in place and returned)
+        - ``arm`` -- the arm of the instrument
+        - ``uniqueOrders`` -- the orders, in the order the shifts are returned
+        - ``shiftsNm`` -- ``{order: measured wavelength shift (nm)}``
+        - ``orderStats`` -- the sky-line statistics of each measured order
+        - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
+        - ``byOrder`` -- whether the orders were tuned one by one (otherwise ``uniqueOrders`` is ``["all"]``)
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- the shifted data-frame
+        """
         if byOrder:
             orderShifts = self._finalise_order_shifts(arm, uniqueOrders, shiftsNm, orderStats, dispersions)
         else:
