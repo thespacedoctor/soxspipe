@@ -177,7 +177,11 @@ def clipped_polynomial_residuals(x, y, degree):
 
     - ``curve`` -- the fitted curve, a ``numpy.polynomial.Polynomial``
     - ``residuals`` -- ``y`` minus the curve, one per sample
+
+    A ``ValueError`` is raised when there are fewer than ``MIN_FIT_SAMPLES`` samples.
     """
+    if len(x) < MIN_FIT_SAMPLES:
+        raise ValueError(f"A clipped polynomial fit needs at least {MIN_FIT_SAMPLES} samples, got {len(x)}.")
     keep = np.ones(len(x), dtype=bool)
     for _ in range(CLIP_ITERATIONS):
         curve = np.polynomial.Polynomial.fit(x[keep], y[keep], degree)
@@ -334,9 +338,16 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt, *, axisA):
 
     - ``slitArcsec`` -- the trace's slit position at the edge, in arcsec from the map's slit zero
     - ``sigmaArcsec`` -- the trace's Gaussian standard deviation near the edge, in arcsec
+
+    A ``ValueError`` is raised when the order has fewer than ``MIN_FIT_SAMPLES`` accepted samples. An order that can
+    anchor has at least that many.
     """
     order = rows["order"].iloc[0]
     accepted = rows.loc[rows[f"cont_{axisA}"].notna() & ~rows["pre-clipped"].astype(bool)]
+    if len(accepted.index) < MIN_FIT_SAMPLES:
+        raise ValueError(
+            f"The anchor order {order} needs at least {MIN_FIT_SAMPLES} accepted samples, got {len(accepted.index)}."
+        )
     wavelength = accepted["wavelength"].to_numpy(float)
     zeroPixels, _ = pixelsAt(order, wavelength, 0.0)
     offsetPx = accepted[f"cont_{axisA}"].to_numpy(float) - np.asarray(zeroPixels, dtype=float)

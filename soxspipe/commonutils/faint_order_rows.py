@@ -21,8 +21,8 @@ def transferred_row_mask(table):
 
     - ``isTransferred`` -- one boolean per row, or *None* when the table has no ``faint_transfer`` column
 
-    A row is synthetic only when its flag is *True*. A missing flag (NaN, *None* or ``NA``) and any other value are
-    measured rows.
+    The flag counts as set when it equals *True*, which includes the number 1. A missing flag (NaN, *None* or ``NA``)
+    and any other value, such as the number 2 or the string ``"True"``, mark a measured row.
     """
     if TRANSFER_COLUMN not in table.columns:
         return None
@@ -75,6 +75,11 @@ def measured_residuals(residuals, isTransferred):
 
     - ``measured`` -- the residuals of the measured rows, or of all rows when the table has no synthetic rows or no
       measured rows
+
+    A table with no measured row has nothing to judge the fit by, so the residuals of all its rows are returned
+    rather than an empty array. The mean of an empty array is NaN, and a comparison with NaN is false, so the failure
+    gates that read the mean could never fire. This case is not expected in practice: a transfer replaces the rows of
+    a faint order only, and its anchor order keeps its measured rows.
     """
     if isTransferred is None or isTransferred.all():
         return residuals

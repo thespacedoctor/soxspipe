@@ -16,6 +16,7 @@ from soxspipe.commonutils.faint_order_trace import (
     VIS_BAND_GROUPS,
     anchor_neighbours,
     bright_edge_anchor,
+    clipped_polynomial_residuals,
     faint_trace_settings,
     find_faint_orders,
     order_trace_stats,
@@ -456,6 +457,24 @@ def test_bright_edge_anchor_takes_the_width_from_the_samples_nearest_the_edge_in
     # ASSERT: THE MEDIAN OF THE NEAREST QUARTER OF THE ORDER, DIVIDED BY 4 PX/ARCSEC
     assert blueSigma == pytest.approx(1.25 / 4.0, abs=0.02)
     assert redSigma == pytest.approx(2.75 / 4.0, abs=0.02)
+
+
+def test_clipped_polynomial_residuals_raises_a_clear_error_for_fewer_than_four_samples() -> None:
+    # ARRANGE
+    x, y = np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 4.0])
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="at least 4 samples, got 3"):
+        clipped_polynomial_residuals(x, y, 2)
+
+
+def test_bright_edge_anchor_raises_a_clear_error_for_fewer_than_four_accepted_samples() -> None:
+    # ARRANGE: THREE ACCEPTED SAMPLES, THE REST NOT DETECTED
+    rows = _order_rows(3.0, detectedFraction=0.03)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="order 3.0 needs at least 4 accepted samples, got 3"):
+        bright_edge_anchor(rows, 400.0, _stub_pixels_at(-4.0), axisA="x")
 
 
 def test_pixels_per_arcsec_is_the_signed_slit_scale_of_the_map(log: object, tmp_path: Path) -> None:
