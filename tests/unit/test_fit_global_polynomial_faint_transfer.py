@@ -17,7 +17,8 @@ ROWS_PER_ORDER = 60
 OUTLIER_ROWS = {5: 4.0, 17: -5.0, 33: 6.5, 48: -4.5}
 
 # THE FIT OF `_MEASURED_ROWS` AS IT WAS BEFORE THE FAINT_TRANSFER COLUMN WAS HANDLED, COMPUTED FROM THE UNCHANGED FIT.
-# THE COEFFICIENTS ARE COMPARED TO 1E-12 BECAUSE LAPACK ROUNDS THE LAST BIT DIFFERENTLY ON DIFFERENT CPUS
+# THE COEFFICIENTS ARE COMPARED TO 1E-9 BECAUSE LAPACK ROUNDS THE LAST BITS DIFFERENTLY ON DIFFERENT CPUS
+# (THE GITHUB RUNNER DIFFERED FROM THE MAC BY UP TO 1.05E-11 RELATIVE); THE EXACT GUARD IS THE IN-PROCESS ALL-FALSE TEST
 # fmt: off
 BASELINE_X_COEFFICIENTS = [
     0.3629690089524446,
@@ -97,7 +98,7 @@ def test_a_table_without_the_faint_transfer_column_gives_the_pre_round_two_trace
     coefficients, fitted, clipped, qcs = _fit(_detector(log), table)
 
     # ASSERT: THE SAME COEFFICIENTS, THE SAME CLIPPED ROWS AND THE SAME QCS AS BEFORE THE CHANGE
-    np.testing.assert_allclose(coefficients, BASELINE_X_COEFFICIENTS, rtol=1e-12, atol=0)
+    np.testing.assert_allclose(coefficients, BASELINE_X_COEFFICIENTS, rtol=1e-9, atol=0)
     assert sorted(clipped["row_id"]) == BASELINE_X_CLIPPED_ROWS
     assert len(fitted) == len(table) - len(BASELINE_X_CLIPPED_ROWS)
     assert qcs == BASELINE_X_QCS
@@ -111,7 +112,7 @@ def test_a_table_without_the_faint_transfer_column_gives_the_pre_round_two_stdde
     coefficients, fitted, clipped = _detector(log).fit_global_polynomial(table, axisACol="gauss_stddev")
 
     # ASSERT
-    np.testing.assert_allclose(coefficients, BASELINE_STDDEV_COEFFICIENTS, rtol=1e-12, atol=0)
+    np.testing.assert_allclose(coefficients, BASELINE_STDDEV_COEFFICIENTS, rtol=1e-9, atol=0)
     assert sorted(clipped["row_id"]) == BASELINE_STDDEV_CLIPPED_ROWS
     assert len(fitted) == len(table) - len(BASELINE_STDDEV_CLIPPED_ROWS)
 
