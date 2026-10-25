@@ -654,6 +654,21 @@ def test_fit_fixed_width_gaussian_returns_none_when_only_a_source_beyond_the_win
     assert centre is None
 
 
+def test_fit_fixed_width_gaussian_with_no_margin_ignores_a_bright_source_just_beyond_the_window() -> None:
+    # ARRANGE: THE TARGET IS AT +1 PX, AND A SOURCE EIGHT TIMES BRIGHTER SITS 4.5 PX OUTSIDE THE WINDOW
+    profile = _profile(((1.0, 5.0), (-11.0, 40.0)), noise=0.5)
+
+    # ACT
+    withMargin = _fit(profile)
+    withoutMargin = fit_fixed_width_gaussian(
+        profile, PROFILE_OFFSETS, PROFILE_SIGMA, PROFILE_WINDOW, 3.0, marginSigmas=0.0
+    )
+
+    # ASSERT: THE DEFAULT FIT READS THE SOURCE'S WING AS RESIDUAL AND REJECTS THE PROFILE. THE WINDOW-ONLY FIT DOES NOT
+    assert withMargin is None
+    assert withoutMargin == pytest.approx(1.0, abs=0.3)
+
+
 def test_fit_fixed_width_gaussian_never_picks_a_negative_lobe() -> None:
     # ARRANGE: THE PARTNER NOD'S NEGATIVE TRACE FALLS INSIDE THE WINDOW AT -4 PX, WITH NO POSITIVE TRACE AT ALL
     profile = _profile(((-4.0, -30.0),), noise=0.5)

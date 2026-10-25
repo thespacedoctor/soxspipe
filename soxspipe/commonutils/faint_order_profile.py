@@ -57,16 +57,16 @@ def collapse_bin_profile(image, trackA, trackB, halfLength, sliceAxis):
         return offsets, np.nanmedian(cuts, axis=0)
 
 
-def fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr):
+def fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr, marginSigmas=FIT_MARGIN_SIGMAS):
     """*find the centre of a Gaussian of fixed width in a profile, inside a window around the anchor*
 
     The centre runs over a fixed grid across the window. At each centre the amplitude and a flat baseline come from
     a linear least-squares solve, and the amplitude must not be negative. The centre with the smallest residual wins,
     so the answer is the same on every run. There is no iterative optimiser.
 
-    The fit uses the samples within ``FIT_MARGIN_SIGMAS`` widths beyond the window. The peak signal-to-noise ratio is
-    the amplitude over the rms residual. A fit that fails the limit, or whose best centre sits on the window edge
-    (the sign of a source beyond the window), returns *None*.
+    The fit uses the samples within ``marginSigmas`` widths beyond the window (two by default). The peak
+    signal-to-noise ratio is the amplitude over the rms residual. A fit that fails the limit, or whose best centre
+    sits on the window edge (the sign of a source beyond the window), returns *None*.
 
     **Key Arguments:**
 
@@ -75,6 +75,8 @@ def fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr):
     - ``sigmaPx`` -- the fixed Gaussian standard deviation, in pixels
     - ``windowPx`` -- the half-width of the search window around the anchor, in pixels
     - ``minSnr`` -- the smallest accepted peak signal-to-noise ratio
+    - ``marginSigmas`` -- how many widths beyond the window the fit reads. Zero fits the window alone, so a bright
+      source just outside it adds nothing to the residual
 
     **Return:**
 
@@ -82,7 +84,7 @@ def fit_fixed_width_gaussian(profile, offsets, sigmaPx, windowPx, minSnr):
     """
     offsets = np.asarray(offsets, dtype=float)
     profile = np.asarray(profile, dtype=float)
-    isUsed = np.isfinite(profile) & (np.abs(offsets) <= windowPx + FIT_MARGIN_SIGMAS * sigmaPx)
+    isUsed = np.isfinite(profile) & (np.abs(offsets) <= windowPx + marginSigmas * sigmaPx)
     if isUsed.sum() < MIN_PROFILE_SAMPLES:
         return None
     x, y = offsets[isUsed], profile[isUsed]
