@@ -118,25 +118,33 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt, *, axisA):
     - ``slitArcsec`` -- the trace's slit position at the edge, in arcsec from the map's slit zero
     - ``sigmaArcsec`` -- the trace's Gaussian standard deviation near the edge, in arcsec
 
-    A ``ValueError`` is raised when the order has fewer than ``MIN_FIT_SAMPLES`` accepted samples. An order that can
-    anchor has at least that many.
+    A ``ValueError`` is raised when the order has fewer than ``MIN_FIT_SAMPLES`` accepted samples (or no rows), when
+    the map's slit scale at the edge is zero or not finite, or when the median Gaussian width is not finite and
+    positive. The message names the order and the edge. The caller leaves the faint order as it was measured.
     """
+    if rows.empty:
+        raise ValueError(f"The anchor order needs at least {MIN_FIT_SAMPLES} accepted samples, got 0.")
     order = rows["order"].iloc[0]
     accepted = rows.loc[rows[f"cont_{axisA}"].notna() & ~rows["pre-clipped"].astype(bool)]
     if len(accepted.index) < MIN_FIT_SAMPLES:
         raise ValueError(
             f"The anchor order {order} needs at least {MIN_FIT_SAMPLES} accepted samples, got {len(accepted.index)}."
         )
+    scale = float(pixels_per_arcsec(pixelsAt, order, np.array([edgeNm]))[0])
+    if scale == 0.0 or not np.isfinite(scale):
+        raise ValueError(f"The anchor order {order} has no usable slit scale at {edgeNm} nm, got {scale}.")
+
     wavelength = accepted["wavelength"].to_numpy(float)
     zeroPixels, _ = pixelsAt(order, wavelength, 0.0)
     offsetPx = accepted[f"cont_{axisA}"].to_numpy(float) - np.asarray(zeroPixels, dtype=float)
     curve, _ = clipped_polynomial_residuals(wavelength, offsetPx, SCATTER_FIT_DEGREE)
-    scale = float(pixels_per_arcsec(pixelsAt, order, np.array([edgeNm]))[0])
 
     span = rows["wavelength"].max() - rows["wavelength"].min()
     isNearEdge = np.abs(wavelength - edgeNm) <= EDGE_FRACTION * span
     nearEdge = accepted.loc[isNearEdge] if isNearEdge.sum() >= MIN_EDGE_SAMPLES else accepted
     sigmaPx = float(np.median(nearEdge["gauss_stddev"].to_numpy(float)))
+    if not np.isfinite(sigmaPx) or sigmaPx <= 0.0:
+        raise ValueError(f"The anchor order {order} has no usable width at {edgeNm} nm, got {sigmaPx} px.")
     return float(curve(edgeNm) / scale), abs(sigmaPx / scale)
 
 
@@ -210,8 +218,11 @@ def profile_edge_slit(image, pixelsAt, geometry, *, anchorWavelengths, widthNm, 
     **Return:**
 
     - ``slitArcsec`` -- the anchor's slit position from the map's slit zero, in arcsec, or *None* when the fit fails
+      or the anchor has no finite wavelength
     """
-    first, last = float(np.min(anchorWavelengths)), float(np.max(anchorWavelengths))
+    if not np.isfinite(anchorWavelengths).any():
+        return None
+    first, last = float(np.nanmin(anchorWavelengths)), float(np.nanmax(anchorWavelengths))
     edgeNm = geometry.edgeNm
     if abs(edgeNm - first) <= abs(edgeNm - last):
         lowNm, highNm = edgeNm, min(edgeNm + widthNm, last)

@@ -133,6 +133,8 @@ VIS_ORDERS_BLUE_TO_RED = tuple(order for group in VIS_BAND_GROUPS for order in g
 ANCHOR_CURVE = "curve"
 ANCHOR_PROFILE = "profile"
 ANCHOR_FALLBACK = "curve after profile failed"
+# THE ANCHOR HAD NO USABLE SLIT SCALE, WIDTH OR SAMPLES, SO NO BIN WAS TRIED
+ANCHOR_UNUSABLE = "anchor unusable"
 # THE EDGE PROFILE OF A FAINT ANCHOR COVERS THIS MANY FAINT-ORDER BIN WIDTHS NEXT TO THE SHARED EDGE. ON VV4580SGR THE
 # ANCHOR'S FIRST 5.5 NM ARE MASKED AND ONE BIN WIDTH IS 6.2 NM, SO A SINGLE WIDTH HOLDS NO DATA AND TWO FAIL THE
 # SIGNAL-TO-NOISE LIMIT. THREE (18.6 NM) PASS, AND THE CENTRE MOVES BY ABOUT 0.05 ARCSEC BETWEEN 15 AND 60 NM
@@ -263,6 +265,7 @@ ANCHOR_NOTES = {
     ANCHOR_CURVE: "",
     ANCHOR_PROFILE: ", anchor from the edge profile",
     ANCHOR_FALLBACK: ", edge profile fit failed so the anchor is the curve estimate",
+    ANCHOR_UNUSABLE: ", anchor unusable so no bin was tried",
 }
 
 
@@ -414,17 +417,20 @@ def _transfer_one_order(
 ):
     """*the rows, the replacement values (None when no bin was kept) and the report for one faint order*"""
     rows = table.loc[table["order"] == order]
-    slitArcsec, sigmaArcsec, edgeNm, source = _anchor_slit_arcsec(
-        table,
-        order,
-        anchorOrder,
-        isAnchorFaint=isAnchorFaint,
-        image=image,
-        pixelsAt=pixelsAt,
-        slitOffsets=slitOffsets,
-        settings=settings,
-        axisA=axisA,
-    )
+    try:
+        slitArcsec, sigmaArcsec, edgeNm, source = _anchor_slit_arcsec(
+            table,
+            order,
+            anchorOrder,
+            isAnchorFaint=isAnchorFaint,
+            image=image,
+            pixelsAt=pixelsAt,
+            slitOffsets=slitOffsets,
+            settings=settings,
+            axisA=axisA,
+        )
+    except ValueError:
+        return rows.index, None, transfer_report(order, anchorOrder, 0, 0, 0, np.nan, ANCHOR_UNUSABLE)
     geometry = bin_geometry(
         order, slitArcsec, sigmaArcsec, search_window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr
     )
