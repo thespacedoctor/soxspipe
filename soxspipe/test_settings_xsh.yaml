@@ -169,8 +169,8 @@ soxs-stare:
             aggressive_object_masking: False
             # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
             object_wing_correction: True
-            # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS FRACTION OF THE SKY LEVEL
-            object_wing_gate_fraction: 0.1
+            # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL (DY-1964)
+            object_wing_min_leak_sigma: 0.03
             bspline_order: 3
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
             starting_points_per_knot: 500

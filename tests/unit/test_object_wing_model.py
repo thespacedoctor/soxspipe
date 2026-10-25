@@ -10,7 +10,7 @@ import pytest
 from soxspipe.commonutils.object_wing_model import (
     core_spectrum,
     estimate_object_wings,
-    faint_end_zero_point,
+    far_slit_zero_point,
     profile_peak,
     profile_sources,
     slit_profile,
@@ -177,46 +177,52 @@ def test_slit_profile_skips_pixels_where_the_core_spectrum_is_not_positive():
 NAN = float("nan")
 
 
-def test_faint_end_zero_point_is_lowest_mean_over_one_arcsec_of_bins():
+def test_far_slit_zero_point_is_the_mean_profile_beyond_three_arcsec_from_the_centre():
     # ARRANGE
-    profile = np.array([0.5, 0.3, 0.1, -0.1, -0.1, -0.1, -0.1, 0.0, 0.2, 0.6])
+    binCentres = BIN_ARCSEC * np.arange(-24, 25)
+    profile = np.where(np.abs(binCentres - 0.5) > 3.0, -0.01, 1.0)
+    profile[binCentres < -4.0] = -0.03
     profileNoise = np.full(profile.shape, 0.02)
-    binCentres = BIN_ARCSEC * np.arange(profile.size)
+    isFar = np.abs(binCentres - 0.5) > 3.0
 
     # ACT
-    zeroPoint, zeroNoise, runCentre = faint_end_zero_point(binCentres, profile, profileNoise)
+    zeroPoint, zeroNoise = far_slit_zero_point(binCentres, profile, profileNoise, 0.5)
 
     # ASSERT
-    assert zeroPoint == pytest.approx(-0.1)
-    assert zeroNoise == pytest.approx(np.sqrt(4) * 0.02 / 4)
-    assert runCentre == pytest.approx(binCentres[3:7].mean())
+    # 8 BINS FROM -6.00 TO -4.25 AT -0.03, 6 MORE LEFT BINS DOWN TO -2.75 AND 10 RIGHT BINS FROM 3.75 AT -0.01
+    assert isFar.sum() == 24
+    assert zeroPoint == pytest.approx((8 * -0.03 + 16 * -0.01) / 24)
+    assert zeroNoise == pytest.approx(np.sqrt(24) * 0.02 / 24)
 
 
-def test_faint_end_zero_point_skips_runs_that_contain_a_nan_bin():
+def test_far_slit_zero_point_skips_bins_that_are_not_finite():
     # ARRANGE
-    profile = np.array([5.0, -1.0, -1.0, NAN, -1.0, -1.0, 5.0, 0.1, 0.1, 0.1, 0.1, 0.2])
+    binCentres = BIN_ARCSEC * np.arange(-24, 25)
+    profile = np.where(np.abs(binCentres) > 3.0, -0.01, 1.0)
+    profile[0] = NAN
     profileNoise = np.full(profile.shape, 0.02)
-    binCentres = BIN_ARCSEC * np.arange(profile.size)
 
     # ACT
-    zeroPoint, _, runCentre = faint_end_zero_point(binCentres, profile, profileNoise)
+    zeroPoint, _ = far_slit_zero_point(binCentres, profile, profileNoise, 0.0)
 
     # ASSERT
-    assert zeroPoint == pytest.approx(0.1)
-    assert runCentre == pytest.approx(binCentres[7:11].mean())
+    assert zeroPoint == pytest.approx(-0.01)
 
 
-def test_faint_end_zero_point_is_nan_without_a_complete_run_of_finite_bins():
+def test_far_slit_zero_point_is_nan_with_fewer_than_one_arcsec_of_far_bins():
     # ARRANGE
-    profile = np.array([-1.0, -1.0, -1.0, NAN, -1.0, -1.0, -1.0, NAN, -1.0])
+    binCentres = BIN_ARCSEC * np.arange(16)
+    profile = np.full(binCentres.shape, -0.01)
     profileNoise = np.full(profile.shape, 0.02)
-    binCentres = BIN_ARCSEC * np.arange(profile.size)
 
     # ACT
-    zeroPoint, zeroNoise, runCentre = faint_end_zero_point(binCentres, profile, profileNoise)
+    zeroPoint, zeroNoise = far_slit_zero_point(binCentres, profile, profileNoise, 0.0)
 
     # ASSERT
-    assert np.isnan([zeroPoint, zeroNoise, runCentre]).all()
+    # ONLY THE BINS AT 3.25, 3.50 AND 3.75 ARE MORE THAN 3 ARCSEC FROM THE CENTRE
+    assert np.count_nonzero(np.abs(binCentres) > 3.0) == 3
+    assert np.isnan(zeroPoint)
+    assert np.isnan(zeroNoise)
 
 
 N_ROWS = 2000
@@ -230,9 +236,12 @@ MOFFAT_FWHM = 1.0
 MOFFAT_ALPHA = MOFFAT_FWHM / (2.0 * np.sqrt(2.0 ** (1.0 / MOFFAT_BETA) - 1.0))
 WING_SCALE_ARCSEC = 3.0
 UNMASKED_EDGE_ARCSEC = 2.5
+# THE ESTIMATE TAKES THE PROFILE BINS CENTRED MORE THAN 3 ARCSEC FROM THE OBJECT AS SKY (FAR_SLIT_ARCSEC). THE OBJECT
+# CENTRE IS ITSELF A BIN CENTRE, SO THE NEAREST FAR BIN STARTS HALF A BIN FURTHER OUT
+FAR_ARCSEC = 3.0 + BIN_ARCSEC / 2
 SKY_LEVEL = 50.0
 BRIGHT_PEAK = 1.0e5
-GATE_FRACTION = 0.02
+MIN_LEAK_SIGMA = 0.03
 
 
 def _object_spectrum(wavelength, peak):
@@ -261,12 +270,14 @@ class synthetic_order:
     profile: np.ndarray
     unmaskedLevel: float
     injectedBias: float
+    farLevel: float
+    visibleBias: float
 
-    def estimate(self, isUsable=None, gateFraction=GATE_FRACTION):
+    def estimate(self, isUsable=None, minLeakSigma=MIN_LEAK_SIGMA):
         """Run the estimate on this order, optionally with another usable mask."""
         isUsable = self.isUsable if isUsable is None else isUsable
         return estimate_object_wings(
-            self.wavelength, self.slitPosition, self.flux, self.skyModel, self.error, isUsable, gateFraction
+            self.wavelength, self.slitPosition, self.flux, self.skyModel, self.error, isUsable, minLeakSigma
         )
 
 
@@ -275,6 +286,10 @@ def _build_order(peak=BRIGHT_PEAK, biasFraction=1.0, extraNoise=0.0, columnStep=
 
     The sky model is the sky plus ``biasFraction`` times the object spectrum times the true mean profile level
     outside +-2.5 arcsec, which is what a sky fit without an object mask would absorb.
+
+    The estimate takes the profile more than 3 arcsec from the object as sky, so the object light out there is
+    invisible to it. ``farLevel`` is the true mean profile there, and ``visibleBias`` is the injected bias less that
+    light: the bias the estimate should find.
     """
     rng = np.random.default_rng(seed)
     columns = np.arange(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH + columnStep / 2, columnStep)
@@ -285,6 +300,7 @@ def _build_order(peak=BRIGHT_PEAK, biasFraction=1.0, extraNoise=0.0, columnStep=
     spectrum = _object_spectrum(wavelength, peak)
     profile = _object_profile(slitPosition, wingAmplitude)
     unmaskedLevel = profile[np.abs(slitPosition) > UNMASKED_EDGE_ARCSEC].mean()
+    farLevel = profile[np.abs(slitPosition) > FAR_ARCSEC].mean()
     objectLight = spectrum * profile
     sigma = np.sqrt(np.maximum(SKY_LEVEL + objectLight, 1.0) + extraNoise**2)
     flux = SKY_LEVEL + objectLight + rng.normal(0.0, 1.0, wavelength.size) * sigma
@@ -301,10 +317,12 @@ def _build_order(peak=BRIGHT_PEAK, biasFraction=1.0, extraNoise=0.0, columnStep=
         profile[shuffle],
         float(unmaskedLevel),
         float(biasFraction * unmaskedLevel * np.median(spectrum)),
+        float(farLevel),
+        float((biasFraction * unmaskedLevel - farLevel) * np.median(spectrum)),
     )
 
 
-def test_estimate_recovers_the_injected_bias_of_a_bright_star():
+def test_estimate_recovers_the_injected_bias_of_a_bright_star_less_its_light_beyond_three_arcsec():
     # ARRANGE
     order = _build_order()
 
@@ -314,19 +332,17 @@ def test_estimate_recovers_the_injected_bias_of_a_bright_star():
     # ASSERT
     assert estimate.isCorrected, estimate.reason
     assert estimate.reason == ""
-    assert estimate.biasLevel == pytest.approx(order.injectedBias, rel=0.05)
+    assert estimate.biasLevel == pytest.approx(order.visibleBias, rel=0.05)
+    # THE MOFFAT WINGS PUT ABOUT A QUARTER OF THE INJECTED BIAS BEYOND 3 ARCSEC, WHERE THE ESTIMATE CANNOT SEE IT
+    assert order.visibleBias < 0.85 * order.injectedBias
     assert estimate.centre == pytest.approx(0.0, abs=BIN_ARCSEC)
 
 
-FAINT_END_ARCSEC = 4.6
-
-
-def test_wing_model_matches_the_injected_wings_above_the_faint_end():
+def test_wing_model_matches_the_injected_wings_above_the_far_slit_level():
     # ARRANGE
     order = _build_order()
     estimate = order.estimate()
-    faintLevel = order.profile[np.abs(order.slitPosition) > FAINT_END_ARCSEC].mean()
-    truth = order.spectrum * (order.profile - faintLevel)
+    truth = order.spectrum * (order.profile - order.farLevel)
     isWing = (np.abs(order.slitPosition) > 2.0) & (np.abs(order.slitPosition) < 3.5)
     isOuter = np.abs(order.slitPosition) > 1.5
 
@@ -349,7 +365,7 @@ def _bin_of_each_pixel(order, estimate):
     return np.clip(np.rint(steps).astype(int), 0, len(estimate.binCentres) - 1)
 
 
-def test_asymmetric_wings_put_the_zero_point_on_the_faint_side_and_the_profile_follows_them():
+def test_one_sided_wing_light_beyond_three_arcsec_is_taken_as_sky_and_the_profile_follows_the_wings():
     # ARRANGE
     order = _build_order(wingAmplitude=WING_AMPLITUDE)
 
@@ -358,13 +374,15 @@ def test_asymmetric_wings_put_the_zero_point_on_the_faint_side_and_the_profile_f
 
     # ASSERT
     assert estimate.isCorrected, estimate.reason
-    assert estimate.biasLevel == pytest.approx(order.injectedBias, rel=0.05)
-    _, _, runCentre = faint_end_zero_point(estimate.binCentres, estimate.profile, np.zeros(estimate.profile.shape))
-    assert runCentre < -FAINT_END_ARCSEC
     binIndex = _bin_of_each_pixel(order, estimate)
     binMean = np.bincount(binIndex, weights=order.profile) / np.bincount(binIndex)
-    faintLevel = order.profile[order.slitPosition < -FAINT_END_ARCSEC].mean()
-    truth = order.spectrum * (binMean[binIndex] - faintLevel)
+    # A ONE-SIDED WING MAKES THE FAR LEVEL DEPEND ON HOW MANY FAR BINS EACH SIDE HAS, SO IT IS TAKEN FROM THE BINS
+    farLevel = binMean[np.abs(estimate.binCentres - estimate.centre) > 3.0].mean()
+    # THE FAR SLIT ON THE WING SIDE HOLDS OBJECT LIGHT, SO THE ESTIMATE FINDS LESS THAN THE INJECTED BIAS (DY-1964)
+    expectedBias = (order.unmaskedLevel - farLevel) * np.median(order.spectrum)
+    assert estimate.biasLevel == pytest.approx(expectedBias, rel=0.05)
+    assert expectedBias < 0.5 * order.injectedBias
+    truth = order.spectrum * (binMean[binIndex] - farLevel)
     wings = wing_model(estimate, estimate.binCentres[binIndex])
     isWing = (truth > 20.0) & (np.abs(order.slitPosition) > 1.0)
     assert np.count_nonzero(isWing & (order.slitPosition > 0)) > 0
@@ -384,16 +402,35 @@ def _bin_index_of(order):
     return np.floor((order.slitPosition - order.slitPosition.min()) / BIN_ARCSEC + 0.5).astype(int)
 
 
-def test_sky_dominated_faint_star_is_not_corrected_and_the_reason_names_the_gate_fraction():
+TINY_LEAK_PEAK = 2000.0
+FEW_PERCENT_LEAK_PEAK = 4.0e4
+
+
+def test_leak_small_against_the_noise_of_a_faint_sky_pixel_is_not_corrected():
     # ARRANGE
-    order = _build_order(peak=FAINT_PEAK)
+    order = _build_order(peak=TINY_LEAK_PEAK)
 
     # ACT
     estimate = order.estimate()
 
     # ASSERT
     assert not estimate.isCorrected
-    assert "gate fraction" in estimate.reason
+    assert "noise of a faint-sky pixel" in estimate.reason
+    assert estimate.biasLevel < MIN_LEAK_SIGMA * np.median(order.error)
+
+
+def test_leak_of_a_few_percent_of_the_sky_is_corrected_when_it_stands_above_the_faint_sky_noise():
+    # ARRANGE
+    order = _build_order(peak=FEW_PERCENT_LEAK_PEAK)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    # DY-1964: NIR ORDERS 18-23 LEAKED 4-7 PERCENT OF THE SKY AND THE OLD 10 PERCENT GATE SKIPPED THEM
+    assert estimate.isCorrected, estimate.reason
+    assert estimate.biasLevel < 0.07 * estimate.skyLevel
+    assert estimate.biasLevel == pytest.approx(order.visibleBias, rel=0.1)
 
 
 def test_large_but_noisy_bias_is_not_corrected_and_the_reason_names_the_significance():
@@ -401,12 +438,12 @@ def test_large_but_noisy_bias_is_not_corrected_and_the_reason_names_the_signific
     order = _build_order(extraNoise=NOISY_EXTRA_SIGMA)
 
     # ACT
-    estimate = order.estimate()
+    # THE BIAS IS ALSO FAR BELOW THE NOISE OF ONE PIXEL, SO THAT GATE IS OPENED TO REACH THE SIGNIFICANCE TEST
+    estimate = order.estimate(minLeakSigma=0.0)
 
     # ASSERT
     assert not estimate.isCorrected
     assert "significance" in estimate.reason
-    assert estimate.biasLevel > GATE_FRACTION * estimate.skyLevel
 
 
 def test_sky_model_without_object_light_is_not_corrected():
@@ -433,20 +470,92 @@ def test_an_empty_profile_bin_does_not_stop_the_zero_point_being_found_elsewhere
     # ASSERT
     assert np.isnan(estimate.profile[2])
     assert estimate.isCorrected, estimate.reason
-    assert estimate.biasLevel == pytest.approx(order.injectedBias, rel=0.05)
+    assert estimate.biasLevel == pytest.approx(order.visibleBias, rel=0.05)
 
 
-def test_slit_without_a_complete_run_of_finite_bins_is_not_corrected():
+def test_slit_with_too_little_profile_far_from_the_object_is_not_corrected():
     # ARRANGE
     order = _build_order()
-    isUsable = _bin_index_of(order) % 4 != 2
+    isUsable = np.abs(order.slitPosition) < 3.2
 
     # ACT
     estimate = order.estimate(isUsable)
 
     # ASSERT
     assert not estimate.isCorrected
-    assert "run" in estimate.reason
+    assert "arcsec from the object" in estimate.reason
+
+
+SKY_LINE_PEAK = 2000.0
+SKY_LINE_SHARE = 0.2
+DIM_END_ARCSEC = -4.5
+DIM_END_DEFICIT = 0.03
+
+
+def _with_sky_lines_and_a_dim_slit_end(order, seed=11):
+    """Return the order with bright sky lines on a share of the wavelengths and one slit end that is a little dim.
+
+    The dim end lacks ``DIM_END_DEFICIT`` of the sky beyond ``DIM_END_ARCSEC``, as an illumination error would, so its
+    residual scales with the sky, not with the object. The sky model holds the lines but not the dim end.
+    """
+    rng = np.random.default_rng(seed)
+    isLine = (np.sin(order.wavelength * 7.0) > np.cos(np.pi * SKY_LINE_SHARE)).astype(float)
+    sky = SKY_LEVEL + SKY_LINE_PEAK * isLine
+    isDim = order.slitPosition < DIM_END_ARCSEC
+    objectLight = order.spectrum * order.profile
+    sigma = np.sqrt(np.maximum(sky + objectLight, 1.0))
+    flux = sky * (1.0 - DIM_END_DEFICIT * isDim) + objectLight + rng.normal(0.0, 1.0, sigma.size) * sigma
+    skyModel = order.skyModel + SKY_LINE_PEAK * isLine
+    return replace(order, flux=flux, skyModel=skyModel, error=sigma)
+
+
+def test_a_dim_slit_end_under_bright_sky_lines_does_not_inflate_the_bias():
+    # ARRANGE
+    order = _with_sky_lines_and_a_dim_slit_end(_build_order())
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    # THE FAR BINS AVERAGE THE DIM END WITH THE REST OF THE FAR SLIT, AND ITS SKY-LINE PIXELS ARE LEFT OUT
+    assert estimate.biasLevel == pytest.approx(order.visibleBias, rel=0.1)
+
+
+def test_a_first_fit_that_used_only_bright_sky_pixels_is_not_corrected():
+    # ARRANGE
+    order = _with_sky_lines_and_a_dim_slit_end(_build_order())
+    isFitted = order.skyModel > np.median(order.skyModel)
+
+    # ACT
+    estimate = estimate_object_wings(
+        order.wavelength,
+        order.slitPosition,
+        order.flux,
+        order.skyModel,
+        order.error,
+        order.isUsable,
+        MIN_LEAK_SIGMA,
+        isFitted=isFitted,
+    )
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert "faint sky" in estimate.reason
+
+
+def test_faint_sky_noise_comes_from_the_far_slit_not_the_object_core():
+    # ARRANGE
+    order = _build_order()
+    farNoise = np.median(order.error[np.abs(order.slitPosition) > FAR_ARCSEC])
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    # THE BRIGHT CORE PIXELS WOULD RAISE THE MEDIAN ERROR BY ABOUT 20 PERCENT AND MAKE THE LEAK GATE STRICTER
+    assert np.median(order.error) > 1.1 * farNoise
+    assert estimate.faintSkyNoise == pytest.approx(farNoise, rel=0.02)
 
 
 def test_half_as_many_slit_columns_still_give_a_finite_profile_and_the_bias():
@@ -459,7 +568,7 @@ def test_half_as_many_slit_columns_still_give_a_finite_profile_and_the_bias():
     # ASSERT
     assert estimate.isCorrected, estimate.reason
     assert np.isfinite(estimate.profile).all()
-    assert estimate.biasLevel == pytest.approx(order.injectedBias, rel=0.05)
+    assert estimate.biasLevel == pytest.approx(order.visibleBias, rel=0.05)
 
 
 def test_slit_loss_fraction_is_the_share_of_the_object_light_the_sky_fit_removes():
@@ -467,7 +576,7 @@ def test_slit_loss_fraction_is_the_share_of_the_object_light_the_sky_fit_removes
     order = _build_order()
     binCentres = np.arange(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH + BIN_ARCSEC / 2, BIN_ARCSEC)
     binLight = _object_profile(binCentres, 0.0)
-    expected = len(binCentres) * order.unmaskedLevel / binLight.sum()
+    expected = len(binCentres) * (order.unmaskedLevel - order.farLevel) / (binLight - order.farLevel).sum()
 
     # ACT
     estimate = order.estimate()
@@ -514,7 +623,7 @@ def test_estimate_rejects_arrays_of_different_shapes():
             order.skyModel,
             order.error,
             order.isUsable,
-            GATE_FRACTION,
+            MIN_LEAK_SIGMA,
         )
 
 
@@ -539,7 +648,7 @@ def test_wing_model_never_returns_a_value_that_is_not_finite():
     wavelength[0] = np.nan
     isUsable = np.isfinite(wavelength)
     estimate = estimate_object_wings(
-        wavelength, order.slitPosition, order.flux, order.skyModel, order.error, isUsable, GATE_FRACTION
+        wavelength, order.slitPosition, order.flux, order.skyModel, order.error, isUsable, MIN_LEAK_SIGMA
     )
 
     # ACT
@@ -586,17 +695,6 @@ def test_core_spectrum_is_nan_when_no_pixel_is_near_the_centre():
     assert np.isnan(spectrum).all()
 
 
-def test_faint_end_zero_point_is_nan_for_a_profile_shorter_than_one_run():
-    # ARRANGE
-    profile = np.array([-0.1, -0.1, -0.1])
-
-    # ACT
-    zeroPoint, _, _ = faint_end_zero_point(BIN_ARCSEC * np.arange(3), profile, np.full(3, 0.02))
-
-    # ASSERT
-    assert np.isnan(zeroPoint)
-
-
 def test_estimate_reports_that_no_slit_bin_has_enough_usable_pixels():
     # ARRANGE
     order = _build_order(peak=FAINT_PEAK)
@@ -638,10 +736,14 @@ def _upper_clipped_first_fit(order):
 
 
 def _estimate_with(order, skyModel, isFitted=None):
-    """Run the estimate on the order against a given sky model, optionally with the mask of the fitted pixels."""
+    """Run the estimate on the order against a given sky model, optionally with the mask of the fitted pixels.
+
+    The leak gate is open: the one-sided wing leaves a bias well below the noise of one pixel, and these tests are
+    about which pixels build the profile, not about the gate.
+    """
     kwargs = {} if isFitted is None else {"isFitted": isFitted}
     return estimate_object_wings(
-        order.wavelength, order.slitPosition, order.flux, skyModel, order.error, order.isUsable, GATE_FRACTION, **kwargs
+        order.wavelength, order.slitPosition, order.flux, skyModel, order.error, order.isUsable, 0.0, **kwargs
     )
 
 
@@ -657,10 +759,14 @@ def test_profile_from_the_fitted_pixels_does_not_overstate_the_wings_an_upper_cl
     fittedWings = wing_model(fittedEstimate, order.slitPosition)
 
     # ASSERT
-    # A REFIT OF THE SAME PIXELS SHOULD FIND NO OBJECT LIGHT LEFT, AND NOT A DEFICIT
+    # THE FITTED-PIXEL PROFILE REMOVES PART OF THE OBJECT LIGHT AND NEVER MORE THAN THE FIT SAW, SO NO DEFICIT IS LEFT.
+    # THE REST IS THE WING LIGHT BEYOND 3 ARCSEC, WHICH THE ESTIMATE TAKES AS SKY (DY-1964). THE ALL-PIXEL PROFILE
+    # COUNTS THE CLIPPED WING PIXELS BEYOND 3 ARCSEC IN ITS ZERO POINT AND REMOVES NOTHING
     assert fittedEstimate.isCorrected, fittedEstimate.reason
-    assert _object_share(order, isFitted, order.flux - allPixelWings) < -0.2 * share
-    assert abs(_object_share(order, isFitted, order.flux - fittedWings)) < 0.1 * share
+    fittedLeft = _object_share(order, isFitted, order.flux - fittedWings)
+    allPixelLeft = _object_share(order, isFitted, order.flux - allPixelWings)
+    assert 0.0 <= fittedLeft < 0.9 * share
+    assert allPixelLeft == pytest.approx(share)
 
 
 def test_slit_loss_fraction_still_counts_the_object_core_when_the_fit_did_not_use_it():
@@ -669,7 +775,7 @@ def test_slit_loss_fraction_still_counts_the_object_core_when_the_fit_did_not_us
     isFitted = np.abs(order.slitPosition) > OBJECT_MASK_ARCSEC
     binCentres = np.arange(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH + BIN_ARCSEC / 2, BIN_ARCSEC)
     binLight = _object_profile(binCentres, 0.0)
-    expected = len(binCentres) * order.unmaskedLevel / binLight.sum()
+    expected = len(binCentres) * (order.unmaskedLevel - order.farLevel) / (binLight - order.farLevel).sum()
 
     # ACT
     estimate = _estimate_with(order, order.skyModel, isFitted)
@@ -691,6 +797,9 @@ def test_estimate_without_any_pixel_the_first_fit_used_is_not_corrected():
 
 
 COMPANION_OFFSET_ARCSEC = 3.0
+# THE COMPANION'S OWN LIGHT FILLS THE FAR SLIT, SO A CROWDED ORDER ONLY REACHES THE CROWDING TEST WHEN ITS SKY MODEL
+# HOLDS EVEN MORE OBJECT LIGHT THAN THAT (DY-1964)
+CROWDED_BIAS_FRACTION = 2000.0
 
 
 def _source_profile(binCentres, sources, noise=0.001, seed=3):
@@ -794,7 +903,7 @@ def _with_companion(order, fraction):
 
 def test_bright_star_with_a_companion_on_the_slit_is_not_corrected_and_the_reason_names_the_sources():
     # ARRANGE
-    order = _with_companion(_build_order(), 0.5)
+    order = _with_companion(_build_order(biasFraction=CROWDED_BIAS_FRACTION), 0.5)
 
     # ACT
     estimate = order.estimate()
@@ -822,15 +931,15 @@ def test_corrected_bright_star_reports_its_one_source():
 
 def test_crowded_slit_that_another_gate_already_stops_is_not_flagged_as_crowded():
     # ARRANGE
-    order = _with_companion(_build_order(), 0.5)
+    order = _with_companion(_build_order(biasFraction=CROWDED_BIAS_FRACTION), 0.5)
 
     # ACT
-    estimate = order.estimate(gateFraction=1.0e6)
+    estimate = order.estimate(minLeakSigma=1.0e6)
 
     # ASSERT
     assert not estimate.isCorrected
     assert not estimate.isCrowdedSlit
-    assert "gate fraction" in estimate.reason
+    assert "noise of a faint-sky pixel" in estimate.reason
     assert len(estimate.sourceCentres) == 2
 
 

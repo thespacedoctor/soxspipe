@@ -38,6 +38,16 @@ runs (39680454564, 39680459968, 39680464192, 39680468399, 39680472907 and 396804
 after DY-1674, DY-1675, DY-1679, DY-1680 and DY-1684 changed the standard-star
 responses. The VIS median fell 0.42% (DY-1684) and the NIR median rose 0.12% (DY-1690,
 DY-1691).
+
+The three VIS sky levels were re-recorded on 2026-10-25 from two bit-identical CI runs
+(40228813366 and 40230557587), after the object-wing correction stopped over-correcting
+(DY-1964). Its old zero point, the faintest 1 arcsec of the profile, took far more
+object light out of this frame's sky model than it held: the far slit sat 1 to 3 sigma
+above zero. The sky counts median rose from 6.35 to 23.88, the sky model median from
+9.06 to 43.20 and the p90 from 93.79 to 274.43. A local run with the correction off
+gives 37.16 sky counts, so most of the 85% fall recorded for DY-1279 was over-correction.
+The VIS fluxcal median fell 0.72% and the SNR median 0.7%, inside their bands, and were
+left as they are. The NIR values moved inside their bands.
 """
 
 from __future__ import annotations
@@ -99,9 +109,9 @@ BASELINES = [
             waveStep=0.02,
             snrMedian=156.8,
             fluxcalMedian=6.078459105261144e-14,
-            skyCountsMedian=6.347151279449463,
-            skyModelMedian=9.057429313659668,
-            skyModelP90=93.78917541503911,
+            skyCountsMedian=23.88184356689453,
+            skyModelMedian=43.19798278808594,
+            skyModelP90=274.4321044921875,
             detectedFraction=0.931,
             objtraceStem="20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_FEIGE110",
         ),

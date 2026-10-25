@@ -40,9 +40,8 @@ SEEING_FWHM = 1.0
 BRIGHT_STAR_FLUX_PER_COLUMN = 10000.0
 # A STAR AS BRIGHT AS THE SPECTROPHOTOMETRIC STANDARDS THE CORRECTION IS MEANT FOR
 STANDARD_STAR_FLUX_PER_COLUMN = 100000.0
-# A STAR WHOSE WINGS PUT ABOUT A QUARTER OF THE SKY LEVEL INTO THE FIRST MODEL, ABOVE THE SHIPPED GATE. THE STANDARD
-# STAR ABOVE PUTS ABOUT 8 PERCENT, AND THE REAL VIS STANDARDS 9 TO 290 PERCENT
-GATE_PASSING_STAR_FLUX_PER_COLUMN = 1000000.0
+# A STAR WHOSE WINGS LEAK FAR LESS THAN THE NOISE OF ONE SKY PIXEL INTO THE FIRST MODEL, BELOW THE SHIPPED GATE
+FAINT_STAR_FLUX_PER_COLUMN = 300.0
 # THE SYNTHETIC MOFFAT IS ABOUT 15 TIMES BRIGHTER AT 1 TO 1.5 ARCSEC FROM THE CENTRE THAN BEYOND 3 ARCSEC; WINGS PUT ON
 # THE WRONG ROWS ARE FLAT ALONG THE SLIT
 NEAR_TO_FAR_WING_RATIO = 5.0
@@ -81,7 +80,7 @@ def _bare_subtractor(log: Any, **overrides: Any) -> subtract_sky:
     subtractor.axisB = "y"
     subtractor.ron = READ_NOISE
     subtractor.recipeSettings = {
-        "sky-subtraction": _sky_settings(**{"object_wing_gate_fraction": OPEN_GATE, **overrides})
+        "sky-subtraction": _sky_settings(**{"object_wing_min_leak_sigma": OPEN_GATE, **overrides})
     }
     subtractor.bspline_order = subtractor.recipeSettings["sky-subtraction"]["bspline_order"]
     subtractor.qcPlotOrder = -1
@@ -150,9 +149,9 @@ def _object_flux_fraction_in_model(modelled: pd.DataFrame) -> float:
 def test_a_standard_star_puts_under_a_tenth_of_a_percent_of_its_flux_into_the_sky_model(
     log: Any, seed: int, isShippedGate: bool
 ) -> None:
-    gateFraction = _sky_settings()["object_wing_gate_fraction"] if isShippedGate else OPEN_GATE
+    minLeakSigma = _sky_settings()["object_wing_min_leak_sigma"] if isShippedGate else OPEN_GATE
     modelled = _modelled(
-        _bare_subtractor(log, object_wing_gate_fraction=gateFraction),
+        _bare_subtractor(log, object_wing_min_leak_sigma=minLeakSigma),
         _order(STAR_ORDER, STANDARD_STAR_FLUX_PER_COLUMN, seed=seed),
     )
 
@@ -261,18 +260,19 @@ def test_a_crowded_slit_is_not_corrected_and_the_skip_is_logged_with_its_reason(
     assert any(f"ORDER {STAR_ORDER}" in message and "2 SOURCES" in message for message in printed)
 
 
-def test_at_the_shipped_gate_a_very_bright_star_is_corrected_and_a_fainter_star_is_not(log: Any) -> None:
-    shippedGate = _sky_settings()["object_wing_gate_fraction"]
-    standard = _modelled(
-        _bare_subtractor(log, object_wing_gate_fraction=shippedGate),
-        _order(STAR_ORDER, GATE_PASSING_STAR_FLUX_PER_COLUMN),
+def test_at_the_shipped_gate_a_leak_of_a_few_percent_of_the_sky_is_corrected_and_a_faint_star_is_not(log: Any) -> None:
+    # DY-1964: THE OLD GATE AT 10 PERCENT OF THE SKY SKIPPED THE BRIGHT STAR, WHOSE LEAK IS ABOUT 3 PERCENT OF THE SKY
+    # BUT A TENTH OF THE NOISE OF A SKY PIXEL
+    shippedGate = _sky_settings()["object_wing_min_leak_sigma"]
+    bright = _modelled(
+        _bare_subtractor(log, object_wing_min_leak_sigma=shippedGate), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
     )
-    fainter = _modelled(
-        _bare_subtractor(log, object_wing_gate_fraction=shippedGate), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    faint = _modelled(
+        _bare_subtractor(log, object_wing_min_leak_sigma=shippedGate), _order(STAR_ORDER, FAINT_STAR_FLUX_PER_COLUMN)
     )
 
-    assert "object_wing_model" in standard
-    assert "object_wing_model" not in fainter
+    assert "object_wing_model" in bright
+    assert "object_wing_model" not in faint
 
 
 def test_the_corrected_order_keeps_its_real_flux_and_subtracts_the_refitted_sky(log: Any) -> None:
@@ -297,16 +297,23 @@ def test_a_sky_only_order_is_left_exactly_as_without_the_correction(log: Any) ->
 def test_settings_without_the_object_wing_keys_use_the_shipped_defaults(log: Any) -> None:
     subtractor = _bare_subtractor(log)
     del subtractor.recipeSettings["sky-subtraction"]["object_wing_correction"]
-    del subtractor.recipeSettings["sky-subtraction"]["object_wing_gate_fraction"]
+    del subtractor.recipeSettings["sky-subtraction"]["object_wing_min_leak_sigma"]
 
-    assert subtractor._object_wing_settings() == (True, 0.1)
+    assert subtractor._object_wing_settings() == (True, 0.03)
 
 
-@pytest.mark.parametrize("gateFraction", [-0.1, float("nan"), float("inf")])
-def test_an_invalid_gate_fraction_raises(log: Any, gateFraction: float) -> None:
-    subtractor = _bare_subtractor(log, object_wing_gate_fraction=gateFraction)
+def test_an_old_workspace_gate_fraction_is_ignored(log: Any) -> None:
+    subtractor = _bare_subtractor(log, object_wing_gate_fraction=0.1)
+    del subtractor.recipeSettings["sky-subtraction"]["object_wing_min_leak_sigma"]
 
-    with pytest.raises(ValueError, match="object_wing_gate_fraction"):
+    assert subtractor._object_wing_settings() == (True, 0.03)
+
+
+@pytest.mark.parametrize("minLeakSigma", [-0.1, float("nan"), float("inf")])
+def test_an_invalid_min_leak_sigma_raises(log: Any, minLeakSigma: float) -> None:
+    subtractor = _bare_subtractor(log, object_wing_min_leak_sigma=minLeakSigma)
+
+    with pytest.raises(ValueError, match="object_wing_min_leak_sigma"):
         subtractor._object_wing_settings()
 
 
@@ -355,7 +362,7 @@ def _subtract(log: Any, map_table: pd.DataFrame, **overrides: Any) -> tuple[CCDD
     subtractor = subtract_sky(
         log=log,
         settings={"instrument": "soxs"},
-        recipeSettings={"sky-subtraction": _sky_settings(**{"object_wing_gate_fraction": OPEN_GATE, **overrides})},
+        recipeSettings={"sky-subtraction": _sky_settings(**{"object_wing_min_leak_sigma": OPEN_GATE, **overrides})},
         objectFrame=_object_frame(map_table),
         twoDMap="two-d-map.fits",
         qcTable=pd.DataFrame(),
