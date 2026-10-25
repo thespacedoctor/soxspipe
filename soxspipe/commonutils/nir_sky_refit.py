@@ -54,6 +54,8 @@ TIGHT_TOLERANCE_ARC_RMS = 2.5
 MAX_TIGHT_TOLERANCE_NM = 0.1
 
 MAX_CLIP_ITERATIONS = 10
+# THE FIRST MATCH USES THE RIGID SEED, THE LATER ONES THE PREVIOUS FIT
+MATCH_ITERATIONS = 3
 # THE FLOOR OF THE ROBUST SCATTER (px), SO A NOISE-FREE FIT DOES NOT CLIP ITS OWN ROUNDING ERROR
 MIN_CLIP_SCALE_PX = 0.02
 # MEDIAN ABSOLUTE DEVIATION TO STANDARD DEVIATION, FOR NORMAL SCATTER
@@ -549,3 +551,72 @@ def apply_sky_corrections(extractedOrdersDF, corrections) -> pd.DataFrame:
             scales = pd.to_numeric(shifted.loc[rows, "pixelScaleNm"], errors="coerce").to_numpy(dtype=float)
         shifted.loc[rows, "wavelengthMean"] = wavelengths + correction.correction_nm(wavelengths, scales)
     return shifted
+
+
+@dataclass(frozen=True)
+class nir_order_sky_lines:
+    """*the detected sky-line centres and the catalogue lines of one order, found once for the iterated matching*
+
+    **Key Arguments:**
+
+    - ``order`` -- the order
+    - ``peakNm`` -- the detected line centres (nm) on the arc-solution wavelength scale
+    - ``catalogueNm`` -- the calibration catalogue wavelengths (nm) in the order's range
+    - ``pixelScaleNm`` -- ``pixelScaleNm`` at each detected centre
+    - ``toleranceNm`` -- the match tolerance (nm) of the order
+    """
+
+    order: int
+    peakNm: np.ndarray
+    catalogueNm: np.ndarray
+    pixelScaleNm: np.ndarray
+    toleranceNm: float
+
+
+def _match_order_lines(orderLines, correction) -> pd.DataFrame:
+    """*the lines of one order matched once the peaks are moved by the correction, as rows for ``fit_nir_sky_model``*"""
+    shiftNm = correction.correction_nm(orderLines.peakNm, orderLines.pixelScaleNm)
+    peakIndex, catalogueIndex = match_peaks_to_catalogue(
+        orderLines.peakNm + shiftNm, orderLines.catalogueNm, orderLines.toleranceNm
+    )
+    return pd.DataFrame(
+        {
+            "order": np.full(peakIndex.size, orderLines.order, dtype=int),
+            "catalogueNm": orderLines.catalogueNm[catalogueIndex],
+            "observedNm": orderLines.peakNm[peakIndex],
+            "pixelScaleNm": orderLines.pixelScaleNm[peakIndex],
+        }
+    )
+
+
+def fit_with_iterated_matching(orderLines, geometry, seedPx, settings, iterations=MATCH_ITERATIONS):
+    """*match the sky lines of every order and fit the global model, matching again about each fit*
+
+    The first match moves every peak by the rigid ``seedPx``. Each later match moves them by the previous fit, which
+    brings in the lines of an order whose shape error put them beyond the tolerance of the rigid seed. A fit that
+    falls back at any iteration ends the loop with that fallback.
+
+    **Key Arguments:**
+
+    - ``orderLines`` -- ``{order: nir_order_sky_lines}`` of the orders that may contribute lines
+    - ``geometry`` -- ``{order: order_geometry}`` of every order to correct
+    - ``seedPx`` -- the rigid detector shift (px) of the first match, or *None* when no order could give one
+    - ``settings`` -- the ``sky_tuning_settings``
+    - ``iterations`` -- the number of match-and-fit rounds. Default ``MATCH_ITERATIONS``
+
+    **Return:**
+
+    - ``result`` -- the ``sky_refit_result`` of the last round
+    """
+    if seedPx is None:
+        return _fallback(pd.DataFrame({"order": [], "catalogueNm": [], "observedNm": []}), "no order gave a seed shift")
+    corrections = {o: order_sky_correction(o, float(seedPx), (0.0,), 0.0, 0, geometry[o]) for o in orderLines}
+    result = None
+    for _ in range(iterations):
+        frames = [_match_order_lines(orderLines[o], corrections[o]) for o in orderLines]
+        lines = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=["order"])
+        result = fit_nir_sky_model(lines, geometry, settings)
+        if result.fallbackReason is not None:
+            return result
+        corrections = {o: result.corrections[o] for o in orderLines}
+    return result

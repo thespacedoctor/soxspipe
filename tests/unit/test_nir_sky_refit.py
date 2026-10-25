@@ -16,10 +16,12 @@ from soxspipe.commonutils.nir_sky_refit import (
     SLOPE_SHRINK_LINES,
     apply_sky_corrections,
     fit_nir_sky_model,
+    fit_with_iterated_matching,
     geometry_from_rows,
     global_seed_px,
     match_peaks_to_catalogue,
     match_tolerance_nm,
+    nir_order_sky_lines,
     order_geometry,
     read_sky_tuning_settings,
     sky_tuning_settings,
@@ -499,3 +501,112 @@ def test_seed_skips_orders_without_a_dispersion_or_lines():
 def test_seed_is_none_when_no_order_has_lines():
     # ACT / ASSERT
     assert global_seed_px({11: 0.0}, {11: 0}, {11: 0.05}) is None
+
+
+# ITERATED MATCHING
+
+
+def _order_lines(
+    order: int,
+    perOrder: int = 12,
+    extraSlope: float = 0.0,
+    extraCatalogueOffsetsNm=(),
+    toleranceNm: float = MAX_TIGHT_TOLERANCE_NM,
+) -> nir_order_sky_lines:
+    geometry = _geometry()[order]
+    t = np.linspace(-0.9, 0.9, perOrder)
+    catalogue = geometry.centreNm + t * HALF_RANGE_NM
+    shiftPx = _model_px(order, t, extraSlope)
+    peaks = catalogue + geometry.dispersionNmPerPx * shiftPx
+    extras = np.array([catalogue[3] + offset for offset in extraCatalogueOffsetsNm], dtype=float)
+    return nir_order_sky_lines(
+        order=order,
+        peakNm=peaks,
+        catalogueNm=np.concatenate([catalogue, extras]),
+        pixelScaleNm=np.full(perOrder, PIXEL_SCALE_NM),
+        toleranceNm=toleranceNm,
+    )
+
+
+def _seed_px() -> float:
+    return A0
+
+
+def test_iterated_matching_fits_every_order_from_a_rigid_seed_near_the_truth():
+    # ARRANGE
+    orderLines = {o: _order_lines(o) for o in ORDERS}
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert result.fallbackReason is None
+    assert result.nLines == 12 * len(ORDERS)
+    assert result.rmsPx < 0.01
+    for o in ORDERS:
+        assert result.corrections[o].shiftPx == pytest.approx(_model_px(o, np.array(0.0)), abs=0.02)
+
+
+def test_second_iteration_recovers_lines_a_rigid_seed_misses_on_an_order_with_a_shape_error():
+    # ARRANGE: ORDER 12 DEVIATES BY UP TO 2.2 px AT ITS ENDS, BEYOND THE 1.7 px RIGID-SEED TOLERANCE
+    orderLines = {o: _order_lines(o, perOrder=24) for o in ORDERS if o != 12}
+    orderLines[12] = _order_lines(12, perOrder=24, extraSlope=2.5)
+
+    # ACT
+    rigidOnly = fit_with_iterated_matching(orderLines, _geometry(), _seed_px(), SETTINGS, iterations=1)
+    iterated = fit_with_iterated_matching(orderLines, _geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert rigidOnly.corrections[12].nLines < 24
+    assert iterated.corrections[12].nLines == 24
+    assert iterated.corrections[12].perOrderSlopePx > 1.0
+
+
+def test_a_catalogue_line_half_a_nanometre_from_the_true_one_does_not_pull_the_order_after_seeding():
+    # ARRANGE
+    orderLines = {o: _order_lines(o) for o in ORDERS if o != 15}
+    orderLines[15] = _order_lines(15, extraCatalogueOffsetsNm=(0.47, -0.47))
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert result.fallbackReason is None
+    assert result.corrections[15].nLines == 12
+    assert result.corrections[15].shiftPx == pytest.approx(_model_px(15, np.array(0.0)), abs=0.02)
+
+
+def test_an_order_with_no_lines_still_gets_the_model_shift_from_iterated_matching():
+    # ARRANGE
+    orderLines = {o: _order_lines(o) for o in ORDERS if o != 18}
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert result.corrections[18].nLines == 0
+    assert result.corrections[18].shiftPx == pytest.approx(_model_px(18, np.array(0.0)), abs=0.05)
+
+
+def test_iterated_matching_without_a_seed_falls_back_with_a_reason():
+    # ARRANGE
+    orderLines = {o: _order_lines(o) for o in ORDERS}
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _geometry(), None, SETTINGS)
+
+    # ASSERT
+    assert result.corrections == {}
+    assert "seed" in result.fallbackReason
+
+
+def test_iterated_matching_with_too_few_lines_falls_back_with_a_reason():
+    # ARRANGE
+    orderLines = {14: _order_lines(14, perOrder=MIN_GLOBAL_LINES - 1)}
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert result.corrections == {}
+    assert str(MIN_GLOBAL_LINES) in result.fallbackReason

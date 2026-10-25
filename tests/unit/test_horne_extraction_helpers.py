@@ -787,6 +787,7 @@ def test_constructor_names_products_without_a_sof_name(
         self.settings = settings
         self.dispersionMap = None
         self.kw = lambda name: name
+        self.arm = "VIS"
         self.binx = 1
         self.biny = 1
         self.detectorParams = {"dispersion-axis": "x"}

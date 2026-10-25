@@ -49,6 +49,9 @@ SLIT_CENTRE_ARCSEC = 0.0
 EXTRACT_METHOD_QC_COMMENT = "Optimal, or boxcar if no trace"
 SKY_TUNING_QC_COMMENT = "Wavelength tuning to sky lines"
 SKY_TUNING_SKIPPED_QC_VALUE = "skipped: attached arc"
+# THE SKY TUNING QC VALUES OF THE NIR GLOBAL FIT, AND OF ITS FALLBACK TO ONE MEDIAN SHIFT PER ORDER (DY-1968)
+SKY_TUNING_GLOBAL_QC_VALUE = "skylines-global"
+SKY_TUNING_PER_ORDER_QC_VALUE = "skylines-per-order"
 
 # SKY-LINE MATCH TOLERANCES (nm) FOR THE THREE TUNING ITERATIONS OF AN ORDER MEASURED FROM SCRATCH
 SKYLINE_TOLERANCES_NM = (0.5, 0.1, 0.1)
@@ -174,6 +177,11 @@ class horne_extraction(base_util):
     flatPassHandoff = None
     # {ORDER: SHIFT (nm)} APPLIED BY THE LAST SKYLINE TUNING, OR None WHEN TUNING WAS SKIPPED
     skyShiftsNm = None
+    # THE NIR GLOBAL SKY-FIT SETTINGS (``sky_tuning_settings``), OR None OUTSIDE SOXS NIR. A DOUBLE BUILT WITHOUT
+    # __init__ THEREFORE KEEPS THE PER-ORDER TUNING
+    nirSkyTuning = None
+    # {ORDER: order_sky_correction} APPLIED BY THE LAST NIR GLOBAL FIT, OR None WHEN IT WAS NOT USED
+    skyCorrections = None
     # PATH TO THE OBJECT-TRACE TABLE THIS EXTRACTION USED, OR None WHEN NO TRACE WAS FOUND
     objectTracePath = None
     # THE TRACE'S PIXEL TABLE, OR None WHEN THERE IS NOTHING TO EXTRACT
@@ -272,6 +280,7 @@ class horne_extraction(base_util):
 
         # THE INSTRUMENT, READ BEFORE THE TRACE BRANCH SO THE NO-TRACE FALLBACK HAS IT TOO
         self.inst = self.skySubtractedFrame.header.get(self.kw("INSTRUME"), "")
+        self.nirSkyTuning = self._read_nir_sky_tuning()
 
         # USE SUBTRACTED FRAME (NODDING ONLY) TO EXTRACT A SKY SPECTRUM
         if subtractedFrame == False:
@@ -971,8 +980,7 @@ class horne_extraction(base_util):
 
         attachment = self._arc_attachment()
         if attachment is None:
-            tuned = self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm)
-            qcValue = "skylines"
+            tuned, qcValue = self._tune_to_skylines(extractedOrdersDF, arm)
         else:
             message = (
                 f"Attached arc (Δt {attachment[0]:0.1f} min, Δrot {attachment[1]:0.1f}°): "
@@ -998,6 +1006,232 @@ class horne_extraction(base_util):
                 toHeader=True,
             )
         return tuned
+
+    def _read_nir_sky_tuning(self):
+        """*the ``sky-tuning`` settings of a SOXS NIR extraction, or None for any other arm or instrument*
+
+        A recipe settings file from before the block existed has none, and gets the defaults.
+
+        **Return:**
+
+        - ``settings`` -- the ``sky_tuning_settings``, or *None*
+
+        **Raises:**
+
+        - ``ValueError`` -- if the block holds a key or value that cannot drive the fit
+        """
+        from soxspipe.commonutils.nir_sky_refit import read_sky_tuning_settings
+
+        if self.arm.upper() != "NIR" or self.inst.upper() != "SOXS":
+            return None
+        return read_sky_tuning_settings(self.recipeSettings.get("sky-tuning"))
+
+    def _uses_nir_global_fit(self, arm):
+        """Return whether the arm is SOXS NIR with the global sky-line fit switched on (DY-1968)."""
+        return (
+            self.nirSkyTuning is not None
+            and self.nirSkyTuning.globalFit
+            and arm.upper() == "NIR"
+            and self.inst.upper() == "SOXS"
+        )
+
+    def _tune_to_skylines(self, extractedOrdersDF, arm):
+        """*tune the wavelengths to the sky lines by the method the arm uses*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``arm`` -- the arm of the instrument
+
+        **Return:**
+
+        - ``tuned`` -- the tuned data-frame
+        - ``qcValue`` -- the ``SKY TUNING`` QC value naming the method
+        """
+        if self._uses_nir_global_fit(arm):
+            return self._tune_nir_globally(extractedOrdersDF, arm)
+        return self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm), "skylines"
+
+    def _tune_nir_globally(self, extractedOrdersDF, arm):
+        """*tune the SOXS NIR orders with one fit over all their sky lines (DY-1968)*
+
+        Each order is first measured on its own, as before, to seed the matching with the shift of the line-rich orders
+        and to have a per-order fallback. The sky lines of every order are then matched with a tight tolerance and
+        fitted together (``nir_sky_refit``). A frame with too few lines, or lines that do not fit, is tuned order by
+        order and the ``SKY TUNING`` QC says so.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``arm`` -- the arm of the instrument
+
+        **Return:**
+
+        - ``tuned`` -- the tuned data-frame
+        - ``qcValue`` -- ``skylines-global``, or ``skylines-per-order`` after a fallback
+        """
+        import numpy as np
+
+        from soxspipe.commonutils import nir_sky_refit
+
+        orders = np.sort(extractedOrdersDF["order"].unique())
+        dispersions = self._signed_order_dispersions(extractedOrdersDF, orders)
+        shiftsNm, orderStats = self._measure_orders(extractedOrdersDF, orders, arm, False, dispersions)
+        geometry, orderLines = self._nir_order_lines(extractedOrdersDF, orders, dispersions)
+        seedPx = nir_sky_refit.global_seed_px(
+            shiftsNm, {o: stats["nLines"] for o, stats in orderStats.items()}, dispersions
+        )
+        result = nir_sky_refit.fit_with_iterated_matching(orderLines, geometry, seedPx, self.nirSkyTuning)
+
+        if result.fallbackReason is not None:
+            self._print_and_note(f"Global sky-line fit not used ({result.fallbackReason}): tuning each order alone")
+            tuned = self._apply_per_order_shifts(
+                extractedOrdersDF, arm, orders, shiftsNm, orderStats, dispersions, True
+            )
+            return tuned, SKY_TUNING_PER_ORDER_QC_VALUE
+        return self._apply_global_fit(extractedOrdersDF, orders, result), SKY_TUNING_GLOBAL_QC_VALUE
+
+    def _print_and_note(self, message):
+        """Print a message and, when the log collects extraction notes, note it for the QC plots."""
+        self.log.print(message)
+        if isinstance(self.log, extraction_note_logger):
+            self.log.note(message)
+
+    def _nir_order_lines(self, extractedOrdersDF, orders, dispersions):
+        """*the geometry and the detected sky lines of every NIR order that can take part in the global fit*
+
+        An order with no dispersion, or no wavelength range, is left unshifted. An order whose sky is too faint to
+        centre its lines (``MIN_SKY_LINE_SNR``, DY-1663) takes the fitted shift but supplies no lines.
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``orders`` -- the orders
+        - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
+
+        **Return:**
+
+        - ``geometry`` -- ``{order: order_geometry}``
+        - ``orderLines`` -- ``{order: nir_order_sky_lines}``
+        """
+        from soxspipe.commonutils.nir_sky_refit import geometry_from_rows
+
+        arcRmsPx = self._arc_rms_px()
+        geometry = {}
+        orderLines = {}
+        for o in orders:
+            orderDF = self._order_slice(extractedOrdersDF, o)
+            if orderDF.empty:
+                continue
+            if o not in dispersions:
+                self.log.info(f"order {o}: no dispersion; no sky shift applied")
+                continue
+            try:
+                geometry[int(o)] = geometry_from_rows(
+                    orderDF["wavelengthMean"], orderDF["pixelScaleNm"], dispersions[o]
+                )
+            except ValueError as e:
+                self.log.info(f"order {o}: {e}; no sky shift applied")
+                continue
+            lines = self._detect_nir_order_lines(orderDF, o, dispersions[o], arcRmsPx)
+            if lines is not None:
+                orderLines[int(o)] = lines
+        return geometry, orderLines
+
+    def _detect_nir_order_lines(self, orderDF, o, dispersion, arcRmsPx):
+        """*the sky-line centres and calibration lines of one order, or None if its sky is too faint or has none*"""
+        import numpy as np
+
+        from soxspipe.commonutils.nir_sky_refit import match_tolerance_nm, nir_order_sky_lines
+        from soxspipe.commonutils.sky_line_snr import combine_line_snrs
+        from soxspipe.commonutils.ug_wavelength_transfer import sky_line_snr_reason
+
+        reason = sky_line_snr_reason(o, combine_line_snrs(self._order_sky_line_snrs(orderDF, o)))
+        if reason is not None:
+            self.log.info(f"{reason}; the order supplies no sky lines to the global fit")
+            return None
+        orderDF["wavelength_shifted"] = orderDF["wavelengthMean"]
+        wave, sky, objectFlux = self._extract_order_arrays(orderDF)
+        valid = wave.notna() & sky.notna()
+        if not valid.any():
+            return None
+        _, skyVals, peaks, waveVals, _ = self._detect_sky_peaks(wave, sky, objectFlux, valid)
+        peakNm = np.asarray(self._measure_peak_centres(waveVals, skyVals, peaks), dtype=float)
+        _, catalogueNm = self._get_local_skylines_for_order(np.nanmin(waveVals), np.nanmax(waveVals), o, "wavelength")
+        if peakNm.size == 0 or len(catalogueNm) == 0:
+            return None
+        pixelScaleNm = np.interp(peakNm, waveVals, orderDF.loc[valid, "pixelScaleNm"].to_numpy(dtype=float))
+        return nir_order_sky_lines(
+            order=int(o),
+            peakNm=peakNm,
+            catalogueNm=np.asarray(catalogueNm, dtype=float),
+            pixelScaleNm=pixelScaleNm,
+            toleranceNm=match_tolerance_nm(arcRmsPx, dispersion),
+        )
+
+    def _arc_rms_px(self):
+        """*the arc solution's median residual along the dispersion axis (px), or None if the map has no such card*"""
+        header = self._dispersion_map_header()
+        if header is None:
+            return None
+        try:
+            return float(header.get(f"ESO QC {self.axisB.upper()} RES MEDIAN"))
+        except (TypeError, ValueError):
+            return None
+
+    def _apply_global_fit(self, extractedOrdersDF, orders, result):
+        """*add the global fit's corrections to the wavelengths and record the sky-shift and fit QCs*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``orders`` -- the orders, in the order the QCs are recorded
+        - ``result`` -- the ``sky_refit_result`` of a fit that did not fall back
+
+        **Return:**
+
+        - ``tuned`` -- a new data-frame with the corrected wavelengths
+        """
+        from soxspipe.commonutils.nir_sky_refit import apply_sky_corrections
+        from soxspipe.commonutils.toolkit import order_label
+
+        corrections = result.corrections
+        self.skyCorrections = corrections
+        self.skyShiftsNm = {o: c.shift_nm for o, c in corrections.items()}
+        for o in orders:
+            correction = corrections.get(int(o))
+            if correction is None:
+                self._record_order_shift_qc(o, 0.0)
+                continue
+            self.log.print(
+                f"\t\t{correction.shift_nm:0.2f} nm shift (slope {correction.slope_px:0.2f} px) applied to order "
+                f"{order_label(o, self.arm)} from {correction.nLines} sky lines"
+            )
+            self._record_order_shift_qc(o, correction.shift_nm, correction.shiftPx)
+        self._record_global_fit_qcs(result)
+        return apply_sky_corrections(extractedOrdersDF, corrections)
+
+    def _record_global_fit_qcs(self, result):
+        """Append the ``SKY FIT RMS PX`` and ``SKY FIT NLINES`` QCs of the NIR global sky-line fit (DY-1968)."""
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        reductionDate = utcnow_string()
+        rows = [
+            ("SKY FIT RMS PX", round(result.rmsPx, 3), "px", "Scatter of the sky lines about the global fit"),
+            ("SKY FIT NLINES", result.nLines, None, "Sky lines kept by the global fit"),
+        ]
+        for name, value, unit, comment in rows:
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName=name,
+                qcValue=value,
+                qcComment=comment,
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=reductionDate,
+                qcUnit=unit,
+                toHeader=True,
+            )
 
     def tune_wavelength_calibration_to_skylines(self, extractedOrdersDF, arm, byOrder=True):
         """Skyline-based wavelength calibration tuning helper.
@@ -1489,7 +1723,7 @@ class horne_extraction(base_util):
         localSkylinesDF = self._project_skylines(self.skylinesDF, wmin, wmax, order)
         localSkylines = pd.to_numeric(localSkylinesDF[calibrationCol], errors="coerce").dropna().to_numpy()
 
-        if order != "all" and self._is_soxs_vis(self.arm):
+        if order != "all" and (self._is_soxs_vis(self.arm) or self._uses_nir_global_fit(self.arm)):
             calibrationSkylinesDF = self._project_skylines(self._merged_skylines(), wmin, wmax, order)
         elif "ISOLATED" in self.skylinesDF.columns:
             # ISOLATED FLAG MARKS LINES SUITABLE FOR CENTROIDING
@@ -1529,7 +1763,11 @@ class horne_extraction(base_util):
         )
 
         if self._mergedSkylinesDF is None:
-            fullDF = get_skylines_dataframe(self.log, self.settings, self.arm, minBrightnessVIS=SKYLINE_MIN_LINE_FLUX)
+            # THE CATALOGUE LOADER CUTS VIS AND EVERY OTHER ARM BY DIFFERENT KEYWORDS
+            brightnessKeyword = "minBrightnessVIS" if self.arm == "VIS" else "minBrightnessNIR"
+            fullDF = get_skylines_dataframe(
+                self.log, self.settings, self.arm, **{brightnessKeyword: SKYLINE_MIN_LINE_FLUX}
+            )
             self._mergedSkylinesDF = merge_blended_skylines(fullDF)
         return self._mergedSkylinesDF
 
