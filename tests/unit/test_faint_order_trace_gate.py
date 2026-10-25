@@ -328,7 +328,7 @@ def test_get_runs_when_the_logger_note_attribute_is_not_callable(
     assert FAINT_QC in run.detector.qc["qc_name"].tolist()
 
 
-def test_get_says_so_when_a_faint_order_falls_back_to_the_anchor_track(
+def test_get_says_so_and_writes_no_qc_when_a_faint_order_keeps_no_bin(
     log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     # ARRANGE: NOTHING AT ALL IS IN THE U ORDER
@@ -337,10 +337,31 @@ def test_get_says_so_when_a_faint_order_falls_back_to_the_anchor_track(
     noteLog = _NoteLog(log)
 
     # ACT
-    _run_get(noteLog, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+    run = _run_get(noteLog, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
 
-    # ASSERT
-    assert noteLog.notes == ["Order 2 (u) trace transferred from 3 (g): no bin kept, anchor track used"]
+    # ASSERT: THE ROWS ARE THE MEASURED ONES, NO QC CARD COUNTS THE ORDER, AND THE NOTE NAMES THE ANCHOR
+    _assert_untouched(run)
+    assert run.detector.faintTransferReports == ()
+    assert noteLog.notes == ["Order 2 (u) from anchor 3 (g): no bin kept, trace left as measured"]
+    assert any("no bin kept, trace left as measured" in message for _, message in log.messages)
+
+
+def test_get_counts_only_the_transferred_orders_in_the_faint_trace_qc(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE: U HOLDS NOTHING AND I HAS A FAINT SOURCE
+    sampled, _ = _scene((2.0, 4.0))
+    image = vis_transfer_image(AMPLITUDES | {2.0: 0.0, 4.0: 0.5}, FLANKS | {2.0: 0.0, 4.0: 0.8})
+    noteLog = _NoteLog(log)
+
+    # ACT
+    run = _run_get(noteLog, monkeypatch, tmp_path, block=_block(), sampled=sampled, image=image)
+
+    # ASSERT: ONE ORDER WAS TRANSFERRED, AND BOTH ORDERS ARE ACCOUNTED FOR IN THE NOTES
+    qc = run.detector.qc
+    assert qc.loc[qc["qc_name"] == FAINT_QC, "qc_value"].tolist() == [1]
+    assert [report.order for report in run.detector.faintTransferReports] == [4.0]
+    assert len(noteLog.notes) == 2
 
 
 def _cubic_trace_coefficients(slitByOrder: dict[float, float]) -> list[float]:

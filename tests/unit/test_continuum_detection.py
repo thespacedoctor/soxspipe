@@ -1247,7 +1247,7 @@ def test_plot_results_draws_the_transferred_rows_apart_and_names_the_bright_orde
 ) -> None:
     # ARRANGE
     detector = _plot_ready_detector(tmp_path, log)
-    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, False, 0.4),)
+    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, 0.4),)
     scatters = _top_panel_scatters(monkeypatch)
     monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
 
@@ -1265,7 +1265,7 @@ def test_plot_results_reads_a_missing_transfer_flag_as_a_measured_row(
 ) -> None:
     # ARRANGE: THE FLAG COLUMN IS OBJECT-TYPED, WITH A NAN ON EVERY ROW OF ORDER 10 AND TRUE ON EVERY ROW OF ORDER 11
     detector = _plot_ready_detector(tmp_path, log)
-    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, False, 0.4),)
+    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, 0.4),)
     pixels = _plot_transfer_pixels()
     pixels["faint_transfer"] = pd.Series(np.where(pixels["order"] == 11.0, True, np.nan), index=pixels.index).astype(
         object

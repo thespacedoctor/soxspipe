@@ -1220,34 +1220,36 @@ class detect_continuum(_base_detect):
             )
 
     def _record_faint_trace_qc(self, reports):
-        """*record the transferred orders: a header QC, a log line each and an extraction note each*
+        """*record the faint orders that were tried: a log line and an extraction note each, and a header QC*
 
-        Nothing is written when no order was transferred, so a bright frame keeps the headers it always had.
+        The QC counts only the orders whose rows were replaced. Nothing is written to the header when no order was
+        transferred, so a bright frame keeps the headers it always had.
 
         **Key Arguments:**
 
-        - ``reports`` -- the ``transfer_report`` of each transferred order
+        - ``reports`` -- the ``transfer_report`` of each faint order that had an anchor
         """
-        if not reports:
-            return
-        self.faintTransferReports = tuple(reports)
-        self.qc = append_qc(
-            self.qc,
-            recipeName=self.recipeName,
-            qcName="N ORDERS FAINT TRACE",
-            qcValue=len(reports),
-            qcComment="Number of faint orders whose trace was transferred from a bright neighbour",
-            obsDateUtc=self.dateObs,
-            reductionDateUtc=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
-            qcUnit=None,
-            toHeader=True,
-        )
         note = getattr(self.log, "note", None)
         for report in reports:
             line = report.describe(order_label(report.order, self.arm), order_label(report.anchorOrder, self.arm))
             self.log.print(line)
             if callable(note):
                 note(line)
+        transferred = tuple(report for report in reports if report.is_transferred)
+        if not transferred:
+            return
+        self.faintTransferReports = transferred
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName="N ORDERS FAINT TRACE",
+            qcValue=len(transferred),
+            qcComment="Number of faint orders whose trace was transferred from a bright neighbour",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+            qcUnit=None,
+            toHeader=True,
+        )
 
     def create_pixel_arrays(self):
         """*create a pixel array for the approximate centre of each order*

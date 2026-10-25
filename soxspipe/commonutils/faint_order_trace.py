@@ -354,9 +354,8 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt, *, axisA):
 class transfer_report:
     """What the transfer did for one faint order.
 
-    ``binsKept`` of ``binCount`` bins gave a centre, and ``degree`` is the degree of the curve through them.
-    ``isAnchorTrack`` is *True* when no bin survived and the rows follow the anchor track. ``slitArcsec`` is that
-    track's slit position.
+    ``binsKept`` of ``binCount`` bins gave a centre, and ``degree`` is the degree of the curve through them. An order
+    that kept no bin is left as it was measured. ``slitArcsec`` is the anchor's slit position.
     """
 
     order: float
@@ -364,8 +363,12 @@ class transfer_report:
     binsKept: int
     binCount: int
     degree: int
-    isAnchorTrack: bool
     slitArcsec: float
+
+    @property
+    def is_transferred(self):
+        """*True when at least one bin was kept, so the order's rows were replaced*"""
+        return self.binsKept > 0
 
     def describe(self, orderLabel, anchorLabel):
         """*the one-line account of the transfer for the log and the extraction notes*
@@ -379,10 +382,10 @@ class transfer_report:
 
         - ``line`` -- the sentence
         """
-        head = f"Order {orderLabel} trace transferred from {anchorLabel}: "
-        if self.isAnchorTrack:
-            return head + "no bin kept, anchor track used"
-        return head + f"{self.binsKept}/{self.binCount} bins, deg {self.degree}"
+        if not self.is_transferred:
+            return f"Order {orderLabel} from anchor {anchorLabel}: no bin kept, trace left as measured"
+        head = f"Order {orderLabel} trace transferred from {anchorLabel}"
+        return f"{head}: {self.binsKept}/{self.binCount} bins, deg {self.degree}"
 
 
 def _shared_edge_nm(brightRows, anchorOrder, order):
@@ -456,8 +459,6 @@ def _offset_curve(binWavelength, binCentre, marginNm):
     nothing was measured.
     """
     count = len(binWavelength)
-    if count == 0:
-        return (lambda wavelength: np.zeros_like(wavelength, dtype=float)), 0
     degree = 0 if count < MIN_CURVE_BINS else (1 if count < MIN_PARABOLA_BINS else 2)
     low, high = binWavelength.min() - marginNm, binWavelength.max() + marginNm
     curve = np.polynomial.Polynomial.fit(binWavelength, binCentre, degree)
@@ -494,7 +495,7 @@ def _synthetic_rows(rows, geometry, offsetCurve, pixelsAt, axisA, axisB):
 
 
 def _transfer_one_order(table, order, anchorOrder, *, image, pixelsAt, slitOffsets, settings, axisA, axisB):
-    """*the replacement values and the report for one faint order*"""
+    """*the rows, the replacement values (None when no bin was kept) and the report for one faint order*"""
     rows = table.loc[table["order"] == order]
     brightRows = table.loc[table["order"] == anchorOrder]
     slitArcsec, sigmaArcsec, edgeNm = _anchor_slit_arcsec(brightRows, order, anchorOrder, slitOffsets, pixelsAt, axisA)
@@ -506,10 +507,11 @@ def _transfer_one_order(table, order, anchorOrder, *, image, pixelsAt, slitOffse
         _fit_bin(image, pixelsAt, geometry, low, high, axisA) for low, high in zip(edges[:-1], edges[1:], strict=True)
     ]
     kept = np.array([fit for fit in fits if fit is not None], dtype=float).reshape(-1, 2)
+    if len(kept) == 0:
+        return rows.index, None, transfer_report(order, anchorOrder, 0, len(fits), 0, float(slitArcsec))
     curve, degree = _offset_curve(kept[:, 0], kept[:, 1], (edges[-1] - edges[0]) / len(fits))
     values = _synthetic_rows(rows, geometry, curve, pixelsAt, axisA, axisB)
-    report = transfer_report(order, anchorOrder, len(kept), len(fits), degree, len(kept) == 0, float(slitArcsec))
-    return rows.index, values, report
+    return rows.index, values, transfer_report(order, anchorOrder, len(kept), len(fits), degree, float(slitArcsec))
 
 
 def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axisA, axisB):
@@ -518,8 +520,9 @@ def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axis
     Each order that has an anchor in its band group (see ``anchor_neighbours``) is split into wavelength bins. Every
     bin is collapsed along the anchor track into one profile, and a Gaussian of the anchor's width is fitted inside a
     narrow window around the anchor. A low-degree curve through the kept bins gives the trace, and the order's rows
-    are replaced one for one with exact samples of that curve, marked in a new ``faint_transfer`` column. When no
-    order is faint, or none has an anchor, the table is returned as it is.
+    are replaced one for one with exact samples of that curve, marked in a new ``faint_transfer`` column. An order
+    that keeps no bin has no measurement to transfer, so its rows stay as they were measured. When no order is faint,
+    none has an anchor, or none keeps a bin, the table is returned as it is.
 
     **Key Arguments:**
 
@@ -534,16 +537,11 @@ def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axis
     **Return:**
 
     - ``table`` -- the same table object when nothing was transferred, otherwise an edited copy
-    - ``reports`` -- one ``transfer_report`` per transferred order
+    - ``reports`` -- one ``transfer_report`` per order that has an anchor, including those that kept no bin
     """
     anchors = anchor_neighbours(table, find_faint_orders(table, axisA, settings))
-    if not anchors:
-        return table, []
-    result = table.copy()
-    result["faint_transfer"] = False
-    reports = []
-    for order, anchorOrder in anchors.items():
-        index, values, report = _transfer_one_order(
+    outcomes = [
+        _transfer_one_order(
             table,
             order,
             anchorOrder,
@@ -554,9 +552,16 @@ def transfer_faint_orders(table, image, pixelsAt, *, slitOffsets, settings, axis
             axisA=axisA,
             axisB=axisB,
         )
-        for column, value in values.items():
+        for order, anchorOrder in anchors.items()
+    ]
+    reports = [report for _, _, report in outcomes]
+    if not any(report.is_transferred for report in reports):
+        return table, reports
+    result = table.copy()
+    result["faint_transfer"] = False
+    for index, values, _ in outcomes:
+        for column, value in (values or {}).items():
             result.loc[index, column] = value
-        reports.append(report)
     return result, reports
 
 

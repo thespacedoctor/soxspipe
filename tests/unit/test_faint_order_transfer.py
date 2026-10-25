@@ -18,6 +18,7 @@ from tests.unit._continuum_vis_scene import (
     vis_transfer_image,
     vis_transfer_table,
     vis_true_centre,
+    vis_wavelength,
 )
 
 pytestmark = pytest.mark.unit
@@ -84,7 +85,7 @@ def test_transfer_puts_the_faint_trace_within_a_third_of_a_pixel_of_the_truth(
     assert len(reports) == 1
     assert (reports[0].order, reports[0].anchorOrder) == (2.0, 3.0)
     assert reports[0].binsKept >= 8
-    assert reports[0].isAnchorTrack is False
+    assert reports[0].is_transferred is True
     assert len(result) == len(table)
 
 
@@ -222,49 +223,78 @@ def test_transfer_anchors_i_on_r(pixelsAt: object) -> None:
     assert np.abs(error).max() < 0.5
 
 
-def test_transfer_falls_back_to_the_anchor_track_when_no_bin_has_a_signal(pixelsAt: object) -> None:
+def test_transfer_leaves_the_faint_rows_as_measured_when_no_bin_has_a_signal(pixelsAt: object) -> None:
     # ARRANGE: THE FAINT ORDER HOLDS NOTHING BUT NOISE
     table = vis_transfer_table((2.0,))
+    before = table.copy()
     image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
 
     # ACT
     result, reports = _transfer_rows(table, image, pixelsAt)
 
-    # ASSERT: EVERY ROW SITS ON THE SAME SLIT POSITION AS THE BRIGHT NEIGHBOUR AT THE SHARED EDGE
-    uRows = result[result["order"] == 2.0]
-    slit = (uRows["cont_x"] - uRows["fit_x"]) / vis_slit_scale(2.0)
-    assert reports[0].binsKept == 0
-    assert reports[0].isAnchorTrack is True
-    assert slit.std() < 1e-3
-    assert slit.iloc[0] == pytest.approx(vis_target_slit(600.0), abs=0.05)
+    # ASSERT: NO BIN WAS MEASURED, SO THERE IS NOTHING TO TRANSFER. THE SAME TABLE COMES BACK, WITH NO MARKER COLUMN
+    assert result is table
+    pd.testing.assert_frame_equal(table, before)
+    assert "faint_transfer" not in result.columns
+    assert [(report.order, report.anchorOrder, report.binsKept) for report in reports] == [(2.0, 3.0, 0)]
+    assert reports[0].is_transferred is False
+
+
+def test_transfer_leaves_a_blank_order_alone_and_still_transfers_the_other_faint_order(pixelsAt: object) -> None:
+    # ARRANGE: U HOLDS NOTHING, AND I IS FAINT BUT HAS A SOURCE
+    table = vis_transfer_table((2.0, 4.0))
+    before = table.loc[table["order"] == 2.0]
+    image = vis_transfer_image(AMPLITUDES | {2.0: 0.0, 4.0: FAINT_PEAK}, FLANKS | {2.0: 0.0, 4.0: FAINT_FLANK})
+
+    # ACT
+    result, reports = _transfer_rows(table, image, pixelsAt)
+
+    # ASSERT: ONLY I IS MARKED, AND THE U ROWS ARE THE MEASURED ONES
+    assert [(report.order, report.is_transferred) for report in reports] == [(2.0, False), (4.0, True)]
+    assert result["faint_transfer"].tolist() == (result["order"] == 4.0).tolist()
+    pd.testing.assert_frame_equal(result.loc[result["order"] == 2.0].drop(columns="faint_transfer"), before)
+
+
+def test_transfer_still_transfers_an_order_that_keeps_one_bin_as_a_constant_offset(pixelsAt: object) -> None:
+    # ARRANGE: THE TARGET SURVIVES IN THE FIRST BIN OF THE U ORDER ONLY
+    image, table = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0}), vis_transfer_table((2.0,))
+    rows = np.arange(10, 130)
+    centre = vis_true_centre(2.0, vis_wavelength(2.0, rows))[:, np.newaxis]
+    columns = np.arange(image.shape[1], dtype=float)
+    image[rows] += 30.0 * np.exp(-0.5 * ((columns[np.newaxis, :] - centre) / VIS_SEEING_SIGMA_PX) ** 2)
+
+    # ACT
+    result, reports = _transfer_rows(table, image, pixelsAt)
+
+    # ASSERT: AT LEAST ONE BIN WAS KEPT, THE CURVE IS A CONSTANT, AND THE ORDER IS MARKED
+    assert 1 <= reports[0].binsKept <= 3
+    assert reports[0].degree == 0
+    assert reports[0].is_transferred is True
+    assert result.loc[result["order"] == 2.0, "faint_transfer"].all()
 
 
 def test_transfer_moves_the_anchor_by_the_difference_of_the_slit_offsets(pixelsAt: object) -> None:
-    # ARRANGE: THE SKY SAYS THE U SLIT IMAGE IS 0.5 ARCSEC ABOVE THE G ONE, WITH NOTHING IN U TO FIT
-    table = vis_transfer_table((2.0,))
-    image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
-    plain, _ = _transfer_rows(table, image, pixelsAt)
+    # ARRANGE: THE SKY SAYS THE U SLIT IMAGE IS 0.5 ARCSEC ABOVE THE G ONE
+    image, table = vis_transfer_image(AMPLITUDES, FLANKS), vis_transfer_table((2.0,))
+    _, plain = _transfer_rows(table, image, pixelsAt)
 
     # ACT
-    shifted, _ = _transfer_rows(table, image, pixelsAt, {2.0: 0.5, 3.0: 0.0})
+    _, shifted = _transfer_rows(table, image, pixelsAt, {2.0: 0.5, 3.0: 0.0})
 
-    # ASSERT: ANCHOR = S_BRIGHT - DELTA_BRIGHT + DELTA_FAINT, SO THE FAINT TRACK MOVES 0.5 ARCSEC
-    uPlain = plain.loc[plain["order"] == 2.0, "cont_x"].to_numpy()
-    uShifted = shifted.loc[shifted["order"] == 2.0, "cont_x"].to_numpy()
-    np.testing.assert_allclose(uShifted - uPlain, 0.5 * vis_slit_scale(2.0), atol=0.01)
+    # ASSERT: ANCHOR = S_BRIGHT - DELTA_BRIGHT + DELTA_FAINT
+    assert shifted[0].slitArcsec - plain[0].slitArcsec == pytest.approx(0.5, abs=1e-6)
 
 
 def test_transfer_ignores_offsets_that_miss_one_of_the_two_orders(pixelsAt: object) -> None:
     # ARRANGE
-    table = vis_transfer_table((2.0,))
-    image = vis_transfer_image(AMPLITUDES | {2.0: 0.0}, FLANKS | {2.0: 0.0})
-    plain, _ = _transfer_rows(table, image, pixelsAt)
+    image, table = vis_transfer_image(AMPLITUDES, FLANKS), vis_transfer_table((2.0,))
+    _, plain = _transfer_rows(table, image, pixelsAt)
 
     # ACT
-    partial, _ = _transfer_rows(table, image, pixelsAt, {2.0: 0.5})
+    _, partial = _transfer_rows(table, image, pixelsAt, {2.0: 0.5})
 
     # ASSERT
-    pd.testing.assert_frame_equal(partial, plain)
+    assert partial[0].slitArcsec == plain[0].slitArcsec
 
 
 def test_transfer_holds_the_trace_flat_beyond_the_last_kept_bin(pixelsAt: object) -> None:
