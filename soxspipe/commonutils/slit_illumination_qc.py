@@ -1,8 +1,8 @@
 """QC for the slit-illumination measurement: the per-order QC plot and the rotator-angle spread.
 
 The plot shows, for every order, the slit profile the offset was fitted to (from skylines, or from the sky continuum
-for an order with no skylines) against the master flat's lit slit range, so a poor fit or a failed order can be seen at
-a glance.
+for an order with no usable skylines) against the master flat's lit slit range, so a poor fit or a failed order can be
+seen at a glance.
 """
 
 import math

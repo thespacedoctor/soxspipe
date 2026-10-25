@@ -17,6 +17,7 @@ from soxspipe.commonutils.slit_illumination import (
 )
 from soxspipe.commonutils.slit_illumination_profiles import (
     continuum_slit_profiles,
+    has_all_blended_note,
     has_no_skylines_note,
 )
 from tests.factories import synthetic_illumination_scene
@@ -33,6 +34,21 @@ def _continuum_scene(tmp_path, *, delta=0.8, **kwargs):
     """A one-order scene with a continuum-only sky, a shifted top-hat illumination and no skyline in the table."""
     scene = synthetic_illumination_scene(tmp_path, orders=(11,), offsets={11: delta}, lineAmplitude=0.0, **kwargs)
     return replace(scene, skylinesDF=NO_LINES_TABLE)
+
+
+def _blended_scene(tmp_path, *, delta=0.8, **kwargs):
+    """*a one-order continuum-only scene whose skyline table holds only pairs of lines too close to separate*"""
+    scene = synthetic_illumination_scene(tmp_path, orders=(11,), offsets={11: delta}, lineAmplitude=0.0, **kwargs)
+    centres = np.arange(501.0, 511.0, 2.0)
+    pairs = np.sort(np.concatenate([centres, centres + 0.05]))
+    return replace(scene, skylinesDF=pd.DataFrame({"WAVELENGTH": pairs, "FLUX": 1.0}))
+
+
+def _faint_lines_scene(tmp_path, **kwargs):
+    """*a one-order continuum-only scene whose table holds separable lines that the frame does not show*"""
+    scene = synthetic_illumination_scene(tmp_path, orders=(11,), offsets={11: 0.8}, lineAmplitude=0.0, **kwargs)
+    lines = np.arange(502.0, 510.0, 2.0)
+    return replace(scene, skylinesDF=pd.DataFrame({"WAVELENGTH": lines, "FLUX": 1.0}))
 
 
 def _messages(log, level):
@@ -226,6 +242,27 @@ def test_the_no_skylines_note_is_recognised_and_other_notes_are_not(tmp_path):
     assert not has_no_skylines_note("")
 
 
+def test_the_all_blended_note_is_recognised_and_other_notes_are_not(tmp_path):
+    scene = _blended_scene(tmp_path, delta=0.0)
+    flatData = np.asarray(scene.masterFlat.data, dtype=float)
+    _, notes = skyline_slit_profiles(
+        np.asarray(scene.frame.data, dtype=float),
+        np.asarray(scene.frame.uncertainty.array, dtype=float),
+        ~scene.frame.mask,
+        flatData,
+        scene.wavelength,
+        scene.slit,
+        scene.orderMap,
+        scene.skylinesDF["WAVELENGTH"].to_numpy(dtype=float),
+    )
+
+    assert has_all_blended_note(notes[11])
+    assert not has_no_skylines_note(notes[11])
+    assert not has_all_blended_note("every skyline in the order is too faint (under 5 sigma per slit bin)")
+    assert not has_all_blended_note("the skyline table has no lines between 500 and 512 nm")
+    assert not has_all_blended_note(None)
+
+
 def _halves(blueDelta, redDelta):
     """Blue-half and red-half profiles of order 11 with the given offsets."""
     return _profile(11, blueDelta), _profile(11, redDelta)
@@ -295,12 +332,26 @@ def test_continuum_offsets_cover_only_the_requested_orders():
     assert list(rows["order"]) == [12]
 
 
+def test_an_order_without_skylines_is_measured_from_the_continuum_on_the_slit_1_0(tmp_path, log, monkeypatch):
+    scene = _continuum_scene(tmp_path, delta=0.8, slitName="SLIT1.0")
+
+    result = _measure(scene, tmp_path, log, monkeypatch)
+
+    row = _offsets(result).loc[11]
+    assert row["status"] == "fitted"
+    assert row["method"] == "continuum"
+    assert row["offset"] == pytest.approx(0.8, abs=0.1)
+    assert result.isApplied
+
+
 @pytest.mark.parametrize("slitName", ["SLIT5.0", "SLIT1.5", None])
-def test_other_slits_never_build_a_continuum_profile_and_fall_back_as_before(tmp_path, log, monkeypatch, slitName):
+def test_an_order_without_skylines_is_not_measured_from_the_continuum_on_other_slits(
+    tmp_path, log, monkeypatch, slitName
+):
     scene = _continuum_scene(tmp_path, delta=0.8, slitName=slitName)
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("the continuum builder must run on SLIT1.0 only")
+        raise AssertionError("the no-skylines continuum builder must run on SLIT1.0 only")
 
     monkeypatch.setattr(slit_illumination, "continuum_slit_profiles", forbidden)
     result = _measure(scene, tmp_path, log, monkeypatch)
@@ -310,15 +361,117 @@ def test_other_slits_never_build_a_continuum_profile_and_fall_back_as_before(tmp
     assert row["method"] == "skyline"
     assert row["reason"].startswith("the skyline table has no lines between")
     assert not result.isApplied
-    assert any("SLIT1.0" in message for message in _messages(log, "info"))
 
 
-def test_the_slit_gate_message_names_the_frame_slit(tmp_path, log, monkeypatch):
-    scene = _continuum_scene(tmp_path, delta=0.8, slitName="SLIT5.0")
+@pytest.mark.parametrize("slitName", ["SLIT5.0", "SLIT1.5", None])
+def test_the_skipped_no_skylines_orders_are_logged_with_the_slit(tmp_path, log, monkeypatch, slitName):
+    scene = _continuum_scene(tmp_path, delta=0.8, slitName=slitName)
 
     _measure(scene, tmp_path, log, monkeypatch)
 
-    assert any("SLIT5.0" in message and "continuum" in message for message in _messages(log, "info"))
+    assert any(
+        f"measured on SLIT1.0 only (this frame: {slitName})" in message and "[11]" in message
+        for message in _messages(log, "info")
+    )
+
+
+@pytest.mark.parametrize("slitName", ["SLIT1.0", "SLIT5.0", None])
+def test_an_order_whose_skylines_are_all_blended_is_measured_from_the_continuum_on_any_slit(
+    tmp_path, log, monkeypatch, slitName
+):
+    scene = _blended_scene(tmp_path, delta=0.8, slitName=slitName)
+
+    result = _measure(scene, tmp_path, log, monkeypatch)
+
+    row = _offsets(result).loc[11]
+    assert row["status"] == "fitted"
+    assert row["method"] == "continuum"
+    assert row["offset"] == pytest.approx(0.8, abs=0.1)
+    assert result.isApplied
+
+
+def test_a_wide_slit_frame_measures_the_blended_order_and_skips_the_order_without_skylines(tmp_path, log, monkeypatch):
+    scene = synthetic_illumination_scene(
+        tmp_path, orders=(11, 12), offsets={11: 0.8, 12: -0.6}, lineAmplitude=0.0, slitName="SLIT5.0"
+    )
+    centres = np.arange(601.0, 611.0, 2.0)
+    pairs = np.sort(np.concatenate([centres, centres + 0.05]))
+    scene = replace(scene, skylinesDF=pd.DataFrame({"WAVELENGTH": pairs, "FLUX": 1.0}))
+
+    result = _measure(scene, tmp_path, log, monkeypatch)
+
+    offsets = _offsets(result)
+    assert offsets.loc[11, "status"] == "failed"
+    assert offsets.loc[11, "reason"].startswith("the skyline table has no lines between")
+    assert offsets.loc[12, "status"] == "fitted"
+    assert offsets.loc[12, "method"] == "continuum"
+    assert offsets.loc[12, "offset"] == pytest.approx(-0.6, abs=0.1)
+    assert result.isApplied
+
+
+def test_a_rejected_all_blended_order_keeps_both_reasons_and_no_usable_offset(tmp_path, log, monkeypatch):
+    scene = _blended_scene(tmp_path, delta=0.8, slitName="SLIT5.0")
+
+    result = _measure(
+        scene, tmp_path, log, monkeypatch, illuminationSettings={"continuum-halves-max-diff-arcsec": 1e-9}
+    )
+
+    row = _offsets(result).loc[11]
+    assert row["status"] == "failed"
+    assert "halves" in row["reason"]
+    assert "blended with a neighbour" in row["reason"]
+    assert not result.isApplied
+
+
+def test_a_failed_continuum_order_stays_failed_when_a_partner_order_has_a_skyline_offset(tmp_path, log, monkeypatch):
+    scene = synthetic_illumination_scene(tmp_path, offsets={11: 1.0, 12: 0.8})
+    scene = replace(scene, skylinesDF=scene.skylinesDF.iloc[:14])
+
+    result = _measure(
+        scene,
+        tmp_path,
+        log,
+        monkeypatch,
+        illuminationSettings={"continuum-halves-max-diff-arcsec": 1e-9},
+        partners={12: 11},
+    )
+
+    offsets = _offsets(result)
+    assert offsets.loc[11, "status"] == "fitted"
+    assert offsets.loc[12, "method"] == "continuum"
+    assert offsets.loc[12, "status"] == "failed"
+    assert pd.isna(offsets.loc[12, "borrowedFrom"])
+
+
+def test_an_order_whose_skyline_fit_failed_for_another_reason_never_builds_a_continuum_profile(
+    tmp_path, log, monkeypatch
+):
+    scene = _faint_lines_scene(tmp_path, slitName="SLIT5.0")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the continuum builder must run only for the no-lines and all-blended notes")
+
+    monkeypatch.setattr(slit_illumination, "continuum_slit_profiles", forbidden)
+    result = _measure(scene, tmp_path, log, monkeypatch)
+
+    row = _offsets(result).loc[11]
+    assert row["status"] == "failed"
+    assert row["method"] == "skyline"
+    assert "too faint" in row["reason"]
+    assert not result.isApplied
+
+
+def test_only_the_no_lines_and_all_blended_orders_are_sent_to_the_continuum_fit(log):
+    notes = {
+        10: "the skyline table has no lines between 500 and 512 nm",
+        11: "every skyline in the order is blended with a neighbour or too close to the end of the order",
+        12: "every skyline in the order is too faint (under 5 sigma per slit bin)",
+        13: "no profile",
+        14: None,
+    }
+
+    assert slit_illumination._continuum_orders(log, notes, "SLIT1.0") == [10, 11]
+    assert slit_illumination._continuum_orders(log, notes, "SLIT5.0") == [11]
 
 
 def test_a_continuum_offset_is_never_borrowed_by_a_partner_order():
