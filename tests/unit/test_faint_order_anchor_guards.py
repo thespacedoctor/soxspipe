@@ -263,6 +263,34 @@ def test_profile_edge_slit_returns_none_when_the_anchor_has_no_wavelengths(
     assert slit is None
 
 
+@pytest.mark.parametrize("badScale", [0.0, np.nan], ids=["zero", "nan"])
+def test_profile_edge_slit_returns_none_when_the_local_slit_scale_is_not_usable(
+    badScale: float, pixelsAt: object
+) -> None:
+    # ARRANGE: THE MAP'S SLIT SCALE IS ZERO OR NOT FINITE WHEREVER THE EDGE PROFILE IS MEASURED, WHILE THE TRACK ITSELF
+    # STAYS ON THE REAL MAP, SO THE FIT RUNS AND ONLY THE CONVERSION BACK TO ARCSEC IS AT RISK
+    def bad_scale_pixels_at(order: float, wavelengths: np.ndarray, slitArcsec: float | np.ndarray) -> tuple:
+        if np.ndim(slitArcsec) == 0 and abs(float(slitArcsec)) == 1.0:
+            wavelengths = np.asarray(wavelengths, dtype=float)
+            return np.full(wavelengths.shape, 300.0) + (slitArcsec * badScale), wavelengths
+        return pixelsAt(order, wavelengths, slitArcsec)
+
+    truth = float(vis_target_slit(600.0))
+
+    # ACT
+    slit = profile_edge_slit(
+        _clean_image(),
+        bad_scale_pixels_at,
+        _edge_geometry(3.0, 600.0, truth),
+        anchorWavelengths=np.linspace(600.0, 800.0, 150),
+        widthNm=10.0,
+        axisA="x",
+    )
+
+    # ASSERT: THE CALLER FALLS BACK TO THE CURVE ESTIMATE
+    assert slit is None
+
+
 def test_fit_fixed_width_gaussian_returns_none_for_an_empty_profile() -> None:
     # ARRANGE / ACT / ASSERT
     assert fit_fixed_width_gaussian(np.array([]), np.array([]), 1.5, 3.0, 3.0) is None

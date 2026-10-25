@@ -222,8 +222,8 @@ def profile_edge_slit(image, pixelsAt, geometry, *, anchorWavelengths, widthNm, 
 
     **Return:**
 
-    - ``slitArcsec`` -- the anchor's slit position from the map's slit zero, in arcsec, or *None* when the fit fails
-      or the anchor has no finite wavelength
+    - ``slitArcsec`` -- the anchor's slit position from the map's slit zero, in arcsec, or *None* when the fit fails,
+      the anchor has no finite wavelength, or the map's slit scale in the stretch is zero or not finite
     """
     if not np.isfinite(anchorWavelengths).any():
         return None
@@ -233,6 +233,9 @@ def profile_edge_slit(image, pixelsAt, geometry, *, anchorWavelengths, widthNm, 
         lowNm, highNm = edgeNm, min(edgeNm + widthNm, last)
     else:
         lowNm, highNm = max(edgeNm - widthNm, first), edgeNm
+    scaleAtMiddle = float(pixels_per_arcsec(pixelsAt, geometry.order, np.array([(lowNm + highNm) / 2.0]))[0])
+    if scaleAtMiddle == 0.0 or not np.isfinite(scaleAtMiddle):
+        return None
     windowOnly = replace(geometry, marginSigmas=EDGE_PROFILE_MARGIN_SIGMAS)
     fit = fit_bin(image, pixelsAt, windowOnly, lowNm, highNm, axisA)
     if fit is None:
