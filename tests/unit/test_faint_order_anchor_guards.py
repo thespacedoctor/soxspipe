@@ -34,6 +34,7 @@ BRIGHT = 100.0
 FAINT_PEAK = 0.5
 FLANK_SEPARATION_ARCSEC = 2.4
 FLANK_PEAK = 30.0
+FAINT_FLANK_PEAK = 5.0
 TARGET_PEAK = 20.0
 ALL_ORDERS = (1.0, 2.0, 3.0, 4.0)
 
@@ -160,9 +161,11 @@ def test_transfer_leaves_a_faint_order_as_measured_when_its_anchor_has_no_usable
 
 
 def test_transfer_still_transfers_the_other_band_group_when_one_anchor_is_unusable(pixelsAt: object) -> None:
-    # ARRANGE: BOTH THE U AND I ORDERS ARE FAINT, AND THE G ANCHOR IS UNUSABLE BUT THE R ANCHOR IS FINE
+    # ARRANGE: BOTH THE U AND I ORDERS ARE FAINT. U PAIRS WITH G AND I WITH R, AND THE G ANCHOR IS UNUSABLE BUT THE R
+    # ANCHOR IS FINE
     table = vis_transfer_table((2.0, 4.0))
     table.loc[table["order"] == 3.0, "gauss_stddev"] = np.nan
+    uBefore = table.loc[table["order"] == 2.0].copy()
     image = vis_transfer_image(
         {1.0: BRIGHT, 2.0: FAINT_PEAK, 3.0: BRIGHT, 4.0: FAINT_PEAK},
         dict.fromkeys(ALL_ORDERS, 0.0) | {2.0: 0.8, 4.0: 0.8},
@@ -176,6 +179,8 @@ def test_transfer_still_transfers_the_other_band_group_when_one_anchor_is_unusab
     # ASSERT
     assert [(report.order, report.is_transferred) for report in reports] == [(2.0, False), (4.0, True)]
     assert result["faint_transfer"].tolist() == (result["order"] == 4.0).tolist()
+    uAfter = result.loc[result["order"] == 2.0].drop(columns="faint_transfer")
+    pd.testing.assert_frame_equal(uAfter, uBefore)
 
 
 def _transfer_u_on_g(table: pd.DataFrame, pixelsAt: object) -> tuple:
@@ -296,14 +301,14 @@ def test_fit_fixed_width_gaussian_returns_none_for_an_empty_profile() -> None:
     assert fit_fixed_width_gaussian(np.array([]), np.array([]), 1.5, 3.0, 3.0) is None
 
 
-def _image_with_flank(flankSeparationArcsec: float) -> np.ndarray:
-    """Return the clean scene with a source of `FLANK_PEAK` `flankSeparationArcsec` above the target in order 3."""
+def _image_with_flank(flankSeparationArcsec: float, flankPeak: float = FLANK_PEAK) -> np.ndarray:
+    """Return the clean scene with a source of `flankPeak` `flankSeparationArcsec` above the target in order 3."""
     image = vis_transfer_image(dict.fromkeys(ALL_ORDERS, TARGET_PEAK), dict.fromkeys(ALL_ORDERS, 0.0))
     rows = np.arange(10, 10 + VIS_ORDER_ROWS)
     columns = np.arange(VIS_FRAME_SHAPE[1], dtype=float)
     slit = vis_target_slit(vis_wavelength(3.0, rows)) + flankSeparationArcsec
     centre = (-30.0 + 90.0 * 3.0 + vis_slit_scale(3.0) * slit)[:, np.newaxis]
-    image[rows] += FLANK_PEAK * np.exp(-0.5 * ((columns[np.newaxis, :] - centre) / VIS_SEEING_SIGMA_PX) ** 2)
+    image[rows] += flankPeak * np.exp(-0.5 * ((columns[np.newaxis, :] - centre) / VIS_SEEING_SIGMA_PX) ** 2)
     return image
 
 
@@ -324,13 +329,36 @@ def test_profile_edge_slit_does_not_land_on_a_2_4_arcsec_flank_when_the_curve_es
         axisA="x",
     )
 
-    # ASSERT: THE FIT EITHER FAILS, AND THE CALLER FALLS BACK, OR IT FINDS THE TARGET RATHER THAN THE FLANK
-    assert slit is None or abs(slit - truth) < 0.3
+    # ASSERT: THE FIT FAILS AND THE CALLER FALLS BACK TO THE CURVE ESTIMATE. THIS IS THE PINNED BEHAVIOUR: IT NEVER
+    # RETURNS THE FLANK, AND IT DOES NOT RETURN THE TARGET EITHER
+    assert slit is None
 
 
-def test_profile_edge_slit_tracks_the_edge_position_when_the_trace_slopes_in_wavelength(pixelsAt: object) -> None:
+def test_profile_edge_slit_finds_the_target_when_a_2_4_arcsec_flank_is_faint(pixelsAt: object) -> None:
+    # ARRANGE: THE FLANK IS A QUARTER OF THE TARGET'S PEAK, AND THE CURVE ESTIMATE IS STILL 1 ARCSEC TOWARDS IT
+    truth = float(vis_target_slit(600.0))
+    geometry = _edge_geometry(3.0, 600.0, truth + 1.0)
+
+    # ACT
+    slit = profile_edge_slit(
+        _image_with_flank(FLANK_SEPARATION_ARCSEC, FAINT_FLANK_PEAK),
+        pixelsAt,
+        geometry,
+        anchorWavelengths=np.linspace(600.0, 800.0, 150),
+        widthNm=10.0,
+        axisA="x",
+    )
+
+    # ASSERT: THE FIT LANDS ON THE TARGET, NOT ON THE FLANK 2.4 ARCSEC AWAY AND NOT ON THE BIASED ESTIMATE
+    assert slit is not None
+    assert slit == pytest.approx(truth, abs=0.05)
+
+
+@pytest.mark.parametrize("slopeArcsecPerNm", [0.01, -0.01], ids=["rising", "falling"])
+def test_profile_edge_slit_tracks_the_edge_position_when_the_trace_slopes_in_wavelength(
+    slopeArcsecPerNm: float, pixelsAt: object
+) -> None:
     # ARRANGE: THE TARGET DRIFTS 0.01 ARCSEC PER NM, TWENTY TIMES THE SCENE'S DRIFT, ACROSS A 18.6 NM STRETCH
-    slopeArcsecPerNm = 0.01
     rows = np.arange(10, 10 + VIS_ORDER_ROWS)
     columns = np.arange(VIS_FRAME_SHAPE[1], dtype=float)
     image = vis_transfer_image(dict.fromkeys(ALL_ORDERS, 0.0), dict.fromkeys(ALL_ORDERS, 0.0))
@@ -349,6 +377,7 @@ def test_profile_edge_slit_tracks_the_edge_position_when_the_trace_slopes_in_wav
         axisA="x",
     )
 
-    # ASSERT: THE STRETCH IS CENTRED 9.3 NM FROM THE EDGE, SO THE TRACE HAS DRIFTED BY 0.093 ARCSEC AT ITS MIDDLE
+    # ASSERT: THE STRETCH IS CENTRED 9.3 NM FROM THE EDGE, SO THE TRACE HAS DRIFTED BY 0.093 ARCSEC AT ITS MIDDLE. THE
+    # MEASURED DRIFT IS 0.0897, SO THE TOLERANCE OF 0.02 SEPARATES THE SLOPE FROM A FLAT TRACE AT THE EDGE VALUE
     assert measured is not None
-    assert measured == pytest.approx(truth, abs=0.15)
+    assert measured == pytest.approx(truth + slopeArcsecPerNm * 9.3, abs=0.02)
