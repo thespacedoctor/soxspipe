@@ -1302,6 +1302,47 @@ def test_plot_results_draws_one_scatter_for_a_table_with_no_transfer(
     assert peakLabels == {"cross-dispersion 1D gaussian peak-position": 48}
 
 
+def _plot_suptitle(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Record the figure title each time a plot is saved."""
+    return probe_on_savefig(monkeypatch, lambda figure: figure._suptitle.get_text())
+
+
+def test_plot_results_titles_the_residual_statistics_from_the_measured_rows_only(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE MEASURED ROWS OF ORDER 10 ARE OFF BY 1 PX, AND THE SYNTHETIC ROWS OF ORDER 11 ARE EXACT
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels()
+    pixels["cont_x_fit_res"] = np.where(pixels["order"] == 11.0, 0.0, 1.0)
+    titles = _plot_suptitle(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: THE EXACT ROWS DO NOT DILUTE THE MEAN OR WIDEN THE STANDARD DEVIATION
+    assert "mean res: 1.00 pix, res stdev: 0.00" in titles[0]
+
+
+def test_plot_results_titles_the_residual_statistics_from_every_row_when_there_is_no_transfer(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: NO TRANSFER COLUMN, AND RESIDUALS OF 1 AND 3 PX
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels().drop(columns="faint_transfer")
+    pixels["cont_x_fit_res"] = np.where(pixels["order"] == 11.0, 3.0, 1.0)
+    titles = _plot_suptitle(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT
+    assert "mean res: 2.00 pix, res stdev: 1.00" in titles[0]
+
+
 def test_plot_results_still_marks_transferred_rows_when_no_report_is_known(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:

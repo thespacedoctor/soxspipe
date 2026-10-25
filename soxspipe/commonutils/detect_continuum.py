@@ -1862,8 +1862,12 @@ class detect_continuum(_base_detect):
             settingsAx=settingsAx,
         )
 
-        mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
-        std_res = np.std(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
+        # THE TITLE STATISTICS COME FROM THE MEASURED ROWS, SO EXACT SYNTHETIC ROWS DO NOT FLATTER THE FIT
+        statRes = measured_residuals(
+            orderPixelTable[f"cont_{self.axisA}_fit_res"].values, transferred_row_mask(orderPixelTable)
+        )
+        mean_res = np.mean(np.abs(statRes))
+        std_res = np.std(statRes)
         res_min = np.min(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_max = np.max(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_range = res_max - res_min
