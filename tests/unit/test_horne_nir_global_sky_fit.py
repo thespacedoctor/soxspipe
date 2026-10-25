@@ -15,6 +15,7 @@ from tests.unit._horne_nir_scene import (
     build_extractor,
     build_orders,
     catalogue_nm,
+    order_start_nm,
     true_shift_nm,
     true_shift_px,
 )
@@ -426,3 +427,87 @@ def test_the_fit_plot_shows_the_offset_before_and_after_the_model_for_every_line
     assert len(before.collections[0].get_offsets()) == len(result.lines)
     assert len(after.collections[0].get_offsets()) == len(result.lines)
     assert plt.get_fignums() == []
+
+
+# EDGE CASES
+
+
+def test_a_fallback_is_noted_for_the_qc_plots(log, tmp_path):
+    # ARRANGE
+    from soxspipe.commonutils.extraction_notes import extraction_note_logger
+
+    noting = extraction_note_logger(log)
+    extractor = build_extractor(noting, tmp_path)
+
+    # ACT
+    _tune(extractor, build_orders(linesOnly=ORDERS[:1]))
+
+    # ASSERT
+    assert any("Global sky-line fit not used" in message for _, message in noting.notes)
+
+
+def test_an_order_without_a_dispersion_is_left_unshifted_and_records_a_zero_shift(log, tmp_path):
+    # ARRANGE
+    unsigned = ORDERS[-1]
+    extractor = build_extractor(log, tmp_path)
+    realDispersions = extractor._signed_order_dispersions
+    extractor._signed_order_dispersions = lambda df, orders: {
+        o: d for o, d in realDispersions(df, orders).items() if o != unsigned
+    }
+    scene = build_orders()
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert applied_shift(scene, tuned, unsigned) == 0.0
+    assert qc_by_name(extractor, f"SKY SHIFT O{unsigned}")["qc_value"] == 0.0
+    assert applied_shift(scene, tuned, ORDERS[0]) == pytest.approx(true_shift_nm(ORDERS[0]), abs=SHIFT_TOLERANCE_NM)
+
+
+def test_an_order_with_a_single_wavelength_is_left_unshifted(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    scene = build_orders()
+    flat = scene["order"] == ORDERS[-1]
+    scene.loc[flat, "wavelengthMean"] = 1500.0
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert applied_shift(scene, tuned, ORDERS[-1]) == 0.0
+    assert ORDERS[-1] not in extractor.skyCorrections
+
+
+def test_an_unreadable_arc_header_gives_the_capped_tolerance(log, tmp_path, monkeypatch):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    extractor._dispersion_map_header = lambda: None
+    calls = _spy_global_fit(monkeypatch)
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    assert {line.toleranceNm for line in calls[0]["orderLines"].values()} == {MAX_TIGHT_TOLERANCE_NM}
+
+
+def test_an_order_with_no_detectable_peaks_supplies_no_lines(log, tmp_path, monkeypatch):
+    # ARRANGE
+    quiet = ORDERS[-1]
+    quietStartNm = order_start_nm(quiet)
+    extractor = build_extractor(log, tmp_path)
+    realCentres = extractor._measure_peak_centres
+
+    def centres(waveVals, skyVals, peaks):
+        return [] if waveVals.min() >= quietStartNm else realCentres(waveVals, skyVals, peaks)
+
+    extractor._measure_peak_centres = centres
+    calls = _spy_global_fit(monkeypatch)
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    assert quiet not in calls[0]["orderLines"]

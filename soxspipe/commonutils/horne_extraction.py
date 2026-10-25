@@ -1134,7 +1134,7 @@ class horne_extraction(base_util):
     def _nir_order_lines(self, extractedOrdersDF, orders, dispersions):
         """*the geometry and the detected sky lines of every NIR order that can take part in the global fit*
 
-        An order with no dispersion, or no wavelength range, is left unshifted. An order whose sky is too faint to
+        An order with no dispersion is left unshifted. An order whose sky is too faint to
         centre its lines (``MIN_SKY_LINE_SNR``, DY-1663) takes the fitted shift but supplies no lines.
 
         **Key Arguments:**
@@ -1154,19 +1154,11 @@ class horne_extraction(base_util):
         geometry = {}
         orderLines = {}
         for o in orders:
-            orderDF = self._order_slice(extractedOrdersDF, o)
-            if orderDF.empty:
-                continue
             if o not in dispersions:
                 self.log.info(f"order {o}: no dispersion; no sky shift applied")
                 continue
-            try:
-                geometry[int(o)] = geometry_from_rows(
-                    orderDF["wavelengthMean"], orderDF["pixelScaleNm"], dispersions[o]
-                )
-            except ValueError as e:
-                self.log.info(f"order {o}: {e}; no sky shift applied")
-                continue
+            orderDF = self._order_slice(extractedOrdersDF, o)
+            geometry[int(o)] = geometry_from_rows(orderDF["wavelengthMean"], orderDF["pixelScaleNm"], dispersions[o])
             lines = self._detect_nir_order_lines(orderDF, o, dispersions[o], arcRmsPx)
             if lines is not None:
                 orderLines[int(o)] = lines
@@ -1187,8 +1179,6 @@ class horne_extraction(base_util):
         orderDF["wavelength_shifted"] = orderDF["wavelengthMean"]
         wave, sky, objectFlux = self._extract_order_arrays(orderDF)
         valid = wave.notna() & sky.notna()
-        if not valid.any():
-            return None
         _, skyVals, peaks, waveVals, _ = self._detect_sky_peaks(wave, sky, objectFlux, valid)
         peakNm = np.asarray(self._measure_peak_centres(waveVals, skyVals, peaks), dtype=float)
         _, catalogueNm = self._get_local_skylines_for_order(np.nanmin(waveVals), np.nanmax(waveVals), o, "wavelength")
