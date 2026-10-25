@@ -281,7 +281,10 @@ def test_transfer_moves_the_anchor_by_the_difference_of_the_slit_offsets(pixelsA
     # ACT
     shiftedTable, shifted = _transfer_rows(table, image, pixelsAt, {2.0: 0.5, 3.0: 0.0})
 
-    # ASSERT: ANCHOR = S_BRIGHT - DELTA_BRIGHT + DELTA_FAINT
+    # ASSERT: BOTH RUNS REPLACED THE ROWS, SO THE COMPARISON BELOW IS OF TRANSFERRED CENTRES, NOT OF MEASURED ONES
+    assert plain[0].is_transferred
+    assert shifted[0].is_transferred
+    # ANCHOR = S_BRIGHT - DELTA_BRIGHT + DELTA_FAINT
     assert shifted[0].slitArcsec - plain[0].slitArcsec == pytest.approx(0.5, abs=1e-6)
     # THE BINS READ THE TARGET WHEREVER THE TRACK STARTS, SO THE OFFSET CURVE TAKES UP THE 0.5 ARCSEC. THE TRANSFERRED
     # CENTRE STAYS ON THE TARGET, WITHIN A TENTH OF THE 0.5 * SLIT SCALE (1.9 PX) THAT THE TRACK MOVED
@@ -298,7 +301,10 @@ def test_transfer_ignores_offsets_that_miss_one_of_the_two_orders(pixelsAt: obje
     # ACT
     partialTable, partial = _transfer_rows(table, image, pixelsAt, {2.0: 0.5})
 
-    # ASSERT: THE ANCHOR AND EVERY TRANSFERRED CENTRE ARE EXACTLY THOSE OF THE RUN WITH NO OFFSETS
+    # ASSERT: BOTH RUNS REPLACED THE ROWS, SO THE TABLES BELOW HOLD TRANSFERRED CENTRES
+    assert plain[0].is_transferred
+    assert partial[0].is_transferred
+    # THE ANCHOR AND EVERY TRANSFERRED CENTRE ARE EXACTLY THOSE OF THE RUN WITH NO OFFSETS
     assert partial[0].slitArcsec == plain[0].slitArcsec
     pd.testing.assert_frame_equal(partialTable, plainTable)
 
