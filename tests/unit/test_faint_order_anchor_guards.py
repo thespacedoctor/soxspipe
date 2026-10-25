@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.faint_order_anchor import bin_geometry, bright_edge_anchor, profile_edge_slit
+from soxspipe.commonutils.faint_order_anchor import (
+    UnusableAnchorError,
+    bin_geometry,
+    bright_edge_anchor,
+    profile_edge_slit,
+)
 from soxspipe.commonutils.faint_order_map import make_pixels_at
 from soxspipe.commonutils.faint_order_profile import fit_fixed_width_gaussian
 from soxspipe.commonutils.faint_order_trace import faint_trace_settings, transfer_faint_orders
@@ -100,6 +105,29 @@ def test_bright_edge_anchor_raises_an_error_naming_the_order_and_edge_for_an_unu
         bright_edge_anchor(rows, 500.0, _stub_pixels_at(-4.0), axisA="x")
 
 
+@pytest.mark.parametrize(
+    ("rows", "pixelsPerArcsec", "sigmaPx"),
+    [
+        (_anchor_rows().iloc[0:0], -4.0, 1.5),
+        (_anchor_rows(count=3), -4.0, 1.5),
+        (_anchor_rows(), 0.0, 1.5),
+        (_anchor_rows(), -4.0, np.nan),
+    ],
+    ids=["no_rows", "too_few_samples", "bad_scale", "bad_width"],
+)
+def test_bright_edge_anchor_raises_the_unusable_anchor_error_from_each_guard(
+    rows: pd.DataFrame, pixelsPerArcsec: float, sigmaPx: float
+) -> None:
+    # ARRANGE
+    if len(rows.index):
+        rows = rows.assign(gauss_stddev=sigmaPx)
+
+    # ACT / ASSERT: THE ERROR IS A VALUEERROR, SO CALLERS THAT CATCH VALUEERROR STILL WORK
+    with pytest.raises(UnusableAnchorError):
+        bright_edge_anchor(rows, 500.0, _stub_pixels_at(pixelsPerArcsec), axisA="x")
+    assert issubclass(UnusableAnchorError, ValueError)
+
+
 def test_a_usable_anchor_is_unchanged_by_the_guards() -> None:
     # ARRANGE
     rows = _anchor_rows()
@@ -148,6 +176,61 @@ def test_transfer_still_transfers_the_other_band_group_when_one_anchor_is_unusab
     # ASSERT
     assert [(report.order, report.is_transferred) for report in reports] == [(2.0, False), (4.0, True)]
     assert result["faint_transfer"].tolist() == (result["order"] == 4.0).tolist()
+
+
+def _transfer_u_on_g(table: pd.DataFrame, pixelsAt: object) -> tuple:
+    """Run the transfer on a scene where only the u order is faint and g anchors it."""
+    image = vis_transfer_image({1.0: BRIGHT, 2.0: FAINT_PEAK, 3.0: BRIGHT, 4.0: BRIGHT}, dict.fromkeys(ALL_ORDERS, 0.0))
+    return transfer_faint_orders(table, image, pixelsAt, slitOffsets=None, settings=SETTINGS, axisA="x", axisB="y")
+
+
+def test_transfer_does_not_swallow_a_value_error_from_the_dispersion_map(pixelsAt: object) -> None:
+    # ARRANGE: A MALFORMED MAP RAISES A PLAIN VALUEERROR THAT IS NOT ONE OF THE ANCHOR GUARDS
+    def malformed_pixels_at(order: float, wavelengths: np.ndarray, slitArcsec: float | np.ndarray) -> tuple:
+        raise ValueError("the dispersion map is malformed")
+
+    # ACT / ASSERT: THE ERROR REACHES THE CALLER, WHERE IT IS NOT MISTAKEN FOR AN UNUSABLE ANCHOR
+    with pytest.raises(ValueError, match="the dispersion map is malformed"):
+        _transfer_u_on_g(vis_transfer_table((2.0,)), malformed_pixels_at)
+
+
+def test_transfer_reports_the_reason_when_the_anchor_has_no_usable_slit_scale(pixelsAt: object) -> None:
+    # ARRANGE: THE MAP PLACES THE G ORDER AT THE SAME PIXEL FOR EVERY SLIT POSITION, SO ITS SLIT SCALE IS ZERO
+    def flat_scale_pixels_at(order: float, wavelengths: np.ndarray, slitArcsec: float | np.ndarray) -> tuple:
+        return pixelsAt(order, wavelengths, 0.0 if order == 3.0 else slitArcsec)
+
+    table = vis_transfer_table((2.0,))
+    before = table.copy()
+
+    # ACT
+    result, reports = _transfer_u_on_g(table, flat_scale_pixels_at)
+
+    # ASSERT: THE ORDER IS LEFT AS MEASURED, AND THE REPORT AND ITS LINE SAY WHY
+    assert result is table
+    pd.testing.assert_frame_equal(table, before)
+    assert [(report.order, report.is_transferred) for report in reports] == [(2.0, False)]
+    assert "no usable slit scale" in reports[0].reason
+    assert "no usable slit scale" in reports[0].describe("2 (u)", "3 (g)")
+
+
+def test_transfer_reports_the_reason_when_the_anchor_has_too_few_accepted_samples(
+    pixelsAt: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE G ORDER HAS ONLY THREE ACCEPTED SAMPLES. THE FAINT-ORDER SEARCH NEVER PICKS SUCH AN ORDER AS AN
+    # ANCHOR, SO THE PAIRING IS FORCED TO REACH THE GUARD
+    table = vis_transfer_table((2.0,))
+    gRows = table.index[table["order"] == 3.0]
+    table.loc[gRows[3:], "pre-clipped"] = True
+    monkeypatch.setattr("soxspipe.commonutils.faint_order_trace.anchor_neighbours", lambda *args: {2.0: 3.0})
+
+    # ACT
+    result, reports = _transfer_u_on_g(table, pixelsAt)
+
+    # ASSERT
+    assert result is table
+    assert [(report.order, report.is_transferred) for report in reports] == [(2.0, False)]
+    assert "at least 4 accepted samples, got 3" in reports[0].reason
+    assert "at least 4 accepted samples, got 3" in reports[0].describe("2 (u)", "3 (g)")
 
 
 def _edge_geometry(order: float, edgeNm: float, curveSlit: float) -> bin_geometry:

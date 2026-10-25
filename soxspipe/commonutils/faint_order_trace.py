@@ -20,6 +20,7 @@ from soxspipe.commonutils.faint_order_anchor import (
     MIN_FIT_SAMPLES,
     SCATTER_FIT_DEGREE,
     WIDTH_EXPONENT,
+    UnusableAnchorError,
     bin_geometry,
     bright_edge_anchor,
     clipped_polynomial_residuals,
@@ -276,7 +277,8 @@ class transfer_report:
     ``binsKept`` of ``binCount`` bins gave a centre, and ``degree`` is the degree of the curve through them. An order
     that kept no bin is left as it was measured. ``slitArcsec`` is the anchor's slit position and ``anchorSource``
     says how it was found: from the anchor's clipped curve (``"curve"``), from a profile collapsed at the shared edge
-    because the anchor is itself faint (``"profile"``), or from the curve after that profile fit failed.
+    because the anchor is itself faint (``"profile"``), or from the curve after that profile fit failed. ``reason`` is
+    the message of the guard that made the anchor unusable, and is empty otherwise.
     """
 
     order: float
@@ -286,6 +288,7 @@ class transfer_report:
     degree: int
     slitArcsec: float
     anchorSource: str = ANCHOR_CURVE
+    reason: str = ""
 
     @property
     def is_transferred(self):
@@ -304,7 +307,7 @@ class transfer_report:
 
         - ``line`` -- the sentence
         """
-        suffix = ANCHOR_NOTES[self.anchorSource]
+        suffix = ANCHOR_NOTES[self.anchorSource] + (f" ({self.reason})" if self.reason else "")
         if not self.is_transferred:
             return f"Order {orderLabel} from anchor {anchorLabel}: no bin kept, trace left as measured{suffix}"
         head = f"Order {orderLabel} trace transferred from {anchorLabel}"
@@ -430,8 +433,8 @@ def _transfer_one_order(
             settings=settings,
             axisA=axisA,
         )
-    except ValueError:
-        return rows.index, None, transfer_report(order, anchorOrder, 0, 0, 0, np.nan, ANCHOR_UNUSABLE)
+    except UnusableAnchorError as error:
+        return rows.index, None, transfer_report(order, anchorOrder, 0, 0, 0, np.nan, ANCHOR_UNUSABLE, str(error))
     geometry = bin_geometry(
         order, slitArcsec, sigmaArcsec, search_window_arcsec(sigmaArcsec), edgeNm, settings.minBinSnr
     )

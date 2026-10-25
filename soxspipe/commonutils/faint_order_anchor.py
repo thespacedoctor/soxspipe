@@ -41,6 +41,10 @@ EDGE_PROFILE_MARGIN_SIGMAS = 0.0
 MAD_TO_SIGMA = 1.4826
 
 
+class UnusableAnchorError(ValueError):
+    """The anchor order cannot give a slit position and width, so the faint order stays as it was measured."""
+
+
 def clipped_polynomial_residuals(x, y, degree):
     """*the residuals of a MAD-clipped polynomial fit of ``y`` against ``x``*
 
@@ -118,21 +122,22 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt, *, axisA):
     - ``slitArcsec`` -- the trace's slit position at the edge, in arcsec from the map's slit zero
     - ``sigmaArcsec`` -- the trace's Gaussian standard deviation near the edge, in arcsec
 
-    A ``ValueError`` is raised when the order has fewer than ``MIN_FIT_SAMPLES`` accepted samples (or no rows), when
-    the map's slit scale at the edge is zero or not finite, or when the median Gaussian width is not finite and
-    positive. The message names the order and the edge. The caller leaves the faint order as it was measured.
+    An ``UnusableAnchorError`` (a ``ValueError``) is raised when the order has fewer than ``MIN_FIT_SAMPLES`` accepted
+    samples (or no rows), when the map's slit scale at the edge is zero or not finite, or when the median Gaussian
+    width is not finite and positive. The message names the order and the edge. The caller leaves the faint order as
+    it was measured.
     """
     if rows.empty:
-        raise ValueError(f"The anchor order needs at least {MIN_FIT_SAMPLES} accepted samples, got 0.")
+        raise UnusableAnchorError(f"The anchor order needs at least {MIN_FIT_SAMPLES} accepted samples, got 0.")
     order = rows["order"].iloc[0]
     accepted = rows.loc[rows[f"cont_{axisA}"].notna() & ~rows["pre-clipped"].astype(bool)]
     if len(accepted.index) < MIN_FIT_SAMPLES:
-        raise ValueError(
+        raise UnusableAnchorError(
             f"The anchor order {order} needs at least {MIN_FIT_SAMPLES} accepted samples, got {len(accepted.index)}."
         )
     scale = float(pixels_per_arcsec(pixelsAt, order, np.array([edgeNm]))[0])
     if scale == 0.0 or not np.isfinite(scale):
-        raise ValueError(f"The anchor order {order} has no usable slit scale at {edgeNm} nm, got {scale}.")
+        raise UnusableAnchorError(f"The anchor order {order} has no usable slit scale at {edgeNm} nm, got {scale}.")
 
     wavelength = accepted["wavelength"].to_numpy(float)
     zeroPixels, _ = pixelsAt(order, wavelength, 0.0)
@@ -144,7 +149,7 @@ def bright_edge_anchor(rows, edgeNm, pixelsAt, *, axisA):
     nearEdge = accepted.loc[isNearEdge] if isNearEdge.sum() >= MIN_EDGE_SAMPLES else accepted
     sigmaPx = float(np.median(nearEdge["gauss_stddev"].to_numpy(float)))
     if not np.isfinite(sigmaPx) or sigmaPx <= 0.0:
-        raise ValueError(f"The anchor order {order} has no usable width at {edgeNm} nm, got {sigmaPx} px.")
+        raise UnusableAnchorError(f"The anchor order {order} has no usable width at {edgeNm} nm, got {sigmaPx} px.")
     return float(curve(edgeNm) / scale), abs(sigmaPx / scale)
 
 
