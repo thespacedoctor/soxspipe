@@ -23,6 +23,8 @@ from .filenamer import filenamer
 if TYPE_CHECKING:
     import pandas as pd
 
+    from .nir_sky_refit import order_sky_correction
+
 os.environ["TERM"] = "vt100"
 
 
@@ -74,10 +76,14 @@ class FlatPassHandoff:
       skipped skyline tuning (attached arc, DY-1665)
     - ``objectTracePath`` -- path to the object-trace table the flattened extraction wrote, or *None* when it found
       no object trace
+    - ``skyCorrections`` -- ``{order: order_sky_correction}`` of the NIR global sky-line fit (DY-1968), whose
+      row-by-row wavelength correction the not-flattened extraction applies in place of the constant per-order
+      shifts. *None* when the flattened extraction tuned each order on its own, or skipped tuning. Default *None*
     """
 
     skyShiftsNm: Mapping[int | str, float] | None
     objectTracePath: str | None
+    skyCorrections: Mapping[int, "order_sky_correction"] | None = None
 
     # COMPARABLE BUT NOT HASHABLE: THE SHIFTS ARE A READ-ONLY MAPPING, WHICH HAS NO HASH
     __hash__ = None
@@ -85,11 +91,14 @@ class FlatPassHandoff:
     def __post_init__(self) -> None:
         if self.skyShiftsNm is not None:
             object.__setattr__(self, "skyShiftsNm", MappingProxyType(dict(self.skyShiftsNm)))
+        if self.skyCorrections is not None:
+            object.__setattr__(self, "skyCorrections", MappingProxyType(dict(self.skyCorrections)))
 
     def __reduce__(self):
         # A MAPPINGPROXY CANNOT BE PICKLED, SO PICKLE (AND DEEP-COPY) THROUGH A PLAIN DICT
         shifts = None if self.skyShiftsNm is None else dict(self.skyShiftsNm)
-        return (type(self), (shifts, self.objectTracePath))
+        corrections = None if self.skyCorrections is None else dict(self.skyCorrections)
+        return (type(self), (shifts, self.objectTracePath, corrections))
 
 
 # TODO: revisit how the wavelength for each slice is calculated ... take from the continuum, or the central 3-5 pixels?
@@ -904,8 +913,11 @@ class horne_extraction(base_util):
             return self._apply_flat_pass_shifts(extractedOrdersDF, arm)
         # CLEARED FIRST, SO A REPEATED extract() NEVER HANDS ON AN EARLIER CALL'S SHIFTS
         self.skyShiftsNm = None
+        self.skyCorrections = None
         tuned = self._tune_or_skip(extractedOrdersDF, arm)
-        self.flatPassHandoff = FlatPassHandoff(skyShiftsNm=self.skyShiftsNm, objectTracePath=self.objectTracePath)
+        self.flatPassHandoff = FlatPassHandoff(
+            skyShiftsNm=self.skyShiftsNm, objectTracePath=self.objectTracePath, skyCorrections=self.skyCorrections
+        )
         return tuned
 
     def _apply_flat_pass_shifts(self, extractedOrdersDF, arm):
@@ -933,9 +945,31 @@ class horne_extraction(base_util):
             self.log.print("\tSkyline tuning was skipped in the flattened extraction, so it is skipped here too")
             return extractedOrdersDF
 
+        if self.flatPass.skyCorrections:
+            return self._apply_flat_pass_corrections(extractedOrdersDF)
         return self._shift_orders(
             extractedOrdersDF, self.flatPass.skyShiftsNm.items(), arm, source=" (from the flattened extraction)"
         )
+
+    def _apply_flat_pass_corrections(self, extractedOrdersDF):
+        """*add the flattened pass's NIR global-fit corrections to the wavelengths, row by row (DY-1968)*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- a new data-frame with the corrected wavelengths
+        """
+        from soxspipe.commonutils.nir_sky_refit import apply_sky_corrections
+
+        for o, correction in self.flatPass.skyCorrections.items():
+            self.log.print(
+                f"\t\t{correction.shift_nm:0.2f} nm shift (slope {correction.slope_px:0.2f} px) "
+                f"(from the flattened extraction) applied to order {o}"
+            )
+        return apply_sky_corrections(extractedOrdersDF, self.flatPass.skyCorrections)
 
     def _shift_orders(self, extractedOrdersDF, orderShifts, arm, source=""):
         """*add each order's wavelength shift to its ``wavelengthMean`` rows, logging one line per order*
