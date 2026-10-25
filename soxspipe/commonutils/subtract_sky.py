@@ -61,7 +61,7 @@ LOW_FLAT_REFERENCE_PERCENTILE = 95
 
 # THE OBJECT-WING CORRECTION SETTINGS USED WHEN A WORKSPACE'S SETTINGS PREDATE THEM (DY-1279)
 DEFAULT_OBJECT_WING_CORRECTION = True
-DEFAULT_OBJECT_WING_GATE_FRACTION = 0.1
+DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA = 0.03
 # THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE DIVIDES BY
 MIN_LOGGED_SKY_LEVEL = 1e-9
 
@@ -616,7 +616,7 @@ class subtract_sky:
         """
         import numpy as np
 
-        isWingCorrectionOn, gateFraction = self._object_wing_settings()
+        isWingCorrectionOn, minLeakSigma = self._object_wing_settings()
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         fittedOrders = []
@@ -630,7 +630,7 @@ class subtract_sky:
             preFitOrder = imageMapOrder.copy() if isWingCorrectionOn else None
             fitResult = self.fit_bspline_curve_to_sky(imageMapOrder)
             if isWingCorrectionOn:
-                fitResult = self._refit_without_object_wings(preFitOrder, fitResult, gateFraction)
+                fitResult = self._refit_without_object_wings(preFitOrder, fitResult, minLeakSigma)
             imageMapOrder, tck, knots, flux_error_ratio, residualFloor = fitResult
             totalKnots += len(knots)
             fittedOrders.append(imageMapOrder)
@@ -652,37 +652,39 @@ class subtract_sky:
         return fittedOrders, alltck, allKnots
 
     def _object_wing_settings(self):
-        """*the object-wing correction switch and gate fraction, with defaults for older workspace settings (DY-1279)*
+        """*the object-wing correction switch and leak gate, with defaults for older workspace settings (DY-1279)*
 
         **Return:**
 
         - ``isOn`` -- True when the object-wing correction runs
-        - ``gateFraction`` -- an order is corrected only when the object light in its sky model is above this
-          fraction of its sky level
+        - ``minLeakSigma`` -- an order is corrected only when the object light in its sky model is above this many
+          times the flux error of a faint-sky pixel (DY-1964)
         """
         skySettings = self.recipeSettings["sky-subtraction"]
         # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NEITHER KEY
         isOn = bool(skySettings.get("object_wing_correction", DEFAULT_OBJECT_WING_CORRECTION))
-        gateFraction = float(skySettings.get("object_wing_gate_fraction", DEFAULT_OBJECT_WING_GATE_FRACTION))
-        if not (math.isfinite(gateFraction) and gateFraction >= 0):
+        # AN OLDER WORKSPACE MAY STILL CARRY object_wing_gate_fraction, WHICH NOTHING READS SINCE DY-1964
+        minLeakSigma = float(skySettings.get("object_wing_min_leak_sigma", DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA))
+        if not (math.isfinite(minLeakSigma) and minLeakSigma >= 0):
             raise ValueError(
-                "the sky-subtraction setting object_wing_gate_fraction must be a finite number >= 0, "
-                f"got {gateFraction}"
+                "the sky-subtraction setting object_wing_min_leak_sigma must be a finite number >= 0, "
+                f"got {minLeakSigma}"
             )
-        return isOn, gateFraction
+        return isOn, minLeakSigma
 
-    def _refit_without_object_wings(self, preFitOrder, fitResult, gateFraction):
+    def _refit_without_object_wings(self, preFitOrder, fitResult, minLeakSigma):
         """*estimate the object light in an order's first sky fit and, if it is significant, refit without it (DY-1279)*
 
-        The object's spatial profile, with its zero point at the faintest 1 arcsec of the slit, gives a model of the
-        object light at every pixel (``object_wing_model``). The sky is refitted to the flux minus that model. The
-        returned order carries the real flux, and its sky-subtracted flux is the real flux minus the refitted sky.
+        The object's spatial profile, with its zero point at its mean level more than 3 arcsec from the object, gives a
+        model of the object light at every pixel (``object_wing_model``). The sky is refitted to the flux minus that
+        model. The returned order carries the real flux, and its sky-subtracted flux is the real flux minus the
+        refitted sky.
 
         **Key Arguments:**
 
         - ``preFitOrder`` -- copy of the clipped order dataframe taken before the first fit
         - ``fitResult`` -- the tuple returned by ``fit_bspline_curve_to_sky`` for the first fit
-        - ``gateFraction`` -- the ``object_wing_gate_fraction`` setting
+        - ``minLeakSigma`` -- the ``object_wing_min_leak_sigma`` setting
 
         **Return:**
 
@@ -710,7 +712,7 @@ class subtract_sky:
         # THE UPPER-ONLY CLIP KEEPS THE BRIGHTER WING PIXELS OUT OF THE FIT, SO THE PROFILE USES ONLY THE PIXELS IT USED
         isFitted = ~firstFit["flagged_all_clipped"].reindex(preFitOrder.index, fill_value=True).to_numpy(dtype=bool)
         estimate = estimate_object_wings(
-            wavelength, slitPosition, flux, skyModel, error, isUsable, gateFraction, isFitted=isFitted
+            wavelength, slitPosition, flux, skyModel, error, isUsable, minLeakSigma, isFitted=isFitted
         )
         order = int(preFitOrder["order"].values[0])
         if not estimate.isCorrected:
