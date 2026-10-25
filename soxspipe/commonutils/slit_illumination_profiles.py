@@ -38,7 +38,8 @@ MAD_TO_SIGMA = 1.4826
 # OF A CONTINUUM PROFILE. THE OFFSET FIT DOES NOT USE IT
 PROFILE_COLUMNS = ["order", "slit", "profile", "profileErr", "nLines"]
 
-# THE CONTINUUM-EDGE PROFILE (ORDERS WITH NO SKYLINES) SPLITS AN ORDER INTO THIS MANY EQUAL-COUNT WAVELENGTH CHUNKS
+# THE CONTINUUM-EDGE PROFILE (ORDERS WITH NO LINES IN THE SKYLINE TABLE OR WITH EVERY SKYLINE BLENDED) SPLITS AN ORDER
+# INTO THIS MANY EQUAL-COUNT WAVELENGTH CHUNKS
 CONTINUUM_CHUNKS = 20
 # A SLIT BIN OF THE COMBINED CONTINUUM PROFILE NEEDS THIS MANY CHUNKS
 CONTINUUM_MIN_CHUNKS_PER_BIN = 5
@@ -54,6 +55,7 @@ OBJECT_SMOOTHING_BINS = 5
 OBJECT_SIGNIFICANCE = 5.0
 
 NO_SKYLINES_NOTE_PREFIX = "the skyline table has no lines between"
+ALL_BLENDED_NOTE = "every skyline in the order is blended with a neighbour or too close to the end of the order"
 NO_FLAT_LEVEL_REASON = "flat level is not positive"
 TOO_FEW_FLAT_BINS_REASON = "too few populated flat bins"
 
@@ -118,6 +120,11 @@ def normalised_flat_profile(flatData, slit, isOrder, binArcsec):
 def has_no_skylines_note(note):
     """*True if a ``skyline_slit_profiles`` note says the skyline table has no lines in the order*"""
     return isinstance(note, str) and note.startswith(NO_SKYLINES_NOTE_PREFIX)
+
+
+def has_all_blended_note(note):
+    """*True if a ``skyline_slit_profiles`` note says every skyline is blended or too close to the order end*"""
+    return note == ALL_BLENDED_NOTE
 
 
 def _nan_median(values, axis):
@@ -291,7 +298,7 @@ def _order_skyline_profile(pixels, nBins, lineWavelengths, isInterior):
         return None, f"{NO_SKYLINES_NOTE_PREFIX} {firstWavelength:.0f} and {lastWavelength:.0f} nm"
     clean = _clean_lines(pixels, lineWavelengths)
     if not clean:
-        return None, "every skyline in the order is blended with a neighbour or too close to the end of the order"
+        return None, ALL_BLENDED_NOTE
     differences = np.full((len(clean), nBins), np.nan)
     errors = np.full((len(clean), nBins), np.nan)
     for index, (lineWavelength, step) in enumerate(clean):
@@ -501,7 +508,7 @@ def continuum_slit_profiles(
     minChunksPerBin=CONTINUUM_MIN_CHUNKS_PER_BIN,
     objectMaskArcsec=CONTINUUM_OBJECT_MASK_ARCSEC,
 ):
-    """*the raw-like sky-continuum slit profile of the given orders, for orders that have no skylines to use*
+    """*the raw-like sky-continuum slit profile of the given orders, for orders that have no usable skyline profile*
 
     Each order's usable pixels are split into ``nChunks`` equal-count wavelength chunks. Every chunk is median-binned
     along the slit and normalised to its sky interior, and the chunks are combined by median. The chunk-to-chunk
