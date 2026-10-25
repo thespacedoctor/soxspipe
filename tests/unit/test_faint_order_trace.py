@@ -10,18 +10,20 @@ import pytest
 from astropy import units as u
 from astropy.nddata import CCDData
 
+from soxspipe.commonutils.faint_order_anchor import (
+    bright_edge_anchor,
+    clipped_polynomial_residuals,
+    pixels_per_arcsec,
+    search_window_arcsec,
+)
 from soxspipe.commonutils.faint_order_map import make_pixels_at
 from soxspipe.commonutils.faint_order_profile import collapse_bin_profile, fit_fixed_width_gaussian, frame_to_nan_array
 from soxspipe.commonutils.faint_order_trace import (
     VIS_BAND_GROUPS,
     anchor_neighbours,
-    bright_edge_anchor,
-    clipped_polynomial_residuals,
     faint_trace_settings,
     find_faint_orders,
     order_trace_stats,
-    pixels_per_arcsec,
-    search_window_arcsec,
 )
 from soxspipe.commonutils.toolkit import SOXS_VIS_ORDERS_BLUE_TO_RED
 from tests.unit._continuum_vis_scene import vis_dispersion_map, vis_slit_scale
