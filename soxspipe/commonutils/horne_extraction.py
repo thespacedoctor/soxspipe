@@ -57,6 +57,8 @@ SKY_TUNING_PER_ORDER_QC_VALUE = "skylines-per-order"
 
 # A NIR SKY LINE MUST STAND OUT FROM ITS SURROUNDINGS BY THIS MANY TIMES THE SAMPLE-TO-SAMPLE NOISE (DY-1968)
 NIR_SKY_PEAK_PROMINENCE_SIGMA = 5
+# TWO PEAKS CLOSER THAN THIS (IN SAMPLES) ARE ONE BLENDED LINE, SO ONLY THE HIGHER IS KEPT
+NIR_SKY_PEAK_MIN_SEPARATION_PX = 5
 
 # SKY-LINE MATCH TOLERANCES (nm) FOR THE THREE TUNING ITERATIONS OF AN ORDER MEASURED FROM SCRATCH
 SKYLINE_TOLERANCES_NM = (0.5, 0.1, 0.1)
@@ -1776,8 +1778,12 @@ class horne_extraction(base_util):
 
         The shared ``_detect_sky_peaks`` divides the sky by an unconstrained continuum fit, and on a NIR order that
         division makes false maxima that set a threshold no real line reaches (DY-1968). Here a peak must have a
-        prominence of ``NIR_SKY_PEAK_PROMINENCE_SIGMA`` times the noise, which is estimated from the first differences
-        of the sky so that the lines and a smooth continuum barely affect it.
+        prominence of ``NIR_SKY_PEAK_PROMINENCE_SIGMA`` times the noise. The noise is the standard deviation of the
+        first differences of the sky divided by the square root of 2. A smooth continuum barely affects it, but the
+        line flanks are in the differences too, so the threshold grows with the line content of the order. This is
+        deliberately conservative. The differences are taken over the compacted valid samples, so a masked gap inside
+        the valid range joins its two neighbours into one difference. Such gaps are assumed to be rare. Two peaks
+        closer than ``NIR_SKY_PEAK_MIN_SEPARATION_PX`` samples count as one line.
 
         **Key Arguments:**
 
@@ -1803,7 +1809,9 @@ class horne_extraction(base_util):
         noise = np.std(differences) / np.sqrt(2)
         if not noise > 0:
             return skyVals, np.array([], dtype=int), waveVals
-        peaks, _ = find_peaks(skyVals, prominence=NIR_SKY_PEAK_PROMINENCE_SIGMA * noise, distance=5)
+        peaks, _ = find_peaks(
+            skyVals, prominence=NIR_SKY_PEAK_PROMINENCE_SIGMA * noise, distance=NIR_SKY_PEAK_MIN_SEPARATION_PX
+        )
         return skyVals, peaks, waveVals
 
     def _get_local_skylines_for_order(self, wmin, wmax, order, calibrationCol):
