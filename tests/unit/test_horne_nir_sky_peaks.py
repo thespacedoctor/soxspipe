@@ -26,9 +26,10 @@ LINE_CENTRES = (60, 140, 220, 330)
 GAP_START = 160
 GAP_END = 180
 # WHITE NOISE OF UNIT SIGMA ON A SLOPE; LINE HEIGHTS ARE IN UNITS OF THAT SIGMA
-GAUSSIAN_SEED = 7
+# LEGACY RandomState STREAMS ARE FROZEN BY NUMPY (NEP 19); Generator STREAMS ARE NOT
+GAUSSIAN_SEED = 10
 GAUSSIAN_SLOPE = 0.5
-GAUSSIAN_LINES = {60: 12.0, 140: 6.0, 220: 2.0, 330: 12.0}
+GAUSSIAN_LINES = {60: 12.0, 140: 7.0, 220: 2.0, 330: 12.0}
 # THE ORDER 15 SKY OF NOD FRAME 024342 HAS 14 REFERENCE LINES, MEASURED AT HALF MAXIMUM.
 # THIS DETECTOR FINDS 21 PEAKS ON IT; THE 7 EXTRA PEAKS WERE NOT IDENTIFIED.
 # THE FLOOR OF 15 IS A SANITY BOUND ON THE DETECTOR'S OWN COUNT: ABOVE THE 14 REFERENCE LINES, BELOW ITS 21.
@@ -150,7 +151,7 @@ def test_uses_only_the_valid_samples() -> None:
 def test_threshold_follows_the_difference_noise_of_gaussian_sky() -> None:
     # ARRANGE
     trueSigma = 1.0
-    noise = np.random.default_rng(GAUSSIAN_SEED).normal(0.0, trueSigma, SAMPLES)
+    noise = np.random.RandomState(GAUSSIAN_SEED).normal(0.0, trueSigma, SAMPLES)
     sky = 100.0 + GAUSSIAN_SLOPE * np.arange(SAMPLES) + noise
     for centre, height in GAUSSIAN_LINES.items():
         sky[centre] += height * trueSigma
@@ -161,8 +162,10 @@ def test_threshold_follows_the_difference_noise_of_gaussian_sky() -> None:
     _, peaks, _ = _detect(wave, pd.Series(sky), valid)
 
     # ASSERT
-    # THE THRESHOLD IS 5 * TRUE SIGMA. NO DIVISION BY SQRT(2) WOULD RAISE IT TO 7.1 AND LOSE THE 6 SIGMA LINE.
-    # THE STD OF THE SLOPED SKY ITSELF WOULD RAISE IT FAR ABOVE EVERY LINE.
+    # MEASURED FOR THIS SEED: NOISE 1.31 (LINE FLANKS INFLATE IT ABOVE TRUE SIGMA), THRESHOLD 6.55.
+    # THE LINE AT 140 HAS PROMINENCE 7.57, SO IT PASSES BY ABOUT 1.0 BY DESIGN.
+    # WITHOUT THE SQRT(2) DIVISION THE THRESHOLD IS 9.26 AND THE LINE AT 140 IS LOST.
+    # THE STD OF THE SLOPED SKY ITSELF WOULD RAISE THE THRESHOLD ABOVE EVERY LINE.
     assert peaks.tolist() == [60, 140, 330]
 
 
@@ -170,7 +173,8 @@ def test_keeps_only_the_higher_of_two_lines_closer_than_the_minimum_separation()
     # ARRANGE
     wave, sky, valid = _spectrum({})
     sky.iloc[100] += 20.0
-    sky.iloc[100 + NIR_SKY_PEAK_MIN_SEPARATION_PX - 2] += 15.0
+    # LITERAL 4 SAMPLES: ONE BELOW THE 5-SAMPLE MINIMUM SEPARATION
+    sky.iloc[104] += 15.0
 
     # ACT
     _, peaks, _ = _detect(wave, sky, valid)
@@ -183,13 +187,14 @@ def test_keeps_two_lines_separated_by_exactly_the_minimum_separation() -> None:
     # ARRANGE
     wave, sky, valid = _spectrum({})
     sky.iloc[100] += 20.0
-    sky.iloc[100 + NIR_SKY_PEAK_MIN_SEPARATION_PX] += 15.0
+    sky.iloc[105] += 15.0
 
     # ACT
     _, peaks, _ = _detect(wave, sky, valid)
 
     # ASSERT
-    assert peaks.tolist() == [100, 100 + NIR_SKY_PEAK_MIN_SEPARATION_PX]
+    assert NIR_SKY_PEAK_MIN_SEPARATION_PX == 5
+    assert peaks.tolist() == [100, 105]
 
 
 def test_maps_peaks_to_the_right_wavelengths_across_an_interior_masked_gap() -> None:

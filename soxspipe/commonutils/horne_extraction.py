@@ -1780,7 +1780,7 @@ class horne_extraction(base_util):
         division makes false maxima that set a threshold no real line reaches (DY-1968). Here a peak must have a
         prominence of ``NIR_SKY_PEAK_PROMINENCE_SIGMA`` times the noise. The noise is the standard deviation of the
         first differences of the sky divided by the square root of 2. A smooth continuum barely affects it, but the
-        line flanks are in the differences too, so the threshold grows with the line content of the order. This is
+        line flanks are in the differences too, so the threshold can grow with the line content of the order. This is
         deliberately conservative. The differences are taken over the compacted valid samples, so a masked gap inside
         the valid range joins its two neighbours into one difference. Such gaps are assumed to be rare. Two peaks
         closer than ``NIR_SKY_PEAK_MIN_SEPARATION_PX`` samples count as one line.
