@@ -708,5 +708,45 @@ def test_the_log_names_where_each_orders_shift_came_from(log, tmp_path):
 
     # ASSERT
     printed = [message for level, message in log.messages if level == "print" and "applied to order" in message]
-    assert any("(own-offset)" in message for message in printed)
-    assert any("(global)" in message for message in printed)
+    assert any("(own-offset" in message for message in printed)
+    assert any("(global" in message for message in printed)
+
+
+# AN ORDER WHOSE LINES MATCH ABOUT NEITHER SEED
+
+# LINES SCATTERED +-1.5 AND +-3.5 px ABOUT THE ORDER'S OWN SHIFT, A CURVED ARC-SOLUTION ERROR LIKE O10 IN A 1 ARCSEC NOD
+CURVED_LINE_OFFSETS = {OFFSET_ORDER: 8.0 + np.array([-3.5, -1.5, 1.5, 3.5])}
+
+
+def test_an_order_with_curved_lines_that_match_about_neither_seed_keeps_its_own_measured_shift(
+    log, tmp_path, monkeypatch
+):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    scene = build_orders(offsets=CURVED_LINE_OFFSETS, lineCounts={OFFSET_ORDER: 4})
+    calls = _spy_global_fit(monkeypatch)
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    correction = extractor.skyCorrections[OFFSET_ORDER]
+    ownSeed = calls[0]["ownSeedsPx"][OFFSET_ORDER]
+    assert correction.source == "own-seed"
+    assert (correction.globalSeedLines, correction.ownSeedLines) == (0, 0)
+    assert correction.shiftPx == pytest.approx(ownSeed, abs=1e-9)
+    assert ownSeed != pytest.approx(calls[0]["seedPx"], abs=1.0)
+    assert applied_shift(scene, tuned, ORDERS[0]) == pytest.approx(true_shift_nm(ORDERS[0]), abs=SHIFT_TOLERANCE_NM)
+
+
+def test_the_log_gives_the_seed_match_counts_of_each_order(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+
+    # ACT
+    _tune(extractor, build_orders(offsets=CURVED_LINE_OFFSETS, lineCounts={OFFSET_ORDER: 4}))
+
+    # ASSERT
+    printed = [message for level, message in log.messages if level == "print" and "applied to order" in message]
+    assert any("(own-seed; seed matches global 0, own 0)" in message for message in printed)
+    assert any("(global; seed matches global 10, own 10)" in message for message in printed)

@@ -1244,9 +1244,15 @@ class horne_extraction(base_util):
                 self._record_order_shift_qc(o, 0.0)
                 continue
             orderText = order_label(o, self.arm)
+            ownLines = "none" if correction.ownSeedLines is None else correction.ownSeedLines
+            seedText = (
+                ""
+                if correction.globalSeedLines is None
+                else f"; seed matches global {correction.globalSeedLines}, own {ownLines}"
+            )
             self.log.print(
                 f"\t\t{correction.shift_nm:0.2f} nm shift (slope {correction.slope_px:0.2f} px) applied to order "
-                f"{orderText} from {correction.nLines} sky lines ({correction.source})"
+                f"{orderText} from {correction.nLines} sky lines ({correction.source}{seedText})"
             )
             if correction.source == "own-seed":
                 self.log.info(

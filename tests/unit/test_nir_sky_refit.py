@@ -14,6 +14,7 @@ from soxspipe.commonutils.nir_sky_refit import (
     MAX_TIGHT_TOLERANCE_NM,
     MIN_GLOBAL_LINES,
     MIN_OFFSET_LINES,
+    MIN_OWN_SEED_LINES,
     SLOPE_SHRINK_LINES,
     apply_sky_corrections,
     fit_nir_sky_model,
@@ -979,3 +980,74 @@ def test_an_order_with_enough_lines_for_an_offset_keeps_the_offset_logic_not_the
     assert result.corrections[12].source == "own-offset"
     assert result.corrections[12].shiftPx == pytest.approx(_truth_px(12) + 7.5, abs=0.3)
     assert 12 in set(result.lines["order"])
+
+
+# AN ORDER WHOSE LINES MATCH ABOUT NEITHER SEED (A CURVED ARC-SOLUTION ERROR, DY-1970)
+
+# LINES SCATTERED ABOUT 7 px FROM THE MODEL BY +-1.5 AND +-3.5 px: BEYOND THE 0.46 px TOLERANCE OF ANY SEED
+CURVED_OFFSETS_PX = 7.0 + np.array([-3.5, -1.5, 1.5, 3.5])
+
+
+def test_own_seeds_leave_out_a_single_line_the_unshifted_placeholder_and_non_finite_shifts():
+    # ARRANGE
+    shiftsNm = {11: -0.2, 12: -0.2, 13: 0.0, 14: float("nan"), 15: -0.2}
+    counts = {11: MIN_OWN_SEED_LINES, 12: MIN_OWN_SEED_LINES - 1, 13: 5, 14: 5, 15: 0}
+
+    # ACT
+    seeds = own_seeds_px(shiftsNm, counts, dict.fromkeys(shiftsNm, 0.05))
+
+    # ASSERT
+    assert seeds == pytest.approx({11: 4.0})
+
+
+def test_an_order_that_matches_no_line_about_either_seed_keeps_a_usable_own_seed():
+    # ARRANGE
+    ownSeed = _truth_px(12) + 7.0
+    orderLines = _prod_scene(12, 4, CURVED_OFFSETS_PX)
+    without12 = {o: lines for o, lines in orderLines.items() if o != 12}
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={12: ownSeed})
+    reference = fit_with_iterated_matching(without12, _prod_geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    correction = result.corrections[12]
+    assert correction.shiftPx == pytest.approx(ownSeed, abs=0.05)
+    assert correction.source == "own-seed"
+    assert (correction.globalSeedLines, correction.ownSeedLines) == (0, 0)
+    assert 12 not in set(result.lines["order"])
+    assert result.coefficients == pytest.approx(reference.coefficients, abs=1e-9)
+    for o in ORDERS:
+        if o != 12:
+            assert result.corrections[o].shiftPx == pytest.approx(_truth_px(o), abs=0.05)
+
+
+def test_an_order_that_matches_no_line_about_either_seed_takes_the_global_value_without_a_usable_own_seed():
+    # ARRANGE: THE EXTRACTION OFFERS NO OWN SEED FOR AN ORDER MEASURED FROM ONE LINE OR NOT AT ALL
+    orderLines = _prod_scene(12, 4, CURVED_OFFSETS_PX)
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={})
+
+    # ASSERT
+    assert result.corrections[12].source == "global"
+    assert result.corrections[12].shiftPx == pytest.approx(_truth_px(12), abs=0.05)
+    assert result.corrections[12].globalSeedLines == 0
+    assert result.corrections[12].ownSeedLines is None
+
+
+def test_a_tie_at_two_lines_goes_to_the_global_seed():
+    # ARRANGE: LINES 1 AND 2 SIT ON THE MODEL (GLOBAL SEED RMS ABOUT 0.19 px) AND LINES 3 AND 4 ABOUT 7 px FROM IT,
+    # +-0.35 px FROM THE OWN SEED. EACH SEED MATCHES TWO LINES AND THE GLOBAL ONE MATCHES THEM MORE TIGHTLY
+    orderLines = _prod_scene(15, 4, np.array([0.0, 0.0, 7.23, 6.29]))
+
+    # ACT
+    result = fit_with_iterated_matching(
+        orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={15: _truth_px(15) + 7.0}
+    )
+
+    # ASSERT
+    correction = result.corrections[15]
+    assert (correction.globalSeedLines, correction.ownSeedLines) == (2, 2)
+    assert correction.source == "global"
+    assert correction.shiftPx == pytest.approx(_truth_px(15), abs=0.05)
