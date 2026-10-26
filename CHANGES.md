@@ -1,8 +1,5 @@
 # Release Notes
 
-* **REFACTOR**: agent config (`.claude/CLAUDE.md`, `.codegraph/`) and the DY-34 defect-hunt report move out of the repository into the maintainer's local workspace.
-* **FIXED**: NIR stare sky subtraction now restores only the skyline pixels that the pre-fit clip flagged outside the detected object range, so OH lines are no longer under-subtracted and hot pixels stay clipped (new `restore_skyline_cores_outside_object` setting, on for NIR and off for VIS and XSH); the sky spline is held at its boundary value beyond the fitted range instead of extrapolating (DY-1972).
-
 ## v0.19.0 - October 26, 2026
 
 * **FEATURE**: the order location tables from `soxs_order_centres` and `soxs_mflat` get a third extension, `ORDER_TRACES`, listing the unbinned pixel coordinates of each order's centre trace (and upper and lower edges, for the master flat) at every pixel along the dispersion axis; object trace tables are unchanged (DY-1726).
@@ -57,6 +54,7 @@
 * **DOCS**: the UV-VIS instrument page lists the VIS order numbers, bands and wavelength ranges, and the QC pages say what `<N>` means (DY-1563).
 * **DOCS**: the `soxs_stare`, `soxs_stare_std`, `soxs_nod`, `soxs_nod_std` and `soxs_offset` QC tables now list the `N ORDERS SLIT EDGE` QC; only a flux-standard stare reduction that builds a response curve fails on a spill (DY-1507).
 * **DOCS**: the recipe and user-manual recipe pages now give each figure and table its own label (QC figures use `<recipe>_qc_fig`), and the `soxs_nod_std` and `soxs_stare_std` QC-metric links now point to their own tables (DY-1508).
+* **FIXED**: NIR stare sky subtraction now restores only the skyline pixels that the pre-fit clip flagged outside the detected object range, so OH lines are no longer under-subtracted and hot pixels stay clipped (new `restore_skyline_cores_outside_object` setting, on for NIR and off for VIS and XSH); the sky spline is held at its boundary value beyond the fitted range instead of extrapolating (DY-1972).
 * **FIXED**: SOXS NIR sky-line tuning now detects the sky lines of each order as peaks of the raw sky flux with a prominence of 5 times the noise, instead of dividing the sky by a continuum fit and keeping peaks above the mean plus one standard deviation, which on some orders (NIR order 15) kept a few continuum-division artefacts and missed every real line, so the global fit had no lines to match there; the VIS and first-pass per-order detection is unchanged (DY-1968).
 * **FIXED**: the slit-illumination continuum-edge offset now also runs on any slit for an order whose skylines are all blended or too close to the order end, so wide-slit frames get a slit offset and their unlit slit ends leave the sky model; an order with no lines in the skyline table stays SLIT1.0 only (DY-1955).
 * **FIXED**: the stare object-wing correction no longer over-corrects bright stars or skips small leaks: the zero point is now the mean profile more than 3 arcsec from the object, measured on faint-sky pixels, instead of the faintest 1 arcsec, and `object_wing_gate_fraction` is replaced by `object_wing_min_leak_sigma` (default 0.03), which corrects any leak above 0.03 times the noise of a faint-sky pixel; bright-object sky models and fluxes change (DY-1964).
