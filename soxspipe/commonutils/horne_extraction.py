@@ -55,6 +55,9 @@ SKY_TUNING_SKIPPED_QC_VALUE = "skipped: attached arc"
 SKY_TUNING_GLOBAL_QC_VALUE = "skylines-global"
 SKY_TUNING_PER_ORDER_QC_VALUE = "skylines-per-order"
 
+# A NIR SKY LINE MUST STAND OUT FROM ITS SURROUNDINGS BY THIS MANY TIMES THE SAMPLE-TO-SAMPLE NOISE (DY-1968)
+NIR_SKY_PEAK_PROMINENCE_SIGMA = 5
+
 # SKY-LINE MATCH TOLERANCES (nm) FOR THE THREE TUNING ITERATIONS OF AN ORDER MEASURED FROM SCRATCH
 SKYLINE_TOLERANCES_NM = (0.5, 0.1, 0.1)
 # MATCH TOLERANCE (nm) FOR EACH ITERATION OF THE VIS r ORDER WHEN IT STARTS AT THE SHIFT PREDICTED FROM i (DY-1645)
@@ -1191,7 +1194,7 @@ class horne_extraction(base_util):
         if reason is not None:
             self.log.info(f"{reason}; the order supplies no sky lines to the global fit")
             return None
-        _, skyVals, peaks, waveVals, _ = self._detect_sky_peaks(wave, sky, objectFlux, valid)
+        skyVals, peaks, waveVals = self._detect_nir_sky_peaks(wave, sky, valid)
         peakNm = np.asarray(self._measure_peak_centres(waveVals, skyVals, peaks), dtype=float)
         _, catalogueNm = self._get_local_skylines_for_order(np.nanmin(waveVals), np.nanmax(waveVals), o, "wavelength")
         if peakNm.size == 0 or len(catalogueNm) == 0:
@@ -1767,6 +1770,41 @@ class horne_extraction(base_util):
         # axisBVals = axisBcoord.loc[valid].to_numpy()
 
         return skyValsOriginal, skyVals, peaks, waveVals, objectVals
+
+    def _detect_nir_sky_peaks(self, wave, sky, valid):
+        """*the sky lines of a NIR order, found as peaks of the raw sky flux that stand out from the noise*
+
+        The shared ``_detect_sky_peaks`` divides the sky by an unconstrained continuum fit, and on a NIR order that
+        division makes false maxima that set a threshold no real line reaches (DY-1968). Here a peak must have a
+        prominence of ``NIR_SKY_PEAK_PROMINENCE_SIGMA`` times the noise, which is estimated from the first differences
+        of the sky so that the lines and a smooth continuum barely affect it.
+
+        **Key Arguments:**
+
+        - ``wave`` -- the wavelength of each sample (a series)
+        - ``sky`` -- the sky flux of each sample (a series)
+        - ``valid`` -- the mask of the samples to use
+
+        **Return:**
+
+        - ``skyVals`` -- the raw sky flux of the valid samples
+        - ``peaks`` -- the indices of the detected lines in the valid samples. Empty if the noise is zero or unknown
+        - ``waveVals`` -- the wavelengths of the valid samples
+        """
+        import numpy as np
+        from scipy.signal import find_peaks
+
+        skyVals = sky[valid].to_numpy(dtype=float)
+        waveVals = wave.loc[valid].to_numpy()
+        differences = np.diff(skyVals)
+        differences = differences[np.isfinite(differences)]
+        if differences.size < 2:
+            return skyVals, np.array([], dtype=int), waveVals
+        noise = np.std(differences) / np.sqrt(2)
+        if not noise > 0:
+            return skyVals, np.array([], dtype=int), waveVals
+        peaks, _ = find_peaks(skyVals, prominence=NIR_SKY_PEAK_PROMINENCE_SIGMA * noise, distance=5)
+        return skyVals, peaks, waveVals
 
     def _get_local_skylines_for_order(self, wmin, wmax, order, calibrationCol):
         """Fetch catalogue skylines within wavelength range and project to pixel/wavelength coordinates.

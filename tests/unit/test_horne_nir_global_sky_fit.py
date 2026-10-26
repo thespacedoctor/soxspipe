@@ -701,9 +701,9 @@ def test_an_order_with_curved_lines_that_match_about_neither_seed_keeps_its_own_
     correction = extractor.skyCorrections[OFFSET_ORDER]
     ownSeed = calls[0]["ownSeedsPx"][OFFSET_ORDER]
     assert correction.source == "own-seed"
-    # WITHIN THE 0.1 nm (2 px) CAP THE OWN SEED MATCHES THE TWO LINES 1.5 px AWAY AND THE GLOBAL SEED ONE, BUT NONE IS
+    # WITHIN THE 0.1 nm (2 px) CAP THE OWN SEED MATCHES THE TWO LINES 1.5 px AWAY AND THE GLOBAL SEED NONE, BUT NONE IS
     # WITHIN THE 0.5 px TIGHT TOLERANCE, SO THE OWN SEED WINS AND KEEPS THE ORDER
-    assert (correction.globalSeedLines, correction.ownSeedLines) == (1, 2)
+    assert (correction.globalSeedLines, correction.ownSeedLines) == (0, 2)
     assert correction.shiftPx == pytest.approx(ownSeed, abs=1e-9)
     assert ownSeed != pytest.approx(calls[0]["seedPx"], abs=1.0)
     assert applied_shift(scene, tuned, ORDERS[0]) == pytest.approx(true_shift_nm(ORDERS[0]), abs=SHIFT_TOLERANCE_NM)
@@ -718,7 +718,7 @@ def test_the_log_gives_the_seed_match_counts_of_each_order(log, tmp_path):
 
     # ASSERT
     printed = [message for level, message in log.messages if level == "print" and "applied to order" in message]
-    assert any("(own-seed; seed matches within 0.1 nm: global 1, own 2)" in message for message in printed)
+    assert any("(own-seed; seed matches within 0.1 nm: global 0, own 2)" in message for message in printed)
     assert any("(global; seed matches within 0.1 nm: global 10, own 10)" in message for message in printed)
 
 
