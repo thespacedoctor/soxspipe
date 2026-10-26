@@ -22,6 +22,8 @@ NOISE_COLUMNS = ("residual_windowed_std", "residual_windowed_long_median", "flux
 def _subtractor(log: Any) -> subtract_sky:
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
+    # THESE PINS CHARACTERISE THE MASKING WITHOUT SKYLINE-CORE RESTORE, WHICH IS OFF FOR VIS (DY-1972)
+    subtractor.arm = "VIS"
     # THE NOISE UNITS OF THE LONG RESIDUAL MEDIAN NEED THE READ NOISE (DY-1517)
     subtractor.ron = 3.3
     subtractor.recipeSettings = {
