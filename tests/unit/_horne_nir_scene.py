@@ -119,6 +119,8 @@ def build_extractor(
     extractor = object.__new__(horne_extraction)
     extractor.log = log
     extractor.debug = False
+    # THE DISPERSION AXIS OF THIS SYNTHETIC MAP IS y. axisB IS WHAT _signed_order_dispersions SAMPLES
+    extractor.axisA = "y"
     extractor.axisB = "y"
     extractor.inst = inst
     extractor.arm = arm

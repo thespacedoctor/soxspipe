@@ -1211,7 +1211,7 @@ class horne_extraction(base_util):
         if header is None:
             return None
         try:
-            return float(header.get(f"ESO QC {self.axisB.upper()} RES MEDIAN"))
+            return float(header.get(f"ESO QC {self.axisA.upper()} RES MEDIAN"))
         except (TypeError, ValueError):
             return None
 

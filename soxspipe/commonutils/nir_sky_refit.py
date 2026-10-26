@@ -55,6 +55,8 @@ SLOPE_SHRINK_LINES = 4
 # TOLERANCE ALIASED ORDER 15 ONTO A NEIGHBOURING LINE
 TIGHT_TOLERANCE_ARC_RMS = 2.5
 MAX_TIGHT_TOLERANCE_NM = 0.1
+# THE TOLERANCE IS ALSO AT LEAST THIS MANY px: THE SKY-LINE CENTRES SCATTER BY ABOUT 0.2 px, MORE THAN THE ARC SOLUTION
+MIN_TIGHT_TOLERANCE_PX = 0.5
 
 MAX_CLIP_ITERATIONS = 10
 # THE GLOBAL MODEL AND THE PER-ORDER OFFSETS ARE FITTED IN TURN THIS MANY TIMES
@@ -302,16 +304,19 @@ def match_tolerance_nm(arcRmsPx, dispersionNmPerPx) -> float:
 
     **Key Arguments:**
 
-    - ``arcRmsPx`` -- the rms (px) of the arc-solution fit, or *None* / NaN when the arc has none
+    - ``arcRmsPx`` -- the rms (px) of the arc-solution fit along the dispersion axis, or *None* / NaN when the arc has
+      none
     - ``dispersionNmPerPx`` -- the order's signed dispersion (nm/px)
 
     **Return:**
 
-    - ``toleranceNm`` -- ``TIGHT_TOLERANCE_ARC_RMS`` times the arc rms in nm, at most ``MAX_TIGHT_TOLERANCE_NM``
+    - ``toleranceNm`` -- ``TIGHT_TOLERANCE_ARC_RMS`` times the arc rms, but at least ``MIN_TIGHT_TOLERANCE_PX``, in nm
+      and at most ``MAX_TIGHT_TOLERANCE_NM``
     """
     if arcRmsPx is None or not math.isfinite(arcRmsPx):
         return MAX_TIGHT_TOLERANCE_NM
-    return min(TIGHT_TOLERANCE_ARC_RMS * arcRmsPx * abs(dispersionNmPerPx), MAX_TIGHT_TOLERANCE_NM)
+    tolerancePx = max(TIGHT_TOLERANCE_ARC_RMS * arcRmsPx, MIN_TIGHT_TOLERANCE_PX)
+    return min(tolerancePx * abs(dispersionNmPerPx), MAX_TIGHT_TOLERANCE_NM)
 
 
 def match_peaks_to_catalogue(predictedPeakNm, catalogueNm, toleranceNm):

@@ -13,6 +13,7 @@ from soxspipe.commonutils.nir_sky_refit import (
     MAX_GLOBAL_RMS_PX,
     MAX_TIGHT_TOLERANCE_NM,
     MIN_GLOBAL_LINES,
+    MIN_TIGHT_TOLERANCE_PX,
     SLOPE_SHRINK_LINES,
     apply_sky_corrections,
     fit_nir_sky_model,
@@ -466,6 +467,22 @@ def test_tolerance_scales_with_the_arc_rms_and_is_capped():
     # ASSERT
     assert tight == pytest.approx(2.5 * 0.2 * 0.06)
     assert capped == MAX_TIGHT_TOLERANCE_NM
+
+
+def test_tolerance_never_falls_below_the_floor_in_px():
+    # ACT
+    tolerance = match_tolerance_nm(arcRmsPx=0.01, dispersionNmPerPx=-0.0865)
+
+    # ASSERT
+    assert tolerance == pytest.approx(MIN_TIGHT_TOLERANCE_PX * 0.0865)
+
+
+def test_tolerance_just_above_the_floor_still_scales_with_the_arc_rms():
+    # ACT
+    tolerance = match_tolerance_nm(arcRmsPx=0.3, dispersionNmPerPx=0.05)
+
+    # ASSERT
+    assert tolerance == pytest.approx(2.5 * 0.3 * 0.05)
 
 
 def test_tolerance_without_an_arc_rms_is_the_cap():
