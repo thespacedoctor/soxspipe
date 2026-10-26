@@ -1,5 +1,6 @@
 # Release Notes
 
+* **REFACTOR**: agent config (`.claude/CLAUDE.md`, `.codegraph/`) and the DY-34 defect-hunt report move out of the repository into the maintainer's local workspace.
 * **FIXED**: NIR stare sky subtraction now restores only the skyline pixels that the pre-fit clip flagged outside the detected object range, so OH lines are no longer under-subtracted and hot pixels stay clipped (new `restore_skyline_cores_outside_object` setting, on for NIR and off for VIS and XSH); the sky spline is held at its boundary value beyond the fitted range instead of extrapolating (DY-1972).
 
 ## v0.19.0 - October 26, 2026
