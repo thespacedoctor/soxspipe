@@ -36,7 +36,7 @@ conda activate soxspipe
 
 If you have previously installed soxspipe, a warning will be issued stating that a conda environment already exists; select 'y' when asked to remove the existing environment.
 
-To check installation was successful run `soxspipe -v`. This should return the version number of the install.
+To check the installation was successful run `soxspipe -v`. This should return the version number of the install.
 
 ## Testing
 
@@ -51,47 +51,6 @@ The real-data acceptance test is opt-in. The `Real-data tests` GitHub Actions wo
 
 ```bash
 SOXSPIPE_REAL_DATA_DIR=/absolute/path/to/workspace python -m pytest tests/real_data
-```
-
-## Changed-line gates
-
-Two gates run on every pull request into `develop`, and both judge only the lines the pull request changed. Neither one asks the whole package to be clean, so existing debt never blocks an unrelated change:
-
-- **Coverage.** `diff-cover reports/coverage.xml --compare-branch=origin/develop --fail-under=80` requires 80% coverage of changed lines.
-- **Lint.** `python tools/lint_ratchet.py --compare-branch origin/develop` fails when a ruff finding lands on a changed line. Ruff has no baseline feature, so the tool intersects `ruff check --output-format json` with the diff hunks itself. Pre-existing findings in the files you touched are counted and printed as context, never gated; the package carries roughly 1,380 of them in total, and `ruff check soxspipe` reports that whole-package figure.
-
-A finding is matched on the line ruff anchors it to. A finding that covers many lines, such as `PLR0915` for an over-long function, is anchored at the `def` line: writing a new over-long function fails the gate, while adding a statement to one that is already over-long does not.
-
-Run the lint gate locally against your staged changes before committing:
-
-```bash
-python tools/lint_ratchet.py --staged
-```
-
-To run it automatically on every commit, install the hook. It is a convenience, not the gate — `git commit --no-verify` skips it, and the CI step does not:
-
-```bash
-python -m pip install -e ".[dev]"
-pre-commit install
-```
-
-## Format gate
-
-Unlike the changed-line gates, the format gate checks the whole repository. CI runs `ruff format --check .` on every pull request and fails if any file would be reformatted.
-
-The gate uses the ruff version pinned in the `tests` extra of `pyproject.toml`. Another ruff version can format some lines differently, so format with the pinned one:
-
-```bash
-python -m pip install -e ".[tests]"
-ruff format .
-```
-
-The pre-commit hook described above also runs `ruff format` at the same pinned version.
-
-To hide the one-off formatting commit from `git blame`, run this once in your clone:
-
-```bash
-git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
 ## How to cite soxspipe
