@@ -13,6 +13,7 @@ from soxspipe.commonutils.nir_sky_refit import (
     MAX_GLOBAL_RMS_PX,
     MAX_TIGHT_TOLERANCE_NM,
     MIN_GLOBAL_LINES,
+    MIN_OFFSET_LINES,
     MIN_TIGHT_TOLERANCE_PX,
     SLOPE_SHRINK_LINES,
     apply_sky_corrections,
@@ -884,3 +885,114 @@ def test_a_row_without_a_usable_pixel_scale_keeps_a_finite_correction_at_the_med
 
     # ASSERT
     assert shifts == pytest.approx(correction.correction_nm(wavelengths))
+
+
+# OWN SEED KEPT FOR AN ORDER WITH TOO FEW LINES FOR AN OFFSET
+
+PROD_SCALE_NM = 0.0865
+PROD_TOLERANCE_NM = 0.04
+
+
+def _prod_geometry() -> dict[int, order_geometry]:
+    return {
+        o: order_geometry(
+            centreNm=g.centreNm,
+            halfRangeNm=g.halfRangeNm,
+            dispersionNmPerPx=PROD_SCALE_NM * np.sign(g.dispersionNmPerPx),
+            medianPixelScaleNm=PROD_SCALE_NM,
+        )
+        for o, g in _geometry().items()
+    }
+
+
+def _prod_order_lines(order: int, perOrder: int, offsetPx: float) -> nir_order_sky_lines:
+    """*an order like the real O10 or O11: few lines, a production pixel scale and the production tolerance*"""
+    geometry = _prod_geometry()[order]
+    t = np.linspace(-0.9, 0.9, perOrder)
+    catalogue = geometry.centreNm + t * HALF_RANGE_NM
+    peaks = catalogue + geometry.dispersionNmPerPx * (_model_px(order, t) + offsetPx)
+    return nir_order_sky_lines(
+        order=order,
+        peakNm=peaks,
+        catalogueNm=catalogue,
+        pixelScaleNm=np.full(perOrder, PROD_SCALE_NM),
+        toleranceNm=PROD_TOLERANCE_NM,
+    )
+
+
+def _prod_scene(order: int, perOrder: int, offsetPx: float) -> dict[int, nir_order_sky_lines]:
+    orderLines = {}
+    for o in ORDERS:
+        orderLines[o] = _prod_order_lines(o, 10, 0.0)
+        # THE OTHER ORDERS KEEP THE WIDE TOLERANCE, BECAUSE THEIR MODEL SPREAD EXCEEDS THE RIGID SEED'S REACH
+        orderLines[o] = nir_order_sky_lines(**{**vars(orderLines[o]), "toleranceNm": MAX_TIGHT_TOLERANCE_NM})
+    orderLines[order] = _prod_order_lines(order, perOrder, offsetPx)
+    return orderLines
+
+
+def test_an_order_with_three_lines_far_from_the_model_keeps_its_own_seed_unshrunk():
+    # ARRANGE: LIKE THE REAL O10: 3 LINES, 7.5 px FROM THE GLOBAL MODEL, WITHIN TOLERANCE OF THE ORDER'S OWN SEED
+    ownSeed = _truth_px(12) + 7.5 + 0.05
+    orderLines = _prod_scene(12, 3, 7.5)
+    without12 = {o: lines for o, lines in orderLines.items() if o != 12}
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={12: ownSeed})
+    reference = fit_with_iterated_matching(without12, _prod_geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert result.fallbackReason is None
+    assert result.corrections[12].shiftPx == pytest.approx(ownSeed, abs=0.05)
+    assert result.corrections[12].source == "own-seed"
+    assert result.corrections[12].nLines == 3
+    assert result.corrections[12].perOrderOffsetPx == 0.0
+    assert 12 not in set(result.lines["order"])
+    assert result.coefficients == pytest.approx(reference.coefficients, abs=1e-9)
+    for o in ORDERS:
+        if o != 12:
+            assert result.corrections[o].shiftPx == pytest.approx(_truth_px(o), abs=0.05)
+            assert result.corrections[o].source == "global"
+
+
+def test_an_order_with_two_lines_a_little_off_the_model_keeps_its_own_seed():
+    # ARRANGE: LIKE THE NOD O11: 2 LINES, 0.8 px FROM THE MODEL, BEYOND THE 0.46 px TOLERANCE OF THE GLOBAL SEED
+    ownSeed = _truth_px(13) + 0.8 + 0.05
+    orderLines = _prod_scene(13, 2, 0.8)
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={13: ownSeed})
+
+    # ASSERT
+    assert result.corrections[13].shiftPx == pytest.approx(ownSeed, abs=0.05)
+    assert result.corrections[13].source == "own-seed"
+    for o in ORDERS:
+        if o != 13:
+            assert result.corrections[o].shiftPx == pytest.approx(_truth_px(o), abs=0.05)
+
+
+def test_an_own_seed_that_matches_fewer_lines_than_the_global_seed_is_not_kept():
+    # ARRANGE: THE ORDER'S LINES SIT ON THE GLOBAL MODEL, AND ITS OWN SEED IS ALIASED 5 px AWAY
+    orderLines = _prod_scene(15, 3, 0.0)
+
+    # ACT
+    result = fit_with_iterated_matching(
+        orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={15: _truth_px(15) + 5.4}
+    )
+
+    # ASSERT
+    assert result.corrections[15].source == "global"
+    assert result.corrections[15].shiftPx == pytest.approx(_truth_px(15), abs=0.05)
+
+
+def test_an_order_with_enough_lines_for_an_offset_keeps_the_offset_logic_not_the_seed():
+    # ARRANGE
+    ownSeed = _truth_px(12) + 7.5 + 0.05
+    orderLines = _prod_scene(12, MIN_OFFSET_LINES, 7.5)
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={12: ownSeed})
+
+    # ASSERT
+    assert result.corrections[12].source == "own-offset"
+    assert result.corrections[12].shiftPx == pytest.approx(_truth_px(12) + 7.5, abs=0.3)
+    assert 12 in set(result.lines["order"])

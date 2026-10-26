@@ -1239,10 +1239,16 @@ class horne_extraction(base_util):
             if correction is None:
                 self._record_order_shift_qc(o, 0.0)
                 continue
+            orderText = order_label(o, self.arm)
             self.log.print(
                 f"\t\t{correction.shift_nm:0.2f} nm shift (slope {correction.slope_px:0.2f} px) applied to order "
-                f"{order_label(o, self.arm)} from {correction.nLines} sky lines"
+                f"{orderText} from {correction.nLines} sky lines ({correction.source})"
             )
+            if correction.source == "own-seed":
+                self.log.info(
+                    f"order {orderText}: {correction.nLines} sky lines are too few for an offset, "
+                    "so the order keeps its own measured shift"
+                )
             self._record_order_shift_qc(o, correction.shift_nm, correction.shiftPx)
         self._record_global_fit_qcs(result)
         if self.debug:

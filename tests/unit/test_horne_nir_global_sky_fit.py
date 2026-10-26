@@ -688,3 +688,37 @@ def test_a_large_arc_rms_is_still_capped(log, tmp_path, monkeypatch):
 
     # ASSERT
     assert {line.toleranceNm for line in calls[0]["orderLines"].values()} == {MAX_TIGHT_TOLERANCE_NM}
+
+
+# AN ORDER WITH TOO FEW LINES KEEPS ITS OWN SEED
+
+
+def test_an_order_with_three_lines_and_a_genuine_arc_offset_keeps_its_own_measured_shift(log, tmp_path):
+    # ARRANGE: LIKE THE REAL O10: 3 SKY LINES, 8 px FROM THE DETECTOR SHIFT
+    extractor = build_extractor(log, tmp_path)
+    scene = build_orders(offsets=GENUINE_OFFSETS, lineCounts={OFFSET_ORDER: 3})
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    assert extractor.skyCorrections[OFFSET_ORDER].source == "own-seed"
+    for order in ORDERS:
+        expected = true_shift_nm(order, GENUINE_OFFSETS)
+        assert applied_shift(scene, tuned, order) == pytest.approx(
+            expected, abs=0.02 if order == OFFSET_ORDER else 0.01
+        )
+    assert any("own measured shift" in message for _, message in log.messages)
+
+
+def test_the_log_names_where_each_orders_shift_came_from(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+
+    # ACT
+    _tune(extractor, build_orders(offsets=GENUINE_OFFSETS))
+
+    # ASSERT
+    printed = [message for level, message in log.messages if level == "print" and "applied to order" in message]
+    assert any("(own-offset)" in message for message in printed)
+    assert any("(global)" in message for message in printed)

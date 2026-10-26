@@ -75,14 +75,15 @@ def sky_flux(wavelength: np.ndarray, centres: np.ndarray) -> np.ndarray:
     return 1.0 + LINE_HEIGHT * lines
 
 
-def build_orders(linelessOrders=(), linesOnly=None, offsets=None) -> pd.DataFrame:
+def build_orders(linelessOrders=(), linesOnly=None, offsets=None, lineCounts=None) -> pd.DataFrame:
     """*the extracted NIR orders; ``linelessOrders`` have a flat sky, ``linesOnly`` keeps lines in only those orders,
-    ``offsets`` is ``{order: genuine offset of the arc solution (px)}``*"""
+    ``offsets`` is ``{order: genuine offset of the arc solution (px)}``,
+    ``lineCounts`` is ``{order: lines in its sky}``*"""
     frames = []
     for order in ORDERS:
         wavelength = order_start_nm(order) + PIXEL_NM * np.arange(int(ORDER_WIDTH_NM / PIXEL_NM))
         hasLines = order not in linelessOrders and (linesOnly is None or order in linesOnly)
-        observed = catalogue_nm(order) - true_shift_nm(order, offsets)
+        observed = catalogue_nm(order)[: (lineCounts or {}).get(order, LINES_PER_ORDER)] - true_shift_nm(order, offsets)
         skyFlux = sky_flux(wavelength, observed) if hasLines else np.ones_like(wavelength)
         frames.append(
             pd.DataFrame({"order": order, "wavelengthMean": wavelength, "pixelScaleNm": PIXEL_NM, "skyFlux": skyFlux})

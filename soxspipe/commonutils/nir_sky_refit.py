@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -66,6 +66,8 @@ MIN_OFFSET_LINES = 4
 # AN ORDER KEEPS z^2 / (z^2 + OFFSET_SHRINK_Z^2) OF ITS MEDIAN OFFSET, z BEING THE OFFSET IN STANDARD ERRORS OF THE
 # MEDIAN: HALF AT 3 SIGMA, 0.92 AT 10, AND A NOISE-LEVEL OFFSET (z ~ 1) KEEPS ABOUT A TENTH
 OFFSET_SHRINK_Z = 3.0
+# AN ORDER IS REPORTED AS TAKING ITS OWN OFFSET (``source``) WHEN THAT OFFSET IS AT LEAST THIS MANY px
+SOURCE_OFFSET_PX = 0.1
 # STANDARD ERROR OF A MEDIAN, IN UNITS OF sigma / sqrt(n), FOR NORMAL SCATTER
 MEDIAN_SE_FACTOR = 1.2533
 # THE FIRST MATCH USES THE RIGID SEED, THE LATER ONES THE PREVIOUS FIT
@@ -131,6 +133,9 @@ class order_sky_correction:
     - ``geometry`` -- the order's ``order_geometry``
     - ``perOrderOffsetPx`` -- the part of ``shiftPx`` that is this order's own offset from the global model, 0 when
       unsupported. Default 0
+    - ``source`` -- where ``shiftPx`` came from: ``global`` (the model), ``own-offset`` (the model plus an offset of at
+      least ``SOURCE_OFFSET_PX`` from the order's own lines) or ``own-seed`` (the order's own measured shift, kept
+      because it has too few lines for an offset). Default ``global``
     """
 
     order: int
@@ -140,6 +145,7 @@ class order_sky_correction:
     nLines: int
     geometry: order_geometry
     perOrderOffsetPx: float = 0.0
+    source: str = "global"
 
     @property
     def shift_nm(self) -> float:
@@ -569,6 +575,7 @@ def _build_corrections(lines, coefficients, slopes, offsets, kept, geometry, nor
             nLines=int(counts.get(o, 0)),
             geometry=orderGeometry,
             perOrderOffsetPx=offset,
+            source="own-offset" if abs(offset) >= SOURCE_OFFSET_PX else "global",
         )
     return corrections
 
@@ -737,14 +744,20 @@ def _rigid_correction(order, shiftPx, geometry) -> order_sky_correction:
     return order_sky_correction(order, float(shiftPx), (0.0,), 0.0, 0, geometry)
 
 
-def _seeded_match(orderLines, geometry, seedPx, ownSeedPx) -> pd.DataFrame:
+def _seeded_match(orderLines, geometry, seedPx, ownSeedPx):
     """*the order's lines matched about the seed, global or its own, that matches more of them*
 
     The tie goes to the lower scatter of the matched lines about the seed, then to the global seed. An order measured
     on aliased lines matches few of them about its own seed and so takes the global one, and an order with a genuine
     offset matches many about its own seed and few about the global one.
+
+    **Return:**
+
+    - ``matched`` -- the lines matched about the chosen seed
+    - ``ownWonOutright`` -- whether the order's own seed matched strictly more lines than the global seed
     """
     best, bestScore = None, None
+    outright = False
     for seed in (seedPx,) if ownSeedPx is None else (seedPx, ownSeedPx):
         correction = _rigid_correction(orderLines.order, seed, geometry)
         matched = _match_order_lines(orderLines, correction)
@@ -756,17 +769,43 @@ def _seeded_match(orderLines, geometry, seedPx, ownSeedPx) -> pd.DataFrame:
         rmsNm = float(np.sqrt(np.mean(residualNm**2))) if len(matched) else float("inf")
         score = (len(matched), -rmsNm)
         if bestScore is None or score > bestScore:
+            outright = best is not None and len(matched) > len(best)
             best, bestScore = matched, score
-    return best
+    return best, outright
+
+
+def _kept_own_seed_corrections(orderLines, geometry, seedPx, ownSeedsPx):
+    """*match the first round and set aside the orders that keep their own seed*
+
+    An order whose own seed matches strictly more lines than the global seed, but which has fewer than
+    ``MIN_OFFSET_LINES`` of them, cannot carry an offset of its own and would be clipped as an outlier of the global
+    model. It keeps its own seed as its shift, unshrunk, and its lines stay out of the global fit.
+
+    **Return:**
+
+    - ``frames`` -- the matched lines of the other orders
+    - ``kept`` -- ``{order: order_sky_correction}`` of the orders that keep their own seed
+    """
+    frames, kept = [], {}
+    for o, lines in orderLines.items():
+        matched, ownWonOutright = _seeded_match(lines, geometry[o], seedPx, ownSeedsPx.get(o))
+        if ownWonOutright and len(matched) < MIN_OFFSET_LINES:
+            rigid = _rigid_correction(o, ownSeedsPx[o], geometry[o])
+            kept[o] = replace(rigid, nLines=len(matched), source="own-seed")
+        else:
+            frames.append(matched)
+    return frames, kept
 
 
 def fit_with_iterated_matching(orderLines, geometry, seedPx, settings, iterations=MATCH_ITERATIONS, ownSeedsPx=None):
     """*match the sky lines of every order and fit the global model, matching again about each fit*
 
     The first match moves the peaks of each order by a rigid seed: ``seedPx``, or the order's own seed from
-    ``ownSeedsPx`` when that matches more of its lines (``_seeded_match``). Each later match moves them by the previous
-    fit, which brings in the lines of an order whose shape error put them beyond the tolerance of the rigid seed. A fit
-    that falls back at any iteration ends the loop with that fallback.
+    ``ownSeedsPx`` when that matches more of its lines (``_seeded_match``). An order that wins with its own seed but has
+    too few lines for an offset keeps that seed as its final shift (``_kept_own_seed_corrections``). Each later match of
+    the other orders moves their peaks by the previous fit, which brings in the lines of an order whose shape error put
+    them beyond the tolerance of the rigid seed. A fit that falls back at any iteration ends the loop with that
+    fallback.
 
     **Key Arguments:**
 
@@ -779,7 +818,8 @@ def fit_with_iterated_matching(orderLines, geometry, seedPx, settings, iteration
 
     **Return:**
 
-    - ``result`` -- the ``sky_refit_result`` of the last round
+    - ``result`` -- the ``sky_refit_result`` of the last round. Its ``nLines`` and ``lines`` are those of the global
+      fit, which leaves out the orders that kept their own seed
 
     **Raises:**
 
@@ -791,18 +831,13 @@ def fit_with_iterated_matching(orderLines, geometry, seedPx, settings, iteration
     if missing:
         raise ValueError(f"order {missing[0]} has sky lines but no geometry")
     orderLines = {o: lines for o, lines in orderLines.items() if _is_usable_geometry(geometry[o])}
-    ownSeedsPx = {} if ownSeedsPx is None else ownSeedsPx
-    corrections = None
+    frames, kept = _kept_own_seed_corrections(orderLines, geometry, seedPx, {} if ownSeedsPx is None else ownSeedsPx)
     result = None
     for _ in range(iterations):
-        if corrections is None:
-            frames = [_seeded_match(lines, geometry[o], seedPx, ownSeedsPx.get(o)) for o, lines in orderLines.items()]
-        else:
-            frames = [_match_order_lines(lines, corrections[o]) for o, lines in orderLines.items()]
         result = fit_nir_sky_model(
             pd.concat(frames, ignore_index=True) if frames else _empty_lines(), geometry, settings
         )
         if result.fallbackReason is not None:
             return result
-        corrections = result.corrections
-    return result
+        frames = [_match_order_lines(lines, result.corrections[o]) for o, lines in orderLines.items() if o not in kept]
+    return replace(result, corrections={**result.corrections, **kept})
