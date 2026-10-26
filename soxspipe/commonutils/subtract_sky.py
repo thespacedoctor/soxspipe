@@ -3131,9 +3131,17 @@ class subtract_sky:
 
         error = imageMapOrderDF["error"].to_numpy(dtype=float)
         isUsed = ~imageMapOrderDF["flagged_all_clipped"].eq(True).to_numpy() & np.isfinite(error) & (error > 0)
+        # THE OBJECT-WING REFIT FITTED THE SKY TO THE FLUX MINUS THE WING MODEL, SO THE WINGS ARE NOT SKY RESIDUAL
+        wings = (
+            imageMapOrderDF["object_wing_model"].to_numpy(dtype=float)
+            if "object_wing_model" in imageMapOrderDF
+            else 0.0
+        )
         with np.errstate(divide="ignore", invalid="ignore"):
             residual = (
-                imageMapOrderDF["flux"].to_numpy(dtype=float) - imageMapOrderDF["sky_model"].to_numpy(dtype=float)
+                imageMapOrderDF["flux"].to_numpy(dtype=float)
+                - wings
+                - imageMapOrderDF["sky_model"].to_numpy(dtype=float)
             ) / error
         factor = _sky_residual_scatter_factor(
             imageMapOrderDF["wavelength"].to_numpy(dtype=float), np.where(isUsed, residual, np.nan)

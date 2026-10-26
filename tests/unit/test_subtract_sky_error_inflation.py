@@ -33,6 +33,8 @@ SCATTER_TOLERANCE = 0.2
 NOISE_FACTOR_LIMIT = 1.5
 STATED_ERROR = 2.0
 FRAME_COLUMNS = 4000
+# THE AMPLITUDE (IN E-) OF THE SMOOTH OBJECT-WING LIGHT THE SKY FIT LEFT IN THE FLUX: 6 STATED ERRORS
+WING_AMPLITUDE = 6.0 * STATED_ERROR
 
 
 def _wavelength(samples: int) -> np.ndarray:
@@ -159,6 +161,38 @@ def test_an_order_shorter_than_the_window_is_measured_with_one_window_of_its_own
     np.testing.assert_allclose(factor, expected)
 
 
+def _order_frame(scatter: np.ndarray) -> pd.DataFrame:
+    """One fitted order whose residuals (in stated errors) have the given scatter."""
+    skyModel = np.full(FRAME_COLUMNS, 5.0)
+    flux = skyModel + STATED_ERROR * _noise(scatter, FRAME_COLUMNS)
+    return pd.DataFrame(
+        {
+            "order": 10,
+            "x": np.arange(FRAME_COLUMNS),
+            "y": 0,
+            "wavelength": _wavelength(FRAME_COLUMNS),
+            "flux": flux,
+            "error": STATED_ERROR,
+            "sky_model": skyModel,
+            "sky_subtracted_flux": flux - skyModel,
+            "flagged_all_clipped": False,
+        }
+    )
+
+
+def _stub_fit_stages(subtractor: subtract_sky) -> None:
+    """Make the clip and fit stages hand the map pixels straight through."""
+    subtractor.get_over_sampled_sky_from_order = lambda frame, **_: frame.copy()
+    subtractor.clip_object_slit_positions = lambda orders, **_: orders
+    subtractor.fit_bspline_curve_to_sky = lambda frame: (
+        frame.copy(),
+        (None, None, 3),
+        np.array([501.0]),
+        np.array([1.0, 2.0]),
+        0.5,
+    )
+
+
 def _order_subtractor(log: Any, *, arm: str, inflationSetting: Any, scatter: np.ndarray) -> subtract_sky:
     """Build a subtractor whose fit returns one order whose residuals (in stated errors) have the given scatter."""
     subtractor = object.__new__(subtract_sky)
@@ -175,21 +209,7 @@ def _order_subtractor(log: Any, *, arm: str, inflationSetting: Any, scatter: np.
         mask=np.zeros((1, FRAME_COLUMNS), dtype=bool),
         uncertainty=StdDevUncertainty(np.full((1, FRAME_COLUMNS), STATED_ERROR)),
     )
-    skyModel = np.full(FRAME_COLUMNS, 5.0)
-    flux = skyModel + STATED_ERROR * _noise(scatter, FRAME_COLUMNS)
-    subtractor.mapDF = pd.DataFrame(
-        {
-            "order": 10,
-            "x": np.arange(FRAME_COLUMNS),
-            "y": 0,
-            "wavelength": _wavelength(FRAME_COLUMNS),
-            "flux": flux,
-            "error": STATED_ERROR,
-            "sky_model": skyModel,
-            "sky_subtracted_flux": flux - skyModel,
-            "flagged_all_clipped": False,
-        }
-    )
+    subtractor.mapDF = _order_frame(scatter)
     subtractor.qc = pd.DataFrame()
     subtractor.products = pd.DataFrame()
     skySettings = {
@@ -202,15 +222,7 @@ def _order_subtractor(log: Any, *, arm: str, inflationSetting: Any, scatter: np.
     if inflationSetting is not _MISSING:
         skySettings[INFLATION_KEY] = inflationSetting
     subtractor.recipeSettings = {"sky-subtraction": skySettings}
-    subtractor.get_over_sampled_sky_from_order = lambda frame, **_: frame.copy()
-    subtractor.clip_object_slit_positions = lambda orders, **_: orders
-    subtractor.fit_bspline_curve_to_sky = lambda frame: (
-        frame.copy(),
-        (None, None, 3),
-        np.array([501.0]),
-        np.array([1.0, 2.0]),
-        0.5,
-    )
+    _stub_fit_stages(subtractor)
     return subtractor
 
 
@@ -298,3 +310,32 @@ def test_a_setting_that_is_not_a_bool_raises_a_value_error_naming_the_key(log: A
     # ACT / ASSERT
     with pytest.raises(ValueError, match=INFLATION_KEY):
         subtractor.subtract()
+
+
+def _errors_with_wing_light(log: Any, hasWingModel: bool) -> np.ndarray:
+    """The errors of a skyline-free order carrying smooth object-wing light that the sky fit did not remove."""
+    subtractor = _order_subtractor(log, arm="NIR", inflationSetting=True, scatter=np.ones(FRAME_COLUMNS))
+    wingLight = WING_AMPLITUDE * np.sin(np.linspace(0.0, 40.0, FRAME_COLUMNS))
+    mapDF = subtractor.mapDF
+    mapDF["flux"] += wingLight
+    mapDF["sky_subtracted_flux"] += wingLight
+    if hasWingModel:
+        mapDF["object_wing_model"] = wingLight
+    _, subtracted, _, _, _ = subtractor.subtract()
+    return subtracted.uncertainty.array[0]
+
+
+def test_object_wing_light_removed_by_the_refit_does_not_inflate_the_errors(log: Any) -> None:
+    # ACT
+    errors = _errors_with_wing_light(log, hasWingModel=True)
+
+    # ASSERT
+    assert errors.max() < STATED_ERROR * NOISE_FACTOR_LIMIT
+
+
+def test_object_wing_light_with_no_wing_model_inflates_the_errors(log: Any) -> None:
+    # ACT
+    errors = _errors_with_wing_light(log, hasWingModel=False)
+
+    # ASSERT
+    assert errors.mean() > 1.4 * STATED_ERROR
