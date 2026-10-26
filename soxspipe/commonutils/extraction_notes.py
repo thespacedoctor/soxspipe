@@ -20,7 +20,8 @@ class extraction_note_logger:
     """
     *a logger proxy that remembers the warnings, errors and notes it is given, and forwards every call but ``note``*
 
-    Only ``warning``, ``error`` and ``note`` are recorded (``note`` is not forwarded). Every other call
+    Only ``warning``, ``error`` and ``note`` are recorded (``note`` is not forwarded). A ``warning`` is forwarded to the
+    wrapped logger's ``info``, because the QC plot already shows it as a warning note. Every other call
     (``debug``, ``info``, ``print``, ``warn``, ``critical``, ``exception``, ``log(level, ...)`` ...) and every
     attribute (``handlers`` ...) is forwarded to the wrapped logger without being recorded, so the proxy can stand
     in for it. ``notes`` keeps first-seen order and drops exact duplicates. A message given with arguments is
@@ -56,7 +57,7 @@ class extraction_note_logger:
         return list(self._notes)
 
     def warning(self, msg: object, *args: object, **kwargs: Any) -> Any:
-        """*record the message as a warning note, then forward it to the wrapped logger*
+        """*record the message as a warning note, then forward it to the wrapped logger's ``info``*
 
         **Key Arguments:**
 
@@ -66,10 +67,10 @@ class extraction_note_logger:
 
         **Return:**
 
-        - ``result`` -- whatever the wrapped logger's ``warning`` returns
+        - ``result`` -- whatever the wrapped logger's ``info`` returns
         """
         self._record("WARNING", msg, args)
-        return self._log.warning(msg, *args, **kwargs)
+        return self._log.info(msg, *args, **kwargs)
 
     def error(self, msg: object, *args: object, **kwargs: Any) -> Any:
         """*record the message as an error note, then forward it to the wrapped logger*

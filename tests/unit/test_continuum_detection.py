@@ -241,7 +241,7 @@ def test_get_records_fitted_trace_qc_product_and_order_table(
     assert writeCalls[0]["orderMetaTable"] is orderMeta
 
 
-def test_get_warns_when_the_fitted_trace_is_extrapolated_across_a_sample_free_stretch(
+def test_get_reports_when_the_fitted_trace_is_extrapolated_across_a_sample_free_stretch(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -286,10 +286,10 @@ def test_get_warns_when_the_fitted_trace_is_extrapolated_across_a_sample_free_st
     detector.get()
 
     # ASSERT
-    warnings = [message for level, message in log.messages if level == "warning"]
-    assert len(warnings) == 1
-    assert "order 2" in warnings[0]
-    assert "420.0 nm and 440.0 nm" in warnings[0]
+    notes = [m for level, m in log.messages if level == "info" and "no accepted samples" in m]
+    assert len(notes) == 1
+    assert "order 2" in notes[0]
+    assert "420.0 nm and 440.0 nm" in notes[0]
 
 
 def test_gaussian_slice_fit_recovers_trace_and_leaves_low_signal_unfitted(
@@ -616,7 +616,7 @@ def _extrapolation_detector(log: object, **recipeSettings: float) -> detect_cont
     return detector
 
 
-def test_extrapolated_trace_warning_names_the_order_and_wavelength_range(log: object) -> None:
+def test_extrapolated_trace_note_names_the_order_and_wavelength_range(log: object) -> None:
     # ARRANGE: THE U ORDER (2) HAS NO ACCEPTED SAMPLE OVER 410-434 NM
     detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
     sampled, accepted = _two_order_samples(gapOrder=2.0)
@@ -624,15 +624,15 @@ def test_extrapolated_trace_warning_names_the_order_and_wavelength_range(log: ob
     # ACT
     detector.check_trace_extrapolation(sampled, accepted)
 
-    # ASSERT: ONE WARNING, FOR ORDER 2 ONLY
-    warnings = [message for level, message in log.messages if level == "warning"]
-    assert len(warnings) == 1
-    assert "order 2" in warnings[0]
-    assert "409.0" in warnings[0]
-    assert "435.0" in warnings[0]
+    # ASSERT: ONE INFO NOTE, FOR ORDER 2 ONLY
+    notes = [m for level, m in log.messages if level == "info" and "no accepted samples" in m]
+    assert len(notes) == 1
+    assert "order 2" in notes[0]
+    assert "409.0" in notes[0]
+    assert "435.0" in notes[0]
 
 
-def test_extrapolated_trace_warning_is_silent_on_a_normal_trace(log: object) -> None:
+def test_extrapolated_trace_note_is_silent_on_a_normal_trace(log: object) -> None:
     # ARRANGE: EVERY SAMPLE IS ACCEPTED
     detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
     sampled, accepted = _two_order_samples(gapOrder=None)
@@ -641,7 +641,7 @@ def test_extrapolated_trace_warning_is_silent_on_a_normal_trace(log: object) -> 
     detector.check_trace_extrapolation(sampled, accepted)
 
     # ASSERT
-    assert [message for level, message in log.messages if level == "warning"] == []
+    assert not any("no accepted samples" in m for _, m in log.messages)
 
 
 def test_extrapolated_trace_check_records_the_longest_gap_of_each_order_as_a_qc(log: object) -> None:
@@ -670,7 +670,7 @@ def test_extrapolated_trace_check_falls_back_to_the_default_threshold_for_older_
     detector.check_trace_extrapolation(sampled, accepted)
 
     # ASSERT
-    assert len([m for level, m in log.messages if level == "warning"]) == 1
+    assert len([m for level, m in log.messages if level == "info" and "no accepted samples" in m]) == 1
 
 
 def _plot_ready_detector(tmp_path: Path, log: object, *, orderDeg: int = 0, axisBDeg: int = 1) -> detect_continuum:

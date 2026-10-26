@@ -12,13 +12,13 @@ from soxspipe.commonutils.extraction_notes import (
 pytestmark = pytest.mark.unit
 
 
-def test_collector_forwards_warning_and_error_to_the_wrapped_logger(log: object) -> None:
+def test_collector_forwards_warning_as_info_and_error_to_the_wrapped_logger(log: object) -> None:
     collector = extraction_note_logger(log)
 
     collector.warning("something odd")
     collector.error("something broken")
 
-    assert log.messages == [("warning", "something odd"), ("error", "something broken")]
+    assert log.messages == [("info", "something odd"), ("error", "something broken")]
 
 
 def test_collector_records_warning_and_error_in_the_order_they_arrive(log: object) -> None:
@@ -39,7 +39,7 @@ def test_collector_records_an_informational_note_without_forwarding_it(log: obje
     collector.note("tuning skipped")
 
     assert collector.notes == [("WARNING", "odd"), ("NOTE", "tuning skipped")]
-    assert log.messages == [("warning", "odd")]
+    assert log.messages == [("info", "odd")]
 
 
 def test_collector_ignores_debug_info_and_print_but_still_forwards_them(log: object) -> None:
@@ -108,7 +108,7 @@ class _FormattingLogger:
 
     handlers: tuple = ()
 
-    def warning(self, msg: object, *args: object, **kwargs: object) -> None:
+    def info(self, msg: object, *args: object, **kwargs: object) -> None:
         return None
 
     def error(self, msg: object, *args: object, **kwargs: object) -> None:
@@ -136,7 +136,7 @@ def test_collector_forwards_the_original_message_and_arguments_unformatted(log: 
     received: list[tuple[object, ...]] = []
 
     class ArgLogger:
-        def warning(self, msg: object, *args: object, **kwargs: object) -> None:
+        def info(self, msg: object, *args: object, **kwargs: object) -> None:
             received.append((msg, args, kwargs))
 
     extraction_note_logger(ArgLogger()).warning("n=%d", 3, stacklevel=2)

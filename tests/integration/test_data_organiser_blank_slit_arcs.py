@@ -111,7 +111,7 @@ def test_blank_slit_single_pinhole_arc_is_ignored_on_each_arm(organiser, arm) ->
     assert _ignored(organiser) == {"blank-ph.fits"}
 
 
-def test_rejection_warns_with_the_file_name_and_the_reason(organiser, log) -> None:
+def test_rejection_logs_the_file_name_and_the_reason(organiser, log) -> None:
     # ARRANGE
     _insert_frame(organiser.conn, "blank-mph.fits", arm="NIR", slit="BLANK")
     _insert_frame(organiser.conn, "blank-ph.fits", arm="VIS", slit="BLANK", tech="ECHELLE,PINHOLE")
@@ -121,12 +121,11 @@ def test_rejection_warns_with_the_file_name_and_the_reason(organiser, log) -> No
     organiser._flag_files_to_ignore()
 
     # ASSERT
-    warnings = [message for level, message in log.messages if level == "warning"]
-    assert len(warnings) == 2
-    assert all("BLANK" in message for message in warnings)
-    assert "ECHELLE,MULTI-PINHOLE frame `blank-mph.fits`" in warnings[0]
-    assert "ECHELLE,PINHOLE frame `blank-ph.fits`" in warnings[1]
-    assert not any("good-mph.fits" in message for message in warnings)
+    rejections = [m for level, m in log.messages if level == "info" and "slit wheel reads BLANK" in m]
+    assert len(rejections) == 2
+    assert "ECHELLE,MULTI-PINHOLE frame `blank-mph.fits`" in rejections[0]
+    assert "ECHELLE,PINHOLE frame `blank-ph.fits`" in rejections[1]
+    assert not any("good-mph.fits" in m for _, m in log.messages if "slit wheel reads BLANK" in m)
 
 
 def test_a_second_pass_keeps_the_frame_ignored_and_does_not_warn_again(organiser, log) -> None:

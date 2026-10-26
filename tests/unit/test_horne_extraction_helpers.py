@@ -2756,7 +2756,7 @@ def test_constructor_hands_the_collecting_log_to_the_helpers_it_builds(
     assert captured["log"] is extractor.log
     captured["log"].warning("from the detector")
     assert extractor.extractionNotes == [("WARNING", "from the detector")]
-    assert ("warning", "from the detector") in log.messages
+    assert ("info", "from the detector") in log.messages
 
 
 def _plot_ready_extractor(log: object, tmp_path: Path) -> horne_extraction:

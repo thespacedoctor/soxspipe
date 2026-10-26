@@ -2855,7 +2855,7 @@ class data_organiser:
         self._reject_blank_slit_pinhole_arcs()
 
     def _reject_blank_slit_pinhole_arcs(self) -> None:
-        """*flag SOXS pinhole and multi-pinhole arcs taken with a blank slit to ignore, and warn about each one*
+        """*flag SOXS pinhole and multi-pinhole arcs taken with a blank slit to ignore, and log each one*
 
         The slit-wheel keyword of the frame's arm (`ESO INS NISE NAME` on the NIR, `ESO INS VISE NAME` on the VIS) is
         held in the `slit` column. A pinhole (`ECHELLE,PINHOLE`) or multi-pinhole (`ECHELLE,MULTI-PINHOLE`) arc whose
@@ -2880,7 +2880,7 @@ class data_organiser:
         c.close()
 
         for _, fileName, arm, tech in rejected:
-            self.log.warning(
+            self.log.info(
                 f"rejected the {tech} frame `{fileName}` ({arm} arm): its slit wheel reads BLANK, "
                 "so it has no pinhole spots and is not used to build a dispersion-solution or spatial-solution SOF"
             )

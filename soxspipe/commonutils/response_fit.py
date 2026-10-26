@@ -392,7 +392,7 @@ def _refit_after_iteration_cap(
 ) -> Any:
     """Refit the bins that survived the last clip, because the spline in hand predates it."""
     if log is not None:
-        log.warning(
+        log.info(
             f"The response function fit reached the iteration cap ({int(maxIterations)}) while still "
             f"rejecting bins; refitting the {int(keep.sum())} surviving bins."
         )
