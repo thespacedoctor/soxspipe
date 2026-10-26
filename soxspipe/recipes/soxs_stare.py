@@ -503,8 +503,8 @@ class soxs_stare(base_recipe):
 
         import pandas as pd
 
-        # THE RECIPE SETTINGS ARE settings[recipeName] ITSELF AND THE SKY-MODEL FALLBACK EDITS THEM IN PLACE, SO THE
-        # STACKED PASS RUNS ON A COPY AND THE ORIGINAL IS RESTORED, UNTOUCHED, FOR THE FRAMES AND THE CALLER
+        # THE SKY-MODEL FALLBACK EDITS THE RECIPE SETTINGS IN PLACE, SO THE STACKED PASS RUNS ON A COPY AND THE
+        # ORIGINAL IS RESTORED, UNTOUCHED, FOR THE PER-FRAME PASSES
         recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
         try:
             self.recipeSettings = copy.deepcopy(recipeSettings)
@@ -541,8 +541,8 @@ class soxs_stare(base_recipe):
         import pandas as pd
 
         sofName, filenameTemplate = self.sofName, self.filenameTemplate
-        # THE SKY-MODEL FALLBACK EDITS THE SETTINGS IN PLACE, SO EACH FRAME RUNS ON A COPY OF THE ORIGINAL, WHICH IS
-        # RESTORED UNTOUCHED
+        # THE SKY-MODEL FALLBACK EDITS THE RECIPE SETTINGS IN PLACE, SO EACH FRAME RUNS ON A COPY OF THE ORIGINAL,
+        # WHICH IS RESTORED UNTOUCHED
         recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
         templateStem, templateExtension = os.path.splitext(filenameTemplate)
         qcTables = []
