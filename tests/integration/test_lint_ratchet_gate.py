@@ -69,12 +69,16 @@ def test_the_repository_itself_passes_the_hard_rules():
 def test_the_hard_rules_reach_every_tracked_python_file():
     # ARRANGE
     repoRoot = lint_ratchet.repository_root(REPO_ROOT)
-    tracked = {(repoRoot / path).as_posix() for path in lint_ratchet._run(["git", "ls-files", "*.py"], repoRoot).split()}
+    tracked = {
+        (repoRoot / path).as_posix() for path in lint_ratchet._run(["git", "ls-files", "*.py"], repoRoot).split()
+    }
 
     # ACT
     command = [*lint_ratchet.ruff_command(), "check", "--show-files", "--force-exclude"]
     command += ["--", *lint_ratchet.HARD_RULE_PATHS]
-    scanned = {Path(line).as_posix() for line in lint_ratchet._run(command, repoRoot, allowedStatuses=(0, 1)).splitlines()}
+    scanned = {
+        Path(line).as_posix() for line in lint_ratchet._run(command, repoRoot, allowedStatuses=(0, 1)).splitlines()
+    }
 
     # ASSERT
     assert tracked - scanned == set()

@@ -25,6 +25,8 @@ soxs-disp-solution:
     wavelength-deg: 3
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
     poly-clipping-iteration-limit: 10
+    # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+    poly-clipping-set-offset-sigma: 5
     poly-fitting-residual-clipping-sigma: 5
 
 soxs-order-centres:
@@ -72,6 +74,8 @@ soxs-spat-solution:
         poly-fitting-residual-clipping-sigma: 9
         # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
         poly-clipping-pinhole-sets: True
+        # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+        poly-clipping-set-offset-sigma: 5
         map_to_image_displacement_threshold: 0.01 # in pixels
         # FULL MULTI-PINHOLES SETS (SAME ARC LINE) WITH FEWER THAN MPH_LINE_SET_MIN LINES DETECTED GET CLIPPED
         mph_line_set_min: 9
@@ -93,10 +97,15 @@ soxs-mflat:
     poly-fitting-residual-clipping-sigma: 5
     poly-clipping-iteration-limit: 5
     low-sensitivity-clipping-sigma: 2
+    # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+    order-edge-min-flat-fraction: 0.5
     # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
     scale-d2-to-qth: True
     
 soxs-stare:
+    # STACK ALL OBJECT FRAMES OF THE SOF BEFORE EXTRACTION. SET TO False TO EXTRACT EACH FRAME ON ITS OWN
+    # (FLUX STANDARDS ARE ALWAYS STACKED)
+    stack_before_extraction: True
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
@@ -139,8 +148,11 @@ soxs-stare:
         # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
         clip-slit-edge-fraction: 0.05
         aggressive_object_masking: True
+        # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
+        object_wing_correction: True
+        # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL (DY-1964)
+        object_wing_min_leak_sigma: 0.03
         bspline_order: 3
-        slit_illumination_order: 3
 
 
 

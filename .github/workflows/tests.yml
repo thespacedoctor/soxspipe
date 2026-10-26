@@ -19,7 +19,7 @@ concurrency:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     env:
       BLAS_NUM_THREADS: "1"
       HOME: /tmp/soxspipe-required/home
@@ -56,6 +56,16 @@ jobs:
       - name: Enforce changed-line lint
         run: python tools/lint_ratchet.py --compare-branch origin/develop
 
+      - name: Reject duplicate changelog entries
+        run: python tools/check_changelog.py CHANGES.md
+      # UNLIKE THE LINT RATCHET THIS GATE IS ABSOLUTE: THE WHOLE TREE WAS REFORMATTED
+      # IN DY-850, SO ANY UNFORMATTED FILE IS NEW. THE ruff VERSION IS THE ONE PINNED IN
+      # pyproject.toml, WHICH A LOCAL ruff MAY NOT MATCH; REFORMAT WITH THAT VERSION
+      - name: Enforce ruff format
+        run: ruff format --check .
+
+      # -n auto STARTS ONE WORKER PER PHYSICAL CORE (2 ON THE HOSTED RUNNER). -n logical (4 WORKERS)
+      # WAS SLOWER IN DY-1673: THE RUNNER HAS LITTLE SPARE CPU, SO EACH TEST RAN 2.5-3.5 TIMES SLOWER
       - name: Run required suite
         run: |
           mkdir -p reports
@@ -86,6 +96,7 @@ jobs:
               test ! -w soxspipe
               exec "$PYTHON_PATH" -m pytest tests/unit tests/integration \
                 -m "not slow" \
+                -n auto \
                 --cov=soxspipe \
                 --cov=tools \
                 --cov-branch \

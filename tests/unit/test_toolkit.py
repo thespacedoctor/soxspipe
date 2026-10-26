@@ -23,25 +23,21 @@ pytestmark = pytest.mark.unit
 def test_cut_image_slice_returns_centered_medians_and_coordinates(log: object) -> None:
     frame = np.arange(49, dtype=float).reshape(7, 7)
 
-    horizontal, xOffset, yCentre = toolkit.cut_image_slice(
-        log, frame, width=3, length=4, x=3, y=3, median=True
-    )
+    horizontal, xOffset, yCentre = toolkit.cut_image_slice(log, frame, width=3, length=4, x=3, y=3, median=True)
     vertical, yOffset, xCentre = toolkit.cut_image_slice(
         log, frame, width=3, length=4, x=3, y=3, sliceAxis="y", median=True
     )
 
     assert_array_equal(horizontal, [22.0, 23.0, 24.0, 25.0])
     assert_array_equal(vertical, [10.0, 17.0, 24.0, 31.0])
-    assert (xOffset, yCentre) == (1, 3.5)
-    assert (yOffset, xCentre) == (1, 3.5)
+    assert (xOffset, yCentre) == (1, 3.0)
+    assert (yOffset, xCentre) == (1, 3.0)
 
 
 def test_cut_image_slice_returns_raw_data_when_median_false(log: object) -> None:
     frame = np.arange(49, dtype=float).reshape(7, 7)
 
-    result, offset, centre = toolkit.cut_image_slice(
-        log, frame, width=3, length=4, x=3, y=3, median=False
-    )
+    result, offset, centre = toolkit.cut_image_slice(log, frame, width=3, length=4, x=3, y=3, median=False)
 
     assert_array_equal(
         result,
@@ -51,7 +47,7 @@ def test_cut_image_slice_returns_raw_data_when_median_false(log: object) -> None
             [29.0, 30.0, 31.0, 32.0],
         ],
     )
-    assert (offset, centre) == (1, 3.5)
+    assert (offset, centre) == (1, 3.0)
 
 
 def test_cut_image_slice_rejects_invalid_axis_and_out_of_bounds(log: object) -> None:
@@ -92,9 +88,7 @@ def test_generic_quality_checks_records_mask_count_and_fraction(
     fractionName: str,
     comment: str,
 ) -> None:
-    monkeypatch.setattr(
-        toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key)
-    )
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
     frame = SimpleNamespace(
         mask=np.array([[False, True], [True, False]]),
         header={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-02T03:04:05"},
@@ -109,6 +103,81 @@ def test_generic_quality_checks_records_mask_count_and_fraction(
         f"Fraction of {comment}",
     ]
     assert result["to_header"].tolist() == [True, True]
+
+
+def _flat_frame_with_mask(mask: np.ndarray) -> SimpleNamespace:
+    return SimpleNamespace(mask=mask, header={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-02T03:04:05"})
+
+
+def test_generic_quality_checks_excludes_the_exclude_mask_from_count_and_fraction(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE: FOUR OF TEN PIXELS ARE MASKED, TWO OF THEM FLAGGED IN THE EXCLUDE MASK
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+    excludeMask = np.zeros((2, 5), dtype=bool)
+    excludeMask[0, 2:4] = True
+
+    # ACT
+    result = toolkit.generic_quality_checks(
+        log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame(), excludeMask=excludeMask
+    )
+
+    # ASSERT
+    assert result["qc_name"].tolist() == ["COLDPIX NUM", "COLDPIX FRAC"]
+    assert result["qc_value"].tolist() == [2, 0.2]
+
+
+def test_generic_quality_checks_without_exclude_mask_counts_every_masked_pixel(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+
+    # ACT
+    result = toolkit.generic_quality_checks(log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame())
+
+    # ASSERT
+    assert result["qc_value"].tolist() == [4, 0.4]
+
+
+def test_generic_quality_checks_exclude_mask_of_none_counts_every_masked_pixel(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+
+    # ACT
+    result = toolkit.generic_quality_checks(
+        log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame(), excludeMask=None
+    )
+
+    # ASSERT
+    assert result["qc_value"].tolist() == [4, 0.4]
+
+
+def test_generic_quality_checks_rejects_an_exclude_mask_of_the_wrong_shape(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+) -> None:
+    # ARRANGE: A (5,) MASK BROADCASTS AGAINST A (2, 5) FRAME MASK, SO ONLY AN EXPLICIT SHAPE CHECK CATCHES IT
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
+    mask = np.zeros((2, 5), dtype=bool)
+    mask[0, :4] = True
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"\(5,\).*\(2, 5\)"):
+        toolkit.generic_quality_checks(
+            log, _flat_frame_with_mask(mask), {}, "soxs-mflat", pd.DataFrame(), excludeMask=np.ones(5, dtype=bool)
+        )
 
 
 def test_calibration_path_honors_instrument_setting(log: object) -> None:
@@ -148,8 +217,7 @@ def test_predict_product_path_uses_observation_night_and_cli_recipe(
 
     assert night == "2024-01-01"
     assert productPath == (
-        f"./sessions/session_01/reduced/2024-01-01/{expectedRecipe}/"
-        "20240102T030405_STARE_STD_RESP.fits"
+        f"./sessions/session_01/reduced/2024-01-01/{expectedRecipe}/20240102T030405_STARE_STD_RESP.fits"
     )
 
 
@@ -181,9 +249,7 @@ def test_predict_product_path_appends_resp_for_std_stare_and_nod(
     productPath, night = toolkit.predict_product_path(sofName)
 
     assert night == "2024-01-01"
-    assert productPath == (
-        f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
-    )
+    assert productPath == (f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}")
 
 
 @pytest.mark.parametrize(
@@ -214,9 +280,7 @@ def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod
     productPath, night = toolkit.predict_product_path(sofName)
 
     assert night == "2024-01-01"
-    assert productPath == (
-        f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
-    )
+    assert productPath == (f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}")
 
 
 def test_add_recipe_logger_replaces_handlers_and_separates_messages(
@@ -252,16 +316,8 @@ def test_add_recipe_logger_replaces_handlers_and_separates_messages(
 def test_max_filter_accepts_only_records_below_limit() -> None:
     filterObject = toolkit.MaxFilter(logging.WARNING)
 
-    assert (
-        filterObject.filter(logging.LogRecord("x", logging.INFO, "", 1, "", (), None))
-        is True
-    )
-    assert (
-        filterObject.filter(
-            logging.LogRecord("x", logging.WARNING, "", 1, "", (), None)
-        )
-        is None
-    )
+    assert filterObject.filter(logging.LogRecord("x", logging.INFO, "", 1, "", (), None)) is True
+    assert filterObject.filter(logging.LogRecord("x", logging.WARNING, "", 1, "", (), None)) is None
 
 
 def test_calibration_lamp_normalizes_and_concatenates_header_values(
@@ -280,17 +336,10 @@ def test_calibration_lamp_normalizes_and_concatenates_header_values(
     lamp = toolkit.get_calibration_lamp(log, frame, keywords.__getitem__)
 
     assert lamp == "QTHArNe"
-    assert (
-        toolkit.get_calibration_lamp(
-            log, SimpleNamespace(header={"INSTRUME": "SOXS"}), keywords.__getitem__
-        )
-        is None
-    )
+    assert toolkit.get_calibration_lamp(log, SimpleNamespace(header={"INSTRUME": "SOXS"}), keywords.__getitem__) is None
 
 
-def test_utility_setup_creates_recipe_directories_under_workspace(
-    tmp_path: Path, log: object
-) -> None:
+def test_utility_setup_creates_recipe_directories_under_workspace(tmp_path: Path, log: object) -> None:
     workspace = tmp_path / "workspace"
 
     qcDir, productDir = toolkit.utility_setup(
@@ -378,22 +427,120 @@ def test_add_snr_efficiency_qcs_records_global_and_per_order_values(
         log,
         spectrum,
         pd.DataFrame(),
-        {"1011": 500.0},
+        {"10-11": 500.0},
         "soxs-stare",
         "2024-01-02T03:04:05",
+        "NIR",
     )
 
     assert result["qc_name"].tolist() == [
         "EFF MEDIAN",
-        "EFF MEDIAN",
-        "EFF MEDIAN",
+        "EFF MEDIAN O10",
+        "EFF MEDIAN O11",
         "SNR MEDIAN",
-        "SNR MEDIAN",
-        "SNR MEDIAN",
+        "SNR MEDIAN O10",
+        "SNR MEDIAN O11",
     ]
     assert result["qc_value"].tolist() == [0.25, 0.35, 0.15, 25.0, 35.0, 15.0]
-    assert result["qc_order"].iloc[1:].dropna().tolist() == [10.0, 11.0, 10.0, 11.0]
+    assert result["qc_order"].iloc[1:].dropna().tolist() == [10, 11, 10, 11]
     assert "ORDER" not in spectrum.columns
+
+
+def test_add_snr_efficiency_qcs_names_soxs_vis_orders_by_trace_number_and_band(log: object) -> None:
+    spectrum = pd.DataFrame(
+        {
+            "WAVE": [400.0, 500.0, 600.0, 700.0],
+            "SNR": [10.0, 20.0, 30.0, 40.0],
+        }
+    )
+
+    result = toolkit.add_snr_efficiency_qcs(
+        log,
+        spectrum,
+        pd.DataFrame(),
+        {"4-1": 650.0, "1-3": 550.0, "3-2": 450.0},
+        "soxs-stare",
+        "2024-01-02T03:04:05",
+        "VIS",
+    )
+
+    perOrder = result.iloc[1:]
+    assert perOrder["qc_name"].tolist() == ["SNR MEDIAN O1", "SNR MEDIAN O2", "SNR MEDIAN O3", "SNR MEDIAN O4"]
+    assert perOrder["qc_order"].tolist() == [1, 2, 3, 4]
+    assert perOrder["qc_value"].tolist() == [30.0, 10.0, 20.0, 40.0]
+    assert perOrder["qc_comment"].tolist() == [
+        "Median SNR in order 1 (r)",
+        "Median SNR in order 2 (u)",
+        "Median SNR in order 3 (g)",
+        "Median SNR in order 4 (i)",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [("11-12", (11, 12)), ("4-1", (4, 1)), ("9-10", (9, 10)), ("100-101", (100, 101))],
+)
+def test_parse_order_join_key_returns_the_red_and_blue_orders(key: str, expected: tuple[int, int]) -> None:
+    assert toolkit.parse_order_join_key(key) == expected
+
+
+@pytest.mark.parametrize("key", ["1112", "11-", "-12", "a-b", "1-2-3", "", "²-3"])
+def test_parse_order_join_key_rejects_keys_that_are_not_red_dash_blue(key: str) -> None:
+    with pytest.raises(ValueError, match="order join key"):
+        toolkit.parse_order_join_key(key)
+
+
+@pytest.mark.parametrize(
+    ("arm", "joins", "waves", "expectedOrders"),
+    [
+        ("NIR", {"9-10": 500.0, "10-11": 450.0}, [400.0, 470.0, 520.0], [11, 10, 9]),
+        ("NIR", {"100-101": 500.0}, [400.0, 600.0], [101, 100]),
+    ],
+)
+def test_add_snr_efficiency_qcs_assigns_each_wavelength_to_its_order_whatever_the_key_width(
+    log: object, arm: str, joins: dict, waves: list, expectedOrders: list
+) -> None:
+    spectrum = pd.DataFrame({"WAVE": waves, "SNR": [float(i + 1) for i in range(len(waves))]})
+
+    result = toolkit.add_snr_efficiency_qcs(log, spectrum, pd.DataFrame(), joins, "soxs-stare", "2024-01-02", arm)
+
+    perOrder = result.iloc[1:].set_index("qc_order")["qc_value"].to_dict()
+    assert perOrder == {order: float(i + 1) for i, order in enumerate(expectedOrders)}
+
+
+def test_add_snr_efficiency_qcs_labels_bands_only_when_told_the_arm_is_vis(log: object) -> None:
+    spectrum = pd.DataFrame({"WAVE": [400.0, 600.0], "SNR": [1.0, 2.0]})
+
+    result = toolkit.add_snr_efficiency_qcs(
+        log, spectrum, pd.DataFrame(), {"1-2": 500.0}, "soxs-stare", "2024-01-02", "NIR"
+    )
+
+    assert result["qc_comment"].iloc[1:].tolist() == ["Median SNR in order 1", "Median SNR in order 2"]
+
+
+def test_add_snr_efficiency_qcs_returns_qc_table_unchanged_and_warns_when_no_trace_was_found(log: object) -> None:
+    spectrum = pd.DataFrame({"WAVE": [400.0, 600.0], "SNR": [1.0, 2.0], "EFFICIENCY": [0.1, 0.2]})
+    qcTable = pd.DataFrame([{"qc_name": "EXISTING QC", "qc_value": 1.0}])
+
+    result = toolkit.add_snr_efficiency_qcs(log, spectrum, qcTable, None, "soxs-nod", "2024-01-02", "NIR")
+
+    assert result is qcTable
+    assert result["qc_name"].tolist() == ["EXISTING QC"]
+    assert log.messages == [
+        (
+            "warning",
+            "The SNR and efficiency QCs were skipped: no order joins were supplied (no object trace found).",
+        )
+    ]
+
+
+def test_add_snr_efficiency_qcs_still_records_the_global_median_when_the_order_joins_are_empty(log: object) -> None:
+    spectrum = pd.DataFrame({"WAVE": [400.0, 600.0], "SNR": [10.0, 20.0]})
+
+    result = toolkit.add_snr_efficiency_qcs(log, spectrum, pd.DataFrame(), {}, "soxs-stare", "2024-01-02", "NIR")
+
+    assert result["qc_name"].tolist() == ["SNR MEDIAN"]
+    assert [level for level, _ in log.messages if level == "warning"] == []
 
 
 def test_qc_settings_plot_tables_limits_qcs_and_hides_axes(log: object) -> None:

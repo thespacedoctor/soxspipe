@@ -7,6 +7,7 @@
 | Label   | Content                                                                           | Data Type  | PRO CATG | PRO TYPE | PRO TECH |
 | ------- | :-------------------------------------------------------------------------------- | ---------- |---------- |---------- |---------- |
 | `MBIAS` | Master bias frame (frame containing typical bias-voltage applied to the detector) | FITS image | `MASTER_BIAS_<ARM>`          |  `REDUCED`           |   `IMAGE`      |
+| `BIAS DISTRIBUTION QC PLOT` | Histograms of the earliest raw bias frame and the master bias pixel flux, with read-out noise (RON) values | PDF | - | - | - |
 
 :::
 

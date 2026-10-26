@@ -13,8 +13,8 @@ from numpy.testing import assert_allclose, assert_array_equal
 
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     _read_dispersion_map_axes,
+    default_coefficients,
     dispersion_map_to_pixel_arrays,
-    get_cached_coeffs,
 )
 from tests.factories import dispersion_map_fits
 
@@ -121,9 +121,7 @@ def test_fits_coefficients_preserve_axes_degrees_and_nan_padding(
     }
 
 
-def test_zero_degree_maps_use_one_coefficient_per_axis(
-    tmp_path: Path, log: object
-) -> None:
+def test_zero_degree_maps_use_one_coefficient_per_axis(tmp_path: Path, log: object) -> None:
     coefficients = pd.DataFrame(
         {
             "axis": ["x", "y"],
@@ -141,86 +139,15 @@ def test_zero_degree_maps_use_one_coefficient_per_axis(
     assert_allclose(result["fit_y"], [7.25])
 
 
-def test_missing_fit_cache_uses_axis_specific_degree_lengths(
-    tmp_path: Path, log: object
-) -> None:
-    settings = {"workspace-root-dir": str(tmp_path)}
+def test_default_coefficients_are_unit_valued_with_axis_specific_degree_lengths() -> None:
+    coefficients = default_coefficients(orderDeg=[1, 2], wavelengthDeg=[0, 1], slitDeg=[0, 0])
 
-    xCoefficients, yCoefficients = get_cached_coeffs(
-        log,
-        "VIS",
-        settings,
-        "soxs-disp-solution",
-        orderDeg=[1, 2],
-        wavelengthDeg=[0, 1],
-        slitDeg=[0, 0],
-    )
-
-    assert_array_equal(xCoefficients, np.ones(2))
-    assert_array_equal(yCoefficients, np.ones(6))
+    assert_array_equal(coefficients["x"], np.ones(2))
+    assert_array_equal(coefficients["y"], np.ones(6))
 
 
-def test_fit_cache_reads_fits_coefficients_unless_reset(
-    tmp_path: Path, log: object
-) -> None:
-    cachePath = tmp_path / ".cache"
-    cachePath.mkdir()
-    coefficientPath = cachePath / "soxs-disp-solution_VIS_100.fits"
-    coefficients = pd.DataFrame(
-        {
-            "axis": ["x", "y"],
-            "order_deg": [1, 1],
-            "wavelength_deg": [0, 0],
-            "slit_deg": [0, 0],
-            "c000": [3.5, 7.25],
-            "c100": [0.5, 0.75],
-            "padding": [np.nan, np.nan],
-        }
-    )
-    dispersion_map_fits(coefficientPath, coefficients=coefficients)
-    arguments = (
-        log,
-        "VIS",
-        {"workspace-root-dir": str(tmp_path)},
-        "soxs-disp-solution",
-        1,
-        0,
-        0,
-    )
+def test_default_coefficients_share_one_length_for_a_single_set_of_degrees() -> None:
+    coefficients = default_coefficients(orderDeg=2, wavelengthDeg=3, slitDeg=1)
 
-    cachedX, cachedY = get_cached_coeffs(*arguments)
-    resetX, resetY = get_cached_coeffs(*arguments, reset=True)
-
-    assert cachedX == [3.5, 0.5]
-    assert cachedY == [7.25, 0.75]
-    assert_array_equal(resetX, np.ones(2))
-    assert_array_equal(resetY, np.ones(2))
-
-
-def test_fit_cache_rejects_a_malformed_degree_column(
-    tmp_path: Path, log: object
-) -> None:
-    cachePath = tmp_path / ".cache"
-    cachePath.mkdir()
-    coefficientPath = cachePath / "soxs-disp-solution_VIS_100.fits"
-    coefficients = pd.DataFrame(
-        {
-            "axis": ["x", "y"],
-            "order_deg": ["bad", "bad"],
-            "wavelength_deg": [0, 0],
-            "slit_deg": [0, 0],
-            "c000": [3.5, 7.25],
-        }
-    )
-    dispersion_map_fits(coefficientPath, coefficients=coefficients)
-
-    with pytest.raises(ValueError):
-        get_cached_coeffs(
-            log,
-            "VIS",
-            {"workspace-root-dir": str(tmp_path)},
-            "soxs-disp-solution",
-            1,
-            0,
-            0,
-        )
+    assert_array_equal(coefficients["x"], np.ones(24))
+    assert_array_equal(coefficients["y"], np.ones(24))

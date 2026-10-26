@@ -2,13 +2,14 @@ name: Real-data tests
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "17 3 * * 1"
+  # THE GATE COSTS UP TO 120 RUNNER MINUTES, SO IT RUNS ONLY ON MERGES INTO main
+  # (RELEASE AND HOTFIX PULL REQUESTS). FEATURE PULL REQUESTS INTO develop SKIP IT;
+  # REACH ONE WITH `workflow_dispatch` ON ITS BRANCH WHEN A CHANGE NEEDS CHECKING EARLY.
   # DRAFT PULL REQUESTS NEVER SPEND RUNNER TIME: THE JOB FIRST STARTS WHEN THE PULL
   # REQUEST LEAVES DRAFT, THEN ON EVERY LATER PUSH TO IT
   pull_request:
     branches:
-      - develop
+      - main
     # `opened` IS HERE BECAUSE A PULL REQUEST CREATED READY (NOT AS A DRAFT) NEVER
     # FIRES `ready_for_review`, SO WITHOUT IT THE GATE WOULD WAIT FOR A SECOND PUSH.
     # THE JOB-LEVEL DRAFT GUARD BELOW IS WHAT KEEPS DRAFTS OFF THE RUNNER
@@ -28,8 +29,8 @@ permissions:
 
 # A SUPERSEDED PUSH SHOULD NOT KEEP BURNING A RUNNER FOR UP TO 120 MINUTES. ON A
 # PULL REQUEST `github.ref` IS `refs/pull/<number>/merge`, SO EACH PULL REQUEST GETS
-# ITS OWN GROUP. A MANUAL DISPATCH AND THE WEEKLY SCHEDULE SHARE A REF, SO THEY ARE
-# KEYED BY RUN ID INSTEAD AND CANNOT CANCEL EACH OTHER
+# ITS OWN GROUP. MANUAL DISPATCHES ON ONE BRANCH SHARE A REF, SO THEY ARE KEYED BY
+# RUN ID INSTEAD AND CANNOT CANCEL EACH OTHER
 concurrency:
   group: real-data-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
@@ -50,7 +51,12 @@ jobs:
     env:
       CACHE_ROOT: ${{ github.workspace }}/.real-data-cache
       WORKSPACE: ${{ github.workspace }}/.real-data-workspace
-      SOF_NAME: 20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof
+      # THE OFFSET SOF IS THE ORIGINAL REPRESENTATIVE REDUCTION. THE TWO STARE SOFS ARE THE
+      # ONLY REDUCTIONS THAT RUN THE B-SPLINE SKY MODEL IN subtract_sky (DY-696)
+      SOF_NAMES: >-
+        20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736.sof
+        20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_Feige110.sof
+        20260111T080347_NIR_3_STARE_OBJ_SLIT5_0_30_0S_SOXS_CD-325613.sof
       REDUCTION_LOG: ${{ github.workspace }}/reduction-log/reduction.log
       # GITHUB HANDS OUT RUNNERS ON DIFFERENT CPUs. numpy PICKS ITS SIMD KERNELS FROM
       # WHAT THE CPU OFFERS, SO AN AVX512 RUNNER REDUCES THE SAME RAW FRAMES DOWN A
@@ -58,10 +64,16 @@ jobs:
       # EVERY RUNNER TO THE AVX2 PATH MAKES THE REDUCTION BIT-IDENTICAL ACROSS HARDWARE.
       # THIS IS A DENYLIST: A CPU WITH AN INSTRUCTION SET NOT NAMED HERE WILL DIVERGE
       # AGAIN, SO ADD NEW SETS (AVX10, APX) WHEN RUNNER HARDWARE MOVES ON.
+      # numpy DISPATCHES ON GROUP TARGETS (AVX512_SKX, AVX512_CLX, ...) AS WELL AS AVX512F
+      # AND AVX512CD, AND IGNORES THE OTHER SINGLE-FEATURE NAMES WITH AN ImportWarning. WITHOUT
+      # THE AVX512_* GROUPS AN AVX512 RUNNER STILL RUNS THE AVX512_SKX/CLX KERNELS; CHECK WITH
+      # np.show_config() THAT ONLY ... AVX AVX2 FMA3 IS "found" AFTER EDITING THIS LIST
       NPY_DISABLE_CPU_FEATURES: >-
         AVX512F AVX512CD AVX512BW AVX512DQ AVX512VL
         AVX512FP16 AVX512IFMA AVX512BITALG AVX512VBMI
         AVX512VBMI2 AVX512VNNI AVX512VPOPCNTDQ
+        AVX512_KNL AVX512_KNM AVX512_SKX AVX512_CLX
+        AVX512_CNL AVX512_ICL AVX512_SPR
       # numpy's OWN SIMD PIN DOES NOT REACH OpenBLAS, WHICH SELECTS ITS KERNELS FROM THE
       # MICROARCHITECTURE. np.polyfit IN response_function GOES THROUGH np.linalg.lstsq INTO
       # LAPACK, SO A Zen3 AND A Zen4 RUNNER FIT DIFFERENT RESPONSE COEFFICIENTS WITHOUT THIS.
@@ -100,7 +112,7 @@ jobs:
             --cache-root "$CACHE_ROOT" \
             --workspace "$WORKSPACE"
 
-      - name: Prepare representative NIR offset reduction
+      - name: Prepare the representative offset and stare reductions
         run: |
           # EVERY COMMAND HERE IS PIPED INTO tee, SO WITHOUT THIS A FAILING PIPELINE
           # WOULD REPORT tee'S EXIT STATUS AND THE STEP WOULD PASS
@@ -112,11 +124,13 @@ jobs:
           # AGAINST soxspipe.db, NOT A PATH IN THE WORKING DIRECTORY, SO THE DATASET IS
           # CHECKED BY LOOKING FOR THE NAME IN THE LISTING RATHER THAN ON DISK
           python -m soxspipe.cl_utils list sof | tee "$RUNNER_TEMP/sof-listing.txt"
-          grep -qF "$SOF_NAME" "$RUNNER_TEMP/sof-listing.txt"
-          python -m soxspipe.cl_utils raw sof "$SOF_NAME"
-          # THE REDUCTION PRINTS PER-RECIPE RUN TIMES, SO ITS OUTPUT IS KEPT AS AN
-          # ARTIFACT FOR A COARSE PERFORMANCE TREND THE RUN LOG WOULD OTHERWISE LOSE
-          python -m soxspipe.cl_utils -q reduce sof "$SOF_NAME" 2>&1 | tee -a "$REDUCTION_LOG"
+          for sof_name in $SOF_NAMES; do
+            grep -qF "$sof_name" "$RUNNER_TEMP/sof-listing.txt"
+            python -m soxspipe.cl_utils raw sof "$sof_name"
+            # THE REDUCTION PRINTS PER-RECIPE RUN TIMES, SO ITS OUTPUT IS KEPT AS AN
+            # ARTIFACT FOR A COARSE PERFORMANCE TREND THE RUN LOG WOULD OTHERWISE LOSE
+            python -m soxspipe.cl_utils -q reduce sof "$sof_name" 2>&1 | tee -a "$REDUCTION_LOG"
+          done
 
       - name: Run real-data acceptance tests
         env:

@@ -6,6 +6,7 @@ import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -17,7 +18,10 @@ from astropy.table import Table
 from soxspipe.commonutils.create_dispersion_map import (
     create_dispersion_map,
     measure_line_position,
+    plot_xy_residual_histogram,
 )
+from tests.factories import qc_table
+from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
 
 pytestmark = pytest.mark.unit
 
@@ -200,9 +204,7 @@ def test_update_static_line_list_projects_each_unique_line_at_each_slit_position
     )
     commonutilsModule = importlib.import_module("soxspipe.commonutils")
 
-    def project_lines(
-        *, orderPixelTable: pd.DataFrame, **_: object
-    ) -> pd.DataFrame:
+    def project_lines(*, orderPixelTable: pd.DataFrame, **_: object) -> pd.DataFrame:
         return orderPixelTable.assign(
             fit_x=orderPixelTable["order"] * 10 + orderPixelTable["slit_index"],
             fit_y=orderPixelTable["wavelength"] + orderPixelTable["slit_position"],
@@ -317,9 +319,7 @@ def test_write_map_to_file_serializes_per_axis_coefficients_and_metadata(
     )()
     mapper.productDir = "/products"
     mapper.settings = {}
-    mapper.qc = pd.DataFrame(
-        columns=["qc_name", "qc_value", "qc_unit", "qc_comment"]
-    )
+    mapper.qc = pd.DataFrame(columns=["qc_name", "qc_value", "qc_unit", "qc_comment"])
     phase3Module = importlib.import_module("soxspipe.commonutils.phase3")
     captured: dict[str, object] = {}
     monkeypatch.setattr(
@@ -383,16 +383,20 @@ def _synthetic_fitted_lines() -> pd.DataFrame:
     )
 
 
+@pytest.mark.parametrize("error", [ValueError, RuntimeError, TypeError, np.linalg.LinAlgError])
 def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
 ) -> None:
     """Report an x-axis fitting failure before residual processing begins."""
     mapper = _fitting_mapper(log)
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimiseModule = importlib.import_module("scipy.optimize")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
-    monkeypatch.setattr(optimiseModule, "curve_fit", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("fit failed")))
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
+    monkeypatch.setattr(
+        polynomialsModule,
+        "solve_linear_poly_coefficients",
+        lambda **kwargs: (_ for _ in ()).throw(error("fit failed")),
+    )
 
     result = mapper.fit_polynomials(
         _synthetic_fitted_lines(),
@@ -404,24 +408,24 @@ def test_fit_polynomials_returns_axis_error_when_first_fit_fails(
     assert result == ("xerror", None, None, None)
 
 
+@pytest.mark.parametrize("error", [ValueError, RuntimeError, TypeError, np.linalg.LinAlgError])
 def test_fit_polynomials_returns_y_axis_error_after_a_successful_x_fit(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
+    error: type[Exception],
 ) -> None:
     """Preserve the distinct y-fit failure result used by degree fallback."""
     mapper = _fitting_mapper(log)
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimiseModule = importlib.import_module("scipy.optimize")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
-    fitResults = iter([([1.0], None), RuntimeError("y fit failed")])
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
+    fitResults = iter([[1.0], error("y fit failed")])
 
-    def fit(*args: object, **kwargs: object) -> tuple[list[float], None]:
+    def fit(**kwargs: object) -> list[float]:
         result = next(fitResults)
         if isinstance(result, Exception):
             raise result
         return result
 
-    monkeypatch.setattr(optimiseModule, "curve_fit", fit)
+    monkeypatch.setattr(polynomialsModule, "solve_linear_poly_coefficients", fit)
 
     result = mapper.fit_polynomials(
         _synthetic_fitted_lines(),
@@ -439,20 +443,23 @@ def test_fit_polynomials_retains_dropped_lines_and_runs_final_qc_fit(
 ) -> None:
     """Fit retained lines, retain dropped rows, and request final QC residuals."""
     mapper = _fitting_mapper(log)
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimiseModule = importlib.import_module("scipy.optimize")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
-    fitResults = iter([([1.5], None), ([2.5], None)])
-    monkeypatch.setattr(optimiseModule, "curve_fit", lambda *args, **kwargs: next(fitResults))
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
+    fitResults = iter([[1.5], [2.5]])
+    monkeypatch.setattr(polynomialsModule, "solve_linear_poly_coefficients", lambda **kwargs: next(fitResults))
     qcCalls: list[bool] = []
 
     def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
         qcCalls.append(bool(kwargs["writeQCs"]))
         table = kwargs["orderPixelTable"].copy()
-        return 0.0, 0.0, 0.0, table.assign(
-            residuals_x=0.0,
-            residuals_y=0.0,
-            residuals_xy=0.0,
+        return (
+            0.0,
+            0.0,
+            0.0,
+            table.assign(
+                residuals_x=0.0,
+                residuals_y=0.0,
+                residuals_xy=0.0,
+            ),
         )
 
     mapper.calculate_residuals = calculate_residuals
@@ -469,6 +476,143 @@ def test_fit_polynomials_retains_dropped_lines_and_runs_final_qc_fit(
     assert retainedLines["wavelength"].tolist() == [500.0, 501.0]
     assert clippedLines["wavelength"].tolist() == [600.0]
     assert qcCalls == [False, True]
+
+
+def _cap_exit_lines() -> pd.DataFrame:
+    """Twenty lines at a constant position with three gross outliers in x, none in y."""
+    lineCount = 20
+    observedX = 100.0 + 0.1 * np.sin(np.arange(lineCount))
+    observedX[[3, 9, 15]] += [80.0, -90.0, 70.0]
+    return pd.DataFrame(
+        {
+            "order": 10.0,
+            "wavelength": np.linspace(500.0, 600.0, lineCount),
+            "slit_position": 0.0,
+            "observed_x": observedX,
+            "observed_y": 20.0 + 0.1 * np.cos(np.arange(lineCount)),
+            "dropped": False,
+        }
+    )
+
+
+def _record_residual_calls(mapper: create_dispersion_map) -> list[dict[str, object]]:
+    """Replace calculate_residuals with a constant-model version that records each call."""
+    calls: list[dict[str, object]] = []
+
+    def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
+        table = kwargs["orderPixelTable"].copy()
+        table["residuals_x"] = kwargs["xcoeff"][0] - table["observed_x"]
+        table["residuals_y"] = kwargs["ycoeff"][0] - table["observed_y"]
+        table["residuals_xy"] = np.hypot(table["residuals_x"], table["residuals_y"])
+        calls.append(
+            {
+                "writeQCs": kwargs["writeQCs"],
+                "xcoeff": np.asarray(kwargs["xcoeff"]),
+                "ycoeff": np.asarray(kwargs["ycoeff"]),
+                "lineCount": len(table),
+            }
+        )
+        return 0.0, 0.0, 0.0, table
+
+    mapper.calculate_residuals = calculate_residuals
+    return calls
+
+
+def test_fit_polynomials_refits_the_surviving_lines_when_the_iteration_cap_is_reached(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Return coefficients fitted to the kept lines, not to the lines the last pass rejected."""
+    mapper = _fitting_mapper(log)
+    mapper.recipeSettings["poly-clipping-iteration-limit"] = 1
+    mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 2.0
+    calls = _record_residual_calls(mapper)
+    lines = _cap_exit_lines()
+
+    xcoeff, ycoeff, keptLines, clippedLines = mapper.fit_polynomials(lines, wavelengthDeg=0, orderDeg=0, slitDeg=0)
+
+    assert len(clippedLines) > 0
+    assert set(lines.loc[[3, 9, 15], "wavelength"]).issubset(set(clippedLines["wavelength"]))
+    assert xcoeff[0] == pytest.approx(keptLines["observed_x"].mean(), abs=1e-6)
+    assert ycoeff[0] == pytest.approx(keptLines["observed_y"].mean(), abs=1e-6)
+    assert calls[-1]["writeQCs"] is True
+    assert calls[-1]["lineCount"] == len(keptLines)
+    capMessages = [message for level, message in log.messages if level == "info" and "iteration limit" in message]
+    assert len(capMessages) == 1
+    assert f"{len(clippedLines)} lines still being clipped" in capMessages[0]
+
+
+def test_fit_polynomials_does_not_refit_when_a_pass_clips_nothing(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the converged coefficients and stay silent when the loop ends before the cap."""
+    mapper = _fitting_mapper(log)
+    mapper.recipeSettings["poly-clipping-iteration-limit"] = 10
+    mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 2.0
+    calls = _record_residual_calls(mapper)
+
+    mapper.fit_polynomials(_cap_exit_lines(), wavelengthDeg=0, orderDeg=0, slitDeg=0)
+
+    assert not [message for level, message in log.messages if "iteration limit" in message]
+    assert calls[-1]["writeQCs"] is True
+    assert len(calls) == sum(1 for call in calls if not call["writeQCs"]) + 1
+
+
+def _line_table(lineCount: int) -> pd.DataFrame:
+    """Return distinct, undropped lines whose positions vary smoothly with wavelength."""
+    return pd.DataFrame(
+        {
+            "order": 10.0,
+            "wavelength": np.linspace(500.0, 600.0, lineCount),
+            "slit_position": 0.0,
+            "observed_x": np.linspace(100.0, 200.0, lineCount),
+            "observed_y": np.linspace(20.0, 30.0, lineCount),
+            "dropped": False,
+        }
+    )
+
+
+def test_fit_polynomials_returns_xerror_when_clipping_leaves_fewer_lines_than_coefficients(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report the degree-reduction marker when a later pass has fewer lines than coefficients."""
+    mapper = _fitting_mapper(log)
+    mapper.recipeSettings["poly-fitting-residual-clipping-sigma"] = 1.0
+    mapper.recipeSettings["poly-clipping-iteration-limit"] = 5
+    calls: list[int] = []
+
+    def calculate_residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
+        # THE LAST LINE IS THE ONLY OUTLIER, SO EACH PASS CLIPS EXACTLY ONE LINE
+        table = kwargs["orderPixelTable"].copy()
+        residuals = np.zeros(len(table))
+        residuals[-1] = 10.0
+        table["residuals_x"] = residuals
+        table["residuals_y"] = residuals
+        table["residuals_xy"] = residuals
+        calls.append(len(table))
+        return 0.0, 0.0, 0.0, table
+
+    mapper.calculate_residuals = calculate_residuals
+
+    # A QUADRATIC IN WAVELENGTH HAS THREE COEFFICIENTS PER AXIS
+    result = mapper.fit_polynomials(_line_table(4), wavelengthDeg=2, orderDeg=0, slitDeg=0)
+
+    assert calls == [4, 3]
+    assert result == ("xerror", None, None, None)
+
+
+def test_fit_polynomials_returns_yerror_when_only_the_y_polynomial_has_too_many_coefficients(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Report the y-axis marker when two lines fit the x polynomial but not the y polynomial."""
+    mapper = _fitting_mapper(log)
+    # X IS LINEAR IN WAVELENGTH (TWO COEFFICIENTS) AND Y IS QUADRATIC (THREE COEFFICIENTS)
+    result = mapper.fit_polynomials(_line_table(2), wavelengthDeg=[1, 2], orderDeg=[0, 0], slitDeg=[0, 0])
+
+    assert result == (None, "yerror", None, None)
 
 
 def test_detect_pinhole_arc_lines_uses_shifted_positions_and_collects_measurements(
@@ -594,6 +738,46 @@ def test_get_writes_the_fitted_map_and_returns_workflow_products(log: object) ->
     assert result[4] is mapper.products
     assert result[5].equals(mapper.lineDetectionTable)
     assert calls == ["quicklook", "metrics", "line-qc", "fitted", "missing"]
+
+
+def test_get_raises_arithmetic_error_when_no_reduced_degree_fit_succeeds(log: object) -> None:
+    """Stop at constant polynomials with the helpful error instead of lowering a degree below zero."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.lineDetectionTable = pd.DataFrame(
+        {
+            "wavelength": [500.0, 501.0],
+            "order": [10, 10],
+            "slit_position": [0.0, 0.0],
+            "observed_x": [100.0, 101.0],
+        }
+    )
+    mapper.recipeName = "soxs-disp-solution"
+    mapper.recipeSettings = {"mph_line_set_min": 1}
+    mapper.settings = {"tune-pipeline": False}
+    mapper.firstGuessMap = False
+    mapper.orderTable = False
+    mapper.create2DMap = False
+    mapper.qc = pd.DataFrame()
+    mapper.products = pd.DataFrame()
+    mapper.dateObs = "2025-01-02T03:04:05"
+    attemptedDegrees: list[tuple[int, int, int]] = []
+
+    def fit_polynomials(**kwargs: object) -> tuple[str, None, None, None]:
+        attemptedDegrees.append((kwargs["wavelengthDeg"], kwargs["orderDeg"], kwargs["slitDeg"]))
+        return "xerror", None, None, None
+
+    mapper._initialize_recipe_settings = lambda: (False, False, 1, 1, 0)
+    mapper.get_predicted_line_list = lambda: mapper.lineDetectionTable.copy()
+    mapper._prepare_pinhole_frame = lambda: "prepared-frame"
+    mapper._generate_quicklook_and_debug_plots = lambda *args: None
+    mapper._clip_on_measured_line_metrics = lambda table: table
+    mapper.fit_polynomials = fit_polynomials
+
+    with pytest.raises(ArithmeticError, match="Could not converge on a good fit"):
+        mapper.get()
+
+    assert attemptedDegrees == [(1, 1, 0), (0, 1, 0), (0, 0, 0)]
 
 
 def test_get_detects_and_shifts_lines_before_fitting(log: object) -> None:
@@ -884,9 +1068,7 @@ def test_predicted_line_list_loads_cleans_and_selects_the_mid_slit(
     mapper.firstGuessMap = False
     mapper.settings = {"instrument": "soxs"}
     mapper.kw = lambda name: name
-    mapper.pinholeFrame = SimpleNamespace(
-        header={"DPR_TECH": "ECHELLE,PINHOLE", "WIN_BINX": 1, "WIN_BINY": 1}
-    )
+    mapper.pinholeFrame = SimpleNamespace(header={"DPR_TECH": "ECHELLE,PINHOLE", "WIN_BINX": 1, "WIN_BINY": 1})
     mapper.detectorParams = {
         "mid_slit_index": 1,
         "science-pixels": {
@@ -965,23 +1147,24 @@ def test_first_guess_corrections_shift_complete_multi_pinhole_sets(
     assert "shift_x" not in result
 
 
-@pytest.mark.parametrize(("debug", "flip"), [(False, False), (True, False), (False, True)])
-def test_qc_plot_writes_single_pinhole_residual_product(
-    debug: bool,
-    flip: bool,
+def _qc_plot_mapper(
     log: object,
     tmp_path: Path,
-) -> None:
-    """A single-pinhole solution creates the established residual QC product."""
+    *,
+    debug: bool = False,
+    flip: bool = False,
+    rows: int = 6,
+) -> create_dispersion_map:
+    """Return a mapper carrying just the state `_create_dispersion_map_qc_plot` reads, for a single pinhole."""
     mapper = object.__new__(create_dispersion_map)
     mapper.log = log
     mapper.arm = "VIS"
     mapper.kw = lambda key: key
     mapper.detectorParams = {"rotate-qc-plot": 0, "flip-qc-plot": flip}
     mapper.pinholeFrameMasked = CCDData(
-        np.arange(72, dtype=float).reshape(6, 12),
+        np.arange(rows * 12, dtype=float).reshape(rows, 12),
         unit=u.adu,
-        mask=np.zeros((6, 12), dtype=bool),
+        mask=np.zeros((rows, 12), dtype=bool),
     )
     mapper.arcFrame = False
     mapper.firstGuessMap = False
@@ -995,12 +1178,15 @@ def test_qc_plot_writes_single_pinhole_residual_product(
     mapper.products = pd.DataFrame()
     mapper.recipeName = "soxs-disp-solution"
     mapper.dateObs = "2025-01-01T00:00:00"
-    mapper.qc = pd.DataFrame(
-        columns=["qc_name", "qc_value", "qc_unit", "qc_comment"]
-    )
+    mapper.qc = pd.DataFrame(columns=["qc_name", "qc_value", "qc_unit", "qc_comment"])
     mapper.recipeSettings = {"sample_setting": 1}
     mapper.exptime = 1.0
     mapper.settings = {"tune-pipeline": False}
+    return mapper
+
+
+def _qc_plot_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Return fresh fitted, clipped and missing line tables for `_create_dispersion_map_qc_plot`."""
     base = {
         "order": [10, 10, 11, 11],
         "wavelength": [500.0, 501.0, 600.0, 601.0],
@@ -1016,12 +1202,19 @@ def test_qc_plot_writes_single_pinhole_residual_product(
         "residuals_y": [0.05, -0.05, -0.1, 0.1],
         "fwhm_pin_px": [2.0, 2.1, 1.9, 2.0],
         "R_pin": [4000.0, 4100.0, 3900.0, 4050.0],
+        "fwhm_slit_px": [2.0, 2.1, 1.9, 2.0],
+        "R_slit": [4000.0, 4100.0, 3900.0, 4050.0],
     }
     fitted = pd.DataFrame(base)
     clipped = pd.DataFrame(base).assign(dropped=False)
     missing = pd.DataFrame(base).iloc[:1].copy()
+    return fitted, clipped, missing
 
-    result = mapper._create_dispersion_map_qc_plot(
+
+def _run_qc_plot(mapper: create_dispersion_map, **extra: object) -> str:
+    """Call `_create_dispersion_map_qc_plot` on fresh synthetic line tables."""
+    fitted, clipped, missing = _qc_plot_tables()
+    return mapper._create_dispersion_map_qc_plot(
         xcoeff=[1.0],
         ycoeff=[1.0],
         orderDeg=1,
@@ -1030,11 +1223,145 @@ def test_qc_plot_writes_single_pinhole_residual_product(
         orderPixelTable=fitted,
         missingLines=missing,
         allClippedLines=clipped,
+        **extra,
     )
+
+
+@pytest.mark.parametrize(("debug", "flip"), [(False, False), (True, False), (False, True)])
+def test_qc_plot_writes_single_pinhole_residual_product(
+    debug: bool,
+    flip: bool,
+    log: object,
+    tmp_path: Path,
+) -> None:
+    """A single-pinhole solution creates the established residual QC product."""
+    mapper = _qc_plot_mapper(log, tmp_path, debug=debug, flip=flip)
+
+    result = _run_qc_plot(mapper)
 
     assert result == "SYNTHETIC_RESIDUALS_110.pdf"
     assert (tmp_path / result).is_file()
     assert mapper.products.iloc[0]["product_label"] == "DISP_MAP_RES"
+
+
+def _arc_qc_plot_mapper(log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> create_dispersion_map:
+    """Return a mapper for an arc-lamp solution, with the order table and 2D map readers replaced by synthetic ones."""
+    mapper = _qc_plot_mapper(log, tmp_path, rows=32)
+    mapper.arcFrame = SimpleNamespace(header={"SLIT_VIS": "SLIT1.0x11"})
+    mapper.pinholeFrame = None
+    mapper.orderTable = "order-table.fits"
+    mapper.uniqueSlitPos = [-7.0, 7.0]
+    orderEdges = {10: (2, 6), 11: (10, 14)}
+    rows = np.arange(10)
+    geometry = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "order": order,
+                    "ycoord": rows,
+                    "xcoord_edgelow": low + 0.2,
+                    "xcoord_edgeup": up + 0.2,
+                    "xcoord_centre": (low + up) / 2 + 0.2,
+                }
+            )
+            for order, (low, up) in orderEdges.items()
+        ],
+        ignore_index=True,
+    )
+    dispersionMap = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "x": edge,
+                    "y": rows,
+                    "order": order,
+                    "wavelength": 500.0 + 100.0 * (order - 10) + rows,
+                    "slit_position": slitPosition,
+                    "flux": 1.0,
+                    "pixelScale": 0.25,
+                }
+            )
+            for order, edges in orderEdges.items()
+            for edge, slitPosition in zip(edges, (-7.0, 7.0), strict=True)
+        ],
+        ignore_index=True,
+    )
+    module = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
+    toolkitModule = importlib.import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(module, "unpack_order_table", lambda **_: (None, geometry.copy(), None))
+    monkeypatch.setattr(module, "twoD_disp_map_image_to_dataframe", lambda **_: (dispersionMap.copy(), None))
+    monkeypatch.setattr(toolkitModule, "create_dispersion_solution_grid_lines_for_plot", lambda **_: (False, None))
+    return mapper
+
+
+@pytest.fixture
+def savefig_table_probes(monkeypatch: pytest.MonkeyPatch):
+    """Record the interpolation of every image and the table extents of the figure each time `plt.savefig` runs."""
+    probes = probe_on_savefig(
+        monkeypatch,
+        lambda figure: {"interpolations": image_interpolations(figure), "tableExtents": table_extents(figure)},
+    )
+    yield probes
+    plt.close("all")
+
+
+def test_qc_plot_embeds_images_without_resampling(log: object, tmp_path: Path, savefig_table_probes: list) -> None:
+    """Embed the pinhole frame at native resolution so vector line markers line up with its pixels when zoomed."""
+    mapper = _qc_plot_mapper(log, tmp_path)
+
+    _run_qc_plot(mapper)
+
+    assert savefig_table_probes[0]["interpolations"] == ["none", "none"]
+
+
+@pytest.mark.parametrize("isArcFrame", [False, True])
+def test_qc_plot_tables_do_not_overlap(
+    isArcFrame: bool,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    savefig_table_probes: list,
+) -> None:
+    """Keep the QC table and the settings table apart, with and without the arc-lamp slit panels."""
+    mapper = _arc_qc_plot_mapper(log, tmp_path, monkeypatch) if isArcFrame else _qc_plot_mapper(log, tmp_path)
+    mapper.qc = pd.concat(
+        [qc_table().assign(qc_name=f"QC {i}", qc_comment=f"[px] synthetic QC number {i}") for i in range(8)],
+        ignore_index=True,
+    )
+    mapper.recipeSettings = {f"setting-number-{i}": i for i in range(14)}
+    extra = {"dispMapImage": "map.fits"} if isArcFrame else {}
+
+    _run_qc_plot(mapper, **extra)
+
+    qcExtent, settingsExtent = savefig_table_probes[0]["tableExtents"]
+    assert not qcExtent.overlaps(settingsExtent)
+
+
+def test_qc_plot_flip_only_sends_pixel_row_r_to_row_n_minus_one_minus_r(
+    log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A flip without rotation maps observed and fitted rows to ``N - 1 - r`` on the flipped image."""
+    rows = 32
+    mapper = _qc_plot_mapper(log, tmp_path, flip=True, rows=rows)
+    mapper.axisA = "y"
+    mapper.axisB = "x"
+
+    def probe(figure: plt.Figure) -> dict[str, list[float]]:
+        panels = {ax.get_title(): ax for ax in figure.axes}
+        observed = panels["observed arc-line positions (post-clipping)"].collections[-1]
+        fitted = panels["global dispersion solution"].collections[0]
+        return {
+            "observedRows": sorted({float(r) for r in observed.get_offsets()[:, 1]}),
+            "fittedRows": sorted({float(r) for r in fitted.get_offsets()[:, 1]}),
+        }
+
+    probes = probe_on_savefig(monkeypatch, probe)
+
+    _run_qc_plot(mapper)
+    plt.close("all")
+
+    assert probes[0]["observedRows"] == [rows - 1 - 3.0, rows - 1 - 2.0, rows - 1 - 1.0]
+    assert probes[0]["fittedRows"] == pytest.approx([rows - 1 - 3.05, rows - 1 - 2.05, rows - 1 - 1.05])
 
 
 def test_fit_polynomials_clips_outliers_and_retains_previously_dropped_lines(
@@ -1062,17 +1389,11 @@ def test_fit_polynomials_clips_outliers_and_retains_previously_dropped_lines(
             "dropped": [False, False, False, False, True],
         }
     )
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimizeModule = importlib.import_module("scipy.optimize")
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(
-        commonutilsModule,
-        "get_cached_coeffs",
-        lambda **_: (np.array([0.0]), np.array([0.0])),
-    )
-    monkeypatch.setattr(
-        optimizeModule,
-        "curve_fit",
-        lambda _, xdata, ydata, p0, **__: (np.asarray(p0), np.eye(len(p0))),
+        polynomialsModule,
+        "solve_linear_poly_coefficients",
+        lambda **kwargs: np.zeros(kwargs["nCoeff"]),
     )
 
     def residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
@@ -1122,13 +1443,11 @@ def test_fit_polynomials_clips_an_entire_multi_pinhole_arc_line_set(
             "R_pin": [4000.0] * 6,
         }
     )
-    commonutilsModule = importlib.import_module("soxspipe.commonutils")
-    optimizeModule = importlib.import_module("scipy.optimize")
-    monkeypatch.setattr(commonutilsModule, "get_cached_coeffs", lambda **_: ([0.0], [0.0]))
+    polynomialsModule = importlib.import_module("soxspipe.commonutils.polynomials")
     monkeypatch.setattr(
-        optimizeModule,
-        "curve_fit",
-        lambda _, xdata, ydata, p0, **__: (np.asarray(p0), np.eye(len(p0))),
+        polynomialsModule,
+        "solve_linear_poly_coefficients",
+        lambda **kwargs: np.zeros(kwargs["nCoeff"]),
     )
 
     def residuals(**kwargs: object) -> tuple[float, float, float, pd.DataFrame]:
@@ -1167,9 +1486,7 @@ def test_qc_plot_with_an_arc_frame_measures_slit_geometry(
         unit=u.adu,
         mask=np.zeros((6, 12), dtype=bool),
     )
-    mapper.arcFrame = CCDData(
-        np.ones((6, 12)), unit=u.adu, meta={"SLIT_VIS": "SLIT0.5x11"}
-    )
+    mapper.arcFrame = CCDData(np.ones((6, 12)), unit=u.adu, meta={"SLIT_VIS": "SLIT0.5x11"})
     mapper.firstGuessMap = False
     mapper.debug = False
     mapper.axisA = "x"
@@ -1182,9 +1499,7 @@ def test_qc_plot_with_an_arc_frame_measures_slit_geometry(
     mapper.products = pd.DataFrame()
     mapper.recipeName = "soxs-disp-solution"
     mapper.dateObs = "2025-01-01T00:00:00"
-    mapper.qc = pd.DataFrame(
-        columns=["qc_name", "qc_value", "qc_unit", "qc_comment"]
-    )
+    mapper.qc = pd.DataFrame(columns=["qc_name", "qc_value", "qc_unit", "qc_comment"])
     mapper.recipeSettings = {"sample_setting": 1}
     mapper.exptime = 1.0
     mapper.settings = {"tune-pipeline": False}
@@ -1316,3 +1631,132 @@ def test_measure_line_position_detects_a_synthetic_arc_feature(
     assert detected[0]["observed_x"] == pytest.approx(15.0, abs=0.2)
     assert detected[0]["observed_y"] == pytest.approx(25.0, abs=0.2)
     assert detected[0]["flux"] > 0
+
+
+def _metric_clip_mapper(log: object, *, firstGuessMap: bool = True) -> create_dispersion_map:
+    """Return a mapper carrying just the state `_clip_on_measured_line_metrics` reads."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.firstGuessMap = firstGuessMap
+    mapper.debug = False
+    return mapper
+
+
+def _multi_pinhole_line_table(*, dropped: bool = False) -> pd.DataFrame:
+    """Return eight two-line multi-pinhole sets with the columns the pre-fit clip reads."""
+    rows = [
+        {
+            "wavelength": float(wavelength),
+            "order": 10,
+            "ion": "Ar",
+            "dropped": dropped,
+            "fwhm_pin_px": 2.0 + slitIndex * 0.1,
+            "flux": 100.0 + wavelength,
+            "peak": 200.0 + wavelength,
+            "x_diff": 0.1 * slitIndex,
+            "y_diff": 0.2 * slitIndex,
+            "xy_diff": 0.3 * slitIndex,
+        }
+        for wavelength in range(500, 508)
+        for slitIndex in (0, 1)
+    ]
+    return pd.DataFrame(rows)
+
+
+def test_metric_clipping_survives_every_set_clipped_on_scatter(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Clipping every multi-pinhole set on scatter returns a table with every line dropped."""
+    module = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
+    realClip = module.sigma_clip_stable
+    scatterColumns = {"x_diff", "y_diff", "xy_diff"}
+
+    def clip_all_scatter(data: pd.Series, **kwargs: object) -> np.ma.MaskedArray:
+        if data.name in scatterColumns:
+            return np.ma.masked_array(data.to_numpy(), mask=np.ones(len(data), dtype=bool))
+        return realClip(data, **kwargs)
+
+    monkeypatch.setattr(module, "sigma_clip_stable", clip_all_scatter)
+    mapper = _metric_clip_mapper(log)
+
+    result = mapper._clip_on_measured_line_metrics(_multi_pinhole_line_table())
+
+    assert result["dropped"].all()
+    assert len(result.index) == 16
+
+
+@pytest.mark.parametrize("firstGuessMap", [True, False])
+def test_metric_clipping_survives_no_undropped_lines_entering(log: object, firstGuessMap: bool) -> None:
+    """A table whose lines are all dropped before the clip passes through without raising."""
+    mapper = _metric_clip_mapper(log, firstGuessMap=firstGuessMap)
+
+    result = mapper._clip_on_measured_line_metrics(_multi_pinhole_line_table(dropped=True))
+
+    assert result["dropped"].all()
+    assert len(result.index) == 16
+
+
+def test_get_stops_before_fitting_when_no_lines_survive_the_pre_fit_clip(log: object) -> None:
+    """An empty post-clip line set raises a clear error and never reaches the polynomial fit."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.lineDetectionTable = pd.DataFrame(
+        {
+            "wavelength": [500.0, 501.0, 502.0],
+            "order": [10, 10, 10],
+            "slit_position": [0.0, 0.0, 0.0],
+            "observed_x": [100.0, 101.0, 102.0],
+        }
+    )
+    mapper.recipeName = "soxs-disp-solution"
+    mapper.recipeSettings = {"mph_line_set_min": 1}
+    mapper.settings = {"tune-pipeline": False}
+    mapper.firstGuessMap = False
+    mapper.orderTable = False
+    mapper.create2DMap = False
+    mapper.qc = pd.DataFrame()
+    mapper.products = pd.DataFrame()
+    mapper.dateObs = "2025-01-02T03:04:05"
+    fitCalls: list[dict[str, object]] = []
+
+    def clip_everything(table: pd.DataFrame) -> pd.DataFrame:
+        return table.assign(dropped=True)
+
+    mapper._initialize_recipe_settings = lambda: (False, False, 1, 1, 0)
+    mapper.get_predicted_line_list = lambda: mapper.lineDetectionTable.copy()
+    mapper._prepare_pinhole_frame = lambda: "prepared-frame"
+    mapper._generate_quicklook_and_debug_plots = lambda *args: None
+    mapper._clip_on_measured_line_metrics = clip_everything
+    mapper.fit_polynomials = lambda **kwargs: fitCalls.append(kwargs)
+
+    with pytest.raises(ArithmeticError, match="No usable arc lines") as excinfo:
+        mapper.get()
+
+    assert "Could not converge" not in str(excinfo.value)
+    assert "3 detected" in str(excinfo.value)
+    assert "3 clipped" in str(excinfo.value)
+    assert fitCalls == []
+
+
+@pytest.mark.parametrize("values", [[], [np.nan, np.inf]])
+def test_residual_histogram_shows_a_note_when_no_finite_residuals_exist(values: list[float]) -> None:
+    """The xy residual panel carries a "no lines" note instead of raising on an empty series."""
+    fig, ax = plt.subplots()
+
+    plot_xy_residual_histogram(ax, pd.Series(values, dtype=float))
+
+    assert [text.get_text() for text in ax.texts] == ["no lines"]
+    assert ax.get_xlabel() == "xy residual"
+    plt.close(fig)
+
+
+def test_residual_histogram_draws_bars_when_residuals_exist() -> None:
+    """The xy residual panel is a histogram, with no note, when residuals exist."""
+    fig, ax = plt.subplots()
+
+    plot_xy_residual_histogram(ax, pd.Series([0.1, 0.2, 0.2, 0.3, 0.4]))
+
+    assert len(ax.texts) == 0
+    assert len(ax.patches) > 0
+    plt.close(fig)

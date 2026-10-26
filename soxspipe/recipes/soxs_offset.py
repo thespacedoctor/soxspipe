@@ -21,6 +21,9 @@ from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
 
+# THE locationSetIndex OF THE STACKED ON/OFF PAIR. IT GIVES THE STACK TRACE AND EXTRACTION PRODUCT NAMES OF ITS OWN.
+STACKED_LOCATION_SET = "STACK"
+
 # TODO: WHEN COMBINING SPECTRA AT THE END, WE USE A SIMPLE SUM. IF WE USE SIGMA-CLIPPING FOLLOWED BY A MEAN
 # COMBINE, WE CAN REMOVE CRHS FOR DATA SETS WITH MORE THAN 1 AB CYCLE.
 
@@ -77,10 +80,8 @@ class soxs_offset(soxs_nod):
         )
         self.log = log
         log.debug("instantiating a new 'soxs_offset' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
-
 
         # INITIAL ACTIONS
         self._collect_input_frames()
@@ -139,7 +140,6 @@ class soxs_offset(soxs_nod):
 
         return
 
-
     def produce_product(self):
         """*The code to generate the product of the soxs_offset recipe*
 
@@ -162,7 +162,6 @@ class soxs_offset(soxs_nod):
         """
         self.log.debug("starting the ``produce_product`` method")
 
-
         from soxspipe.commonutils.toolkit import quicklook_image
 
         arm = self.arm
@@ -171,6 +170,8 @@ class soxs_offset(soxs_nod):
         productPath = None
 
         allObjectFrames, allFilenames = self._read_offset_object_frames(kw)
+        # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
+        self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
         master_flat, orderTablePath, responseFunctionPath = self._read_calibration_inputs(kw, arm)
 
         quicklook_image(
@@ -192,21 +193,32 @@ class soxs_offset(soxs_nod):
             allFrameONNames,
             allFrameOFFNames,
         ) = self._split_on_off_frames(allObjectFrames, allFilenames, kw)
-        uniqueOffsets = self._check_on_off_balance(allFrameONOffsets, allFrameOFFOffsets)
+        # THE SPLIT HOLDS THE FRAMES NOW. DROPPING THIS LIST LETS THE ALIGNED FRAMES REPLACE THE ORIGINALS IN MEMORY
+        del allObjectFrames
+        self._check_on_off_balance(allFrameONOffsets, allFrameOFFOffsets)
 
-        if len(allFrameONOffsets) > 1 and len(uniqueOffsets) > 1:
-            stackedSpectrum, productPath, orderJoins, forceFailure = self._reduce_each_offset_cycle(
+        forceFailure = False
+        shouldStack = self._should_align_and_stack()
+        # THE ALIGNMENT REPLACES THE ON FRAMES OF THE STACKED PASS, SO THE INSPECTION PASS KEEPS THE ORIGINALS FIRST
+        cycleFrames = self._copy_frames_for_cycle_pass(
+            allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, shouldStack
+        )
+        # A ROW LEFT BY AN EARLIER RUN WOULD DECIDE THE STATUS OF THIS SOF IF THIS RUN'S CYCLE PASS FAILS OR IS EMPTY
+        self._delete_stale_cycle_qc_rows()
+        if shouldStack:
+            allFrameON = self._align_on_frames(allFrameON, allFrameOFF, allFrameONNames)
+            stackedSpectrum, productPath, orderJoins, forceFailure = self._reduce_stacked_offset_pair(
                 allFrameON,
                 allFrameOFF,
-                allFrameONNames,
-                allFrameOFFNames,
                 orderTablePath=orderTablePath,
                 master_flat=master_flat,
             )
         else:
-            stackedSpectrum, productPath, orderJoins, forceFailure = self._reduce_stacked_offset_pair(
+            stackedSpectrum, productPath, orderJoins = self._reduce_each_offset_cycle(
                 allFrameON,
                 allFrameOFF,
+                allFrameONNames,
+                allFrameOFFNames,
                 orderTablePath=orderTablePath,
                 master_flat=master_flat,
             )
@@ -221,11 +233,58 @@ class soxs_offset(soxs_nod):
             productPath = filePath_fluxcal
 
         qcTable = self.report_output()
+        if cycleFrames:
+            qcTable = self._extract_each_cycle_as_well(cycleFrames, qcTable, orderTablePath, master_flat)
         self.clean_up(forceFail=forceFailure)
 
         self.log.debug("completed the ``produce_product`` method")
 
         return productPath, qcTable
+
+    def _inspect_each_cycle(self, cycleFrames, orderTablePath, master_flat):
+        """*extract, plot and report each ON-OFF cycle on its own, without flux calibration or a response curve*
+
+        **Key Arguments:**
+
+        - ``cycleFrames`` -- the ON frames, OFF frames and their file names
+        - ``orderTablePath`` -- the path to the order table
+        - ``master_flat`` -- the master flat, or False
+
+        **Return:**
+
+        - ``qcTable`` -- the QCs of the cycle pass
+        """
+        stackedSpectrum, _, orderJoins = self._reduce_each_offset_cycle(
+            *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
+        )
+        self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
+        return self.report_output()
+
+    def _align_on_frames(self, allFrameON, allFrameOFF, allFrameONNames):
+        """*align the ON frames to each other along the slit; the OFF frames are stacked without alignment*
+
+        The ON list is changed in place: each original frame is replaced by its aligned frame as soon as that exists.
+        Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``allFrameON`` -- the ON frames
+        - ``allFrameOFF`` -- the OFF frames, which are subtracted from the ON frames to trace them
+        - ``allFrameONNames`` -- the ON frames' file names
+
+        **Return:**
+
+        - ``allFrameON`` -- the aligned ON frames
+        """
+        from soxspipe.commonutils.slit_alignment import frame_group
+
+        results = self._align_frame_groups([frame_group(allFrameON, allFrameOFF, allFrameONNames)])
+        self._record_slit_alignment(
+            results,
+            obsDateUtc=allFrameON[0].header[self.kw("DATE_OBS")],
+            hasShifts=len(allFrameON) > 1,
+        )
+        return allFrameON
 
     def _read_offset_object_frames(self, kw):
         """*read the offset science frames of the first frame type that has any*
@@ -250,7 +309,6 @@ class soxs_offset(soxs_nod):
         allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
         for t in types:
-
             add_filters = {kw("DPR_TYPE"): t, kw("DPR_TECH"): "ECHELLE,SLIT,OFFSET"}
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
                 if t == "STD,FLUX" and "-std" not in self.recipeName:
@@ -278,7 +336,7 @@ class soxs_offset(soxs_nod):
     def _read_calibration_inputs(self, kw, arm):
         """*read the master flat and locate the order table, dispersion maps and response table*
 
-        Sets ``self.dispMap`` and ``self.twoDMap``.
+        Sets ``self.dispMap``, ``self.twoDMap`` and ``self.masterBias``.
 
         **Key Arguments:**
 
@@ -309,6 +367,8 @@ class soxs_offset(soxs_nod):
                 key_uncertainty_type="UTYPE",
             )
 
+        self.masterBias = self._read_master_bias(kw, arm)
+
         # FIND THE ORDER TABLE
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
         orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
@@ -329,6 +389,12 @@ class soxs_offset(soxs_nod):
         except IndexError as e:
             self.log.debug(f"produce_product: no response function frame for this arm, continuing: {e}")
             responseFunctionPath = False
+
+        # REFUSE A RESP PRODUCT OF AN OLD BASIS NOW, NOT AFTER THE FULL EXTRACTION
+        if responseFunctionPath:
+            from soxspipe.commonutils.response_basis import require_response_product_basis
+
+            require_response_product_basis(responseFunctionPath)
 
         return master_flat, orderTablePath, responseFunctionPath
 
@@ -365,7 +431,6 @@ class soxs_offset(soxs_nod):
 
         # SPLIT FRAMES INTO ON (NEGATIVE NET OFFSET: OFFSETRA + OFFSETDEC < 0) AND OFF (ZERO OR POSITIVE NET OFFSET)
         for frame, filename in zip(allObjectFrames, allFilenames):
-
             offsetRA = frame.header[kw("OFFSET_RA")]
             offsetDec = frame.header[kw("OFFSET_DEC")]
 
@@ -445,16 +510,12 @@ class soxs_offset(soxs_nod):
 
         - ``stackedSpectrum`` -- the stacked extraction
         - ``productPath`` -- the path to the stacked extraction
-        - ``orderJoins`` -- the order joins of the last cycle
-        - ``forceFailure`` -- True when a response curve was requested, which this path cannot build
+        - ``orderJoins`` -- the order joins of the last cycle that found an object trace (*None* if none did)
         """
-        import pandas as pd
-
         from soxspipe.commonutils.toolkit import quicklook_image
 
-        forceFailure = False
-
         allSpectrumA = []
+        orderJoins = None
         sequenceCount = 1
         # SORT FRAMEON AND FRAMEOFF LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
         # FRAMES IN TIME
@@ -464,7 +525,6 @@ class soxs_offset(soxs_nod):
         for frameON, frameOFF, frameONName, frameOFFName in zip(
             allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, strict=False
         ):
-
             self.log.print(f"Processing ON-OFF Offset Sequence {sequenceCount}")
             if False:
                 quicklook_image(
@@ -516,14 +576,19 @@ class soxs_offset(soxs_nod):
                 masterFlat = False
 
             # PROCESSING SINGLE SEQUENCE
-            mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
+            mergedSpectrumDF_A, _, cycleJoins = self.process_single_ab_nodding_cycle(
                 aFrame=frameON,
                 bFrame=frameOFF,
                 locationSetIndex=sequenceCount,
                 orderTablePath=orderTablePath,
                 masterFlat=masterFlat,
             )
-            allSpectrumA = mergedSpectrumDF_A if sequenceCount == 1 else pd.concat([allSpectrumA, mergedSpectrumDF_A])
+            # A CYCLE WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO KEEP THE LATEST ONES AN EARLIER CYCLE FOUND
+            if cycleJoins is not None:
+                orderJoins = cycleJoins
+            allSpectrumA = (
+                mergedSpectrumDF_A if sequenceCount == 1 else self._append_spectrum(allSpectrumA, mergedSpectrumDF_A)
+            )
 
             sequenceCount += 1
         stackedSpectrum, extractionPath = self.stack_extractions(
@@ -534,18 +599,15 @@ class soxs_offset(soxs_nod):
         )
         productPath = extractionPath
 
-        if self.generateReponseCurve:
-            forceFailure = True
-
-        return stackedSpectrum, productPath, orderJoins, forceFailure
+        return stackedSpectrum, productPath, orderJoins
 
     def _reduce_stacked_offset_pair(self, allFrameON, allFrameOFF, orderTablePath, master_flat):
         """*stack the ON and OFF frames, extract the pair, and build a response curve when requested*
 
         **Key Arguments:**
 
-        - ``allFrameON`` -- the ON frames
-        - ``allFrameOFF`` -- the OFF frames
+        - ``allFrameON`` -- the ON frames. A response curve uses their mean airmass
+        - ``allFrameOFF`` -- the OFF frames, which hold only sky, so their airmass is not used
         - ``orderTablePath`` -- the path to the order table
         - ``master_flat`` -- the master flat, or False
 
@@ -558,7 +620,7 @@ class soxs_offset(soxs_nod):
         """
         forceFailure = False
 
-        # STACKING A AND B SEQUENCES - ONLY IF JITTER IS NOT PRESENT
+        # STACKING ON AND OFF FRAMES. THE ON FRAMES ARE ALREADY ALIGNED ALONG THE SLIT, THE OFF FRAMES ARE NOT
         aFrame = self.clip_and_stack(
             frames=allFrameON,
             recipe="soxs_offset",
@@ -582,7 +644,7 @@ class soxs_offset(soxs_nod):
         mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
             aFrame=aFrame,
             bFrame=bFrame,
-            locationSetIndex=1,
+            locationSetIndex=STACKED_LOCATION_SET,
             orderTablePath=orderTablePath,
             masterFlat=masterFlat,
         )
@@ -596,11 +658,13 @@ class soxs_offset(soxs_nod):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
+            from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
+            require_equal_exposure_times([frame.header for frame in allFrameON], self.kw)
             mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
                 aFrame=aFrame,
                 bFrame=bFrame,
-                locationSetIndex=1,
+                locationSetIndex=STACKED_LOCATION_SET,
                 orderTablePath=orderTablePath,
                 notFlattened=True,
                 masterFlat=masterFlat,
@@ -625,6 +689,7 @@ class soxs_offset(soxs_nod):
                 startNightDate=self.startNightDate,
                 stdNotFlatExtractionPath=extractionPath_notflat,
                 orderJoins=orderJoins,
+                airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
             )
             self.qc, self.products, forceFailure = response.get()
 
@@ -637,7 +702,8 @@ class soxs_offset(soxs_nod):
 
         - ``responseFunctionPath`` -- the path to the response table
         - ``stackedSpectrum`` -- the stacked extraction
-        - ``allFrameON`` -- the ON frames; the first one's header supplies the airmass and exposure time
+        - ``allFrameON`` -- the ON frames, which must share one exposure time (DY-1714); the first one's header supplies
+          it, and their mean airmass is used (the OFF frames hold only sky)
 
         **Return:**
 
@@ -647,16 +713,18 @@ class soxs_offset(soxs_nod):
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
+        from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
 
         self.log.print("# PERFORMING FLUX CALIBRATION\n")
-        # TODO CHECK IF TAKING THE HEADER OF ONE FRAME IS OK
+        # EVERY ON EXPOSURE IS THE SAME LENGTH, SO THE FIRST FRAME'S HEADER AND EXPOSURE TIME STAND FOR THEM ALL
+        require_equal_exposure_times([frame.header for frame in allFrameON], self.kw)
         fluxCalibrator = flux_calibration(
             log=self.log,
             responseFunction=responseFunctionPath,
             extractedSpectrum=stackedSpectrum,
             settings=self.settings,
-            airmass=allFrameON[0].header.get("HIERARCH ESO TEL AIRM END"),
-            exptime=allFrameON[0].header.get("EXPTIME"),
+            airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
+            exptime=allFrameON[0].header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,
             header=allFrameON[0].header,
@@ -697,6 +765,7 @@ class soxs_offset(soxs_nod):
             fluxCalibrated=False,
             qcTable=self.qc,
             settings=self.settings,
+            extractionNotes=list(self.extractionNotes),
         )
 
         if filePath_fluxcal:
@@ -724,6 +793,7 @@ class soxs_offset(soxs_nod):
                 fluxCalibrated=True,
                 qcTable=self.qc,
                 settings=self.settings,
+                extractionNotes=list(self.extractionNotes),
             )
 
         return

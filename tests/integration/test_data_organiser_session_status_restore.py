@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.data_organiser import _UnsafePathError
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from tests.factories import raw_frame_table, workspace_organiser
 
@@ -82,16 +83,15 @@ def _insert_all_frames(connection, replaceSecondBias=False):
     _insert_frames(connection, pd.concat(frames))
 
 
-@pytest.fixture
-def two_session_workspace(tmp_path, log, monkeypatch):
-    """A prepared workspace with an `archive` and a current `science` session and real SOF building."""
+def _prepared_workspace(tmp_path, log, monkeypatch, sessionIds):
+    """Prepare a workspace with real SOF building, creating ``sessionIds`` in order (the last is current)."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     organiser = workspace_organiser(tmp_path, log=log)
     connection, _ = organiser._get_or_create_db_connection()
     organiser.conn = connection
     _insert_all_frames(connection)
-    organiser.session_create("archive")
-    organiser.session_create("science")
+    for sessionId in sessionIds:
+        organiser.session_create(sessionId)
 
     organiser.replaceSecondBias = False
 
@@ -105,6 +105,22 @@ def two_session_workspace(tmp_path, log, monkeypatch):
     monkeypatch.setattr(organiser, "_sync_raw_frames", fake_sync_raw_frames)
     monkeypatch.setattr(organiser, "get_incomplete_sets_report", lambda: (None, None))
     organiser.prepare(report=False)
+    return organiser
+
+
+@pytest.fixture
+def two_session_workspace(tmp_path, log, monkeypatch):
+    """A prepared workspace with an `archive` and a current `science` session and real SOF building."""
+    organiser = _prepared_workspace(tmp_path, log, monkeypatch, ["archive", "science"])
+    yield organiser
+    if getattr(organiser, "conn", None) is not None:
+        organiser.conn.close()
+
+
+@pytest.fixture
+def base_session_workspace(tmp_path, log, monkeypatch):
+    """A prepared workspace whose only and current session is `base`."""
+    organiser = _prepared_workspace(tmp_path, log, monkeypatch, [])
     yield organiser
     if getattr(organiser, "conn", None) is not None:
         organiser.conn.close()
@@ -227,6 +243,66 @@ def test_pass_limit_counts_the_sofs_still_differing_as_changed(two_session_works
     assert scienceLine.startswith("session 'science': 1 statuses restored, 1 changed (frames differ, requeued)")
     assert _read_statuses(organiser, "science")[DISP_SOLUTION] is None
     assert any("pass limit" in message for message in _debug_messages(log))
+
+
+# QC FAILURES MARK THE CURRENT SESSION (DY-272)
+
+
+def _insert_master_ron(organiser, sof, value):
+    """Give ``sof`` a whole-frame MASTER RON QC row; the default acceptable range is [0, 10]."""
+    organiser.conn.execute(
+        "INSERT INTO quality_control (soxspipe_recipe, qc_name, qc_value, sof_name, qc_order, qc_flag) "
+        "VALUES ('soxs-mbias', 'MASTER RON', ?, ?, '-1', 'pass')",
+        (value, sof),
+    )
+
+
+def test_out_of_range_qc_fails_the_sof_in_the_named_session_and_leaves_status_base_alone(
+    two_session_workspace,
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    _seed_statuses(organiser, "science", {MBIAS_ONE: "pass"})
+    _seed_statuses(organiser, "base", {MBIAS_ONE: "pass"})
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, "science")[MBIAS_ONE] == "fail"
+    assert _read_statuses(organiser, "base")[MBIAS_ONE] == "pass"
+
+
+def test_out_of_range_qc_fails_the_sof_in_the_base_session(base_session_workspace) -> None:
+    # ARRANGE
+    organiser = base_session_workspace
+    _seed_statuses(organiser, "base", {MBIAS_ONE: "pass"})
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert organiser.sessionId == "base"
+    assert _read_statuses(organiser, "base")[MBIAS_ONE] == "fail"
+
+
+@pytest.mark.parametrize(
+    ("workspaceFixture", "sessionId"),
+    [("base_session_workspace", "base"), ("two_session_workspace", "science")],
+)
+def test_in_range_qc_ends_pass_in_the_current_session(request, workspaceFixture, sessionId) -> None:
+    # ARRANGE
+    organiser = request.getfixturevalue(workspaceFixture)
+    _seed_statuses(organiser, sessionId, {MBIAS_ONE: "fail"})
+    _insert_master_ron(organiser, MBIAS_ONE, "5.0")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, sessionId)[MBIAS_ONE] == "pass"
 
 
 # REPORTING
@@ -441,3 +517,66 @@ def test_qc_acceptable_range_pass_closes_its_cursor_even_when_a_statement_fails(
 
     # ASSERT
     assert organiser.conn.cursorClosed
+
+
+# SWITCHING SESSION IN-PROCESS (DY-910)
+
+
+def test_session_switch_makes_the_switched_to_session_current(two_session_workspace) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+
+    # ACT
+    organiser.session_switch("archive")
+
+    # ASSERT
+    assert organiser.sessionId == "archive"
+    assert organiser.sessionPath == str(Path(organiser.sessionsDir) / "archive")
+
+
+def test_prepare_after_session_switch_fails_the_sof_in_the_switched_to_session_only(two_session_workspace) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    _seed_archive_session(organiser, {MBIAS_ONE: "pass"})
+    _seed_statuses(organiser, "science", {MBIAS_ONE: "pass"})
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0")
+    organiser.session_switch("archive")
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, "archive")[MBIAS_ONE] == "fail"
+    assert _read_statuses(organiser, "science")[MBIAS_ONE] == "pass"
+
+
+@pytest.mark.parametrize("target", ["science", "missing"])
+def test_session_switch_that_does_not_happen_leaves_the_current_session_unchanged(
+    two_session_workspace, target
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    sessionPath = organiser.sessionPath
+
+    # ACT
+    organiser.session_switch(target)
+
+    # ASSERT
+    assert organiser.sessionId == "science"
+    assert organiser.sessionPath == sessionPath
+
+
+def test_session_switch_rejecting_an_invalid_session_id_leaves_the_current_session_unchanged(
+    two_session_workspace,
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    sessionPath = organiser.sessionPath
+
+    # ACT
+    with pytest.raises(_UnsafePathError, match="Session ID"):
+        organiser.session_switch("../archive")
+
+    # ASSERT
+    assert organiser.sessionId == "science"
+    assert organiser.sessionPath == sessionPath

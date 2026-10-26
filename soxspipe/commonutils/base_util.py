@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python
 # encoding: utf-8
 """
@@ -10,9 +9,11 @@
 :Date Created:
     June 22, 2026
 """
+
 import os
 
-os.environ['TERM'] = 'vt100'
+os.environ["TERM"] = "vt100"
+
 
 class base_util:
     """
@@ -54,14 +55,8 @@ class base_util:
             ...
     ```
     """
-    def __init__(
-            self,
-            log,
-            settings,
-            associatedFrame,
-            dispersionMap=False,
-            twoDMapPath=False
-    ):
+
+    def __init__(self, log, settings, associatedFrame, dispersionMap=False, twoDMapPath=False):
         self.log = log
         log.debug("instansiating a new 'base_util' object")
         self.settings = settings
@@ -133,9 +128,7 @@ class base_util:
 
         return
 
-    def _read_frame_binning(
-            self,
-            associatedFrame):
+    def _read_frame_binning(self, associatedFrame):
         """*read the window binning from the associated frame's header, defaulting to 1x1*
 
         **Key Arguments:**
@@ -156,8 +149,7 @@ class base_util:
         return binx, biny
 
     @staticmethod
-    def _image_orientation_axes(
-            dispersionAxis):
+    def _image_orientation_axes(dispersionAxis):
         """*name the dispersion and cross-dispersion axes for this detector*
 
         **Key Arguments:**
@@ -172,10 +164,7 @@ class base_util:
 
         return "y", "x"
 
-    def _read_spectral_format_limits(
-            self,
-            dispersionMap,
-            read_spectral_format):
+    def _read_spectral_format_limits(self, dispersionMap, read_spectral_format):
         """*read the spectral format table to determine the limits of the order traces*
 
         **Key Arguments:**
@@ -199,11 +188,7 @@ class base_util:
             biny=self.biny,
         )
 
-    def _read_two_d_map_dataframe(
-            self,
-            twoDMapPath,
-            associatedFrame,
-            twoD_disp_map_image_to_dataframe):
+    def _read_two_d_map_dataframe(self, twoDMapPath, associatedFrame, twoD_disp_map_image_to_dataframe):
         """*unpack the 2D dispersion map image into a dataframe and an inter-order mask*
 
         **Key Arguments:**
@@ -225,10 +210,7 @@ class base_util:
         )
 
     @staticmethod
-    def _mask_inter_order_pixels(
-            associatedFrame,
-            interOrderMaskNDArray,
-            np):
+    def _mask_inter_order_pixels(associatedFrame, interOrderMaskNDArray, np):
         """*set the frame's inter-order pixels to NaN, in place*
 
         **Key Arguments:**
@@ -240,8 +222,7 @@ class base_util:
 
         return
 
-    def _read_map_binning(
-            self):
+    def _read_map_binning(self):
         """*read the window binning from the 2D map's primary header, defaulting to 1x1*
 
         **Return:**
@@ -258,11 +239,7 @@ class base_util:
 
         return dpBinx, dpBiny
 
-    def _rebin_two_d_map(
-            self,
-            binxRatio,
-            binyRatio,
-            np):
+    def _rebin_two_d_map(self, binxRatio, binyRatio, np):
         """*block-reduce the 2D map's planes onto the associated frame's binning*
 
         **Key Arguments:**
@@ -281,13 +258,7 @@ class base_util:
 
         return
 
-    def _build_image_map(
-            self,
-            associatedFrame,
-            xarray,
-            yarray,
-            np,
-            pd):
+    def _build_image_map(self, associatedFrame, xarray, yarray, np, pd):
         """*associate each frame pixel with its wavelength, slit position and order*
 
         **Key Arguments:**

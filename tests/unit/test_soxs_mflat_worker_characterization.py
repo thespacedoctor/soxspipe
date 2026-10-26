@@ -464,6 +464,7 @@ def test_low_sensitivity_pixels_are_masked_and_recorded_with_write_qc(
     assert printed == [
         "\n# CLIPPING LOW-SENSITIVITY PIXELS AND SETTING INTER-ORDER AREA TO UNITY",
         "        1 low-sensitivity pixels added to bad-pixel mask",
+        "        0 order-edge pixels added to bad-pixel mask",
     ]
 
 

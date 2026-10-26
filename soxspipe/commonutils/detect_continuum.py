@@ -10,28 +10,129 @@ Date Created
 """
 
 ################# GLOBAL IMPORTS ####################
+from __future__ import annotations
+
 import copy
 import math
 import os
 import sys
 from contextlib import suppress
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.faint_order_map import make_pixels_at
+from soxspipe.commonutils.faint_order_profile import frame_to_nan_array
+from soxspipe.commonutils.faint_order_rows import clip_measured_residuals, measured_residuals, transferred_row_mask
+from soxspipe.commonutils.faint_order_trace import (
+    faint_trace_settings,
+    join_slit_mismatches,
+    transfer_faint_orders,
+)
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
     chebyshev_xy_polynomial,
+    solve_linear_poly_coefficients,
 )
-from soxspipe.commonutils.toolkit import cut_image_slice, get_calibration_lamp, read_spectral_format
+from soxspipe.commonutils.toolkit import (
+    QC_PLOT_DECORATION_HEIGHT_INCHES,
+    QC_RESIDUAL_ROW_HEIGHT_INCHES,
+    QC_STRIP_ROW_HEIGHT_INCHES,
+    append_qc,
+    cut_image_slice,
+    get_calibration_lamp,
+    has_sequence_suffixed_traces,
+    legend_below_axis,
+    nodding_sequence_suffix,
+    order_label,
+    order_traces_table,
+    qc_image_panel_height,
+    qc_table_heights,
+    read_spectral_format,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import numpy as np
+    import pandas as pd
 
 os.environ["TERM"] = "vt100"
 
+ORDER_TRACES_EXTNAME = "ORDER_TRACES"
+
+# FALLBACK FOR SETTINGS FILES WRITTEN BEFORE `max-unsampled-trace-fraction` EXISTED; MATCHES THE DEFAULT SETTINGS
+DEFAULT_MAX_UNSAMPLED_TRACE_FRACTION = 0.2
+
+
+def longest_unsampled_stretch(
+    sampledWavelengths: Sequence[float] | np.ndarray | pd.Series,
+    acceptedWavelengths: Sequence[float] | np.ndarray | pd.Series,
+) -> tuple[float, float, float]:
+    """*find the longest stretch of an order that no accepted trace sample covers*
+
+    The stretch runs between two neighbouring accepted samples, or from an end of the order to the nearest accepted
+    sample. The fitted trace is interpolated or extrapolated across it.
+
+    **Key Arguments:**
+
+    - ``sampledWavelengths`` -- the wavelengths (nm) of every sample position along the order
+    - ``acceptedWavelengths`` -- the wavelengths (nm) of the samples kept after the trace fit
+
+    **Return:**
+
+    - ``fraction`` -- the length of the stretch as a fraction of the sampled length of the order
+    - ``startNm`` -- the wavelength (nm) at the blue end of the stretch
+    - ``endNm`` -- the wavelength (nm) at the red end of the stretch
+
+    **Usage:**
+
+    ```python
+    fraction, startNm, endNm = longest_unsampled_stretch(sampled, accepted)
+    ```
+    """
+    import numpy as np
+
+    sampled = np.asarray(sampledWavelengths, dtype=float)
+    sampled = sampled[np.isfinite(sampled)]
+    accepted = np.asarray(acceptedWavelengths, dtype=float)
+    accepted = accepted[np.isfinite(accepted)]
+
+    lowNm, highNm = sampled.min(), sampled.max()
+    edges = np.concatenate([[lowNm], np.sort(accepted), [highNm]])
+    gaps = np.diff(edges)
+    longest = int(np.argmax(gaps))
+    orderLengthNm = highNm - lowNm
+    fraction = float(gaps[longest] / orderLengthNm) if orderLengthNm > 0 else 0.0
+
+    return fraction, float(edges[longest]), float(edges[longest + 1])
+
+
+def _order_colours(orders):
+    """*assign each order a colour from the matplotlib property cycle, keyed by the order itself*
+
+    **Key Arguments:**
+
+    - ``orders`` -- the orders to colour, in plotting order
+
+    **Return:**
+
+    - ``orderColours`` -- dictionary of order to colour, wrapping around once the cycle is exhausted
+    """
+    import matplotlib.pyplot as plt
+
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    return {order: cycle[i % len(cycle)] for i, order in enumerate(orders)}
+
 
 class _base_detect:
+    # FILE-NAME SUFFIX OF THE NOT-FLATTENED REPEAT OF A TRACE. ONLY DETECT_CONTINUUM SETS IT
+    notFlattened = ""
 
     def fit_order_polynomial(self, pixelList, order, axisBDeg, axisACol, axisBCol, exponentsIncluded=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
@@ -162,10 +263,11 @@ class _base_detect:
 
         import numpy as np
         import pandas as pd
-        from astropy.stats import sigma_clip
-        from scipy.optimize import curve_fit
 
         arm = self.arm
+
+        # WORK ON A PRIVATE COPY: CALLERS PASS FILTERED SLICES (E.G. dropna) AND USE THE RETURNED TABLE
+        pixelList = pixelList.copy()
 
         clippedCount = 1
 
@@ -200,37 +302,29 @@ class _base_detect:
         if "pre-clipped" in pixelList.columns:
             removeMask = pixelList["pre-clipped"] == True
             allClipped.append(pixelList.loc[removeMask])
-            pixelList = pixelList.loc[~removeMask]
+            pixelList = pixelList.loc[~removeMask].copy()
 
-        coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
+        nCoeff = (self.axisBDeg + 1) * (self.orderDeg + 1)
+
+        # PLACEHOLDER SO THE FINAL RESIDUALS CAN BE EVALUATED IF THE CLIPPING LOOP NEVER RUNS
+        coeff = np.ones(nCoeff)
         while clippedCount > 0 and iteration < clippingIterationLimit:
             startCount = len(pixelList.index)
             iteration += 1
 
             # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLY
 
-            if len(pixelList.index) == 0:
-                # REMOVE THIS ORDER FROM PIXEL LIST
+            # TOO FEW POINTS TO CONSTRAIN THE POLYNOMIAL (OR NONE LEFT) - NO SOLUTION
+            if len(pixelList.index) < nCoeff:
                 coeff = None
                 return coeff, pixelList, pixelList
 
-            if iteration < 3:
-                coeff = np.ones((self.axisBDeg + 1) * (self.orderDeg + 1))
-
-            try:
-                coeff, pcov_x = curve_fit(
-                    poly,
-                    xdata=pixelList,
-                    ydata=pixelList[axisACol].values,
-                    p0=coeff,
-                    maxfev=30000,
-                )
-            except TypeError:
-                # REMOVE THIS ORDER FROM PIXEL LIST
-                coeff = None
-                return coeff, pixelList, pixelList
-            except Exception as e:
-                raise e
+            coeff = solve_linear_poly_coefficients(
+                poly=poly,
+                pixelList=pixelList,
+                yValues=pixelList[axisACol].values,
+                nCoeff=nCoeff,
+            )
 
             res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
                 orderPixelTable=pixelList,
@@ -243,21 +337,15 @@ class _base_detect:
             pixelList[f"{axisACol}_fit_res"] = res
             pixelList[f"{axisACol}_fit"] = xfit
 
-            # SIGMA-CLIP THE DATA
-            masked_residuals = sigma_clip(
-                res,
-                sigma_lower=clippingSigmaLow,
-                sigma_upper=clippingSigmaHigh,
-                maxiters=2,
-                cenfunc="mean",
-                stdfunc="std",
+            # SIGMA-CLIP THE DATA, LEAVING OUT THE SYNTHETIC ROWS OF A TRANSFERRED FAINT TRACE
+            pixelList["mask"] = clip_measured_residuals(
+                res, transferred_row_mask(pixelList), clippingSigmaLow, clippingSigmaHigh
             )
-            pixelList["mask"] = masked_residuals.mask
 
             # REMOVE FILTERED ROWS FROM DATA FRAME
             removeMask = pixelList["mask"] == True
             allClipped.append(pixelList.loc[removeMask])
-            pixelList = pixelList.loc[~removeMask]
+            pixelList = pixelList.loc[~removeMask].copy()
             clippedCount = startCount - len(pixelList.index)
 
             if iteration > 1:
@@ -270,6 +358,21 @@ class _base_detect:
         if len(allClipped):
             allClipped = pd.concat(allClipped, ignore_index=True)
 
+        # A CAP EXIT WITH ROWS STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE ROWS JUST REJECTED
+        if iteration > 0 and clippedCount > 0:
+            self.log.info(
+                f"fit_global_polynomial: iteration limit of {clippingIterationLimit} reached with {clippedCount} rows "
+                "still being clipped; refitting to the surviving rows"
+            )
+            if len(pixelList.index) < nCoeff:
+                return None, pixelList, pixelList
+            coeff = solve_linear_poly_coefficients(
+                poly=poly,
+                pixelList=pixelList,
+                yValues=pixelList[axisACol].values,
+                nCoeff=nCoeff,
+            )
+
         res, res_mean, res_std, res_median, xfit = self.calculate_residuals(
             orderPixelTable=pixelList,
             coeff=coeff,
@@ -278,6 +381,8 @@ class _base_detect:
             axisBCol=axisBCol,
             writeQCs=writeQCs,
         )
+        pixelList[f"{axisACol}_fit_res"] = res
+        pixelList[f"{axisACol}_fit"] = xfit
 
         self.log.debug("completed the ``fit_global_polynomial`` method")
         return coeff, pixelList, allClipped
@@ -325,10 +430,12 @@ class _base_detect:
         # GET UNIQUE VALUES IN COLUMN
         uniqueorders = len(orderPixelTable["order"].unique())
 
-        # CALCULATE COMBINED RESIDUALS AND STATS
-        res_mean = np.ma.mean(np.ma.abs(res))
-        res_std = np.ma.std(res)
-        res_median = np.ma.median(np.ma.abs(res))
+        # CALCULATE COMBINED RESIDUALS AND STATS, OVER THE MEASURED ROWS ONLY WHEN A FAINT TRACE WAS TRANSFERRED
+        isTransferred = transferred_row_mask(orderPixelTable)
+        statRes = measured_residuals(res, isTransferred)
+        res_mean = np.ma.mean(np.ma.abs(statRes))
+        res_std = np.ma.std(statRes)
+        res_median = np.ma.median(np.ma.abs(statRes))
 
         if writeQCs:
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -340,54 +447,60 @@ class _base_detect:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES MIN",
-                            "qc_value": round(float(res.min()), 3),
-                            "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES MIN",
+                                "qc_value": round(float(statRes.min()), 3),
+                                "qc_comment": f"[px] Minimum residual in {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES MAX",
-                            "qc_value": round(float(res.max()), 3),
-                            "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES MAX",
+                                "qc_value": round(float(statRes.max()), 3),
+                                "qc_comment": f"[px] Maximum residual in {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES SD",
-                            "qc_value": round(float(res_std), 3),
-                            "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES SD",
+                                "qc_value": round(float(res_std), 3),
+                                "qc_comment": f"[px] Std-dev of residual {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -395,18 +508,20 @@ class _base_detect:
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": f"{self.axisA.upper()} RES MEDIAN",
-                            "qc_value": round(float(res_mean), 3),
-                            "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
-                            "qc_unit": "px",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": f"{self.axisA.upper()} RES MEDIAN",
+                                "qc_value": round(float(res_mean), 3),
+                                "qc_comment": f"[px] Median abolute residual {tag} fit along {self.axisA}-axis",
+                                "qc_unit": "px",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -415,22 +530,27 @@ class _base_detect:
                 c = "Number of order centre traces found"
             else:
                 c = "Number of orders containing an object trace"
+                if isTransferred is not None and isTransferred.any():
+                    # THE COUNT INCLUDES A TRANSFERRED FAINT ORDER ON PURPOSE
+                    c += ", a transferred faint order included"
 
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "N ORDERS",
-                            "qc_value": uniqueorders,
-                            "qc_comment": c,
-                            "qc_unit": None,
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": "N ORDERS",
+                                "qc_value": uniqueorders,
+                                "qc_comment": c,
+                                "qc_unit": None,
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -472,10 +592,12 @@ class _base_detect:
             filename = filename.upper().replace("FLAT", "OLOC").replace(".FITS", ".fits")
 
         elif "stare" in self.recipeName.lower():
-            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE.fits"
-        elif "nod" in self.recipeName.lower():
+            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.notFlattened + ".fits"
+        elif has_sequence_suffixed_traces(self.recipeName):
             # sequence = "A" if int(frame.header['HIERARCH ESO SEQ CUMOFF Y'] > 0) else "B"
-            filename = filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + ".fits"
+            filename = (
+                filename.upper().split(".FITS")[0] + "_OBJTRACE" + self.noddingSequence + self.notFlattened + ".fits"
+            )
 
         if self.lampTag and self.inst.upper() != "SOXS":
             filename = filename.replace(".fits", f"{self.lampTag}.fits")
@@ -502,12 +624,14 @@ class _base_detect:
 
         header[kw("SEQ_ARM")] = arm
         header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
+        tables = [orderPolyTable, orderMetaTable]
         if (
             "stare" not in self.recipeName.lower()
             and "nod" not in self.recipeName.lower()
             and "offset" not in self.recipeName.lower()
         ):
             header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+            tables.append(self.build_order_traces_extension(frame, orderPolyTable, orderMetaTable))
         else:
             header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()
 
@@ -517,13 +641,76 @@ class _base_detect:
             log=self.log,
             settings=self.settings,
             header=header,
-            tables=[orderPolyTable, orderMetaTable],
+            tables=tables,
             filePath=order_table_path,
             qc=self.qc,
         )
 
         self.log.debug("completed the ``write_order_table_to_file`` method")
         return order_table_path
+
+    def build_order_traces_extension(self, frame, orderPolyTable, orderMetaTable):
+        """*sample the order traces at every unbinned pixel, as the ``ORDER_TRACES`` table extension*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the calibration frame used to generate order location data
+        - ``orderPolyTable`` -- data-frame containing centre location coefficients (and possibly also order edge coeffs)
+        - ``orderMetaTable`` -- order meta data, with the fitted range of each order
+
+        **Return:**
+
+        - ``orderTraces`` -- astropy table named ``ORDER_TRACES``, one row per order and sampled pixel
+        """
+        self.log.debug("starting the ``build_order_traces_extension`` method")
+
+        from astropy.table import Table
+
+        tableBinx, tableBiny, limitsBinx, limitsBiny = self._order_table_binning(frame)
+        orderTraces = Table.from_pandas(
+            order_traces_table(
+                log=self.log,
+                orderPolyTable=orderPolyTable,
+                orderMetaTable=orderMetaTable,
+                tableBinx=tableBinx,
+                tableBiny=tableBiny,
+                limitsBinx=limitsBinx,
+                limitsBiny=limitsBiny,
+            )
+        )
+        orderTraces.meta["EXTNAME"] = ORDER_TRACES_EXTNAME
+
+        self.log.debug("completed the ``build_order_traces_extension`` method")
+        return orderTraces
+
+    def _order_table_binning(self, frame):
+        """*find the absolute binning of the pixel scale of the table's coefficients and of its metadata limits*
+
+        An order-centre table is measured on its frame, so ``self.binx`` and ``self.biny`` (the frame's binning)
+        apply to both. The master-flat detector gets only the ratio of the flat's binning to the order-centre
+        table's, so the order-centre table's binning is the flat's binning (from its header) over that ratio. The
+        flat's own binning applies to the metadata limits, which are the flat's frame shape.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the calibration frame used to generate order location data
+
+        **Return:**
+
+        - ``tableBinx``, ``tableBiny`` -- the binning of the pixel scale the coefficients are in
+        - ``limitsBinx``, ``limitsBiny`` -- the binning of the frame the metadata limits were measured on
+        """
+        if "mflat" not in self.recipeName.lower():
+            return self.binx, self.biny, self.binx, self.biny
+
+        try:
+            limitsBinx = int(frame.header[self.kw("WIN_BINX")])
+            limitsBiny = int(frame.header[self.kw("WIN_BINY")])
+        except KeyError as e:
+            self.log.debug(f"_order_table_binning: no binning in the flat header, assuming none: {e}")
+            limitsBinx = limitsBiny = 1
+
+        return round(limitsBinx / self.binx), round(limitsBiny / self.biny), limitsBinx, limitsBiny
 
 
 class detect_continuum(_base_detect):
@@ -544,10 +731,15 @@ class detect_continuum(_base_detect):
     - ``binx`` -- binning in x-axis
     - ``biny`` -- binning in y-axis
     - ``lampTag`` -- add this tag to the end of the product filename. Default *False*
-    - ``locationSetIndex`` -- the index of the AB cycle locations (nodding mode only). Default *False*
+    - ``locationSetIndex`` -- the index of the AB cycle locations, or the offset stack's own index (nodding and
+      offset modes only). Default *False*
     - ``orderPixelTable`` -- this is used for tuning the pipeline.  Default *False*
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
     - ``debug`` -- if *True* then extra debugging information is printed. Default *False*
+    - ``notFlattened`` -- if *True* the trace is the repeat that a stare, nod or offset standard makes for the
+      response curve: its files get a ``_NOTFLAT`` suffix and it adds no product row. Default *False*
+    - ``slitOffsetsArcsec`` -- ``{order: offset}`` slit-illumination offsets in arcsec, used to anchor a faint VIS
+      order on its bright neighbour. Default *None*
 
     **Usage:**
 
@@ -565,6 +757,11 @@ class detect_continuum(_base_detect):
     order_table_path = detector.get()
     ```
     """
+
+    # THE FRAME-TO-MAP BINNING, SET WHEN THE TRACE IS SAMPLED, AND THE SLIT-ILLUMINATION OFFSET OF EACH ORDER (IF KNOWN)
+    mapBinning = None
+    slitOffsetsArcsec = None
+    faintTransferReports = ()
 
     def __init__(
         self,
@@ -584,6 +781,8 @@ class detect_continuum(_base_detect):
         orderPixelTable=False,
         startNightDate="",
         debug=False,
+        notFlattened=False,
+        slitOffsetsArcsec=None,
     ):
         self.log = log
         log.debug("instantiating a new 'detect_continuum' object")
@@ -591,14 +790,11 @@ class detect_continuum(_base_detect):
         import copy
 
         self.settings = settings
-        try:
-            self.noddingSequence = "_A" if int(traceFrame.header["HIERARCH ESO SEQ CUMOFF Y"] > 0) else "_B"
-            if locationSetIndex:
-                self.noddingSequence += str(locationSetIndex)
-        except (KeyError, TypeError) as e:
-            self.log.debug(f"__init__: `self.noddingSequence = '_A' if int(traceFrame.head...` failed, continuing: {e}")
-            self.noddingSequence = ""
+        self.noddingSequence = nodding_sequence_suffix(
+            header=traceFrame.header, locationSetIndex=locationSetIndex, recipeName=recipeName
+        )
 
+        self.notFlattened = "_NOTFLAT" if notFlattened else ""
         self.recipeName = recipeName
         self.traceFrame = traceFrame
         self.dispersion_map = dispersion_map
@@ -612,6 +808,7 @@ class detect_continuum(_base_detect):
         self.orderPixelTable = orderPixelTable
         self.startNightDate = startNightDate
         self.debug = debug
+        self.slitOffsetsArcsec = slitOffsetsArcsec
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -695,10 +892,17 @@ class detect_continuum(_base_detect):
                     "Could not converge on a good fit to the continuum. Please check the quality of your data."
                 )
                 return None, self.qc, self.products, None, None, None
+            faintSettings = self._faint_trace_settings()
+            orderPixelTable = self._transfer_faint_order_traces(orderPixelTable, faintSettings)
         else:
+            faintSettings = None
             orderPixelTable = self.orderPixelTable
 
+        # THE SYNTHETIC ROWS OF A TRANSFERRED FAINT TRACE ARE NOT DETECTED SAMPLES
         foundLines = len(orderPixelTable.index)
+        isTransferred = transferred_row_mask(orderPixelTable)
+        if isTransferred is not None:
+            foundLines -= int(isTransferred.sum())
 
         self.log.print("\n\t## FINDING GLOBAL POLYNOMIAL SOLUTION FOR CONTINUUM TRACES\n")
 
@@ -720,7 +924,6 @@ class detect_continuum(_base_detect):
             for i in range(0, self.orderDeg + 1):
                 orderPixelTable[f"order_pow_{i}"] = orderPixelTable["order"].pow(i)
             try:
-
                 coeff, orderPixelTable, clippedDataCentre = self.fit_global_polynomial(
                     pixelList=orderPixelTable,
                     axisACol=f"cont_{self.axisA}",
@@ -728,7 +931,15 @@ class detect_continuum(_base_detect):
                     exponentsIncluded=True,
                     writeQCs=True,
                 )
-                mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
+                # THE GATES JUDGE THE MEASURED ROWS: SYNTHETIC ROWS LIE ON THE TRACE AND WOULD HIDE A BAD FIT
+                mean_res = np.mean(
+                    np.abs(
+                        measured_residuals(
+                            orderPixelTable[f"cont_{self.axisA}_fit_res"].values,
+                            transferred_row_mask(orderPixelTable),
+                        )
+                    )
+                )
 
                 if "order" in self.recipeName.lower() and mean_res > 2:
                     orderPixelTable = backupOrderPixelTable
@@ -778,6 +989,9 @@ class detect_continuum(_base_detect):
                 if self.settings["tune-pipeline"]:
                     raise e
 
+        if "wavelength" in backupOrderPixelTable.columns:
+            self.check_trace_extrapolation(backupOrderPixelTable, orderPixelTable)
+
         utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
         try:
@@ -788,18 +1002,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES CLIP NUM",
-                        "qc_value": nclip,
-                        "qc_comment": "Number of continuum sample clipped during solution fitting",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES CLIP NUM",
+                            "qc_value": nclip,
+                            "qc_comment": "Number of continuum sample clipped during solution fitting",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -808,18 +1024,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES CLIP FRAC",
-                        "qc_value": round(float(pclip), 3),
-                        "qc_comment": "Fraction of detected continuum samples clipped during solution fitting",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES CLIP FRAC",
+                            "qc_value": round(float(pclip), 3),
+                            "qc_comment": "Fraction of detected continuum samples clipped during solution fitting",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -835,12 +1053,17 @@ class detect_continuum(_base_detect):
         coeffColumns = coeff_dict.keys()
 
         orderPolyTable = pd.DataFrame([coeff_dict])
+        self._warn_on_join_slit_jumps(orderPixelTable, orderPolyTable, faintSettings)
 
         # HERE IS THE LINE LIST IF NEEDED FOR QC
         orderPixelTable.drop(columns=["mask"], inplace=True)
 
         # OPTIMISE SUPER: 10s 8 hits
-        plotPath, orderMetaTable = self.plot_results(
+        orderMetaTable = self.build_order_metadata(
+            orderPixelTable=orderPixelTable,
+            orderPolyTable=orderPolyTable,
+        )
+        plotPath = self.plot_results(
             orderPixelTable=orderPixelTable,
             orderPolyTable=orderPolyTable,
             clippedData=clippedData,
@@ -857,38 +1080,36 @@ class detect_continuum(_base_detect):
             label = "OBJECT_TRACE_RES"
             product_desc = "Residuals of the object trace polynomial fit"
 
-        if not isinstance(self.products, bool):
+        # THE NOT-FLATTENED REPEAT FINDS THE SAME TRACE, SO IT ADDS NO SECOND ROW FOR THE PDF
+        if not isinstance(self.products, bool) and not self.notFlattened:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": label + self.noddingSequence,
-                            "file_name": basename,
-                            "file_type": "PDF",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": product_desc,
-                            "file_path": plotPath,
-                            "label": "QC",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "product_label": label + self.noddingSequence,
+                                "file_name": basename,
+                                "file_type": "PDF",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "product_desc": product_desc,
+                                "file_path": plotPath,
+                                "label": "QC",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
-            # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
-            order_table_path = self.write_order_table_to_file(
-                frame=self.traceFrame,
-                orderPolyTable=orderPolyTable,
-                orderMetaTable=orderMetaTable,
-            )
-        else:
-            order_table_path = self.write_order_table_to_file(
-                frame=self.traceFrame,
-                orderPolyTable=orderPolyTable,
-                orderMetaTable=orderMetaTable,
-            )
+
+        # WRITE OUT THE FITS TO THE ORDER CENTRE TABLE
+        order_table_path = self.write_order_table_to_file(
+            frame=self.traceFrame,
+            orderPolyTable=orderPolyTable,
+            orderMetaTable=orderMetaTable,
+        )
 
         # mean_res = np.mean(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
         # std_res = np.std(np.abs(orderPixelTable[f'cont_{self.axisA}_fit_res'].values))
@@ -901,6 +1122,134 @@ class detect_continuum(_base_detect):
             orderPolyTable,
             orderPixelTable,
             orderMetaTable,
+        )
+
+    def _faint_trace_settings(self):
+        """*the faint-order trace settings, or None where the trace is off*
+
+        The trace is on for the VIS arm of SOXS, in a recipe that is not an order-centre one, when the
+        ``faint-order-trace`` setting is on.
+        """
+        settings = faint_trace_settings.from_block(self.recipeSettings)
+        isVisTrace = self.inst.upper() == "SOXS" and self.arm.upper() == "VIS"
+        isOn = settings.isEnabled and isVisTrace and "order" not in self.recipeName.lower()
+        return settings if isOn else None
+
+    def _make_pixels_at(self):
+        """*the function that turns an order, wavelengths and a slit position into pixels of the trace frame*"""
+        return make_pixels_at(
+            self.log, self.dispersion_map, self.mapBinning or {"x": 1.0, "y": 1.0}, self.axisA, self.axisB
+        )
+
+    def _transfer_faint_order_traces(self, orderPixelTable, settings):
+        """*replace the sampled trace of each faint order by one anchored to its bright neighbour*
+
+        When the trace is off (``settings`` is None), or no faint order has a bright partner, the table comes back as
+        the same object.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the table of sampled trace positions
+        - ``settings`` -- the ``faint_trace_settings``, or None where the trace is off
+
+        **Return:**
+
+        - ``orderPixelTable`` -- the table to fit
+        """
+        if settings is None:
+            return orderPixelTable
+        orderPixelTable, reports = transfer_faint_orders(
+            orderPixelTable,
+            frame_to_nan_array(self.traceFrame),
+            self._make_pixels_at(),
+            slitOffsets=self.slitOffsetsArcsec,
+            settings=settings,
+            axisA=self.axisA,
+            axisB=self.axisB,
+        )
+        self._record_faint_trace_qc(reports)
+        return orderPixelTable
+
+    def _fitted_trace(self, orderPolyTable):
+        """*the function that evaluates the fitted order-centre polynomial: ``trace(order, axisBPixels)``*"""
+        import numpy as np
+        import pandas as pd
+
+        poly = chebyshev_order_xy_polynomials(
+            log=self.log,
+            axisBCol=self.axisB,
+            orderCol="order",
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+        ).poly
+        centCoeff = [float(v) for k, v in orderPolyTable.iloc[0].items() if "cent_" in k]
+
+        def trace(order, axisBPixels):
+            axisBPixels = np.asarray(axisBPixels, dtype=float)
+            return np.asarray(poly(pd.DataFrame({self.axisB: axisBPixels, "order": float(order)}), *centCoeff))
+
+        return trace
+
+    def _warn_on_join_slit_jumps(self, orderPixelTable, orderPolyTable, settings):
+        """*warn when adjacent VIS orders put the fitted trace at different slit positions where they join*
+
+        The check only logs a warning, which the extraction also keeps as a note, and changes nothing else.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the fitted trace table
+        - ``orderPolyTable`` -- the fitted order-centre polynomial coefficients
+        - ``settings`` -- the ``faint_trace_settings``, or None where the trace is off
+        """
+        if settings is None or "wavelength" not in orderPixelTable.columns:
+            return
+        mismatches = join_slit_mismatches(
+            orderPixelTable,
+            self._fitted_trace(orderPolyTable),
+            self._make_pixels_at(),
+            self.slitOffsetsArcsec,
+            settings.maxJoinArcsec,
+        )
+        for mismatch in mismatches:
+            blue = order_label(mismatch.blueOrder, self.arm)
+            red = order_label(mismatch.redOrder, self.arm)
+            self.log.warning(
+                f"The fitted traces of orders {blue} and {red} differ by {mismatch.differenceArcsec:+.1f} arcsec at "
+                f"their join, more than {settings.maxJoinArcsec:.1f} arcsec, so they may follow different sources. "
+                "Check the object trace."
+            )
+
+    def _record_faint_trace_qc(self, reports):
+        """*record the faint orders that were tried: a log line and an extraction note each, and a header QC*
+
+        The QC counts only the orders whose rows were replaced. Nothing is written to the header when no order was
+        transferred, so a bright frame keeps the headers it always had. A skipped order still gets its log line and
+        extraction note, on purpose, as an audit trail of why its trace was left as measured.
+
+        **Key Arguments:**
+
+        - ``reports`` -- the ``transfer_report`` of each faint order that had an anchor
+        """
+        note = getattr(self.log, "note", None)
+        for report in reports:
+            line = report.describe(order_label(report.order, self.arm), order_label(report.anchorOrder, self.arm))
+            self.log.print(line)
+            if callable(note):
+                note(line)
+        transferred = tuple(report for report in reports if report.is_transferred)
+        if not transferred:
+            return
+        self.faintTransferReports = transferred
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName="N ORDERS FAINT TRACE",
+            qcValue=len(transferred),
+            qcComment="Number of faint orders whose trace was transferred from a bright neighbour",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+            qcUnit=None,
+            toHeader=True,
         )
 
     def create_pixel_arrays(self):
@@ -945,7 +1294,6 @@ class detect_continuum(_base_detect):
         }
 
         for o, wmin, wmax, pixelRange in zip(orderNums, waveLengthMin, waveLengthMax, orderPixelRanges):
-
             orderSampleCount = int(pixelRange / samplePixelSep)
             wrange = wmax - wmin
 
@@ -1078,6 +1426,170 @@ class detect_continuum(_base_detect):
 
         return orderPixelTable
 
+    def _fitted_order_curves(self, orderPixelTable, orderPolyTable):
+        """*evaluate the order-centre polynomial along each order, in detector pixel coordinates*
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the pixel table with residuals of fits
+        - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+
+        **Return:**
+
+        - ``curves`` -- one ``(order, axisAFit, axisBSamples, axisAStdFit)`` tuple for each order fitted on the detector
+        """
+        import numpy as np
+        import pandas as pd
+
+        if self.axisB == "y":
+            axisALength = self.traceFrame.data.shape[1]
+            axisBLength = self.traceFrame.data.shape[0]
+        elif self.axisB == "x":
+            axisALength = self.traceFrame.data.shape[0]
+            axisBLength = self.traceFrame.data.shape[1]
+
+        axisBLineList = np.arange(0, axisBLength, 3)
+
+        poly = chebyshev_order_xy_polynomials(
+            log=self.log,
+            axisBCol=self.axisB,
+            orderCol="order",
+            orderDeg=self.orderDeg,
+            axisBDeg=self.axisBDeg,
+        ).poly
+        for _index, row in orderPolyTable.iterrows():
+            centCoeff = [float(v) for k, v in row.items() if "cent_" in k]
+            stdCoeff = [float(v) for k, v in row.items() if "std_" in k]
+
+        df = pd.DataFrame({f"{self.axisB}": axisBLineList})
+        curves = []
+        for o in orderPixelTable["order"].unique():
+            df["order"] = o
+            axisAFit = np.asarray(poly(df, *centCoeff))
+            axisAStdFit = np.asarray(poly(df, *stdCoeff))
+
+            keep = (axisAFit > 0) & (axisAFit < axisALength - 10)
+            if not keep.any():
+                self.log.debug(f"_fitted_order_curves: order {o} has no fitted positions on the detector, continuing")
+                continue
+            curves.append((o, axisAFit[keep], axisBLineList[keep], axisAStdFit[keep]))
+        return curves
+
+    def build_order_metadata(self, orderPixelTable, orderPolyTable):
+        """*find the extent of each fitted order on the detector*
+
+        The limits come from the order-centre fit alone, so the QC plot settings cannot change them.
+        ``{axisA}min`` and ``{axisA}max`` are the smallest and largest fitted axis-A positions in detector pixels.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the pixel table with residuals of fits
+        - ``orderPolyTable`` -- data-frame of order-location polynomial coeff
+
+        **Return:**
+
+        - ``orderMetaTable`` -- dataframe of order number and the min and max pixel position along both axes
+        """
+        self.log.debug("starting the ``build_order_metadata`` method")
+
+        import pandas as pd
+
+        curves = self._fitted_order_curves(orderPixelTable, orderPolyTable)
+        orderMetaTable = pd.DataFrame(
+            {
+                "order": [o for o, _, _, _ in curves],
+                f"{self.axisB}min": [min(yfit) for _, _, yfit, _ in curves],
+                f"{self.axisB}max": [max(yfit) for _, _, yfit, _ in curves],
+                f"{self.axisA}min": [min(xfit) for _, xfit, _, _ in curves],
+                f"{self.axisA}max": [max(xfit) for _, xfit, _, _ in curves],
+            }
+        )
+
+        self.log.debug("completed the ``build_order_metadata`` method")
+        return orderMetaTable
+
+    def check_trace_extrapolation(self, sampledTable: pd.DataFrame, acceptedTable: pd.DataFrame) -> None:
+        """*log when the fitted trace of an order is extrapolated across a long stretch with no accepted samples*
+
+        Records the longest sample-free stretch of each order as the ``SAMPLES GAP MAX O<n>`` QC. The QC is not
+        written to the product header and has no acceptable range, so it never fails a recipe.
+
+        **Key Arguments:**
+
+        - ``sampledTable`` -- the table of every sample position, with ``order`` and ``wavelength`` columns
+        - ``acceptedTable`` -- the samples kept after the trace fit, with the same columns
+
+        **Usage:**
+
+        ```python
+        self.check_trace_extrapolation(backupOrderPixelTable, orderPixelTable)
+        ```
+        """
+        self.log.debug("starting the ``check_trace_extrapolation`` method")
+
+        maxFraction = self.recipeSettings.get("max-unsampled-trace-fraction", DEFAULT_MAX_UNSAMPLED_TRACE_FRACTION)
+        reductionDate = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+
+        for order, orderSamples in sampledTable.groupby("order"):
+            acceptedWavelengths = acceptedTable.loc[acceptedTable["order"] == order, "wavelength"]
+            fraction, startNm, endNm = longest_unsampled_stretch(orderSamples["wavelength"], acceptedWavelengths)
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName=f"SAMPLES GAP MAX O{int(order)}",
+                qcValue=round(fraction, 3),
+                qcComment="Longest stretch of the order with no accepted trace sample, as a fraction of the order",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=reductionDate,
+                qcUnit=None,
+                toHeader=False,
+                qcOrder=int(order),
+            )
+            if fraction > maxFraction:
+                self.log.info(
+                    f"The trace of order {int(order)} has no accepted samples between {startNm:.1f} nm and "
+                    f"{endNm:.1f} nm ({fraction:.0%} of the order), so the fitted trace is extrapolated there. "
+                    "Check the object and order positions."
+                )
+
+        self.log.debug("completed the ``check_trace_extrapolation`` method")
+
+    def _scatter_trace_peaks(self, axis, orderPixelTable):
+        """*scatter the fitted peak positions, drawing the rows of a transferred faint trace apart in their own marker*
+
+        **Key Arguments:**
+
+        - ``axis`` -- the matplotlib axis to draw on
+        - ``orderPixelTable`` -- the fitted trace table, with a ``faint_transfer`` column when an order was transferred
+        """
+        measured, transferred = orderPixelTable, orderPixelTable.iloc[0:0]
+        isTransferred = transferred_row_mask(orderPixelTable)
+        if isTransferred is not None:
+            measured, transferred = orderPixelTable.loc[~isTransferred], orderPixelTable.loc[isTransferred]
+        axis.scatter(
+            measured[f"cont_{self.axisB}"],
+            measured[f"cont_{self.axisA}"],
+            marker="o",
+            c="green",
+            s=0.3,
+            alpha=0.6,
+            label="cross-dispersion 1D gaussian peak-position",
+        )
+        anchors = {report.order: report.anchorOrder for report in self.faintTransferReports}
+        for order, rows in transferred.groupby("order"):
+            anchor = anchors.get(order)
+            source = "a bright neighbouring order" if anchor is None else f"order {int(anchor)}"
+            axis.scatter(
+                rows[f"cont_{self.axisB}"],
+                rows[f"cont_{self.axisA}"],
+                marker="^",
+                c="tab:blue",
+                s=1.5,
+                alpha=0.6,
+                label=f"trace transferred from {source}",
+            )
+
+    @closes_its_figures
     def plot_results(self, orderPixelTable, orderPolyTable, clippedData):
         """*generate a plot of the polynomial fits and residuals*
 
@@ -1090,13 +1602,11 @@ class detect_continuum(_base_detect):
         **Return:**
 
         - ``filePath`` -- path to the plot pdf
-        - ``orderMetaTable`` -- dataframe of useful order fit metadata
         """
         self.log.debug("starting the ``plot_results`` method")
 
         import matplotlib.pyplot as plt
         import numpy as np
-        import pandas as pd
 
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
@@ -1113,46 +1623,52 @@ class detect_continuum(_base_detect):
         if flipImage:
             rotatedImg = np.flipud(rotatedImg)
             if not rotateImage:
+                # FLIPUD SENDS PIXEL ROW r TO ROW N-1-r. PLOT FROM COPIES SO THE CALLER'S COORDINATES STAY UNFLIPPED
                 aLen = rotatedImg.shape[0]
-                orderPixelTable[f"cont_{self.axisA}"] = aLen - orderPixelTable[f"cont_{self.axisA}"]
-                clippedData[f"cont_{self.axisA}"] = aLen - clippedData[f"cont_{self.axisA}"]
-                clippedData[f"fit_{self.axisA}"] = aLen - clippedData[f"fit_{self.axisA}"]
+                orderPixelTable = orderPixelTable.assign(
+                    **{f"cont_{self.axisA}": aLen - 1 - orderPixelTable[f"cont_{self.axisA}"]}
+                )
+                clippedData = clippedData.assign(
+                    **{
+                        f"cont_{self.axisA}": aLen - 1 - clippedData[f"cont_{self.axisA}"],
+                        f"fit_{self.axisA}": aLen - 1 - clippedData[f"fit_{self.axisA}"],
+                    }
+                )
 
-        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(6, 13.5), constrained_layout=True)
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(7, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:5, 0:2])
-            bottomright = fig.add_subplot(gs[4:5, 2:])
-            fwhmaxis = fig.add_subplot(gs[5:6, :])
-            settingsAx = fig.add_subplot(gs[6:, 2:])
-            qcAx = fig.add_subplot(gs[6:, 0:2])
-        else:
-            fig = plt.figure(figsize=(6, 19), constrained_layout=True)
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(10, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:6, 0:2])
-            bottomright = fig.add_subplot(gs[4:6, 2:])
-            fwhmaxis = fig.add_subplot(gs[6:7, :])
-            settingsAx = fig.add_subplot(gs[7:, 2:])
-            qcAx = fig.add_subplot(gs[7:, 0:2])
+        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
+        self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
+        tableSettings = {**self.recipeSettings, **{"exptime": self.exptime}}
 
-        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
-        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5)
-        toprow.set_title("1D gaussian peak positions (post-clipping)", fontsize=10)
-        toprow.scatter(
-            orderPixelTable[f"cont_{self.axisB}"],
-            orderPixelTable[f"cont_{self.axisA}"],
-            marker="o",
-            c="green",
-            s=0.3,
-            alpha=0.6,
-            label="cross-dispersion 1D gaussian peak-position",
+        # SIZE EACH IMAGE PANEL TO THE IMAGE ASPECT AND GIVE EACH TABLE ITS OWN FULL-WIDTH ROW SO THEY CANNOT OVERLAP
+        imagePanelHeight = qc_image_panel_height(rotatedImg)
+        qcTableHeight, settingsTableHeight = qc_table_heights(self.qc, tableSettings)
+        heightRatios = [
+            imagePanelHeight,
+            imagePanelHeight,
+            QC_RESIDUAL_ROW_HEIGHT_INCHES,
+            QC_STRIP_ROW_HEIGHT_INCHES,
+            qcTableHeight,
+            settingsTableHeight,
+        ]
+        fig = plt.figure(
+            figsize=(6, sum(heightRatios) + QC_PLOT_DECORATION_HEIGHT_INCHES),
+            constrained_layout=True,
         )
+        gs = fig.add_gridspec(6, 2, height_ratios=heightRatios)
+        toprow = fig.add_subplot(gs[0, :])
+        midrow = fig.add_subplot(gs[1, :])
+        bottomleft = fig.add_subplot(gs[2, 0])
+        bottomright = fig.add_subplot(gs[2, 1])
+        fwhmaxis = fig.add_subplot(gs[3, :])
+        settingsAx = fig.add_subplot(gs[5, :])
+        qcAx = fig.add_subplot(gs[4, :])
+
+        # INTERPOLATION "none" EMBEDS THE IMAGE AT NATIVE RESOLUTION IN THE PDF; RESAMPLING TO THE SAVE DPI
+        # OFFSETS THE ORDER BANDS FROM THE VECTOR MARKERS WHEN ZOOMED
+        toprow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
+        midrow.imshow(rotatedImg, vmin=10, vmax=50, cmap="gray", alpha=0.5, interpolation="none")
+        toprow.set_title("1D gaussian peak positions (post-clipping)", fontsize=10)
+        self._scatter_trace_peaks(toprow, orderPixelTable)
 
         # PLOT WHERE A CONTINUUM WAS NOT FOUND - WITH SLICE LENGTH SHOWN
         mask = clippedData["cont_x"].isna() | clippedData["cont_y"].isna()
@@ -1178,12 +1694,7 @@ class detect_continuum(_base_detect):
             linewidths=0.5,
             label="peaks clipped during continuum fitting",
         )
-        # Put a legend below current axis
-
-        if arm == "VIS":
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        legend_below_axis(toprow, fig)
 
         # toprow.set_yticklabels([])
         # toprow.set_xticklabels([])
@@ -1203,61 +1714,17 @@ class detect_continuum(_base_detect):
             midrow.set_title("order-location fit solutions", fontsize=10)
         else:
             midrow.set_title("global polynomal fit of order-centres", fontsize=10)
-        if self.axisB == "y":
-            axisALength = self.traceFrame.data.shape[1]
-            axisBLength = self.traceFrame.data.shape[0]
-        elif self.axisB == "x":
-            axisALength = self.traceFrame.data.shape[0]
-            axisBLength = self.traceFrame.data.shape[1]
-
-        axisBlinelist = np.arange(0, axisBLength, 3)
-
-        poly = chebyshev_order_xy_polynomials(
-            log=self.log,
-            axisBCol=self.axisB,
-            orderCol="order",
-            orderDeg=self.orderDeg,
-            axisBDeg=self.axisBDeg,
-        ).poly
-        for index, row in orderPolyTable.iterrows():
-            cent_coeff = [float(v) for k, v in row.items() if "cent_" in k]
-            std_coeff = [float(v) for k, v in row.items() if "std_" in k]
-
         uniqueOrders = orderPixelTable["order"].unique()
-        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-        myDict = {f"{self.axisB}": axisBlinelist}
-        df = pd.DataFrame(myDict)
-        ymin = []
-        ymax = []
-        xmin = []
-        xmax = []
-        foundOrders = []
-        colors = []
+        orderColours = _order_colours(uniqueOrders)
         labelAdded = None
 
-        for o in uniqueOrders:
-            df["order"] = o
-            xfit = poly(df, *cent_coeff)
-            stdfit = poly(df, *std_coeff)
-
-            try:
-                xfit, yfit, stdfit, lower, upper = zip(
-                    *[
-                        (x, y, std, x - 3 * std, x + 3 * std)
-                        for x, y, std in zip(xfit, axisBlinelist, stdfit)
-                        if x > 0 and x < (axisALength) - 10
-                    ]
-                )
-            except ValueError as e:
-                self.log.debug(f"plot_results: `xfit, yfit, stdfit, lower, upper = zip( *[...` failed, continuing: {e}")
-                continue
+        for o, xfit, yfit, stdfit in self._fitted_order_curves(orderPixelTable, orderPolyTable):
+            lower = xfit - 3 * stdfit
+            upper = xfit + 3 * stdfit
             if flipImage and not rotateImage:
-                xfit = aLen - np.array(xfit)
-                lower = aLen - np.array(lower)
-                upper = aLen - np.array(upper)
-            foundOrders.append(o)
-            # lower = xfit - 3 * stdfit
-            # upper = xfit + 3 * stdfit
+                xfit = aLen - 1 - xfit
+                lower = aLen - 1 - lower
+                upper = aLen - 1 - upper
             if labelAdded == None:
                 label1 = "$3\\sigma$ deviation"
                 label2 = "polynomial fit"
@@ -1265,35 +1732,20 @@ class detect_continuum(_base_detect):
             else:
                 label1 = None
                 label2 = None
-            c = midrow.plot(yfit, xfit, linewidth=0.7, label=label2)
+            midrow.plot(yfit, xfit, linewidth=0.7, label=label2, color=orderColours[o])
 
-            midrow.fill_between(yfit, lower, upper, color=c[0].get_color(), alpha=0.3, label=label1)
-            colors.append(c[0].get_color())
-            ymin.append(min(yfit))
-            ymax.append(max(yfit))
-            xmin.append(axisALength - max(xfit))
-            xmax.append(axisALength - min(xfit))
+            midrow.fill_between(yfit, lower, upper, color=orderColours[o], alpha=0.3, label=label1)
             try:
                 midrow.text(
                     yfit[10],
                     xfit[10] + 10,
                     int(o),
                     fontsize=6,
-                    c=c[0].get_color(),
+                    c=orderColours[o],
                     verticalalignment="bottom",
                 )
             except (IndexError, KeyError) as e:
                 self.log.debug(f"plot_results: `midrow.text( yfit[10], xfit[10] + 10, int(...` failed, continuing: {e}")
-
-        # CREATE DATA FRAME FROM A DICTIONARY OF LISTS
-        orderMetaTable = {
-            "order": foundOrders,
-            f"{self.axisB}min": ymin,
-            f"{self.axisB}max": ymax,
-            f"{self.axisA}min": xmin,
-            f"{self.axisA}max": xmax,
-        }
-        orderMetaTable = pd.DataFrame(orderMetaTable)
 
         # xfit = np.ones(len(xfit)) * \
         #     self.pinholeFrame.data.shape[1] - xfit
@@ -1304,14 +1756,11 @@ class detect_continuum(_base_detect):
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         midrow.tick_params(axis="both", which="major", labelsize=9)
 
-        if arm == "VIS":
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.1), fontsize=4)
+        legend_below_axis(midrow, fig)
 
         # PLOT THE FINAL RESULTS:
-        plt.subplots_adjust(top=0.92)
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             bottomleft.scatter(
                 orderPixelTable.loc[mask][f"cont_{self.axisA}"].values,
@@ -1341,8 +1790,8 @@ class detect_continuum(_base_detect):
         bottomleft.tick_params(axis="both", which="major", labelsize=9)
 
         # PLOT THE FINAL RESULTS:
-        plt.subplots_adjust(top=0.92)
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             bottomright.scatter(
                 orderPixelTable.loc[mask][f"cont_{self.axisB}"].values,
@@ -1373,7 +1822,8 @@ class detect_continuum(_base_detect):
         bottomright.set_yticklabels([])
 
         stdToFwhm = 2 * (2 * math.log(2)) ** 0.5
-        for o, c in zip(uniqueOrders, colors):
+        for o in uniqueOrders:
+            c = orderColours[o]
             mask = orderPixelTable["order"] == o
             fwhmaxis.scatter(
                 orderPixelTable.loc[mask]["wavelength"].values,
@@ -1405,18 +1855,20 @@ class detect_continuum(_base_detect):
             orderPixelTable["gauss_stddev_fit"].max() * stdToFwhm * 1.2,
         )
 
-        # REMOVE DUPLICATE ENTRIES IN COLUMN 'qc_name' AND KEEP THE LAST ENTRY
-        self.qc = self.qc.drop_duplicates(subset=["qc_name"], keep="last")
         qc_settings_plot_tables(
             log=self.log,
             qc=self.qc,
             qcAx=qcAx,
-            settings={**self.recipeSettings, **{"exptime": self.exptime}},
+            settings=tableSettings,
             settingsAx=settingsAx,
         )
 
-        mean_res = np.mean(np.abs(orderPixelTable[f"cont_{self.axisA}_fit_res"].values))
-        std_res = np.std(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
+        # THE TITLE STATISTICS COME FROM THE MEASURED ROWS, SO EXACT SYNTHETIC ROWS DO NOT FLATTER THE FIT
+        statRes = measured_residuals(
+            orderPixelTable[f"cont_{self.axisA}_fit_res"].values, transferred_row_mask(orderPixelTable)
+        )
+        mean_res = np.mean(np.abs(statRes))
+        std_res = np.std(statRes)
         res_min = np.min(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_max = np.max(orderPixelTable[f"cont_{self.axisA}_fit_res"].values)
         res_range = res_max - res_min
@@ -1429,7 +1881,6 @@ class detect_continuum(_base_detect):
             fig.suptitle(
                 f"traces of order-centre locations - {arm}{lamp} pinhole flat-frame\n{subtitle}",
                 fontsize=12,
-                y=0.99,
             )
         else:
             fig.suptitle(f"{arm} object trace locations\n{subtitle}", fontsize=12)
@@ -1444,10 +1895,11 @@ class detect_continuum(_base_detect):
             filename = filename.split("FLAT")[0] + "ORDER_CENTRES_residuals.pdf"
         elif "order" in self.recipeName.lower():
             filename = self.sofName + f"_residuals_{polyOrders}.pdf"
-        elif "nod" in self.recipeName.lower():
-            filename = self.sofName + "_OBJECT_TRACE_residuals" + self.noddingSequence + f"_{polyOrders}.pdf"
+        elif has_sequence_suffixed_traces(self.recipeName):
+            sequence = self.noddingSequence + self.notFlattened
+            filename = self.sofName + "_OBJECT_TRACE_residuals" + sequence + f"_{polyOrders}.pdf"
         else:
-            filename = self.sofName + f"_OBJECT_TRACE_residuals_{polyOrders}.pdf"
+            filename = self.sofName + f"_OBJECT_TRACE_residuals{self.notFlattened}_{polyOrders}.pdf"
 
         filePath = f"{self.qcDir}/{filename}"
         # plt.tight_layout()
@@ -1481,8 +1933,9 @@ class detect_continuum(_base_detect):
                 )
 
         self.log.debug("completed the ``plot_results`` method")
-        return filePath, orderMetaTable
+        return filePath
 
+    @closes_its_figures
     def sample_trace(self):
         """*take many cross-dispersion samples across each order to try and find an object trace*
 
@@ -1506,6 +1959,8 @@ class detect_continuum(_base_detect):
             biny = self.traceFrame.header[self.kw("WIN_BINY")] / dmBiny
         except KeyError as e:
             self.log.debug(f"sample_trace: `binx = self.traceFrame.header[self.kw('WIN_BIN...` failed, continuing: {e}")
+
+        self.mapBinning = {"x": binx, "y": biny}
 
         # FIT_X AND FIT_Y FROM DISP-SOLUTION
         orderPixelTable["fit_x"] = orderPixelTable["fit_x"] / binx
@@ -1554,6 +2009,9 @@ class detect_continuum(_base_detect):
             # UNIQUE ORDERS
             uniqueOrders = orderPixelTable["order"].unique()
             uniqueOrders = "&".join(map(str, sorted(uniqueOrders)))
+
+            # WORK ON A PRIVATE COPY: THE PROBE CALLS PASS STRIDED SLICES AND DISCARD THE RESULT
+            orderPixelTable = orderPixelTable.copy()
 
             sliceLength = self.sliceLength
             if np.isnan(medianShift):
@@ -1735,6 +2193,38 @@ class detect_continuum(_base_detect):
 
             return orderPixelTable, medianShift, medianStddev
 
+        def sample_order(orderTable: pd.DataFrame, everyN: int) -> tuple[pd.DataFrame, bool]:
+            """*sample one order with its own shift and window*
+
+            Returns the sampled order and whether a denser probe (``everyN`` of 1) is needed first. When it is, the
+            returned table is the input, unsampled.
+            """
+            junk, medianShift, medianStddev = find_centre_points(
+                orderPixelTable=orderTable.iloc[::everyN],
+                medianShift=False,
+                medianStddev=False,
+            )
+
+            if np.isnan(medianShift):
+                junk, medianShift, medianStddev = find_centre_points(
+                    orderPixelTable=orderTable.iloc[::everyN],
+                    medianShift=medianShift,
+                    medianStddev=False,
+                )
+
+            # `find_centre_points` RETURNS False FOR "NO SIGNIFICANT SHIFT" (UNDER 1 PIXEL OR NOISY) AND NaN FOR
+            # "TOO FEW SAMPLES"; BOTH MEAN THE SPARSE PROBE FOUND NO USABLE SHIFT. A FLOAT 0.0 IS NEVER RETURNED
+            isShiftMissing = medianShift is False or np.isnan(medianShift)
+            if isShiftMissing and everyN > 1:
+                return orderTable, True
+
+            orderTable, medianShift, medianStddev = find_centre_points(
+                orderPixelTable=orderTable,
+                medianShift=medianShift,
+                medianStddev=medianStddev,
+            )
+            return orderTable, False
+
         allLines = len(orderPixelTable.index)
         tmpOrderPixelTable = orderPixelTable.copy()
 
@@ -1742,69 +2232,26 @@ class detect_continuum(_base_detect):
         sanityCheck = False
 
         while not sanityCheck:
-
             if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
-                # TREAT ORDERS 2&3 SEPARATELY FROM 1&4 THEN RECOMBINE THE orderPixelTable AT THE END
-                mask_23 = tmpOrderPixelTable["order"].isin([2, 3])
-                mask_14 = tmpOrderPixelTable["order"].isin([1, 4])
-
-                orderPixelTable_23 = tmpOrderPixelTable.loc[mask_23].copy()
-                orderPixelTable_14 = tmpOrderPixelTable.loc[mask_14].copy()
-
-                # PROCESS 2 & 3
-                junk, medianShift_23, medianStddev_23 = find_centre_points(
-                    orderPixelTable=orderPixelTable_23.iloc[::everyN],
-                    medianShift=False,
-                    medianStddev=False,
-                )
-
-                if np.isnan(medianShift_23):
-                    junk, medianShift_23, medianStddev_23 = find_centre_points(
-                        orderPixelTable=orderPixelTable_23.iloc[::everyN],
-                        medianShift=medianShift_23,
-                        medianStddev=False,
+                # EACH VIS ORDER GETS ITS OWN SHIFT AND WINDOW: THE ORDERS SIT AT DIFFERENT OFFSETS FROM THE MAP,
+                # SO A SHARED MEDIAN SHIFT LEAVES THE TRACE OF ONE ORDER OUTSIDE THE WINDOW OF ANOTHER (DY-1716)
+                orderTables = []
+                needsDenserProbe = False
+                for order in sorted(tmpOrderPixelTable["order"].unique()):
+                    orderTable, needsDenserProbe = sample_order(
+                        tmpOrderPixelTable.loc[tmpOrderPixelTable["order"] == order].copy(),
+                        everyN,
                     )
+                    if needsDenserProbe:
+                        break
+                    orderTables.append(orderTable)
 
-                if (not (medianShift_23) or np.isnan(medianShift_23)) and everyN > 1:
-                    sanityCheck = False
+                if needsDenserProbe:
                     everyN = 1
-                    # print("Reducing everyN to 1")
                     continue
-
-                orderPixelTable_23, medianShift_23, medianStddev_23 = find_centre_points(
-                    orderPixelTable=orderPixelTable_23,
-                    medianShift=medianShift_23,
-                    medianStddev=medianStddev_23,
-                )
-
-                # PROCESS 1 & 4
-                junk, medianShift_14, medianStddev_14 = find_centre_points(
-                    orderPixelTable=orderPixelTable_14.iloc[::everyN],
-                    medianShift=False,
-                    medianStddev=False,
-                )
-
-                if np.isnan(medianShift_14):
-                    junk, medianShift_14, medianStddev_14 = find_centre_points(
-                        orderPixelTable=orderPixelTable_14.iloc[::everyN],
-                        medianShift=medianShift_14,
-                        medianStddev=False,
-                    )
-
-                if (not (medianShift_14) or np.isnan(medianShift_14)) and everyN > 1:
-                    sanityCheck = False
-                    everyN = 1
-                    # print("Reducing everyN to 1")
-                    continue
-
-                orderPixelTable_14, medianShift_14, medianStddev_14 = find_centre_points(
-                    orderPixelTable=orderPixelTable_14,
-                    medianShift=medianShift_14,
-                    medianStddev=medianStddev_14,
-                )
 
                 # RECOMBINE
-                orderPixelTable = pd.concat([orderPixelTable_23, orderPixelTable_14], ignore_index=True)
+                orderPixelTable = pd.concat(orderTables, ignore_index=True)
             else:
                 tmpOrderPixelTable = orderPixelTable.copy()
                 junk, medianShift, medianStddev = find_centre_points(
@@ -1814,13 +2261,13 @@ class detect_continuum(_base_detect):
                 )
 
                 if np.isnan(medianShift):
-                    junk, medianShift, tmpOrderPixelTable = find_centre_points(
+                    junk, medianShift, medianStddev = find_centre_points(
                         orderPixelTable=tmpOrderPixelTable.iloc[::everyN],
                         medianShift=medianShift,
                         medianStddev=False,
                     )
 
-                if not (medianShift) and everyN > 1:
+                if (not (medianShift) or np.isnan(medianShift)) and everyN > 1:
                     sanityCheck = False
                     everyN = 1
                     # print("Reducing everyN to 1")
@@ -1848,18 +2295,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES TOT NUM",
-                        "qc_value": allLines,
-                        "qc_comment": "Total number of samples along orders",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES TOT NUM",
+                            "qc_value": allLines,
+                            "qc_comment": "Total number of samples along orders",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -1867,18 +2316,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES DET NUM",
-                        "qc_value": foundLines,
-                        "qc_comment": "Number of samples where a continuum is detected",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES DET NUM",
+                            "qc_value": foundLines,
+                            "qc_comment": "Number of samples where a continuum is detected",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )
@@ -1887,18 +2338,20 @@ class detect_continuum(_base_detect):
         self.qc = pd.concat(
             [
                 self.qc,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "qc_name": "SAMPLES DET FRAC",
-                        "qc_value": round(float(self.psamp), 3),
-                        "qc_comment": "Proportion of samples where a continuum is detected",
-                        "qc_unit": None,
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "to_header": True,
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "qc_name": "SAMPLES DET FRAC",
+                            "qc_value": round(float(self.psamp), 3),
+                            "qc_comment": "Proportion of samples where a continuum is detected",
+                            "qc_unit": None,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": utcnow,
+                            "to_header": True,
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )

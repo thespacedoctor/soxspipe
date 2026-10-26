@@ -2,8 +2,7 @@
 `quicklook_image` in `soxspipe/commonutils/toolkit.py`, ahead of the DY-79 split of
 that function into smaller helpers.
 
-These tests pin current behaviour, including behaviour that looks like a
-defect (noted inline as BUG-LIKE). They pin the matplotlib artists produced
+These tests pin current behaviour. They pin the matplotlib artists produced
 -- figure sizes, axes, line data, colours, text and axis limits -- by spying
 on `matplotlib.pyplot.figure` and inspecting the closed-but-inspectable
 `Figure` objects it returns. The PDF output and the savefig/clf/close call
@@ -12,18 +11,21 @@ sequence are pinned in `tests/unit/test_toolkit_characterization.py`.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
 from astropy import units as u
-from astropy.nddata import CCDData, StdDevUncertainty
+from astropy.nddata import CCDData, NDData
 from astropy.stats import sigma_clipped_stats
 from matplotlib.figure import Figure
 
 import soxspipe.commonutils as commonutils
 from soxspipe.commonutils import toolkit
 from tests.unit._plot_spies import quiet_show, spy_figures
+from tests.unit._qc_plot_builders import quicklook_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -31,22 +33,6 @@ pytestmark = pytest.mark.unit
 def _image_axis(figure: Figure):
     """Return the first axis on `figure` that holds an `AxesImage`."""
     return next(axis for axis in figure.axes if axis.images)
-
-
-def _ccd(instrument: str = "SOXS", shape: tuple[int, int] = (8, 8), extraHeader: dict | None = None) -> CCDData:
-    size = shape[0] * shape[1]
-    data = np.arange(size, dtype=float).reshape(shape)
-    mask = np.zeros(shape, dtype=bool)
-    header = {"INSTRUME": instrument}
-    if extraHeader:
-        header.update(extraHeader)
-    return CCDData(
-        data,
-        unit=u.electron,
-        mask=mask,
-        uncertainty=StdDevUncertainty(np.ones(shape)),
-        meta=header,
-    )
 
 
 class _StubKeywordLookup:
@@ -82,10 +68,14 @@ def _stub_header_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(commonutils, "detector_lookup", _StubDetectorLookup)
 
 
-def _stub_grid_lines(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+def _stub_grid_lines(monkeypatch: pytest.MonkeyPatch, maskShape: tuple[int, int] = (8, 8)) -> dict[str, object]:
     """Stub `toolkit.create_dispersion_solution_grid_lines_for_plot`, recording
     the kwargs it is called with and returning a synthetic 3-line grid table
     plus a benign `interOrderMask`.
+
+    **Key Arguments:**
+
+    - ``maskShape`` -- the shape of the synthetic `interOrderMask`. Default *(8, 8)*
 
     **Return:**
 
@@ -99,8 +89,9 @@ def _stub_grid_lines(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
             "fit_y": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         }
     )
-    interOrderMask = np.zeros((8, 8), dtype=bool)
+    interOrderMask = np.zeros(maskShape, dtype=bool)
     interOrderMask[0, 0] = True
+    interOrderMask[2, 5] = True  # OFF-DIAGONAL, SO A WRONG ORIENTATION CHANGES THE MASK
 
     def _stub(**kwargs: object) -> tuple[pd.DataFrame, np.ndarray]:
         captured.update(kwargs)
@@ -132,7 +123,7 @@ def test_quicklook_image_orients_pixels_and_sets_clim_per_instrument(
     rotation convention and the sigma-clipped-stats-derived `vmin`/`vmax`."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
-    ccd = _ccd(instrument)
+    ccd = quicklook_ccd(instrument)
 
     toolkit.quicklook_image(log, ccd, show=True)
 
@@ -140,28 +131,22 @@ def test_quicklook_image_orients_pixels_and_sets_clim_per_instrument(
     image = axis.images[0]
     np.testing.assert_array_equal(image.get_array().data, expectedRotation(ccd.data))
 
-    mean, median, std = sigma_clipped_stats(
-        ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3
-    )
+    mean, median, std = sigma_clipped_stats(ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
     vmin, vmax = image.get_clim()
     assert vmin == pytest.approx(median - 3 * 0.5 * std, rel=1e-12)
     assert vmax == pytest.approx(median + 3 * 0.5 * std, rel=1e-12)
 
 
-def test_quicklook_image_clim_respects_custom_std_window(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_clim_respects_custom_std_window(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     """A non-default `stdWindow` scales the colour-limit half-width."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
-    ccd = _ccd("SOXS")
+    ccd = quicklook_ccd("SOXS")
 
     toolkit.quicklook_image(log, ccd, show=True, stdWindow=7)
 
     image = _image_axis(figures[-1]).images[0]
-    mean, median, std = sigma_clipped_stats(
-        ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3
-    )
+    mean, median, std = sigma_clipped_stats(ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
     vmin, vmax = image.get_clim()
     assert vmin == pytest.approx(median - 7 * 0.5 * std, rel=1e-12)
     assert vmax == pytest.approx(median + 7 * 0.5 * std, rel=1e-12)
@@ -217,9 +202,7 @@ def test_quicklook_image_colorbar_formatter_switches_on_mean_threshold(
         assert formatter.fmt == expectedFmt
 
 
-def test_quicklook_image_title_sets_suptitle_with_fixed_fontsize(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_title_sets_suptitle_with_fixed_fontsize(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
 
@@ -230,9 +213,7 @@ def test_quicklook_image_title_sets_suptitle_with_fixed_fontsize(
     assert suptitle.get_fontsize() == 20
 
 
-def test_quicklook_image_without_title_has_no_suptitle(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_without_title_has_no_suptitle(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
 
@@ -288,13 +269,11 @@ def test_quicklook_image_ext_none_plain_array_falls_back_to_xshooter_orientation
     np.testing.assert_array_equal(image.get_array().data, np.flipud(np.rot90(frame, 1)))
 
 
-def test_quicklook_image_inst_argument_overrides_header_instrume(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_quicklook_image_inst_argument_overrides_header_instrume(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     """An explicit `inst=` argument takes precedence over `header['INSTRUME']`."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
-    ccd = _ccd("SOXS")
+    ccd = quicklook_ccd("SOXS")
 
     toolkit.quicklook_image(log, ccd, show=True, inst="XSHOOTER")
 
@@ -323,9 +302,7 @@ def test_quicklook_image_surface_plot_axes_and_orientation(
     assert axis3d.azim == (70 if instrument == "SOXS" else -120)
     assert axis3d.elev == 30
 
-    mean, median, std = sigma_clipped_stats(
-        frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3
-    )
+    mean, median, std = sigma_clipped_stats(frame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
     vmax = median + 3 * 0.5 * std
     vmin = median - 3 * 0.5 * std
     zlo, zhi = axis3d.get_zlim()
@@ -378,12 +355,10 @@ def test_quicklook_image_dispmap_branch_forwards_arguments_and_draws_grid_lines(
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
     captured = _stub_grid_lines(monkeypatch)
-    ccd = _ccd(instrument, extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd(instrument, extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     settings = {"instrument": "soxs"}
 
-    toolkit.quicklook_image(
-        log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings=settings
-    )
+    toolkit.quicklook_image(log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings=settings)
 
     assert captured["dispMap"] == "disp.fits"
     assert captured["dispMapImage"] == "disp_image.fits"
@@ -401,22 +376,31 @@ def test_quicklook_image_dispmap_branch_forwards_arguments_and_draws_grid_lines(
         assert line.get_alpha() == pytest.approx(0.8)
 
 
-def test_quicklook_image_dispmap_branch_never_actually_masks_the_ndarray_frame(
-    monkeypatch: pytest.MonkeyPatch, log: object
+@pytest.mark.parametrize(
+    ("instrument", "orient"),
+    [
+        ("SOXS", lambda frame: frame),
+        ("XSHOOTER", lambda frame: np.flipud(np.rot90(frame, 1))),
+    ],
+)
+def test_quicklook_image_dispmap_branch_masks_inter_order_pixels(
+    monkeypatch: pytest.MonkeyPatch,
+    log: object,
+    instrument: str,
+    orient: Callable[[np.ndarray], np.ndarray],
 ) -> None:
-    """BUG-LIKE: the inter-order mask is combined into `mask = (frame.mask ==
-    1) | (interOrderMask == 1)` and then assigned back with `frame.mask =
-    mask`. Because `frame` is `CCDObject.data` -- a plain `numpy.ndarray`,
-    which has no settable `.mask` attribute -- both the read and the write
-    raise `AttributeError`, which is swallowed. The `interOrderMask` computed
-    by the grid-lines helper is therefore never applied to the displayed
-    image, no matter what it contains. Pinned as-is, not fixed."""
+    """The `dispMapImage` branch masks the inter-order pixels in the plotted
+    image. The plotted mask equals the helper's `interOrderMask` after the same
+    orientation transform the instrument applies to the pixels. The frame is
+    not square, so a transposition error changes the plotted shape."""
     figures = spy_figures(monkeypatch)
     quiet_show(monkeypatch)
     _stub_header_lookups(monkeypatch)
-    captured = _stub_grid_lines(monkeypatch)
-    assert captured["interOrderMask"].any()  # THE STUB MASK HAS SOME TRUE PIXELS
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    captured = _stub_grid_lines(monkeypatch, maskShape=(6, 10))
+    interOrderMask = np.asarray(captured["interOrderMask"])
+    assert interOrderMask.any()  # THE STUB MASK HAS SOME TRUE PIXELS
+    assert not np.array_equal(orient(interOrderMask), np.flipud(interOrderMask))  # ORIENTATION ERRORS SHOW
+    ccd = quicklook_ccd(instrument, shape=(6, 10), extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
 
     toolkit.quicklook_image(
         log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings={"instrument": "soxs"}
@@ -425,7 +409,227 @@ def test_quicklook_image_dispmap_branch_never_actually_masks_the_ndarray_frame(
     image = _image_axis(figures[-1]).images[0]
     array = image.get_array()
     assert isinstance(array, np.ma.MaskedArray)
-    assert not np.ma.is_masked(array)
+    assert array.shape == orient(interOrderMask).shape
+    np.testing.assert_array_equal(np.ma.getmaskarray(array), orient(interOrderMask))
+    np.testing.assert_array_equal(array.data, orient(ccd.data))
+
+
+def test_quicklook_image_dispmap_branch_excludes_inter_order_pixels_from_colour_scale(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """The colour limits come from the frame with the inter-order pixels
+    masked out, so they match `sigma_clipped_stats` of the masked frame."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    _stub_header_lookups(monkeypatch)
+    captured = _stub_grid_lines(monkeypatch)
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    # HIGH, BUT INSIDE THE 50 SIGMA CLIP, SO AN UNMASKED SCALE WOULD INCLUDE THEM AND SHIFT THE MEDIAN
+    ccd.data[captured["interOrderMask"]] = 1000.0
+    maskedFrame = np.ma.masked_array(ccd.data, mask=captured["interOrderMask"])
+    _, unmaskedMedian, unmaskedStd = sigma_clipped_stats(
+        ccd.data, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3
+    )
+
+    toolkit.quicklook_image(
+        log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings={"instrument": "soxs"}
+    )
+
+    _, median, std = sigma_clipped_stats(maskedFrame, sigma=50.0, stdfunc="mad_std", cenfunc="median", maxiters=3)
+    assert (median, std) != (unmaskedMedian, unmaskedStd)  # THE PREMISE: MASKING CHANGES THE STATISTICS
+    vmin, vmax = _image_axis(figures[-1]).images[0].get_clim()
+    assert vmin == pytest.approx(median - 3 * 0.5 * std, rel=1e-12)
+    assert vmax == pytest.approx(median + 3 * 0.5 * std, rel=1e-12)
+
+
+def test_quicklook_image_dispmap_branch_does_not_mutate_the_caller_frame(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """Masking the inter-order pixels for display leaves the caller's
+    `ccd.data` and `ccd.mask` untouched."""
+    spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    _stub_header_lookups(monkeypatch)
+    _stub_grid_lines(monkeypatch)
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    dataBefore = ccd.data.copy()
+    maskBefore = ccd.mask.copy()
+
+    toolkit.quicklook_image(
+        log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings={"instrument": "soxs"}
+    )
+
+    np.testing.assert_array_equal(ccd.data, dataBefore)
+    np.testing.assert_array_equal(ccd.mask, maskBefore)
+    assert not isinstance(ccd.data, np.ma.MaskedArray)
+
+
+def test_quicklook_image_dispmap_branch_excludes_inter_order_pixels_from_surface_z_limit(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """With `surfacePlot=True` the upper z-limit comes from the masked frame,
+    so a bright inter-order pixel does not stretch the 3D axis."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    _stub_header_lookups(monkeypatch)
+    captured = _stub_grid_lines(monkeypatch)
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd.data[captured["interOrderMask"]] = 1000.0
+    maskedMax = np.nanmax(np.ma.masked_array(ccd.data, mask=captured["interOrderMask"]))
+
+    toolkit.quicklook_image(
+        log,
+        ccd,
+        show=True,
+        dispMap="disp.fits",
+        dispMapImage="disp_image.fits",
+        settings={"instrument": "soxs"},
+        surfacePlot=True,
+    )
+
+    figure = figures[-1]
+    _, vmax = _image_axis(figure).images[0].get_clim()
+    _, zhi = figure.axes[0].get_zlim()
+    assert zhi == pytest.approx(min(maskedMax, vmax * 1.2), rel=1e-12)
+    assert zhi != pytest.approx(min(np.nanmax(ccd.data), vmax * 1.2), rel=1e-12)
+
+
+def test_quicklook_image_dispmap_branch_survives_a_mismatched_inter_order_mask(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """A cosmetic overlay must not abort a reduction: when the helper's
+    `interOrderMask` shape differs from the frame, a warning naming both shapes
+    is logged, the grid lines are still drawn and no pixel is masked."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    _stub_header_lookups(monkeypatch)
+    _stub_grid_lines(monkeypatch, maskShape=(5, 7))
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+
+    toolkit.quicklook_image(
+        log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits", settings={"instrument": "soxs"}
+    )
+
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "(5, 7)" in warnings[0]
+    assert "(8, 8)" in warnings[0]
+    axis = _image_axis(figures[-1])
+    assert len(axis.lines) == 2
+    array = axis.images[0].get_array()
+    assert isinstance(array, np.ma.MaskedArray)
+    assert not np.ma.getmaskarray(array).any()
+
+
+def test_apply_inter_order_mask_keeps_the_mask_the_frame_already_carries(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """A frame that is already a masked array keeps its own masked pixels, the
+    inter-order pixels are added to them, and the input frame is not mutated."""
+    captured = _stub_grid_lines(monkeypatch)
+    existingMask = np.zeros((8, 8), dtype=bool)
+    existingMask[7, 7] = True
+    frame = np.ma.masked_array(np.arange(64, dtype=float).reshape(8, 8), mask=existingMask.copy())
+
+    gridLinePixelTable, maskedFrame = toolkit._apply_inter_order_mask(
+        log=log,
+        frame=frame,
+        CCDObject=None,
+        dispMap="disp.fits",
+        dispMapImage="disp_image.fits",
+        kw=None,
+        skylinesDF=False,
+    )
+
+    assert gridLinePixelTable is captured["gridLinePixelTable"]
+    np.testing.assert_array_equal(np.ma.getmaskarray(maskedFrame), existingMask | captured["interOrderMask"])
+    np.testing.assert_array_equal(np.ma.getmaskarray(frame), existingMask)
+
+
+def test_quicklook_frame_array_returns_masked_copy_of_ccddata_when_ext_is_false() -> None:
+    """With ``ext=False`` a CCDData is returned as a masked view of its data
+    that carries a copy of its mask, not as the CCDData object itself."""
+    ccd = quicklook_ccd("SOXS")
+    ccd.mask[3, 4] = True
+
+    frame = toolkit._quicklook_frame_array(ccd, False)
+
+    assert isinstance(frame, np.ma.MaskedArray)
+    np.testing.assert_array_equal(frame.data, ccd.data)
+    np.testing.assert_array_equal(np.ma.getmaskarray(frame), ccd.mask)
+    assert np.shares_memory(frame.data, ccd.data)  # A VIEW, SO LARGE FRAMES ARE NOT COPIED FOR A PLOT
+    frame.mask[0, 0] = True
+    assert not ccd.mask[0, 0]
+
+
+def test_quicklook_frame_array_returns_masked_array_for_ccddata_without_a_mask() -> None:
+    """A CCDData with no mask gives a masked array with nothing masked."""
+    ccd = CCDData(np.ones((4, 5)), unit=u.electron)
+
+    frame = toolkit._quicklook_frame_array(ccd, False)
+
+    assert isinstance(frame, np.ma.MaskedArray)
+    assert not np.ma.getmaskarray(frame).any()
+
+
+def test_quicklook_frame_array_masks_flagged_pixels_of_a_bare_nddata() -> None:
+    """Any NDData is converted, and a non-zero flag value in its mask counts as masked."""
+    flags = np.zeros((4, 5), dtype=np.int16)
+    flags[1, 2] = 4
+
+    frame = toolkit._quicklook_frame_array(NDData(np.ones((4, 5)), mask=flags), False)
+
+    assert isinstance(frame, np.ma.MaskedArray)
+    np.testing.assert_array_equal(np.ma.getmaskarray(frame), flags != 0)
+
+
+def test_quicklook_frame_array_passes_a_masked_array_through_when_ext_is_false() -> None:
+    """A masked array is returned unchanged, keeping its own mask."""
+    array = np.ma.masked_array(np.ones((4, 5)), mask=np.eye(4, 5, dtype=bool))
+
+    frame = toolkit._quicklook_frame_array(array, False)
+
+    assert frame is array
+    np.testing.assert_array_equal(np.ma.getmaskarray(frame), np.eye(4, 5, dtype=bool))
+
+
+def test_quicklook_frame_array_passes_a_plain_array_through_when_ext_is_false() -> None:
+    """A plain ndarray is returned unchanged when ``ext`` names no extension."""
+    array = np.ones((4, 5))
+
+    assert toolkit._quicklook_frame_array(array, False) is array
+
+
+def test_quicklook_image_dispmap_branch_plots_a_ccddata_passed_with_ext_false(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """A CCDData passed with ``ext=False`` and a dispersion-map overlay plots
+    without a RecursionError. Both the frame's own mask and the inter-order
+    pixels are masked, and the caller's CCDData is not changed."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    _stub_header_lookups(monkeypatch)
+    captured = _stub_grid_lines(monkeypatch)
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd.mask[7, 7] = True
+    dataBefore = ccd.data.copy()
+    maskBefore = ccd.mask.copy()
+
+    toolkit.quicklook_image(
+        log,
+        ccd,
+        show=True,
+        ext=False,
+        dispMap="disp.fits",
+        dispMapImage="disp_image.fits",
+        settings={"instrument": "soxs"},
+    )
+
+    array = _image_axis(figures[-1]).images[0].get_array()
+    np.testing.assert_array_equal(np.ma.getmaskarray(array), maskBefore | captured["interOrderMask"])
+    np.testing.assert_array_equal(array.data, ccd.data)
+    np.testing.assert_array_equal(ccd.data, dataBefore)
+    np.testing.assert_array_equal(ccd.mask, maskBefore)
 
 
 def test_quicklook_image_skylines_true_forwards_dataframe_to_grid_lines_helper(
@@ -446,7 +650,7 @@ def test_quicklook_image_skylines_true_forwards_dataframe_to_grid_lines_helper(
         return skylinesDF
 
     monkeypatch.setattr(toolkit, "get_skylines_dataframe", _stub_skylines)
-    ccd = _ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
+    ccd = quicklook_ccd("SOXS", extraHeader={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-01"})
     settings = {"instrument": "soxs"}
 
     toolkit.quicklook_image(
@@ -463,9 +667,62 @@ def test_quicklook_image_skylines_true_forwards_dataframe_to_grid_lines_helper(
     assert captured["skylines"] is skylinesDF
 
 
-def test_quicklook_image_show_true_calls_plt_show(
+def test_quicklook_image_dispmap_without_settings_skips_the_overlay_and_warns(
     monkeypatch: pytest.MonkeyPatch, log: object
 ) -> None:
+    """Without `settings` there is no keyword lookup, so the dispersion-map
+    overlay is skipped, a warning names the missing `settings`, and the frame is
+    still drawn unmasked. It never raises."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    captured = _stub_grid_lines(monkeypatch)
+    ccd = quicklook_ccd("SOXS")
+
+    toolkit.quicklook_image(log, ccd, show=True, dispMap="disp.fits", dispMapImage="disp_image.fits")
+
+    assert "dispMapImage" not in captured
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "settings" in warnings[0]
+    axis = _image_axis(figures[-1])
+    assert len(axis.lines) == 0
+    assert not np.ma.getmaskarray(axis.images[0].get_array()).any()
+
+
+def test_quicklook_image_skylines_without_settings_skips_the_lookup_and_warns(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """Without `settings` there is no arm, so `skylines=True` skips the skyline
+    lookup, a warning names the missing `settings`, and the frame is still drawn."""
+    figures = spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+    skylineCalls: list[tuple] = []
+    monkeypatch.setattr(toolkit, "get_skylines_dataframe", lambda *args, **kwargs: skylineCalls.append(args))
+    ccd = quicklook_ccd("SOXS")
+
+    toolkit.quicklook_image(log, ccd, show=True, skylines=True)
+
+    assert skylineCalls == []
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "settings" in warnings[0]
+    assert len(_image_axis(figures[-1]).images) == 1
+
+
+def test_quicklook_image_without_settings_and_without_overlays_does_not_warn(
+    monkeypatch: pytest.MonkeyPatch, log: object
+) -> None:
+    """The warning is only for a request that needs `settings`: a plain
+    quicklook without `settings` stays silent."""
+    spy_figures(monkeypatch)
+    quiet_show(monkeypatch)
+
+    toolkit.quicklook_image(log, quicklook_ccd("SOXS"), show=True)
+
+    assert [message for level, message in log.messages if level == "warning"] == []
+
+
+def test_quicklook_image_show_true_calls_plt_show(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     spy_figures(monkeypatch)
     showCalls = quiet_show(monkeypatch)
 

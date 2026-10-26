@@ -23,12 +23,14 @@ from astropy import units as u
 from astropy.table import Table
 
 from soxspipe.recipes import soxs_offset
-from tests.factories import synthetic_ccd
+from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
+from tests.factories import response_product_fits, synthetic_ccd
 from tests.integration.test_observing_recipe_orchestration import (
     RouteCollection,
     _configure_nodding_recipe,
     _empty_products,
     _patch_nodding_collaborators,
+    _record_nodding_passes,
     _route,
     _write_prepared_frame,
 )
@@ -48,6 +50,8 @@ def _offset_header(ra: float, dec: float, mjd: float, **extra: object) -> dict[s
         "HIERARCH ESO SEQ FIXOFF RA": ra,
         "HIERARCH ESO SEQ FIXOFF DEC": dec,
         "MJD-OBS": mjd,
+        # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BE FLUX CALIBRATED (DY-1714)
+        "EXPTIME": 300.0,
         **extra,
     }
 
@@ -88,15 +92,27 @@ def _offset_recipe(
     return recipe, paths
 
 
-def _patch(recipe: soxs_offset, monkeypatch: pytest.MonkeyPatch, tmpPath: Path) -> tuple[list[str], dict[str, Any]]:
+def _patch(
+    recipe: soxs_offset,
+    monkeypatch: pytest.MonkeyPatch,
+    tmpPath: Path,
+    alignFallbackCount: int = 0,
+) -> tuple[list[str], dict[str, Any]]:
     """Stub the shared collaborators and return the call log and captured arguments."""
     calls, captured, _ = _patch_nodding_collaborators(
         recipe,
         monkeypatch=monkeypatch,
         plotPath=tmpPath / "OBJECT_VIS_MERGED_QC.pdf",
         extractionPath=tmpPath / "OBJECT_VIS_EXTRACTED.fits",
+        alignFallbackCount=alignFallbackCount,
     )
     return calls, captured
+
+
+def _extract_each_cycle(recipe: soxs_offset) -> soxs_offset:
+    """Turn `stack_before_extraction` off, so the recipe takes the per-cycle path."""
+    recipe.recipeSettings = {**recipe.recipeSettings, "stack_before_extraction": False}
+    return recipe
 
 
 # A BALANCED SINGLE-LOCATION PAIR: ONE ON FRAME AND ONE OFF FRAME.
@@ -155,13 +171,14 @@ def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
 
 
 @pytest.mark.parametrize(
-    ("headers", "useFlat", "withFlat", "expectFlat"),
+    ("headers", "useFlat", "withFlat", "expectFlat", "stackFirst"),
     [
-        (SINGLE_PAIR, True, True, True),
-        (SINGLE_PAIR, True, False, False),
-        (SINGLE_PAIR, False, True, False),
-        (TWO_LOCATIONS, True, True, True),
-        (TWO_LOCATIONS, True, False, False),
+        (SINGLE_PAIR, True, True, True, True),
+        (SINGLE_PAIR, True, False, False, True),
+        (SINGLE_PAIR, False, True, False, True),
+        (TWO_LOCATIONS, True, True, True, True),
+        (TWO_LOCATIONS, True, True, True, False),
+        (TWO_LOCATIONS, True, False, False, False),
     ],
 )
 def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
@@ -172,6 +189,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
     useFlat: bool,
     withFlat: bool,
     expectFlat: bool,
+    stackFirst: bool,
 ) -> None:
     """Each extraction receives the read master flat only when `use_flat` is set and a flat was supplied."""
     # ARRANGE
@@ -181,7 +199,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
         _write_prepared_frame(flatPath, seed=400, headerOverrides={})
         flatRoutes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(flatPath)]}
     recipe, _ = _offset_recipe(log, tmp_path, headers, extraRoutes=flatRoutes)
-    recipe.recipeSettings = {"use_flat": useFlat}
+    recipe.recipeSettings = {"use_flat": useFlat, "stack_before_extraction": stackFirst}
     _, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -189,7 +207,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
 
     # ASSERT
     flats = [entry["masterFlat"] for entry in captured["extract_cycle"]]
-    assert len(flats) == (1 if headers is SINGLE_PAIR else 2)
+    assert len(flats) == (2 if headers is TWO_LOCATIONS and not stackFirst else 1)
     for flat in flats:
         if expectFlat:
             np.testing.assert_array_equal(flat.data, synthetic_ccd(seed=400, prepared=True).data)
@@ -229,6 +247,7 @@ def test_each_cycle_records_its_raw_frame_names_in_priority_order(
     # ARRANGE
     headers = [{**header, **extraHeader(index)} for index, header in enumerate(TWO_LOCATIONS)]
     recipe, _ = _offset_recipe(log, tmp_path, headers)
+    _extract_each_cycle(recipe)
     _, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -243,27 +262,6 @@ def test_each_cycle_records_its_raw_frame_names_in_priority_order(
         expectedRawFrames[1],
     ]
     assert all(stamped[index] is stamped[index + 1] for index in (0, 2))
-
-
-def test_a_multi_location_standard_forces_failure_instead_of_building_a_response(
-    log: Any,
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A response curve is not built on the per-cycle path; the run is marked failed instead."""
-    # ARRANGE
-    recipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS)
-    recipe.generateReponseCurve = True
-    calls, captured = _patch(recipe, monkeypatch, tmp_path)
-
-    # ACT
-    productPath, _ = recipe.produce_product()
-
-    # ASSERT
-    assert productPath == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
-    assert calls.count("extract_cycle") == 2
-    assert calls.count("stack_extractions") == 1
-    assert captured["clean_up"] == [{"forceFail": True}]
 
 
 def test_a_single_location_standard_builds_a_response_from_an_unflattened_extraction(
@@ -318,9 +316,101 @@ def test_a_single_location_standard_builds_a_response_from_an_unflattened_extrac
     arguments = responseArguments[0]
     assert arguments["stdExtractionPath"] == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
     assert arguments["stdNotFlatExtractionPath"] == str(tmp_path / "OBJECT_VIS_EXTRACTED.fits")
-    assert arguments["orderJoins"] == {10: 11}
+    assert arguments["orderJoins"] == {"10-11": 11}
     assert arguments["recipeName"] == "soxs-offset"
     assert captured["clean_up"] == [{"forceFail": "synthetic response failure"}]
+
+
+def test_the_response_of_a_standard_uses_the_mean_airmass_of_the_on_frames_only(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The OFF frames are sky only, so their airmass does not enter the response curve (DY-1713)."""
+    # ARRANGE
+    headers = [
+        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 1.7, "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},
+    ]
+    recipe, _ = _offset_recipe(log, tmp_path, headers)
+    recipe.generateReponseCurve = True
+    _patch(recipe, monkeypatch, tmp_path)
+    responseArguments: list[dict[str, object]] = []
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            responseArguments.append(kwargs)
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+            return recipe.qc, recipe.products, False
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", FakeResponse)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: THE ON FRAME'S START AND END MIDPOINT; WITH THE OFF FRAME IT WOULD BE (300 x 1.2 + 60 x 1.8) / 360
+    assert responseArguments[0]["airmass"] == pytest.approx(1.2)
+
+
+# TWO ON FRAMES OF 300 S AND 60 S, THEN TWO OFF FRAMES: THE ON FRAMES ARE THE ONES THE COUNTS ARE DIVIDED BY.
+UNEQUAL_ON_EXPOSURES = [
+    {**TWO_LOCATIONS[0], "ARCFILE": "SOXS.ON1.fits", "EXPTIME": 300.0},
+    {**TWO_LOCATIONS[1], "ARCFILE": "SOXS.ON2.fits", "EXPTIME": 60.0},
+    {**TWO_LOCATIONS[2], "EXPTIME": 300.0},
+    {**TWO_LOCATIONS[3], "EXPTIME": 300.0},
+]
+
+
+def test_a_standard_with_unequal_on_exposure_times_cannot_make_a_response(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response divides by one exposure time, so ON frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    recipe, _ = _offset_recipe(log, tmp_path, UNEQUAL_ON_EXPOSURES)
+    recipe.generateReponseCurve = True
+    _patch(recipe, monkeypatch, tmp_path)
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            pytest.fail("a response was built from frames of unequal exposure time")
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", FakeResponse)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.ON2\.fits \(60"):
+        recipe.produce_product()
+
+
+def test_an_offset_stack_with_unequal_on_exposure_times_cannot_be_flux_calibrated(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Flux calibration divides by one exposure time, so ON frames of different length are refused (DY-1714)."""
+    # ARRANGE
+    responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
+    recipe, _ = _offset_recipe(
+        log,
+        tmp_path,
+        UNEQUAL_ON_EXPOSURES,
+        extraRoutes={_route(PRO_CATG="RESP_TAB_VIS"): [str(responsePath)]},
+    )
+    recipe.detectorParams = {"extinction": "extinction.dat"}
+    _patch(recipe, monkeypatch, tmp_path)
+
+    class FakeFluxCalibrator:
+        def __init__(self, **kwargs: object) -> None:
+            pytest.fail("a spectrum was flux calibrated from frames of unequal exposure time")
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils.flux_calibration"), "flux_calibration", FakeFluxCalibrator)
+    monkeypatch.setattr(import_module("soxspipe.recipes.soxs_offset"), "get_calibrations_path", lambda **_: "/cal")
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"SOXS\.ON2\.fits \(60"):
+        recipe.produce_product()
 
 
 def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_path(
@@ -328,12 +418,12 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Flux calibration reads the first ON frame's header, adds its products, and draws a second QC plot."""
+    """Flux calibration uses the mean airmass of the ON frames only, adds its products, and draws a second plot."""
     # ARRANGE
-    responsePath = tmp_path / "RESP_TAB_VIS.fits"
+    responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
     headers = [
-        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
-        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},
+        {**SINGLE_PAIR[0], "HIERARCH ESO TEL AIRM START": 1.1, "HIERARCH ESO TEL AIRM END": 1.3, "EXPTIME": 300.0},
+        {**SINGLE_PAIR[1], "HIERARCH ESO TEL AIRM START": 1.7, "HIERARCH ESO TEL AIRM END": 1.9, "EXPTIME": 60.0},
     ]
     recipe, _ = _offset_recipe(
         log,
@@ -369,7 +459,8 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     assert calls[-7:] == ["stack_extractions", "flux_calibrator", "calibrate", "plot", "plot", "report", "clean_up"]
     arguments = calibratorArguments[0]
     assert arguments["responseFunction"] == str(responsePath)
-    assert arguments["airmass"] == 1.3
+    # THE OFF FRAME IS SKY ONLY, SO ONLY THE ON FRAME'S START AND END MIDPOINT COUNTS (DY-1695)
+    assert arguments["airmass"] == pytest.approx(1.2)
     assert arguments["exptime"] == 300.0
     assert arguments["extinctionPath"] == "/cal/extinction.dat"
     assert arguments["header"]["HIERARCH ESO SEQ FIXOFF RA"] == -2.0
@@ -399,3 +490,484 @@ def test_an_empty_inventory_fails_at_the_first_quicklook(
         recipe.produce_product()
 
     assert calls == []
+
+
+def test_each_cycle_and_the_stacked_pair_extract_under_their_own_location_set(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cycles are numbered from one, and the stacked pair takes the stack's own index so its products never collide."""
+    # ARRANGE
+    cyclesRecipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS, stem="cycles")
+    _extract_each_cycle(cyclesRecipe)
+    _, cyclesCaptured = _patch(cyclesRecipe, monkeypatch, tmp_path)
+    stackRecipe, _ = _offset_recipe(log, tmp_path, SINGLE_PAIR, stem="stack")
+    stackRecipe.generateReponseCurve = False
+    _, stackCaptured = _patch(stackRecipe, monkeypatch, tmp_path)
+
+    # ACT
+    cyclesRecipe.produce_product()
+    stackRecipe.produce_product()
+
+    # ASSERT
+    assert [call["locationSetIndex"] for call in cyclesCaptured["extract_cycle"]] == [1, 2]
+    assert [call["locationSetIndex"] for call in stackCaptured["extract_cycle"]] == [STACKED_LOCATION_SET]
+
+
+@pytest.mark.parametrize("withBias", [True, False], ids=["sof-names-a-bias", "sof-names-no-bias"])
+def test_the_master_bias_the_sof_names_is_held_for_the_difference_frames(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    withBias: bool,
+) -> None:
+    """A VIS offset reduction reads the SOF's master bias for the A-B errors, and warns when there is none (DY-1390)."""
+    # ARRANGE
+    biasRoutes = {}
+    biasPath = tmp_path / "MASTER_BIAS_VIS.fits"
+    if withBias:
+        _write_prepared_frame(biasPath, seed=500, headerOverrides={})
+        biasRoutes = {_route(PRO_CATG="MASTER_BIAS_VIS"): [str(biasPath)]}
+    recipe, _ = _offset_recipe(log, tmp_path, SINGLE_PAIR, extraRoutes=biasRoutes)
+    _patch(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    warnings = [message for level, message in log.messages if "MASTER_BIAS_VIS" in message and level == "warning"]
+    if withBias:
+        np.testing.assert_array_equal(recipe.masterBias.data, synthetic_ccd(seed=500, prepared=True).data)
+        assert warnings == []
+    else:
+        assert recipe.masterBias is False
+        assert len(warnings) == 1
+
+
+def test_a_jittered_set_aligns_the_on_frames_and_stacks_the_off_frames_unaligned(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With `stack_before_extraction` on, only the ON frames are aligned, with the OFF frames as their partners."""
+    # ARRANGE
+    recipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS)
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert len(captured["align"]) == 1
+    alignment = captured["align"][0]
+    assert [frame.header["MJD-OBS"] for frame in alignment["frames"]] == [60000.0, 60000.1]
+    assert [frame.header["MJD-OBS"] for frame in alignment["partnerFrames"]] == [60000.2, 60000.3]
+    assert alignment["frameNames"] == ["offset-0.fits", "offset-1.fits"]
+    assert alignment["recipeName"] == "soxs-offset"
+    assert alignment["perOrder"] is True
+    assert calls == [
+        "stack",
+        "stack",
+        "keywords",
+        "keywords",
+        "extract_cycle",
+        "stack_extractions",
+        "plot",
+        "report",
+        "clean_up",
+    ]
+    onStack, offStack = captured["stack"]
+    assert all(frame.header["ALIGNED"] for frame in onStack["frames"])
+    assert [len(onStack["frames"]), len(offStack["frames"])] == [2, 2]
+    assert not any("ALIGNED" in frame.header for frame in offStack["frames"])
+    assert [entry["locationSetIndex"] for entry in captured["extract_cycle"]] == [STACKED_LOCATION_SET]
+
+
+def test_turning_stack_before_extraction_off_extracts_each_offset_cycle_even_without_jitter(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The setting alone chooses the path: two ON/OFF pairs at one offset are extracted cycle by cycle."""
+    # ARRANGE
+    headers = [
+        _offset_header(-3.0, 1.0, 60000.0),
+        _offset_header(-3.0, 1.0, 60000.1),
+        _offset_header(0.0, 1.0, 60000.2),
+        _offset_header(0.0, 1.0, 60000.3),
+    ]
+    recipe, _ = _offset_recipe(log, tmp_path, headers)
+    _extract_each_cycle(recipe)
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["align"] == []
+    assert calls.count("stack") == 0
+    assert [entry["locationSetIndex"] for entry in captured["extract_cycle"]] == [1, 2]
+
+
+def test_a_multi_location_standard_is_aligned_stacked_and_builds_a_response_even_with_the_setting_off(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A standard always stacks, so the per-cycle path's forced failure no longer ends a jittered standard."""
+    # ARRANGE
+    recipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS)
+    _extract_each_cycle(recipe)
+    recipe.generateReponseCurve = True
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+
+    class FakeResponse:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append("response")
+
+        def get(self) -> tuple[pd.DataFrame, pd.DataFrame, bool]:
+            return recipe.qc, recipe.products, False
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", FakeResponse)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert len(captured["align"]) == 1
+    assert calls.count("extract_cycle") == 2
+    assert "response" in calls
+    assert captured["clean_up"] == [{"forceFail": False}]
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("stack_before_extraction" in message and "response" in message for message in warnings)
+
+
+def test_the_offset_fallback_count_is_a_header_qc_and_the_on_shifts_get_one_pdf_product(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ON group's fallbacks become `SLIT ALIGN FALLBACK NUM`, and its shifts one QC plot product."""
+    # ARRANGE
+    recipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS)
+    recipe.dateObs = False
+    _, captured = _patch(recipe, monkeypatch, tmp_path, alignFallbackCount=3)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    qcRow = recipe.qc.loc[recipe.qc["qc_name"] == "SLIT ALIGN FALLBACK NUM"].iloc[0]
+    assert qcRow["qc_value"] == 3
+    assert qcRow["to_header"]
+    assert qcRow["soxspipe_recipe"] == "soxs-offset"
+    assert qcRow["obs_date_utc"] == "2024-01-02T03:04:05.678"
+    assert captured["align_plot"][0]["shifts"]["frame"].tolist() == ["offset-0.fits", "offset-1.fits"]
+    plotRow = recipe.products.loc[recipe.products["product_label"] == "SLIT_ALIGNMENT_QC_PLOT"].iloc[0]
+    assert plotRow["file_path"] == str(tmp_path / "qc" / "OBJECT_VIS_SLIT_ALIGN_QC_PLOT.pdf")
+
+
+class _RecordingResponse:
+    """A response-curve builder that records its arguments and reports a chosen failure."""
+
+    calls: list[dict[str, Any]] = []
+    failure: Any = False
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.calls.append(kwargs)
+        self.qcTable = kwargs["qcTable"]
+        self.productsTable = kwargs["productsTable"]
+
+    def get(self) -> tuple[Any, Any, Any]:
+        return self.qcTable, self.productsTable, self.failure
+
+
+def _no_stack_standard(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    headers: list[dict[str, object]] = TWO_LOCATIONS,
+    failure: Any = False,
+    noStack: bool = True,
+    stackSetting: bool = False,
+) -> tuple[soxs_offset, dict[str, list[Any]], dict[str, Any]]:
+    """Return an offset standard with `--no-stack` set or not, and recorders for the passes it runs."""
+    recipe, _ = _offset_recipe(log, tmp_path, headers)
+    recipe.recipeSettings = {"use_flat": False, "stack_before_extraction": stackSetting}
+    recipe.settings = {**recipe.settings, "no-stack": noStack}
+    recipe.generateReponseCurve = True
+    _, captured = _patch(recipe, monkeypatch, tmp_path)
+    seen = _record_nodding_passes(recipe, monkeypatch, tmp_path)
+    _RecordingResponse.calls = []
+    _RecordingResponse.failure = failure
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "response_function", _RecordingResponse)
+    return recipe, seen, captured
+
+
+def test_with_no_stack_an_offset_standard_is_stacked_first_and_then_extracted_cycle_by_cycle(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stacked pass keeps the SOF-level products; the per-cycle pass follows for inspection."""
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["extract"] == [
+        ("OBJECT_VIS", STACKED_LOCATION_SET, False),
+        ("OBJECT_VIS", STACKED_LOCATION_SET, True),
+        ("OBJECT_VIS_CYCLES", 1, False),
+        ("OBJECT_VIS_CYCLES", 2, False),
+    ]
+    assert len(captured["align"]) == 1
+    # THE ALIGNMENT REPLACES THE ORIGINAL FRAMES, SO THE PER-CYCLE PASS MUST HAVE BEEN GIVEN THE LISTS KEPT BEFORE IT
+    assert not any("ALIGNED" in entry["aFrame"].header for entry in captured["extract_cycle"][-2:])
+
+
+def test_with_no_stack_the_response_comes_from_the_stacked_pass_only(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert [call["sofName"] for call in _RecordingResponse.calls] == ["OBJECT_VIS"]
+
+
+def test_with_no_stack_the_per_cycle_products_are_named_apart_from_the_stacked_ones(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every product name starts with the SOF name, so the two passes must not share one."""
+    # ARRANGE
+    recipe, seen, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["stack"] == ["OBJECT_VIS", "OBJECT_VIS", "OBJECT_VIS_CYCLES"]
+    assert recipe.sofName == "OBJECT_VIS"
+    assert recipe.filenameTemplate == "OBJECT_VIS.fits"
+
+
+def test_with_no_stack_the_qcs_of_both_passes_are_kept_and_the_recipe_cleans_up_once(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    _, qcTable = recipe.produce_product()
+
+    # ASSERT
+    assert seen["report"] == ["OBJECT_VIS", "OBJECT_VIS_CYCLES"]
+    assert sorted(qcTable["sof_name"]) == ["OBJECT_VIS.sof", "OBJECT_VIS_CYCLES.sof"]
+    assert seen["cleanUpSofs"] == [["OBJECT_VIS.sof", "OBJECT_VIS_CYCLES.sof"]]
+    assert seen["cleanUpTemplates"] == ["OBJECT_VIS"]
+    assert captured["clean_up"] == [{"forceFail": False}]
+
+
+def test_with_no_stack_a_failed_response_fails_the_recipe(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, captured = _no_stack_standard(log, tmp_path, monkeypatch, failure="response failed")
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["clean_up"] == [{"forceFail": "response failed"}]
+
+
+def test_with_no_stack_the_per_cycle_plot_does_not_repeat_the_notes_of_the_stacked_pass(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seen, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["notesAtPlot"] == [["note from the stacked pass"], []]
+
+
+def test_with_no_stack_a_failing_per_cycle_pass_leaves_the_names_and_the_stacked_tables_restored(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+    extract = recipe.process_single_ab_nodding_cycle
+    stackedTables: dict[str, Any] = {}
+    emptyTables = recipe._empty_qc_and_product_tables
+
+    def remembering_empty_tables(pd: Any) -> Any:
+        stackedTables.update(qc=recipe.qc, products=recipe.products)
+        return emptyTables(pd)
+
+    monkeypatch.setattr(recipe, "_empty_qc_and_product_tables", remembering_empty_tables)
+
+    def failing_cycle(**kwargs: object) -> Any:
+        if recipe.sofName.endswith("_CYCLES"):
+            raise RuntimeError("cycle failed")
+        return extract(**kwargs)
+
+    monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", failing_cycle)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="cycle failed"):
+        recipe.produce_product()
+
+    # ASSERT
+    assert recipe.sofName == "OBJECT_VIS"
+    assert recipe.filenameTemplate == "OBJECT_VIS.fits"
+    # THE QCS AND PRODUCTS OF THE STACKED PASS ARE NOT LOST TO THE PASS THAT FAILED
+    assert recipe.qc is stackedTables["qc"]
+    assert recipe.products is stackedTables["products"]
+
+
+def test_with_no_stack_a_single_cycle_standard_is_stacked_only(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One cycle gives the same extraction either way, so a second pass would only repeat the first."""
+    # ARRANGE
+    recipe, seen, _ = _no_stack_standard(log, tmp_path, monkeypatch, headers=SINGLE_PAIR)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert {sofName for sofName, _, _ in seen["extract"]} == {"OBJECT_VIS"}
+    assert seen["report"] == ["OBJECT_VIS"]
+
+
+def test_with_no_stack_an_offset_standard_is_not_warned_about(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert not any("stack_before_extraction" in message for message in warnings)
+
+
+def test_without_no_stack_an_offset_standard_is_stacked_only_with_a_warning(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A settings-file `False` alone keeps the guard: the standard stacks once and the log says why."""
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch, noStack=False)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert {sofName for sofName, _, _ in seen["extract"]} == {"OBJECT_VIS"}
+    assert len(captured["align"]) == 1
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("stack_before_extraction" in message and "response" in message for message in warnings)
+
+
+def test_with_no_stack_a_science_sof_is_extracted_cycle_by_cycle_only(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seen, captured = _no_stack_standard(log, tmp_path, monkeypatch, stackSetting=True)
+    recipe.generateReponseCurve = False
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert seen["extract"] == [("OBJECT_VIS", 1, False), ("OBJECT_VIS", 2, False)]
+    assert captured["align"] == []
+    assert _RecordingResponse.calls == []
+    assert seen["report"] == ["OBJECT_VIS"]
+
+
+def test_with_no_stack_an_offset_standard_returns_the_stacked_product_path(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reducer predicts the SOF-level product, so that is the path it gets back."""
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    productPath, _ = recipe.produce_product()
+
+    # ASSERT
+    assert productPath == str(tmp_path / "OBJECT_VIS_EXTRACTED_MERGED.fits")
+
+
+def _qc_database(sofNames: list[str]) -> Any:
+    import sqlite3
+
+    # THE PRODUCTION CONNECTION IS AUTOCOMMIT
+    connection = sqlite3.connect(":memory:", autocommit=True)
+    connection.execute("create table quality_control (qc_name text, sof_name text)")
+    connection.executemany("insert into quality_control values ('SNR MEDIAN', ?)", [(name,) for name in sofNames])
+    return connection
+
+
+STALE_QC_SOFS = ["OBJECT_VIS.sof", "OBJECT_VIS_CYCLES.sof", "OBJECT_VIS_CYCLESX.sof", "OTHER_CYCLES.sof"]
+KEPT_QC_SOFS = ["OBJECT_VIS.sof", "OBJECT_VIS_CYCLESX.sof", "OTHER_CYCLES.sof"]
+
+
+@pytest.mark.parametrize(
+    ("noStack", "isStandard"),
+    [(True, True), (False, True), (True, False)],
+    ids=["inspection-pass-runs", "run-without-the-flag", "science-with-the-flag"],
+)
+def test_the_cycles_qc_row_of_an_earlier_no_stack_run_is_removed_whatever_this_run_does(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, noStack: bool, isStandard: bool
+) -> None:
+    """A `<sof>_CYCLES.sof` row fails its SOF, so a stale one must not outlive any later run."""
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch, noStack=noStack, stackSetting=not noStack)
+    recipe.generateReponseCurve = isStandard
+    recipe.conn = _qc_database(STALE_QC_SOFS)
+    connection = recipe.conn
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    remaining = sorted(row[0] for row in connection.execute("select sof_name from quality_control"))
+    assert remaining == sorted(KEPT_QC_SOFS)
+
+
+def test_the_cycles_qc_row_of_an_earlier_run_is_removed_even_when_the_cycle_pass_fails(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, _ = _no_stack_standard(log, tmp_path, monkeypatch)
+    recipe.conn = _qc_database(STALE_QC_SOFS)
+    connection = recipe.conn
+    extract = recipe.process_single_ab_nodding_cycle
+
+    def failing_cycle(**kwargs: object) -> Any:
+        if recipe.sofName.endswith("_CYCLES"):
+            raise RuntimeError("cycle failed")
+        return extract(**kwargs)
+
+    monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", failing_cycle)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="cycle failed"):
+        recipe.produce_product()
+
+    # ASSERT
+    remaining = sorted(row[0] for row in connection.execute("select sof_name from quality_control"))
+    assert remaining == sorted(KEPT_QC_SOFS)

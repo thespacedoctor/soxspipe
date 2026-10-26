@@ -143,9 +143,7 @@ if False:
 
     @dataclasses.dataclass
     class MyReferenceStyle(AuthorYearReferenceStyle):
-        bracket_parenthetical: BracketStyle = dataclasses.field(
-            default_factory=bracket_style
-        )
+        bracket_parenthetical: BracketStyle = dataclasses.field(default_factory=bracket_style)
         bracket_textual: BracketStyle = dataclasses.field(default_factory=bracket_style)
         bracket_author: BracketStyle = dataclasses.field(default_factory=bracket_style)
         bracket_label: BracketStyle = dataclasses.field(default_factory=bracket_style)
@@ -377,12 +375,7 @@ def linkcode_resolve(domain, info):
             filename = ("/").join(filename.split("/")[0:-1]) + "/"
         else:
             filename = ""
-        filename += (
-            ("/").join(info["fullname"].split(".")[0:-1])
-            + ".py"
-            + "#"
-            + info["fullname"].split(".")[-1]
-        )
+        filename += ("/").join(info["fullname"].split(".")[0:-1]) + ".py" + "#" + info["fullname"].split(".")[-1]
     return link_resolver_url + "/" + filename
 
 

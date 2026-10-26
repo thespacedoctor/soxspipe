@@ -34,22 +34,37 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     # TYPING-ONLY IMPORT. NUMPY IS IMPORTED INSIDE THE FUNCTIONS THAT USE IT AT
     # RUNTIME, SO THIS BLOCK COSTS NOTHING AT IMPORT TIME
     import numpy as np
     import numpy.typing as npt
+    import pandas as pd
+    from matplotlib.axes import Axes
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
+from soxspipe.commonutils.pinhole_set_offsets import (
+    OFFSET_SET_CLIP_SIGMA,
+    SET_OFFSET_COLUMN,
+    flag_offset_pinhole_sets,
+)
 from soxspipe.commonutils.polynomials import chebyshev_order_wavelength_polynomials
 from soxspipe.commonutils.toolkit import (
+    QC_PLOT_DECORATION_HEIGHT_INCHES,
+    QC_RESIDUAL_ROW_HEIGHT_INCHES,
+    QC_STRIP_ROW_HEIGHT_INCHES,
     get_calibrations_path,
+    legend_below_axis,
+    order_label,
+    qc_image_panel_height,
+    qc_table_heights,
     read_spectral_format,
     twoD_disp_map_image_to_dataframe,
     unpack_order_table,
@@ -65,6 +80,166 @@ os.environ["TERM"] = "vt100"
 # PIXEL CENTROIDING PRECISION, SO NO REAL MEASUREMENT IS AFFECTED, AND FAR COARSER
 # THAN THE ~1e-16 NOISE A LEAST-SQUARES SOLVE VARIES BY BETWEEN MACHINES
 RESIDUAL_QUANTISATION_DECIMALS = 9
+
+# NUMBER OF PINHOLES IN THE MULTI-PINHOLE MASK
+FULL_PINHOLE_COUNT = 9
+
+# THE OPPOSITE-END SEARCH FOR A WHOLE-SPACING SHIFT (DY-1735).
+# FEWEST ARC-LINE SETS THAT MUST HAVE A POSITION TO LOOK AT. THE 9 REAL ARCS WITH AN END JUMP HAVE 30 TO 34 SETS PER
+# ORDER, SO 10 KEEPS A THREEFOLD MARGIN. NO CHANCE HIT WAS SEEN IN THE 66 SETS WHERE NO PINHOLE IS THERE. AT AN ASSUMED
+# CHANCE RATE OF 3% PER SET, 5 OR MORE HITS IN 10 SETS HAS A PROBABILITY OF ABOUT 5E-6, WHILE 1 HIT IN 2 SETS IS NOT
+# EVIDENCE AT ALL
+PINHOLE_BEYOND_END_MIN_SETS = 10
+
+# A PINHOLE MUST SHOW IN AT LEAST THIS FRACTION OF THE SETS, ONE SPACING BEYOND THE END OF THE PREDICTED PATTERN, FOR
+# THE PATTERN TO COUNT AS ONE WHOLE SPACING OFF THE REAL ONE. MEASURED ON 9 REAL VIS ARCS: 77 TO 100% OF THE SETS ON
+# ALL 20 END GROUPS WHERE A PINHOLE IS REALLY THERE, 0% (0 OF 34) ON THE DY-1618 U ORDER WHERE THE TOP PINHOLE IS
+# ABSENT, AND 0% (0 OF 32) AT THE ONE OTHER END WITH A JUMP (20250910T044053 ORDER 3). NOTHING WAS SEEN BETWEEN 0 AND
+# 77%, SO ANY THRESHOLD IN THAT GAP SEPARATES THEM. 50% IS ITS MIDDLE
+PINHOLE_BEYOND_END_MIN_FRACTION = 0.5
+
+# DETECTION THRESHOLD OF THAT SEARCH (THE FIRST-ITERATION DETECTION SIGMA) AND ITS TOLERANCES AS FRACTIONS OF THE
+# PINHOLE SPACING, ALONG THE SLIT AND ACROSS IT. THE MEASURED HITS LIE WITHIN 0.9 PX ALONG AND 2.3 PX ACROSS
+PINHOLE_PROBE_SIGMA = 5
+PINHOLE_PROBE_TOLERANCE_A = 0.3
+PINHOLE_PROBE_TOLERANCE_B = 0.5
+
+# HOW FAR OUTSIDE THE ORDER'S SLIT EDGES, IN PINHOLE SPACINGS, A PROBE POSITION MAY LIE. A PATTERN ONE SPACING OFF PUTS
+# ITS REAL END PINHOLE 0.6 TO 1.4 SPACINGS OUTSIDE THE EDGES OF THE FLAT (MEASURED), SO THE EDGES THEMSELVES ARE TOO
+# TIGHT. THE NEIGHBOURING ORDER IS ABOUT 30 SPACINGS AWAY
+PINHOLE_PROBE_EDGE_MARGIN = 2.0
+
+# AN END PINHOLE NEEDS TWO INTERIOR PINHOLES AND TWO ENDS TO BE COMPARED WITH THEM
+MIN_SLIT_INDEXES_FOR_END_TEST = 4
+
+# AN END DETECTION THIS FAR FROM THE INTERIOR PINHOLES, IN SPACINGS, IS OFF THE PATTERN. A LOST OR LATCHED END IS ONE
+# SPACING OUT (0.85 TO 1.04 ON THE 9 REAL ARCS), SO HALF A SPACING SEPARATES IT FROM NOISE
+END_OFFSET_TOLERANCE_SPACINGS = 0.5
+
+# AN END DETECTION THIS FAR OUT, MIDWAY BETWEEN ONE SPACING AND TWO, MEANS AN OFFSET OF TWO OR MORE SPACINGS
+TWO_SPACING_JUMP = 1.5
+
+
+class WholeSpacingShift(NamedTuple):
+    """*the whole-pinhole-spacing part of a first-iteration multi-pinhole shift*
+
+    - ``shift`` -- the value to subtract from the predicted positions
+    - ``spacing`` -- the signed pinhole spacing it is a multiple of (0.0 when undecided)
+    - ``fraction`` -- the fraction of sets with a pinhole beyond the opposite end, or ``None`` when the slit edges
+      decided
+    """
+
+    shift: float
+    spacing: float
+    fraction: float | None = None
+
+
+class OppositeEndSearch(NamedTuple):
+    """*the result of the opposite-end search for a whole-spacing shift*
+
+    - ``whole`` -- the whole-spacing shift the image shows, or ``None`` when it shows none
+    - ``farEnds`` -- an ``(endIndex, jump)`` pair for each end detection 1.5 or more spacings from the interior
+      pinholes, ``jump`` in spacings
+    """
+
+    whole: WholeSpacingShift | None
+    farEnds: tuple[tuple[int, float], ...] = ()
+
+
+class PinholePattern(NamedTuple):
+    """*the predicted pinhole pattern of one shift group, as the opposite-end search needs it*
+
+    - ``predictedA`` and ``predictedB`` -- predicted positions along and across the slit, one row per set and one column
+      per slit index
+    - ``interiorOffsetA`` and ``interiorOffsetB`` -- the median predicted-minus-measured offsets of the pinholes
+      between the ends
+    - ``spacing`` -- the signed pinhole spacing
+    """
+
+    predictedA: "pd.DataFrame"
+    predictedB: "pd.DataFrame"
+    interiorOffsetA: float
+    interiorOffsetB: float
+    spacing: float
+
+
+FIT_NOT_CONVERGED_MESSAGE = (
+    "Could not converge on a good fit to the dispersion solution. "
+    "Please check the quality of your data or adjust your fitting parameters."
+)
+
+NO_LINES_SURVIVED_MESSAGE = (
+    "No usable arc lines or multi-pinhole sets survived pre-fit clipping "
+    "({detected} detected, {clipped} clipped). Please check the quality of your data or the line detection settings."
+)
+
+
+# THE COLUMNS OF THE FITTED-LINES TABLE, IN OUTPUT ORDER
+FITTED_LINE_COLUMNS = (
+    "wavelength",
+    "order",
+    "slit_index",
+    "slit_position",
+    "detector_x",
+    "detector_y",
+    "observed_x",
+    "observed_y",
+    "x_diff",
+    "y_diff",
+    "fit_x",
+    "fit_y",
+    "residuals_x",
+    "residuals_y",
+    "residuals_xy",
+    "sigma_clipped",
+    SET_OFFSET_COLUMN,
+    "sharpness",
+    "roundness1",
+    "roundness2",
+    "npix",
+    "sky",
+    "peak",
+    "flux",
+    "fwhm_pin_px",
+    "R_pin",
+    "pixelScaleNm",
+    "detector_x_shifted",
+    "detector_y_shifted",
+    "R_slit",
+    "fwhm_slit_px",
+)
+
+
+def _set_offset_flag(lines: "pd.DataFrame") -> "pd.Series":
+    """*return the set-offset flag column as booleans, all False where it is missing or unset*"""
+    import pandas as pd
+
+    if SET_OFFSET_COLUMN not in lines.columns:
+        return pd.Series(False, index=lines.index)
+    return lines[SET_OFFSET_COLUMN].eq(True)
+
+
+def plot_xy_residual_histogram(ax: "Axes", values: "npt.ArrayLike") -> None:
+    """*draw a histogram of xy residuals, or a short note when there is nothing to draw*
+
+    Non-finite residuals are left out on purpose, so they cannot distort the Scott bin widths.
+
+    **Key Arguments:**
+
+    - ``ax`` -- the matplotlib axes to draw on
+    - ``values`` -- the xy residuals, in pixels; may be empty
+    """
+    import numpy as np
+    from astropy.visualization import hist
+
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if len(values) == 0:
+        ax.text(0.5, 0.5, "no lines", ha="center", va="center", transform=ax.transAxes)
+    else:
+        hist(values, bins="scott", ax=ax, histtype="stepfilled", alpha=0.7, density=True)
+    ax.set_xlabel("xy residual")
+    ax.tick_params(axis="both", which="major", labelsize=9)
 
 
 def quantise_residuals(residuals: "npt.ArrayLike") -> "np.ndarray":
@@ -284,6 +459,15 @@ class create_dispersion_map:
         self.arcFrame = arcFrame
         self.debug = debug
         self.turnOffMP = turnOffMP
+        # SET WHEN THE PINHOLE FRAME IS PREPARED FOR LINE DETECTION
+        self.pinholeFrameMasked = None
+        # THE ORDER TABLE'S EDGE GEOMETRY, READ ON FIRST USE
+        self.orderGeometryCache = None
+
+    @property
+    def runSerially(self) -> bool:  # noqa: N802
+        """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
+        return bool(self.turnOffMP or self.debug)
 
     def _setup_keywords_and_metadata(self):
         """*Initialize keyword lookup and extract frame header metadata*"""
@@ -670,9 +854,11 @@ class create_dispersion_map:
 
         # CHECK IF SHIFT IS SIGNIFICANT (> 0.4 PIXELS)
         if abs(centreATop - centreABottom) > 0.4:
-            # USE LARGER SHIFT
-            shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
-            # print(f"{order_num} APPLYING BIG SHIFT {shift}")
+            if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
+                shift = self._vis_pinhole_shift(orderPixelTable, mask, order_num, centreABottom, centreATop)
+            else:
+                # USE LARGER SHIFT
+                shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
 
             # APPLY CORRECTION
             orderPixelTable.loc[mask, f"detector_{self.axisA}_shifted"] = (
@@ -688,24 +874,421 @@ class create_dispersion_map:
 
         return orderPixelTable
 
+    def _vis_pinhole_shift(self, orderPixelTable, mask, order_num, centreABottom, centreATop):
+        """*return the first-iteration multi-pinhole shift for SOXS VIS: whole pinhole spacings plus a remainder*
+
+        A jump at one slit end is a real offset of one pinhole spacing or a missing end pinhole. The image decides the
+        whole-spacing part when it can: a real pinhole beyond the opposite end of the predicted pattern means the
+        pattern is one spacing off. Otherwise the slit edges decide (DY-1618). The remainder, the median over all
+        pinholes, measures the sub-spacing part, because a lost end pinhole is a minority (DY-1735).
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, with predicted and measured positions
+        - ``mask`` -- the rows of the shift group with a detection
+        - ``order_num`` -- the shift group, for the log line
+        - ``centreABottom`` -- the shift measured at the bottom end of the slit, for the log line
+        - ``centreATop`` -- the shift measured at the top end of the slit, for the log line
+
+        **Return:**
+
+        - ``shift`` -- the value to subtract from the predicted cross-dispersion positions
+        """
+        search = self._pinhole_beyond_end_shift(orderPixelTable, mask, order_num)
+        whole = search.whole
+        if whole is None:
+            whole = self._slit_centred_pinhole_shift(orderPixelTable, mask)
+            basis = "from the slit-centred pinhole identification"
+        else:
+            basis = f"from a pinhole visible one spacing beyond the opposite end in {whole.fraction:0.0%} of the sets"
+        wholeSpacings = round(whole.shift / whole.spacing) if whole.spacing else 0
+        for endIndex, jump in search.farEnds:
+            self.log.warning(
+                f"multi-pinhole shift group {order_num}: the end pinhole at slit index {endIndex} is {jump:0.1f} "
+                "spacings from the interior pinholes; the order may be off by two or more spacings, which the "
+                f"whole-spacing step cannot fully correct; the whole-spacing part applied is {wholeSpacings:+d} x "
+                f"{whole.spacing:0.2f} = {whole.shift:0.2f} px {basis}"
+            )
+        remainder = float(orderPixelTable.loc[mask][f"{self.axisA}_diff"].median())
+        shift = whole.shift + remainder
+        self.log.info(
+            f"multi-pinhole shift group {order_num}: end shifts {centreABottom:0.2f} (bottom) and "
+            f"{centreATop:0.2f} (top) px; whole-spacing part {wholeSpacings:+d} x {whole.spacing:0.2f} = "
+            f"{whole.shift:0.2f} px {basis}, remainder {remainder:0.2f} px, shift {shift:0.2f} px"
+        )
+        return shift
+
+    def _pinhole_beyond_end_shift(self, orderPixelTable, mask, order_num):
+        """*return the whole-spacing shift the image shows when a pinhole lies beyond the end of the predicted pattern*
+
+        When an end detection sits one spacing from the interior pinholes, either that end pinhole is absent or the
+        whole predicted pattern is one spacing off, so the real pattern has a pinhole beyond the opposite end. This
+        looks for that pinhole one spacing past the opposite end in the image. An end two or more spacings out is
+        returned for the caller to report, together with the shift that is then applied. After a shift, the end that
+        had latched is checked for a pinhole at its new position.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, with predicted and measured positions
+        - ``mask`` -- the rows of the shift group with a detection
+        - ``order_num`` -- the shift group, for the log lines
+
+        **Return:**
+
+        - ``search`` -- an ``OppositeEndSearch``: its ``whole`` is ``None`` when there is no image, no end detection is
+          one spacing off, or the pinhole is not there
+        """
+        lines = orderPixelTable.loc[mask]
+        slitIndexes = sorted(lines["slit_index"].unique())
+        if self.pinholeFrameMasked is None or len(slitIndexes) < MIN_SLIT_INDEXES_FOR_END_TEST:
+            return OppositeEndSearch(None)
+        spacing = self._median_pinhole_spacing(lines)
+        if not spacing:
+            return OppositeEndSearch(None)
+
+        axisA, axisB = self.axisA, self.axisB
+        firstIndex, lastIndex = slitIndexes[0], slitIndexes[-1]
+        # PLAIN MEDIANS: A LATCHED END IS THE WHOLE END OF EVERY SET, NOT AN OUTLIER SET. A 3-SIGMA CLIPPED MEDIAN MOVED
+        # THE END JUMPS BY AT MOST 0.08 SPACINGS AND THE INTERIOR OFFSET BY AT MOST 0.13 PX ON 9 REAL ARCS
+        isInterior = lines["slit_index"].between(firstIndex + 1, lastIndex - 1)
+        predictedA, predictedB = self._predicted_pinhole_positions(lines)
+        pattern = PinholePattern(
+            predictedA,
+            predictedB,
+            float(lines.loc[isInterior][f"{axisA}_diff"].median()),
+            float(lines.loc[isInterior][f"{axisB}_diff"].median()),
+            spacing,
+        )
+        endOffsetsA = lines.groupby("slit_index")[f"{axisA}_diff"].median()
+
+        farEnds = []
+        for endIndex, oppositeIndex, nextIndex in (
+            (firstIndex, lastIndex, lastIndex - 1),
+            (lastIndex, firstIndex, firstIndex + 1),
+        ):
+            jump = abs(endOffsetsA[endIndex] - pattern.interiorOffsetA) / abs(pattern.spacing)
+            if jump <= END_OFFSET_TOLERANCE_SPACINGS:
+                continue
+            if jump >= TWO_SPACING_JUMP:
+                farEnds.append((endIndex, float(jump)))
+                continue
+            whole = self._whole_shift_from_pinhole_beyond(pattern, (endIndex, oppositeIndex, nextIndex), order_num)
+            if whole is not None:
+                return OppositeEndSearch(whole, tuple(farEnds))
+        return OppositeEndSearch(None, tuple(farEnds))
+
+    def _whole_shift_from_pinhole_beyond(self, pattern, indexes, order_num):
+        """*return the whole-spacing shift when a pinhole shows one spacing beyond the end opposite a latched one*
+
+        **Key Arguments:**
+
+        - ``pattern`` -- the predicted pattern of the shift group
+        - ``indexes`` -- the slit indexes of the end that latched, the opposite end and the pinhole next to it
+        - ``order_num`` -- the shift group, for the log line
+
+        **Return:**
+
+        - ``whole`` -- a ``WholeSpacingShift``, or ``None`` when too few sets have a position to judge or too few
+          show a pinhole there
+        """
+        endIndex, oppositeIndex, nextIndex = indexes
+        predictedA, predictedB = pattern.predictedA, pattern.predictedB
+        # SETS WITHOUT A DETECTION AT EITHER PINHOLE HAVE NO POSITION TO LOOK AT
+        beyondA = 2 * predictedA[oppositeIndex] - predictedA[nextIndex] - pattern.interiorOffsetA
+        beyondB = 2 * predictedB[oppositeIndex] - predictedB[nextIndex] - pattern.interiorOffsetB
+        fraction = self._fraction_of_sets_with_a_pinhole_at(beyondA, beyondB, abs(pattern.spacing))
+        if fraction is None or fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
+            return None
+        # THE PATTERN MOVES BY ONE SIGNED SPACING, TOWARDS THE OPPOSITE END: THE SAME SPACING AS THE SLIT-CENTRED STEP
+        shift = pattern.spacing if nextIndex > oppositeIndex else -pattern.spacing
+        self._check_shifted_end_for_a_pinhole(pattern, endIndex, shift, order_num)
+        return WholeSpacingShift(shift, pattern.spacing, fraction)
+
+    def _predicted_pinhole_positions(self, lines):
+        """*return the predicted positions of each arc-line set, one column per slit index*
+
+        **Key Arguments:**
+
+        - ``lines`` -- the line table rows of one shift group
+
+        **Return:**
+
+        - ``(predictedA, predictedB)`` -- predicted positions along and across the slit, one row per
+          (wavelength, order) set and one column per slit index
+        """
+        axisA, axisB = self.axisA, self.axisB
+        predicted = lines.pivot_table(
+            index=["wavelength", "order"],
+            columns="slit_index",
+            values=[f"detector_{axisA}_shifted", f"detector_{axisB}_shifted"],
+            aggfunc="median",
+        )
+        return predicted[f"detector_{axisA}_shifted"], predicted[f"detector_{axisB}_shifted"]
+
+    def _median_pinhole_spacing(self, lines):
+        """*return the signed pinhole spacing: the median over sets of a straight-line fit of position on slit index*
+
+        **Key Arguments:**
+
+        - ``lines`` -- the line table rows of one shift group
+
+        **Return:**
+
+        - ``spacing`` -- the median spacing, or 0.0 when no set gives one
+        """
+        import numpy as np
+
+        spacings = [
+            _pinhole_pattern_fit(lineSet, self.axisA)[0] for _, lineSet in lines.groupby(["wavelength", "order"])
+        ]
+        spacings = [spacing for spacing in spacings if np.isfinite(spacing)]
+        return float(np.median(spacings)) if spacings else 0.0
+
+    def _check_shifted_end_for_a_pinhole(self, pattern, endIndex, shift, order_num):
+        """*warn when, after the whole-spacing shift, the end that had latched finds no pinhole*
+
+        The end pinhole may be missing, or the pattern may still be offset, for example by two or more spacings. The
+        check is skipped, with a debug line only, when too few sets have a position at that end to judge it.
+
+        **Key Arguments:**
+
+        - ``pattern`` -- the predicted pattern of the shift group
+        - ``endIndex`` -- the slit index whose detection had latched onto its neighbour
+        - ``shift`` -- the whole-spacing shift just chosen
+        - ``order_num`` -- the shift group, for the log line
+        """
+        newA = pattern.predictedA[endIndex] - shift - pattern.interiorOffsetA
+        newB = pattern.predictedB[endIndex] - pattern.interiorOffsetB
+        fraction = self._fraction_of_sets_with_a_pinhole_at(newA, newB, abs(pattern.spacing))
+        if fraction is None:
+            self.log.debug(
+                f"multi-pinhole shift group {order_num}: the check for a pinhole at slit index {endIndex} after the "
+                f"whole-spacing shift is skipped, because fewer than {PINHOLE_BEYOND_END_MIN_SETS} sets have a position"
+            )
+        elif fraction < PINHOLE_BEYOND_END_MIN_FRACTION:
+            self.log.warning(
+                f"multi-pinhole shift group {order_num}: after the whole-spacing shift only {fraction:0.0%} of the "
+                f"sets show a pinhole at slit index {endIndex}; that pinhole is missing or the order is still offset"
+            )
+
+    def _fraction_of_sets_with_a_pinhole_at(self, positionsA, positionsB, spacing):
+        """*return the fraction of the sets with a detected source at the given position inside the order*
+
+        A source counts only within a tolerance of the position in both axes, with the position inside the order's slit
+        edges plus a margin, and away from the border of the detection window. Neighbouring-order light lies about 30
+        spacings away, far outside both the tolerance and the order. A cosmic ray would have to fall on the same
+        position in half of 10 or more sets on different rows to pass the fraction test.
+
+        **Key Arguments:**
+
+        - ``positionsA`` -- the positions to look at along the slit, one per arc-line set, indexed by
+          (wavelength, order)
+        - ``positionsB`` -- the positions to look at across the slit, one per arc-line set
+        - ``spacing`` -- the pinhole spacing, which sets how far a source may lie from a position and still count
+
+        **Return:**
+
+        - ``fraction`` -- the fraction of the sets with a source, or ``None`` when fewer than the minimum number of
+          sets have a position
+        """
+        import pandas as pd
+
+        axisA, axisB = self.axisA, self.axisB
+        hasPosition = positionsA.notna() & positionsB.notna()
+        positionsA, positionsB = positionsA[hasPosition], positionsB[hasPosition]
+        if len(positionsA.index) < PINHOLE_BEYOND_END_MIN_SETS:
+            return None
+
+        orders = positionsA.index.get_level_values("order").to_numpy()
+        isInside = self._is_inside_order(positionsA.to_numpy(), positionsB.to_numpy(), orders, spacing)
+        probes = pd.DataFrame(
+            {
+                f"detector_{axisA}_shifted": positionsA.to_numpy()[isInside],
+                f"detector_{axisB}_shifted": positionsB.to_numpy()[isInside],
+            }
+        )
+        if probes.empty:
+            return 0.0
+        probes = self.detect_pinhole_arc_lines(
+            orderPixelTable=probes,
+            iraf=False,
+            sigmaLimit=PINHOLE_PROBE_SIGMA,
+            iteration=1,
+            brightest=False,
+            exclude_border=True,
+            returnAll=True,
+        )
+        hits = 0
+        for probe in probes.itertuples():
+            foundA = getattr(probe, f"observed_{axisA}")
+            foundB = getattr(probe, f"observed_{axisB}")
+            hits += any(
+                abs(a - getattr(probe, f"detector_{axisA}_shifted")) <= PINHOLE_PROBE_TOLERANCE_A * spacing
+                and abs(b - getattr(probe, f"detector_{axisB}_shifted")) <= PINHOLE_PROBE_TOLERANCE_B * spacing
+                for a, b in zip(foundA, foundB, strict=True)
+            )
+        return hits / len(positionsA.index)
+
+    def _is_inside_order(self, positionsA, positionsB, orders, spacing):
+        """*return which positions lie within the slit edges of their order, plus the probe margin*
+
+        **Key Arguments:**
+
+        - ``positionsA`` -- the positions along the slit
+        - ``positionsB`` -- the positions across the slit
+        - ``orders`` -- the order of each position
+        - ``spacing`` -- the absolute pinhole spacing, which sets the margin
+
+        **Return:**
+
+        - ``isInside`` -- a boolean array, False for orders missing from the order table
+        """
+        import numpy as np
+
+        axisA, axisB = self.axisA, self.axisB
+        orderGeometry = self._order_geometry()
+        isInside = np.zeros(len(positionsA), dtype=bool)
+        margin = PINHOLE_PROBE_EDGE_MARGIN * spacing
+        for order in np.unique(orders):
+            edges = orderGeometry.loc[orderGeometry["order"] == order].sort_values(f"{axisB}coord")
+            if edges.empty:
+                continue
+            isOrder = orders == order
+            edgeOne = np.interp(positionsB[isOrder], edges[f"{axisB}coord"], edges[f"{axisA}coord_edgelow"])
+            edgeTwo = np.interp(positionsB[isOrder], edges[f"{axisB}coord"], edges[f"{axisA}coord_edgeup"])
+            isInside[isOrder] = (positionsA[isOrder] >= np.minimum(edgeOne, edgeTwo) - margin) & (
+                positionsA[isOrder] <= np.maximum(edgeOne, edgeTwo) + margin
+            )
+        return isInside
+
+    def _order_geometry(self):
+        """*return the order table's edge geometry with the slit mid-point of each row added*
+
+        The order table is read on the first call only, as it does not change during a recipe run.
+
+        **Return:**
+
+        - ``orderGeometry`` -- one row per order and tabulated row, with the edges and ``slitMid``
+        """
+        if self.orderGeometryCache is None:
+            binx, biny = self._get_binning_params()
+            _, orderGeometry, _ = unpack_order_table(log=self.log, orderTablePath=self.orderTable, binx=binx, biny=biny)
+            self.orderGeometryCache = orderGeometry.assign(
+                slitMid=0.5 * (orderGeometry[f"{self.axisA}coord_edgeup"] + orderGeometry[f"{self.axisA}coord_edgelow"])
+            )
+        return self.orderGeometryCache
+
+    def _pinhole_count_passes_qc(self):
+        """*return True when the minimum pinhole count lies inside the PINHOLE COUNT MIN QC range*
+
+        Without a ``pinhole-count-min`` QC range all 9 pinholes are required. The range can admit fewer because an
+        end pinhole can be vignetted in one order, as in the SOXS VIS u order (DY-1618).
+        """
+        qcRanges = self.recipeSettings.get("qc-acceptable-ranges", {})
+        lowerLimit, upperLimit = qcRanges.get("pinhole-count-min", [FULL_PINHOLE_COUNT, FULL_PINHOLE_COUNT])
+        return lowerLimit <= self.minpin <= upperLimit
+
+    def _slit_centred_pinhole_shift(self, orderPixelTable, mask):
+        """*return the shift that centres the predicted pinhole pattern between the order's slit edges*
+
+        The candidates are no shift and one pinhole spacing either way. A missing end pinhole and a real one-pinhole
+        offset between the first-guess map and the multi-pinhole frame give the same end-to-end shift signature,
+        because every other pinhole window lands on a real pinhole. Only the position of the pattern in the slit tells
+        them apart: the multi-pinhole mask is centred on the slit (DY-1618).
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, with predicted (``detector_<axis>_shifted``) positions
+        - ``mask`` -- the rows of the shift group with a detection
+
+        **Return:**
+
+        - ``whole`` -- a ``WholeSpacingShift`` with the whole-spacing shift to subtract from the predicted
+          cross-dispersion positions and the median pinhole spacing (both 0.0 when undecided)
+        """
+        import numpy as np
+
+        axisA, axisB = self.axisA, self.axisB
+        lines = orderPixelTable.loc[mask]
+        middleIndex = 0.5 * (lines["slit_index"].min() + lines["slit_index"].max())
+        orderGeometry = self._order_geometry()
+
+        # FOR EACH ARC LINE: HOW FAR THE PREDICTED PATTERN CENTRE SITS FROM THE SLIT MID-POINT AT THAT ROW
+        slitCentreOffsets = []
+        for (_wavelength, order), lineSet in lines.groupby(["wavelength", "order"]):
+            orderEdges = orderGeometry.loc[orderGeometry["order"] == order].sort_values(f"{axisB}coord")
+            if orderEdges.empty:
+                continue
+            spacing, intercept = _pinhole_pattern_fit(lineSet, axisA)
+            if not np.isfinite(spacing):
+                continue
+            lineSet = lineSet.loc[np.isfinite(lineSet[f"detector_{axisA}_shifted"])]
+            # ROWS BEYOND THE ORDER TABLE'S RANGE TAKE THE SLIT MID-POINT OF THE NEAREST TABULATED ROW
+            slitMid = np.interp(
+                lineSet[f"detector_{axisB}_shifted"].mean(), orderEdges[f"{axisB}coord"], orderEdges["slitMid"]
+            )
+            slitCentreOffset = intercept + spacing * middleIndex - slitMid
+            if not (np.isfinite(spacing) and np.isfinite(slitCentreOffset)) or spacing == 0:
+                continue
+            slitCentreOffsets.append(slitCentreOffset)
+
+        if not slitCentreOffsets:
+            self.log.warning(
+                "No slit edges match the multi-pinhole lines; the whole-spacing part of the first-iteration pinhole "
+                "shift is skipped."
+            )
+            return WholeSpacingShift(0.0, 0.0)
+
+        spacing = self._median_pinhole_spacing(lines)
+        offset = float(np.median(slitCentreOffsets))
+        candidates = [0.0, spacing, -spacing]
+        return WholeSpacingShift(min(candidates, key=lambda candidate: abs(offset - candidate)), spacing)
+
+    def _raise_if_no_lines_survived(self, orderPixelTable, detectedLines):
+        """*raise a clear error when every detected line was dropped before the polynomial fit*
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table after pre-fit clipping, with its boolean "dropped" column
+        - ``detectedLines`` -- the number of lines detected before clipping
+
+        Raises ``ArithmeticError``, the type `get` already raises when no fit can be found.
+        """
+        clippedLines = int(orderPixelTable["dropped"].sum())
+        if len(orderPixelTable.index) > clippedLines:
+            return
+        message = NO_LINES_SURVIVED_MESSAGE.format(detected=detectedLines, clipped=clippedLines)
+        self.log.error(message)
+        raise ArithmeticError(message)
+
+    def _lower_highest_degree(self, degList):
+        """*return the degrees with the highest one lowered by one, or raise if they are all constant already*"""
+        if max(degList) <= 0:
+            self.log.error(FIT_NOT_CONVERGED_MESSAGE)
+            raise ArithmeticError(FIT_NOT_CONVERGED_MESSAGE)
+        degList = list(degList)
+        degList[degList.index(max(degList))] -= 1
+        return degList
+
     def _reduce_polynomial_degrees(self, popt_x, popt_y, wavelengthDeg, orderDeg, slitDeg):
-        """*REDUCE POLYNOMIAL DEGREES WHEN FIT FAILS*"""
+        """*REDUCE POLYNOMIAL DEGREES WHEN FIT FAILS*
+
+        Raises ``ArithmeticError`` when the degrees to reduce are all zero, because a lower degree does not exist.
+        """
         # HANDLE DIFFERENT POLYNOMIAL DEGREE FORMATS
         if not isinstance(wavelengthDeg, list):
             # SINGLE DEGREE FOR BOTH AXES
-            degList = [wavelengthDeg, orderDeg, slitDeg]
-            degList[degList.index(max(degList))] -= 1
-            wavelengthDeg, orderDeg, slitDeg = degList
+            wavelengthDeg, orderDeg, slitDeg = self._lower_highest_degree([wavelengthDeg, orderDeg, slitDeg])
         elif popt_x == "xerror":
             # REDUCE X-AXIS DEGREES
-            degList = [wavelengthDeg[0], orderDeg[0], slitDeg[0]]
-            degList[degList.index(max(degList))] -= 1
-            wavelengthDeg[0], orderDeg[0], slitDeg[0] = degList
+            wavelengthDeg[0], orderDeg[0], slitDeg[0] = self._lower_highest_degree(
+                [wavelengthDeg[0], orderDeg[0], slitDeg[0]]
+            )
         elif popt_y == "yerror":
             # REDUCE Y-AXIS DEGREES
-            degList = [wavelengthDeg[1], orderDeg[1], slitDeg[1]]
-            degList[degList.index(max(degList))] -= 1
-            wavelengthDeg[1], orderDeg[1], slitDeg[1] = degList
+            wavelengthDeg[1], orderDeg[1], slitDeg[1] = self._lower_highest_degree(
+                [wavelengthDeg[1], orderDeg[1], slitDeg[1]]
+            )
 
         # UPDATE RECIPE SETTINGS
         self.recipeSettings["order-deg"] = orderDeg
@@ -779,7 +1362,6 @@ class create_dispersion_map:
                 self.log.print("\n# FINDING PINHOLE ARC-LINES ON IMAGE\n")
                 iraf = False
                 while iteration < 3:
-
                     # GET DETECTION PARAMETERS FOR CURRENT ITERATION
                     (
                         self.windowHalf,
@@ -901,9 +1483,9 @@ class create_dispersion_map:
             # MAKE A CLEAN COPY OF THE DETECTION TABLE ... USED FOR PIPELINE TUNING ONLY
             lineDetectionTable = orderPixelTable.copy()
 
-            # COLLECT MISSING LINES
+            # COLLECT MISSING LINES INTO THEIR OWN TABLE (THE WRITER AND QC PLOT SORT AND FLIP IT IN PLACE)
             mask = orderPixelTable["observed_x"].isnull()
-            missingLines = orderPixelTable.loc[mask]
+            missingLines = orderPixelTable.loc[mask].copy()
             # GROUP RESULTS BY WAVELENGTH
             lineGroups = missingLines.groupby(["wavelength", "order"])
             lineGroups = lineGroups.size().to_frame(name="count").reset_index()
@@ -943,11 +1525,13 @@ class create_dispersion_map:
             else:
                 orderPixelTable["fwhm_pin_px"] = 3.0
 
+            # STOP BEFORE FITTING IF THE CLIP LEFT NOTHING TO FIT
+            self._raise_if_no_lines_survived(orderPixelTable, detectedLines)
+
             # STEP 6: ITERATIVELY FIT POLYNOMIAL SOLUTIONS WITH AUTOMATIC DEGREE REDUCTION
             fitFound = False
             tryCount = 0
             while not fitFound and tryCount < 5:
-
                 # ATTEMPT TO FIT POLYNOMIAL DISPERSION SOLUTION
                 popt_x, popt_y, goodLinesTable, clippedLinesTable = self.fit_polynomials(
                     orderPixelTable=orderPixelTable,
@@ -963,10 +1547,7 @@ class create_dispersion_map:
                 else:
                     # IN TUNING MODE, FAIL IMMEDIATELY WITHOUT RETRY
                     if self.settings["tune-pipeline"]:
-                        raise ArithmeticError(
-                            "Could not converge on a good fit to the dispersion solution. "
-                            "Please check the quality of your data or adjust your fitting parameters."
-                        )
+                        raise ArithmeticError(FIT_NOT_CONVERGED_MESSAGE)
 
                     # REDUCE POLYNOMIAL DEGREES AND RETRY
                     wavelengthDeg, orderDeg, slitDeg = self._reduce_polynomial_degrees(
@@ -984,10 +1565,7 @@ class create_dispersion_map:
                             "Could not converge on a good fit to the dispersion solution after 5 attempts. "
                             "Please check the quality of your data or adjust your fitting parameters."
                         )
-                        raise ArithmeticError(
-                            "Could not converge on a good fit to the dispersion solution. "
-                            "Please check the quality of your data or adjust your fitting parameters."
-                        )
+                        raise ArithmeticError(FIT_NOT_CONVERGED_MESSAGE)
 
             if bootstrap_dispersion_solution:
                 # WRITE THE MAP TO FILE
@@ -1065,7 +1643,7 @@ class create_dispersion_map:
             mapPath = None
             self.create2DMap = False
 
-        if self.firstGuessMap and self.orderTable and self.create2DMap and self.minpin == 9:
+        if self.firstGuessMap and self.orderTable and self.create2DMap and self._pinhole_count_passes_qc():
             mapImagePath = self.map_to_image(dispersionMapPath=mapPath, orders=list(goodLinesTable["order"].unique()))
             res_plots = self._create_dispersion_map_qc_plot(
                 xcoeff=popt_x,
@@ -1333,11 +1911,11 @@ class create_dispersion_map:
         df["droppedOnMissing"] = s["dropped"].values
 
         # FILTER OUT DROPPED SETS
-        df = df.loc[df["droppedOnMissing"] == False]
-        df.drop(columns=["droppedOnMissing"], inplace=True)
+        df = df.loc[~df["droppedOnMissing"]].drop(columns=["droppedOnMissing"])
 
         return df
 
+    @closes_its_figures
     def _plot_predicted_line_windows(self, orderPixelTable, pinholeFrameMasked):
         """*Plot predicted line positions with detection windows overlaid*"""
         import matplotlib.pyplot as plt
@@ -1411,38 +1989,7 @@ class create_dispersion_map:
         import pandas as pd
 
         # DEFINE COLUMNS TO KEEP
-        keepColumns = [
-            "wavelength",
-            "order",
-            "slit_index",
-            "slit_position",
-            "detector_x",
-            "detector_y",
-            "observed_x",
-            "observed_y",
-            "x_diff",
-            "y_diff",
-            "fit_x",
-            "fit_y",
-            "residuals_x",
-            "residuals_y",
-            "residuals_xy",
-            "sigma_clipped",
-            "sharpness",
-            "roundness1",
-            "roundness2",
-            "npix",
-            "sky",
-            "peak",
-            "flux",
-            "fwhm_pin_px",
-            "R_pin",
-            "pixelScaleNm",
-            "detector_x_shifted",
-            "detector_y_shifted",
-            "R_slit",
-            "fwhm_slit_px",
-        ]
+        keepColumns = list(FITTED_LINE_COLUMNS)
 
         # ADD ION COLUMN IF PRESENT
         if "ion" in goodLinesTable.columns:
@@ -1452,6 +1999,9 @@ class create_dispersion_map:
         clippedLinesTable["sigma_clipped"] = True
         clippedLinesTable["R"] = np.nan
         clippedLinesTable["pixelScaleNm"] = np.nan
+        # A LINE DROPPED BEFORE THE FIT NEVER RECEIVED THE SET-OFFSET FLAG
+        goodLinesTable = goodLinesTable.assign(**{SET_OFFSET_COLUMN: _set_offset_flag(goodLinesTable)})
+        clippedLinesTable = clippedLinesTable.assign(**{SET_OFFSET_COLUMN: _set_offset_flag(clippedLinesTable)})
 
         # COMBINE GOOD AND CLIPPED LINES
         if len(clippedLinesTable.index):
@@ -1462,10 +2012,10 @@ class create_dispersion_map:
         else:
             goodAndClippedLines = goodLinesTable[keepColumns]
 
-        # SORT BOTH DATAFRAMES
-        goodAndClippedLines.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
-        goodLinesTable = goodLinesTable[keepColumns]
-        goodLinesTable.sort_values(["order", "wavelength", "slit_index"], inplace=True, kind="stable")
+        # SORT BOTH DATAFRAMES INTO NEW TABLES, LEAVING THE CALLER'S FITTED TABLE AS IT WAS
+        sortColumns = ["order", "wavelength", "slit_index"]
+        goodAndClippedLines = goodAndClippedLines.sort_values(sortColumns, kind="stable")
+        goodLinesTable = goodLinesTable[keepColumns].sort_values(sortColumns, kind="stable")
 
         return goodAndClippedLines, goodLinesTable
 
@@ -1620,12 +2170,7 @@ class create_dispersion_map:
             "fwhm_pin_px": [],  # MEASURED FWHM IN PIXELS
         }
 
-        if self.debug or self.turnOffMP:
-            turnOffMP = True
-        else:
-            turnOffMP = False
-
-        # PROCESS ALL STAMPS USING MULTIPROCESSING (OR SERIAL IN DEBUG MODE)
+        # PROCESS ALL STAMPS SERIALLY: MULTIPROCESSING IS ALWAYS OFF HERE
         # NOTE: MULTIPROCESSING AND THREADING IS MUCH SLOWER! KEEP TURNED OFF
         results = fmultiprocess(
             log=self.log,
@@ -1635,7 +2180,7 @@ class create_dispersion_map:
             timeout=300,
             mute=False,
             progressBar=False,
-            turnOffMP=True,  # DISABLE MULTIPROCESSING IN DEBUG MODE
+            turnOffMP=True,
             windowHalf=self.windowHalf,
             iraf=iraf,
             sigmaLimit=sigmaLimit,
@@ -1794,29 +2339,6 @@ class create_dispersion_map:
         write_fits_table_to_disk(
             log=self.log, settings=self.settings, header=header, tables=[t], filePath=filePath, qc=self.qc
         )
-
-        if False:
-            # MAKE RELATIVE HOME PATH ABSOLUTE
-            from os.path import expanduser
-
-            home = expanduser("~")
-
-            cache = self.settings["workspace-root-dir"].replace("~", home) + "/.cache"
-            # Recursively create missing directories
-            if not os.path.exists(cache):
-                os.makedirs(cache)
-            polyOrders = [orderDeg, wavelengthDeg, slitDeg]
-            if isinstance(orderDeg, list):
-                merged_list = []
-                for sublist in polyOrders:
-                    merged_list.extend(sublist)
-                polyOrders = merged_list
-            polyOrders[:] = [str(l) for l in polyOrders]
-            polyOrders = "".join(polyOrders)
-            filename = f"{self.recipeName}_{self.arm}_{polyOrders}.fits"
-            cacheFilePath = f"{cache}/{filename}"
-            hduList.verify("fix")
-            hduList.writeto(cacheFilePath, checksum=True, overwrite=True)
 
         self.log.debug("completed the ``write_map_to_file`` method")
         return filePath
@@ -2080,16 +2602,7 @@ class create_dispersion_map:
                 ydiff_sd = thisOrder["y_diff"].std()
                 xydiff_sd = np.sqrt(np.square(xdiff_sd) + np.square(ydiff_sd)).std()
                 o = int(o)
-
-                if self.inst == "SOXS" and self.arm == "VIS":
-                    for n, oo in zip(["u", "g", "r", "i"], [2, 3, 1, 4]):
-                        if o == oo:
-                            ostr = n
-                            odb = n
-                            break
-                else:
-                    ostr = f"O{o}"
-                    odb = o
+                orderText = order_label(o, self.arm)
 
                 arrayOfNames = [
                     "X RES MEDIAN",
@@ -2110,9 +2623,10 @@ class create_dispersion_map:
                     "R PIN SD",
                 ]
 
-                qc_names.extend(arrayOfNames)
+                # ONE CARD PER ORDER: THE HEADER KEEPS ONLY THE LAST OF ANY REPEATED NAME
+                qc_names.extend([f"{name} O{o}" for name in arrayOfNames])
 
-                qc_order.extend([odb] * len(arrayOfNames))
+                qc_order.extend([o] * len(arrayOfNames))
 
                 qc_values.extend(
                     [
@@ -2137,26 +2651,25 @@ class create_dispersion_map:
 
                 qc_units.extend(["pixels"] * 14 + [""] * 2)
 
-                qc_comments.extend(
-                    [
-                        f"[px] Median residual in dispersion solution fit along x-axis for order {o}",
-                        f"[px] Median residual in dispersion solution fit along y-axis for order {o}",
-                        f"[px] Median residual in dispersion solution fit (XY combined) for order {o}",
-                        f"[px] Std-dev of residual in dispersion solution fit along x-axis for order {o}",
-                        f"[px] Std-dev of residual in dispersion solution fit along y-axis for order {o}",
-                        f"[px] Std-dev of residual in dispersion solution (XY combined) for order {o}",
-                        f"[px] Median difference between predicted and observed line positions along x-axis for order {o}",
-                        f"[px] Median difference between predicted and observed line positions along y-axis for order {o}",
-                        f"[px] Median difference between predicted and observed line positions (XY combined) for order {o}",
-                        f"[px] Std-dev of difference between predicted and observed line positions along x-axis for order {o}",
-                        f"[px] Std-dev of difference between predicted and observed line positions along y-axis for order {o}",
-                        f"[px] Std-dev of difference between predicted and observed line positions (XY combined) for order {o}",
-                        f"[px] Median FWHM of detected lines in pinhole frames for order {o}",
-                        f"[px] Std-dev of FWHM of detected lines in pinhole frames for order {o}",
-                        f"Median spectral resolution measured from detected lines in pinhole frames for order {o}",
-                        f"Std-dev of spectral resolution measured from detected lines in pinhole frames for order {o}",
-                    ]
-                )
+                commentStems = [
+                    "[px] Median residual in dispersion solution fit along x-axis",
+                    "[px] Median residual in dispersion solution fit along y-axis",
+                    "[px] Median residual in dispersion solution fit (XY combined)",
+                    "[px] Std-dev of residual in dispersion solution fit along x-axis",
+                    "[px] Std-dev of residual in dispersion solution fit along y-axis",
+                    "[px] Std-dev of residual in dispersion solution (XY combined)",
+                    "[px] Median difference between predicted and observed line positions along x-axis",
+                    "[px] Median difference between predicted and observed line positions along y-axis",
+                    "[px] Median difference between predicted and observed line positions (XY combined)",
+                    "[px] Std-dev of difference between predicted and observed line positions along x-axis",
+                    "[px] Std-dev of difference between predicted and observed line positions along y-axis",
+                    "[px] Std-dev of difference between predicted and observed line positions (XY combined)",
+                    "[px] Median FWHM of detected lines in pinhole frames",
+                    "[px] Std-dev of FWHM of detected lines in pinhole frames",
+                    "Median spectral resolution measured from detected lines in pinhole frames",
+                    "Std-dev of spectral resolution measured from detected lines in pinhole frames",
+                ]
+                qc_comments.extend([f"{stem} for order {orderText}" for stem in commentStems])
 
             if (
                 len(qc_units) != len(qc_names)
@@ -2169,7 +2682,7 @@ class create_dispersion_map:
 
             for name, value, unit, comment, order in zip(qc_names, qc_values, qc_units, qc_comments, qc_order):
                 if unit != "lines":
-                    value = f"{value:0.5f}"
+                    value = round(float(value), 5)
                 self.qc = pd.concat(
                     [
                         self.qc,
@@ -2322,6 +2835,63 @@ class create_dispersion_map:
 
         return orderPixelTable
 
+    def _fit_xy_coefficients(self, orderPixelTable, polyx, polyy, orderDeg, wavelengthDeg, slitDeg):
+        """*fit the x and y dispersion polynomials to a set of lines by exact linear least squares*
+
+        Both polynomials are linear in their coefficients, so each axis is solved directly with a column-scaled
+        ``lstsq`` rather than iterated towards the minimum. An iterative optimiser on this badly conditioned power
+        basis stops short of the minimum, so its result swings on tiny input changes (DY-1525).
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- data frame of the lines to fit, with the polynomial exponent columns included
+        - ``polyx`` -- the x-axis polynomial function
+        - ``polyy`` -- the y-axis polynomial function
+        - ``orderDeg`` -- degree of the order fitting
+        - ``wavelengthDeg`` -- degree of wavelength fitting
+        - ``slitDeg`` -- degree of the slit fitting (0 for single pinhole)
+
+        **Return:**
+
+        - ``xcoeff`` -- the fitted x-coefficients (*None* if the fit failed)
+        - ``ycoeff`` -- the fitted y-coefficients (*None* if the fit failed)
+        - ``failure`` -- *None* on success, else the result tuple ``fit_polynomials`` returns on a fit failure
+        """
+        import numpy as np
+
+        from soxspipe.commonutils.dispersion_map_to_pixel_arrays import default_coefficients
+        from soxspipe.commonutils.polynomials import solve_linear_poly_coefficients
+
+        # ONLY THE COEFFICIENT COUNTS ARE USED: A LINEAR SOLVE NEEDS NO STARTING GUESS
+        defaults = default_coefficients(orderDeg, wavelengthDeg, slitDeg)
+
+        axisFits = (
+            ("x", polyx, len(defaults["x"]), ("xerror", None, None, None)),
+            ("y", polyy, len(defaults["y"]), (None, "yerror", None, None)),
+        )
+        coefficients = {}
+        for axis, poly, nCoeff, failure in axisFits:
+            self.log.info(f"least-squares fit {axis}")
+            # FEWER LINES THAN COEFFICIENTS IS REPORTED AS A FAILURE SO THE CALLER LOWERS THE DEGREES (DY-1256)
+            if len(orderPixelTable.index) < nCoeff:
+                self.log.debug(
+                    f"fit_polynomials: {len(orderPixelTable.index)} lines cannot constrain {nCoeff} {axis}-coefficients"
+                )
+                return None, None, failure
+            try:
+                coefficients[axis] = solve_linear_poly_coefficients(
+                    poly=poly,
+                    pixelList=orderPixelTable,
+                    yValues=orderPixelTable[f"observed_{axis}"].to_numpy(),
+                    nCoeff=nCoeff,
+                )
+            # RUNTIMEERROR AND TYPEERROR COVER A POLY OR DATA COLUMN THAT CANNOT BE EVALUATED AS FLOATS
+            except (np.linalg.LinAlgError, ValueError, RuntimeError, TypeError) as e:
+                self.log.debug(f"fit_polynomials: {axis}-axis least-squares fit failed, continuing: {e}")
+                return None, None, failure
+
+        return coefficients["x"], coefficients["y"], None
+
     def fit_polynomials(self, orderPixelTable, wavelengthDeg, orderDeg, slitDeg, missingLines=False):
         """*iteratively fit the dispersion map polynomials to the data, clipping residuals with each iteration*
 
@@ -2346,12 +2916,11 @@ class create_dispersion_map:
         allClippedLines = []
         mask = orderPixelTable["dropped"] == True
         allClippedLines.append(orderPixelTable.loc[mask])
-        orderPixelTable = orderPixelTable.loc[~mask]
+        # THE FIT WORKS ON ITS OWN COPY: ITS COLUMNS AND CLIPPING FLAGS NEVER BELONG IN THE CALLER'S TABLE
+        orderPixelTable = orderPixelTable.loc[~mask].copy()
+        orderPixelTable[SET_OFFSET_COLUMN] = False
 
         import pandas as pd
-        from scipy.optimize import curve_fit
-
-        from soxspipe.commonutils import get_cached_coeffs
 
         arm = self.arm
         dp = self.detectorParams
@@ -2412,6 +2981,8 @@ class create_dispersion_map:
             clipOnMphSets = True
         else:
             clipOnMphSets = False
+        # OLDER WORKSPACE SETTINGS FILES PREDATE THIS KEY (DY-1526)
+        setOffsetSigma = self.recipeSettings.get("poly-clipping-set-offset-sigma", OFFSET_SET_CLIP_SIGMA)
 
         self.log.print("\n# FINDING DISPERSION SOLUTION")
 
@@ -2427,53 +2998,11 @@ class create_dispersion_map:
         orderPixelTable["sigma_clipped"] = False
         while clippedCount > 0 and iteration < clippingIterationLimit:
             iteration += 1
-            observed_x = orderPixelTable["observed_x"].to_numpy()
-            observed_y = orderPixelTable["observed_y"].to_numpy()
-
-            # IF mean_res > 10 WE WANT TO START FROM SCRATCH AGAIN SO NOT TO INFLUENCE THE FINAL RESULT
-            if True or mean_res > 10:
-                # FIND CACHED COEFF ELSE RETURN ARRAYS OF 1s
-                xcoeff, ycoeff = get_cached_coeffs(
-                    log=self.log,
-                    arm=arm,
-                    settings=self.settings,
-                    recipeName=self.recipeName,
-                    orderDeg=orderDeg,
-                    wavelengthDeg=wavelengthDeg,
-                    slitDeg=slitDeg,
-                    reset=True,
-                )
-
-            # USE LEAST-SQUARED CURVE FIT TO FIT CHEBY POLYS
-            # FIRST X
-            self.log.info("""curvefit x""" % locals())
-
-            try:
-                xcoeff, pcov_x = curve_fit(
-                    polyx,
-                    xdata=orderPixelTable,
-                    ydata=observed_x,
-                    p0=xcoeff,
-                    maxfev=30000,
-                )
-            except (RuntimeError, ValueError) as e:
-                self.log.debug(f"fit_polynomials: `xcoeff, pcov_x = curve_fit( polyx, xdat...` failed, continuing: {e}")
-                return "xerror", None, None, None
-
-            # NOW Y
-            self.log.info("""curvefit y""" % locals())
-
-            try:
-                ycoeff, pcov_y = curve_fit(
-                    polyy,
-                    xdata=orderPixelTable,
-                    ydata=observed_y,
-                    p0=ycoeff,
-                    maxfev=30000,
-                )
-            except (RuntimeError, ValueError) as e:
-                self.log.debug(f"fit_polynomials: `ycoeff, pcov_y = curve_fit( polyy, xdat...` failed, continuing: {e}")
-                return None, "yerror", None, None
+            xcoeff, ycoeff, fitFailure = self._fit_xy_coefficients(
+                orderPixelTable, polyx, polyy, orderDeg, wavelengthDeg, slitDeg
+            )
+            if fitFailure:
+                return fitFailure
 
             self.log.info("""calculate_residuals""" % locals())
             mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
@@ -2495,13 +3024,12 @@ class create_dispersion_map:
             mask = orderPixelTable["sigma_clipped"] == True
             allClippedLines.append(orderPixelTable.loc[mask])
             mask = orderPixelTable["sigma_clipped"] == True
-            orderPixelTable = orderPixelTable.loc[~mask]
+            orderPixelTable = orderPixelTable.loc[~mask].copy()
 
             # SIGMA-CLIP THE DATA
             self.log.info("""sigma_clip""" % locals())
 
             if clipOnMphSets:
-
                 columnsNoStrings = list(orderPixelTable.columns)
                 try:
                     columnsNoStrings.remove("ion")
@@ -2655,6 +3183,16 @@ class create_dispersion_map:
                             "sigma_clipped",
                         ] = True
 
+            # DROP WHOLE MULTI-PINHOLE SETS THAT SIT OFF THE MODEL BY THE SAME AMOUNT IN EVERY PINHOLE.
+            # THE CLIPS ABOVE JUDGE EACH PINHOLE (OR SET MEAN) AGAINST A NON-ROBUST SPREAD, WHICH SUCH A SET SURVIVES.
+            # THE TEST RUNS ON THE FIRST FIT ONLY: EACH REFIT WITHOUT OUTLIERS TIGHTENS THE SPREAD, SO REPEATING IT
+            # WOULD DROP SETS THAT ARE NOT OUTLIERS OF THE FIRST FIT (DY-1526)
+            if iteration == 1:
+                offsetSets = flag_offset_pinhole_sets(orderPixelTable, sigmaLimit=setOffsetSigma)
+                if offsetSets.any():
+                    orderPixelTable.loc[offsetSets, ["sigma_clipped", SET_OFFSET_COLUMN]] = True
+                    self._log_offset_pinhole_sets(orderPixelTable.loc[offsetSets])
+
             # COUNT THE CLIPPED LINES
             mask = orderPixelTable["sigma_clipped"] == True
             allClippedLines.append(orderPixelTable.loc[mask])
@@ -2679,10 +3217,22 @@ class create_dispersion_map:
                 )
 
             mask = orderPixelTable["sigma_clipped"] == True
-            orderPixelTable = orderPixelTable.loc[~mask]
+            orderPixelTable = orderPixelTable.loc[~mask].copy()
 
         if len(allClippedLines):
             allClippedLines = pd.concat(allClippedLines, ignore_index=True)
+
+        # A CAP EXIT WITH LINES STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE LINES JUST REJECTED
+        if iteration > 0 and clippedCount > 0:
+            self.log.info(
+                f"fit_polynomials: iteration limit of {clippingIterationLimit} reached with {clippedCount} lines "
+                "still being clipped; refitting to the surviving lines"
+            )
+            xcoeff, ycoeff, fitFailure = self._fit_xy_coefficients(
+                orderPixelTable, polyx, polyy, orderDeg, wavelengthDeg, slitDeg
+            )
+            if fitFailure:
+                return fitFailure
 
         mean_res, std_res, median_res, orderPixelTable = self.calculate_residuals(
             orderPixelTable=orderPixelTable,
@@ -2697,6 +3247,20 @@ class create_dispersion_map:
 
         self.log.debug("completed the ``fit_polynomials`` method")
         return xcoeff, ycoeff, orderPixelTable, allClippedLines
+
+    def _log_offset_pinhole_sets(self, offsetLines: "pd.DataFrame") -> None:
+        """*log how many multi-pinhole sets the set-offset test dropped, order by order*
+
+        **Key Arguments:**
+
+        - ``offsetLines`` -- the rows (one per pinhole) of the dropped sets
+        """
+        perOrder = offsetLines.groupby("order")["wavelength"].nunique()
+        breakdown = ", ".join(f"order {order:g}: {count}" for order, count in perOrder.items())
+        self.log.info(
+            f"fit_polynomials: dropped {perOrder.sum()} multi-pinhole set(s) offset "
+            f"consistently in every pinhole ({breakdown})"
+        )
 
     def create_placeholder_images(self, order=False, plot=False, reverse=False):
         """*create CCDData objects as placeholders to host the 2D images of the wavelength and spatial solutions from dispersion solution map*
@@ -2882,20 +3446,14 @@ class create_dispersion_map:
             if order in theseOrders
         ]
 
-        if self.debug or self.turnOffMP:
-            turnOffMP = True
-
-        else:
-            turnOffMP = False
-
-        if turnOffMP:
+        if self.runSerially:
             results = fmultiprocess(
                 log=self.log,
                 function=self.order_to_image,
                 inputArray=inputArray,
                 poolSize=6,
                 timeout=3600,
-                turnOffMP=turnOffMP,
+                turnOffMP=True,
             )
         else:
             # NUMPY CAN BE TRICKY WITH MP
@@ -2909,7 +3467,7 @@ class create_dispersion_map:
                 inputArray=inputArray,
                 poolSize=6,
                 timeout=3600,
-                turnOffMP=turnOffMP,
+                turnOffMP=False,
             )
             del os.environ["OPENBLAS_NUM_THREADS"]
             del os.environ["OMP_NUM_THREADS"]
@@ -3068,6 +3626,7 @@ class create_dispersion_map:
         self.log.debug("completed the ``order_to_image`` method")
         return slitMap, wlMap
 
+    @closes_its_figures
     def convert_and_fit(self, order, bigWlArray, bigSlitArray, slitMap, wlMap, iteration, plots=False):
         """*convert wavelength and slit position grids to pixels*
 
@@ -3215,6 +3774,7 @@ class create_dispersion_map:
         self.log.debug("completed the ``convert_and_fit`` method")
         return orderPixelTable, remainingCount
 
+    @closes_its_figures
     def _create_dispersion_map_qc_plot(
         self,
         xcoeff,
@@ -3254,7 +3814,6 @@ class create_dispersion_map:
         import numpy as np
         import pandas as pd
         from astropy.stats import sigma_clipped_stats
-        from astropy.visualization import hist
 
         from soxspipe.commonutils.toolkit import qc_settings_plot_tables
 
@@ -3335,58 +3894,44 @@ class create_dispersion_map:
                 # orderPixelTable[f"observed_{self.axisA}"] = aLen - orderPixelTable[f"observed_{self.axisA}"]
                 # orderPixelTable[f"observed_{self.axisA}"] = aLen - orderPixelTable[f"observed_{self.axisA}"]
 
-        # a = plt.figure(figsize=(40, 15))
+        tableSettings = {**self.recipeSettings, **{"exptime": self.exptime}}
 
-        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:  # SOXS NIR
-            fig = plt.figure(figsize=(6, 20), constrained_layout=True)
-            # CREATE THE GRID OF AXES
-            if self.arcFrame:
-                gs = fig.add_gridspec(12, 4)
-                sizeAx = fig.add_subplot(gs[8:9, :])
-                gapAx = fig.add_subplot(gs[9:10, :])
-                settingsAx = fig.add_subplot(gs[10:, 2:])
-                qcAx = fig.add_subplot(gs[11:, 0:2])
-            else:
-                gs = fig.add_gridspec(10, 4)
-                settingsAx = fig.add_subplot(gs[8:, 2:])
-                qcAx = fig.add_subplot(gs[8:, 0:2])
-
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:6, 0:2])
-            bottomright = fig.add_subplot(gs[4:6, 2:])
-            fwhmAx = fig.add_subplot(gs[6:7, :])
-            resAx = fig.add_subplot(gs[7:8, :])
-
-        else:  # SOXS VIS
-            if self.firstGuessMap:
-                fig = plt.figure(figsize=(6, 18), constrained_layout=True)
-            else:
-                fig = plt.figure(figsize=(6, 14), constrained_layout=True)
-            # CREATE THE GRID OF AXES
-            # CREATE THE GRID OF AXES
-            if self.arcFrame:
-                gs = fig.add_gridspec(12, 4)
-                sizeAx = fig.add_subplot(gs[8:9, :])
-                gapAx = fig.add_subplot(gs[9:10, :])
-                settingsAx = fig.add_subplot(gs[10:, 2:])
-                qcAx = fig.add_subplot(gs[11:, 0:2])
-            else:
-                gs = fig.add_gridspec(10, 4)
-                settingsAx = fig.add_subplot(gs[8:, 2:])
-                qcAx = fig.add_subplot(gs[8:, 0:2])
-
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            bottomleft = fig.add_subplot(gs[4:6, 0:2])
-            bottomright = fig.add_subplot(gs[4:6, 2:])
-            fwhmAx = fig.add_subplot(gs[6:7, :])
-            resAx = fig.add_subplot(gs[7:8, :])
+        # SIZE EACH IMAGE PANEL TO THE IMAGE ASPECT AND GIVE EACH TABLE ITS OWN FULL-WIDTH ROW SO THEY CANNOT OVERLAP
+        imagePanelHeight = qc_image_panel_height(rotatedImg)
+        qcTableHeight, settingsTableHeight = qc_table_heights(self.qc, tableSettings)
+        heightRatios = [
+            imagePanelHeight,
+            imagePanelHeight,
+            QC_RESIDUAL_ROW_HEIGHT_INCHES,
+            QC_STRIP_ROW_HEIGHT_INCHES,
+            QC_STRIP_ROW_HEIGHT_INCHES,
+        ]
+        if self.arcFrame:
+            heightRatios += [QC_STRIP_ROW_HEIGHT_INCHES, QC_STRIP_ROW_HEIGHT_INCHES]
+        heightRatios += [qcTableHeight, settingsTableHeight]
+        fig = plt.figure(
+            figsize=(6, sum(heightRatios) + QC_PLOT_DECORATION_HEIGHT_INCHES),
+            constrained_layout=True,
+        )
+        gs = fig.add_gridspec(len(heightRatios), 2, height_ratios=heightRatios)
+        toprow = fig.add_subplot(gs[0, :])
+        midrow = fig.add_subplot(gs[1, :])
+        bottomleft = fig.add_subplot(gs[2, 0])
+        bottomright = fig.add_subplot(gs[2, 1])
+        fwhmAx = fig.add_subplot(gs[3, :])
+        resAx = fig.add_subplot(gs[4, :])
+        if self.arcFrame:
+            sizeAx = fig.add_subplot(gs[5, :])
+            gapAx = fig.add_subplot(gs[6, :])
+        qcAx = fig.add_subplot(gs[-2, :])
+        settingsAx = fig.add_subplot(gs[-1, :])
 
         # TOP ROW - IMAGE WITH LINE POSITIONS OVERLAID
         vmax = self.meanFrameFlux + 25 * self.stdFrameFlux
         vmin = self.meanFrameFlux
-        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5)
+        # INTERPOLATION "none" EMBEDS THE IMAGE AT NATIVE RESOLUTION IN THE PDF; RESAMPLING TO THE SAVE DPI
+        # OFFSETS THE LINE MARKERS FROM THE IMAGE WHEN ZOOMED
+        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5, interpolation="none")
         toprow.set_title("observed arc-line positions (post-clipping)", fontsize=10)
 
         alphaBoost = 1.0
@@ -3479,7 +4024,6 @@ class create_dispersion_map:
             )
 
         else:
-
             if isinstance(missingLines, pd.core.frame.DataFrame):
                 toprow.scatter(
                     missingLines[f"detector_{self.axisB}_shifted"],
@@ -3557,17 +4101,14 @@ class create_dispersion_map:
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
         toprow.tick_params(axis="both", which="major", labelsize=9)
-        if self.arm == "VIS":
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.15), fontsize=4)
+        legend_below_axis(toprow, fig)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
             toprow.invert_yaxis()
         toprow.set_ylim([0, rotatedImg.shape[0]])
 
-        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5)
+        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.5, interpolation="none")
         midrow.set_title("global dispersion solution", fontsize=10)
 
         # ADD FULL DISPERSION SOLUTION GRID-LINES TO PLOT
@@ -3629,13 +4170,9 @@ class create_dispersion_map:
             midrow.invert_yaxis()
         midrow.set_ylim([0, rotatedImg.shape[0]])
 
-        if self.arm == "VIS":
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.2), fontsize=4)
-        else:
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.15), fontsize=4)
+        legend_below_axis(midrow, fig)
 
         # PLOT THE RESIDUALS
-        plt.subplots_adjust(top=0.92)
         bottomleft.scatter(
             orderPixelTable[f"residuals_{self.axisA}"],
             orderPixelTable[f"residuals_{self.axisB}"],
@@ -3644,29 +4181,18 @@ class create_dispersion_map:
         bottomleft.set_xlabel(f"{self.axisA} residual (mean: {mean_x_res:2.2f} pix)")
         bottomleft.set_ylabel(f"{self.axisB} residual (mean: {mean_y_res:2.2f} pix)")
         bottomleft.tick_params(axis="both", which="major", labelsize=9)
-        hist(
-            orderPixelTable["residuals_xy"],
-            bins="scott",
-            ax=bottomright,
-            histtype="stepfilled",
-            alpha=0.7,
-            density=True,
-        )
-        bottomright.set_xlabel("xy residual")
-        bottomright.tick_params(axis="both", which="major", labelsize=9)
+        plot_xy_residual_histogram(bottomright, orderPixelTable["residuals_xy"])
 
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         if self.firstGuessMap:
             fig.suptitle(
                 f"residuals of global dispersion solution fitting - {arm} multi-pinhole\n{subtitle}",
                 fontsize=10,
-                y=0.99,
             )
         else:
             fig.suptitle(
                 f"residuals of global dispersion solution fitting - {arm} single pinhole\n{subtitle}",
                 fontsize=10,
-                y=0.99,
             )
         orderPixelTable_groups = orderPixelTable.groupby(["order"])
 
@@ -3707,7 +4233,6 @@ class create_dispersion_map:
         upperR = mean_r + 3 * std_r
 
         if self.arcFrame:
-
             # UNPACK ORDER TABLE TO GET SLIT HEIGHT IN PX
             orderPolyTable, orderGeoTable, orderMetaTable = unpack_order_table(
                 log=self.log, orderTablePath=self.orderTable, extend=0.0
@@ -3787,11 +4312,9 @@ class create_dispersion_map:
             orderGeoTable["slitLengthArcsec"] = orderGeoTable["slitLengthPixels"] * orderGeoTable["pixelScale"]
 
         for name, group in orderPixelTable_groups:
-
             thisOrder = group["order"].values[0]
 
             if self.arcFrame:
-
                 slitWidth = self.arcFrame.header[kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
                 fwhmAx.set_title(
                     f'Line FWHM measured via {slitWidth}" slit arc-lamp frame',
@@ -3841,7 +4364,6 @@ class create_dispersion_map:
                 )
 
                 if thisOrder not in [24]:
-
                     # FILTER DATA FRAME
                     # FIRST CREATE THE MASK
                     mask = orderGeoTable["order"] == thisOrder
@@ -3974,7 +4496,7 @@ class create_dispersion_map:
             log=self.log,
             qc=self.qc,
             qcAx=qcAx,
-            settings={**self.recipeSettings, **{"exptime": self.exptime}},
+            settings=tableSettings,
             settingsAx=settingsAx,
         )
 
@@ -4005,6 +4527,7 @@ class create_dispersion_map:
         self.log.debug("completed the ``create_dispersion_map_qc_plot`` method")
         return res_plots
 
+    @closes_its_figures
     def _clip_on_measured_line_metrics(self, orderPixelTable):
         """*clip lines & sets of lines based on measured line metrics (from daostarfinder etc)*
 
@@ -4019,7 +4542,6 @@ class create_dispersion_map:
         self.log.debug("starting the ``_clip_on_measured_line_metrics`` method")
 
         import matplotlib.pyplot as plt
-        from astropy.visualization import hist
 
         # LAYOUT THE FIGURE
         fig = plt.figure(figsize=(6, 12), constrained_layout=True)
@@ -4040,7 +4562,6 @@ class create_dispersion_map:
             self.log.debug(f"_clip_on_measured_line_metrics: `columnsNoStrings.remove('ion')` failed, continuing: {e}")
 
         if self.firstGuessMap:
-
             # GROUP BY ARC LINES (MPH SETS)
 
             lineGroups = (
@@ -4122,16 +4643,7 @@ class create_dispersion_map:
             bottomleft.tick_params(axis="both", which="major", labelsize=9)
             bottomleft.legend(loc="upper right", bbox_to_anchor=(1.0, -0.05), fontsize=4)
 
-            hist(
-                lineGroups[(lineGroups["sigma_clipped_scatter"] == False)]["xy_diff"],
-                bins="scott",
-                ax=bottomright,
-                histtype="stepfilled",
-                alpha=0.7,
-                density=True,
-            )
-            bottomright.set_xlabel("xy residual")
-            bottomright.tick_params(axis="both", which="major", labelsize=9)
+            plot_xy_residual_histogram(bottomright, lineGroups.loc[~lineGroups["sigma_clipped_scatter"], "xy_diff"])
 
             # REMOVE THE CLIPPED DATA BEFORE CLIPPING ON FWHM
             mask = lineGroups["sigma_clipped_scatter"] == True
@@ -4439,7 +4951,6 @@ class create_dispersion_map:
         #     pass
         dfCollection = []
         for o, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax):
-
             wrange = wmax - wmin
             wmin -= wrange / 5
             wmax += wrange / 5
@@ -4517,6 +5028,30 @@ class create_dispersion_map:
 
     # use the tab-trigger below for new method
     # xt-class-method
+
+
+def _pinhole_pattern_fit(lineSet, axisA):
+    """*return the pinhole spacing and intercept of one arc-line set: a straight-line fit of position on slit index*
+
+    This is the one definition of "pinhole spacing" used by both whole-spacing decisions (DY-1735).
+
+    **Key Arguments:**
+
+    - ``lineSet`` -- the line table rows of one (wavelength, order) set
+    - ``axisA`` -- the axis along the slit
+
+    **Return:**
+
+    - ``(spacing, intercept)`` -- the fitted slope and intercept, both NaN when fewer than two slit indexes have a
+      finite predicted position
+    """
+    import numpy as np
+
+    finite = lineSet.loc[np.isfinite(lineSet[f"detector_{axisA}_shifted"])]
+    if finite["slit_index"].nunique() < 2:
+        return float("nan"), float("nan")
+    spacing, intercept = np.polyfit(finite["slit_index"], finite[f"detector_{axisA}_shifted"], 1)
+    return float(spacing), float(intercept)
 
 
 def measure_line_position(
@@ -4614,7 +5149,6 @@ def measure_line_position(
 
     # PROCESS DETECTED SOURCES
     if sources:
-
         if returnAll:
             # RETURN ALL DETECTED SOURCES
             for source in sources:
@@ -4702,7 +5236,7 @@ def measure_line_position(
             plt.text(
                 windowHalf - 2,
                 windowHalf - 2,
-                f"{observed_x-xlow:0.2f},{observed_y - ylow:0.2f}",
+                f"{observed_x - xlow:0.2f},{observed_y - ylow:0.2f}",
                 fontsize=16,
                 c="black",
                 verticalalignment="bottom",
@@ -4805,6 +5339,7 @@ def straighten_mph_sets(group):
     return group
 
 
+@closes_its_figures
 def _plot_slit_index_comparisons(df):
     """
     Plot slit_index vs xy_diff, x_diff, and y_diff, color-coded by slit_index.

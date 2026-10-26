@@ -1,0 +1,7 @@
+# Formatting commits. Use with: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# DY-850 (#594): ruff format applied to the whole repository. The pull request was
+# squash-merged, so this commit also carries a few non-formatting lines (zip strict=True,
+# the response_function message, the CI format step, the version template); blame shows
+# their previous author.
+764508c78656238c07caba74fa56491015a7e345

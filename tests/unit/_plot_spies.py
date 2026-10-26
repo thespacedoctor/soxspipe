@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import matplotlib.pyplot as plt
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
+from matplotlib.transforms import Bbox
 
 
 def spy_figures(monkeypatch: pytest.MonkeyPatch) -> list[Figure]:
@@ -37,3 +41,40 @@ def quiet_show(monkeypatch: pytest.MonkeyPatch) -> list[tuple]:
     calls: list[tuple] = []
     monkeypatch.setattr(plt, "show", lambda *args, **kwargs: calls.append((args, kwargs)))
     return calls
+
+
+def probe_on_savefig(monkeypatch: pytest.MonkeyPatch, probe: Callable[[Figure], object]) -> list[object]:
+    """Patch `matplotlib.pyplot.savefig` to record `probe(figure)` for the current figure, then save as normal.
+
+    QC plot functions clear or close their figure after saving, so the figure must be probed at save time.
+
+    **Key Arguments:**
+
+    - ``monkeypatch`` -- the pytest monkeypatch fixture
+    - ``probe`` -- called with the current figure each time `savefig` runs
+
+    **Return:**
+
+    - a list that is appended to (in call order) with each probe result
+    """
+    probes: list[object] = []
+    realSavefig = plt.savefig
+
+    def recorder(*args: object, **kwargs: object) -> None:
+        probes.append(probe(plt.gcf()))
+        realSavefig(*args, **kwargs)
+
+    monkeypatch.setattr(plt, "savefig", recorder)
+    return probes
+
+
+def image_interpolations(figure: Figure) -> list[str]:
+    """Return the interpolation setting of every image on the figure, in axis order."""
+    return [image.get_interpolation() for ax in figure.axes for image in ax.get_images()]
+
+
+def table_extents(figure: Figure) -> list[Bbox]:
+    """Draw the figure on an Agg canvas and return the window extent of every table, in axis order."""
+    renderer = FigureCanvasAgg(figure).get_renderer()
+    figure.draw(renderer)
+    return [table.get_window_extent(renderer) for ax in figure.axes for table in ax.tables]

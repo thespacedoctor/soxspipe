@@ -16,20 +16,18 @@ def _organiser_with_inventory(tmp_path, log):
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.conn = sqlite3.connect(":memory:")
     organiser.conn.execute(
-        '''CREATE TABLE raw_frame_sets (
+        """CREATE TABLE raw_frame_sets (
             "eso seq arm" TEXT, "night start date" TEXT, "night start mjd" REAL,
             "eso obs name" TEXT, "eso obs id" TEXT, "mjd-obs" REAL, slit TEXT,
             sof TEXT, complete INTEGER, recipe TEXT, "eso dpr type" TEXT
-        )'''
+        )"""
     )
     organiser.conn.execute(
-        '''INSERT INTO raw_frame_sets VALUES (
+        """INSERT INTO raw_frame_sets VALUES (
             'VIS', '2024-01-02', 60311.0, 'Synthetic target', '42', 60311.2,
-            'SLIT1.0', 'science.sof', 1, 'stare_obj', 'OBJECT')'''
+            'SLIT1.0', 'science.sof', 1, 'stare_obj', 'OBJECT')"""
     )
-    organiser.conn.execute(
-        '''CREATE TABLE product_frames (sof TEXT, complete INTEGER, file TEXT)'''
-    )
+    organiser.conn.execute("""CREATE TABLE product_frames (sof TEXT, complete INTEGER, file TEXT)""")
     organiser.conn.executemany(
         "INSERT INTO product_frames VALUES (?, ?, ?)",
         [
@@ -37,9 +35,7 @@ def _organiser_with_inventory(tmp_path, log):
             ("calibration.sof", 1, "master.fits"),
         ],
     )
-    organiser.conn.execute(
-        '''CREATE TABLE sof_map_base (sof TEXT, file TEXT, filepath TEXT)'''
-    )
+    organiser.conn.execute("""CREATE TABLE sof_map_base (sof TEXT, file TEXT, filepath TEXT)""")
     organiser.conn.executemany(
         "INSERT INTO sof_map_base VALUES (?, ?, ?)",
         [
@@ -48,9 +44,7 @@ def _organiser_with_inventory(tmp_path, log):
             ("calibration.sof", "raw-1.fits", "./raw/2024-01-02/raw-1.fits"),
         ],
     )
-    organiser.conn.execute(
-        "CREATE VIEW sof_map AS SELECT * FROM sof_map_base"
-    )
+    organiser.conn.execute("CREATE VIEW sof_map AS SELECT * FROM sof_map_base")
     return organiser
 
 

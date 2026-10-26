@@ -538,3 +538,16 @@ def test_a_qc_failure_takes_priority_over_a_crash_for_the_same_missing_type() ->
     connection.close()
 
     assert blocking["sof"].tolist() == ["MFLAT_QC.sof"]
+
+
+def test_mdark_gates_on_rospeed_like_its_cal_view() -> None:
+    """`cal_mdark` requires the readout speeds to match, so a failed dark in another speed is not the cause."""
+    connection = _connection()
+    _add_set(connection, "NOD_NIR.sof", arm="NIR", rospeed="100")
+    _add_failure(connection, "MDARK_OTHER.sof", "mdark", arm="NIR", rospeed="200")
+    sofMap = {"science": {"recipe": "nod_obj", "calibrations": {"NIR": ["mdark"]}}}
+
+    result = _organiser(connection, sofMap).get_incomplete_raw_frames_set()
+    connection.close()
+
+    assert result["missing calibrations"].tolist() == ["master dark (not observed)"]

@@ -218,19 +218,21 @@ class subtract_background:
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": f"BKGROUND{self.lamp}",
-                            "file_name": backgroundQCImage,
-                            "file_type": "PDF",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": f"Fitted intra-order image background{self.lamp.replace('_', ' ')}",
-                            "file_path": saveToPath,
-                            "label": "QC",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "product_label": f"BKGROUND{self.lamp}",
+                                "file_name": backgroundQCImage,
+                                "file_type": "PDF",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "product_desc": f"Fitted intra-order image background{self.lamp.replace('_', ' ')}",
+                                "file_path": saveToPath,
+                                "label": "QC",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -258,35 +260,50 @@ class subtract_background:
             axisALen = self.frame.data.shape[0]
             axisBLen = self.frame.data.shape[1]
 
-        oTop = orderPixelTable["order"].min()
-        oBot = orderPixelTable["order"].max()
+        minimumExpansion = 2
+
+        # PICK NEIGHBOURS AND EDGE ORDERS BY POSITION ALONG AXIS A ONLY, NEVER BY
+        # ORDER NUMBER; AN ORDER WITH NO FINITE EDGES TAKES NO PART
+        orderCentres = (
+            ((orderPixelTable[f"{self.axisA}coord_edgeup"] + orderPixelTable[f"{self.axisA}coord_edgelow"]) / 2)
+            .groupby(orderPixelTable["order"])
+            .median()
+        )
+        ordersLowToHigh = list(orderCentres.loc[uniqueOrders].dropna().sort_values(kind="stable").index)
+        neighbourBelow = dict(zip(ordersLowToHigh[1:], ordersLowToHigh[:-1], strict=True))
+        neighbourAbove = dict(zip(ordersLowToHigh[:-1], ordersLowToHigh[1:], strict=True))
 
         for o in uniqueOrders:
-
             axisBcoord = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisB}coord"]
             axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgeup"]
             axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o)][f"{self.axisA}coord_edgelow"]
 
-            if o != oBot:
-                next_axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == o + 1)][
+            expandBottom = None
+            expandTop = None
+
+            if o in neighbourBelow:
+                below_axisAcoord_edgeup = orderPixelTable.loc[(orderPixelTable["order"] == neighbourBelow[o])][
                     f"{self.axisA}coord_edgeup"
                 ]
-                bottomGap = axisAcoord_edgelow.values - next_axisAcoord_edgeup.values
+                bottomGap = axisAcoord_edgelow.values - below_axisAcoord_edgeup.values
                 expandBottom = np.median(bottomGap) / 2 - 3
-                if expandBottom < 2:
-                    expandBottom = 2
-            else:
-                expandBottom = expandTop
+                if expandBottom < minimumExpansion:
+                    expandBottom = minimumExpansion
 
-            if o != oTop:
-                previous_axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == o - 1)][
+            if o in neighbourAbove:
+                above_axisAcoord_edgelow = orderPixelTable.loc[(orderPixelTable["order"] == neighbourAbove[o])][
                     f"{self.axisA}coord_edgelow"
                 ]
-                topGap = previous_axisAcoord_edgelow.values - axisAcoord_edgeup.values
+                topGap = above_axisAcoord_edgelow.values - axisAcoord_edgeup.values
                 expandTop = np.median(topGap) / 2 - 3
-                if expandTop < 2:
-                    expandTop = 2
-            else:
+                if expandTop < minimumExpansion:
+                    expandTop = minimumExpansion
+
+            if expandBottom is None and expandTop is None:
+                expandBottom = expandTop = minimumExpansion
+            elif expandBottom is None:
+                expandBottom = expandTop
+            elif expandTop is None:
                 expandTop = expandBottom
 
             axisAcoord_edgeup += expandTop
@@ -315,7 +332,7 @@ class subtract_background:
                 else:
                     self.frame.mask[l:u, b] = 1
 
-            if o == oBot:
+            if o == ordersLowToHigh[-1]:
                 # MASK TOP OF FRAME
                 mask_bottom = np.array(axisAcoord_edgeup) + 25
                 for (
@@ -327,7 +344,7 @@ class subtract_background:
                     else:
                         self.frame.mask[m:, b] = 1
 
-            if o == oTop:
+            if o == ordersLowToHigh[0]:
                 # MASK BOTTOM OF FRAME
                 mask_top = np.array(axisAcoord_edgelow) - 25
                 for (
@@ -364,7 +381,6 @@ class subtract_background:
         from astropy.nddata import CCDData
         from astropy.stats import sigma_clip
         from scipy.interpolate import splev, splrep
-
 
         maskedImage = np.ma.array(self.frame.data, mask=self.frame.mask)
         # SIGMA-CLIP THE DATA
@@ -415,7 +431,6 @@ class subtract_background:
         backgroundMap = np.zeros_like(self.frame)
 
         for idx, row in enumerate(maskedImage):
-
             # SET X TO A MASKED RANGE ... BLANK DATA BUT WITH MASK FROM IMAGE
             xunmasked = ma.masked_array(np.linspace(0, len(row), len(row), dtype=int), mask=row.mask)
 

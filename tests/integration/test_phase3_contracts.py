@@ -24,9 +24,7 @@ def test_phase3_table_writer_scrubs_header_and_writes_qc(
     header["ARCFILE"] = "raw.fits"
     header["RADECSYS"] = "ICRS"
     header["HIERARCH ESO TEL TARG EQUINOX"] = 2000.0
-    qc = pd.DataFrame(
-        [{"qc_name": "RON", "qc_value": 3.2, "qc_comment": "Read noise", "to_header": True}]
-    )
+    qc = pd.DataFrame([{"qc_name": "RON", "qc_value": 3.2, "qc_comment": "Read noise", "to_header": True}])
     outputPath = tmp_path / "phase3.fits"
 
     write_fits_table_to_disk(

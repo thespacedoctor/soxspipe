@@ -12,18 +12,92 @@ Date Created
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from os.path import expanduser
+from typing import TYPE_CHECKING
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
     dispersion_map_to_pixel_arrays,
 )
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
 )
 
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+    from matplotlib.axes import Axes
+    from matplotlib.figure import Figure
+
 os.environ["TERM"] = "vt100"
+
+# SOXS VIS ORDER NUMBER (AS IN THE STATIC TABLES, PRODUCTS, QCS AND PLOTS) TO ITS BAND
+SOXS_VIS_ORDER_BANDS = {1: "r", 2: "u", 3: "g", 4: "i"}
+# THE SOXS VIS ORDER NUMBERS FROM THE SHORTEST TO THE LONGEST WAVELENGTHS (u, g, r, i)
+SOXS_VIS_ORDERS_BLUE_TO_RED = (2, 3, 1, 4)
+
+# QC PLOT LAYOUT (INCHES)
+QC_PLOT_PANEL_WIDTH_INCHES = 5.2
+QC_TABLE_ROW_HEIGHT_INCHES = 0.25
+QC_PLOT_DECORATION_HEIGHT_INCHES = 2.0
+QC_RESIDUAL_ROW_HEIGHT_INCHES = 2.5
+QC_STRIP_ROW_HEIGHT_INCHES = 2.0
+# DROP THE LEGENDS BELOW THE TICK LABELS, BESIDE THE AXIS LABEL
+QC_LEGEND_OFFSET_POINTS = 14
+
+# EXTRACTION NOTES PRINTED UNDER A QC PLOT
+# THE MOST NOTES DRAWN ON A PLOT. THE REST ARE SUMMARISED AS A COUNT
+MAX_PLOT_NOTES = 20
+# CHARACTERS PER LINE BEFORE A LONG NOTE IS WRAPPED (MONOSPACE, NOTE_FONT_SIZE_POINTS, ON A 14 INCH WIDE FIGURE)
+NOTE_WRAP_WIDTH = 160
+NOTE_FONT_SIZE_POINTS = 7
+# LINE PITCH AS A MULTIPLE OF THE FONT SIZE
+NOTE_LINE_SPACING = 1.4
+# GAP IN POINTS BETWEEN THE FIGURE EDGE AND THE FIRST NOTE
+NOTE_TOP_GAP_POINTS = 6
+NOTE_LEFT_MARGIN = 0.01
+NOTE_ERROR_COLOUR = "#dc322f"
+NOTE_WARNING_COLOUR = "darkorange"
+NOTE_SUMMARY_COLOUR = "dimgrey"
+
+# SKY-LINE BLEND MERGE (DY-1645): FAINTEST CATALOGUE LINE THAT TAKES PART, IN THE CATALOGUE'S FLUX UNITS
+SKYLINE_MIN_LINE_FLUX = 0.5
+# CONSECUTIVE LINES CLOSER THAN THIS (nm) ARE ONE UNRESOLVED BLEND
+SKYLINE_MERGE_GAP_NM = 0.1
+# A MERGED LINE MUST HAVE MORE THAN THIS SUMMED FLUX TO BE USED FOR CALIBRATION
+SKYLINE_MIN_GROUP_FLUX = 5.0
+# A NEIGHBOUR WITHIN THIS DISTANCE (nm) ...
+SKYLINE_ISOLATION_NM = 0.35
+# ... WITH MORE THAN THIS FRACTION OF A LINE'S FLUX MEANS THE LINE IS NOT ISOLATED
+SKYLINE_NEIGHBOUR_FLUX_RATIO = 0.2
+
+
+def order_label(order: int | float, arm: str) -> str:
+    """*the label for an echelle order: its number, plus its band letter for SOXS VIS*
+
+    **Key Arguments:**
+
+    - ``order`` -- the order number
+    - ``arm`` -- the arm the order belongs to (e.g. ``VIS``). Case is ignored
+
+    **Return:**
+
+    - ``label`` -- e.g. ``"1 (r)"`` for SOXS VIS order 1 and ``"11"`` for order 11 of any other arm
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import order_label
+    label = order_label(1, "VIS")
+    ```
+    """
+    order = int(order)
+    if str(arm).upper() == "VIS" and order in SOXS_VIS_ORDER_BANDS:
+        return f"{order} ({SOXS_VIS_ORDER_BANDS[order]})"
+    return f"{order}"
 
 
 def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False, debug=False):
@@ -45,7 +119,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
 
     - ``sliceOut`` -- the median-collapsed slice when ``median`` is True, otherwise the full uncollapsed cut
     - ``slice_length_offset`` -- the pixel offset of the slice start along its length
-    - ``slice_width_centre`` -- the pixel coordinate of the slice centre across its width
+    - ``slice_width_centre`` -- the pixel coordinate of the centre of the collapsed rows
 
     All three are *None* when the slice would fall outside the frame.
 
@@ -89,17 +163,14 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
         return None, None, None
 
     slice_length_offset = int(axisA - halfSlice)
+    widthStart = int(axisB - halfwidth)
+    widthStop = int(axisB + halfwidth + 1)
     if sliceAxis == "x":
-        sliceFull = frame[
-            int(axisB - halfwidth) : int(axisB + halfwidth + 1),
-            slice_length_offset : int(axisA + halfSlice),
-        ]
+        sliceFull = frame[widthStart:widthStop, slice_length_offset : int(axisA + halfSlice)]
     else:
-        sliceFull = frame[
-            slice_length_offset : int(axisA + halfSlice),
-            int(axisB - halfwidth) : int(axisB + halfwidth + 1),
-        ]
-    slice_width_centre = (int(axisB + halfwidth + 1) + int(axisB - halfwidth)) / 2
+        sliceFull = frame[slice_length_offset : int(axisA + halfSlice), widthStart:widthStop]
+    # PIXEL CENTRES SIT AT INTEGER INDICES AND THE STOP INDEX IS EXCLUSIVE, SO THE LAST ROW COLLAPSED IS `widthStop - 1`
+    slice_width_centre = (widthStart + widthStop - 1) / 2
 
     # # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
     # maskedDataArray = np.ma.array(sliceFull.data, mask=sliceFull.mask)
@@ -136,6 +207,7 @@ def cut_image_slice(log, frame, width, length, x, y, sliceAxis="x", median=False
     return sliceOut, slice_length_offset, slice_width_centre
 
 
+@closes_its_figures
 def quicklook_image(
     log,
     CCDObject,
@@ -163,10 +235,12 @@ def quicklook_image(
     - ``title`` -- give a title for the plot
     - ``surfacePlot`` -- plot as a 3D surface plot
     - ``dispMap`` -- path to dispersion map. Default *False*
-    - ``dispMapImage`` -- the 2D dispersion map image
+    - ``dispMapImage`` -- the 2D dispersion map image. Needs ``settings``. Without it the overlay is skipped with a
+      warning and no error is raised
     - ``inst`` -- provide instrument name if no header exists
     - ``settings`` -- the soxspipe settings dictionary, used to look up the arm and skylines. Default *False*
-    - ``skylines`` -- mark skylines on image
+    - ``skylines`` -- mark skylines on image. Needs ``settings``. Without it the overlay is skipped with a warning
+      and no error is raised
     - ``saveToPath`` -- path to save the plot to. Default *False*
 
     **Usage:**
@@ -197,11 +271,22 @@ def quicklook_image(
     if inst is False:
         inst = _quicklook_instrument(log, CCDObject)
 
+    # THE OVERLAYS NEED THE KEYWORD LOOKUP AND ARM, WHICH ONLY `settings` PROVIDES. A COSMETIC OVERLAY MUST NOT ABORT A
+    # REDUCTION, SO SKIP IT AND WARN INSTEAD OF RAISING
+    drawDispMap = not isinstance(dispMapImage, bool)
+    if (drawDispMap or skylines) and not settings:
+        log.warning(
+            "quicklook_image: the dispersion map overlay and skylines need the `settings` argument, "
+            "so they are not drawn"
+        )
+        drawDispMap = False
+        skylines = False
+
     skylinesDF = get_skylines_dataframe(log, settings, arm) if skylines else False
 
-    # COMBINE MASK WITH THE BAD PIXEL MASK
-    if not isinstance(dispMapImage, bool):
-        gridLinePixelTable = _apply_inter_order_mask(
+    # MASK THE INTER-ORDER PIXELS, KEEPING ANY MASK THE FRAME ALREADY CARRIES
+    if drawDispMap:
+        gridLinePixelTable, frame = _apply_inter_order_mask(
             log=log,
             frame=frame,
             CCDObject=CCDObject,
@@ -236,7 +321,7 @@ def quicklook_image(
         # palette.set_under('g', 1.0)
         ax2 = fig.add_subplot(111)
 
-    if not isinstance(dispMapImage, bool):
+    if drawDispMap:
         _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst)
 
     _draw_detector_image(
@@ -308,7 +393,7 @@ def _apply_inter_order_mask(log, frame, CCDObject, dispMap, dispMapImage, kw, sk
     **Key Arguments:**
 
     - ``log`` -- logger
-    - ``frame`` -- the array being plotted, masked in place where it supports a mask
+    - ``frame`` -- the array being plotted. It is not modified
     - ``CCDObject`` -- the CCDObject the frame came from
     - ``dispMap`` -- path to dispersion map
     - ``dispMapImage`` -- the 2D dispersion map image
@@ -318,7 +403,14 @@ def _apply_inter_order_mask(log, frame, CCDObject, dispMap, dispMapImage, kw, sk
     **Return:**
 
     - ``gridLinePixelTable`` -- the pixel coordinates of the dispersion solution grid lines
+    - ``maskedFrame`` -- a masked array of the frame, with the inter-order pixels added to any existing mask
+
+    The inter-order mask must have the same shape as the frame. If it does not, a warning is logged, the
+    inter-order pixels are not masked, and ``maskedFrame`` carries only the frame's existing mask. The grid lines are
+    still returned, so a cosmetic overlay never aborts a reduction.
     """
+    import numpy as np
+
     gridLinePixelTable, interOrderMask = create_dispersion_solution_grid_lines_for_plot(
         log=log,
         dispMap=dispMap,
@@ -328,17 +420,16 @@ def _apply_inter_order_mask(log, frame, CCDObject, dispMap, dispMapImage, kw, sk
         skylines=skylinesDF,
     )
 
-    try:
-        mask = (frame.mask == 1) | (interOrderMask == 1)
-    except (AttributeError, ValueError) as e:
-        log.debug(f"quicklook_image: `mask = (frame.mask == 1) | (interOrderMask == 1)` failed, continuing: {e}")
-        mask = interOrderMask == 1
-    try:
-        frame.mask = mask
-    except AttributeError as e:
-        log.debug(f"quicklook_image: `frame.mask = mask` failed, continuing: {e}")
+    if np.shape(interOrderMask) != np.shape(frame):
+        log.warning(
+            f"quicklook_image: inter-order mask shape {np.shape(interOrderMask)} does not match "
+            f"frame shape {np.shape(frame)}, so the inter-order pixels are not masked"
+        )
+        return gridLinePixelTable, np.ma.masked_array(frame, mask=np.ma.getmaskarray(frame))
 
-    return gridLinePixelTable
+    maskedFrame = np.ma.masked_array(frame, mask=np.ma.getmaskarray(frame) | (interOrderMask == 1))
+
+    return gridLinePixelTable, maskedFrame
 
 
 def _draw_detector_image(fig, ax2, rotatedImg, vmin, vmax, palette, mean, surfacePlot, title, inst):
@@ -387,21 +478,28 @@ def _quicklook_frame_array(CCDObject, ext):
     **Key Arguments:**
 
     - ``CCDObject`` -- the CCDObject (or plain array) to plot
-    - ``ext`` -- the extension name: "data", "mask" or "uncertainty". Anything else treats
-      ``CCDObject`` as a plain array
+    - ``ext`` -- the extension name: "data", "mask" or "uncertainty". Anything else plots the whole
+      ``CCDObject``: a CCDData becomes a masked view of its data with a copy of its mask, and a plain array
+      is returned unchanged
 
     **Return:**
 
     - ``frame`` -- the array to plot
     """
+    import numpy as np
+    from astropy.nddata import NDData
+
     if ext == "data":
         frame = CCDObject.data
     elif ext == "mask":
         frame = CCDObject.mask
     elif ext == "uncertainty":
         frame = CCDObject.uncertainty.array
+    elif isinstance(CCDObject, NDData):
+        # A CCDDATA IS NOT AN NDARRAY. WRAPPED IN np.ma.masked_array, IT RECURSES FOREVER ON INDEXING
+        mask = np.ma.nomask if CCDObject.mask is None else np.array(CCDObject.mask, dtype=bool)
+        frame = np.ma.masked_array(CCDObject.data, mask=mask)
     else:
-        # ASSUME ONLY NDARRAY
         frame = CCDObject
     return frame
 
@@ -510,8 +608,8 @@ def _draw_surface_plot(rotatedImg, frame, inst, vmin, vmax):
     # ax.set_zticks([])
 
     X, Y = np.meshgrid(
-        np.linspace(0, rotatedImg.shape[1], rotatedImg.shape[1]),
-        np.linspace(0, rotatedImg.shape[0], rotatedImg.shape[0]),
+        np.arange(rotatedImg.shape[1]),
+        np.arange(rotatedImg.shape[0]),
     )
     ax.plot_surface(
         X=X,
@@ -645,7 +743,7 @@ def unpack_order_table(
 
     if order:
         mask = orderMetaTable["order"] == order
-        orderMetaTable = orderMetaTable.loc[mask]
+        orderMetaTable = orderMetaTable.loc[mask].copy()
 
     axisA, axisB, axisAbin, axisBbin = _order_table_axes(orderPolyTable, binx, biny)
 
@@ -656,38 +754,13 @@ def unpack_order_table(
         extend=extend,
         pixelDelta=pixelDelta,
     )
-
-    orderPixelTable[f"{axisA}coord_centre"] = _evaluate_order_polynomial(
+    orderPixelTable = _evaluate_order_pixel_table(
         log=log,
         orderPolyTable=orderPolyTable,
         orderPixelTable=orderPixelTable,
+        axisA=axisA,
         axisB=axisB,
-        degreeSuffix="cent",
-        coefficients=_order_polynomial_coefficients(orderPolyTable, "cent_"),
     )
-
-    std_coeff = _order_polynomial_coefficients(orderPolyTable, "std_")
-    if len(std_coeff):
-        # THE STANDARD-DEVIATION POLYNOMIAL DELIBERATELY REUSES THE CENTRE-TRACE DEGREES
-        orderPixelTable["std"] = _evaluate_order_polynomial(
-            log=log,
-            orderPolyTable=orderPolyTable,
-            orderPixelTable=orderPixelTable,
-            axisB=axisB,
-            degreeSuffix="cent",
-            coefficients=std_coeff,
-        )
-
-    for edge in ["edgeup", "edgelow"]:
-        if f"deg{axisB}_{edge}" in orderPolyTable.columns:
-            orderPixelTable[f"{axisA}coord_{edge}"] = _evaluate_order_polynomial(
-                log=log,
-                orderPolyTable=orderPolyTable,
-                orderPixelTable=orderPixelTable,
-                axisB=axisB,
-                degreeSuffix=edge,
-                coefficients=_order_polynomial_coefficients(orderPolyTable, f"{edge}_"),
-            )
 
     orderPixelTable, orderMetaTable = _rescale_order_tables_for_binning(
         orderPixelTable=orderPixelTable,
@@ -700,6 +773,141 @@ def unpack_order_table(
 
     log.debug("completed the ``functionName`` function")
     return orderPolyTable, orderPixelTable, orderMetaTable
+
+
+def order_traces_table(log, orderPolyTable, orderMetaTable, tableBinx=1, tableBiny=1, limitsBinx=1, limitsBiny=1):
+    """*sample every order's centre trace, and its edge traces where fitted, at each unbinned pixel*
+
+    This is the table written to the ``ORDER_TRACES`` extension of an order location table. It holds the rows
+    ``unpack_order_table`` returns with ``pixelDelta=1``, in unbinned detector pixels. The sampled range runs from
+    each order's lower limit up to, but not including, its upper limit.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``orderMetaTable`` -- the order table's metadata dataframe
+    - ``tableBinx`` -- x binning of the pixel scale the polynomial coefficients are in. Default *1*
+    - ``tableBiny`` -- y binning of the pixel scale the polynomial coefficients are in. Default *1*
+    - ``limitsBinx`` -- x binning of the frame the metadata limits were measured on. Default *1*
+    - ``limitsBiny`` -- y binning of the frame the metadata limits were measured on. Default *1*
+
+    **Return:**
+
+    - ``orderTraces`` -- a dataframe with the sampled axis-B coordinate, the order number and the axis-A coordinate
+      of the centre (and of the upper and lower edges, when fitted), all in unbinned pixels
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import order_traces_table
+    orderTraces = order_traces_table(log=log, orderPolyTable=orderPolyTable, orderMetaTable=orderMetaTable)
+    ```
+    """
+    log.debug("starting the ``order_traces_table`` function")
+
+    axisA, axisB, tableAbin, tableBbin = _order_table_axes(orderPolyTable, tableBinx, tableBiny)
+    limitsBbin = _order_table_axes(orderPolyTable, limitsBinx, limitsBiny)[3]
+
+    # SAMPLE EVERY UNBINNED PIXEL, THEN EVALUATE THE POLYNOMIALS ON THE PIXEL SCALE THEY WERE FITTED ON
+    orderTraces = _order_table_pixel_grid(
+        orderMetaTable=orderMetaTable, axisB=axisB, ratio=limitsBbin, extend=0.0, pixelDelta=1
+    )
+    unbinnedCoords = orderTraces[f"{axisB}coord"].copy()
+    orderTraces[f"{axisB}coord"] = unbinnedCoords / tableBbin
+    orderTraces = _evaluate_order_pixel_table(
+        log=log,
+        orderPolyTable=orderPolyTable,
+        orderPixelTable=orderTraces,
+        axisA=axisA,
+        axisB=axisB,
+        includeStd=False,
+    )
+
+    orderTraces[f"{axisB}coord"] = unbinnedCoords
+    for column in orderTraces.columns[orderTraces.columns.str.startswith(f"{axisA}coord_")]:
+        orderTraces[column] *= tableAbin
+
+    log.debug("completed the ``order_traces_table`` function")
+    return orderTraces
+
+
+def _evaluate_order_pixel_table(log, orderPolyTable, orderPixelTable, axisA, axisB, includeStd=True):
+    """*evaluate the order table's polynomials at each sampled coordinate of the order-pixel dataframe*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``orderPixelTable`` -- the axis-B coordinate and order of each sample; the evaluated columns are added to it
+    - ``axisA`` -- the axis the order traces are solved for
+    - ``axisB`` -- the axis the order traces are sampled along
+    - ``includeStd`` -- also evaluate the trace-width polynomial, when the table carries one. Default *True*
+
+    **Return:**
+
+    - ``orderPixelTable`` -- the input with the centre, width and edge columns added
+    """
+    _evaluate_centre_columns(log, orderPolyTable, orderPixelTable, axisA, axisB, includeStd)
+    _evaluate_edge_columns(log, orderPolyTable, orderPixelTable, axisA, axisB)
+    return orderPixelTable
+
+
+def _evaluate_centre_columns(log, orderPolyTable, orderPixelTable, axisA, axisB, includeStd):
+    """*add the centre-trace column, and the trace-width column when wanted and fitted, to the order-pixel dataframe*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``orderPixelTable`` -- the order-pixel dataframe, extended in place
+    - ``axisA`` -- the axis the order traces are solved for
+    - ``axisB`` -- the axis the order traces are sampled along
+    - ``includeStd`` -- also evaluate the trace-width polynomial, when the table carries one
+    """
+    orderPixelTable[f"{axisA}coord_centre"] = _evaluate_order_polynomial(
+        log=log,
+        orderPolyTable=orderPolyTable,
+        orderPixelTable=orderPixelTable,
+        axisB=axisB,
+        degreeSuffix="cent",
+        coefficients=_order_polynomial_coefficients(orderPolyTable, "cent_"),
+    )
+
+    std_coeff = _order_polynomial_coefficients(orderPolyTable, "std_")
+    if includeStd and len(std_coeff):
+        # THE STANDARD-DEVIATION POLYNOMIAL DELIBERATELY REUSES THE CENTRE-TRACE DEGREES
+        orderPixelTable["std"] = _evaluate_order_polynomial(
+            log=log,
+            orderPolyTable=orderPolyTable,
+            orderPixelTable=orderPixelTable,
+            axisB=axisB,
+            degreeSuffix="cent",
+            coefficients=std_coeff,
+        )
+
+
+def _evaluate_edge_columns(log, orderPolyTable, orderPixelTable, axisA, axisB):
+    """*add the upper and lower edge-trace columns that the order table carries to the order-pixel dataframe*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``orderPolyTable`` -- the order table's polynomial coefficient dataframe
+    - ``orderPixelTable`` -- the order-pixel dataframe, extended in place
+    - ``axisA`` -- the axis the order traces are solved for
+    - ``axisB`` -- the axis the order traces are sampled along
+    """
+    for edge in ["edgeup", "edgelow"]:
+        if f"deg{axisB}_{edge}" in orderPolyTable.columns:
+            orderPixelTable[f"{axisA}coord_{edge}"] = _evaluate_order_polynomial(
+                log=log,
+                orderPolyTable=orderPolyTable,
+                orderPixelTable=orderPixelTable,
+                axisB=axisB,
+                degreeSuffix=edge,
+                coefficients=_order_polynomial_coefficients(orderPolyTable, f"{edge}_"),
+            )
 
 
 def _order_table_axes(orderPolyTable, binx, biny):
@@ -834,13 +1042,14 @@ def _rescale_order_tables_for_binning(orderPixelTable, orderMetaTable, axisA, ax
         orderPixelTable[f"{axisB}coord"] /= axisBbin
         orderPixelTable["std"] /= axisBbin
         mask = orderPixelTable[f"{axisB}coord"].mod(1) > 0
-        orderPixelTable = orderPixelTable.loc[~mask]
+        # THE BINNED TABLE IS A NEW LOCAL TABLE, NOT A VIEW OF THE UNBINNED ONE
+        orderPixelTable = orderPixelTable.loc[~mask].copy()
         orderPixelTable[f"{axisB}coord"] = orderPixelTable[f"{axisB}coord"].round().astype("int")
 
     return orderPixelTable, orderMetaTable
 
 
-def generic_quality_checks(log, frame, settings, recipeName, qcTable):
+def generic_quality_checks(log, frame, settings, recipeName, qcTable, excludeMask=None):
     """*measure very basic quality checks on a frame and return the QC table with results appended*
 
     **Key Arguments:**
@@ -850,6 +1059,9 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     - ``settings`` -- soxspipe settings
     - ``recipeName`` -- the name of the recipe
     - ``qcTable`` -- the QC pandas data-frame to save the QC measurements
+    - ``excludeMask`` -- boolean array, the same shape as the frame mask. The pixels flagged in it are not counted
+      as bad pixels, even when they are masked in the frame. A ``ValueError`` is raised if its shape differs
+      from the frame mask. Default *None* (count every masked pixel)
 
     **Return:**
 
@@ -880,7 +1092,14 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     utcnow = utcnow_string()
 
     # COUNT BAD-PIXELS
-    badCount = frame.mask.sum()
+    countedMask = frame.mask
+    if excludeMask is not None:
+        if np.shape(excludeMask) != np.shape(frame.mask):
+            raise ValueError(
+                f"excludeMask has shape {np.shape(excludeMask)} but the frame mask has shape {np.shape(frame.mask)}"
+            )
+        countedMask = frame.mask & ~np.asarray(excludeMask, dtype=bool)
+    badCount = countedMask.sum()
     totalPixels = np.size(frame.mask)
     percent = float(badCount) / float(totalPixels)
     percent = float(f"{percent:.6f}")
@@ -898,18 +1117,20 @@ def generic_quality_checks(log, frame, settings, recipeName, qcTable):
     qcTable = pd.concat(
         [
             qcTable,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "qc_name": qcName,
-                    "qc_value": int(badCount),
-                    "qc_comment": qcComment,
-                    "qc_unit": "",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "to_header": True,
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": qcName,
+                        "qc_value": int(badCount),
+                        "qc_comment": qcComment,
+                        "qc_unit": "",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -1034,25 +1255,27 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
 
     utcnow = utcnow_string()
 
-    # A FULLY MASKED FRAME GIVES np.ma.masked, WHICH `%0.*f` FORMATS AS "nan" BUT `:.3f` FORMATS AS "--"
-    mean = "%0.*f" % (3, mean)  # noqa: UP031
-    flux = "%0.*f" % (3, flux)  # noqa: UP031
+    # A FULLY MASKED FRAME GIVES np.ma.masked; STORE IT AS NAN
+    mean = round(float(np.ma.filled(mean, np.nan)), 3)
+    flux = round(float(np.ma.filled(flux, np.nan)), 3)
 
     qcTable = pd.concat(
         [
             qcTable,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "qc_name": "INNER ORDER PIX MEAN",
-                    "qc_value": mean,
-                    "qc_comment": "[e-] Mean inner-order pixel value",
-                    "qc_unit": "electrons",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "to_header": True,
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "INNER ORDER PIX MEAN",
+                        "qc_value": mean,
+                        "qc_comment": "[e-] Mean inner-order pixel value",
+                        "qc_unit": "electrons",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -1060,18 +1283,20 @@ def spectroscopic_image_quality_checks(log, frame, orderTablePath, settings, rec
     qcTable = pd.concat(
         [
             qcTable,
-            pd.DataFrame([
-                {
-                    "soxspipe_recipe": recipeName,
-                    "qc_name": "INNER ORDER PIX SUM",
-                    "qc_value": flux,
-                    "qc_comment": "[e-] Sum of all inner-order pixel values",
-                    "qc_unit": "electrons",
-                    "obs_date_utc": dateObs,
-                    "reduction_date_utc": utcnow,
-                    "to_header": True,
-                }
-            ]),
+            pd.DataFrame(
+                [
+                    {
+                        "soxspipe_recipe": recipeName,
+                        "qc_name": "INNER ORDER PIX SUM",
+                        "qc_value": flux,
+                        "qc_comment": "[e-] Sum of all inner-order pixel values",
+                        "qc_unit": "electrons",
+                        "obs_date_utc": dateObs,
+                        "reduction_date_utc": utcnow,
+                        "to_header": True,
+                    }
+                ]
+            ),
         ],
         ignore_index=True,
     )
@@ -1357,9 +1582,17 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
 
     binx, biny = _associated_frame_binning(associatedFrame, kw)
 
-    hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny)
+    # WITHOUT AN ASSOCIATED FRAME THE MAP IS KEPT AT ITS OWN BINNING
+    mapKw = kw if associatedFrame else None
+    hdul, minimumBinnedPixelValue, binned = _open_disp_map_hdus(twoDMapPath, binx, biny, kw=mapKw)
 
-    mapDF = pd.DataFrame.from_dict(_disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame))
+    # THE MAP FILE IS CLOSED ONCE THE PIXEL COLUMNS AND THE INTER-ORDER MASK ARE COPIED OUT OF IT
+    try:
+        mapDF = pd.DataFrame.from_dict(_disp_map_pixel_columns(hdul, minimumBinnedPixelValue, binned, associatedFrame))
+        interOrderMask = hdul["ORDER"].data.copy()
+    finally:
+        hdul.close()
+
     if removeMaskedPixels:
         mask = mapDF["mask"].eq(False)
         mapDF = mapDF.loc[mask]
@@ -1368,7 +1601,6 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
     mask = mapDF["wavelength"] == 0
     mapDF = mapDF.loc[~mask]
 
-    interOrderMask = hdul["ORDER"].data.copy()
     interOrderMask = np.where(interOrderMask > 0, 0, interOrderMask)
     interOrderMask = np.where(np.isnan(interOrderMask), 1, interOrderMask)
 
@@ -1409,43 +1641,83 @@ def _associated_frame_binning(associatedFrame, kw):
     return 1, 1
 
 
-def _open_disp_map_hdus(twoDMapPath, binx, biny):
+def _map_reduction_factors(header, binx, biny, kw):
+    """*the block-reduce factors that take a 2D dispersion map from its own binning to the frame's binning*
+
+    **Key Arguments:**
+
+    - ``header`` -- the primary header of the 2D dispersion map
+    - ``binx`` -- the frame's binning in the x-axis
+    - ``biny`` -- the frame's binning in the y-axis
+    - ``kw`` -- fits keyword lookup dictionary, or *None* to treat the map as unbinned. A NIR map, or one with
+      no binning keywords, is also treated as unbinned
+
+    **Return:**
+
+    - ``factorX`` -- the frame's x-binning divided by the map's x-binning
+    - ``factorY`` -- the frame's y-binning divided by the map's y-binning
+    """
+    mapBinx, mapBiny = 1, 1
+    hasBinning = kw is not None and kw("WIN_BINX") in header and kw("WIN_BINY") in header
+    if hasBinning and header.get(kw("SEQ_ARM")) != "NIR":
+        mapBinx, mapBiny = int(header[kw("WIN_BINX")]), int(header[kw("WIN_BINY")])
+
+    if binx % mapBinx or biny % mapBiny:
+        raise ValueError(
+            f"the 2D dispersion map binning ({mapBinx}x{mapBiny}) cannot be block-reduced to the frame binning "
+            f"({binx}x{biny})"
+        )
+    return binx // mapBinx, biny // mapBiny
+
+
+def _open_disp_map_hdus(twoDMapPath, binx, biny, *, kw):
     """*open a 2D dispersion map and block-reduce its extensions to the frame's binning*
+
+    The map is reduced by the ratio of the frame's binning to the map's own binning, so a map already at the
+    frame's binning is left as it is.
 
     **Key Arguments:**
 
     - ``twoDMapPath`` -- 2D dispersion map image path
-    - ``binx`` -- binning in the x-axis
-    - ``biny`` -- binning in the y-axis
+    - ``binx`` -- the frame's binning in the x-axis
+    - ``biny`` -- the frame's binning in the y-axis
+    - ``kw`` -- fits keyword lookup dictionary, used to read the map's own binning, or *None* to keep the map at
+      its own binning by treating it as unbinned
 
     **Return:**
 
-    - ``hdul`` -- the open dispersion-map HDU list, block-reduced when the frame is binned
-    - ``minimumBinnedPixelValue`` -- the minimum unbinned wavelength within each binned pixel, or *None* when
-      the frame is unbinned
+    - ``hdul`` -- the open dispersion-map HDU list, block-reduced when the frame is more binned than the map
+    - ``minimumBinnedPixelValue`` -- the minimum map wavelength within each block-reduced pixel, or *None* when
+      the map was not block-reduced
     - ``binned`` -- was the map block-reduced?
     """
     import numpy as np
     from astropy.io import fits
 
     hdul = fits.open(twoDMapPath)
+    # THE HDUList MUST NOT LEAK ITS FILE HANDLE WHEN A MISSING OR EMPTY EXTENSION RAISES BEFORE IT IS RETURNED
+    try:
+        hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float32")
+        hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
+        hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
 
-    hdul["WAVELENGTH"].data = hdul["WAVELENGTH"].data.astype("float32")
-    hdul["SLIT"].data = hdul["SLIT"].data.astype("float32")
-    hdul["ORDER"].data = hdul["ORDER"].data.astype("float32")
+        factorX, factorY = _map_reduction_factors(hdul[0].header, binx, biny, kw)
 
-    binned = False
-    minimumBinnedPixelValue = None
-    if binx > 1 or biny > 1:
-        binned = True
-        from astropy.nddata import block_reduce
+        binned = False
+        minimumBinnedPixelValue = None
+        if factorX > 1 or factorY > 1:
+            binned = True
+            from astropy.nddata import block_reduce
 
-        minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
-        hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (biny, binx), func=np.mean)
-        hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (biny, binx), func=np.mean)
-        hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (biny, binx), func=np.mean)
-        minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (biny, binx), func=np.min)
-        minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
+            minimumBinnedPixelValue = hdul["WAVELENGTH"].data.copy()
+            hdul["WAVELENGTH"].data = block_reduce(hdul["WAVELENGTH"].data, (factorY, factorX), func=np.mean)
+            hdul["SLIT"].data = block_reduce(hdul["SLIT"].data, (factorY, factorX), func=np.mean)
+            hdul["ORDER"].data = block_reduce(hdul["ORDER"].data, (factorY, factorX), func=np.mean)
+            minimumBinnedPixelValue = block_reduce(minimumBinnedPixelValue, (factorY, factorX), func=np.min)
+            minimumBinnedPixelValue = minimumBinnedPixelValue.flatten()
+    except BaseException:
+        hdul.close()
+        raise
 
     return hdul, minimumBinnedPixelValue, binned
 
@@ -1547,6 +1819,182 @@ def _add_pixel_scale_column(mapDF, dispAxis):
     mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
 
 
+# AN OBSERVING NIGHT IS DATED BY THE UTC DAY THAT BEGAN 15 HOURS BEFORE THE OBSERVATION
+NIGHT_START_OFFSET_SECONDS = 15.0 * 60 * 60
+
+
+def start_night_date(obsTime):
+    """*convert an observation time to the date of the observing night it belongs to*
+
+    The date is that of the instant 15 hours before the observation, formatted ``YYYY-MM-DD``. The SOF route
+    (``predict_product_path``) and the frame-list route (``start_night_date_from_frames``) both use it.
+
+    **Key Arguments:**
+
+    - ``obsTime`` -- the observation time. An ``astropy.time.Time`` in UTC.
+
+    **Return:**
+
+    - ``startNightDate`` -- the start-of-night date as ``YYYY-MM-DD``
+
+    **Usage:**
+
+    ```python
+    from astropy.time import Time
+    from soxspipe.commonutils.toolkit import start_night_date
+    startNightDate = start_night_date(Time("2024-01-02T10:00:00", scale="utc"))
+    ```
+    """
+    from astropy.time import TimeDelta
+
+    nightStartOffset = TimeDelta(NIGHT_START_OFFSET_SECONDS, format="sec")
+    return (obsTime - nightStartOffset).strftime("%Y-%m-%d")
+
+
+def _frame_paths(log, inputFrames):
+    """*list the FITS frames in a directory or a list of frame paths*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger. Entries of a list that are not FITS frames are reported to it as warnings
+    - ``inputFrames`` -- a directory path or a list of FITS frame paths (``str`` or ``os.PathLike``).
+      Anything falsy gives no frames
+
+    **Return:**
+
+    - ``framePaths`` -- the FITS frame paths as strings. A directory is listed in name order
+    - ``rejected`` -- the entries of a list that are not FITS frames
+
+    Raises ``TypeError`` for a string that is not a directory.
+    """
+    from soxspipe.commonutils.fits_frame_names import is_fits_frame
+
+    if not inputFrames:
+        return [], []
+    if isinstance(inputFrames, list):
+        framePaths, rejected = [], []
+        for entry in inputFrames:
+            try:
+                path = os.fspath(entry)
+            except TypeError:
+                rejected.append(repr(entry))
+                continue
+            if isinstance(path, str) and is_fits_frame(path):
+                framePaths.append(path)
+            else:
+                rejected.append(str(path))
+        for entry in rejected:
+            log.warning(f"start_night_date_from_frames: `{entry}` is not a FITS frame and is ignored")
+        return framePaths, rejected
+    directory = os.path.expanduser(inputFrames) if isinstance(inputFrames, str) else None
+    if directory is None or not os.path.isdir(directory):
+        raise TypeError(f"`{inputFrames}` is not a SOF file, a directory of frames or a list of FITS frame paths")
+    framePaths = [os.path.join(directory, name) for name in sorted(os.listdir(directory)) if is_fits_frame(name)]
+    return framePaths, []
+
+
+def _frame_keyword(log, path, keyword, extensions):
+    """*read one header keyword from a FITS frame, trying each extension in turn*
+
+    **Key Arguments:**
+
+    - ``log`` -- logger. An unreadable frame is a warning; a missing keyword is a debug message
+    - ``path`` -- the FITS frame path
+    - ``keyword`` -- the header keyword
+    - ``extensions`` -- the extensions to try, in order
+
+    **Return:**
+
+    - ``value`` -- the keyword value, or *None* if the frame is unreadable or does not carry the keyword
+    """
+    from astropy.io import fits
+
+    for extension in extensions:
+        try:
+            header = fits.getheader(path, extension)
+        except (OSError, IndexError, KeyError, ValueError) as e:
+            log.warning(f"_frame_keyword: could not read extension {extension} of `{path}`, skipping it: {e}")
+            continue
+        if keyword in header:
+            return header[keyword]
+        log.debug(f"_frame_keyword: `{path}` has no {keyword} keyword in extension {extension}")
+    return None
+
+
+def start_night_date_from_frames(log, settings, inputFrames):
+    """*find the start-of-night date and arm of a list or directory of frames*
+
+    The date comes from the frame with the earliest ``MJD-OBS``, converted by ``start_night_date``.
+    Frames with no readable ``MJD-OBS`` are ignored.
+
+    **Key Arguments:**
+
+    - ``log`` -- logger
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- a directory path or a list of FITS frame paths
+
+    **Return:**
+
+    - ``startNightDate`` -- the start-of-night date as ``YYYY-MM-DD``
+    - ``arm`` -- the arm of the earliest frame
+
+    Raises ``ValueError`` if there are no frames, if no frame has a readable ``MJD-OBS``, or if the earliest
+    frame does not name its arm.
+
+    **Usage:**
+
+    ```python
+    startNightDate, arm = start_night_date_from_frames(log=log, settings=settings, inputFrames=["a.fits", "b.fits"])
+    ```
+    """
+    import math
+
+    from astropy.time import Time
+
+    framePaths, rejected = _frame_paths(log, inputFrames)
+    if not framePaths:
+        if rejected:
+            raise ValueError(
+                "Cannot determine the start-of-night date: there are no input frames, "
+                f"and these entries are not FITS frames: {', '.join(rejected)}"
+            )
+        raise ValueError("Cannot determine the start-of-night date: there are no input frames")
+
+    kw = keyword_lookup(log=log, settings=settings).get
+    extensions = sorted({0, settings.get("data-extension", 0)})
+
+    dated = []
+    for path in framePaths:
+        value = _frame_keyword(log, path, kw("MJDOBS"), extensions)
+        if value is None:
+            continue
+        try:
+            mjd = float(value)
+        except (TypeError, ValueError):
+            log.warning(
+                f"start_night_date_from_frames: {kw('MJDOBS')} of `{path}` is not a number ({value!r}), skipping it"
+            )
+            continue
+        if math.isfinite(mjd):
+            dated.append((mjd, path))
+        else:
+            log.warning(
+                f"start_night_date_from_frames: {kw('MJDOBS')} of `{path}` is not finite ({value!r}), skipping it"
+            )
+    if not dated:
+        raise ValueError(
+            f"Cannot determine the start-of-night date: none of the {len(framePaths)} input frames has a "
+            f"readable {kw('MJDOBS')} keyword"
+        )
+
+    earliestMjd, earliestPath = min(dated)
+    arm = _frame_keyword(log, earliestPath, kw("SEQ_ARM"), extensions)
+    if not arm:
+        raise ValueError(f"Cannot name the recipe run: `{earliestPath}` has no {kw('SEQ_ARM')} keyword")
+
+    return start_night_date(Time(earliestMjd, format="mjd", scale="utc")), str(arm).strip()
+
+
 def predict_product_path(sofName, recipeName=False):
     """*predict the path of the recipe product from a given SOF name*
 
@@ -1568,7 +2016,7 @@ def predict_product_path(sofName, recipeName=False):
     ```
     """
 
-    from astropy.time import Time, TimeDelta
+    from astropy.time import Time
 
     startNightDate = False
 
@@ -1595,16 +2043,13 @@ def predict_product_path(sofName, recipeName=False):
     sofName = sofName.replace(".sof", "")
 
     if not startNightDate:
-
         obsDate = sofName.split("_")[0]
 
         startNightDate = ""
 
         try:
             obsDate = Time.strptime(obsDate, "%Y%m%dT%H%M%S", scale="utc")
-            night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
-            startNightDate = obsDate - night_start_offset
-            startNightDate = startNightDate.strftime("%Y-%m-%d")
+            startNightDate = start_night_date(obsDate)
         except (ValueError, TypeError):
             print("Could not determine OBSDATE from sof filename")
             pass
@@ -1897,6 +2342,82 @@ def get_calibration_lamp(log, frame, kw):
     return lamp
 
 
+def qc_image_panel_height(image):
+    """*return the height in inches of a QC plot image panel sized to the image aspect ratio*
+
+    **Key Arguments:**
+
+    - ``image`` -- the 2D array (or frame) shown in the panel. Only its shape is used
+
+    **Return:**
+
+    - ``height`` -- panel height in inches, with the height-to-width ratio capped at 1.5
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import qc_image_panel_height
+    imagePanelHeight = qc_image_panel_height(rotatedImg)
+    ```
+    """
+    return QC_PLOT_PANEL_WIDTH_INCHES * min(image.shape[0] / image.shape[1], 1.5)
+
+
+def qc_table_heights(qc, settings):
+    """*return the heights in inches of the QC table and settings table rows of a QC plot*
+
+    **Key Arguments:**
+
+    - ``qc`` -- data frame of collected QCs (at most 10 rows are tabulated)
+    - ``settings`` -- settings reported in the settings table
+
+    **Return:**
+
+    - ``qcHeight`` -- height of the QC table row in inches
+    - ``settingsHeight`` -- height of the settings table row in inches
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import qc_table_heights
+    qcHeight, settingsHeight = qc_table_heights(qc=self.qc, settings=settings)
+    ```
+    """
+    qcHeight = QC_TABLE_ROW_HEIGHT_INCHES * (min(len(qc.index), 10) + 1)
+    settingsHeight = QC_TABLE_ROW_HEIGHT_INCHES * (len(settings) + 2)
+    return qcHeight, settingsHeight
+
+
+def legend_below_axis(ax, fig, fontsize=4):
+    """*place the legend of an axis below its tick labels, beside the x-axis label*
+
+    **Key Arguments:**
+
+    - ``ax`` -- the axis to add the legend to
+    - ``fig`` -- the figure the axis belongs to
+    - ``fontsize`` -- legend font size. Default *4*
+
+    **Return:**
+
+    - ``legend`` -- the legend, anchored at the right edge of the axis
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import legend_below_axis
+    legend_below_axis(ax=toprow, fig=fig)
+    ```
+    """
+    from matplotlib.transforms import offset_copy
+
+    return ax.legend(
+        loc="upper right",
+        bbox_to_anchor=(1.0, 0.0),
+        bbox_transform=offset_copy(ax.transAxes, fig=fig, y=-QC_LEGEND_OFFSET_POINTS, units="points"),
+        fontsize=fontsize,
+    )
+
+
 def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     """*generate QC and settings table to be placed at the bottom of the QC plots*
 
@@ -1992,7 +2513,6 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
         t.auto_set_column_width(list(range(len(c))))
 
     for a in [qcAx, settingsAx]:
-
         # HIDE AXES
         a.get_xaxis().set_visible(False)
         a.get_yaxis().set_visible(False)
@@ -2051,6 +2571,160 @@ def utility_setup(log, settings, recipeName, startNightDate):
     return qcDir, productDir
 
 
+def _is_offset_recipe(recipeName):
+    """*return True if the recipe name is an offset recipe*"""
+    return "offset" in recipeName.lower()
+
+
+def has_sequence_suffixed_traces(recipeName):
+    """*return True for the recipes whose trace products carry a per-sequence suffix (soxs-nod and soxs-offset)*
+
+    **Key Arguments:**
+
+    - ``recipeName`` -- the name of the recipe, as given in the settings dictionary
+
+    **Return:**
+
+    - ``hasSuffix`` -- *True* if the recipe name contains ``nod`` or ``offset``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import has_sequence_suffixed_traces
+    hasSuffix = has_sequence_suffixed_traces("soxs-offset")
+    ```
+    """
+    return "nod" in recipeName.lower() or _is_offset_recipe(recipeName)
+
+
+def nodding_sequence_suffix(header, locationSetIndex: int | str | bool, recipeName):
+    """*return the suffix that separates the products of one nodding or offset sequence from the next*
+
+    The suffix is ``_A`` or ``_B`` (the sign of ``HIERARCH ESO SEQ CUMOFF Y``) followed by the
+    ``locationSetIndex``. Real offset frames carry no ``CUMOFF Y``, so an offset recipe falls back
+    to ``_`` followed by the ``locationSetIndex`` (e.g. ``_1``, ``_2``, ``_STACK``). Any other recipe
+    without ``CUMOFF Y`` gets no suffix.
+
+    **Key Arguments:**
+
+    - ``header`` -- the header of the frame the sequence was taken from
+    - ``locationSetIndex`` -- the cycle index, the offset stack's label, or *False* for none
+    - ``recipeName`` -- the name of the recipe, as given in the settings dictionary
+
+    **Return:**
+
+    - ``noddingSequence`` -- the suffix, or an empty string
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import nodding_sequence_suffix
+    noddingSequence = nodding_sequence_suffix(header=frame.header, locationSetIndex=2, recipeName="soxs-nod")
+    ```
+    """
+    if "HIERARCH ESO SEQ CUMOFF Y" not in header:
+        if locationSetIndex and _is_offset_recipe(recipeName):
+            return f"_{locationSetIndex}"
+        return ""
+    noddingSequence = "_A" if header["HIERARCH ESO SEQ CUMOFF Y"] > 0 else "_B"
+    if locationSetIndex:
+        noddingSequence += str(locationSetIndex)
+    return noddingSequence
+
+
+def add_notes_below_figure(fig: "Figure", notes: Sequence[str] | None, maxNotes: int = MAX_PLOT_NOTES) -> None:
+    """*print notes in small type under a figure, one text per note, errors in red and warnings in orange*
+
+    The notes are ``fig.text`` artists placed just below the lowest axes, tick labels and axis labels included,
+    so no axes are added and a figure with no notes is left untouched. Saving with ``bbox_inches="tight"``
+    extends the page to include them.
+
+    **Key Arguments:**
+
+    - ``fig`` -- the figure to add the notes to
+    - ``notes`` -- the display strings to draw, e.g. from ``format_extraction_notes``.
+      Nothing is drawn if this is empty or *None*
+    - ``maxNotes`` -- the most notes to draw. The rest are summarised as a count on one last line.
+      Default *MAX_PLOT_NOTES*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import add_notes_below_figure
+    add_notes_below_figure(fig, ["WARNING: Order skipped: 12"])
+    ```
+    """
+    import textwrap
+
+    from matplotlib.transforms import offset_copy
+
+    if not notes:
+        return
+
+    shownNotes = [(note, _note_colour(note)) for note in notes[:maxNotes]]
+    hiddenCount = len(notes) - len(shownNotes)
+    if hiddenCount > 0:
+        shownNotes.append((f"… and {hiddenCount} more (see the recipe log)", NOTE_SUMMARY_COLOUR))
+
+    anchorY = _lowest_axes_bottom_in_figure_fraction(fig)
+    linePitch = NOTE_FONT_SIZE_POINTS * NOTE_LINE_SPACING
+    offsetPoints = NOTE_TOP_GAP_POINTS
+    for note, colour in shownNotes:
+        wrapped = textwrap.fill(note, width=NOTE_WRAP_WIDTH, subsequent_indent="    ")
+        fig.text(
+            NOTE_LEFT_MARGIN,
+            anchorY,
+            wrapped,
+            transform=offset_copy(fig.transFigure, fig=fig, y=-offsetPoints, units="points"),
+            va="top",
+            ha="left",
+            family="monospace",
+            fontsize=NOTE_FONT_SIZE_POINTS,
+            color=colour,
+        )
+        offsetPoints += linePitch * (wrapped.count("\n") + 1)
+
+
+def _lowest_axes_bottom_in_figure_fraction(fig: "Figure") -> float:
+    """*the bottom edge of the lowest visible axes, tick labels and axis labels included, as a figure fraction*
+
+    **Key Arguments:**
+
+    - ``fig`` -- the figure to measure. It is laid out without being rendered
+
+    **Return:**
+
+    - ``bottom`` -- the figure-fraction y of the lowest tight-bbox edge, or 0 if the figure has no visible axes
+    """
+    visibleAxes = [ax for ax in fig.axes if ax.get_visible()]
+    if not visibleAxes:
+        return 0.0
+
+    # NO RENDERER ARGUMENT: MATPLOTLIB PICKS THE FIGURE'S OWN, SO NON-AGG CANVASES (PDF, SVG, PS) WORK TOO
+    fig.draw_without_rendering()
+    lowestPixel = min(ax.get_tightbbox().y0 for ax in visibleAxes)
+    return float(lowestPixel / fig.bbox.height)
+
+
+def _note_colour(note: str) -> str:
+    """*the colour a note is drawn in: red for an error, orange otherwise*
+
+    **Key Arguments:**
+
+    - ``note`` -- the display string, with an optional ``[tag] `` prefix
+
+    **Return:**
+
+    - ``colour`` -- the matplotlib colour
+    """
+    import re
+
+    if re.match(r"^(\[[^\]]*\] )?ERROR: ", note):
+        return NOTE_ERROR_COLOUR
+    return NOTE_WARNING_COLOUR
+
+
+@closes_its_figures
 def plot_merged_spectrum_qc(
     merged_orders,
     products,
@@ -2066,6 +2740,8 @@ def plot_merged_spectrum_qc(
     fluxCalibrated=False,
     qcTable=False,
     settings=False,
+    extractionNotes=None,
+    boxcarExtraction=False,
 ):
     """*plot the order-merged spectrum QC plot, save it to the QC directory and record it in the products table*
 
@@ -2085,6 +2761,9 @@ def plot_merged_spectrum_qc(
     - ``fluxCalibrated`` -- is the spectrum flux calibrated? Default *False*
     - ``qcTable`` -- the QC table holding the SNR values to plot. Default *False*
     - ``settings`` -- the soxspipe settings dictionary, used to look up the skylines. Default *False*
+    - ``extractionNotes`` -- display strings (see ``format_extraction_notes``) to print under the plot.
+      Default *None* (no notes)
+    - ``boxcarExtraction`` -- title the plot as a robust boxcar extraction instead of an optimal one. Default *False*
 
     **Return:**
 
@@ -2137,14 +2816,15 @@ def plot_merged_spectrum_qc(
         arm=arm,
         filenameTemplate=filenameTemplate,
         fluxCalibrated=fluxCalibrated,
+        boxcarExtraction=boxcarExtraction,
     )
 
     bottom_panel = _draw_merged_snr_panel(
-        log=log,
         fig=fig,
         gs=gs,
         merged_orders=merged_orders,
         qcTable=qcTable,
+        arm=arm,
     )
 
     # SKY PANEL WITH SKY FLUX
@@ -2161,6 +2841,7 @@ def plot_merged_spectrum_qc(
     else:
         filename = filenameTemplate.replace(".fits", f"_EXTRACTED_MERGED_QC_PLOT{noddingSequence}.pdf")
     filePath = f"{qcDir}/{filename}"
+    add_notes_below_figure(fig, extractionNotes)
     if debug:
         plt.show()
     save_qc_plot(filePath)
@@ -2197,7 +2878,7 @@ def plot_merged_spectrum_qc(
     return products, filePath
 
 
-def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, fluxCalibrated):
+def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, fluxCalibrated, boxcarExtraction=False):
     """*draw the linear-scale and log-scale flux panels of the merged-spectrum QC plot*
 
     **Key Arguments:**
@@ -2208,6 +2889,7 @@ def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, flux
     - ``arm`` -- the spectrograph arm
     - ``filenameTemplate`` -- the product filename the plot title is built from
     - ``fluxCalibrated`` -- is the spectrum flux calibrated?
+    - ``boxcarExtraction`` -- title the plot as a robust boxcar extraction instead of an optimal one. Default *False*
 
     **Return:**
 
@@ -2223,8 +2905,9 @@ def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, flux
     else:
         top_panel.set_ylabel("flux ($e^{-}$)", fontsize=10)
 
+    extractionTitle = "Robust Boxcar Extracted" if boxcarExtraction else "Optimally Extracted"
     top_panel.set_title(
-        f"Optimally Extracted Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace('.fits', '')}",
+        f"{extractionTitle} Order-Merged Object Spectrum ({arm.upper()})\n{filenameTemplate.replace('.fits', '')}",
         fontsize=11,
         linespacing=2.0,
     )
@@ -2283,16 +2966,16 @@ def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, flux
     return top_panel, middle_panel
 
 
-def _draw_merged_snr_panel(log, fig, gs, merged_orders, qcTable):
+def _draw_merged_snr_panel(fig, gs, merged_orders, qcTable, arm):
     """*draw the SNR panel of the merged-spectrum QC plot, annotated with the per-order SNR values*
 
     **Key Arguments:**
 
-    - ``log`` -- logger
     - ``fig`` -- the QC figure
     - ``gs`` -- the figure's gridspec
     - ``merged_orders`` -- the order-merged spectrum
     - ``qcTable`` -- the QC table holding the SNR values to annotate, or *False* for none
+    - ``arm`` -- the spectrograph arm, which decides how the orders are labelled and sorted
 
     **Return:**
 
@@ -2306,7 +2989,7 @@ def _draw_merged_snr_panel(log, fig, gs, merged_orders, qcTable):
     bottom_panel.set_xlabel("wavelength (nm)", fontsize=10)
 
     if not isinstance(qcTable, bool):
-        orderValue, snrValue = _snr_orders_and_values(log, qcTable)
+        orderValue, snrValue = _snr_orders_and_values(qcTable)
 
     bottom_panel.plot(
         merged_orders["WAVE"],
@@ -2323,7 +3006,7 @@ def _draw_merged_snr_panel(log, fig, gs, merged_orders, qcTable):
 
     # ADD SNR VALUES TO BOTTOM PANEL
     if not isinstance(qcTable, bool) and len(orderValue):
-        _annotate_snr_values(bottom_panel, orderValue, snrValue)
+        _annotate_snr_values(bottom_panel, orderValue, snrValue, arm)
 
     return bottom_panel
 
@@ -2342,58 +3025,58 @@ def _set_wavelength_xlim(panel, merged_orders):
         panel.set_xlim(merged_orders["WAVE"].min(), merged_orders["WAVE"].max())
 
 
-def _snr_orders_and_values(log, qcTable):
+def _snr_orders_and_values(qcTable: "pd.DataFrame") -> "tuple[np.ndarray, np.ndarray]":
     """*pull the per-order median SNR values out of a QC table for the merged-spectrum QC plot*
 
     **Key Arguments:**
 
-    - ``log`` -- logger
-    - ``qcTable`` -- the QC table holding the ``SNR MEDIAN`` rows
+    - ``qcTable`` -- the QC table holding the ``SNR MEDIAN`` and ``SNR MEDIAN O<N>`` rows
 
     **Return:**
 
-    - ``orderValue`` -- the order of each SNR value, with ``GLOBAL`` for the whole-spectrum value
+    - ``orderValue`` -- the order number of each SNR value, with ``GLOBAL`` for the whole-spectrum value
     - ``snrValue`` -- the SNR values
     """
     import numpy as np
-    import pandas as pd
 
     qcTable = qcTable.drop_duplicates(subset=["qc_name", "qc_order"], keep="last")
-    snrValue = qcTable.loc[qcTable["qc_name"] == "SNR MEDIAN"]
-    orderValue = snrValue["qc_order"].values
-    for i in range(len(orderValue)):
-        try:
-            orderValue[i] = int(orderValue[i])
-        except (ValueError, TypeError) as e:
-            log.debug(f"plot_merged_spectrum_qc: `orderValue[i] = int(orderValue[i])` failed, continuing: {e}")
+    names = qcTable["qc_name"].astype(str)
+    snrValue = qcTable.loc[(names == "SNR MEDIAN") | names.str.fullmatch(r"SNR MEDIAN O\d+")]
+    orderValue = np.array(
+        [
+            "GLOBAL" if name == "SNR MEDIAN" else int(name.rsplit(" O", 1)[1])
+            for name in snrValue["qc_name"].astype(str)
+        ],
+        dtype=object,
+    )
+    return orderValue, snrValue["qc_value"].values
 
-    orderValue = np.array(["GLOBAL" if pd.isna(v) else v for v in orderValue])
-    snrValue = snrValue["qc_value"].values
-    return orderValue, snrValue
 
-
-def _annotate_snr_values(bottom_panel, orderValue, snrValue):
+def _annotate_snr_values(bottom_panel: "Axes", orderValue: "np.ndarray", snrValue: "np.ndarray", arm: str) -> None:
     """*write the per-order median SNR values in the corner of the merged-spectrum SNR panel*
+
+    The whole-spectrum value comes first. The SOXS VIS orders follow by wavelength and are labelled with their
+    band. The orders of any other arm follow by number.
 
     **Key Arguments:**
 
     - ``bottom_panel`` -- the SNR panel
     - ``orderValue`` -- the order of each SNR value
     - ``snrValue`` -- the SNR values
+    - ``arm`` -- the spectrograph arm
     """
-    _vis_rank = {"GLOBAL": 0, "u": 1, "g": 2, "r": 3, "i": 4}
+    isVis = str(arm).upper() == "VIS"
 
     def _order_key(pair):
         o = pair[0]
-        if o in _vis_rank:
-            return (0, _vis_rank[o])
-        try:
-            return (1, float(o))
-        except (ValueError, TypeError):
-            return (2, str(o))
+        if o == "GLOBAL":
+            return (0, 0)
+        if isVis and o in SOXS_VIS_ORDERS_BLUE_TO_RED:
+            return (1, SOXS_VIS_ORDERS_BLUE_TO_RED.index(o))
+        return (2, o)
 
     pairs = sorted(zip(orderValue, snrValue, strict=False), key=_order_key)
-    snr_text = "\n".join(f"{o}: {v:.0f}" for o, v in pairs)
+    snr_text = "\n".join(f"{o if o == 'GLOBAL' else order_label(o, arm)}: {v:.0f}" for o, v in pairs)
     bottom_panel.text(
         0.99,
         0.98,
@@ -2569,6 +3252,10 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     - ``extinctionTablePath`` -- path to the observatory extinction curve FITS table (wavelength in Angstrom)
     - ``airmass`` -- the airmass of the observation
 
+    The curve is linearly interpolated between the table wavelengths. Outside the table the end values
+    are held: the first value below the first wavelength, the last value above the last wavelength. A NaN
+    wavelength gives NaN.
+
     **Return:**
 
     - ``extCorrectionFactor`` -- the multiplicative correction factor at each wavelength
@@ -2582,7 +3269,6 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     """
     import numpy as np
     from astropy.table import Table
-    from scipy.interpolate import interp1d
 
     # READ THE EXTINCTION CURVE FOR THE OBSERVATORY
     # DATA IS ORGANIZED AS FOLLOWS:
@@ -2591,16 +3277,22 @@ def extinction_correction_factor(wave, extinctionTablePath, airmass):
     extinctionData = extinctionData.to_pandas()
 
     # CONVERT ANG TO NM
-    wave_ext = extinctionData["WAVE"] / 10
-    # INTERPOLATING ON THE REQUIRED WAVE SCALE
-    refitted_ext = interp1d(
-        np.array(wave_ext),
-        np.array(extinctionData["MAG_AIRMASS"]),
-        kind="next",
-        fill_value="extrapolate",
+    tableWaveNm = np.asarray(extinctionData["WAVE"], dtype=float) / 10
+    magPerAirmass = np.asarray(extinctionData["MAG_AIRMASS"], dtype=float)
+
+    # PIECEWISE-LINEAR INTERPOLATION BETWEEN THE TABLE WAVELENGTHS (DY-1684). A STEP INTERPOLATOR
+    # PUT A ~5% SAW-TOOTH INTO EVERY RESPONSE AND FLUX-CALIBRATED SPECTRUM. OUTSIDE THE TABLE HOLD
+    # THE END VALUES: THE FIRST BELOW THE FIRST WAVELENGTH, THE LAST ABOVE THE LAST (900 NM, ~0.01
+    # MAG/AIRMASS). RETURNING NAN ABOVE 900 NM BLANKED X-SHOOTER VIS ABOVE 900 NM (DY-1688)
+    interpolatedMagPerAirmass = np.interp(
+        np.asarray(wave, dtype=float),
+        tableWaveNm,
+        magPerAirmass,
+        left=magPerAirmass[0],
+        right=magPerAirmass[-1],
     )
 
-    return 10 ** (0.4 * refitted_ext(wave) * airmass)
+    return 10 ** (0.4 * interpolatedMagPerAirmass * airmass)
 
 
 def frame_to_32(frame):
@@ -2641,7 +3333,32 @@ def frame_to_32(frame):
     return frame
 
 
-def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs):
+def parse_order_join_key(key: str) -> tuple[int, int]:
+    """*split an order-join key into the two orders it joins*
+
+    **Key Arguments:**
+
+    - ``key`` -- the join key, ``"<red order>-<blue order>"``, e.g. ``"11-12"`` or, for SOXS VIS, ``"4-1"``
+
+    **Return:**
+
+    - ``redOrder`` -- the order on the red side of the join
+    - ``blueOrder`` -- the order on the blue side of the join
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import parse_order_join_key
+    redOrder, blueOrder = parse_order_join_key("4-1")
+    ```
+    """
+    parts = str(key).split("-")
+    if len(parts) != 2 or not all(part.isascii() and part.isdigit() for part in parts):
+        raise ValueError(f"The order join key {key!r} is not of the form '<red order>-<blue order>'.")
+    return int(parts[0]), int(parts[1])
+
+
+def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs, arm):
     """*add quality checks to the qc table*
 
     **Key Arguments:**
@@ -2650,23 +3367,34 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     - ``spectrumDF`` -- the dataframe containing the extracted spectrum with a column named 'SNR' or 'EFFICIENCY'
       to calculate the checks from.
     - ``qcTable`` -- the qc table to which the SNR checks will be added
-    - ``orderJoins`` -- a dictionary containing the wavelengths of order joins (if any) to be added as QCs.
+    - ``orderJoins`` -- a dictionary of order-join wavelengths, keyed ``"<red order>-<blue order>"`` (if any).
+      *None* means no order joins were supplied, as when an extraction finds no object trace; the checks are then
+      skipped with a warning
     - ``recipeName`` -- name of the recipe to add to the QC entries
     - ``dateObs`` -- the observation date to add to the QC entries (in ISO format, e.g., "2024-06-01T00:00:00")
+    - ``arm`` -- the spectrograph arm, which decides whether SOXS VIS band letters are added to the comments
 
     **Return:**
 
-    - ``qcTable`` -- the updated qc table with SNR checks added
+    - ``qcTable`` -- the updated qc table with SNR checks added. The all-order medians are named ``SNR MEDIAN``
+      and ``EFF MEDIAN``. Each order gets its own ``SNR MEDIAN O<N>`` and ``EFF MEDIAN O<N>`` row, where ``N`` is
+      the order number (for SOXS VIS, 1=r, 2=u, 3=g and 4=i), so the header keeps one card per order.
+      The table is returned unchanged when ``orderJoins`` is *None*.
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
-    qcTable = add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs)
+    qcTable = add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dateObs, arm)
     ```
     """
     import numpy as np
     import pandas as pd
+
+    # NONE (NOT AN EMPTY DICTIONARY) MEANS NO ORDER JOINS WERE SUPPLIED, AS WHEN AN EXTRACTION FINDS NO OBJECT TRACE
+    if orderJoins is None:
+        log.warning("The SNR and efficiency QCs were skipped: no order joins were supplied (no object trace found).")
+        return qcTable
 
     spectrumDF = spectrumDF.copy(deep=False)
     spectrumDF["ORDER"] = np.nan
@@ -2678,24 +3406,14 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
     ## REVERSE DICTIONARY KEYS SO FIRST KEY IS LAST
     orderJoins = dict(reversed(list(orderJoins.items())))
 
-    for i, (orders, wl) in enumerate(orderJoins.items()):
-        if len(orders) == 2:
-            visOrders = ["i", "r", "g", "u"]
-            lastOrder = visOrders[int(orders[0])]
-            order = visOrders[int(orders[0]) - 1]
-
-        elif len(orders) == 3:
-            lastOrder = int(orders[:1])
-            order = int(orders[1:])
-        else:
-            order = int(orders[:2])
-            lastOrder = int(orders[2::])
+    for i, (key, wl) in enumerate(orderJoins.items()):
+        redOrder, blueOrder = parse_order_join_key(key)
         if i == 0:
-            spectrumDF.loc[(spectrumDF["WAVE"] <= wl), "ORDER"] = lastOrder
+            spectrumDF.loc[(spectrumDF["WAVE"] <= wl), "ORDER"] = blueOrder
         spectrumDF.loc[
             spectrumDF["WAVE"] >= wl,
             "ORDER",
-        ] = order
+        ] = redOrder
 
     utcnow = utcnow_string()
 
@@ -2734,10 +3452,10 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         [
                             {
                                 "soxspipe_recipe": recipeName,
-                                "qc_name": "EFF MEDIAN",
+                                "qc_name": f"EFF MEDIAN O{int(row['ORDER'])}",
                                 "qc_value": float(f"{row['MEDIAN_EFFICIENCY']:0.4f}"),
-                                "qc_comment": f"Median efficiency in order {row['ORDER']}",
-                                "qc_order": row["ORDER"],
+                                "qc_comment": f"Median efficiency in order {order_label(row['ORDER'], arm)}",
+                                "qc_order": int(row["ORDER"]),
                                 "qc_unit": None,
                                 "obs_date_utc": dateObs,
                                 "reduction_date_utc": utcnow,
@@ -2782,10 +3500,10 @@ def add_snr_efficiency_qcs(log, spectrumDF, qcTable, orderJoins, recipeName, dat
                         [
                             {
                                 "soxspipe_recipe": recipeName,
-                                "qc_name": "SNR MEDIAN",
+                                "qc_name": f"SNR MEDIAN O{int(row['ORDER'])}",
                                 "qc_value": float(f"{row['MEDIAN_SNR']:0.3f}"),
-                                "qc_comment": f"Median SNR in order {row['ORDER']}",
-                                "qc_order": row["ORDER"],
+                                "qc_comment": f"Median SNR in order {order_label(row['ORDER'], arm)}",
+                                "qc_order": int(row["ORDER"]),
                                 "qc_unit": None,
                                 "obs_date_utc": dateObs,
                                 "reduction_date_utc": utcnow,
@@ -3094,3 +3812,64 @@ def get_skylines_dataframe(log, settings, arm, minBrightnessVIS=5, minBrightness
     mask = skylinesDF["FLUX"] > minBrightnessVIS if arm == "VIS" else skylinesDF["FLUX"] > minBrightnessNIR
 
     return skylinesDF.loc[mask]
+
+
+def merge_blended_skylines(
+    skylinesDF,
+    mergeNm=SKYLINE_MERGE_GAP_NM,
+    isolationNm=SKYLINE_ISOLATION_NM,
+    neighbourFluxRatio=SKYLINE_NEIGHBOUR_FLUX_RATIO,
+    minFlux=SKYLINE_MIN_LINE_FLUX,
+    minGroupFlux=SKYLINE_MIN_GROUP_FLUX,
+):
+    """*merge unresolved sky-line blends into flux-weighted centroids and keep the isolated, bright ones*
+
+    The catalogue lists OH lambda-doublets (for example 785.326 and 785.352 nm) as separate lines. Each component
+    matches one observed centre and is biased by 0.3-0.5 px, so the components are merged first. Rows with a
+    non-numeric, missing or non-finite wavelength or flux are dropped. Lines above ``minFlux`` are sorted by
+    wavelength and chained into a group while each gap is below ``mergeNm``. A group sits at the flux-weighted mean
+    wavelength and carries the summed flux. It is kept when its flux is above ``minGroupFlux``
+    and no other group with more than ``neighbourFluxRatio`` of its flux lies within ``isolationNm``.
+
+    **Key Arguments:**
+
+    - ``skylinesDF`` -- the sky-line table, with ``WAVELENGTH`` and ``FLUX`` columns. It must hold the faint lines too
+    - ``mergeNm`` -- the largest gap (nm) between two lines of one blend. Default *SKYLINE_MERGE_GAP_NM*
+    - ``isolationNm`` -- the neighbour search distance (nm). Default *SKYLINE_ISOLATION_NM*
+    - ``neighbourFluxRatio`` -- the neighbour to line flux ratio that rejects a line. Default
+      *SKYLINE_NEIGHBOUR_FLUX_RATIO*
+    - ``minFlux`` -- the faintest line that takes part. Default *SKYLINE_MIN_LINE_FLUX*
+    - ``minGroupFlux`` -- a merged line must be brighter than this. Default *SKYLINE_MIN_GROUP_FLUX*
+
+    **Return:**
+
+    - ``mergedDF`` -- a new dataframe with ``WAVELENGTH`` and ``FLUX`` columns, one row per kept merged line
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import merge_blended_skylines
+    calibrationLinesDF = merge_blended_skylines(skylinesDF)
+    ```
+    """
+    import numpy as np
+    import pandas as pd
+
+    table = skylinesDF[["WAVELENGTH", "FLUX"]].apply(pd.to_numeric, errors="coerce")
+    isUsable = np.isfinite(table["WAVELENGTH"]) & np.isfinite(table["FLUX"]) & (table["FLUX"] > minFlux)
+    lines = table.loc[isUsable].sort_values("WAVELENGTH")
+    if lines.empty:
+        return pd.DataFrame({"WAVELENGTH": [], "FLUX": []})
+
+    wavelengths = lines["WAVELENGTH"].to_numpy(dtype=float)
+    fluxes = lines["FLUX"].to_numpy(dtype=float)
+    groupIds = np.concatenate([[0], np.cumsum(np.diff(wavelengths) >= mergeNm)])
+    groupFlux = np.bincount(groupIds, weights=fluxes)
+    groupCentre = np.bincount(groupIds, weights=fluxes * wavelengths) / groupFlux
+
+    separation = np.abs(groupCentre[:, None] - groupCentre[None, :])
+    isNeighbour = (separation < isolationNm) & ~np.eye(len(groupCentre), dtype=bool)
+    isRejecting = isNeighbour & (groupFlux[None, :] > neighbourFluxRatio * groupFlux[:, None])
+    isKept = (groupFlux > minGroupFlux) & ~isRejecting.any(axis=1)
+
+    return pd.DataFrame({"WAVELENGTH": groupCentre[isKept], "FLUX": groupFlux[isKept]})

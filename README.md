@@ -47,7 +47,7 @@ python -m pip install -e ".[tests]"
 python -m pytest tests/unit tests/integration -m "not slow"
 ```
 
-The real-data acceptance test is opt-in. The scheduled GitHub Actions workflow downloads the immutable archive named by `tests/real_data/manifest.json`, verifies it, creates a disposable workspace, and runs the representative NIR-offset reduction. To run the acceptance assertions locally after preparing that workspace, set `SOXSPIPE_REAL_DATA_DIR` to its absolute path:
+The real-data acceptance test is opt-in. The `Real-data tests` GitHub Actions workflow runs on pull requests into `main` and on manual dispatch. It is not a required check, so read its result on the release pull request before you merge. It downloads the immutable archive named by `tests/real_data/manifest.json`, verifies it, creates a disposable workspace, and runs the NIR offset reduction and the VIS and NIR stare reductions. To run the acceptance assertions locally after preparing that workspace, set `SOXSPIPE_REAL_DATA_DIR` to its absolute path:
 
 ```bash
 SOXSPIPE_REAL_DATA_DIR=/absolute/path/to/workspace python -m pytest tests/real_data
@@ -73,6 +73,25 @@ To run it automatically on every commit, install the hook. It is a convenience, 
 ```bash
 python -m pip install -e ".[dev]"
 pre-commit install
+```
+
+## Format gate
+
+Unlike the changed-line gates, the format gate checks the whole repository. CI runs `ruff format --check .` on every pull request and fails if any file would be reformatted.
+
+The gate uses the ruff version pinned in the `tests` extra of `pyproject.toml`. Another ruff version can format some lines differently, so format with the pinned one:
+
+```bash
+python -m pip install -e ".[tests]"
+ruff format .
+```
+
+The pre-commit hook described above also runs `ruff format` at the same pinned version.
+
+To hide the one-off formatting commit from `git blame`, run this once in your clone:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
 ```
 
 ## How to cite soxspipe

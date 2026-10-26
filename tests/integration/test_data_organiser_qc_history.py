@@ -167,7 +167,7 @@ def science_workspace(tmp_path, log, monkeypatch):
     monkeypatch.setattr(organiser, "_sync_raw_frames", fake_sync_raw_frames)
     monkeypatch.setattr(organiser, "_move_misc_files", lambda: None)
     monkeypatch.setattr(organiser, "_flag_files_to_ignore", lambda: None)
-    monkeypatch.setattr(organiser, "build_sof_files", lambda: None)
+    monkeypatch.setattr(organiser, "build_sof_files", lambda **_: None)
     monkeypatch.setattr(organiser, "get_incomplete_sets_report", lambda: (None, None))
     yield organiser
     if getattr(organiser, "conn", None) is not None:
@@ -313,7 +313,10 @@ def test_guardrail_recomputes_status_from_restored_rows(science_workspace) -> No
     assert conn.execute(
         "SELECT qc_flag, qc_value_min, qc_value_max FROM quality_control WHERE qc_name = 'MASTER RON'"
     ).fetchone() == ("fail", "0", "10")
-    assert conn.execute("SELECT status_base FROM product_frames WHERE sof = 'bias_sof.sof'").fetchone() == ("fail",)
+    # THE FAILURE LANDS IN THE CURRENT `science` SESSION ONLY; `base` KEEPS ITS SEEDED STATUS (DY-272)
+    assert conn.execute(
+        "SELECT status_science, status_base FROM product_frames WHERE sof = 'bias_sof.sof'"
+    ).fetchone() == ("fail", "pass")
 
 
 def test_refused_refresh_raises_and_leaves_the_database_untouched(science_workspace, monkeypatch, open_sqlite) -> None:

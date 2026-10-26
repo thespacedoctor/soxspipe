@@ -12,6 +12,7 @@ Date Created
 import os
 import shutil
 import sqlite3
+import stat
 import sys
 import traceback
 from contextlib import closing
@@ -19,6 +20,17 @@ from pathlib import Path
 
 from fundamentals import tools
 
+from soxspipe.commonutils.calibration_matching import has_calibration_matches_table, refresh_calibration_matches
+from soxspipe.commonutils.fits_frame_names import is_fits_frame, superseded_frame_names
+from soxspipe.commonutils.late_frame_rejoin import (
+    collect_sof_name_pins,
+    delete_stale_files,
+    find_rejoined_sofs,
+    format_rejoin_summary,
+    partition_labels,
+    pin_rejoined_sof_names,
+    reset_rejoined_sofs,
+)
 from soxspipe.commonutils.missing_calibrations import (
     CALIBRATION_RECIPES,
     FAILED_QC,
@@ -33,12 +45,17 @@ from soxspipe.commonutils.missing_calibrations import (
 from soxspipe.commonutils.session_status_restore import (
     classify_session_sofs,
     format_session_summary,
+    open_backup_read_only,
     read_frame_sets,
     read_session_snapshots,
 )
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
 
 os.environ["TERM"] = "vt100"
+
+# THE TEMPORARY GROUPING KEY THAT KEEPS THE FRAMES OF DIFFERENT KNOWN SETS APART
+KNOWN_SET_COLUMN = "known set"
 
 
 def print_incomplete_sets_report(incompleteSets, blockingSets=None):
@@ -90,6 +107,16 @@ class DatabasePreservationError(sqlite3.DatabaseError):
 
 class _UnreadableDatabaseError(sqlite3.DatabaseError):
     """A database that opens but whose SQLite snapshot fails its `quick_check`."""
+
+
+class OutdatedWorkspaceError(RuntimeError):
+    """The workspace database was made from an older template and lacks the `calibration_matches` table."""
+
+    def __init__(self):
+        super().__init__(
+            "This workspace was created by an older version of soxspipe. "
+            "Run `soxspipe prep --refresh` to rebuild its database; your QC history and reduction statuses are kept."
+        )
 
 
 # LABEL IN THE NAME OF A RAW, BYTE-FOR-BYTE BACKUP OF A DATABASE THAT FAILED TO OPEN
@@ -146,6 +173,31 @@ def _validate_session_id(sessionId):
     return sessionId
 
 
+# A SOF'S SUB-SOF QC ROWS DECIDE THE STATUS OF THE SOF THAT PRODUCED THEM. TWO NAMES COUNT, AND THIS SELECTS THE PARENT
+# `<sof>.sof` OF EACH QC ROW THAT HAS ONE:
+# - `<sof>_F<N>.sof`, THE QCS OF FRAME N OF A STARE SOF EXTRACTED FRAME BY FRAME (DY-1611). THE NAME, LESS `.sof`,
+#   MUST END IN `_F` FOLLOWED BY ONE OR MORE DIGITS
+# - `<sof>_CYCLES.sof`, THE QCS OF THE PER-CYCLE INSPECTION PASS OF A NOD OR OFFSET STANDARD STAR REDUCED WITH
+#   `--no-stack` (DY-1723). THE NAME, LESS `.sof`, MUST END IN EXACTLY `_CYCLES`. THE SUFFIX IS REPEATED HERE AS A
+#   LITERAL (IT IS `CYCLE_INSPECTION_SUFFIX` IN `soxspipe/recipes/soxs_nod.py`) BECAUSE THIS SQL IS BUILT FROM FIXED
+#   TEXT WHEN THE MODULE LOADS AND THE COMMON UTILITIES DO NOT IMPORT THE RECIPES. A TEST KEEPS THE TWO EQUAL
+# EVERY PART IS A FIXED LITERAL; NO VALUE FROM A FILE OR SETTING ENTERS THE SQL TEXT
+_FRAME_QC_STEM = "substr(sof_name, 1, length(sof_name) - 4)"
+_FRAME_QC_TRIMMED = f"rtrim({_FRAME_QC_STEM}, '0123456789')"
+_FRAME_QC_PARENT_SOFS = (
+    f"select substr({_FRAME_QC_TRIMMED}, 1, length({_FRAME_QC_TRIMMED}) - 2) || '.sof' from quality_control "  # noqa: S608
+    f"where sof_name like '%.sof' and {_FRAME_QC_TRIMMED} != {_FRAME_QC_STEM} "
+    f"and substr({_FRAME_QC_TRIMMED}, -2) = '_F'"
+)
+_CYCLES_QC_PARENT_SOFS = (
+    f"select substr({_FRAME_QC_STEM}, 1, length({_FRAME_QC_STEM}) - 7) || '.sof' from quality_control "  # noqa: S608
+    f"where sof_name like '%.sof' and substr({_FRAME_QC_STEM}, -7) = '_CYCLES'"
+)
+# THE CALLER FORMATS `{extra}` WITH A FIXED LITERAL CONDITION (OR NOTHING) THAT IS APPENDED TO BOTH SELECTS. IT MUST
+# NEVER BE A VALUE FROM DATA, A FILE OR A SETTING
+_SUB_QC_PARENT_SOFS = f"{_FRAME_QC_PARENT_SOFS}{{extra}} union {_CYCLES_QC_PARENT_SOFS}{{extra}}"
+
+
 class data_organiser:
     """
     *The `soxspipe` Data Organiser*
@@ -191,11 +243,11 @@ class data_organiser:
         self.PAE = False
         log.debug("instantiating a new 'data_organiser' object")
         self.log = log
+        # NAMES PINNED FOR REJOINED SETS LIVE ONLY ON THIS INSTANCE; THEY ARE LOST WHEN THE PROCESS EXITS
+        self.pinnedSofNames = {}
 
-        # MAKE RELATIVE HOME PATH ABSOLUTE
-        if rootDir[0] == "~":
-            home = expanduser("~")
-            directory = directory.replace("~", home)
+        # EXPAND HOME PATHS BEFORE DERIVING ANY WORKSPACE LOCATIONS
+        rootDir = expanduser(rootDir)
 
         self.rootDir = rootDir
         self.rawDir = str(_validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory"))
@@ -446,11 +498,6 @@ class data_organiser:
             "offset",
         ]
 
-        # DECOMPRESS .Z FILES
-        from soxspipe.commonutils import uncompress
-
-        uncompress(log=self.log, directory=self.rootDir)
-
         exists = os.path.exists(self.rootDbPath)
         if exists and dbConnect:
             self.conn, reset = self._get_or_create_db_connection()
@@ -509,6 +556,7 @@ class data_organiser:
 
         # TEST FOR SQLITE DATABASE - ADD IF MISSING
         self.conn, reset = self._get_or_create_db_connection()
+        self._require_calibration_matches_table()
 
         # MK SESSION DIRECTORY
         if not os.path.exists(self.sessionsDir):
@@ -555,8 +603,7 @@ class data_organiser:
         self._apply_qc_acceptable_ranges()
 
         self._flag_files_to_ignore()
-        self.build_sof_files()
-        self.build_sof_files()
+        self._group_every_raw_frame()
 
         if backupPath:
             self._restore_session_statuses(backupPath)
@@ -571,17 +618,20 @@ class data_organiser:
         import codecs
 
         if not os.path.exists(self.sessionIdFile):
-            self.sessionId = self.session_create(sessionId="base")
+            # `prepare` GROUPS THE FRAMES ITSELF, ONCE THE IGNORE FLAGS ARE SET
+            self.sessionId = self.session_create(sessionId="base", regroup=False)
         else:
             with codecs.open(self.sessionIdFile, encoding="utf-8", mode="r") as readFile:
                 sessionId = _validate_session_id(readFile.read())
-                self.sessionPath = str(
-                    _validate_owned_path(
-                        Path(self.sessionsDir) / sessionId,
-                        self.sessionsDir,
-                        "session path",
-                    )
+            # SET THE ID AND PATH TOGETHER SO STATUS COLUMNS FOLLOW THE SESSION IN THE FILE
+            self.sessionPath = str(
+                _validate_owned_path(
+                    Path(self.sessionsDir) / sessionId,
+                    self.sessionsDir,
+                    "session path",
                 )
+            )
+            self.sessionId = sessionId
         return
 
     def _print_prepare_report(self, basename):
@@ -626,7 +676,8 @@ class data_organiser:
         queries = [
             (
                 f'update product_frames set {statusColumn} = "pass" '  # noqa: S608
-                f'where {statusColumn} = "fail" and sof in (select sof_name from quality_control);',
+                f'where {statusColumn} = "fail" and (sof in (select sof_name from quality_control) '
+                f"or sof in ({_SUB_QC_PARENT_SOFS.format(extra='')}));",
                 (),
             ),
             (
@@ -679,9 +730,11 @@ class data_organiser:
                 'and qc_flag != "fail" and qc_order = "-1";',
                 (),
             ),
+            # A QC FAILURE MARKS ONLY THE CURRENT SESSION'S STATUS COLUMN (DY-272)
             (
-                'update product_frames set status_base = "fail" '
-                'where sof in (select sof_name from quality_control where qc_flag = "fail");',
+                f'update product_frames set {statusColumn} = "fail" '  # noqa: S608
+                'where sof in (select sof_name from quality_control where qc_flag = "fail") '
+                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=' and qc_flag = "fail"')});""",
                 (),
             ),
         ]
@@ -782,6 +835,8 @@ class data_organiser:
 
         import pandas as pd
 
+        self._delete_superseded_frames()
+
         remainingFiles = 1
         firstPass = True
 
@@ -802,7 +857,6 @@ class data_organiser:
                 print(remainingFiles, "FITS files remaining to be indexed")
 
             if fitsPaths:
-
                 conn = self.conn
                 knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
 
@@ -839,7 +893,6 @@ class data_organiser:
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
                 databaseDeletes = []
                 if len(rawFrames.index):
-
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
                     rawFrames.replace(["--", -99.99], None).to_sql(
                         "raw_frames", con=self.conn, index=False, if_exists="append"
@@ -880,6 +933,68 @@ class data_organiser:
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return
 
+    def _delete_superseded_frames(self):
+        """*delete each uncompressed frame whose compressed `.fits.Z` twin is in the workspace*
+
+        When ``X.fits`` and ``X.fits.Z`` hold the same frame, the compressed file is kept. Twins pair within one
+        directory, and a frame at the workspace root also pairs with an ``X.fits.Z`` anywhere in the ``raw/``
+        tree, where `prep` has already moved it. Frames in different ``raw/`` night folders never pair. Only
+        regular files on disk count as twins, so a database row or a dangling link never condemns a frame. An
+        uncompressed frame that is itself indexed in ``raw_frames`` is never deleted, and nothing outside the
+        workspace is touched: a symlink is unlinked, never followed.
+
+        **Return:**
+
+        - None
+        """
+        self.log.debug("starting the ``_delete_superseded_frames`` method")
+
+        indexedNames = set()
+        if self.conn is not None:
+            indexedNames = {row[0] for row in self.conn.execute("SELECT file FROM raw_frames")}
+
+        framesByDirectory = {self.rootDir: [entry.name for entry in os.scandir(self.rootDir) if entry.is_file()]}
+        if os.path.isdir(self.rawDir):
+            # os.walk FOLLOWS A SYMLINKED raw/ ITSELF (VLT MODE) BUT NO LINK BELOW IT; THE OWNERSHIP CHECK
+            # BELOW KEEPS DELETES INSIDE THE WORKSPACE
+            for directory, _, files in os.walk(self.rawDir):
+                framesByDirectory[directory] = [f for f in files if os.path.isfile(os.path.join(directory, f))]
+        compressedInRaw = {
+            name for directory, names in framesByDirectory.items() if directory != self.rootDir for name in names
+        }
+
+        for directory in sorted(framesByDirectory):
+            names = sorted(n for n in framesByDirectory[directory] if is_fits_frame(n))
+            present = compressedInRaw if directory == self.rootDir else ()
+            for name in sorted(superseded_frame_names(names, present=present) - indexedNames):
+                self._delete_superseded_frame(os.path.join(directory, name))
+
+        self.log.debug("completed the ``_delete_superseded_frames`` method")
+        return
+
+    def _delete_superseded_frame(self, filepath):
+        """*delete one superseded uncompressed frame, if its directory lies inside the workspace*
+
+        **Key Arguments:**
+
+        - ``filepath`` -- the uncompressed frame to delete
+
+        **Return:**
+
+        - None
+        """
+        try:
+            _validate_owned_path(os.path.dirname(filepath), self.rootDir, "superseded frame")
+        except _UnsafePathError as error:
+            self.log.warning(f"not deleting `{filepath}`: {error}")
+            return
+        self.log.info(f"deleting `{filepath}`: its compressed twin is kept")
+        try:
+            os.remove(filepath)
+        except OSError as error:
+            self.log.warning(f"could not delete `{filepath}`, its twin may also be indexed: {error}")
+        return
+
     def _create_directory_table(self, pathToDirectory, filterKeys, limit=10000):
         """*create an astropy table based on the contents of a directory*
 
@@ -911,20 +1026,18 @@ class data_organiser:
         self.log.debug("starting the ``_create_directory_table`` function")
 
         import pandas as pd
-        from ccdproc import ImageFileCollection
 
         from soxspipe.commonutils import keyword_lookup
+        from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
 
         # GENERATE A LIST OF FITS FILE PATHS
         fitsPaths = []
         fitsPathsRel = []
         fitsNames = []
-        for entry in os.scandir(pathToDirectory):
-            if (
-                not entry.name.startswith(".")
-                and entry.is_file()
-                and (os.path.splitext(entry.name)[1] == ".fits" or ".fits.Z" in entry.name)
-            ):
+        # SORTED, BECAUSE THE FIRST FRAMES DECIDE THE INSTRUMENT CHECK AND THE `limit`
+        # CUT, AND RAW LISTING ORDER VARIES BETWEEN FILESYSTEMS (DY-48)
+        for entry in sorted(os.scandir(pathToDirectory), key=lambda entry: entry.name):
+            if not entry.name.startswith(".") and entry.is_file() and is_fits_frame(entry.name):
                 # fitsPaths.append(entry.path)
                 if os.path.islink(entry.path):
                     fp = "./" + os.path.relpath(os.path.realpath(entry.path), pathToDirectory)
@@ -1116,12 +1229,10 @@ class data_organiser:
             c.execute(sqlQuery, filesNotInFS)
 
         if len(filesNotInDB):
-
             for f in filesNotInDB:
                 # GET THE EXTENSION (WITH DOT PREFIX)
                 basename = os.path.basename(f)
-                extension = os.path.splitext(basename)[1]
-                if extension.lower() != ".fits":
+                if not is_fits_frame(basename):
                     pass
                 elif self.rootDir in f:
                     exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
@@ -1376,6 +1487,7 @@ class data_organiser:
         for name, group in df.groupby("sof"):
             if not isinstance(name, str) or Path(name).name != name:
                 raise _UnsafePathError("SOF filename must be a filename without directory components")
+            # A LINK THAT LEAVES THE SOF DIRECTORY IS REFUSED HERE
             sofPath = str(
                 _validate_owned_path(
                     Path(self.sofDir) / name,
@@ -1383,23 +1495,32 @@ class data_organiser:
                     "SOF path",
                 )
             )
-            if os.path.exists(sofPath):
+            # A SYMLINK IS NEVER WRITTEN THROUGH, WHETHER OR NOT ITS TARGET EXISTS
+            if (Path(self.sofDir) / name).is_symlink():
+                self.log.warning(f"_write_sof_files: the SOF file `{name}` is a symlink, not written")
                 continue
-            myFile = open(sofPath, "w")
+            # MODE "x" FAILS ON A FILE THAT EXISTS, SO AN EXISTING SOF IS KEPT
             content = tabulate(group[["filepath", "tag"]], tablefmt="plain", showindex=False)
-
-            myFile.write(content)
-            myFile.close()
+            try:
+                with open(sofPath, "x") as myFile:
+                    myFile.write(content)
+            except FileExistsError:
+                continue
 
         self.log.debug("completed the ``_write_sof_files`` method")
         return
 
-    def session_create(self, sessionId=False):
+    def session_create(self, sessionId=False, regroup=True):
         """*create a data-reduction session with accompanying settings file and required directories*
+
+        The new session groups every raw frame in the workspace, so its SOF map and `sof/` directory are filled when
+        this method returns.
 
         **Key Arguments:**
 
         - ``sessionId`` -- optionally provide a sessionId (A-Z, a-z, 0-9 and/or _ allowed, 16 character limit)
+        - ``regroup`` -- group the raw frames into SOFs for the new session. `prepare` sets this to False because it
+          groups them itself, after it has flagged the frames to ignore. Default *True*
 
         **Return:**
 
@@ -1420,15 +1541,20 @@ class data_organiser:
         if sessionId:
             sessionId = _validate_session_id(sessionId)
 
+        # A WORKSPACE WITH NO RAW FRAME YET HAS NO INSTRUMENT, SO IT GETS THE DEFAULT ONE
+        inst = "soxs"
         rootDbExists = os.path.exists(self.rootDbPath)
         if rootDbExists:
             # CREATE THE DATABASE CONNECTION
             self.conn, reset = self._get_or_create_db_connection()
-            c = self.conn.cursor()
-            sqlQuery = "select distinct instrume from raw_frames"
-            c.execute(sqlQuery)
-            inst = c.fetchall()[0][0].lower()
-            c.close()
+            if regroup:
+                # REFUSE AN OUTDATED DATABASE BEFORE ANYTHING IS CREATED
+                self._require_calibration_matches_table()
+            instruments = self.conn.execute(
+                "select instrume from raw_frames where instrume is not null order by rowid limit 1"
+            ).fetchall()
+            if instruments and instruments[0][0]:
+                inst = instruments[0][0].lower()
 
         # TEST SESSION DIRECTORY EXISTS
         exists = os.path.exists(self.sessionsDir)
@@ -1479,22 +1605,14 @@ class data_organiser:
             )
             arguments, settings, replacedLog, dbConn = su.setup()
 
-        # MAKE ASSET PLACEHOLDERS
-        if self.vlt:
-            dest = self.sessionPath + "/reduced"
-            try:
-                os.symlink(self.vltReduced, dest)
-            except OSError as e:
-                self.log.debug(f"session_create: `os.symlink(self.vltReduced, dest)` failed, continuing: {e}")
-
-        folders = ["sof", "qc", "reduced"]
-        for f in folders:
-            if not os.path.exists(self.sessionPath + f"/{f}"):
-                os.makedirs(self.sessionPath + f"/{f}")
+        self._make_session_directories()
 
         self._ensure_session_database_objects(sessionId)
 
-        self._write_sof_files()
+        if regroup:
+            self._regroup_active_session()
+        else:
+            self._write_sof_files()
 
         # _reduce_all.sh HAS BEEN REPLACED WITH THE `SOXSPIPE REDUCE` COMMAND
         # self._write_reduction_shell_scripts()
@@ -1516,6 +1634,40 @@ class data_organiser:
         self.log.debug("completed the ``session_create`` method")
 
         return sessionId
+
+    def _make_session_directories(self):
+        """*make the `sof`, `qc` and `reduced` directories of the session at `self.sessionPath`*"""
+        if self.vlt:
+            dest = self.sessionPath + "/reduced"
+            try:
+                os.symlink(self.vltReduced, dest)
+            except OSError as e:
+                self.log.debug(f"session_create: `os.symlink(self.vltReduced, dest)` failed, continuing: {e}")
+
+        folders = ["sof", "qc", "reduced"]
+        for f in folders:
+            if not os.path.exists(self.sessionPath + f"/{f}"):
+                os.makedirs(self.sessionPath + f"/{f}")
+
+    def _group_every_raw_frame(self):
+        """*group every raw frame in the workspace into SOFs for the active session*
+
+        The second pass completes the sets that depend on products the first pass completed, and keeps the SOF names
+        of sets that gained a late frame in the first.
+        """
+        self.build_sof_files(rejoinLateFrames=True)
+        self.build_sof_files(rejoinLateFrames=True)
+
+    def _regroup_active_session(self):
+        """*group every raw frame for the session that was just created or switched to*
+
+        A workspace with no raw frame has no instrument and nothing to group, so it is left as it is.
+        """
+        self.conn, reset = self._get_or_create_db_connection()
+        self._select_instrument()
+        if not hasattr(self, "sofMapLookup"):
+            return
+        self._group_every_raw_frame()
 
     def _ensure_session_database_objects(self, sessionId):
         """Create the empty database objects required by one session."""
@@ -1541,7 +1693,10 @@ class data_organiser:
         except sqlite3.OperationalError as e:
             self.log.debug(f"_ensure_session_database_objects: SOF map table already exists: {e}")
 
+        # THE TABLE IS CLONED FROM THE `z_sof_map` SQL TEXT, WHICH CARRIES NO INDEXES
         sqlQueries = [
+            f"CREATE INDEX IF NOT EXISTS idx_{sofMapTableName}_sof ON {sofMapTableName} (sof);",
+            f"CREATE INDEX IF NOT EXISTS idx_{sofMapTableName}_filepath ON {sofMapTableName} (filepath);",
             "DROP VIEW IF EXISTS sof_map;",
             f"CREATE VIEW sof_map as select * from {sofMapTableName};",  # noqa: S608
         ]
@@ -1672,6 +1827,9 @@ class data_organiser:
                 self.sessionsDir,
                 "session path",
             )
+            # REFUSE AN OUTDATED DATABASE BEFORE ANYTHING IS CHANGED
+            self.conn, reset = self._get_or_create_db_connection()
+            self._require_calibration_matches_table()
             # POINT THE SHARED SOF_MAP VIEW AT THIS SESSION BEFORE MAKING IT ACTIVE
             self._ensure_session_database_objects(sessionId)
             # WRITE THE SESSION ID FILE
@@ -1682,8 +1840,12 @@ class data_organiser:
             print(f"There is no session with the ID '{sessionId}'. List existing sessions with `soxspipe session ls`.")
             return
 
+        # THE SESSION ID FILE NOW NAMES THE NEW SESSION, SO THE INSTANCE MUST AGREE WITH IT
+        self.sessionId = sessionId
         self.sessionPath = str(sessionPath)
         self._symlink_session_assets_to_workspace_root()
+        # FRAMES ADDED OR GROUPED WHILE ANOTHER SESSION WAS ACTIVE ARE GROUPED FOR THIS ONE NOW
+        self._regroup_active_session()
         print(f"Session successfully switched to '{sessionId}'.")
 
         self.log.debug("completed the ``session_switch`` method")
@@ -1891,15 +2053,13 @@ class data_organiser:
                 whatToList="files",  # all | files | dirs
             )
             for f in theseFiles:
-                if os.path.splitext(f)[1] == ".fits" or ".fits.gz" in os.path.splitext(f):
+                if is_fits_frame(f):
                     fitsExist = True
                     break
         if not fitsExist:
             for d in os.listdir(self.rootDir):
                 filepath = os.path.join(self.rootDir, d)
-                if os.path.isfile(filepath) and (
-                    os.path.splitext(filepath)[1] == ".fits" or ".fits.gz" in os.path.splitext(filepath)
-                ):
+                if os.path.isfile(filepath) and is_fits_frame(filepath):
                     fitsExist = True
                     break
         return fitsExist
@@ -2057,8 +2217,8 @@ class data_organiser:
     def _read_preserved_quality_control(self, backupPath):
         """*read the `quality_control` rows from a preserved copy of the database*
 
-        The copy is opened read-only, so reading it never changes the preserved file, and it must pass
-        `PRAGMA quick_check` before any row is read.
+        The file is read through a scratch copy (see `open_backup_read_only`), so reading never changes anything in
+        the backups directory, and it must pass `PRAGMA quick_check` before any row is read.
 
         **Key Arguments:**
 
@@ -2074,14 +2234,8 @@ class data_organiser:
         """
         import pandas as pd
 
-        source = sqlite3.connect(Path(backupPath).resolve().as_uri() + "?mode=ro", uri=True)
-        try:
-            check = source.execute("PRAGMA quick_check;").fetchall()
-            if check != [("ok",)]:
-                raise sqlite3.DatabaseError(f"the preserved database failed its quick check: {check}")
+        with open_backup_read_only(backupPath) as source:
             return pd.read_sql_query("select * from quality_control;", source)
-        finally:
-            source.close()
 
     def _write_quality_control_rows(self, qcRows):
         """*append preserved `quality_control` rows to the current database, skipping rows already present*
@@ -2453,7 +2607,8 @@ class data_organiser:
           type: position in the sof map}`, unioned across every sof sharing that display row. `reasons` is
           `{calibration type: reason string}` from `missing_reasons`, empty when nothing is missing.
           `matchContext` is the group's own `(binning, rospeed, gain)`, taken from its first sof, passed
-          to `missing_reasons` so `mbias`/`mflat` are classified against the same mode the group is in.
+          to `missing_reasons` so the gated types (`mbias`, `mdark`, `mflat`) are classified against the same
+          mode the group is in.
         """
         import pandas as pd
 
@@ -2539,7 +2694,7 @@ class data_organiser:
         """*name the raw sofs blocking each missing calibration currently reported as failed QC, a failed
         run, or not yet reduced*
 
-        For `mbias`/`mflat` this is scoped to the group's own binning/readout speed/gain (see
+        For `mbias`, `mdark` and `mflat` this is scoped to the group's own binning/readout speed/gain (see
         `missing_calibrations.calibration_match_clause`); every other type is arm-only, since its
         `cal_<type>` view does not hard-gate on mode either.
 
@@ -2697,6 +2852,51 @@ class data_organiser:
             self.conn.commit()
         c.close()
 
+        self._reject_blank_slit_pinhole_arcs()
+
+    def _reject_blank_slit_pinhole_arcs(self) -> None:
+        """*flag SOXS pinhole and multi-pinhole arcs taken with a blank slit to ignore, and log each one*
+
+        The slit-wheel keyword of the frame's arm (`ESO INS NISE NAME` on the NIR, `ESO INS VISE NAME` on the VIS) is
+        held in the `slit` column. A pinhole (`ECHELLE,PINHOLE`) or multi-pinhole (`ECHELLE,MULTI-PINHOLE`) arc whose
+        slit wheel reads `BLANK` carries no pinhole spots, so no dispersion-solution or spatial-solution SOF may be
+        built from it. The flag lives in the `raw_frames` table, which `raw_frames_valid`
+        filters on, so a later `prepare` does not group the frame again. X-Shooter frames are not touched.
+        """
+        self.log.debug("starting the ``_reject_blank_slit_pinhole_arcs`` method")
+
+        if self.instrument.lower() != "soxs":
+            return
+
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT uuid, file, `eso seq arm`, `eso dpr tech` FROM raw_frames "
+            "WHERE `eso dpr tech` IN ('ECHELLE,PINHOLE', 'ECHELLE,MULTI-PINHOLE') AND `slit` = 'BLANK' AND ignore = 0 "
+            "ORDER BY file"
+        )
+        rejected = c.fetchall()
+        c.executemany("UPDATE raw_frames SET ignore = 1 WHERE uuid = ?", [(row[0],) for row in rejected])
+        self.conn.commit()
+        c.close()
+
+        for _, fileName, arm, tech in rejected:
+            self.log.info(
+                f"rejected the {tech} frame `{fileName}` ({arm} arm): its slit wheel reads BLANK, "
+                "so it has no pinhole spots and is not used to build a dispersion-solution or spatial-solution SOF"
+            )
+
+        self.log.debug("completed the ``_reject_blank_slit_pinhole_arcs`` method")
+
+    def _require_calibration_matches_table(self):
+        """*stop with a clear message when the workspace database predates the `calibration_matches` table*
+
+        **Raises:**
+
+        - ``OutdatedWorkspaceError`` -- when the table is missing; `soxspipe prep --refresh` rebuilds the database
+        """
+        if not has_calibration_matches_table(self.conn):
+            raise OutdatedWorkspaceError()
+
     def _calibration_completeness_select_query(self, recipe, arm, ttype, calType):
         """*build the `(sql, params)` pair that finds product SOFs whose calibration prerequisites are satisfied*
 
@@ -2802,8 +3002,16 @@ class data_organiser:
             f"where product_frames.complete = -1 and product_frames.sof={calTable}.sof;"
         )
 
-    def build_sof_files(self):
+    def build_sof_files(self, rejoinLateFrames=False):  # noqa: PLR0915
         """*scan the raw frame table to generate the listing of products that are expected to be created and then write out all of the needed SOF files*
+
+        **Key Arguments:**
+
+        - ``rejoinLateFrames`` -- when True, the session regroups every raw frame in the workspace, whatever
+          `raw_frames.processed` says. A set keeps its SOF name and status when its frames are unchanged. A raw frame
+          added after its set was grouped rejoins that set, which is reset in this session to be reduced again.
+          `prepare`, `session_create` and `session_switch` ask for this; `session_refresh` does not and groups only
+          the frames that are in none of this session's sets
 
         **Usage:**
 
@@ -2815,12 +3023,17 @@ class data_organiser:
 
         import pandas as pd
 
+        self._require_calibration_matches_table()
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
 
         c = self.conn.cursor()
         sqlQuery = f"update product_frames set status = {statusColumn};"  # noqa: S608
         c.execute(sqlQuery)
         sqlQuery = "update raw_frames set processed = 0 where processed < 0;"
+        c.execute(sqlQuery)
+        # A SOF IS MARKED -1 ONLY WITHIN ONE BUILD; A -1 LEFT BY AN INTERRUPTED BUILD WOULD OTHERWISE BE PROMOTED TO
+        # COMPLETE WITHOUT ITS CALIBRATIONS BEING CHECKED
+        sqlQuery = "update product_frames set complete = 0 where complete = -1;"
         c.execute(sqlQuery)
 
         # CLEAN UP FAILED FILES
@@ -2898,20 +3111,36 @@ class data_organiser:
             c.execute(sqlQuery)
             c.close()
 
+        # EVERY SESSION GROUPS EVERY RAW FRAME (DY-274), SO `processed` IS RE-DERIVED FROM THIS SESSION'S OWN MAP, AND A
+        # SET THAT IS IN NO MAP OF THIS SESSION IS COMPLETED AGAIN BELOW, WHOEVER BUILT IT FIRST
+        if rejoinLateFrames:
+            self._start_session_regroup(sofMapTableName)
+
+        # A FRAME ADDED AFTER ITS SET WAS GROUPED REJOINS THAT SET, WHICH IS THEN GROUPED AND REDUCED AGAIN
+        rejoined = self._rejoin_late_frames(sofMapTableName) if rejoinLateFrames else {}
+        compromisedSofs = compromisedSofs + sorted(rejoined)
+
+        sofNamePins = self.pinnedSofNames
+        regroupedSofs = set()
+        knownSetsByRecipe = {}
+        if rejoinLateFrames:
+            # SETS KEEP THE NAMES AND THE FRAMES THEY HAVE IN THIS SESSION AND IN THE OTHERS; A SET THAT GAINED A
+            # LATE FRAME IS LEFT OUT OF THE FRAME LABELS SO ITS OLD FRAMES GROUP WITH THE NEW ONE
+            sofNamePins = collect_sof_name_pins(self.conn, sofMapTableName, self.pinnedSofNames)
+            regroupedSofs = set(rejoined) | set(self.pinnedSofNames)
+            knownSetsByRecipe = {
+                recipe: partition_labels(sofNamePins, recipe, regroupedSofs)
+                for recipe in {filters["recipe"] for filters in self.sofMapLookup.values()}
+            }
+
         # DELETE COMPROMISED SOF FILES
-        for sof in compromisedSofs:
-            sofPath = self.sessionPath + "/sof/" + sof
-            try:
-                os.remove(sofPath)
-            except OSError as e:
-                self.log.debug(f"build_sof_files: `os.remove(sofPath)` failed, continuing: {e}")
+        self._delete_sof_files(Path(self.sessionPath) / "sof", compromisedSofs)
 
         # RESET ALL PRODUCTS TO INCOMPLETE
         c = self.conn.cursor()
 
         allRawGroups = []
         for recipeOrder, (name, filters) in enumerate(self.sofMapLookup.items()):
-
             # READ FILTER VARIABLES
             ttypes = filters["eso dpr type"]
             tech = filters["eso dpr tech"]
@@ -2923,15 +3152,16 @@ class data_organiser:
                 calibrationTypes = []
 
             for ttype in ttypes:
-
                 rawFrames, rawGroups = self.get_raw_frames_and_groups(
                     ttype=ttype,
                     tech=tech,
                     recipe=recipe,
                     recipeOrder=recipeOrder,
                     filterName=name,
-                    unprocessedOnly=True,
+                    unprocessedOnly=not rejoinLateFrames,
+                    knownSets=knownSetsByRecipe.get(recipe) if rejoinLateFrames else None,
                 )
+                rawGroups = pin_rejoined_sof_names(rawGroups, sofNamePins)
 
                 # ADD PREDICTED PRODUCT TO PRODUCT TABLE - DETERMINE IF COMPLETE LATER
                 incompleteProducts = self.predict_product_frames(productTypes, rawGroups, recipe)
@@ -2950,10 +3180,10 @@ class data_organiser:
                     c.execute(sqlQuery, (recipe,))
 
                 else:
-
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
-
+                            # MATCH THIS RECIPE'S INCOMPLETE SOFS ON THIS ARM AGAINST THE CURRENT UPSTREAM PRODUCTS
+                            refresh_calibration_matches(self.conn, calType, recipe=recipe, arm=arm)
                             sqlQuery, sqlParams = self._calibration_completeness_select_query(
                                 recipe, arm, ttype, calType
                             )
@@ -2968,7 +3198,6 @@ class data_organiser:
                             # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
                             # NEED TO ALSO ADD THE RAW FILES TOO ... ADD RAW FRAMES, SET COMPLETE = 1 WHERE PRODUCT FRAMES COMPLETE = 1
                             for ct in calType:
-
                                 sqlQuery = self._calibration_raw_frames_query(ct)
                                 newSof = pd.read_sql(sqlQuery, con=self.conn)
 
@@ -2981,6 +3210,9 @@ class data_organiser:
 
             sqlQuery = """update product_frames set complete = 1 where complete = -1;"""
             c.execute(sqlQuery)
+
+        # THE LOOP REFRESHED ONLY THE SOFS IT CHECKED; LEAVE THE `cal_<type>` VIEWS MATCHING THE FINAL STATE
+        refresh_calibration_matches(self.conn)
 
         self.conn.commit()
         c.close()
@@ -3013,6 +3245,119 @@ class data_organiser:
 
         return
 
+    def _delete_sof_files(self, sofDir, sofs):
+        """*delete the named `.sof` files from a session's `sof` directory, and nothing outside it*
+
+        A name must be a plain filename. A symlink is skipped, so its target survives. Each file is removed
+        relative to the open directory, so swapping a path component for a symlink while this runs cannot send the
+        delete elsewhere.
+
+        **Key Arguments:**
+
+        - ``sofDir`` -- the session's `sof` directory
+        - ``sofs`` -- the SOF filenames to delete; a name that is missing is skipped
+        """
+        try:
+            dirFd = os.open(sofDir, os.O_RDONLY | os.O_DIRECTORY)
+        except OSError as e:
+            self.log.debug(f"_delete_sof_files: the SOF directory could not be opened, continuing: {e}")
+            return
+        try:
+            for sof in sofs:
+                isPlainName = (
+                    isinstance(sof, str)
+                    and sof not in ("", ".", "..")
+                    and not os.path.isabs(sof)
+                    and os.sep not in sof
+                    and (os.altsep is None or os.altsep not in sof)
+                )
+                if not isPlainName:
+                    self.log.warning(f"build_sof_files: the SOF name `{sof}` is not a plain filename, not deleted")
+                    continue
+                try:
+                    if stat.S_ISLNK(os.stat(sof, dir_fd=dirFd, follow_symlinks=False).st_mode):
+                        self.log.warning(f"build_sof_files: the SOF file `{sof}` is a symlink, not deleted")
+                        continue
+                    os.unlink(sof, dir_fd=dirFd)
+                except FileNotFoundError:
+                    continue
+                except OSError as e:
+                    # A STALE SOF THAT SURVIVES IS NEVER REWRITTEN, SO THE FAILURE MUST BE VISIBLE
+                    self.log.warning(f"build_sof_files: the stale SOF file `{sof}` could not be deleted: {e}")
+        finally:
+            os.close(dirFd)
+
+    def _start_session_regroup(self, sofMapTableName):
+        """*prepare the shared tables for a regroup of the active session, in one transaction*
+
+        1. Set `raw_frames.processed` to 1 for the frames in this session's SOF map and to 0 for every other frame.
+           `processed` is one column shared by every session, so after another session's build it says nothing about
+           this session. It is only a cache of "this frame is in the active session's map", which the late-frame
+           check and `session_refresh` read.
+        2. Mark incomplete every product SOF that is in none of this session's SOF map rows. `product_frames` is
+           shared by every session, so a set another session built is already complete there and would never be
+           mapped into this session. Marking it incomplete sends it through the same completeness check as a new
+           set. Its product row, status and SOF name are kept.
+
+        Either both changes are made or neither is. The rest of `build_sof_files` cannot join this transaction,
+        because `_dataframe_to_sqlite` refuses a connection that is inside one.
+
+        **Key Arguments:**
+
+        - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
+        """
+        # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier BY THE CALLER
+        rebaseQuery = (
+            "UPDATE raw_frames SET processed = CASE "  # noqa: S608
+            f"WHEN filepath IN (SELECT filepath FROM {sofMapTableName}) THEN 1 ELSE 0 END;"
+        )
+        requeueQuery = (
+            "UPDATE product_frames SET complete = 0 WHERE complete != 0 "  # noqa: S608
+            f"AND sof NOT IN (SELECT DISTINCT sof FROM {sofMapTableName} WHERE sof IS NOT NULL);"
+        )
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute(rebaseQuery)
+            self.conn.execute(requeueQuery)
+            self.conn.execute("COMMIT")
+        except BaseException:
+            if self.conn.in_transaction:
+                self.conn.execute("ROLLBACK")
+            raise
+
+    def _rejoin_late_frames(self, sofMapTableName):
+        """*reset every set that a late-arriving raw frame belongs to, so it is grouped and reduced again*
+
+        **Key Arguments:**
+
+        - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
+
+        **Return:**
+
+        - ``rejoined`` -- SOF name to (recipe, frozenset of raw frame filepaths) for the sets that gained a frame in
+          this call, empty when none did. Their names stay pinned in `self.pinnedSofNames` for the rest of this
+          instance's life
+
+        The pin lives only on this instance. A rejoined set that is still unprocessed after both `prepare()` passes
+        (for example, while a calibration is missing) loses its pin when the process exits, and a later `prepare()`
+        then names the set after its earliest frame.
+        """
+        groupingKeys = [key for key in self.filterKeywords if key not in self.proKeywords]
+        rejoined = find_rejoined_sofs(self.conn, sofMapTableName, groupingKeys)
+        if not rejoined:
+            return rejoined
+        self.pinnedSofNames = {**self.pinnedSofNames, **rejoined}
+
+        stalePaths = reset_rejoined_sofs(
+            self.conn, sofMapTableName, rejoined, self.rootDir, _validate_owned_path, self.log
+        )
+        self.conn.commit()
+        # DELETE ONLY AFTER THE COMMIT, SO A FAILED COMMIT NEVER LEAVES A PRODUCT THE DATABASE STILL EXPECTS DELETED
+        delete_stale_files(stalePaths, self.log)
+        self.log.debug(f"_rejoin_late_frames: reset {len(rejoined)} SOF(s) that gained late frames")
+        print(format_rejoin_summary(rejoined))
+        return rejoined
+
     def get_raw_frames_and_groups(
         self,
         ttype=None,
@@ -3022,6 +3367,7 @@ class data_organiser:
         recipeOrder=None,
         filterName=None,
         unprocessedOnly=False,
+        knownSets=None,
     ):
         """*Process raw frames to group and calculate mean MJD values.*
 
@@ -3033,6 +3379,8 @@ class data_organiser:
             - ``recipeOrder`` -- recipe reduction order
             - ``filterName`` -- optional name to filter the groups
             - ``unprocessedOnly`` -- if True, only return unprocessed raw frames
+            - ``knownSets`` -- optional raw frame filepath to the SOF name of the set it is already in. Frames of
+              different known sets are not grouped together, even when every grouping key is the same
 
         **Return:**
             - `rawFrames` -- processed raw frames dataframe
@@ -3141,17 +3489,11 @@ class data_organiser:
         if not len(rawFramesNoOffFrames.index):
             return pd.DataFrame(), pd.DataFrame()
 
-        rawGroups = self._group_raw_frames(rawFramesNoOffFrames, filterKeywordsRaw + ["set_first_file"])
-
-        # REMOVE GROUPED STARE - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
-        mask = rawGroups["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])
-        rawGroups = rawGroups.loc[~mask]
-        # NOW ADD SCIENCE FRAMES AS ONE ENTRY PER EXPOSURE
-        rawScienceFrames = rawFrames.loc[rawFrames["eso dpr tech"].isin(["ECHELLE,SLIT,STARE"])]
-        if len(rawScienceFrames.index):
-            rawScienceFrames = self._group_raw_frames(rawScienceFrames, filterKeywordsRaw + ["mjd-obs"])
-            # MERGE DATAFRAMES
-            rawGroups = pd.concat([rawGroups, rawScienceFrames], ignore_index=True)
+        # STARE FRAMES ARE GROUPED BY THESE KEYS TOO, SO ALL FRAMES OF ONE OB AND ARM THAT SHARE SLIT, BINNING,
+        # READOUT AND EXPOSURE TIME LAND IN ONE SOF. THE STARE RECIPE STACKS THEM OR EXTRACTS EACH ONE (DY-1611)
+        rawGroups = self._group_raw_frames(
+            rawFramesNoOffFrames, filterKeywordsRaw + ["set_first_file"], knownSets=knownSets
+        )
 
         # REMOVE GROUPED SINGLE PINHOLE ARCS - NEED TO ADD INDIVIDUAL FRAMES TO GROUP
         mask = rawGroups["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
@@ -3170,18 +3512,18 @@ class data_organiser:
                 rawFrames["eso dpr tech"].isin(["ECHELLE,PINHOLE", "ECHELLE,MULTI-PINHOLE"])
             ]
         if len(rawPinholeFrames.index):
-            rawPinholeFrames = self._group_raw_frames(rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"])
+            rawPinholeFrames = self._group_raw_frames(
+                rawPinholeFrames, filterKeywordsRaw + ["mjd-obs"], knownSets=knownSets
+            )
             # MERGE DATAFRAMES
             rawGroups = pd.concat([rawGroups, rawPinholeFrames], ignore_index=True)
 
         rawGroups["recipe"] = recipe
 
         if "STD,FLUX" in ttype:
-
             recipe = recipe.replace("_std", "") + "_std_flux"
 
         if "STD,TELLURIC" in ttype:
-
             recipe = recipe.replace("_std", "") + "_std_tell"
 
         rawGroups["sof"] = (
@@ -3232,10 +3574,14 @@ class data_organiser:
 
         return rawFrames, rawGroups
 
-    def _group_raw_frames(self, rawFrames, filterKeywordsRaw, addFilepaths=True, addStartDate=True):
-        """Group raw frames and return grouped rows with aggregation metadata."""
-        import pandas as pd
+    def _group_raw_frames(self, rawFrames, filterKeywordsRaw, addFilepaths=True, addStartDate=True, knownSets=None):
+        """Group raw frames and return grouped rows with aggregation metadata.
 
+        With ``knownSets`` (raw frame filepath to SOF name), frames of different known sets are never grouped together.
+        """
+        if knownSets:
+            rawFrames = rawFrames.assign(**{KNOWN_SET_COLUMN: rawFrames["filepath"].map(knownSets).fillna("")})
+            filterKeywordsRaw = [*filterKeywordsRaw, KNOWN_SET_COLUMN]
         # Create aggregation dictionary
         agg_dict = {col: "mean" for col in self.filterKeywordsExtras if col not in filterKeywordsRaw}
         agg_dict["file"] = "size"  # for counting rows
@@ -3253,7 +3599,6 @@ class data_organiser:
         # Group and aggregate
         rawGroups = rawFrames.groupby(filterKeywordsRaw).agg(agg_dict).rename(columns={"file": "counts"}).reset_index()
         rawGroups.style.hide(axis="index")
-        pd.options.mode.chained_assignment = None
 
         # Normalise timestamps to compact YYYYMMDDTHHMMSS format for SOF naming.
         if addFilepaths:
@@ -3262,6 +3607,8 @@ class data_organiser:
             startTime = [str(s).split(".")[0].replace("-", "").replace(":", "") for s in startTime]
             rawGroups["date-obs"] = startTime
 
+        if knownSets:
+            rawGroups = rawGroups.drop(columns=[KNOWN_SET_COLUMN])
         return rawGroups
 
     def predict_product_frames(self, productTypes, rawGroups, recipe):
@@ -3375,57 +3722,35 @@ class data_organiser:
 
     def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
         """
-        Retry inserting into the database with a maximum of 7 attempts.
+        Write a DataFrame to a database table in one transaction, retrying a failed write.
+
+        The number of attempts is `sqlite_dataframe_writer.MAX_ATTEMPTS`.
 
         **Key Arguments:**
         - `dataframe` -- DataFrame containing rows to insert.
         - `table_name` -- Name of the database table to insert into.
-        - `replace` -- If True, replace existing entries; otherwise, append.
+        - `replace` -- If True, replace existing entries in the same transaction; otherwise, append.
 
         **Raises:**
-        - Exception if the insertion fails after 7 attempts.
+        - Exception if every attempt fails.
+        - `SqliteTransactionOpenError` if the connection is already inside a transaction.
         - `UnsafeSqlIdentifierError` if `table_name` fails the safe-identifier grammar.
         """
-        import time
-
-        # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
-        # THE SAFE-IDENTIFIER GRAMMAR BEFORE IT IS INTERPOLATED BELOW.
-        table_name = validate_sql_identifier(table_name, "table name")
-
-        if replace:
-            c = self.conn.cursor()
-            sqlQuery = f"delete from {table_name};"  # noqa: S608
-            try:
-                c.execute(sqlQuery)
-            except sqlite3.OperationalError as e:
-                self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
-            c.close()
-
-        keepTrying = 0
-        while keepTrying < 7:
-            try:
-                dataframe.replace(["--", -99.99], None).to_sql(
-                    table_name, con=self.conn, index=False, if_exists="append"
-                )
-                keepTrying = 10
-            except Exception:
-                if keepTrying > 5:
-                    raise
-                time.sleep(1)
-                keepTrying += 1
+        write_dataframe_to_sqlite(self.conn, self.log, dataframe, table_name, replace=replace, sentinels=("--", -99.99))
 
 
 def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
     import numpy as np
     from astropy.time import Time, TimeDelta
-    from ccdproc import ImageFileCollection
+
+    from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
+    from soxspipe.commonutils.toolkit import NIGHT_START_OFFSET_SECONDS
 
     masterTable = ImageFileCollection(filenames=batch, keywords=keywords)
     masterTable = masterTable.summary
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:
         if fil in filterKeys and fil not in ["exptime"]:
-
             try:
                 masterTable[fil].fill_value = "--"
             except (TypeError, ValueError) as e:
@@ -3474,7 +3799,7 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     # SO COUNT CHILEAN OBSERVING NIGHTS AS 15:00 UTC-15:00 UTC (11am-11am)
     if "mjd-obs" in masterTable.colnames:
         chile_offset = TimeDelta(4.0 * 60 * 60, format="sec")
-        night_start_offset = TimeDelta(15.0 * 60 * 60, format="sec")
+        night_start_offset = TimeDelta(NIGHT_START_OFFSET_SECONDS, format="sec")
         mjd_ofset = TimeDelta(12.0 * 60 * 60, format="sec")
         masterTable["mjd-obs"] = masterTable["mjd-obs"].astype(float)
         chileTimes = Time(masterTable["mjd-obs"], format="mjd", scale="utc") - chile_offset

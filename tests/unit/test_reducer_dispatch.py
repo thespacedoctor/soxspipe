@@ -10,6 +10,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from tests.factories import logging_settings
+
 pytestmark = pytest.mark.unit
 
 
@@ -132,7 +134,6 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
     """Translate worker outcomes into session status, error, QC, and refresh writes."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
     commonutilsModule = import_module("soxspipe.commonutils")
-    fundamentalsModule = import_module("fundamentals")
     workerCalls: list[dict[str, object]] = []
     organiserCalls: list[tuple[str, object]] = []
     workspacePath = tmp_path / "workspace"
@@ -159,24 +160,10 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
             raise FileExistsError("unclassified existing output")
         raise RuntimeError("worker exploded")
 
-    def fake_multiprocess(**kwargs: object) -> list[dict[str, object]]:
-        assert kwargs["poolSize"] == 3
-        assert kwargs["timeout"] == 36000
+    def fake_pool(function: Any, inputDicts: list[dict[str, str]], poolSize: int, log: Any, **kwargs: Any) -> list[Any]:
+        assert poolSize == 3
         assert kwargs["wrapperTurnOffMP"] is True
-        assert kwargs["turnOffMP"] is False
-        wrapper = kwargs["function"]
-        return [
-            wrapper(
-                inputDict=inputDict,
-                log=kwargs["log"],
-                recipe=kwargs["recipe"],
-                settings=kwargs["settings"],
-                overwrite=kwargs["overwrite"],
-                workspaceDirectory=kwargs["workspaceDirectory"],
-                wrapperTurnOffMP=kwargs["wrapperTurnOffMP"],
-            )
-            for inputDict in kwargs["inputArray"]
-        ]
+        return [function(inputDict, log=log, **kwargs) for inputDict in inputDicts]
 
     class RecordingOrganiser:
         def __init__(self, **kwargs: object) -> None:
@@ -186,16 +173,14 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
             organiserCalls.append(("refresh", kwargs))
             return False
 
-        def _dataframe_to_sqlite(
-            self, dataframe: pd.DataFrame, tableName: str, replace: bool
-        ) -> None:
+        def _dataframe_to_sqlite(self, dataframe: pd.DataFrame, tableName: str, replace: bool) -> None:
             organiserCalls.append(("sqlite", (dataframe.copy(), tableName, replace)))
 
         def close(self) -> None:
             organiserCalls.append(("close", None))
 
     monkeypatch.setattr(reducerModule, "run_recipe", fake_run_recipe)
-    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", fake_multiprocess)
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", fake_pool)
     monkeypatch.setattr(commonutilsModule, "data_organiser", RecordingOrganiser)
     connection = RecordingConnection(changedRows=1)
     sofNames = [
@@ -213,7 +198,7 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
         recipe="mflat",
         sofList=sofPaths,
         commandList=[f"soxspipe mflat {sofName}" for sofName in sofNames],
-        settings={"workspace-root-dir": str(workspacePath)},
+        settings={"workspace-root-dir": str(workspacePath), **logging_settings(tmp_path / "bulk.log")},
         overwrite=True,
         workspaceDirectory=str(workspacePath),
         conn=connection,
@@ -224,14 +209,8 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
     assert all(call["turnOffMP"] is True for call in workerCalls)
     assert connection.isClosed is True
     assert connection.recordingCursor.isClosed is True
-    assert any(
-        "status_night1 = 'pass'" in query
-        for query, _ in connection.recordingCursor.executed
-    )
-    assert any(
-        "status_night1 = 'fail'" in query
-        for query, _ in connection.recordingCursor.executed
-    )
+    assert any("status_night1 = 'pass'" in query for query, _ in connection.recordingCursor.executed)
+    assert any("status_night1 = 'fail'" in query for query, _ in connection.recordingCursor.executed)
     assert connection.recordingCursor.executedMany == [
         (
             "update product_frames set error_message = ? where sof = ?",
@@ -259,7 +238,8 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
     ]
     assert not temporaryPath.exists()
     output = capsys.readouterr().out
-    assert "pool size of 3" in output
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("pool size of 3" in message for message in printed)
     assert "Number of successful mflat reductions: 1" in output
     assert "Number of failed mflat reductions: 3" in output
     assert "Number of pre-existing mflat reductions: 2" in output
@@ -273,14 +253,13 @@ def test_run_recipe_bulk_skips_refresh_and_qc_when_workers_return_nothing(
     """Avoid organizer writes when a bulk dispatch has no worker results."""
     reducerModule = import_module("soxspipe.commonutils.reducer")
     commonutilsModule = import_module("soxspipe.commonutils")
-    fundamentalsModule = import_module("fundamentals")
     organiserWasCreated = False
 
     def fail_if_created(**kwargs: object) -> None:
         nonlocal organiserWasCreated
         organiserWasCreated = True
 
-    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", lambda **kwargs: [])
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", lambda **kwargs: [])
     monkeypatch.setattr(commonutilsModule, "data_organiser", fail_if_created)
     connection = RecordingConnection(changedRows=0)
 
@@ -289,7 +268,7 @@ def test_run_recipe_bulk_skips_refresh_and_qc_when_workers_return_nothing(
         recipe="mbias",
         sofList=[],
         commandList=[],
-        settings={},
+        settings=logging_settings(tmp_path / "bulk.log"),
         overwrite=False,
         workspaceDirectory=str(tmp_path),
         conn=connection,
@@ -315,7 +294,6 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     """
     reducerModule = import_module("soxspipe.commonutils.reducer")
     commonutilsModule = import_module("soxspipe.commonutils")
-    fundamentalsModule = import_module("fundamentals")
     workspacePath = tmp_path / "workspace"
     (workspacePath / "tmp").mkdir(parents=True)
     hostileSofName = "x.sof') OR (1=1) OR ('a'='"
@@ -323,20 +301,10 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     def fake_run_recipe(**kwargs: object) -> tuple[str, pd.DataFrame]:
         return "product.fits", pd.DataFrame([{"qc_name": "signal", "qc_flag": "pass"}])
 
-    def fake_multiprocess(**kwargs: object) -> list[dict[str, object]]:
-        wrapper = kwargs["function"]
-        return [
-            wrapper(
-                inputDict=inputDict,
-                log=kwargs["log"],
-                recipe=kwargs["recipe"],
-                settings=kwargs["settings"],
-                overwrite=kwargs["overwrite"],
-                workspaceDirectory=kwargs["workspaceDirectory"],
-                wrapperTurnOffMP=kwargs["wrapperTurnOffMP"],
-            )
-            for inputDict in kwargs["inputArray"]
-        ]
+    def fake_pool(function: Any, inputDicts: list[dict[str, str]], poolSize: int, log: Any, **kwargs: Any) -> list[Any]:
+        assert poolSize == 3
+        assert kwargs["wrapperTurnOffMP"] is True
+        return [function(inputDict, log=log, **kwargs) for inputDict in inputDicts]
 
     class NoOpOrganiser:
         def __init__(self, **kwargs: object) -> None:
@@ -345,16 +313,14 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
         def session_refresh(self, **kwargs: object) -> bool:
             return False
 
-        def _dataframe_to_sqlite(
-            self, dataframe: pd.DataFrame, tableName: str, replace: bool
-        ) -> None:
+        def _dataframe_to_sqlite(self, dataframe: pd.DataFrame, tableName: str, replace: bool) -> None:
             pass
 
         def close(self) -> None:
             pass
 
     monkeypatch.setattr(reducerModule, "run_recipe", fake_run_recipe)
-    monkeypatch.setattr(fundamentalsModule, "fmultiprocess", fake_multiprocess)
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", fake_pool)
     monkeypatch.setattr(commonutilsModule, "data_organiser", NoOpOrganiser)
 
     # `autocommit=True` MATCHES THE CONNECTION `run_recipe` OPENS IN PRODUCTION
@@ -363,9 +329,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     # CLOSES THE CONNECTION, MASKING THE BEHAVIOUR UNDER TEST.
     databasePath = tmp_path / "reducer.db"
     connection = sqlite3.connect(str(databasePath), autocommit=True)
-    connection.execute(
-        "create table product_frames (sof text, status_night1 text, error_message text)"
-    )
+    connection.execute("create table product_frames (sof text, status_night1 text, error_message text)")
     connection.executemany(
         "insert into product_frames values (?, ?, ?)",
         [
@@ -380,7 +344,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
         recipe="mflat",
         sofList=[str(workspacePath / "sof" / hostileSofName)],
         commandList=[f"soxspipe mflat {hostileSofName}"],
-        settings={"workspace-root-dir": str(workspacePath)},
+        settings={"workspace-root-dir": str(workspacePath), **logging_settings(tmp_path / "bulk.log")},
         overwrite=True,
         workspaceDirectory=str(workspacePath),
         conn=connection,
@@ -388,9 +352,7 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
     )
 
     verifyConnection = sqlite3.connect(str(databasePath))
-    rows = verifyConnection.execute(
-        "select sof, status_night1 from product_frames order by sof"
-    ).fetchall()
+    rows = verifyConnection.execute("select sof, status_night1 from product_frames order by sof").fetchall()
     verifyConnection.close()
     # ONLY THE ROW THAT ACTUALLY REDUCED IS STAMPED 'pass'. IF THE PAYLOAD WERE
     # STILL INTERPOLATED, THE ALWAYS-TRUE CONDITION WOULD HAVE STAMPED THE

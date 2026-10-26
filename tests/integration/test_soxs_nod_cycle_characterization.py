@@ -51,6 +51,8 @@ def _cycle_recipe(
     recipe.startNightDate = "2024-01-02"
     recipe.turnOffMP = True
     recipe.arm = "VIS"
+    # produce_product SETS THIS FROM THE RAW FRAMES; FALSE LETS THE EXTRACTOR USE ITS OWN FRAME HEADER
+    recipe.scienceHeaders = False
     productDir = tmp_path / "products"
     productDir.mkdir(exist_ok=True)
     recipe.productDir = str(productDir)
@@ -79,11 +81,16 @@ def _patch_extraction_collaborators(
     nodModule = import_module("soxspipe.recipes.soxs_nod")
     extractCalls: list[dict[str, object]] = []
     qcCalls: list[tuple[str, dict[str, object]]] = []
-    joinSequence = joins or [{10: 1}]
+    joinSequence = joins or [{"10-11": 1}]
 
     class RecordingExtractor:
+        noddingSequence = ""
+        extractionNotes: list = []
+
         def __init__(self, **kwargs: object) -> None:
             extractCalls.append(kwargs)
+            # A DISTINCT HAND-OFF PER EXTRACTION, SO A TEST CAN TELL WHICH FLAT PASS A NOT-FLAT PASS WAS GIVEN
+            self.flatPassHandoff = ("flat-pass hand-off", len(extractCalls) - 1)
 
         def extract(self) -> tuple[Any, Any, pd.DataFrame, dict[int, int], str]:
             index = len(extractCalls) - 1
@@ -232,7 +239,7 @@ def test_nod_cycle_detrends_four_frames_in_order_when_flattening_with_a_master_f
     """A real master flat with flattening requested detrends A-B, B-A, bFrame, then aFrame, in that order."""
     recipe = _cycle_recipe(log, tmp_path)
     detrendCalls = _patch_detrend(monkeypatch, recipe)
-    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe, joins=[{10: 1}, {20: 2}])
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe, joins=[{"10-11": 1}, {"20-21": 2}])
     aFrame, bFrame = _ab_frames()
     masterFlat = synthetic_ccd(shape=(3, 3), seed=99, prepared=True)
 
@@ -358,13 +365,17 @@ def test_save_single_frame_extractions_e712_comparison_controls_the_products_tab
     calls = {"count": 0}
 
     class SequencedExtractor:
+        noddingSequence = ""
+        extractionNotes: list = []
+        flatPassHandoff = None
+
         def __init__(self, **kwargs: object) -> None:
             productsSeen.append(kwargs["productsTable"])
             calls["count"] += 1
 
         def extract(self) -> tuple[Any, Any, pd.DataFrame, dict[int, int], str]:
             returned = pd.DataFrame({"marker": [f"RETURNED-{calls['count']}"]})
-            return recipe.qc, returned, pd.DataFrame({"WAVE": [500.0]}), {10: 1}, "extraction.fits"
+            return recipe.qc, returned, pd.DataFrame({"WAVE": [500.0]}), {"10-11": 1}, "extraction.fits"
 
     monkeypatch.setattr(commonutils, "horne_extraction", SequencedExtractor)
     monkeypatch.setattr(nodModule, "generic_quality_checks", lambda **kwargs: kwargs["qcTable"])
@@ -415,14 +426,127 @@ def test_process_cycle_returns_order_joins_from_the_last_extraction(
 ) -> None:
     """The returned `orderJoins` is the B-minus-A extraction's, overwriting the A-minus-B one."""
     recipe = _cycle_recipe(log, tmp_path)
-    _patch_extraction_collaborators(monkeypatch, recipe, joins=[{10: 1}, {20: 2}])
+    _patch_extraction_collaborators(monkeypatch, recipe, joins=[{"10-11": 1}, {"20-21": 2}])
     aFrame, bFrame = _ab_frames()
 
     _, _, orderJoins = recipe.process_single_ab_nodding_cycle(
         aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath="orders.fits"
     )
 
-    assert orderJoins == {20: 2}
+    assert orderJoins == {"20-21": 2}
+
+
+@pytest.mark.parametrize("locationSetIndex", [1, "STACK"])
+def test_the_not_flattened_nod_pass_gets_the_flat_hand_off_of_the_same_difference(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    locationSetIndex: object,
+) -> None:
+    """DY-1680: the not-flat A-B and B-A extractions reuse the sky shifts of the flat A-B and B-A extractions."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path)
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+
+    # ACT
+    for notFlattened in (False, True):
+        recipe.process_single_ab_nodding_cycle(
+            aFrame=aFrame,
+            bFrame=bFrame,
+            locationSetIndex=locationSetIndex,
+            orderTablePath="orders.fits",
+            notFlattened=notFlattened,
+        )
+
+    # ASSERT: EXTRACTIONS 0/1 ARE FLAT A-B/B-A, 2/3 NOT-FLAT A-B/B-A
+    assert [call["flatPass"] for call in extractCalls] == [
+        None,
+        None,
+        ("flat-pass hand-off", 0),
+        ("flat-pass hand-off", 1),
+    ]
+
+
+def test_the_not_flattened_offset_pass_gets_the_flat_hand_off(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: an offset run has one difference per pass, and its not-flat extraction reuses the flat one."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path, recipeName="soxs-offset")
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+
+    # ACT
+    for notFlattened in (False, True):
+        recipe.process_single_ab_nodding_cycle(
+            aFrame=aFrame,
+            bFrame=bFrame,
+            locationSetIndex="STACK",
+            orderTablePath="orders.fits",
+            notFlattened=notFlattened,
+        )
+
+    # ASSERT
+    assert [call["flatPass"] for call in extractCalls] == [None, ("flat-pass hand-off", 0)]
+
+
+def test_a_combined_nod_frame_hands_its_flat_pass_to_the_combined_not_flat_extraction(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: with shift-and-add, each pass extracts one combined frame, and the hand-off pairs them."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path)
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+    combinedFrames = (aFrame, aFrame, bFrame)
+
+    # ACT
+    for notFlattened in (False, True):
+        recipe._extract_cycle_spectra(
+            aFrame,
+            bFrame,
+            aFrame,
+            bFrame,
+            aFrame,
+            bFrame,
+            theseProducts=False,
+            locationSetIndex=1,
+            notFlattened=notFlattened,
+            combinedFrames=combinedFrames,
+        )
+
+    # ASSERT
+    assert [call["flatPass"] for call in extractCalls] == [None, ("flat-pass hand-off", 0)]
+
+
+def test_a_new_flat_pass_replaces_the_hand_off_of_an_earlier_one(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second flat pass over the same cycle hands on its own shifts, not those of the first."""
+    # ARRANGE
+    recipe = _cycle_recipe(log, tmp_path, recipeName="soxs-offset")
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+
+    # ACT
+    for notFlattened in (False, False, True):
+        recipe.process_single_ab_nodding_cycle(
+            aFrame=aFrame,
+            bFrame=bFrame,
+            locationSetIndex=1,
+            orderTablePath="orders.fits",
+            notFlattened=notFlattened,
+        )
+
+    # ASSERT
+    assert extractCalls[-1]["flatPass"] == ("flat-pass hand-off", 1)
 
 
 @pytest.fixture
@@ -490,13 +614,14 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    stacked, _ = recipe.stack_extractions([first, second], orderJoins={10: 1})
+    stacked, _ = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert len(stacked) == 3
     assert stacked["WAVE"].tolist() == pytest.approx([500.12, 500.12, 700.0], rel=1e-12)
     assert stacked["FLUX_COUNTS"].tolist() == pytest.approx([12.346, 55.0, 50.0], rel=1e-12)
     assert stacked["FLUX_DENSITY_COUNTS"].tolist() == pytest.approx([2.222, 3.001, 10.0], rel=1e-12)
-    assert stacked["SNR"].tolist() == pytest.approx([4.12, 27.5, 7.14], rel=1e-12)
+    # THE VARIANCE OF A TWO-SPECTRUM MEDIAN IS SUM(VAR) / 4 (DY-1675): 12.34565 / SQRT(4.5) AND 50 / SQRT(24.5)
+    assert stacked["SNR"].tolist() == pytest.approx([5.82, 27.5, 10.10], rel=1e-12)
 
 
 def test_stack_extractions_writes_notflat_suffixed_files_when_requested(
@@ -508,7 +633,7 @@ def test_stack_extractions_writes_notflat_suffixed_files_when_requested(
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    _, fitsPath = recipe.stack_extractions([first, second], notFlattened=True, orderJoins={10: 1})
+    _, fitsPath = recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
     assert Path(fitsPath).name == "SYNTHETIC_EXTRACTED_MERGED_NOTFLAT.fits"
     assert (tmp_path / "SYNTHETIC_EXTRACTED_MERGED_NOTFLAT.txt").is_file()
@@ -524,12 +649,10 @@ def test_stack_extractions_sets_the_reduced_header_keywords_and_date_obs(
     """The written header carries PRO_TYPE REDUCED and PRO_CATG SCI_SLIT_FLUX_<ARM>, and dateObs comes from it."""
     recipe = _stack_recipe(log, tmp_path)
     keywordCalls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        recipe, "update_fits_keywords", lambda **kwargs: keywordCalls.append(kwargs)
-    )
+    monkeypatch.setattr(recipe, "update_fits_keywords", lambda **kwargs: keywordCalls.append(kwargs))
     first, second = _spectrum_frames()
 
-    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={10: 1})
+    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert keywordCalls == [{"frame": recipe.masterHeaderFrame}]
     with fits.open(fitsPath) as hdus:
@@ -547,7 +670,7 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting(
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={10: 1})
+    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     asciiLines = Path(fitsPath.replace(".fits", ".txt")).read_text().splitlines()
     assert asciiLines[0] == "WAVE FLUX_COUNTS VARIANCE FLUX_DENSITY_COUNTS SNR"
@@ -571,7 +694,7 @@ def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_colum
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={10: 1})
+    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert list(recipe.products.columns) == [
         "soxspipe_recipe",
@@ -612,7 +735,7 @@ def test_stack_extractions_stamps_both_product_rows_with_one_whole_second_timest
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    recipe.stack_extractions([first, second], orderJoins={10: 1})
+    recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     reductionDates = recipe.products["reduction_date_utc"].tolist()
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", reductionDates[0])
@@ -644,7 +767,7 @@ def test_stack_extractions_reads_the_clock_exactly_once(
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    recipe.stack_extractions([first, second], orderJoins={10: 1})
+    recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert reads == ["read"]
     assert recipe.products["reduction_date_utc"].tolist() == ["2024-01-02T03:04:01"] * 2
@@ -661,7 +784,7 @@ def test_stack_extractions_stamps_product_rows_with_the_current_recipe_name(
     recipe = _stack_recipe(log, tmp_path, recipeName=recipeName)
     first, second = _spectrum_frames()
 
-    recipe.stack_extractions([first, second], orderJoins={10: 1})
+    recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert recipe.products["soxspipe_recipe"].tolist() == [recipeName, recipeName]
 
@@ -690,13 +813,31 @@ def test_stack_extractions_calls_add_snr_efficiency_qcs_and_writes_its_qc_to_the
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={10: 1})
+    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert len(qcCalls) == 1
-    assert qcCalls[0]["orderJoins"] == {10: 1}
+    assert qcCalls[0]["orderJoins"] == {"10-11": 1}
     assert qcCalls[0]["recipeName"] == "soxs-nod"
+    assert qcCalls[0]["arm"] == "VIS"
     assert qcCalls[0]["dateObs"] == recipe.dateObs
-    assert list(qcCalls[0]["spectrumDF"]["SNR"]) == pytest.approx([4.12, 27.5, 7.14], rel=1e-12)
+    assert list(qcCalls[0]["spectrumDF"]["SNR"]) == pytest.approx([5.82, 27.5, 10.10], rel=1e-12)
     assert recipe.qc is returnedQc
     with fits.open(fitsPath) as hdus:
         assert hdus[0].header["ESO QC SYNTHETIC QC"] == pytest.approx(42.0)
+
+
+def test_stack_extractions_writes_the_product_and_warns_when_the_extraction_found_no_trace(
+    log: Any,
+    tmp_path: Path,
+) -> None:
+    """B found no trace, so its spectrum and the order joins are None; the QCs are skipped and A is still written."""
+    recipe = _stack_recipe(log, tmp_path)
+    first, _ = _spectrum_frames()
+
+    _, fitsPath = recipe.stack_extractions([first, None], orderJoins=None)
+
+    assert Path(fitsPath).exists()
+    assert recipe.qc.empty
+    assert [message for level, message in log.messages if level == "warning"] == [
+        "The SNR and efficiency QCs were skipped: no order joins were supplied (no object trace found)."
+    ]

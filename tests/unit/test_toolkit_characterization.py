@@ -40,9 +40,7 @@ _TICK_START = datetime_module.datetime(2025, 1, 1, 0, 0, 0)
 _TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d$")
 
 
-def _build_controlled_datetime(
-    start: datetime_module.datetime, *, tick: bool
-) -> type[datetime_module.datetime]:
+def _build_controlled_datetime(start: datetime_module.datetime, *, tick: bool) -> type[datetime_module.datetime]:
     """Return a `datetime.datetime` subclass whose `utcnow()`/`now()` are controlled.
 
     **Key Arguments:**
@@ -115,9 +113,7 @@ def ticking_clock(
     return controlled
 
 
-def _record_calls(
-    monkeypatch: pytest.MonkeyPatch, attributeNames: list[str]
-) -> dict[str, list[tuple[tuple, dict]]]:
+def _record_calls(monkeypatch: pytest.MonkeyPatch, attributeNames: list[str]) -> dict[str, list[tuple[tuple, dict]]]:
     """Patch each named `matplotlib.pyplot` attribute, delegating to the real
     implementation while recording call order and arguments.
 
@@ -156,9 +152,7 @@ def _record_calls(
 
 
 def _identity_keyword_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key)
-    )
+    monkeypatch.setattr(toolkit, "keyword_lookup", lambda **kwargs: SimpleNamespace(get=lambda key: key))
 
 
 def _bad_pixel_frame() -> SimpleNamespace:
@@ -269,9 +263,7 @@ def _unpack_order_table_stub(pixelsFrame: pd.DataFrame):
     return _stub
 
 
-def _order_frame(
-    *, badPixel: tuple[int, int], winBin: bool = True, arm: str = "VIS"
-) -> SimpleNamespace:
+def _order_frame(*, badPixel: tuple[int, int], winBin: bool = True, arm: str = "VIS") -> SimpleNamespace:
     header: dict[str, object] = {
         "SEQ_ARM": arm,
         "DATE_OBS": "2024-01-02T03:04:05",
@@ -293,15 +285,15 @@ def _order_frame(
             "x",
             {"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]},
             (2, 0),
-            "8.200",
-            "41.000",
+            8.2,
+            41.0,
         ),
         (
             "y",
             {"ycoord_edgeup": [3, 4], "ycoord_edgelow": [1, 0], "xcoord": [1, 2]},
             (0, 2),
-            "8.800",
-            "44.000",
+            8.8,
+            44.0,
         ),
     ],
 )
@@ -312,14 +304,12 @@ def test_spectroscopic_image_quality_checks_pins_full_row_contract_per_dispersio
     dispersionAxis: str,
     pixelColumns: dict[str, list[float]],
     badPixel: tuple[int, int],
-    expectedMean: str,
-    expectedSum: str,
+    expectedMean: float,
+    expectedSum: float,
 ) -> None:
     _identity_keyword_lookup(monkeypatch)
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub(dispersionAxis))
-    monkeypatch.setattr(
-        toolkit, "unpack_order_table", _unpack_order_table_stub(pd.DataFrame(pixelColumns))
-    )
+    monkeypatch.setattr(toolkit, "unpack_order_table", _unpack_order_table_stub(pd.DataFrame(pixelColumns)))
     frame = _order_frame(badPixel=badPixel)
 
     result = toolkit.spectroscopic_image_quality_checks(
@@ -339,10 +329,9 @@ def test_spectroscopic_image_quality_checks_pins_full_row_contract_per_dispersio
     assert result["soxspipe_recipe"].tolist() == ["soxs-stare", "soxs-stare"]
     assert result["qc_name"].tolist() == ["INNER ORDER PIX MEAN", "INNER ORDER PIX SUM"]
     assert result["qc_value"].tolist() == [expectedMean, expectedSum]
-    # BUG-LIKE: THESE ARE NUMERIC MEASUREMENTS BUT ARE RECORDED AS FORMATTED
-    # STRINGS (`"%0.*f" % (3, value)`), NOT FLOATS -- PINNED AS-IS
-    assert isinstance(result["qc_value"].iloc[0], str)
-    assert isinstance(result["qc_value"].iloc[1], str)
+    # DY-1259: THE MEASUREMENTS ARE STORED AS FLOATS ROUNDED TO 3 DECIMALS, NOT FORMATTED STRINGS
+    assert isinstance(result["qc_value"].iloc[0], float)
+    assert isinstance(result["qc_value"].iloc[1], float)
     assert result["qc_comment"].tolist() == [
         "[e-] Mean inner-order pixel value",
         "[e-] Sum of all inner-order pixel values",
@@ -361,9 +350,7 @@ def test_spectroscopic_image_quality_checks_falls_back_to_unbinned_pixels_for_ni
 ) -> None:
     _identity_keyword_lookup(monkeypatch)
     monkeypatch.setattr(commonutils, "detector_lookup", _detector_lookup_stub("y"))
-    pixelsFrame = pd.DataFrame(
-        {"ycoord_edgeup": [3, 4], "ycoord_edgelow": [1, 0], "xcoord": [1, 2]}
-    )
+    pixelsFrame = pd.DataFrame({"ycoord_edgeup": [3, 4], "ycoord_edgelow": [1, 0], "xcoord": [1, 2]})
     monkeypatch.setattr(toolkit, "unpack_order_table", _unpack_order_table_stub(pixelsFrame))
     frame = _order_frame(badPixel=(0, 2), winBin=False, arm="NIR")
 
@@ -371,7 +358,7 @@ def test_spectroscopic_image_quality_checks_falls_back_to_unbinned_pixels_for_ni
         log, frame, "unused-order-table.fits", {}, "soxs-stare", pd.DataFrame()
     )
 
-    assert result["qc_value"].tolist() == ["8.800", "44.000"]
+    assert result["qc_value"].tolist() == [8.8, 44.0]
 
 
 def _run_binning_check(
@@ -393,9 +380,7 @@ def _run_binning_check(
     - the keyword arguments received by `unpack_order_table`, and the QC table
     """
     observed: dict[str, object] = {}
-    pixelsFrame = pd.DataFrame(
-        {"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]}
-    )
+    pixelsFrame = pd.DataFrame({"xcoord_edgeup": [3, 4], "xcoord_edgelow": [1, 0], "ycoord": [1, 2]})
 
     def _recording_unpack(**kwargs: object) -> tuple[None, pd.DataFrame, None]:
         observed.update(kwargs)
@@ -430,9 +415,7 @@ def test_spectroscopic_image_quality_checks_defaults_missing_binning_headers_to_
     expectedBinx: int,
     expectedBiny: int,
 ) -> None:
-    observed, qcTable = _run_binning_check(
-        monkeypatch, log, arm="VIS", headerBinning=headerBinning
-    )
+    observed, qcTable = _run_binning_check(monkeypatch, log, arm="VIS", headerBinning=headerBinning)
 
     assert observed["binx"] == expectedBinx
     assert observed["biny"] == expectedBiny
@@ -443,9 +426,7 @@ def test_spectroscopic_image_quality_checks_defaults_missing_binning_headers_to_
 def test_spectroscopic_image_quality_checks_ignores_binning_headers_for_nir_arm(
     monkeypatch: pytest.MonkeyPatch, log: object, frozen_clock: object
 ) -> None:
-    observed, _ = _run_binning_check(
-        monkeypatch, log, arm="NIR", headerBinning={"WIN_BINX": 2, "WIN_BINY": 4}
-    )
+    observed, _ = _run_binning_check(monkeypatch, log, arm="NIR", headerBinning={"WIN_BINX": 2, "WIN_BINY": 4})
 
     assert observed["binx"] == 1
     assert observed["biny"] == 1
@@ -478,43 +459,42 @@ def _snr_efficiency_spectrum() -> pd.DataFrame:
     )
 
 
-def test_add_snr_efficiency_qcs_pins_full_row_contract_under_frozen_clock(
-    log: object, frozen_clock: object
-) -> None:
+def test_add_snr_efficiency_qcs_pins_full_row_contract_under_frozen_clock(log: object, frozen_clock: object) -> None:
     result = toolkit.add_snr_efficiency_qcs(
         log,
         _snr_efficiency_spectrum(),
         pd.DataFrame(),
-        {"1011": 500.0},
+        {"10-11": 500.0},
         "soxs-stare",
         "2024-01-02T03:04:05",
+        "NIR",
     )
 
     assert list(result.columns) == _EXPECTED_SNR_EFFICIENCY_QC_COLUMNS
     assert result["soxspipe_recipe"].tolist() == ["soxs-stare"] * 6
     assert result["qc_name"].tolist() == [
         "EFF MEDIAN",
-        "EFF MEDIAN",
-        "EFF MEDIAN",
+        "EFF MEDIAN O10",
+        "EFF MEDIAN O11",
         "SNR MEDIAN",
-        "SNR MEDIAN",
-        "SNR MEDIAN",
+        "SNR MEDIAN O10",
+        "SNR MEDIAN O11",
     ]
     assert result["qc_value"].tolist() == [0.25, 0.35, 0.15, 25.0, 35.0, 15.0]
     assert result["qc_comment"].tolist() == [
         "Median efficiency across all orders",
-        "Median efficiency in order 10.0",
-        "Median efficiency in order 11.0",
+        "Median efficiency in order 10",
+        "Median efficiency in order 11",
         "Median SNR across all orders",
-        "Median SNR in order 10.0",
-        "Median SNR in order 11.0",
+        "Median SNR in order 10",
+        "Median SNR in order 11",
     ]
     assert result["qc_unit"].isna().all()
     assert result["obs_date_utc"].tolist() == ["2024-01-02T03:04:05"] * 6
     assert result["reduction_date_utc"].tolist() == [_FROZEN_TIMESTAMP] * 6
     assert result["to_header"].tolist() == [True] * 6
     assert result["qc_order"].iloc[[0, 3]].isna().all()
-    assert result["qc_order"].iloc[[1, 2, 4, 5]].tolist() == [10.0, 11.0, 10.0, 11.0]
+    assert result["qc_order"].iloc[[1, 2, 4, 5]].tolist() == [10, 11, 10, 11]
 
 
 def test_add_snr_efficiency_qcs_shares_single_timestamp_across_all_rows_under_ticking_clock(
@@ -524,9 +504,10 @@ def test_add_snr_efficiency_qcs_shares_single_timestamp_across_all_rows_under_ti
         log,
         _snr_efficiency_spectrum(),
         pd.DataFrame(),
-        {"1011": 500.0},
+        {"10-11": 500.0},
         "soxs-stare",
         "2024-01-02T03:04:05",
+        "NIR",
     )
 
     timestamps = set(result["reduction_date_utc"])
@@ -554,8 +535,8 @@ def _merged_orders() -> pd.DataFrame:
 def _qc_table_for_plot() -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "qc_name": ["SNR MEDIAN", "SNR MEDIAN", "SNR MEDIAN"],
-            "qc_order": ["GLOBAL", "12", "11"],
+            "qc_name": ["SNR MEDIAN", "SNR MEDIAN O12", "SNR MEDIAN O11"],
+            "qc_order": ["GLOBAL", 12, 11],
             "qc_value": [6.0, 5.0, 7.0],
         }
     )

@@ -61,7 +61,12 @@ class image_transformer(base_util):
     - ``twoDMapPath`` -- path to the 2D map FITS file (pixel wavelength and slit position values needed for rectification)
     - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
     - ``associatedFrame`` -- an example 2D frame to be rectified. This frame is used to determine detector binning, arm etc.
-    - ``slitHalfLength`` -- half-length of the slit in detector pixels (sets extraction aperture)
+    - ``slitHalfLength`` -- half-length of the slit in detector pixels (sets extraction aperture). May end in .5.
+      The rectified grid has ``2 * slitHalfLength`` rows (rounded half up), centred on the trace
+    - ``edgeSamples`` -- number of boundary sample points per cell edge. Default *1*
+    - ``fixedSlitCentreArcsec`` -- slit position (arcsec) on which every order is centred, ignoring the object trace
+      and the 2D map lookup. Only the ``order`` column of ``orderPixelTable`` is then needed. Default *None* (centre
+      each order on its own fitted object trace)
 
     **Return:**
 
@@ -91,8 +96,24 @@ class image_transformer(base_util):
     ```
     """
 
+    # FRAME BINNING DIVIDED BY DISPERSION-SOLUTION BINNING, PER DETECTOR AXIS (X, Y). SET IN __init__;
+    # THE CLASS DEFAULT IS UNBINNED, SO THE SOLUTION'S PIXEL POSITIONS ARE USED AS THEY ARE
+    dispersionBinRatio = (1.0, 1.0)
+
+    # NO FIXED SLIT CENTRE BY DEFAULT: EACH ORDER'S CENTRE IS FITTED TO ITS OWN OBJECT-TRACE POINTS
+    fixedSlitCentreArcsec = None
+
     def __init__(
-        self, log, settings, orderPixelTable, twoDMapPath, dispersionMap, associatedFrame, slitHalfLength, edgeSamples=1
+        self,
+        log,
+        settings,
+        orderPixelTable,
+        twoDMapPath,
+        dispersionMap,
+        associatedFrame,
+        slitHalfLength,
+        edgeSamples=1,
+        fixedSlitCentreArcsec=None,
     ):
         super().__init__(
             log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath
@@ -102,6 +123,7 @@ class image_transformer(base_util):
         self.orderPixelTable = orderPixelTable
         self.twoDMapPath = twoDMapPath
         self.slitHalfLength = slitHalfLength
+        self.fixedSlitCentreArcsec = fixedSlitCentreArcsec
 
         # NUMBER OF BOUNDARY SAMPLE POINTS PER CELL EDGE — FIXED FOR THE LIFE OF THE INSTANCE SO THE
         # RESAMPLING GEOMETRY CAN BE PRECOMPUTED ONCE AND SHARED ACROSS ALL cache_image CALLS
@@ -113,6 +135,10 @@ class image_transformer(base_util):
         # ORDERS PRESENT IN THE TRACE TABLE — USED TO SKIP ORDERS WITH NO DETECTED TRACE
         # self.orderPixelTable = self.orderPixelTable.loc[self.orderPixelTable["order"] == 16]
         self.uniqueOrders = self.orderPixelTable["order"].unique()
+
+        # THE DISPERSION SOLUTION GIVES PIXEL POSITIONS IN ITS OWN BINNING;
+        # THE FRAME (AND 2D MAP) MAY BE BINNED DIFFERENTLY
+        self.dispersionBinRatio = self._read_dispersion_bin_ratio()
 
         # DETECTOR SHAPE — SAME FOR EVERY NDARRAY EVER PASSED TO cache_image, SO ONLY DERIVED ONCE
         self.ny, self.nx = self.twoDMap["WAVELENGTH"].data.shape
@@ -130,6 +156,41 @@ class image_transformer(base_util):
 
         return
 
+    def _read_dispersion_bin_ratio(self):
+        """*Frame binning divided by the dispersion solution's binning, per detector axis*
+
+        The solution's binning is read from its primary header (unbinned if the keywords are missing),
+        the same way ``detect_continuum.create_pixel_arrays`` reads it.
+
+        **Return:**
+
+        - ``binRatio`` -- ``(ratioX, ratioY)``; divide the solution's pixel positions by these to get frame pixels
+        """
+        from astropy.io import fits
+
+        try:
+            header = fits.getheader(os.path.expanduser(self.dispersionMap), 0)
+            dmBinx = header[self.kw("WIN_BINX")]
+            dmBiny = header[self.kw("WIN_BINY")]
+        except KeyError as e:
+            self.log.debug(f"_read_dispersion_bin_ratio: no binning in the dispersion solution header: {e}")
+            dmBinx = 1
+            dmBiny = 1
+
+        return self.binx / dmBinx, self.biny / dmBiny
+
+    def _to_frame_binning(self, fitX, fitY):
+        """*Convert dispersion-solution pixel positions to the frame's binning*
+
+        Unbinned-to-unbinned (ratio 1) returns the inputs untouched.
+        """
+        ratioX, ratioY = self.dispersionBinRatio
+        if ratioX != 1.0:
+            fitX = fitX / ratioX
+        if ratioY != 1.0:
+            fitY = fitY / ratioY
+        return fitX, fitY
+
     def cache_image(self, imageName, ndarray, associatedMask=None, returnCoverage=False, debug=False):
         """
         *Place an image in the transformer's cache. These images can be acted on later.*
@@ -138,7 +199,9 @@ class image_transformer(base_util):
 
             - ``imageName`` -- the unique name to give to the image
             - ``ndarray`` -- the 2D frame to rectify and cache
-            - ``associatedMask`` -- 2D bad-pixel mask. Currently accepted but not applied (no-op), matching the previous behaviour. Default *None*
+            - ``associatedMask`` -- 2D bad-pixel mask. Flagged pixels are left out of the cell sums and each cell is
+              renormalised by its good-pixel area.
+              A cell whose flagged area exceeds 0.2 is masked in ``bpMask``. Default *None*
             - ``returnCoverage`` -- if True, the method will return a list (one per order) of coverage maps of the rectified image. Default *False*
             - ``debug`` -- if True, print and plot the rectified image for each order. Default *False*
 
@@ -149,6 +212,7 @@ class image_transformer(base_util):
         self.log.debug("starting the ``cache_image`` method")
 
         bpmArray = associatedMask
+        badPixels = None if bpmArray is None else np.asarray(bpmArray).astype(bool)
 
         orderCoverage = [] if returnCoverage else None
 
@@ -159,8 +223,9 @@ class image_transformer(base_util):
             n_wl = len(wl_edges) - 1
             weights = self._resamplingWeights[order]
 
-            # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED (ALREADY REBINNED) PIXEL-OVERLAP WEIGHTS
-            flux = _apply_weights(ndarray, weights)
+            # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED (ALREADY REBINNED) PIXEL-OVERLAP WEIGHTS,
+            # LEAVING OUT FLAGGED PIXELS AND RENORMALISING EACH CELL BY ITS GOOD-PIXEL AREA
+            flux = _apply_weights(ndarray, weights, badPixels=badPixels)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -171,8 +236,7 @@ class image_transformer(base_util):
                 orderCoverage.append(weights["coverage"])
 
             if bpmArray is not None:
-                bpm = _apply_weights(bpmArray, weights)
-                bpm = bpm > 0.2
+                bpm = _apply_weights(badPixels, weights) > 0.2
                 orderTable["bpMask"] = list(bpm.T)
                 self._cache_image_names.add("bpMask")
 
@@ -336,8 +400,7 @@ class image_transformer(base_util):
             removeOffDetectorLocation=False,
             trimColumns=True,
         )
-        fit_x = resultDF["fit_x"].to_numpy()
-        fit_y = resultDF["fit_y"].to_numpy()
+        fit_x, fit_y = self._to_frame_binning(resultDF["fit_x"].to_numpy(), resultDF["fit_y"].to_numpy())
 
         # REBUILD THE PER-ORDER RESAMPLING WEIGHTS FROM THE FLAT BOUNDARY CORNER TABLE.
         # THE PER-CELL PIXEL-OVERLAP CLIP/AREA WORK ITSELF RUNS IN THE NUMBA-JIT-COMPILED
@@ -465,6 +528,7 @@ class image_transformer(base_util):
         **Return:**
 
         - ``centreCoeffs`` -- polynomial coefficients (``numpy.polyfit`` convention), highest power first
+        - ``isFallback`` -- True if every degree was degenerate and ``centreCoeffs`` is the constant fallback centre
         """
         self.log.debug("starting the ``_fit_slit_centre_polynomial`` method")
 
@@ -479,7 +543,7 @@ class image_transformer(base_util):
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", RankWarning)
-                    return np.polyfit(wavelength, slitPosition, candidateDegree)
+                    return np.polyfit(wavelength, slitPosition, candidateDegree), False
             except (RankWarning, np.linalg.LinAlgError):
                 continue
 
@@ -489,13 +553,22 @@ class image_transformer(base_util):
             f"(likely duplicate wavelengths); falling back to the global mean slit position "
             f"({fallbackCentreArcsec:.3f} arcsec) as a constant centre."
         )
-        return np.array([fallbackCentreArcsec])
+        return np.array([fallbackCentreArcsec]), True
 
-    def _determine_rectified_image_boundaries(self):
-        """*Setup the individual order dataframes for each order in the order pixel table*"""
-        self.log.debug("starting the ``_determine_rectified_image_boundaries`` method")
+    def _global_slit_centre(self):
+        """*determine the slit centre used by any order without a trace of its own*
+
+        Looks up the slit position and wavelength of every object-trace point in the 2D map (storing them on
+        ``orderPixelTable``), unless a fixed slit centre was requested.
+
+        **Return:**
+
+        - ``globalSlitCentreArcsec`` -- the fixed slit centre, or the mean finite slit position of all trace points
+        """
         import numpy as np
-        import pandas as pd
+
+        if self.fixedSlitCentreArcsec is not None:
+            return self.fixedSlitCentreArcsec
 
         # FOR EACH CONTINUUM-FITTED DATA-POINT, RETURN THE SLIT POSITION
         aArray = self.orderPixelTable[f"{self.axisA}coord_centre"].round().astype(int)
@@ -521,12 +594,70 @@ class image_transformer(base_util):
                 "Cannot determine any slit centre: every trace point's slit_position is missing "
                 "or non-finite across all orders. Check the 2D map / orderPixelTable inputs."
             )
+        return globalSlitCentreArcsec
+
+    def _order_slit_centre(self, order, globalSlitCentreArcsec):
+        """*find the polynomial giving the slit centre of one order as a function of wavelength*
+
+        **Key Arguments:**
+
+        - ``order`` -- the order number
+        - ``globalSlitCentreArcsec`` -- the constant centre used when the order has no usable trace
+
+        **Return:**
+
+        - ``centreCoeffs`` -- polynomial coefficients (highest power first) of slit centre against wavelength
+        - ``isFallback`` -- True if the constant global centre was used because the trace could not be fitted
+        """
+        import numpy as np
+
+        # A FIXED CENTRE IS A DELIBERATE CHOICE, NOT A FALLBACK
+        if self.fixedSlitCentreArcsec is not None:
+            return np.array([globalSlitCentreArcsec]), False
+
+        # FIT THIS ORDER'S OWN TRACE POINTS: SLIT POSITION AS A POLYNOMIAL FUNCTION OF WAVELENGTH
+        orderMask = self.orderPixelTable["order"] == order
+        orderTrace = self.orderPixelTable.loc[orderMask, ["slit_position", "wavelength"]]
+        # "VALID" MEANS FINITE ON BOTH COLUMNS — dropna() ALONE WOULD LET +/-INF THROUGH
+        finiteMask = np.isfinite(orderTrace["slit_position"]) & np.isfinite(orderTrace["wavelength"])
+        validTrace = orderTrace.loc[finiteMask]
+
+        if len(validTrace) == 0:
+            self.log.warning(
+                f"No valid trace points found for order {order}; falling back to the global "
+                f"mean slit position ({globalSlitCentreArcsec:.3f} arcsec) as a constant centre."
+            )
+            return np.array([globalSlitCentreArcsec]), True
+
+        # DEGREE IS CAPPED BY THE NUMBER OF *DISTINCT* WAVELENGTHS, NOT JUST THE POINT
+        # COUNT — REPEATED WAVELENGTHS AT DIFFERENT SLIT POSITIONS MAKE THE FIT
+        # RANK-DEFICIENT EVEN WHEN nValid IS LARGE
+        nUniqueWl = validTrace["wavelength"].nunique()
+        degree = min(SLIT_CENTRE_POLY_DEGREE, nUniqueWl - 1)
+        return self._fit_slit_centre_polynomial(
+            validTrace["wavelength"].to_numpy(),
+            validTrace["slit_position"].to_numpy(),
+            degree,
+            order,
+            globalSlitCentreArcsec,
+        )
+
+    def _determine_rectified_image_boundaries(self):
+        """*Setup the individual order dataframes for each order in the order pixel table*"""
+        self.log.debug("starting the ``_determine_rectified_image_boundaries`` method")
+        import numpy as np
+        import pandas as pd
+
+        globalSlitCentreArcsec = self._global_slit_centre()
+        # KEPT FOR THE SLIT-DRIFT QC PLOT (THE SINGLE CENTRE USED BEFORE PER-ORDER TRACES)
+        self.globalSlitCentreArcsec = globalSlitCentreArcsec
 
         # from astropy.table import Table
         # t = Table.from_pandas(self.orderPixelTable)
         # t.write("/tmp/table.fits", overwrite=True)
 
         orderTraces = []
+        fallbackFlags = []
 
         # ITERATE OVER EACH ORDER, CLIPPING TO THE PIXEL BOUNDS (AMIN/AMAX) DEFINED FOR THAT ORDER
         for order, amin, amax, wlmin, wlmax in zip(
@@ -536,34 +667,9 @@ class image_transformer(base_util):
                 continue
             pixelRange = amax - amin
 
-            # FIT THIS ORDER'S OWN TRACE POINTS: SLIT POSITION AS A POLYNOMIAL FUNCTION OF WAVELENGTH
-            orderMask = self.orderPixelTable["order"] == order
-            orderTrace = self.orderPixelTable.loc[orderMask, ["slit_position", "wavelength"]]
-            # "VALID" MEANS FINITE ON BOTH COLUMNS — dropna() ALONE WOULD LET +/-INF THROUGH
-            finiteMask = np.isfinite(orderTrace["slit_position"]) & np.isfinite(orderTrace["wavelength"])
-            validTrace = orderTrace.loc[finiteMask]
-            nValid = len(validTrace)
+            centreCoeffs, isFallback = self._order_slit_centre(order, globalSlitCentreArcsec)
 
-            if nValid == 0:
-                self.log.warning(
-                    f"No valid trace points found for order {order}; falling back to the global "
-                    f"mean slit position ({globalSlitCentreArcsec:.3f} arcsec) as a constant centre."
-                )
-                centreCoeffs = np.array([globalSlitCentreArcsec])
-            else:
-                # DEGREE IS CAPPED BY THE NUMBER OF *DISTINCT* WAVELENGTHS, NOT JUST THE POINT
-                # COUNT — REPEATED WAVELENGTHS AT DIFFERENT SLIT POSITIONS MAKE THE FIT
-                # RANK-DEFICIENT EVEN WHEN nValid IS LARGE
-                nUniqueWl = validTrace["wavelength"].nunique()
-                degree = min(SLIT_CENTRE_POLY_DEGREE, nUniqueWl - 1)
-                centreCoeffs = self._fit_slit_centre_polynomial(
-                    validTrace["wavelength"].to_numpy(),
-                    validTrace["slit_position"].to_numpy(),
-                    degree,
-                    order,
-                    globalSlitCentreArcsec,
-                )
-
+            fallbackFlags.append(isFallback)
             orderTraces.append((order, wlmin, wlmax, pixelRange, centreCoeffs))
 
         # WAVELENGTH EDGES EVENLY SPACED IN DETECTOR PIXELS ALONG EACH TRACE, PLUS EACH ORDER'S ARCSEC/PIXEL
@@ -571,7 +677,10 @@ class image_transformer(base_util):
 
         # SLIT OFFSET EDGES, CENTRED ON ZERO — THE ABSOLUTE SLIT POSITION OF ANY POINT IS THIS OFFSET
         # PLUS THE PER-ORDER, PER-WAVELENGTH TRACE CENTRE (SEE orderSlitCentreCoeffs)
-        slitPixelOffsets = np.arange(-self.slitHalfLength, self.slitHalfLength, 1.0 / self.zoomFactorSlit)
+        # THE GRID HOLDS A WHOLE NUMBER OF DETECTOR-PIXEL ROWS (2 x HALF LENGTH, ROUNDED HALF UP), EDGES FROM -H TO +H
+        # INCLUSIVE, SO THE ROWS ARE CENTRED ON THE TRACE AND EACH ROW IS EXACTLY zoomFactorSlit CELLS WIDE
+        nSlitRows = int(np.floor(2 * self.slitHalfLength + 0.5))
+        slitPixelOffsets = np.linspace(-nSlitRows / 2, nSlitRows / 2, nSlitRows * self.zoomFactorSlit + 1)
         orderSlitEdges = [slitPixelOffsets * arcsecPerPixel for _, arcsecPerPixel in orderGeometry]
         orderWlEdges = [wlEdges for wlEdges, _ in orderGeometry]
 
@@ -579,6 +688,7 @@ class image_transformer(base_util):
         self.uniqueOrders = [trace[0] for trace in orderTraces]
         self.wlMinMax = [(trace[1], trace[2]) for trace in orderTraces]
         self.orderSlitCentreCoeffs = [trace[4] for trace in orderTraces]
+        self.orderSlitCentreFallback = fallbackFlags
 
         self.log.debug("completed the ``_determine_rectified_image_boundaries`` method")
         return orderSlitEdges, orderWlEdges
@@ -634,8 +744,9 @@ class image_transformer(base_util):
         )
         # FLOAT64 SO THE CUMULATIVE PATH LENGTH DOES NOT INHERIT THE CONVERTER'S FLOAT32 ROUNDING
         wavelength = resultDF["wavelength"].to_numpy(dtype=float)
-        fitX = resultDF["fit_x"].to_numpy(dtype=float)
-        fitY = resultDF["fit_y"].to_numpy(dtype=float)
+        fitX, fitY = self._to_frame_binning(
+            resultDF["fit_x"].to_numpy(dtype=float), resultDF["fit_y"].to_numpy(dtype=float)
+        )
         # SAMPLES OFF THE DETECTOR MUST NOT CONTRIBUTE TO THE TRACE PATH OR THE SLIT SCALE
         offDetector = (fitX < -0.5) | (fitX >= self.nx - 0.5) | (fitY < -0.5) | (fitY >= self.ny - 0.5)
         fitX[offDetector] = np.nan
@@ -1004,13 +1115,19 @@ def _rebin_resampling_weights(i, j, px, py, area, nSp, nWl, zoomSlit, zoomWavele
     }
 
 
-def _apply_weights(ndarray, weights):
-    """*Weighted sum of detector pixels into the rebinned output grid*
+def _apply_weights(ndarray, weights, badPixels=None):
+    """*Weighted sum of detector pixels into the rebinned output grid, leaving out flagged pixels*
+
+    Without ``badPixels`` every pixel is summed with its overlap area. With it, flagged pixels are left out of the
+    sum and the cell is scaled by (all overlap area) / (good overlap area), so a cell keeps the flux of one full
+    cell and does not carry a flagged pixel's value. A cell with no good pixel keeps its all-pixel sum (it is
+    masked by the caller). A cell with no flagged pixel is exactly the plain weighted sum.
 
     **Key Arguments:**
 
     - ``ndarray`` -- 2D detector-space image
     - ``weights`` -- rebinned weights dict from ``_rebin_resampling_weights``
+    - ``badPixels`` -- optional 2D boolean detector-space array, True where a pixel is flagged. Default *None*
 
     **Return:**
 
@@ -1019,5 +1136,23 @@ def _apply_weights(ndarray, weights):
     import numpy as np
 
     nSpOut, nWlOut = weights["shape"]
-    weighted = ndarray[weights["py"], weights["px"]] * weights["area"]
-    return np.bincount(weights["flatIdx"], weights=weighted, minlength=nSpOut * nWlOut).reshape(nSpOut, nWlOut)
+    nCells = nSpOut * nWlOut
+    flatIdx, area = weights["flatIdx"], weights["area"]
+    weighted = ndarray[weights["py"], weights["px"]] * area
+    total = np.bincount(flatIdx, weights=weighted, minlength=nCells)
+    if badPixels is None:
+        return total.reshape(nSpOut, nWlOut)
+
+    isBad = badPixels[weights["py"], weights["px"]]
+    goodAreaEach = np.where(isBad, 0.0, area)
+    goodArea = np.bincount(flatIdx, weights=goodAreaEach, minlength=nCells)
+    allArea = np.bincount(flatIdx, weights=area, minlength=nCells)
+    # CELLS WITH NO FLAGGED PIXEL, OR NO GOOD PIXEL, KEEP THE PLAIN SUM
+    canRenormalise = (goodArea > 0) & (goodArea < allArea)
+    if not canRenormalise.any():
+        return total.reshape(nSpOut, nWlOut)
+
+    # WHERE, NOT MULTIPLICATION, SO A NON-FINITE VALUE UNDER THE MASK CANNOT POISON THE CELL
+    goodSum = np.bincount(flatIdx, weights=np.where(isBad, 0.0, weighted), minlength=nCells)
+    scale = np.divide(allArea, goodArea, out=np.ones_like(allArea), where=canRenormalise)
+    return np.where(canRenormalise, goodSum * scale, total).reshape(nSpOut, nWlOut)

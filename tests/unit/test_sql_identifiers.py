@@ -164,10 +164,7 @@ def test_every_accepted_session_id_composes_a_valid_status_column(
     """Every session id the grammar accepts also composes a valid `status_<id>` column name."""
     # ACT / ASSERT
     assert _validate_session_id(sessionId) == sessionId
-    assert (
-        validate_sql_identifier(f"status_{sessionId}", "status column")
-        == f"status_{sessionId}"
-    )
+    assert validate_sql_identifier(f"status_{sessionId}", "status column") == f"status_{sessionId}"
 
 
 # ---------------------------------------------------------------------------
@@ -380,9 +377,7 @@ def test_clean_up_with_hostile_sof_name_updates_no_rows_in_a_real_database(
 
     # ASSERT
     verifyConnection = sqlite3.connect(str(databasePath))
-    statuses = verifyConnection.execute(
-        "select sof, status_base from product_frames order by sof"
-    ).fetchall()
+    statuses = verifyConnection.execute("select sof, status_base from product_frames order by sof").fetchall()
     verifyConnection.close()
     # NEITHER ROW MATCHES THE BOUND PAYLOAD, SO BOTH STAY 'fail'.
     assert statuses == [("one.sof", "fail"), ("two.sof", "fail")]
@@ -429,9 +424,7 @@ def test_clean_up_with_hostile_force_fail_message_writes_no_error_in_a_real_data
 
     # ASSERT
     verifyConnection = sqlite3.connect(str(databasePath))
-    rows = verifyConnection.execute(
-        "select sof, error_message from product_frames order by sof"
-    ).fetchall()
+    rows = verifyConnection.execute("select sof, error_message from product_frames order by sof").fetchall()
     verifyConnection.close()
     # ONLY THE MATCHING ROW IS STAMPED, AND THE PAYLOAD IS STORED VERBATIM AS A
     # VALUE RATHER THAN EXECUTED AS SQL.
@@ -457,9 +450,7 @@ def test_qc_acceptable_range_queries_binds_a_hostile_recipe_key_as_a_parameter()
     """A workspace-settings recipe key shaped like a SQL injection payload is bound, not interpolated."""
     # ARRANGE
     hostileRecipe = 'soxs-x" OR 1=1 --'
-    organiser = _qc_range_organiser(
-        settings={hostileRecipe: {"qc-acceptable-ranges": {"ron": [1.0, 2.0]}}}
-    )
+    organiser = _qc_range_organiser(settings={hostileRecipe: {"qc-acceptable-ranges": {"ron": [1.0, 2.0]}}})
 
     # ACT
     queries = organiser._qc_acceptable_range_queries()
@@ -476,9 +467,7 @@ def test_qc_acceptable_range_queries_updates_no_row_for_a_hostile_recipe_key_in_
     """An injection-shaped recipe key matches no real row, leaving every existing row untouched."""
     # ARRANGE
     hostileRecipe = 'soxs-x" OR 1=1 --'
-    organiser = _qc_range_organiser(
-        settings={hostileRecipe: {"qc-acceptable-ranges": {"ron": [1.0, 2.0]}}}
-    )
+    organiser = _qc_range_organiser(settings={hostileRecipe: {"qc-acceptable-ranges": {"ron": [1.0, 2.0]}}})
     connection = sqlite3.connect(":memory:")
     connection.execute(
         "create table quality_control (soxspipe_recipe text, qc_name text, "
@@ -528,9 +517,7 @@ def test_qc_acceptable_range_queries_updates_no_row_for_a_hostile_qc_key_in_a_re
     # CORRUPTING BOTH ROWS. `/*` SURVIVES THE REPLACEMENT AND REPRODUCES THE
     # REAL DOUBLE-ROW CORRUPTION AGAINST THE OLD, UNPARAMETERIZED QUERY.
     hostileQcKey = 'ron" OR 1=1 /*'
-    organiser = _qc_range_organiser(
-        settings={"soxs-mbias": {"qc-acceptable-ranges": {hostileQcKey: [1.0, 2.0]}}}
-    )
+    organiser = _qc_range_organiser(settings={"soxs-mbias": {"qc-acceptable-ranges": {hostileQcKey: [1.0, 2.0]}}})
     connection = sqlite3.connect(":memory:")
     connection.execute(
         "create table quality_control (soxspipe_recipe text, qc_name text, "

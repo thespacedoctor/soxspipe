@@ -83,9 +83,7 @@ def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     result = recipe.clean_up()
 
     assert result is None
-    assert connection.statements == [
-        "update product_frames set status_20240102 = 'pass' where sof = ?"
-    ]
+    assert connection.statements == ["update product_frames set status_20240102 = 'pass' where sof = ?"]
     assert connection.params == [("synthetic.sof",)]
     assert connection.cursors[0].wasClosed
     assert connection.wasClosed
@@ -151,9 +149,7 @@ def test_clean_up_records_an_explicit_failure_reason(log: Any, tmp_path: Path) -
 
     recipe.clean_up(forceFail="synthetic calibration mismatch")
 
-    assert connection.statements == [
-        "update product_frames set error_message = ? where sof = ?"
-    ]
+    assert connection.statements == ["update product_frames set error_message = ? where sof = ?"]
     assert connection.params == [("synthetic calibration mismatch", "synthetic.sof")]
     assert connection.wasClosed
     assert not Path(recipe.outDir).exists()
@@ -161,6 +157,41 @@ def test_clean_up_records_an_explicit_failure_reason(log: Any, tmp_path: Path) -
         "error",
         "\nRecipe marked as failed in the database. synthetic calibration mismatch",
     ) in log.messages
+
+
+def test_clean_up_keeps_an_explicit_failure_reason_when_a_qc_also_fails(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed QC marks the recipe failed without replacing the failure message."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["fail"], "qc_name": ["TRACE RMS"]}),
+        status="pass",
+    )
+    connection = RecordingConnection()
+    recipe.conn = connection
+    refreshes: list[bool] = []
+
+    class RecordingOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, *, failure: bool) -> None:
+            refreshes.append(failure)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", RecordingOrganiser)
+
+    recipe.clean_up(forceFail="synthetic calibration mismatch")
+
+    assert connection.statements == ["update product_frames set error_message = ? where sof = ?"]
+    assert connection.params == [("synthetic calibration mismatch", "synthetic.sof")]
+    assert refreshes == [True]
 
 
 def test_constructor_initializes_a_sof_recipe_in_an_isolated_workspace(
@@ -219,9 +250,7 @@ def test_constructor_initializes_a_sof_recipe_in_an_isolated_workspace(
     assert recipe.qc.empty
     assert recipe.products.empty
     assert recipe.kw("INSTRUME") == "INSTRUME"
-    assert organiserCalls == [
-        {"log": log, "rootDir": str(tmp_path), "dbConnect": False}
-    ]
+    assert organiserCalls == [{"log": log, "rootDir": str(tmp_path), "dbConnect": False}]
 
 
 def test_input_frame_validation_records_consistent_vis_detector_metadata(
@@ -244,7 +273,8 @@ def test_input_frame_validation_records_consistent_vis_detector_metadata(
         {
             "SEQ_ARM": ["VIS"],
             "INSTRUME": ["SOXS"],
-            "PRO_CATG": ["SCIENCE_VIS"],
+            # A RAW FRAME CARRIES NO PRO_CATG; ONLY RAW FRAMES ARE READ FOR READ NOISE (DY-1457)
+            "PRO_CATG": [None],
             "CDELT1": [1],
             "CDELT2": [1],
             "DET_READ_SPEED": ["fast"],
@@ -266,9 +296,10 @@ def test_input_frame_validation_records_consistent_vis_detector_metadata(
         def __init__(self) -> None:
             self.summary = summary
 
-        def files_filtered(self, *, include_path: bool) -> list[str]:
+        def files_filtered(self, *, include_path: bool, **filters: object) -> list[str]:
             assert include_path is True
-            return ["science.fits"]
+            # THIS SCENE NAMES NO MASTER BIAS, SO ANY PRO_CATG FILTER FINDS NOTHING
+            return [] if filters else ["science.fits"]
 
         def values(self, keyword: str, *, unique: bool) -> list[object]:
             assert unique is True
@@ -298,7 +329,7 @@ def test_input_frame_validation_records_consistent_vis_detector_metadata(
     assert recipe.detectorParams["ron"].value == pytest.approx(3.5)
     assert set(imageTypes) == {"OBJECT"}
     assert set(imageTechnology) == {"ECHELLE,SLIT"}
-    assert set(imageCategories) == {"SCIENCE", "SCIENCE_VIS"}
+    assert set(imageCategories) == {"SCIENCE"}
 
 
 def test_report_output_formats_whole_number_qc_values_to_four_decimals(
@@ -354,3 +385,34 @@ def test_report_output_deduplicates_qc_and_hides_paths_in_console_mode(
     assert reported["sof_name"].tolist() == ["synthetic.sof"]
     assert "file_path" not in recipe.products.columns
     assert any("SOXS-MBIAS QC METRICS" in message for level, message in log.messages)
+
+
+def test_report_output_keeps_every_per_order_qc_row_but_lists_only_the_all_order_row_on_the_console(
+    log: Any,
+) -> None:
+    """Per-order QCs carry their own names, so none is deduplicated away, and only the all-order row is printed."""
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.verbose = False
+    recipe.conn = None
+    recipe.sofName = "synthetic"
+    recipe.dateObs = "2024-01-02T03:04:05"
+    recipe.recipeName = "soxs-stare"
+    recipe.inst = "XSHOOTER"
+    recipe.recipeSettings = {"qc-acceptable-ranges": {"snr-median": [0.0, 5.0]}}
+    base = qc_table().iloc[0:0]
+    rows = [("SNR MEDIAN", None, 10.0), ("SNR MEDIAN O1", 1, 20.0), ("SNR MEDIAN O2", 2, 30.0)]
+    recipe.qc = pd.concat(
+        [base, *[qc_table().assign(qc_name=name, qc_order=order, qc_value=value) for name, order, value in rows]],
+        ignore_index=True,
+    )
+    recipe.qc["qc_order"] = recipe.qc["qc_order"].astype(object)
+    recipe.products = product_table()
+
+    reported = recipe.report_output()
+
+    assert sorted(reported["qc_name"]) == ["SNR MEDIAN", "SNR MEDIAN O1", "SNR MEDIAN O2"]
+    flags = reported.set_index("qc_name")["qc_flag"].to_dict()
+    assert flags == {"SNR MEDIAN": "fail", "SNR MEDIAN O1": "pass", "SNR MEDIAN O2": "pass"}
+    printed = " ".join(message for level, message in log.messages)
+    assert printed.count("SNR MEDIAN") == 1

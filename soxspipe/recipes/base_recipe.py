@@ -21,6 +21,7 @@ from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, sub
 # INTERPOLATED. A LEAF MODULE WITH NO IMPORTS OF ITS OWN, SO IT CANNOT
 # DISTURB THE PACKAGE'S LOAD-BEARING IMPORT ORDER.
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
 
 # THE "CALLER DID NOT PASS THIS KEYWORD" SENTINEL USED BY THE add_qc AND
 # add_product DELEGATORS BELOW. IMPORTED FROM `toolkit` RATHER THAN REDEFINED
@@ -29,6 +30,10 @@ from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from soxspipe.commonutils.toolkit import OMITTED
 
 os.environ["TERM"] = "vt100"
+
+# DARK AND FRAME EXPOSURE TIMES CLOSER THAN THIS (IN SECONDS) COUNT AS EQUAL. IT ONLY
+# ABSORBS FLOAT NOISE IN THE HEADER VALUES; ANY REAL DIFFERENCE IS A MISMATCH.
+EXPTIME_MATCH_TOLERANCE_SECONDS = 1e-3
 
 
 # THE FORMER `imstats` CLOSURE INSIDE `qc_ron`. A MODULE-LEVEL FUNCTION RATHER
@@ -76,6 +81,14 @@ class base_recipe:
     To use this base recipe to create a new `soxspipe` recipe, have a look at the code for one of the simpler recipes (e.g. `soxs_mbias`) - copy and modify the code.
     """
 
+    # THE READ NOISE RESOLVED FROM THE MASTER BIAS IN THE SOF (A ``ReadNoise``); NONE WITHOUT A MASTER BIAS (DY-1458)
+    readNoise = None
+    # THE NOMINAL READ NOISE (E-) IN THE RAW-FRAME HEADERS (NONE IF THEY CARRY NONE) AND THE DETECTOR DEFAULT (E-)
+    rawHeaderRon = None
+    defaultRon = None
+    # THE COSMIC-RAY MASK PRODUCT WRITTEN BY FRAME PREPARATION, WAITING TO BE REGISTERED BY THE FIRST `report_output`
+    cosmicRayProduct = None
+
     def __init__(
         self,
         log,
@@ -88,16 +101,19 @@ class base_recipe:
         debug=False,
         turnOffMP=False,
     ):
-        import random
+        import tempfile
 
         import matplotlib
         import pandas as pd
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
+        # Merge before any constructor work reads settings.  Keep the merge
+        # non-mutating so callers can safely reuse their input dictionary.
+        settings = {**self._advanced_settings(), **settings}
         self.settings = settings
         self.debug = debug
-        self.workspaceRootPath = self._absolute_path(settings["workspace-root-dir"])
+        self.workspaceRootPath = self._absolute_path(self.settings["workspace-root-dir"])
         self.turnOffMP = turnOffMP
 
         if self.debug:
@@ -105,11 +121,9 @@ class base_recipe:
         else:
             matplotlib.use("Agg")
 
-        self.darkDetrendWarningIssued1 = False
         self.darkDetrendWarningIssued2 = False
 
         if isinstance(inputFrames, str) and "_STD_" in inputFrames:
-
             self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
             self.recipeName = self.recipeName.replace("soxs-stare", "soxs-stare-std")
             self.recipeName = self.recipeName.replace("soxs-offset", "soxs-offset-std")
@@ -129,11 +143,13 @@ class base_recipe:
         self.detectorParams = None
         self.dateObs = None
 
-        # `/tmp/` HERE IS A SUBDIRECTORY OF THE USER'S OWN WORKSPACE, NOT THE
-        # SYSTEM TEMPORARY DIRECTORY, AND THE RANDOM NAME ONLY HAS TO DIFFER
-        # BETWEEN CONCURRENT RECIPES, NOT RESIST AN ATTACKER. THE UNSEEDED
-        # DRAW ITSELF IS DY-49.
-        self.outDir = self.workspaceRootPath + "/tmp/" + str(random.randint(100000, 999999))  # noqa: S108, S311
+        # `tmp` HERE IS A SUBDIRECTORY OF THE USER'S OWN WORKSPACE, NOT THE
+        # SYSTEM TEMPORARY DIRECTORY. `mkdtemp` CREATES A FRESH DIRECTORY, SO
+        # CONCURRENT RECIPES NEVER SHARE ONE AND ONE RECIPE'S `clean_up` CANNOT
+        # DELETE ANOTHER'S FRAMES (DY-49).
+        scratchRoot = os.path.join(self.workspaceRootPath, "tmp")
+        os.makedirs(scratchRoot, exist_ok=True)
+        self.outDir = tempfile.mkdtemp(dir=scratchRoot)
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
@@ -155,11 +171,12 @@ class base_recipe:
         if not self.turnOffMP:
             self._open_session_database(home)
 
-        # MERGE ADVANCED SETTINGS AND USER SETTINGS (USER SETTINGS OVERRIDE)
-        self.settings = {**self._advanced_settings(), **self.settings}
-
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc, self.products = self._empty_qc_and_product_tables(pd)
+
+        # THE COSMIC-RAY PIXELS L.A.COSMIC FLAGGED IN EACH RAW FRAME, WRITTEN OUT ONCE FRAME PREPARATION ENDS
+        self.cosmicRayMasks = []
+        self.cosmicRayProduct = None
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -169,7 +186,7 @@ class base_recipe:
 
         self.qcDir, self.productDir = utility_setup(
             log=self.log,
-            settings=settings,
+            settings=self.settings,
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
         )
@@ -177,6 +194,11 @@ class base_recipe:
         self.generateReponseCurve = False
 
         return
+
+    @property
+    def runSerially(self) -> bool:  # noqa: N802
+        """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
+        return bool(self.turnOffMP or self.debug)
 
     def _resolve_product_path(self, log, inputFrames, verbose, overwrite):
         """*predict where this recipe's product will be written, and refuse to run over one that is already there*
@@ -188,9 +210,21 @@ class base_recipe:
         - ``verbose`` -- also print the refusal to the terminal
         - ``overwrite`` -- run again over an existing product or error log
 
-        Sets ``self.sofName``, ``self.productPath`` and ``self.log``. A product
-        or an error log already in place raises ``FileExistsError`` unless
-        ``overwrite`` is set.
+        Sets ``self.sofName``, ``self.productPath``, ``self.startNightDate`` and
+        ``self.log``. A product or an error log already in place raises
+        ``FileExistsError`` unless ``overwrite`` is set. That refusal applies to
+        a ``.sof`` input only.
+
+        A list of frame paths or a directory has no ``.sof`` name to read, so
+        ``startNightDate`` is the start-of-night date of the earliest
+        ``MJD-OBS`` among the frames (``toolkit.start_night_date``) and
+        ``sofName`` is a synthetic name, ``<recipeName>_<ARM>_<startNightDate>``
+        (for example ``soxs-mbias_VIS_2024-01-01``). The arm is that of the
+        earliest frame, so two arms reduced on one night do not delete each
+        other's QC rows. The QC table and the session database key on that name
+        with a ``.sof`` suffix, exactly as for a real set-of-files.
+        ``productPath`` is *False*: the product path is not predicted. Input
+        with no frames, or with no readable ``MJD-OBS``, raises ``ValueError``.
         """
         from soxspipe.commonutils import toolkit
 
@@ -221,7 +255,10 @@ class base_recipe:
 
             self.log = toolkit.add_recipe_logger(log, self.productPath)
         else:
-            self.sofName = False
+            self.startNightDate, arm = toolkit.start_night_date_from_frames(
+                log=log, settings=self.settings, inputFrames=inputFrames
+            )
+            self.sofName = f"{self.recipeName}_{arm}_{self.startNightDate}"
             self.productPath = False
             self.log = log
 
@@ -380,9 +417,9 @@ class base_recipe:
 
         import ccdproc
         from astropy import units as u
-        from astropy.nddata import CCDData
 
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         warnings.filterwarnings(action="ignore")
         logging.captureWarnings(True)
@@ -399,7 +436,7 @@ class base_recipe:
             frame = self._absolute_path(frame)
             # OPEN THE RAW FRAME - MASK AND UNCERT TO BE POPULATED LATER
             try:
-                frame = CCDData.read(
+                frame = read_ccd(
                     frame,
                     hdu=0,
                     unit=u.adu,
@@ -437,15 +474,13 @@ class base_recipe:
         # THE NESTED `if` IS KEPT SO THE TWO CONDITIONS STAY SEPARATELY
         # COMMENTED, AND BECAUSE COLLAPSING IT IS COSMETIC WORK BELONGING TO
         # DY-88.
-        if (
-            self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]
-        ):  # noqa: SIM102
+        if self.recipeName in ["soxs-nod-std", "soxs-stare-std", "soxs-offset-std"] and self.recipeSettings["use_flat"]:  # noqa: SIM102
             # OBJECT/STANDARD FRAMES
             if frame.meta[kw("DPR_TYPE")] == "STD,FLUX" or "STD_stare" in frame.meta[kw("OBS_NAME")]:
                 # ASSUMING WE HAVE ONLY STANDARD A-B CYCLES AND NOT JITTER.
                 self.generateReponseCurve = True
 
-        frame = self._clean_cosmic_rays(frame)
+        frame = self._clean_cosmic_rays(frame, filepath)
 
         filePath = self._write_prepared_frame(frame, filepath, save)
 
@@ -570,16 +605,20 @@ class base_recipe:
 
         return boolMask
 
-    def _clean_cosmic_rays(self, frame):
-        """*flag cosmic rays in the frame, if the recipe settings ask for it*
+    def _clean_cosmic_rays(self, frame, filepath):
+        """*flag cosmic rays in the frame, if the recipe settings ask for it, and keep the pixels newly flagged*
 
         **Key Arguments:**
 
         - ``frame`` -- the frame to clean (CCDData object)
+        - ``filepath`` -- the path of the raw frame it was read from
 
         **Return:**
 
         - ``frame`` -- the cleaned frame, or the frame unchanged when cleaning is switched off
+
+        The pixels L.A.Cosmic newly flagged, without the pixels already in the bad-pixel mask, are appended to
+        ``self.cosmicRayMasks`` for `_write_cosmic_ray_mask_product`.
         """
         from soxspipe.commonutils import toolkit
 
@@ -589,8 +628,7 @@ class base_recipe:
             and "lacosmic-sigma" in self.recipeSettings[self.arm.lower()]
             and self.recipeSettings[self.arm.lower()]["lacosmic-sigma"]
         ):
-            # oldCount = frame.mask.sum()
-            # oldMask = frame.mask.copy()
+            maskBefore = frame.mask.copy()
 
             from ccdproc import cosmicray_lacosmic
 
@@ -605,9 +643,8 @@ class base_recipe:
                 cleantype="meanmask",
             )
             toolkit.frame_to_32(frame)
-            # newCount = self.skySubtractedFrame.mask.sum()
-            # self.laCosmicClippedCount = newCount - oldCount
-            # frame.mask = oldMask | frame.mask
+            self.cosmicRayMasks.append(self._cosmic_ray_entry(frame, maskBefore, filepath))
+
             from soxspipe.commonutils.toolkit import quicklook_image
 
             quicklook_image(
@@ -624,6 +661,105 @@ class base_recipe:
 
         return frame
 
+    def _cosmic_ray_entry(self, frame, maskBefore, filepath):
+        """*describe the cosmic rays L.A.Cosmic flagged in one frame*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the cleaned frame (CCDData object)
+        - ``maskBefore`` -- the mask of the frame before cleaning
+        - ``filepath`` -- the path of the raw frame it was read from
+
+        **Return:**
+
+        - ``entry`` -- dictionary with the keys ``fileName``, ``mjdObs`` (None when the header has no finite
+          number), ``dateObs`` and ``mask`` (uint8, 1 where cleaning newly flagged a pixel)
+        """
+        import math
+
+        from soxspipe.commonutils.cosmic_ray_mask import new_cosmic_ray_mask
+
+        kw = self.kw
+
+        try:
+            mjdObs = float(frame.header.get(kw("MJDOBS")))
+        except (TypeError, ValueError):
+            mjdObs = None
+        if mjdObs is not None and not math.isfinite(mjdObs):
+            mjdObs = None
+
+        isPath = isinstance(filepath, (str, os.PathLike))
+        return {
+            "fileName": os.path.basename(os.fspath(filepath)) if isPath else "unknown",
+            "mjdObs": mjdObs,
+            "dateObs": frame.header.get(kw("DATE_OBS")),
+            "mask": new_cosmic_ray_mask(maskBefore, frame.mask),
+        }
+
+    def _write_cosmic_ray_mask_product(self):
+        """*write the cosmic-ray masks of the cleaned frames as one QC product*
+
+        Writes nothing when no frame was cleaned. Otherwise writes ``<sof name>_LACOSMIC_MASK.fits`` to the QC
+        directory, one image extension per cleaned frame in observation order. The product row and the QC row
+        ``COSMIC RAY PIX NUM`` (the total number of pixels flagged, over all frames) are added by the first
+        `report_output`, so they carry the name of the SOF whatever pass of the recipe reports first. The number
+        in each frame is in the header of its extension.
+        """
+        self.cosmicRayProduct = None
+        if not self.cosmicRayMasks:
+            return
+
+        from soxspipe.commonutils.cosmic_ray_mask import cosmic_ray_entry_order, cosmic_ray_mask_hdulist
+
+        # OBSERVATION ORDER, NOT THE ORDER THE FRAMES WERE LISTED IN, SO THE EXTENSIONS ARE ALWAYS IN THE SAME ORDER
+        entries = sorted(self.cosmicRayMasks, key=cosmic_ray_entry_order)
+        filename = f"{self.sofName}_LACOSMIC_MASK.fits"
+        filePath = os.path.join(self.qcDir, filename)
+        cosmic_ray_mask_hdulist(entries).writeto(filePath, overwrite=True)
+
+        self.cosmicRayProduct = {
+            "sofName": self.sofName,
+            "fileName": filename,
+            "filePath": filePath,
+            "dateObs": entries[0]["dateObs"],
+            "count": sum(int(entry["mask"].sum()) for entry in entries),
+        }
+
+    def _register_cosmic_ray_product(self):
+        """*add the cosmic-ray mask product and its QC to the tables, once*
+
+        **Return:**
+
+        - ``sofName`` -- the name of the SOF the mask was written for, or None when there is nothing to register
+        """
+        product = self.cosmicRayProduct
+        if product is None:
+            return None
+        self.cosmicRayProduct = None
+
+        from soxspipe.commonutils.toolkit import utcnow_string
+
+        utcnow = utcnow_string()
+        self.add_product(
+            productLabel="LACOSMIC_MASK",
+            fileName=product["fileName"],
+            filePath=product["filePath"],
+            productDesc="Pixels L.A.Cosmic flagged as cosmic rays in each raw frame, one image extension per frame",
+            reductionDateUtc=utcnow,
+            fileType="FITS",
+            label="QC",
+            obsDateUtc=product["dateObs"],
+        )
+        self.add_qc(
+            qcName="COSMIC RAY PIX NUM",
+            qcValue=product["count"],
+            qcComment="Number of pixels L.A.Cosmic flagged as cosmic rays, over all raw frames",
+            reductionDateUtc=utcnow,
+            qcUnit="pixel",
+            toHeader=False,
+        )
+        return product["sofName"]
+
     def _write_prepared_frame(self, frame, filepath, save):
         """*stamp the prepared frame with its preparation time and write it to disk*
 
@@ -638,6 +774,11 @@ class base_recipe:
         - ``filePath`` -- the path the prepared frame was written to
         """
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.fits_frame_names import (
+            FITS_SUFFIX,
+            fits_frame_stem,
+            is_fits_frame,
+        )
 
         if save:
             outDir = self.workspaceRootPath
@@ -658,9 +799,13 @@ class base_recipe:
                 self.log.debug(f"_prepare_single_frame: `os.makedirs(outDir)` failed, continuing: {e}")
         # CONVERT CCDData TO FITS HDU (INCLUDING HEADER) AND SAVE WITH PRE TAG
         # PREPENDED TO FILENAME
+        # A .fits.Z INPUT IS WRITTEN UNCOMPRESSED, SO ITS NAME DROPS THE .Z
         basename = os.path.basename(filepath)
-        filenameNoExtension = os.path.splitext(basename)[0]
-        extension = os.path.splitext(basename)[1]
+        if is_fits_frame(basename):
+            filenameNoExtension = fits_frame_stem(basename)
+            extension = FITS_SUFFIX
+        else:
+            filenameNoExtension, extension = os.path.splitext(basename)
         filePath = outDir + "/" + filenameNoExtension + "_pre" + extension
 
         # SAVE TO DISK
@@ -724,6 +869,10 @@ class base_recipe:
 
         import numpy as np
 
+        # A SECOND CALL STARTS AGAIN, SO THE MASKS OF THE FIRST ARE NOT WRITTEN OR COUNTED TWICE
+        self.cosmicRayMasks = []
+        self.cosmicRayProduct = None
+
         from soxspipe.commonutils.set_of_files import set_of_files
 
         kw = self.kw
@@ -743,6 +892,7 @@ class base_recipe:
         preframes = []
         preframes[:] = [self._prepare_single_frame(frame=frame, save=save) for frame in filepaths]
         preframes = [f for f in preframes if f is not None]
+        self._write_cosmic_ray_mask_product()
 
         sof = set_of_files(
             log=self.log,
@@ -766,7 +916,7 @@ class base_recipe:
         columns = preframes.summary.colnames
 
         for i in range(7):
-            thisLamp = kw(f"LAMP{i+1}")
+            thisLamp = kw(f"LAMP{i + 1}")
             # FIRST FIND THE NAME OF THE LAMP
             newLamp = preframes.summary[thisLamp][np.where(preframes.summary[thisLamp].filled(999) != 999)]
             if len(newLamp):
@@ -882,6 +1032,7 @@ class base_recipe:
         self._verify_single_gain()
         self._verify_single_slit_width()
         self._verify_single_readnoise()
+        self._apply_measured_read_noise()
 
         imageTypes, imageTech, imageCat = self._collect_frame_classifications()
 
@@ -1100,18 +1251,30 @@ class base_recipe:
     def _verify_single_readnoise(self):
         """*record the detector readnoise the input frames were read out with*
 
-        A mix of readnoise values raises an exception; otherwise ``self.detectorParams["ron"]`` is set.
-        """
-        from contextlib import suppress
+        Only raw frames (no ``PRO_CATG``) are read: a calibration product's read noise describes the frames it
+        was built from, which may have used another readout mode or night (DY-1457).
 
+        A mix of raw-frame readnoise values raises an exception; otherwise ``self.detectorParams["ron"]`` is set.
+        """
+        import numpy as np
         from astropy import units as u
 
         kw = self.kw
 
-        # HIERARCH ESO DET OUT1 RON - Readout noise in electrons
-        ron = self.inputFrames.values(keyword=kw("RON"), unique=True)
-        with suppress(ValueError):
-            ron.remove(None)
+        def is_missing(value: object) -> bool:
+            return value is None or value is np.ma.masked
+
+        # HIERARCH ESO DET OUT1 RON - READOUT NOISE IN ELECTRONS
+        summary = self.inputFrames.summary
+        rawRon = [
+            value
+            for catg, value in zip(summary[kw("PRO_CATG")], summary[kw("RON")], strict=True)
+            if is_missing(catg) and not is_missing(value)
+        ]
+        # UNIQUE VALUES IN ORDER OF FIRST APPEARANCE
+        ron = list(dict.fromkeys(rawRon))
+        self.defaultRon = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+        self.rawHeaderRon = float(ron[0]) if len(ron) and ron[0] else None
 
         # MIXED NOISE
         if len(ron) > 1:
@@ -1122,7 +1285,60 @@ class base_recipe:
             self.detectorParams["ron"] = ron[0] * u.electron
         else:
             # NIR
+            self.log.debug(
+                f"no raw frame carries a usable {kw('RON')}; using the detector-parameter read noise "
+                f"({self.detectorParams['ron']} e-)"
+            )
             self.detectorParams["ron"] = self.detectorParams["ron"] * u.electron
+
+        return
+
+    def _apply_measured_read_noise(self):
+        """*replace the nominal read noise with the one measured on the master frame the SOF names*
+
+        UVB and VIS frames use the master bias (``MASTER_BIAS_<arm>``); NIR frames use the master dark
+        (``MASTER_DARK_NIR``). A UVB/VIS SOF never takes its read noise from a master dark. Without that master frame
+        in the SOF, or for any other arm, the nominal read noise stays. Otherwise ``self.detectorParams["ron"]`` is set
+        to the single-frame read noise, which the prepared uncertainty and the bias-pedestal correction use. The master
+        frame's noise reaches a detrended frame through ``ccdproc.subtract_bias`` or ``ccdproc.subtract_dark``, so it
+        is not added here. The sky-subtraction noise model has no such propagation; ``self.readNoise.skyFit`` holds
+        the value it needs (DY-1458, DY-1581).
+        """
+        from astropy import units as u
+        from astropy.io import fits
+
+        from soxspipe.commonutils.read_noise import SOURCE_MASTER_BIAS, SOURCE_MASTER_DARK, resolve_read_noise
+
+        arm = self.arm.upper()
+        if arm in ("UVB", "VIS"):
+            masterCatg, masterLabel, masterPlural = f"MASTER_BIAS_{arm}", SOURCE_MASTER_BIAS, "master biases"
+        elif arm == "NIR":
+            masterCatg, masterLabel, masterPlural = "MASTER_DARK_NIR", SOURCE_MASTER_DARK, "master darks"
+        else:
+            return
+
+        masterPaths = self.inputFrames.files_filtered(include_path=True, **{self.kw("PRO_CATG"): masterCatg})
+        if not len(masterPaths):
+            return
+
+        # SORT SO THE CHOICE DOES NOT DEPEND ON DIRECTORY ORDER
+        masterPath = sorted(masterPaths)[-1]
+        if len(masterPaths) > 1:
+            self.log.warning(
+                f"The SOF names {len(masterPaths)} {masterPlural}; the read noise is taken from "
+                f"{os.path.basename(masterPath)}."
+            )
+
+        try:
+            masterHeader = fits.getheader(masterPath)
+        except OSError as e:
+            self.log.warning(f"The {masterLabel} header could not be read ({e}).")
+            masterHeader = None
+
+        self.readNoise = resolve_read_noise(
+            masterHeader, self.rawHeaderRon, self.defaultRon, self.kw, self.log, masterLabel=masterLabel
+        )
+        self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
 
         return
 
@@ -1184,13 +1400,14 @@ class base_recipe:
         failedQcs = self.qc.loc[mask]
         failedQcs = failedQcs["qc_name"].tolist()
         if len(failedQcs):
-            forceFail = True
+            # KEEP AN EXPLICIT FAILURE MESSAGE SO IT STILL REACHES THE DATABASE
+            if not isinstance(forceFail, str):
+                forceFail = True
             if self.status == "pass":
                 passToFail = True
 
         # SET RECIPE PRODUCTS TO 'PASS'
         if self.conn:
-
             if not passToFail and not forceFail:
                 c = self.conn.cursor()
                 # THE SESSION STATUS COLUMN NAME CANNOT BE A BOUND PARAMETER. THE
@@ -1345,17 +1562,10 @@ class base_recipe:
         """
         self.log.debug("starting the ``write`` method")
 
-        from soxspipe.commonutils.phase3 import basic_header_scrubbing, sort_keywords
+        from soxspipe.commonutils.phase3 import add_qc_to_header, basic_header_scrubbing, sort_keywords
 
         # WRITE QCs TO HEADERS
-        for n, v, c, h in zip(
-            self.qc["qc_name"].values,
-            self.qc["qc_value"].values,
-            self.qc["qc_comment"].values,
-            self.qc["to_header"].values,
-        ):
-            if h:
-                frame.header[f"ESO QC {n}".upper()] = (v, c)
+        add_qc_to_header(frame.header, self.qc)
 
         if product:
             frame.header = basic_header_scrubbing(log=self.log, settings=self.settings, header=frame.header)
@@ -1441,11 +1651,12 @@ class base_recipe:
         stacked_clipping_iterations,
         totalPixels,
     ):
-        """*sigma-clip the individual input frames, replacing the combiner's masks*
+        """*sigma-clip the individual input frames, adding the clipped pixels to each frame's mask*
 
         **Key Arguments:**
 
-        - ``combiner`` -- the Combiner object holding the frames to clip. Its mask is replaced in place.
+        - ``combiner`` -- the Combiner object holding the frames to clip. Its mask is replaced in place by the
+          union of each frame's existing mask and its clip mask.
         - ``stacked_clipping_sigma`` -- the sigma level to clip the individual frames at
         - ``stacked_clipping_iterations`` -- the number of clipping iterations to run
         - ``totalPixels`` -- the pixel count of one frame, used to report the clipped fraction
@@ -1469,9 +1680,14 @@ class base_recipe:
         # THIS IS THE SUM OF BAD-PIXELS IN ALL INDIVIDUAL FRAME MASKS
         old_n_masked = combiner.data_arr.mask.sum()
 
+        # PIXELS ALREADY MASKED IN A FRAME TAKE NO PART IN THE CLIPPING STATISTICS AND STAY
+        # MASKED IN THAT FRAME ONLY. THE CLIP MASK RETURNED INCLUDES THEM
         ## Reduce memory by avoiding an extra full-array copy during clipping
         combiner.data_arr.mask = sigma_clip(
-            np.asarray(combiner.data_arr.data, dtype=np.float32),
+            np.ma.array(
+                np.asarray(combiner.data_arr.data, dtype=np.float32),
+                mask=np.ma.getmaskarray(combiner.data_arr),
+            ),
             sigma_lower=stacked_clipping_sigma,
             sigma_upper=stacked_clipping_sigma,
             axis=0,
@@ -1486,11 +1702,62 @@ class base_recipe:
         new_n_masked = combiner.data_arr.mask.sum()
         diff = new_n_masked - old_n_masked
         if self.verbose:
-            percent = 100 * combiner.data_arr.mask[0].sum() / totalPixels
+            percent = 100 * diff / (len(combiner.data_arr) * totalPixels)
             self.log.print(
                 f"\tClipping found {diff} more rogue pixels in the set of all input frames (~{percent:0.2}% per-frame)"
             )
         return
+
+    @staticmethod
+    def _frame_mask(ccd):
+        """*return the bad-pixel mask of a frame as a new full-shape boolean array*
+
+        **Key Arguments:**
+
+        - ``ccd`` -- the frame, a CCDData object. A frame with no mask has no flagged pixels.
+
+        **Return:**
+
+        - ``mask`` -- a boolean array the shape of the frame data, True where the pixel is flagged bad
+
+        **Usage:**
+
+        ```python
+        combinedMask = self._frame_mask(ccds[0])
+        ```
+        """
+        import numpy as np
+
+        if ccd.mask is None:
+            return np.zeros(ccd.data.shape, dtype=bool)
+        return np.array(ccd.mask, dtype=bool)
+
+    def _set_input_masks(self, combiner, combinedMask, ignore_input_masks):
+        """*set the per-frame masks the clipping starts from*
+
+        **Key Arguments:**
+
+        - ``combiner`` -- the Combiner object holding the frames. Its per-frame masks are replaced in place;
+          the input frames themselves are not changed.
+        - ``combinedMask`` -- the pixels flagged bad in every input frame
+        - ``ignore_input_masks`` -- drop the input masks, so that only the clip mask applies?
+
+        **Usage:**
+
+        ```python
+        self._set_input_masks(combiner, combinedMask, ignore_input_masks=False)
+        ```
+        """
+        import numpy as np
+
+        if ignore_input_masks:
+            combiner.data_arr.mask = np.zeros(combiner.data_arr.shape, dtype=bool)
+            return
+
+        # A PIXEL FLAGGED IN EVERY FRAME HAS NO FRAME TO STACK. IT KEEPS ITS DATA AND STAYS
+        # FLAGGED IN THE COMBINED MASK, SO IT IS NOT LEFT WITH A ZERO FRAME COUNT. NON-FINITE
+        # DATA IN THE FRAMES STILL GIVES A NAN MEAN THERE
+        combiner.data_arr.mask = np.ma.getmaskarray(combiner.data_arr) & ~combinedMask
 
     def _mean_combine_frames(self, combiner, ccds, combinedMask):
         """*mean combine the clipped frames, and combine their error maps the same way*
@@ -1499,7 +1766,7 @@ class base_recipe:
 
         - ``combiner`` -- the Combiner object holding the clipped frames. Its data is overwritten with the error maps.
         - ``ccds`` -- the input frames as a list of CCDData objects
-        - ``combinedMask`` -- the bad-pixel mask shared by every input frame
+        - ``combinedMask`` -- the pixels flagged bad in every input frame
 
         **Return:**
 
@@ -1542,7 +1809,11 @@ class base_recipe:
 
         - ``frames`` -- an ImageFileCollection of the frames to stack or a list of CCDData objects
         - ``recipe`` -- the name of recipe needed to read the correct settings from the yaml files
-        - ``ignore_input_masks`` -- ignore the input masks during clip and stacking?
+        - ``ignore_input_masks`` -- ignore the input masks during clip and stacking? If *False*, a pixel flagged
+          bad in a frame is left out of that frame only (its input mask is joined to its clip mask), and the
+          uncertainty uses the number of frames that contributed at the pixel. If *True*, only the clip mask
+          applies. Either way a pixel flagged in every frame stays flagged in the combined frame. The input
+          frames' masks are never changed.
         - ``post_stack_clipping`` -- allow cross-plane clipping on combined frame. Clipping settings in setting file. Default *True*.
 
         **Return:**
@@ -1599,17 +1870,16 @@ class base_recipe:
 
         self.log.print(f"\n# MEAN COMBINING {len(ccds)} {arm} {imageCat} {imageTech} {imageType} FRAMES")
 
-        # COMBINE MASKS AND THEN RESET
-        combinedMask = ccds[0].mask
-        for c in ccds:
-            combinedMask = c.mask & combinedMask
-            if ignore_input_masks:
-                c.mask[:, :] = False
+        # PIXELS FLAGGED BAD IN EVERY INPUT FRAME. THE CALLER'S MASKS ARE NEVER CHANGED
+        combinedMask = self._frame_mask(ccds[0])
+        for c in ccds[1:]:
+            combinedMask &= self._frame_mask(c)
 
         # COMBINER OBJECT WILL FIRST GENERATE MASKS FOR INDIVIDUAL IMAGES VIA
         # CLIPPING AND THEN COMBINE THE IMAGES WITH THE METHOD SELECTED. PIXEL
         # MASKED IN ALL INDIVIDUAL IMAGES ARE MASK IN THE FINAL COMBINED IMAGE
         combiner = Combiner(ccds, dtype=np.float32)
+        self._set_input_masks(combiner, combinedMask, ignore_input_masks)
 
         # self.log.print(f"\n# SIGMA-CLIPPING PIXEL WITH OUTLYING VALUES IN INDIVIDUAL {imageType} FRAMES")
         # PRINT SOME INFO FOR USER
@@ -1674,7 +1944,11 @@ class base_recipe:
         return combined_frame
 
     def _subtract_dark_frame(self, processedFrame, dark, inputFrame):
-        """*subtract a dark frame, scaling it first when its exposure time does not match*
+        """*subtract a dark frame, scaling an X-Shooter dark first when its exposure time does not match*
+
+        SOXS darks are never scaled by exposure time, because the SOXS NIR dark level does not
+        change with exposure time. Darks of every other instrument (X-Shooter) are scaled whenever the two
+        exposure times differ.
 
         **Key Arguments:**
 
@@ -1698,11 +1972,12 @@ class base_recipe:
 
         kw = self.kw
 
-        # DARK WITH MATCHING EXPOSURE TIME
-        tolerence = 0.5
-        if (int(dark.header[kw("EXPTIME")]) < int(processedFrame.header[kw("EXPTIME")]) + tolerence) and (
-            int(dark.header[kw("EXPTIME")]) > int(processedFrame.header[kw("EXPTIME")]) - tolerence
-        ):
+        # SOXS DARKS ARE NEVER SCALED BY EXPOSURE TIME: THE NIR DARK LEVEL IS FLAT ACROSS
+        # EXPOSURE TIMES (DY-1263 RULING). X-SHOOTER DARKS ARE SCALED WHENEVER THE TIMES DIFFER.
+        darkExptime = float(dark.header[kw("EXPTIME")])
+        frameExptime = float(processedFrame.header[kw("EXPTIME")])
+        exptimesMatch = abs(darkExptime - frameExptime) <= EXPTIME_MATCH_TOLERANCE_SECONDS
+        if self.inst == "SOXS" or exptimesMatch:
             return ccdproc.subtract_dark(
                 processedFrame,
                 dark,
@@ -1710,16 +1985,6 @@ class base_recipe:
                 exposure_unit=u.second,
                 add_keyword=None,
             )
-
-        # THE `and False` DISABLES THIS BRANCH DELIBERATELY. REMOVING IT IS A
-        # BEHAVIOUR CHANGE, NOT A LINT FIX, SO IT IS DY-88'S TO DECIDE.
-        if self.inst == "SOXS" and False:  # noqa: SIM223
-            if not self.darkDetrendWarningIssued2:
-                self.log.warning(
-                    "Dark and science/calibration frame have differing exposure-times. SOXS dark noise does not scale linearly with time. Skipping dark subtraction."  # noqa: E501
-                )
-                self.darkDetrendWarningIssued2 = True
-            return processedFrame
 
         if not self.darkDetrendWarningIssued2:
             self.log.warning(
@@ -1796,6 +2061,54 @@ class base_recipe:
 
         return processedFrame
 
+    def _remove_bias_pedestal_from_uncertainty(self, frame, master_bias):
+        """*re-derive the photon noise of a prepared frame from its bias-subtracted counts*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the prepared frame, whose uncertainty was derived from its raw counts. CCDData object.
+        - ``master_bias`` -- the master bias that is about to be subtracted from the frame. CCDData object.
+
+        **Return:**
+
+        - ``correctedFrame`` -- a copy of the frame whose uncertainty carries the photon noise of the bias-subtracted
+          counts. CCDData object.
+
+        The uncertainty map is built at preparation, before any master bias is available, so its photon term
+        counts the electrons of the bias pedestal (about 650 e- in the VIS arm) as signal. This rescales each
+        pixel's variance by the ratio of ``max(data - bias, 0) + ron^2`` to ``max(data, 0) + ron^2``. A ratio
+        keeps the scaling right for a mean-combined stack, whose variance is the single-frame variance over the
+        number of frames. ``ccdproc.subtract_bias`` then adds the variance of the master bias itself. Pixels
+        that cosmic-ray cleaning changed after preparation are masked, so a ratio from their cleaned counts
+        does not matter. A master dark still carries the pedestal variance of its own raw frames.
+
+        **Usage:**
+
+        ```python
+        frame = self._remove_bias_pedestal_from_uncertainty(frame, master_bias)
+        ```
+        """
+        import numpy as np
+        from astropy.nddata import StdDevUncertainty
+
+        if frame.uncertainty is None:
+            return frame
+
+        ronValue = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+        rawCounts = np.asarray(frame.data, dtype=np.float64)
+        biasCounts = np.asarray(master_bias.data, dtype=np.float64)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            varianceScale = (np.clip(rawCounts - biasCounts, 0, None) + ronValue**2) / (
+                np.clip(rawCounts, 0, None) + ronValue**2
+            )
+        # LEAVE PIXELS WITH NO USABLE COUNTS UNCHANGED
+        varianceScale = np.where(np.isfinite(varianceScale), varianceScale, 1.0)
+
+        correctedFrame = frame.copy()
+        correctedError = np.asarray(frame.uncertainty.array, dtype=np.float64) * np.sqrt(varianceScale)
+        correctedFrame.uncertainty = StdDevUncertainty(correctedError.astype(np.float32), unit=frame.uncertainty.unit)
+        return correctedFrame
+
     def detrend(
         self,
         inputFrame,
@@ -1838,7 +2151,6 @@ class base_recipe:
         # `arm` AND `dp` ARE UNUSED, TWO OF THE MODULE'S `F841` FINDINGS. DELETING
         # THEM IS DY-88'S.
         arm = self.arm  # noqa: F841
-        kw = self.kw
         dp = self.detectorParams  # noqa: F841
 
         if master_bias == None:
@@ -1851,14 +2163,18 @@ class base_recipe:
         # AMBIGUOUS, SO NONE OF THE COMPARISONS CAN BECOME A TRUTH CHECK.
         if master_bias == False and dark == False and master_flat == False:  # noqa: E712
             raise TypeError("detrend method needs at least a master-bias frame, a dark frame or a master flat frame")
-        if master_bias == False and dark != False and dark.header[kw("EXPTIME")] != inputFrame.header[kw("EXPTIME")]:
-            if not self.darkDetrendWarningIssued1:
-                self.log.warning("Dark and science/calibration frame have differing exposure-times.")
-                self.darkDetrendWarningIssued1 = True
-
+        # UVB/VIS MASTER DARKS KEEP THE BIAS PEDESTAL (SOXS_MDARK SUBTRACTS NO BIAS), AS DO THE LAMP-OFF AND RAW DARK
+        # FRAMES SOXS_MFLAT FALLS BACK TO, SO A BIAS PLUS A DARK WOULD SUBTRACT THE PEDESTAL TWICE (DY-1580)
+        if self.arm.upper() in ("UVB", "VIS") and master_bias != False and dark != False:  # noqa: E712
+            raise ValueError(
+                f"{self.arm} frames cannot be detrended with both a master bias and a master dark: "
+                f"{self.arm} master darks, lamp-off frames and raw darks still carry the bias pedestal, "
+                "so this combination is not supported"
+            )
         processedFrame = inputFrame
 
         if master_bias != False:  # noqa: E712
+            processedFrame = self._remove_bias_pedestal_from_uncertainty(processedFrame, master_bias)
             processedFrame = ccdproc.subtract_bias(processedFrame, master_bias, add_keyword=None)
             toolkit.frame_to_32(processedFrame)
 
@@ -1970,6 +2286,8 @@ class base_recipe:
 
         from tabulate import tabulate
 
+        cosmicRaySofName = self._register_cosmic_ray_product()
+
         if not self.verbose:
             # REMOVE COLUMN FROM DATA FRAME
             self.products.drop(columns=["file_path"], inplace=True)
@@ -1981,6 +2299,9 @@ class base_recipe:
 
         # SEND TO DATABASE
         self.qc["sof_name"] = self.sofName + ".sof"
+        if cosmicRaySofName is not None:
+            # THE MASK BELONGS TO THE WHOLE SOF, EVEN WHEN A PASS NAMED `<SOF>_F<N>` REPORTS FIRST
+            self.qc.loc[self.qc["qc_name"] == "COSMIC RAY PIX NUM", "sof_name"] = cosmicRaySofName + ".sof"
         self.qc["obs_date_utc"] = self.dateObs
 
         # SORT BY COLUMN NAME
@@ -2029,15 +2350,9 @@ class base_recipe:
             )
             if self.conn:
                 sofNames = self.qc[dbColumns]["sof_name"].values.tolist()
-                # A FALSE POSITIVE: THE F-STRING INTERPOLATES ONLY `?` PLACEHOLDERS,
-                # AND EVERY SOF NAME IS PASSED TO `execute` AS A BOUND PARAMETER.
-                sqlQuery = (
-                    f"delete from quality_control where sof_name in ({', '.join(['?']*len(sofNames))})"  # noqa: S608
-                )
-                c = self.conn.cursor()
-                c.execute(sqlQuery, sofNames)
-                c.close()
-                self._dataframe_to_sqlite(self.qc[dbColumns], "quality_control", replace=False)
+                # THE OLD ROWS FOR THESE SOFS ARE DELETED IN THE SAME TRANSACTION AS THE INSERT, SO A READER NEVER
+                # SEES THEM MISSING AND A FAILED INSERT KEEPS THEM
+                self._dataframe_to_sqlite(self.qc[dbColumns], "quality_control", delete_where_in=("sof_name", sofNames))
 
         self.log.debug("completed the ``report_output`` method")
         return self.qc[dbColumns]
@@ -2052,6 +2367,8 @@ class base_recipe:
         ```
         """
         self.log.debug("starting the ``flag_poor_data`` method")
+
+        import pandas as pd
 
         from soxspipe.commonutils import toolkit
 
@@ -2085,12 +2402,14 @@ class base_recipe:
             self.log.debug("No acceptable ranges defined in settings file. Skipping the ``flag_poor_data`` method.")
             return
 
+        # TEXT QCS (E.G. UG SHIFT SOURCE) BECOME NaN HERE, SO THEY ARE NEVER RANGE-FLAGGED
+        numericValues = pd.to_numeric(self.qc["qc_value"], errors="coerce")
         for k, v in self.recipeSettings["qc-acceptable-ranges"].items():
             matchName = k.lower().replace("-", " ").replace("_", " ")
             mask = (
                 (self.qc["qc_name"].str.lower() == matchName)
                 & (self.qc["qc_order"] == "-1")
-                & ((self.qc["qc_value"].astype(float) <= v[0]) | (self.qc["qc_value"].astype(float) >= v[1]))
+                & ((numericValues <= v[0]) | (numericValues >= v[1]))
             )
             self.qc.loc[mask, "qc_flag"] = "fail"
             # ADD GUARDRAIL VALUES TO QC TABLE FOR REPORTING PURPOSES
@@ -2104,8 +2423,10 @@ class base_recipe:
         """*measure the read-out noise in a single raw frame, from the first two input frames*
 
         The noise is measured on the difference of the first two input frames,
-        so the mask returned alongside it is the mask of that difference and is
-        needed by the caller to measure the master frame against the same pixels.
+        so any fixed pattern the frames share cancels. The mask returned
+        alongside it is the mask of that difference and is needed by the caller
+        to measure the master frame against the same pixels. At least two input
+        frames are required.
 
         **Return:**
 
@@ -2119,30 +2440,27 @@ class base_recipe:
         ```
         """
         import math
+        from itertools import islice
 
         import numpy as np
         from astropy.stats import sigma_clip
 
         from soxspipe.commonutils import toolkit
 
-        # LIST OF RAW CCDDATA OBJECTS
-        # THE COMPREHENSION IS THE BASE REVISION'S. COLLAPSING IT TO `list()` IS
-        # DY-88'S LINT SWEEP, NOT THIS COMMIT'S.
-        ccds = [  # noqa: C416
-            c
-            for c in self.inputFrames.ccds(
+        # ONLY THE FIRST TWO RAW FRAMES ARE NEEDED, SO NO MORE ARE LOADED
+        raw_one, raw_two = islice(
+            self.inputFrames.ccds(
                 ccd_kwargs={
                     "hdu_uncertainty": "ERRS",
                     "hdu_mask": "QUAL",
                     "hdu_flags": "FLAGS",
                     "key_uncertainty_type": "UTYPE",
                 }
-            )
-        ]
+            ),
+            2,
+        )
 
         # SINGLE FRAME RON
-        raw_one = ccds[0]
-        raw_two = ccds[1]
         raw_diff = raw_one.subtract(raw_two)
         toolkit.frame_to_32(raw_diff)
 
@@ -2174,23 +2492,25 @@ class base_recipe:
         frameType=False,
         frameName=False,
         masterFrame=False,
-        rawRon=False,
         masterRon=False,
     ):
         """*calculate the read-out-noise from bias/dark frames*
+
+        The raw read-out-noise is measured on the difference of the first two raw
+        frames, so fixed pattern noise cancels. With fewer than two raw frames it
+        cannot be measured, and no ``RAW RON`` QC is recorded.
 
         **Key Arguments:**
 
         - ``frameType`` -- the type of the frame for reporting QC values. Default *False*
         - ``frameName`` -- the name of the frame in human readable words. Default *False*
         - ``masterFrame`` -- the master frame (only makes sense to measure RON on master bias). Default *False*
-        - ``rawRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
         - ``masterRon`` -- if serendipitously calculated elsewhere don't recalculate. Default *False*
 
         **Return:**
 
-        - ``rawRon`` -- raw read-out-noise in electrons
-        - ``masterRon`` -- combined read-out-noise in mbias
+        - ``rawRon`` -- raw read-out-noise in electrons, or *None* if fewer than two raw frames were supplied
+        - ``masterRon`` -- combined read-out-noise in mbias, or *None* if there is no master noise
 
         **Usage:**
 
@@ -2211,7 +2531,9 @@ class base_recipe:
         # ONE TIMESTAMP COVERS BOTH THE RAW AND MASTER RON ROWS, AS IT DID INLINE.
         utcnow = toolkit.utcnow_string()
 
-        if not rawRon and len(self.inputFrames.files) > 1:
+        rawRon = None
+        combinedMask = None
+        if len(self.inputFrames.files) > 1:
             rawRon, combinedMask = self._measure_raw_frame_ron()
 
         if rawRon:
@@ -2229,8 +2551,9 @@ class base_recipe:
             )
 
         if masterFrame and not masterRon:
-            # PREDICTED MASTER NOISE
-            # predictedMasterRon = rawRon / math.sqrt(len(ccds))
+            # WITHOUT A RAW PAIR THERE IS NO RAW MASK, SO USE THE MASTER FRAME'S OWN
+            if combinedMask is None:
+                combinedMask = masterFrame.mask
 
             # FORCE CONVERSION OF CCDData OBJECT TO NUMPY ARRAY
             tmp = np.ma.array(masterFrame.data, mask=combinedMask)
@@ -2253,6 +2576,28 @@ class base_recipe:
 
         self.log.debug("completed the ``qc_bias_ron`` method")
         return rawRon, masterRon
+
+    def _fill_masked_uncertainty(self, frame, fillValue):
+        """*set the uncertainty of the masked pixels of a frame to a single value*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame (CCDData object) whose uncertainty is updated in place
+        - ``fillValue`` -- the uncertainty (e-) given to every masked pixel
+
+        **Usage:**
+
+        ```python
+        self._fill_masked_uncertainty(frame, fillValue=rawRon)
+        ```
+        """
+        import numpy as np
+
+        frame.uncertainty = np.ma.array(
+            frame.uncertainty.array,
+            mask=frame.mask,
+            fill_value=fillValue,
+        ).filled()
 
     def qc_median_flux_level(self, frame, frameType="MBIAS", frameName="master bias", medianFlux=False):
         """*calculate the median flux level in the frame, excluding masked pixels*
@@ -2538,6 +2883,36 @@ class base_recipe:
         self.log.debug("completed the ``update_fits_keywords`` method")
         return
 
+    @staticmethod
+    def _concat_qc_tables(qcTables):
+        """*join QC tables into one, skipping empty tables so their all-NA columns do not decide the dtypes*
+
+        **Key Arguments:**
+
+        - ``qcTables`` -- the QC tables to join
+
+        **Return:**
+
+        - ``qcTable`` -- the joined QC table. Empty when every table is empty, or when there are no tables
+        """
+        import pandas as pd
+
+        if not qcTables:
+            return pd.DataFrame()
+        return pd.concat([table for table in qcTables if len(table.index)] or qcTables, ignore_index=True)
+
+    def _stacking_override_requested(self):
+        """*check whether the user asked on the command line to extract each frame or cycle on its own (``--no-stack``)*
+
+        A ``stack_before_extraction`` value in the settings file does not count. Only the command-line option sets the
+        ``no-stack`` setting, and only then may a standard star be extracted frame by frame or cycle by cycle.
+
+        **Return:**
+
+        - ``isRequested`` -- True when ``--no-stack`` was given
+        """
+        return bool(self.settings.get("no-stack", False))
+
     def get_recipe_settings(self):
         """*get the recipe and arm specific settings*
 
@@ -2563,53 +2938,35 @@ class base_recipe:
         self.log.debug("completed the ``get_recipe_settings`` method")
         return recipeSettings
 
-    def _dataframe_to_sqlite(self, dataframe, table_name, replace=False):
-        """*write a dataframe to a database table, retrying the insert up to seven times*
+    def _dataframe_to_sqlite(self, dataframe, table_name, replace=False, delete_where_in=None):
+        """*write a dataframe to a database table in one transaction, retrying a failed write*
+
+        The number of attempts is `sqlite_dataframe_writer.MAX_ATTEMPTS`.
 
         **Key Arguments:**
 
         - ``dataframe`` -- the dataframe containing the rows to insert
         - ``table_name`` -- the name of the database table to insert into
-        - ``replace`` -- if True, delete the table's existing rows first; otherwise append. Default: False
+        - ``replace`` -- if True, delete the table's existing rows in the same transaction; otherwise append. Default:
+          False
+        - ``delete_where_in`` -- a ``(column, values)`` pair: delete the rows whose column value is in ``values`` in
+          the same transaction. Default: None
 
         **Raises:**
 
-        - Exception if the insert fails after seven attempts.
-        - ``UnsafeSqlIdentifierError`` if ``table_name`` fails the safe-identifier grammar.
+        - Exception if every attempt fails.
+        - ``SqliteTransactionOpenError`` if the connection is already inside a transaction.
+        - ``UnsafeSqlIdentifierError`` if ``table_name`` or the delete column fails the safe-identifier grammar.
         """
-        import time
-
-        # A TABLE NAME CANNOT BE A BOUND PARAMETER, SO IT IS VALIDATED AGAINST
-        # THE SAFE-IDENTIFIER GRAMMAR ONCE HERE, BEFORE EITHER SQL SITE BELOW
-        # INTERPOLATES IT.
-        table_name = validate_sql_identifier(table_name, "table name")
-
-        if replace:
-            c = self.conn.cursor()
-            sqlQuery = f"delete from {table_name};"  # noqa: S608
-            try:
-                c.execute(sqlQuery)
-            except sqlite3.OperationalError as e:
-                self.log.debug(f"_dataframe_to_sqlite: `c.execute(sqlQuery)` failed, continuing: {e}")
-            c.close()
-
-        keepTrying = 0
-        keepTryingMax = 7
-        while keepTrying < keepTryingMax:
-            try:
-                dataframe.replace(["--"], None).to_sql(
-                    table_name,
-                    con=self.conn,
-                    index=False,
-                    if_exists="append",
-                    method="multi",
-                )
-                keepTrying = keepTryingMax
-            except Exception as e:
-                if keepTrying > keepTryingMax - 1:
-                    raise Exception(e)
-                time.sleep(1)
-                keepTrying += 1
+        write_dataframe_to_sqlite(
+            self.conn,
+            self.log,
+            dataframe,
+            table_name,
+            replace=replace,
+            method="multi",
+            deleteWhereIn=delete_where_in,
+        )
 
     def add_qc(
         self,

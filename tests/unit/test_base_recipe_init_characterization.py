@@ -179,32 +179,6 @@ def test_the_overwrite_flag_runs_over_an_existing_product(
     assert recipe.sofName == "synthetic"
 
 
-def test_input_that_is_not_a_set_of_files_fails_on_the_unset_night_date(
-    log: Any,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    """A frame list, or no frames at all, cannot construct a recipe today.
-
-    `self.startNightDate` is set only on the set-of-files branch, and the
-    constructor reads it unconditionally when it sets up the QC and product
-    directories. Pinned as it stands: every route into `base_recipe` other
-    than a `.sof` path raises `AttributeError`. Reported as a defect.
-    """
-    # ARRANGE
-    _isolate(monkeypatch, tmp_path, productPath=tmp_path / "unused.fits")
-
-    # ACT / ASSERT
-    with pytest.raises(AttributeError, match="startNightDate"):
-        base_recipe(
-            log=log,
-            settings=_settings(tmp_path),
-            inputFrames=["raw_one.fits", "raw_two.fits"],
-            recipeName="soxs-mbias",
-            turnOffMP=True,
-        )
-
-
 def test_the_session_database_records_the_recipe_as_failed_before_it_runs(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
@@ -340,6 +314,97 @@ def test_user_settings_override_the_packaged_advanced_settings(
     assert len(recipe.settings) > len(_settings(tmp_path)) + 1
 
 
+def test_a_session_settings_file_without_a_workspace_root_runs_in_the_current_directory(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`soxspipe reduce` passes the session settings `prep` writes, which name no workspace root (DY-1601)."""
+    # ARRANGE
+    import yaml
+
+    import soxspipe
+
+    _isolate(monkeypatch, tmp_path, productPath=tmp_path / "unused.fits")
+    monkeypatch.chdir(tmp_path)
+    sessionSettings = yaml.safe_load(
+        (Path(soxspipe.__file__).parent / "soxs_default_settings.yaml").read_text(encoding="utf-8")
+    )
+    assert "workspace-root-dir" not in sessionSettings
+
+    # ACT
+    recipe = base_recipe(
+        log=log,
+        settings=sessionSettings,
+        inputFrames=str(tmp_path / "synthetic.sof"),
+        recipeName="soxs-mbias",
+        turnOffMP=True,
+    )
+
+    # ASSERT
+    assert Path(recipe.workspaceRootPath).resolve() == tmp_path.resolve()
+
+
+def test_merged_settings_are_used_throughout_initialisation_without_mutating_the_caller(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Constructor collaborators receive the merged copy, including user overrides."""
+
+    # ARRANGE
+    class IsolatedOrganiser:
+        def __init__(self, **_: object) -> None:
+            return None
+
+        def session_list(self, *, silent: bool) -> tuple[bool, list[str]]:
+            return False, []
+
+        def close(self) -> None:
+            return None
+
+    received: dict[str, dict[str, Any]] = {}
+
+    def record_settings(name: str):
+        def recorder(*_: object, settings: dict[str, Any], **__: object):
+            received[name] = settings
+            if name == "night":
+                return "2024-01-02", "VIS"
+            if name == "calibrations":
+                return "calibrations"
+            return str(tmp_path / "qc"), str(tmp_path / "products")
+
+        return recorder
+
+    monkeypatch.setattr(commonutils, "data_organiser", IsolatedOrganiser)
+    monkeypatch.setattr(base_recipe, "_advanced_settings", lambda _: {"advanced-only": 1, "shared": "advanced"})
+    monkeypatch.setattr(toolkit, "start_night_date_from_frames", record_settings("night"))
+    monkeypatch.setattr(toolkit, "get_calibrations_path", record_settings("calibrations"))
+    monkeypatch.setattr(toolkit, "utility_setup", record_settings("utility"))
+    callerSettings = _settings(tmp_path, shared="user")
+    originalSettings = callerSettings.copy()
+
+    # ACT
+    recipe = base_recipe(
+        log=log,
+        settings=callerSettings,
+        inputFrames=[],
+        recipeName="soxs-mbias",
+        turnOffMP=True,
+    )
+
+    # ASSERT
+    assert recipe.settings["advanced-only"] == 1
+    assert recipe.settings["shared"] == "user"
+    assert callerSettings == originalSettings
+    assert recipe.settings is not callerSettings
+    assert received == {
+        "night": recipe.settings,
+        "calibrations": recipe.settings,
+        "utility": recipe.settings,
+    }
+
+
 def test_the_constructor_assigns_the_empty_qc_and_product_tables(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
@@ -391,24 +456,29 @@ def test_the_constructor_assigns_the_empty_qc_and_product_tables(
     assert set(recipe.products.dtypes.astype(str)) == {"object"}
 
 
-def test_the_scratch_directory_sits_under_the_workspace_tmp_directory(
+def test_each_recipe_gets_its_own_existing_scratch_directory_under_the_workspace_tmp_directory(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Each recipe gets its own randomly named scratch directory under `tmp`."""
+    """Two recipes in one workspace never share a scratch directory (DY-49)."""
     # ARRANGE
     _isolate(monkeypatch, tmp_path, productPath=tmp_path / "unused.fits")
 
     # ACT
-    recipe = base_recipe(
-        log=log,
-        settings=_settings(tmp_path),
-        inputFrames=str(tmp_path / "synthetic.sof"),
-        recipeName="soxs-mbias",
-        turnOffMP=True,
-    )
+    recipes = [
+        base_recipe(
+            log=log,
+            settings=_settings(tmp_path),
+            inputFrames=str(tmp_path / "synthetic.sof"),
+            recipeName="soxs-mbias",
+            turnOffMP=True,
+        )
+        for _ in range(2)
+    ]
 
     # ASSERT
-    assert Path(recipe.outDir).parent == tmp_path / "tmp"
-    assert Path(recipe.outDir).name.isdigit()
+    outDirs = [Path(recipe.outDir) for recipe in recipes]
+    assert all(outDir.parent == tmp_path / "tmp" for outDir in outDirs)
+    assert all(outDir.is_dir() for outDir in outDirs)
+    assert outDirs[0] != outDirs[1]

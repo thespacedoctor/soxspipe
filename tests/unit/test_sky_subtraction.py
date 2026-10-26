@@ -12,7 +12,7 @@ from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 from scipy.interpolate import splrep
 
-from soxspipe.commonutils.subtract_sky import subtract_sky
+from soxspipe.commonutils.subtract_sky import _sliding_mean, subtract_sky
 from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
@@ -22,6 +22,8 @@ def _subtractor(log: object) -> subtract_sky:
     subtractor = object.__new__(subtract_sky)
     subtractor.log = log
     subtractor.arm = "VIS"
+    # THE NOISE UNITS OF THE LONG RESIDUAL MEDIAN NEED THE READ NOISE (DY-1517)
+    subtractor.ron = 3.3
     subtractor.recipeSettings = {
         "sky-subtraction": {
             "residual_floor_percentile": 50,
@@ -31,12 +33,18 @@ def _subtractor(log: object) -> subtract_sky:
     return subtractor
 
 
+@pytest.mark.parametrize(("headerRon", "expectedRon"), [(None, 3.8), (3.3, 3.3)])
 def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    headerRon: float | None,
+    expectedRon: float,
 ) -> None:
-    """Initialize the public sky-subtraction workflow from a prepared VIS frame."""
+    """Initialize the public sky-subtraction workflow from a prepared VIS frame.
+
+    The sky-fit read noise is the frame's own value, else the detector default (DY-1282).
+    """
     import importlib
 
     import soxspipe.commonutils.toolkit as toolkit
@@ -46,10 +54,10 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     header["ESO INS VISE NAME"] = "SLIT1.0"
     header["ESO DET BINX"] = 2
     header["ESO DET BINY"] = 1
+    if headerRon is not None:
+        header["ESO DET OUT1 RON"] = headerRon
     frame = CCDData(np.ones((3, 3)), unit=u.electron, meta=header)
-    mapTable = pd.DataFrame(
-        {"order": [10, 10], "wavelength": [500.0, 501.0], "slit_position": [0.0, 0.1]}
-    )
+    mapTable = pd.DataFrame({"order": [10, 10], "wavelength": [500.0, 501.0], "slit_position": [0.0, 0.1]})
 
     class DetectorLookup:
         def __init__(self, **_: object) -> None:
@@ -57,7 +65,7 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
 
         def get(self, arm: str) -> dict[str, object]:
             assert arm == "VIS"
-            return {"dispersion-axis": "x", "slit_length": 11.0}
+            return {"dispersion-axis": "x", "slit_length": 11.0, "ron": 3.8}
 
     monkeypatch.setattr(module, "detector_lookup", DetectorLookup)
     monkeypatch.setattr(
@@ -92,12 +100,11 @@ def test_constructor_prepares_vis_sky_subtraction_metadata_and_workspace(
     assert subtractor.binx == 2
     assert subtractor.biny == 1
     assert subtractor.mapDF.equals(mapTable)
+    assert subtractor.ron == expectedRon
 
 
 @pytest.mark.parametrize("dispersionAxis", ["x", "y"])
-def test_placeholder_images_receive_model_flux_and_normalised_residuals(
-    log: object, dispersionAxis: str
-) -> None:
+def test_placeholder_images_receive_model_flux_and_normalised_residuals(log: object, dispersionAxis: str) -> None:
     subtractor = _subtractor(log)
     subtractor.objectFrame = CCDData(
         np.arange(9, dtype=float).reshape(3, 3),
@@ -118,9 +125,7 @@ def test_placeholder_images_receive_model_flux_and_normalised_residuals(
     )
 
     model, subtracted, residuals = subtractor.create_placeholder_images()
-    model, subtracted, residuals = subtractor.add_data_to_placeholder_images(
-        pixels, model, subtracted, residuals
-    )
+    model, subtracted, residuals = subtractor.add_data_to_placeholder_images(pixels, model, subtracted, residuals)
 
     indices = (2, 1) if dispersionAxis == "x" else (1, 2)
     assert model.data[indices] == 4.0
@@ -137,7 +142,6 @@ def test_subtract_runs_one_order_workflow_and_returns_finite_product_frames(
     subtractor.axisA = "x"
     subtractor.axisB = "y"
     subtractor.debug = False
-    subtractor.stopSubtraction = False
     subtractor.detectorParams = {"dispersion-axis": "x"}
     subtractor.dateObs = "2024-01-02T03:04:05"
     subtractor.objectFrame = CCDData(
@@ -163,6 +167,8 @@ def test_subtract_runs_one_order_workflow_and_returns_finite_product_frames(
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "sky_model_qc_plot": False,
         }
     }
@@ -192,7 +198,6 @@ def test_subtract_records_order_and_frame_qc_products_when_requested(
     subtractor.axisA = "x"
     subtractor.axisB = "y"
     subtractor.debug = True
-    subtractor.stopSubtraction = False
     subtractor.detectorParams = {"dispersion-axis": "x"}
     subtractor.dateObs = "2024-01-02T03:04:05"
     subtractor.objectFrame = CCDData(
@@ -218,6 +223,8 @@ def test_subtract_records_order_and_frame_qc_products_when_requested(
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "sky_model_qc_plot": True,
         }
     }
@@ -345,34 +352,8 @@ def test_clip_object_slit_positions_updates_masks_and_local_noise(log: object) -
     assert pixels.loc[20, "flux_windowed_long_median"] == pytest.approx(99.948718, abs=1e-6)
 
 
-def test_cross_dispersion_normaliser_keeps_the_current_unity_flux_contract(log: object) -> None:
-    """The fitted illumination profile currently preserves a unity correction."""
-    subtractor = _subtractor(log)
-    subtractor.recipeSettings["sky-subtraction"]["slit_illumination_order"] = 1
-    subtractor.binx = 1
-    subtractor.biny = 1
-    subtractor.debug = False
-    slitPositions = np.linspace(-1.0, 1.0, 20)
-    pixels = pd.DataFrame(
-        {
-            "order": np.full(slitPositions.size, 10),
-            "slit_position": slitPositions,
-            "flagged_all_clipped": False,
-            "sky_subtracted_flux": 20.0 + 3.0 * slitPositions,
-            "residual_windowed_std": np.full(slitPositions.size, 0.5),
-        }
-    )
-
-    corrected = subtractor.cross_dispersion_flux_normaliser(pixels)
-
-    assert corrected is pixels
-    np.testing.assert_allclose(corrected["slit_normalisation_ratio"], 1.0)
-
-
 @pytest.mark.parametrize("arm", ["UVB", "VIS"])
-def test_image_comparison_writes_recipe_named_pdf(
-    tmp_path: Path, log: object, arm: str
-) -> None:
+def test_image_comparison_writes_recipe_named_pdf(tmp_path: Path, log: object, arm: str) -> None:
     subtractor = _subtractor(log)
     subtractor.arm = arm
     subtractor.axisA = "x"
@@ -380,6 +361,7 @@ def test_image_comparison_writes_recipe_named_pdf(
     subtractor.mapDF = pd.DataFrame({"x": [0, 1], "y": [0, 1]})
     subtractor.filenameTemplate = "science.fits"
     subtractor.qcDir = str(tmp_path)
+    subtractor.detectorParams = {"dispersion-axis": "x", "flip-qc-plot": True, "rotate-qc-plot": 90}
     frame = CCDData(
         np.arange(16, dtype=float).reshape(4, 4),
         unit="electron",
@@ -434,9 +416,7 @@ def test_sky_sampling_plot_writes_a_complete_order_diagnostic(
             "flagged_bspline_clipped": flags,
         }
     )
-    monkeypatch.setattr(
-        "soxspipe.commonutils.toolkit.quicklook_image", lambda **_: None
-    )
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **_: None)
 
     outputPath = subtractor.plot_sky_sampling(
         order=10,
@@ -445,46 +425,6 @@ def test_sky_sampling_plot_writes_a_complete_order_diagnostic(
     )
 
     assert Path(outputPath).read_bytes().startswith(b"%PDF")
-
-
-def test_calculate_residuals_evaluates_polynomial_and_propagates_nan(
-    log: object,
-) -> None:
-    subtractor = _subtractor(log)
-    pixels = pd.DataFrame(
-        {
-            "order_pow_0": [1.0, 1.0, 1.0],
-            "wavelength_pow_0": [1.0, 1.0, 1.0],
-            "wavelength_pow_1": [2.0, 3.0, 4.0],
-            "slit_position_pow_0": [1.0, 1.0, 1.0],
-            "sky_subtracted_flux": [4.0, 8.0, np.nan],
-        }
-    )
-
-    mean, std, median, result = subtractor.calculate_residuals(
-        pixels.copy(),
-        fluxcoeff=[1.0, 2.0],
-        orderDeg=0,
-        wavelengthDeg=1,
-        slitDeg=0,
-    )
-
-    np.testing.assert_allclose(
-        result["fit_sky_subtracted_flux"],
-        [5.0, 7.0, 9.0],
-        rtol=1e-12,
-        atol=1e-12,
-    )
-    np.testing.assert_allclose(
-        result["residuals_sky_subtracted_flux"],
-        [1.0, -1.0, np.nan],
-        rtol=1e-12,
-        atol=1e-12,
-        equal_nan=True,
-    )
-    assert mean == pytest.approx(0.0)
-    assert std == pytest.approx(1.0)
-    assert np.isnan(median)
 
 
 def test_object_clipping_marks_flagged_pixels_and_refreshes_local_noise(
@@ -548,66 +488,13 @@ def test_residual_floor_normalises_errors_and_flags_local_excess(
         iteration=1,
     )
 
-    assert residualFloor == 5
+    # THE MEDIAN NORMALISED RESIDUAL IS |10 - 8| / 1 = 2, NOT A HARDCODED CONSTANT (DY-1286)
+    assert residualFloor == pytest.approx(2.0)
     assert result.loc[5, "sky_residuals"] == 1.0
     assert np.isfinite(result["sky_residuals"]).all()
     assert result.loc[10, "flagged_sky_line"] == "line"
     assert result.loc[0, "flagged_sky_line"] == False
     assert not result["flagged_noisy_region"].any()
-
-
-def test_rectify_order_builds_a_grid_and_masks_clipped_detector_pixels(
-    log: object,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Rectification preserves sampled flux while removing explicitly clipped pixels."""
-    import importlib
-
-    import soxspipe.commonutils.toolkit as toolkit
-
-    module = importlib.import_module("soxspipe.commonutils.subtract_sky")
-    subtractor = _subtractor(log)
-    subtractor.axisA = "x"
-    subtractor.axisB = "y"
-    subtractor.arm = "VIS"
-    subtractor.dispMap = "synthetic-dispersion-map.fits"
-    subtractor.settings = {"instrument": "soxs"}
-    subtractor.kw = lambda key: key
-    subtractor.detectorParams = {"slit_length": 4.0}
-    pixels = pd.DataFrame(
-        {
-            "x": [0, 1, 0],
-            "y": [0, 0, 1],
-            "flux": [15.0, 25.0, 0.0],
-            "flagged_all_clipped": [False, True, False],
-        }
-    )
-
-    monkeypatch.setattr(
-        module,
-        "read_spectral_format",
-        lambda **_: (np.array([10]), np.array([500.0]), np.array([510.0])),
-    )
-
-    def map_to_detector(**kwargs: object) -> pd.DataFrame:
-        table = cast(pd.DataFrame, kwargs["orderPixelTable"]).copy()
-        table["fit_x"] = np.arange(len(table), dtype=float)
-        table["fit_y"] = 0.0
-        return table
-
-    monkeypatch.setattr(module, "dispersion_map_to_pixel_arrays", map_to_detector)
-    monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
-
-    image = subtractor._rectify_order(
-        order=10,
-        imageMapOrder=pixels,
-        remove_clipped=True,
-        conserve_flux=True,
-    )
-
-    assert image.shape == (2, 1)
-    assert image[0, 0] == pytest.approx(15.0)
-    assert np.isnan(image[1, 0])
 
 
 def test_over_sampled_sky_marks_bad_pixels_and_slit_edges_before_clipping(
@@ -655,10 +542,10 @@ def test_rolling_window_clipping_marks_an_isolated_bright_object_pixel(
     """Flag a bright synthetic object while retaining the surrounding sky pixels."""
     subtractor = _subtractor(log)
     subtractor.debug = False
-    subtractor.stopSubtraction = False
     pixels = pd.DataFrame(
         {
             "order": [10] * 11,
+            "wavelength": np.arange(11, dtype=float),
             "flux": [10.0, 10.0, 10.0, 10.0, 10.0, 100.0, 10.0, 10.0, 10.0, 10.0, 10.0],
             "flagged_all_clipped": [False] * 11,
             "flagged_object_clipped": [False] * 11,
@@ -678,11 +565,11 @@ def test_rolling_window_clipping_marks_an_isolated_bright_object_pixel(
     assert "residual_global_sigma" in result
 
 
-def test_subtract_stops_without_products_when_order_sampling_requests_abort(
+def test_subtract_returns_no_model_when_order_sampling_skips_every_order(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The public subtraction seam preserves its established early-abort result."""
+    """With no order left to model, the public subtraction seam returns no products."""
     subtractor = _subtractor(log)
     subtractor.mapDF = pd.DataFrame(
         {
@@ -692,7 +579,6 @@ def test_subtract_stops_without_products_when_order_sampling_requests_abort(
     )
     subtractor.qc = pd.DataFrame({"qc_name": []})
     subtractor.products = pd.DataFrame({"product_label": []})
-    subtractor.stopSubtraction = False
     subtractor.recipeSettings["sky-subtraction"].update(
         {
             "bspline_order": 3,
@@ -707,22 +593,20 @@ def test_subtract_stops_without_products_when_order_sampling_requests_abort(
         lambda: (placeholder, placeholder, placeholder),
     )
 
-    def abort_after_first_order(
+    def skip_every_order(
         imageMapOrder: pd.DataFrame,
         *,
         clipBPs: bool,
         clipSlitEdge: float,
-    ) -> pd.DataFrame:
+    ) -> None:
         calls.append((int(imageMapOrder["order"].iloc[0]), clipBPs, clipSlitEdge))
-        subtractor.stopSubtraction = True
-        return imageMapOrder
 
-    monkeypatch.setattr(subtractor, "get_over_sampled_sky_from_order", abort_after_first_order)
+    monkeypatch.setattr(subtractor, "get_over_sampled_sky_from_order", skip_every_order)
 
     result = subtractor.subtract()
 
     assert result == (None, None, None, subtractor.qc, subtractor.products)
-    assert calls == [(10, True, 0.1)]
+    assert calls == [(10, True, 0.1), (11, True, 0.1)]
 
 
 @pytest.mark.parametrize("writeQCPlot", [False, True])
@@ -744,15 +628,14 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
         mask=np.zeros((3, 3), dtype=bool),
         uncertainty=StdDevUncertainty(np.ones((3, 3)), unit=u.electron),
     )
-    subtractor.mapDF = pd.DataFrame(
-        {"order": [10], "x": [1], "y": [2], "mask": [False]}
-    )
+    subtractor.mapDF = pd.DataFrame({"order": [10], "x": [1], "y": [2], "mask": [False]})
     subtractor.qc = pd.DataFrame({"qc_name": []})
     subtractor.products = pd.DataFrame({"product_label": []})
-    subtractor.stopSubtraction = False
     subtractor.recipeSettings["sky-subtraction"].update(
         {
             "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "sky_model_qc_plot": writeQCPlot,
@@ -786,9 +669,7 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
     monkeypatch.setattr(
         subtractor,
         "plot_image_comparison",
-        lambda original, model, subtracted: (
-            plotCalls.append((original, model, subtracted)) or "/qc/sky-model.pdf"
-        ),
+        lambda original, model, subtracted: plotCalls.append((original, model, subtracted)) or "/qc/sky-model.pdf",
     )
 
     model, subtracted, residuals, qc, products = subtractor.subtract()
@@ -798,9 +679,7 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
     assert residuals.data[2, 1] == 3.0
     assert np.count_nonzero(model.data) == 1
     assert qc.empty
-    assert products["product_label"].tolist() == (
-        ["SKY SUBTRACTION QUICKLOOK"] if writeQCPlot else []
-    )
+    assert products["product_label"].tolist() == (["SKY SUBTRACTION QUICKLOOK"] if writeQCPlot else [])
     assert len(plotCalls) == int(writeQCPlot)
 
 
@@ -834,6 +713,148 @@ def test_object_clipping_marks_object_pixels_and_updates_local_noise(
         False,
     ]
     assert np.isnan(result[0].loc[2, "residual_windowed_std"])
-    assert result[0].loc[1, "residual_windowed_std"] == pytest.approx(
-        np.sqrt(7 / 3)
+    assert result[0].loc[1, "residual_windowed_std"] == pytest.approx(np.sqrt(7 / 3))
+
+
+def _one_order_subtractor(log: object) -> subtract_sky:
+    """A subtractor holding a two-pixel, one-order map, with object masking stubbed out."""
+    subtractor = _subtractor(log)
+    subtractor.axisA = "x"
+    subtractor.axisB = "y"
+    subtractor.debug = False
+    subtractor.detectorParams = {"dispersion-axis": "x"}
+    subtractor.dateObs = "2024-01-02T03:04:05"
+    subtractor.objectFrame = CCDData(
+        np.full((2, 2), 10.0),
+        unit=u.electron,
+        mask=np.zeros((2, 2), dtype=bool),
+        uncertainty=StdDevUncertainty(np.ones((2, 2))),
     )
+    subtractor.mapDF = pd.DataFrame(
+        {
+            "order": [10, 10],
+            "x": [0, 1],
+            "y": [0, 1],
+            "sky_model": [4.0, 5.0],
+            "sky_subtracted_flux": [6.0, 5.0],
+            "error": [2.0, 1.0],
+        }
+    )
+    subtractor.qc = pd.DataFrame()
+    subtractor.products = pd.DataFrame()
+    subtractor.recipeSettings = {
+        "sky-subtraction": {
+            "bspline_order": 3,
+            "clip-slit-edge-fraction": 0.1,
+            "aggressive_object_masking": False,
+            # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
+            "object_wing_correction": False,
+            "sky_model_qc_plot": False,
+        }
+    }
+    subtractor.get_over_sampled_sky_from_order = lambda frame, **_: frame.copy()
+    subtractor.clip_object_slit_positions = lambda orders, **_: orders
+    return subtractor
+
+
+def test_subtract_leaves_the_global_pandas_chained_assignment_option_alone(
+    log: object,
+) -> None:
+    """Sky subtraction must not silence SettingWithCopy warnings for the whole process (DY-1286)."""
+    subtractor = _one_order_subtractor(log)
+    subtractor.fit_bspline_curve_to_sky = lambda frame: (
+        frame.copy(),
+        (None, None, 3),
+        np.array([501.0]),
+        np.array([1.0, 2.0]),
+        0.5,
+    )
+
+    with pd.option_context("mode.chained_assignment", "warn"):
+        subtractor.subtract()
+
+        assert pd.get_option("mode.chained_assignment") == "warn"
+
+
+def test_subtract_hands_each_order_over_as_its_own_frame_so_adding_columns_is_not_chained_assignment(
+    log: object,
+) -> None:
+    """The per-order frames are written to; they must not be slices of the map frame (DY-1286)."""
+    subtractor = _one_order_subtractor(log)
+    subtractor.fit_bspline_curve_to_sky = lambda frame: (
+        frame.copy(),
+        (None, None, 3),
+        np.array([501.0]),
+        np.array([1.0, 2.0]),
+        0.5,
+    )
+
+    def add_flag_column(frame: pd.DataFrame, **_: object) -> pd.DataFrame:
+        frame["flagged_all_clipped"] = False
+        return frame
+
+    subtractor.get_over_sampled_sky_from_order = add_flag_column
+    # A SECOND ORDER MAKES EACH ORDER A PARTIAL SELECTION OF THE MAP, WHICH IS WHEN PANDAS FLAGS A SLICE
+    subtractor.mapDF.loc[1, "order"] = 11
+
+    with pd.option_context("mode.chained_assignment", "raise"):
+        model, _, _, _, _ = subtractor.subtract()
+
+    assert model is not None
+
+
+def test_subtract_logs_the_mean_residual_floor_of_the_orders_that_measured_one(
+    log: object,
+) -> None:
+    """An order whose pixels are all clipped has no floor; it must not turn the frame mean into nan (DY-1286)."""
+    # ARRANGE
+    subtractor = _one_order_subtractor(log)
+    subtractor.mapDF.loc[1, "order"] = 11
+    floors = iter([np.nan, 2.0])
+    subtractor.fit_bspline_curve_to_sky = lambda frame: (
+        frame.copy(),
+        (None, None, 3),
+        np.array([501.0]),
+        np.array([1.0, 2.0]),
+        next(floors),
+    )
+
+    # ACT
+    subtractor.subtract()
+
+    # ASSERT
+    [summary] = [message for _, message in log.messages if "MEAN RES FLOOR" in message]
+    assert "MEAN RES FLOOR: 2.000," in summary
+
+
+def test_sliding_mean_pads_the_ends_with_the_first_and_last_window_means() -> None:
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+
+    result = _sliding_mean(values, window=3)
+
+    np.testing.assert_allclose(result, [2.0, 2.0, 3.0, 4.0, 5.0, 6.0, 6.0])
+
+
+def test_sliding_mean_widens_an_even_window_to_the_next_odd_size() -> None:
+    values = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    result = _sliding_mean(values, window=2)
+
+    np.testing.assert_allclose(result, [2.0, 2.0, 3.0, 4.0, 4.0])
+
+
+@pytest.mark.parametrize("size", [1, 2, 4, 14])
+def test_sliding_mean_returns_one_value_per_pixel_when_the_order_is_shorter_than_the_window(size: int) -> None:
+    """A small order with fewer unclipped pixels than the window must not crash (DY-1286)."""
+    values = np.arange(size, dtype=float)
+
+    result = _sliding_mean(values, window=15)
+
+    assert result.shape == values.shape
+    assert np.isfinite(result).all()
+
+
+def test_sliding_mean_of_an_empty_order_is_empty() -> None:
+    result = _sliding_mean(np.array([], dtype=float), window=15)
+
+    assert result.shape == (0,)

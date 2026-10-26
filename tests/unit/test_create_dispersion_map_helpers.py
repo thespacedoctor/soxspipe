@@ -239,9 +239,7 @@ def test_recipe_settings_initialize_slit_degree_by_mode(
     mapper.firstGuessMap = firstGuessMap
     mapper.recipeSettings["order-deg"] = orderDegree
 
-    bootstrap, tightFit, returnedOrder, wavelength, slit = (
-        mapper._initialize_recipe_settings()
-    )
+    bootstrap, tightFit, returnedOrder, wavelength, slit = mapper._initialize_recipe_settings()
 
     assert (bootstrap, tightFit) == (False, False)
     assert returnedOrder == orderDegree
@@ -254,9 +252,7 @@ def test_prepare_pinhole_frame_masks_pixels_and_records_statistics(log: object) 
     mapper = _mapper(log)
     mapper.pinholeFrame = SimpleNamespace(
         data=np.arange(9.0).reshape(3, 3),
-        mask=np.array(
-            [[False, False, False], [False, True, False], [False, False, False]]
-        ),
+        mask=np.array([[False, False, False], [False, True, False], [False, False, False]]),
     )
 
     masked = mapper._prepare_pinhole_frame()
@@ -352,9 +348,7 @@ def test_multiple_detection_lists_explode_and_coerce_numeric_values(
     log: object,
 ) -> None:
     mapper = _mapper(log)
-    table = pd.DataFrame(
-        {"order": [10], "observed_x": [["1.5", "bad"]], "observed_y": [[2, 3]]}
-    )
+    table = pd.DataFrame({"order": [10], "observed_x": [["1.5", "bad"]], "observed_y": [[2, 3]]})
 
     result = mapper._explode_multiple_detections(table)
 
@@ -388,9 +382,7 @@ def test_cluster_center_falls_back_after_relaxing_search(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mapper = _mapper(log)
-    dispersionModule = importlib.import_module(
-        "soxspipe.commonutils.create_dispersion_map"
-    )
+    dispersionModule = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
     monkeypatch.setattr(
         dispersionModule,
         "find_largest_cluster_center",
@@ -405,9 +397,7 @@ def test_cluster_shift_updates_detector_coordinates_when_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     mapper = _mapper(log)
-    dispersionModule = importlib.import_module(
-        "soxspipe.commonutils.create_dispersion_map"
-    )
+    dispersionModule = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
     monkeypatch.setattr(
         dispersionModule,
         "find_largest_cluster_center",
@@ -452,12 +442,10 @@ def test_cluster_shift_leaves_empty_selection_unchanged(log: object) -> None:
 
 def test_order_shift_statistics_return_robust_axis_values(log: object) -> None:
     mapper = _mapper(log)
-    table = pd.DataFrame(
-        {"xy_diff": [1.0, 1.1], "x_diff": [2.0, 2.0], "y_diff": [-1.0, -1.0]}
-    )
+    table = pd.DataFrame({"xy_diff": [1.0, 1.1], "x_diff": [2.0, 2.0], "y_diff": [-1.0, -1.0]})
 
-    medianX, medianY, stdX, stdY, medianCombined, stdCombined = (
-        mapper._calculate_order_shift_statistics(table, pd.Series([True, True]))
+    medianX, medianY, stdX, stdY, medianCombined, stdCombined = mapper._calculate_order_shift_statistics(
+        table, pd.Series([True, True])
     )
 
     assert medianX == pytest.approx(2.0)
@@ -484,8 +472,9 @@ def test_multipinhole_shift_corrects_the_axis_with_the_larger_end_shift(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A material slit-end displacement is removed from every selected line."""
+    """Outside SOXS VIS, a material slit-end displacement is removed from every selected line."""
     mapper = _mapper(log)
+    mapper.arm = "NIR"
     mapper.axisA = "x"
     mapper.axisB = "y"
     mapper.debug = False
@@ -514,9 +503,7 @@ def test_multipinhole_shift_corrects_the_axis_with_the_larger_end_shift(
 
 def test_straighten_mph_sets_projects_points_without_mutating_input(log: object) -> None:
     """Tilt correction projects observations onto their fitted pinhole line."""
-    original = pd.DataFrame(
-        {"observed_x": [0.0, 1.0, 2.0], "observed_y": [1.0, 4.0, 5.0]}
-    )
+    original = pd.DataFrame({"observed_x": [0.0, 1.0, 2.0], "observed_y": [1.0, 4.0, 5.0]})
 
     corrected = straighten_mph_sets(original)
 
@@ -560,6 +547,29 @@ def test_polynomial_degree_reduction_targets_failed_axis(
     assert mapper.recipeSettings["wavelength-deg"] == expected[0]
     assert mapper.recipeSettings["order-deg"] == expected[1]
     assert mapper.recipeSettings["slit-deg"] == expected[2]
+
+
+@pytest.mark.parametrize(
+    ("poptX", "poptY", "wavelength", "order", "slit"),
+    [
+        (None, None, 0, 0, 0),
+        ("xerror", None, [0, 3], [0, 3], [0, 3]),
+        (None, "yerror", [3, 0], [3, 0], [3, 0]),
+    ],
+)
+def test_polynomial_degree_reduction_raises_when_the_failed_axis_is_already_constant(
+    log: object,
+    poptX: str | None,
+    poptY: str | None,
+    wavelength: int | list[int],
+    order: int | list[int],
+    slit: int | list[int],
+) -> None:
+    mapper = _mapper(log)
+    mapper.firstGuessMap = True
+
+    with pytest.raises(ArithmeticError, match="Could not converge on a good fit"):
+        mapper._reduce_polynomial_degrees(poptX, poptY, wavelength, order, slit)
 
 
 @pytest.mark.parametrize(
@@ -697,9 +707,7 @@ def test_first_guess_corrections_apply_mid_slit_offset_to_complete_group(
             "detector_y": [17.0, 20.0],
         }
     )
-    dispersionModule = importlib.import_module(
-        "soxspipe.commonutils.create_dispersion_map"
-    )
+    dispersionModule = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
     monkeypatch.setattr(
         dispersionModule,
         "dispersion_map_to_pixel_arrays",
@@ -725,17 +733,11 @@ def test_predicted_line_list_runs_mode_specific_collaborators(log: object) -> No
     initial = pd.DataFrame({"value": [1]})
     mapper._determine_frame_tech = lambda: calls.append("tech") or "single"
     mapper._get_binning_params = lambda: calls.append("binning") or (1, 1)
-    mapper._load_predicted_lines = lambda technique, binX, binY: (
-        calls.append("load") or initial
-    )
+    mapper._load_predicted_lines = lambda technique, binX, binY: calls.append("load") or initial
     mapper._clean_line_list = lambda table: calls.append("clean") or table
-    mapper._apply_coordinate_transforms = lambda table: (
-        calls.append("coordinates") or table
-    )
+    mapper._apply_coordinate_transforms = lambda table: calls.append("coordinates") or table
     mapper._filter_to_mid_slit = lambda table: calls.append("filter") or table
-    mapper._apply_first_guess_corrections = lambda table: (
-        calls.append("first_guess") or table
-    )
+    mapper._apply_first_guess_corrections = lambda table: calls.append("first_guess") or table
 
     assert mapper.get_predicted_line_list() is initial
     assert calls == ["tech", "binning", "load", "clean", "coordinates", "filter"]
@@ -775,9 +777,7 @@ def test_output_filenames_derive_line_list_names_from_frame(
     mapper = _mapper(log)
     mapper.sofName = None
     mapper.pinholeFrame = object()
-    dispersionModule = importlib.import_module(
-        "soxspipe.commonutils.create_dispersion_map"
-    )
+    dispersionModule = importlib.import_module("soxspipe.commonutils.create_dispersion_map")
     monkeypatch.setattr(dispersionModule, "filenamer", lambda **kwargs: "ARC.fits")
 
     assert mapper._get_output_filenames() == (
@@ -789,7 +789,9 @@ def test_output_filenames_derive_line_list_names_from_frame(
 def test_multipinhole_shift_corrects_larger_first_iteration_offset(
     log: object,
 ) -> None:
+    """Outside SOXS VIS, the larger end shift is applied (SOXS VIS is covered by test_multipinhole_big_shift.py)."""
     mapper = _mapper(log)
+    mapper.arm = "NIR"
     mapper.axisA = "x"
     mapper.axisB = "y"
     slitIndexes = [8] * 25 + [0] * 25
@@ -801,9 +803,7 @@ def test_multipinhole_shift_corrects_larger_first_iteration_offset(
             "detector_x_shifted": [20.0] * 50,
         }
     )
-    mapper._find_cluster_center_with_fallback = (
-        lambda xData, yData, fallbackMedian: (float(xData.iloc[0]), 0.0)
-    )
+    mapper._find_cluster_center_with_fallback = lambda xData, yData, fallbackMedian: (float(xData.iloc[0]), 0.0)
 
     result = mapper._handle_multipin_hole_big_shift(
         table,
@@ -910,23 +910,74 @@ def test_calculate_residuals_returns_analytic_pixel_scale_and_resolution(
     np.testing.assert_allclose(table["pixelScaleNm"], [0.5, 0.5])
     np.testing.assert_allclose(table["delta_wavelength"], [1.0, 1.0])
     np.testing.assert_allclose(table["R_pin"], [10.0, 20.0])
-    assert set(["fit_x_high", "fit_y_high", "fit_x_low", "fit_y_low"]).isdisjoint(
-        table.columns
-    )
+    assert {"fit_x_high", "fit_y_high", "fit_x_low", "fit_y_low"}.isdisjoint(table.columns)
     np.testing.assert_allclose(table["R_slit"], [0.0, 0.0])
     np.testing.assert_allclose(table["fwhm_slit_px"], [0.0, 0.0])
     assert len(mapper.qc.index) == 38
     assert set(mapper.qc["qc_name"]) >= {
         "XY RES MEDIAN",
-        "FWHM PIN MEDIAN",
-        "R PIN MEDIAN",
+        "XY RES MEDIAN O1",
+        "FWHM PIN MEDIAN O1",
+        "R PIN MEDIAN O1",
     }
-    assert set(mapper.qc["qc_order"].dropna()) == {"r"}
+    assert mapper.qc["qc_name"].is_unique
+    assert set(mapper.qc["qc_order"].dropna()) == {1}
 
 
-def test_largest_cluster_center_ignores_noise_and_returns_none_without_cluster() -> (
-    None
-):
+@pytest.mark.parametrize(
+    ("arm", "orders", "expectedNames", "expectedComment"),
+    [
+        ("VIS", [1.0, 2.0], ["X RES MEDIAN O1", "X RES MEDIAN O2"], "for order 2 (u)"),
+        ("NIR", [11.0, 12.0], ["X RES MEDIAN O11", "X RES MEDIAN O12"], "for order 12"),
+    ],
+)
+def test_calculate_residuals_gives_each_order_its_own_numbered_qc_card(
+    log: object, arm: str, orders: list[float], expectedNames: list[str], expectedComment: str
+) -> None:
+    mapper = _mapper(log)
+    mapper.arcFrame = False
+    mapper.arm = arm
+    rows = len(orders)
+    table = pd.DataFrame(
+        {
+            "order": orders,
+            "wavelength": [10.0, 20.0],
+            "slit_position": [0.0, 0.0],
+            "order_pow_x_0": [1.0] * rows,
+            "wavelength_pow_x_0": [1.0] * rows,
+            "wavelength_pow_x_1": [10.0, 20.0],
+            "slit_position_pow_x_0": [1.0] * rows,
+            "order_pow_y_0": [1.0] * rows,
+            "wavelength_pow_y_0": [1.0] * rows,
+            "wavelength_pow_y_1": [10.0, 20.0],
+            "slit_position_pow_y_0": [1.0] * rows,
+            "observed_x": [17.0, 40.0],
+            "observed_y": [1.0, 5.0],
+            "detector_x": [20.0, 40.0],
+            "detector_y": [5.0, 5.0],
+            "fwhm_pin_px": [2.0, 2.0],
+        }
+    )
+
+    mapper.calculate_residuals(
+        table,
+        xcoeff=[0.0, 2.0],
+        ycoeff=[5.0, 0.0],
+        orderDeg=0,
+        wavelengthDeg=1,
+        slitDeg=0,
+        pixelRange=True,
+        writeQCs=True,
+    )
+
+    perOrder = mapper.qc.loc[mapper.qc["qc_name"].isin(expectedNames)]
+    assert perOrder["qc_name"].tolist() == expectedNames
+    assert perOrder["qc_order"].tolist() == [int(order) for order in orders]
+    assert expectedComment in perOrder["qc_comment"].iloc[-1]
+    assert mapper.qc["qc_name"].is_unique
+
+
+def test_largest_cluster_center_ignores_noise_and_returns_none_without_cluster() -> None:
     xCoordinates = np.array([0.0, 0.1, -0.1, 10.0])
     yCoordinates = np.array([1.0, 1.1, 0.9, 10.0])
 

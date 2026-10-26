@@ -32,7 +32,6 @@ VIS:
   mid_slit_index: 4
   spectral format table: SOXS_SPECTRAL_FORMAT_TAB_VIS.fits
   slit_length: 12 #arcsec
-  line-atlas: ThAr.fits
   line-atlas: thar_murphy.fits
   dispersion-axis: x
   rotate-qc-plot: 90
@@ -40,6 +39,36 @@ VIS:
   extinction: extinction_lasilla.fits
   flux-standards: flux_standards.fits
   skylines: skylines.fits
+  # PREDICTS THE u (ORDER 2) AND g (ORDER 3) DETECTOR SHIFTS FROM THE SKY-MEASURED r/i SHIFTS AND THE ROTATOR ANGLE (DY-1608)
+  # dy_order = m*(dr+di)/2 + cos*(cos(th_sci)-cos(th_cal)) + sin*(sin(th_sci)-sin(th_cal))
+  # px ALONG THE DISPERSION AXIS, SCIENCE MINUS CALIBRATION, POSITIVE = FEATURES MOVE TO LARGER PIXELS; th = ESO ADA ABSROT
+  ug-wavelength-transfer:
+    orders:
+      2:
+        m: -2.714
+        cos: -4.624
+        sin: -5.17
+      3:
+        m: -3.489
+        cos: -5.233
+        sin: -5.935
+    fit_date: "2026-10-16"
+    n_arcs: 72
+    n_nights: 18
+    absrot_range_deg: [-204.7, 186.9]
+    source: "P32.11 hub output/rotated_mph_study/fit_transfer.py (72 VIS multi-pinhole arcs, leave-one-night-out rms u 0.96 px, g 1.14 px)"
+  # PREDICTS THE r (ORDER 1) DETECTOR SHIFT FROM THE SKY-MEASURED i SHIFT AND THE ROTATOR ANGLE (DY-1645)
+  # dy_r = i*di + cos*(cos(th_sci)-cos(th_cal)) + sin*(sin(th_sci)-sin(th_cal)); SAME CONVENTIONS AS ug-wavelength-transfer
+  # rms_px IS THE LEAVE-ONE-NIGHT-OUT RMS OF THE PREDICTION
+  r-from-i-transfer:
+    i: 1.104
+    cos: 0.554
+    sin: -0.12
+    rms_px: 0.364
+    fit_date: "2026-10-19"
+    n_arcs: 72
+    n_nights: 18
+    source: "P32.11 hub output/r_from_i_dy1645/fit_r_from_i.py (72 VIS multi-pinhole arcs, leave-one-night-out rms 0.364 px)"
 
 NIR:
   # AMOUNT RAW-FRAMES NEED ROTATED BEFORE REDUCTION

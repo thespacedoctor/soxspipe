@@ -16,8 +16,8 @@ Stare differs from the first two tier-3 recipes in three ways the tests pin:
 it builds `set_of_files` with no `ext` argument, it reads its recipe settings
 before collecting the frames, and it names its products from the set-of-files
 name after the frames are prepared. Without a set-of-files name, that last
-step calls a name the module never imports (DY-111), a branch that DY-90
-masks today.
+step calls a name the module never imports (DY-111). Since DY-90 every route
+into the constructor sets a name, so the branch is no longer reached through it.
 
 `verify_input_frames` is tested by direct call. Its NIR branch and its
 error-reporting block are the lines the suite does not reach, and every
@@ -31,6 +31,7 @@ from typing import Any
 
 import pytest
 from astropy.nddata import CCDData
+from astropy.time import Time
 
 import soxspipe.commonutils as commonutils
 import soxspipe.commonutils.set_of_files as set_of_files_module
@@ -38,7 +39,7 @@ import soxspipe.commonutils.toolkit as toolkit
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.recipes.base_recipe import base_recipe
 from soxspipe.recipes.soxs_stare import soxs_stare
-from tests.factories import synthetic_ccd
+from tests.factories import raw_fits, synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -369,33 +370,35 @@ def test_a_quiet_construction_prints_only_the_verification_announcements(
     assert "SUMMARY TABLE" not in printed
 
 
-def test_a_list_of_frames_fails_in_the_inherited_constructor(
+def test_a_list_of_frames_constructs_and_names_its_products_from_the_synthetic_name(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """A list of frames never reaches the stare constructor's own body.
-
-    This pins a defect, DY-90: `base_recipe.__init__` reads
-    `self.startNightDate`, which only a set-of-files path sets. Whoever fixes
-    DY-90 moves this pin, and then meets DY-111.
-    """
+    """A list of frames reaches the stare constructor's body, and the synthetic name drives the template (DY-90)."""
     # ARRANGE
+    frame = raw_fits(
+        tmp_path / "object.fits",
+        headerOverrides={"MJD-OBS": float(Time("2024-01-02T20:00:00", scale="utc").mjd), "SEQ_ARM": "VIS"},
+    )
     inventory = FrameInventory()
     calls: list[str] = []
 
-    # ACT / ASSERT
-    with pytest.raises(AttributeError, match="startNightDate"):
-        _construct(
-            log,
-            monkeypatch,
-            tmp_path,
-            inventory=inventory,
-            calls=calls,
-            inputFrames=[str(tmp_path / "object.fits")],
-        )
+    # ACT
+    recipe, sofArguments = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        inputFrames=[str(frame)],
+    )
 
-    assert calls == []
+    # ASSERT
+    assert recipe.sofName == "soxs-stare_VIS_2024-01-02"
+    assert recipe.filenameTemplate == "soxs-stare_VIS_2024-01-02.fits"
+    assert sofArguments["inputFrames"] == [str(frame)]
+    assert "set_of_files" in calls
 
 
 class FramesWithFiles:
@@ -722,3 +725,283 @@ def test_the_pae_setting_admits_the_nir_flat_lamp_pinhole_frame(
         with pytest.raises(TypeError) as raised:
             recipe.verify_input_frames()
         assert str(raised.value) == f"Found a FLAT,LAMP file. {NIR_EXPECTED_INPUT}"
+
+
+class SpillingExtractor:
+    """Stand-in for `horne_extraction` that reports a chosen slit-edge verdict."""
+
+    traceFallback = False
+    flatPassHandoff = "flat-pass hand-off"
+
+    def __init__(self, slitEdgeOrders: list[tuple[int, float, float, float]], **_: object) -> None:
+        self.slitEdgeOrders = slitEdgeOrders
+        self.extractionNotes = []
+
+    def extract(self) -> tuple[str, str, str, dict[str, float], str]:
+        return "qc", "products", "mergedSpectrum", {"10-11": 501.0}, "extraction.fits"
+
+
+def _produce_product_recipe(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    slitEdgeOrders: list[tuple[int, float, float, float]],
+    generateResponseCurve: bool,
+    responseFailure: bool = False,
+) -> tuple[soxs_stare, dict[str, Any]]:
+    """Return a recipe whose `produce_product` runs for real over recorded collaborators.
+
+    **Return:**
+
+    - the recipe, and a dictionary recording the `clean_up` and `_generate_response_curve` calls.
+    """
+    calls: dict[str, Any] = {"clean_up": [], "response": 0, "responseArgs": []}
+    frame = synthetic_ccd()
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
+    recipe.settings = {}
+    recipe.recipeSettings = {"sky-subtraction": {"subtract_sky": True}, "use_flat": True}
+    recipe.recipeName = "soxs-stare"
+    recipe.sofName = "stare"
+    recipe.startNightDate = "2024-01-02"
+    recipe.debug = False
+    recipe.turnOffMP = True
+    recipe.qc = "qc"
+    recipe.products = "products"
+    recipe.generateReponseCurve = generateResponseCurve
+    recipe._read_stare_object_frames = lambda kw: ([frame], ["frame.fits"])
+    recipe.clip_and_stack = lambda **_: frame
+    recipe._read_calibration_frames = lambda kw, arm: (frame, frame, frame)
+    recipe._locate_calibration_tables = lambda kw, arm: ("orders.fits", "disp.fits", "map.fits", None)
+    recipe.detrend = lambda **_: frame
+    recipe.update_fits_keywords = lambda **_: None
+    recipe._subtract_sky = lambda *_: (frame, frame, "product.fits")
+    recipe._unflatten_sky_subtracted_frame = lambda *_: frame
+    recipe._plot_merged_spectrum_qcs = lambda *_: None
+    recipe.report_output = lambda: "qcTable"
+    recipe.clean_up = lambda forceFail=False: calls["clean_up"].append(forceFail)
+
+    def generate_response_curve(*args: object, **_: object) -> bool:
+        calls["response"] += 1
+        calls["responseArgs"].append(args)
+        return responseFailure
+
+    recipe._generate_response_curve = generate_response_curve
+    monkeypatch.setattr(toolkit, "quicklook_image", lambda **_: None)
+    monkeypatch.setattr(
+        commonutils,
+        "horne_extraction",
+        lambda **kwargs: SpillingExtractor(slitEdgeOrders, **kwargs),
+    )
+    return recipe, calls
+
+
+SPILLED_ORDERS = [(11, 538.0, 675.0, 0.96)]
+
+
+def test_a_standard_star_that_spills_over_the_slit_edge_fails_the_recipe_and_logs_why(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The response-curve branch forces failure on a spill, even when the response itself passed."""
+    # ARRANGE
+    recipe, calls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=SPILLED_ORDERS, generateResponseCurve=True, responseFailure=False
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls["response"] == 1
+    assert calls["clean_up"] == [True]
+    errors = [message for level, message in log.messages if level == "error"]
+    assert len(errors) == 1
+    assert "standard star spills over the slit edge" in errors[0]
+    assert "will not be used to flux-calibrate" in errors[0]
+
+
+def test_a_centred_standard_star_keeps_the_response_verdict(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With no spill, the recipe fails only when the response function says so."""
+    # ARRANGE
+    passing, passingCalls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=True, responseFailure=False
+    )
+    failing, failingCalls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=True, responseFailure=True
+    )
+
+    # ACT
+    passing.produce_product()
+    failing.produce_product()
+
+    # ASSERT
+    assert passingCalls["clean_up"] == [False]
+    assert failingCalls["clean_up"] == [True]
+    assert [message for level, message in log.messages if level == "error"] == []
+
+
+def test_the_response_curve_gets_the_flat_extraction_hand_off(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: the not-flattened response extraction reuses the flattened extraction's sky shifts."""
+    # ARRANGE
+    recipe, calls = _produce_product_recipe(log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=True)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls["responseArgs"][0][-1] == SpillingExtractor.flatPassHandoff
+
+
+def test_the_not_flattened_response_extraction_is_handed_the_flat_pass(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1680: `_generate_response_curve` builds its not-flattened extractor with the flat pass's hand-off."""
+    # ARRANGE
+    built: list[dict[str, Any]] = []
+
+    class RecordingExtractor:
+        def __init__(self, **kwargs: object) -> None:
+            built.append(kwargs)
+
+        def extract(self) -> tuple[str, str, None, None, str]:
+            return "qc", "products", None, None, "notflat.fits"
+
+    class StubResponse:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def get(self) -> tuple[str, str, bool]:
+            return "qc", "products", False
+
+    monkeypatch.setattr(commonutils, "horne_extraction", RecordingExtractor)
+    monkeypatch.setattr(commonutils, "response_function", StubResponse)
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.settings = {}
+    recipe.recipeSettings = {}
+    recipe.recipeName = "soxs-stare"
+    recipe.sofName = "stare"
+    recipe.startNightDate = "2024-01-02"
+    recipe.debug = False
+    recipe.turnOffMP = True
+    recipe.qc = "qc"
+    recipe.products = "products"
+    recipe.scienceHeaders = []
+    recipe.kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
+    handoff = object()
+
+    # ACT
+    recipe._generate_response_curve("frame", "sky", "map.fits", "disp.fits", "flat.fits", {}, handoff, objectFrames=[])
+
+    # ASSERT
+    assert len(built) == 1
+    assert built[0]["notFlattened"] is True
+    assert built[0]["flatPass"] is handoff
+
+
+def _sky_call_recorder(recipe: soxs_stare) -> list[tuple[Any, ...]]:
+    """Replace `_subtract_sky` with a double that records its positional arguments."""
+    skyCalls: list[tuple[Any, ...]] = []
+
+    def record_sky_call(*args: Any) -> tuple[Any, Any, str]:
+        skyCalls.append(args)
+        return args[0], args[0], "product.fits"
+
+    recipe._subtract_sky = record_sky_call
+    return skyCalls
+
+
+def test_the_master_flat_is_passed_to_the_sky_subtraction_when_the_flat_is_used(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1517: the sky fit needs the flat to weight its pixels and to leave out the low-flat ones."""
+    # ARRANGE
+    recipe, _ = _produce_product_recipe(log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=False)
+    skyCalls = _sky_call_recorder(recipe)
+    masterFlat = recipe._read_calibration_frames(recipe.kw, "VIS")[2]
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    [args] = skyCalls
+    assert args[5] is masterFlat
+
+
+@pytest.mark.parametrize("useFlat", [False, None], ids=["use-flat-off", "use-flat-missing"])
+def test_no_master_flat_is_passed_to_the_sky_subtraction_when_the_flat_is_not_used(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    useFlat: bool | None,
+) -> None:
+    """With `use_flat` off or absent the frame is not flat-fielded, so the sky fit gets no flat (DY-1517)."""
+    # ARRANGE
+    recipe, _ = _produce_product_recipe(log, monkeypatch, slitEdgeOrders=[], generateResponseCurve=False)
+    skyCalls = _sky_call_recorder(recipe)
+    if useFlat is None:
+        del recipe.recipeSettings["use_flat"]
+    else:
+        recipe.recipeSettings["use_flat"] = useFlat
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    [args] = skyCalls
+    assert args[5] is None
+
+
+def test_a_science_frame_that_spills_over_the_slit_edge_is_not_failed(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only flux standards are failed on a spill; for a science frame the recipe adds no error of its own."""
+    # ARRANGE
+    recipe, calls = _produce_product_recipe(
+        log, monkeypatch, slitEdgeOrders=SPILLED_ORDERS, generateResponseCurve=False
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert calls["response"] == 0
+    assert calls["clean_up"] == [False]
+    assert [message for level, message in log.messages if level == "error"] == []
+
+
+def test_slit_illumination_offset_qc_names_soxs_vis_orders_by_number_and_band(log: Any) -> None:
+    import pandas as pd
+
+    recipe = object.__new__(soxs_stare)
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.recipeName = "soxs-stare"
+    recipe.dateObs = "2024-01-02T03:04:05"
+    recipe.qc = pd.DataFrame()
+    offsets = pd.DataFrame({"order": [1, 4], "offset": [0.5, -0.25], "status": ["fitted", "fitted"]})
+
+    recipe._record_slit_illumination_qcs(SimpleResult(offsets=offsets, isApplied=True))
+
+    offsetRows = recipe.qc.loc[recipe.qc["qc_name"].str.startswith("SLIT ILLUM OFFSET")]
+    assert offsetRows["qc_name"].tolist() == ["SLIT ILLUM OFFSET O1", "SLIT ILLUM OFFSET O4"]
+    assert offsetRows["qc_comment"].tolist() == ["Slit offset of order 1 (r)", "Slit offset of order 4 (i)"]
+
+
+class SimpleResult:
+    """Minimal stand-in for the slit-illumination result the QC recorder reads."""
+
+    def __init__(self, offsets: object, isApplied: bool) -> None:
+        self.offsets = offsets
+        self.isApplied = isApplied

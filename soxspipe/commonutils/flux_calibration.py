@@ -16,17 +16,75 @@ os.environ["TERM"] = "vt100"
 
 
 def _calculate_flux_calibration(
-    wavelengths: Any,
     counts: Any,
     exposureTime: float,
-    responseCoefficients: Any,
+    responseFactors: Any,
     extinctionFactors: Any,
 ) -> Any:
     """Return calibrated flux values from the pipeline calibration factors."""
+    return counts / exposureTime * extinctionFactors * responseFactors * 10**-17
+
+
+def _response_factors_from_table(wavelengths: Any, tableWave: Any, tableResponse: Any) -> Any:
+    """Interpolate the tabulated response onto the wavelengths in log space; NaN outside the valid table range.
+
+    Table rows with a non-finite wavelength or a response that is not finite and strictly positive are ignored, and
+    the remaining rows are sorted by wavelength. A ValueError is raised if no row remains.
+    """
     import numpy as np
 
-    responseFactors = np.polyval(responseCoefficients, wavelengths)
-    return counts / exposureTime * extinctionFactors * responseFactors * 10**-17
+    wavelengths = np.asarray(wavelengths, dtype=float)
+    tableWave = np.asarray(tableWave, dtype=float)
+    tableResponse = np.asarray(tableResponse, dtype=float)
+    isUsable = np.isfinite(tableWave) & np.isfinite(tableResponse) & (tableResponse > 0)
+    if not isUsable.any():
+        raise ValueError(
+            "The RESPONSE table of the response product has no usable rows: "
+            "every row has a non-finite wavelength or a response that is not finite and positive."
+        )
+    order = np.argsort(tableWave[isUsable], kind="stable")
+    logResponse = np.interp(
+        wavelengths,
+        tableWave[isUsable][order],
+        np.log(tableResponse[isUsable][order]),
+        left=np.nan,
+        right=np.nan,
+    )
+    return np.exp(logResponse)
+
+
+def load_response_factors(responseFunction: str, wavelengths: Any, log: Any) -> Any:
+    """*read the response product and return the response factor at each wavelength*
+
+    The ``RESPONSE`` curve extension is interpolated in log space; wavelengths outside it get NaN. The factor scales
+    flat-fielded electrons per second per unbinned pixel. A product from an older release has no basis card (see
+    ``response_basis``) and is refused with a ValueError that asks for the response to be rebuilt.
+
+    **Key Arguments:**
+
+    - ``responseFunction`` -- path to the ``_RESP.fits`` product
+    - ``wavelengths`` -- the wavelengths (nm) to evaluate
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``responseFactors`` -- the response factor at each wavelength
+    """
+    import numpy as np
+    from astropy.io import fits
+    from astropy.table import Table
+
+    from soxspipe.commonutils.response_basis import require_response_basis
+
+    with fits.open(responseFunction) as hdul:
+        require_response_basis(hdul[0].header, responseFunction)
+
+    curve = Table.read(responseFunction, format="fits", hdu="RESPONSE")
+    factors = _response_factors_from_table(wavelengths, np.asarray(curve["WAVE"]), np.asarray(curve["RESPONSE"]))
+    outsideCount = int(np.count_nonzero(np.isnan(factors) & ~np.isnan(np.asarray(wavelengths, dtype=float))))
+    if outsideCount > 0:
+        log.info(f"{outsideCount} science samples lie outside the response curve range and were set to NaN.")
+    return factors
 
 
 # OR YOU CAN REMOVE THE CLASS BELOW AND ADD A WORKER FUNCTION ... SNIPPET TRIGGER BELOW
@@ -143,9 +201,9 @@ class flux_calibration:
         from contextlib import suppress
 
         import pandas as pd
-        from astropy.table import Table
 
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+        from soxspipe.commonutils.response_basis import counts_per_unbinned_pixel, dispersion_binning
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
         flux_calibration = None
@@ -155,6 +213,11 @@ class flux_calibration:
 
         # APPLY EXTINCTION CORRECTION FACTOR
         if self.arm == "UVB" or self.arm == "VIS":
+            if self.airmass is None:
+                raise ValueError(
+                    f"No airmass is known for this {self.arm} spectrum, so it cannot be corrected for extinction; "
+                    "check the ESO TEL AIRM START and END cards of its raw frames"
+                )
             extinctionCorrectionFactor = extinction_correction_factor(
                 self.extractedSpectrum["WAVE"], self.extinctionPath, self.airmass
             )
@@ -162,17 +225,14 @@ class flux_calibration:
             extinctionCorrectionFactor = 1.0
 
         # APPLY RESPNSE FUNCTION
-        responseFunctionCoeff = Table.read(self.responseFunction, format="fits")
-        # NOW UNPACK THE COEFFICIENTS
-        polyCoeffs = []
-        for idx_coeff in range(0, int(responseFunctionCoeff["polyOrder"]) + 1):
-            polyCoeffs.append(responseFunctionCoeff[f"c{idx_coeff}"][0])
+        responseFactors = load_response_factors(self.responseFunction, self.extractedSpectrum["WAVE"], self.log)
 
+        # THE RESPONSE SCALES FLAT-FIELDED ELECTRONS PER UNBINNED PIXEL, SO A BINNED SPECTRUM IS SCALED DOWN FIRST
+        counts = counts_per_unbinned_pixel(self.extractedSpectrum, dispersion_binning(self.header, self.arm, self.kw))
         flux_calibration = _calculate_flux_calibration(
-            self.extractedSpectrum["WAVE"],
-            self.extractedSpectrum["FLUX_COUNTS"],
+            counts,
             self.exptime,
-            polyCoeffs,
+            responseFactors,
             extinctionCorrectionFactor,
         )
 
@@ -184,9 +244,6 @@ class flux_calibration:
         )
 
         if self.debug:
-            import matplotlib
-
-            matplotlib.use("TkAgg")
             from matplotlib import pyplot as plt
 
             plt.plot(self.extractedSpectrum["WAVE"], flux_calibration * 10**-17)
@@ -211,6 +268,11 @@ class flux_calibration:
         header[self.kw("SEQ_ARM")] = self.arm
         header["HIERARCH " + self.kw("PRO_TYPE")] = "REDUCED"
         header["HIERARCH " + self.kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        if self.airmass is not None:
+            header["HIERARCH " + self.kw("PRO_AIRM_MEAN")] = (
+                float(self.airmass),
+                "mean airmass of the frames in the product",
+            )
 
         filename = f"{self.sofName}_FLUXCAL.fits"
         filePath = f"{self.productDir}/{filename}"
@@ -226,19 +288,21 @@ class flux_calibration:
         self.products = pd.concat(
             [
                 self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "EXTRACTED_FLUXCAL_SPECTRUM",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "reduction_date_utc": utcnow,
-                        "product_desc": "Flux calibrated extracted spectrum",
-                        "file_path": filePath,
-                        "obs_date_utc": header["DATE-OBS"],
-                        "label": "PROD",
-                    }
-                ]),
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": "EXTRACTED_FLUXCAL_SPECTRUM",
+                            "file_name": filename,
+                            "file_type": "FITS",
+                            "reduction_date_utc": utcnow,
+                            "product_desc": "Flux calibrated extracted spectrum",
+                            "file_path": filePath,
+                            "obs_date_utc": header["DATE-OBS"],
+                            "label": "PROD",
+                        }
+                    ]
+                ),
             ],
             ignore_index=True,
         )

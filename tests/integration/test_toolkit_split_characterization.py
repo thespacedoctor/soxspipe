@@ -176,6 +176,122 @@ def test_two_d_disp_map_dataframe_block_reduces_a_binned_frame(
     assert_array_equal(interOrderMask, np.zeros((2, 2)))
 
 
+def _two_by_two_binned_2d_map(path: Path) -> Path:
+    """Write a 4x4 2D dispersion map recorded at 2x2 binning, laid out like the pipeline's DISP_IMAGE product."""
+    wavelength = np.arange(16, dtype=np.float32).reshape(4, 4) + 500.0
+    header = fits.Header({"EXTNAME": "WAVELENGTH", "ARM": "VIS", "BINX": 2, "BINY": 2})
+    fits.HDUList(
+        [
+            fits.PrimaryHDU(wavelength, header=header),
+            fits.ImageHDU(np.zeros((4, 4), dtype=np.float32), name="SLIT"),
+            fits.ImageHDU(np.full((4, 4), 10.0, dtype=np.float32), name="ORDER"),
+        ]
+    ).writeto(path)
+    return path
+
+
+def _vis_frame(shape: tuple[int, int], binx: int, biny: int) -> CCDData:
+    return CCDData(
+        np.arange(shape[0] * shape[1], dtype=float).reshape(shape),
+        unit=u.electron,
+        mask=np.zeros(shape, dtype=bool),
+        uncertainty=StdDevUncertainty(np.full(shape, 0.5)),
+        meta={"ARM": "VIS", "BINX": binx, "BINY": biny},
+    )
+
+
+def test_two_d_disp_map_dataframe_reduces_a_binned_map_by_the_frame_to_map_binning_ratio(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    # ARRANGE: A 2x2-BINNED MAP AND A 4x4-BINNED FRAME, SO EACH FRAME PIXEL COVERS 2x2 MAP PIXELS
+    mapPath = _two_by_two_binned_2d_map(tmp_path / "binned_map.fits")
+    frame = _vis_frame((2, 2), binx=4, biny=4)
+
+    # ACT
+    result, interOrderMask = toolkit.twoD_disp_map_image_to_dataframe(
+        log,
+        slit_length=4,
+        twoDMapPath=str(mapPath),
+        kw=lambda key: KEYWORD_MAP[key],
+        associatedFrame=frame,
+        dispAxis="y",
+    )
+
+    # ASSERT
+    ordered = result.sort_values(["y", "x"], kind="stable")
+    assert list(ordered["x"]) == [0, 1, 0, 1]
+    assert list(ordered["y"]) == [0, 0, 1, 1]
+    assert_allclose(ordered["wavelength"], [502.5, 504.5, 510.5, 512.5], rtol=1e-12, atol=0)
+    assert_allclose(ordered["min"], [500.0, 502.0, 508.0, 510.0], rtol=1e-12, atol=0)
+    assert list(ordered["flux"]) == [0.0, 1.0, 2.0, 3.0]
+    assert_array_equal(interOrderMask, np.zeros((2, 2)))
+
+
+@pytest.mark.parametrize(("binx", "biny"), [(1, 1), (3, 2)], ids=["less-binned", "not-a-multiple"])
+def test_two_d_disp_map_dataframe_rejects_a_frame_binning_the_map_cannot_be_reduced_to(
+    tmp_path: Path,
+    log: object,
+    binx: int,
+    biny: int,
+) -> None:
+    mapPath = _two_by_two_binned_2d_map(tmp_path / "binned_map.fits")
+    frame = _vis_frame((8 // biny, 8 // binx), binx=binx, biny=biny)
+
+    with pytest.raises(ValueError, match="cannot be block-reduced"):
+        toolkit.twoD_disp_map_image_to_dataframe(
+            log,
+            slit_length=4,
+            twoDMapPath=str(mapPath),
+            kw=lambda key: KEYWORD_MAP[key],
+            associatedFrame=frame,
+            dispAxis="y",
+        )
+
+
+def test_two_d_disp_map_dataframe_treats_a_nir_map_as_unbinned(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    # ARRANGE: NIR IS NEVER BINNED, SO BINNING KEYWORDS IN A NIR MAP HEADER ARE IGNORED, AS THEY ARE FOR THE FRAME
+    mapPath = _two_by_two_binned_2d_map(tmp_path / "nir_map.fits")
+    fits.setval(mapPath, "ARM", value="NIR", ext=0)
+    frame = _vis_frame((4, 4), binx=1, biny=1)
+    frame.meta["ARM"] = "NIR"
+
+    # ACT
+    result, _ = toolkit.twoD_disp_map_image_to_dataframe(
+        log,
+        slit_length=4,
+        twoDMapPath=str(mapPath),
+        kw=lambda key: KEYWORD_MAP[key],
+        associatedFrame=frame,
+        dispAxis="y",
+    )
+
+    # ASSERT
+    assert len(result) == 16
+    assert list(result["min"]) == [1.0] * 16
+
+
+def test_two_d_disp_map_dataframe_keeps_a_binned_map_at_its_own_binning_without_a_frame(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    mapPath = _two_by_two_binned_2d_map(tmp_path / "binned_map.fits")
+
+    result, _ = toolkit.twoD_disp_map_image_to_dataframe(
+        log,
+        slit_length=4,
+        twoDMapPath=str(mapPath),
+        kw=lambda key: KEYWORD_MAP[key],
+        dispAxis="y",
+    )
+
+    assert len(result) == 16
+    assert list(result["min"]) == [1.0] * 16
+
+
 def _unbinned_2d_map(path: Path) -> Path:
     """Write a 2D dispersion map whose extensions match the primary HDU size."""
     wavelength = np.arange(4, dtype=np.float32).reshape(2, 2) + 500.0

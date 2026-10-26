@@ -247,7 +247,7 @@ def test_a_multi_row_dataframe_concatenation_is_not_a_row_builder(tmp_path: Path
 
 def test_a_savefig_call_is_a_duplication_hit(tmp_path: Path) -> None:
     # ARRANGE
-    source = 'plt.savefig(filePath, dpi=720)\n'
+    source = "plt.savefig(filePath, dpi=720)\n"
 
     # ACT
     survey = _static_survey(tmp_path, source)
@@ -464,8 +464,7 @@ def test_the_report_groups_duplication_hits_by_kind_with_their_lines() -> None:
 
     # ASSERT
     expected = (
-        "- Duplication hits: 2 — 1 naive `utcnow` timestamp site (L247),"
-        " 1 QC-table `pd.concat` row builder (L329)."
+        "- Duplication hits: 2 — 1 naive `utcnow` timestamp site (L247), 1 QC-table `pd.concat` row builder (L329)."
     )
     assert expected in report
 

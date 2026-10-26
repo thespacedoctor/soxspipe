@@ -55,7 +55,69 @@ is computed. The extraction does not include pixels for which this quantity exce
 
 The final flux for each cross-dispersion slice is a weighted sum, as reported in {cite:t}`horne1986`, with the bad pixels and outliers accounted for. Note, if more than 3 bad/outlying pixels are found within a cross-dispersion slice, then the slice is ignored.
 
-### 3 Merging of spectral orders
+### 3 Tuning the wavelength solution to the sky lines
+
+The dispersion map is made from daytime calibration frames. At night, flexure moves the spectra on the detector by a small amount. After extraction, the utility corrects for this order by order. It matches the sky lines in each extracted order to the catalogue of sky lines, measures the offset of every matched line, clips the outliers, and adds the median offset to the wavelength solution of the order. Each order gets a `SKY SHIFT O<N>` QC (in nm) and a `SKY SHIFT O<N> PX` QC (the same shift in detector pixels along the dispersion axis).
+
+#### Attached arc: no tuning
+
+For SOXS, the utility skips this step when the arc is attached to the science exposures. An arc is attached when two conditions are true:
+
+- The time from the end of the earlier exposure to the start of the later one is 7 minutes or less. For an arc taken before the science, this is the time from the end of the arc to the start of the first science frame. For an arc taken after the science, it is the time from the end of the last science frame to the start of the arc. An arc that overlaps the science exposures is 0 minutes away.
+- Its rotator angle (`ESO ADA ABSROT END`) differs by less than 5 degrees from the science frame nearest to it in time: the first frame for an arc taken before, and the last frame for an arc taken after.
+
+The science exposures are all the raw science frames of the observation block: one frame for a single stare frame, or every frame of a nod, offset, or stacked stare sequence. Each exposure starts at `MJD-OBS`. It ends `ESO DET SEQ1 EXPTIME` seconds later when the frame has that keyword (NIR, where `EXPTIME` is one DIT and not the whole exposure), and `EXPTIME` seconds later when it does not (VIS). A frame with no usable rotator angle, start time or exposure time is never attached.
+
+The wavelength solution of an attached arc is accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned.
+
+#### VIS r and i orders: sky-line signal-to-noise gate
+
+On a faint sky, the sky lines of a SOXS VIS order are too weak to centre, and the median shift of the matched lines is then a noise value. For each order that the utility measures from its own sky lines (the SOXS VIS r and i orders), it first computes the signal-to-noise ratio (SNR) of every catalogue calibration line in the `skyFlux` column, at the position the arc solution gives for the line:
+
+$$
+\mathrm{SNR}_{line} = \frac{\max(F_{\pm 4}) - \mathrm{median}(F_{\pm 25})}{\sqrt{\mathrm{median}(F_{\pm 25}) + \sigma_{RON}^{2}}}
+$$
+
+$F_{\pm 4}$ is the sky flux within 4 samples of the line position, and $F_{\pm 25}$ is the sky flux within 25 samples. $\sigma_{RON}$ is the read noise of the detector. The SNR values of the lines add in quadrature to give the combined SNR of the order.
+
+If the combined SNR is below `MIN_SKY_LINE_SNR` (5.4), the utility does not apply the shift of the order. The log has an info line like "order 4: sky-line SNR 4.7 (min 5.4); no shift applied". The same check decides whether the i shift can drive the r prediction, and whether the r and i shifts can drive the u and g model. Every SOXS VIS order measured from its own sky lines gets a `SKY LINE SNR O<N>` QC.
+
+If i fails the check, the utility measures r on its own. It applies that r shift only if the second-brightest catalogue line of the r order has an SNR of at least `MIN_R_SECOND_LINE_SNR` (2.5). The 557.7 nm line alone can carry the combined SNR of r above the limit, so two kept lines can be one real line and one noise peak. If the second line is too faint, r gets no shift, `R SHIFT SOURCE` is `none`, and its comment has the reason, for example "order 1: 2nd sky line SNR 1.8 (min 2.5)". If r is combined with the i prediction and its own combined SNR is below the limit, r uses the prediction alone, and `R SHIFT SOURCE` is `predicted`.
+
+This gate replaces an earlier limit on the scatter of the kept line shifts (1.5 px). The kept residuals lie in a window of 0.1 nm (2.1 px) either side of zero, so noise alone has a standard deviation of about 1.2 px, and that limit could never fire.
+
+On 25 VIS stare standards from 2026 June and July, only the frame 20260626T044348 changes. Its i and r orders get no shift, and the u and g orders stay unshifted. Its telluric residuals go from -0.56 and -0.62 Å (r and i) to +0.04 Å. The other 24 frames are unchanged. NIR and X-Shooter output is unchanged.
+
+#### VIS u and g orders
+
+The SOXS VIS u (order 2) and g (order 3) orders have no usable sky lines, so they cannot be measured in this way. The utility predicts their shift from the measured shifts of the r (order 1) and i (order 4) orders and from the change in the angle of the derotator (the `ESO ADA ABSROT` keyword) between the science frame and the calibration frame:
+
+$$
+\Delta y_{o} = m_{o}\,\frac{\Delta y_{r} + \Delta y_{i}}{2} + c_{o}\,(\cos\theta_{sci} - \cos\theta_{cal}) + s_{o}\,(\sin\theta_{sci} - \sin\theta_{cal})
+$$
+
+where $\Delta y_{o}$ is the shift of order $o$ (u or g) in detector pixels along the dispersion axis, science minus calibration. A positive value means the features moved to larger pixel numbers. $\Delta y_{r}$ and $\Delta y_{i}$ are the measured r and i shifts in the same units. $\theta_{sci}$ and $\theta_{cal}$ are the science and calibration `ESO ADA ABSROT` angles. The model converts the predicted pixel shift back to nm with the signed dispersion of the order. The sign comes from the dispersion map: wavelength rises with pixel number in r and i, and falls in u and g.
+
+The coefficients $m_{o}$, $c_{o}$ (`cos`) and $s_{o}$ (`sin`) are in the `ug-wavelength-transfer` block of the VIS section of `soxs_detector_parameters.yaml`. The block also records where they came from (`fit_date`, `n_arcs`, `n_nights`, `absrot_range_deg` and `source`). They were fitted to 72 VIS multi-pinhole arcs taken on 18 nights. With one night left out of the fit at a time, the rms error is 0.96 px for u and 1.14 px for g. An arm without this block (every arm except SOXS VIS) gets no u/g model and no `UG SHIFT SOURCE` QC.
+
+The utility reads the calibration angle from the primary header of the dispersion map. A daytime arc has no usable `ESO ADA ABSROT`, so the utility then uses the park angle of the derotator, 0 degrees. An angle of exactly 0 together with `ESO TEL PARANG START` of exactly 0 is a placeholder value. The utility does not use it as a measured angle.
+
+The model is applied only if all of these guards pass:
+
+| Guard | Limit |
+| ----- | ----- |
+| Sky lines kept after clipping, order 1 (r) | at least 2 |
+| Sky lines kept after clipping, order 4 (i) | at least 10 |
+| Combined sky-line SNR, orders 1 (r) and 4 (i) | at least 5.4 |
+| Science `ESO ADA ABSROT` | present and usable |
+
+The limit for r is 2, not 4, because the pipeline matches only isolated catalogue lines and keeps 2 or 3 r lines on well-attached frames. A shift from a single r line was a 7 px outlier in the real-data check.
+
+If a guard fails, the recipe does not fail. The u and g orders keep their calibration wavelengths with no shift, the log has an info line that starts "u/g orders left unshifted", and `UG SHIFT SOURCE` is `none` with the reason as its comment. If the model is applied, `UG SHIFT SOURCE` is `model`.
+
+On eight well-attached VIS stare frames from 2026 June and July, the model gave an rms error against the shift measured on an attached arc of 1.03 px (u) and 1.11 px (g). With no correction, the rms error was 1.54 px and 1.51 px. The rms of the Balmer line cores in g went from 0.080 nm to 0.068 nm. The output of the `soxs_stare`, `soxs_stare_std`, `soxs_nod`, `soxs_nod_std` and `soxs_offset` recipes for VIS u and g is therefore different from earlier versions.
+
+### 4 Merging of spectral orders
 
 The spectrum is extracted on each order separately. When all orders are extracted, they are merged together in a single spectrum. Since regions of different orders overlap in the wavelength space, they are first rectified on a common, equally spaced wavelength grid in order to merge together. Flux during resampling is conserved. 
 

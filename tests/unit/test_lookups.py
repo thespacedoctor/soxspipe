@@ -70,9 +70,7 @@ def test_detector_lookup_rejects_unknown_arm(log: object) -> None:
     [0, False, None, ""],
     ids=["zero", "false", "none", "empty_string"],
 )
-def test_keyword_lookup_get_omits_suffix_for_falsy_index(
-    log: object, index: object
-) -> None:
+def test_keyword_lookup_get_omits_suffix_for_falsy_index(log: object, index: object) -> None:
     lookup = keyword_lookup(log=log, instrument="xsh").get
 
     result = lookup("PROV", index)
@@ -90,9 +88,7 @@ def test_keyword_lookup_get_omits_suffix_for_falsy_index(
     ],
     ids=["two_digit", "true", "three_digit", "negative_int"],
 )
-def test_keyword_lookup_get_zero_pads_integer_index(
-    log: object, index: object, expected: str
-) -> None:
+def test_keyword_lookup_get_zero_pads_integer_index(log: object, index: object, expected: str) -> None:
     lookup = keyword_lookup(log=log, instrument="xsh").get
 
     result = lookup("PROV", index)
@@ -108,9 +104,7 @@ def test_keyword_lookup_get_zero_pads_integer_index(
     ],
     ids=["positive_float_truncates", "negative_float_truncates_toward_zero"],
 )
-def test_keyword_lookup_get_truncates_float_index_toward_zero(
-    log: object, index: float, expected: str
-) -> None:
+def test_keyword_lookup_get_truncates_float_index_toward_zero(log: object, index: float, expected: str) -> None:
     lookup = keyword_lookup(log=log, instrument="xsh").get
 
     result = lookup("PROV", index)
@@ -127,9 +121,7 @@ def test_keyword_lookup_get_truncates_float_index_toward_zero(
     ],
     ids=["decimal", "numpy_int64", "numpy_float32"],
 )
-def test_keyword_lookup_get_accepts_decimal_and_numpy_numeric_index(
-    log: object, index: object, expected: str
-) -> None:
+def test_keyword_lookup_get_accepts_decimal_and_numpy_numeric_index(log: object, index: object, expected: str) -> None:
     lookup = keyword_lookup(log=log, instrument="xsh").get
 
     result = lookup("PROV", index)
@@ -180,9 +172,7 @@ def test_keyword_lookup_uses_instrument_from_settings(log: object) -> None:
 def test_keyword_lookup_explicit_instrument_wins_over_settings(
     log: object,
 ) -> None:
-    lookup = keyword_lookup(
-        log=log, instrument="soxs", settings={"instrument": "xsh"}
-    )
+    lookup = keyword_lookup(log=log, instrument="soxs", settings={"instrument": "xsh"})
 
     assert lookup.instrument == "soxs"
 

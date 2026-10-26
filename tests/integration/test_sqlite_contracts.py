@@ -45,9 +45,7 @@ def _write_corrupt_but_openable_database(path: str | os.PathLike[str]) -> None:
         databaseFile.write(struct.pack(">I", 999))
 
 
-def test_database_connection_creates_and_reuses_valid_workspace_database(
-    tmp_path, log
-) -> None:
+def test_database_connection_creates_and_reuses_valid_workspace_database(tmp_path, log) -> None:
     """Copy the schema template once and keep a healthy connection reusable."""
     organiser = workspace_organiser(tmp_path, log=log)
 
@@ -59,19 +57,12 @@ def test_database_connection_creates_and_reuses_valid_workspace_database(
     assert wasReusedReset is False
     assert reusedConnection is connection
     assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-    tableNames = {
-        row[0]
-        for row in connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        )
-    }
+    tableNames = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert {"raw_frames", "product_frames", "z_sof_map"} <= tableNames
     connection.close()
 
 
-def test_database_connection_rebuilds_a_corrupt_but_openable_database(
-    tmp_path, log, monkeypatch
-) -> None:
+def test_database_connection_rebuilds_a_corrupt_but_openable_database(tmp_path, log, monkeypatch) -> None:
     """Detect a corrupt-but-openable database via `PRAGMA integrity_check`
     and rebuild it through the same recovery path used for a connection
     failure, instead of silently reusing it."""
@@ -86,9 +77,7 @@ def test_database_connection_rebuilds_a_corrupt_but_openable_database(
     # `EXCEPT EXCEPTION:` RECOVERY PATH, AND THIS TEST WOULD PASS WITHOUT
     # EVER EXERCISING THE FETCHALL-INSPECTION CODE IT IS MEANT TO PIN.
     precondingConnection = sqlite3.connect(organiser.rootDbPath)
-    precondingRows = precondingConnection.execute(
-        "PRAGMA integrity_check"
-    ).fetchall()
+    precondingRows = precondingConnection.execute("PRAGMA integrity_check").fetchall()
     precondingConnection.close()
     assert precondingRows != [("ok",)]
 
@@ -121,12 +110,7 @@ def test_database_connection_rebuilds_a_corrupt_but_openable_database(
         assert prepareRefreshValues == (True,)
         assert wasReset is True
         assert connection.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        tableNames = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type = 'table'"
-            )
-        }
+        tableNames = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         assert {"raw_frames", "product_frames", "z_sof_map"} <= tableNames
     finally:
         # `_REBUILD_FROM_TEMPLATE` (THE `PREPARE` STAND-IN) SETS
@@ -140,33 +124,23 @@ def test_database_connection_rebuilds_a_corrupt_but_openable_database(
             organiser.conn.close()
 
 
-def test_dataframe_write_normalises_sentinels_and_replaces_existing_rows(
-    tmp_path, log
-) -> None:
+def test_dataframe_write_normalises_sentinels_and_replaces_existing_rows(tmp_path, log) -> None:
     """Persist missing-value sentinels as SQL NULL and honor replacement."""
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.conn = sqlite3.connect(":memory:")
-    firstRows = pd.DataFrame(
-        {"file": ["old.fits", "missing.fits"], "value": [1.0, -99.99]}
-    )
+    firstRows = pd.DataFrame({"file": ["old.fits", "missing.fits"], "value": [1.0, -99.99]})
     replacement = pd.DataFrame({"file": ["new.fits"], "value": [2.0]})
 
     organiser._dataframe_to_sqlite(firstRows, "safe_rows")
-    initialRows = organiser.conn.execute(
-        "SELECT file, value FROM safe_rows ORDER BY file"
-    ).fetchall()
+    initialRows = organiser.conn.execute("SELECT file, value FROM safe_rows ORDER BY file").fetchall()
     organiser._dataframe_to_sqlite(replacement, "safe_rows", replace=True)
 
-    rows = organiser.conn.execute(
-        "SELECT file, value FROM safe_rows ORDER BY file"
-    ).fetchall()
+    rows = organiser.conn.execute("SELECT file, value FROM safe_rows ORDER BY file").fetchall()
     assert initialRows == [("missing.fits", None), ("old.fits", "1.0")]
     assert rows == [("new.fits", "2.0")]
 
 
-def test_recipe_report_replaces_only_current_sof_qc_rows_in_workspace_database(
-    tmp_path, log
-) -> None:
+def test_recipe_report_replaces_only_current_sof_qc_rows_in_workspace_database(tmp_path, log) -> None:
     """Persist current-SOF QC rows without deleting another reduction's rows."""
     databasePath = tmp_path / "workspace.db"
     connection = sqlite3.connect(databasePath)
@@ -179,9 +153,7 @@ def test_recipe_report_replaces_only_current_sof_qc_rows_in_workspace_database(
         ],
         ignore_index=True,
     )
-    existingRows[databaseColumns].to_sql(
-        "quality_control", connection, index=False
-    )
+    existingRows[databaseColumns].to_sql("quality_control", connection, index=False)
     recipe = base_recipe.__new__(base_recipe)
     recipe.log = log
     recipe.verbose = True
@@ -196,11 +168,47 @@ def test_recipe_report_replaces_only_current_sof_qc_rows_in_workspace_database(
 
     reported = recipe.report_output()
 
-    rows = connection.execute(
-        "SELECT sof_name, qc_name, qc_value FROM quality_control ORDER BY sof_name"
-    ).fetchall()
+    rows = connection.execute("SELECT sof_name, qc_name, qc_value FROM quality_control ORDER BY sof_name").fetchall()
     assert rows == [("current.sof", "RON", 3.2), ("other.sof", "RON", 7.5)]
     assert reported["sof_name"].tolist() == ["current.sof"]
+    connection.close()
+
+
+def test_recipe_report_keeps_the_old_qc_rows_when_the_new_rows_cannot_be_written(tmp_path, log, monkeypatch) -> None:
+    """A QC write that fails on every attempt leaves the SOF's earlier QC rows in place."""
+    databasePath = tmp_path / "workspace.db"
+    connection = sqlite3.connect(databasePath, autocommit=True)
+    currentQc = qc_table().assign(qc_order="-1", qc_flag="pass", sof_name="current.sof")
+    databaseColumns = [column for column in currentQc.columns if column != "to_header"]
+    currentQc.assign(qc_value=999.0)[databaseColumns].to_sql("quality_control", connection, index=False)
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.verbose = True
+    recipe.conn = connection
+    recipe.sofName = "current"
+    recipe.dateObs = "2024-01-02T03:04:05.678"
+    recipe.recipeName = "soxs-mbias"
+    recipe.inst = "XSHOOTER"
+    recipe.recipeSettings = {}
+    recipe.qc = qc_table()
+    recipe.products = product_table()
+    originalToSql = pd.DataFrame.to_sql
+
+    def write_rows_then_fail(table, cursor, keys, dataIter):
+        table._execute_insert(cursor, keys, dataIter)
+        raise sqlite3.OperationalError("database is locked")
+
+    def insert_then_fail(self, *args, **kwargs):
+        return originalToSql(self, *args, **{**kwargs, "method": write_rows_then_fail})
+
+    monkeypatch.setattr(pd.DataFrame, "to_sql", insert_then_fail)
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        recipe.report_output()
+
+    rows = connection.execute("SELECT sof_name, qc_name, qc_value FROM quality_control").fetchall()
+    assert rows == [("current.sof", "RON", 999.0)]
     connection.close()
 
 
@@ -209,13 +217,13 @@ def test_raw_groups_add_only_selected_members_to_sof_map(tmp_path, log) -> None:
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.sessionId = "base"
     organiser.conn = sqlite3.connect(":memory:")
-    organiser.conn.execute(
-        "CREATE TABLE raw_frames (file TEXT PRIMARY KEY, processed INTEGER)"
-    )
+    organiser.conn.execute("CREATE TABLE raw_frames (file TEXT PRIMARY KEY, processed INTEGER)")
     organiser.conn.executemany(
         "INSERT INTO raw_frames VALUES (?, 0)",
         [("bias-1.fits",), ("bias-2.fits",), ("other.fits",)],
     )
+    # THE WRITER REFUSES A CONNECTION WITH AN OPEN TRANSACTION, AS THE PIPELINE'S AUTOCOMMIT CONNECTIONS NEVER HAVE ONE
+    organiser.conn.commit()
     rawGroups = pd.concat(
         [
             raw_group_table(),
@@ -249,9 +257,7 @@ def test_raw_groups_add_only_selected_members_to_sof_map(tmp_path, log) -> None:
             1,
         ),
     ]
-    processedRows = organiser.conn.execute(
-        "SELECT file, processed FROM raw_frames ORDER BY file"
-    ).fetchall()
+    processedRows = organiser.conn.execute("SELECT file, processed FROM raw_frames ORDER BY file").fetchall()
     assert processedRows == [
         ("bias-1.fits", 1),
         ("bias-2.fits", 1),
@@ -268,17 +274,10 @@ def test_raw_groups_skip_sof_mapping_when_no_groups_exist(tmp_path, log) -> None
     result = organiser.raw_frames_to_sof_map(pd.DataFrame(), [])
 
     assert result is None
-    assert (
-        organiser.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        ).fetchall()
-        == []
-    )
+    assert organiser.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall() == []
 
 
-def test_raw_frame_inventory_groups_complete_bias_set_and_names_sof(
-    tmp_path, log
-) -> None:
+def test_raw_frame_inventory_groups_complete_bias_set_and_names_sof(tmp_path, log) -> None:
     """Read valid raw inventory and build one complete, deterministically named set."""
     organiser = workspace_organiser(tmp_path, log=log)
     organiser.instrument = "SOXS"

@@ -22,7 +22,8 @@ classifiers = [
 dependencies = [
     'pyyaml==6.0.2',
     'fundamentals==2.7.6',
-    'astropy==6.1.2 ',
+    'astropy==7.2.2',
+    'uncompresspy==0.4.1',
     'ccdproc==2.4.2',
     'docopt==0.6.2',
     'photutils==1.13.0',
@@ -70,6 +71,9 @@ tests = [
     "diff-cover==10.5.1",
     "pytest",
     "pytest-cov",
+    # PINNED BECAUSE THE REQUIRED CI JOB RUNS UNDER IT (-n auto): A FLOATING VERSION COULD
+    # CHANGE WORKER BEHAVIOUR AND FAIL A PULL REQUEST THAT CHANGED NOTHING.
+    "pytest-xdist==3.8.0",
     # PINNED BECAUSE THE LINT RATCHET GATES ON RUFF'S OUTPUT: A FLOATING VERSION WOULD
     # FAIL A PULL REQUEST THAT CHANGED NOTHING, THE WAY diff-cover IS PINNED ABOVE.
     "ruff==0.16.5",
@@ -102,7 +106,8 @@ exclude = ["tests", "tests.*"]
 version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
 write_to = "soxspipe/__version__.py"
-write_to_template = "__version__ = '{version}'\n"
+# DOUBLE QUOTES SO THE GENERATED FILE PASSES THE "Enforce ruff format" CI STEP
+write_to_template = "__version__ = \"{version}\"\n"
 
 [tool.ruff]
 line-length = 120
@@ -127,6 +132,11 @@ max-statements = 50
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
+# THE IMPORT ORDER IN THESE THREE FILES WORKS AROUND A CIRCULAR IMPORT. SORTING IT BINDS SUBMODULES IN PLACE OF CLASSES
+# (keyword_lookup, detector_lookup). tests/unit/test_package_import_order.py GUARDS THE ORDER.
+"soxspipe/__init__.py" = ["I001"]
+"soxspipe/commonutils/__init__.py" = ["I001"]
+"soxspipe/recipes/__init__.py" = ["I001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

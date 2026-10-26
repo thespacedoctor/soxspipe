@@ -85,43 +85,22 @@ def _frame_type(frame, kw):
         ttype = "mbias" if "SXSPRE" in frame.header else "bias"
     elif frame.header[kw("DPR_TYPE")].upper() == "DARK":
         ttype = "mdark" if "SXSPRE" in frame.header else "dark"
-    elif (
-        "LAMP" in frame.header[kw("DPR_TYPE")].upper()
-        and "FLAT" in frame.header[kw("DPR_TYPE")].upper()
-    ):
+    elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "FLAT" in frame.header[kw("DPR_TYPE")].upper():
         ttype = "mflat" if "SXSPRE" in frame.header else "flat"
-    elif (
-        frame.header[kw("DPR_TYPE")].upper() == "LAMP,FMTCHK"
-        or frame.header[kw("DPR_TYPE")].upper() == "LAMP,WAVE"
-    ):
+    elif frame.header[kw("DPR_TYPE")].upper() == "LAMP,FMTCHK" or frame.header[kw("DPR_TYPE")].upper() == "LAMP,WAVE":
         ttype = "arc"
-    elif (
-        "LAMP" in frame.header[kw("DPR_TYPE")].upper()
-        and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper()
-    ):
+    elif "LAMP" in frame.header[kw("DPR_TYPE")].upper() and "ORDERDEF" in frame.header[kw("DPR_TYPE")].upper():
         ttype = "flat"
     elif "OBJECT" in frame.header[kw("DPR_TYPE")].upper() and (
-        "STARE" in frame.header[kw("DPR_TECH")].upper()
-        or "NODDING" in frame.header[kw("DPR_TECH")].upper()
+        "STARE" in frame.header[kw("DPR_TECH")].upper() or "NODDING" in frame.header[kw("DPR_TECH")].upper()
     ):
         object = frame.header[kw("OBJECT")].upper()
-        ttype = (
-            f"object_stare_{object}".replace(" ", "_")
-            .replace("-", "_")
-            .replace("__", "_")
-            .replace("__", "_")
-        )
+        ttype = f"object_stare_{object}".replace(" ", "_").replace("-", "_").replace("__", "_").replace("__", "_")
     elif "STD,FLUX" in frame.header[kw("DPR_TYPE")].upper() and (
-        "STARE" in frame.header[kw("DPR_TECH")].upper()
-        or "NODDING" in frame.header[kw("DPR_TECH")].upper()
+        "STARE" in frame.header[kw("DPR_TECH")].upper() or "NODDING" in frame.header[kw("DPR_TECH")].upper()
     ):
         object = frame.header[kw("OBJECT")].upper()
-        ttype = (
-            f"std_flux_stare_{object}".replace(" ", "_")
-            .replace("-", "_")
-            .replace("__", "_")
-            .replace("__", "_")
-        )
+        ttype = f"std_flux_stare_{object}".replace(" ", "_").replace("-", "_").replace("__", "_").replace("__", "_")
     return ttype
 
 

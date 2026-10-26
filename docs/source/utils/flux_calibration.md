@@ -8,8 +8,8 @@ The [`flux_calibration`](#soxspipe.commonutils.flux_calibration) utility flux ca
 The algorithm used flux to calibrate a scientific spectrum by applying a response function.
 :::
 
-In detail, the airmass at the time of observation is computed as an average between its values at the beginning and end of the observation, using the FITS header of the extracted 1D scientific spectrum.
-Then, the utility loads the extinction curve (a table with wavelength and extinction coefficient $mag_{airmass}$) and rescales it to the airmass calculated before. The extinction curve is then interpolated on a finer grid, which is suitable for application to the extracted scientific spectrum using a nearest neighbour interpolation schema.
+In detail, the airmass is the mean airmass of every raw frame that contributes to the spectrum: all frames of a stare stack, the A and B frames of a nod, and the ON frames of an offset. Each frame contributes the average of `ESO TEL AIRM START` and `ESO TEL AIRM END`, and frames are weighted by their exposure time (`ESO DET SEQ1 EXPTIME` when the frame has it, else `EXPTIME`). A frame that lacks one of the two airmass keywords uses the other, with a warning. The value used is written to the `ESO PRO AIRM MEAN` card of the flux-calibrated product.
+Then, the utility loads the extinction curve (a table with wavelength and extinction coefficient $mag_{airmass}$) and rescales it to the airmass calculated before. The extinction curve is then interpolated on a finer grid, which is suitable for application to the extracted scientific spectrum using a linear interpolation schema. The curve covers 310 to 900 nm. Outside this range the end values are held: below 310 nm the first value, and above 900 nm the last value (about 0.01 $mag_{airmass}$), so spectra above 900 nm are not blanked.
 
 The extracted scientific spectrum is then corrected for airmass for each wavelength as follows:
 
@@ -17,7 +17,7 @@ $$
 fluxCorrected_{\lambda} = fluxObserved_{\lambda} \times 10^{AM \times mag_{airmass}}
 $$
 
-Then, the value (in counts) for each wavelength is divided by the dispersion of the spectrograph and by the exposure time reported in the `EXPTIME` keyword. At this stage, the 1D spectrum of the scientific object has units of $ADU$ $s^{-1}$ $A^{-1}$. To finalize the flux calibration, the utility loads the FITS table that contains the fit parameters for the response function given in input to compute the flux calibrated spectrum for each wavelength, applying the formula
+Then, the flat-fielded `FLUX_COUNTS` value for each wavelength is divided by the detector binning along the dispersion axis (`ESO DET BINY` on the VIS arm; the NIR arm is not binned) and by the exposure time reported in the `EXPTIME` keyword. Every frame that contributes to the spectrum (the frames listed above for the airmass) must have this same exposure time, to within 0.001 s, because the counts of the combined spectrum are per single exposure. If the exposure times differ, the recipe stops with an error that names each frame and its exposure time. On the NIR arm, `EXPTIME` is one DIT. At this stage, the 1D spectrum of the scientific object has units of electrons $s^{-1}$ per unbinned pixel. It is not divided by the dispersion of the spectrograph, because the flat-fielding has already done that. The response product must carry the card `ESO PRO RESP BASIS = PER_UNBINNED_PIXEL` (see [`response_function`](../utils/response_function.md)); a response product without it is refused. To finalize the flux calibration, the utility loads the FITS table that contains the fit parameters for the response function given in input to compute the flux calibrated spectrum for each wavelength, applying the formula
 
 $$
 F(\lambda) = \frac{C(\lambda)}{S(\lambda)}

@@ -51,6 +51,8 @@ soxs-disp-solution:
     wavelength-deg: 3
     # number of sigma-clipping iterations to perform before settings on a polynomial fit for the dispersion solution
     poly-clipping-iteration-limit: 10
+    # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+    poly-clipping-set-offset-sigma: 5
 
     poly-fitting-residual-clipping-sigma: 5
 
@@ -84,6 +86,8 @@ soxs-spat-solution:
     poly-fitting-residual-clipping-sigma: 5
     # CLIPPING PERFORMED ON MULTI-PINHOLE SETS (TRUE) OR INDIVIDUAL PINHOLES (FALSE)
     poly-clipping-pinhole-sets: True
+    # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
+    poly-clipping-set-offset-sigma: 5
     pinhole_fwhm_px_max: 2.5
     pinhole_fwhm_px_min: 1.0
     mph_line_set_min: 8
@@ -116,11 +120,16 @@ soxs-mflat:
     poly-clipping-iteration-limit: 3
     # number of σ deviations below the median flux of a master-flat frame beyond which a pixel is added to the bad-pixel mask
     low-sensitivity-clipping-sigma: 2
+    # RELATIVE-LOW-FLAT RULE AIMED AT PARTLY ILLUMINATED ORDER-EDGE PIXELS: ANY IN-ORDER PIXEL BELOW THIS FRACTION OF ITS ORDER-ROW MEDIAN IS ADDED TO THE BP MAP. 0 TURNS THIS OFF
+    order-edge-min-flat-fraction: 0.5
     # SCALE D2 TO QTH LAMP FLATS WHEN STITCHING
     scale-d2-to-qth: True
 
     
 soxs-stare:
+    # STACK ALL OBJECT FRAMES OF THE SOF BEFORE EXTRACTION. SET TO False TO EXTRACT EACH FRAME ON ITS OWN
+    # (FLUX STANDARDS ARE ALWAYS STACKED)
+    stack_before_extraction: True
     # number of σ deviations from the median *pixel* flux beyond which pixel is excluded from stack
     stacked-clipping-sigma: 5
     # number of σ-clipping iterations to perform before stacking
@@ -158,8 +167,11 @@ soxs-stare:
             # FRACTION OF SLIT RANGE TO MASK AT UPPER AND LOWER SLIT EDGES
             clip-slit-edge-fraction: 0.01
             aggressive_object_masking: False
+            # SUBTRACT A MODEL OF THE OBJECT'S WINGS FROM THE SKY PIXELS AND REFIT THE SKY, SO OBJECT LIGHT STAYS OUT OF THE SKY MODEL (DY-1279)
+            object_wing_correction: True
+            # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL (DY-1964)
+            object_wing_min_leak_sigma: 0.03
             bspline_order: 3
-            slit_illumination_order: 1
             # WHEN FITTING BSPLINE TO SKY DATA, ADD A MINIMUM SET OF KNOTS BEFORE ADDING MORE WHERE NEEDED
             starting_points_per_knot: 500
             # CAN NOT ADD ANOTHER KNOT TO A GROUP OF DATA POINTS SMALLER THAN min_points_per_knot (WHEN FITTING BSPLINE)
@@ -178,6 +190,9 @@ soxs-nod:
     stacked-clipping-sigma: 5
     # SAVE INDIVIDUAL FRAME EXTRACTION
     save_single_frame_extractions: False
+    # ALIGN THE FRAMES ALONG THE SLIT AND STACK THEM BEFORE EXTRACTION. THE B-A DIFFERENCE IS THEN SHIFTED ONTO THE A-B
+    # DIFFERENCE AND THE TWO ARE AVERAGED, SO EACH PASS MAKES ONE EXTRACTION. IF FALSE, EXTRACT EACH CYCLE ON ITS OWN
+    stack_before_extraction: True
     # number of σ-clipping iterations to perform before stacking
     stacked-clipping-iterations: 5
     # the length of the 'slit' used to collect object flux (in pixels)
@@ -210,8 +225,111 @@ soxs-straighten:
     asdasd: 1
 
 soxs-response:
-    max_iteration: 5
-    poly_order: 7
+    uvb:
+        # WIDTH (NM) OF THE WAVELENGTH BINS THE RAW RESPONSE IS MEDIAN-COMBINED INTO BEFORE FITTING
+        bin_width_nm: 2
+        # SPACING (NM) OF THE REGULAR INTERIOR KNOTS OF THE CUBIC SPLINE FITTED TO THE LOG RESPONSE. WITH A SMOOTHING PENALTY THE KNOTS ARE A DENSE REGULAR GRID
+        knot_spacing_nm: 40
+        # DIMENSIONLESS WEIGHT OF THE SECOND-DIFFERENCE PENALTY ON THE SPLINE COEFFICIENTS. 0 FITS THE PLAIN LEAST-SQUARES SPLINE; ABOVE 0 THE CURVE TENDS TO A STRAIGHT LINE IN LOG WHERE NO BINS CONSTRAIN IT
+        smoothing_penalty: 0
+        # BINS MORE THAN THIS MANY ROBUST SIGMA BELOW THE SPLINE (LOG SPACE) ARE CLIPPED
+        clip_sigma_low: 4
+        # BINS MORE THAN THIS MANY ROBUST SIGMA ABOVE THE SPLINE (LOG SPACE) ARE CLIPPED. ABSORPTION RAISES THE RESPONSE, SO THIS IS THE TIGHTER LIMIT
+        clip_sigma_high: 3
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS
+        max_iteration: 10
+        # BINS WITH FEWER SAMPLES THAN THIS ARE DROPPED
+        min_bin_samples: 5
+        # TELLURIC ABSORPTION REGIONS [LOWER, UPPER] (NM) EXCLUDED FROM THE FIT
+        telluric_regions: [[686, 697], [716, 735], [758, 772], [810, 835]]
+        # FURTHEST DISTANCE (NM) FROM A TELLURIC REGION EDGE THAT RAISED WING BINS ARE DROPPED FROM THE FIT. 0 DISABLES WING GROWTH
+        telluric_wing_max_nm: 0
+        # WIDTH (NM) OF THE REFERENCE WINDOW, BEYOND THE WING REACH, THAT DEFINES THE CONTINUUM NEXT TO A TELLURIC REGION
+        telluric_wing_ref_nm: 30
+        # MINIMUM RISE (LOG UNITS) ABOVE THAT CONTINUUM FOR A BIN TO COUNT AS TELLURIC WING
+        telluric_wing_threshold: 0.05
+        # STELLAR LINE CENTRES (NM) EXCLUDED FROM THE FIT
+        stellar_lines: [370.0, 373.4, 377.1, 379.8, 383.5, 388.9, 397.0, 410.2, 434.0, 447.1, 486.1, 587.6, 656.3, 667.8]
+        # HALF WIDTH (NM) EXCLUDED AROUND EACH STELLAR LINE
+        line_half_width_nm: 2.5
+        # BANDS [LOWER, UPPER] (NM) IN WHICH THE SELF-CALIBRATION RESIDUAL IS MEASURED (QC)
+        selfcal_bands: [[320, 350], [350, 400], [400, 500]]
+        # QC TOLERANCE: MAXIMUM FRACTION OF BINS CLIPPED
+        clip_frac_max: 0.15
+        # QC TOLERANCE: MAXIMUM WIDTH (NM) OF A STRETCH INSIDE THE DATA WITHOUT A KEPT BIN
+        max_gap_nm_max: 40
+        # QC TOLERANCE: MAXIMUM ABSOLUTE MEDIAN SELF-CALIBRATION RESIDUAL IN A BAND
+        selfcal_res_max: 0.05
+    vis:
+        # WIDTH (NM) OF THE WAVELENGTH BINS THE RAW RESPONSE IS MEDIAN-COMBINED INTO BEFORE FITTING
+        bin_width_nm: 2
+        # SPACING (NM) OF THE REGULAR INTERIOR KNOTS OF THE CUBIC SPLINE FITTED TO THE LOG RESPONSE. WITH A SMOOTHING PENALTY THE KNOTS ARE A DENSE REGULAR GRID
+        knot_spacing_nm: 40
+        # DIMENSIONLESS WEIGHT OF THE SECOND-DIFFERENCE PENALTY ON THE SPLINE COEFFICIENTS. 0 FITS THE PLAIN LEAST-SQUARES SPLINE; ABOVE 0 THE CURVE TENDS TO A STRAIGHT LINE IN LOG WHERE NO BINS CONSTRAIN IT
+        smoothing_penalty: 0
+        # BINS MORE THAN THIS MANY ROBUST SIGMA BELOW THE SPLINE (LOG SPACE) ARE CLIPPED
+        clip_sigma_low: 4
+        # BINS MORE THAN THIS MANY ROBUST SIGMA ABOVE THE SPLINE (LOG SPACE) ARE CLIPPED. ABSORPTION RAISES THE RESPONSE, SO THIS IS THE TIGHTER LIMIT
+        clip_sigma_high: 3
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS
+        max_iteration: 10
+        # BINS WITH FEWER SAMPLES THAN THIS ARE DROPPED
+        min_bin_samples: 5
+        # TELLURIC ABSORPTION REGIONS [LOWER, UPPER] (NM) EXCLUDED FROM THE FIT
+        telluric_regions: [[686, 697], [716, 735], [758, 772], [810, 835]]
+        # FURTHEST DISTANCE (NM) FROM A TELLURIC REGION EDGE THAT RAISED WING BINS ARE DROPPED FROM THE FIT. 0 DISABLES WING GROWTH
+        telluric_wing_max_nm: 0
+        # WIDTH (NM) OF THE REFERENCE WINDOW, BEYOND THE WING REACH, THAT DEFINES THE CONTINUUM NEXT TO A TELLURIC REGION
+        telluric_wing_ref_nm: 30
+        # MINIMUM RISE (LOG UNITS) ABOVE THAT CONTINUUM FOR A BIN TO COUNT AS TELLURIC WING
+        telluric_wing_threshold: 0.05
+        # STELLAR LINE CENTRES (NM) EXCLUDED FROM THE FIT
+        stellar_lines: [383.5, 388.9, 397.0, 410.2, 434.0, 447.1, 486.1, 587.6, 656.3, 667.8]
+        # HALF WIDTH (NM) EXCLUDED AROUND EACH STELLAR LINE
+        line_half_width_nm: 2.5
+        # BANDS [LOWER, UPPER] (NM) IN WHICH THE SELF-CALIBRATION RESIDUAL IS MEASURED (QC)
+        selfcal_bands: [[350, 370], [370, 400], [400, 450], [500, 600], [780, 840]]
+        # QC TOLERANCE: MAXIMUM FRACTION OF BINS CLIPPED
+        clip_frac_max: 0.15
+        # QC TOLERANCE: MAXIMUM WIDTH (NM) OF A STRETCH INSIDE THE DATA WITHOUT A KEPT BIN
+        max_gap_nm_max: 40
+        # QC TOLERANCE: MAXIMUM ABSOLUTE MEDIAN SELF-CALIBRATION RESIDUAL IN A BAND
+        selfcal_res_max: 0.05
+    nir:
+        # WIDTH (NM) OF THE WAVELENGTH BINS THE RAW RESPONSE IS MEDIAN-COMBINED INTO BEFORE FITTING
+        bin_width_nm: 5
+        # SPACING (NM) OF THE REGULAR INTERIOR KNOTS OF THE CUBIC SPLINE FITTED TO THE LOG RESPONSE. WITH A SMOOTHING PENALTY THE KNOTS ARE A DENSE REGULAR GRID
+        knot_spacing_nm: 30
+        # DIMENSIONLESS WEIGHT OF THE SECOND-DIFFERENCE PENALTY ON THE SPLINE COEFFICIENTS. 0 FITS THE PLAIN LEAST-SQUARES SPLINE; ABOVE 0 THE CURVE TENDS TO A STRAIGHT LINE IN LOG WHERE NO BINS CONSTRAIN IT
+        smoothing_penalty: 1
+        # BINS MORE THAN THIS MANY ROBUST SIGMA BELOW THE SPLINE (LOG SPACE) ARE CLIPPED
+        clip_sigma_low: 4
+        # BINS MORE THAN THIS MANY ROBUST SIGMA ABOVE THE SPLINE (LOG SPACE) ARE CLIPPED. ABSORPTION RAISES THE RESPONSE, SO THIS IS THE TIGHTER LIMIT
+        clip_sigma_high: 2.5
+        # MAXIMUM NUMBER OF CLIPPING ITERATIONS
+        max_iteration: 10
+        # BINS WITH FEWER SAMPLES THAN THIS ARE DROPPED
+        min_bin_samples: 5
+        # TELLURIC ABSORPTION REGIONS [LOWER, UPPER] (NM) EXCLUDED FROM THE FIT
+        telluric_regions: [[890, 980], [1095, 1175], [1305, 1500], [1780, 1975], [1995, 2028]]
+        # FURTHEST DISTANCE (NM) FROM A TELLURIC REGION EDGE THAT RAISED WING BINS ARE DROPPED FROM THE FIT. 0 DISABLES WING GROWTH
+        telluric_wing_max_nm: 30
+        # WIDTH (NM) OF THE REFERENCE WINDOW, BEYOND THE WING REACH, THAT DEFINES THE CONTINUUM NEXT TO A TELLURIC REGION
+        telluric_wing_ref_nm: 30
+        # MINIMUM RISE (LOG UNITS) ABOVE THAT CONTINUUM FOR A BIN TO COUNT AS TELLURIC WING
+        telluric_wing_threshold: 0.05
+        # STELLAR LINE CENTRES (NM) EXCLUDED FROM THE FIT
+        stellar_lines: [1005.0, 1094.1, 1282.2, 1875.6, 2166.1]
+        # HALF WIDTH (NM) EXCLUDED AROUND EACH STELLAR LINE
+        line_half_width_nm: 5
+        # BANDS [LOWER, UPPER] (NM) IN WHICH THE SELF-CALIBRATION RESIDUAL IS MEASURED (QC)
+        selfcal_bands: [[1000, 1080], [1520, 1750], [1975, 1995], [2024, 2035]]
+        # QC TOLERANCE: MAXIMUM FRACTION OF BINS CLIPPED
+        clip_frac_max: 0.15
+        # QC TOLERANCE: MAXIMUM WIDTH (NM) OF A STRETCH INSIDE THE DATA WITHOUT A KEPT BIN
+        max_gap_nm_max: 270
+        # QC TOLERANCE: MAXIMUM ABSOLUTE MEDIAN SELF-CALIBRATION RESIDUAL IN A BAND
+        selfcal_res_max: 0.05
 
 # UTILS
 background-subtraction:

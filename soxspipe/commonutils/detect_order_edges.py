@@ -13,9 +13,17 @@ import os
 from datetime import datetime
 
 from soxspipe.commonutils import _base_detect, detector_lookup, keyword_lookup
+from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
-from soxspipe.commonutils.toolkit import cut_image_slice, unpack_order_table
+from soxspipe.commonutils.toolkit import (
+    QC_PLOT_DECORATION_HEIGHT_INCHES,
+    cut_image_slice,
+    legend_below_axis,
+    qc_image_panel_height,
+    qc_table_heights,
+    unpack_order_table,
+)
 
 os.environ["TERM"] = "vt100"
 
@@ -185,7 +193,6 @@ class detect_order_edges(_base_detect):
         import pandas as pd
         from astropy.stats import mad_std
 
-
         self.log.print("\n# DETECTING THE ORDER EDGES FROM MASTER-FLAT FRAME")
 
         orderTablePath = None
@@ -338,7 +345,7 @@ class detect_order_edges(_base_detect):
         orderPixelTableLower = orderPixelTable.dropna(axis="index", how="any", subset=[f"{self.axisA}coord_lower"])
 
         lowerCoeff, orderPixelTableLower, clippedLower = self.fit_global_polynomial(
-            pixelList=orderPixelTable,
+            pixelList=orderPixelTableLower,
             axisBCol=f"{self.axisB}coord",
             axisACol=f"{self.axisA}coord_lower",
             orderCol="order",
@@ -388,13 +395,6 @@ class detect_order_edges(_base_detect):
         cols_to_use = orderEdgePolyTable.columns.difference(orderPolyTable.columns)
         orderPolyTable = orderPolyTable.join(orderEdgePolyTable[cols_to_use])
 
-        # WRITE OUT THE FITS TO THE ORDER LOCATION TABLE
-        orderTablePath = self.write_order_table_to_file(
-            frame=self.flatFrame,
-            orderPolyTable=orderPolyTable,
-            orderMetaTable=orderMetaTable,
-        )
-
         allResiduals = np.concatenate(
             (
                 orderPixelTableLower[f"{self.axisA}coord_lower_fit_res"],
@@ -413,57 +413,70 @@ class detect_order_edges(_base_detect):
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "X RES MIN",
-                            "qc_value": round(float(min_res), 5),
-                            "qc_comment": "[px] Minimum residual in order edge fit along x-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": "X RES MIN",
+                                "qc_value": round(float(min_res), 5),
+                                "qc_comment": "[px] Minimum residual in order edge fit along x-axis",
+                                "qc_unit": "pixels",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "X RES MAX",
-                            "qc_value": round(float(max_res), 5),
-                            "qc_comment": "[px] Maximum residual in order edge fit along x-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": "X RES MAX",
+                                "qc_value": round(float(max_res), 5),
+                                "qc_comment": "[px] Maximum residual in order edge fit along x-axis",
+                                "qc_unit": "pixels",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
             self.qc = pd.concat(
                 [
                     self.qc,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "qc_name": "X RES SD",
-                            "qc_value": round(float(std_res), 5),
-                            "qc_comment": "[px] Std-dev of residual order edge fit along x-axis",
-                            "qc_unit": "pixels",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "to_header": True,
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "qc_name": "X RES SD",
+                                "qc_value": round(float(std_res), 5),
+                                "qc_comment": "[px] Std-dev of residual order edge fit along x-axis",
+                                "qc_unit": "pixels",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "to_header": True,
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
+
+        # WRITE OUT THE FITS TO THE ORDER LOCATION TABLE, AFTER THE EDGE-FIT QCs ARE RECORDED SO IT CARRIES THEM
+        orderTablePath = self.write_order_table_to_file(
+            frame=self.flatFrame,
+            orderPolyTable=orderPolyTable,
+            orderMetaTable=orderMetaTable,
+        )
 
         # GENERATE AN OUTPUT PLOT OF RESULTS AND FITTING RESIDUALS
         self.log.print("\tMEASURING AND PLOTTING RESIDUALS OF FITS")
@@ -487,38 +500,42 @@ class detect_order_edges(_base_detect):
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": f"ORDER_LOC{self.tag}",
-                            "product_desc": "table of coefficients from polynomial fits to order locations",
-                            "file_name": orderTableName,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "file_path": orderTablePath,
-                            "label": "PROD",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "product_label": f"ORDER_LOC{self.tag}",
+                                "product_desc": "table of coefficients from polynomial fits to order locations",
+                                "file_name": orderTableName,
+                                "file_type": "FITS",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "file_path": orderTablePath,
+                                "label": "PROD",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
             self.products = pd.concat(
                 [
                     self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": f"ORDER_LOC_RES{self.tag}",
-                            "product_desc": "visualisation of goodness of order edge fitting",
-                            "file_name": plotName,
-                            "file_type": "PDF",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "file_path": plotPath,
-                            "label": "QC",
-                        }
-                    ]),
+                    pd.DataFrame(
+                        [
+                            {
+                                "soxspipe_recipe": self.recipeName,
+                                "product_label": f"ORDER_LOC_RES{self.tag}",
+                                "product_desc": "visualisation of goodness of order edge fitting",
+                                "file_name": plotName,
+                                "file_type": "PDF",
+                                "obs_date_utc": self.dateObs,
+                                "reduction_date_utc": utcnow,
+                                "file_path": plotPath,
+                                "label": "QC",
+                            }
+                        ]
+                    ),
                 ],
                 ignore_index=True,
             )
@@ -527,6 +544,7 @@ class detect_order_edges(_base_detect):
 
         return self.products, self.qc, orderDetectionCounts
 
+    @closes_its_figures
     def plot_results(
         self,
         orderPixelTableUpper,
@@ -607,33 +625,28 @@ class detect_order_edges(_base_detect):
         if flipImage:
             rotatedImg = np.flipud(rotatedImg)
             if not rotateImage:
+                # FLIPUD SENDS PIXEL ROW r TO ROW N-1-r
                 aLen = rotatedImg.shape[0]
-                aLen = rotatedImg.shape[0]
-                allAxisACoords = aLen - allAxisACoords
-                allAxisACoordsClipped = aLen - allAxisACoordsClipped
+                allAxisACoords = aLen - 1 - allAxisACoords
+                allAxisACoordsClipped = aLen - 1 - allAxisACoordsClipped
 
-        if rotatedImg.shape[0] / rotatedImg.shape[1] > 0.8:
-            fig = plt.figure(figsize=(6, 12))
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            if False:
-                bottomleft = fig.add_subplot(gs[4:, 0:2])
-                bottomright = fig.add_subplot(gs[4:, 2:])
-            settingsAx = fig.add_subplot(gs[4:, 2:])
-            qcAx = fig.add_subplot(gs[4:, 0:2])
-        else:
-            fig = plt.figure(figsize=(6, 10))
-            # CREATE THE GID OF AXES
-            gs = fig.add_gridspec(6, 4)
-            toprow = fig.add_subplot(gs[0:2, :])
-            midrow = fig.add_subplot(gs[2:4, :])
-            if False:
-                bottomleft = fig.add_subplot(gs[4:, 0:2])
-                bottomright = fig.add_subplot(gs[4:, 2:])
-            settingsAx = fig.add_subplot(gs[4:, 2:])
-            qcAx = fig.add_subplot(gs[4:, 0:2])
+        # SIZE EACH IMAGE PANEL TO THE IMAGE ASPECT AND GIVE EACH TABLE ITS OWN FULL-WIDTH ROW SO THEY CANNOT OVERLAP
+        imagePanelHeight = qc_image_panel_height(rotatedImg)
+        qcTableHeight, settingsTableHeight = qc_table_heights(self.qc, self.recipeSettings)
+        heightRatios = [imagePanelHeight, imagePanelHeight, qcTableHeight, settingsTableHeight]
+        fig = plt.figure(
+            figsize=(6, sum(heightRatios) + QC_PLOT_DECORATION_HEIGHT_INCHES),
+            constrained_layout=True,
+        )
+        gs = fig.add_gridspec(4, 1, height_ratios=heightRatios)
+        toprow = fig.add_subplot(gs[0])
+        midrow = fig.add_subplot(gs[1])
+        qcAx = fig.add_subplot(gs[2])
+        settingsAx = fig.add_subplot(gs[3])
+        # THE DISABLED RESIDUAL PANELS FURTHER DOWN STILL REFERENCE THESE NAMES
+        if False:
+            bottomleft = fig.add_subplot(gs[2])
+            bottomright = fig.add_subplot(gs[3])
 
         # rotatedImg = self.flatFrame.data
         std = np.nanstd(self.flatFrame.data)
@@ -641,8 +654,10 @@ class detect_order_edges(_base_detect):
         vmax = mean + 2 * std
         vmin = mean - 1 * std
 
-        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1)
-        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.9)
+        # INTERPOLATION "none" EMBEDS THE IMAGE AT NATIVE RESOLUTION IN THE PDF; RESAMPLING TO THE SAVE DPI
+        # SNAPS THE ORDER BANDS TO A COARSE GRID AND OFFSETS THEM FROM THE VECTOR EDGE MARKERS WHEN ZOOMED
+        toprow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=1, interpolation="none")
+        midrow.imshow(rotatedImg, vmin=vmin, vmax=vmax, cmap="gray", alpha=0.9, interpolation="none")
 
         toprow.set_title("upper and lower order edge detections", fontsize=10)
         toprow.scatter(
@@ -668,17 +683,8 @@ class detect_order_edges(_base_detect):
         # toprow.set_xticklabels([])
         toprow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         toprow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        if arm.upper() == "UVB":
-            toprow.xaxis.set_label_coords(0.2, -0.13)
-        elif arm.upper() == "VIS":
-            toprow.xaxis.set_label_coords(0.5, -0.3)
-        else:
-            toprow.xaxis.set_label_coords(0.4, -0.13)
         toprow.tick_params(axis="both", which="major", labelsize=9)
-        if arm.upper() == "VIS":
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.3), fontsize=4)
-        else:
-            toprow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.13), fontsize=4)
+        legend_below_axis(toprow, fig)
 
         toprow.set_xlim([0, rotatedImg.shape[1]])
         if self.axisA == "x":
@@ -732,8 +738,9 @@ class detect_order_edges(_base_detect):
             axisAfitlowStart = poly(df, *coefflower)
 
             if flipImage and not rotateImage:
-                axisAfitupStart = aLen - axisAfitupStart
-                axisAfitlowStart = aLen - axisAfitlowStart
+                # THE FITS ARE STILL UNBINNED HERE; AFTER THE LATER DIVISION BY THE BIN THEY LAND ON ROW aLen-1-fit/bin
+                axisAfitupStart = (aLen - 1) * self.axisAbin - axisAfitupStart
+                axisAfitlowStart = (aLen - 1) * self.axisAbin - axisAfitlowStart
 
             # xfit = np.ones(len(xfit)) * \
             #     self.flatFrame.data.shape[1] - xfit
@@ -821,12 +828,7 @@ class detect_order_edges(_base_detect):
         # midrow.set_xticklabels([])
         midrow.set_ylabel(f"{self.axisA}-axis", fontsize=12)
         midrow.set_xlabel(f"{self.axisB}-axis", fontsize=12)
-        if arm.upper() == "VIS":
-            midrow.xaxis.set_label_coords(0.5, -0.3)
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.3), fontsize=4)
-        else:
-            midrow.xaxis.set_label_coords(0.5, -0.12)
-            midrow.legend(loc="upper right", bbox_to_anchor=(1.0, -0.12), fontsize=4)
+        legend_below_axis(midrow, fig)
         midrow.tick_params(axis="both", which="major", labelsize=9)
 
         # PLOT THE FINAL RESULTS:
@@ -908,7 +910,7 @@ class detect_order_edges(_base_detect):
         subtitle = f"mean res: {mean_res:2.2f} pix, res stdev: {std_res:2.2f}"
         slitWidth = ""
         if self.slit:
-            slitWidth = f" {self.slit.replace('x11', '')}\""
+            slitWidth = f' {self.slit.replace("x11", "")}"'
         fig.suptitle(
             f"detection of order-edge locations - {arm}{lamp}{slitWidth} flat-frame\n{subtitle}",
             fontsize=12,
@@ -1011,7 +1013,7 @@ class detect_order_edges(_base_detect):
                 orderData["minThreshold"],
                 0,
                 len(sliceOut),
-                label=f'threshold {orderData["minThreshold"]:0.3f},  {orderData["maxThreshold"]:0.3f}',
+                label=f"threshold {orderData['minThreshold']:0.3f},  {orderData['maxThreshold']:0.3f}",
                 colors="red",
             )
             plt.title(f"Order {order}, centre = {axisBcoords[index]}")
@@ -1100,7 +1102,6 @@ class detect_order_edges(_base_detect):
         # ITERATE UP TO MAX THRESHOLD
         hit = False
         while hit == False and threshold < maxThreshold:
-
             try:
                 axisAmaxguess = np.where(secondHalf < threshold)[0][0] + middle
                 axisAminguess = np.where(firstHalf < threshold)[0][-1]

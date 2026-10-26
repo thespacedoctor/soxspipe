@@ -112,14 +112,6 @@ Return a spectral format table for your selected instrument containing key param
 no_index = true
 :::
 
-## uncompress
-
-Uncompress ESO `fits.Z` frames before processing them with the data-organiser.
-
-:::{autodoc2-object} soxspipe.commonutils.uncompress.uncompress
-no_index = true
-:::
-
 ## spectroscopic_image_quality_checks
 
 Perform some generic image quality checks and add to the QC output of the recipe.

@@ -6,19 +6,27 @@ Ruff has no baseline or ratchet feature, so the gate is built here. It mirrors t
 pre-existing findings in `soxspipe/` are ignored entirely, and only findings on added
 or modified lines fail.
 
-Two modes:
+Three modes:
 
 ```bash
 python tools/lint_ratchet.py --compare-branch origin/develop
 python tools/lint_ratchet.py --staged
+python tools/lint_ratchet.py --worktree origin/develop
 ```
 
-The first compares against the merge base with the given branch, which is what the CI
-job runs on a pull request. The second compares the index against `HEAD`, which is what
-the pre-commit hook runs locally. Note that `--staged` picks the *lines* from the index
+The first compares committed work against the merge base with the given branch, which is
+what the CI job runs on a pull request. The second compares the index against `HEAD`, which
+is what the pre-commit hook runs locally. The third compares the working tree against the
+merge base with the given branch, so uncommitted edits count, and it treats an untracked
+file that git does not ignore as fully added. Use it to check work before you commit, with
+no need to stage it first. Note that `--staged` picks the *lines* from the index
 but hands ruff the files on disk, so an unstaged edit is linted along with the staged
 one. That is what pre-commit wants, since it stashes unstaged changes before running a
 hook, but a direct `--staged` run in a dirty tree judges the worktree, not the commit.
+
+A tracked `.py` file that git treats as binary, for example one with a NUL byte, has no
+text diff, so it contributes no changed lines and is not gated. Diff output that is not valid
+UTF-8 stops the ratchet with exit status 2 rather than being parsed as bytes.
 
 Three rules are exempt from the ratchet and gated absolutely, anywhere in the tree:
 `E722` (bare except), `S110` (`try`/`except`/`pass`) and `S112` (`try`/`except`/`continue`).
@@ -39,6 +47,8 @@ the debt stays visible without being gated.
 
 ```bash
 python tools/lint_ratchet.py --compare-branch origin/develop
+python tools/lint_ratchet.py --staged
+python tools/lint_ratchet.py --worktree origin/develop
 ```
 """
 
@@ -47,6 +57,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import subprocess
 import sys
@@ -188,6 +199,18 @@ def hard_rule_findings(findings: list[Finding]) -> list[Finding]:
     return sorted(hard, key=lambda finding: (finding.path, finding.line, finding.code))
 
 
+def _diff_command() -> list[str]:
+    """*the git command prefix that pins the diff format this module parses*
+
+    **Return:**
+
+    - ``command`` -- `git` with the settings that fix the diff format
+    """
+    # THE TWO -c SETTINGS PIN THE DIFF FORMAT THIS MODULE PARSES, SO A CONTRIBUTOR'S
+    # OWN git CONFIG CANNOT DROP THE b/ PREFIX OR QUOTE A PATH AND SILENTLY UNGATE A FILE
+    return ["git", "-c", "diff.noprefix=false", "-c", "core.quotePath=false"]
+
+
 def run_git_diff(compareBranch: str | None, repoRoot: Path) -> str:
     """*the unified diff of the change under test, at zero context*
 
@@ -200,14 +223,86 @@ def run_git_diff(compareBranch: str | None, repoRoot: Path) -> str:
 
     - ``diffText`` -- the raw diff output
     """
-    # THE TWO -c SETTINGS PIN THE DIFF FORMAT THIS MODULE PARSES, SO A CONTRIBUTOR'S
-    # OWN git CONFIG CANNOT DROP THE b/ PREFIX OR QUOTE A PATH AND SILENTLY UNGATE A FILE
-    command = ["git", "-c", "diff.noprefix=false", "-c", "core.quotePath=false"]
+    command = _diff_command()
     command += ["diff", "-U0", "--no-color", "--find-renames", "--no-ext-diff"]
     command += ["--staged"] if compareBranch is None else [f"{compareBranch}...HEAD"]
     command += ["--", *LINTABLE_PATHSPECS]
 
     return _run(command, repoRoot)
+
+
+def run_worktree_diff(baseBranch: str, repoRoot: Path) -> str:
+    """*the unified diff of tracked files in the working tree against the merge base*
+
+    `git diff <merge base>` sees committed, staged and unstaged work alike, but not an
+    untracked file; `worktree_changed_lines` adds those.
+
+    **Key Arguments:**
+
+    - ``baseBranch`` -- the branch whose merge base with HEAD the working tree is compared to
+    - ``repoRoot`` -- the repository to run git in
+
+    **Return:**
+
+    - ``diffText`` -- the raw diff output
+    """
+    mergeBase = _run(["git", "merge-base", baseBranch, "HEAD"], repoRoot).strip()
+    command = _diff_command()
+    command += ["diff", "-U0", "--no-color", "--find-renames", "--no-ext-diff", mergeBase]
+    command += ["--", *LINTABLE_PATHSPECS]
+
+    return _run(command, repoRoot)
+
+
+def untracked_changed_lines(repoRoot: Path) -> dict[str, set[int]]:
+    """*every line of every untracked, non-ignored lintable file, counted as added*
+
+    The file list is read as NUL-separated bytes and decoded with the filesystem encoding, so
+    a filename with a newline, a quote or non-ASCII characters arrives intact. A symlink is
+    skipped before it is read, so a link to a file outside the repository cannot be linted.
+
+    **Key Arguments:**
+
+    - ``repoRoot`` -- the repository to run git in
+
+    **Return:**
+
+    - ``changedLines`` -- new-side line numbers, keyed by repository-relative path. Empty files are left out
+    """
+    command = _diff_command()
+    command += ["ls-files", "--others", "--exclude-standard", "-z", "--", *LINTABLE_PATHSPECS]
+    changedLines: dict[str, set[int]] = {}
+
+    for rawPath in _run_bytes(command, repoRoot).split(b"\0"):
+        if not rawPath:
+            continue
+        path = os.fsdecode(rawPath)
+        file = repoRoot / path
+        if file.is_symlink() or not file.is_file():
+            continue
+        # bytes.splitlines BREAKS ON \n, \r AND \r\n, THE LINE ENDINGS RUFF COUNTS
+        lineCount = len(file.read_bytes().splitlines())
+        if lineCount:
+            changedLines[path] = set(range(1, lineCount + 1))
+
+    return changedLines
+
+
+def worktree_changed_lines(baseBranch: str, repoRoot: Path) -> dict[str, set[int]]:
+    """*the lines the working tree changed against the merge base, untracked files included*
+
+    **Key Arguments:**
+
+    - ``baseBranch`` -- the branch whose merge base with HEAD the working tree is compared to
+    - ``repoRoot`` -- the repository to run git in
+
+    **Return:**
+
+    - ``changedLines`` -- new-side line numbers, keyed by repository-relative path
+    """
+    trackedLines = parse_changed_lines(run_worktree_diff(baseBranch, repoRoot))
+    # A TRACKED PATH CANNOT ALSO BE UNTRACKED, SO THE TWO MAPS NEVER SHARE A KEY
+    return {**trackedLines, **untracked_changed_lines(repoRoot)}
 
 
 def ruff_command() -> list[str]:
@@ -294,17 +389,52 @@ def _run(command: list[str], repoRoot: Path, allowedStatuses: tuple[int, ...] = 
 
     - ``output`` -- the command's standard output
     """
+    return _execute(command, repoRoot, allowedStatuses, isText=True).stdout
+
+
+def _run_bytes(command: list[str], repoRoot: Path) -> bytes:
+    """*run a command in the repository and return its standard output undecoded*
+
+    **Key Arguments:**
+
+    - ``command`` -- the command and its arguments
+    - ``repoRoot`` -- the working directory to run in
+
+    **Return:**
+
+    - ``output`` -- the command's standard output, as bytes
+    """
+    return _execute(command, repoRoot, (0,), isText=False).stdout
+
+
+def _execute(
+    command: list[str], repoRoot: Path, allowedStatuses: tuple[int, ...], isText: bool
+) -> subprocess.CompletedProcess:
+    """*run a command and raise `RatchetError` unless it exits with an allowed status*
+
+    **Key Arguments:**
+
+    - ``command`` -- the command and its arguments
+    - ``repoRoot`` -- the working directory to run in
+    - ``allowedStatuses`` -- the exit statuses that are not failures
+    - ``isText`` -- True to decode the output as text, False to keep bytes
+
+    **Return:**
+
+    - ``completed`` -- the finished process
+    """
     try:
         # NO SHELL, A FIXED EXECUTABLE, AND EVERY PATH ARGUMENT PLACED AFTER A -- SEPARATOR
-        completed = subprocess.run(command, cwd=repoRoot, capture_output=True, text=True, check=False)  # noqa: S603
+        completed = subprocess.run(command, cwd=repoRoot, capture_output=True, text=isText, check=False)  # noqa: S603
     except OSError as error:
         raise RatchetError(f"could not run {_command_name(command)}: {error}") from error
 
     if completed.returncode not in allowedStatuses:
         failure = f"{' '.join(command)} failed with status {completed.returncode}"
-        raise RatchetError(f"{failure}:\n{completed.stderr.strip()}")
+        stderr = completed.stderr if isText else os.fsdecode(completed.stderr)
+        raise RatchetError(f"{failure}:\n{stderr.strip()}")
 
-    return completed.stdout
+    return completed
 
 
 def _command_name(command: list[str]) -> str:
@@ -358,12 +488,19 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--compare-branch", help="compare against the merge base with this branch, e.g. origin/develop")
     source.add_argument("--staged", action="store_true", help="compare the staged index against HEAD")
+    source.add_argument(
+        "--worktree",
+        help="compare the working tree, untracked files included, against the merge base with this branch",
+    )
     arguments = parser.parse_args(argv)
 
     try:
         repoRoot = repository_root(Path.cwd())
-        diffText = run_git_diff(None if arguments.staged else arguments.compare_branch, repoRoot)
-        changedLines = parse_changed_lines(diffText)
+        if arguments.worktree:
+            changedLines = worktree_changed_lines(arguments.worktree, repoRoot)
+        else:
+            diffText = run_git_diff(None if arguments.staged else arguments.compare_branch, repoRoot)
+            changedLines = parse_changed_lines(diffText)
         # A FILE WHOSE ONLY HUNK IS A DELETION HAS NO ADDED LINE TO GATE, SO RUFF SKIPS IT
         changedFiles = sorted(path for path, lines in changedLines.items() if lines)
         findings = parse_ruff_findings(run_ruff(changedFiles, repoRoot), repoRoot)
@@ -371,6 +508,11 @@ def main(argv: list[str] | None = None) -> int:
         hard = hard_rule_findings(parse_ruff_findings(hardReport, repoRoot))
     except RatchetError as error:
         print(f"lint ratchet: {error}", file=sys.stderr)
+        return EXIT_TOOL_ERROR
+    except UnicodeDecodeError as error:
+        print(
+            f"lint ratchet: git diff output is not valid UTF-8 ({error.reason} at byte {error.start})", file=sys.stderr
+        )
         return EXIT_TOOL_ERROR
     except (json.JSONDecodeError, KeyError) as error:
         print(f"lint ratchet: could not read the ruff report: {error}", file=sys.stderr)

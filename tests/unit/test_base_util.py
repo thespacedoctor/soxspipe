@@ -41,9 +41,7 @@ def _patch_lookups(monkeypatch: pytest.MonkeyPatch, dispersionAxis: str) -> None
     )
 
 
-@pytest.mark.parametrize(
-    ("dispersionAxis", "expectedAxes"), [("x", ("x", "y")), ("y", ("y", "x"))]
-)
+@pytest.mark.parametrize(("dispersionAxis", "expectedAxes"), [("x", ("x", "y")), ("y", ("y", "x"))])
 def test_base_util_initializes_orientation_and_default_binning(
     monkeypatch: pytest.MonkeyPatch,
     log: object,
@@ -120,9 +118,7 @@ def test_base_util_reads_format_and_rebins_two_d_map(
     result.twoDMap.close()
 
 
-def test_base_util_imports_the_toolkit_helpers_before_it_branches(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_base_util_imports_the_toolkit_helpers_before_it_branches(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     _patch_lookups(monkeypatch, "x")
     monkeypatch.delattr(toolkit, "read_spectral_format")
     frame = CCDData(
@@ -135,9 +131,7 @@ def test_base_util_imports_the_toolkit_helpers_before_it_branches(
         base_util(log, {}, associatedFrame=frame)
 
 
-def _write_two_d_map(
-    mapPath: Path, shape: tuple[int, int], binning: tuple[int, int] | None
-) -> None:
+def _write_two_d_map(mapPath: Path, shape: tuple[int, int], binning: tuple[int, int] | None) -> None:
     """Write a 2D dispersion map file, optionally without its binning keywords."""
     primary = fits.PrimaryHDU(np.ones(shape))
     if binning is not None:
@@ -149,9 +143,7 @@ def _write_two_d_map(
     fits.HDUList(hdus).writeto(mapPath)
 
 
-def _patch_two_d_map_helpers(
-    monkeypatch: pytest.MonkeyPatch, interOrderMask: np.ndarray
-) -> None:
+def _patch_two_d_map_helpers(monkeypatch: pytest.MonkeyPatch, interOrderMask: np.ndarray) -> None:
     """Stub the toolkit helpers the 2D map branch of the constructor calls."""
     monkeypatch.setattr(
         toolkit,
@@ -165,9 +157,7 @@ def _patch_two_d_map_helpers(
     )
 
 
-def test_base_util_reads_binning_from_the_associated_frame_header(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_base_util_reads_binning_from_the_associated_frame_header(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     _patch_lookups(monkeypatch, "x")
     frame = CCDData(
         np.ones((2, 2)),
@@ -204,11 +194,7 @@ def test_base_util_defaults_binning_when_the_map_has_no_binning_keywords(
 
     assert result.imageMap.shape == (4, 6)
     assert result.twoDMap["WAVELENGTH"].data.shape == (2, 2)
-    assert any(
-        "dpBinx = self.twoDMap[0].header" in message
-        for level, message in log.messages
-        if level == "debug"
-    )
+    assert any("dpBinx = self.twoDMap[0].header" in message for level, message in log.messages if level == "debug")
     result.twoDMap.close()
 
 
@@ -294,9 +280,7 @@ def test_base_util_raises_type_error_when_associated_frame_is_omitted(
         base_util(log, {})
 
 
-def test_base_util_emits_only_its_instantiation_debug_message(
-    monkeypatch: pytest.MonkeyPatch, log: object
-) -> None:
+def test_base_util_emits_only_its_instantiation_debug_message(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
     _patch_lookups(monkeypatch, "x")
     frame = CCDData(
         np.ones((2, 2)),

@@ -12,82 +12,75 @@
 import os
 from typing import Any
 
+from soxspipe.commonutils.response_basis import (
+    RESPONSE_BASIS,
+    RESPONSE_BASIS_COMMENT,
+    RESPONSE_BASIS_KEYWORD,
+    counts_per_unbinned_pixel,
+    dispersion_binning,
+)
+from soxspipe.commonutils.response_fit import (
+    _ResponseFitConvergenceError,
+    fit_response_curve,
+    resolve_response_settings,
+)
 from soxspipe.commonutils.toolkit import extinction_correction_factor
 
 os.environ["TERM"] = "vt100"
 
-
-class _ResponseFitConvergenceError(Exception):
-    """Mark failures raised inside the legacy iterative fitting loop."""
-
-    def __init__(self, originalError: Exception) -> None:
-        super().__init__(str(originalError))
-        self.originalError = originalError
+__all__ = ["_ResponseFitConvergenceError", "response_function"]
 
 
-def _fit_response_polynomial(
-    wavelength: Any,
-    rawResponse: Any,
-    polynomialOrder: int,
-    maxIterations: int,
-    excludedRegions: Any = (),
-    smoothingSigma: float | None = None,
-) -> tuple[Any, Any, Any]:
-    """Fit the response polynomial using the pipeline clipping algorithm."""
+QC_COLUMNS = (
+    "soxspipe_recipe",
+    "qc_name",
+    "qc_value",
+    "qc_unit",
+    "qc_order",
+    "qc_comment",
+    "obs_date_utc",
+    "reduction_date_utc",
+    "to_header",
+)
+PRODUCT_COLUMNS = (
+    "soxspipe_recipe",
+    "product_label",
+    "file_name",
+    "file_type",
+    "obs_date_utc",
+    "reduction_date_utc",
+    "product_desc",
+    "file_path",
+    "label",
+)
+
+
+def _table_or_empty(table: Any, columns: tuple[str, ...]) -> Any:
+    """Return ``table`` if it is a data frame, otherwise an empty data frame with the production ``columns``."""
+    import pandas as pd
+
+    if isinstance(table, pd.DataFrame):
+        return table
+    return pd.DataFrame({column: pd.Series([], dtype="object") for column in columns})
+
+
+def _sampled_response_table(wavelength: Any, response: Any) -> Any:
+    """Return the response at each finite wavelength, sorted by wavelength, as a WAVE/RESPONSE table.
+
+    RESPONSE carries the scale flux calibration applies: flux = counts / exptime * RESPONSE * 1e-17. The counts are
+    flat-fielded electrons per unbinned pixel (see ``response_basis``); the unit uses ``ct`` because the FITS unit
+    standard has no electron.
+    """
+    import astropy.units as u
     import numpy as np
+    from astropy.table import Table
 
-    fittedWavelength = np.asarray(wavelength).copy()
-    fittedResponse = np.asarray(rawResponse).copy()
-    for lowerBound, upperBound in excludedRegions:
-        excluded = np.where(
-            (fittedWavelength >= lowerBound) & (fittedWavelength <= upperBound)
-        )[0]
-        fittedWavelength = np.delete(fittedWavelength, excluded)
-        fittedResponse = np.delete(fittedResponse, excluded)
-
-    if smoothingSigma is not None:
-        from scipy.ndimage import gaussian_filter1d
-
-        fittedResponse = gaussian_filter1d(fittedResponse, sigma=smoothingSigma)
-
-    iteration = 0
-    deletedPointCount = 1
-    while iteration < int(maxIterations) and deletedPointCount > 0:
-        try:
-            sampledWavelength = np.array(
-                [
-                    np.median(fittedWavelength[max(0, index - 5) : index + 6])
-                    for index in range(0, len(fittedWavelength), 100)
-                ]
-            )
-            sampledResponse = np.array(
-                [
-                    np.median(fittedResponse[max(0, index - 5) : index + 6])
-                    for index in range(0, len(fittedResponse), 100)
-                ]
-            )
-            responseCoefficients = np.polyfit(
-                sampledWavelength,
-                sampledResponse,
-                deg=polynomialOrder,
-            )
-            modelResponse = np.polyval(responseCoefficients, fittedWavelength)
-            deletedPoints = [
-                index
-                for index, (responseValue, modelValue) in enumerate(
-                    zip(fittedResponse, modelResponse)
-                )
-                if responseValue < 0
-                or abs(abs(responseValue) - abs(modelValue)) / abs(responseValue) > 0.2
-            ]
-            fittedWavelength = np.delete(fittedWavelength, deletedPoints)
-            fittedResponse = np.delete(fittedResponse, deletedPoints)
-            deletedPointCount = len(deletedPoints)
-            iteration += 1
-        except Exception as error:
-            raise _ResponseFitConvergenceError(error) from error
-
-    return responseCoefficients, fittedWavelength, fittedResponse
+    wave = np.asarray(wavelength, dtype=float)
+    values = np.asarray(response, dtype=float)
+    isFinite = np.isfinite(wave)
+    order = np.argsort(wave[isFinite], kind="stable")
+    responseUnit = u.Unit("1e-17 erg / (cm2 s Angstrom)") / (u.ct / u.s)
+    return Table({"WAVE": wave[isFinite][order] * u.nm, "RESPONSE": values[isFinite][order] * responseUnit})
 
 
 class response_function:
@@ -106,6 +99,9 @@ class response_function:
         - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
         - ``stdNotFlatExtractionPath`` -- fits binary table containing the extracted standard spectrum without flat correction. Default "".
         - ``orderJoins`` -- a list of tuples indicating the orders to be joined together in the response function fitting. Default None.
+        - ``airmass`` -- the airmass of the standard for the UVB/VIS extinction correction: the ``mean_airmass`` of the
+          raw frames that contributed to its extraction, as flux calibration uses (DY-1713). Required for UVB and VIS.
+          Default None.
 
     **Usage:**
 
@@ -115,6 +111,9 @@ class response_function:
 
     ```python
     from soxspipe.commonutils import response_function
+    from soxspipe.commonutils.sequence_airmass import mean_airmass
+    # THE RAW FRAMES THAT CONTRIBUTED TO THE STANDARD'S EXTRACTION
+    airmass = mean_airmass([frame.header for frame in standardFrames], kw, log)
     response = response_function(
         log=log,
         settings=settings,
@@ -126,6 +125,7 @@ class response_function:
         startNightDate=startNightDate
         stdNotFlatExtractionPath=stdNotFlatExtractionPath,
         orderJoins=orderJoins,
+        airmass=airmass,
     )
     qcTable, productsTable = response.get()
     ```
@@ -143,6 +143,7 @@ class response_function:
         startNightDate="",
         stdNotFlatExtractionPath="",
         orderJoins=None,
+        airmass=None,
     ):
         self.log = log
         log.debug("instansiating a new 'response_function' object")
@@ -150,8 +151,8 @@ class response_function:
         self.stdExtractionPath = stdExtractionPath
         self.recipeSettings = settings["soxs-response"]
         self.instrument = self.settings["instrument"].lower()
-        self.qc = qcTable
-        self.products = productsTable
+        self.qc = _table_or_empty(qcTable, QC_COLUMNS)
+        self.products = _table_or_empty(productsTable, PRODUCT_COLUMNS)
         self.recipeName = recipeName
         self.sofName = sofName
         self.orderJoins = orderJoins
@@ -167,12 +168,12 @@ class response_function:
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
         kw = self.kw
 
-        hdul = fits.open(self.stdExtractionPath)
-        self.header = hdul[0].header
+        self.header = fits.getheader(self.stdExtractionPath)
         self.arm = self.header[kw("SEQ_ARM")].strip().upper()  # KW lookup
         self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
         self.dateObs = self.header[kw("DATE_OBS")]
         self.texp = float(self.header[kw("EXPTIME")])
+        self.dispersionBinning = dispersion_binning(self.header, self.arm, kw)
 
         # CONVERTING EXTRACTION (BACK) TO DATAFRAME
         self.stdExtractionDF = Table.read(self.stdExtractionPath, format="fits")
@@ -182,10 +183,6 @@ class response_function:
         self.stdExtractionDF.sort_values(["WAVE"], inplace=True, kind="stable")
 
         self.calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
-
-        
-
-        
 
         # GET THE ABSOLUTE STANDARD STAR FLUXES, ASSUMING TO HAVE 1-1 MAPPING BETWEEN OBJECT NAME IN THE FITS HEADER AND DATABASE
         stdAbsFluxDF = Table.read(
@@ -209,10 +206,10 @@ class response_function:
             if ii in self.header:
                 self.std_objName += self.header[ii].strip().upper().replace(" ", "").replace("-", "").replace("_", "")
 
-        for k,v in stdAkas.items():
+        for k, v in stdAkas.items():
             if v in self.std_objName:
                 self.std_objName = k
-                break   
+                break
 
         for ii in self.stdAbsFluxDF.columns:
             if ii in self.std_objName:
@@ -225,16 +222,12 @@ class response_function:
             self.stdExtractionNotFlatDF = self.stdExtractionNotFlatDF.to_pandas()
 
         self.log.print(f"STANDARD-STAR: {self.std_objName}")
-        # USING THE AVERAGE AIR MASS
-        if self.instrument == "soxs":
-            # NEED TO UPDATE THE LOOKUP TABLE EVENTUALLY
-            airmass_start = float(self.header["HIERARCH ESO TEL AIRM START"])
-            airmass_end = float(self.header["HIERARCH ESO TEL AIRM END"])
-        else:
-            airmass_start = float(self.header[kw("AIRM_START")])
-            airmass_end = float(self.header[kw("AIRM_END")])
-        self.airmass = (airmass_start + airmass_end) / 2
-        
+        if airmass is None and self.arm in ("UVB", "VIS"):
+            raise ValueError(
+                f"No airmass is known for this {self.arm} standard star, so it cannot be corrected for extinction; "
+                "check the ESO TEL AIRM START and END cards of its raw frames"
+            )
+        self.airmass = airmass
 
         from soxspipe.commonutils.toolkit import utility_setup
 
@@ -256,8 +249,6 @@ class response_function:
         """
         self.log.debug("starting the ``get`` method")
 
-        from datetime import datetime
-
         import numpy as np
         import pandas as pd
         from matplotlib import pyplot as plt
@@ -268,15 +259,18 @@ class response_function:
 
         # GET THE EXTRACTED STANDARD STAR'S WAVELENGTH AND FLUX
         stdExtWave = self.stdExtractionDF["WAVE"].values
-        stdExtFlux = self.stdExtractionDF["FLUX_COUNTS"].values
+        # FLAT-FIELDED ELECTRONS PER UNBINNED PIXEL: THE FLAT HAS ALREADY DIVIDED OUT THE PIXEL SCALE
+        stdExtFlux = counts_per_unbinned_pixel(self.stdExtractionDF, self.dispersionBinning)
         stdExtWaveNotFlat = self.stdExtractionNotFlatDF["WAVE"].values
         stdExtFluxNotFlat = self.stdExtractionNotFlatDF["FLUX_DENSITY_COUNTS"].values
 
         if self.std_objName not in self.stdAbsFluxDF.columns:
-            self.log.error(
-                f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
-            )            
-            raise LookupError(f"Standard star {self.std_objName} not found in the static calibration database. The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}")
+            message = (
+                f"Standard star {self.std_objName} not found in the static calibration database. "
+                f"The available STDs are {', '.join(self.stdAbsFluxDF.columns[1:])}"
+            )
+            self.log.error(message)
+            raise LookupError(message)
 
         # SELECTING ROWS IN THE INTERESTED WAVELENGTH RANGE ADDING A MARGIN TO THE RANGE
         stdAbsFluxDF = self.stdAbsFluxDF
@@ -293,18 +287,7 @@ class response_function:
             fill_value="extrapolate",
         )
 
-        # STRONG SKY ABS REGION TO BE EXCLUDED
-        if self.arm == "NIR":
-            excludeRegions = [
-                (770, 850),
-                (930, 970),
-                (1080, 1200),
-                (1280, 1520),
-                (1785, 1950),
-            ]
-        else:
-            excludeRegions = []
-        # INTEGRATING THE EXTRACTED STANDARD IN xx nm BIN-WIDE FILTERS (CONVERTING BACK IN A/PX)
+        # THE NOT-FLATTENED FLUX DENSITY IS ELECTRONS PER NM; DIVIDING BY 10 CONVERTS IT TO ELECTRONS PER ANGSTROM
         stdExtFluxNotFlat = stdExtFluxNotFlat / 10.0
 
         # NOW DIVIDING FOR THE EXPOSURE TIME
@@ -344,7 +327,7 @@ class response_function:
             # EXTRACT WAVELENGTH VALUES AND COMPUTE ABSOLUTE FLUX
             wavelength = stdExtWaveNotFlat
             abs_flux = self.std_wavelength_to_abs_flux(wavelength) * 10**-17
-            # CONVERT WAVELENGTH FROM ÅNGSTRÖM TO CM
+            # CONVERT WAVELENGTH FROM NM TO CM
             wavelength_in_cm = wavelength * 10**-7
 
             # COMPUTE THE ABSOLUTE PHOTON FLUX OF THE STANDARD STAR
@@ -402,32 +385,12 @@ class response_function:
             stdExtFlux = stdExtFlux * extCorrectionFactor
 
         self.response_function_raw = self.std_wavelength_to_abs_flux(stdExtWave) / stdExtFlux
-        wavelength_response = self.stdExtractionDF["WAVE"].values
-
-        polyOrder = int(self.recipeSettings[self.arm.lower()]["poly_order"])
-        try:
-            (
-                responseFuncCoeffs,
-                wavelength_response,
-                self.response_function_raw,
-            ) = _fit_response_polynomial(
-                wavelength_response,
-                self.response_function_raw,
-                polynomialOrder=polyOrder,
-                maxIterations=self.recipeSettings[self.arm.lower()]["max_iteration"],
-                excludedRegions=excludeRegions,
-                smoothingSigma=5 if self.arm == "NIR" else None,
-            )
-        except _ResponseFitConvergenceError as e:
-            self.log.print("fail")
-            raise Exception("The fitting of response function did not converge!") from e.originalError
-
-        if False:
-            plt.plot(wavelength_response, self.response_function_raw)
-            plt.show()
+        fit, fitSettings = self._fit_response(stdExtWave, self.response_function_raw)
+        self.response_function_raw = fit.ratio
+        qcWarnings = self._add_response_qcs(fit, fitSettings)
 
         # WRITE RESPONSE FUNCTION TO FITS BINARY TABLE
-        self.write_response_function_to_file(responseFuncCoeffs=responseFuncCoeffs, polyOrder=polyOrder)
+        self.write_response_function_to_file(wavelength=stdExtWave, response=fit.evaluate(stdExtWave))
 
         if stdEfficiencyEstimate is not None:
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
@@ -453,6 +416,7 @@ class response_function:
                 orderJoins=self.orderJoins,
                 recipeName=self.recipeName,
                 dateObs=self.dateObs,
+                arm=self.arm,
             )
 
             write_fits_table_to_disk(
@@ -464,195 +428,146 @@ class response_function:
                 qc=self.qc,
             )
 
-            utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-            self.products = pd.concat(
-                [
-                    self.products,
-                    pd.DataFrame([
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": "EFFICIENCY",
-                            "file_name": filename,
-                            "file_type": "FITS",
-                            "obs_date_utc": self.dateObs,
-                            "reduction_date_utc": utcnow,
-                            "product_desc": "SOXS efficiency estimate",
-                            "file_path": filepath,
-                            "label": "QC",
-                        }
-                    ]),
-                ],
-                ignore_index=True,
-            )
+            self._register_product("EFFICIENCY", filename, "FITS", "SOXS efficiency estimate", filepath, "QC")
 
         self.plot_response_curve(
             stdExtWave=stdExtWave,
             stdExtWaveNotFlat=stdExtWaveNotFlat,
             stdExtFlux=stdExtFlux,
-            binCentreWave=wavelength_response,
-            binCentreWaveOriginal=wavelength_response,
-            binIntegratedFlux=self.response_function_raw,
-            absToExtFluxRatio=None,
-            responseFuncCoeffs=responseFuncCoeffs,
+            fit=fit,
+            fitSettings=fitSettings,
             stdEfficiencyEstimate=stdEfficiencyEstimate,
+            qcWarnings=qcWarnings,
         )
 
         return self.qc, self.products, False
+
+    def _register_product(self, productLabel, fileName, fileType, productDesc, filePath, label):
+        """*append one row describing an output product to the products table*
+
+        **Key Arguments:**
+
+        - ``productLabel`` -- the product label, for example ``RESPONSE_FUNC``
+        - ``fileName`` -- the product file name
+        - ``fileType`` -- the file type, for example ``FITS``
+        - ``productDesc`` -- a short description of the product
+        - ``filePath`` -- the path to the product file
+        - ``label`` -- ``PROD`` for a data product or ``QC`` for a quality-control product
+        """
+        from datetime import datetime
+
+        import pandas as pd
+
+        self.products = pd.concat(
+            [
+                self.products,
+                pd.DataFrame(
+                    [
+                        {
+                            "soxspipe_recipe": self.recipeName,
+                            "product_label": productLabel,
+                            "file_name": fileName,
+                            "file_type": fileType,
+                            "obs_date_utc": self.dateObs,
+                            "reduction_date_utc": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S"),
+                            "product_desc": productDesc,
+                            "file_path": filePath,
+                            "label": label,
+                        }
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
+
+    def _fit_response(self, stdExtWave, rawRatio):
+        """*fit the spline response curve to the raw ratio of catalogue to extracted flux*
+
+        **Key Arguments:**
+
+        - ``stdExtWave`` -- the extracted standard star wavelengths (nm)
+        - ``rawRatio`` -- the raw response at each wavelength
+
+        **Return:**
+
+        - ``fit`` -- the ``ResponseFit``
+        - ``fitSettings`` -- the complete settings for this arm
+        """
+        fitSettings = resolve_response_settings(self.recipeSettings, self.arm, self.instrument)
+        try:
+            fit = fit_response_curve(stdExtWave, rawRatio, fitSettings, log=self.log)
+        except _ResponseFitConvergenceError as e:
+            self.log.print("fail")
+            raise Exception("The fitting of response function did not converge!") from e.originalError
+        return fit, fitSettings
+
+    def _add_response_qcs(self, fit, fitSettings):
+        """*measure the response fit QCs, add them to the QC table and log any out of tolerance*
+
+        **Return:**
+
+        - ``qcWarnings`` -- one message per out-of-tolerance measure. The recipe never fails because of them.
+        """
+        from soxspipe.commonutils.response_qc import measure_response_qcs, response_qc_rows, response_qc_warnings
+
+        measures = measure_response_qcs(fit, fitSettings["selfcal_bands"])
+        self.qc = response_qc_rows(self.qc, measures, self.recipeName, self.dateObs)
+        qcWarnings = response_qc_warnings(measures, fitSettings)
+        for message in qcWarnings:
+            self.log.info(f"Response QC out of tolerance: {message}")
+        return qcWarnings
 
     def plot_response_curve(
         self,
         stdExtWave,
         stdExtWaveNotFlat,
         stdExtFlux,
-        binCentreWave,
-        binCentreWaveOriginal,
-        binIntegratedFlux,
-        absToExtFluxRatio,
-        responseFuncCoeffs,
+        fit,
+        fitSettings,
         stdEfficiencyEstimate,
+        qcWarnings,
     ):
         """*generate a QC plot for the response curve*
 
         **Key Arguments:**
 
         - ``stdExtWave`` -- the extracted standard star wavelength
-        - ``stdExtFlux`` -- the extracted standard star flux
         - ``stdExtWaveNotFlat`` -- the extracted standard star wavelength (not flattened)
-        - ``binCentreWave`` -- binned wavelengths after clipping (during fitting)
-        - ``binCentreWaveOriginal`` -- binned wavelengths
-        - ``binIntegratedFlux`` -- binned flux
-        - ``absToExtFluxRatio`` -- the ratio of the absolute flux vs the extraction flux
-        - ``responseFuncCoeffs`` -- the response function coefficients
+        - ``stdExtFlux`` -- the flat-fielded standard star flux, in e-/s per unbinned pixel and extinction corrected
+        - ``fit`` -- the ``ResponseFit``
+        - ``fitSettings`` -- the settings for this arm, which hold the masked regions
         - ``stdEfficiencyEstimate`` -- the estimated instrument efficiency
+        - ``qcWarnings`` -- out-of-tolerance QC messages, shown in red in the plot title
 
         **Return:**
             - `plotFilePath` -- the path to the QC plot PDF
         """
         self.log.debug("starting the ``plot_response_curve`` method")
 
-        from datetime import datetime
-
         import matplotlib.pyplot as plt
-        import numpy as np
-        import pandas as pd
 
-        # WRITE THE QC PLOT TO PDF
-        fig = plt.figure(figsize=(6, 22), constrained_layout=True, dpi=120)
-        if stdEfficiencyEstimate is not None:
-            gs = fig.add_gridspec(30, 4)
-        else:
-            gs = fig.add_gridspec(25, 4)
-        onerow = fig.add_subplot(gs[0:4, :])
-        tworow = fig.add_subplot(gs[5:9, :])
-        threerow = fig.add_subplot(gs[10:14, :])
-        fourrow = fig.add_subplot(gs[15:19, :])
-        fiverow = fig.add_subplot(gs[20:24, :])
-        if stdEfficiencyEstimate is not None:
-            sixrow = fig.add_subplot(gs[25:29, :])
+        from soxspipe.commonutils.response_plot import draw_response_qc_figure
 
-        onerow.plot(
-            stdExtWave,
-            self.std_wavelength_to_abs_flux(stdExtWave) * 10**-17,
-            linewidth=0.2,
+        fig = draw_response_qc_figure(
+            fit=fit,
+            fitSettings=fitSettings,
+            stdExtWave=stdExtWave,
+            stdExtFlux=stdExtFlux,
+            absFlux=self.std_wavelength_to_abs_flux(stdExtWave),
+            stdExtWaveNotFlat=stdExtWaveNotFlat,
+            stdEfficiencyEstimate=stdEfficiencyEstimate,
+            objName=self.std_objName,
+            qcWarnings=qcWarnings,
         )
-        onerow.set_title(f"{self.std_objName} absolute flux spectrum", fontsize=12)
-        onerow.set_xlabel("wavelength (nm)", fontsize=9)
-        onerow.set_ylabel("flux ($\\mathrm{erg/cm^{2}/s/angstom}$)", fontsize=9)
-        onerow.tick_params(axis="both", which="major", labelsize=9)
-        # Set y-limits based on the absolute flux spectrum
-        abs_flux = self.std_wavelength_to_abs_flux(stdExtWave)
-        min_flux, max_flux = np.min(abs_flux), np.max(abs_flux)
-        flux_margin = 0.2 * (max_flux - min_flux)  # Add 10% margin
-        # onerow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
-
-        tworow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.5)
-        tworow.set_title("Raw ratio", fontsize=12)
-        tworow.set_xlabel("wavelength (nm)", fontsize=9)
-        tworow.set_ylabel("Ratio $\\frac{F_{\\lambda}}{F_c}$", fontsize=9)
-        tworow.tick_params(axis="both", which="major", labelsize=9)
-
-        # threerow.plot(binCentreWave, absToExtFluxRatio, linewidth=0.5)
-        threerow.set_title("Fitted Response Function", fontsize=12)
-        threerow.plot(
-            stdExtWave,
-            np.polyval(responseFuncCoeffs, stdExtWave),
-            c="red",
-            label="response curve",
-            linewidth=2.5,
-            alpha=0.7,
-        )
-        threerow.scatter(binCentreWaveOriginal, binIntegratedFlux, marker="o", s=10, alpha=0.2)
-        # threerow.set_xlim(min(binCentreWave), max(binCentreWave))
-        # threerow.set_ylim(min(absToExtFluxRatio), max(absToExtFluxRatio))
-        threerow.set_xlabel("wavelength (nm)", fontsize=9)
-        threerow.set_ylabel("absolute-extracted flux ratio", fontsize=9)
-        threerow.tick_params(axis="both", which="major", labelsize=9)
-
-        # TEST THE X-CALIB
-
-        # FLUX IS ALREADY DIVIDED BY DISPERSION AND CORRECTED FOR THE EXTINCTION !!
-        # OTHERWISE, COPY LINES ABOVE
-        flux_calib = stdExtFlux * np.polyval(responseFuncCoeffs, stdExtWave)
-        flux_calib = flux_calib * 10**-17  # CONVERTING BACK TO PHYS UNITS
-        fourrow.plot(stdExtWave, flux_calib, linewidth=0.2)
-        fourrow.set_title("Self calibration of std star", fontsize=12)
-        fourrow.set_xlabel("wavelength (nm)", fontsize=9)
-        fourrow.set_ylabel("flux ($\\mathrm{erg/cm^{2}/s/angstom}$)", fontsize=9)
-        fourrow.tick_params(axis="both", which="major", labelsize=9)
-        # fourrow.set_ylim(min_flux - flux_margin, max_flux + flux_margin)
-
-        fiverow.plot(
-            stdExtWave,
-            (flux_calib * 10**17 - self.std_wavelength_to_abs_flux(stdExtWave))
-            / self.std_wavelength_to_abs_flux(stdExtWave),
-            linewidth=0.2,
-        )
-        fiverow.set_ylim(-5, 5)
-        # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
-        plt.subplots_adjust(hspace=1.0)
-        fiverow.set_title("Relative residuals", fontsize=12)
-        fiverow.set_xlabel("wavelength (nm)", fontsize=9)
-        fiverow.set_ylabel("residual", fontsize=9)
-        fiverow.tick_params(axis="both", which="major", labelsize=9)
-
-        if stdEfficiencyEstimate is not None:
-            sixrow.plot(stdExtWaveNotFlat, stdEfficiencyEstimate, linewidth=0.2)
-
-            sixrow.set_ylim(0, np.min([np.nanmax(stdEfficiencyEstimate), 1.0]))
-            # plt.plot(np.array(stdAbsFluxDF[0]),np.array(stdAbsFluxDF[4])*10**17,c='red')
-            plt.subplots_adjust(hspace=1.0)
-            sixrow.set_title("Efficiency (end-to-end)", fontsize=12)
-            sixrow.set_xlabel("wavelength (nm)", fontsize=9)
-            sixrow.set_ylabel("Efficiency", fontsize=9)
-            sixrow.tick_params(axis="both", which="major", labelsize=9)
 
         plotFilename = self.sofName + "_RESPONSE.pdf"
         plotFilePath = f"{self.qcDir}/{plotFilename}"
-        plt.savefig(plotFilePath, dpi=120, format="pdf", bbox_inches="tight")
-        plt.close("all")
+        try:
+            fig.savefig(plotFilePath, dpi=120, format="pdf", bbox_inches="tight")
+        finally:
+            plt.close(fig)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "RESPONSE_QC_PLOT",
-                        "file_name": plotFilename,
-                        "file_type": "PDF",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": "Response curve QC plot.",
-                        "file_path": plotFilePath,
-                        "label": "QC",
-                    }
-                ]),
-            ],
-            ignore_index=True,
-        )
+        self._register_product("RESPONSE_QC_PLOT", plotFilename, "PDF", "Response curve QC plot.", plotFilePath, "QC")
 
         if False:
             plt.show()
@@ -660,13 +575,16 @@ class response_function:
         self.log.debug("completed the ``plot_response_curve`` method")
         return plotFilePath
 
-    def write_response_function_to_file(self, responseFuncCoeffs, polyOrder):
-        """*write out the fitted polynomial solution coefficients to file*
+    def write_response_function_to_file(self, wavelength: Any, response: Any) -> str:
+        """*write out the response curve*
+
+        The one table extension, ``RESPONSE``, holds the fitted spline response at each finite ``wavelength``, sorted
+        by wavelength. Flux calibration reads it.
 
         **Key Arguments:**
 
-        - ``responseFuncCoeffs`` -- the response curve coefficients
-        - ``polyOrder`` -- the order of polynomial used to fit the curve
+        - ``wavelength`` -- the wavelengths (nm) of the extracted standard-star spectrum
+        - ``response`` -- the fitted response at each of those wavelengths
 
         **Return:**
 
@@ -675,73 +593,38 @@ class response_function:
         self.log.debug("starting the ``write_response_function_to_file`` method")
 
         import copy
-        from datetime import datetime
 
-        import pandas as pd
         from astropy.io import fits
-        from astropy.table import Table
+
+        from soxspipe.commonutils.phase3 import add_qc_to_header
 
         arm = self.arm
         kw = self.kw
-
-        coeffDict = {}
-        coeffDict["polyOrder"] = polyOrder
-        n_coeff = 0
-        for i in range(0, polyOrder + 1):
-            coeffDict[f"c{i}"] = responseFuncCoeffs[n_coeff]
-            n_coeff += 1
 
         filename = self.sofName + "_RESP.fits"
 
         header = copy.deepcopy(self.header)
 
         filePath = f"{self.productDir}/{filename}"
-        df = pd.DataFrame([coeffDict])
-        t = Table.from_pandas(df)
-
-        BinTableHDU = fits.table_to_hdu(t)
 
         header[kw("SEQ_ARM").upper()] = arm
         header[kw("PRO_TYPE").upper()] = "REDUCED"
         header[kw("PRO_CATG").upper()] = f"RESP_TAB_{arm}".upper()
+        header[RESPONSE_BASIS_KEYWORD] = (RESPONSE_BASIS, RESPONSE_BASIS_COMMENT)
 
         # WRITE QCs TO HEADERS
-        for n, v, c, h in zip(
-            self.qc["qc_name"].values,
-            self.qc["qc_value"].values,
-            self.qc["qc_comment"].values,
-            self.qc["to_header"].values,
-        ):
-            if h:
-                header[f"ESO QC {n}".upper()] = (v, c)
+        add_qc_to_header(header, self.qc)
 
         priHDU = fits.PrimaryHDU(header=header)
 
-        hduList = fits.HDUList([priHDU, BinTableHDU])
+        curveHDU = fits.table_to_hdu(_sampled_response_table(wavelength, response))
+        curveHDU.name = "RESPONSE"
+
+        hduList = fits.HDUList([priHDU, curveHDU])
         hduList.verify("fix")
         hduList.writeto(filePath, checksum=True, overwrite=True)
 
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame([
-                    {
-                        "soxspipe_recipe": self.recipeName,
-                        "product_label": "RESPONSE_FUNC",
-                        "file_name": filename,
-                        "file_type": "FITS",
-                        "obs_date_utc": self.dateObs,
-                        "reduction_date_utc": utcnow,
-                        "product_desc": "Response function coeffs.",
-                        "file_path": filePath,
-                        "label": "PROD",
-                    }
-                ]),
-            ],
-            ignore_index=True,
-        )
+        self._register_product("RESPONSE_FUNC", filename, "FITS", "Response function curve.", filePath, "PROD")
 
         self.log.debug("completed the ``write_response_function_to_file`` method")
         return filePath

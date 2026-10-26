@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import shutil
 import socket
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from typing import NoReturn
 
@@ -13,6 +16,7 @@ import pytest
 _SESSION_RUNTIME = tempfile.TemporaryDirectory(prefix="soxspipe-tests-")
 _SESSION_ROOT = Path(_SESSION_RUNTIME.name)
 _CATEGORY_MARKERS = frozenset({"unit", "integration", "real_data"})
+_CHECKOUT_ID_LENGTH = 12
 _ORIGINAL_CREATE_CONNECTION = socket.create_connection
 _ORIGINAL_SOCKET_CONNECT = socket.socket.connect
 _ORIGINAL_SOCKET_CONNECT_EX = socket.socket.connect_ex
@@ -27,9 +31,7 @@ _RESOLVER_NAMES = (
     "getnameinfo",
 )
 _ORIGINAL_RESOLVERS = {
-    resolverName: getattr(socket, resolverName)
-    for resolverName in _RESOLVER_NAMES
-    if hasattr(socket, resolverName)
+    resolverName: getattr(socket, resolverName) for resolverName in _RESOLVER_NAMES if hasattr(socket, resolverName)
 }
 _ENVIRONMENT_OVERRIDES = {
     "BLAS_NUM_THREADS": "1",
@@ -47,10 +49,7 @@ _ENVIRONMENT_OVERRIDES = {
     "XDG_CACHE_HOME": str(_SESSION_ROOT / "cache"),
     "XDG_CONFIG_HOME": str(_SESSION_ROOT / "config"),
 }
-_ORIGINAL_ENVIRONMENT = {
-    variableName: os.environ.get(variableName)
-    for variableName in _ENVIRONMENT_OVERRIDES
-}
+_ORIGINAL_ENVIRONMENT = {variableName: os.environ.get(variableName) for variableName in _ENVIRONMENT_OVERRIDES}
 
 
 def _deny_network(*args: object, **kwargs: object) -> NoReturn:
@@ -137,18 +136,94 @@ class RecordingLogger:
         self._record("print", message)
 
 
-def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+def default_basetemp(rootPath: Path, processId: int | None = None) -> Path:
+    """Return the base temporary directory for one run of one checkout."""
+    # PYTEST PRUNES THE NUMBERED FOLDERS OF THE SHARED pytest-of-<user> DIRECTORY, SO ONE RUN CAN
+    # DELETE THE LIVE ONE OF ANOTHER. THE CHECKOUT HASH KEEPS WORKTREES APART AND THE PROCESS ID
+    # KEEPS TWO RUNS IN ONE CHECKOUT APART, SINCE --basetemp WIPES ITS DIRECTORY AT START
+    runId = os.getpid() if processId is None else processId
+
+    return Path(tempfile.gettempdir()) / f"{_basetemp_prefix(rootPath)}{runId}"
+
+
+def _basetemp_prefix(rootPath: Path) -> str:
+    """Return the name prefix shared by every base temporary directory of one checkout."""
+    checkoutId = hashlib.sha1(str(rootPath).encode()).hexdigest()[:_CHECKOUT_ID_LENGTH]  # noqa: S324
+
+    return f"soxspipe-pytest-{checkoutId}-"
+
+
+def _is_process_alive(processId: int) -> bool:
+    """Return False only when no process has this id, and True when the id cannot be checked."""
+    try:
+        os.kill(processId, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # A PROCESS OF ANOTHER USER STILL EXISTS
+        return True
+    except (OverflowError, ValueError):
+        # A NUMBER BEYOND THE PLATFORM'S PID RANGE IS NOT A RUN OF OURS, SO KEEP ITS FOLDER
+        return True
+
+    return True
+
+
+def remove_stale_basetemps(rootPath: Path) -> None:
+    """Remove this checkout's base temporary directories left by runs that have ended."""
+    prefix = _basetemp_prefix(rootPath)
+    for folder in Path(tempfile.gettempdir()).glob(f"{prefix}*"):
+        runId = folder.name.removeprefix(prefix)
+        # A NAME THAT DOES NOT PARSE, OR ANYTHING BUT A REAL DIRECTORY, IS NOT OURS TO REMOVE
+        if not runId.isdecimal() or folder.is_symlink() or not folder.is_dir():
+            continue
+        if not _is_process_alive(int(runId)):
+            shutil.rmtree(folder, ignore_errors=True)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_configure(config: pytest.Config) -> None:
+    """Give the run a base temporary directory of its own unless the caller chose one."""
+    # THIS MUST RUN BEFORE PYTEST'S OWN pytest_configure BUILDS THE TEMPORARY PATH FACTORY, WHICH
+    # READS --basetemp ONCE. AN XDIST WORKER IS SKIPPED: THE CONTROLLER HANDS EACH WORKER A
+    # popen-gwN SUBFOLDER OF ITS OWN BASE TEMPORARY DIRECTORY
+    if config.option.basetemp is not None or hasattr(config, "workerinput"):
+        return
+
+    remove_stale_basetemps(config.rootpath)
+    config.option.basetemp = default_basetemp(config.rootpath)
+
+
+def _category_error(item: pytest.Item) -> str | None:
+    """Return the failure message for a test without exactly one category, else None."""
+    categories = {marker.name for marker in item.iter_markers() if marker.name in _CATEGORY_MARKERS}
+    if len(categories) == 1:
+        return None
+
+    return f"{item.nodeid} must declare exactly one execution category"
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Require one execution category on every collected test."""
+    # AN XDIST WORKER MUST NOT RAISE HERE: IT WOULD DIE AND THE CONTROLLER WOULD HIDE THE CAUSE
+    # BEHIND AN UNRELATED INTERNALERROR. pytest_runtest_setup FAILS THE OFFENDING TESTS INSTEAD
+    if hasattr(config, "workerinput"):
+        return
+
     for item in items:
-        categories = {
-            marker.name
-            for marker in item.iter_markers()
-            if marker.name in _CATEGORY_MARKERS
-        }
-        if len(categories) != 1:
-            raise pytest.UsageError(
-                f"{item.nodeid} must declare exactly one execution category"
-            )
+        message = _category_error(item)
+        if message is not None:
+            raise pytest.UsageError(message)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    """Fail a test without exactly one execution category, as the worker-side usage error."""
+    # SETUP, NOT CALL: A skip OR xfail MARK, OR A FIXTURE THAT SKIPS, WOULD HIDE THE FAILURE IN THE
+    # CALL PHASE. THIS HOOK RUNS BEFORE THE SKIPPING PLUGIN READS THE MARKS, SO NOTHING CAN SWALLOW IT
+    message = _category_error(item)
+    if message is not None:
+        pytest.fail(message, pytrace=False)
 
 
 def pytest_unconfigure() -> None:
@@ -187,6 +262,16 @@ def isolated_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NUMBA_CACHE_DIR", str(numbaPath))
     monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def restore_multiprocess_start_method() -> Iterator[None]:
+    """Undo any global `multiprocess` start-method change made by a test."""
+    import multiprocess
+
+    originalMethod = multiprocess.get_start_method(allow_none=True)
+    yield
+    multiprocess.set_start_method(originalMethod, force=True)
 
 
 @pytest.fixture(autouse=True)

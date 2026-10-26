@@ -75,7 +75,6 @@ class soxs_disp_solution(base_recipe):
         )
         self.log = log
         log.debug("instantiating a new 'soxs_disp_solution' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
         self.recipeName = "soxs-disp-solution"
@@ -211,8 +210,7 @@ class soxs_disp_solution(base_recipe):
         # FIX ME!
         if not error and imageTypes[0] not in ["LAMP,FMTCHK", "LAMP,WAVE", "WAVE,LAMP"]:
             error = (
-                "Input frames for soxspipe disp_solution need to be single pinhole lamp on "
-                "and lamp off frames for NIR"
+                "Input frames for soxspipe disp_solution need to be single pinhole lamp on and lamp off frames for NIR"
             )
 
         if not error:
@@ -529,7 +527,7 @@ class soxs_disp_solution(base_recipe):
             products=self.products,
             sofName=self.sofName,
             lineDetectionTable=lineDetectionTable,
-            turnOffMP=self.debug,
+            turnOffMP=self.runSerially,
             mute=True,
             progressBar=True,
         )

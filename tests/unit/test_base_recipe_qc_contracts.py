@@ -11,7 +11,7 @@ from astropy import units as u
 from astropy.nddata import CCDData
 
 from soxspipe.recipes import base_recipe
-from tests.factories import qc_table, synthetic_ccd
+from tests.factories import StubInputFrames, noise_frame_pair, qc_table, synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
@@ -104,24 +104,42 @@ def test_qc_median_flux_level_excludes_masked_pixels_and_records_metric(
     assert bool(metric["to_header"]) is True
 
 
-def test_qc_ron_records_supplied_raw_and_master_noise_values(log: Any) -> None:
-    """Precomputed noise values are retained without loading raw frame data."""
+def test_qc_ron_records_measured_raw_and_supplied_master_noise_values(log: Any) -> None:
+    """The raw noise is measured from the raw pair and the supplied master noise is retained."""
+    # ARRANGE
     recipe = _recipe(log)
+    recipe.inputFrames = StubInputFrames(noise_frame_pair(noiseSigma=2.5))
 
+    # ACT
     rawRon, masterRon = recipe.qc_ron(
         frameType="MBIAS",
         frameName="master bias",
-        rawRon=2.5,
         masterRon=0.8,
     )
 
-    assert rawRon == pytest.approx(2.5)
+    # ASSERT
+    assert rawRon == pytest.approx(2.5, rel=0.2)
     assert masterRon == pytest.approx(0.8)
     metrics = recipe.qc.set_index("qc_name")
-    assert metrics.loc["RAW RON", "qc_value"] == pytest.approx(2.5)
+    assert metrics.loc["RAW RON", "qc_value"] == pytest.approx(rawRon)
     assert metrics.loc["RAW RON", "qc_comment"] == "[e-] RON in single BIAS"
     assert metrics.loc["MASTER RON", "qc_value"] == pytest.approx(0.8)
     assert metrics.loc["MASTER RON", "qc_comment"] == "[e-] Combined RON in MBIAS"
+
+
+def test_fill_masked_uncertainty_sets_only_the_masked_pixels(log: Any) -> None:
+    """Masked pixels take the fill value and unmasked pixels keep their uncertainty."""
+    # ARRANGE
+    recipe = _recipe(log)
+    frame = synthetic_ccd(shape=(3, 3), prepared=True)
+
+    # ACT
+    recipe._fill_masked_uncertainty(frame, fillValue=4.25)
+
+    # ASSERT
+    uncertainty = frame.uncertainty.array
+    assert uncertainty[0, 0] == pytest.approx(4.25)
+    assert np.allclose(uncertainty[~frame.mask], 1.5)
 
 
 def test_appended_qc_rows_keep_qc_value_numeric(log: Any) -> None:
@@ -133,12 +151,12 @@ def test_appended_qc_rows_keep_qc_value_numeric(log: Any) -> None:
     recipe.cptemp = 11.2
     recipe.recipeSettings = {}
     recipe.qc = qc_table()
+    recipe.inputFrames = StubInputFrames(noise_frame_pair())
 
     # ACT
     recipe.qc_ron(
         frameType="MBIAS",
         frameName="master bias",
-        rawRon=2.5,
         masterRon=0.8,
     )
     recipe.flag_poor_data()

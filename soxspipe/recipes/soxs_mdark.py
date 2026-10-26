@@ -76,7 +76,6 @@ class soxs_mdark(base_recipe):
         )
         self.log = log
         log.debug("instantiating a new 'soxs_mdark' object")
-        self.settings = settings
         self.inputFrames = inputFrames
         self.verbose = verbose
         # xt-self-arg-tmpx
@@ -191,16 +190,17 @@ class soxs_mdark(base_recipe):
 
         kw = self.kw
 
-        combined_dark_mean, masterMedianFluxLevel, rawRon, masterRon = self._combine_dark_frames()
+        combined_dark_mean, masterMedianFluxLevel, meanFrameRon, masterRon = self._combine_dark_frames()
 
         self._record_dark_quality_checks(
             frame=combined_dark_mean,
             masterMedianFluxLevel=masterMedianFluxLevel,
-            rawRon=rawRon,
+            meanFrameRon=meanFrameRon,
             masterRon=masterRon,
         )
 
         self.update_fits_keywords(frame=combined_dark_mean)
+        combined_dark_mean.header[kw("DATANCOM")] = len(self.inputFrames.files)
 
         productPath = self._write_and_record_product(frame=combined_dark_mean, kw=kw)
 
@@ -217,7 +217,7 @@ class soxs_mdark(base_recipe):
 
         - ``combined_dark_mean`` -- the stacked master dark frame
         - ``masterMedianFluxLevel`` -- the median of the raw frames' mean flux levels
-        - ``rawRon`` -- the mean read noise of the raw frames
+        - ``meanFrameRon`` -- the mean of the per-frame clipped standard deviations, which include fixed pattern noise
         - ``masterRon`` -- the read noise measured on the stacked frame
         """
         import numpy as np
@@ -240,7 +240,7 @@ class soxs_mdark(base_recipe):
         meanFluxLevels, rons, noiseFrames = zip(*[self.subtract_mean_flux_level(c) for c in ccds])
         masterMeanFluxLevel = np.mean(meanFluxLevels)
         masterMedianFluxLevel = np.median(meanFluxLevels)
-        rawRon = np.mean(rons)
+        meanFrameRon = np.mean(rons)
 
         combined_noise = self.clip_and_stack(
             frames=list(noiseFrames),
@@ -256,25 +256,21 @@ class soxs_mdark(base_recipe):
         combined_noise.data = (
             np.ma.array(combined_noise.data, mask=combined_noise.mask, fill_value=0).filled() + masterMeanFluxLevel
         )
-        combined_noise.uncertainty = np.ma.array(
-            combined_noise.uncertainty.array,
-            mask=combined_noise.mask,
-            fill_value=rawRon,
-        ).filled()
         toolkit.frame_to_32(combined_noise)
         combined_dark_mean = combined_noise
         combined_dark_mean.mask = combined_noise.mask
 
-        return combined_dark_mean, masterMedianFluxLevel, rawRon, masterRon
+        return combined_dark_mean, masterMedianFluxLevel, meanFrameRon, masterRon
 
-    def _record_dark_quality_checks(self, frame, masterMedianFluxLevel, rawRon, masterRon):
+    def _record_dark_quality_checks(self, frame, masterMedianFluxLevel, meanFrameRon, masterRon):
         """*measure the master dark's quality checks and add them to the QC table*
 
         **Key Arguments:**
 
         - ``frame`` -- the stacked master dark frame
         - ``masterMedianFluxLevel`` -- the median of the raw frames' mean flux levels
-        - ``rawRon`` -- the mean read noise of the raw frames
+        - ``meanFrameRon`` -- the mean of the per-frame clipped standard deviations, used to fill the masked
+          uncertainty if the raw read noise cannot be measured
         - ``masterRon`` -- the read noise measured on the stacked frame
 
         Sets ``self.qc``.
@@ -299,9 +295,11 @@ class soxs_mdark(base_recipe):
             frameType="MDARK",
             frameName="master dark",
             masterFrame=frame,
-            rawRon=rawRon,
             masterRon=masterRon,
         )
+
+        # FILL THE MASKED UNCERTAINTY WITH THE MEASURED RAW RON, OR THE MEAN FRAME RON IF THERE WAS NO RAW PAIR
+        self._fill_masked_uncertainty(frame, meanFrameRon if rawRon is None else rawRon)
 
         return
 

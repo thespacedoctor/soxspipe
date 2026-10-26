@@ -191,7 +191,7 @@ def test_a_missing_order_table_for_the_first_lamp_raises_file_not_found(
     # ACT / ASSERT
     with pytest.raises(FileNotFoundError, match="needs an order-locations table"):
         recipe.produce_product()
-    assert recipe.orderTableSet == []
+    assert recipe.lampProducts == {}
 
 
 def test_a_missing_dlamp_order_table_raises_instead_of_reusing_the_plain_lamps_table(
@@ -199,14 +199,14 @@ def test_a_missing_dlamp_order_table_raises_instead_of_reusing_the_plain_lamps_t
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A lamp is never normalised against another lamp's order table, and `orderTableSet` never shifts.
+    """A lamp is never normalised against another lamp's order table, and records no products of its own.
 
     `orderTablePath` is reassigned twice per successful lamp: once from the
     order-table lookup at the top of the loop, and again near the bottom from
     the just-detected `ORDER_LOC<tag>` row in `self.products`. A lamp whose
     own lookup finds nothing must not inherit the previous lamp's path, and
-    must not leave a spare entry in `self.orderTableSet` that shifts every
-    later lamp's entry out of alignment.
+    must not leave an entry in `self.lampProducts` that a later lookup by
+    lamp tag could read.
     """
     # ARRANGE
     orderPath = prepared_fits(tmp_path / "ORDER_TAB_VIS.fits", seed=920)
@@ -276,7 +276,8 @@ def test_a_missing_dlamp_order_table_raises_instead_of_reusing_the_plain_lamps_t
     assert receivedOrderTablePaths[""] == str(untaggedSource)
     # THE D-LAMP IS NEVER NORMALISED AGAINST THE PLAIN LAMP'S ORDER TABLE.
     assert "_DLAMP" not in receivedOrderTablePaths
-    assert recipe.orderTableSet == [str(pathsByTag[""])]
+    assert list(recipe.lampProducts) == [""]
+    assert recipe.lampProducts[""].orderTablePath == str(pathsByTag[""])
 
 
 def test_uv_stitch_is_skipped_when_d_lamp_fluxes_are_missing(
@@ -547,21 +548,11 @@ def test_soxs_dark_detrends_and_records_every_flat_set(
 
     recipe.inputFrames = _Collections(
         {
-            _filters(PRO_CATG="MASTER_DARK_NIR"): _Collection(
-                ["dark-a.fits", "dark-b.fits"], [darkEarly, darkLate]
-            ),
-            _filters(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["flat_pre.fits"], [flat]
-            ),
-            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["dflat_pre.fits"], [dflat]
-            ),
-            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["qflat_pre.fits"], [qflat]
-            ),
-            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(
-                ["dome_pre.fits"], [domeflat]
-            ),
+            _filters(PRO_CATG="MASTER_DARK_NIR"): _Collection(["dark-a.fits", "dark-b.fits"], [darkEarly, darkLate]),
+            _filters(DPR_TYPE="FLAT,LAMP", DPR_TECH="ECHELLE,SLIT"): _Collection(["flat_pre.fits"], [flat]),
+            _filters(LAMP2="Deut_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(["dflat_pre.fits"], [dflat]),
+            _filters(LAMP1="Qth_Lamp", DPR_TECH="ECHELLE,SLIT"): _Collection(["qflat_pre.fits"], [qflat]),
+            _filters(DPR_TYPE="DOME,FLAT", DPR_TECH="ECHELLE,SLIT"): _Collection(["dome_pre.fits"], [domeflat]),
         }
     )
     detrendCalls: list[dict[str, Any]] = []

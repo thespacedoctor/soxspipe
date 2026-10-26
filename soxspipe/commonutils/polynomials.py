@@ -16,6 +16,56 @@ import os
 os.environ["TERM"] = "vt100"
 
 
+# SINGULAR VALUES BELOW THIS FRACTION OF THE LARGEST (OF THE COLUMN-SCALED DESIGN MATRIX) ARE TREATED AS ZERO.
+# FIXED, NOT EPS * MAX(M, N), SO THE CUT DOES NOT SHIFT AS SIGMA-CLIPPING CHANGES THE ROW COUNT. IT SITS WELL ABOVE
+# FLOATING-POINT NOISE (~1E-16) AND WELL BELOW THE SMALLEST SINGULAR VALUE OF THE REAL SOXS NIR EDGE FIT (~4E-10)
+LSTSQ_RCOND = 1.0e-12
+
+
+def solve_linear_poly_coefficients(poly, pixelList, yValues, nCoeff):
+    """*solve for the coefficients of a model that is linear in its coefficients, by least squares*
+
+    The design matrix is built by evaluating ``poly`` once per unit coefficient vector. Columns are scaled to unit
+    norm before solving, because raw order and axis-B powers span tens of orders of magnitude and would otherwise look
+    rank-deficient. Where the scaled design matrix is genuinely rank-deficient the solution with minimum norm in the
+    column-scaled basis is returned, so last-bit noise in the inputs cannot move the answer to a different solution.
+
+    **Key Arguments:**
+
+    - ``poly`` -- the model, called as ``poly(pixelList, *coeff)``, linear in ``coeff``
+    - ``pixelList`` -- data-frame holding the columns ``poly`` needs
+    - ``yValues`` -- the values to fit, one per row of ``pixelList``
+    - ``nCoeff`` -- the number of coefficients in the model
+
+    **Return:**
+
+    - ``coeff`` -- the fitted coefficients, as an array of length ``nCoeff``
+
+    **Usage:**
+
+    ```python
+    yValues = pixelList["cont_x"].values
+    coeff = solve_linear_poly_coefficients(poly=poly, pixelList=pixelList, yValues=yValues, nCoeff=6)
+    ```
+    """
+    import numpy as np
+
+    unitVectors = np.eye(nCoeff)
+    designMatrix = np.column_stack([poly(pixelList, *unitVectors[j]) for j in range(nCoeff)])
+    # NULLABLE PANDAS DTYPES (E.G. Float64 WITH pd.NA) BECOME PLAIN FLOATS, SO MISSING VALUES BECOME NaN AND ARE CAUGHT
+    yArray = np.asarray(yValues, dtype=float)
+
+    if not (np.isfinite(designMatrix).all() and np.isfinite(yArray).all()):
+        raise ValueError("array must not contain infs or NaNs")
+
+    # SCALE EACH COLUMN TO UNIT NORM (ALL-ZERO COLUMNS LEFT AS THEY ARE)
+    columnScale = np.linalg.norm(designMatrix, axis=0)
+    columnScale[columnScale == 0] = 1.0
+
+    scaledCoeff = np.linalg.lstsq(designMatrix / columnScale, yArray, rcond=LSTSQ_RCOND)[0]
+    return scaledCoeff / columnScale
+
+
 class chebyshev_order_wavelength_polynomials:
     """*the chebyshev polynomial fits for the single frames; to be iteratively fitted to minimise errors*
 
@@ -38,9 +88,7 @@ class chebyshev_order_wavelength_polynomials:
     ```
     """
 
-    def __init__(
-        self, log, orderDeg, wavelengthDeg, slitDeg, exponentsIncluded=False, axis=False
-    ):
+    def __init__(self, log, orderDeg, wavelengthDeg, slitDeg, exponentsIncluded=False, axis=False):
         self.log = log
         self.orderDeg = orderDeg
         self.wavelengthDeg = wavelengthDeg
@@ -93,24 +141,18 @@ class chebyshev_order_wavelength_polynomials:
             spPow = np.power.outer(spVals, np.arange(slitDeg + 1))
         else:
             axis = self.axis
-            orderPow = orderPixelTable[
-                [f"order_pow_{axis}{i}" for i in range(orderDeg + 1)]
-            ].to_numpy(dtype=float)
-            wlPow = orderPixelTable[
-                [f"wavelength_pow_{axis}{j}" for j in range(wavelengthDeg + 1)]
-            ].to_numpy(dtype=float)
-            spPow = orderPixelTable[
-                [f"slit_position_pow_{axis}{k}" for k in range(slitDeg + 1)]
-            ].to_numpy(dtype=float)
+            orderPow = orderPixelTable[[f"order_pow_{axis}{i}" for i in range(orderDeg + 1)]].to_numpy(dtype=float)
+            wlPow = orderPixelTable[[f"wavelength_pow_{axis}{j}" for j in range(wavelengthDeg + 1)]].to_numpy(
+                dtype=float
+            )
+            spPow = orderPixelTable[[f"slit_position_pow_{axis}{k}" for k in range(slitDeg + 1)]].to_numpy(dtype=float)
 
         # RESHAPE THE FLAT COEFF TUPLE INTO (I, J, K); ROW-MAJOR MATCHES THE
         # I-OUTER/J-MIDDLE/K-INNER ORDER THE COEFFS WERE ORIGINALLY WRITTEN IN.
         # NOTE: THIS RELIES ON ALL POLY DEGREES BEING SINGLE-DIGIT (TRUE FOR
         # ALL CURRENT SETTINGS FILES), A PRE-EXISTING ASSUMPTION, NOT
         # INTRODUCED HERE.
-        coeffArr = np.asarray(coeff, dtype=float).reshape(
-            orderDeg + 1, wavelengthDeg + 1, slitDeg + 1
-        )
+        coeffArr = np.asarray(coeff, dtype=float).reshape(orderDeg + 1, wavelengthDeg + 1, slitDeg + 1)
 
         # CONTRACT ONE AXIS AT A TIME SO WE NEVER MATERIALISE AN
         # (N, I, J, K) INTERMEDIATE ARRAY
@@ -184,9 +226,7 @@ class chebyshev_xy_polynomial:
                 n_coeff += 1
         else:
             for i in range(0, self.y_deg + 1):
-                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype(
-                    "float"
-                )
+                lhsVals += coeff[n_coeff] * orderPixelTable[f"y_pow_{i}"].values.astype("float")
                 n_coeff += 1
 
         self.log.info("completed the ``poly`` method")

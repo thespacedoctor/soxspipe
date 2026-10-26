@@ -13,6 +13,8 @@ which is what a split of this method could silently change.
 
 from __future__ import annotations
 
+import io
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +25,7 @@ from astropy import units as u
 from astropy.nddata import CCDData
 
 from soxspipe.recipes import base_recipe
+from tests.factories import lzw_compressed_fits
 
 pytestmark = pytest.mark.unit
 
@@ -131,6 +134,7 @@ def _recipe(
     recipe.startNightDate = "2024-01-02"
     recipe.qc = pd.DataFrame({column: [] for column in QC_COLUMNS})
     recipe.generateReponseCurve = False
+    recipe.cosmicRayMasks = []
     return recipe
 
 
@@ -223,6 +227,34 @@ def test_a_corrupted_frame_is_dropped_from_the_reduction(
     result = recipe._prepare_single_frame(rawPath)
 
     # ASSERT
+    assert result is None
+    assert any("likely corrupted" in str(message) for message in log.messages)
+
+
+@pytest.mark.skipif(shutil.which("gzip") is None, reason="the gzip binary is not installed")
+def test_a_corrupted_compressed_frame_is_dropped_from_the_reduction(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `buffer is too small` failure on the gzip-decompressed bytes still returns `None`."""
+    # ARRANGE
+    recipe = _recipe(log, tmp_path)
+    compressedPath = lzw_compressed_fits(Path(_raw_frame(tmp_path)), tmp_path / "raw.fits.Z")
+
+    sources: list[object] = []
+
+    def failing_read(source: object, **__: object) -> CCDData:
+        sources.append(source)
+        raise TypeError("buffer is too small for requested array")
+
+    monkeypatch.setattr(CCDData, "read", failing_read)
+
+    # ACT
+    result = recipe._prepare_single_frame(str(compressedPath))
+
+    # ASSERT
+    assert [type(source) for source in sources] == [io.BytesIO]
     assert result is None
     assert any("likely corrupted" in str(message) for message in log.messages)
 

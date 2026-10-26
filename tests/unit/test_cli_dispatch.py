@@ -116,6 +116,7 @@ def _run_cli(
     rawPaths: list[str] | None = None,
     currentSession: str | None = None,
     allowSleep: bool = False,
+    settings: dict[str, object] | None = None,
 ) -> tuple[CliLogger, list[dict[str, object]]]:
     clUtils = import_module("soxspipe.cl_utils")
     commonutilsModule = import_module("soxspipe.commonutils")
@@ -138,7 +139,7 @@ def _run_cli(
         def setup(self) -> tuple[dict[str, object], dict[str, object], CliLogger, None]:
             return (
                 dict(parsedArguments),
-                {"workspace-root-dir": str(tmp_path)},
+                settings if settings is not None else {"workspace-root-dir": str(tmp_path)},
                 logger,
                 parsedArguments.get("--dbConn"),
             )
@@ -335,7 +336,125 @@ def test_main_reduce_all_converts_batch_and_forwards_flags(
             "refreshWorkspace": False,
         }
     ]
-    assert reduceCalls == [{"batch": 2, "multiprocess": True}]
+    assert reduceCalls == [{"batch": 2, "multiprocess": True, "poolSize": None}]
+
+
+def _record_reducer(monkeypatch: pytest.MonkeyPatch) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Replace the reducer with a recorder and return its constructor and `reduce` calls."""
+    initCalls: list[dict[str, object]] = []
+    reduceCalls: list[dict[str, object]] = []
+
+    class RecordingReducer:
+        def __init__(self, **kwargs: object) -> None:
+            initCalls.append(kwargs)
+
+        def reduce(self, **kwargs: object) -> None:
+            reduceCalls.append(kwargs)
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "reducer", RecordingReducer)
+    return initCalls, reduceCalls
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["soxspipe", "-m", "reduce", "all", "--cores", "2"],
+        ["soxspipe", "-m", "reduce", "all", "-c", "2"],
+        ["soxspipe", "-m", "reduce", "all", "-c2"],
+    ],
+)
+def test_main_reduce_all_forwards_the_user_pool_size(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    argv: list[str],
+) -> None:
+    """`--cores` sets the worker-pool size for multiprocessing mode."""
+    # ARRANGE
+    monkeypatch.setattr(import_module("soxspipe.cl_utils").os, "cpu_count", lambda: 4)
+    (tmp_path / "soxspipe.db").touch()
+    _, reduceCalls = _record_reducer(monkeypatch)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, argv)
+
+    # ASSERT
+    assert reduceCalls == [{"batch": None, "multiprocess": True, "poolSize": 2}]
+
+
+def test_main_reduce_all_accepts_a_pool_size_equal_to_the_cpu_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The logical CPU count is the largest accepted `--cores` value."""
+    # ARRANGE
+    monkeypatch.setattr(import_module("soxspipe.cl_utils").os, "cpu_count", lambda: 4)
+    (tmp_path / "soxspipe.db").touch()
+    _, reduceCalls = _record_reducer(monkeypatch)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", "-m", "reduce", "all", "--cores", "4"])
+
+    # ASSERT
+    assert reduceCalls == [{"batch": None, "multiprocess": True, "poolSize": 4}]
+
+
+def test_main_reduce_all_rejects_a_pool_size_above_the_cpu_count(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A pool larger than the logical CPU count is refused, naming the limit."""
+    # ARRANGE
+    monkeypatch.setattr(import_module("soxspipe.cl_utils").os, "cpu_count", lambda: 4)
+    (tmp_path / "soxspipe.db").touch()
+    initCalls, _ = _record_reducer(monkeypatch)
+
+    # ACT
+    with pytest.raises(SystemExit) as excinfo:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "-m", "reduce", "all", "--cores", "5"])
+
+    # ASSERT
+    assert excinfo.value.code not in (0, None)
+    assert "at most 4" in capsys.readouterr().err
+    assert initCalls == []
+
+
+@pytest.mark.parametrize(
+    ("argv", "expectedMessage"),
+    [
+        (["soxspipe", "-m", "reduce", "all", "--cores", "0"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores=-1"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "abc"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "2.5"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "+2"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", " 2"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", "2_0"], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", ""], "positive whole number"),
+        (["soxspipe", "-m", "reduce", "all", "--cores", str(10**9)], "at most"),
+        (["soxspipe", "reduce", "all", "--cores", "2"], "-m"),
+    ],
+)
+def test_main_reduce_all_rejects_an_invalid_pool_size_before_any_reduction(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    expectedMessage: str,
+) -> None:
+    """A bad `--cores` value, or `--cores` without `-m`, exits non-zero and never builds the reducer."""
+    # ARRANGE
+    (tmp_path / "soxspipe.db").touch()
+    initCalls, reduceCalls = _record_reducer(monkeypatch)
+
+    # ACT
+    with pytest.raises(SystemExit) as excinfo:
+        _run_cli(monkeypatch, tmp_path, argv)
+
+    # ASSERT
+    assert excinfo.value.code not in (0, None)
+    assert expectedMessage in capsys.readouterr().err
+    assert initCalls == []
+    assert reduceCalls == []
 
 
 def test_main_reduce_returns_before_dispatch_when_workspace_is_unprepared(
@@ -738,3 +857,219 @@ def test_reduce_watch_exits_non_zero_when_its_re_prepare_refuses_a_rebuild(
     assert set(initKwargs) == {"log", "rootDir", "vlt"}
     assert initKwargs["rootDir"] == "."
     assert initKwargs["vlt"] is False
+
+
+def test_main_prep_exits_non_zero_with_the_refresh_advice_for_an_outdated_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A workspace made from an older template is refused with the advice on stderr, not a traceback."""
+    from soxspipe.commonutils.data_organiser import OutdatedWorkspaceError
+
+    def refuse_outdated(self: object, **kwargs: object) -> None:
+        raise OutdatedWorkspaceError()
+
+    monkeypatch.setattr(RecordingOrganiser, "prepare", refuse_outdated)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "prep"])
+
+    assert error.value.code == 1
+    assert "soxspipe prep --refresh" in capsys.readouterr().err
+
+
+def test_main_reduce_exits_non_zero_with_the_refresh_advice_for_an_outdated_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`reduce` refreshes the session's SOFs first, so an outdated workspace is refused there too."""
+    from soxspipe.commonutils.data_organiser import OutdatedWorkspaceError
+
+    commonutilsModule = import_module("soxspipe.commonutils")
+    (tmp_path / "soxspipe.db").touch()
+
+    class OutdatedReducer:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def reduce(self, **kwargs: object) -> None:
+            raise OutdatedWorkspaceError()
+
+    monkeypatch.setattr(commonutilsModule, "reducer", OutdatedReducer)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "reduce", "all"])
+
+    assert error.value.code == 1
+    assert "soxspipe prep --refresh" in capsys.readouterr().err
+
+
+STACKING_SETTINGS = {
+    "workspace-root-dir": "workspace",
+    "soxs-stare": {"stack_before_extraction": True},
+    "soxs-stare-std": {"stack_before_extraction": True},
+    "soxs-nod": {"stack_before_extraction": True},
+    "soxs-nod-std": {"stack_before_extraction": True},
+    "soxs-offset": {"stack_before_extraction": True},
+    "soxs-offset-std": {"stack_before_extraction": True},
+}
+
+
+def _stacking_off(settings: dict[str, object]) -> dict[str, object]:
+    """Return the settings the `--no-stack` option must produce, written out without the production helper."""
+    return {
+        **{
+            key: ({**value, "stack_before_extraction": False} if isinstance(value, dict) else value)
+            for key, value in settings.items()
+        },
+        "no-stack": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["soxspipe", "stare", "frames", "--no-stack"],
+        ["soxspipe", "stare_std", "frames", "--no-stack"],
+        ["soxspipe", "nod", "frames", "--no-stack"],
+        ["soxspipe", "nod_std", "frames", "--no-stack"],
+        ["soxspipe", "offset", "frames", "--no-stack"],
+        ["soxspipe", "reduce", "all", "--no-stack"],
+        ["soxspipe", "-m", "reduce", "all", "--no-stack", "-c", "2"],
+        ["soxspipe", "reduce", "sof", "my.sof", "--no-stack"],
+        ["soxspipe", "-x", "reduce", "sof", "my.sof", "--no-stack"],
+    ],
+)
+def test_usage_accepts_no_stack_on_stare_nod_offset_and_reduce(argv: list[str]) -> None:
+    """The docopt usage lets `--no-stack` through on every command that reduces stare, nod or offset data."""
+    clUtils = import_module("soxspipe.cl_utils")
+
+    parsed = parse_docopt(clUtils.__doc__, argv=argv[1:])
+
+    assert parsed["--no-stack"] is True
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["mbias", "frames", "--no-stack"],
+        ["mdark", "frames", "--no-stack"],
+        ["mflat", "frames", "--no-stack"],
+        ["prep", "--no-stack"],
+        ["list", "ob", "--no-stack"],
+    ],
+)
+def test_usage_rejects_no_stack_on_other_commands(argv: list[str]) -> None:
+    """Only the stacking recipes take `--no-stack`."""
+    clUtils = import_module("soxspipe.cl_utils")
+
+    with pytest.raises(SystemExit):
+        parse_docopt(clUtils.__doc__, argv=argv)
+
+
+def test_usage_leaves_no_stack_off_by_default() -> None:
+    clUtils = import_module("soxspipe.cl_utils")
+
+    parsed = parse_docopt(clUtils.__doc__, argv=["stare", "frames"])
+
+    assert parsed["--no-stack"] is False
+
+
+@pytest.mark.parametrize(
+    ("command", "recipeAttribute"),
+    [
+        ("stare", "soxs_stare"),
+        ("stare_std", "soxs_stare"),
+        ("nod", "soxs_nod"),
+        ("nod_std", "soxs_nod"),
+        ("offset", "soxs_offset"),
+    ],
+)
+def test_main_gives_the_recipe_the_stacking_off_settings_when_no_stack_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command: str, recipeAttribute: str
+) -> None:
+    """The recipe is built with a copy of the settings that has stacking off and the override marked."""
+    # ARRANGE
+    constructorCalls: list[dict[str, object]] = []
+
+    class RecordingRecipe:
+        def __init__(self, **kwargs: object) -> None:
+            constructorCalls.append(kwargs)
+
+        def produce_product(self) -> str:
+            return "product.fits"
+
+    monkeypatch.setattr(import_module("soxspipe.recipes"), recipeAttribute, RecordingRecipe)
+    baseSettings = dict(STACKING_SETTINGS)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", command, "frames", "--no-stack"], settings=baseSettings)
+
+    # ASSERT
+    assert len(constructorCalls) == 1
+    assert constructorCalls[0]["settings"] == _stacking_off(STACKING_SETTINGS)
+    assert baseSettings["soxs-stare"] == {"stack_before_extraction": True}
+
+
+@pytest.mark.parametrize("command", ["stare", "nod", "offset"])
+def test_main_leaves_the_settings_alone_without_no_stack(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command: str
+) -> None:
+    # ARRANGE
+    constructorCalls: list[dict[str, object]] = []
+
+    class RecordingRecipe:
+        def __init__(self, **kwargs: object) -> None:
+            constructorCalls.append(kwargs)
+
+        def produce_product(self) -> str:
+            return "product.fits"
+
+    monkeypatch.setattr(import_module("soxspipe.recipes"), f"soxs_{command}", RecordingRecipe)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", command, "frames"], settings=dict(STACKING_SETTINGS))
+
+    # ASSERT
+    assert constructorCalls[0]["settings"] == STACKING_SETTINGS
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["soxspipe", "reduce", "all", "--no-stack"],
+        ["soxspipe", "-m", "reduce", "all", "--no-stack"],
+        ["soxspipe", "reduce", "sof", "my.sof", "--no-stack"],
+    ],
+)
+def test_main_gives_the_reducer_the_stacking_off_settings_when_no_stack_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, argv: list[str]
+) -> None:
+    """The reducer, and so every recipe it runs (also in worker processes), gets the overridden settings."""
+    # ARRANGE
+    (tmp_path / "soxspipe.db").touch()
+    initCalls, reduceCalls = _record_reducer(monkeypatch)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, argv, settings=dict(STACKING_SETTINGS))
+
+    # ASSERT
+    assert len(initCalls) == 1
+    assert initCalls[0]["settings"] == _stacking_off(STACKING_SETTINGS)
+    assert len(reduceCalls) == 1
+
+
+def test_main_gives_the_reducer_unchanged_settings_without_no_stack(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    (tmp_path / "soxspipe.db").touch()
+    initCalls, _ = _record_reducer(monkeypatch)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", "reduce", "all"], settings=dict(STACKING_SETTINGS))
+
+    # ASSERT
+    assert initCalls[0]["settings"] == STACKING_SETTINGS

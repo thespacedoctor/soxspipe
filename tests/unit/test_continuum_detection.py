@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -13,7 +14,10 @@ from astropy.io import fits
 from astropy.nddata import CCDData
 
 from soxspipe.commonutils.detect_continuum import detect_continuum
-from tests.factories import instrument_header, pipeline_settings
+from soxspipe.commonutils.faint_order_trace import transfer_report
+from tests.factories import instrument_header, pipeline_settings, qc_table
+from tests.unit._continuum_vis_scene import VIS_ORDER_CENTRES, vis_sampling_detector
+from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
 
 pytestmark = pytest.mark.unit
 continuumModule = importlib.import_module("soxspipe.commonutils.detect_continuum")
@@ -42,12 +46,7 @@ def test_calculate_residuals_matches_exact_global_trace(log: object) -> None:
             "cont_y": [0.0, 1.0, 2.0],
         }
     )
-    expectedFit = (
-        1.0
-        + 2.0 * pixels["cont_y"]
-        + 3.0 * pixels["order"]
-        + 4.0 * pixels["order"] * pixels["cont_y"]
-    )
+    expectedFit = 1.0 + 2.0 * pixels["cont_y"] + 3.0 * pixels["order"] + 4.0 * pixels["order"] * pixels["cont_y"]
     pixels["cont_x"] = expectedFit - np.array([1.0, -2.0, 0.0])
 
     residuals, mean, std, median, fitted = detector.calculate_residuals(
@@ -215,9 +214,15 @@ def test_get_records_fitted_trace_qc_product_and_order_table(
     monkeypatch.setattr(
         detector,
         "plot_results",
-        lambda **kwargs: ("/qc/continuum.pdf", pd.DataFrame({"axis": ["x"]})),
+        lambda **kwargs: "/qc/continuum.pdf",
     )
-    monkeypatch.setattr(detector, "write_order_table_to_file", lambda **kwargs: "/products/orders.fits")
+    monkeypatch.setattr(detector, "build_order_metadata", lambda **kwargs: pd.DataFrame({"axis": ["x"]}))
+    writeCalls: list[dict] = []
+    monkeypatch.setattr(
+        detector,
+        "write_order_table_to_file",
+        lambda **kwargs: writeCalls.append(kwargs) or "/products/orders.fits",
+    )
 
     result = detector.get()
 
@@ -233,6 +238,58 @@ def test_get_records_fitted_trace_qc_product_and_order_table(
     assert orderPoly.loc[0, "std_11"] == 4.0
     assert "mask" not in orderPixels
     assert orderMeta.to_dict("list") == {"axis": ["x"]}
+    assert writeCalls[0]["orderMetaTable"] is orderMeta
+
+
+def test_get_reports_when_the_fitted_trace_is_extrapolated_across_a_sample_free_stretch(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public continuum seam reports an order whose accepted samples stop short of the order end (DY-1716)."""
+    # ARRANGE: ORDER 2 IS SAMPLED OVER 400-440 NM BUT ONLY 400-420 NM SURVIVES THE FIT
+    wavelengths = np.arange(400.0, 441.0)
+    detector = _detector(log, orderDeg=1, axisBDeg=1)
+    detector.orderPixelTable = pd.DataFrame(
+        {
+            "order": 2.0,
+            "wavelength": wavelengths,
+            "cont_x": 2.0,
+            "cont_y": wavelengths,
+            "gauss_stddev": 1.0,
+            "mask": False,
+        }
+    )
+    detector.coeff_dict = {}
+    detector.recipeName = "soxs-stare"
+    detector.inst = "SOXS"
+    detector.dateObs = "2024-01-02T00:00:00"
+    detector.settings = {"tune-pipeline": False}
+    detector.qc = pd.DataFrame({"qc_name": []})
+    detector.products = False
+    detector.noddingSequence = ""
+    detector.notFlattened = ""
+    detector.traceFrame = object()
+    detector.recipeSettings["max-unsampled-trace-fraction"] = 0.2
+
+    def fit_trace(**kwargs: object) -> tuple[list[float], pd.DataFrame, pd.DataFrame]:
+        fitted = kwargs["pixelList"]
+        fitted = fitted.loc[fitted["wavelength"] <= 420.0].copy()
+        fitted[f"{kwargs['axisACol']}_fit_res"] = 0.0
+        return [1.0, 2.0, 3.0, 4.0], fitted, pd.DataFrame()
+
+    monkeypatch.setattr(detector, "fit_global_polynomial", fit_trace)
+    monkeypatch.setattr(detector, "plot_results", lambda **kwargs: "/qc/continuum.pdf")
+    monkeypatch.setattr(detector, "build_order_metadata", lambda **kwargs: pd.DataFrame({"axis": ["x"]}))
+    monkeypatch.setattr(detector, "write_order_table_to_file", lambda **kwargs: "/products/orders.fits")
+
+    # ACT
+    detector.get()
+
+    # ASSERT
+    notes = [m for level, m in log.messages if level == "info" and "no accepted samples" in m]
+    assert len(notes) == 1
+    assert "order 2" in notes[0]
+    assert "420.0 nm and 440.0 nm" in notes[0]
 
 
 def test_gaussian_slice_fit_recovers_trace_and_leaves_low_signal_unfitted(
@@ -265,6 +322,27 @@ def test_gaussian_slice_fit_recovers_trace_and_leaves_low_signal_unfitted(
     np.testing.assert_allclose(result.loc[0, "gauss_stddev"], 2.0, rtol=0, atol=1e-6)
     assert np.isnan(result.loc[1, "cont_x"])
     assert np.isnan(result.loc[1, "gauss_mean"])
+
+
+def test_gaussian_slice_fit_reports_the_anti_axis_centre_of_the_collapsed_rows(log: object) -> None:
+    # ARRANGE: A HORIZONTAL TRACE ON ROW 30, SO THE ONE-ROW SLICE COLLAPSES ONLY ROW 30
+    detector = _detector(log)
+    detector.sliceWidth = 1
+    detector.detectorParams = {"dispersion-axis": "x"}
+    detector.debug = False
+    detector.peakSigmaLimit = 3.0
+    detector.sliceAxis = "x"
+    detector.sliceAntiAxis = "y"
+    columns = np.arange(80, dtype=float)
+    frame = np.tile(20.0 * np.exp(-0.5 * ((columns - 40.0) / 2.0) ** 2), (60, 1))
+    detector.traceFrame = np.ma.masked_array(frame, mask=np.zeros(frame.shape, dtype=bool))
+    pixels = pd.DataFrame({"fit_x": [40.0], "fit_y": [30.0]})
+
+    # ACT
+    result = detector.fit_1d_gaussian_to_slices(pixels, sliceLength=21)
+
+    # ASSERT: PIXEL CENTRES ARE AT INTEGER INDICES, SO ROW 30 IS REPORTED AS 30.0 AND NOT 30.5
+    assert result.loc[0, "cont_y"] == pytest.approx(30.0, abs=1e-12)
 
 
 def test_constructor_resolves_trace_orientation_and_nodding_metadata(
@@ -308,6 +386,33 @@ def test_constructor_resolves_trace_orientation_and_nodding_metadata(
     assert (detector.qcDir, detector.productDir) == (str(qcPath), str(productPath))
 
 
+def test_constructor_keeps_the_slit_offsets_it_is_given(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.utility_setup", lambda **_: (str(tmp_path), str(tmp_path)))
+    monkeypatch.setattr(continuumModule, "get_calibration_lamp", lambda **_: "QTH")
+    frame = CCDData(np.ones((32, 32)), unit=u.electron, meta=instrument_header(arm="VIS"))
+    arguments = {
+        "log": log,
+        "traceFrame": frame,
+        "dispersion_map": "dispersion.fits",
+        "settings": pipeline_settings(tmp_path),
+        "recipeSettings": {"detect-continuum": {"disp-axis-deg": 2, "order-deg": 1}},
+        "recipeName": "soxs-stare",
+    }
+
+    # ACT
+    withOffsets = detect_continuum(**arguments, slitOffsetsArcsec={2: 0.4})
+    without = detect_continuum(**arguments)
+
+    # ASSERT
+    assert withOffsets.slitOffsetsArcsec == {2: 0.4}
+    assert without.slitOffsetsArcsec is None
+
+
 def test_create_pixel_arrays_samples_each_spectral_order(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -319,9 +424,7 @@ def test_create_pixel_arrays_samples_each_spectral_order(
     detector.dispersion_map = str(tmp_path / "dispersion.fits")
     detector.recipeSettings["order-sample-count"] = 5
     detector.kw = lambda key: {"WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
-    fits.PrimaryHDU(header=fits.Header({"BINX": 2, "BINY": 3})).writeto(
-        detector.dispersion_map
-    )
+    fits.PrimaryHDU(header=fits.Header({"BINX": 2, "BINY": 3})).writeto(detector.dispersion_map)
     monkeypatch.setattr(
         continuumModule,
         "read_spectral_format",
@@ -352,9 +455,7 @@ def test_sample_trace_records_detection_qc_for_analytic_trace(
     detector.recipeName = "soxs-stare"
     detector.traceFrame = CCDData(np.ones((32, 32)), unit=u.electron)
     detector.kw = lambda key: {"DPR_TYPE": "DPR TYPE", "WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
-    detector.recipeSettings.update(
-        {"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5}
-    )
+    detector.recipeSettings.update({"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5})
     detector.debug = False
     detector.qc = pd.DataFrame()
     detector.dateObs = "2024-01-02T03:04:05"
@@ -408,9 +509,7 @@ def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(
     detector.recipeName = "soxs-mflat"
     detector.traceFrame = CCDData(np.ones((32, 32)), unit=u.electron)
     detector.kw = lambda key: {"DPR_TYPE": "DPR TYPE", "WIN_BINX": "BINX", "WIN_BINY": "BINY"}[key]
-    detector.recipeSettings.update(
-        {"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5}
-    )
+    detector.recipeSettings.update({"slice-length": 12, "peak-sigma-limit": 3.0, "slice-width": 5})
     detector.debug = False
     detector.qc = pd.DataFrame()
     detector.dateObs = "2024-01-02T03:04:05"
@@ -441,11 +540,142 @@ def test_sample_trace_keeps_soxs_vis_order_groups_separate_until_fitted(
     assert result.groupby("order").size().to_dict() == {1.0: 50, 2.0: 50, 3.0: 50, 4.0: 50}
 
 
-def test_plot_results_writes_continuum_diagnostic_and_order_limits(
-    tmp_path, log: object, monkeypatch: pytest.MonkeyPatch
+def test_sample_trace_follows_u_and_g_traces_that_sit_6_5_px_apart_relative_to_the_map(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Render the fitted trace diagnostic from a compact analytic order table."""
+    """Each VIS order gets its own shift and window, so a u trace 6.5 px from g keeps its samples (DY-1716)."""
+    # ARRANGE: THE LONGER G ORDER SETS THE MEDIAN SHIFT OF THE PAIR, AND THE U TRACE SITS 6.5 PX FROM IT
+    offsets = {1.0: 0.0, 2.0: 9.5, 3.0: 3.0, 4.0: 0.0}
+    detector = vis_sampling_detector(_detector(log), offsets)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.quicklook_image", lambda **_: None)
+
+    # ACT
+    result, _ = detector.sample_trace()
+
+    # ASSERT: EVERY ORDER IS DETECTED ALONG ITS FULL LENGTH, ON THE TRUE TRACE
+    for order, offset in offsets.items():
+        rows = result[result["order"] == order]
+        assert rows["cont_x"].notna().mean() >= 0.95, f"order {order:.0f} lost samples"
+        assert rows["cont_x"].median() == pytest.approx(VIS_ORDER_CENTRES[order] + offset, abs=0.2)
+
+
+def test_longest_unsampled_stretch_spans_the_gap_between_neighbouring_accepted_samples() -> None:
+    # ARRANGE: AN ORDER SAMPLED EVERY NM FROM 400 TO 440, WITH 410-434 NM NEVER ACCEPTED
+    sampled = np.arange(400.0, 441.0)
+    accepted = sampled[(sampled < 410.0) | (sampled > 434.0)]
+
+    # ACT
+    fraction, startNm, endNm = continuumModule.longest_unsampled_stretch(sampled, accepted)
+
+    # ASSERT: THE POLYNOMIAL MUST CROSS 409-435 NM WITHOUT A SAMPLE, 26 NM OF AN ORDER 40 NM LONG
+    assert (startNm, endNm) == (409.0, 435.0)
+    assert fraction == pytest.approx(26.0 / 40.0)
+
+
+def test_longest_unsampled_stretch_counts_the_ends_of_the_order() -> None:
+    # ARRANGE: NO SAMPLE IS ACCEPTED ABOVE 420 NM, SO THE FIT EXTRAPOLATES TO THE RED END
+    sampled = np.arange(400.0, 441.0)
+    accepted = sampled[sampled <= 420.0]
+
+    # ACT
+    fraction, startNm, endNm = continuumModule.longest_unsampled_stretch(sampled, accepted)
+
+    # ASSERT
+    assert (startNm, endNm) == (420.0, 440.0)
+    assert fraction == pytest.approx(0.5)
+
+
+def test_longest_unsampled_stretch_is_the_whole_order_when_no_sample_is_accepted() -> None:
+    # ARRANGE
+    sampled = np.arange(400.0, 441.0)
+
+    # ACT
+    fraction, startNm, endNm = continuumModule.longest_unsampled_stretch(sampled, np.array([]))
+
+    # ASSERT
+    assert (fraction, startNm, endNm) == (1.0, 400.0, 440.0)
+
+
+def _two_order_samples(gapOrder: float | None, gapStartNm: float = 410.0, gapEndNm: float = 434.0) -> tuple:
+    """Return the sampled and accepted tables of orders 2 and 3, with a sample-free stretch in `gapOrder`."""
+    sampled = pd.concat(
+        [pd.DataFrame({"order": order, "wavelength": np.arange(400.0, 441.0)}) for order in (2.0, 3.0)],
+        ignore_index=True,
+    )
+    isGap = (sampled["order"] == gapOrder) & sampled["wavelength"].between(gapStartNm, gapEndNm)
+    return sampled, sampled.loc[~isGap].reset_index(drop=True)
+
+
+def _extrapolation_detector(log: object, **recipeSettings: float) -> detect_continuum:
     detector = _detector(log)
+    detector.recipeName = "soxs-stare"
+    detector.dateObs = "2024-01-02T03:04:05"
+    detector.qc = pd.DataFrame()
+    detector.recipeSettings.update(recipeSettings)
+    return detector
+
+
+def test_extrapolated_trace_note_names_the_order_and_wavelength_range(log: object) -> None:
+    # ARRANGE: THE U ORDER (2) HAS NO ACCEPTED SAMPLE OVER 410-434 NM
+    detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
+    sampled, accepted = _two_order_samples(gapOrder=2.0)
+
+    # ACT
+    detector.check_trace_extrapolation(sampled, accepted)
+
+    # ASSERT: ONE INFO NOTE, FOR ORDER 2 ONLY
+    notes = [m for level, m in log.messages if level == "info" and "no accepted samples" in m]
+    assert len(notes) == 1
+    assert "order 2" in notes[0]
+    assert "409.0" in notes[0]
+    assert "435.0" in notes[0]
+
+
+def test_extrapolated_trace_note_is_silent_on_a_normal_trace(log: object) -> None:
+    # ARRANGE: EVERY SAMPLE IS ACCEPTED
+    detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
+    sampled, accepted = _two_order_samples(gapOrder=None)
+
+    # ACT
+    detector.check_trace_extrapolation(sampled, accepted)
+
+    # ASSERT
+    assert not any("no accepted samples" in m for _, m in log.messages)
+
+
+def test_extrapolated_trace_check_records_the_longest_gap_of_each_order_as_a_qc(log: object) -> None:
+    # ARRANGE
+    detector = _extrapolation_detector(log, **{"max-unsampled-trace-fraction": 0.2})
+    sampled, accepted = _two_order_samples(gapOrder=2.0)
+
+    # ACT
+    detector.check_trace_extrapolation(sampled, accepted)
+
+    # ASSERT: A GAP OF 26 NM IN 40 AND THE 1 NM SAMPLE SPACING OF THE COMPLETE ORDER
+    qc = detector.qc.set_index("qc_name")
+    assert qc.loc["SAMPLES GAP MAX O2", "qc_value"] == 0.65
+    assert qc.loc["SAMPLES GAP MAX O3", "qc_value"] == 0.025
+    assert qc.loc["SAMPLES GAP MAX O2", "qc_order"] == 2
+    assert not qc["to_header"].any()
+    assert pd.api.types.is_numeric_dtype(detector.qc["qc_value"])
+
+
+def test_extrapolated_trace_check_falls_back_to_the_default_threshold_for_older_settings(log: object) -> None:
+    # ARRANGE: A WORKSPACE settings FILE WRITTEN BEFORE THE KEY EXISTED
+    detector = _extrapolation_detector(log)
+    sampled, accepted = _two_order_samples(gapOrder=2.0)
+
+    # ACT
+    detector.check_trace_extrapolation(sampled, accepted)
+
+    # ASSERT
+    assert len([m for level, m in log.messages if level == "info" and "no accepted samples" in m]) == 1
+
+
+def _plot_ready_detector(tmp_path: Path, log: object, *, orderDeg: int = 0, axisBDeg: int = 1) -> detect_continuum:
+    """Return a detector carrying just the state `plot_results` reads, on a 32x32 trace frame."""
+    detector = _detector(log, orderDeg=orderDeg, axisBDeg=axisBDeg)
     detector.recipeName = "soxs-order-centres"
     detector.sofName = "synthetic"
     detector.qcDir = str(tmp_path)
@@ -461,21 +691,27 @@ def test_plot_results_writes_continuum_diagnostic_and_order_limits(
         "rotate-qc-plot": False,
     }
     detector.traceFrame = CCDData(np.full((32, 32), 20.0), unit=u.electron)
+    return detector
+
+
+def _trace_pixels(orders: list[float], slope: float, intercept: float) -> pd.DataFrame:
+    """Return a residual-free pixel table with one straight trace per order."""
     yValues = np.arange(4.0, 28.0)
-    orders = np.repeat([10.0, 11.0], len(yValues))
-    traceY = np.tile(yValues, 2)
-    traceX = 8.0 + 0.2 * traceY
-    pixels = pd.DataFrame(
+    traceY = np.tile(yValues, len(orders))
+    return pd.DataFrame(
         {
-            "order": orders,
-            "cont_x": traceX,
+            "order": np.repeat(orders, len(yValues)),
+            "cont_x": intercept + slope * traceY,
             "cont_y": traceY,
-            "cont_x_fit_res": np.zeros(len(orders)),
-            "gauss_stddev_fit": np.full(len(orders), 1.5),
+            "cont_x_fit_res": np.zeros(len(traceY)),
+            "gauss_stddev_fit": np.full(len(traceY), 1.5),
             "wavelength": 500.0 + traceY,
         }
     )
-    clipped = pd.DataFrame(
+
+
+def _no_continuum_clipped() -> pd.DataFrame:
+    return pd.DataFrame(
         {
             "cont_x": [np.nan],
             "cont_y": [10.0],
@@ -483,16 +719,641 @@ def test_plot_results_writes_continuum_diagnostic_and_order_limits(
             "fit_y": [10.0],
         }
     )
-    coefficients = pd.DataFrame(
-        [{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}]
-    )
-    monkeypatch.setattr(
-        "soxspipe.commonutils.toolkit.qc_settings_plot_tables",
-        lambda **_: None,
-    )
 
-    outputPath, orderMetadata = detector.plot_results(pixels, coefficients, clipped)
 
+@pytest.fixture
+def savefig_text_colours(monkeypatch: pytest.MonkeyPatch):
+    """Record `{label: colour}` for every axis of the current figure each time `plt.savefig` is called.
+
+    `plot_results` clears every axis after saving, so the labels must be captured at save time.
+    """
+    snapshots = []
+    realSavefig = plt.savefig
+
+    def recorder(*args, **kwargs):
+        snapshots.append([{t.get_text(): t.get_color() for t in ax.texts} for ax in plt.gcf().axes])
+        return realSavefig(*args, **kwargs)
+
+    monkeypatch.setattr(plt, "savefig", recorder)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+    yield snapshots
+    plt.close("all")
+
+
+def test_plot_results_writes_continuum_diagnostic_and_order_limits(
+    tmp_path, log: object, savefig_text_colours: list
+) -> None:
+    """Render the fitted trace diagnostic from a compact analytic order table."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _trace_pixels([10.0, 11.0], slope=0.2, intercept=8.0)
+    coefficients = pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
+
+    # ACT
+    outputPath = detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+    orderMetadata = detector.build_order_metadata(pixels, coefficients)
+
+    # ASSERT
     assert Path(outputPath).read_bytes().startswith(b"%PDF")
     assert orderMetadata["order"].tolist() == [10.0, 11.0]
     assert (orderMetadata["xmax"] > orderMetadata["xmin"]).all()
+
+
+def test_plot_results_pairs_each_order_with_its_own_colour_when_an_earlier_fit_is_off_detector(
+    tmp_path, log: object, savefig_text_colours: list
+) -> None:
+    """Order 10 is fitted at x=-2 (off-detector) so the middle panel skips it; orders 11 and 12 keep their colours."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    pixels = _trace_pixels([10.0, 11.0, 12.0], slope=0.0, intercept=16.0)
+    coefficients = pd.DataFrame(
+        [
+            {
+                "cent_00": -82.0,
+                "cent_01": 0.0,
+                "cent_10": 8.0,
+                "cent_11": 0.0,
+                "std_00": 1.5,
+                "std_01": 0.0,
+                "std_10": 0.0,
+                "std_11": 0.0,
+            }
+        ]
+    )
+
+    # ACT
+    detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+    orderMetadata = detector.build_order_metadata(pixels, coefficients)
+
+    # ASSERT
+    midrow, bottomleft, bottomright, fwhmaxis = savefig_text_colours[0][1:5]
+    assert orderMetadata["order"].tolist() == [11.0, 12.0]
+    assert set(midrow) == {"11", "12"}
+    for panel in (bottomleft, bottomright, fwhmaxis):
+        assert {"10", "11", "12"} <= set(panel)
+        assert panel["11"] == midrow["11"]
+        assert panel["12"] == midrow["12"]
+    assert len({midrow["11"], midrow["12"]}) == 2
+
+
+# TWO ORDERS WHOSE CENTRES ARE -82 + 8 * ORDER, SO ORDERS 11 AND 12 SIT AT 6 AND 14 PIXELS, AND 12 AND 13 AT 14 AND 22
+FLIP_COEFFICIENTS = {
+    "cent_00": -82.0,
+    "cent_01": 0.0,
+    "cent_10": 8.0,
+    "cent_11": 0.0,
+    "std_00": 1.5,
+    "std_01": 0.0,
+    "std_10": 0.0,
+    "std_11": 0.0,
+}
+FLIP_ROWS = 64
+FLIP_COLUMNS = 40
+
+
+def _nir_flip_detector(tmp_path: Path, log: object) -> detect_continuum:
+    """Return a NIR-like detector (dispersion along y, flipped but not rotated) on a 64x40 trace frame."""
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    detector.arm = "NIR"
+    detector.axisA = "y"
+    detector.axisB = "x"
+    detector.detectorParams = {"dispersion-axis": "y", "flip-qc-plot": 1, "rotate-qc-plot": 0}
+    detector.traceFrame = CCDData(np.full((FLIP_ROWS, FLIP_COLUMNS), 20.0), unit=u.electron)
+    detector.qc = qc_table()
+    return detector
+
+
+def _nir_trace_pixels(orders: list[float], centres: list[float]) -> pd.DataFrame:
+    """Return a residual-free pixel table with one constant-row trace per order, dispersed along x."""
+    xValues = np.arange(4.0, 36.0)
+    return pd.DataFrame(
+        {
+            "order": np.repeat(orders, len(xValues)),
+            "cont_y": np.repeat(centres, len(xValues)),
+            "cont_x": np.tile(xValues, len(orders)),
+            "cont_y_fit_res": np.zeros(len(xValues) * len(orders)),
+            "gauss_stddev_fit": np.full(len(xValues) * len(orders), 1.5),
+            "wavelength": 500.0 + np.tile(xValues, len(orders)),
+        }
+    )
+
+
+def _nir_clipped_data() -> pd.DataFrame:
+    """Return one sample with no continuum found and one clipped peak."""
+    return pd.DataFrame(
+        {
+            "cont_x": [np.nan, 20.0],
+            "cont_y": [10.0, 30.0],
+            "fit_x": [10.0, 20.0],
+            "fit_y": [10.0, 25.0],
+        }
+    )
+
+
+def _finite_rows(collection: object) -> list[float]:
+    """Return the sorted distinct finite y-values of a scatter collection."""
+    rows = np.asarray(collection.get_offsets())[:, 1]
+    return sorted({float(row) for row in rows[np.isfinite(rows)]})
+
+
+def _probe_figure(fig: plt.Figure) -> dict[str, object]:
+    """Report the figure properties the continuum QC plot tests assert on."""
+    extents = table_extents(fig)
+    toprow, midrow = fig.axes[:2]
+    return {
+        "interpolations": image_interpolations(fig),
+        "tableExtents": extents,
+        "peakRows": [_finite_rows(collection) for collection in toprow.collections],
+        "notFoundRows": [list(line.get_ydata()) for line in toprow.get_lines()],
+        "fitRows": sorted({float(np.unique(line.get_ydata())[0]) for line in midrow.get_lines()}),
+        "bandRows": sorted(
+            (float(path.vertices[:, 1].min()), float(path.vertices[:, 1].max()))
+            for collection in midrow.collections
+            for path in collection.get_paths()
+        ),
+    }
+
+
+@pytest.fixture
+def savefig_probes(monkeypatch: pytest.MonkeyPatch):
+    """Probe the current figure each time `plt.savefig` is called, before `plot_results` clears its axes."""
+    probes = probe_on_savefig(monkeypatch, _probe_figure)
+    yield probes
+    plt.close("all")
+
+
+def test_plot_results_embeds_images_without_resampling(tmp_path, log: object, savefig_probes: list) -> None:
+    """Embed the trace frame at native resolution so vector markers line up with its pixels when zoomed."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+
+    # ACT
+    detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _nir_clipped_data())
+
+    # ASSERT
+    assert savefig_probes[0]["interpolations"] == ["none", "none"]
+
+
+def test_plot_results_flip_only_maps_markers_and_fit_lines_to_flipped_pixel_rows(
+    tmp_path, log: object, savefig_probes: list
+) -> None:
+    """A flip without rotation sends row ``r`` to ``N - 1 - r`` for peaks, missing-continuum bars, fits and bands."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+
+    # ACT
+    detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), _nir_clipped_data())
+
+    # ASSERT
+    probe = savefig_probes[0]
+    last = FLIP_ROWS - 1
+    assert probe["peakRows"][0] == [last - 22.0, last - 14.0]
+    assert probe["peakRows"][1] == [last - 30.0, last - 10.0]
+    assert probe["notFoundRows"] == [[last - 10.0 - 2, last - 10.0 + 2]]
+    assert probe["fitRows"] == [last - 22.0, last - 14.0]
+    assert probe["bandRows"] == [
+        (last - 22.0 - 4.5, last - 22.0 + 4.5),
+        (last - 14.0 - 4.5, last - 14.0 + 4.5),
+    ]
+
+
+def test_plot_results_leaves_the_callers_pixel_and_clipped_tables_unflipped(tmp_path, log: object) -> None:
+    """Flip the plotted rows without rewriting the detector coordinates the caller passed in."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+    clipped = _nir_clipped_data()
+    pixelsBefore, clippedBefore = pixels.copy(), clipped.copy()
+
+    # ACT
+    detector.plot_results(pixels, pd.DataFrame([FLIP_COEFFICIENTS]), clipped)
+    plt.close("all")
+
+    # ASSERT
+    pd.testing.assert_frame_equal(pixels, pixelsBefore)
+    pd.testing.assert_frame_equal(clipped, clippedBefore)
+
+
+def test_plot_results_tables_do_not_overlap(tmp_path, log: object, savefig_probes: list) -> None:
+    """Keep the QC table and the settings table apart on a tall VIS-shaped trace frame."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    detector.detectorParams = {"dispersion-axis": "x", "flip-qc-plot": 1, "rotate-qc-plot": 90}
+    detector.traceFrame = CCDData(np.full((410, 82), 20.0), unit=u.electron)
+    detector.recipeSettings.update({f"setting-number-{i}": i for i in range(14)})
+    detector.qc = pd.concat(
+        [qc_table().assign(qc_name=f"QC {i}", qc_comment=f"[px] synthetic QC number {i}") for i in range(8)],
+        ignore_index=True,
+    )
+    pixels = _trace_pixels([10.0, 11.0], slope=0.2, intercept=8.0)
+    coefficients = pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
+
+    # ACT
+    detector.plot_results(pixels, coefficients, _no_continuum_clipped())
+
+    # ASSERT
+    qcExtent, settingsExtent = savefig_probes[0]["tableExtents"]
+    assert not qcExtent.overlaps(settingsExtent)
+
+
+def test_plot_results_order_metadata_for_unflipped_frame_is_pinned(tmp_path, log: object) -> None:
+    """Pin the order limits written into the order-table product: axis A holds the fitted detector pixel (DY-1219)."""
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    detector.qc = qc_table()
+    pixels = _trace_pixels([11.0, 12.0], slope=0.0, intercept=16.0)
+
+    # ACT
+    orderMetadata = detector.build_order_metadata(pixels, pd.DataFrame([FLIP_COEFFICIENTS]))
+
+    # ASSERT
+    assert orderMetadata.to_dict("list") == {
+        "order": [11.0, 12.0],
+        "ymin": [0, 0],
+        "ymax": [30, 30],
+        "xmin": [6.0, 14.0],
+        "xmax": [6.0, 14.0],
+    }
+
+
+def test_plot_results_order_metadata_for_flip_only_frame_is_pinned(tmp_path, log: object) -> None:
+    """Pin the order limits written into the order-table product for a flipped, unrotated frame."""
+    # ARRANGE
+    detector = _nir_flip_detector(tmp_path, log)
+    pixels = _nir_trace_pixels([12.0, 13.0], [14.0, 22.0])
+
+    # ACT
+    orderMetadata = detector.build_order_metadata(pixels, pd.DataFrame([FLIP_COEFFICIENTS]))
+
+    # ASSERT
+    assert orderMetadata.to_dict("list") == {
+        "order": [12.0, 13.0],
+        "xmin": [0, 0],
+        "xmax": [39, 39],
+        "ymin": [14.0, 22.0],
+        "ymax": [14.0, 22.0],
+    }
+
+
+# THREE ORIENTATIONS WITH A NON-SQUARE TRACE FRAME, SO A MIRRORED AXIS-A VALUE NEVER EQUALS THE DETECTOR VALUE
+SLOPED_COEFFICIENTS = {**FLIP_COEFFICIENTS, "cent_01": 0.25}
+ORIENTATIONS = {
+    "flip-only-nir": {"arm": "NIR", "axisA": "y", "axisB": "x", "flip": 1, "rotate": 0, "shape": (64, 40)},
+    "rotate-and-flip-vis": {"arm": "VIS", "axisA": "x", "axisB": "y", "flip": 1, "rotate": 90, "shape": (96, 80)},
+    "no-rotate-no-flip": {"arm": "VIS", "axisA": "x", "axisB": "y", "flip": 0, "rotate": 0, "shape": (96, 80)},
+}
+# ORDERS 11 AND 12 SIT AT -82 + 8 * ORDER = 6 AND 14 PIXELS AT AXIS B = 0, RISING 0.25 PIXELS PER AXIS-B PIXEL
+ORIENTATION_ORDERS = [11.0, 12.0]
+
+
+def _oriented_detector(
+    tmp_path: Path, log: object, orientation: dict, *, flip: int | None = None, rotate: int | None = None
+) -> detect_continuum:
+    """Return a detector for one named orientation, optionally overriding its QC-plot flip and rotation."""
+    detector = _plot_ready_detector(tmp_path, log, orderDeg=1, axisBDeg=1)
+    detector.arm = orientation["arm"]
+    detector.axisA = orientation["axisA"]
+    detector.axisB = orientation["axisB"]
+    detector.detectorParams = {
+        "dispersion-axis": orientation["axisB"],
+        "flip-qc-plot": orientation["flip"] if flip is None else flip,
+        "rotate-qc-plot": orientation["rotate"] if rotate is None else rotate,
+    }
+    detector.traceFrame = CCDData(np.full(orientation["shape"], 20.0), unit=u.electron)
+    detector.qc = qc_table()
+    return detector
+
+
+def _oriented_pixels(orientation: dict) -> pd.DataFrame:
+    """Return a residual-free pixel table for the orientation's two orders, in detector coordinates."""
+    axisA, axisB = orientation["axisA"], orientation["axisB"]
+    pixels = _trace_pixels(ORIENTATION_ORDERS, slope=0.0, intercept=0.0)
+    return pixels.rename(columns={"cont_x": f"cont_{axisA}", "cont_y": f"cont_{axisB}"}).rename(
+        columns={"cont_x_fit_res": f"cont_{axisA}_fit_res"}
+    )
+
+
+def _expected_axis_a_limits(orientation: dict) -> tuple[list[float], list[float]]:
+    """Return the min and max detector axis-A positions of each order's fit over the sampled axis-B grid."""
+    axisBLength = orientation["shape"][1] if orientation["axisB"] == "x" else orientation["shape"][0]
+    lastSample = 3 * ((axisBLength - 1) // 3)
+    lows = [-82.0 + 8.0 * order for order in ORIENTATION_ORDERS]
+    return lows, [low + 0.25 * lastSample for low in lows]
+
+
+def _order_metadata(detector: detect_continuum, orientation: dict) -> pd.DataFrame:
+    return detector.build_order_metadata(_oriented_pixels(orientation), pd.DataFrame([SLOPED_COEFFICIENTS]))
+
+
+@pytest.mark.parametrize("name", list(ORIENTATIONS))
+def test_order_metadata_axis_a_limits_are_the_fitted_detector_positions(tmp_path, log: object, name: str) -> None:
+    """Publish ``{axisA}min/max`` as the min and max fitted axis-A pixel, whatever the QC plot orientation."""
+    # ARRANGE
+    orientation = ORIENTATIONS[name]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    expectedMin, expectedMax = _expected_axis_a_limits(orientation)
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    assert orderMetadata[f"{orientation['axisA']}min"].tolist() == pytest.approx(expectedMin)
+    assert orderMetadata[f"{orientation['axisA']}max"].tolist() == pytest.approx(expectedMax)
+
+
+# THE AXIS-B LIMITS ARE THE FIRST AND LAST SAMPLE OF np.arange(0, AXIS-B LENGTH, 3)
+EXPECTED_AXIS_B_LIMITS = {"flip-only-nir": 39, "rotate-and-flip-vis": 93, "no-rotate-no-flip": 93}
+
+
+@pytest.mark.parametrize("name", list(ORIENTATIONS))
+def test_order_metadata_keeps_the_order_list_and_axis_b_limits(tmp_path, log: object, name: str) -> None:
+    """Pin the order list and ``{axisB}min/max``, which this fix must leave alone."""
+    # ARRANGE
+    orientation = ORIENTATIONS[name]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    axisB = orientation["axisB"]
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    assert orderMetadata["order"].tolist() == ORIENTATION_ORDERS
+    assert orderMetadata[f"{axisB}min"].tolist() == [0, 0]
+    assert orderMetadata[f"{axisB}max"].tolist() == [EXPECTED_AXIS_B_LIMITS[name]] * 2
+    assert list(orderMetadata.columns) == [
+        "order",
+        f"{axisB}min",
+        f"{axisB}max",
+        f"{orientation['axisA']}min",
+        f"{orientation['axisA']}max",
+    ]
+
+
+@pytest.mark.parametrize("name", list(ORIENTATIONS))
+def test_order_metadata_is_computed_without_plotting(
+    tmp_path, log: object, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Build the order metadata with the plotting code stubbed out to fail on any call."""
+    # ARRANGE
+    orientation = ORIENTATIONS[name]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    expectedMin, expectedMax = _expected_axis_a_limits(orientation)
+
+    def plotting_forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the order metadata must not call plot_results")
+
+    monkeypatch.setattr(detector, "plot_results", plotting_forbidden)
+    monkeypatch.setattr(plt, "figure", plotting_forbidden)
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    assert orderMetadata[f"{orientation['axisA']}min"].tolist() == pytest.approx(expectedMin)
+    assert orderMetadata[f"{orientation['axisA']}max"].tolist() == pytest.approx(expectedMax)
+
+
+@pytest.mark.parametrize("flip, rotate", [(0, 0), (1, 0), (1, 90), (0, 90), (1, 270)])
+def test_order_metadata_does_not_change_with_the_qc_plot_orientation(
+    tmp_path, log: object, flip: int, rotate: int
+) -> None:
+    """Change ``flip-qc-plot`` and ``rotate-qc-plot`` on one frame and get identical order metadata."""
+    # ARRANGE
+    orientation = ORIENTATIONS["no-rotate-no-flip"]
+    reference = _order_metadata(_oriented_detector(tmp_path, log, orientation), orientation)
+    detector = _oriented_detector(tmp_path, log, orientation, flip=flip, rotate=rotate)
+
+    # ACT
+    orderMetadata = _order_metadata(detector, orientation)
+
+    # ASSERT
+    pd.testing.assert_frame_equal(orderMetadata, reference)
+
+
+def test_plot_results_returns_only_the_plot_path(tmp_path, log: object, savefig_text_colours: list) -> None:
+    """Keep ``plot_results`` to drawing: it returns the PDF path and no metadata."""
+    # ARRANGE
+    orientation = ORIENTATIONS["no-rotate-no-flip"]
+    detector = _oriented_detector(tmp_path, log, orientation)
+
+    # ACT
+    outputPath = detector.plot_results(
+        _oriented_pixels(orientation), pd.DataFrame([SLOPED_COEFFICIENTS]), _no_continuum_clipped()
+    )
+
+    # ASSERT
+    assert isinstance(outputPath, str)
+    assert Path(outputPath).read_bytes().startswith(b"%PDF")
+
+
+def _develop_fit_curves(detector: detect_continuum, orderPixelTable: pd.DataFrame, orderPolyTable: pd.DataFrame):
+    """Evaluate the order fits with the zip-and-filter code that `plot_results` carried before DY-1219."""
+    axisALength = detector.traceFrame.data.shape[1] if detector.axisB == "y" else detector.traceFrame.data.shape[0]
+    axisBLength = detector.traceFrame.data.shape[0] if detector.axisB == "y" else detector.traceFrame.data.shape[1]
+    axisBLineList = np.arange(0, axisBLength, 3)
+    poly = continuumModule.chebyshev_order_xy_polynomials(
+        log=detector.log,
+        axisBCol=detector.axisB,
+        orderCol="order",
+        orderDeg=detector.orderDeg,
+        axisBDeg=detector.axisBDeg,
+    ).poly
+    row = orderPolyTable.iloc[-1]
+    centCoeff = [float(v) for k, v in row.items() if "cent_" in k]
+    stdCoeff = [float(v) for k, v in row.items() if "std_" in k]
+    df = pd.DataFrame({detector.axisB: axisBLineList})
+    curves = []
+    for o in orderPixelTable["order"].unique():
+        df["order"] = o
+        xfit = poly(df, *centCoeff)
+        stdfit = poly(df, *stdCoeff)
+        try:
+            xfit, yfit, stdfit = zip(
+                *[
+                    (x, y, std)
+                    for x, y, std in zip(xfit, axisBLineList, stdfit, strict=True)
+                    if x > 0 and x < axisALength - 10
+                ],
+                strict=True,
+            )
+        except ValueError:
+            continue
+        curves.append((o, np.array(xfit), np.array(yfit), np.array(stdfit)))
+    return curves
+
+
+def test_fitted_order_curves_match_the_pre_refactor_evaluation_exactly(tmp_path, log: object) -> None:
+    """Keep the plotted curves bit-identical, including partly and wholly filtered-out orders."""
+    # ARRANGE
+    orientation = ORIENTATIONS["no-rotate-no-flip"]
+    detector = _oriented_detector(tmp_path, log, orientation)
+    # ORDER 5 IS ALWAYS OFF THE LOW EDGE, 10 CROSSES IT, 11 AND 12 ARE ON THE DETECTOR, 20 IS ALWAYS OFF THE HIGH EDGE
+    orders = [5.0, 10.0, 11.0, 12.0, 20.0]
+    pixels = _trace_pixels(orders, slope=0.0, intercept=0.0)
+    coefficients = pd.DataFrame([SLOPED_COEFFICIENTS])
+    expected = _develop_fit_curves(detector, pixels, coefficients)
+
+    # ACT
+    curves = detector._fitted_order_curves(pixels, coefficients)
+
+    # ASSERT
+    assert [curve[0] for curve in curves] == [10.0, 11.0, 12.0]
+    assert len(curves) == len(expected)
+    for curve, oldCurve in zip(curves, expected, strict=True):
+        assert curve[0] == oldCurve[0]
+        for new, old in zip(curve[1:], oldCurve[1:], strict=True):
+            assert np.array_equal(new, old)
+    assert len(curves[0][1]) < len(curves[1][1])
+
+
+def test_order_colours_assigns_a_stable_distinct_colour_per_order_and_wraps_after_the_cycle() -> None:
+    # ARRANGE
+    cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    orders = [float(o) for o in range(10, 10 + len(cycle) + 2)]
+
+    # ACT
+    colours = continuumModule._order_colours(orders)
+
+    # ASSERT
+    assert list(colours) == orders
+    assert [colours[o] for o in orders[: len(cycle)]] == cycle
+    assert len({colours[o] for o in orders[: len(cycle)]}) == len(cycle)
+    assert colours[orders[len(cycle)]] == cycle[0]
+    assert colours[orders[len(cycle) + 1]] == cycle[1]
+    assert colours == continuumModule._order_colours(orders)
+
+
+def _top_panel_scatters(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Record `{label: point count}` of the scatter collections on the first (top) axis each time a plot is saved."""
+    return probe_on_savefig(
+        monkeypatch,
+        lambda figure: {c.get_label(): len(c.get_offsets()) for c in figure.axes[0].collections},
+    )
+
+
+def _plot_transfer_pixels() -> pd.DataFrame:
+    pixels = _trace_pixels([10.0, 11.0], slope=0.2, intercept=8.0)
+    return pixels.assign(faint_transfer=pixels["order"] == 11.0)
+
+
+def _plot_coefficients() -> pd.DataFrame:
+    return pd.DataFrame([{"cent_0": 8.0, "cent_1": 0.2, "std_0": 1.5, "std_1": 0.0}])
+
+
+def test_plot_results_draws_the_transferred_rows_apart_and_names_the_bright_order(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, 0.4),)
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(_plot_transfer_pixels(), _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: ORDER 10 KEEPS THE GREEN PEAKS, AND THE 24 ROWS OF ORDER 11 GET THEIR OWN NAMED MARKER
+    assert scatters[0]["cross-dispersion 1D gaussian peak-position"] == 24
+    assert scatters[0]["trace transferred from order 10"] == 24
+
+
+def test_plot_results_reads_a_missing_transfer_flag_as_a_measured_row(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE FLAG COLUMN IS OBJECT-TYPED, WITH A NAN ON EVERY ROW OF ORDER 10 AND TRUE ON EVERY ROW OF ORDER 11
+    detector = _plot_ready_detector(tmp_path, log)
+    detector.faintTransferReports = (transfer_report(11.0, 10.0, 12, 15, 2, 0.4),)
+    pixels = _plot_transfer_pixels()
+    pixels["faint_transfer"] = pd.Series(np.where(pixels["order"] == 11.0, True, np.nan), index=pixels.index).astype(
+        object
+    )
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: A NAN IS NOT A TRANSFERRED ROW
+    assert scatters[0]["cross-dispersion 1D gaussian peak-position"] == 24
+    assert scatters[0]["trace transferred from order 10"] == 24
+
+
+def test_plot_results_draws_one_scatter_for_a_table_with_no_transfer(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels().drop(columns="faint_transfer")
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: THE PLOT OF A BRIGHT FRAME HAS THE ONE GREEN SCATTER IT ALWAYS HAD
+    peakLabels = {
+        label: count for label, count in scatters[0].items() if "gaussian peak" in label or "transferred" in label
+    }
+    assert peakLabels == {"cross-dispersion 1D gaussian peak-position": 48}
+
+
+def _plot_suptitle(monkeypatch: pytest.MonkeyPatch) -> list:
+    """Record the figure title each time a plot is saved."""
+    return probe_on_savefig(monkeypatch, lambda figure: figure._suptitle.get_text())
+
+
+def test_plot_results_titles_the_residual_statistics_from_the_measured_rows_only(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE MEASURED ROWS OF ORDER 10 ARE OFF BY 1 PX, AND THE SYNTHETIC ROWS OF ORDER 11 ARE EXACT
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels()
+    pixels["cont_x_fit_res"] = np.where(pixels["order"] == 11.0, 0.0, 1.0)
+    titles = _plot_suptitle(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT: THE EXACT ROWS DO NOT DILUTE THE MEAN OR WIDEN THE STANDARD DEVIATION
+    assert "mean res: 1.00 pix, res stdev: 0.00" in titles[0]
+
+
+def test_plot_results_titles_the_residual_statistics_from_every_row_when_there_is_no_transfer(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: NO TRANSFER COLUMN, AND RESIDUALS OF 1 AND 3 PX
+    detector = _plot_ready_detector(tmp_path, log)
+    pixels = _plot_transfer_pixels().drop(columns="faint_transfer")
+    pixels["cont_x_fit_res"] = np.where(pixels["order"] == 11.0, 3.0, 1.0)
+    titles = _plot_suptitle(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(pixels, _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT
+    assert "mean res: 2.00 pix, res stdev: 1.00" in titles[0]
+
+
+def test_plot_results_still_marks_transferred_rows_when_no_report_is_known(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    detector = _plot_ready_detector(tmp_path, log)
+    scatters = _top_panel_scatters(monkeypatch)
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.qc_settings_plot_tables", lambda **_: None)
+
+    # ACT
+    detector.plot_results(_plot_transfer_pixels(), _plot_coefficients(), _no_continuum_clipped())
+    plt.close("all")
+
+    # ASSERT
+    assert scatters[0]["trace transferred from a bright neighbouring order"] == 24
