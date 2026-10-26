@@ -938,10 +938,11 @@ def test_an_order_with_three_lines_far_from_the_model_keeps_its_own_seed_unshrun
             assert result.corrections[o].source == "global"
 
 
-def test_an_order_with_two_lines_a_little_off_the_model_keeps_its_own_seed():
-    # ARRANGE: LIKE THE NOD O11: 2 LINES, 0.8 px FROM THE MODEL, BEYOND THE 0.46 px TOLERANCE OF THE GLOBAL SEED
-    ownSeed = _truth_px(13) + 0.8 + 0.05
-    orderLines = _prod_scene(13, 2, 0.8)
+def test_an_order_with_two_lines_off_the_model_by_more_than_the_cap_keeps_its_own_seed():
+    # ARRANGE: 2 LINES, 2 px FROM THE MODEL, BEYOND THE 1.16 px (0.1 nm) CAP OF THE GLOBAL SEED. THE SEEDS ARE
+    # COMPARED AT THE CAP, SO A 0.8 px OFFSET, WITHIN IT, WOULD BE A TIE THAT GOES TO THE GLOBAL SEED
+    ownSeed = _truth_px(13) + 2.0 + 0.05
+    orderLines = _prod_scene(13, 2, 2.0)
 
     # ACT
     result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={13: ownSeed})
@@ -1051,3 +1052,59 @@ def test_a_tie_at_two_lines_goes_to_the_global_seed():
     assert (correction.globalSeedLines, correction.ownSeedLines) == (2, 2)
     assert correction.source == "global"
     assert correction.shiftPx == pytest.approx(_truth_px(15), abs=0.05)
+
+
+# THE SEEDS ARE COMPARED AT THE CAP TOLERANCE, NOT AT THE TIGHT ONE (DY-1968)
+
+
+def _prod_lines_at(order: int, shiftsPx: np.ndarray) -> nir_order_sky_lines:
+    """*an order whose lines sit at the given total detector shifts (px), with the production tolerance*"""
+    geometry = _prod_geometry()[order]
+    t = np.linspace(-0.9, 0.9, len(shiftsPx))
+    catalogue = geometry.centreNm + t * HALF_RANGE_NM
+    return nir_order_sky_lines(
+        order=order,
+        peakNm=catalogue + geometry.dispersionNmPerPx * np.asarray(shiftsPx),
+        catalogueNm=catalogue,
+        pixelScaleNm=np.full(len(shiftsPx), PROD_SCALE_NM),
+        toleranceNm=PROD_TOLERANCE_NM,
+    )
+
+
+def _scene_with(order: int, lines: nir_order_sky_lines) -> dict[int, nir_order_sky_lines]:
+    orderLines = _prod_scene(order, 10, 0.0)
+    orderLines[order] = lines
+    return orderLines
+
+
+def test_a_broad_line_order_with_an_aliased_own_seed_takes_the_global_seed_although_nothing_is_tight():
+    # ARRANGE: LIKE O15 IN A 5 ARCSEC FRAME. THE LINES SIT 0.06 TO 0.1 nm FROM THE GLOBAL SEED, BEYOND THE 0.04 nm TIGHT
+    # TOLERANCE BUT WITHIN THE 0.1 nm CAP. THE OWN SEED IS 0.12 nm FROM THE LINES, BEYOND THE CAP
+    residualsFromGlobal = np.linspace(0.7, 1.0, 10)
+    ownSeed = _seed_px() + residualsFromGlobal.mean() + 1.4
+    orderLines = _scene_with(15, _prod_lines_at(15, _seed_px() + residualsFromGlobal))
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={15: ownSeed})
+
+    # ASSERT
+    correction = result.corrections[15]
+    assert (correction.globalSeedLines, correction.ownSeedLines) == (10, 0)
+    assert correction.source == "global"
+    assert correction.shiftPx == pytest.approx(_truth_px(15), abs=0.05)
+
+
+def test_an_order_whose_lines_are_near_its_own_seed_and_far_from_the_global_one_keeps_its_own_seed():
+    # ARRANGE: LIKE O10: RESIDUALS ABOUT THE OWN SEED OF -0.06 TO +0.29 nm, SO 3 OF 6 ARE WITHIN THE 0.1 nm CAP.
+    # ABOUT THE GLOBAL SEED, 7 px (0.6 nm) FURTHER, NONE ARE
+    ownSeed = _seed_px() + 7.0
+    orderLines = _scene_with(12, _prod_lines_at(12, ownSeed + np.linspace(-0.7, 3.35, 6)))
+
+    # ACT
+    result = fit_with_iterated_matching(orderLines, _prod_geometry(), _seed_px(), SETTINGS, ownSeedsPx={12: ownSeed})
+
+    # ASSERT
+    correction = result.corrections[12]
+    assert (correction.globalSeedLines, correction.ownSeedLines) == (0, 3)
+    assert correction.source == "own-seed"
+    assert correction.shiftPx == pytest.approx(ownSeed, abs=0.05)

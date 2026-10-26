@@ -137,8 +137,8 @@ class order_sky_correction:
     - ``source`` -- where ``shiftPx`` came from: ``global`` (the model), ``own-offset`` (the model plus an offset of at
       least ``SOURCE_OFFSET_PX`` from the order's own lines) or ``own-seed`` (the order's own measured shift, kept
       because it has too few lines for an offset, or because no line matched about either seed). Default ``global``
-    - ``globalSeedLines`` -- the lines the order matched about the global seed in the first round, or *None* if it
-      supplied none. Default *None*
+    - ``globalSeedLines`` -- the lines the order matched about the global seed within ``MAX_TIGHT_TOLERANCE_NM`` in the
+      first round, or *None* if it supplied none. Default *None*
     - ``ownSeedLines`` -- the same about the order's own seed, or *None* if it had no usable own seed. Default *None*
     """
 
@@ -726,16 +726,17 @@ def _empty_lines() -> pd.DataFrame:
     return pd.DataFrame({"order": [], "catalogueNm": [], "observedNm": []})
 
 
-def _match_order_lines(orderLines, correction) -> pd.DataFrame:
+def _match_order_lines(orderLines, correction, toleranceNm=None) -> pd.DataFrame:
     """*the lines of one order matched once the peaks are moved by the correction, as rows for ``fit_nir_sky_model``*
 
-    A peak with a non-finite centre or pixel scale takes no part.
+    A peak with a non-finite centre or pixel scale takes no part. The tolerance is the order's own unless
+    ``toleranceNm`` is given.
     """
     peaks, scales = orderLines.peakNm, orderLines.pixelScaleNm
     usable = np.flatnonzero(np.isfinite(peaks) & np.isfinite(scales) & (scales > 0))
     shiftNm = correction.correction_nm(peaks[usable], scales[usable])
     peakIndex, catalogueIndex = match_peaks_to_catalogue(
-        peaks[usable] + shiftNm, orderLines.catalogueNm, orderLines.toleranceNm
+        peaks[usable] + shiftNm, orderLines.catalogueNm, orderLines.toleranceNm if toleranceNm is None else toleranceNm
     )
     peakIndex = usable[peakIndex]
     return pd.DataFrame(
@@ -762,36 +763,47 @@ class seed_match(NamedTuple):
     keepsOwnSeed: bool
 
 
+def _seed_scatter_nm(matched, correction) -> float:
+    """*the rms (nm) of the matched lines about the seed's correction, infinite when nothing matched*"""
+    if matched.empty:
+        return float("inf")
+    residualNm = (
+        matched["catalogueNm"]
+        - matched["observedNm"]
+        - correction.correction_nm(matched["observedNm"].to_numpy(), matched["pixelScaleNm"].to_numpy())
+    )
+    return float(np.sqrt(np.mean(residualNm**2)))
+
+
 def _seeded_match(orderLines, geometry, seedPx, ownSeedPx) -> seed_match:
-    """*the order's lines matched about the seed, global or its own, that matches more of them*
+    """*the order's lines matched about the seed, global or its own, that matches more of them within the cap*
 
-    The tie goes to the lower scatter of the matched lines about the seed, then to the global seed. An order measured
-    on aliased lines matches few of them about its own seed and so takes the global one, and an order with a genuine
-    offset matches many about its own seed and few about the global one.
+    The two seeds are compared by the lines each matches within ``MAX_TIGHT_TOLERANCE_NM``, not within the order's tight
+    tolerance. The broad lines of a wide slit have scattered centres, so the tight tolerance can match few or none
+    about either seed, and one comparison there cannot tell an order with a genuine offset (its own seed right, the
+    global one far off) from an order measured on aliased lines (the global seed right, its own seed off). The cap can.
+    The tie goes to the lower scatter of the lines matched about the seed, then to the global seed. The chosen seed then
+    matches the order's lines at its own tight tolerance.
 
-    The order keeps its own seed (``keepsOwnSeed``) when that seed matches strictly more lines than the global seed, or
-    when neither matches any: the lines of an order with a curved arc-solution error sit beyond the tight tolerance of
-    every seed, and the global value would extrapolate several px. A tie at one line or more still goes to the global
-    seed.
+    The order keeps its own seed (``keepsOwnSeed``) when that seed matches strictly more lines than the global seed
+    within the cap, or when neither matches any: the lines of an order with a curved arc-solution error sit beyond the
+    cap of every seed, and the global value would extrapolate several px. A tie at one line or more still goes to the
+    global seed.
+
+    **Return:**
+
+    - the ``seed_match``, whose line counts are those within the cap
     """
-    best, bestScore = None, None
-    counts = []
-    for seed in (seedPx,) if ownSeedPx is None else (seedPx, ownSeedPx):
-        correction = _rigid_correction(orderLines.order, seed, geometry)
-        matched = _match_order_lines(orderLines, correction)
-        residualNm = (
-            matched["catalogueNm"]
-            - matched["observedNm"]
-            - correction.correction_nm(matched["observedNm"].to_numpy(), matched["pixelScaleNm"].to_numpy())
-        )
-        rmsNm = float(np.sqrt(np.mean(residualNm**2))) if len(matched) else float("inf")
-        score = (len(matched), -rmsNm)
-        counts.append(len(matched))
-        if bestScore is None or score > bestScore:
-            best, bestScore = matched, score
-    ownLines = counts[1] if ownSeedPx is not None else None
+    corrections = [
+        _rigid_correction(orderLines.order, seed, geometry) for seed in (seedPx, ownSeedPx) if seed is not None
+    ]
+    atCap = [_match_order_lines(orderLines, c, MAX_TIGHT_TOLERANCE_NM) for c in corrections]
+    scores = [(len(m), -_seed_scatter_nm(m, c)) for m, c in zip(atCap, corrections, strict=True)]
+    chosen = 1 if len(scores) > 1 and scores[1] > scores[0] else 0
+    counts = [len(m) for m in atCap]
+    ownLines = counts[1] if len(counts) > 1 else None
     keepsOwn = ownLines is not None and (ownLines > counts[0] or ownLines == counts[0] == 0)
-    return seed_match(best, counts[0], ownLines, keepsOwn)
+    return seed_match(_match_order_lines(orderLines, corrections[chosen]), counts[0], ownLines, keepsOwn)
 
 
 def _kept_own_seed_corrections(orderLines, geometry, seedPx, ownSeedsPx):

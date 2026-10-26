@@ -1234,7 +1234,7 @@ class horne_extraction(base_util):
 
         - ``tuned`` -- a new data-frame with the corrected wavelengths
         """
-        from soxspipe.commonutils.nir_sky_refit import apply_sky_corrections
+        from soxspipe.commonutils.nir_sky_refit import MAX_TIGHT_TOLERANCE_NM, apply_sky_corrections
         from soxspipe.commonutils.toolkit import order_label
 
         corrections = result.corrections
@@ -1250,7 +1250,10 @@ class horne_extraction(base_util):
             seedText = (
                 ""
                 if correction.globalSeedLines is None
-                else f"; seed matches global {correction.globalSeedLines}, own {ownLines}"
+                else (
+                    f"; seed matches within {MAX_TIGHT_TOLERANCE_NM} nm: "
+                    f"global {correction.globalSeedLines}, own {ownLines}"
+                )
             )
             self.log.print(
                 f"\t\t{correction.shift_nm:0.2f} nm shift (slope {correction.slope_px:0.2f} px) applied to order "
