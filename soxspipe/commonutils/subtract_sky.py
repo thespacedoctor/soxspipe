@@ -87,6 +87,20 @@ SKYLINE_SIGMA = 3.0
 # THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
 SKYLINE_DILATE_SAMPLES = 50
 
+# THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
+# sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML
+ERROR_INFLATION_ARMS = frozenset({"NIR"})
+ERROR_INFLATION_KEY = "sky_error_inflation"
+# THE SAMPLES OF THE ROLLING WINDOW (SORTED BY WAVELENGTH) THAT MEASURES THE SCATTER OF THE SKY-FIT RESIDUALS (DY-1973).
+# A NIR ORDER HAS ABOUT 35 SLIT PIXELS PER COLUMN, SO 100 SAMPLES SPAN ABOUT 3 COLUMNS, THE WIDTH OF A SKYLINE. A WIDER
+# WINDOW IS DOMINATED BY THE QUIET PIXELS AROUND A LINE, AND THE MAD IGNORES THE LINE
+ERROR_INFLATION_WINDOW = 100
+# THE WINDOW IS EVALUATED EVERY ERROR_INFLATION_WINDOW // ERROR_INFLATION_STEPS SAMPLES, AND THE SCATTER BETWEEN THOSE
+# CENTRES IS INTERPOLATED
+ERROR_INFLATION_STEPS = 4
+# THE FEWEST FINITE RESIDUALS THAT GIVE A SCATTER; WITH FEWER THE ERRORS ARE NOT INFLATED
+ERROR_INFLATION_MIN_SAMPLES = 30
+
 
 def _sliding_mean(values, window):
     """*running mean of a 1D array, padded at each end so there is one value per input element*
@@ -115,6 +129,52 @@ def _sliding_mean(values, window):
     means = np.mean(np.lib.stride_tricks.sliding_window_view(values, (window,)), axis=1)
     halfWindow = window // 2
     return np.concatenate((np.full(halfWindow, means[0]), means, np.full(halfWindow, means[-1])))
+
+
+def _sky_residual_scatter_factor(wavelength, residual):
+    """*the local scatter of the sky-fit residuals along wavelength, as a factor of at least 1 for each pixel*
+
+    The scatter is ``1.4826 * MAD`` of the residuals in a rolling window of ``ERROR_INFLATION_WINDOW`` samples sorted
+    by wavelength. The MAD is robust, so a few outliers do not set it, but a skyline wider than half the window does.
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- 1D array of the wavelength of every pixel of an order
+    - ``residual`` -- 1D array, the same length, of the sky-fit residual of each pixel in units of its stated error.
+      NaN or infinite for a pixel that must not set the scatter (clipped, or with no error)
+
+    **Return:**
+
+    - ``factor`` -- array the same length as ``wavelength``, never below 1
+        - it is 1 everywhere when fewer than ``ERROR_INFLATION_MIN_SAMPLES`` residuals are finite
+        - an order shorter than the window is measured as one window
+        - a pixel with a non-finite wavelength gets 1
+    """
+    import numpy as np
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    wavelength = np.asarray(wavelength, dtype=float)
+    residual = np.asarray(residual, dtype=float)
+    factor = np.ones(wavelength.size)
+    isMeasured = np.isfinite(wavelength) & np.isfinite(residual)
+    if np.count_nonzero(isMeasured) < ERROR_INFLATION_MIN_SAMPLES:
+        return factor
+
+    byWavelength = np.argsort(wavelength[isMeasured], kind="stable")
+    sortedWavelength = wavelength[isMeasured][byWavelength]
+    sortedResidual = residual[isMeasured][byWavelength]
+    window = min(ERROR_INFLATION_WINDOW, sortedResidual.size)
+    starts = np.arange(0, sortedResidual.size - window + 1, max(window // ERROR_INFLATION_STEPS, 1))
+    starts = np.unique(np.append(starts, sortedResidual.size - window))
+    windows = sliding_window_view(sortedResidual, window)[starts]
+    medians = np.median(windows, axis=1, keepdims=True)
+    scatter = np.maximum(1.0, MAD_TO_SIGMA * np.median(np.abs(windows - medians), axis=1))
+
+    isFiniteWavelength = np.isfinite(wavelength)
+    factor[isFiniteWavelength] = np.interp(
+        wavelength[isFiniteWavelength], sortedWavelength[starts + window // 2], scatter
+    )
+    return factor
 
 
 def _evaluate_sky_spline(wavelength, tck, derivative=False):
@@ -609,6 +669,9 @@ class subtract_sky:
 
         allimageMapOrder, alltck, allKnots = self._fit_sky_to_orders(allimageMapOrder)
 
+        # READ THE SETTING BEFORE ANY ORDER IS WRITTEN, SO A BAD VALUE RAISES WHETHER OR NOT ANY ORDER IS INFLATED
+        isInflatingErrors = self._error_inflation_enabled()
+
         # self.log.print(f'\t{allFluxErrorRatios.mean():0.3f},  {allFluxErrorRatios.std():0.3f},  {np.median(allFluxErrorRatios):0.3f},  {allFluxErrorRatios.max():0.3f},  {allFluxErrorRatios.min():0.3f}, {allFluxErrorRatios.max()-allFluxErrorRatios.min():0.3f},{np.mean(allResidualFloor):0.3f},{totalKnots}')
 
         for o, imageMapOrder, tck, knots in zip(modelledOrderIds, allimageMapOrder, alltck, allKnots, strict=True):
@@ -622,6 +685,8 @@ class subtract_sky:
                         skySubtractedResidualsCCDData,
                     )
                 )
+                if isInflatingErrors:
+                    self._inflate_order_errors(imageMapOrder, skySubtractedCCDData)
                 if self.debug or (
                     o == self.qcPlotOrder and self.recipeSettings["sky-subtraction"]["sky_model_qc_plot"]
                 ):
@@ -3002,23 +3067,84 @@ class subtract_sky:
         self.log.debug("completed the ``clip_object_slit_positions`` method")
         return order_dataframes
 
+    def _arm_default_flag(self, key, defaultArms):
+        """*a boolean sky-subtraction setting, with a default by arm for a workspace whose settings predate the key*
+
+        **Key Arguments:**
+
+        - ``key`` -- the name of the ``sky-subtraction`` setting
+        - ``defaultArms`` -- the arms (upper case) for which the setting is True when the key is absent
+
+        **Return:**
+
+        - ``isOn`` -- the value of the setting
+            - the value must be a bool: any other value (a quoted ``"False"``, a number, null) raises a ``ValueError``
+            - when the key is absent it is True for the arms in ``defaultArms`` and False for the rest
+        """
+        skySettings = self.recipeSettings["sky-subtraction"]
+        if key not in skySettings:
+            return self.arm.upper() in defaultArms
+        isOn = skySettings[key]
+        if not isinstance(isOn, bool):
+            raise ValueError(f"the sky-subtraction setting `{key}` must be true or false, not {isOn!r}")
+        return isOn
+
     def _restore_skyline_cores_enabled(self):
         """*whether skyline cores outside the object are restored to the sky fit (DY-1972)*
 
         **Return:**
 
-        - ``isOn`` -- the ``restore_skyline_cores_outside_object`` sky-subtraction setting
-            - the value must be a bool: any other value (a quoted ``"False"``, a number, null) raises a ``ValueError``
-            - when the key is absent (a workspace settings file that predates it) it is True for the arms in
-              ``RESTORE_SKYLINE_CORES_ARMS`` (NIR) and False for the rest
+        - ``isOn`` -- the ``restore_skyline_cores_outside_object`` sky-subtraction setting, True by default for the
+          arms in ``RESTORE_SKYLINE_CORES_ARMS`` (NIR). See ``_arm_default_flag``
         """
-        skySettings = self.recipeSettings["sky-subtraction"]
-        if RESTORE_SETTING_KEY not in skySettings:
-            return self.arm.upper() in RESTORE_SKYLINE_CORES_ARMS
-        isOn = skySettings[RESTORE_SETTING_KEY]
-        if not isinstance(isOn, bool):
-            raise ValueError(f"the sky-subtraction setting `{RESTORE_SETTING_KEY}` must be true or false, not {isOn!r}")
-        return isOn
+        return self._arm_default_flag(RESTORE_SETTING_KEY, RESTORE_SKYLINE_CORES_ARMS)
+
+    def _error_inflation_enabled(self):
+        """*whether the sky-subtracted errors are inflated by the sky-residual scatter (DY-1973)*
+
+        **Return:**
+
+        - ``isOn`` -- the ``sky_error_inflation`` sky-subtraction setting, True by default for the arms in
+          ``ERROR_INFLATION_ARMS`` (NIR). See ``_arm_default_flag``
+        """
+        return self._arm_default_flag(ERROR_INFLATION_KEY, ERROR_INFLATION_ARMS)
+
+    def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):
+        """*multiply the uncertainty of every pixel of an order by the local scatter of its sky-fit residuals (DY-1973)*
+
+        The sky-subtracted uncertainty is the object frame's, so it carries no sky-model term, and a systematic skyline
+        residual enters the extraction with error bars that are too small. The residual is
+        ``(flux - sky_model) / error`` over the pixels the sky fit used. Its scatter is measured along wavelength by
+        ``_sky_residual_scatter_factor``, and never lowers an error.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- the fitted order dataframe with the ``wavelength``, ``flux``, ``error``,
+          ``sky_model`` and ``flagged_all_clipped`` columns
+        - ``skySubtractedCCDData`` -- the sky-subtracted frame. Its uncertainty is updated in place.
+
+        **Return:**
+
+        - ``factor`` -- the factor applied to each pixel of the order, in the order of ``imageMapOrderDF``
+        """
+        import numpy as np
+
+        error = imageMapOrderDF["error"].to_numpy(dtype=float)
+        isUsed = ~imageMapOrderDF["flagged_all_clipped"].eq(True).to_numpy() & np.isfinite(error) & (error > 0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            residual = (
+                imageMapOrderDF["flux"].to_numpy(dtype=float) - imageMapOrderDF["sky_model"].to_numpy(dtype=float)
+            ) / error
+        factor = _sky_residual_scatter_factor(
+            imageMapOrderDF["wavelength"].to_numpy(dtype=float), np.where(isUsed, residual, np.nan)
+        )
+        rows, columns = self._detector_rows_and_columns(imageMapOrderDF)
+        skySubtractedCCDData.uncertainty.array[rows, columns] *= factor
+        self.log.debug(
+            f"order {imageMapOrderDF['order'].iloc[0]} errors inflated by a median {np.median(factor):0.2f} "
+            f"(maximum {factor.max():0.2f})"
+        )
+        return factor
 
     def _restore_skyline_cores_outside_object(self, imageMapOrderDF, objectRanges):
         """*release the skyline pixels the pre-fit clip flagged as object that lie outside every object slit range*
