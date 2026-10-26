@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FIXED**: the stare object-wing correction skips an order whose median sky model is at or below `object_wing_min_sky_sigma` (default 1) times the noise of a faint-sky pixel, so it no longer drives a near-zero-sky NIR order negative, and the log reports the leak in e- only when the sky is not above zero (DY-1975).
+
 ## v0.19.0 - October 26, 2026
 
 * **FEATURE**: the order location tables from `soxs_order_centres` and `soxs_mflat` get a third extension, `ORDER_TRACES`, listing the unbinned pixel coordinates of each order's centre trace (and upper and lower edges, for the master flat) at every pixel along the dispersion axis; object trace tables are unchanged.

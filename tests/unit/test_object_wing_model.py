@@ -242,6 +242,7 @@ FAR_ARCSEC = 3.0 + BIN_ARCSEC / 2
 SKY_LEVEL = 50.0
 BRIGHT_PEAK = 1.0e5
 MIN_LEAK_SIGMA = 0.03
+MIN_SKY_SIGMA = 1.0
 
 
 def _object_spectrum(wavelength, peak):
@@ -273,15 +274,30 @@ class synthetic_order:
     farLevel: float
     visibleBias: float
 
-    def estimate(self, isUsable=None, minLeakSigma=MIN_LEAK_SIGMA):
+    def estimate(self, isUsable=None, minLeakSigma=MIN_LEAK_SIGMA, minSkySigma=MIN_SKY_SIGMA):
         """Run the estimate on this order, optionally with another usable mask."""
         isUsable = self.isUsable if isUsable is None else isUsable
         return estimate_object_wings(
-            self.wavelength, self.slitPosition, self.flux, self.skyModel, self.error, isUsable, minLeakSigma
+            self.wavelength,
+            self.slitPosition,
+            self.flux,
+            self.skyModel,
+            self.error,
+            isUsable,
+            minLeakSigma,
+            minSkySigma=minSkySigma,
         )
 
 
-def _build_order(peak=BRIGHT_PEAK, biasFraction=1.0, extraNoise=0.0, columnStep=BIN_ARCSEC, wingAmplitude=0.0, seed=7):
+def _build_order(
+    peak=BRIGHT_PEAK,
+    biasFraction=1.0,
+    extraNoise=0.0,
+    columnStep=BIN_ARCSEC,
+    wingAmplitude=0.0,
+    seed=7,
+    skyLevel=SKY_LEVEL,
+):
     """Build a shuffled order: object plus flat sky plus noise, and a sky model that carries a share of the wings.
 
     The sky model is the sky plus ``biasFraction`` times the object spectrum times the true mean profile level
@@ -302,9 +318,9 @@ def _build_order(peak=BRIGHT_PEAK, biasFraction=1.0, extraNoise=0.0, columnStep=
     unmaskedLevel = profile[np.abs(slitPosition) > UNMASKED_EDGE_ARCSEC].mean()
     farLevel = profile[np.abs(slitPosition) > FAR_ARCSEC].mean()
     objectLight = spectrum * profile
-    sigma = np.sqrt(np.maximum(SKY_LEVEL + objectLight, 1.0) + extraNoise**2)
-    flux = SKY_LEVEL + objectLight + rng.normal(0.0, 1.0, wavelength.size) * sigma
-    skyModel = SKY_LEVEL + biasFraction * unmaskedLevel * spectrum
+    sigma = np.sqrt(np.maximum(skyLevel + objectLight, 1.0) + extraNoise**2)
+    flux = skyLevel + objectLight + rng.normal(0.0, 1.0, wavelength.size) * sigma
+    skyModel = skyLevel + biasFraction * unmaskedLevel * spectrum
     shuffle = rng.permutation(wavelength.size)
     return synthetic_order(
         wavelength[shuffle],
@@ -1049,3 +1065,81 @@ def test_profile_sources_does_not_report_a_source_in_the_last_valid_bin():
 
     # ASSERT
     np.testing.assert_allclose(sources, [0.0], atol=BIN_ARCSEC)
+
+
+# A NEAR-ZERO-SKY NIR ORDER (DY-1975): THE FIRST FIT'S SKY MEDIAN IS BELOW ZERO AND THE NOISE OF A SKY PIXEL IS A FEW E-
+NEAR_ZERO_SKY_LEVEL = -30.0
+FAINT_TARGET_PEAK = 2.0e3
+
+
+def test_an_order_whose_sky_model_median_is_below_the_pixel_noise_is_not_corrected_though_its_leak_is_significant():
+    # ARRANGE
+    order = _build_order(peak=FAINT_TARGET_PEAK, skyLevel=NEAR_ZERO_SKY_LEVEL)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert estimate.isSkyBelowNoise
+    assert estimate.skyLevel <= MIN_SKY_SIGMA * estimate.faintSkyNoise
+    # EVERY OTHER GATE PASSES, SO THE SKY GATE ALONE STOPS THE CORRECTION
+    assert estimate.zeroPoint < 0
+    assert estimate.biasLevel > 5 * estimate.biasNoise
+    assert "sky model" in estimate.reason
+
+
+def test_an_order_with_real_sky_and_a_significant_leak_is_still_corrected():
+    # ARRANGE
+    order = _build_order()
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert not estimate.isSkyBelowNoise
+    assert estimate.skyLevel > MIN_SKY_SIGMA * estimate.faintSkyNoise
+
+
+def test_the_sky_gate_sits_at_the_given_multiple_of_the_faint_sky_noise():
+    # ARRANGE
+    order = _build_order()
+    measured = order.estimate(minSkySigma=0.0)
+    ratio = measured.skyLevel / measured.faintSkyNoise
+
+    # ACT
+    below = order.estimate(minSkySigma=0.9 * ratio)
+    above = order.estimate(minSkySigma=1.1 * ratio)
+
+    # ASSERT
+    assert below.isCorrected, below.reason
+    assert not above.isCorrected
+    assert above.isSkyBelowNoise
+
+
+def test_a_sky_gate_of_zero_skips_only_an_order_whose_sky_model_median_is_not_above_zero():
+    # ARRANGE
+    zeroSky = _build_order(peak=FAINT_TARGET_PEAK, skyLevel=NEAR_ZERO_SKY_LEVEL)
+    realSky = _build_order()
+
+    # ACT
+    zeroSkyEstimate = zeroSky.estimate(minSkySigma=0.0)
+    realSkyEstimate = realSky.estimate(minSkySigma=0.0)
+
+    # ASSERT
+    assert zeroSkyEstimate.isSkyBelowNoise
+    assert realSkyEstimate.isCorrected, realSkyEstimate.reason
+
+
+def test_an_order_stopped_by_another_gate_is_not_flagged_as_sky_below_noise():
+    # ARRANGE
+    order = _build_order(biasFraction=-1.0)
+
+    # ACT
+    estimate = order.estimate(minSkySigma=1.0e6)
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert not estimate.isSkyBelowNoise
+    assert "not negative" in estimate.reason
