@@ -65,6 +65,28 @@ DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA = 0.03
 # THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE DIVIDES BY
 MIN_LOGGED_SKY_LEVEL = 1e-9
 
+# THE ARMS THAT RESTORE SKYLINE CORES OUTSIDE THE OBJECT WHEN A WORKSPACE'S SETTINGS PREDATE THE
+# restore_skyline_cores_outside_object KEY (DY-1972). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY
+# OF THE YAML
+RESTORE_SKYLINE_CORES_ARMS = frozenset({"NIR"})
+RESTORE_SETTING_KEY = "restore_skyline_cores_outside_object"
+# THE SKYLINE RULE OF THE RESTORE (DY-1972): A PIXEL IS ON A SKYLINE WHEN THE LOCAL SKY LEVEL IS WELL ABOVE ITS
+# CONTINUUM
+# THE NUMBER OF WAVELENGTH-SORTED SAMPLES OF THE CENTRED ROLLING MEDIAN THAT GIVES THE LOCAL SKY LEVEL
+SKYLINE_LOCAL_WINDOW = 25
+# THE FEWEST FINITE SAMPLES THAT WINDOW NEEDS TO GIVE A MEDIAN
+SKYLINE_LOCAL_MIN_SAMPLES = 5
+# THE NUMBER OF SAMPLES OF THE CENTRED ROLLING QUANTILE OF THE LOCAL SKY LEVEL THAT GIVES ITS SLOW CONTINUUM
+SKYLINE_CONTINUUM_WINDOW = 1001
+# THE FEWEST FINITE SAMPLES THAT WINDOW NEEDS TO GIVE A QUANTILE
+SKYLINE_CONTINUUM_MIN_SAMPLES = 50
+# THE QUANTILE OF THE LOCAL SKY LEVEL TAKEN AS THE CONTINUUM, LOW SO THAT LINES DO NOT LIFT IT
+SKYLINE_CONTINUUM_QUANTILE = 0.2
+# THE LOCAL SKY LEVEL ABOVE THE CONTINUUM, IN MEDIAN PIXEL ERRORS, FROM WHICH A SAMPLE IS ON A LINE
+SKYLINE_SIGMA = 3.0
+# THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
+SKYLINE_DILATE_SAMPLES = 50
+
 
 def _sliding_mean(values, window):
     """*running mean of a 1D array, padded at each end so there is one value per input element*
@@ -93,6 +115,80 @@ def _sliding_mean(values, window):
     means = np.mean(np.lib.stride_tricks.sliding_window_view(values, (window,)), axis=1)
     halfWindow = window // 2
     return np.concatenate((np.full(halfWindow, means[0]), means, np.full(halfWindow, means[-1])))
+
+
+def _evaluate_sky_spline(wavelength, tck, derivative=False):
+    """*evaluate the sky spline, holding it flat past the range it was fitted over*
+
+    ``splev`` extrapolates the last cubic piece by default, which can run to huge values at an order end where the
+    clipped pixels reach past the last fitted sample (DY-1972).
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the wavelengths to evaluate at
+    - ``tck`` -- the fitted spline components. t for knots, c for coefficients, k for order
+    - ``derivative`` -- return the first derivative instead of the value. Default *False*
+
+    **Return:**
+
+    - ``values`` -- the model, equal to its boundary value beyond the fitted range
+        - the derivative is zero beyond the fitted range, matching the held value (``splev`` with ``ext=3`` would
+          return the extrapolated slope there)
+    """
+    import scipy.interpolate as ip
+
+    if derivative:
+        return ip.splev(wavelength, tck, der=1, ext=1)
+    return ip.splev(wavelength, tck, ext=3)
+
+
+def _skyline_pixel_mask(wavelength, flux, error):
+    """*mark the samples of an order that lie on a skyline*
+
+    A sample is on a skyline when the rolling median of the flux, taken in wavelength order, is more than
+    ``SKYLINE_SIGMA`` median errors above the slow continuum of that median. The marked samples are then grown by
+    ``SKYLINE_DILATE_SAMPLES`` each way along the wavelength order, to take in the line wings (DY-1972).
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the wavelength of each sample
+    - ``flux`` -- the flux of each sample
+    - ``error`` -- the flux error of each sample
+
+    **Return:**
+
+    - ``isOnLine`` -- a boolean array in the row order of the inputs
+        - a sample whose flux or error is not finite is never marked, even inside a line, and the threshold uses the
+          finite errors only; an order with no finite error has no lines
+        - an order shorter than the dilation kernel gets a mask of its own length
+    """
+    import numpy as np
+    import pandas as pd
+
+    flux = np.asarray(flux, dtype=float)
+    isOnLine = np.zeros(len(flux), dtype=bool)
+    noise = np.asarray(error, dtype=float)
+    isFinite = np.isfinite(flux) & np.isfinite(noise)
+    if not np.isfinite(noise).any():
+        return isOnLine
+
+    wavelengthOrder = np.argsort(np.asarray(wavelength, dtype=float), kind="stable")
+    localMedian = (
+        pd.Series(flux[wavelengthOrder])
+        .rolling(SKYLINE_LOCAL_WINDOW, center=True, min_periods=SKYLINE_LOCAL_MIN_SAMPLES)
+        .median()
+    )
+    continuum = localMedian.rolling(
+        SKYLINE_CONTINUUM_WINDOW, center=True, min_periods=SKYLINE_CONTINUUM_MIN_SAMPLES
+    ).quantile(SKYLINE_CONTINUUM_QUANTILE)
+    excess = (localMedian - continuum).to_numpy()
+    isLineSample = (excess > SKYLINE_SIGMA * np.median(noise[np.isfinite(noise)])).astype(float)
+    # THE FULL CONVOLUTION SLICED TO THE ORDER LENGTH, BECAUSE mode="same" RETURNS max(kernel, order) VALUES
+    kernel = np.ones(2 * SKYLINE_DILATE_SAMPLES + 1)
+    fullDilation = np.convolve(isLineSample, kernel, mode="full")
+    dilated = fullDilation[SKYLINE_DILATE_SAMPLES : SKYLINE_DILATE_SAMPLES + len(flux)] > 0
+    isOnLine[wavelengthOrder] = dilated
+    return isOnLine & isFinite
 
 
 def _object_wing_log_line(order, estimate):
@@ -832,7 +928,6 @@ class subtract_sky:
         import matplotlib.pyplot as plt
         import numpy as np
         import numpy.ma as ma
-        import scipy.interpolate as ip
         from matplotlib import cm, colors
 
         # SET COLOURS FOR VARIOUS STAGES
@@ -1161,11 +1256,11 @@ class subtract_sky:
                 imageMapOrderDF["wavelength"].max(),
                 1000000,
             )
-            sky = ip.splev(wl, tck)
+            sky = _evaluate_sky_spline(wl, tck)
             # sky = ip.splev(wl, tck, der=1)
             # sky = ip.splev(wl, tck, der=2)
             if not isinstance(knotLocations, bool) and len(knotLocations):
-                knotSky = ip.splev(knotLocations, tck)
+                knotSky = _evaluate_sky_spline(knotLocations, tck)
                 fiverow.scatter(
                     knotLocations,
                     knotSky,
@@ -1735,9 +1830,8 @@ class subtract_sky:
         """
         import numpy as np
         import pandas as pd
-        import scipy.interpolate as ip
 
-        model = ip.splev(imageMapOrder["wavelength"].to_numpy(), tck)
+        model = _evaluate_sky_spline(imageMapOrder["wavelength"].to_numpy(), tck)
         residual = (imageMapOrder["flux"] / imageMapOrder["slit_normalisation_ratio"]).to_numpy(dtype=float) - model
         isUnclipped = ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool)
         # A MISFIT SHARED BY NEIGHBOURING WAVELENGTHS (AN UNRESOLVED SKYLINE) IS FOR THE KNOTS TO FIX, NOT THE CLIP
@@ -1795,7 +1889,9 @@ class subtract_sky:
         while notYetRefit.any():
             # THE WEIGHTS OF THIS REFIT COME FROM THE FIT BEFORE IT, AS IN EVERY FIT (DY-1282)
             imageMapOrder["weights"] = self._inverse_noise_weights(
-                ip.splev(imageMapOrder["wavelength"].to_numpy(), tck), self.ron, self._flat_values(imageMapOrder)
+                _evaluate_sky_spline(imageMapOrder["wavelength"].to_numpy(), tck),
+                self.ron,
+                self._flat_values(imageMapOrder),
             )
             mask_all_clipped = imageMapOrder["flagged_all_clipped"].astype(bool)
             if int((~mask_all_clipped).sum()) <= self.bspline_order:
@@ -1954,7 +2050,7 @@ class subtract_sky:
             iterationCount += 1
 
             if tck_previous is not None:
-                noiseModelSky = ip.splev(imageMapOrder["wavelength"].values, tck_previous)
+                noiseModelSky = _evaluate_sky_spline(imageMapOrder["wavelength"].values, tck_previous)
             imageMapOrder["weights"] = self._inverse_noise_weights(
                 noiseModelSky, self.ron, self._flat_values(imageMapOrder)
             )
@@ -2067,7 +2163,7 @@ class subtract_sky:
                 # COMPUTE NORMALISED ABSOLUTE RESIDUALS (flux - bspline model) / error
                 imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = imageMapOrder.loc[
                     ~mask_all_clipped, "flux"
-                ].values - ip.splev(imageMapOrder.loc[~mask_all_clipped, "wavelength"].values, tck)
+                ].values - _evaluate_sky_spline(imageMapOrder.loc[~mask_all_clipped, "wavelength"].values, tck)
                 imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = (
                     imageMapOrder.loc[~mask_all_clipped, "sky_residuals"].abs()
                     / imageMapOrder.loc[~mask_all_clipped, "error"]
@@ -2093,8 +2189,10 @@ class subtract_sky:
                 )
 
             # GENERATE SKY-MODEL FROM BSPLINE
-            imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
-            imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
+            imageMapOrder["sky_model_wl"] = _evaluate_sky_spline(imageMapOrder["wavelength"].values, tck)
+            imageMapOrder["sky_model_wl_derivative"] = _evaluate_sky_spline(
+                imageMapOrder["wavelength"].values, tck, derivative=True
+            )
             imageMapOrder["sky_subtracted_flux"] = (
                 imageMapOrder["flux"] / imageMapOrder["slit_normalisation_ratio"]
             ) - imageMapOrder["sky_model_wl"]
@@ -2130,8 +2228,10 @@ class subtract_sky:
         # REFIT WITHOUT THE CLIPPED PIXELS, THEN CLIP AND REFIT WITH THE FINAL KNOTS UNTIL NONE IS NEW (DY-1281)
         tck, allKnots = self._clip_residual_outliers_and_refit(imageMapOrder, tck, allKnots, starterKnots, bsplineSigma)
 
-        imageMapOrder["sky_model_wl"] = ip.splev(imageMapOrder["wavelength"].values, tck)
-        imageMapOrder["sky_model_wl_derivative"] = ip.splev(imageMapOrder["wavelength"].values, tck, der=1)
+        imageMapOrder["sky_model_wl"] = _evaluate_sky_spline(imageMapOrder["wavelength"].values, tck)
+        imageMapOrder["sky_model_wl_derivative"] = _evaluate_sky_spline(
+            imageMapOrder["wavelength"].values, tck, derivative=True
+        )
         # THE MODEL IS NOT CLIPPED AT ZERO: A NEGATIVE EXCURSION IS NOISE, AND A CLIP BIASES A FAINT SKY HIGH (DY-1282)
         imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
 
@@ -2807,9 +2907,16 @@ class subtract_sky:
                 fig.tight_layout()
                 plt.show()
 
+        # READ THE SETTING ON EVERY PATH, SO A BAD VALUE RAISES WHETHER OR NOT ANYTHING IS RESTORED (DY-1972)
+        isRestoreEnabled = self._restore_skyline_cores_enabled()
+        # WITH NO DETECTED OBJECT RANGE, AN UNDETECTED FAINT OBJECT MUST STAY MASKED, SO NOTHING IS RESTORED (DY-1972)
+        isRestoringCores = aggressive and bool(object_ranges) and isRestoreEnabled
+
         # NOW FOR EACH OBJECT SLIT-RANGE, FLAG AS CLIPPED IN ORIGINAL ORDER DATAFRAMES
         for df in order_dataframes:
             if aggressive:
+                if isRestoringCores:
+                    self._restore_skyline_cores_outside_object(df, object_ranges)
                 for objectt in object_ranges:
                     df.loc[
                         (df["slit_position"].between(objectt[0], objectt[1])),
@@ -2874,6 +2981,53 @@ class subtract_sky:
         self.log.debug("completed the ``clip_object_slit_positions`` method")
         return order_dataframes
 
+    def _restore_skyline_cores_enabled(self):
+        """*whether skyline cores outside the object are restored to the sky fit (DY-1972)*
+
+        **Return:**
+
+        - ``isOn`` -- the ``restore_skyline_cores_outside_object`` sky-subtraction setting
+            - the value must be a bool: any other value (a quoted ``"False"``, a number, null) raises a ``ValueError``
+            - when the key is absent (a workspace settings file that predates it) it is True for the arms in
+              ``RESTORE_SKYLINE_CORES_ARMS`` (NIR) and False for the rest
+        """
+        skySettings = self.recipeSettings["sky-subtraction"]
+        if RESTORE_SETTING_KEY not in skySettings:
+            return self.arm.upper() in RESTORE_SKYLINE_CORES_ARMS
+        isOn = skySettings[RESTORE_SETTING_KEY]
+        if not isinstance(isOn, bool):
+            raise ValueError(f"the sky-subtraction setting `{RESTORE_SETTING_KEY}` must be true or false, not {isOn!r}")
+        return isOn
+
+    def _restore_skyline_cores_outside_object(self, imageMapOrderDF, objectRanges):
+        """*release the skyline pixels the pre-fit clip flagged as object that lie outside every object slit range*
+
+        The pre-fit clip flags pixels above the rolling percentile by a few sigma, and a skyline narrower than its
+        window has its core flagged. Only the pixels inside an object range are the object. The same clip also flags
+        hot pixels and the positive noise tail of a dark order, so only the pixels on a skyline (see
+        ``_skyline_pixel_mask``) are released, and the rest stay flagged (DY-1972).
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- order dataframe with the component clipping flags. Updated in place.
+        - ``objectRanges`` -- the ``[lower, upper]`` slit-position pairs of the detected objects
+            - a pixel with no slit position is never released
+        """
+        import numpy as np
+
+        slitPosition = imageMapOrderDF["slit_position"].to_numpy(dtype=float)
+        isInObject = np.zeros(len(imageMapOrderDF.index), dtype=bool)
+        for lower, upper in objectRanges:
+            isInObject |= (slitPosition >= lower) & (slitPosition <= upper)
+        isOnLine = _skyline_pixel_mask(
+            imageMapOrderDF["wavelength"].to_numpy(),
+            imageMapOrderDF["flux"].to_numpy(),
+            imageMapOrderDF["error"].to_numpy(),
+        )
+        isReleased = np.isfinite(slitPosition) & ~isInObject & isOnLine
+        imageMapOrderDF.loc[isReleased, "flagged_object_clipped"] = False
+        self._rebuild_all_clipped_flag(imageMapOrderDF)
+
     def determine_residual_floor(self, imageMapOrder, tck, iteration):
         """*determine residual floor and flag sky-lines*
 
@@ -2901,7 +3055,6 @@ class subtract_sky:
         self.log.debug("starting the ``determine_residual_floor`` method")
 
         import numpy as np
-        import scipy.interpolate as ip
         from astropy.stats import sigma_clipped_stats
 
         sky_settings = self.recipeSettings["sky-subtraction"]
@@ -2919,7 +3072,7 @@ class subtract_sky:
         # COMPUTE NORMALISED ABSOLUTE RESIDUALS (flux - bspline model) / error
         imageMapOrder.loc[mask_unclipped, "sky_residuals"] = imageMapOrder.loc[
             mask_unclipped, "flux"
-        ].values - ip.splev(imageMapOrder.loc[mask_unclipped, "wavelength"].values, tck)
+        ].values - _evaluate_sky_spline(imageMapOrder.loc[mask_unclipped, "wavelength"].values, tck)
         imageMapOrder.loc[mask_unclipped, "sky_residuals"] = (
             imageMapOrder.loc[mask_unclipped, "sky_residuals"].abs() / imageMapOrder.loc[mask_unclipped, "error"]
         )
@@ -3000,7 +3153,6 @@ class subtract_sky:
         import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
-        import scipy.interpolate as ip
         from astropy.stats import sigma_clipped_stats
 
         from soxspipe.commonutils.toolkit import get_skylines_dataframe
@@ -3395,7 +3547,7 @@ class subtract_sky:
             imageMapOrder["wavelength"].max(),
             1000000,
         )
-        sky = ip.splev(wl, tck)
+        sky = _evaluate_sky_spline(wl, tck)
         # sky_d1 = ip.splev(wl, tck, der=1)
         # sky_d2 = ip.splev(wl, tck, der=2)
         # sky_d3 = ip.splev(wl, tck, der=3)
