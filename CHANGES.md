@@ -1,6 +1,6 @@
 # Release Notes
 
-* **FIXED**: a recipe's settings are now its own deep copy of its block in the settings dictionary, so the stare sky-model fallback (sky subtraction off, slit length 30) and the `--poly` overrides no longer carry into the next SOF of a serial `reduce all` run; the product header still records the parameters the recipe ran with (DY-1724).
+* **FIXED**: a recipe's settings are now its own deep copy of its block in the settings dictionary, so the stare sky-model fallback (sky subtraction off, slit length 30) and the `--poly` overrides no longer change the shared settings dictionary that later recipes in the same process read; the product header still records the parameters the recipe ran with (DY-1724).
 
 ## v0.19.0 - October 26, 2026
 
