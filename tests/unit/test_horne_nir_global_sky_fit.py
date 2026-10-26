@@ -13,6 +13,7 @@ from soxspipe.commonutils.toolkit import SKYLINE_MIN_LINE_FLUX
 from tests.unit._horne_nir_scene import (
     ORDERS,
     applied_shift,
+    build_catalogue_extractor,
     build_extractor,
     build_orders,
     catalogue_nm,
@@ -321,12 +322,12 @@ def _catalogue_extractor(log, tmp_path, sky_tuning=None):
     return extractor
 
 
-def test_global_nir_tuning_matches_blend_merged_calibration_lines(log, tmp_path):
+def test_the_nir_tight_matching_asks_for_blend_merged_calibration_lines(log, tmp_path):
     # ARRANGE
     extractor = _catalogue_extractor(log, tmp_path)
 
     # ACT
-    _, calibration = extractor._get_local_skylines_for_order(1005.0, 1020.0, 11, "wavelength")
+    _, calibration = extractor._get_local_skylines_for_order(1005.0, 1020.0, 11, "wavelength", True)
 
     # ASSERT
     assert sorted(calibration.tolist()) == pytest.approx([1010.015, 1015.0])
@@ -750,3 +751,79 @@ def test_the_log_gives_the_seed_match_counts_of_each_order(log, tmp_path):
     printed = [message for level, message in log.messages if level == "print" and "applied to order" in message]
     assert any("(own-seed; seed matches global 0, own 0)" in message for message in printed)
     assert any("(global; seed matches global 10, own 10)" in message for message in printed)
+
+
+# THE FIRST PASS IS DEVELOP'S: THE ISOLATED-LINE CATALOGUE
+
+
+def _first_pass(extractor, scene):
+    orders = np.sort(scene["order"].unique())
+    dispersions = extractor._signed_order_dispersions(scene, orders)
+    shiftsNm, orderStats = extractor._measure_orders(scene.copy(), orders, "NIR", False, dispersions)
+    return shiftsNm, {o: stats["nLines"] for o, stats in orderStats.items()}
+
+
+def test_the_global_fit_first_pass_measures_every_order_exactly_as_the_per_order_tuning_does(log, tmp_path):
+    # ARRANGE: THE FIRST LINE OF EVERY ORDER IS A DOUBLET, TWO ISOLATED LINES BUT ONE MERGED CENTROID
+    for name in ("on", "off"):
+        (tmp_path / name).mkdir()
+    scene = build_orders(blendedFirstLine=True)
+    globalOn = build_catalogue_extractor(log, tmp_path / "on", blendedFirstLine=True)
+    globalOff = build_catalogue_extractor(
+        log, tmp_path / "off", sky_tuning={"global-fit": False}, blendedFirstLine=True
+    )
+
+    # ACT
+    onShifts, onCounts = _first_pass(globalOn, scene)
+    offShifts, offCounts = _first_pass(globalOff, scene)
+
+    # ASSERT
+    assert onCounts == offCounts
+    assert set(onCounts.values()) == {len(catalogue_nm(ORDERS[0])) + 1}
+    assert onShifts == pytest.approx(offShifts, abs=0)
+
+
+def test_the_global_fit_tight_matching_still_receives_the_merged_lines(log, tmp_path, monkeypatch):
+    # ARRANGE
+    extractor = build_catalogue_extractor(log, tmp_path, blendedFirstLine=True)
+    calls = _spy_global_fit(monkeypatch)
+
+    # ACT
+    _tune(extractor, build_orders(blendedFirstLine=True))
+
+    # ASSERT
+    for order, lines in calls[0]["orderLines"].items():
+        assert len(lines.catalogueNm) == len(catalogue_nm(order))
+        assert lines.catalogueNm[0] == pytest.approx(catalogue_nm(order)[0] + 0.015)
+
+
+def test_the_default_calibration_lines_of_a_global_fit_nir_order_are_the_isolated_ones(log, tmp_path):
+    # ARRANGE
+    extractor = build_catalogue_extractor(log, tmp_path, blendedFirstLine=True)
+    start = catalogue_nm(ORDERS[0])[0] - 1.0
+
+    # ACT
+    _, isolated = extractor._get_local_skylines_for_order(start, start + 20, ORDERS[0], "wavelength")
+    _, merged = extractor._get_local_skylines_for_order(start, start + 20, ORDERS[0], "wavelength", True)
+
+    # ASSERT
+    assert len(isolated) == len(catalogue_nm(ORDERS[0])) + 1
+    assert len(merged) == len(catalogue_nm(ORDERS[0]))
+
+
+def test_an_order_the_merge_leaves_one_line_keeps_develops_three_line_own_seed(log, tmp_path):
+    # ARRANGE: ORDER 12 HAS 3 SKY LINES AND A GENUINE 8 px OFFSET. ITS ISOLATED CATALOGUE GIVES 3 FIRST-PASS LINES, BUT
+    # THE MERGE KEEPS ONLY ITS FIRST, SO A FIRST PASS ON THE MERGED LINES WOULD FIND 1 AND HAVE NO USABLE SEED
+    extractor = build_catalogue_extractor(log, tmp_path, mergedKeep={OFFSET_ORDER: 1})
+    scene = build_orders(offsets=GENUINE_OFFSETS, lineCounts={OFFSET_ORDER: 3})
+
+    # ACT
+    tuned = _tune(extractor, scene)
+
+    # ASSERT
+    correction = extractor.skyCorrections[OFFSET_ORDER]
+    assert correction.source == "own-seed"
+    assert correction.ownSeedLines == 1
+    assert applied_shift(scene, tuned, OFFSET_ORDER) == pytest.approx(
+        true_shift_nm(OFFSET_ORDER, GENUINE_OFFSETS), abs=0.02
+    )

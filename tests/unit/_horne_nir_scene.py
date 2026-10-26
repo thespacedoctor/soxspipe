@@ -33,6 +33,8 @@ LINE_SIGMA_NM = 0.08
 TRUE_A0 = -3.0
 TRUE_A1 = -0.4
 ORDER_MID = 14.5
+# THE TWO CATALOGUE COMPONENTS OF AN UNRESOLVED OH LAMBDA-DOUBLET ARE THIS FAR APART (nm)
+BLEND_GAP_NM = 0.03
 ORDER_HALF = 3.5
 
 
@@ -75,7 +77,17 @@ def sky_flux(wavelength: np.ndarray, centres: np.ndarray) -> np.ndarray:
     return 1.0 + LINE_HEIGHT * lines
 
 
-def build_orders(linelessOrders=(), linesOnly=None, offsets=None, lineCounts=None) -> pd.DataFrame:
+def sky_line_nm(order: int, blendedFirstLine: bool = False) -> np.ndarray:
+    """*the wavelengths of the sky lines the order holds; with ``blendedFirstLine`` the first is an unresolved blend*"""
+    lines = catalogue_nm(order).copy()
+    if blendedFirstLine:
+        lines[0] += BLEND_GAP_NM / 2
+    return lines
+
+
+def build_orders(
+    linelessOrders=(), linesOnly=None, offsets=None, lineCounts=None, blendedFirstLine=False
+) -> pd.DataFrame:
     """*the extracted NIR orders; ``linelessOrders`` have a flat sky, ``linesOnly`` keeps lines in only those orders,
     ``offsets`` is ``{order: genuine offset of the arc solution (px)}``,
     ``lineCounts`` is ``{order: lines in its sky}``*"""
@@ -83,7 +95,8 @@ def build_orders(linelessOrders=(), linesOnly=None, offsets=None, lineCounts=Non
     for order in ORDERS:
         wavelength = order_start_nm(order) + PIXEL_NM * np.arange(int(ORDER_WIDTH_NM / PIXEL_NM))
         hasLines = order not in linelessOrders and (linesOnly is None or order in linesOnly)
-        observed = catalogue_nm(order)[: (lineCounts or {}).get(order, LINES_PER_ORDER)] - true_shift_nm(order, offsets)
+        observed = sky_line_nm(order, blendedFirstLine)[: (lineCounts or {}).get(order, LINES_PER_ORDER)]
+        observed = observed - true_shift_nm(order, offsets)
         skyFlux = sky_flux(wavelength, observed) if hasLines else np.ones_like(wavelength)
         frames.append(
             pd.DataFrame({"order": order, "wavelengthMean": wavelength, "pixelScaleNm": PIXEL_NM, "skyFlux": skyFlux})
@@ -94,7 +107,7 @@ def build_orders(linelessOrders=(), linesOnly=None, offsets=None, lineCounts=Non
 def catalogue_with_decoys(decoyOrders, offsetNm: float = 0.47):
     """*a ``_get_local_skylines_for_order`` double; ``decoyOrders`` list a decoy ``offsetNm`` past each line*"""
 
-    def lines(wmin, wmax, order, column):
+    def lines(wmin, wmax, order, column, merged=None):
         real = catalogue_nm(order)
         real = np.concatenate([real, real + offsetNm]) if order in decoyOrders else real
         inRange = real[(real >= wmin) & (real <= wmax)]
@@ -140,3 +153,33 @@ def build_extractor(
 def applied_shift(before: pd.DataFrame, after: pd.DataFrame, order: int) -> float:
     mask = before["order"] == order
     return float((after.loc[mask, "wavelengthMean"] - before.loc[mask, "wavelengthMean"]).mean())
+
+
+def catalogue_tables(blendedFirstLine: bool = False, mergedKeep: dict | None = None):
+    """*the isolated-line and the blend-merged catalogue tables of the scene*
+
+    The isolated table lists every line of every order, and with ``blendedFirstLine`` both components of the first
+    line's doublet. The merged table lists one centroid for the doublet. ``mergedKeep`` is ``{order: lines kept}``, for
+    an order whose merge drops all but its first lines.
+    """
+    isolated, merged = [], []
+    for order in ORDERS:
+        lines = list(catalogue_nm(order))
+        isolatedLines, mergedLines = list(lines), list(lines)
+        if blendedFirstLine:
+            isolatedLines.append(lines[0] + BLEND_GAP_NM)
+            mergedLines[0] = lines[0] + BLEND_GAP_NM / 2
+        mergedLines = mergedLines[: (mergedKeep or {}).get(order, len(mergedLines))]
+        isolated.append(pd.DataFrame({"WAVELENGTH": isolatedLines, "FLUX": 300.0, "ISOLATED": True}))
+        merged.append(pd.DataFrame({"WAVELENGTH": mergedLines, "FLUX": 300.0}))
+    return pd.concat(isolated, ignore_index=True), pd.concat(merged, ignore_index=True)
+
+
+def build_catalogue_extractor(
+    log: object, tmp_path: Path, sky_tuning: dict | None = None, blendedFirstLine: bool = False, mergedKeep=None
+) -> horne_extraction:
+    """*an extractor that runs the real ``_get_local_skylines_for_order`` against the scene's catalogue tables*"""
+    extractor = build_extractor(log, tmp_path, sky_tuning=sky_tuning)
+    del extractor._get_local_skylines_for_order
+    extractor.skylinesDF, extractor._mergedSkylinesDF = catalogue_tables(blendedFirstLine, mergedKeep)
+    return extractor
