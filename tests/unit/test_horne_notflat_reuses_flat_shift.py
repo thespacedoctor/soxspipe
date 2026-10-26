@@ -11,6 +11,10 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.horne_extraction import FlatPassHandoff
+from soxspipe.commonutils.nir_sky_refit import order_geometry, order_sky_correction
+from tests.unit._horne_nir_scene import ORDERS as NIR_ORDERS
+from tests.unit._horne_nir_scene import build_extractor as build_nir_extractor
+from tests.unit._horne_nir_scene import build_orders as build_nir_orders
 from tests.unit._horne_vis_scene import (
     I_LINE_OFFSET_NM,
     R_LINE_OFFSET_NM,
@@ -223,3 +227,117 @@ def test_a_repeated_flat_extraction_does_not_hand_on_the_earlier_shifts(log: obj
 
     # ASSERT
     assert extractor.flatPassHandoff == FlatPassHandoff(skyShiftsNm=None, objectTracePath=None)
+
+
+# NIR GLOBAL FIT HAND-OFF (DY-1968)
+
+
+def _nir_correction() -> order_sky_correction:
+    geometry = order_geometry(centreNm=1010.0, halfRangeNm=10.0, dispersionNmPerPx=-0.05, medianPixelScaleNm=0.05)
+    return order_sky_correction(
+        order=11, shiftPx=1.0, alongPx=(2.0,), perOrderSlopePx=0.5, nLines=12, geometry=geometry
+    )
+
+
+def test_the_flat_pass_hands_its_nir_corrections_on(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor = build_nir_extractor(log, tmp_path)
+    extractor.notFlattened = ""
+
+    # ACT
+    extractor._correct_wavelengths(build_nir_orders(), "NIR")
+
+    # ASSERT
+    handoff = extractor.flatPassHandoff
+    assert set(handoff.skyCorrections) == set(NIR_ORDERS)
+    assert handoff.skyCorrections == extractor.skyCorrections
+    assert handoff.skyShiftsNm == {o: c.shift_nm for o, c in extractor.skyCorrections.items()}
+
+
+def test_the_not_flattened_pass_applies_the_corrections_row_by_row(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    correction = _nir_correction()
+    handoff = FlatPassHandoff(
+        skyShiftsNm={11: correction.shift_nm}, objectTracePath=None, skyCorrections={11: correction}
+    )
+    extractor = _extractor(log, tmp_path, notFlattened=True, flatPass=handoff)
+    before = pd.DataFrame(
+        {"order": 11, "wavelengthMean": [1000.0, 1010.0, 1020.0], "pixelScaleNm": 0.05, "skyFlux": 1.0}
+    )
+
+    # ACT
+    after = extractor._correct_wavelengths(before.copy(), "NIR")
+
+    # ASSERT
+    shifts = (after["wavelengthMean"] - before["wavelengthMean"]).to_numpy()
+    assert extractor.calls == []
+    assert shifts == pytest.approx(correction.correction_nm(before["wavelengthMean"].to_numpy(), None))
+    assert shifts[0] != pytest.approx(shifts[2])
+
+
+def test_real_nir_global_tuning_gives_both_passes_the_same_wavelengths(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    for name in ("flat", "notflat"):
+        (tmp_path / name).mkdir()
+    flat = build_nir_extractor(log, tmp_path / "flat")
+    flat.notFlattened = ""
+    notFlat = build_nir_extractor(log, tmp_path / "notflat")
+    notFlat.notFlattened = "_NOTFLAT"
+    _forbid_peak_matching(notFlat)
+    flatScene = build_nir_orders()
+    notFlatScene = build_nir_orders().assign(skyFlux=1.0)
+
+    # ACT
+    flatAfter = flat._correct_wavelengths(flatScene.copy(), "NIR")
+    notFlat.flatPass = flat.flatPassHandoff
+    notFlatAfter = notFlat._correct_wavelengths(notFlatScene.copy(), "NIR")
+
+    # ASSERT
+    np.testing.assert_array_equal(notFlatAfter["wavelengthMean"].to_numpy(), flatAfter["wavelengthMean"].to_numpy())
+    assert applied_shift(flatScene, flatAfter, NIR_ORDERS[0]) != 0.0
+    assert not [name for name in notFlat.qc.get("qc_name", []) if name.startswith("SKY")]
+
+
+def test_the_hand_off_corrections_cannot_be_changed_after_the_flat_pass() -> None:
+    # ARRANGE
+    corrections = {11: _nir_correction()}
+    handoff = FlatPassHandoff(skyShiftsNm={11: 0.1}, objectTracePath=None, skyCorrections=corrections)
+
+    # ACT
+    corrections.clear()
+
+    # ASSERT
+    assert set(handoff.skyCorrections) == {11}
+    with pytest.raises(TypeError):
+        handoff.skyCorrections[12] = _nir_correction()
+
+
+def test_the_hand_off_with_corrections_survives_pickling_and_deep_copy() -> None:
+    # ARRANGE
+    handoff = FlatPassHandoff(
+        skyShiftsNm={11: 0.1}, objectTracePath="trace.fits", skyCorrections={11: _nir_correction()}
+    )
+
+    # ACT
+    restored = pickle.loads(pickle.dumps(handoff))  # noqa: S301 - ROUND-TRIPS AN OBJECT THIS TEST BUILT
+    copied = copy.deepcopy(handoff)
+
+    # ASSERT
+    assert restored == handoff
+    assert copied == handoff
+    assert restored.skyCorrections[11].alongPx == (2.0,)
+
+
+def test_a_repeated_nir_flat_extraction_does_not_hand_on_the_earlier_corrections(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor = build_nir_extractor(log, tmp_path)
+    extractor.notFlattened = ""
+    extractor._correct_wavelengths(build_nir_orders(), "NIR")
+    extractor._arc_attachment = lambda: (3.0, 1.0)
+
+    # ACT
+    extractor._correct_wavelengths(build_nir_orders(), "NIR")
+
+    # ASSERT
+    assert extractor.flatPassHandoff.skyCorrections is None
+    assert extractor.flatPassHandoff.skyShiftsNm is None

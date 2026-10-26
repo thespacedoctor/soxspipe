@@ -398,6 +398,18 @@ soxs-stare-std:
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
+        # WAVELENGTH TUNING TO THE SKY LINES OF THE NIR ARM: ONE FIT OVER ALL ORDERS INSTEAD OF A MEDIAN SHIFT PER ORDER
+        sky-tuning:
+            # FIT ALL ORDERS TOGETHER. FALSE TUNES EACH ORDER ON ITS OWN, AS BEFORE
+            global-fit: True
+            # DEGREE OF THE POLYNOMIAL IN THE ORDER NUMBER (DETECTOR SHIFT CHANGES SMOOTHLY FROM ORDER TO ORDER)
+            order-deg: 1
+            # DEGREE OF THE POLYNOMIAL IN THE POSITION ALONG THE ORDER, SHARED BY ALL ORDERS
+            along-order-deg: 1
+            # FEWEST SKY LINES AN ORDER NEEDS (SPANNING HALF THE ORDER) FOR ITS OWN SLOPE ALONG THE ORDER
+            slope-min-lines: 8
+            # SIGMA CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING THE SKY-LINE OFFSETS
+            clip-sigma: 3.0
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
@@ -600,6 +612,18 @@ soxs-stare:
             # SAVE SKY-MODEL QC PLOT (EXPENSIVE)
             sky_model_qc_plot: False
     nir:
+        # WAVELENGTH TUNING TO THE SKY LINES OF THE NIR ARM: ONE FIT OVER ALL ORDERS INSTEAD OF A MEDIAN SHIFT PER ORDER
+        sky-tuning:
+            # FIT ALL ORDERS TOGETHER. FALSE TUNES EACH ORDER ON ITS OWN, AS BEFORE
+            global-fit: True
+            # DEGREE OF THE POLYNOMIAL IN THE ORDER NUMBER (DETECTOR SHIFT CHANGES SMOOTHLY FROM ORDER TO ORDER)
+            order-deg: 1
+            # DEGREE OF THE POLYNOMIAL IN THE POSITION ALONG THE ORDER, SHARED BY ALL ORDERS
+            along-order-deg: 1
+            # FEWEST SKY LINES AN ORDER NEEDS (SPANNING HALF THE ORDER) FOR ITS OWN SLOPE ALONG THE ORDER
+            slope-min-lines: 8
+            # SIGMA CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING THE SKY-LINE OFFSETS
+            clip-sigma: 3.0
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
         # THE LENGTH OF THE 'SLIT' USED TO COLLECT OBJECT FLUX (IN PIXELS)
@@ -745,6 +769,18 @@ soxs-nod-std:
             n-orders: [3,5]
             samples-clip-frac: [-0.01,0.2]
     nir:
+        # WAVELENGTH TUNING TO THE SKY LINES OF THE NIR ARM: ONE FIT OVER ALL ORDERS INSTEAD OF A MEDIAN SHIFT PER ORDER
+        sky-tuning:
+            # FIT ALL ORDERS TOGETHER. FALSE TUNES EACH ORDER ON ITS OWN, AS BEFORE
+            global-fit: True
+            # DEGREE OF THE POLYNOMIAL IN THE ORDER NUMBER (DETECTOR SHIFT CHANGES SMOOTHLY FROM ORDER TO ORDER)
+            order-deg: 1
+            # DEGREE OF THE POLYNOMIAL IN THE POSITION ALONG THE ORDER, SHARED BY ALL ORDERS
+            along-order-deg: 1
+            # FEWEST SKY LINES AN ORDER NEEDS (SPANNING HALF THE ORDER) FOR ITS OWN SLOPE ALONG THE ORDER
+            slope-min-lines: 8
+            # SIGMA CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING THE SKY-LINE OFFSETS
+            clip-sigma: 3.0
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
         detect-continuum:
@@ -838,6 +874,18 @@ soxs-nod:
             # WARN WHEN ADJACENT ORDERS DISAGREE ON THE SLIT POSITION OF THE TRACE AT THEIR JOIN BY MORE THAN THIS (ARCSEC)
             same-source-max-join-arcsec: 2.0
     nir:
+        # WAVELENGTH TUNING TO THE SKY LINES OF THE NIR ARM: ONE FIT OVER ALL ORDERS INSTEAD OF A MEDIAN SHIFT PER ORDER
+        sky-tuning:
+            # FIT ALL ORDERS TOGETHER. FALSE TUNES EACH ORDER ON ITS OWN, AS BEFORE
+            global-fit: True
+            # DEGREE OF THE POLYNOMIAL IN THE ORDER NUMBER (DETECTOR SHIFT CHANGES SMOOTHLY FROM ORDER TO ORDER)
+            order-deg: 1
+            # DEGREE OF THE POLYNOMIAL IN THE POSITION ALONG THE ORDER, SHARED BY ALL ORDERS
+            along-order-deg: 1
+            # FEWEST SKY LINES AN ORDER NEEDS (SPANNING HALF THE ORDER) FOR ITS OWN SLOPE ALONG THE ORDER
+            slope-min-lines: 8
+            # SIGMA CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING THE SKY-LINE OFFSETS
+            clip-sigma: 3.0
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
         detect-continuum:
@@ -922,6 +970,18 @@ soxs-offset:
             # WARN WHEN ADJACENT ORDERS DISAGREE ON THE SLIT POSITION OF THE TRACE AT THEIR JOIN BY MORE THAN THIS (ARCSEC)
             same-source-max-join-arcsec: 2.0
     nir:
+        # WAVELENGTH TUNING TO THE SKY LINES OF THE NIR ARM: ONE FIT OVER ALL ORDERS INSTEAD OF A MEDIAN SHIFT PER ORDER
+        sky-tuning:
+            # FIT ALL ORDERS TOGETHER. FALSE TUNES EACH ORDER ON ITS OWN, AS BEFORE
+            global-fit: True
+            # DEGREE OF THE POLYNOMIAL IN THE ORDER NUMBER (DETECTOR SHIFT CHANGES SMOOTHLY FROM ORDER TO ORDER)
+            order-deg: 1
+            # DEGREE OF THE POLYNOMIAL IN THE POSITION ALONG THE ORDER, SHARED BY ALL ORDERS
+            along-order-deg: 1
+            # FEWEST SKY LINES AN ORDER NEEDS (SPANNING HALF THE ORDER) FOR ITS OWN SLOPE ALONG THE ORDER
+            slope-min-lines: 8
+            # SIGMA CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING THE SKY-LINE OFFSETS
+            clip-sigma: 3.0
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
         detect-continuum:
@@ -992,6 +1052,18 @@ soxs-offset-std:
         qc-acceptable-ranges:
             detector-temp: [0,165]
     nir:
+        # WAVELENGTH TUNING TO THE SKY LINES OF THE NIR ARM: ONE FIT OVER ALL ORDERS INSTEAD OF A MEDIAN SHIFT PER ORDER
+        sky-tuning:
+            # FIT ALL ORDERS TOGETHER. FALSE TUNES EACH ORDER ON ITS OWN, AS BEFORE
+            global-fit: True
+            # DEGREE OF THE POLYNOMIAL IN THE ORDER NUMBER (DETECTOR SHIFT CHANGES SMOOTHLY FROM ORDER TO ORDER)
+            order-deg: 1
+            # DEGREE OF THE POLYNOMIAL IN THE POSITION ALONG THE ORDER, SHARED BY ALL ORDERS
+            along-order-deg: 1
+            # FEWEST SKY LINES AN ORDER NEEDS (SPANNING HALF THE ORDER) FOR ITS OWN SLOPE ALONG THE ORDER
+            slope-min-lines: 8
+            # SIGMA CLIPPING LIMIT (MEDIAN AND MAD) WHEN FITTING THE SKY-LINE OFFSETS
+            clip-sigma: 3.0
         # LA COSMIC SIGMA CLIPPING LIMIT
         lacosmic-sigma: 25
         detect-continuum:
