@@ -1509,7 +1509,7 @@ class detect_continuum(_base_detect):
         return orderMetaTable
 
     def check_trace_extrapolation(self, sampledTable: pd.DataFrame, acceptedTable: pd.DataFrame) -> None:
-        """*warn when the fitted trace of an order is extrapolated across a long stretch with no accepted samples*
+        """*log when the fitted trace of an order is extrapolated across a long stretch with no accepted samples*
 
         Records the longest sample-free stretch of each order as the ``SAMPLES GAP MAX O<n>`` QC. The QC is not
         written to the product header and has no acceptable range, so it never fails a recipe.
@@ -1546,7 +1546,7 @@ class detect_continuum(_base_detect):
                 qcOrder=int(order),
             )
             if fraction > maxFraction:
-                self.log.warning(
+                self.log.info(
                     f"The trace of order {int(order)} has no accepted samples between {startNm:.1f} nm and "
                     f"{endNm:.1f} nm ({fraction:.0%} of the order), so the fitted trace is extrapolated there. "
                     "Check the object and order positions."

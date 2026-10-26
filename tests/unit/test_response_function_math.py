@@ -125,7 +125,7 @@ def test_response_get_adds_the_response_fit_qcs_before_writing_the_product(
     assert abs(selfCal) < 1e-3
 
 
-def test_response_get_warns_and_passes_the_warnings_to_the_plot_when_qc_is_out_of_tolerance(
+def test_response_get_logs_and_passes_the_warnings_to_the_plot_when_qc_is_out_of_tolerance(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -142,7 +142,10 @@ def test_response_get_warns_and_passes_the_warnings_to_the_plot_when_qc_is_out_o
     # ASSERT: THE RECIPE STILL SUCCEEDS
     assert recipeError is False
     assert len(captured["qcWarnings"]) == 1
-    assert any(level == "warning" and "gap" in message for level, message in log.messages)
+    assert any(
+        level == "info" and "Response QC out of tolerance" in message and "gap" in message
+        for level, message in log.messages
+    )
 
 
 def test_response_get_raises_when_the_response_has_no_finite_samples(

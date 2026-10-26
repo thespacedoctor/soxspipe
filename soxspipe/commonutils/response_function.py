@@ -502,7 +502,7 @@ class response_function:
         return fit, fitSettings
 
     def _add_response_qcs(self, fit, fitSettings):
-        """*measure the response fit QCs, add them to the QC table and warn about any out of tolerance*
+        """*measure the response fit QCs, add them to the QC table and log any out of tolerance*
 
         **Return:**
 
@@ -514,7 +514,7 @@ class response_function:
         self.qc = response_qc_rows(self.qc, measures, self.recipeName, self.dateObs)
         qcWarnings = response_qc_warnings(measures, fitSettings)
         for message in qcWarnings:
-            self.log.warning(f"Response QC out of tolerance: {message}")
+            self.log.info(f"Response QC out of tolerance: {message}")
         return qcWarnings
 
     def plot_response_curve(

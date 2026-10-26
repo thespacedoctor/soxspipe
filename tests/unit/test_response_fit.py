@@ -56,9 +56,13 @@ def _fit(
 class _RecordingLog:
     def __init__(self) -> None:
         self.warnings: list[str] = []
+        self.infos: list[str] = []
 
     def warning(self, message: str) -> None:
         self.warnings.append(message)
+
+    def info(self, message: str) -> None:
+        self.infos.append(message)
 
 
 def test_recovers_a_steep_blue_rise_within_two_percent_at_the_blue_edge() -> None:
@@ -169,8 +173,9 @@ def test_cap_hit_refit_returns_a_spline_that_fits_the_returned_kept_bins() -> No
 
     # ASSERT: THE SPLINE EQUALS A DIRECT WEIGHTED FIT OF THE KEPT BINS ON THE SAME KNOTS
     assert (~kept).any()
-    assert len(recordingLog.warnings) == 1
-    assert "iteration cap" in recordingLog.warnings[0]
+    assert recordingLog.warnings == []
+    assert len(recordingLog.infos) == 1
+    assert "iteration cap" in recordingLog.infos[0]
     direct = LSQUnivariateSpline(binWave[kept], binLog[kept], spline.get_knots()[1:-1], w=1.0 / binErr[kept], k=3)
     np.testing.assert_allclose(spline(binWave[kept]), direct(binWave[kept]), atol=1e-10)
 
@@ -186,6 +191,7 @@ def test_converging_before_the_cap_logs_no_warning() -> None:
 
     # ASSERT
     assert recordingLog.warnings == []
+    assert recordingLog.infos == []
 
 
 def test_mask_drops_non_finite_non_positive_telluric_and_stellar_line_samples() -> None:
@@ -724,4 +730,5 @@ def test_the_cap_hit_refit_keeps_the_penalty() -> None:
     # ASSERT
     assert isinstance(spline, BSpline)
     assert (~kept).any()
-    assert len(recordingLog.warnings) == 1
+    assert recordingLog.warnings == []
+    assert len(recordingLog.infos) == 1

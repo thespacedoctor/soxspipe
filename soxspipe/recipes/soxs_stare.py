@@ -1048,7 +1048,7 @@ class soxs_stare(base_recipe):
             return 1, 1
 
     def _check_rotator_angles(self, combined_object, allObjectFrames):
-        """*log the rotator angle of the stacked frame and warn if the stacked input frames differ widely in it*
+        """*log the rotator angle of the stacked frame, and note when the stacked input frames differ widely in it*
 
         The slit offsets depend on the rotator angle, and one offset is measured for the whole stack. A frame with no
         usable ABSROT keyword is left out and never fails the recipe.
@@ -1064,7 +1064,7 @@ class soxs_stare(base_recipe):
         angles = [read_rotator_angle(frame.header, key) for frame in allObjectFrames]
         spread = rotator_angle_spread([angle for angle in angles if angle is not None])
         if spread > ABSROT_SPREAD_WARNING_DEGREES:
-            self.log.warning(
+            self.log.info(
                 f"The ABSROT of the stacked input frames spans {spread:.1f} degrees, more than "
                 f"{ABSROT_SPREAD_WARNING_DEGREES:.1f} degrees, so one slit offset may not fit every frame."
             )

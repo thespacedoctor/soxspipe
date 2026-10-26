@@ -28,7 +28,7 @@ Telluric absorption also raises the response in the wings just outside each mask
 
 With `smoothing_penalty` above zero, the pipeline fits a penalised cubic spline (P-spline) instead. The knots are a dense regular grid, spaced `knot_spacing_nm` apart over the kept bins. A penalty on the second difference of the spline coefficients, with weight `smoothing_penalty` times the median squared bin weight, keeps the curve smooth. In a masked gap or beyond a sparse end, no bins constrain the curve, and it tends to a straight line in log. With `smoothing_penalty` at 0, the pipeline fits the plain least-squares spline described above.
 
-Bins are clipped in log space. Each residual is divided by the error of its bin, and the robust sigma is 1.4826 times the median absolute deviation of these scaled residuals. A noisy bin, for example at the low-signal end of an arm, is therefore judged against its own noise. Bins more than `clip_sigma_low` sigma below the spline or `clip_sigma_high` sigma above it are removed, and the fit is repeated until no bin changes or `max_iteration` is reached. The upper limit is the tighter one because absorption raises $S(\lambda)$. If the cap is reached while bins are still changing, the spline is refitted on the surviving bins and a warning is logged. If too few bins remain, `response_function` raises an exception.
+Bins are clipped in log space. Each residual is divided by the error of its bin, and the robust sigma is 1.4826 times the median absolute deviation of these scaled residuals. A noisy bin, for example at the low-signal end of an arm, is therefore judged against its own noise. Bins more than `clip_sigma_low` sigma below the spline or `clip_sigma_high` sigma above it are removed, and the fit is repeated until no bin changes or `max_iteration` is reached. The upper limit is the tighter one because absorption raises $S(\lambda)$. If the cap is reached while bins are still changing, the spline is refitted on the surviving bins and an info message is logged. If too few bins remain, `response_function` raises an exception.
 
 The saved FITS table holds the spline response, evaluated at each extracted wavelength, in its `RESPONSE` extension. Flux calibration interpolates this curve in log space. Outside the fitted range the curve is not extrapolated, and the calibrated flux is NaN. `RESPONSE` is the only table extension. Products from earlier releases also held a table of polynomial coefficients in their first extension; it is no longer written.
 
@@ -44,7 +44,7 @@ All settings above are per arm, in the `soxs-response` block of the settings fil
 | `RESP MAX GAP` | Widest stretch (nm) inside the data without a kept bin. | `max_gap_nm_max` |
 | `RESP SELFCAL RES <band>` | Median of (self-calibrated flux / catalogue flux) minus 1 over the unmasked samples in the band. A positive value means the calibrated standard is too bright. | `selfcal_res_max` |
 
-The bands come from `selfcal_bands`. A QC outside its tolerance logs a warning and adds a red note to the title of the QC plot. The recipe does not fail.
+The bands come from `selfcal_bands`. A QC outside its tolerance logs an info message and adds a red note to the title of the QC plot. The recipe does not fail.
 
 ## Efficiency Calculation
 

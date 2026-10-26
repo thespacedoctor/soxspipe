@@ -804,12 +804,12 @@ def test_no_plot_is_written_when_the_measurement_has_no_profiles(
     assert not (Path(recipe.qcDir) / "OBJECT_VIS_SLIT_ILLUM_QC_PLOT.pdf").exists()
 
 
-def test_a_wide_rotator_spread_between_input_frames_is_warned(
+def test_a_wide_rotator_spread_between_input_frames_is_reported(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Frames whose ABSROT differs by more than the limit get a warning; the stacked frame's ABSROT is logged."""
+    """Frames whose ABSROT differs by more than the limit get an info note; the stacked frame's ABSROT is logged."""
     # ARRANGE
     objectRoute = _route(DPR_TYPE="OBJECT", DPR_TECH=STARE_TECHNIQUE)
     paths = [
@@ -841,9 +841,11 @@ def test_a_wide_rotator_spread_between_input_frames_is_warned(
     recipe.produce_product()
 
     # ASSERT
-    warnings = [text for level, text in log.messages if level == "warning" and "ABSROT" in text]
-    assert len(warnings) == 1
-    assert "35.0" in warnings[0]
+    spreads = [
+        text for level, text in log.messages if level == "info" and "ABSROT of the stacked input frames spans" in text
+    ]
+    assert len(spreads) == 1
+    assert "35.0" in spreads[0]
     assert any(level == "info" and "172.5" in text and "ABSROT" in text for level, text in log.messages)
 
 
@@ -881,7 +883,7 @@ def test_a_narrow_rotator_spread_or_missing_rotator_keywords_raise_no_warning(
     recipe.produce_product()
 
     # ASSERT
-    assert not [text for level, text in log.messages if level == "warning" and "ABSROT" in text]
+    assert not [text for _, text in log.messages if "ABSROT of the stacked input frames spans" in text]
 
 
 def test_the_slit_illumination_qcs_are_never_checked_against_an_acceptable_range(log: Any) -> None:
