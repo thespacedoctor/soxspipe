@@ -9,8 +9,8 @@ import pytest
 from soxspipe.commonutils import nir_sky_refit
 from soxspipe.commonutils.horne_extraction import horne_extraction
 from soxspipe.commonutils.nir_sky_refit import MAX_TIGHT_TOLERANCE_NM, MIN_GLOBAL_LINES
-from soxspipe.commonutils.toolkit import SKYLINE_MIN_LINE_FLUX
 from tests.unit._horne_nir_scene import (
+    BLEND_GAP_NM,
     ORDERS,
     applied_shift,
     build_catalogue_extractor,
@@ -39,8 +39,9 @@ def _spy_global_fit(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
     original = nir_sky_refit.fit_with_iterated_matching
 
     def spy(orderLines, geometry, seedPx, settings, **kwargs):
-        calls.append({"orderLines": orderLines, "geometry": geometry, "seedPx": seedPx, **kwargs})
-        return original(orderLines, geometry, seedPx, settings, **kwargs)
+        result = original(orderLines, geometry, seedPx, settings, **kwargs)
+        calls.append({"orderLines": orderLines, "geometry": geometry, "seedPx": seedPx, "result": result, **kwargs})
+        return result
 
     monkeypatch.setattr(nir_sky_refit, "fit_with_iterated_matching", spy)
     return calls
@@ -318,55 +319,21 @@ def _catalogue_extractor(log, tmp_path, sky_tuning=None):
             "ISOLATED": [True, True, True],
         }
     )
-    extractor._mergedSkylinesDF = pd.DataFrame({"WAVELENGTH": [1010.015, 1015.0], "FLUX": [600.0, 400.0]})
     return extractor
 
 
-def test_the_nir_tight_matching_asks_for_blend_merged_calibration_lines(log, tmp_path):
+@pytest.mark.parametrize("sky_tuning", [None, {"global-fit": False}])
+def test_nir_calibration_lines_are_the_isolated_catalogue_lines_with_or_without_the_global_fit(
+    log, tmp_path, sky_tuning
+):
     # ARRANGE
-    extractor = _catalogue_extractor(log, tmp_path)
-
-    # ACT
-    _, calibration = extractor._get_local_skylines_for_order(1005.0, 1020.0, 11, "wavelength", True)
-
-    # ASSERT
-    assert sorted(calibration.tolist()) == pytest.approx([1010.015, 1015.0])
-
-
-def test_per_order_nir_tuning_keeps_the_isolated_catalogue_lines(log, tmp_path):
-    # ARRANGE
-    extractor = _catalogue_extractor(log, tmp_path, sky_tuning={"global-fit": False})
+    extractor = _catalogue_extractor(log, tmp_path, sky_tuning=sky_tuning)
 
     # ACT
     _, calibration = extractor._get_local_skylines_for_order(1005.0, 1020.0, 11, "wavelength")
 
     # ASSERT
     assert sorted(calibration.tolist()) == pytest.approx([1010.0, 1010.03, 1015.0])
-
-
-@pytest.mark.parametrize(("arm", "keyword"), [("NIR", "minBrightnessNIR"), ("VIS", "minBrightnessVIS")])
-def test_the_blend_merge_reads_the_catalogue_without_its_brightness_cut(log, tmp_path, monkeypatch, arm, keyword):
-    # ARRANGE
-    import soxspipe.commonutils.toolkit as toolkit
-
-    extractor = build_extractor(log, tmp_path, arm=arm)
-    extractor._mergedSkylinesDF = None
-    seen: list[dict] = []
-
-    def fake(log, settings, arm, **kwargs):
-        seen.append({"arm": arm, **kwargs})
-        return pd.DataFrame({"WAVELENGTH": [1010.0, 1010.03], "FLUX": [10.0, 10.0]})
-
-    monkeypatch.setattr(toolkit, "get_skylines_dataframe", fake)
-    extractor.settings = {}
-
-    # ACT
-    merged = extractor._merged_skylines()
-
-    # ASSERT
-    assert seen == [{"arm": arm, keyword: SKYLINE_MIN_LINE_FLUX}]
-    assert len(merged) == 1
-    assert merged["WAVELENGTH"].iloc[0] == pytest.approx(1010.015)
 
 
 # DEBUG PLOT
@@ -785,8 +752,8 @@ def test_the_global_fit_first_pass_measures_every_order_exactly_as_the_per_order
     assert onShifts == pytest.approx(offShifts, abs=0)
 
 
-def test_the_global_fit_tight_matching_still_receives_the_merged_lines(log, tmp_path, monkeypatch):
-    # ARRANGE
+def test_the_global_fit_tight_matching_receives_the_isolated_catalogue_lines(log, tmp_path, monkeypatch):
+    # ARRANGE: THE FIRST LINE OF EVERY ORDER IS A DOUBLET, LISTED AS TWO ISOLATED LINES
     extractor = build_catalogue_extractor(log, tmp_path, blendedFirstLine=True)
     calls = _spy_global_fit(monkeypatch)
 
@@ -795,37 +762,40 @@ def test_the_global_fit_tight_matching_still_receives_the_merged_lines(log, tmp_
 
     # ASSERT
     for order, lines in calls[0]["orderLines"].items():
-        assert len(lines.catalogueNm) == len(catalogue_nm(order))
-        assert lines.catalogueNm[0] == pytest.approx(catalogue_nm(order)[0] + 0.015)
+        assert len(lines.catalogueNm) == len(catalogue_nm(order)) + 1
 
 
-def test_the_default_calibration_lines_of_a_global_fit_nir_order_are_the_isolated_ones(log, tmp_path):
+def test_the_global_fit_snr_gate_runs_on_the_isolated_catalogue_lines(log, tmp_path, monkeypatch):
     # ARRANGE
     extractor = build_catalogue_extractor(log, tmp_path, blendedFirstLine=True)
-    start = catalogue_nm(ORDERS[0])[0] - 1.0
+    seen: list[tuple] = []
+    realSnrs = extractor._order_sky_line_snrs
+
+    def record(*args):
+        seen.append(args[2:])
+        return realSnrs(*args)
+
+    extractor._order_sky_line_snrs = record
 
     # ACT
-    _, isolated = extractor._get_local_skylines_for_order(start, start + 20, ORDERS[0], "wavelength")
-    _, merged = extractor._get_local_skylines_for_order(start, start + 20, ORDERS[0], "wavelength", True)
+    _tune(extractor, build_orders(blendedFirstLine=True))
 
-    # ASSERT
-    assert len(isolated) == len(catalogue_nm(ORDERS[0])) + 1
-    assert len(merged) == len(catalogue_nm(ORDERS[0]))
+    # ASSERT: THE GATE IS ASKED FOR NO CATALOGUE CHOICE, SO IT TAKES THE DEFAULT, THE ISOLATED LINES
+    assert seen
+    assert set(seen) == {()}
 
 
-def test_an_order_the_merge_leaves_one_line_keeps_develops_three_line_own_seed(log, tmp_path):
-    # ARRANGE: ORDER 12 HAS 3 SKY LINES AND A GENUINE 8 px OFFSET. ITS ISOLATED CATALOGUE GIVES 3 FIRST-PASS LINES, BUT
-    # THE MERGE KEEPS ONLY ITS FIRST, SO A FIRST PASS ON THE MERGED LINES WOULD FIND 1 AND HAVE NO USABLE SEED
-    extractor = build_catalogue_extractor(log, tmp_path, mergedKeep={OFFSET_ORDER: 1})
-    scene = build_orders(offsets=GENUINE_OFFSETS, lineCounts={OFFSET_ORDER: 3})
+def test_a_doublet_peak_is_matched_once_not_to_both_components(log, tmp_path, monkeypatch):
+    # ARRANGE: THE FIRST SKY LINE OF EVERY ORDER IS A BLEND HALFWAY BETWEEN TWO ISOLATED CATALOGUE COMPONENTS
+    extractor = build_catalogue_extractor(log, tmp_path, blendedFirstLine=True)
+    calls = _spy_global_fit(monkeypatch)
 
     # ACT
-    tuned = _tune(extractor, scene)
+    _tune(extractor, build_orders(blendedFirstLine=True))
 
-    # ASSERT
-    correction = extractor.skyCorrections[OFFSET_ORDER]
-    assert correction.source == "own-seed"
-    assert correction.ownSeedLines == 1
-    assert applied_shift(scene, tuned, OFFSET_ORDER) == pytest.approx(
-        true_shift_nm(OFFSET_ORDER, GENUINE_OFFSETS), abs=0.02
-    )
+    # ASSERT: 11 CATALOGUE LINES BUT 10 PEAKS, SO THE FIT GETS ONE ROW PER PEAK. ONLY ONE COMPONENT IS MATCHED
+    lines = calls[0]["result"].lines
+    assert len(lines) == len(ORDERS) * len(catalogue_nm(ORDERS[0]))
+    for order, group in lines.groupby("order"):
+        components = [catalogue_nm(order)[0], catalogue_nm(order)[0] + BLEND_GAP_NM]
+        assert sum(np.isclose(group["catalogueNm"], c).any() for c in components) == 1

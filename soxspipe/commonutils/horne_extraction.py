@@ -1187,15 +1187,13 @@ class horne_extraction(base_util):
         valid = wave.notna() & sky.notna()
         if not valid.any():
             return None
-        reason = sky_line_snr_reason(o, combine_line_snrs(self._order_sky_line_snrs(orderDF, o, True)))
+        reason = sky_line_snr_reason(o, combine_line_snrs(self._order_sky_line_snrs(orderDF, o)))
         if reason is not None:
             self.log.info(f"{reason}; the order supplies no sky lines to the global fit")
             return None
         _, skyVals, peaks, waveVals, _ = self._detect_sky_peaks(wave, sky, objectFlux, valid)
         peakNm = np.asarray(self._measure_peak_centres(waveVals, skyVals, peaks), dtype=float)
-        _, catalogueNm = self._get_local_skylines_for_order(
-            np.nanmin(waveVals), np.nanmax(waveVals), o, "wavelength", True
-        )
+        _, catalogueNm = self._get_local_skylines_for_order(np.nanmin(waveVals), np.nanmax(waveVals), o, "wavelength")
         if peakNm.size == 0 or len(catalogueNm) == 0:
             return None
         pixelScaleNm = np.interp(peakNm, waveVals, orderDF.loc[valid, "pixelScaleNm"].to_numpy(dtype=float))
@@ -1591,9 +1589,9 @@ class horne_extraction(base_util):
             "secondLineSnr": float(snrs[1]) if snrs.size > 1 else 0.0,
         }
 
-    def _order_sky_line_snrs(self, orderDF, o, merged=None):
+    def _order_sky_line_snrs(self, orderDF, o):
         """*the photon-noise SNR of each of the order's calibration sky lines at its arc-solution position, brightest
-        first; ``merged`` picks the calibration lines as in ``_get_local_skylines_for_order``*"""
+        first*"""
         import numpy as np
         import pandas as pd
 
@@ -1603,9 +1601,7 @@ class horne_extraction(base_util):
         sky = pd.to_numeric(orderDF["skyFlux"], errors="coerce")
         if not wave.notna().any():
             return np.array([])
-        # THE CATALOGUE CHOICE IS PASSED ONLY WHEN ASKED FOR, SO THE DEFAULT CALL IS THE ONE IT ALWAYS WAS
-        choice = () if merged is None else (merged,)
-        _, calibrationSkylines = self._get_local_skylines_for_order(wave.min(), wave.max(), o, "wavelength", *choice)
+        _, calibrationSkylines = self._get_local_skylines_for_order(wave.min(), wave.max(), o, "wavelength")
         return sky_line_snrs(wave, sky, calibrationSkylines, self.detectorParams["ron"])
 
     @staticmethod
@@ -1772,22 +1768,19 @@ class horne_extraction(base_util):
 
         return skyValsOriginal, skyVals, peaks, waveVals, objectVals
 
-    def _get_local_skylines_for_order(self, wmin, wmax, order, calibrationCol, merged=None):
+    def _get_local_skylines_for_order(self, wmin, wmax, order, calibrationCol):
         """Fetch catalogue skylines within wavelength range and project to pixel/wavelength coordinates.
 
-        Returns every catalogue line in range (for plotting) and the calibration lines to match against. The
-        calibration lines are the blend-merged, isolated centroids (``merge_blended_skylines``, DY-1645) when ``merged``
-        is true, and the lines flagged ``ISOLATED`` when it is false. By default (``merged`` *None*) only SOXS VIS takes
-        the merged lines. The first pass of the NIR global fit therefore measures against the isolated lines, as the
-        per-order tuning does, and only its tight matching asks for the merged ones (DY-1968).
+        Returns every catalogue line in range (for plotting) and the calibration lines to match against. In SOXS VIS the
+        calibration lines of an order are the blend-merged, isolated centroids (``merge_blended_skylines``, DY-1645);
+        everywhere else they are the lines flagged ``ISOLATED``.
         """
         import pandas as pd
 
         localSkylinesDF = self._project_skylines(self.skylinesDF, wmin, wmax, order)
         localSkylines = pd.to_numeric(localSkylinesDF[calibrationCol], errors="coerce").dropna().to_numpy()
 
-        useMerged = self._is_soxs_vis(self.arm) if merged is None else merged
-        if order != "all" and useMerged:
+        if order != "all" and self._is_soxs_vis(self.arm):
             calibrationSkylinesDF = self._project_skylines(self._merged_skylines(), wmin, wmax, order)
         elif "ISOLATED" in self.skylinesDF.columns:
             # ISOLATED FLAG MARKS LINES SUITABLE FOR CENTROIDING
@@ -1827,11 +1820,7 @@ class horne_extraction(base_util):
         )
 
         if self._mergedSkylinesDF is None:
-            # THE CATALOGUE LOADER CUTS VIS AND EVERY OTHER ARM BY DIFFERENT KEYWORDS
-            brightnessKeyword = "minBrightnessVIS" if self.arm == "VIS" else "minBrightnessNIR"
-            fullDF = get_skylines_dataframe(
-                self.log, self.settings, self.arm, **{brightnessKeyword: SKYLINE_MIN_LINE_FLUX}
-            )
+            fullDF = get_skylines_dataframe(self.log, self.settings, self.arm, minBrightnessVIS=SKYLINE_MIN_LINE_FLUX)
             self._mergedSkylinesDF = merge_blended_skylines(fullDF)
         return self._mergedSkylinesDF
 

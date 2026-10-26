@@ -107,7 +107,7 @@ def build_orders(
 def catalogue_with_decoys(decoyOrders, offsetNm: float = 0.47):
     """*a ``_get_local_skylines_for_order`` double; ``decoyOrders`` list a decoy ``offsetNm`` past each line*"""
 
-    def lines(wmin, wmax, order, column, merged=None):
+    def lines(wmin, wmax, order, column):
         real = catalogue_nm(order)
         real = np.concatenate([real, real + offsetNm]) if order in decoyOrders else real
         inRange = real[(real >= wmin) & (real <= wmax)]
@@ -155,31 +155,25 @@ def applied_shift(before: pd.DataFrame, after: pd.DataFrame, order: int) -> floa
     return float((after.loc[mask, "wavelengthMean"] - before.loc[mask, "wavelengthMean"]).mean())
 
 
-def catalogue_tables(blendedFirstLine: bool = False, mergedKeep: dict | None = None):
-    """*the isolated-line and the blend-merged catalogue tables of the scene*
+def catalogue_table(blendedFirstLine: bool = False) -> pd.DataFrame:
+    """*the isolated-line catalogue table of the scene*
 
-    The isolated table lists every line of every order, and with ``blendedFirstLine`` both components of the first
-    line's doublet. The merged table lists one centroid for the doublet. ``mergedKeep`` is ``{order: lines kept}``, for
-    an order whose merge drops all but its first lines.
+    It lists every line of every order, and with ``blendedFirstLine`` both components of the first line's doublet.
     """
-    isolated, merged = [], []
+    tables = []
     for order in ORDERS:
         lines = list(catalogue_nm(order))
-        isolatedLines, mergedLines = list(lines), list(lines)
         if blendedFirstLine:
-            isolatedLines.append(lines[0] + BLEND_GAP_NM)
-            mergedLines[0] = lines[0] + BLEND_GAP_NM / 2
-        mergedLines = mergedLines[: (mergedKeep or {}).get(order, len(mergedLines))]
-        isolated.append(pd.DataFrame({"WAVELENGTH": isolatedLines, "FLUX": 300.0, "ISOLATED": True}))
-        merged.append(pd.DataFrame({"WAVELENGTH": mergedLines, "FLUX": 300.0}))
-    return pd.concat(isolated, ignore_index=True), pd.concat(merged, ignore_index=True)
+            lines.append(lines[0] + BLEND_GAP_NM)
+        tables.append(pd.DataFrame({"WAVELENGTH": lines, "FLUX": 300.0, "ISOLATED": True}))
+    return pd.concat(tables, ignore_index=True)
 
 
 def build_catalogue_extractor(
-    log: object, tmp_path: Path, sky_tuning: dict | None = None, blendedFirstLine: bool = False, mergedKeep=None
+    log: object, tmp_path: Path, sky_tuning: dict | None = None, blendedFirstLine: bool = False
 ) -> horne_extraction:
-    """*an extractor that runs the real ``_get_local_skylines_for_order`` against the scene's catalogue tables*"""
+    """*an extractor that runs the real ``_get_local_skylines_for_order`` against the scene's catalogue table*"""
     extractor = build_extractor(log, tmp_path, sky_tuning=sky_tuning)
     del extractor._get_local_skylines_for_order
-    extractor.skylinesDF, extractor._mergedSkylinesDF = catalogue_tables(blendedFirstLine, mergedKeep)
+    extractor.skylinesDF = catalogue_table(blendedFirstLine)
     return extractor

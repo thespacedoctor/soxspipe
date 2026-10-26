@@ -1108,3 +1108,16 @@ def test_an_order_whose_lines_are_near_its_own_seed_and_far_from_the_global_one_
     assert (correction.globalSeedLines, correction.ownSeedLines) == (0, 3)
     assert correction.source == "own-seed"
     assert correction.shiftPx == pytest.approx(ownSeed, abs=0.05)
+
+
+def test_a_peak_nearer_one_doublet_component_is_matched_once_to_that_component():
+    # ARRANGE: TWO CATALOGUE COMPONENTS 0.03 nm APART, THE PEAK 0.01 nm FROM THE FIRST AND 0.02 nm FROM THE SECOND
+    catalogue = np.array([1500.00, 1500.03])
+    peaks = np.array([1500.01])
+
+    # ACT
+    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.04)
+
+    # ASSERT
+    assert peakIdx.tolist() == [0]
+    assert catalogueIdx.tolist() == [0]
