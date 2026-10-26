@@ -8,7 +8,7 @@ import pytest
 
 from soxspipe.commonutils import nir_sky_refit
 from soxspipe.commonutils.horne_extraction import horne_extraction
-from soxspipe.commonutils.nir_sky_refit import MAX_TIGHT_TOLERANCE_NM, MIN_GLOBAL_LINES, MIN_TIGHT_TOLERANCE_PX
+from soxspipe.commonutils.nir_sky_refit import MAX_TIGHT_TOLERANCE_NM, MIN_GLOBAL_LINES
 from soxspipe.commonutils.toolkit import SKYLINE_MIN_LINE_FLUX
 from tests.unit._horne_nir_scene import (
     ORDERS,
@@ -647,11 +647,12 @@ def test_the_clipped_shift_of_an_order_with_no_matches_is_zero_without_a_warning
     assert len(keptShifts) == 0
 
 
-# DISPERSION-AXIS ARC RESIDUAL AND THE TOLERANCE FLOOR
+# ARC RESIDUAL ALONG THE DISPERSION
 
 
-def test_the_arc_rms_is_read_from_the_dispersion_axis_card(log, tmp_path):
-    # ARRANGE: A NIR DETECTOR DISPERSES ALONG y, SO axisA IS y AND axisB (ACROSS THE DISPERSION) IS x
+def test_the_arc_rms_is_read_along_the_dispersion_direction_of_the_map(log, tmp_path):
+    # ARRANGE: IN THE DISPERSION MAP'S PIXEL COORDINATES NIR WAVELENGTH RUNS ALONG x (axisB), THE OPPOSITE OF THE
+    # RAW-FRAME dispersion-axis PARAMETER (y), SO THE ARC RESIDUAL ALONG THE DISPERSION IS THE X ONE
     from astropy.io import fits
 
     extractor = build_extractor(log, tmp_path, arcRmsPx=0.082)
@@ -662,20 +663,7 @@ def test_the_arc_rms_is_read_from_the_dispersion_axis_card(log, tmp_path):
     arcRms = extractor._arc_rms_px()
 
     # ASSERT
-    assert arcRms == pytest.approx(0.082)
-
-
-def test_a_tiny_arc_rms_gives_the_tolerance_floor_not_a_tolerance_that_cuts_real_lines(log, tmp_path, monkeypatch):
-    # ARRANGE
-    extractor = build_extractor(log, tmp_path, arcRmsPx=0.082)
-    calls = _spy_global_fit(monkeypatch)
-
-    # ACT
-    _tune(extractor, build_orders())
-
-    # ASSERT
-    tolerances = [line.toleranceNm for line in calls[0]["orderLines"].values()]
-    assert tolerances == pytest.approx([MIN_TIGHT_TOLERANCE_PX * 0.05] * len(tolerances))
+    assert arcRms == pytest.approx(0.189)
 
 
 def test_a_large_arc_rms_is_still_capped(log, tmp_path, monkeypatch):

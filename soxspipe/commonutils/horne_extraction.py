@@ -1206,12 +1206,16 @@ class horne_extraction(base_util):
         )
 
     def _arc_rms_px(self):
-        """*the arc solution's median residual along the dispersion axis (px), or None if the map has no such card*"""
+        """*the arc solution's median residual along the dispersion direction (px), or None without that card*
+
+        In dispersion-map pixel coordinates the dispersion direction is ``axisB``, the opposite of the raw-frame
+        ``dispersion-axis`` detector parameter (NIR: ``y`` there, ``x`` in the map).
+        """
         header = self._dispersion_map_header()
         if header is None:
             return None
         try:
-            return float(header.get(f"ESO QC {self.axisA.upper()} RES MEDIAN"))
+            return float(header.get(f"ESO QC {self.axisB.upper()} RES MEDIAN"))
         except (TypeError, ValueError):
             return None
 
@@ -2015,6 +2019,9 @@ class horne_extraction(base_util):
 
     def _signed_order_dispersions(self, extractedOrdersDF, orders):
         """*the signed dispersion d(wavelength)/d(pixel) of each order along the dispersion axis (nm/px)*
+
+        The dispersion direction is ``axisB`` in dispersion-map pixel coordinates, the opposite of the raw-frame
+        ``dispersion-axis`` detector parameter (NIR: ``y`` there, ``x`` in the map).
 
         ``pixelScaleNm`` is an absolute value, so the sign comes from the dispersion map: two wavelengths per order
         (the 25th and 75th percentiles of the order's wavelengths) are mapped to detector pixels on the slit centre.
