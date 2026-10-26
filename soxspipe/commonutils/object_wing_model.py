@@ -47,6 +47,8 @@ CORE_MEDIAN_WINDOW = 201
 MIN_CORE_PIXELS = 201
 MIN_PIXELS_PER_PROFILE_BIN = 20
 WING_BIAS_SIGNIFICANCE = 5
+# AN ORDER WHOSE MEDIAN SKY FIT IS AT OR BELOW THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL IS NOT CORRECTED (DY-1975)
+DEFAULT_MIN_SKY_SIGMA = 1.0
 # A SOURCE IS A PROFILE PEAK WHOSE PROMINENCE IS ABOVE THIS MANY TIMES ITS BIN NOISE (DY-1933)
 SOURCE_SIGNIFICANCE = 5
 # ... AND ABOVE THIS FRACTION OF THE PROFILE'S PEAK ABOVE ITS MEDIAN, SO A FAINT HALO BUMP NEXT TO A BRIGHT STAR IS NOT
@@ -78,10 +80,11 @@ class object_wing_estimate:
     - ``slitLossFraction`` -- the estimated share of the slit's object light that the sky fit removes
     - ``sourceCentres`` -- the slit positions in arcsec of the significant sources in the profile of every usable
       pixel, most prominent first. Empty if the profile was not measured
-    - ``isCrowdedSlit`` -- True if every other gate passed but the order is not corrected because the profile shows
-      more than one source
-    - ``isSkyBelowNoise`` -- True if every other gate passed but the order is not corrected because its median sky fit
-      is at or below ``minSkySigma`` times ``faintSkyNoise`` (DY-1975)
+    - ``isCrowdedSlit`` -- True if every other gate, the sky gate included, passed but the order is not corrected
+      because the profile shows more than one source
+    - ``isSkyBelowNoise`` -- True if the zero-point, leak and significance gates passed but the order is not corrected
+      because its median sky fit is at or below ``minSkySigma`` times ``faintSkyNoise`` (DY-1975). The sky gate runs
+      before the crowded-slit test, so a crowded slit with a faint sky is flagged only as sky below noise
     """
 
     isCorrected: bool
@@ -380,7 +383,15 @@ def _blank_estimate(reason, nPixels):
 
 
 def estimate_object_wings(
-    wavelength, slitPosition, flux, skyModel, error, isUsable, minLeakSigma, isFitted=None, minSkySigma=0.0
+    wavelength,
+    slitPosition,
+    flux,
+    skyModel,
+    error,
+    isUsable,
+    minLeakSigma,
+    isFitted=None,
+    minSkySigma=DEFAULT_MIN_SKY_SIGMA,
 ):
     """*estimate the object light that the first sky fit absorbed, from the frame's own spatial profile*
 
@@ -396,7 +407,7 @@ def estimate_object_wings(
     - ``isFitted`` -- True for the pixels the first sky fit used. The profile and its zero point come from the usable
       pixels among these, so the wing model holds the light the fit saw. Default *None*, which is every usable pixel
     - ``minSkySigma`` -- an order is corrected only when its median sky fit is above this many times the flux error of
-      a faint-sky pixel (DY-1975). Default *0*, which skips an order whose median sky fit is not above zero
+      a faint-sky pixel (DY-1975). Default ``DEFAULT_MIN_SKY_SIGMA``
 
     **Return:**
 

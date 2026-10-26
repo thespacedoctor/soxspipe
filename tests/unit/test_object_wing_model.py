@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, replace
 
 import numpy as np
 import pytest
 
 from soxspipe.commonutils.object_wing_model import (
+    DEFAULT_MIN_SKY_SIGMA,
     core_spectrum,
     estimate_object_wings,
     far_slit_zero_point,
@@ -1143,3 +1145,32 @@ def test_an_order_stopped_by_another_gate_is_not_flagged_as_sky_below_noise():
     assert not estimate.isCorrected
     assert not estimate.isSkyBelowNoise
     assert "not negative" in estimate.reason
+
+
+def test_a_crowded_slit_with_a_faint_sky_is_flagged_as_sky_below_noise_only():
+    # ARRANGE
+    order = _with_companion(_build_order(biasFraction=CROWDED_BIAS_FRACTION), 0.5)
+
+    # ACT
+    # WITHOUT THE SKY GATE THIS ORDER IS FLAGGED AS CROWDED (test_bright_star_with_a_companion_on_the_slit_...)
+    estimate = order.estimate(minSkySigma=1.0e6)
+
+    # ASSERT
+    assert estimate.isSkyBelowNoise
+    assert not estimate.isCrowdedSlit
+    assert "sky model" in estimate.reason
+
+
+def test_the_estimate_default_sky_gate_is_the_shipped_default_and_skips_a_near_zero_sky():
+    # ARRANGE
+    order = _build_order(peak=FAINT_TARGET_PEAK, skyLevel=NEAR_ZERO_SKY_LEVEL)
+
+    # ACT
+    estimate = estimate_object_wings(
+        order.wavelength, order.slitPosition, order.flux, order.skyModel, order.error, order.isUsable, MIN_LEAK_SIGMA
+    )
+
+    # ASSERT
+    assert inspect.signature(estimate_object_wings).parameters["minSkySigma"].default == DEFAULT_MIN_SKY_SIGMA
+    assert DEFAULT_MIN_SKY_SIGMA == MIN_SKY_SIGMA
+    assert estimate.isSkyBelowNoise

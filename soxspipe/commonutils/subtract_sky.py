@@ -62,8 +62,6 @@ LOW_FLAT_REFERENCE_PERCENTILE = 95
 # THE OBJECT-WING CORRECTION SETTINGS USED WHEN A WORKSPACE'S SETTINGS PREDATE THEM (DY-1279)
 DEFAULT_OBJECT_WING_CORRECTION = True
 DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA = 0.03
-# AN ORDER WHOSE MEDIAN SKY FIT IS AT OR BELOW THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL IS NOT CORRECTED (DY-1975)
-DEFAULT_OBJECT_WING_MIN_SKY_SIGMA = 1.0
 # THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE REPORTS THE LEAK AS A SHARE OF
 MIN_LOGGED_SKY_LEVEL = 1e-9
 
@@ -763,6 +761,8 @@ class subtract_sky:
         - ``minSkySigma`` -- an order is corrected only when the median of its sky model is above this many times the
           same flux error (DY-1975)
         """
+        from soxspipe.commonutils.object_wing_model import DEFAULT_MIN_SKY_SIGMA
+
         skySettings = self.recipeSettings["sky-subtraction"]
         # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NEITHER KEY
         isOn = bool(skySettings.get("object_wing_correction", DEFAULT_OBJECT_WING_CORRECTION))
@@ -773,7 +773,7 @@ class subtract_sky:
                 "the sky-subtraction setting object_wing_min_leak_sigma must be a finite number >= 0, "
                 f"got {minLeakSigma}"
             )
-        minSkySigma = float(skySettings.get("object_wing_min_sky_sigma", DEFAULT_OBJECT_WING_MIN_SKY_SIGMA))
+        minSkySigma = float(skySettings.get("object_wing_min_sky_sigma", DEFAULT_MIN_SKY_SIGMA))
         if not (math.isfinite(minSkySigma) and minSkySigma >= 0):
             raise ValueError(
                 f"the sky-subtraction setting object_wing_min_sky_sigma must be a finite number >= 0, got {minSkySigma}"

@@ -57,6 +57,6 @@ def test_the_test_settings_carry_the_object_wing_keys(fileName):
     for block in blocks:
         assert block["object_wing_correction"] is True
         assert block["object_wing_min_leak_sigma"] == MIN_LEAK_SIGMA
-    assert block["object_wing_min_sky_sigma"] == MIN_SKY_SIGMA
-    # THE SKY-FRACTION GATE SKIPPED REAL LEAKS OF 4 TO 7 PERCENT OF THE SKY AND IS GONE (DY-1964)
-    assert "object_wing_gate_fraction" not in block
+        assert block["object_wing_min_sky_sigma"] == MIN_SKY_SIGMA
+        # THE SKY-FRACTION GATE SKIPPED REAL LEAKS OF 4 TO 7 PERCENT OF THE SKY AND IS GONE (DY-1964)
+        assert "object_wing_gate_fraction" not in block
