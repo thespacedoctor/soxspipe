@@ -62,7 +62,7 @@ LOW_FLAT_REFERENCE_PERCENTILE = 95
 # THE OBJECT-WING CORRECTION SETTINGS USED WHEN A WORKSPACE'S SETTINGS PREDATE THEM (DY-1279)
 DEFAULT_OBJECT_WING_CORRECTION = True
 DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA = 0.03
-# THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE DIVIDES BY
+# THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE REPORTS THE LEAK AS A SHARE OF
 MIN_LOGGED_SKY_LEVEL = 1e-9
 
 # THE ARMS THAT RESTORE SKYLINE CORES OUTSIDE THE OBJECT WHEN A WORKSPACE'S SETTINGS PREDATE THE
@@ -203,12 +203,15 @@ def _object_wing_log_line(order, estimate):
 
     - ``line`` -- the message, framed by newlines because the fit's progress line erases the line above it
     """
-    skyShare = estimate.biasLevel / max(estimate.skyLevel, MIN_LOGGED_SKY_LEVEL) * 100
+    skyText = ""
+    # A SKY AT OR BELOW ZERO HAS NO SHARE TO REPORT (DY-1975)
+    if estimate.skyLevel > MIN_LOGGED_SKY_LEVEL:
+        skyText = f" ({estimate.biasLevel / estimate.skyLevel * 100:0.0f}% OF THE SKY)"
     loss = estimate.slitLossFraction
     lossText = f"ABOUT {loss * 100:0.2f}%" if math.isfinite(loss) else "AN UNKNOWN SHARE"
     return (
         f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
-        f"OBJECT LIGHT ({skyShare:0.0f}% OF THE SKY), REMOVING {lossText} OF THE OBJECT FLUX\n"
+        f"OBJECT LIGHT{skyText}, REMOVING {lossText} OF THE OBJECT FLUX\n"
     )
 
 
@@ -712,7 +715,7 @@ class subtract_sky:
         """
         import numpy as np
 
-        isWingCorrectionOn, minLeakSigma = self._object_wing_settings()
+        isWingCorrectionOn, minLeakSigma, minSkySigma = self._object_wing_settings()
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         fittedOrders = []
@@ -726,7 +729,7 @@ class subtract_sky:
             preFitOrder = imageMapOrder.copy() if isWingCorrectionOn else None
             fitResult = self.fit_bspline_curve_to_sky(imageMapOrder)
             if isWingCorrectionOn:
-                fitResult = self._refit_without_object_wings(preFitOrder, fitResult, minLeakSigma)
+                fitResult = self._refit_without_object_wings(preFitOrder, fitResult, minLeakSigma, minSkySigma)
             imageMapOrder, tck, knots, flux_error_ratio, residualFloor = fitResult
             totalKnots += len(knots)
             fittedOrders.append(imageMapOrder)
@@ -755,7 +758,11 @@ class subtract_sky:
         - ``isOn`` -- True when the object-wing correction runs
         - ``minLeakSigma`` -- an order is corrected only when the object light in its sky model is above this many
           times the flux error of a faint-sky pixel (DY-1964)
+        - ``minSkySigma`` -- an order is corrected only when the median of its sky model is above this many times the
+          same flux error (DY-1975)
         """
+        from soxspipe.commonutils.object_wing_model import DEFAULT_MIN_SKY_SIGMA
+
         skySettings = self.recipeSettings["sky-subtraction"]
         # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NEITHER KEY
         isOn = bool(skySettings.get("object_wing_correction", DEFAULT_OBJECT_WING_CORRECTION))
@@ -766,9 +773,14 @@ class subtract_sky:
                 "the sky-subtraction setting object_wing_min_leak_sigma must be a finite number >= 0, "
                 f"got {minLeakSigma}"
             )
-        return isOn, minLeakSigma
+        minSkySigma = float(skySettings.get("object_wing_min_sky_sigma", DEFAULT_MIN_SKY_SIGMA))
+        if not (math.isfinite(minSkySigma) and minSkySigma >= 0):
+            raise ValueError(
+                f"the sky-subtraction setting object_wing_min_sky_sigma must be a finite number >= 0, got {minSkySigma}"
+            )
+        return isOn, minLeakSigma, minSkySigma
 
-    def _refit_without_object_wings(self, preFitOrder, fitResult, minLeakSigma):
+    def _refit_without_object_wings(self, preFitOrder, fitResult, minLeakSigma, minSkySigma):
         """*estimate the object light in an order's first sky fit and, if it is significant, refit without it (DY-1279)*
 
         The object's spatial profile, with its zero point at its mean level more than 3 arcsec from the object, gives a
@@ -781,6 +793,7 @@ class subtract_sky:
         - ``preFitOrder`` -- copy of the clipped order dataframe taken before the first fit
         - ``fitResult`` -- the tuple returned by ``fit_bspline_curve_to_sky`` for the first fit
         - ``minLeakSigma`` -- the ``object_wing_min_leak_sigma`` setting
+        - ``minSkySigma`` -- the ``object_wing_min_sky_sigma`` setting
 
         **Return:**
 
@@ -808,12 +821,20 @@ class subtract_sky:
         # THE UPPER-ONLY CLIP KEEPS THE BRIGHTER WING PIXELS OUT OF THE FIT, SO THE PROFILE USES ONLY THE PIXELS IT USED
         isFitted = ~firstFit["flagged_all_clipped"].reindex(preFitOrder.index, fill_value=True).to_numpy(dtype=bool)
         estimate = estimate_object_wings(
-            wavelength, slitPosition, flux, skyModel, error, isUsable, minLeakSigma, isFitted=isFitted
+            wavelength,
+            slitPosition,
+            flux,
+            skyModel,
+            error,
+            isUsable,
+            minLeakSigma,
+            isFitted=isFitted,
+            minSkySigma=minSkySigma,
         )
         order = int(preFitOrder["order"].values[0])
         if not estimate.isCorrected:
-            # A CROWDED-SLIT SKIP COULD BE MISTAKEN FOR A MISSED CORRECTION, SO IT IS PRINTED (DY-1933)
-            if estimate.isCrowdedSlit:
+            # A CROWDED-SLIT OR FAINT-SKY SKIP COULD BE MISTAKEN FOR A MISSED CORRECTION, SO IT IS PRINTED
+            if estimate.isCrowdedSlit or estimate.isSkyBelowNoise:
                 self.log.print(f"\n\tORDER {order}: NO OBJECT-WING CORRECTION - {estimate.reason.upper()}\n")
             else:
                 self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")

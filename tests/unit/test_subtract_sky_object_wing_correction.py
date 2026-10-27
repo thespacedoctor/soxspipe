@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import importlib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -94,7 +95,9 @@ def _moffat_slit_profile(slitPosition: np.ndarray) -> np.ndarray:
     return profile / profile.sum()
 
 
-def _order(order: int, objectFluxPerColumn: float, firstRow: int = 0, seed: int = 1279) -> pd.DataFrame:
+def _order(
+    order: int, objectFluxPerColumn: float, firstRow: int = 0, seed: int = 1279, skyLevel: float = SKY_LEVEL
+) -> pd.DataFrame:
     """One synthetic order on a flat sky; ``object_flux`` holds each pixel's noiseless object flux.
 
     The slit is tilted slightly against the wavelength axis, so neighbouring columns interleave in wavelength.
@@ -106,7 +109,7 @@ def _order(order: int, objectFluxPerColumn: float, firstRow: int = 0, seed: int 
     slitGrid = np.linspace(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH, SLIT_PIXELS)
     slitPosition = slitGrid[slitPixel]
     objectFlux = objectFluxPerColumn * _moffat_slit_profile(slitGrid)[slitPixel]
-    noiseless = SKY_LEVEL + objectFlux
+    noiseless = skyLevel + objectFlux
     error = np.sqrt(noiseless + READ_NOISE**2)
     frame = pd.DataFrame(
         {
@@ -299,14 +302,78 @@ def test_settings_without_the_object_wing_keys_use_the_shipped_defaults(log: Any
     del subtractor.recipeSettings["sky-subtraction"]["object_wing_correction"]
     del subtractor.recipeSettings["sky-subtraction"]["object_wing_min_leak_sigma"]
 
-    assert subtractor._object_wing_settings() == (True, 0.03)
+    del subtractor.recipeSettings["sky-subtraction"]["object_wing_min_sky_sigma"]
+
+    assert subtractor._object_wing_settings() == (True, 0.03, 1.0)
 
 
 def test_an_old_workspace_gate_fraction_is_ignored(log: Any) -> None:
     subtractor = _bare_subtractor(log, object_wing_gate_fraction=0.1)
     del subtractor.recipeSettings["sky-subtraction"]["object_wing_min_leak_sigma"]
 
-    assert subtractor._object_wing_settings() == (True, 0.03)
+    assert subtractor._object_wing_settings() == (True, 0.03, 1.0)
+
+
+def test_the_min_sky_sigma_setting_is_read(log: Any) -> None:
+    subtractor = _bare_subtractor(log, object_wing_min_sky_sigma=2.5)
+
+    assert subtractor._object_wing_settings()[2] == 2.5
+
+
+@pytest.mark.parametrize("minSkySigma", [-0.1, float("nan"), float("inf")])
+def test_an_invalid_min_sky_sigma_raises(log: Any, minSkySigma: float) -> None:
+    subtractor = _bare_subtractor(log, object_wing_min_sky_sigma=minSkySigma)
+
+    with pytest.raises(ValueError, match="object_wing_min_sky_sigma"):
+        subtractor._object_wing_settings()
+
+
+# ----- THE SKY GATE AND THE LOG LINE (DY-1975) -----
+
+
+def test_an_order_with_no_sky_and_a_significant_leak_is_not_corrected_and_the_skip_is_logged(log: Any) -> None:
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN, skyLevel=0.0)
+    uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order)
+
+    modelled = _modelled(_bare_subtractor(log), order)
+
+    pd.testing.assert_frame_equal(modelled, uncorrected)
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any(f"ORDER {STAR_ORDER}" in message and "SKY MODEL MEDIAN" in message for message in printed)
+    assert not any("FIRST SKY MODEL CARRIED" in message for message in printed)
+
+
+def test_the_sky_gate_alone_stops_the_correction_of_the_order_with_no_sky(log: Any) -> None:
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN, skyLevel=0.0)
+
+    modelled = _modelled(_bare_subtractor(log, object_wing_min_sky_sigma=0.0), order)
+
+    assert "object_wing_model" in modelled
+
+
+def test_an_order_with_real_sky_and_the_same_star_is_still_corrected_at_the_shipped_sky_gate(log: Any) -> None:
+    modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN))
+
+    assert "object_wing_model" in modelled
+
+
+@pytest.mark.parametrize("skyLevel", [0.0, -5.0, 1e-12])
+def test_the_log_line_reports_the_leak_in_electrons_only_when_the_sky_is_near_zero(skyLevel: float) -> None:
+    estimate = SimpleNamespace(biasLevel=14.7, skyLevel=skyLevel, slitLossFraction=0.98)
+
+    line = subtractSkyModule._object_wing_log_line(23, estimate)
+
+    assert "14.7 e- OF OBJECT LIGHT" in line
+    assert "OF THE SKY" not in line
+    assert "ABOUT 98.00%" in line
+
+
+def test_the_log_line_gives_the_leak_as_a_share_of_a_real_sky() -> None:
+    estimate = SimpleNamespace(biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16)
+
+    line = subtractSkyModule._object_wing_log_line(16, estimate)
+
+    assert "0.6 e- OF OBJECT LIGHT (2% OF THE SKY)" in line
 
 
 @pytest.mark.parametrize("minLeakSigma", [-0.1, float("nan"), float("inf")])
