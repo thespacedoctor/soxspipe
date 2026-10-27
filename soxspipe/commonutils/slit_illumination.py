@@ -819,7 +819,8 @@ def measure_slit_illumination(
       ``continuum-object-mask-arcsec`` and ``continuum-halves-max-diff-arcsec``. A missing key means the module
       constant. Default *None*
     - ``partners`` -- optional ``{order: partnerOrder}`` from which a failed order may borrow an offset. A VIS SLIT1.0
-      order whose skyline fit fails tries its own continuum fit first and borrows only if that fails too. Default *None*
+      order whose skyline fit fails takes its own continuum fit instead and never borrows, even if that fit fails too.
+      Default *None*
 
     **Return:**
 
