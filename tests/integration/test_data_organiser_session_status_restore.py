@@ -188,7 +188,7 @@ def test_restored_fail_with_in_range_quality_control_rows_ends_pass(two_session_
     _seed_statuses(organiser, "science", {MBIAS_ONE: "fail", MBIAS_TWO: "fail"})
     organiser.conn.execute(
         "INSERT INTO quality_control (soxspipe_recipe, qc_name, qc_value, sof_name, qc_order, qc_flag) "
-        "VALUES ('soxs-mbias', 'MASTER RON', '5.0', ?, '-1', 'pass')",
+        "VALUES ('soxs-mbias', 'MASTER RON', '5.0', ?, '-1', 'fail')",
         (MBIAS_ONE,),
     )
 
@@ -197,6 +197,23 @@ def test_restored_fail_with_in_range_quality_control_rows_ends_pass(two_session_
 
     # ASSERT
     assert _read_statuses(organiser, "science") == {MBIAS_ONE: "pass", MBIAS_TWO: "fail", DISP_SOLUTION: None}
+
+
+def test_restored_fail_with_passing_quality_control_rows_stays_fail(two_session_workspace) -> None:
+    # ARRANGE: A RECIPE THAT WROTE PASSING QC ROWS AND THEN NEVER FINISHED LEFT `fail` (DY-1698)
+    organiser = two_session_workspace
+    _seed_statuses(organiser, "science", {MBIAS_ONE: "fail"})
+    organiser.conn.execute(
+        "INSERT INTO quality_control (soxspipe_recipe, qc_name, qc_value, sof_name, qc_order, qc_flag) "
+        "VALUES ('soxs-mbias', 'MASTER RON', '5.0', ?, '-1', 'pass')",
+        (MBIAS_ONE,),
+    )
+
+    # ACT
+    organiser.prepare(refresh=True, report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, "science")[MBIAS_ONE] == "fail"
 
 
 def _calibration_products(organiser, sof):
@@ -248,12 +265,15 @@ def test_pass_limit_counts_the_sofs_still_differing_as_changed(two_session_works
 # QC FAILURES MARK THE CURRENT SESSION (DY-272)
 
 
-def _insert_master_ron(organiser, sof, value):
-    """Give ``sof`` a whole-frame MASTER RON QC row; the default acceptable range is [0, 10]."""
+def _insert_master_ron(organiser, sof, value, flag="pass"):
+    """Give ``sof`` a whole-frame MASTER RON QC row; the default acceptable range is [0, 10].
+
+    ``flag`` is the verdict the recipe stored: `fail` for a run that failed on the ranges in force then.
+    """
     organiser.conn.execute(
         "INSERT INTO quality_control (soxspipe_recipe, qc_name, qc_value, sof_name, qc_order, qc_flag) "
-        "VALUES ('soxs-mbias', 'MASTER RON', ?, ?, '-1', 'pass')",
-        (value, sof),
+        "VALUES ('soxs-mbias', 'MASTER RON', ?, ?, '-1', ?)",
+        (value, sof, flag),
     )
 
 
@@ -296,7 +316,7 @@ def test_in_range_qc_ends_pass_in_the_current_session(request, workspaceFixture,
     # ARRANGE
     organiser = request.getfixturevalue(workspaceFixture)
     _seed_statuses(organiser, sessionId, {MBIAS_ONE: "fail"})
-    _insert_master_ron(organiser, MBIAS_ONE, "5.0")
+    _insert_master_ron(organiser, MBIAS_ONE, "5.0", flag="fail")
 
     # ACT
     organiser.prepare(report=False)
@@ -429,6 +449,21 @@ def test_restoring_from_a_missing_backup_warns_and_returns_no_counts(two_session
     # ASSERT
     assert counts == {}
     assert "WARNING: could not restore session statuses" in capsys.readouterr().out
+
+
+def test_an_unreadable_backup_still_applies_the_qc_ranges_to_the_rebuilt_database(
+    two_session_workspace, tmp_path
+) -> None:
+    # ARRANGE: THE RANGES ARE APPLIED AFTER THE RESTORE, SO A FAILED RESTORE MUST STILL APPLY THEM (DY-1698)
+    organiser = two_session_workspace
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0", flag="pass")
+
+    # ACT
+    organiser._restore_session_statuses(tmp_path / "missing.db")
+
+    # ASSERT
+    flag = organiser.conn.execute("SELECT qc_flag FROM quality_control WHERE sof_name = ?", (MBIAS_ONE,)).fetchone()[0]
+    assert flag == "fail"
 
 
 def test_backup_without_a_session_sof_map_counts_that_sessions_sofs_as_changed(

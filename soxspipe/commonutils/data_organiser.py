@@ -600,7 +600,11 @@ class data_organiser:
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
-        self._apply_qc_acceptable_ranges()
+        # A REBUILD APPLIES THE RANGES AFTER THE STATUSES ARE RESTORED (SEE `_converge_session_statuses`), WHILE THE
+        # RESTORED QC ROWS STILL CARRY THE FLAGS THEIR RECIPES WROTE: A RESTORED `fail` IS ONLY OVERTURNED WHEN A
+        # FAILING FLAG ACCOUNTS FOR IT. THE DATABASE IS NEW, SO NO STATUS EXISTS YET FOR THIS CALL TO CHANGE (DY-1698)
+        if not backupPath:
+            self._apply_qc_acceptable_ranges()
 
         self._flag_files_to_ignore()
         self._group_every_raw_frame()
@@ -674,10 +678,14 @@ class data_organiser:
         """
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
         queries = [
+            # ONLY A `fail` THAT A FAILING QC ROW ACCOUNTS FOR CAN BE A QC-RANGE FAILURE. THE RECIPE CONSTRUCTOR ALSO
+            # WRITES `fail` WHEN A RECIPE STARTS, SO A RECIPE KILLED BEFORE `clean_up` (OR AN EXCEPTION AFTER
+            # `report_output`) HOLDS `fail` WITH PASSING QC ROWS, AND MUST STAY `fail` (DY-1698)
             (
                 f'update product_frames set {statusColumn} = "pass" '  # noqa: S608
-                f'where {statusColumn} = "fail" and (sof in (select sof_name from quality_control) '
-                f"or sof in ({_SUB_QC_PARENT_SOFS.format(extra='')}));",
+                f'where {statusColumn} = "fail" '
+                'and (sof in (select sof_name from quality_control where qc_flag = "fail") '
+                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=' and qc_flag = "fail"')}));""",
                 (),
             ),
             (
@@ -2354,6 +2362,7 @@ class data_organiser:
                 f"{self._describe_preserved_database(backupPath)} ({error}). "
                 "Status columns are left empty; the preserved file has been kept."
             )
+            self._apply_qc_acceptable_ranges()
             return {}
         counts = self._converge_session_statuses(snapshots)
         for sessionId in sorted(counts):

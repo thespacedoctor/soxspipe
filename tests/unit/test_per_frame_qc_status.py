@@ -16,7 +16,7 @@ OTHER = "20240102T030500_VIS_STARE_OBJ_F1_EXTRA.sof"
 SETTINGS = {"soxs-stare": {"qc-acceptable-ranges": {"snr-median": [5.0, 1000.0]}}}
 
 
-def _status_after_range_check(qcRows, startStatus):
+def _status_after_range_check(qcRows, startStatus, storedFlag="pass"):
     """Apply the QC-range queries to one parent SOF and return each product's session status."""
     organiser = data_organiser.__new__(data_organiser)
     organiser.sessionId = "base"
@@ -27,8 +27,8 @@ def _status_after_range_check(qcRows, startStatus):
         "qc_value_max real, qc_flag text, qc_value text, sof_name text)"
     )
     connection.executemany(
-        "insert into quality_control values ('soxs-stare', 'SNR MEDIAN', '-1', null, null, 'pass', ?, ?)",
-        qcRows,
+        "insert into quality_control values ('soxs-stare', 'SNR MEDIAN', '-1', null, null, ?, ?, ?)",
+        [(storedFlag, *row) for row in qcRows],
     )
     connection.execute("create table product_frames (sof text, status_base text)")
     connection.executemany("insert into product_frames values (?, ?)", [(PARENT, startStatus), (OTHER, startStatus)])
@@ -56,18 +56,30 @@ def test_a_parent_sof_whose_frames_now_all_pass_is_passed_again() -> None:
     qcRows = [("20.0", "20240102T030500_VIS_STARE_OBJ_F1.sof"), ("30.0", "20240102T030500_VIS_STARE_OBJ_F2.sof")]
 
     # ACT
-    statuses = _status_after_range_check(qcRows, startStatus="fail")
+    statuses = _status_after_range_check(qcRows, startStatus="fail", storedFlag="fail")
 
     # ASSERT
     assert statuses[PARENT] == "pass"
     assert statuses[OTHER] == "fail"
 
 
+def test_a_failed_parent_sof_with_only_passing_frame_qcs_stays_failed() -> None:
+    """A `fail` that no failing frame QC explains is an unfinished or crashed run, not a QC-range failure (DY-1698)."""
+    # ARRANGE
+    qcRows = [("20.0", "20240102T030500_VIS_STARE_OBJ_F1.sof"), ("30.0", "20240102T030500_VIS_STARE_OBJ_F2.sof")]
+
+    # ACT
+    statuses = _status_after_range_check(qcRows, startStatus="fail", storedFlag="pass")
+
+    # ASSERT
+    assert statuses[PARENT] == "fail"
+
+
 CYCLES = "20240102T030500_VIS_NOD_STD_CYCLES.sof"
 CYCLES_PARENT = "20240102T030500_VIS_NOD_STD.sof"
 
 
-def _status_of_cycles_parent(qcRows, startStatus, extraSofs=()):
+def _status_of_cycles_parent(qcRows, startStatus, extraSofs=(), storedFlag="pass"):
     """Apply the QC-range queries and return the session status of the nod standard SOF and any extra SOFs."""
     organiser = data_organiser.__new__(data_organiser)
     organiser.sessionId = "base"
@@ -78,8 +90,8 @@ def _status_of_cycles_parent(qcRows, startStatus, extraSofs=()):
         "qc_value_max real, qc_flag text, qc_value text, sof_name text)"
     )
     connection.executemany(
-        "insert into quality_control values ('soxs-nod-std', 'SNR MEDIAN', '-1', null, null, 'pass', ?, ?)",
-        qcRows,
+        "insert into quality_control values ('soxs-nod-std', 'SNR MEDIAN', '-1', null, null, ?, ?, ?)",
+        [(storedFlag, *row) for row in qcRows],
     )
     connection.execute("create table product_frames (sof text, status_base text)")
     sofs = [CYCLES_PARENT, *extraSofs]
@@ -108,7 +120,7 @@ def test_a_passing_cycles_qc_passes_a_failed_parent_sof_again() -> None:
     qcRows = [("30.0", CYCLES)]
 
     # ACT
-    statuses = _status_of_cycles_parent(qcRows, startStatus="fail")
+    statuses = _status_of_cycles_parent(qcRows, startStatus="fail", storedFlag="fail")
 
     # ASSERT
     assert statuses[CYCLES_PARENT] == "pass"
