@@ -596,6 +596,7 @@ class response_function:
 
         from astropy.io import fits
 
+        from soxspipe.commonutils.atomic_fits import write_hdulist_atomically
         from soxspipe.commonutils.phase3 import add_qc_to_header
 
         arm = self.arm
@@ -622,7 +623,7 @@ class response_function:
 
         hduList = fits.HDUList([priHDU, curveHDU])
         hduList.verify("fix")
-        hduList.writeto(filePath, checksum=True, overwrite=True)
+        write_hdulist_atomically(hduList, filePath, checksum=True, overwrite=True)
 
         self._register_product("RESPONSE_FUNC", filename, "FITS", "Response function curve.", filePath, "PROD")
 
