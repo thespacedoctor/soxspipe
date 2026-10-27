@@ -65,7 +65,24 @@ The bspline fit is used to estimate the sky flux level in every pixel in the ori
 The uncertainties written with the products are not yet a full error budget:
 
 - The `ERRS` extension of the sky-model product (`SKYMODEL`) is a copy of the object frame's uncertainty. It is not the uncertainty of the model.
-- The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model.
+- The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model. For the NIR arm, the pipeline scales it by the scatter of the sky-fit residuals (see [Sky-residual error inflation](#sky-residual-error-inflation)).
+
+### Sky-residual error inflation
+
+The sky model is a bspline in wavelength only. It can not follow every detail of a bright skyline, so the sky-subtracted frame keeps a residual at each skyline. The residual is the same in all pixels of the slit at one wavelength. The object frame's uncertainty has no term for this residual. The optimal extraction therefore gives each skyline residual error bars that are too small, and the residual shows in the spectrum as a spike many times larger than its stated error.
+
+To correct the error bars, the pipeline measures the residual of each order after the sky fit:
+
+1. For each pixel that the sky fit used, it computes r = (flux − sky model) / error. Clipped pixels, such as pixels of the object or of cosmic rays, are not used.
+2. It sorts the pixels by wavelength and measures the scatter of r in a rolling window of 100 pixels. The scatter is 1.4826 times the median absolute deviation (MAD) of r. The MAD is not changed by a few outliers.
+3. The factor k(λ) is the larger of 1 and this scatter. The pipeline never makes an error smaller.
+4. It multiplies the `ERRS` value of every pixel of the order by k(λ).
+
+Where the sky model fits well, r is noise with a scatter of 1 and the errors do not change. At a skyline with a residual, r has a larger scatter and the errors grow by the same factor.
+
+The inflation changes only the `ERRS` extension of the sky-subtracted product (`SKYSUB`). The data, the sky model and the residuals product are not changed. An order with fewer than 30 usable pixels is not inflated, and neither is an order that is too bright to be modelled.
+
+The `sky_error_inflation` setting in the `sky-subtraction` block of the stare recipe settings turns the inflation on or off. It must be `True` or `False`. A workspace settings file that does not have the key uses the default: on for the NIR arm and off for the VIS arm. The VIS default is off because its effect on the VIS arm is not yet measured.
 
 ### Object-wing correction
 

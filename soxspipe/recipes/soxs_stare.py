@@ -1269,7 +1269,7 @@ class soxs_stare(base_recipe):
             productLabel="SKY_SUBTRACTED_OBJECT",
             fileName=filename,
             filePath=productPath,
-            productDesc="The sky-subtracted object (ERRS excludes the sky-model uncertainty)",
+            productDesc="The sky-subtracted object (ERRS scaled by the sky-residual scatter if enabled)",
             reductionDateUtc=utcnow,
             fileType="FITS",
             label="PROD",
