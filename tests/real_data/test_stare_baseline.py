@@ -48,6 +48,17 @@ above zero. The sky counts median rose from 6.35 to 23.88, the sky model median 
 gives 37.16 sky counts, so most of the 85% fall recorded for DY-1279 was over-correction.
 The VIS fluxcal median fell 0.72% and the SNR median 0.7%, inside their bands, and were
 left as they are. The NIR values moved inside their bands.
+
+Both stare baselines were re-recorded on 2026-10-27 from six bit-identical CI runs
+(40509952494, 40509961437, 40509971714, 40509980343, 40509989297 and 40509997772) of
+develop 9869275e (DY-1980, DY-1646). The VIS values are bit-identical to DY-1964 gate
+run 40232449617: DY-1958, DY-1972, DY-1973 and DY-1975 do not move them, and the
+re-record only takes in the DY-1964 SNR (-0.69%) and fluxcal (-0.72%) drops left inside
+their bands then. DY-1645 had already been absorbed by the 2026-10-21 re-record. The NIR
+fluxcal median fell 6.03%, 5.4% of it from DY-1964. The NIR sky counts median rose 3.4%,
+the sky model median 3.1% and the p90 1.4% (DY-1964, then DY-1972 to DY-1973), and the
+DY-1968 global sky-line tuning moved the blue end from 795.06 to 794.94 nm and the red
+end from 2032.02 to 2031.78 nm.
 """
 
 from __future__ import annotations
@@ -101,14 +112,14 @@ BASELINES = [
             obsDate="2025-10-13T04:35:11.440",
             nOrders=4,
             # 0.02 NM STEPS, SO ±50 ROWS IS ±1 NM OF SPECTRAL COVERAGE
-            rows=25_096,
+            rows=25_094,
             rowsAbs=50,
             waveMin=348.14,
             waveMinAbs=0.04,
-            waveMax=850.04,
+            waveMax=850.0,
             waveStep=0.02,
-            snrMedian=156.8,
-            fluxcalMedian=6.078459105261144e-14,
+            snrMedian=155.72,
+            fluxcalMedian=6.034633199242182e-14,
             skyCountsMedian=23.88184356689453,
             skyModelMedian=43.19798278808594,
             skyModelP90=274.4321044921875,
@@ -123,18 +134,18 @@ BASELINES = [
             obsDate="2026-01-11T08:03:47.6362",
             nOrders=15,
             # 0.06 NM STEPS, SO ±25 ROWS IS ±1.5 NM OF SPECTRAL COVERAGE
-            rows=20_617,
+            rows=20_615,
             rowsAbs=25,
-            waveMin=795.06,
+            waveMin=794.94,
             waveMinAbs=0.12,
-            waveMax=2032.02,
+            waveMax=2031.78,
             waveStep=0.06,
-            snrMedian=14.09,
-            fluxcalMedian=3.003861084057503e-15,
-            skyCountsMedian=17.42337417602539,
-            skyModelMedian=20.28994369506836,
-            skyModelP90=89.84078826904295,
-            detectedFraction=0.939,
+            snrMedian=13.95,
+            fluxcalMedian=2.822694869405165e-15,
+            skyCountsMedian=18.00847053527832,
+            skyModelMedian=20.919416427612305,
+            skyModelP90=91.07568664550783,
+            detectedFraction=0.937,
             objtraceStem="20260111T080347_NIR_3_STARE_OBJ_SLIT5_0_30_0S_SOXS_CD-325613",
         ),
         id="nir",

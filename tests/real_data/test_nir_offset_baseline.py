@@ -16,7 +16,12 @@ re-recorded on 2026-10-19 from six bit-identical CI runs (39290451388, 392904619
 change (DY-1647), and rose 0.6% (DY-1648). It was re-recorded on 2026-10-21 from six
 bit-identical CI runs (39680454564, 39680459968, 39680464192, 39680468399, 39680472907
 and 39680476407), after the nod shift-and-add (DY-1674) and the flux-conserving slit
-shift (DY-1679), and rose 0.15%. The SNR median did not move (DY-1691).
+shift (DY-1679), and rose 0.15%. The SNR median did not move (DY-1691). The row
+count, both wavelength ends and the flux-calibrated median were re-recorded on
+2026-10-27 from six bit-identical CI runs (40509952494, 40509961437, 40509971714,
+40509980343, 40509989297 and 40509997772) of develop 9869275e, after the DY-1968 global
+NIR sky-line tuning moved the blue end from 795.06 to 795.3 nm, outside its band, and
+the flux-calibrated median rose 0.16% (DY-1980). DY-1972 to DY-1975 did not move it.
 """
 
 from __future__ import annotations
@@ -115,15 +120,15 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     # THE MERGED GRID RUNS FROM THE BLUEST TO THE REDDEST EXTRACTED SAMPLE IN
     # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
     # OF SPECTRAL COVERAGE
-    assert mergedRows == pytest.approx(20_614, abs=25)
+    assert mergedRows == pytest.approx(20_612, abs=25)
     # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO TWO GRID STEPS
-    assert waveMin == pytest.approx(795.06, abs=0.12)
-    assert waveMax == pytest.approx(2031.84, abs=1.0)
+    assert waveMin == pytest.approx(795.3, abs=0.12)
+    assert waveMax == pytest.approx(2031.96, abs=1.0)
     assert waveStep == pytest.approx(0.06, abs=1e-6)
     assert snrMedian == pytest.approx(149.8, abs=2.0)
-    assert fluxcalRows == pytest.approx(20_614, abs=25)
+    assert fluxcalRows == pytest.approx(20_612, abs=25)
     assert fluxcalRows == mergedRows
-    assert fluxcalMedian == pytest.approx(8.243045025961036e-15, rel=0.05)
+    assert fluxcalMedian == pytest.approx(8.256574435666687e-15, rel=0.05)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
     assert nOrders == 15
     assert detectedFraction == pytest.approx(0.984, abs=0.02)
