@@ -183,7 +183,9 @@ def test_results_keep_the_input_order_and_pass_keyword_arguments_to_the_function
 def test_the_workers_are_spawned_and_the_global_start_method_is_left_alone(log: Any) -> None:
     # ARRANGE
     reducerModule = import_module("soxspipe.commonutils.reducer")
-    startMethodBefore = multiprocessing.get_start_method(allow_none=True)
+    # FIX THE DEFAULT CONTEXT FIRST: ANY LOCK OR QUEUE MADE DURING THE CALL FIXES IT TO THE PLATFORM DEFAULT,
+    # SO A BEFORE VALUE OF None WOULD MAKE THIS TEST DEPEND ON WHICH TESTS RAN EARLIER IN THE WORKER
+    startMethodBefore = multiprocessing.get_start_method()
 
     # ACT
     results = reducerModule._run_in_spawn_pool(report_start_method, _inputs("ok"), 1, log)

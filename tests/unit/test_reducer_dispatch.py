@@ -361,3 +361,83 @@ def test_run_recipe_bulk_binds_a_hostile_sof_name_as_a_parameter_in_a_real_datab
         ("decoy.sof", "fail"),
         (hostileSofName, "pass"),
     ]
+
+
+def _bulk_batch_refreshes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+    *,
+    storedStatus: str | None,
+    workerStatus: str,
+) -> list[dict[str, object]]:
+    """Run one bulk batch of a single SOF over a real table and return the session refreshes it requested."""
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    commonutilsModule = import_module("soxspipe.commonutils")
+    workspacePath = tmp_path / "workspace"
+    workspacePath.mkdir()
+    refreshes: list[dict[str, object]] = []
+
+    class RecordingOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, **kwargs: object) -> None:
+            refreshes.append(kwargs)
+
+        def _dataframe_to_sqlite(self, dataframe: pd.DataFrame, tableName: str, replace: bool) -> None:
+            pass
+
+        def close(self) -> None:
+            pass
+
+    qcTable = pd.DataFrame([{"qc_name": "signal", "qc_flag": "pass"}]) if workerStatus == "pass" else None
+    workerResult = {"sof": "A.sof", "status": workerStatus, "qcTable": qcTable, "error_message": None}
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", lambda **kwargs: [workerResult])
+    monkeypatch.setattr(commonutilsModule, "data_organiser", RecordingOrganiser)
+    connection = sqlite3.connect(str(tmp_path / "reducer.db"), autocommit=True)
+    connection.execute("create table product_frames (sof text, status_night1 text, error_message text)")
+    connection.execute("insert into product_frames values ('A.sof', ?, null)", (storedStatus,))
+
+    reducerModule.run_recipe_bulk(
+        log=log,
+        recipe="mbias",
+        sofList=[str(workspacePath / "sof" / "A.sof")],
+        commandList=["soxspipe mbias A.sof"],
+        settings={"workspace-root-dir": str(workspacePath), **logging_settings(tmp_path / "bulk.log")},
+        overwrite=True,
+        workspaceDirectory=str(workspacePath),
+        conn=connection,
+        sessionId="night1",
+    )
+    return refreshes
+
+
+@pytest.mark.parametrize("storedStatus", ["fail", "running"])
+def test_run_recipe_bulk_refreshes_the_session_once_when_an_unfinished_sof_now_passes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+    storedStatus: str,
+) -> None:
+    """A batch in which a SOF stored as failed or interrupted now passes refreshes before the next selection."""
+    refreshes = _bulk_batch_refreshes(monkeypatch, tmp_path, log, storedStatus=storedStatus, workerStatus="pass")
+
+    assert len(refreshes) == 1
+
+
+@pytest.mark.parametrize(
+    ("storedStatus", "workerStatus"),
+    [("pass", "previous-pass"), ("fail", "previous-fail"), (None, "pass")],
+)
+def test_run_recipe_bulk_does_not_refresh_the_session_when_no_sof_changed_status_to_or_from_fail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+    storedStatus: str | None,
+    workerStatus: str,
+) -> None:
+    """A batch that only repeats earlier results, or passes a SOF that never ran, skips the SOF rebuild."""
+    refreshes = _bulk_batch_refreshes(monkeypatch, tmp_path, log, storedStatus=storedStatus, workerStatus=workerStatus)
+
+    assert refreshes == []

@@ -230,6 +230,32 @@ def test_plot_response_curve_writes_qc_pdf_and_product_row(
     ]
 
 
+def test_write_response_function_to_file_leaves_no_file_when_the_write_dies_mid_file(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1697: a killed RESP write must not leave a truncated product for the next run to skip."""
+    # ARRANGE
+    response = _response_writer(tmp_path, log)
+
+    def cut_short(self: fits.HDUList, name: str, *args: object, **kwargs: object) -> None:
+        Path(name).write_bytes(b"SIMPLE  =")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(fits.HDUList, "writeto", cut_short)
+
+    # ACT
+    with pytest.raises(OSError, match="disk full"):
+        response.write_response_function_to_file(
+            wavelength=np.array([500.0, 600.0]),
+            response=np.array([250.5, 302.0]),
+        )
+
+    # ASSERT
+    assert [path.name for path in tmp_path.glob("*RESP*")] == []
+
+
 def test_write_response_function_to_file_writes_only_the_sampled_response_curve_extension(
     tmp_path: Path,
     log: object,

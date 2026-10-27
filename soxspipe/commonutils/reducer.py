@@ -287,6 +287,11 @@ class reducer:
                         break
                 break
 
+        # REFRESH FIRST, SO THE REPORT READS THE FLAGS OF RECIPES THAT RECOVERED DURING THIS RUN
+        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+        do.session_refresh(failure=None)
+        do.close()
+
         if self.reductionTarget == "all":
             from soxspipe.commonutils.data_organiser import print_incomplete_sets_report
 
@@ -294,10 +299,6 @@ class reducer:
             incompleteSets, blockingSets = do.get_incomplete_sets_report()
             do.close()
             print_incomplete_sets_report(incompleteSets, blockingSets)
-
-        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-        do.session_refresh(failure=None)
-        do.close()
 
         self.log.debug("completed the ``reduce`` method")
         return
@@ -1147,9 +1148,12 @@ def run_recipe_bulk(
     statusColumn = validate_sql_identifier(f"status_{sessionId}", "status column")
     passingClause, passingParams = _sql_in_placeholders(passing)
     failingClause, failingParams = _sql_in_placeholders(failing)
+    # COUNT THE SOFS WHOSE STATUS CHANGES TO OR FROM FAIL: A PASSING SOF STORED AS ANYTHING BUT 'pass' (FAILED OR
+    # INTERRUPTED) HAS RECOVERED, AND A FAILING SOF STORED AS ANYTHING BUT 'fail' HAS REGRESSED. EITHER CHANGES
+    # WHAT THE NEXT RECIPE CAN USE, SO THE BATCH REFRESHES THE SESSION ONCE
     sqlQuery = (
         "select count(*) from product_frames where "  # noqa: S608
-        f"(sof in ({passingClause}) and {statusColumn} = 'fail') "
+        f"(sof in ({passingClause}) and {statusColumn} is not null and {statusColumn} != 'pass') "
         f"or (sof in ({failingClause}) and ({statusColumn} != 'fail' or {statusColumn} is null))"
     )
     c.execute(sqlQuery, passingParams + failingParams)
