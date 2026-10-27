@@ -299,11 +299,6 @@ def _session_database(path: Path) -> None:
         conn.execute("insert into product_frames (sof) values ('A.sof')")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1698 (DY-37 I2): the QC-range reconciliation turns an unfinished recipe's 'fail' into 'pass'",
-)
 def test_a_recipe_that_never_reached_clean_up_is_not_marked_pass_by_the_qc_range_reconciliation(
     log: Any, tmp_path: Path
 ) -> None:
@@ -331,6 +326,30 @@ def test_a_recipe_that_never_reached_clean_up_is_not_marked_pass_by_the_qc_range
 
     # ASSERT
     assert status != "pass"
+
+
+def test_a_recipe_that_finished_failing_on_qc_range_is_passed_when_the_ranges_now_accept_its_value(
+    tmp_path: Path,
+) -> None:
+    # ARRANGE: A FINISHED RUN LEFT `fail` AND A FAILING QC ROW (VALUE 5.0, THEN-RANGE 0 TO 1)
+    _session_database(tmp_path / "soxspipe.db")
+    with contextlib.closing(sqlite3.connect(tmp_path / "soxspipe.db")) as conn, conn:
+        conn.execute("update product_frames set status_base = 'fail' where sof = 'A.sof'")
+        conn.execute(
+            "insert into quality_control (soxspipe_recipe, sof_name, qc_name, qc_value, qc_value_min, qc_value_max, "
+            "qc_flag, qc_order) values ('soxs-mflat', 'A.sof', 'FLUX MEDIAN', '5.0', 0, 1, 'fail', '-1')"
+        )
+    widenedRanges = {"soxs-mflat": {"qc-acceptable-ranges": {"flux-median": [0, 10]}}}
+
+    # ACT: THE NEXT `soxspipe prep` RUNS WITH THE WIDENED RANGE
+    organiser = SimpleNamespace(sessionId=SESSION, settings=widenedRanges)
+    with contextlib.closing(sqlite3.connect(tmp_path / "soxspipe.db")) as conn, conn:
+        for sqlQuery, sqlParams in real_data_organiser._qc_acceptable_range_queries(organiser):
+            conn.execute(sqlQuery, sqlParams)
+        status = conn.execute("select status_base from product_frames where sof = 'A.sof'").fetchone()[0]
+
+    # ASSERT
+    assert status == "pass"
 
 
 # ---------------------------------------------------------------------------
