@@ -130,7 +130,9 @@ def test_a_vis_order_whose_skyline_fit_fails_is_not_measured_from_the_continuum_
     scene = _faint_lines_scene(tmp_path, slitName=slitName)
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("the skyline-failure fallback must run on SLIT1.0 and SLIT1.5 only")
+        raise AssertionError(
+            f"the skyline-failure fallback must run on {slit_illumination.SKYLINE_FALLBACK_SLIT_NAMES} only"
+        )
 
     monkeypatch.setattr(slit_illumination, "continuum_slit_profiles", forbidden)
     row = _offsets(_measure(scene, tmp_path, log, monkeypatch)).loc[11]

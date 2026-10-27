@@ -106,7 +106,7 @@ CONTINUUM_SLIT_NAME = "SLIT1.0"
 SKYLINE_FALLBACK_ARM = "VIS"
 # THE SKYLINE-FAILURE FALLBACK RUNS ON THESE SLITS ONLY, WHERE THE OBJECT WINGS DO NOT DOMINATE THE CONTINUUM EDGES
 # (DY-1927 RULING, 2026-10-27)
-SKYLINE_FALLBACK_SLIT_NAMES = ("SLIT1.0", "SLIT1.5")
+SKYLINE_FALLBACK_SLIT_NAMES = (CONTINUUM_SLIT_NAME, "SLIT1.5")
 # THE CHUNK COUNT AND THE CHUNKS-PER-BIN LIMIT MUST BE WHOLE NUMBERS OF AT LEAST THIS, SO EACH HALF HOLDS A MEDIAN
 MIN_CONTINUUM_COUNT = 2
 
@@ -673,14 +673,13 @@ def _continuum_orders(log, profileNotes, slitName, failedSkylineOrders=()) -> li
     blended = [order for order, note in profileNotes.items() if has_all_blended_note(note)]
     noLines = [order for order, note in profileNotes.items() if has_no_skylines_note(note)]
     # A NO-LINES ORDER ALSO FAILS ITS SKYLINE FIT; THE SKYLINE-FAILURE FALLBACK MUST NOT WIDEN ITS SLIT RULE
-    failedSkylineOrders = [order for order in failedSkylineOrders if order not in noLines]
+    failed = [order for order in failedSkylineOrders if order not in noLines]
     if noLines and slitName != CONTINUUM_SLIT_NAME:
         log.info(
             f"the continuum slit offset of an order with no skylines is measured on {CONTINUUM_SLIT_NAME} only (this "
             f"frame: {slitName}), so orders {sorted(noLines)} have no slit offset"
         )
         noLines = []
-    failed = list(failedSkylineOrders)
     if failed and slitName not in SKYLINE_FALLBACK_SLIT_NAMES:
         log.info(
             f"a failed skyline slit offset falls back to the continuum on {' and '.join(SKYLINE_FALLBACK_SLIT_NAMES)} "
