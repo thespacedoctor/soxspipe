@@ -153,11 +153,23 @@ def test_failed_skyline_orders_left_off_the_continuum_on_another_slit_are_logged
     notes = {13: "every skyline is too faint"}
 
     # ACT
-    slit_illumination._continuum_orders(log, notes, "SLIT5.0", failedSkylineOrders=[14, 13])
+    orders = slit_illumination._continuum_orders(log, notes, "SLIT5.0", failedSkylineOrders=[14, 13])
 
     # ASSERT
     infos = [message for kind, message in log.messages if kind == "info"]
+    assert orders == []
     assert any("SLIT5.0" in message and "[13, 14]" in message for message in infos)
+
+
+@pytest.mark.parametrize(
+    ("slitName", "failedSkylineOrders"), [("SLIT1.0", [13]), ("SLIT5.0", [])], ids=["slit-1-0", "no-failed-orders"]
+)
+def test_no_failed_skyline_skip_is_logged_when_nothing_is_left_off(log, slitName, failedSkylineOrders):
+    # ACT
+    slit_illumination._continuum_orders(log, {}, slitName, failedSkylineOrders=failedSkylineOrders)
+
+    # ASSERT
+    assert not any("keep their failed skyline result" in message for _, message in log.messages)
 
 
 def test_the_failed_skyline_orders_are_the_failed_rows_of_the_vis_arm_only():
