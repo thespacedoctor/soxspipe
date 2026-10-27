@@ -1,5 +1,7 @@
 # Release Notes
 
+* **FIXED**: a recipe's settings are now its own deep copy of its block in the settings dictionary, so the stare sky-model fallback (sky subtraction off, slit length 30) and the `--poly` overrides no longer change the shared settings dictionary that later recipes in the same process read; the product header still records the parameters the recipe ran with (DY-1724).
+
 ## v0.19.0 - October 26, 2026
 
 * **FEATURE**: the order location tables from `soxs_order_centres` and `soxs_mflat` get a third extension, `ORDER_TRACES`, listing the unbinned pixel coordinates of each order's centre trace (and upper and lower edges, for the master flat) at every pixel along the dispersion axis; object trace tables are unchanged.

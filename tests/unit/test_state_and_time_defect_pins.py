@@ -77,11 +77,6 @@ def _recipe_from(settings: dict[str, Any], recipeName: str, arm: str, log: Any) 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1694 (DY-37 S1): get_recipe_settings copies arm keys into the caller's shared recipe settings block",
-)
 def test_a_nir_recipe_does_not_hand_its_arm_settings_to_a_later_vis_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -109,14 +104,6 @@ def test_a_nir_recipe_does_not_hand_its_arm_settings_to_a_later_vis_recipe(
     assert settings == snapshot, "the caller's settings dictionary was changed"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1694 (DY-37 S1): a recipe's in-place settings change (soxs_stare sky fallback) reaches the next recipe; "
-        "pins aliasing of the returned settings block"
-    ),
-)
 def test_a_recipe_turning_sky_subtraction_off_does_not_turn_it_off_for_the_next_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
