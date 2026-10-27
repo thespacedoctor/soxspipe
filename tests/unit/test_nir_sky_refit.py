@@ -516,8 +516,8 @@ def test_lines_a_merge_gap_or_more_apart_stay_separate_and_a_chain_merges_whole(
 
 
 def test_lines_exactly_a_merge_gap_apart_stay_separate():
-    # ARRANGE
-    catalogue = np.array([1500.0, 1500.0 + DOUBLET_MERGE_GAP_NM])
+    # ARRANGE: A BASE OF 0 KEEPS THE GAP EXACT; 1500 + GAP - 1500 ROUNDS ABOVE IT AND WOULD HIDE A ">" BUG
+    catalogue = np.array([0.0, DOUBLET_MERGE_GAP_NM])
 
     # ACT
     merged = merge_doublet_lines(catalogue)
@@ -565,8 +565,16 @@ def test_merging_drops_non_finite_catalogue_wavelengths():
 
 @pytest.mark.parametrize(
     "halfWidthNm",
-    [np.zeros(3), np.zeros(1), np.array([0.0, np.nan]), np.array([0.0, -0.01]), np.zeros((2, 1))],
-    ids=["too-long", "too-short", "nan", "negative", "two-dimensional"],
+    [
+        np.zeros(3),
+        np.zeros(1),
+        np.array([0.0, np.nan]),
+        np.array([0.0, np.inf]),
+        np.array([0.0, -np.inf]),
+        np.array([0.0, -0.01]),
+        np.zeros((2, 1)),
+    ],
+    ids=["too-long", "too-short", "nan", "inf", "minus-inf", "negative", "two-dimensional"],
 )
 def test_order_sky_lines_reject_half_widths_that_do_not_fit_the_catalogue(halfWidthNm):
     # ACT / ASSERT
