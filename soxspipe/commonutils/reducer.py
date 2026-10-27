@@ -287,6 +287,11 @@ class reducer:
                         break
                 break
 
+        # REFRESH FIRST, SO THE REPORT READS THE FLAGS OF RECIPES THAT RECOVERED DURING THIS RUN
+        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
+        do.session_refresh(failure=None)
+        do.close()
+
         if self.reductionTarget == "all":
             from soxspipe.commonutils.data_organiser import print_incomplete_sets_report
 
@@ -294,10 +299,6 @@ class reducer:
             incompleteSets, blockingSets = do.get_incomplete_sets_report()
             do.close()
             print_incomplete_sets_report(incompleteSets, blockingSets)
-
-        do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
-        do.session_refresh(failure=None)
-        do.close()
 
         self.log.debug("completed the ``reduce`` method")
         return

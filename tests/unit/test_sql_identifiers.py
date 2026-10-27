@@ -229,7 +229,7 @@ def test_clean_up_binds_an_injection_shaped_sof_name_as_a_parameter(
     """A sof name shaped like a SQL injection payload never reaches the SQL text itself."""
     # ARRANGE
     hostileSofName = "x' OR 1=1 --"
-    recipe, conn = _clean_up_recipe(log, tmp_path, sofName=hostileSofName, status="fail")
+    recipe, conn = _clean_up_recipe(log, tmp_path, sofName=hostileSofName, status="pass")
 
     # ACT
     recipe.clean_up(forceFail=False)
@@ -363,7 +363,7 @@ def test_clean_up_with_hostile_sof_name_updates_no_rows_in_a_real_database(
     recipe = base_recipe.__new__(base_recipe)
     recipe.log = log
     recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
-    recipe.status = "fail"
+    recipe.status = "pass"
     recipe.currentSession = "base"
     # AN INJECTION PAYLOAD THAT, IF STILL INTERPOLATED, CLOSES THE STRING
     # LITERAL EARLY, FORCES AN ALWAYS-TRUE CONDITION, AND COMMENTS OUT THE

@@ -66,9 +66,28 @@ def _recipe(*, log: Any, tmp_path: Path, qc: pd.DataFrame, status: str) -> base_
     return recipe
 
 
+def _patch_organiser(monkeypatch: pytest.MonkeyPatch) -> list[bool | None]:
+    """Replace the data organiser with a stub and return the list of refresh requests it receives."""
+    refreshes: list[bool | None] = []
+
+    class RecordingOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, *, failure: bool | None = True) -> None:
+            refreshes.append(failure)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", RecordingOrganiser)
+    return refreshes
+
+
 def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     log: Any,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A passing recipe commits its session status and removes intermediates."""
     recipe = _recipe(
@@ -79,6 +98,7 @@ def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     )
     connection = RecordingConnection()
     recipe.conn = connection
+    _patch_organiser(monkeypatch)
 
     result = recipe.clean_up()
 
@@ -89,6 +109,72 @@ def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     assert connection.wasClosed
     assert not Path(recipe.outDir).exists()
     assert not hasattr(recipe, "conn")
+
+
+@pytest.mark.parametrize("previousStatus", ["fail", "running"])
+def test_clean_up_refreshes_session_once_when_an_unfinished_recipe_now_passes(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    previousStatus: str,
+) -> None:
+    """A recipe that failed or was interrupted last time refreshes the session once its pass is stored."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]}),
+        status=previousStatus,
+    )
+    connection = RecordingConnection()
+    recipe.conn = connection
+    refreshes = _patch_organiser(monkeypatch)
+
+    recipe.clean_up()
+
+    assert connection.statements == ["update product_frames set status_20240102 = 'pass' where sof = ?"]
+    assert refreshes == [False]
+
+
+@pytest.mark.parametrize("previousStatus", ["pass", None])
+def test_clean_up_does_not_refresh_session_when_the_recipe_was_not_unfinished(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    previousStatus: str | None,
+) -> None:
+    """A recipe that passed before, or never ran, passes without paying for a SOF refresh."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]}),
+        status=previousStatus,
+    )
+    recipe.conn = RecordingConnection()
+    refreshes = _patch_organiser(monkeypatch)
+
+    recipe.clean_up()
+
+    assert refreshes == []
+
+
+def test_clean_up_does_not_refresh_session_when_a_failed_recipe_fails_again(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recipe that failed before and fails again leaves the SOF files as they are."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["fail"], "qc_name": ["TRACE RMS"]}),
+        status="fail",
+    )
+    recipe.conn = RecordingConnection()
+    refreshes = _patch_organiser(monkeypatch)
+
+    recipe.clean_up()
+
+    assert refreshes == []
 
 
 def test_clean_up_refreshes_session_when_failed_qc_reverses_passing_status(
