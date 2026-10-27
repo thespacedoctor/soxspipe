@@ -14,6 +14,7 @@ Date Created
 : October 27, 2026
 """
 
+import contextlib
 import os
 import uuid
 import warnings
@@ -33,7 +34,13 @@ def write_hdulist_atomically(hduList, filePath, **writetoKwargs):
     - ``writetoKwargs`` -- keyword arguments for ``HDUList.writeto``. ``overwrite`` is *False* unless set
 
     A failed write removes the temporary file and leaves ``filePath`` as it was. A file already at ``filePath``
-    raises ``OSError`` unless ``overwrite`` is set.
+    raises ``OSError`` unless ``overwrite`` is set. A symbolic link at ``filePath`` is kept and its target is
+    replaced.
+
+    The write protects against a killed process, not against power loss (nothing is synced to disk). A process
+    killed with ``SIGKILL`` leaves its ``.partial`` file behind; it is harmless and nothing sweeps it. The
+    ``overwrite=False`` check is best effort when two processes write the same path at once, which soxspipe does not
+    support (one process per workspace).
 
     **Usage:**
 
@@ -46,19 +53,21 @@ def write_hdulist_atomically(hduList, filePath, **writetoKwargs):
     if os.path.exists(filePath) and not overwrite:
         raise OSError(f"File {filePath!r} already exists.")
 
+    # WRITE BESIDE THE REAL FILE, SO A SYMLINK AT THE PRODUCT PATH SURVIVES THE RENAME
+    filePath = os.path.realpath(filePath)
     directory, basename = os.path.split(filePath)
     temporaryPath = os.path.join(directory, f".{basename}.{os.getpid()}.{uuid.uuid4().hex[:8]}{TEMPORARY_SUFFIX}")
     try:
         hduList.writeto(temporaryPath, overwrite=True, **writetoKwargs)
         os.replace(temporaryPath, filePath)
     except BaseException:
-        if os.path.exists(temporaryPath):
+        with contextlib.suppress(OSError):
             os.remove(temporaryPath)
         raise
 
 
 def is_complete_fits(filePath):
-    """*return True when the file opens as FITS and holds all the data its headers promise*
+    """*return True when the file opens as FITS and ends exactly where its last HDU says it should*
 
     **Key Arguments:**
 
@@ -66,7 +75,13 @@ def is_complete_fits(filePath):
 
     **Return:**
 
-    - ``isComplete`` -- *False* when the file is empty, is not FITS, or is shorter than its headers say
+    - ``isComplete`` -- *False* when the file is empty, is not FITS, cannot be read, or its size is not the end of
+      its last HDU
+
+    The test compares the file size with the end of the last HDU (data start plus data span, padding included), so
+    no warning text is involved. A file cut exactly at the end of an HDU looks whole, since FITS records no HDU
+    count. ``warnings.catch_warnings`` is not thread-safe, so do not call this from threads that also rely on
+    warning filters.
 
     **Usage:**
 
@@ -76,13 +91,16 @@ def is_complete_fits(filePath):
         ...
     ```
     """
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         try:
             with fits.open(filePath) as hduList:
-                for hdu in hduList:
-                    hdu.header  # noqa: B018
-        except (OSError, ValueError, TypeError):
+                lastHdu = None
+                for lastHdu in hduList:
+                    lastHdu.header  # noqa: B018
+                if lastHdu is None:
+                    return False
+                info = lastHdu.fileinfo()
+                return os.path.getsize(filePath) == info["datLoc"] + info["datSpan"]
+        except Exception:
             return False
-
-    return not any("truncated" in str(warning.message) for warning in caught)
