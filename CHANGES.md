@@ -4,6 +4,7 @@
 * **ENHANCEMENT**: the SOXS default `overlap-margin-arcsec` rises from 0.3 to 0.45 arcsec, so the slit-illumination mask leaves out the 0.3 to 0.45 arcsec at each slit end where the sky has not recovered to within 2% of its interior level (SOXS NIR measured; the X-Shooter default stays 0.3). A workspace whose `soxspipe.yaml` already sets `overlap-margin-arcsec: 0.3` keeps that value until you change it, and sky-subtracted output of masked orders changes (DY-1958).
 * **FIXED**: the stare object-wing correction skips an order whose median sky model is at or below `object_wing_min_sky_sigma` (default 1) times the noise of a faint-sky pixel, so it no longer drives a near-zero-sky NIR order negative, and the log reports the leak in e- only when the sky is not above zero (DY-1975).
 * **FIXED**: a recipe's settings are now its own deep copy of its block in the settings dictionary, so the stare sky-model fallback (sky subtraction off, slit length 30) and the `--poly` overrides no longer change the shared settings dictionary that later recipes in the same process read; the product header still records the parameters the recipe ran with (DY-1724).
+* **FIXED**: SOXS NIR sky-line tuning matches each unresolved OH doublet of the catalogue (components up to 0.14 nm apart) as one line at the mean of its components, and a peak may sit on either component, so order 11 (1700-1800 nm) no longer reads +0.2 to +0.4 angstrom from the catalogue (DY-1974).
 
 ## v0.19.0 - October 26, 2026
 

@@ -56,6 +56,9 @@ SLOPE_SHRINK_LINES = 4
 # TOLERANCE ALIASED ORDER 15 ONTO A NEIGHBOURING LINE
 TIGHT_TOLERANCE_ARC_RMS = 2.5
 MAX_TIGHT_TOLERANCE_NM = 0.1
+# CATALOGUE LINES CLOSER THAN THIS (nm) ARE THE COMPONENTS OF ONE UNRESOLVED OH LAMBDA-DOUBLET. THE ISOLATED NIR LINES
+# ARE ALL SUCH PAIRS, SPLIT BY UP TO 0.14 nm, AND THE NEXT LINE IS MORE THAN 1 nm AWAY
+DOUBLET_MERGE_GAP_NM = 0.2
 
 MAX_CLIP_ITERATIONS = 10
 # THE GLOBAL MODEL AND THE PER-ORDER OFFSETS ARE FITTED IN TURN THIS MANY TIMES
@@ -328,6 +331,48 @@ def match_tolerance_nm(arcRmsPx, dispersionNmPerPx) -> float:
     return min(TIGHT_TOLERANCE_ARC_RMS * arcRmsPx * abs(dispersionNmPerPx), MAX_TIGHT_TOLERANCE_NM)
 
 
+class merged_lines(NamedTuple):
+    """The catalogue lines after merging each doublet.
+
+    ``centreNm`` is the centre of each line (nm). ``halfWidthNm`` is the distance (nm) from that centre to the line's
+    outermost component, 0 for a single line.
+    """
+
+    centreNm: np.ndarray
+    halfWidthNm: np.ndarray
+
+
+def merge_doublet_lines(catalogueNm) -> merged_lines:
+    """*merge the components of each unresolved catalogue doublet into one line at their mean wavelength*
+
+    The sky spectrograph does not resolve an OH lambda-doublet, so its observed centre is the centroid of the pair. A
+    component of the catalogue matched on its own is half the splitting away, on whichever side the model happens to
+    sit, and the splitting grows with wavelength (0.14 nm at 1724 nm). The catalogue lists the two components of a
+    doublet with the same flux, so the mean is their flux-weighted centroid. Lines are chained into one while each gap
+    is less than ``DOUBLET_MERGE_GAP_NM``. The true component intensities differ, so the observed centre can sit
+    anywhere between the components: the ``halfWidthNm`` of a merged line says how far from its centre a peak may sit
+    and still be that line.
+
+    **Key Arguments:**
+
+    - ``catalogueNm`` -- the catalogue wavelengths (nm)
+
+    **Return:**
+
+    - ``merged`` -- the ``merged_lines``: ascending centres (nm), one per doublet or single line, and the half-width
+      (nm) of each, 0 for a single line
+    """
+    lines = np.sort(np.asarray(catalogueNm, dtype=float))
+    if lines.size == 0:
+        return merged_lines(lines, lines.copy())
+    isStart = np.concatenate([[True], np.diff(lines) >= DOUBLET_MERGE_GAP_NM])
+    groupIds = np.cumsum(isStart) - 1
+    centres = np.bincount(groupIds, weights=lines) / np.bincount(groupIds)
+    starts = np.flatnonzero(isStart)
+    firsts, lasts = lines[starts], lines[np.append(starts[1:], lines.size) - 1]
+    return merged_lines(centres, (lasts - firsts) / 2)
+
+
 def match_peaks_to_catalogue(predictedPeakNm, catalogueNm, toleranceNm):
     """*pair each observed sky-line centre with the catalogue line that is its nearest, and it theirs*
 
@@ -338,7 +383,7 @@ def match_peaks_to_catalogue(predictedPeakNm, catalogueNm, toleranceNm):
 
     - ``predictedPeakNm`` -- the observed line centres (nm), moved by the current model
     - ``catalogueNm`` -- the catalogue wavelengths (nm)
-    - ``toleranceNm`` -- the largest separation (nm) of a pair
+    - ``toleranceNm`` -- the largest separation (nm) of a pair: one value, or one for each catalogue line
 
     **Return:**
 
@@ -354,7 +399,8 @@ def match_peaks_to_catalogue(predictedPeakNm, catalogueNm, toleranceNm):
     nearestPeak = separation.argmin(axis=0)
     peakIndex = np.arange(peaks.size)
     isMutual = nearestPeak[nearestCatalogue] == peakIndex
-    isClose = separation[peakIndex, nearestCatalogue] < toleranceNm
+    tolerance = np.broadcast_to(np.asarray(toleranceNm, dtype=float), catalogue.shape)
+    isClose = separation[peakIndex, nearestCatalogue] < tolerance[nearestCatalogue]
     keep = isMutual & isClose
     return peakIndex[keep], nearestCatalogue[keep]
 
@@ -704,9 +750,12 @@ class nir_order_sky_lines:
 
     - ``order`` -- the order
     - ``peakNm`` -- the detected line centres (nm) on the arc-solution wavelength scale
-    - ``catalogueNm`` -- the calibration catalogue wavelengths (nm) in the order's range
+    - ``catalogueNm`` -- the calibration catalogue wavelengths (nm) in the order's range, each doublet as one line
+      (``merge_doublet_lines``)
     - ``pixelScaleNm`` -- ``pixelScaleNm`` at each detected centre
     - ``toleranceNm`` -- the match tolerance (nm) of the order
+    - ``halfWidthNm`` -- the half-width (nm) of each catalogue line, added to the tolerance of that line. Default
+      *None*, which is a width of 0 for every line
     """
 
     order: int
@@ -714,12 +763,17 @@ class nir_order_sky_lines:
     catalogueNm: np.ndarray
     pixelScaleNm: np.ndarray
     toleranceNm: float
+    halfWidthNm: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         for name in ("peakNm", "catalogueNm", "pixelScaleNm"):
             array = np.array(getattr(self, name), dtype=float)
             array.flags.writeable = False
             object.__setattr__(self, name, array)
+        if self.halfWidthNm is not None:
+            widths = np.array(self.halfWidthNm, dtype=float)
+            widths.flags.writeable = False
+            object.__setattr__(self, "halfWidthNm", widths)
 
 
 def _empty_lines() -> pd.DataFrame:
@@ -735,9 +789,10 @@ def _match_order_lines(orderLines, correction, toleranceNm=None) -> pd.DataFrame
     peaks, scales = orderLines.peakNm, orderLines.pixelScaleNm
     usable = np.flatnonzero(np.isfinite(peaks) & np.isfinite(scales) & (scales > 0))
     shiftNm = correction.correction_nm(peaks[usable], scales[usable])
-    peakIndex, catalogueIndex = match_peaks_to_catalogue(
-        peaks[usable] + shiftNm, orderLines.catalogueNm, orderLines.toleranceNm if toleranceNm is None else toleranceNm
-    )
+    tolerance = orderLines.toleranceNm if toleranceNm is None else toleranceNm
+    if orderLines.halfWidthNm is not None:
+        tolerance = tolerance + orderLines.halfWidthNm
+    peakIndex, catalogueIndex = match_peaks_to_catalogue(peaks[usable] + shiftNm, orderLines.catalogueNm, tolerance)
     peakIndex = usable[peakIndex]
     return pd.DataFrame(
         {

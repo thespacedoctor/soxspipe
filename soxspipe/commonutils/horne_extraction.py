@@ -1183,7 +1183,7 @@ class horne_extraction(base_util):
         """*the sky-line centres and calibration lines of one order, or None if its sky is too faint or has none*"""
         import numpy as np
 
-        from soxspipe.commonutils.nir_sky_refit import match_tolerance_nm, nir_order_sky_lines
+        from soxspipe.commonutils.nir_sky_refit import match_tolerance_nm, merge_doublet_lines, nir_order_sky_lines
         from soxspipe.commonutils.sky_line_snr import combine_line_snrs
         from soxspipe.commonutils.ug_wavelength_transfer import sky_line_snr_reason
 
@@ -1202,12 +1202,14 @@ class horne_extraction(base_util):
         if peakNm.size == 0 or len(catalogueNm) == 0:
             return None
         pixelScaleNm = np.interp(peakNm, waveVals, orderDF.loc[valid, "pixelScaleNm"].to_numpy(dtype=float))
+        merged = merge_doublet_lines(catalogueNm)
         return nir_order_sky_lines(
             order=int(o),
             peakNm=peakNm,
-            catalogueNm=np.asarray(catalogueNm, dtype=float),
+            catalogueNm=merged.centreNm,
             pixelScaleNm=pixelScaleNm,
             toleranceNm=match_tolerance_nm(arcRmsPx, dispersion),
+            halfWidthNm=merged.halfWidthNm,
         )
 
     def _arc_rms_px(self):

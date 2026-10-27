@@ -11,6 +11,7 @@ import pytest
 
 from soxspipe.commonutils.nir_sky_refit import (
     MAX_GLOBAL_RMS_PX,
+    DOUBLET_MERGE_GAP_NM,
     MAX_TIGHT_TOLERANCE_NM,
     MIN_GLOBAL_LINES,
     MIN_OFFSET_LINES,
@@ -23,6 +24,7 @@ from soxspipe.commonutils.nir_sky_refit import (
     global_seed_px,
     match_peaks_to_catalogue,
     match_tolerance_nm,
+    merge_doublet_lines,
     nir_order_sky_lines,
     order_geometry,
     own_seeds_px,
@@ -474,6 +476,135 @@ def test_tolerance_without_an_arc_rms_is_the_cap():
     # ACT / ASSERT
     assert match_tolerance_nm(arcRmsPx=None, dispersionNmPerPx=0.06) == MAX_TIGHT_TOLERANCE_NM
     assert match_tolerance_nm(arcRmsPx=float("nan"), dispersionNmPerPx=0.06) == MAX_TIGHT_TOLERANCE_NM
+
+
+# DOUBLET CATALOGUE LINES (DY-1974)
+
+
+def test_the_two_components_of_a_doublet_become_one_line_at_their_centroid():
+    # ARRANGE: THE 1700.4 nm OH DOUBLET, WITH A LINE 7 nm AWAY
+    catalogue = np.array([1700.3767, 1700.4429, 1707.3632])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([(1700.3767 + 1700.4429) / 2, 1707.3632])
+
+
+def test_a_merged_line_carries_the_distance_to_its_outermost_component_and_a_single_line_has_none():
+    # ARRANGE
+    catalogue = np.array([1700.3767, 1700.4429, 1707.3632])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.halfWidthNm.tolist() == pytest.approx([(1700.4429 - 1700.3767) / 2, 0.0])
+
+
+def test_lines_a_merge_gap_or_more_apart_stay_separate_and_a_chain_merges_whole():
+    # ARRANGE: 0.19 nm GAPS CHAIN INTO ONE LINE, A GAP OF MORE THAN THE MERGE GAP DOES NOT JOIN
+    catalogue = np.array([1500.0, 1500.19, 1500.38, 1500.38 + DOUBLET_MERGE_GAP_NM + 0.01])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([1500.19, 1500.38 + DOUBLET_MERGE_GAP_NM + 0.01])
+    assert merged.halfWidthNm.tolist() == pytest.approx([0.19, 0.0])
+
+
+def test_merging_sorts_the_lines_and_leaves_its_input_alone():
+    # ARRANGE
+    catalogue = np.array([1707.3752, 1700.4429, 1707.3632, 1700.3767])
+    before = catalogue.copy()
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([1700.4098, 1707.3692])
+    assert catalogue.tolist() == before.tolist()
+
+
+def test_merging_no_lines_returns_no_lines():
+    # ACT
+    merged = merge_doublet_lines(np.array([]))
+
+    # ASSERT
+    assert merged.centreNm.size == merged.halfWidthNm.size == 0
+
+
+def test_matching_takes_a_tolerance_for_each_catalogue_line():
+    # ARRANGE: BOTH PEAKS ARE 0.05 nm FROM THEIR LINE, WHICH THE FIRST LINE'S TOLERANCE ALLOWS AND THE SECOND'S DOES NOT
+    catalogue = np.array([1500.0, 1501.0])
+    peaks = np.array([1500.05, 1501.05])
+
+    # ACT
+    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=np.array([0.06, 0.04]))
+
+    # ASSERT
+    assert (peakIdx.tolist(), catalogueIdx.tolist()) == ([0], [0])
+
+
+def _doublet_order_lines(
+    order: int, halfWidthNm: float, merged: bool, toleranceNm: float = 0.04
+) -> nir_order_sky_lines:
+    """THE ORDER'S SKY LINES, EACH THE UNRESOLVED BLEND OF A DOUBLET WHOSE COMPONENTS LIE ``halfWidthNm`` EITHER SIDE"""
+    geometry = _geometry()[order]
+    centres = geometry.centreNm + np.linspace(-0.9, 0.9, 12) * HALF_RANGE_NM
+    components = np.sort(np.concatenate([centres - halfWidthNm, centres + halfWidthNm]))
+    peaks = centres + geometry.dispersionNmPerPx * _model_px(order, np.linspace(-0.9, 0.9, 12))
+    if not merged:
+        return nir_order_sky_lines(order, peaks, components, np.full(12, PIXEL_SCALE_NM), toleranceNm)
+    lines = merge_doublet_lines(components)
+    return nir_order_sky_lines(
+        order, peaks, lines.centreNm, np.full(12, PIXEL_SCALE_NM), toleranceNm, halfWidthNm=lines.halfWidthNm
+    )
+
+
+def test_merged_doublets_recover_the_shift_that_matching_one_component_biases():
+    # ARRANGE: EVERY SKY LINE IS A BLEND CENTRED BETWEEN COMPONENTS 0.07 nm EITHER SIDE (THE 0.14 nm DOUBLET AT 1724 nm)
+    perComponent = {o: _doublet_order_lines(o, 0.07, merged=False, toleranceNm=MAX_TIGHT_TOLERANCE_NM) for o in ORDERS}
+    perDoublet = {o: _doublet_order_lines(o, 0.07, merged=True, toleranceNm=MAX_TIGHT_TOLERANCE_NM) for o in ORDERS}
+
+    # ACT
+    biased = fit_with_iterated_matching(perComponent, _geometry(), _seed_px(), SETTINGS)
+    merged = fit_with_iterated_matching(perDoublet, _geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert merged.fallbackReason is None
+    assert merged.rmsPx < 0.01
+    for o in ORDERS:
+        assert merged.corrections[o].shiftPx == pytest.approx(_model_px(o, np.array(0.0)), abs=0.02)
+    assert biased.fallbackReason is not None or biased.rmsPx > 10 * merged.rmsPx
+
+
+def test_a_peak_on_one_component_of_a_merged_doublet_is_still_that_line():
+    # ARRANGE: THE PEAKS SIT ON THE RED COMPONENT, 0.07 nm FROM THE CENTROID, BEYOND THE 0.04 nm TOLERANCE
+    def on_red_component(order: int, useWidth: bool) -> nir_order_sky_lines:
+        lines = _doublet_order_lines(order, 0.07, merged=True)
+        return nir_order_sky_lines(
+            order,
+            lines.peakNm + 0.07,
+            lines.catalogueNm,
+            lines.pixelScaleNm,
+            lines.toleranceNm,
+            halfWidthNm=lines.halfWidthNm if useWidth else None,
+        )
+
+    withWidth = {o: on_red_component(o, True) for o in ORDERS}
+    withoutWidth = {o: on_red_component(o, False) for o in ORDERS}
+
+    # ACT
+    matchedWith = fit_with_iterated_matching(withWidth, _geometry(), _seed_px(), SETTINGS, iterations=1)
+    matchedWithout = fit_with_iterated_matching(withoutWidth, _geometry(), _seed_px(), SETTINGS, iterations=1)
+
+    # ASSERT
+    # THE RIGID SEED IS A LITTLE OFF THE MODEL AT THE ENDS OF THE ORDERS, SO A FEW LINES FALL OUTSIDE EVEN THE WIDTH
+    assert len(matchedWith.lines) >= 11 * len(ORDERS)
+    assert len(matchedWithout.lines) < len(matchedWith.lines) / 2
 
 
 # SEEDING
