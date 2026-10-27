@@ -323,24 +323,18 @@ def _raw_frame_table(tmp_path: Path, calibrationPath: Path) -> Table:
 def test_update_fits_keywords_stamps_raw_calibration_and_parameter_records(
     tmp_path: Path,
     log: Any,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Raw, calibration and recipe-parameter records reach the product header."""
     # ARRANGE
     calibrationPath = tmp_path / "master_bias.fits"
     calibrationPath.write_bytes(b"synthetic calibration payload")
     recipe = _keyword_recipe(tmp_path, log, _raw_frame_table(tmp_path, calibrationPath))
-    monkeypatch.setattr(
-        base_recipe,
-        "get_recipe_settings",
-        lambda self: {
-            "stacked-clipping-sigma": 3.0,
-            "uvb": {"ignored": True},
-            "clipping": {"iterations": 2},
-            "lamps": ["QTH", "D2"],
-        },
-        raising=False,
-    )
+    recipe.recipeSettings = {
+        "stacked-clipping-sigma": 3.0,
+        "uvb": {"ignored": True},
+        "clipping": {"iterations": 2},
+        "lamps": ["QTH", "D2"],
+    }
     frame = CCDData(np.zeros((2, 2)), unit=u.electron, meta=instrument_header())
 
     # ACT
@@ -372,14 +366,13 @@ def test_update_fits_keywords_stamps_raw_calibration_and_parameter_records(
 def test_update_fits_keywords_limits_raw_records_to_the_requested_frames(
     tmp_path: Path,
     log: Any,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A raw-frame filter removes unlisted raw records but keeps calibrations."""
     # ARRANGE
     calibrationPath = tmp_path / "master_bias.fits"
     calibrationPath.write_bytes(b"synthetic calibration payload")
     recipe = _keyword_recipe(tmp_path, log, _raw_frame_table(tmp_path, calibrationPath))
-    monkeypatch.setattr(base_recipe, "get_recipe_settings", lambda self: {}, raising=False)
+    recipe.recipeSettings = {}
     frame = CCDData(np.zeros((2, 2)), unit=u.electron, meta=instrument_header())
 
     # ACT

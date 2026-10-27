@@ -1,6 +1,7 @@
 # Release Notes
 
 * **FIXED**: the stare object-wing correction skips an order whose median sky model is at or below `object_wing_min_sky_sigma` (default 1) times the noise of a faint-sky pixel, so it no longer drives a near-zero-sky NIR order negative, and the log reports the leak in e- only when the sky is not above zero (DY-1975).
+* **FIXED**: a recipe's settings are now its own deep copy of its block in the settings dictionary, so the stare sky-model fallback (sky subtraction off, slit length 30) and the `--poly` overrides no longer change the shared settings dictionary that later recipes in the same process read; the product header still records the parameters the recipe ran with (DY-1724).
 
 ## v0.19.0 - October 26, 2026
 

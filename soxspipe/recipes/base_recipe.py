@@ -2800,8 +2800,7 @@ class base_recipe:
         ```
         """
         iterator = 1
-        recipeSettings = self.get_recipe_settings()
-        for k, v in recipeSettings.items():
+        for k, v in self.recipeSettings.items():
             if k.lower() in ["uvb", "vis", "nir", "qc-acceptable-ranges"]:
                 continue
 
@@ -2916,9 +2915,12 @@ class base_recipe:
     def get_recipe_settings(self):
         """*get the recipe and arm specific settings*
 
+        The settings are a deep copy of the recipe's block, with the arm's values merged in. Changing them does not
+        change ``self.settings``, which the reducer shares between the recipes it runs in one process.
+
         **Return:**
 
-        - ``recipeSettings`` -- the recipe specific settings
+        - ``recipeSettings`` -- the recipe specific settings, or False when the recipe has no settings block
 
         **Usage:**
 
@@ -2926,11 +2928,13 @@ class base_recipe:
         usage code
         ```
         """
+        import copy
+
         self.log.debug("starting the ``get_recipe_settings`` method")
 
         recipeSettings = False
         if self.recipeName:
-            recipeSettings = self.settings[self.recipeName]
+            recipeSettings = copy.deepcopy(self.settings[self.recipeName])
         if recipeSettings and self.arm and self.arm.lower() in recipeSettings:
             for k, v in recipeSettings[self.arm.lower()].items():
                 recipeSettings[k] = v

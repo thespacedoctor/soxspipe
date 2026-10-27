@@ -84,6 +84,7 @@ def test_update_fits_keywords_records_recipe_provenance(
             }
         },
     )
+    recipe.recipeSettings = recipe.get_recipe_settings()
     recipe.rawFrames = type(
         "SyntheticRawFrames",
         (),
