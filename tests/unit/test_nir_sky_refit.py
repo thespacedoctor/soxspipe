@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.nir_sky_refit import (
-    MAX_GLOBAL_RMS_PX,
     DOUBLET_MERGE_GAP_NM,
+    MAX_GLOBAL_RMS_PX,
     MAX_TIGHT_TOLERANCE_NM,
     MIN_GLOBAL_LINES,
     MIN_OFFSET_LINES,
@@ -513,6 +513,72 @@ def test_lines_a_merge_gap_or_more_apart_stay_separate_and_a_chain_merges_whole(
     # ASSERT
     assert merged.centreNm.tolist() == pytest.approx([1500.19, 1500.38 + DOUBLET_MERGE_GAP_NM + 0.01])
     assert merged.halfWidthNm.tolist() == pytest.approx([0.19, 0.0])
+
+
+def test_lines_exactly_a_merge_gap_apart_stay_separate():
+    # ARRANGE
+    catalogue = np.array([1500.0, 1500.0 + DOUBLET_MERGE_GAP_NM])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.size == 2
+    assert merged.halfWidthNm.tolist() == [0.0, 0.0]
+
+
+def test_an_uneven_chain_carries_the_distance_from_its_centre_to_the_farthest_component():
+    # ARRANGE: THE MEAN SITS AT 1500.07, SO THE FAR COMPONENT IS 0.13 nm AWAY, NOT HALF THE 0.2 nm SPAN
+    catalogue = np.array([1500.0, 1500.01, 1500.2])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([1500.07])
+    assert merged.halfWidthNm.tolist() == pytest.approx([0.13])
+
+
+def test_a_peak_on_the_far_component_of_an_uneven_chain_is_still_that_line():
+    # ARRANGE
+    lines = merge_doublet_lines(np.array([1500.0, 1500.01, 1500.2]))
+
+    # ACT
+    peakIndex, catalogueIndex = match_peaks_to_catalogue(np.array([1500.2]), lines.centreNm, 0.001 + lines.halfWidthNm)
+
+    # ASSERT
+    assert peakIndex.tolist() == [0]
+    assert catalogueIndex.tolist() == [0]
+
+
+def test_merging_drops_non_finite_catalogue_wavelengths():
+    # ARRANGE: A NaN MUST NOT CHAIN ONTO THE LAST LINE AND TURN ITS CENTRE INTO NaN
+    catalogue = np.array([1700.3767, np.nan, 1700.4429, np.inf])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([(1700.3767 + 1700.4429) / 2])
+    assert np.isfinite(merged.halfWidthNm).all()
+
+
+@pytest.mark.parametrize(
+    "halfWidthNm",
+    [np.zeros(3), np.zeros(1), np.array([0.0, np.nan]), np.array([0.0, -0.01]), np.zeros((2, 1))],
+    ids=["too-long", "too-short", "nan", "negative", "two-dimensional"],
+)
+def test_order_sky_lines_reject_half_widths_that_do_not_fit_the_catalogue(halfWidthNm):
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="halfWidthNm"):
+        nir_order_sky_lines(
+            11,
+            np.array([1700.0]),
+            np.array([1700.0, 1710.0]),
+            np.array([PIXEL_SCALE_NM]),
+            0.04,
+            halfWidthNm=halfWidthNm,
+        )
 
 
 def test_merging_sorts_the_lines_and_leaves_its_input_alone():

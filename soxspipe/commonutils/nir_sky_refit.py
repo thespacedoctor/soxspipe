@@ -362,7 +362,9 @@ def merge_doublet_lines(catalogueNm) -> merged_lines:
     - ``merged`` -- the ``merged_lines``: ascending centres (nm), one per doublet or single line, and the half-width
       (nm) of each, 0 for a single line
     """
-    lines = np.sort(np.asarray(catalogueNm, dtype=float))
+    lines = np.asarray(catalogueNm, dtype=float)
+    # A NON-FINITE WAVELENGTH WOULD SORT TO THE END AND TURN THE LAST LINE'S CENTRE INTO NaN
+    lines = np.sort(lines[np.isfinite(lines)])
     if lines.size == 0:
         return merged_lines(lines, lines.copy())
     isStart = np.concatenate([[True], np.diff(lines) >= DOUBLET_MERGE_GAP_NM])
@@ -370,7 +372,8 @@ def merge_doublet_lines(catalogueNm) -> merged_lines:
     centres = np.bincount(groupIds, weights=lines) / np.bincount(groupIds)
     starts = np.flatnonzero(isStart)
     firsts, lasts = lines[starts], lines[np.append(starts[1:], lines.size) - 1]
-    return merged_lines(centres, (lasts - firsts) / 2)
+    # THE MEAN OF AN UNEVEN CHAIN IS OFF-CENTRE, SO THE WIDTH IS THE DISTANCE TO THE FARTHER END
+    return merged_lines(centres, np.maximum(centres - firsts, lasts - centres))
 
 
 def match_peaks_to_catalogue(predictedPeakNm, catalogueNm, toleranceNm):
@@ -772,6 +775,11 @@ class nir_order_sky_lines:
             object.__setattr__(self, name, array)
         if self.halfWidthNm is not None:
             widths = np.array(self.halfWidthNm, dtype=float)
+            if widths.shape != self.catalogueNm.shape or not (np.isfinite(widths) & (widths >= 0)).all():
+                raise ValueError(
+                    "halfWidthNm must hold one finite, non-negative width per catalogue line: "
+                    f"got shape {widths.shape} for {self.catalogueNm.size} lines"
+                )
             widths.flags.writeable = False
             object.__setattr__(self, "halfWidthNm", widths)
 
