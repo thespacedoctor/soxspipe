@@ -18,9 +18,9 @@ That offset is accepted only if the blue and red halves of the order agree (DY-1
 order in which every line is blended with a neighbour or too close to the order end (every line of a wide slit) is
 line-dominated, so it takes the continuum fallback on any slit. An order that the skyline table has no lines in (the
 SOXS VIS u and g orders) takes it on the SLIT1.0 only, because on a wider slit the wings of a bright object dominate
-its continuum (DY-1955). On the SOXS VIS arm and the SLIT1.0, an order whose skyline fit fails for any other reason
-(too faint, a failed fit gate) also takes the continuum fallback (DY-1927). An order whose skyline fit passes is never
-re-measured.
+its continuum (DY-1955). On the SOXS VIS arm and the SLIT1.0 or SLIT1.5, an order whose skyline fit fails for any
+other reason (too faint, a failed fit gate) also takes the continuum fallback (DY-1927). An order whose skyline fit
+passes is never re-measured.
 """
 
 import math
@@ -104,6 +104,9 @@ CONTINUUM_MAX_HALVES_DIFF_ARCSEC = 0.15
 CONTINUUM_SLIT_NAME = "SLIT1.0"
 # THE SKYLINE-FAILURE FALLBACK RUNS ON THIS ARM ONLY. THE NIR ORDERS KEEP THEIR SKYLINE RESULT (DY-1927)
 SKYLINE_FALLBACK_ARM = "VIS"
+# THE SKYLINE-FAILURE FALLBACK RUNS ON THESE SLITS ONLY, WHERE THE OBJECT WINGS DO NOT DOMINATE THE CONTINUUM EDGES
+# (DY-1927 RULING, 2026-10-27)
+SKYLINE_FALLBACK_SLIT_NAMES = ("SLIT1.0", "SLIT1.5")
 # THE CHUNK COUNT AND THE CHUNKS-PER-BIN LIMIT MUST BE WHOLE NUMBERS OF AT LEAST THIS, SO EACH HALF HOLDS A MEDIAN
 MIN_CONTINUUM_COUNT = 2
 
@@ -663,11 +666,14 @@ def _continuum_orders(log, profileNotes, slitName, failedSkylineOrders=()) -> li
     An order whose skylines are all blended or too close to the order end is included on any slit. An order that the
     skyline table has no lines in is included on the SLIT1.0 only; on another slit (or with no slit name) it is left
     out and the skipped orders are logged. An order in ``failedSkylineOrders`` (its skyline fit failed for any reason)
-    is included on the SLIT1.0 only; on another slit it is left out and logged. An order that failed for any other
-    reason is never included.
+    is included on the slits in ``SKYLINE_FALLBACK_SLIT_NAMES`` (SLIT1.0 and SLIT1.5) only; on another slit it is left
+    out and logged. A no-lines order never enters through ``failedSkylineOrders``, so it keeps the SLIT1.0-only rule.
+    An order that failed for any other reason is never included.
     """
     blended = [order for order, note in profileNotes.items() if has_all_blended_note(note)]
     noLines = [order for order, note in profileNotes.items() if has_no_skylines_note(note)]
+    # A NO-LINES ORDER ALSO FAILS ITS SKYLINE FIT; THE SKYLINE-FAILURE FALLBACK MUST NOT WIDEN ITS SLIT RULE
+    failedSkylineOrders = [order for order in failedSkylineOrders if order not in noLines]
     if noLines and slitName != CONTINUUM_SLIT_NAME:
         log.info(
             f"the continuum slit offset of an order with no skylines is measured on {CONTINUUM_SLIT_NAME} only (this "
@@ -675,10 +681,10 @@ def _continuum_orders(log, profileNotes, slitName, failedSkylineOrders=()) -> li
         )
         noLines = []
     failed = list(failedSkylineOrders)
-    if failed and slitName != CONTINUUM_SLIT_NAME:
+    if failed and slitName not in SKYLINE_FALLBACK_SLIT_NAMES:
         log.info(
-            f"a failed skyline slit offset falls back to the continuum on {CONTINUUM_SLIT_NAME} only (this frame: "
-            f"{slitName}), so orders {sorted(failed)} keep their failed skyline result"
+            f"a failed skyline slit offset falls back to the continuum on {' and '.join(SKYLINE_FALLBACK_SLIT_NAMES)} "
+            f"only (this frame: {slitName}), so orders {sorted(failed)} keep their failed skyline result"
         )
         failed = []
     return sorted(set(blended + noLines + failed))
@@ -819,8 +825,8 @@ def measure_slit_illumination(
       ``continuum-object-mask-arcsec`` and ``continuum-halves-max-diff-arcsec``. A missing key means the module
       constant. Default *None*
     - ``partners`` -- optional ``{order: partnerOrder}`` from which a failed order may borrow an offset. A VIS SLIT1.0
-      order whose skyline fit fails takes its own continuum fit instead and never borrows, even if that fit fails too.
-      Default *None*
+      or SLIT1.5 order whose skyline fit fails takes its own continuum fit instead and never borrows, even if that fit
+      fails too. Default *None*
 
     **Return:**
 

@@ -29,10 +29,11 @@ def _mixed_scene(tmp_path, *, deltas=None, slitName="SLIT1.0"):
     return replace(scene, skylinesDF=lines)
 
 
+@pytest.mark.parametrize("slitName", ["SLIT1.0", "SLIT1.5"])
 def test_a_vis_order_whose_skyline_fit_fails_gets_the_continuum_offset_and_records_the_method(
-    tmp_path, log, monkeypatch
+    tmp_path, log, monkeypatch, slitName
 ):
-    scene = _faint_lines_scene(tmp_path, slitName="SLIT1.0")
+    scene = _faint_lines_scene(tmp_path, slitName=slitName)
 
     result = _measure(scene, tmp_path, log, monkeypatch)
 
@@ -122,14 +123,14 @@ def test_a_nir_order_whose_skyline_fit_fails_never_builds_a_continuum_profile(tm
     assert not result.isApplied
 
 
-@pytest.mark.parametrize("slitName", ["SLIT5.0", "SLIT1.5", None])
+@pytest.mark.parametrize("slitName", ["SLIT5.0", "SLIT0.5", None])
 def test_a_vis_order_whose_skyline_fit_fails_is_not_measured_from_the_continuum_on_other_slits(
     tmp_path, log, monkeypatch, slitName
 ):
     scene = _faint_lines_scene(tmp_path, slitName=slitName)
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("the skyline-failure fallback must run on SLIT1.0 only")
+        raise AssertionError("the skyline-failure fallback must run on SLIT1.0 and SLIT1.5 only")
 
     monkeypatch.setattr(slit_illumination, "continuum_slit_profiles", forbidden)
     row = _offsets(_measure(scene, tmp_path, log, monkeypatch)).loc[11]
@@ -138,13 +139,16 @@ def test_a_vis_order_whose_skyline_fit_fails_is_not_measured_from_the_continuum_
     assert row["method"] == "skyline"
 
 
-def test_the_continuum_order_list_adds_the_failed_skyline_orders_on_the_slit_1_0_only(log):
+def test_the_continuum_order_list_adds_the_failed_skyline_orders_on_the_slit_1_0_and_1_5_only(log):
     notes = {10: "the skyline table has no lines between 500 and 512 nm", 13: "every skyline is too faint"}
 
     onSlit = slit_illumination._continuum_orders(log, notes, "SLIT1.0", failedSkylineOrders=[13, 14])
+    onSlit15 = slit_illumination._continuum_orders(log, notes, "SLIT1.5", failedSkylineOrders=[13, 14])
     onWideSlit = slit_illumination._continuum_orders(log, notes, "SLIT5.0", failedSkylineOrders=[13, 14])
 
     assert onSlit == [10, 13, 14]
+    # THE NO-LINES (U AND G) CONTINUUM STAYS SLIT1.0 ONLY; THE FAILED-SKYLINE FALLBACK ALSO RUNS ON SLIT1.5
+    assert onSlit15 == [13, 14]
     assert onWideSlit == []
 
 
@@ -162,7 +166,9 @@ def test_failed_skyline_orders_left_off_the_continuum_on_another_slit_are_logged
 
 
 @pytest.mark.parametrize(
-    ("slitName", "failedSkylineOrders"), [("SLIT1.0", [13]), ("SLIT5.0", [])], ids=["slit-1-0", "no-failed-orders"]
+    ("slitName", "failedSkylineOrders"),
+    [("SLIT1.0", [13]), ("SLIT1.5", [13]), ("SLIT5.0", [])],
+    ids=["slit-1-0", "slit-1-5", "no-failed-orders"],
 )
 def test_no_failed_skyline_skip_is_logged_when_nothing_is_left_off(log, slitName, failedSkylineOrders):
     # ACT
@@ -195,3 +201,14 @@ def test_a_fallback_order_keeps_only_its_continuum_profile_when_the_skyline_prof
     orderProfile = result.profiles.loc[result.profiles["order"] == 11]
     assert len(orderProfile) > 20
     assert orderProfile["slit"].is_unique
+
+
+def test_a_no_lines_order_does_not_reach_the_continuum_through_the_fallback_on_slit_1_5(log):
+    # ARRANGE: ORDER 10 HAS NO SKYLINES, SO ITS SKYLINE FIT FAILS TOO; ORDER 13 IS TOO FAINT
+    notes = {10: "the skyline table has no lines between 500 and 512 nm", 13: "every skyline is too faint"}
+
+    # ACT
+    orders = slit_illumination._continuum_orders(log, notes, "SLIT1.5", failedSkylineOrders=[10, 13])
+
+    # ASSERT
+    assert orders == [13]
