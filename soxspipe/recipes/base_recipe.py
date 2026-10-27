@@ -1381,6 +1381,11 @@ class base_recipe:
     def clean_up(self, forceFail=False):
         """*update product status in DB and remove intermediate files once recipe is complete*
 
+        A recipe whose stored status was not ``pass`` before this run (it failed or was interrupted) and which has
+        now passed refreshes the session's SOF files once, so its dependents can run in the same ``reduce``. A
+        recipe that passed before, or never ran, does not refresh. A recipe that passed before and now fails
+        refreshes as a failure.
+
         **Key Arguments:**
         - ``forceFail`` -- force the recipe to be marked as failed in the DB
 
@@ -1420,16 +1425,17 @@ class base_recipe:
                 c.execute(sqlQuery, (f"{self.sofName}.sof",))
                 c.close()
 
-            # PREVIOUSLY FAILED RECIPE THAT HAS NOW PASSED
-            if (self.status == "fail" and passToFail) or (forceFail and self.status == "pass"):
+            # SELF.STATUS IS THE STATUS STORED BEFORE THIS RUN, READ BEFORE THE START-OF-RUN WRITE. A RECIPE THAT
+            # WAS NOT 'PASS' (FAILED OR INTERRUPTED) AND HAS NOW PASSED UNBLOCKS ITS DEPENDENTS, SO THE SOF FILES
+            # ARE REBUILT. A FIRST RUN (NO STORED STATUS) OR A REPEAT PASS CHANGES NOTHING DOWNSTREAM, SO IT IS
+            # SKIPPED: THE REBUILD IS EXPENSIVE.
+            isRecovery = self.status not in (None, "pass") and not forceFail
+            isRegression = bool(forceFail) and self.status == "pass"
+            if isRecovery or isRegression:
                 from soxspipe.commonutils import data_organiser
 
-                if passToFail or forceFail:
-                    failure = True
-                else:
-                    failure = False
                 do = data_organiser(log=self.log, rootDir=self.workspaceRootPath)
-                do.session_refresh(failure=failure)
+                do.session_refresh(failure=isRegression)
                 do.close()
 
             if forceFail and isinstance(forceFail, str):

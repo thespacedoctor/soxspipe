@@ -344,13 +344,6 @@ class _RecordingConnection:
         return None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1699 (DY-37 I3): clean_up's 'previously failed, now passing' branch can never run (passToFail needs 'pass')"
-    ),
-)
 def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -383,8 +376,7 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     recipe.clean_up()
 
     # ASSERT: EXACTLY ONE REFRESH, AND NOT A FAILURE REFRESH
-    assert len(refreshes) == 1, f"expected one session refresh, got {refreshes!r}"
-    assert refreshes[0] is not True, "the refresh was issued as a failure refresh"
+    assert refreshes == [False]
 
 
 # ---------------------------------------------------------------------------
