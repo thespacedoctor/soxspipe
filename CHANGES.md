@@ -5,6 +5,8 @@
 * **FIXED**: the stare object-wing correction skips an order whose median sky model is at or below `object_wing_min_sky_sigma` (default 1) times the noise of a faint-sky pixel, so it no longer drives a near-zero-sky NIR order negative, and the log reports the leak in e- only when the sky is not above zero (DY-1975).
 * **FIXED**: a recipe's settings are now its own deep copy of its block in the settings dictionary, so the stare sky-model fallback (sky subtraction off, slit length 30) and the `--poly` overrides no longer change the shared settings dictionary that later recipes in the same process read; the product header still records the parameters the recipe ran with (DY-1724).
 * **FIXED**: SOXS NIR sky-line tuning matches each unresolved OH doublet of the catalogue (components up to 0.14 nm apart) as one line at the mean of its components, and a peak may sit on either component, so order 11 (1700-1800 nm) no longer reads +0.2 to +0.4 angstrom from the catalogue (DY-1974).
+* **FIXED**: the real-data gate's stare and NIR offset flux-calibrated median checks pass `abs=0` to `pytest.approx`, whose default absolute tolerance of 1e-12 had let any flux near 1e-15 pass, so a 6% NIR stare fall went unseen (DY-1980).
+* **TEST**: re-record the real-data gate's VIS and NIR stare baselines and the NIR offset row count, wavelength ends and flux-calibrated median from six bit-identical CI runs of develop 9869275e, after DY-1964, DY-1968, DY-1972, DY-1973, DY-1958 and DY-1975 moved them; the NIR offset blue end (795.06 to 795.3 nm) was failing the gate (DY-1980, DY-1646).
 
 ## v0.19.0 - October 26, 2026
 
