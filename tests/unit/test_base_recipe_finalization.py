@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -66,9 +68,28 @@ def _recipe(*, log: Any, tmp_path: Path, qc: pd.DataFrame, status: str) -> base_
     return recipe
 
 
+def _patch_organiser(monkeypatch: pytest.MonkeyPatch) -> list[bool | None]:
+    """Replace the data organiser with a stub and return the list of refresh requests it receives."""
+    refreshes: list[bool | None] = []
+
+    class RecordingOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, *, failure: bool | None = True) -> None:
+            refreshes.append(failure)
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", RecordingOrganiser)
+    return refreshes
+
+
 def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     log: Any,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A passing recipe commits its session status and removes intermediates."""
     recipe = _recipe(
@@ -79,6 +100,7 @@ def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     )
     connection = RecordingConnection()
     recipe.conn = connection
+    _patch_organiser(monkeypatch)
 
     result = recipe.clean_up()
 
@@ -89,6 +111,72 @@ def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     assert connection.wasClosed
     assert not Path(recipe.outDir).exists()
     assert not hasattr(recipe, "conn")
+
+
+@pytest.mark.parametrize("previousStatus", ["fail", "running"])
+def test_clean_up_refreshes_session_once_when_an_unfinished_recipe_now_passes(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    previousStatus: str,
+) -> None:
+    """A recipe that failed or was interrupted last time refreshes the session once its pass is stored."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]}),
+        status=previousStatus,
+    )
+    connection = RecordingConnection()
+    recipe.conn = connection
+    refreshes = _patch_organiser(monkeypatch)
+
+    recipe.clean_up()
+
+    assert connection.statements == ["update product_frames set status_20240102 = 'pass' where sof = ?"]
+    assert refreshes == [False]
+
+
+@pytest.mark.parametrize("previousStatus", ["pass", None])
+def test_clean_up_does_not_refresh_session_when_the_recipe_was_not_unfinished(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    previousStatus: str | None,
+) -> None:
+    """A recipe that passed before, or never ran, passes without paying for a SOF refresh."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]}),
+        status=previousStatus,
+    )
+    recipe.conn = RecordingConnection()
+    refreshes = _patch_organiser(monkeypatch)
+
+    recipe.clean_up()
+
+    assert refreshes == []
+
+
+def test_clean_up_does_not_refresh_session_when_a_failed_recipe_fails_again(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recipe that failed before and fails again leaves the SOF files as they are."""
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["fail"], "qc_name": ["TRACE RMS"]}),
+        status="fail",
+    )
+    recipe.conn = RecordingConnection()
+    refreshes = _patch_organiser(monkeypatch)
+
+    recipe.clean_up()
+
+    assert refreshes == []
 
 
 def test_clean_up_refreshes_session_when_failed_qc_reverses_passing_status(
@@ -416,3 +504,37 @@ def test_report_output_keeps_every_per_order_qc_row_but_lists_only_the_all_order
     assert flags == {"SNR MEDIAN": "fail", "SNR MEDIAN O1": "pass", "SNR MEDIAN O2": "pass"}
     printed = " ".join(message for level, message in log.messages)
     assert printed.count("SNR MEDIAN") == 1
+
+
+def test_a_sof_stored_as_failed_is_refreshed_once_by_the_real_open_then_clean_up_sequence(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A row stored as `fail` is read as the previous status by the real start write, then refreshes once."""
+    # ARRANGE
+    databasePath = tmp_path / "soxspipe.db"
+    with contextlib.closing(sqlite3.connect(databasePath)) as setup, setup:
+        setup.execute("create table product_frames (sof text, error_message text, status_20240102 text)")
+        setup.execute("insert into product_frames (sof, status_20240102) values ('synthetic.sof', 'fail')")
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]}),
+        status="",
+    )
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
+    recipe.conn = None
+    refreshes = _patch_organiser(monkeypatch)
+
+    # ACT
+    recipe._open_session_database(home=str(tmp_path))
+    previousStatus = recipe.status
+    recipe.clean_up()
+
+    # ASSERT
+    assert previousStatus == "fail"
+    assert refreshes == [False]
+    with contextlib.closing(sqlite3.connect(databasePath)) as verify:
+        storedStatus = verify.execute("select status_20240102 from product_frames").fetchone()[0]
+    assert storedStatus == "pass"

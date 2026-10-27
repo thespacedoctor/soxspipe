@@ -236,6 +236,46 @@ def test_write_round_trip_preserves_prepared_extensions(
     assert np.allclose(restored.uncertainty.array, 1.5)
 
 
+def test_a_write_that_dies_mid_file_leaves_no_product_at_the_final_path(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1697: a killed write must not leave a truncated product for the next run to skip."""
+    # ARRANGE
+    recipe = _recipe(tmp_path, log)
+    productDir = tmp_path / "reduced" / "2024-01-02" / "soxs-mbias"
+
+    def cut_short(self: fits.HDUList, name: str, *args: object, **kwargs: object) -> None:
+        Path(name).write_bytes(b"SIMPLE  =")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(fits.HDUList, "writeto", cut_short)
+
+    # ACT
+    with pytest.raises(OSError, match="disk full"):
+        recipe._write(frame=synthetic_ccd(prepared=True), filedir=str(tmp_path), filename="product.fits")
+
+    # ASSERT
+    assert list(productDir.iterdir()) == []
+
+
+def test_a_product_write_replaces_an_earlier_product_whole(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    recipe = _recipe(tmp_path, log)
+    productPath = tmp_path / "reduced" / "2024-01-02" / "soxs-mbias" / "product.fits"
+    productPath.parent.mkdir(parents=True)
+    productPath.write_bytes(b"truncated leftover")
+
+    # ACT
+    recipe._write(frame=synthetic_ccd(prepared=True), filedir=str(tmp_path), filename="product.fits")
+
+    # ASSERT
+    with fits.open(productPath, checksum=True) as hdus:
+        assert [hdu.name for hdu in hdus] == ["FLUX", "QUAL", "ERRS"]
+    assert [path.name for path in productPath.parent.iterdir()] == ["product.fits"]
+
+
 def _preparing_recipe(tmp_path: Path, log: object) -> base_recipe:
     recipe = _recipe(tmp_path, log)
     calibrationPath = tmp_path / "calibrations"

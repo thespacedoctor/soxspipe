@@ -534,3 +534,61 @@ def test_reduce_multiprocess_forwards_selected_group(
     assert bulkCalls[0]["settings"] == {"answer": 42}
     assert bulkCalls[0]["overwrite"] is True
     assert bulkCalls[0]["sessionId"] == "night1"
+
+
+def test_reduce_all_builds_the_blocking_report_after_the_final_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """A recipe that recovers during the run is not reported as a failed run, as the report follows the last refresh."""
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    commonutilsModule = import_module("soxspipe.commonutils")
+    dataOrganiserModule = import_module("soxspipe.commonutils.data_organiser")
+    workspacePath = tmp_path / "workspace"
+    collection = _uninitialized_reducer(log, workspacePath / "soxspipe.db")
+    collection.sessionId = "night1"
+    collection.sessionPath = str(workspacePath / "sessions" / "night1")
+    collection.workspaceDirectory = str(workspacePath)
+    collection.reductionTarget = "all"
+    collection.recipeList = ["mbias"]
+    collection.settings = {}
+    collection.verbose = False
+    collection.quitOnFail = False
+    collection.daemon = True
+    selectedFrames = [
+        pd.DataFrame([{"recipe": "mbias", "sof": "bias.sof", "command": "run bias"}]),
+        pd.DataFrame(columns=["recipe", "sof", "command"]),
+    ]
+    monkeypatch.setattr(collection, "select_sof_files_to_process", lambda **kwargs: selectedFrames.pop(0))
+    events: list[str] = []
+    printedReports: list[pd.DataFrame] = []
+
+    class StatefulOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, **kwargs: object) -> None:
+            events.append("refresh")
+
+        def get_incomplete_sets_report(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+            # THE SOF FLAGS ARE STALE UNTIL THE REFRESH AFTER THE RUN, SO A RECOVERED RECIPE STILL READS AS FAILED
+            events.append("report")
+            reason = "not yet reduced" if events[-2] == "refresh" else "failed run"
+            return pd.DataFrame(), pd.DataFrame([{"calibration": "mbias", "reason": reason}])
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(commonutilsModule, "data_organiser", StatefulOrganiser)
+    monkeypatch.setattr(reducerModule, "run_recipe", lambda *args, **kwargs: events.append("recipe"))
+    monkeypatch.setattr(
+        dataOrganiserModule,
+        "print_incomplete_sets_report",
+        lambda incompleteSets, blockingSets: printedReports.append(blockingSets),
+    )
+
+    collection.reduce(batch=10, multiprocess=False)
+
+    assert events == ["refresh", "recipe", "refresh", "report"]
+    assert printedReports[0]["reason"].tolist() == ["not yet reduced"]
