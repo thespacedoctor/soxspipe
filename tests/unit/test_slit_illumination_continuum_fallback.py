@@ -148,6 +148,18 @@ def test_the_continuum_order_list_adds_the_failed_skyline_orders_on_the_slit_1_0
     assert onWideSlit == []
 
 
+def test_failed_skyline_orders_left_off_the_continuum_on_another_slit_are_logged(log):
+    # ARRANGE
+    notes = {13: "every skyline is too faint"}
+
+    # ACT
+    slit_illumination._continuum_orders(log, notes, "SLIT5.0", failedSkylineOrders=[14, 13])
+
+    # ASSERT
+    infos = [message for kind, message in log.messages if kind == "info"]
+    assert any("SLIT5.0" in message and "[13, 14]" in message for message in infos)
+
+
 def test_the_failed_skyline_orders_are_the_failed_rows_of_the_vis_arm_only():
     offsets = pd.DataFrame(
         {"order": [1, 2, 3], "status": ["fitted", "failed", "failed"], "reason": ["", "gate", "too faint"]}

@@ -646,20 +646,25 @@ def _not_applied(log, reason, config, flatEdges=None, profiles=None, offsets=Non
     )
 
 
-def _failed_skyline_orders(offsets, arm):
-    """*the orders whose skyline fit failed, if the arm takes the skyline-failure continuum fallback, else none*"""
+def _failed_skyline_orders(offsets, arm) -> list[int]:
+    """*the orders whose skyline fit failed, if the arm takes the skyline-failure continuum fallback, else none*
+
+    Any failed status counts: no usable lines, too faint, a failed gate, a fit that did not converge, a degenerate
+    width or an offset beyond ``max-offset-arcsec``.
+    """
     if str(arm).upper() != SKYLINE_FALLBACK_ARM:
         return []
     return [int(order) for order in offsets.loc[offsets["status"] == STATUS_FAILED, "order"]]
 
 
-def _continuum_orders(log, profileNotes, slitName, failedSkylineOrders=()):
+def _continuum_orders(log, profileNotes, slitName, failedSkylineOrders=()) -> list[int]:
     """*the orders to measure from the sky continuum*
 
     An order whose skylines are all blended or too close to the order end is included on any slit. An order that the
     skyline table has no lines in is included on the SLIT1.0 only; on another slit (or with no slit name) it is left
     out and the skipped orders are logged. An order in ``failedSkylineOrders`` (its skyline fit failed for any reason)
-    is included on the SLIT1.0 only. An order that failed for any other reason is never included.
+    is included on the SLIT1.0 only; on another slit it is left out and logged. An order that failed for any other
+    reason is never included.
     """
     blended = [order for order, note in profileNotes.items() if has_all_blended_note(note)]
     noLines = [order for order, note in profileNotes.items() if has_no_skylines_note(note)]
@@ -669,7 +674,13 @@ def _continuum_orders(log, profileNotes, slitName, failedSkylineOrders=()):
             f"frame: {slitName}), so orders {sorted(noLines)} have no slit offset"
         )
         noLines = []
-    failed = list(failedSkylineOrders) if slitName == CONTINUUM_SLIT_NAME else []
+    failed = list(failedSkylineOrders)
+    if failed and slitName != CONTINUUM_SLIT_NAME:
+        log.info(
+            f"a failed skyline slit offset falls back to the continuum on {CONTINUUM_SLIT_NAME} only (this frame: "
+            f"{slitName}), so orders {sorted(failed)} keep their failed skyline result"
+        )
+        failed = []
     return sorted(set(blended + noLines + failed))
 
 
@@ -807,7 +818,8 @@ def measure_slit_illumination(
       ``overlap-margin-arcsec``, ``continuum-chunks``, ``continuum-min-chunks-per-bin``,
       ``continuum-object-mask-arcsec`` and ``continuum-halves-max-diff-arcsec``. A missing key means the module
       constant. Default *None*
-    - ``partners`` -- optional ``{order: partnerOrder}`` from which a failed order may borrow an offset. Default *None*
+    - ``partners`` -- optional ``{order: partnerOrder}`` from which a failed order may borrow an offset. A VIS SLIT1.0
+      order whose skyline fit fails tries its own continuum fit first and borrows only if that fails too. Default *None*
 
     **Return:**
 
