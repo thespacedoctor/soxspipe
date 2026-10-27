@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.slit_illumination import (
+    OVERLAP_MARGIN_ARCSEC,
     FLAT_EDGE_COLUMNS,
     OFFSET_COLUMNS,
     STATUS_BORROWED,
@@ -75,6 +76,16 @@ def test_a_positive_offset_trims_the_lower_end_by_the_offset_and_both_ends_by_th
     # BOTH-LIT RANGE IS [max(-5, -4), min(5, 6)] = [-4, 5], TRIMMED BY 0.3 TO [-3.7, 4.7]
     assert _excluded_slit_positions(mask, 0) == _expected_exclusions(-3.7, 4.7)
     assert _excluded_slit_positions(mask, 1) == _expected_exclusions(-3.7, 4.7)
+
+
+def test_the_default_margin_trims_both_ends_of_the_both_lit_range_by_0_45_arcsec(log):
+    slit, orderMap = _images()
+
+    mask = overlap_exclude_mask(log, slit, orderMap, _flat_edges(), _offsets({11: 0.0, 12: 0.0}), OVERLAP_MARGIN_ARCSEC)
+
+    # BOTH-LIT RANGE IS [-5, 5], TRIMMED BY 0.45 TO [-4.55, 4.55]
+    assert pytest.approx(0.45) == OVERLAP_MARGIN_ARCSEC
+    assert _excluded_slit_positions(mask, 0) == _expected_exclusions(-4.55, 4.55)
 
 
 def test_a_negative_offset_trims_the_upper_end_by_the_offset(log):
