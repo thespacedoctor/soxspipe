@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.nir_sky_refit import (
+    DOUBLET_MERGE_GAP_NM,
     MAX_GLOBAL_RMS_PX,
     MAX_TIGHT_TOLERANCE_NM,
     MIN_GLOBAL_LINES,
@@ -23,6 +24,7 @@ from soxspipe.commonutils.nir_sky_refit import (
     global_seed_px,
     match_peaks_to_catalogue,
     match_tolerance_nm,
+    merge_doublet_lines,
     nir_order_sky_lines,
     order_geometry,
     own_seeds_px,
@@ -419,10 +421,10 @@ def test_peaks_match_the_nearest_catalogue_line_within_the_tolerance():
     peaks = np.array([1500.03, 1501.5, 1501.98])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
 
     # ASSERT
-    assert peakIdx.tolist() == [0, 2]
+    assert peakIndex.tolist() == [0, 2]
     assert catalogueIdx.tolist() == [0, 2]
 
 
@@ -432,7 +434,7 @@ def test_a_line_half_a_nanometre_away_is_not_matched_to_a_neighbour_after_seedin
     peaks = np.array([1500.0 + 0.02])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=MAX_TIGHT_TOLERANCE_NM)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=MAX_TIGHT_TOLERANCE_NM)
 
     # ASSERT
     assert catalogueIdx.tolist() == [0]
@@ -444,10 +446,10 @@ def test_a_peak_between_two_catalogue_lines_is_matched_once():
     peaks = np.array([1500.05])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
 
     # ASSERT
-    assert peakIdx.tolist() == [0]
+    assert peakIndex.tolist() == [0]
     assert catalogueIdx.tolist() == [1]
 
 
@@ -474,6 +476,209 @@ def test_tolerance_without_an_arc_rms_is_the_cap():
     # ACT / ASSERT
     assert match_tolerance_nm(arcRmsPx=None, dispersionNmPerPx=0.06) == MAX_TIGHT_TOLERANCE_NM
     assert match_tolerance_nm(arcRmsPx=float("nan"), dispersionNmPerPx=0.06) == MAX_TIGHT_TOLERANCE_NM
+
+
+# DOUBLET CATALOGUE LINES (DY-1974)
+
+
+def test_the_two_components_of_a_doublet_become_one_line_at_their_centroid():
+    # ARRANGE: THE 1700.4 nm OH DOUBLET, WITH A LINE 7 nm AWAY
+    catalogue = np.array([1700.3767, 1700.4429, 1707.3632])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([(1700.3767 + 1700.4429) / 2, 1707.3632])
+
+
+def test_a_merged_line_carries_the_distance_to_its_outermost_component_and_a_single_line_has_none():
+    # ARRANGE
+    catalogue = np.array([1700.3767, 1700.4429, 1707.3632])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.halfWidthNm.tolist() == pytest.approx([(1700.4429 - 1700.3767) / 2, 0.0])
+
+
+def test_lines_a_merge_gap_or_more_apart_stay_separate_and_a_chain_merges_whole():
+    # ARRANGE: 0.19 nm GAPS CHAIN INTO ONE LINE, A GAP OF MORE THAN THE MERGE GAP DOES NOT JOIN
+    catalogue = np.array([1500.0, 1500.19, 1500.38, 1500.38 + DOUBLET_MERGE_GAP_NM + 0.01])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([1500.19, 1500.38 + DOUBLET_MERGE_GAP_NM + 0.01])
+    assert merged.halfWidthNm.tolist() == pytest.approx([0.19, 0.0])
+
+
+def test_lines_exactly_a_merge_gap_apart_stay_separate():
+    # ARRANGE: A BASE OF 0 KEEPS THE GAP EXACT; 1500 + GAP - 1500 ROUNDS ABOVE IT AND WOULD HIDE A ">" BUG
+    catalogue = np.array([0.0, DOUBLET_MERGE_GAP_NM])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.size == 2
+    assert merged.halfWidthNm.tolist() == [0.0, 0.0]
+
+
+def test_an_uneven_chain_carries_the_distance_from_its_centre_to_the_farthest_component():
+    # ARRANGE: THE MEAN SITS AT 1500.07, SO THE FAR COMPONENT IS 0.13 nm AWAY, NOT HALF THE 0.2 nm SPAN
+    catalogue = np.array([1500.0, 1500.01, 1500.2])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([1500.07])
+    assert merged.halfWidthNm.tolist() == pytest.approx([0.13])
+
+
+def test_a_peak_on_the_far_component_of_an_uneven_chain_is_still_that_line():
+    # ARRANGE
+    lines = merge_doublet_lines(np.array([1500.0, 1500.01, 1500.2]))
+
+    # ACT
+    peakIndex, catalogueIndex = match_peaks_to_catalogue(np.array([1500.2]), lines.centreNm, 0.001 + lines.halfWidthNm)
+
+    # ASSERT
+    assert peakIndex.tolist() == [0]
+    assert catalogueIndex.tolist() == [0]
+
+
+def test_merging_drops_non_finite_catalogue_wavelengths():
+    # ARRANGE: A NaN MUST NOT CHAIN ONTO THE LAST LINE AND TURN ITS CENTRE INTO NaN
+    catalogue = np.array([1700.3767, np.nan, 1700.4429, np.inf])
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([(1700.3767 + 1700.4429) / 2])
+    assert np.isfinite(merged.halfWidthNm).all()
+
+
+@pytest.mark.parametrize(
+    "halfWidthNm",
+    [
+        np.zeros(3),
+        np.zeros(1),
+        np.array([0.0, np.nan]),
+        np.array([0.0, np.inf]),
+        np.array([0.0, -np.inf]),
+        np.array([0.0, -0.01]),
+        np.zeros((2, 1)),
+    ],
+    ids=["too-long", "too-short", "nan", "inf", "minus-inf", "negative", "two-dimensional"],
+)
+def test_order_sky_lines_reject_half_widths_that_do_not_fit_the_catalogue(halfWidthNm):
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="halfWidthNm"):
+        nir_order_sky_lines(
+            11,
+            np.array([1700.0]),
+            np.array([1700.0, 1710.0]),
+            np.array([PIXEL_SCALE_NM]),
+            0.04,
+            halfWidthNm=halfWidthNm,
+        )
+
+
+def test_merging_sorts_the_lines_and_leaves_its_input_alone():
+    # ARRANGE
+    catalogue = np.array([1707.3752, 1700.4429, 1707.3632, 1700.3767])
+    before = catalogue.copy()
+
+    # ACT
+    merged = merge_doublet_lines(catalogue)
+
+    # ASSERT
+    assert merged.centreNm.tolist() == pytest.approx([1700.4098, 1707.3692])
+    assert catalogue.tolist() == before.tolist()
+
+
+def test_merging_no_lines_returns_no_lines():
+    # ACT
+    merged = merge_doublet_lines(np.array([]))
+
+    # ASSERT
+    assert merged.centreNm.size == merged.halfWidthNm.size == 0
+
+
+def test_matching_takes_a_tolerance_for_each_catalogue_line():
+    # ARRANGE: BOTH PEAKS ARE 0.05 nm FROM THEIR LINE, WHICH THE FIRST LINE'S TOLERANCE ALLOWS AND THE SECOND'S DOES NOT
+    catalogue = np.array([1500.0, 1501.0])
+    peaks = np.array([1500.05, 1501.05])
+
+    # ACT
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=np.array([0.06, 0.04]))
+
+    # ASSERT
+    assert (peakIndex.tolist(), catalogueIdx.tolist()) == ([0], [0])
+
+
+def _doublet_order_lines(
+    order: int, halfWidthNm: float, merged: bool, toleranceNm: float = 0.04
+) -> nir_order_sky_lines:
+    """*the order's sky lines, each an unresolved doublet with components ``halfWidthNm`` either side*"""
+    geometry = _geometry()[order]
+    centres = geometry.centreNm + np.linspace(-0.9, 0.9, 12) * HALF_RANGE_NM
+    components = np.sort(np.concatenate([centres - halfWidthNm, centres + halfWidthNm]))
+    peaks = centres + geometry.dispersionNmPerPx * _model_px(order, np.linspace(-0.9, 0.9, 12))
+    if not merged:
+        return nir_order_sky_lines(order, peaks, components, np.full(12, PIXEL_SCALE_NM), toleranceNm)
+    lines = merge_doublet_lines(components)
+    return nir_order_sky_lines(
+        order, peaks, lines.centreNm, np.full(12, PIXEL_SCALE_NM), toleranceNm, halfWidthNm=lines.halfWidthNm
+    )
+
+
+def test_merged_doublets_recover_the_shift_that_matching_one_component_biases():
+    # ARRANGE: EVERY SKY LINE IS A BLEND CENTRED BETWEEN COMPONENTS 0.07 nm EITHER SIDE (THE 0.14 nm DOUBLET AT 1724 nm)
+    perComponent = {o: _doublet_order_lines(o, 0.07, merged=False, toleranceNm=MAX_TIGHT_TOLERANCE_NM) for o in ORDERS}
+    perDoublet = {o: _doublet_order_lines(o, 0.07, merged=True, toleranceNm=MAX_TIGHT_TOLERANCE_NM) for o in ORDERS}
+
+    # ACT
+    biased = fit_with_iterated_matching(perComponent, _geometry(), _seed_px(), SETTINGS)
+    merged = fit_with_iterated_matching(perDoublet, _geometry(), _seed_px(), SETTINGS)
+
+    # ASSERT
+    assert merged.fallbackReason is None
+    assert merged.rmsPx < 0.01
+    for o in ORDERS:
+        assert merged.corrections[o].shiftPx == pytest.approx(_model_px(o, np.array(0.0)), abs=0.02)
+    assert biased.fallbackReason is not None or biased.rmsPx > 10 * merged.rmsPx
+
+
+def test_a_peak_on_one_component_of_a_merged_doublet_is_still_that_line():
+    # ARRANGE: THE PEAKS SIT ON THE RED COMPONENT, 0.07 nm FROM THE CENTROID, BEYOND THE 0.04 nm TOLERANCE
+    def on_red_component(order: int, useWidth: bool) -> nir_order_sky_lines:
+        lines = _doublet_order_lines(order, 0.07, merged=True)
+        return nir_order_sky_lines(
+            order,
+            lines.peakNm + 0.07,
+            lines.catalogueNm,
+            lines.pixelScaleNm,
+            lines.toleranceNm,
+            halfWidthNm=lines.halfWidthNm if useWidth else None,
+        )
+
+    withWidth = {o: on_red_component(o, True) for o in ORDERS}
+    withoutWidth = {o: on_red_component(o, False) for o in ORDERS}
+
+    # ACT
+    matchedWith = fit_with_iterated_matching(withWidth, _geometry(), _seed_px(), SETTINGS, iterations=1)
+    matchedWithout = fit_with_iterated_matching(withoutWidth, _geometry(), _seed_px(), SETTINGS, iterations=1)
+
+    # ASSERT
+    # THE RIGID SEED IS A LITTLE OFF THE MODEL AT THE ENDS OF THE ORDERS, SO A FEW LINES FALL OUTSIDE EVEN THE WIDTH
+    assert len(matchedWith.lines) >= 11 * len(ORDERS)
+    assert len(matchedWithout.lines) < len(matchedWith.lines) / 2
 
 
 # SEEDING
@@ -1116,8 +1321,8 @@ def test_a_peak_nearer_one_doublet_component_is_matched_once_to_that_component()
     peaks = np.array([1500.01])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.04)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.04)
 
     # ASSERT
-    assert peakIdx.tolist() == [0]
+    assert peakIndex.tolist() == [0]
     assert catalogueIdx.tolist() == [0]
