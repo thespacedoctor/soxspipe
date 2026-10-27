@@ -253,13 +253,6 @@ def test_a_complete_product_still_blocks_a_rerun_without_overwrite(
         recipe._resolve_product_path(log, str(tmp_path / "sof" / f"{I1_SOF_NAME}.sof"), False, False)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileExistsError,
-    reason=(
-        "DY-1697 (DY-37 I1): a truncated product from an interrupted run is skipped as 'already exists' on every rerun"
-    ),
-)
 def test_a_truncated_product_from_an_interrupted_run_is_not_treated_as_an_existing_product(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -271,6 +264,23 @@ def test_a_truncated_product_from_an_interrupted_run_is_not_treated_as_an_existi
 
     # ASSERT: THE RERUN PROCEEDS AND WILL WRITE THE PRODUCT AT THE SAME PATH
     assert recipe.productPath == str(productPath)
+
+
+def test_a_truncated_product_is_reported_by_name_as_being_replaced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, productPath = _product_recipe(tmp_path, monkeypatch, truncate=True)
+    warnings: list[str] = []
+    recorder = SimpleNamespace(warning=warnings.append)
+
+    # ACT
+    recipe._resolve_product_path(recorder, str(tmp_path / "sof" / f"{I1_SOF_NAME}.sof"), False, False)
+
+    # ASSERT
+    assert len(warnings) == 1
+    assert productPath.name in warnings[0]
+    assert "being replaced" in warnings[0]
 
 
 # ---------------------------------------------------------------------------

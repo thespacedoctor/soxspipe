@@ -200,6 +200,30 @@ class base_recipe:
         """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
         return bool(self.turnOffMP or self.debug)
 
+    def _complete_product_exists(self, log):
+        """*test whether a complete product is already in place at* ``self.productPath``
+
+        **Key Arguments:**
+
+        - ``log`` -- the logger to warn on
+
+        **Return:**
+
+        - ``exists`` -- *True* only when the product is a whole FITS file. A file that is cut short by an
+          interrupted write is warned about by name and counted as absent, so the rerun rebuilds it.
+        """
+        from soxspipe.commonutils.atomic_fits import is_complete_fits
+
+        if not os.path.exists(self.productPath):
+            return False
+        if is_complete_fits(self.productPath):
+            return True
+        log.warning(
+            f"The existing product `{os.path.basename(self.productPath)}` is not a complete FITS file "
+            "(an earlier run was probably interrupted). It is being replaced."
+        )
+        return False
+
     def _resolve_product_path(self, log, inputFrames, verbose, overwrite):
         """*predict where this recipe's product will be written, and refuse to run over one that is already there*
 
@@ -243,7 +267,7 @@ class base_recipe:
                 raise FileExistsError(
                     f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
                 )
-            if os.path.exists(self.productPath) and not overwrite:
+            if not overwrite and self._complete_product_exists(log):
                 basename = os.path.basename(self.productPath)
                 if verbose:
                     print(
@@ -1568,6 +1592,7 @@ class base_recipe:
         """
         self.log.debug("starting the ``write`` method")
 
+        from soxspipe.commonutils.atomic_fits import write_hdulist_atomically
         from soxspipe.commonutils.phase3 import add_qc_to_header, basic_header_scrubbing, sort_keywords
 
         # WRITE QCs TO HEADERS
@@ -1602,10 +1627,11 @@ class base_recipe:
         HDUList = frame.to_hdu(hdu_mask="QUAL", hdu_uncertainty="ERRS", hdu_flags=None)
         HDUList[0].name = "FLUX"
         HDUList.verify("fix")
+        # WRITE VIA A TEMPORARY NAME, SO A KILLED RUN NEVER LEAVES A PARTIAL FILE AT THE FINAL PATH (DY-1697)
         if product:
-            HDUList.writeto(filepath, output_verify="fix+warn", overwrite=overwrite, checksum=True)
+            write_hdulist_atomically(HDUList, filepath, output_verify="fix+warn", overwrite=overwrite, checksum=True)
         else:
-            HDUList.writeto(filepath, overwrite=overwrite, checksum=False)
+            write_hdulist_atomically(HDUList, filepath, overwrite=overwrite, checksum=False)
 
         filepath = os.path.abspath(filepath)
 
