@@ -222,6 +222,15 @@ def _calibration_products(organiser, sof):
     return {row[0] for row in rows}
 
 
+def _assert_failed_qc_snapshot_released(organiser) -> None:
+    """The restore leaves no failed-QC snapshot active and no temp table behind."""
+    leftover = organiser.conn.execute(
+        "SELECT name FROM sqlite_temp_master WHERE name = 'qc_failed_snapshot'"
+    ).fetchone()
+    assert organiser.failedQcSnapshot is None
+    assert leftover is None
+
+
 def test_a_fail_restored_in_a_later_pass_is_overturned_when_the_ranges_now_accept_its_qc(
     two_session_workspace,
 ) -> None:
@@ -241,6 +250,7 @@ def test_a_fail_restored_in_a_later_pass_is_overturned_when_the_ranges_now_accep
 
     # ASSERT
     assert _read_statuses(organiser, "science")[DISP_SOLUTION] == "pass"
+    _assert_failed_qc_snapshot_released(organiser)
 
 
 def test_refresh_restores_a_downstream_status_whose_calibration_was_rematched_after_a_failure(
@@ -522,6 +532,7 @@ def test_a_restore_that_raises_still_applies_the_qc_ranges_and_the_error_propaga
     # ASSERT
     flag = organiser.conn.execute("SELECT qc_flag FROM quality_control WHERE sof_name = ?", (MBIAS_ONE,)).fetchone()[0]
     assert flag == "fail"
+    _assert_failed_qc_snapshot_released(organiser)
 
 
 def test_backup_without_a_session_sof_map_counts_that_sessions_sofs_as_changed(

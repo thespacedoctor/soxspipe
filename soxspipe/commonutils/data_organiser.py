@@ -251,6 +251,8 @@ class data_organiser:
         self.log = log
         # NAMES PINNED FOR REJOINED SETS LIVE ONLY ON THIS INSTANCE; THEY ARE LOST WHEN THE PROCESS EXITS
         self.pinnedSofNames = {}
+        # THE TEMP TABLE THE QC-RANGE QUERIES READ FAILING-QC SOFS FROM WHILE A REBUILD RESTORES STATUSES, ELSE None
+        self.failedQcSnapshot = None
 
         # EXPAND HOME PATHS BEFORE DERIVING ANY WORKSPACE LOCATIONS
         rootDir = expanduser(rootDir)
@@ -667,24 +669,29 @@ class data_organiser:
     def _apply_qc_acceptable_ranges(self):
         """*apply this session's QC-acceptable-range settings to the QC rows and product statuses*"""
         with closing(self.conn.cursor()) as c:
-            for sqlQuery, sqlParams in self._qc_acceptable_range_queries():
+            for sqlQuery, sqlParams in self._qc_acceptable_range_queries(failedSofsSource=self.failedQcSnapshot):
                 c.execute(sqlQuery, sqlParams)
             self.conn.commit()
 
-    def _qc_acceptable_range_queries(self):
+    def _qc_acceptable_range_queries(self, failedSofsSource=None):
         """*build the `(sql, params)` pairs that apply this session's QC-acceptable-range settings*
 
         Recipe names and QC-range keys come from the workspace YAML settings,
         so they are bound as `?` parameters rather than interpolated into the
         SQL text.
 
+        **Key Arguments:**
+
+        - ``failedSofsSource`` -- name of a table whose `sof` column lists the SOFs a failing QC row accounts for
+          (see `_freeze_failed_qc_sofs`), or None to read the live `qc_flag` values
+
         **Return:**
 
         - a list of `(sqlQuery, sqlParams)` tuples, ready for `cursor.execute(sqlQuery, sqlParams)`
         """
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
-        if getattr(self, "hasQcFailedSnapshot", False):
-            failedQcSofs = f"select sof from {_QC_FAILED_SNAPSHOT}"  # noqa: S608
+        if failedSofsSource:
+            failedQcSofs = f"select sof from {failedSofsSource}"  # noqa: S608
         else:
             failedQcSofs = (
                 'select sof_name from quality_control where qc_flag = "fail" '  # noqa: S608
@@ -2403,11 +2410,11 @@ class data_organiser:
             for sqlQuery in sqlQueries:
                 c.execute(sqlQuery)
             self.conn.commit()
-        self.hasQcFailedSnapshot = True
+        self.failedQcSnapshot = _QC_FAILED_SNAPSHOT
 
     def _release_failed_qc_sofs(self):
         """*stop the QC-range queries reading the record made by `_freeze_failed_qc_sofs`, and drop it*"""
-        self.hasQcFailedSnapshot = False
+        self.failedQcSnapshot = None
         with closing(self.conn.cursor()) as c:
             c.execute(f"drop table if exists {_QC_FAILED_SNAPSHOT};")
             self.conn.commit()
