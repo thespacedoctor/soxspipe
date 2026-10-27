@@ -15,6 +15,7 @@ Date Created
 """
 
 import contextlib
+import logging
 import os
 import uuid
 import warnings
@@ -22,6 +23,8 @@ import warnings
 from astropy.io import fits
 
 TEMPORARY_SUFFIX = ".partial"
+
+log = logging.getLogger(__name__)
 
 
 def write_hdulist_atomically(hduList, filePath, **writetoKwargs):
@@ -80,8 +83,9 @@ def is_complete_fits(filePath):
 
     The test compares the file size with the end of the last HDU (data start plus data span, padding included), so
     no warning text is involved. A file cut exactly at the end of an HDU looks whole, since FITS records no HDU
-    count. ``warnings.catch_warnings`` is not thread-safe, so do not call this from threads that also rely on
-    warning filters.
+    count. Only uncompressed ``.fits`` files are supported: a ``.fits.gz`` file is reported incomplete. Trailing
+    bytes after the last HDU also count as incomplete. ``warnings.catch_warnings`` is not thread-safe, so do not
+    call this from threads that also rely on warning filters.
 
     **Usage:**
 
@@ -102,5 +106,6 @@ def is_complete_fits(filePath):
                     return False
                 info = lastHdu.fileinfo()
                 return os.path.getsize(filePath) == info["datLoc"] + info["datSpan"]
-        except Exception:
+        except Exception as error:
+            log.debug(f"is_complete_fits: {filePath} is not readable as FITS: {error!r}")
             return False
