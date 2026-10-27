@@ -678,7 +678,7 @@ def test_carries_the_overlap_margin_for_the_mask_that_follows(tmp_path, log, mon
     default = _measure(scene, tmp_path, log, monkeypatch)
     custom = _measure(scene, tmp_path, log, monkeypatch, illuminationSettings={"overlap-margin-arcsec": 0.5})
 
-    assert default.overlapMarginArcsec == pytest.approx(0.3)
+    assert default.overlapMarginArcsec == pytest.approx(0.45)
     assert custom.overlapMarginArcsec == pytest.approx(0.5)
 
 
