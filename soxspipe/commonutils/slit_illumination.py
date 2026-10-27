@@ -18,7 +18,9 @@ That offset is accepted only if the blue and red halves of the order agree (DY-1
 order in which every line is blended with a neighbour or too close to the order end (every line of a wide slit) is
 line-dominated, so it takes the continuum fallback on any slit. An order that the skyline table has no lines in (the
 SOXS VIS u and g orders) takes it on the SLIT1.0 only, because on a wider slit the wings of a bright object dominate
-its continuum (DY-1955).
+its continuum (DY-1955). On the SOXS VIS arm and the SLIT1.0, an order whose skyline fit fails for any other reason
+(too faint, a failed fit gate) also takes the continuum fallback (DY-1927). An order whose skyline fit passes is never
+re-measured.
 """
 
 import math
@@ -100,6 +102,8 @@ CONTINUUM_MAX_HALVES_DIFF_ARCSEC = 0.15
 # BRIGHT OBJECT DOMINATE ITS CONTINUUM ON A WIDER SLIT. AN ORDER WHOSE SKYLINES ARE ALL BLENDED IS LINE-DOMINATED, SO IT
 # IS MEASURED FROM THE CONTINUUM ON ANY SLIT
 CONTINUUM_SLIT_NAME = "SLIT1.0"
+# THE SKYLINE-FAILURE FALLBACK RUNS ON THIS ARM ONLY. THE NIR ORDERS KEEP THEIR SKYLINE RESULT (DY-1927)
+SKYLINE_FALLBACK_ARM = "VIS"
 # THE CHUNK COUNT AND THE CHUNKS-PER-BIN LIMIT MUST BE WHOLE NUMBERS OF AT LEAST THIS, SO EACH HALF HOLDS A MEDIAN
 MIN_CONTINUUM_COUNT = 2
 
@@ -642,12 +646,20 @@ def _not_applied(log, reason, config, flatEdges=None, profiles=None, offsets=Non
     )
 
 
-def _continuum_orders(log, profileNotes, slitName):
+def _failed_skyline_orders(offsets, arm):
+    """*the orders whose skyline fit failed, if the arm takes the skyline-failure continuum fallback, else none*"""
+    if str(arm).upper() != SKYLINE_FALLBACK_ARM:
+        return []
+    return [int(order) for order in offsets.loc[offsets["status"] == STATUS_FAILED, "order"]]
+
+
+def _continuum_orders(log, profileNotes, slitName, failedSkylineOrders=()):
     """*the orders to measure from the sky continuum*
 
     An order whose skylines are all blended or too close to the order end is included on any slit. An order that the
     skyline table has no lines in is included on the SLIT1.0 only; on another slit (or with no slit name) it is left
-    out and the skipped orders are logged. An order that failed for any other reason is never included.
+    out and the skipped orders are logged. An order in ``failedSkylineOrders`` (its skyline fit failed for any reason)
+    is included on the SLIT1.0 only. An order that failed for any other reason is never included.
     """
     blended = [order for order, note in profileNotes.items() if has_all_blended_note(note)]
     noLines = [order for order, note in profileNotes.items() if has_no_skylines_note(note)]
@@ -657,16 +669,17 @@ def _continuum_orders(log, profileNotes, slitName):
             f"frame: {slitName}), so orders {sorted(noLines)} have no slit offset"
         )
         noLines = []
-    return sorted(blended + noLines)
+    failed = list(failedSkylineOrders) if slitName == CONTINUUM_SLIT_NAME else []
+    return sorted(set(blended + noLines + failed))
 
 
-def _continuum_rows(frame, flatData, mapImages, flatEdges, orders, profileNotes, config):
+def _continuum_rows(frame, flatData, mapImages, flatEdges, orders, skylineReasons, config):
     """*the continuum-edge profiles and offset rows of the given orders*
 
     **Return:**
 
     - ``profiles`` -- the continuum profile rows, empty if there are none
-    - ``rows`` -- the offset rows, as dictionaries. A rejected row also carries the skyline note of its order
+    - ``rows`` -- the offset rows, as dictionaries. A rejected row also carries the skyline reason of its order
     """
     wavelength, slit, orderMap = mapImages
     profiles, halfProfiles, notes = continuum_slit_profiles(
@@ -695,7 +708,7 @@ def _continuum_rows(frame, flatData, mapImages, flatEdges, orders, profileNotes,
         profileNotes=notes,
     )
     rows = [
-        row if row["status"] == STATUS_FITTED else {**row, "reason": f"{row['reason']}; {profileNotes[row['order']]}"}
+        row if row["status"] == STATUS_FITTED else {**row, "reason": f"{row['reason']}; {skylineReasons[row['order']]}"}
         for row in offsets.to_dict("records")
     ]
     return profiles, rows
@@ -732,18 +745,24 @@ def _measure_orders(log, frame, masterFlat, mapImages, settings, arm, config, pa
         config["maxOffsetErrArcsec"],
         profileNotes=profileNotes,
     )
-    continuumOrders = _continuum_orders(log, profileNotes, slitName)
+    continuumOrders = _continuum_orders(log, profileNotes, slitName, _failed_skyline_orders(offsets, arm))
     continuumProfiles, continuumRows = pd.DataFrame(columns=PROFILE_COLUMNS), []
     if continuumOrders:
+        # THE SKYLINE NOTE EXPLAINS A MISSING PROFILE. AN ORDER WITH A PROFILE HAS ONLY THE FIT'S OWN REASON
+        skylineReasons = {
+            int(row["order"]): profileNotes.get(row["order"]) or row["reason"] for _, row in offsets.iterrows()
+        }
         continuumProfiles, continuumRows = _continuum_rows(
-            frame, flatData, mapImages, flatEdges, continuumOrders, profileNotes, config
+            frame, flatData, mapImages, flatEdges, continuumOrders, skylineReasons, config
         )
     if continuumRows:
         byOrder = {row["order"]: row for row in continuumRows}
         rows = [byOrder.get(row["order"], row) for row in offsets.to_dict("records")]
         offsets = pd.DataFrame(rows, columns=OFFSET_COLUMNS)
         if len(continuumProfiles):
-            pieces = [piece for piece in (profiles, continuumProfiles) if len(piece)]
+            # A FALLBACK ORDER MAY ALSO HAVE A FAILED SKYLINE PROFILE. THE CONTINUUM PROFILE REPLACES IT
+            skylineProfiles = profiles.loc[~profiles["order"].isin(continuumProfiles["order"])]
+            pieces = [piece for piece in (skylineProfiles, continuumProfiles) if len(piece)]
             profiles = pd.concat(pieces, ignore_index=True).sort_values("order", kind="stable", ignore_index=True)
     offsets = pd.DataFrame(_borrow_from_partners(offsets.to_dict("records"), partners), columns=OFFSET_COLUMNS)
     return flatEdges, profiles, offsets
@@ -829,7 +848,7 @@ def measure_slit_illumination(
         elif row["method"] == METHOD_CONTINUUM:
             log.info(
                 f"slit illumination offset of order {row['order']} is {row['offset']:+.3f} arcsec, measured from the "
-                "sky-continuum edges because the order has no usable skylines"
+                "sky-continuum edges because the order has no usable skyline fit"
             )
     isApplied = bool((offsets["status"] != STATUS_FAILED).any())
     if not isApplied:
