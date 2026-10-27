@@ -421,10 +421,10 @@ def test_peaks_match_the_nearest_catalogue_line_within_the_tolerance():
     peaks = np.array([1500.03, 1501.5, 1501.98])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
 
     # ASSERT
-    assert peakIdx.tolist() == [0, 2]
+    assert peakIndex.tolist() == [0, 2]
     assert catalogueIdx.tolist() == [0, 2]
 
 
@@ -434,7 +434,7 @@ def test_a_line_half_a_nanometre_away_is_not_matched_to_a_neighbour_after_seedin
     peaks = np.array([1500.0 + 0.02])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=MAX_TIGHT_TOLERANCE_NM)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=MAX_TIGHT_TOLERANCE_NM)
 
     # ASSERT
     assert catalogueIdx.tolist() == [0]
@@ -446,10 +446,10 @@ def test_a_peak_between_two_catalogue_lines_is_matched_once():
     peaks = np.array([1500.05])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.1)
 
     # ASSERT
-    assert peakIdx.tolist() == [0]
+    assert peakIndex.tolist() == [0]
     assert catalogueIdx.tolist() == [1]
 
 
@@ -616,16 +616,16 @@ def test_matching_takes_a_tolerance_for_each_catalogue_line():
     peaks = np.array([1500.05, 1501.05])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=np.array([0.06, 0.04]))
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=np.array([0.06, 0.04]))
 
     # ASSERT
-    assert (peakIdx.tolist(), catalogueIdx.tolist()) == ([0], [0])
+    assert (peakIndex.tolist(), catalogueIdx.tolist()) == ([0], [0])
 
 
 def _doublet_order_lines(
     order: int, halfWidthNm: float, merged: bool, toleranceNm: float = 0.04
 ) -> nir_order_sky_lines:
-    """THE ORDER'S SKY LINES, EACH THE UNRESOLVED BLEND OF A DOUBLET WHOSE COMPONENTS LIE ``halfWidthNm`` EITHER SIDE"""
+    """*the order's sky lines, each an unresolved doublet with components ``halfWidthNm`` either side*"""
     geometry = _geometry()[order]
     centres = geometry.centreNm + np.linspace(-0.9, 0.9, 12) * HALF_RANGE_NM
     components = np.sort(np.concatenate([centres - halfWidthNm, centres + halfWidthNm]))
@@ -1321,8 +1321,8 @@ def test_a_peak_nearer_one_doublet_component_is_matched_once_to_that_component()
     peaks = np.array([1500.01])
 
     # ACT
-    peakIdx, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.04)
+    peakIndex, catalogueIdx = match_peaks_to_catalogue(peaks, catalogue, toleranceNm=0.04)
 
     # ASSERT
-    assert peakIdx.tolist() == [0]
+    assert peakIndex.tolist() == [0]
     assert catalogueIdx.tolist() == [0]
