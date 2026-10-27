@@ -326,7 +326,8 @@ def test_a_recipe_that_finished_failing_on_qc_range_is_passed_when_the_ranges_no
     with contextlib.closing(sqlite3.connect(tmp_path / "soxspipe.db")) as conn, conn:
         conn.execute("update product_frames set status_base = 'fail' where sof = 'A.sof'")
         conn.execute(
-            "insert into quality_control values ('soxs-mflat', 'A.sof', 'FLUX MEDIAN', '5.0', 0, 1, 'fail', '-1')"
+            "insert into quality_control (soxspipe_recipe, sof_name, qc_name, qc_value, qc_value_min, qc_value_max, "
+            "qc_flag, qc_order) values ('soxs-mflat', 'A.sof', 'FLUX MEDIAN', '5.0', 0, 1, 'fail', '-1')"
         )
     widenedRanges = {"soxs-mflat": {"qc-acceptable-ranges": {"flux-median": [0, 10]}}}
 

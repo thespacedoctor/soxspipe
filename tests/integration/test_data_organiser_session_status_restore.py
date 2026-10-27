@@ -222,6 +222,27 @@ def _calibration_products(organiser, sof):
     return {row[0] for row in rows}
 
 
+def test_a_fail_restored_in_a_later_pass_is_overturned_when_the_ranges_now_accept_its_qc(
+    two_session_workspace,
+) -> None:
+    # ARRANGE: THE FAILED BIAS REMATCHES THE DISPERSION SOLUTION, SO THE SOLUTION'S STATUS IS RESTORED IN PASS 2
+    organiser = two_session_workspace
+    _seed_statuses(organiser, "science", {MBIAS_ONE: "fail"})
+    organiser.session_refresh(failure=None)
+    _seed_statuses(organiser, "science", {DISP_SOLUTION: "fail"})
+    organiser.conn.execute(
+        "INSERT INTO quality_control (soxspipe_recipe, qc_name, qc_value, sof_name, qc_order, qc_flag) "
+        "VALUES ('soxs-disp-solution', 'X RES MEDIAN', '0.1', ?, '-1', 'fail')",
+        (DISP_SOLUTION,),
+    )
+
+    # ACT
+    organiser.prepare(refresh=True, report=False)
+
+    # ASSERT
+    assert _read_statuses(organiser, "science")[DISP_SOLUTION] == "pass"
+
+
 def test_refresh_restores_a_downstream_status_whose_calibration_was_rematched_after_a_failure(
     two_session_workspace,
 ) -> None:
@@ -460,6 +481,43 @@ def test_an_unreadable_backup_still_applies_the_qc_ranges_to_the_rebuilt_databas
 
     # ACT
     organiser._restore_session_statuses(tmp_path / "missing.db")
+
+    # ASSERT
+    flag = organiser.conn.execute("SELECT qc_flag FROM quality_control WHERE sof_name = ?", (MBIAS_ONE,)).fetchone()[0]
+    assert flag == "fail"
+
+
+def test_an_unreadable_backup_rebuilds_the_sof_maps_when_the_qc_ranges_add_a_failure(
+    two_session_workspace, tmp_path, monkeypatch
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0", flag="pass")
+    rebuilds: list[bool] = []
+    monkeypatch.setattr(organiser, "build_sof_files", lambda *args, **kwargs: rebuilds.append(True))
+
+    # ACT
+    organiser._restore_session_statuses(tmp_path / "missing.db")
+
+    # ASSERT
+    assert rebuilds == [True]
+
+
+def test_a_restore_that_raises_still_applies_the_qc_ranges_and_the_error_propagates(
+    two_session_workspace, monkeypatch
+) -> None:
+    # ARRANGE
+    organiser = two_session_workspace
+    _insert_master_ron(organiser, MBIAS_ONE, "50.0", flag="pass")
+
+    def failing_restore_pass(*_args, **_kwargs):
+        raise RuntimeError("restore failed")
+
+    monkeypatch.setattr(organiser, "_restore_status_pass", failing_restore_pass)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="restore failed"):
+        organiser.prepare(refresh=True, report=False)
 
     # ASSERT
     flag = organiser.conn.execute("SELECT qc_flag FROM quality_control WHERE sof_name = ?", (MBIAS_ONE,)).fetchone()[0]

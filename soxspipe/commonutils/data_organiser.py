@@ -197,6 +197,12 @@ _CYCLES_QC_PARENT_SOFS = (
 # NEVER BE A VALUE FROM DATA, A FILE OR A SETTING
 _SUB_QC_PARENT_SOFS = f"{_FRAME_QC_PARENT_SOFS}{{extra}} union {_CYCLES_QC_PARENT_SOFS}{{extra}}"
 
+# THE SOFS WHOSE STORED QC ROWS CARRY A FAILING FLAG, FROZEN WHILE A REBUILD RESTORES STATUSES: EACH QC-RANGE PASS
+# RECOMPUTES THE FLAGS, SO A `fail` RESTORED IN A LATER PASS WOULD OTHERWISE MEET FLAGS ALREADY RESET (DY-1698)
+_QC_FAILED_SNAPSHOT_NAME = "qc_failed_snapshot"
+_QC_FAILED_SNAPSHOT = f"temp.{_QC_FAILED_SNAPSHOT_NAME}"
+_FAILING_QC_FLAG = ' and qc_flag = "fail"'
+
 
 class data_organiser:
     """
@@ -600,9 +606,9 @@ class data_organiser:
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
-        # A REBUILD APPLIES THE RANGES AFTER THE STATUSES ARE RESTORED (SEE `_converge_session_statuses`), WHILE THE
-        # RESTORED QC ROWS STILL CARRY THE FLAGS THEIR RECIPES WROTE: A RESTORED `fail` IS ONLY OVERTURNED WHEN A
-        # FAILING FLAG ACCOUNTS FOR IT. THE DATABASE IS NEW, SO NO STATUS EXISTS YET FOR THIS CALL TO CHANGE (DY-1698)
+        # A REBUILD DEFERS THE RANGES UNTIL THE STATUSES ARE RESTORED (SEE `_restore_session_statuses`). THE QC ROWS ARE
+        # RESTORED BY NOW BUT THE STATUSES ARE NOT, AND `product_frames` IS STILL EMPTY, SO THIS CALL COULD ONLY
+        # RECOMPUTE THE FLAGS THAT A RESTORED `fail` NEEDS TO SEE UNCHANGED (DY-1698)
         if not backupPath:
             self._apply_qc_acceptable_ranges()
 
@@ -677,15 +683,20 @@ class data_organiser:
         - a list of `(sqlQuery, sqlParams)` tuples, ready for `cursor.execute(sqlQuery, sqlParams)`
         """
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
+        if getattr(self, "hasQcFailedSnapshot", False):
+            failedQcSofs = f"select sof from {_QC_FAILED_SNAPSHOT}"  # noqa: S608
+        else:
+            failedQcSofs = (
+                'select sof_name from quality_control where qc_flag = "fail" '  # noqa: S608
+                f"union {_SUB_QC_PARENT_SOFS.format(extra=_FAILING_QC_FLAG)}"
+            )
         queries = [
             # ONLY A `fail` THAT A FAILING QC ROW ACCOUNTS FOR CAN BE A QC-RANGE FAILURE. THE RECIPE CONSTRUCTOR ALSO
             # WRITES `fail` WHEN A RECIPE STARTS, SO A RECIPE KILLED BEFORE `clean_up` (OR AN EXCEPTION AFTER
             # `report_output`) HOLDS `fail` WITH PASSING QC ROWS, AND MUST STAY `fail` (DY-1698)
             (
                 f'update product_frames set {statusColumn} = "pass" '  # noqa: S608
-                f'where {statusColumn} = "fail" '
-                'and (sof in (select sof_name from quality_control where qc_flag = "fail") '
-                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=' and qc_flag = "fail"')}));""",
+                f'where {statusColumn} = "fail" and sof in ({failedQcSofs});',
                 (),
             ),
             (
@@ -742,7 +753,7 @@ class data_organiser:
             (
                 f'update product_frames set {statusColumn} = "fail" '  # noqa: S608
                 'where sof in (select sof_name from quality_control where qc_flag = "fail") '
-                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=' and qc_flag = "fail"')});""",
+                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=_FAILING_QC_FLAG)});""",
                 (),
             ),
         ]
@@ -2352,22 +2363,64 @@ class data_organiser:
           continues with empty statuses.
         """
         sessionIds = self._session_ids_on_disk()
+        # THE RESTORED QC ROWS STILL CARRY THE FLAGS THEIR RECIPES WROTE, AND NO QC-RANGE PASS HAS RUN YET
+        self._freeze_failed_qc_sofs()
         try:
-            snapshots = read_session_snapshots(backupPath, sessionIds, self.log)
-        except (sqlite3.Error, OSError, ValueError) as error:
-            self.log.warning(f"could not restore session statuses from `{backupPath}`: {error}")
-            self.log.debug(traceback.format_exc())
-            print(
-                "WARNING: could not restore session statuses from "
-                f"{self._describe_preserved_database(backupPath)} ({error}). "
-                "Status columns are left empty; the preserved file has been kept."
-            )
-            self._apply_qc_acceptable_ranges()
-            return {}
-        counts = self._converge_session_statuses(snapshots)
+            try:
+                snapshots = read_session_snapshots(backupPath, sessionIds, self.log)
+            except (sqlite3.Error, OSError, ValueError) as error:
+                self.log.warning(f"could not restore session statuses from `{backupPath}`: {error}")
+                self.log.debug(traceback.format_exc())
+                print(
+                    "WARNING: could not restore session statuses from "
+                    f"{self._describe_preserved_database(backupPath)} ({error}). "
+                    "Status columns are left empty; the preserved file has been kept."
+                )
+                self._apply_ranges_and_rebuild_sof_maps()
+                return {}
+            counts = self._converge_session_statuses(snapshots)
+        finally:
+            self._release_failed_qc_sofs()
         for sessionId in sorted(counts):
             print(format_session_summary(sessionId, *counts[sessionId], backupPath))
         return counts
+
+    def _freeze_failed_qc_sofs(self):
+        """*record the SOFs whose stored QC rows carry a failing flag, for the QC-range queries to read*
+
+        Each QC-range pass recomputes every QC flag from the current ranges. A rebuild runs several passes, so a
+        `fail` restored in a later one would meet flags already reset and could no longer be overturned when the
+        ranges widened. The record is a temporary table on this connection, filled once from fixed SQL.
+        """
+        sqlQueries = [
+            f"create temp table if not exists {_QC_FAILED_SNAPSHOT_NAME} (sof text primary key);",
+            f"delete from {_QC_FAILED_SNAPSHOT};",  # noqa: S608
+            f"insert or ignore into {_QC_FAILED_SNAPSHOT} "  # noqa: S608
+            'select sof_name from quality_control where qc_flag = "fail" '
+            f"union {_SUB_QC_PARENT_SOFS.format(extra=_FAILING_QC_FLAG)};",
+        ]
+        with closing(self.conn.cursor()) as c:
+            for sqlQuery in sqlQueries:
+                c.execute(sqlQuery)
+            self.conn.commit()
+        self.hasQcFailedSnapshot = True
+
+    def _release_failed_qc_sofs(self):
+        """*stop the QC-range queries reading the record made by `_freeze_failed_qc_sofs`, and drop it*"""
+        self.hasQcFailedSnapshot = False
+        with closing(self.conn.cursor()) as c:
+            c.execute(f"drop table if exists {_QC_FAILED_SNAPSHOT};")
+            self.conn.commit()
+
+    def _apply_ranges_and_rebuild_sof_maps(self):
+        """*apply the QC ranges and, when that adds a failure, rebuild the SOF maps*
+
+        A new failure can change which product a downstream SOF should hold, so the maps are rebuilt to re-match it.
+        """
+        failuresBefore = self._current_session_failures()
+        self._apply_qc_acceptable_ranges()
+        if not self._current_session_failures() <= failuresBefore:
+            self.build_sof_files()
 
     def _converge_session_statuses(self, snapshots):
         """*restore statuses until no restored failure changes what the remaining SOFs are built from*
@@ -2390,13 +2443,17 @@ class data_organiser:
         counts = dict.fromkeys(snapshots, (0, 0, 0))
         for _ in range(self._STATUS_RESTORE_MAX_PASSES):
             failuresBefore = self._current_session_failures()
-            results = self._restore_status_pass(snapshots, candidates)
-            for sessionId, result in results.items():
-                self._write_session_statuses(sessionId, result.toRestore)
+            try:
+                results = self._restore_status_pass(snapshots, candidates)
+                for sessionId, result in results.items():
+                    self._write_session_statuses(sessionId, result.toRestore)
+            finally:
+                # A RESTORED FAIL CAN BE OVERTURNED BY QC ROWS THAT NOW PASS, AND QC FAILURES MARK THEIR PRODUCTS AGAIN.
+                # THIS RUNS EVEN WHEN A RESTORE STEP RAISES, SO NO RAISED ERROR LEAVES THE QC FLAGS UN-RECOMPUTED. THE
+                # ERROR ITSELF STILL PROPAGATES
+                self._apply_qc_acceptable_ranges()
             counts = self._add_pass_counts(counts, results)
             candidates = {sessionId: result.pending for sessionId, result in results.items()}
-            # A RESTORED FAIL CAN BE OVERTURNED BY QC ROWS THAT NOW PASS, AND QC FAILURES MARK THEIR PRODUCTS AGAIN
-            self._apply_qc_acceptable_ranges()
             hasNewFailures = not self._current_session_failures() <= failuresBefore
             if hasNewFailures:
                 self.build_sof_files()
