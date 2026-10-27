@@ -59,6 +59,10 @@ fluxcal median fell 6.03%, 5.4% of it from DY-1964. The NIR sky counts median ro
 the sky model median 3.1% and the p90 1.4% (DY-1964, then DY-1972 to DY-1973), and the
 DY-1968 global sky-line tuning moved the blue end from 795.06 to 794.94 nm and the red
 end from 2032.02 to 2031.78 nm.
+
+Until 2026-10-27 the fluxcal assertions checked nothing. `pytest.approx` given only `rel`
+keeps its default absolute tolerance of 1e-12, which passes any flux near 1e-15, so the
+6.03% NIR fall above went unseen. They now pass `abs=0`.
 """
 
 from __future__ import annotations
@@ -255,7 +259,8 @@ def test_stare_reduction_matches_approved_baseline(reduced_workspace: Path, base
     assert measured["snr median"] == pytest.approx(baseline.snrMedian, rel=LEVEL_REL)
     assert measured["sky counts median"] == pytest.approx(baseline.skyCountsMedian, rel=LEVEL_REL)
     assert measured["fluxcal rows"] == measured["merged rows"]
-    assert measured["fluxcal median"] == pytest.approx(baseline.fluxcalMedian, rel=LEVEL_REL)
+    # abs=0: WITH rel ALONE pytest.approx KEEPS AN ABSOLUTE TOLERANCE OF 1e-12, WHICH PASSES ANY FLUX NEAR 1e-15
+    assert measured["fluxcal median"] == pytest.approx(baseline.fluxcalMedian, rel=LEVEL_REL, abs=0)
     assert measured["sky model median"] == pytest.approx(baseline.skyModelMedian, rel=LEVEL_REL)
     assert measured["sky model p90"] == pytest.approx(baseline.skyModelP90, rel=LEVEL_REL)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT

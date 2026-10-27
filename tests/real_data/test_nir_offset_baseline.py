@@ -128,7 +128,8 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     assert snrMedian == pytest.approx(149.8, abs=2.0)
     assert fluxcalRows == pytest.approx(20_612, abs=25)
     assert fluxcalRows == mergedRows
-    assert fluxcalMedian == pytest.approx(8.256574435666687e-15, rel=0.05)
+    # abs=0: WITH rel ALONE pytest.approx KEEPS AN ABSOLUTE TOLERANCE OF 1e-12, WHICH PASSES ANY FLUX NEAR 1e-15
+    assert fluxcalMedian == pytest.approx(8.256574435666687e-15, rel=0.05, abs=0)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
     assert nOrders == 15
     assert detectedFraction == pytest.approx(0.984, abs=0.02)
