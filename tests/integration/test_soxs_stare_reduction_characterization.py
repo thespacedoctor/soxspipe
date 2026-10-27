@@ -481,7 +481,7 @@ def test_raw_stack_surface_plot_is_shown_only_in_debug_mode(
 # THE SLIT-ILLUMINATION BLOCK THE SOXS DEFAULT SETTINGS CARRY WITH THE MEASUREMENT SWITCHED ON
 ILLUMINATION_BLOCK = {
     "measure-offset": True,
-    "overlap-margin-arcsec": 0.3,
+    "overlap-margin-arcsec": 0.45,
     "profile-bin-arcsec": 0.1,
     "max-offset-arcsec": 3.0,
     "max-order-scatter-arcsec": 0.3,
@@ -538,7 +538,7 @@ def _illumination_result(*, isApplied: bool = True, hasProfiles: bool = True) ->
         profiles=profiles if hasProfiles else pd.DataFrame(columns=PROFILE_COLUMNS),
         isApplied=isApplied,
         reason="" if isApplied else "no order has a usable offset",
-        overlapMarginArcsec=0.3,
+        overlapMarginArcsec=0.45,
     )
 
 
