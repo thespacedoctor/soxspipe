@@ -216,20 +216,39 @@ def _clean_up_recipe(
     recipe.status = status
     recipe.currentSession = currentSession
     recipe.sofName = sofName
+    recipe.workspaceRootPath = str(tmp_path)
     conn = _RecordingConnection()
     recipe.conn = conn
     recipe.outDir = str(tmp_path / "already-removed")
     return recipe, conn
 
 
+def _stub_session_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace the data organiser, so a recipe that recovers does not rebuild a real session."""
+
+    class _NoOpOrganiser:
+        def __init__(self, **_: object) -> None:
+            return None
+
+        def session_refresh(self, **_: object) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", _NoOpOrganiser)
+
+
 def test_clean_up_binds_an_injection_shaped_sof_name_as_a_parameter(
     log: Any,
     tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A sof name shaped like a SQL injection payload never reaches the SQL text itself."""
     # ARRANGE
+    _stub_session_refresh(monkeypatch)
     hostileSofName = "x' OR 1=1 --"
-    recipe, conn = _clean_up_recipe(log, tmp_path, sofName=hostileSofName, status="pass")
+    recipe, conn = _clean_up_recipe(log, tmp_path, sofName=hostileSofName, status="fail")
 
     # ACT
     recipe.clean_up(forceFail=False)
@@ -340,10 +359,13 @@ def test_data_organiser_dataframe_to_sqlite_rejects_a_hostile_table_name(log: An
 def test_clean_up_with_hostile_sof_name_updates_no_rows_in_a_real_database(
     log: Any,
     tmp_path: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """An injection-shaped sof name matches no real row, leaving every existing row untouched."""
     # ARRANGE
     import pandas as pd
+
+    _stub_session_refresh(monkeypatch)
 
     # A FILE-BACKED DATABASE, NOT `:memory:`, SO THE ROWS SURVIVE THE CONNECTION
     # THAT `clean_up` CLOSES AND CAN BE RE-OPENED TO VERIFY THEM.
@@ -363,12 +385,13 @@ def test_clean_up_with_hostile_sof_name_updates_no_rows_in_a_real_database(
     recipe = base_recipe.__new__(base_recipe)
     recipe.log = log
     recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
-    recipe.status = "pass"
+    recipe.status = "fail"
     recipe.currentSession = "base"
     # AN INJECTION PAYLOAD THAT, IF STILL INTERPOLATED, CLOSES THE STRING
     # LITERAL EARLY, FORCES AN ALWAYS-TRUE CONDITION, AND COMMENTS OUT THE
     # TRAILING `.sof'` SO EVERY ROW WOULD BE UPDATED TO 'pass'.
     recipe.sofName = "x' OR '1'='1' --"
+    recipe.workspaceRootPath = str(tmp_path)
     recipe.conn = connection
     recipe.outDir = str(tmp_path / "already-removed")
 

@@ -561,7 +561,7 @@ def test_reduce_all_builds_the_blocking_report_after_the_final_refresh(
         pd.DataFrame(columns=["recipe", "sof", "command"]),
     ]
     monkeypatch.setattr(collection, "select_sof_files_to_process", lambda **kwargs: selectedFrames.pop(0))
-    refreshCount = [0]
+    events: list[str] = []
     printedReports: list[pd.DataFrame] = []
 
     class StatefulOrganiser:
@@ -569,18 +569,19 @@ def test_reduce_all_builds_the_blocking_report_after_the_final_refresh(
             pass
 
         def session_refresh(self, **kwargs: object) -> None:
-            refreshCount[0] += 1
+            events.append("refresh")
 
         def get_incomplete_sets_report(self) -> tuple[pd.DataFrame, pd.DataFrame]:
             # THE SOF FLAGS ARE STALE UNTIL THE REFRESH AFTER THE RUN, SO A RECOVERED RECIPE STILL READS AS FAILED
-            reason = "failed run" if refreshCount[0] < 2 else "not yet reduced"
+            events.append("report")
+            reason = "not yet reduced" if events[-2] == "refresh" else "failed run"
             return pd.DataFrame(), pd.DataFrame([{"calibration": "mbias", "reason": reason}])
 
         def close(self) -> None:
             pass
 
     monkeypatch.setattr(commonutilsModule, "data_organiser", StatefulOrganiser)
-    monkeypatch.setattr(reducerModule, "run_recipe", lambda *args, **kwargs: None)
+    monkeypatch.setattr(reducerModule, "run_recipe", lambda *args, **kwargs: events.append("recipe"))
     monkeypatch.setattr(
         dataOrganiserModule,
         "print_incomplete_sets_report",
@@ -589,5 +590,5 @@ def test_reduce_all_builds_the_blocking_report_after_the_final_refresh(
 
     collection.reduce(batch=10, multiprocess=False)
 
-    assert len(printedReports) == 1
+    assert events == ["refresh", "recipe", "refresh", "report"]
     assert printedReports[0]["reason"].tolist() == ["not yet reduced"]

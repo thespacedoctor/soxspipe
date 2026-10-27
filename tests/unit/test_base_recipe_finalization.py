@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -502,3 +504,37 @@ def test_report_output_keeps_every_per_order_qc_row_but_lists_only_the_all_order
     assert flags == {"SNR MEDIAN": "fail", "SNR MEDIAN O1": "pass", "SNR MEDIAN O2": "pass"}
     printed = " ".join(message for level, message in log.messages)
     assert printed.count("SNR MEDIAN") == 1
+
+
+def test_a_sof_stored_as_failed_is_refreshed_once_by_the_real_open_then_clean_up_sequence(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A row stored as `fail` is read as the previous status by the real start write, then refreshes once."""
+    # ARRANGE
+    databasePath = tmp_path / "soxspipe.db"
+    with contextlib.closing(sqlite3.connect(databasePath)) as setup, setup:
+        setup.execute("create table product_frames (sof text, error_message text, status_20240102 text)")
+        setup.execute("insert into product_frames (sof, status_20240102) values ('synthetic.sof', 'fail')")
+    recipe = _recipe(
+        log=log,
+        tmp_path=tmp_path,
+        qc=pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]}),
+        status="",
+    )
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
+    recipe.conn = None
+    refreshes = _patch_organiser(monkeypatch)
+
+    # ACT
+    recipe._open_session_database(home=str(tmp_path))
+    previousStatus = recipe.status
+    recipe.clean_up()
+
+    # ASSERT
+    assert previousStatus == "fail"
+    assert refreshes == [False]
+    with contextlib.closing(sqlite3.connect(databasePath)) as verify:
+        storedStatus = verify.execute("select status_20240102 from product_frames").fetchone()[0]
+    assert storedStatus == "pass"

@@ -1381,6 +1381,11 @@ class base_recipe:
     def clean_up(self, forceFail=False):
         """*update product status in DB and remove intermediate files once recipe is complete*
 
+        A recipe whose stored status was not ``pass`` before this run (it failed or was interrupted) and which has
+        now passed refreshes the session's SOF files once, so its dependents can run in the same ``reduce``. A
+        recipe that passed before, or never ran, does not refresh. A recipe that passed before and now fails
+        refreshes as a failure.
+
         **Key Arguments:**
         - ``forceFail`` -- force the recipe to be marked as failed in the DB
 
