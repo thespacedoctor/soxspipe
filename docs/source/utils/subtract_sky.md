@@ -108,8 +108,9 @@ For each order, after the final sky fit, the pipeline:
 
 1. Computes the fractional residual of each pixel: (flux − object-wing model − sky model) / sky model.
 2. Keeps the bright skyline pixels. These have a sky model of at least 30 times their error, a fractional residual of at most 0.1, and a wavelength in the central 90% of the order. Edge pixels, bad pixels and pixels inside an object slit range found by the object masking are not used.
-3. Takes the mean fractional residual in slit-position bins of 0.25 arcsec. It does this only if there are more than 20 skyline pixels for each bin, and it ignores a bin with fewer than 5 pixels.
-4. Interpolates the bin means onto every pixel, multiplies the sky model by one plus the interpolated value, and subtracts the corrected model.
+3. Takes the mean fractional residual in slit-position bins of 0.25 arcsec. It does this only if there are more than 50 skyline pixels for each bin, and it ignores a bin with fewer than 50 pixels. The Kelson script uses 20 pixels of about 45 times their error. Pixels of 30 times their error need 50 pixels for the same noise in the bin mean.
+4. Subtracts the mean of the bin means, so the correction only moves sky light along the slit. The mean level of the sky belongs to the wavelength fit.
+5. Interpolates the bin means onto every pixel, multiplies the sky model by one plus the interpolated value, and subtracts the corrected model.
 
 An order without enough skyline pixels keeps its sky model. The log names each order and the number of skyline pixels. The correction does not change the sky fit, only the sky model and the sky-subtracted flux. The error inflation, if it is on, measures the residual after the correction.
 

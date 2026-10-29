@@ -7,7 +7,11 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from soxspipe.commonutils.slit_illumination_correction import measure_slit_illumination
+from soxspipe.commonutils.slit_illumination_correction import (
+    BIN_WIDTH_ARCSEC,
+    MIN_PIXELS_PER_SLIT_BIN,
+    measure_slit_illumination,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -37,14 +41,17 @@ class SyntheticOrder:
 
 
 def _synthetic_order(
-    gradientPerArcsec: float = GRADIENT_PER_ARCSEC, lineAmplitude: float = LINE_AMPLITUDE, seed: int = 4
+    gradientPerArcsec: float = GRADIENT_PER_ARCSEC,
+    lineAmplitude: float = LINE_AMPLITUDE,
+    seed: int = 4,
+    lineSpacing: int = LINE_SPACING,
 ):
     """One order: a wavelength-only sky of narrow lines on a continuum, scaled along the slit by a known gradient."""
     rng = np.random.default_rng(seed)
     columns = np.arange(COLUMNS, dtype=float)
     rows = (np.arange(SLIT_ROWS) - SLIT_ROWS // 2) * SLIT_STEP
     sky = np.full(COLUMNS, CONTINUUM)
-    for centre in range(LINE_SPACING, COLUMNS - LINE_SPACING, LINE_SPACING):
+    for centre in range(lineSpacing, COLUMNS - lineSpacing, lineSpacing):
         sky += lineAmplitude * np.exp(-0.5 * ((columns - centre) / LINE_SIGMA_COLUMNS) ** 2)
     slitPosition = np.repeat(rows, COLUMNS)
     wavelength = np.tile(1500.0 + 0.05 * columns, SLIT_ROWS)
@@ -90,6 +97,20 @@ def test_factor_is_one_when_too_few_pixels_are_bright_enough() -> None:
     correction = _measure(order)
 
     # ASSERT
+    assert not correction.isApplied
+    np.testing.assert_array_equal(correction.factor, np.ones(order.slitPosition.size))
+
+
+def test_factor_is_one_when_the_skylines_give_too_few_pixels_for_each_slit_bin() -> None:
+    # ARRANGE
+    order = _synthetic_order(lineSpacing=100)
+
+    # ACT
+    correction = _measure(order)
+
+    # ASSERT
+    pixelsPerBin = correction.pixelCount / (np.ptp(order.slitPosition) / BIN_WIDTH_ARCSEC)
+    assert 20 < pixelsPerBin < MIN_PIXELS_PER_SLIT_BIN
     assert not correction.isApplied
     np.testing.assert_array_equal(correction.factor, np.ones(order.slitPosition.size))
 
