@@ -341,7 +341,7 @@ class subtract_sky:
     # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
     maskedOrders = frozenset()
     # THE [LOWER, UPPER] SLIT RANGES OF THE OBJECTS clip_object_slit_positions FOUND (DY-2054)
-    objectSlitRanges = ()
+    objectSlitRanges = []
 
     def __init__(
         self,
@@ -3138,9 +3138,9 @@ class subtract_sky:
         """*multiply an order's sky model by the slit-illumination factor its bright skylines show (DY-2054)*
 
         The sky model is a function of wavelength only, so an illumination gradient along the slit leaves a residual
-        that scales with the sky. ``measure_slit_illumination`` measures it from the pixels that are not edge, bad or
-        inside an object slit range, after the object-wing model is taken from the flux. The sky-subtracted flux is the
-        flux minus the corrected model.
+        that scales with the sky. ``measure_slit_illumination`` measures it from the pixels that no clipping flag of the
+        final fit marks (edge, bad pixel, object or any other clip) and that are outside the object slit ranges, after
+        the object-wing model is taken from the flux. The sky-subtracted flux is the flux minus the corrected model.
 
         **Key Arguments:**
 
@@ -3159,11 +3159,16 @@ class subtract_sky:
         isInObject = np.zeros(slitPosition.size, dtype=bool)
         for lower, upper in self.objectSlitRanges:
             isInObject |= (slitPosition >= lower) & (slitPosition <= upper)
-        isUsable = (
-            ~imageMapOrderDF["flagged_edge_clipped"].to_numpy(dtype=bool)
-            & ~imageMapOrderDF["flagged_bad_pixel_clipped"].to_numpy(dtype=bool)
-            & ~isInObject
-        )
+        # THE CLIP FLAGS LEAVE OUT OBJECT LIGHT THAT NO DETECTED SLIT RANGE COVERS, SUCH AS WITH AGGRESSIVE MASKING OFF
+        isClipped = np.zeros(slitPosition.size, dtype=bool)
+        for flag in (
+            "flagged_edge_clipped",
+            "flagged_bad_pixel_clipped",
+            "flagged_object_clipped",
+            "flagged_all_clipped",
+        ):
+            isClipped |= imageMapOrderDF[flag].to_numpy(dtype=bool)
+        isUsable = ~isClipped & ~isInObject
         flux = imageMapOrderDF["flux"].to_numpy(dtype=float)
         wings = (
             imageMapOrderDF["object_wing_model"].to_numpy(dtype=float)

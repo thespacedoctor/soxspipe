@@ -258,3 +258,100 @@ def test_a_uniform_offset_of_the_skyline_pixels_is_left_to_the_wavelength_fit() 
 
     # ASSERT
     np.testing.assert_allclose(correction.factor, 1.0, atol=BIN_TOLERANCE)
+
+
+def _dense_bins(positions: list[float], pixelsPerPosition: int):
+    """Skyline pixels stacked at the given slit positions, plus two usable pixels that mark the wavelength range."""
+    slit = np.concatenate([np.full(pixelsPerPosition, position) for position in positions] + [[positions[0]] * 2])
+    wavelength = np.full(slit.size, 1550.0)
+    wavelength[-2:] = [1500.0, 1600.0]
+    skyModel = np.full(slit.size, 1000.0)
+    skyModel[-2:] = 0.0
+    error = np.ones(slit.size)
+    data = skyModel * (1.0 + 0.01 * slit)
+    return slit, wavelength, skyModel, data, error, np.ones(slit.size, dtype=bool)
+
+
+def test_factor_is_one_when_no_wavelength_is_finite() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+    wavelength = np.full(order.wavelength.size, np.nan)
+
+    # ACT
+    correction = measure_slit_illumination(
+        order.slitPosition, wavelength, order.skyModel, order.data, order.error, order.isUsable
+    )
+
+    # ASSERT
+    assert not correction.isApplied
+    np.testing.assert_array_equal(correction.factor, np.ones(order.slitPosition.size))
+
+
+def test_the_wavelength_range_is_that_of_the_usable_pixels() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+    isOutlier = order.slitPosition > 3.0
+    wavelength = np.where(isOutlier, 9999.0, order.wavelength)
+    isUsable = order.isUsable & ~isOutlier
+
+    # ACT
+    withOutliers = measure_slit_illumination(
+        order.slitPosition, wavelength, order.skyModel, order.data, order.error, isUsable
+    )
+    without = measure_slit_illumination(
+        order.slitPosition, order.wavelength, order.skyModel, order.data, order.error, isUsable
+    )
+
+    # ASSERT
+    np.testing.assert_array_equal(withOutliers.factor, without.factor)
+
+
+def test_a_wide_masked_gap_leaves_the_dense_bins_on_either_side_in_use() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+    isGap = np.abs(order.slitPosition) < 3.5
+
+    # ACT
+    correction = _measure(order, isUsable=~isGap)
+
+    # ASSERT
+    assert correction.isApplied
+    expected = 1.0 + GRADIENT_PER_ARCSEC * order.slitPosition
+    np.testing.assert_allclose(correction.factor[~isGap], expected[~isGap], atol=2 * BIN_TOLERANCE)
+
+
+def test_a_bin_with_exactly_the_minimum_pixels_is_not_used() -> None:
+    # ARRANGE
+    positions = [0.0, 0.3, 0.55, 0.8]
+
+    # ACT
+    atMinimum = measure_slit_illumination(*_dense_bins(positions, MIN_PIXELS_PER_SLIT_BIN))
+    aboveMinimum = measure_slit_illumination(*_dense_bins(positions, MIN_PIXELS_PER_SLIT_BIN + 1))
+
+    # ASSERT
+    assert not atMinimum.isApplied
+    assert aboveMinimum.isApplied
+
+
+def test_a_pixel_at_the_far_edge_of_the_slit_falls_in_the_last_bin() -> None:
+    # ARRANGE
+    slit, *rest = _dense_bins([0.0, 0.3, 0.55, 0.8, 1.0], MIN_PIXELS_PER_SLIT_BIN + 1)
+
+    # ACT
+    correction = measure_slit_illumination(slit, *rest)
+
+    # ASSERT
+    assert correction.binCentres.size == 4
+    assert correction.binCounts[-1] == 2 * (MIN_PIXELS_PER_SLIT_BIN + 1)
+    assert correction.binCentres[-1] == pytest.approx(0.875)
+
+
+def test_inputs_of_different_lengths_raise_a_value_error() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="same length"):
+        measure_slit_illumination(
+            order.slitPosition, order.wavelength[:-1], order.skyModel, order.data, order.error, order.isUsable
+        )

@@ -58,6 +58,7 @@ def _order_frame(isObjectContaminated: bool = False, lineAmplitude: float = LINE
             "sky_model": skyModel,
             "sky_subtracted_flux": flux - skyModel,
             "flagged_all_clipped": False,
+            "flagged_object_clipped": False,
             "flagged_edge_clipped": False,
             "flagged_bad_pixel_clipped": False,
         }
@@ -235,8 +236,11 @@ def test_the_object_wing_model_is_taken_from_the_flux_before_the_curve_is_measur
     np.testing.assert_allclose(factor[inside], expected[inside], atol=BIN_TOLERANCE)
 
 
-@pytest.mark.parametrize("flagColumn", ["flagged_edge_clipped", "flagged_bad_pixel_clipped"])
-def test_edge_and_bad_pixels_do_not_set_the_curve(log: Any, flagColumn: str) -> None:
+@pytest.mark.parametrize(
+    "flagColumn",
+    ["flagged_edge_clipped", "flagged_bad_pixel_clipped", "flagged_object_clipped", "flagged_all_clipped"],
+)
+def test_flagged_pixels_do_not_set_the_curve(log: Any, flagColumn: str) -> None:
     # ARRANGE
     mapDF = _order_frame()
     isFlagged = (mapDF["slit_position"] > 0.0) & (mapDF["slit_position"] < 1.0)
@@ -312,3 +316,9 @@ def test_the_clip_records_the_object_slit_ranges_for_the_correction(log: Any) ->
     lower, upper = aggressiveRanges[0]
     assert lower <= 1.0 and upper >= 1.6
     assert subtractor.objectSlitRanges == []
+
+
+def test_the_object_slit_ranges_default_to_an_empty_list_of_one_type(log: Any) -> None:
+    # ASSERT
+    assert subtract_sky.objectSlitRanges == []
+    assert isinstance(subtract_sky.objectSlitRanges, list)

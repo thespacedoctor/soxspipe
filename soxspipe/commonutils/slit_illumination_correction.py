@@ -10,10 +10,11 @@ to 3770), and returns the factor to multiply the sky model by:
    residual of at most ``MAX_FRACTIONAL_RESIDUAL``, and a wavelength inside the central 90% of the order. The IDL
    uses a fixed 1000 counts. That is about 45 times the shot noise on X-Shooter NIR, so the same rule on SOXS, with
    its shorter exposures and its different gain, is a limit in units of the pixel error.
-3. The mean fractional residual is taken in slit-position bins of one detector pixel, and only if there are more than
-   ``MIN_PIXELS_PER_SLIT_BIN`` kept pixels per bin.
-4. The bin means are interpolated onto every pixel. The factor is one plus that curve, less its mean. The mean level
-   of the sky belongs to the wavelength fit, so the factor only moves sky light along the slit.
+3. The mean fractional residual is taken in slit-position bins of ``BIN_WIDTH_ARCSEC``. A bin with
+   ``MIN_PIXELS_PER_SLIT_BIN`` kept pixels or fewer is not used, and at least ``MIN_BINS`` bins must be used.
+4. The bin means are interpolated onto every pixel, and held flat outside the outer bins used. The factor is one plus
+   that curve, less its mean. The mean level of the sky belongs to the wavelength fit, so the factor only moves sky
+   light along the slit.
 
 The module is pure numpy on 1-D arrays, one value per pixel, in any pixel order. The pixels may be those of one order or
 of every order of a detector. The caller supplies the object model by subtracting it from the data and by leaving the
@@ -28,7 +29,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy as np
 
-# THE SLIT-POSITION BIN WIDTH IN ARCSEC: ONE DETECTOR PIXEL ALONG THE SLIT (SOXS NIR 0.25, VIS 0.21)
+# THE SLIT-POSITION BIN WIDTH IN ARCSEC, FIXED AT THE SOXS NIR PIXEL SCALE OF ABOUT 0.25 ARCSEC (VIS IS ABOUT 0.21)
 BIN_WIDTH_ARCSEC = 0.25
 # A SKYLINE PIXEL HAS A SKY MODEL OF AT LEAST THIS MANY TIMES ITS ERROR, SO ITS FRACTIONAL NOISE IS AT MOST
 # 1/MIN_SKY_SNR.
@@ -39,10 +40,10 @@ MIN_SKY_SNR = 30.0
 MAX_FRACTIONAL_RESIDUAL = 0.1
 # THE WAVELENGTH RANGE LEFT OUT AT EACH END OF THE ORDER, WHERE THE SKY SPLINE IS NOT CONSTRAINED
 WAVELENGTH_MARGIN_FRACTION = 0.05
-# THE CORRECTION NEEDS MORE THAN THIS MANY KEPT PIXELS PER SLIT BIN, AND A SLIT BIN WITH FEWER IS NOT USED (THE CURVE IS
-# INTERPOLATED ACROSS IT). THE IDL LIMIT IS 20 PIXELS OF ABOUT 45 SIGMA, A BIN MEAN GOOD TO 0.3%. PIXELS OF MIN_SKY_SNR
-# SIGMA NEED 20 * (45 / 30) ** 2 = 45 PIXELS FOR THE SAME NOISE, AND THE SPARSE BINS AT THE SLIT ENDS SCATTER BY SEVERAL
-# PERCENT. 20 PER BIN LET A NOISY CURVE FROM THE 41 PIXELS PER BIN OF NIR ORDER 10 MAKE ITS RESIDUAL WORSE (DY-2054)
+# A SLIT BIN NEEDS MORE THAN THIS MANY KEPT PIXELS TO BE USED, AND THE CURVE IS INTERPOLATED ACROSS A BIN WITH
+# FEWER. THE IDL LIMIT IS 20 PIXELS OF ABOUT 45 SIGMA, A BIN MEAN GOOD TO 0.3%. PIXELS OF MIN_SKY_SNR SIGMA NEED
+# 20 * (45 / 30) ** 2 = 45 PIXELS FOR THE SAME NOISE, AND THE SPARSE BINS AT THE SLIT ENDS SCATTER BY SEVERAL PERCENT.
+# 20 PER BIN LET A NOISY CURVE FROM THE 41 PIXELS PER BIN OF NIR ORDER 10 MAKE ITS RESIDUAL WORSE (DY-2054)
 MIN_PIXELS_PER_SLIT_BIN = 50
 # THE CURVE NEEDS AT LEAST THIS MANY USABLE BINS TO BE INTERPOLATED
 MIN_BINS = 2
@@ -84,9 +85,12 @@ def _skyline_pixels(wavelength, skyModel, dataMinusObject, error, isUsable, minS
 
     with np.errstate(divide="ignore", invalid="ignore"):
         fractional = (dataMinusObject - skyModel) / skyModel
-    finiteWavelength = wavelength[np.isfinite(wavelength)]
-    margin = WAVELENGTH_MARGIN_FRACTION * (finiteWavelength.max() - finiteWavelength.min())
-    isInsideRange = (wavelength >= finiteWavelength.min() + margin) & (wavelength <= finiteWavelength.max() - margin)
+    usableWavelength = wavelength[isUsable & np.isfinite(wavelength)]
+    if usableWavelength.size == 0:
+        return np.zeros(wavelength.shape, dtype=bool), fractional
+    lowest, highest = usableWavelength.min(), usableWavelength.max()
+    margin = WAVELENGTH_MARGIN_FRACTION * (highest - lowest)
+    isInsideRange = (wavelength >= lowest + margin) & (wavelength <= highest - margin)
     with np.errstate(invalid="ignore"):
         isBright = (skyModel > 0) & (error > 0) & (skyModel >= minSkySnr * error)
         isSmall = np.abs(fractional) <= MAX_FRACTIONAL_RESIDUAL
@@ -119,7 +123,13 @@ def measure_slit_illumination(
 
     **Return:**
 
-    - ``correction`` -- an ``illumination_correction``. Its factor is all ones when no bin has enough skyline pixels
+    - ``correction`` -- an ``illumination_correction``. Its factor is all ones when fewer than ``MIN_BINS`` bins have
+      enough skyline pixels, or when no pixel is usable
+        - the curve is held flat outside the outer bins used, so the slit ends take the value of the outermost bin
+
+    **Raises:**
+
+    - ``ValueError`` -- if the input arrays do not all have the same length
 
     **Usage:**
 
@@ -133,30 +143,42 @@ def measure_slit_illumination(
     import numpy as np
 
     slitPosition = np.asarray(slitPosition, dtype=float)
-    isUsable = np.asarray(isUsable, dtype=bool) & np.isfinite(slitPosition)
+    wavelength, skyModel, dataMinusObject, error, isUsable = (
+        np.asarray(values) for values in (wavelength, skyModel, dataMinusObject, error, isUsable)
+    )
+    if not (
+        slitPosition.shape
+        == wavelength.shape
+        == skyModel.shape
+        == dataMinusObject.shape
+        == error.shape
+        == isUsable.shape
+    ):
+        raise ValueError(
+            "the slit position, wavelength, sky model, data, error and usable arrays must have the same length"
+        )
+    isUsable = isUsable.astype(bool) & np.isfinite(slitPosition)
     pixelTotal = slitPosition.size
     if not isUsable.any():
         return _unapplied(pixelTotal)
 
     isSkyline, fractional = _skyline_pixels(
-        np.asarray(wavelength, dtype=float),
-        np.asarray(skyModel, dtype=float),
-        np.asarray(dataMinusObject, dtype=float),
-        np.asarray(error, dtype=float),
+        wavelength.astype(float),
+        skyModel.astype(float),
+        dataMinusObject.astype(float),
+        error.astype(float),
         isUsable,
         minSkySnr,
     )
     pixelCount = int(isSkyline.sum())
     slitStart = slitPosition[isUsable].min()
     slitBins = int(np.ceil((slitPosition[isUsable].max() - slitStart) / binWidth)) or 1
-    if pixelCount <= MIN_PIXELS_PER_SLIT_BIN * slitBins:
-        return _unapplied(pixelTotal, pixelCount)
-
+    # A PIXEL AT THE FAR EDGE OF A SPAN THAT IS A WHOLE NUMBER OF BINS BELONGS TO THE LAST BIN
     binIndex = np.floor((slitPosition[isSkyline] - slitStart) / binWidth).astype(int)
-    binIndex = np.clip(binIndex, 0, slitBins)
-    counts = np.bincount(binIndex, minlength=slitBins + 1)
-    sums = np.bincount(binIndex, weights=fractional[isSkyline], minlength=slitBins + 1)
-    isBinUsed = counts >= MIN_PIXELS_PER_SLIT_BIN
+    binIndex = np.clip(binIndex, 0, slitBins - 1)
+    counts = np.bincount(binIndex, minlength=slitBins)
+    sums = np.bincount(binIndex, weights=fractional[isSkyline], minlength=slitBins)
+    isBinUsed = counts > MIN_PIXELS_PER_SLIT_BIN
     if isBinUsed.sum() < MIN_BINS:
         return _unapplied(pixelTotal, pixelCount)
 
