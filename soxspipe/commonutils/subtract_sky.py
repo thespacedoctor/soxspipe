@@ -17,6 +17,11 @@ import sys
 from datetime import datetime
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
+from soxspipe.commonutils.difference_sky_fit import (
+    NOISE_SKY_WINDOW,
+    gate_insignificant_model,
+    signed_object_slit_ranges,
+)
 from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import quicklook_image, twoD_disp_map_image_to_dataframe
@@ -308,6 +313,9 @@ class subtract_sky:
       value is not the noise left in the frame, e.g. the single-frame read noise scaled by ``sqrt(1 + 1/N)`` for the
       master bias subtracted from it. A value that is not a finite, positive number falls back to the detector default.
       Default *None*, which uses the frame's read-noise header value, else the detector default
+    - ``differenceFit`` -- a ``difference_fit`` when ``objectFrame`` is a nod A-B difference (DY-2057 prototype). The
+      fit then masks the positive and the negative object, takes its noise model from ``differenceFit.noiseSkyFrame``
+      and drops the model where it is within the noise. Default *None*, for an ordinary frame
 
     **Usage:**
 
@@ -337,6 +345,9 @@ class subtract_sky:
     # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
     maskedOrders = frozenset()
 
+    # THE TREATMENT OF A NOD A-B DIFFERENCE FRAME, OR None FOR AN ORDINARY FRAME (DY-2057)
+    differenceFit = None
+
     def __init__(
         self,
         log,
@@ -355,9 +366,11 @@ class subtract_sky:
         excludeMask=None,
         masterFlat=None,
         ron=None,
+        differenceFit=None,
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
+        self.differenceFit = differenceFit
         self.settings = settings
         self.objectFrame = objectFrame
         self.twoDMap = twoDMap
@@ -401,6 +414,8 @@ class subtract_sky:
 
         # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280, DY-1517); subtract FLAGS AND ZERO-FILLS THEM AS NO-MODEL PIXELS
         self.mapDF, self.maskedOrders = self._leave_out_excluded_pixels(self.mapDF, excludeMask, masterFlat)
+        if differenceFit is not None and differenceFit.noiseSkyFrame is not None:
+            self.mapDF = self._add_noise_sky_column(self.mapDF, differenceFit.noiseSkyFrame)
 
         quicklook_image(
             log=self.log,
@@ -528,6 +543,30 @@ class subtract_sky:
                 f"{self.objectFrame.data.shape}"
             )
         return mapDF.assign(flat=flatImage[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)])
+
+    def _add_noise_sky_column(self, mapDF, noiseSkyFrame):
+        """*a copy of the map with the sky level of each pixel in a ``noise_sky`` column (DY-2057)*
+
+        **Key Arguments:**
+
+        - ``mapDF`` -- the dispersion map dataframe, with integer ``x`` (column) and ``y`` (row) pixel columns
+        - ``noiseSkyFrame`` -- CCDData object whose flux is the sky level, with the shape of the object frame
+
+        **Return:**
+
+        - ``noiseSkyMapDF`` -- a new dataframe holding the rows of ``mapDF`` and the ``noise_sky`` column
+
+        A frame of the wrong shape raises ``ValueError``.
+        """
+        import numpy as np
+
+        skyImage = np.asarray(noiseSkyFrame.data, dtype=float)
+        if skyImage.shape != self.objectFrame.data.shape:
+            raise ValueError(
+                f"the noise-sky frame shape {skyImage.shape} differs from the object frame shape "
+                f"{self.objectFrame.data.shape}"
+            )
+        return mapDF.assign(noise_sky=skyImage[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)])
 
     def _low_flat_pixels(self, mapDF):
         """*the detector pixels where the master flat is too low to give a usable flat-fielded value*
@@ -660,9 +699,11 @@ class subtract_sky:
             return None, None, None, self.qc, self.products
 
         # MASK OUT OBJECT PIXELS
+        # A DIFFERENCE ORDER HAS ITS OBJECT RANGES MASKED ALREADY, OF BOTH SIGNS (DY-2057)
         allimageMapOrder = self.clip_object_slit_positions(
             allimageMapOrder,
-            aggressive=self.recipeSettings["sky-subtraction"]["aggressive_object_masking"],
+            aggressive=self.recipeSettings["sky-subtraction"]["aggressive_object_masking"]
+            and self.differenceFit is None,
         )
 
         self.log.print("\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH)\n")
@@ -670,7 +711,7 @@ class subtract_sky:
         allimageMapOrder, alltck, allKnots = self._fit_sky_to_orders(allimageMapOrder)
 
         # READ THE SETTING BEFORE ANY ORDER IS WRITTEN, SO A BAD VALUE RAISES WHETHER OR NOT ANY ORDER IS INFLATED
-        isInflatingErrors = self._error_inflation_enabled()
+        isInflatingErrors = self._error_inflation_enabled() and self.differenceFit is None
 
         # self.log.print(f'\t{allFluxErrorRatios.mean():0.3f},  {allFluxErrorRatios.std():0.3f},  {np.median(allFluxErrorRatios):0.3f},  {allFluxErrorRatios.max():0.3f},  {allFluxErrorRatios.min():0.3f}, {allFluxErrorRatios.max()-allFluxErrorRatios.min():0.3f},{np.mean(allResidualFloor):0.3f},{totalKnots}')
 
@@ -781,6 +822,8 @@ class subtract_sky:
         import numpy as np
 
         isWingCorrectionOn, minLeakSigma, minSkySigma = self._object_wing_settings()
+        # THE WING MODEL ASSUMES A POSITIVE SKY AND ONE POSITIVE OBJECT, AND A DIFFERENCE ORDER HAS NEITHER (DY-2057)
+        isWingCorrectionOn = isWingCorrectionOn and self.differenceFit is None
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         fittedOrders = []
@@ -971,6 +1014,9 @@ class subtract_sky:
             imageMapOrder.loc[mask, "flagged_bad_pixel_clipped"] = True
             imageMapOrder.loc[mask, "flagged_all_clipped"] = True
 
+        if self.differenceFit is not None:
+            imageMapOrder = self._prepare_difference_order(imageMapOrder)
+
         # CLIP THE MOST DEVIANT PIXELS WITHIN A WAVELENGTH ROLLING WINDOW - BAD-PIXELS AND CRHs AND OBJECTS
         imageMapOrder = self.rolling_window_clipping(
             imageMapOrderDF=imageMapOrder,
@@ -980,6 +1026,44 @@ class subtract_sky:
         )
 
         self.log.debug("completed the ``get_over_sampled_sky_from_order`` method")
+        return imageMapOrder
+
+    def _prepare_difference_order(self, imageMapOrder):
+        """*smooth the sky level behind the noise model and mask the positive and negative object of a difference order*
+
+        The order is sorted by wavelength, and its ``noise_sky`` column is replaced by its rolling median over
+        ``NOISE_SKY_WINDOW`` samples, so the weights do not follow the noise of single pixels (DY-1282). The slit ranges
+        of the objects, of either sign, are then flagged as object and as clipped. The sky model is still subtracted
+        from those pixels; only the fit leaves them out (DY-2057).
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- single order dataframe, with the ``noise_sky`` column and the clipping flags
+
+        **Return:**
+
+        - ``imageMapOrder`` -- a new dataframe, stable-sorted by wavelength
+        """
+        import numpy as np
+
+        imageMapOrder = imageMapOrder.sort_values("wavelength", kind="stable")
+        imageMapOrder["noise_sky"] = (
+            imageMapOrder["noise_sky"].rolling(NOISE_SKY_WINDOW, center=True, min_periods=1).median()
+        )
+        isUsable = ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool)
+        slitPosition = imageMapOrder["slit_position"].to_numpy(dtype=float)
+        objectRanges = signed_object_slit_ranges(
+            slitPosition[isUsable],
+            imageMapOrder["flux"].to_numpy(dtype=float)[isUsable],
+            imageMapOrder["error"].to_numpy(dtype=float)[isUsable],
+        )
+        isObject = np.zeros(len(imageMapOrder.index), dtype=bool)
+        for lower, upper in objectRanges:
+            isObject |= (slitPosition >= lower) & (slitPosition <= upper)
+        imageMapOrder.loc[isObject, "flagged_object_clipped"] = True
+        imageMapOrder.loc[isObject, "flagged_all_clipped"] = True
+        order = int(imageMapOrder["order"].iloc[0])
+        self.log.debug(f"order {order}: {len(objectRanges)} object slit ranges masked in the difference frame")
         return imageMapOrder
 
     @closes_its_figures
@@ -1607,7 +1691,8 @@ class subtract_sky:
         order = imageMapOrderDF["order"].values[0]
 
         iteration = 0
-        quantile = 0.3
+        # A DIFFERENCE ORDER HAS NO SKY CONTINUUM FOR THE OBJECT TO RAISE: ITS MEDIAN IS THE ZERO LEVEL (DY-2057)
+        quantile = 0.5 if self.differenceFit is not None else 0.3
         lastClipped = -1
         while iteration < max_iterations:
             iteration += 1
@@ -1658,6 +1743,13 @@ class subtract_sky:
 
             # NOW CLIP THE OBJECT PIXELS
             masked = imageMapOrderDF.loc[~mask_clipped, "flux"] > imageMapOrderDF.loc[~mask_clipped, "flux_upper_limit"]
+            if self.differenceFit is not None:
+                # THE NEGATIVE TRACE AND THE NEGATIVE COSMIC-RAY RESIDUALS ARE AS MUCH OUTLIERS AS THE POSITIVE ONES
+                lowerLimit = (
+                    imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"]
+                    - imageMapOrderDF.loc[~mask_clipped, "flux_minus_smoothed_residual_upper_limit"]
+                )
+                masked = masked | (imageMapOrderDF.loc[~mask_clipped, "flux"] < lowerLimit)
             imageMapOrderDF.loc[(~mask_clipped & ~mask_object & masked), "flagged_object_clipped"] = True
 
             # RESET MASKS
@@ -1689,7 +1781,7 @@ class subtract_sky:
                     title=f"clipping pixels containing object flux\niteration {iteration} - {percent:1.1f}% clipped",
                 )
 
-            if self.arm.upper() == "VIS" and iteration == 5 and percent < 5:
+            if self.arm.upper() == "VIS" and iteration == 5 and percent < 5 and self.differenceFit is None:
                 if imageMapOrderDF.loc[~mask_clipped, "flux_percentile_smoothed"].mean() > BRIGHT_ORDER_SKY_LIMIT:
                     self.log.warning(
                         f"ORDER {order}: OBJECT IS LIKELY VERY BRIGHT - SKIPPING SKY-SUBTRACTION FOR THIS ORDER"
@@ -1828,6 +1920,33 @@ class subtract_sky:
         usableFlat = np.where(isUsable, flat, 1.0)
         return np.where(isUsable, usableFlat / np.sqrt(positiveSky * usableFlat + ron**2), 0.0)
 
+    def _pixel_weights(self, imageMapOrder, skyModel):
+        """*the B-spline sky-fit weights, 1/σ, of the pixels of an order*
+
+        An ordinary frame takes its noise model from ``skyModel``, the model of the sky (DY-1282). The model of a
+        nod A-B difference is close to zero, so the photon noise comes instead from the sky level of the
+        order's ``noise_sky`` column, and both the sky and the read-noise variance are multiplied by
+        ``differenceFit.varianceFactor``: σ² = factor · (max(sky, 0) + ron²). There is no bias term (DY-2057).
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- dataframe of the pixels, with ``noise_sky`` for a difference frame and ``flat`` for a
+          flat-fielded one
+        - ``skyModel`` -- array of model sky values (e-), one per pixel. Not read for a difference frame
+
+        **Return:**
+
+        - ``weights`` -- numpy array of finite, non-negative weights, one per pixel
+        """
+        import numpy as np
+
+        flat = self._flat_values(imageMapOrder)
+        if self.differenceFit is None:
+            return self._inverse_noise_weights(skyModel, self.ron, flat)
+        factor = self.differenceFit.varianceFactor
+        noiseSky = imageMapOrder["noise_sky"].to_numpy(dtype=float)
+        return self._inverse_noise_weights(factor * noiseSky, self.ron * np.sqrt(factor), flat)
+
     @staticmethod
     def _flat_values(imageMapOrder):
         """*the master flat of each pixel of an order, or None when the map carries no flat*
@@ -1931,7 +2050,7 @@ class subtract_sky:
         localScatter = np.full(residual.shape, np.nan)
         localScatter[isUnclipped] = MAD_TO_SIGMA * localMad.to_numpy()
         # THE NOISE OF THE LOCAL SKY, NOT OF A MODEL THAT MAY NOT YET RESOLVE A SKYLINE
-        noise = 1.0 / self._inverse_noise_weights(model + localResidual, self.ron, self._flat_values(imageMapOrder))
+        noise = 1.0 / self._pixel_weights(imageMapOrder, model + localResidual)
         # A MISFIT THAT VARIES ALONG THE SLIT (E.G. A SMALL WAVELENGTH ERROR ON A SKYLINE FLANK) SCATTERS THE
         # NEIGHBOURS TOO; THE CLIP NEVER CUTS INSIDE THAT SCATTER, AND NEVER INSIDE THE NOISE MODEL
         noise = np.fmax(noise, localScatter)
@@ -1974,10 +2093,8 @@ class subtract_sky:
         refits = 0
         while notYetRefit.any():
             # THE WEIGHTS OF THIS REFIT COME FROM THE FIT BEFORE IT, AS IN EVERY FIT (DY-1282)
-            imageMapOrder["weights"] = self._inverse_noise_weights(
-                _evaluate_sky_spline(imageMapOrder["wavelength"].to_numpy(), tck),
-                self.ron,
-                self._flat_values(imageMapOrder),
+            imageMapOrder["weights"] = self._pixel_weights(
+                imageMapOrder, _evaluate_sky_spline(imageMapOrder["wavelength"].to_numpy(), tck)
             )
             mask_all_clipped = imageMapOrder["flagged_all_clipped"].astype(bool)
             if int((~mask_all_clipped).sum()) <= self.bspline_order:
@@ -2137,9 +2254,7 @@ class subtract_sky:
 
             if tck_previous is not None:
                 noiseModelSky = _evaluate_sky_spline(imageMapOrder["wavelength"].values, tck_previous)
-            imageMapOrder["weights"] = self._inverse_noise_weights(
-                noiseModelSky, self.ron, self._flat_values(imageMapOrder)
-            )
+            imageMapOrder["weights"] = self._pixel_weights(imageMapOrder, noiseModelSky)
 
             goodWl, goodFlux, goodWeights = self._spline_fit_samples(imageMapOrder, mask_all_clipped, starterKnots)
 
@@ -2318,6 +2433,8 @@ class subtract_sky:
         imageMapOrder["sky_model_wl_derivative"] = _evaluate_sky_spline(
             imageMapOrder["wavelength"].values, tck, derivative=True
         )
+        if self.differenceFit is not None:
+            imageMapOrder["sky_model_wl"] = self._gate_difference_model(imageMapOrder)
         # THE MODEL IS NOT CLIPPED AT ZERO: A NEGATIVE EXCURSION IS NOISE, AND A CLIP BIASES A FAINT SKY HIGH (DY-1282)
         imageMapOrder["sky_model"] = imageMapOrder["sky_model_wl"] * imageMapOrder["slit_normalisation_ratio"]
 
@@ -2338,6 +2455,26 @@ class subtract_sky:
 
         self.log.debug("completed the ``fit_bspline_curve_to_sky`` method")
         return imageMapOrder, tck, allKnots, flux_error_ratio, residualFloor
+
+    def _gate_difference_model(self, imageMapOrder):
+        """*the sky model of a difference order, zero wherever it is within the noise of its own local mean (DY-2057)*
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- wavelength-sorted order dataframe with the fitted ``sky_model_wl``, the final
+          ``weights`` and the clipping flags
+
+        **Return:**
+
+        - ``gatedModel`` -- the gated model of every pixel, as a numpy array
+        """
+        weights = self._pixel_weights(imageMapOrder, None)
+        return gate_insignificant_model(
+            imageMapOrder["sky_model_wl"].to_numpy(dtype=float),
+            weights,
+            ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool),
+            self.differenceFit.minSignificance,
+        )
 
     def _end_anchor_values(self, wavelength, flux, starterKnots):
         """*the local flux values that anchor the blue and red ends of the sky fit*
@@ -3037,10 +3174,9 @@ class subtract_sky:
             # THE RESIDUAL IN UNITS OF ITS OWN NOISE (1/WEIGHT), SO A LOW FLAT'S LARGER NOISE IS NOT A NOISY REGION
             # (DY-1517)
             residualInNoiseUnits = df.loc[notClippedOrObjectMask, "flux_minus_smoothed_residual"] * (
-                self._inverse_noise_weights(
+                self._pixel_weights(
+                    df.loc[notClippedOrObjectMask],
                     df.loc[notClippedOrObjectMask, "flux_percentile_smoothed"].to_numpy(dtype=float),
-                    self.ron,
-                    self._flat_values(df.loc[notClippedOrObjectMask]),
                 )
             )
 
@@ -3270,6 +3406,9 @@ class subtract_sky:
 
         if noise_significance:
             mask_low_flux = imageMapOrder["flux_windowed_long_median"] < median_flux - noise_significance * std_flux
+            if self.differenceFit is not None:
+                # A NEGATIVE FLUX IN A DIFFERENCE FRAME IS A SKY THAT FELL BETWEEN THE TWO EXPOSURES, NOT A NOISY REGION
+                mask_low_flux = np.zeros(len(imageMapOrder.index), dtype=bool)
             imageMapOrder.loc[mask_unclipped & (mask_high_resid | mask_low_flux), "flagged_noisy_region"] = True
 
         # REFRESH MASKS AFTER NOISE FLAGGING

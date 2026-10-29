@@ -1420,6 +1420,7 @@ class soxs_nod(base_recipe):
             locationSetIndex=locationSetIndex,
             notFlattened=notFlattened,
             combinedFrames=combinedFrames,
+            masterFlat=masterFlat,
         )
 
         # THE `== True` COMPARISON IS THE OTHER HALF OF THE ASYMMETRY PINNED IN _single_frame_products_table, SO IT IS
@@ -1762,11 +1763,13 @@ class soxs_nod(base_recipe):
         locationSetIndex,
         notFlattened,
         combinedFrames=None,
+        masterFlat=False,
     ):
         """*optimally extract the cycle's difference frames*
 
         Sets ``self.qc``. An offset run extracts the A-B difference only. With ``combinedFrames``, the one combined
-        frame is extracted in place of both differences.
+        frame is extracted in place of both differences. With the ``difference_sky_fit`` recipe setting on, the sky is
+        first fitted to each frame that is extracted (``_fit_sky_to_difference``).
 
         **Key Arguments:**
 
@@ -1782,6 +1785,8 @@ class soxs_nod(base_recipe):
         - ``notFlattened`` -- if True, the extraction is performed on non-flattened data
         - ``combinedFrames`` -- the combined frame, its unflattened counterpart and the sky frame, or *None* to
           extract the differences on their own. Default *None*
+        - ``masterFlat`` -- the master flat the differences were divided by, or False. Only the sky fit reads it.
+          Default *False*
 
         **Return:**
 
@@ -1792,8 +1797,15 @@ class soxs_nod(base_recipe):
           extraction found no object trace (*None* if neither did). An offset run has the A-B extraction only
         - ``theseProducts`` -- the products table the extractions returned
         """
+        from soxspipe.commonutils.difference_sky_fit import COMBINED_VARIANCE_FACTOR, DIFFERENCE_VARIANCE_FACTOR
+
         # EXTRACT THE A MINUS B FRAME, OR THE COMBINED FRAME WHICH CARRIES THE A HEADER TOO
         skySubtractedFrame, unflattenedFrame, skyFrame = combinedFrames or (A_minus_B, A_minus_B_notflattened, bFrame)
+        if self._is_difference_sky_fit_on():
+            varianceFactor = DIFFERENCE_VARIANCE_FACTOR if combinedFrames is None else COMBINED_VARIANCE_FACTOR
+            skySubtractedFrame, unflattenedFrame = self._fit_sky_to_difference(
+                skySubtractedFrame, unflattenedFrame, skyFrame, notFlattened, masterFlat, varianceFactor
+            )
         theseProducts, mergedSpectrumDF_A, orderJoins = self._extract_difference(
             skySubtractedFrame, unflattenedFrame, skyFrame, theseProducts, (locationSetIndex, "A"), notFlattened
         )
@@ -1801,6 +1813,10 @@ class soxs_nod(base_recipe):
             return mergedSpectrumDF_A, False, orderJoins, theseProducts
 
         # EXTRACT THE B MINUS A FRAME
+        if self._is_difference_sky_fit_on():
+            B_minus_A, B_minus_A_notflattened = self._fit_sky_to_difference(
+                B_minus_A, B_minus_A_notflattened, aFrame, notFlattened, masterFlat, DIFFERENCE_VARIANCE_FACTOR
+            )
         theseProducts, mergedSpectrumDF_B, orderJoinsB = self._extract_difference(
             B_minus_A, B_minus_A_notflattened, aFrame, theseProducts, (locationSetIndex, "B"), notFlattened
         )
@@ -1810,6 +1826,94 @@ class soxs_nod(base_recipe):
             orderJoins = orderJoinsB
 
         return mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins, theseProducts
+
+    def _is_difference_sky_fit_on(self):
+        """*whether the spline sky fit runs on the difference frames before they are extracted (DY-2057 prototype)*
+
+        **Return:**
+
+        - ``isOn`` -- the ``difference_sky_fit`` recipe setting. A workspace whose settings predate the key gets False
+        """
+        return bool(self.recipeSettings.get("difference_sky_fit", False))
+
+    def _difference_sky_settings(self):
+        """*the recipe settings of the sky fit: the stare sky-subtraction settings of the arm, switched on*
+
+        The stare recipe tunes these settings for the same detector, so the difference fit reuses them. Its QC plot is
+        left off, and the settings in ``self.settings`` are not modified.
+
+        **Return:**
+
+        - ``recipeSettings`` -- a new dictionary holding the ``sky-subtraction`` block
+        """
+        import copy
+
+        try:
+            skySettings = copy.deepcopy(self.settings["soxs-stare"][self.arm.lower()]["sky-subtraction"])
+        except KeyError as e:
+            raise ValueError(
+                f"the difference sky fit needs the sky-subtraction settings of the {self.arm} arm under soxs-stare"
+            ) from e
+        skySettings.update({"subtract_sky": True, "sky_model_qc_plot": False})
+        return {"sky-subtraction": skySettings}
+
+    def _fit_sky_to_difference(
+        self, skySubtractedFrame, unflattenedFrame, skyFrame, notFlattened, masterFlat, varianceFactor
+    ):
+        """*fit and subtract the residual sky of a difference frame, ready for extraction (DY-2057 prototype)*
+
+        The flattened pass fits the flat-fielded frame with the master flat, and leaves the unflattened frame, on which
+        the object trace is found, as it was. The not-flattened pass extracts the unflattened frame, so it fits that
+        one, without a flat, and both returned frames are the fit. The frame ``skyFrame`` that was subtracted gives the
+        sky level of the noise model. A fit that makes no sky model returns the frames unchanged.
+
+        **Key Arguments:**
+
+        - ``skySubtractedFrame`` -- the difference frame to extract, flat-fielded in the flattened pass
+        - ``unflattenedFrame`` -- the same difference without flat-fielding
+        - ``skyFrame`` -- the frame that was subtracted, flat-fielded as ``skySubtractedFrame`` is
+        - ``notFlattened`` -- if True, this is the not-flattened pass
+        - ``masterFlat`` -- the master flat, or False
+        - ``varianceFactor`` -- the variance of the difference relative to one frame (see ``difference_sky_fit``)
+
+        **Return:**
+
+        - ``skySubtractedFrame`` -- the frame to extract, with the fitted sky subtracted
+        - ``unflattenedFrame`` -- the frame to trace on (and, in the not-flattened pass, to extract)
+        """
+        from soxspipe.commonutils import subtract_sky
+        from soxspipe.commonutils.difference_sky_fit import MIN_MODEL_SIGNIFICANCE, difference_fit
+
+        isFlattened = not notFlattened and skySubtractedFrame is not unflattenedFrame
+        frame = skySubtractedFrame if isFlattened else unflattenedFrame
+        fitter = subtract_sky(
+            log=self.log,
+            settings=self.settings,
+            recipeSettings=self._difference_sky_settings(),
+            objectFrame=frame,
+            twoDMap=self.twoDMap,
+            qcTable=self.qc,
+            productsTable=self.products,
+            dispMap=self.dispMap,
+            sofName=self.sofName,
+            recipeName=self.recipeName,
+            startNightDate=self.startNightDate,
+            debug=self.debug,
+            masterFlat=masterFlat if isFlattened and not isinstance(masterFlat, bool) else None,
+            ron=None if self.readNoise is None else self.readNoise.skyFit,
+            differenceFit=difference_fit(
+                noiseSkyFrame=skyFrame,
+                varianceFactor=varianceFactor,
+                minSignificance=self.recipeSettings.get("difference_sky_fit_min_significance", MIN_MODEL_SIGNIFICANCE),
+            ),
+        )
+        skyModel, fittedFrame, _, self.qc, self.products = fitter.subtract()
+        if skyModel is None:
+            self.log.warning(
+                "The sky fit to the difference frame made no sky model, so the frame is extracted as it is"
+            )
+            return skySubtractedFrame, unflattenedFrame
+        return (fittedFrame, unflattenedFrame) if isFlattened else (fittedFrame, fittedFrame)
 
     def _extract_difference(
         self, skySubtractedFrame, unflattenedFrame, subtractedFrame, theseProducts, extractionKey, notFlattened
