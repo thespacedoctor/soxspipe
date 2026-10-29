@@ -2960,7 +2960,42 @@ class subtract_sky:
 
         firstBin = int(np.floor(minSlitPosition / OBJECT_BIN_WIDTH))
         lastBin = int(np.floor(maxSlitPosition / OBJECT_BIN_WIDTH)) + 1
+        # THE DIVISION AND THE MULTIPLICATION ROUND DIFFERENTLY, SO THE FIRST EDGE CAN LAND ABOVE THE MINIMUM. THE LAST
+        # EDGE CANNOT LAND BELOW THE MAXIMUM BECAUSE OF THE EXTRA BIN ADDED TO lastBin
+        if firstBin * OBJECT_BIN_WIDTH > minSlitPosition:
+            firstBin -= 1
         return np.arange(firstBin, lastBin + 1) * OBJECT_BIN_WIDTH
+
+    def _normalised_object_counts(self, slitPositions):
+        """*the flagged pixel counts per slit-position bin of the object search, one per bin for a uniform distribution*
+
+        **Key Arguments:**
+
+        - ``slitPositions`` -- the slit positions of the flagged pixels; positions that are not finite are ignored
+
+        **Return:**
+
+        - ``binEdges`` -- the bin edges from ``_object_bin_edges``
+        - ``counts`` -- a pandas series of the counts, divided by their total and multiplied by the number of bins
+            - they sum to the number of bins
+            - both are empty when no finite slit position is flagged
+
+        **Usage:**
+
+        ```python
+        bins, counts = self._normalised_object_counts(allimageMapOrder["slit_position"])
+        ```
+        """
+        import numpy as np
+        import pandas as pd
+
+        positions = np.asarray(slitPositions, dtype=float)
+        positions = positions[np.isfinite(positions)]
+        if not len(positions):
+            return np.array([]), pd.Series(dtype=float)
+        binEdges = self._object_bin_edges(positions.min(), positions.max())
+        counts = np.histogram(positions, bins=binEdges)[0]
+        return binEdges, pd.Series(counts / counts.sum() * (len(binEdges) - 1))
 
     def clip_object_slit_positions(self, order_dataframes, aggressive=False):
         """*clip out pixels flagged as an object*
@@ -3000,32 +3035,15 @@ class subtract_sky:
 
         if aggressive:
             # BIN FLAGGED PIXEL COUNTS INTO DISCRETE SLIT-POSITION RANGES ON A FIXED GRID (DY-1982)
-            bins = self._object_bin_edges(
-                allimageMapOrder["slit_position"].min(), allimageMapOrder["slit_position"].max()
-            )
-            nbins = len(bins) - 1
-            counts = np.histogram(allimageMapOrder["slit_position"], bins=bins)[0]
-            result = pd.Series(counts / counts.sum() * nbins)
+            bins, result = self._normalised_object_counts(allimageMapOrder["slit_position"])
+            object_ranges = []
+            if len(result):
+                # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
+                result -= result.median()
+                result -= result.abs().median()
 
-            # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
-            result -= result.median()
-            result -= result.abs().median()
-            # result -= result.abs().median()
-
-            # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
-            edges = OBJECT_EDGE_MARGIN_BINS
-            object_ranges = self._object_slit_ranges(result.to_numpy(), bins, edges)
-
-            if 1 == 0:
-                import matplotlib.pyplot as plt
-
-                self.log.print(object_ranges)
-                width = (maxsp - minsp) / nbins
-                fig, ax = plt.subplots()
-                bins = bins[:-1]
-                rects1 = ax.bar(bins - width / 2, result, width, label="count")
-                fig.tight_layout()
-                plt.show()
+                # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
+                object_ranges = self._object_slit_ranges(result.to_numpy(), bins, OBJECT_EDGE_MARGIN_BINS)
 
         # READ THE SETTING ON EVERY PATH, SO A BAD VALUE RAISES WHETHER OR NOT ANYTHING IS RESTORED (DY-1972)
         isRestoreEnabled = self._restore_skyline_cores_enabled()
