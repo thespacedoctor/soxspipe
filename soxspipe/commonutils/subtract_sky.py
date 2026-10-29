@@ -45,6 +45,12 @@ MAD_TO_SIGMA = 1.4826
 # AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
 OBJECT_MIN_RUN_BINS = 4
 OBJECT_PEAK_COUNT = 0.05
+# THE SLIT-POSITION BIN WIDTH (ARCSEC) OF THE OBJECT SEARCH. BIN EDGES ARE WHOLE MULTIPLES OF IT FROM SLIT POSITION 0,
+# SO THE FLAGGED SLIT EXTENT CANNOT MOVE THEM (DY-1982)
+OBJECT_BIN_WIDTH = 0.1
+# THE NUMBER OF BINS AT EACH END OF THE FLAGGED SLIT EXTENT THAT THE OBJECT SEARCH SKIPS. 6 x 0.1" IS THE OLD 5 BINS OF
+# AN 11"/99 WIDTH (0.55") ROUNDED UP (DY-1982)
+OBJECT_EDGE_MARGIN_BINS = 6
 
 # A VIS ORDER WITH A MEAN PERCENTILE-SMOOTHED FLUX ABOVE THIS (E-) IS TOO BRIGHT TO FIT A SKY MODEL TO (DY-1285)
 BRIGHT_ORDER_SKY_LIMIT = 2500
@@ -2929,6 +2935,33 @@ class subtract_sky:
             runPeak = 0.0
         return objectRanges
 
+    def _object_bin_edges(self, minSlitPosition, maxSlitPosition):
+        """*the slit-position bin edges of the object search, on a fixed grid anchored at slit position 0*
+
+        **Key Arguments:**
+
+        - ``minSlitPosition`` -- the smallest flagged slit position
+        - ``maxSlitPosition`` -- the largest flagged slit position
+
+        **Return:**
+
+        - ``binEdges`` -- whole multiples of ``OBJECT_BIN_WIDTH``
+            - the first is the multiple at or below ``minSlitPosition``
+            - the last is the multiple above ``maxSlitPosition``
+            - a change of the extent inside its outer bin moves no edge
+
+        **Usage:**
+
+        ```python
+        bins = self._object_bin_edges(-5.04, 4.9)
+        ```
+        """
+        import numpy as np
+
+        firstBin = int(np.floor(minSlitPosition / OBJECT_BIN_WIDTH))
+        lastBin = int(np.floor(maxSlitPosition / OBJECT_BIN_WIDTH)) + 1
+        return np.arange(firstBin, lastBin + 1) * OBJECT_BIN_WIDTH
+
     def clip_object_slit_positions(self, order_dataframes, aggressive=False):
         """*clip out pixels flagged as an object*
 
@@ -2966,12 +2999,13 @@ class subtract_sky:
         noise_rolling_window_size = self.recipeSettings["sky-subtraction"]["noise_rolling_window_size"]
 
         if aggressive:
-            # BIN FLAGGED PIXEL COUNTS INTO DISCRETE SLIT-POSITION RANGES
-            nbins = 100
-            minsp = allimageMapOrder["slit_position"].min()
-            maxsp = allimageMapOrder["slit_position"].max()
-            bins = np.linspace(minsp, maxsp, nbins)
-            result = allimageMapOrder["slit_position"].value_counts(bins=bins, sort=False, normalize=True) * nbins
+            # BIN FLAGGED PIXEL COUNTS INTO DISCRETE SLIT-POSITION RANGES ON A FIXED GRID (DY-1982)
+            bins = self._object_bin_edges(
+                allimageMapOrder["slit_position"].min(), allimageMapOrder["slit_position"].max()
+            )
+            nbins = len(bins) - 1
+            counts = np.histogram(allimageMapOrder["slit_position"], bins=bins)[0]
+            result = pd.Series(counts / counts.sum() * nbins)
 
             # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
             result -= result.median()
@@ -2979,7 +3013,7 @@ class subtract_sky:
             # result -= result.abs().median()
 
             # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
-            edges = int(nbins / 20)
+            edges = OBJECT_EDGE_MARGIN_BINS
             object_ranges = self._object_slit_ranges(result.to_numpy(), bins, edges)
 
             if 1 == 0:
