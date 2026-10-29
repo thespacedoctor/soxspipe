@@ -37,8 +37,12 @@ OBJECT_EXTEND_SIGMA = 2.0
 OBJECT_DILATE_BINS = 2
 # A BIN NEEDS AT LEAST THIS MANY PIXELS TO BE JUDGED
 OBJECT_MIN_BIN_SAMPLES = 20
-# CONVERTS A MEDIAN ABSOLUTE DEVIATION TO A GAUSSIAN STANDARD DEVIATION
-MAD_TO_SIGMA = 1.4826
+# THE ZERO LEVEL AND THE SCATTER OF THE SLIT PROFILE COME FROM THE QUIETEST BINS: THE LOWEST DECILE OF THE ABSOLUTE
+# DEVIATIONS, WHICH IS 0.1257 STANDARD DEVIATIONS OF A GAUSSIAN. A BIN WITHIN OBJECT_QUIET_SIGMA OF THE ZERO LEVEL
+# IS QUIET
+OBJECT_QUIET_PERCENTILE = 10
+OBJECT_QUIET_DECILE_TO_SIGMA = 0.1257
+OBJECT_QUIET_SIGMA = 3.0
 
 
 @dataclass(frozen=True)
@@ -71,6 +75,28 @@ def _binned_signal_to_noise(slitPosition, flux, error):
     return profile, counts, edges
 
 
+def _quiet_bin_level(profile, counts, isJudged):
+    """*the profile minus its zero level, and the standard error of a bin, both read from the quietest bins*
+
+    A bright object and its wings can fill most of the slit, so the median of the bins and their median absolute
+    deviation are both lifted by the object. The lowest decile of the absolute deviations is not: it sits in the
+    bins with no object. The zero level is refined once from the bins within ``OBJECT_QUIET_SIGMA`` of the first one.
+    The pure-noise standard error of a bin is ``1 / sqrt(count)``, which the measured scatter may only raise, so a
+    flat-field structure along the slit does not seed an object.
+    """
+    judged = profile[isJudged]
+    zero = np.median(judged)
+    for _ in range(2):
+        decile = np.percentile(np.abs(judged - zero), OBJECT_QUIET_PERCENTILE)
+        scatter = decile / OBJECT_QUIET_DECILE_TO_SIGMA
+        isQuiet = np.abs(judged - zero) <= OBJECT_QUIET_SIGMA * max(scatter, 1e-12)
+        zero = np.median(judged[isQuiet])
+    deviation = profile - zero
+    decile = np.percentile(np.abs(deviation[isJudged]), OBJECT_QUIET_PERCENTILE)
+    standardError = np.fmax(1.0 / np.sqrt(np.fmax(counts, 1)), decile / OBJECT_QUIET_DECILE_TO_SIGMA)
+    return deviation, standardError
+
+
 def signed_object_slit_ranges(slitPosition, flux, error):
     """*the slit-position ranges of the positive and negative objects of a difference order*
 
@@ -98,11 +124,7 @@ def signed_object_slit_ranges(slitPosition, flux, error):
     isJudged = np.isfinite(profile)
     if isJudged.sum() <= 2 * OBJECT_EDGE_BINS:
         return []
-    deviation = profile - np.median(profile[isJudged])
-    mad = np.nanmedian(np.abs(deviation[isJudged]))
-    # THE PURE-NOISE STANDARD ERROR OF A BIN IS 1 / SQRT(COUNT); THE SCATTER OF THE BINS GUARDS AGAINST A FLAT-FIELD
-    # STRUCTURE ALONG THE SLIT THAT THE MEDIAN DOES NOT REMOVE
-    standardError = np.fmax(1.0 / np.sqrt(np.fmax(counts, 1)), MAD_TO_SIGMA * mad)
+    deviation, standardError = _quiet_bin_level(profile, counts, isJudged)
     significance = np.where(isJudged, np.abs(deviation) / standardError, 0.0)
     examined = np.zeros(OBJECT_SLIT_BINS, dtype=bool)
     examined[OBJECT_EDGE_BINS : OBJECT_SLIT_BINS - OBJECT_EDGE_BINS] = True

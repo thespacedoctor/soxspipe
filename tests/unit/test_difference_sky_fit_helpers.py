@@ -144,3 +144,36 @@ def test_the_gate_returns_a_new_array_and_leaves_the_model_alone() -> None:
     # ASSERT
     assert np.array_equal(model, original)
     assert gated is not model
+
+
+# THE SHIFT-AND-ADD FRAME OF A NOD PAIR HOLDS THE OBJECT AT FULL AMPLITUDE AND TWICE AT HALF AMPLITUDE WITH THE
+# OTHER SIGN
+# (DY-1674). A BRIGHT STANDARD'S MOFFAT WINGS FILL MOST OF THE SLIT, SO THE SCATTER OF THE SLIT BINS IS NOT THE NOISE
+BRIGHT_PEAK = 60.0 * NOISE
+MOFFAT_ALPHA = 0.8
+MOFFAT_BETA = 1.8
+SHIFTED_NEGATIVE_CENTRE = 2.0 * POSITIVE_CENTRE - NEGATIVE_CENTRE
+
+
+def _moffat(slitPosition: np.ndarray, centre: float) -> np.ndarray:
+    return (1.0 + ((slitPosition - centre) / MOFFAT_ALPHA) ** 2) ** -MOFFAT_BETA
+
+
+def test_a_bright_object_with_broad_wings_does_not_hide_its_two_half_amplitude_negative_traces() -> None:
+    # ARRANGE
+    rng = np.random.default_rng(6)
+    slitGrid = np.linspace(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH, PIXELS_PER_COLUMN)
+    slitPosition = np.tile(slitGrid, COLUMNS)
+    profile = BRIGHT_PEAK * (
+        _moffat(slitPosition, POSITIVE_CENTRE)
+        - 0.5 * _moffat(slitPosition, NEGATIVE_CENTRE)
+        - 0.5 * _moffat(slitPosition, SHIFTED_NEGATIVE_CENTRE)
+    )
+    flux = profile + rng.normal(0.0, NOISE, slitPosition.size)
+
+    # ACT
+    objectRanges = signed_object_slit_ranges(slitPosition, flux, np.full(slitPosition.size, NOISE))
+
+    # ASSERT
+    for centre in (POSITIVE_CENTRE, NEGATIVE_CENTRE, SHIFTED_NEGATIVE_CENTRE):
+        assert any(lower <= centre <= upper for lower, upper in objectRanges)
