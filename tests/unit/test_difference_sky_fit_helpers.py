@@ -207,3 +207,35 @@ def test_a_slope_along_the_slit_neither_hides_the_traces_nor_is_taken_for_one() 
     for centre in (POSITIVE_CENTRE, NEGATIVE_CENTRE, SHIFTED_NEGATIVE_CENTRE):
         assert any(lower <= centre <= upper for lower, upper in withTraces)
     assert slopeOnly == []
+
+
+def test_an_order_shorter_than_the_window_is_gated_like_any_other() -> None:
+    # ARRANGE
+    samples = 50
+    model = np.concatenate((np.full(25, 100.0 * NOISE), np.zeros(25)))
+
+    # ACT
+    gated = gate_insignificant_model(model, np.full(samples, 1.0 / NOISE), np.ones(samples, dtype=bool), 3.0)
+
+    # ASSERT
+    assert gated.shape == (samples,)
+    assert np.array_equal(gated[:25], model[:25])
+
+
+def test_an_empty_order_gives_an_empty_model() -> None:
+    # ARRANGE, ACT
+    gated = gate_insignificant_model(np.array([]), np.array([]), np.array([], dtype=bool), 3.0)
+
+    # ASSERT
+    assert gated.shape == (0,)
+
+
+def test_weights_given_as_a_list_and_a_nan_model_value_are_handled() -> None:
+    # ARRANGE
+    model = np.array([np.nan, 500.0, 0.0])
+
+    # ACT
+    gated = gate_insignificant_model(model, [0.1, 0.1, 0.1], [True, True, True], 3.0)
+
+    # ASSERT
+    assert gated.tolist() == [0.0, 500.0, 0.0]

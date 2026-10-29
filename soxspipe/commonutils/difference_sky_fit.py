@@ -20,8 +20,8 @@ COMBINED_VARIANCE_FACTOR = 1.0
 # THE MODEL COUNTS AS SKY ONLY WHERE IT IS AT LEAST THIS MANY STANDARD ERRORS OF THE LOCAL WEIGHTED MEAN
 MIN_MODEL_SIGNIFICANCE = 3.0
 # THE NUMBER OF WAVELENGTH-SORTED SAMPLES OVER WHICH THE STANDARD ERROR OF THE LOCAL WEIGHTED MEAN IS TAKEN. IT IS THE
-# SPACING OF THE STARTER KNOTS OF A NIR ORDER, THE SMOOTHEST THE SPLINE CAN BE
-GATE_WINDOW_SAMPLES = 300
+# SPACING OF THE STARTER KNOTS OF A NIR ORDER (300), MADE ODD SO THE WINDOW IS CENTRED, THE SMOOTHEST THE SPLINE CAN BE
+GATE_WINDOW_SAMPLES = 301
 # THE NUMBER OF WAVELENGTH-SORTED SAMPLES OF THE ROLLING MEDIAN THAT SMOOTHS THE SKY LEVEL BEHIND THE NOISE MODEL. THE
 # MEDIAN IGNORES THE TRACES, WHICH FILL ONLY A FEW SLIT PIXELS OF EVERY COLUMN
 NOISE_SKY_WINDOW = 501
@@ -43,7 +43,7 @@ OBJECT_MIN_BIN_SAMPLES = 20
 OBJECT_QUIET_PERCENTILE = 10
 OBJECT_QUIET_DECILE_TO_SIGMA = 0.1257
 # THE RUNNING MEDIAN OF THE SLIT PROFILE THAT IS TAKEN AS ITS BASELINE IS THIS MANY BINS WIDE, ABOUT 60% OF THE SLIT
-OBJECT_BASELINE_BINS = 62
+OBJECT_BASELINE_BINS = 63
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,8 @@ class difference_fit:
     """How the sky fit treats a difference frame.
 
     ``noiseSkyFrame`` is the frame whose flux is the sky level that sets the photon noise, as a CCDData object with the
-    shape of the difference frame, or *None* when the pixels carry their own ``noise_sky`` column.
+    shape of the difference frame. ``subtract_sky`` refuses a ``difference_fit`` without one. A ``subtract_sky`` that
+    was not built through ``__init__`` can instead carry its own ``noise_sky`` column on the pixels.
     ``varianceFactor`` multiplies the sky and read-noise variance of the noise model, 2 for one A-B difference.
     ``minSignificance`` is the significance below which the fitted model is dropped.
     """
@@ -161,15 +162,20 @@ def gate_insignificant_model(model, weights, isUsed, minSignificance, window=GAT
     - ``weights`` -- the fit weights (1 / sigma) of each pixel
     - ``isUsed`` -- True for the pixels the fit used
     - ``minSignificance`` -- the model survives where it is at least this many standard errors from zero
-    - ``window`` -- the number of neighbouring samples of the local mean. Default ``GATE_WINDOW_SAMPLES``
+    - ``window`` -- the number of neighbouring samples of the local mean, cut to the length of the order when the order
+      is shorter. Default ``GATE_WINDOW_SAMPLES``
 
     **Return:**
 
-    - ``gatedModel`` -- a new array
+    - ``gatedModel`` -- a new array. A model value that is NaN comes out as 0
     """
     model = np.asarray(model, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    if model.size == 0:
+        return model.copy()
     usableWeights = np.where(np.asarray(isUsed, dtype=bool) & np.isfinite(weights), weights, 0.0)
-    weightSum = np.convolve(usableWeights**2, np.ones(window), mode="same")
+    # A WINDOW LONGER THAN THE ORDER WOULD MAKE THE "same" CONVOLUTION RETURN THE WINDOW'S LENGTH
+    weightSum = np.convolve(usableWeights**2, np.ones(min(window, model.size)), mode="same")
     with np.errstate(divide="ignore"):
         standardError = 1.0 / np.sqrt(weightSum)
     return np.where(np.abs(model) >= minSignificance * standardError, model, 0.0)

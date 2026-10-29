@@ -414,7 +414,9 @@ class subtract_sky:
 
         # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280, DY-1517); subtract FLAGS AND ZERO-FILLS THEM AS NO-MODEL PIXELS
         self.mapDF, self.maskedOrders = self._leave_out_excluded_pixels(self.mapDF, excludeMask, masterFlat)
-        if differenceFit is not None and differenceFit.noiseSkyFrame is not None:
+        if differenceFit is not None:
+            if differenceFit.noiseSkyFrame is None:
+                raise ValueError("a difference sky fit needs a noiseSkyFrame, the frame that sets the photon noise")
             self.mapDF = self._add_noise_sky_column(self.mapDF, differenceFit.noiseSkyFrame)
 
         quicklook_image(
@@ -1046,6 +1048,8 @@ class subtract_sky:
         """
         import numpy as np
 
+        if "noise_sky" not in imageMapOrder.columns:
+            raise ValueError("a difference frame needs the noise_sky column on its pixels (see differenceFit)")
         imageMapOrder = imageMapOrder.sort_values("wavelength", kind="stable")
         imageMapOrder["noise_sky"] = (
             imageMapOrder["noise_sky"].rolling(NOISE_SKY_WINDOW, center=True, min_periods=1).median()
@@ -1943,6 +1947,8 @@ class subtract_sky:
         flat = self._flat_values(imageMapOrder)
         if self.differenceFit is None:
             return self._inverse_noise_weights(skyModel, self.ron, flat)
+        if "noise_sky" not in imageMapOrder.columns:
+            raise ValueError("a difference frame needs the noise_sky column on its pixels (see differenceFit)")
         factor = self.differenceFit.varianceFactor
         noiseSky = imageMapOrder["noise_sky"].to_numpy(dtype=float)
         return self._inverse_noise_weights(factor * noiseSky, self.ron * np.sqrt(factor), flat)

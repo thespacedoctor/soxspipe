@@ -327,3 +327,23 @@ def test_a_difference_frame_on_a_flat_gives_a_low_flat_pixel_a_low_weight(log: A
     sky = np.clip(table["noise_sky"].to_numpy(), 0.0, None)
     expected = flat / np.sqrt(2.0 * sky * flat + 2.0 * READ_NOISE**2)
     np.testing.assert_allclose(weights, expected)
+
+
+def test_a_difference_fit_with_no_noise_sky_frame_is_refused_when_the_subtractor_is_built(
+    log: Any, map_table: pd.DataFrame, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    _patch_collaborators(monkeypatch, tmp_path, map_table)
+
+    # ACT, ASSERT
+    with pytest.raises(ValueError, match="noiseSkyFrame"):
+        _subtract(log, map_table, "NIR", differenceFit=difference_fit())
+
+
+def test_weights_for_a_difference_frame_with_no_noise_sky_column_raise_a_clear_error(log: Any) -> None:
+    # ARRANGE
+    subtractor = _weights_subtractor(log, difference_fit())
+
+    # ACT, ASSERT
+    with pytest.raises(ValueError, match="noise_sky"):
+        subtractor._pixel_weights(pd.DataFrame({"flux": [1.0]}), None)

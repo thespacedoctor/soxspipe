@@ -1832,9 +1832,34 @@ class soxs_nod(base_recipe):
 
         **Return:**
 
-        - ``isOn`` -- the ``difference_sky_fit`` recipe setting. A workspace whose settings predate the key gets False
+        - ``isOn`` -- the ``difference_sky_fit`` recipe setting. A workspace whose settings predate the key gets False.
+          A value that is not a bool (a quoted ``"False"``, a number, null) raises a ``ValueError``
         """
-        return bool(self.recipeSettings.get("difference_sky_fit", False))
+        isOn = self.recipeSettings.get("difference_sky_fit", False)
+        if not isinstance(isOn, bool):
+            raise ValueError(f"the recipe setting `difference_sky_fit` must be true or false, not {isOn!r}")
+        return isOn
+
+    def _difference_sky_min_significance(self):
+        """*the ``difference_sky_fit_min_significance`` recipe setting, checked*
+
+        **Return:**
+
+        - ``minSignificance`` -- a finite real number that is at least 0. The shipped default when the key is absent.
+          A bool, a string, null, a negative or a non-finite number raises a ``ValueError``
+        """
+        import math
+        import numbers
+
+        from soxspipe.commonutils.difference_sky_fit import MIN_MODEL_SIGNIFICANCE
+
+        value = self.recipeSettings.get("difference_sky_fit_min_significance", MIN_MODEL_SIGNIFICANCE)
+        isNumber = isinstance(value, numbers.Real) and not isinstance(value, bool)
+        if not (isNumber and math.isfinite(value) and value >= 0):
+            raise ValueError(
+                f"the recipe setting `difference_sky_fit_min_significance` must be a finite number >= 0, not {value!r}"
+            )
+        return value
 
     def _difference_sky_settings(self):
         """*the recipe settings of the sky fit: the stare sky-subtraction settings of the arm, switched on*
@@ -1882,8 +1907,10 @@ class soxs_nod(base_recipe):
         - ``unflattenedFrame`` -- the frame to trace on (and, in the not-flattened pass, to extract)
         """
         from soxspipe.commonutils import subtract_sky
-        from soxspipe.commonutils.difference_sky_fit import MIN_MODEL_SIGNIFICANCE, difference_fit
+        from soxspipe.commonutils.difference_sky_fit import difference_fit
 
+        # CHECKED BEFORE THE FIT IS BUILT, SO A BAD SETTING RAISES WHATEVER THE FRAME
+        minSignificance = self._difference_sky_min_significance()
         isFlattened = not notFlattened and skySubtractedFrame is not unflattenedFrame
         frame = skySubtractedFrame if isFlattened else unflattenedFrame
         fitter = subtract_sky(
@@ -1904,7 +1931,7 @@ class soxs_nod(base_recipe):
             differenceFit=difference_fit(
                 noiseSkyFrame=skyFrame,
                 varianceFactor=varianceFactor,
-                minSignificance=self.recipeSettings.get("difference_sky_fit_min_significance", MIN_MODEL_SIGNIFICANCE),
+                minSignificance=minSignificance,
             ),
         )
         skyModel, fittedFrame, _, self.qc, self.products = fitter.subtract()

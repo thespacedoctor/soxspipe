@@ -321,3 +321,44 @@ def test_the_shipped_settings_have_the_difference_sky_fit_off(recipeName: str) -
     # ASSERT
     assert recipeSettings["difference_sky_fit"] is False
     assert recipeSettings["difference_sky_fit_min_significance"] == MIN_MODEL_SIGNIFICANCE
+
+
+@pytest.mark.parametrize("value", ["False", "True", "yes", 1, 0, None])
+def test_a_difference_sky_fit_setting_that_is_not_a_bool_is_refused(log: Any, tmp_path: Path, value: Any) -> None:
+    # ARRANGE
+    recipe = _fit_recipe(log, tmp_path, difference_sky_fit=value)
+
+    # ACT, ASSERT
+    with pytest.raises(ValueError, match="difference_sky_fit"):
+        recipe._is_difference_sky_fit_on()
+
+
+@pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf"), True, "3", None])
+def test_a_minimum_significance_that_is_not_a_finite_non_negative_number_is_refused(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: Any
+) -> None:
+    # ARRANGE
+    recipe = _fit_recipe(log, tmp_path, difference_sky_fit=True, difference_sky_fit_min_significance=value)
+    _patch_extraction_collaborators(monkeypatch, recipe)
+    fitCalls = _patch_sky_fit(monkeypatch)
+
+    # ACT, ASSERT
+    with pytest.raises(ValueError, match="difference_sky_fit_min_significance"):
+        _run_cycle(recipe)
+    assert fitCalls == []
+
+
+@pytest.mark.parametrize("value", [0, 0.0, 2, 4.5])
+def test_a_minimum_significance_that_is_a_non_negative_number_is_accepted(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: Any
+) -> None:
+    # ARRANGE
+    recipe = _fit_recipe(log, tmp_path, difference_sky_fit=True, difference_sky_fit_min_significance=value)
+    _patch_extraction_collaborators(monkeypatch, recipe)
+    fitCalls = _patch_sky_fit(monkeypatch)
+
+    # ACT
+    _run_cycle(recipe)
+
+    # ASSERT
+    assert fitCalls[0]["differenceFit"].minSignificance == value
