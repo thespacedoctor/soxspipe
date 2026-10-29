@@ -1786,9 +1786,9 @@ class subtract_sky:
         - ``sigma`` -- the ``offset_bin_sigma`` setting: the rejection limit in robust sigmas
             - both must be finite numbers above 0 (not a bool), else a ``ValueError`` names the setting
         """
-        from soxspipe.commonutils.sky_prefilter import OFFSET_BIN_SIGMA, OFFSET_BIN_WIDTH_PIXELS
-
         import numbers
+
+        from soxspipe.commonutils.sky_prefilter import OFFSET_BIN_SIGMA, OFFSET_BIN_WIDTH_PIXELS
 
         skySettings = self.recipeSettings["sky-subtraction"]
         values = []
