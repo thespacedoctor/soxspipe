@@ -87,6 +87,19 @@ SKYLINE_SIGMA = 3.0
 # THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
 SKYLINE_DILATE_SAMPLES = 50
 
+# THE PRE-FIT CLIP THAT FLAGS OBJECT PIXELS AND COSMIC RAYS BEFORE THE FIRST SKY FIT (DY-2055). THE DEFAULT LIVES HERE
+# BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML. offset_bin IS THE KELSON TWO-PASS OFFSET-BIN PRE-FILTER, WHICH
+# REPLACES THE ROLLING-PERCENTILE CLIP; THE SETTINGS BELOW IT SET ITS BIN WIDTH (DISPERSION PIXELS) AND SIGMA LIMIT
+PREFIT_CLIP_KEY = "prefit_clip_method"
+PREFIT_CLIP_ROLLING = "rolling_percentile"
+PREFIT_CLIP_OFFSET_BIN = "offset_bin"
+PREFIT_CLIP_METHODS = (PREFIT_CLIP_ROLLING, PREFIT_CLIP_OFFSET_BIN)
+OFFSET_BIN_WIDTH_KEY = "offset_bin_width_pixels"
+OFFSET_BIN_SIGMA_KEY = "offset_bin_sigma"
+# THE QUANTILE OF THE ROLLING WINDOW THAT GIVES THE SMOOTHED SKY OF THE ROLLING-PERCENTILE CLIP, WHICH THE FIT'S NOISE
+# MODEL AND THE OBJECT MASKING READ WHICHEVER PRE-FIT CLIP RAN
+SMOOTHED_SKY_QUANTILE = 0.3
+
 # THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
 # sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML
 ERROR_INFLATION_ARMS = frozenset({"NIR"})
@@ -971,13 +984,17 @@ class subtract_sky:
             imageMapOrder.loc[mask, "flagged_bad_pixel_clipped"] = True
             imageMapOrder.loc[mask, "flagged_all_clipped"] = True
 
-        # CLIP THE MOST DEVIANT PIXELS WITHIN A WAVELENGTH ROLLING WINDOW - BAD-PIXELS AND CRHs AND OBJECTS
-        imageMapOrder = self.rolling_window_clipping(
-            imageMapOrderDF=imageMapOrder,
-            windowSize=self.rollingWindowSize,
-            sigma_clip_limit=percentile_clipping_sigma,
-            max_iterations=percentile_clipping_iterations,
-        )
+        # CLIP THE MOST DEVIANT PIXELS - BAD-PIXELS AND CRHs AND OBJECTS - WITHIN A WAVELENGTH ROLLING WINDOW, OR IN
+        # TWO PASSES OF WAVELENGTH BINS (DY-2055)
+        if self._prefit_clip_method() == PREFIT_CLIP_OFFSET_BIN:
+            imageMapOrder = self._offset_bin_clipping(imageMapOrder)
+        else:
+            imageMapOrder = self.rolling_window_clipping(
+                imageMapOrderDF=imageMapOrder,
+                windowSize=self.rollingWindowSize,
+                sigma_clip_limit=percentile_clipping_sigma,
+                max_iterations=percentile_clipping_iterations,
+            )
 
         self.log.debug("completed the ``get_over_sampled_sky_from_order`` method")
         return imageMapOrder
@@ -1741,6 +1758,110 @@ class subtract_sky:
         imageMapOrderDF["residual_global_sigma"] = imageMapOrderDF["flux_minus_smoothed_residual"] / std
 
         self.log.debug("completed the ``rolling_window_clipping`` method")
+        return imageMapOrderDF
+
+    def _prefit_clip_method(self):
+        """*the pre-fit clip that flags object pixels and cosmic rays before the first sky fit (DY-2055)*
+
+        **Return:**
+
+        - ``method`` -- the ``prefit_clip_method`` sky-subtraction setting
+            - ``rolling_percentile`` (the default, also when the key is absent) is ``rolling_window_clipping``
+            - ``offset_bin`` is the Kelson two-pass offset-bin pre-filter (``_offset_bin_clipping``)
+            - any other value raises a ``ValueError``
+        """
+        method = self.recipeSettings["sky-subtraction"].get(PREFIT_CLIP_KEY, PREFIT_CLIP_ROLLING)
+        if method not in PREFIT_CLIP_METHODS:
+            raise ValueError(
+                f"the sky-subtraction setting `{PREFIT_CLIP_KEY}` must be one of {PREFIT_CLIP_METHODS}, not {method!r}"
+            )
+        return method
+
+    def _offset_bin_settings(self):
+        """*the bin width and sigma limit of the offset-bin pre-filter, with defaults for older workspace settings*
+
+        **Return:**
+
+        - ``widthPixels`` -- the ``offset_bin_width_pixels`` setting: the bin width in dispersion pixels of the order
+        - ``sigma`` -- the ``offset_bin_sigma`` setting: the rejection limit in robust sigmas
+            - both must be finite numbers above 0 (not a bool), else a ``ValueError`` names the setting
+        """
+        from soxspipe.commonutils.sky_prefilter import OFFSET_BIN_SIGMA, OFFSET_BIN_WIDTH_PIXELS
+
+        skySettings = self.recipeSettings["sky-subtraction"]
+        values = []
+        for key, default in ((OFFSET_BIN_WIDTH_KEY, OFFSET_BIN_WIDTH_PIXELS), (OFFSET_BIN_SIGMA_KEY, OFFSET_BIN_SIGMA)):
+            value = skySettings.get(key, default)
+            isNumber = isinstance(value, numbers.Real) and not isinstance(value, bool)
+            if not (isNumber and math.isfinite(value) and value > 0):
+                raise ValueError(f"the sky-subtraction setting `{key}` must be a finite number above 0, not {value!r}")
+            values.append(float(value))
+        return tuple(values)
+
+    def _offset_bin_clipping(self, imageMapOrderDF):
+        """*flag the outlying pixels of an order with the Kelson two-pass offset-bin pre-filter (DY-2055)*
+
+        An alternative to ``rolling_window_clipping``. The pixels that are not already clipped are cut into bins of
+        ``offset_bin_width_pixels`` dispersion pixels of the order (see ``sky_prefilter.order_dispersion``), and a
+        pixel is flagged ``flagged_object_clipped`` when both of two passes, with bin edges half a bin apart, find it
+        beyond ``offset_bin_sigma`` robust sigmas from its bin median (``sky_prefilter.two_pass_offset_bin_outliers``).
+        The filter is two-sided, and it cannot exclude the object, which is not located yet: the object pixels
+        are a minority of every bin, so they are outliers of their bin.
+        The columns that the object masking and the sky fit read from the rolling-percentile clip are filled the same
+        way: the rolling 30th percentile of the unclipped flux and the residual from it.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- dataframe with the pixels of a given order, with the ``flagged_*`` columns and the
+          ``x`` and ``y`` detector coordinates
+
+        **Return:**
+
+        - ``imageMapOrderDF`` -- a new dataframe, stable-sorted by wavelength, with the outliers flagged
+        """
+        import numpy as np
+
+        from soxspipe.commonutils.sky_prefilter import order_dispersion, two_pass_offset_bin_outliers
+
+        widthPixels, sigma = self._offset_bin_settings()
+        imageMapOrderDF = imageMapOrderDF.sort_values("wavelength", kind="stable")
+        order = imageMapOrderDF["order"].values[0]
+
+        wavelength = imageMapOrderDF["wavelength"].to_numpy(dtype=float)
+        flux = imageMapOrderDF["flux"].to_numpy(dtype=float)
+        isCandidate = ~imageMapOrderDF["flagged_all_clipped"].to_numpy(dtype=bool)
+        binWidth = widthPixels * order_dispersion(wavelength, imageMapOrderDF["x"], imageMapOrderDF["y"])
+        isRejected = np.zeros(len(imageMapOrderDF.index), dtype=bool)
+        isRejected[isCandidate] = two_pass_offset_bin_outliers(
+            wavelength[isCandidate], flux[isCandidate], binWidth, sigma
+        )
+        imageMapOrderDF.loc[isRejected, "flagged_object_clipped"] = True
+        imageMapOrderDF.loc[isRejected, "flagged_all_clipped"] = True
+
+        isUnclipped = ~imageMapOrderDF["flagged_all_clipped"].to_numpy(dtype=bool)
+        for column in (
+            "flux_std",
+            "flux_upper_limit",
+            "flux_minus_smoothed_residual_std",
+            "flux_minus_smoothed_residual_upper_limit",
+            "flux_percentile_smoothed",
+            "flux_minus_smoothed_residual",
+        ):
+            imageMapOrderDF[column] = np.nan
+        imageMapOrderDF.loc[isUnclipped, "flux_percentile_smoothed"] = (
+            imageMapOrderDF.loc[isUnclipped, "flux"]
+            .rolling(window=self.rollingWindowSize, center=True, closed="both")
+            .quantile(SMOOTHED_SKY_QUANTILE)
+        )
+        imageMapOrderDF.loc[isUnclipped, "flux_minus_smoothed_residual"] = (
+            imageMapOrderDF.loc[isUnclipped, "flux"] - imageMapOrderDF.loc[isUnclipped, "flux_percentile_smoothed"]
+        )
+        std = imageMapOrderDF.loc[isUnclipped, "flux_minus_smoothed_residual"].std()
+        imageMapOrderDF["residual_global_sigma"] = imageMapOrderDF["flux_minus_smoothed_residual"] / std
+
+        totalClipped = int(imageMapOrderDF["flagged_object_clipped"].sum())
+        percent = float(totalClipped) / float(len(imageMapOrderDF.index)) * 100.0
+        self.log.print(f"\tORDER {order}: {totalClipped} pixels clipped in total = {percent:1.1f}%)")
         return imageMapOrderDF
 
     def _rebuild_all_clipped_flag(self, imageMapOrderDF):
