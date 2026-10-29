@@ -87,6 +87,17 @@ SKYLINE_SIGMA = 3.0
 # THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
 SKYLINE_DILATE_SAMPLES = 50
 
+# KNOT PLACEMENT PROTOTYPES (DY-2056). THE MINIMUM KNOT SPACING IS THE SETTING TIMES THE LOCAL DISPERSION PER PIXEL,
+# AND 0 TURNS IT OFF. A KNOT INTERVAL WITH A REDUCED CHI-SQUARED ABOVE THE LIMIT IS BISECTED (KELSON lr_refine_bkpoints)
+MIN_KNOT_SPACING_KEY = "bspline_min_knot_spacing_fraction"
+CHI_SQUARED_REFINEMENT_KEY = "bspline_chi_squared_knot_refinement"
+CHI_SQUARED_REFINE_LIMIT = 2.0
+# THE FLOOR THE CHI-SQUARED REFINEMENT USES WHEN THE MINIMUM SPACING SETTING IS OFF, IN PIXELS OF DISPERSION
+DEFAULT_REFINEMENT_SPACING_FRACTION = 0.5
+DISPERSION_FIT_DEGREE = 3
+# THE FITTED DISPERSION NEVER FALLS BELOW THIS FRACTION OF ITS MEDIAN ALONG THE ORDER
+DISPERSION_FLOOR_FRACTION = 0.1
+
 # THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
 # sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML
 ERROR_INFLATION_ARMS = frozenset({"NIR"})
@@ -200,6 +211,130 @@ def _evaluate_sky_spline(wavelength, tck, derivative=False):
     if derivative:
         return ip.splev(wavelength, tck, der=1, ext=1)
     return ip.splev(wavelength, tck, ext=3)
+
+
+def _enforce_minimum_knot_spacing(knots, minSpacingAt):
+    """*drop the knots that sit closer to the previous kept knot than the minimum spacing there (DY-2056)*
+
+    **Key Arguments:**
+
+    - ``knots`` -- the knot wavelengths, in any order
+    - ``minSpacingAt`` -- function giving the minimum knot spacing, in wavelength units, at an array of wavelengths
+
+    **Return:**
+
+    - ``keptKnots`` -- a new sorted array of knots with no two neighbours closer than the spacing at the redder one
+        - the knots are visited from blue to red and a knot too close to the last kept knot is dropped
+    """
+    import numpy as np
+
+    sortedKnots = np.sort(np.asarray(knots, dtype=float))
+    if sortedKnots.size == 0:
+        return sortedKnots
+    spacing = np.asarray(minSpacingAt(sortedKnots), dtype=float)
+    keptKnots = [sortedKnots[0]]
+    for knot, knotSpacing in zip(sortedKnots[1:], spacing[1:], strict=True):
+        if knot - keptKnots[-1] >= knotSpacing:
+            keptKnots.append(knot)
+    return np.array(keptKnots, dtype=float)
+
+
+def _chi_squared_refinement_knots(knots, wavelength, chiSquaredTerms, minSpacingAt, minPoints):
+    """*the new knots that double the knot intervals whose reduced chi-squared is above 2 (DY-2056)*
+
+    The rule of the Kelson IDL ``lr_refine_bkpoints``. An interval is bisected, so the existing knots stay where they
+    are and the fit only becomes finer. The two end intervals run out to the first and last sample.
+
+    **Key Arguments:**
+
+    - ``knots`` -- the interior knot wavelengths of the fit
+    - ``wavelength`` -- the wavelengths of the samples of the fit
+    - ``chiSquaredTerms`` -- the squared weighted residual of each sample, with the weights of the fit
+    - ``minSpacingAt`` -- function giving the minimum knot spacing, in wavelength units, at an array of wavelengths
+    - ``minPoints`` -- an interval is left alone unless each of its two halves holds at least this many samples
+
+    **Return:**
+
+    - ``newKnots`` -- the midpoints of the bad intervals, sorted
+        - a bad interval has a reduced chi-squared above ``CHI_SQUARED_REFINE_LIMIT``
+        - the reduced chi-squared is the sum of the terms over the number of samples less one, as the fitted
+          parameters of an interval are about one; the limit must be exceeded, not met
+        - an interval is not bisected if either half would be narrower than the minimum spacing at its midpoint
+        - an interval is not bisected if either half would hold fewer than ``minPoints`` samples: an empty half would
+          let ``_drop_knots_without_samples`` remove one of the original knots
+        - a sample whose wavelength or term is not finite is ignored
+    """
+    import numpy as np
+
+    sortedKnots = np.sort(np.asarray(knots, dtype=float))
+    wavelength = np.asarray(wavelength, dtype=float)
+    chiSquaredTerms = np.asarray(chiSquaredTerms, dtype=float)
+    isFinite = np.isfinite(wavelength) & np.isfinite(chiSquaredTerms)
+    wavelength, chiSquaredTerms = wavelength[isFinite], chiSquaredTerms[isFinite]
+    if sortedKnots.size == 0 or wavelength.size == 0:
+        return np.array([], dtype=float)
+    edges = np.concatenate(([wavelength.min()], sortedKnots, [wavelength.max()]))
+    intervalCount = len(edges) - 1
+    lower, upper = edges[:-1], edges[1:]
+    midpoints = 0.5 * (lower + upper)
+    # THE KNOTS AND THE MIDPOINTS INTERLEAVED, SO ONE PASS COUNTS THE SAMPLES IN EVERY HALF INTERVAL
+    halfEdges = np.empty(2 * sortedKnots.size + 1)
+    halfEdges[0::2] = midpoints
+    halfEdges[1::2] = sortedKnots
+    halfEdges = np.maximum.accumulate(halfEdges)
+    halfCounts = np.bincount(np.digitize(wavelength, halfEdges), minlength=2 * intervalCount)
+    counts = halfCounts[0::2] + halfCounts[1::2]
+    interval = np.digitize(wavelength, sortedKnots)
+    sums = np.bincount(interval, weights=chiSquaredTerms, minlength=intervalCount)
+    reducedChiSquared = sums / np.maximum(counts - 1, 1)
+    isRefined = (
+        (halfCounts[0::2] >= minPoints)
+        & (halfCounts[1::2] >= minPoints)
+        & (reducedChiSquared > CHI_SQUARED_REFINE_LIMIT)
+        & (upper > lower)
+        & (0.5 * (upper - lower) >= np.asarray(minSpacingAt(midpoints), dtype=float))
+    )
+    return midpoints[isRefined]
+
+
+def _dispersion_per_pixel(imageMapOrder):
+    """*the local dispersion of an order, in wavelength units per detector pixel (DY-2056)*
+
+    The dispersion axis is the detector axis along which the median wavelength changes most: the map dataframe keeps
+    the orientation of the 2D map, which is not the raw detector orientation of ``dispersion-axis`` for the NIR arm.
+    The median wavelength of each row (or column) across the slit is fitted with a cubic against the row number, so a
+    tilt of the slit, which shifts a whole row, does not enter the step between rows.
+
+    **Key Arguments:**
+
+    - ``imageMapOrder`` -- order dataframe with ``x``, ``y`` and ``wavelength`` columns
+
+    **Return:**
+
+    - ``dispersionAt`` -- function giving the absolute dispersion at an array of wavelengths
+        - wavelengths outside the order take the dispersion at its nearest end
+        - the dispersion is never below ``DISPERSION_FLOOR_FRACTION`` of its median along the order
+
+    **Raises:**
+
+    - ``ValueError`` -- if no detector axis has two rows with a wavelength
+    """
+    import numpy as np
+
+    medianByAxis = [imageMapOrder.groupby(axis)["wavelength"].median().dropna() for axis in ("x", "y")]
+    rowMedians = max(medianByAxis, key=lambda medians: medians.max() - medians.min() if len(medians) else -1.0)
+    if len(rowMedians) < 2:
+        raise ValueError("the dispersion of an order needs at least two detector rows with a wavelength")
+    rows = rowMedians.index.to_numpy(dtype=float)
+    medians = rowMedians.to_numpy(dtype=float)
+    polynomial = np.polynomial.Polynomial.fit(rows, medians, deg=min(DISPERSION_FIT_DEGREE, len(rows) - 1))
+    rowGrid = np.linspace(rows.min(), rows.max(), len(rows))
+    wavelengthGrid = polynomial(rowGrid)
+    dispersionGrid = np.abs(polynomial.deriv()(rowGrid))
+    # A CUBIC THAT FOLDS (A NOISY OR PARTIAL ORDER) HAS A ZERO DERIVATIVE AT THE FOLD, SWITCHING THE SPACING OFF THERE
+    dispersionGrid = np.maximum(dispersionGrid, DISPERSION_FLOOR_FRACTION * np.median(dispersionGrid))
+    byWavelength = np.argsort(wavelengthGrid)
+    return lambda wavelength: np.interp(wavelength, wavelengthGrid[byWavelength], dispersionGrid[byWavelength])
 
 
 def _skyline_pixel_mask(wavelength, flux, error):
@@ -2117,6 +2252,8 @@ class subtract_sky:
         if self.debug:
             print("starter knot count", len(starterKnots))
 
+        minSpacingAt, refinementSpacingAt, isChiSquaredOn = self._knot_placement_prototypes(imageMapOrder)
+
         extraKnots = np.array([])
         iterationCount = -3
         residualFloor = np.nan
@@ -2167,39 +2304,54 @@ class subtract_sky:
                 df = imageMapOrder.loc[~mask_all_clipped & nosiyRegionMask]
                 allKnots = self._prune_knots_in_noise(allKnots, df["wavelength"].values, order)
 
-                # GROUP ALL DATA POINTS BETWEEN KNOTS
-                nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True
-                df = imageMapOrder.loc[~mask_all_clipped & ~nosiyRegionMask]
-                ind = np.digitize(df["wavelength"], allKnots)
+                if isChiSquaredOn:
+                    # THE KELSON RULE (DY-2056): BISECT THE KNOT INTERVALS WHOSE REDUCED CHI-SQUARED IS ABOVE 2
+                    newKnots = self._chi_squared_new_knots(
+                        imageMapOrder,
+                        mask_all_clipped,
+                        allKnots,
+                        tck_previous,
+                        refinementSpacingAt,
+                        min_points_per_knot,
+                    )
+                    allKnots = np.sort(np.concatenate((newKnots, allKnots)))
+                    extraKnots = np.sort(np.concatenate((newKnots, extraKnots)))
+                else:
+                    # GROUP ALL DATA POINTS BETWEEN KNOTS
+                    nosiyRegionMask = imageMapOrder["flagged_noisy_region"] == True  # noqa: E712
+                    df = imageMapOrder.loc[~mask_all_clipped & ~nosiyRegionMask]
+                    ind = np.digitize(df["wavelength"], allKnots)
 
-                ## GROUP ALL UNCLIPPED DATA POINTS BETWEEN KNOTS WHERE THERE ARE SKYLINES
-                group = imageMapOrder.loc[~mask_all_clipped & ~nosiyRegionMask].groupby(ind)
+                    ## GROUP ALL UNCLIPPED DATA POINTS BETWEEN KNOTS WHERE THERE ARE SKYLINES
+                    group = imageMapOrder.loc[~mask_all_clipped & ~nosiyRegionMask].groupby(ind)
 
-                ## ANY GROUPS WITH A MEAN > 0 WILL CONTAIN HIGH RESIDUALS SOMEWHERE
-                meanResiduals = group["sky_local_vs_global"].mean()
-                summedResiduals = group["sky_local_vs_global"].sum()
+                    ## ANY GROUPS WITH A MEAN > 0 WILL CONTAIN HIGH RESIDUALS SOMEWHERE
+                    meanResiduals = group["sky_local_vs_global"].mean()
+                    summedResiduals = group["sky_local_vs_global"].sum()
 
-                counts = group.size()
-                index = group.indices.keys()
-                potentialNewKnots2 = group["wavelength"].mean() - group["wavelength"].std()
-                potentialNewKnots3 = group["wavelength"].mean() + group["wavelength"].std()
+                    counts = group.size()
+                    index = group.indices.keys()  # noqa: F841
+                    potentialNewKnots2 = group["wavelength"].mean() - group["wavelength"].std()
+                    potentialNewKnots3 = group["wavelength"].mean() + group["wavelength"].std()
 
-                mask = counts < min_points_per_knot
-                meanResiduals[mask] = -100000
+                    mask = counts < min_points_per_knot
+                    meanResiduals[mask] = -100000
 
-                meanResiduals = np.array(meanResiduals)
+                    meanResiduals = np.array(meanResiduals)
 
-                mask = np.ma.masked_where((meanResiduals > 0) & (summedResiduals > 9), meanResiduals).mask
-                # ELSE ADD NEW KNOT IF ABOVE FLOOR
-                for nk in [potentialNewKnots2, potentialNewKnots3]:
-                    nk = np.ma.compressed(np.ma.masked_array(np.array(nk), ~mask))
-                    allKnots = np.sort(np.concatenate((nk, allKnots)))
-                    extraKnots = np.sort(np.concatenate((nk, extraKnots)))
+                    mask = np.ma.masked_where((meanResiduals > 0) & (summedResiduals > 9), meanResiduals).mask
+                    # ELSE ADD NEW KNOT IF ABOVE FLOOR
+                    for nk in [potentialNewKnots2, potentialNewKnots3]:
+                        nk = np.ma.compressed(np.ma.masked_array(np.array(nk), ~mask))
+                        allKnots = np.sort(np.concatenate((nk, allKnots)))
+                        extraKnots = np.sort(np.concatenate((nk, extraKnots)))
 
                 # if order == self.qcPlotOrder:
                 #     print(f"EXTRA KNOTS: {len(newKnots)} .... {len(allKnots)} ... {iterationCount}")
 
             knotsBeforeDrop = allKnots
+            if minSpacingAt is not None:
+                allKnots = _enforce_minimum_knot_spacing(allKnots, minSpacingAt)
             allKnots = self._drop_knots_without_samples(allKnots, goodWl.values, order)
             # A DROPPED EXTRA KNOT LEAVES extraKnots TOO, SO RE-PROPOSING IT LATER DOES NOT COUNT AS A NEW KNOT
             droppedKnots = np.setdiff1d(knotsBeforeDrop, allKnots)
@@ -2338,6 +2490,92 @@ class subtract_sky:
 
         self.log.debug("completed the ``fit_bspline_curve_to_sky`` method")
         return imageMapOrder, tck, allKnots, flux_error_ratio, residualFloor
+
+    def _knot_placement_prototypes(self, imageMapOrder):
+        """*the minimum knot spacing and the chi-squared refinement, with the spacing functions they need (DY-2056)*
+
+        Both settings are read with a default of off, so a workspace whose settings predate them keeps the
+        existing knot placement.
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- order dataframe, with ``x``, ``y`` and ``wavelength`` columns when a prototype is on
+
+        **Return:**
+
+        - ``minSpacingAt`` -- function giving the minimum knot spacing of the whole fit at a wavelength, or None when
+          the ``bspline_min_knot_spacing_fraction`` setting is 0 or absent
+        - ``refinementSpacingAt`` -- the same for the chi-squared refinement, which always has a floor: the setting
+          when it is on, else ``DEFAULT_REFINEMENT_SPACING_FRACTION``. None when the refinement is off
+        - ``isChiSquaredOn`` -- the ``bspline_chi_squared_knot_refinement`` setting
+
+        **Raises:**
+
+        - ``ValueError`` -- if the spacing is not a finite number of 0 or more, or the refinement is not a bool
+
+        An order whose dispersion cannot be estimated logs a warning and returns ``(None, None, False)``.
+        """
+        skySettings = self.recipeSettings["sky-subtraction"]
+        spacingFraction = skySettings.get(MIN_KNOT_SPACING_KEY, 0)
+        if isinstance(spacingFraction, bool) or not (
+            isinstance(spacingFraction, int | float) and math.isfinite(spacingFraction) and spacingFraction >= 0
+        ):
+            raise ValueError(
+                f"the sky-subtraction setting `{MIN_KNOT_SPACING_KEY}` must be a finite number >= 0, "
+                f"not {spacingFraction!r}"
+            )
+        isChiSquaredOn = self._arm_default_flag(CHI_SQUARED_REFINEMENT_KEY, frozenset())
+        if not (spacingFraction > 0 or isChiSquaredOn):
+            return None, None, False
+
+        try:
+            dispersionAt = _dispersion_per_pixel(imageMapOrder)
+        except ValueError as error:
+            order = imageMapOrder["order"].values[0]
+            self.log.warning(
+                f"\t\tNo dispersion estimate for order {order} ({error}). "
+                "The knot placement prototypes are off for this order.\n"
+            )
+            return None, None, False
+        minSpacingAt = (lambda wavelength: spacingFraction * dispersionAt(wavelength)) if spacingFraction > 0 else None
+        refinementFraction = spacingFraction if spacingFraction > 0 else DEFAULT_REFINEMENT_SPACING_FRACTION
+        refinementSpacingAt = (
+            (lambda wavelength: refinementFraction * dispersionAt(wavelength)) if isChiSquaredOn else None
+        )
+        return minSpacingAt, refinementSpacingAt, isChiSquaredOn
+
+    def _chi_squared_new_knots(self, imageMapOrder, mask_all_clipped, allKnots, tck, minSpacingAt, minPoints):
+        """*the knots that bisect the knot intervals the last fit left with a reduced chi-squared above 2 (DY-2056)*
+
+        The chi-squared uses the weights of the fit (``imageMapOrder["weights"]``, the inverse noise of the model
+        before it, DY-1282) and the residuals of the last fit, over the unclipped pixels outside noisy regions.
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- wavelength-sorted order dataframe with ``flux``, ``slit_normalisation_ratio``,
+          ``weights`` and ``flagged_noisy_region`` columns
+        - ``mask_all_clipped`` -- boolean series, True for the pixels left out of the fit
+        - ``allKnots`` -- the current interior knots, whose intervals are tested
+        - ``tck`` -- the spline of the last fit
+        - ``minSpacingAt`` -- function giving the minimum knot spacing at a wavelength
+        - ``minPoints`` -- an interval with fewer pixels than this is not refined
+
+        **Return:**
+
+        - ``newKnots`` -- the new knot wavelengths. See ``_chi_squared_refinement_knots``
+        """
+        import numpy as np
+
+        isUsed = (~mask_all_clipped & ~imageMapOrder["flagged_noisy_region"].eq(True)).to_numpy()
+        pixels = imageMapOrder.loc[isUsed]
+        wavelength = pixels["wavelength"].to_numpy(dtype=float)
+        if wavelength.size == 0:
+            return np.array([], dtype=float)
+        residual = (pixels["flux"] / pixels["slit_normalisation_ratio"]).to_numpy(dtype=float) - _evaluate_sky_spline(
+            wavelength, tck
+        )
+        chiSquaredTerms = (pixels["weights"].to_numpy(dtype=float) * residual) ** 2
+        return _chi_squared_refinement_knots(allKnots, wavelength, chiSquaredTerms, minSpacingAt, minPoints)
 
     def _end_anchor_values(self, wavelength, flux, starterKnots):
         """*the local flux values that anchor the blue and red ends of the sky fit*
