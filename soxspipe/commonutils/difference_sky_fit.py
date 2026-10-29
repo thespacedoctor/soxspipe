@@ -9,6 +9,7 @@ rule that stops the fit from subtracting noise.
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.ndimage import median_filter
 
 # THE SKY AND READ-NOISE VARIANCE OF AN A-B DIFFERENCE ARE EACH TWICE THAT OF ONE FRAME (KELSON, longslit_reduce.pro
 # LINES 3224-3231). THE BIAS TERM IS DROPPED: BOTH FRAMES HAD THE SAME BIAS REMOVED
@@ -37,12 +38,12 @@ OBJECT_EXTEND_SIGMA = 2.0
 OBJECT_DILATE_BINS = 2
 # A BIN NEEDS AT LEAST THIS MANY PIXELS TO BE JUDGED
 OBJECT_MIN_BIN_SAMPLES = 20
-# THE ZERO LEVEL AND THE SCATTER OF THE SLIT PROFILE COME FROM THE QUIETEST BINS: THE LOWEST DECILE OF THE ABSOLUTE
-# DEVIATIONS, WHICH IS 0.1257 STANDARD DEVIATIONS OF A GAUSSIAN. A BIN WITHIN OBJECT_QUIET_SIGMA OF THE ZERO LEVEL
-# IS QUIET
+# THE SCATTER OF THE SLIT PROFILE COMES FROM THE QUIETEST BINS: THE LOWEST DECILE OF THE ABSOLUTE DEVIATIONS, WHICH IS
+# 0.1257 STANDARD DEVIATIONS OF A GAUSSIAN
 OBJECT_QUIET_PERCENTILE = 10
 OBJECT_QUIET_DECILE_TO_SIGMA = 0.1257
-OBJECT_QUIET_SIGMA = 3.0
+# THE RUNNING MEDIAN OF THE SLIT PROFILE THAT IS TAKEN AS ITS BASELINE IS THIS MANY BINS WIDE, ABOUT 60% OF THE SLIT
+OBJECT_BASELINE_BINS = 62
 
 
 @dataclass(frozen=True)
@@ -76,22 +77,18 @@ def _binned_signal_to_noise(slitPosition, flux, error):
 
 
 def _quiet_bin_level(profile, counts, isJudged):
-    """*the profile minus its zero level, and the standard error of a bin, both read from the quietest bins*
+    """*the profile minus its slow baseline, and the standard error of a bin, both read from the quietest bins*
 
-    A bright object and its wings can fill most of the slit, so the median of the bins and their median absolute
-    deviation are both lifted by the object. The lowest decile of the absolute deviations is not: it sits in the
-    bins with no object. The zero level is refined once from the bins within ``OBJECT_QUIET_SIGMA`` of the first one.
-    The pure-noise standard error of a bin is ``1 / sqrt(count)``, which the measured scatter may only raise, so a
-    flat-field structure along the slit does not seed an object.
+    The two nod positions differ in flat-field and illumination, so the slit profile of a difference has a slope that
+    is not an object. A bright object and its wings, in turn, can fill most of the slit. The baseline is therefore the
+    running median of the bins over ``OBJECT_BASELINE_BINS``, wide enough to pass over the traces. What is left is
+    the objects and the noise. The lowest decile of its absolute values sits in the bins with no object, and gives the
+    scatter of a bin. The pure-noise standard error of a bin is ``1 / sqrt(count)``, which the measured scatter may
+    only raise.
     """
-    judged = profile[isJudged]
-    zero = np.median(judged)
-    for _ in range(2):
-        decile = np.percentile(np.abs(judged - zero), OBJECT_QUIET_PERCENTILE)
-        scatter = decile / OBJECT_QUIET_DECILE_TO_SIGMA
-        isQuiet = np.abs(judged - zero) <= OBJECT_QUIET_SIGMA * max(scatter, 1e-12)
-        zero = np.median(judged[isQuiet])
-    deviation = profile - zero
+    filled = np.where(isJudged, profile, np.median(profile[isJudged]))
+    baseline = median_filter(filled, size=OBJECT_BASELINE_BINS, mode="nearest")
+    deviation = np.where(isJudged, filled - baseline, 0.0)
     decile = np.percentile(np.abs(deviation[isJudged]), OBJECT_QUIET_PERCENTILE)
     standardError = np.fmax(1.0 / np.sqrt(np.fmax(counts, 1)), decile / OBJECT_QUIET_DECILE_TO_SIGMA)
     return deviation, standardError

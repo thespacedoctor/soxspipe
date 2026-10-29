@@ -152,7 +152,8 @@ def test_the_gate_returns_a_new_array_and_leaves_the_model_alone() -> None:
 BRIGHT_PEAK = 60.0 * NOISE
 MOFFAT_ALPHA = 0.8
 MOFFAT_BETA = 1.8
-SHIFTED_NEGATIVE_CENTRE = 2.0 * POSITIVE_CENTRE - NEGATIVE_CENTRE
+# 2 * A - B, KEPT INSIDE THE SLIT FOR THE TEST: A TRACE ON THE SLIT-END BINS IS LEFT TO THE SLIT-EDGE CLIP
+SHIFTED_NEGATIVE_CENTRE = 4.0
 
 
 def _moffat(slitPosition: np.ndarray, centre: float) -> np.ndarray:
@@ -177,3 +178,32 @@ def test_a_bright_object_with_broad_wings_does_not_hide_its_two_half_amplitude_n
     # ASSERT
     for centre in (POSITIVE_CENTRE, NEGATIVE_CENTRE, SHIFTED_NEGATIVE_CENTRE):
         assert any(lower <= centre <= upper for lower, upper in objectRanges)
+
+
+# A SLOPE ALONG THE SLIT (FLAT-FIELD AND ILLUMINATION MISMATCH BETWEEN THE TWO NOD POSITIONS) OF THIS MANY NOISE UNITS
+# FROM ONE SLIT END TO THE OTHER. IT IS NOT AN OBJECT, BUT IT IS FAR ABOVE THE NOISE OF A SLIT BIN
+SLIT_SLOPE = 8.0 * NOISE
+
+
+def test_a_slope_along_the_slit_neither_hides_the_traces_nor_is_taken_for_one() -> None:
+    # ARRANGE
+    rng = np.random.default_rng(8)
+    slitGrid = np.linspace(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH, PIXELS_PER_COLUMN)
+    slitPosition = np.tile(slitGrid, COLUMNS)
+    slope = SLIT_SLOPE * slitPosition / SLIT_HALF_LENGTH
+    traces = BRIGHT_PEAK * (
+        _moffat(slitPosition, POSITIVE_CENTRE)
+        - 0.5 * _moffat(slitPosition, NEGATIVE_CENTRE)
+        - 0.5 * _moffat(slitPosition, SHIFTED_NEGATIVE_CENTRE)
+    )
+    flux = slope + traces + rng.normal(0.0, NOISE, slitPosition.size)
+    error = np.full(slitPosition.size, NOISE)
+
+    # ACT
+    withTraces = signed_object_slit_ranges(slitPosition, flux, error)
+    slopeOnly = signed_object_slit_ranges(slitPosition, flux - traces, error)
+
+    # ASSERT
+    for centre in (POSITIVE_CENTRE, NEGATIVE_CENTRE, SHIFTED_NEGATIVE_CENTRE):
+        assert any(lower <= centre <= upper for lower, upper in withTraces)
+    assert slopeOnly == []
