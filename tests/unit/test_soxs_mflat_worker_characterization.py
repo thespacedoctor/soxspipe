@@ -458,7 +458,7 @@ def test_low_sensitivity_pixels_are_masked_and_recorded_with_write_qc(
     assert pd.isna(row["to_header"])
     assert clockReads == ["read"]
 
-    assert medianFluxDF.to_dict("records") == pytest.approx([{"order": 10, "medianFlux": 99.36284306903022}])
+    assert medianFluxDF.to_dict("records") == [pytest.approx({"order": 10, "medianFlux": 99.36284306903022})]
 
     printed = [message for level, message in log.messages if level == "print"]
     assert printed == [
@@ -554,7 +554,7 @@ def test_the_axis_a_y_branch_masks_a_vertical_inter_order_band(
     np.testing.assert_array_equal(maskedFrame.mask, expectedMask)
     # ROWS 2:8 OF EVERY COLUMN 0..4 -- THE UNION OF THE FIVE VERTICAL BANDS UNMASKED ABOVE
     expectedMedian = float(np.median(data[2:8, 0:5]))
-    assert medianFluxDF.to_dict("records") == pytest.approx([{"order": 10, "medianFlux": expectedMedian}])
+    assert medianFluxDF.to_dict("records") == [pytest.approx({"order": 10, "medianFlux": expectedMedian})]
     assert expectedMedian == pytest.approx(99.60449322662481)
 
 
@@ -584,7 +584,7 @@ def test_the_axis_a_y_branch_samples_flux_from_a_wider_than_tall_frame_without_r
     # ASSERT
     # COLUMNS 3..7 ARE THE ONES WITHIN 3 OF THE COLUMN MIDDLE int(mean(0..11)) == 5
     expectedMedian = float(np.median(data[1:5, 3:8]))
-    assert medianFluxDF.to_dict("records") == pytest.approx([{"order": 10, "medianFlux": expectedMedian}])
+    assert medianFluxDF.to_dict("records") == [pytest.approx({"order": 10, "medianFlux": expectedMedian})]
 
 
 def test_return_median_order_flux_false_returns_the_frame_alone(
