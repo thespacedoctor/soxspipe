@@ -101,6 +101,10 @@ ERROR_INFLATION_STEPS = 4
 # THE FEWEST FINITE RESIDUALS THAT GIVE A SCATTER; WITH FEWER THE ERRORS ARE NOT INFLATED
 ERROR_INFLATION_MIN_SAMPLES = 30
 
+# THE SETTING THAT MULTIPLIES EACH ORDER'S SKY MODEL BY A SKYLINE-MEASURED SLIT-ILLUMINATION FACTOR. OFF WHEN ABSENT
+# (DY-2054)
+ILLUMINATION_KEY = "skyline_illumination_correction"
+
 
 def _sliding_mean(values, window):
     """*running mean of a 1D array, padded at each end so there is one value per input element*
@@ -336,6 +340,8 @@ class subtract_sky:
 
     # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
     maskedOrders = frozenset()
+    # THE [LOWER, UPPER] SLIT RANGES OF THE OBJECTS clip_object_slit_positions FOUND (DY-2054)
+    objectSlitRanges = ()
 
     def __init__(
         self,
@@ -667,7 +673,13 @@ class subtract_sky:
 
         self.log.print("\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH)\n")
 
+        # READ THE SETTING BEFORE THE FIT, SO A BAD VALUE FAILS FAST (DY-2054)
+        isCorrectingIllumination = self._skyline_illumination_enabled()
+
         allimageMapOrder, alltck, allKnots = self._fit_sky_to_orders(allimageMapOrder)
+
+        if isCorrectingIllumination:
+            allimageMapOrder = [self._correct_slit_illumination(order) for order in allimageMapOrder]
 
         # READ THE SETTING BEFORE ANY ORDER IS WRITTEN, SO A BAD VALUE RAISES WHETHER OR NOT ANY ORDER IS INFLATED
         isInflatingErrors = self._error_inflation_enabled()
@@ -2993,6 +3005,9 @@ class subtract_sky:
                 fig.tight_layout()
                 plt.show()
 
+        # THE SKYLINE ILLUMINATION CORRECTION LEAVES THESE RANGES OUT OF ITS CURVE (DY-2054)
+        self.objectSlitRanges = object_ranges if aggressive else []
+
         # READ THE SETTING ON EVERY PATH, SO A BAD VALUE RAISES WHETHER OR NOT ANYTHING IS RESTORED (DY-1972)
         isRestoreEnabled = self._restore_skyline_cores_enabled()
         # WITH NO DETECTED OBJECT RANGE, AN UNDETECTED FAINT OBJECT MUST STAY MASKED, SO NOTHING IS RESTORED (DY-1972)
@@ -3108,6 +3123,76 @@ class subtract_sky:
           ``ERROR_INFLATION_ARMS`` (NIR). See ``_arm_default_flag``
         """
         return self._arm_default_flag(ERROR_INFLATION_KEY, ERROR_INFLATION_ARMS)
+
+    def _skyline_illumination_enabled(self):
+        """*whether each order's sky model is multiplied by a skyline-measured slit-illumination factor (DY-2054)*
+
+        **Return:**
+
+        - ``isOn`` -- the ``skyline_illumination_correction`` sky-subtraction setting, False for every arm when the key
+          is absent. See ``_arm_default_flag``
+        """
+        return self._arm_default_flag(ILLUMINATION_KEY, frozenset())
+
+    def _correct_slit_illumination(self, imageMapOrderDF):
+        """*multiply an order's sky model by the slit-illumination factor its bright skylines show (DY-2054)*
+
+        The sky model is a function of wavelength only, so an illumination gradient along the slit leaves a residual
+        that scales with the sky. ``measure_slit_illumination`` measures it from the pixels that are not edge, bad or
+        inside an object slit range, after the object-wing model is taken from the flux. The sky-subtracted flux is the
+        flux minus the corrected model.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- the fitted order dataframe
+
+        **Return:**
+
+        - ``imageMapOrderDF`` -- the dataframe unchanged when too few skyline pixels qualify, else a new dataframe with
+          the corrected ``sky_model`` and ``sky_subtracted_flux`` and the ``slit_illumination_factor`` column
+        """
+        import numpy as np
+
+        from soxspipe.commonutils.slit_illumination_correction import measure_slit_illumination
+
+        slitPosition = imageMapOrderDF["slit_position"].to_numpy(dtype=float)
+        isInObject = np.zeros(slitPosition.size, dtype=bool)
+        for lower, upper in self.objectSlitRanges:
+            isInObject |= (slitPosition >= lower) & (slitPosition <= upper)
+        isUsable = (
+            ~imageMapOrderDF["flagged_edge_clipped"].to_numpy(dtype=bool)
+            & ~imageMapOrderDF["flagged_bad_pixel_clipped"].to_numpy(dtype=bool)
+            & ~isInObject
+        )
+        flux = imageMapOrderDF["flux"].to_numpy(dtype=float)
+        wings = (
+            imageMapOrderDF["object_wing_model"].to_numpy(dtype=float)
+            if "object_wing_model" in imageMapOrderDF
+            else 0.0
+        )
+        skyModel = imageMapOrderDF["sky_model"].to_numpy(dtype=float)
+        correction = measure_slit_illumination(
+            slitPosition,
+            imageMapOrderDF["wavelength"].to_numpy(dtype=float),
+            skyModel,
+            flux - wings,
+            imageMapOrderDF["error"].to_numpy(dtype=float),
+            isUsable,
+        )
+        order = int(imageMapOrderDF["order"].iloc[0])
+        if not correction.isApplied:
+            self.log.print(f"\tORDER {order}: NO SLIT-ILLUMINATION CORRECTION - {correction.pixelCount} SKYLINE PIXELS")
+            return imageMapOrderDF
+        self.log.print(
+            f"\tORDER {order}: SLIT-ILLUMINATION CORRECTION FROM {correction.pixelCount} SKYLINE PIXELS, "
+            f"{correction.binValues.min():+0.4f} TO {correction.binValues.max():+0.4f}"
+        )
+        correctedModel = skyModel * correction.factor
+        return imageMapOrderDF.assign(
+            sky_model=correctedModel,
+            sky_subtracted_flux=flux - correctedModel,
+            slit_illumination_factor=correction.factor,
+        )
 
     def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):
         """*multiply the uncertainty of every pixel of an order by the local scatter of its sky-fit residuals (DY-1973)*

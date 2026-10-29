@@ -98,6 +98,21 @@ On a crowded slit that assumption fails, because light from the other sources fi
 
 To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on, `object_wing_min_leak_sigma` is 0.03 and `object_wing_min_sky_sigma` is 1. A workspace settings file made before DY-1964 may still hold `object_wing_gate_fraction`. The pipeline ignores it.
 
+### Skyline slit-illumination correction (prototype)
+
+The sky model is a bspline in wavelength only, so it assumes the sky is equally bright along the whole slit. A small illumination gradient along the slit leaves a residual in the sky-subtracted frame that grows with the sky. It is largest at the bright skylines.
+
+The `skyline_illumination_correction` setting in the `sky-subtraction` block of the stare recipe settings turns on a correction that measures this gradient, as the Kelson `/fixillum` step does. It must be `True` or `False`. A workspace settings file that does not have the key uses `False`, and the output is then the same as without the correction. The correction is a prototype (DY-2054).
+
+For each order, after the final sky fit, the pipeline:
+
+1. Computes the fractional residual of each pixel: (flux − object-wing model − sky model) / sky model.
+2. Keeps the bright skyline pixels. These have a sky model of at least 30 times their error, a fractional residual of at most 0.1, and a wavelength in the central 90% of the order. Edge pixels, bad pixels and pixels inside an object slit range found by the object masking are not used.
+3. Takes the mean fractional residual in slit-position bins of 0.25 arcsec. It does this only if there are more than 20 skyline pixels for each bin, and it ignores a bin with fewer than 5 pixels.
+4. Interpolates the bin means onto every pixel, multiplies the sky model by one plus the interpolated value, and subtracts the corrected model.
+
+An order without enough skyline pixels keeps its sky model. The log names each order and the number of skyline pixels. The correction does not change the sky fit, only the sky model and the sky-subtracted flux. The error inflation, if it is on, measures the residual after the correction.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.subtract_sky.subtract_sky
