@@ -80,16 +80,42 @@ def _in_line(order: pd.DataFrame, centre: float, halfWidth: float = 1.5) -> np.n
     return (np.abs(order["x"].to_numpy() - centre) <= halfWidth) & ~order["mask"].to_numpy()
 
 
-def test_a_run_without_the_setting_matches_the_rolling_percentile_clip(log: Any) -> None:
+def _direct_rolling_clip(log: Any, order: pd.DataFrame) -> pd.DataFrame:
+    """The rolling-percentile clip called directly, on an identical copy with the flag columns the caller sets."""
+    subtractor = _subtractor(log, arm="NIR", iterationLimit=25, pointsPerKnot=1000, noiseSigma=5)
+    frame = order.copy()
+    for column in ("flagged_all_clipped", "flagged_object_clipped", "flagged_bspline_clipped", "flagged_edge_clipped"):
+        frame[column] = False
+    frame["flagged_bad_pixel_clipped"] = frame["mask"].to_numpy(bool)
+    frame["flagged_all_clipped"] = frame["mask"].to_numpy(bool)
+    return subtractor.rolling_window_clipping(
+        imageMapOrderDF=frame, windowSize=35, sigma_clip_limit=3, max_iterations=15
+    )
+
+
+def test_a_run_without_the_setting_is_the_rolling_percentile_clip_called_directly(log: Any) -> None:
+    # ARRANGE
+    order = _order()
+    onLine = _in_line(order, LINE_COLUMNS[0])
+
+    # ACT
+    withoutKey = _clip(log, order)
+    direct = _direct_rolling_clip(log, order)
+
+    # ASSERT: THE SKYLINE PIXELS ARE FLAGGED, WHICH ONLY THE ROLLING CLIP DOES, AND THE WHOLE FRAME MATCHES
+    assert withoutKey.loc[order.index[onLine], "flagged_object_clipped"].any()
+    pd.testing.assert_frame_equal(withoutKey, direct)
+
+
+def test_the_rolling_percentile_setting_is_the_rolling_percentile_clip_called_directly(log: Any) -> None:
     # ARRANGE
     order = _order()
 
     # ACT
-    withoutKey = _clip(log, order)
     withKey = _clip(log, order, **{METHOD_KEY: "rolling_percentile"})
 
     # ASSERT
-    pd.testing.assert_frame_equal(withoutKey, withKey)
+    pd.testing.assert_frame_equal(withKey, _direct_rolling_clip(log, order))
 
 
 def test_the_offset_bin_method_flags_a_cosmic_ray_as_clipped(log: Any) -> None:

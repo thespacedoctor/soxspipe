@@ -63,12 +63,12 @@ def robust_sigma(values):
         if scale < SCALE_EPSILON:
             return 0.0
 
-    u2 = (deviation / (BIWEIGHT_CUTOFF * scale)) ** 2
-    isInside = u2 <= 1.0
+    squaredScaledDeviation = (deviation / (BIWEIGHT_CUTOFF * scale)) ** 2
+    isInside = squaredScaledDeviation <= 1.0
     if np.count_nonzero(isInside) < BIWEIGHT_MIN_INLIERS:
         return 0.0
-    numerator = np.sum(deviation[isInside] ** 2 * (1.0 - u2[isInside]) ** 4)
-    denominator = np.sum((1.0 - u2[isInside]) * (1.0 - 5.0 * u2[isInside]))
+    numerator = np.sum(deviation[isInside] ** 2 * (1.0 - squaredScaledDeviation[isInside]) ** 4)
+    denominator = np.sum((1.0 - squaredScaledDeviation[isInside]) * (1.0 - 5.0 * squaredScaledDeviation[isInside]))
     variance = values.size * numerator / (denominator * (denominator - 1.0))
     return float(np.sqrt(variance)) if variance > 0 else 0.0
 

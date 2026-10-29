@@ -1788,6 +1788,8 @@ class subtract_sky:
         """
         from soxspipe.commonutils.sky_prefilter import OFFSET_BIN_SIGMA, OFFSET_BIN_WIDTH_PIXELS
 
+        import numbers
+
         skySettings = self.recipeSettings["sky-subtraction"]
         values = []
         for key, default in ((OFFSET_BIN_WIDTH_KEY, OFFSET_BIN_WIDTH_PIXELS), (OFFSET_BIN_SIGMA_KEY, OFFSET_BIN_SIGMA)):
@@ -1810,6 +1812,13 @@ class subtract_sky:
         The columns that the object masking and the sky fit read from the rolling-percentile clip are filled the same
         way: the rolling 30th percentile of the unclipped flux and the residual from it.
 
+        This path differs from ``rolling_window_clipping`` in three ways beyond the clip itself:
+
+        - it has no VIS bright-order skip, so an order that the rolling clip would leave unmodelled is modelled
+        - it has no guard that clears the clip when more than 85% of the pixels are flagged
+        - it computes ``flux_percentile_smoothed`` once, after the clip, where the rolling clip computes it on its
+          first two iterations
+
         **Key Arguments:**
 
         - ``imageMapOrderDF`` -- dataframe with the pixels of a given order, with the ``flagged_*`` columns and the
@@ -1830,7 +1839,9 @@ class subtract_sky:
         wavelength = imageMapOrderDF["wavelength"].to_numpy(dtype=float)
         flux = imageMapOrderDF["flux"].to_numpy(dtype=float)
         isCandidate = ~imageMapOrderDF["flagged_all_clipped"].to_numpy(dtype=bool)
-        binWidth = widthPixels * order_dispersion(wavelength, imageMapOrderDF["x"], imageMapOrderDF["y"])
+        binWidth = widthPixels * order_dispersion(
+            wavelength, imageMapOrderDF["x"].to_numpy(), imageMapOrderDF["y"].to_numpy()
+        )
         isRejected = np.zeros(len(imageMapOrderDF.index), dtype=bool)
         isRejected[isCandidate] = two_pass_offset_bin_outliers(
             wavelength[isCandidate], flux[isCandidate], binWidth, sigma

@@ -107,6 +107,8 @@ Before the first sky fit, the pipeline flags the pixels that hold object light o
 
 The bin width is `offset_bin_width_pixels` (default 5) times the wavelength step of one dispersion pixel of the order. The step is the wavelength range of the order divided by the number of pixel intervals it covers along its longer detector axis, so the rule does not depend on the instrument arm or the binning. The filter is two-sided and tests every pixel that is not already an edge or bad pixel, because the object position is not known at this stage. The pixels it rejects feed the object masking and the DY-1972 skyline restore in the same way as the pixels of the rolling clip.
 
+The `offset_bin` path does not have three behaviours of the rolling clip. It has no bright-order skip for VIS, so an order that the rolling clip leaves unmodelled is modelled. It has no guard that clears the clip when more than 85% of the pixels are flagged. It computes the smoothed sky (`flux_percentile_smoothed`, which sets the fit weights of the first fit) once, after the clip, where the rolling clip computes it on its first two iterations. The wavelength step of the bin width is approximate: a slit tilt or a gap of masked columns raises it by a few percent.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.subtract_sky.subtract_sky

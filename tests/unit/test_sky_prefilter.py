@@ -78,19 +78,24 @@ def test_a_negative_spike_is_rejected_because_the_filter_is_two_sided() -> None:
 
 
 def test_only_pixels_flagged_in_both_passes_are_rejected() -> None:
-    # ARRANGE: THE STRADDLING LINE GIVES PIXELS FLAGGED IN ONE PASS ONLY, AND A SPIKE GIVES ONE FLAGGED IN BOTH
+    # ARRANGE: THE STRADDLING LINE IS FLAGGED IN THE FIRST PASS ONLY, AND A SPIKE IN BOTH
     wavelength, flux, column = _sky_grid()
-    flux[np.isin(column, (14, 15, 16))] += LINE_AMPLITUDE
-    flux[30 * SLIT_PIXELS + 4] += SPIKE_AMPLITUDE
+    isLine = np.isin(column, (14, 15, 16))
+    flux[isLine] += LINE_AMPLITUDE
+    spike = 30 * SLIT_PIXELS + 4
+    flux[spike] += SPIKE_AMPLITUDE
+    expectedRejected = np.zeros(wavelength.size, dtype=bool)
+    expectedRejected[spike] = True
 
     # ACT
     firstPass, secondPass = offset_bin_pass_masks(wavelength, flux, BIN_WIDTH)
     rejected = two_pass_offset_bin_outliers(wavelength, flux, BIN_WIDTH)
 
     # ASSERT
-    assert (firstPass ^ secondPass).any()
-    assert np.array_equal(rejected, firstPass & secondPass)
-    assert rejected.sum() == 1
+    assert firstPass[isLine].all()
+    assert not secondPass[isLine].any()
+    assert firstPass[spike] and secondPass[spike]
+    assert np.array_equal(rejected, expectedRejected)
 
 
 def test_the_masks_follow_the_row_order_of_the_input() -> None:
@@ -133,6 +138,28 @@ def test_a_bin_with_too_few_pixels_is_not_tested() -> None:
 
     # ASSERT
     assert not rejected.any()
+
+
+def test_a_bin_whose_scale_is_zero_is_skipped_even_with_one_outlier() -> None:
+    # ARRANGE: 60 IDENTICAL PIXELS AND ONE FAR OFF. THE MAD AND THE BIWEIGHT SCALE ARE ZERO, SO THE BIN IS NOT TESTED;
+    # THE
+    # IDL WOULD FLAG EVERY PIXEL OF IT ("GE" A ZERO LIMIT). THE SPIKE IN THE NEXT, NOISY BIN IS STILL REJECTED
+    wavelength = np.repeat(np.arange(20, dtype=float), 12)
+    flux = np.full(wavelength.size, SKY_LEVEL)
+    outlier = 12 * 1 + 3
+    flux[outlier] += SPIKE_AMPLITUDE
+    noisy = wavelength >= 10
+    flux[noisy] += np.tile(np.linspace(-NOISE_HALF_RANGE, NOISE_HALF_RANGE, 12), 10)
+    spike = 15 * 12 + 5
+    flux[spike] += SPIKE_AMPLITUDE
+    expected = np.zeros(wavelength.size, dtype=bool)
+    expected[spike] = True
+
+    # ACT
+    rejected = two_pass_offset_bin_outliers(wavelength, flux, BIN_WIDTH)
+
+    # ASSERT
+    assert np.array_equal(rejected, expected)
 
 
 def test_flat_data_rejects_nothing() -> None:
@@ -222,6 +249,47 @@ def test_order_dispersion_finds_a_dispersion_axis_along_y() -> None:
 
     # ASSERT
     assert step == pytest.approx(0.5)
+
+
+def test_a_slit_tilt_over_estimates_the_dispersion_by_the_tilt_span_over_the_order_length() -> None:
+    # ARRANGE: THE WAVELENGTH ALSO RISES ALONG THE SLIT, BY 5.5 NM OVER 12 ROWS, SO THE SPAN GROWS BY 5.5 OVER 99
+    # INTERVALS
+    x = np.repeat(np.arange(100), 12)
+    y = np.tile(np.arange(12), 100)
+    wavelength = 1000.0 + x + 0.5 * y
+
+    # ACT
+    step = order_dispersion(wavelength, x, y)
+
+    # ASSERT: THE ACCEPTED ERROR OF THE RULE, ABOUT +5.6%
+    assert step == pytest.approx(1.0 + 5.5 / 99, rel=1e-9)
+
+
+def test_a_column_gap_over_estimates_the_dispersion_by_the_gap_over_the_pixels_present() -> None:
+    # ARRANGE: COLUMNS 50 TO 59 ARE ABSENT (MASKED OUT), SO 100 COLUMNS SPAN 109 NM
+    columns = np.r_[np.arange(0, 50), np.arange(60, 110)]
+    x = np.repeat(columns, 12)
+    y = np.tile(np.arange(12), columns.size)
+    wavelength = 1000.0 + x.astype(float)
+
+    # ACT
+    step = order_dispersion(wavelength, x, y)
+
+    # ASSERT: THE ACCEPTED ERROR OF THE RULE, ABOUT +10%
+    assert step == pytest.approx(109 / 99, rel=1e-9)
+
+
+def test_binned_coordinates_give_the_wavelength_step_of_one_binned_pixel() -> None:
+    # ARRANGE: 2X BINNED, SO COLUMN INDICES RUN 0 TO 99 AND EACH IS 2 NM
+    x = np.repeat(np.arange(100), 6)
+    y = np.tile(np.arange(6), 100)
+    wavelength = 1000.0 + 2.0 * x
+
+    # ACT
+    step = order_dispersion(wavelength, x, y)
+
+    # ASSERT
+    assert step == pytest.approx(2.0)
 
 
 def test_order_dispersion_of_a_single_pixel_order_is_zero() -> None:
