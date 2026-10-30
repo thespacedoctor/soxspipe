@@ -98,6 +98,19 @@ On a crowded slit that assumption fails, because light from the other sources fi
 
 To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on, `object_wing_min_leak_sigma` is 0.03 and `object_wing_min_sky_sigma` is 1. A workspace settings file made before DY-1964 may still hold `object_wing_gate_fraction`. The pipeline ignores it.
 
+### Pre-fit clip method (prototype)
+
+Before the first sky fit, the pipeline flags the pixels that hold object light or a cosmic ray, so the fit can leave them out. The `prefit_clip_method` setting in the `sky-subtraction` block of the stare recipe settings chooses how. It is a prototype (DY-2055), and the default does not change.
+
+- `rolling_percentile` (the default, also when the key is absent) clips the pixels above the rolling 30th percentile in a window of `percentile_rolling_window_size` pixels.
+- `offset_bin` cuts the pixels of an order into bins of equal wavelength width and flags each pixel that is more than `offset_bin_sigma` robust sigmas (default 3) from the median of its bin. It does this twice, the second time with the bin edges moved by half a bin, and rejects only the pixels flagged in both passes. A narrow skyline that sits on a bin edge is split in one pass but is in the middle of a bin in the other, so it is not rejected.
+
+- `hybrid` runs the rolling clip and the `offset_bin` filter on the same pixels. The rolling clip flags are used to find the object slit ranges. Inside those ranges the rolling clip flags are kept; outside them the `offset_bin` flags replace them. This keeps the better faint-object search of the rolling clip, and the skyline and cosmic-ray flags of the offset-bin filter.
+
+The bin width is `offset_bin_width_pixels` (default 5) times the wavelength step of one dispersion pixel of the order. The step is the wavelength range of the order divided by the number of pixel intervals it covers along its longer detector axis, so the rule does not depend on the instrument arm or the binning. The filter is two-sided and tests every pixel that is not already an edge or bad pixel, because the object position is not known at this stage. The pixels it rejects feed the object masking and the DY-1972 skyline restore in the same way as the pixels of the rolling clip.
+
+The `offset_bin` path does not have three behaviours of the rolling clip. It has no bright-order skip for VIS, so an order that the rolling clip leaves unmodelled is modelled. It has no guard that clears the clip when more than 85% of the pixels are flagged. It computes the smoothed sky (`flux_percentile_smoothed`, which sets the fit weights of the first fit) once, after the clip, where the rolling clip computes it on its first two iterations. The wavelength step of the bin width is approximate: a slit tilt or a gap of masked columns raises it by a few percent.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.subtract_sky.subtract_sky

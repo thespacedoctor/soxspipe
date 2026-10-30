@@ -93,6 +93,23 @@ SKYLINE_SIGMA = 3.0
 # THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
 SKYLINE_DILATE_SAMPLES = 50
 
+# THE PRE-FIT CLIP THAT FLAGS OBJECT PIXELS AND COSMIC RAYS BEFORE THE FIRST SKY FIT (DY-2055). THE DEFAULT LIVES HERE
+# BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML. offset_bin IS THE KELSON TWO-PASS OFFSET-BIN PRE-FILTER, WHICH
+# REPLACES THE ROLLING-PERCENTILE CLIP; THE SETTINGS BELOW IT SET ITS BIN WIDTH (DISPERSION PIXELS) AND SIGMA LIMIT
+PREFIT_CLIP_KEY = "prefit_clip_method"
+PREFIT_CLIP_ROLLING = "rolling_percentile"
+PREFIT_CLIP_OFFSET_BIN = "offset_bin"
+# THE HYBRID: THE ROLLING CLIP FINDS THE OBJECT RANGE, AND THE OFFSET-BIN FLAGS REPLACE ITS FLAGS OUTSIDE THAT RANGE
+PREFIT_CLIP_HYBRID = "hybrid"
+PREFIT_CLIP_METHODS = (PREFIT_CLIP_ROLLING, PREFIT_CLIP_OFFSET_BIN, PREFIT_CLIP_HYBRID)
+# THE COLUMN THAT HOLDS THE OFFSET-BIN PRE-FILTER FLAGS, KEPT APART FROM THE OBJECT MASKING THAT FOLLOWS
+OFFSET_BIN_FLAG_COLUMN = "flagged_offset_bin_clipped"
+OFFSET_BIN_WIDTH_KEY = "offset_bin_width_pixels"
+OFFSET_BIN_SIGMA_KEY = "offset_bin_sigma"
+# THE QUANTILE OF THE ROLLING WINDOW THAT GIVES THE SMOOTHED SKY OF THE ROLLING-PERCENTILE CLIP, WHICH THE FIT'S NOISE
+# MODEL AND THE OBJECT MASKING READ WHICHEVER PRE-FIT CLIP RAN
+SMOOTHED_SKY_QUANTILE = 0.3
+
 # THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
 # sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML
 ERROR_INFLATION_ARMS = frozenset({"NIR"})
@@ -666,7 +683,7 @@ class subtract_sky:
             return None, None, None, self.qc, self.products
 
         # MASK OUT OBJECT PIXELS
-        allimageMapOrder = self.clip_object_slit_positions(
+        allimageMapOrder = self._mask_object_pixels(
             allimageMapOrder,
             aggressive=self.recipeSettings["sky-subtraction"]["aggressive_object_masking"],
         )
@@ -977,13 +994,25 @@ class subtract_sky:
             imageMapOrder.loc[mask, "flagged_bad_pixel_clipped"] = True
             imageMapOrder.loc[mask, "flagged_all_clipped"] = True
 
-        # CLIP THE MOST DEVIANT PIXELS WITHIN A WAVELENGTH ROLLING WINDOW - BAD-PIXELS AND CRHs AND OBJECTS
-        imageMapOrder = self.rolling_window_clipping(
-            imageMapOrderDF=imageMapOrder,
-            windowSize=self.rollingWindowSize,
-            sigma_clip_limit=percentile_clipping_sigma,
-            max_iterations=percentile_clipping_iterations,
-        )
+        # CLIP THE MOST DEVIANT PIXELS - BAD-PIXELS AND CRHs AND OBJECTS - WITHIN A WAVELENGTH ROLLING WINDOW, OR IN
+        # TWO PASSES OF WAVELENGTH BINS (DY-2055)
+        prefitClipMethod = self._prefit_clip_method()
+        if prefitClipMethod == PREFIT_CLIP_OFFSET_BIN:
+            imageMapOrder = self._offset_bin_clipping(imageMapOrder)
+        elif prefitClipMethod == PREFIT_CLIP_HYBRID:
+            imageMapOrder = self._hybrid_clipping(
+                imageMapOrder,
+                windowSize=self.rollingWindowSize,
+                sigma_clip_limit=percentile_clipping_sigma,
+                max_iterations=percentile_clipping_iterations,
+            )
+        else:
+            imageMapOrder = self.rolling_window_clipping(
+                imageMapOrderDF=imageMapOrder,
+                windowSize=self.rollingWindowSize,
+                sigma_clip_limit=percentile_clipping_sigma,
+                max_iterations=percentile_clipping_iterations,
+            )
 
         self.log.debug("completed the ``get_over_sampled_sky_from_order`` method")
         return imageMapOrder
@@ -1747,6 +1776,177 @@ class subtract_sky:
         imageMapOrderDF["residual_global_sigma"] = imageMapOrderDF["flux_minus_smoothed_residual"] / std
 
         self.log.debug("completed the ``rolling_window_clipping`` method")
+        return imageMapOrderDF
+
+    def _prefit_clip_method(self):
+        """*the pre-fit clip that flags object pixels and cosmic rays before the first sky fit (DY-2055)*
+
+        **Return:**
+
+        - ``method`` -- the ``prefit_clip_method`` sky-subtraction setting
+            - ``rolling_percentile`` (the default, also when the key is absent) is ``rolling_window_clipping``
+            - ``offset_bin`` is the Kelson two-pass offset-bin pre-filter (``_offset_bin_clipping``)
+            - ``hybrid`` is the rolling clip for the object search and the offset-bin flags elsewhere
+              (``_hybrid_clipping`` and ``_mask_object_pixels``)
+            - any other value raises a ``ValueError``
+        """
+        method = self.recipeSettings["sky-subtraction"].get(PREFIT_CLIP_KEY, PREFIT_CLIP_ROLLING)
+        if method not in PREFIT_CLIP_METHODS:
+            raise ValueError(
+                f"the sky-subtraction setting `{PREFIT_CLIP_KEY}` must be one of {PREFIT_CLIP_METHODS}, not {method!r}"
+            )
+        return method
+
+    def _offset_bin_settings(self):
+        """*the bin width and sigma limit of the offset-bin pre-filter, with defaults for older workspace settings*
+
+        **Return:**
+
+        - ``widthPixels`` -- the ``offset_bin_width_pixels`` setting: the bin width in dispersion pixels of the order
+        - ``sigma`` -- the ``offset_bin_sigma`` setting: the rejection limit in robust sigmas
+            - both must be finite numbers above 0 (not a bool), else a ``ValueError`` names the setting
+        """
+        import numbers
+
+        from soxspipe.commonutils.sky_prefilter import OFFSET_BIN_SIGMA, OFFSET_BIN_WIDTH_PIXELS
+
+        skySettings = self.recipeSettings["sky-subtraction"]
+        values = []
+        for key, default in ((OFFSET_BIN_WIDTH_KEY, OFFSET_BIN_WIDTH_PIXELS), (OFFSET_BIN_SIGMA_KEY, OFFSET_BIN_SIGMA)):
+            value = skySettings.get(key, default)
+            isNumber = isinstance(value, numbers.Real) and not isinstance(value, bool)
+            if not (isNumber and math.isfinite(value) and value > 0):
+                raise ValueError(f"the sky-subtraction setting `{key}` must be a finite number above 0, not {value!r}")
+            values.append(float(value))
+        return tuple(values)
+
+    def _offset_bin_clipping(self, imageMapOrderDF):
+        """*flag the outlying pixels of an order with the Kelson two-pass offset-bin pre-filter (DY-2055)*
+
+        An alternative to ``rolling_window_clipping``. The pixels that are not already clipped are cut into bins of
+        ``offset_bin_width_pixels`` dispersion pixels of the order (see ``sky_prefilter.order_dispersion``), and a
+        pixel is flagged ``flagged_object_clipped`` when both of two passes, with bin edges half a bin apart, find it
+        beyond ``offset_bin_sigma`` robust sigmas from its bin median (``sky_prefilter.two_pass_offset_bin_outliers``).
+        The filter is two-sided, and it cannot exclude the object, which is not located yet: the object pixels
+        are a minority of every bin, so they are outliers of their bin.
+        The columns that the object masking and the sky fit read from the rolling-percentile clip are filled the same
+        way: the rolling 30th percentile of the unclipped flux and the residual from it.
+
+        This path differs from ``rolling_window_clipping`` in three ways beyond the clip itself:
+
+        - it has no VIS bright-order skip, so an order that the rolling clip would leave unmodelled is modelled
+        - it has no guard that clears the clip when more than 85% of the pixels are flagged
+        - it computes ``flux_percentile_smoothed`` once, after the clip, where the rolling clip computes it on its
+          first two iterations
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- dataframe with the pixels of a given order, with the ``flagged_*`` columns and the
+          ``x`` and ``y`` detector coordinates
+
+        **Return:**
+
+        - ``imageMapOrderDF`` -- a new dataframe, stable-sorted by wavelength, with the outliers flagged
+        """
+        import numpy as np
+
+        imageMapOrderDF = imageMapOrderDF.sort_values("wavelength", kind="stable")
+        order = imageMapOrderDF["order"].values[0]
+
+        isRejected = self._offset_bin_outlier_flags(imageMapOrderDF)
+        imageMapOrderDF[OFFSET_BIN_FLAG_COLUMN] = isRejected
+        imageMapOrderDF.loc[isRejected, "flagged_object_clipped"] = True
+        imageMapOrderDF.loc[isRejected, "flagged_all_clipped"] = True
+
+        isUnclipped = ~imageMapOrderDF["flagged_all_clipped"].to_numpy(dtype=bool)
+        for column in (
+            "flux_std",
+            "flux_upper_limit",
+            "flux_minus_smoothed_residual_std",
+            "flux_minus_smoothed_residual_upper_limit",
+            "flux_percentile_smoothed",
+            "flux_minus_smoothed_residual",
+        ):
+            imageMapOrderDF[column] = np.nan
+        imageMapOrderDF.loc[isUnclipped, "flux_percentile_smoothed"] = (
+            imageMapOrderDF.loc[isUnclipped, "flux"]
+            .rolling(window=self.rollingWindowSize, center=True, closed="both")
+            .quantile(SMOOTHED_SKY_QUANTILE)
+        )
+        imageMapOrderDF.loc[isUnclipped, "flux_minus_smoothed_residual"] = (
+            imageMapOrderDF.loc[isUnclipped, "flux"] - imageMapOrderDF.loc[isUnclipped, "flux_percentile_smoothed"]
+        )
+        std = imageMapOrderDF.loc[isUnclipped, "flux_minus_smoothed_residual"].std()
+        imageMapOrderDF["residual_global_sigma"] = imageMapOrderDF["flux_minus_smoothed_residual"] / std
+
+        totalClipped = int(imageMapOrderDF["flagged_object_clipped"].sum())
+        percent = float(totalClipped) / float(len(imageMapOrderDF.index)) * 100.0
+        self.log.print(f"\tORDER {order}: {totalClipped} pixels clipped in total = {percent:1.1f}%)")
+        return imageMapOrderDF
+
+    def _offset_bin_outlier_flags(self, imageMapOrderDF):
+        """*the pixels of an order that the two-pass offset-bin pre-filter rejects (DY-2055)*
+
+        Only the pixels that are not already clipped (slit edges, bad pixels) are tested, and only they set the bin
+        statistics. See ``_offset_bin_clipping`` for the filter.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- dataframe with the pixels of a given order, with ``flagged_all_clipped`` and the
+          ``x`` and ``y`` detector coordinates
+
+        **Return:**
+
+        - ``isRejected`` -- boolean array in the row order of ``imageMapOrderDF``
+        """
+        import numpy as np
+
+        from soxspipe.commonutils.sky_prefilter import order_dispersion, two_pass_offset_bin_outliers
+
+        widthPixels, sigma = self._offset_bin_settings()
+        wavelength = imageMapOrderDF["wavelength"].to_numpy(dtype=float)
+        flux = imageMapOrderDF["flux"].to_numpy(dtype=float)
+        isCandidate = ~imageMapOrderDF["flagged_all_clipped"].to_numpy(dtype=bool)
+        binWidth = widthPixels * order_dispersion(
+            wavelength, imageMapOrderDF["x"].to_numpy(), imageMapOrderDF["y"].to_numpy()
+        )
+        isRejected = np.zeros(len(imageMapOrderDF.index), dtype=bool)
+        isRejected[isCandidate] = two_pass_offset_bin_outliers(
+            wavelength[isCandidate], flux[isCandidate], binWidth, sigma
+        )
+        return isRejected
+
+    def _hybrid_clipping(self, imageMapOrderDF, windowSize, sigma_clip_limit, max_iterations):
+        """*the rolling-percentile clip for the object search, with the offset-bin flags recorded beside it (DY-2055)*
+
+        The rolling clip finds faint objects better, and the offset-bin pre-filter keeps skyline cores and flags
+        cosmic rays. So the rolling clip sets ``flagged_object_clipped``, from which the object masking finds the
+        object slit ranges, and the offset-bin pre-filter, run on the same unclipped pixels, sets
+        ``flagged_offset_bin_clipped``. Outside the object ranges, ``_mask_object_pixels`` then replaces the rolling
+        flags by the offset-bin flags.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- dataframe with the pixels of a given order, with the ``flagged_*`` columns
+        - ``windowSize``, ``sigma_clip_limit``, ``max_iterations`` -- the ``rolling_window_clipping`` arguments
+
+        **Return:**
+
+        - ``imageMapOrderDF`` -- the ``rolling_window_clipping`` result with the ``flagged_offset_bin_clipped`` column
+            - ``None`` when the rolling clip skips a VIS order that is too bright to model (DY-1285)
+        """
+        imageMapOrderDF = imageMapOrderDF.sort_values("wavelength", kind="stable")
+        isRejected = self._offset_bin_outlier_flags(imageMapOrderDF)
+        imageMapOrderDF = self.rolling_window_clipping(
+            imageMapOrderDF=imageMapOrderDF,
+            windowSize=windowSize,
+            sigma_clip_limit=sigma_clip_limit,
+            max_iterations=max_iterations,
+        )
+        if imageMapOrderDF is None:
+            return None
+        # THE ROLLING CLIP STABLE-SORTS BY WAVELENGTH AGAIN, WHICH KEEPS THIS ROW ORDER
+        imageMapOrderDF[OFFSET_BIN_FLAG_COLUMN] = isRejected
         return imageMapOrderDF
 
     def _rebuild_all_clipped_flag(self, imageMapOrderDF):
@@ -2996,6 +3196,68 @@ class subtract_sky:
         binEdges = self._object_bin_edges(positions.min(), positions.max())
         counts = np.histogram(positions, bins=binEdges)[0]
         return binEdges, pd.Series(counts / counts.sum() * (len(binEdges) - 1))
+
+    def _detected_object_ranges(self, order_dataframes, aggressive):
+        """*the object slit ranges that ``clip_object_slit_positions`` finds from the same flags (DY-2055)*
+
+        The same search as ``clip_object_slit_positions`` makes, on the pixels flagged ``flagged_object_clipped``.
+        Call it before that method, which changes the flags.
+
+        **Key Arguments:**
+
+        - ``order_dataframes`` -- the pre-fit clipped order dataframes
+        - ``aggressive`` -- the ``aggressive_object_masking`` setting; with False no range is searched for
+
+        **Return:**
+
+        - ``objectRanges`` -- a ``[lower, upper]`` slit-position pair for each object; empty when none is found
+        """
+        import pandas as pd
+
+        if not aggressive:
+            return []
+        flagged = pd.concat(order_dataframes)
+        flagged = flagged.loc[flagged["flagged_object_clipped"].to_numpy(dtype=bool)]
+        bins, counts = self._normalised_object_counts(flagged["slit_position"])
+        if not len(counts):
+            return []
+        counts -= counts.median()
+        counts -= counts.abs().median()
+        return self._object_slit_ranges(counts.to_numpy(), bins, OBJECT_EDGE_MARGIN_BINS)
+
+    def _mask_object_pixels(self, order_dataframes, aggressive=False):
+        """*mask the object slit ranges, then apply the hybrid pre-fit clip, which needs them (DY-2055)*
+
+        With ``prefit_clip_method`` ``rolling_percentile`` or ``offset_bin`` this is ``clip_object_slit_positions``.
+        With ``hybrid``, the rolling-clip flags outside every object range are replaced by the offset-bin flags
+        (``flagged_offset_bin_clipped``), so the rolling clip only places the object.
+
+        **Key Arguments:**
+
+        - ``order_dataframes`` -- the pre-fit clipped order dataframes
+        - ``aggressive`` -- the ``aggressive_object_masking`` setting
+
+        **Return:**
+
+        - ``order_dataframes`` -- the ``clip_object_slit_positions`` result, with the flags above
+        """
+        import numpy as np
+
+        if self._prefit_clip_method() != PREFIT_CLIP_HYBRID:
+            return self.clip_object_slit_positions(order_dataframes, aggressive=aggressive)
+
+        objectRanges = self._detected_object_ranges(order_dataframes, aggressive)
+        order_dataframes = self.clip_object_slit_positions(order_dataframes, aggressive=aggressive)
+        for df in order_dataframes:
+            slitPosition = df["slit_position"].to_numpy(dtype=float)
+            isInObject = np.zeros(len(df.index), dtype=bool)
+            for lower, upper in objectRanges:
+                isInObject |= (slitPosition >= lower) & (slitPosition <= upper)
+            isOffsetBinFlag = df[OFFSET_BIN_FLAG_COLUMN].to_numpy(dtype=bool)
+            isObjectFlag = np.where(isInObject, df["flagged_object_clipped"].to_numpy(dtype=bool), isOffsetBinFlag)
+            df["flagged_object_clipped"] = isObjectFlag
+            self._rebuild_all_clipped_flag(df)
+        return order_dataframes
 
     def clip_object_slit_positions(self, order_dataframes, aggressive=False):
         """*clip out pixels flagged as an object*
