@@ -98,6 +98,25 @@ On a crowded slit that assumption fails, because light from the other sources fi
 
 To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on, `object_wing_min_leak_sigma` is 0.03 and `object_wing_min_sky_sigma` is 1. A workspace settings file made before DY-1964 may still hold `object_wing_gate_fraction`. The pipeline ignores it.
 
+### Skyline slit-illumination correction (prototype)
+
+The sky model is a bspline in wavelength only, so it assumes the sky is equally bright along the whole slit. A small illumination gradient along the slit leaves a residual in the sky-subtracted frame that grows with the sky. It is largest at the bright skylines.
+
+The `skyline_illumination_correction` setting in the `sky-subtraction` block of the stare recipe settings turns on a correction that measures this gradient, as the Kelson `/fixillum` step does. It must be `True` or `False`. A workspace settings file that does not have the key uses `False`, and the output is then the same as without the correction. The correction is a prototype (DY-2054).
+
+For each order, after the final sky fit, the pipeline:
+
+1. Computes the fractional residual of each pixel: (flux − object-wing model − sky model) / sky model.
+2. Keeps the bright skyline pixels. These have a sky model of at least 10 times their error, an absolute fractional residual (|fractional residual|) of at most 0.1, and a wavelength in the central 90% of the usable pixels of the order. Pixels that any clipping flag of the final fit marks are not used: edge, bad pixel, object and all other clipped pixels. Pixels inside an object slit range found by the object masking, or within 1 arcsec of one, are not used either. When `aggressive_object_masking` is `False` there is no slit range, so the object flags alone keep object light out.
+3. Uses a floor of 30 times the error instead of 10 in an order where more than half of the usable pixels are above 10 times their error. In such an order the bright pixels are the sky continuum, not skylines. On SOXS NIR this is order 10, where the thermal background puts 67% to 100% of the pixels above 10 times their error. Every other NIR order has at most 39% (measured on three NIR standard and target frames, DY-2054).
+4. Takes the weighted mean fractional residual in slit-position bins of 0.25 arcsec. Each pixel has the weight (sky model / error)². A bin is used when its weight sum is finite and the error of its mean is at most 0.5%, and the curve is interpolated across a bin with a larger error. At least 2 bins must be used, or the order keeps its sky model. The Kelson script uses bins of 20 pixels of about 45 times their error, which also gives a bin error of about 0.5%.
+5. Subtracts the weighted mean of the bin means, so the correction only moves sky light along the slit. The mean level of the sky belongs to the wavelength fit. If the mean of (bin mean / its error)² is below 3, the bins agree with a flat illumination and the order keeps its sky model. On the NIR frames of DY-2054 every corrected order is at 6 or more, except order 10 of the SLIT5.0 standard 20260127T030147 at 1.5, whose curve is noise.
+6. Interpolates the bin means onto every pixel, and holds the value flat outside the outer bins used. Across each object slit range and the 1 arcsec on each side of it, the curve is instead a quadratic fitted to the bins within 5 arcsec of the slit centre, weighted by the inverse variance of each bin mean. The quadratic is used only between the outermost of those bins, and with fewer than 4 of them the curve stays interpolated. The quadratic does not have to meet the interpolated curve at the edges of the zone, so the sky model can step there. It multiplies the sky model by one plus the curve, and subtracts the corrected model.
+
+The 1 arcsec margin and the quadratic come from three NIR frames (DY-2054). On the bright standards the object-wing model takes 1% to 2.5% too much sky within about 1.5 arcsec of the object range, so the bins there are too low and a curve interpolated from them is too low under the star. On the faint SLIT1.0 target 3FGL J0627.9-1517 the illumination is curved and lowest at the slit centre: with the wavelength-fit level under the object (no correction there), the extracted spectrum shows 0.4% to 1.1% too much sky, in skyline shape, at 4 to 10 times its error. With the margin and the quadratic, an offline replay puts that error on 3FGL between −0.4% and +0.4% of the sky, and on the orders of the standards whose spectra carry no stellar features at the skylines it stays consistent with zero.
+
+An order without enough skyline pixels keeps its sky model. The log names each order and the number of skyline pixels. The correction does not change the sky fit, only the sky model and the sky-subtracted flux. The error inflation, if it is on, measures the residual after the correction.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.subtract_sky.subtract_sky
