@@ -218,6 +218,32 @@ def test_pixels_inside_an_object_slit_range_do_not_set_the_curve(log: Any) -> No
     assert factorWithoutRange[(slitPosition > 0.2) & (slitPosition < 0.8)].mean() > 1.03
 
 
+def test_the_sky_model_inside_an_object_slit_range_keeps_the_wavelength_fit_level(log: Any) -> None:
+    # ARRANGE
+    mapDF = _order_frame()
+    rows, columns = mapDF["y"].to_numpy(), mapDF["x"].to_numpy()
+    slitPosition = mapDF["slit_position"].to_numpy()
+    # A RANGE AWAY FROM THE SLIT CENTRE, WHERE THE INTERPOLATED CURVE WOULD BE ABOUT +1%
+    isInRange = (slitPosition >= 1.95) & (slitPosition <= 3.05)
+    outside = (slitPosition < 1.5) | (slitPosition > 3.5)
+    expected = 1.0 + GRADIENT_PER_ARCSEC * slitPosition
+
+    # ACT
+    skyModel, skySubtracted, _, _, _ = _reduce(log, mapDF, settingValue=True, objectRanges=[[1.95, 3.05]])
+
+    # ASSERT
+    np.testing.assert_array_equal(skyModel.data[rows, columns][isInRange], mapDF["sky_model"].to_numpy()[isInRange])
+    np.testing.assert_array_equal(
+        skySubtracted.data[rows, columns][isInRange], mapDF["sky_subtracted_flux"].to_numpy()[isInRange]
+    )
+    factor = skyModel.data[rows, columns] / mapDF["sky_model"].to_numpy()
+    np.testing.assert_allclose(
+        factor[outside & (np.abs(slitPosition) < 4.5)],
+        expected[outside & (np.abs(slitPosition) < 4.5)],
+        atol=BIN_TOLERANCE,
+    )
+
+
 def test_the_object_wing_model_is_taken_from_the_flux_before_the_curve_is_measured(log: Any) -> None:
     # ARRANGE
     mapDF = _order_frame()

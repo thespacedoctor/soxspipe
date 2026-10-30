@@ -3193,6 +3193,7 @@ class subtract_sky:
         that scales with the sky. ``measure_slit_illumination`` measures it from the pixels that no clipping flag of the
         final fit marks (edge, bad pixel, object or any other clip) and that are outside the object slit ranges, after
         the object-wing model is taken from the flux. The sky-subtracted flux is the flux minus the corrected model.
+        Inside the object slit ranges the factor is 1, so the sky under the object keeps the wavelength-fit level.
 
         **Key Arguments:**
 
@@ -3244,11 +3245,15 @@ class subtract_sky:
             f"\tORDER {order}: SLIT-ILLUMINATION CORRECTION FROM {correction.pixelCount} SKYLINE PIXELS, "
             f"{correction.binValues.min():+0.4f} TO {correction.binValues.max():+0.4f}"
         )
-        correctedModel = skyModel * correction.factor
+        # THE CURVE IS NOT MEASURED UNDER THE OBJECT. ON REAL NIR FRAMES ITS INTERPOLATION THERE MOVED THE OBJECT FLUX
+        # BY 1 TO 14%, AND THE SKYLINE SHAPE OF THE EXTRACTED SPECTRUM SHOWED THE WAVELENGTH-FIT LEVEL WAS RIGHT, SO
+        # THE SKY UNDER THE OBJECT KEEPS THAT LEVEL (DY-2054)
+        factor = np.where(isInObject, 1.0, correction.factor)
+        correctedModel = skyModel * factor
         return imageMapOrderDF.assign(
             sky_model=correctedModel,
             sky_subtracted_flux=flux - correctedModel,
-            slit_illumination_factor=correction.factor,
+            slit_illumination_factor=factor,
         )
 
     def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):
