@@ -11,7 +11,7 @@ from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 
 import soxspipe.commonutils.slit_illumination_correction as illumination
-from soxspipe.commonutils.subtract_sky import subtract_sky
+from soxspipe.commonutils.subtract_sky import ILLUMINATION_OBJECT_MARGIN_ARCSEC, subtract_sky
 
 pytestmark = pytest.mark.unit
 
@@ -218,32 +218,54 @@ def test_pixels_inside_an_object_slit_range_do_not_set_the_curve(log: Any) -> No
     assert factorWithoutRange[(slitPosition > 0.2) & (slitPosition < 0.8)].mean() > 1.03
 
 
-def test_the_sky_model_inside_an_object_slit_range_keeps_the_wavelength_fit_level(log: Any) -> None:
+def test_the_sky_model_across_an_object_slit_range_follows_the_curve_fitted_to_the_bins(log: Any) -> None:
     # ARRANGE
     mapDF = _order_frame()
     rows, columns = mapDF["y"].to_numpy(), mapDF["x"].to_numpy()
     slitPosition = mapDF["slit_position"].to_numpy()
-    # A RANGE AWAY FROM THE SLIT CENTRE, WHERE THE INTERPOLATED CURVE WOULD BE ABOUT +1%. ITS ENDS ARE ON SAMPLED SLIT
-    # POSITIONS, SO THE PIXELS AT 2.0 AND 3.0 ARCSEC CHECK THAT THE RANGE IS CLOSED
+    # A RANGE AWAY FROM THE SLIT CENTRE, WHERE THE CURVE IS ABOUT +1%. ITS ENDS ARE ON SAMPLED SLIT POSITIONS
     isInRange = (slitPosition >= 2.0) & (slitPosition <= 3.0)
     assert np.isclose(slitPosition, 2.0).any() and np.isclose(slitPosition, 3.0).any()
-    outside = (slitPosition < 1.5) | (slitPosition > 3.5)
     expected = 1.0 + GRADIENT_PER_ARCSEC * slitPosition
 
     # ACT
     skyModel, skySubtracted, _, _, _ = _reduce(log, mapDF, settingValue=True, objectRanges=[[2.0, 3.0]])
 
     # ASSERT
-    np.testing.assert_array_equal(skyModel.data[rows, columns][isInRange], mapDF["sky_model"].to_numpy()[isInRange])
-    np.testing.assert_array_equal(
-        skySubtracted.data[rows, columns][isInRange], mapDF["sky_subtracted_flux"].to_numpy()[isInRange]
-    )
     factor = skyModel.data[rows, columns] / mapDF["sky_model"].to_numpy()
+    isInside = np.abs(slitPosition) < 4.5
+    # THE CURVE IS ZERO ON AVERAGE OVER THE BINS USED, WHICH LEAVE OUT THE RANGE AND ITS MARGINS, SO ITS ZERO POINT IS
+    # SHIFTED FROM THE SLIT CENTRE; ONLY ITS SHAPE IS COMPARED
+    offset = np.mean(factor[isInside] - expected[isInside])
+    np.testing.assert_allclose(factor[isInside], expected[isInside] + offset, atol=BIN_TOLERANCE)
+    assert factor[isInRange].mean() - offset > 1.006
     np.testing.assert_allclose(
-        factor[outside & (np.abs(slitPosition) < 4.5)],
-        expected[outside & (np.abs(slitPosition) < 4.5)],
-        atol=BIN_TOLERANCE,
+        skySubtracted.data[rows, columns], mapDF["flux"].to_numpy() - skyModel.data[rows, columns], rtol=1e-12
     )
+
+
+def test_pixels_within_the_margin_around_an_object_slit_range_do_not_set_the_curve(log: Any) -> None:
+    # ARRANGE
+    mapDF = _order_frame()
+    slitPosition = mapDF["slit_position"].to_numpy()
+    # OBJECT LIGHT THAT REACHES 0.9 ARCSEC PAST THE RANGE END, OR A WING MODEL THAT TAKES TOO MUCH THERE, LIFTS THE BINS
+    # BY 9%
+    reach = 0.9
+    assert reach < ILLUMINATION_OBJECT_MARGIN_ARCSEC
+    isNearRange = (slitPosition > 1.05) & (slitPosition < 1.05 + reach)
+    lifted = mapDF.assign(flux=np.where(isNearRange, mapDF["flux"] + 0.09 * mapDF["sky_model"], mapDF["flux"]))
+    lifted["sky_subtracted_flux"] = lifted["flux"] - lifted["sky_model"]
+    rows, columns = mapDF["y"].to_numpy(), mapDF["x"].to_numpy()
+    expected = 1.0 + GRADIENT_PER_ARCSEC * slitPosition
+
+    # ACT
+    skyModel, _, _, _, _ = _reduce(log, lifted, settingValue=True, objectRanges=[[-0.05, 1.05]])
+
+    # ASSERT
+    factor = skyModel.data[rows, columns] / mapDF["sky_model"].to_numpy()
+    isInside = np.abs(slitPosition) < 4.5
+    offset = np.mean(factor[isInside] - expected[isInside])
+    np.testing.assert_allclose(factor[isInside], expected[isInside] + offset, atol=BIN_TOLERANCE)
 
 
 def test_the_object_wing_model_is_taken_from_the_flux_before_the_curve_is_measured(log: Any) -> None:

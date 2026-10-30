@@ -110,6 +110,13 @@ ERROR_INFLATION_MIN_SAMPLES = 30
 # THE SETTING THAT MULTIPLIES EACH ORDER'S SKY MODEL BY A SKYLINE-MEASURED SLIT-ILLUMINATION FACTOR. OFF WHEN ABSENT
 # (DY-2054)
 ILLUMINATION_KEY = "skyline_illumination_correction"
+# THE MARGIN ADDED TO EACH OBJECT SLIT RANGE FOR THE ILLUMINATION CURVE: ITS PIXELS DO NOT SET THE CURVE, AND THE
+# CURVE ACROSS THE RANGE AND MARGIN IS A QUADRATIC FITTED TO THE BINS. ON THE NIR STANDARDS THE OBJECT-WING MODEL TAKES
+# 1 TO 2.5% TOO MUCH SKY WITHIN ABOUT 1.5 ARCSEC OF THE RANGE ENDS, WHICH PULLED THE INTERPOLATED CURVE DOWN UNDER THE
+# STAR. ON THE SLIT1.0 TARGET 3FGL THE CURVE IS LOWEST UNDER THE OBJECT, SO THE WAVELENGTH-FIT LEVEL THERE TAKES TOO
+# MUCH SKY; 1 ARCSEC AND THE QUADRATIC CUT THE SKYLINE-SHAPED ERROR OF ITS EXTRACTED SPECTRA FROM 0.4-1.1% TO AT MOST
+# 0.4% (DY-2054)
+ILLUMINATION_OBJECT_MARGIN_ARCSEC = 1.0
 
 
 def _sliding_mean(values, window):
@@ -3191,9 +3198,10 @@ class subtract_sky:
 
         The sky model is a function of wavelength only, so an illumination gradient along the slit leaves a residual
         that scales with the sky. ``measure_slit_illumination`` measures it from the pixels that no clipping flag of the
-        final fit marks (edge, bad pixel, object or any other clip) and that are outside the object slit ranges, after
-        the object-wing model is taken from the flux. The sky-subtracted flux is the flux minus the corrected model.
-        Inside the object slit ranges the factor is 1, so the sky under the object keeps the wavelength-fit level.
+        final fit marks (edge, bad pixel, object or any other clip) and that are more than
+        ``ILLUMINATION_OBJECT_MARGIN_ARCSEC`` outside the object slit ranges, after the object-wing model is taken from
+        the flux. Across each object slit range and its margins the curve is a quadratic fitted to the bins. The
+        sky-subtracted flux is the flux minus the corrected model.
 
         **Key Arguments:**
 
@@ -3209,9 +3217,11 @@ class subtract_sky:
         from soxspipe.commonutils.slit_illumination_correction import measure_slit_illumination
 
         slitPosition = imageMapOrderDF["slit_position"].to_numpy(dtype=float)
-        isInObject = np.zeros(slitPosition.size, dtype=bool)
+        isNearObject = np.zeros(slitPosition.size, dtype=bool)
         for lower, upper in self.objectSlitRanges:
-            isInObject |= (slitPosition >= lower) & (slitPosition <= upper)
+            isNearObject |= (slitPosition >= lower - ILLUMINATION_OBJECT_MARGIN_ARCSEC) & (
+                slitPosition <= upper + ILLUMINATION_OBJECT_MARGIN_ARCSEC
+            )
         # THE CLIP FLAGS LEAVE OUT OBJECT LIGHT THAT NO DETECTED SLIT RANGE COVERS, SUCH AS WITH AGGRESSIVE MASKING OFF
         isClipped = np.zeros(slitPosition.size, dtype=bool)
         for flag in (
@@ -3221,7 +3231,7 @@ class subtract_sky:
             "flagged_all_clipped",
         ):
             isClipped |= imageMapOrderDF[flag].to_numpy(dtype=bool)
-        isUsable = ~isClipped & ~isInObject
+        isUsable = ~isClipped & ~isNearObject
         flux = imageMapOrderDF["flux"].to_numpy(dtype=float)
         wings = (
             imageMapOrderDF["object_wing_model"].to_numpy(dtype=float)
@@ -3236,19 +3246,18 @@ class subtract_sky:
             flux - wings,
             imageMapOrderDF["error"].to_numpy(dtype=float),
             isUsable,
+            isFillZone=isNearObject,
         )
         order = int(imageMapOrderDF["order"].iloc[0])
         if not correction.isApplied:
             self.log.print(f"\tORDER {order}: NO SLIT-ILLUMINATION CORRECTION - {correction.pixelCount} SKYLINE PIXELS")
             return imageMapOrderDF
         self.log.print(
-            f"\tORDER {order}: SLIT-ILLUMINATION CORRECTION FROM {correction.pixelCount} SKYLINE PIXELS, "
-            f"{correction.binValues.min():+0.4f} TO {correction.binValues.max():+0.4f}"
+            f"\tORDER {order}: SLIT-ILLUMINATION CORRECTION FROM {correction.pixelCount} SKYLINE PIXELS ABOVE "
+            f"{correction.skySnrFloor:0.0f} SIGMA, {correction.binValues.min():+0.4f} TO "
+            f"{correction.binValues.max():+0.4f}"
         )
-        # THE CURVE IS NOT MEASURED UNDER THE OBJECT. ON REAL NIR FRAMES ITS INTERPOLATION THERE MOVED THE OBJECT FLUX
-        # BY 1 TO 14%, AND THE SKYLINE SHAPE OF THE EXTRACTED SPECTRUM SHOWED THE WAVELENGTH-FIT LEVEL WAS RIGHT, SO
-        # THE SKY UNDER THE OBJECT KEEPS THAT LEVEL (DY-2054)
-        factor = np.where(isInObject, 1.0, correction.factor)
+        factor = correction.factor
         correctedModel = skyModel * factor
         return imageMapOrderDF.assign(
             sky_model=correctedModel,

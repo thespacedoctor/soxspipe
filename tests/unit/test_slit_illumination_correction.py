@@ -8,8 +8,9 @@ import numpy as np
 import pytest
 
 from soxspipe.commonutils.slit_illumination_correction import (
-    BIN_WIDTH_ARCSEC,
-    MIN_PIXELS_PER_SLIT_BIN,
+    CONTINUUM_SKY_SNR,
+    MAX_BIN_ERROR,
+    MIN_SKY_SNR,
     measure_slit_illumination,
 )
 
@@ -101,16 +102,15 @@ def test_factor_is_one_when_too_few_pixels_are_bright_enough() -> None:
     np.testing.assert_array_equal(correction.factor, np.ones(order.slitPosition.size))
 
 
-def test_factor_is_one_when_the_skylines_give_too_few_pixels_for_each_slit_bin() -> None:
+def test_factor_is_one_when_every_slit_bin_mean_is_too_noisy() -> None:
     # ARRANGE
-    order = _synthetic_order(lineSpacing=100)
+    order = _synthetic_order(lineSpacing=100, lineAmplitude=300.0)
 
     # ACT
     correction = _measure(order)
 
     # ASSERT
-    pixelsPerBin = correction.pixelCount / (np.ptp(order.slitPosition) / BIN_WIDTH_ARCSEC)
-    assert 20 < pixelsPerBin < MIN_PIXELS_PER_SLIT_BIN
+    assert correction.pixelCount > 0
     assert not correction.isApplied
     np.testing.assert_array_equal(correction.factor, np.ones(order.slitPosition.size))
 
@@ -260,14 +260,23 @@ def test_a_uniform_offset_of_the_skyline_pixels_is_left_to_the_wavelength_fit() 
     np.testing.assert_allclose(correction.factor, 1.0, atol=BIN_TOLERANCE)
 
 
+# THE SIGNAL-TO-NOISE OF THE STACKED SKYLINE PIXELS OF _dense_bins, AND THE PIXEL COUNT WHOSE BIN MEAN HAS AN ERROR OF
+# EXACTLY MAX_BIN_ERROR: 1 / (DENSE_SNR * SQRT(400)) = 0.005
+DENSE_SNR = 10.0
+PIXELS_AT_MAX_BIN_ERROR = 400
+
+
 def _dense_bins(positions: list[float], pixelsPerPosition: int):
-    """Skyline pixels stacked at the given slit positions, plus two usable pixels that mark the wavelength range."""
-    slit = np.concatenate([np.full(pixelsPerPosition, position) for position in positions] + [[positions[0]] * 2])
+    """Skyline pixels of signal-to-noise DENSE_SNR stacked at the given slit positions, the same number of faint usable
+    pixels (so the order is not continuum-dominated), and two usable pixels that mark the wavelength range."""
+    bright = np.concatenate([np.full(pixelsPerPosition, position) for position in positions])
+    slit = np.concatenate([bright, bright, [positions[0]] * 2])
     wavelength = np.full(slit.size, 1550.0)
     wavelength[-2:] = [1500.0, 1600.0]
     skyModel = np.full(slit.size, 1000.0)
+    skyModel[bright.size : 2 * bright.size] = 1.0
     skyModel[-2:] = 0.0
-    error = np.ones(slit.size)
+    error = np.full(slit.size, 1000.0 / DENSE_SNR)
     data = skyModel * (1.0 + 0.01 * slit)
     return slit, wavelength, skyModel, data, error, np.ones(slit.size, dtype=bool)
 
@@ -320,30 +329,170 @@ def test_a_wide_masked_gap_leaves_the_dense_bins_on_either_side_in_use() -> None
     np.testing.assert_allclose(correction.factor[~isGap], expected[~isGap], atol=2 * BIN_TOLERANCE)
 
 
-def test_a_bin_with_exactly_the_minimum_pixels_is_not_used() -> None:
+def test_a_bin_whose_mean_has_exactly_the_maximum_error_is_used() -> None:
     # ARRANGE
     positions = [0.0, 0.3, 0.55, 0.8]
+    assert 1.0 / (DENSE_SNR * np.sqrt(PIXELS_AT_MAX_BIN_ERROR)) == MAX_BIN_ERROR
 
     # ACT
-    atMinimum = measure_slit_illumination(*_dense_bins(positions, MIN_PIXELS_PER_SLIT_BIN))
-    aboveMinimum = measure_slit_illumination(*_dense_bins(positions, MIN_PIXELS_PER_SLIT_BIN + 1))
+    atMaximum = measure_slit_illumination(*_dense_bins(positions, PIXELS_AT_MAX_BIN_ERROR))
+    aboveMaximum = measure_slit_illumination(*_dense_bins(positions, PIXELS_AT_MAX_BIN_ERROR - 1))
 
     # ASSERT
-    assert not atMinimum.isApplied
-    assert aboveMinimum.isApplied
+    assert atMaximum.isApplied
+    np.testing.assert_allclose(atMaximum.binErrors, MAX_BIN_ERROR)
+    assert not aboveMaximum.isApplied
 
 
 def test_a_pixel_at_the_far_edge_of_the_slit_falls_in_the_last_bin() -> None:
     # ARRANGE
-    slit, *rest = _dense_bins([0.0, 0.3, 0.55, 0.8, 1.0], MIN_PIXELS_PER_SLIT_BIN + 1)
+    slit, *rest = _dense_bins([0.0, 0.3, 0.55, 0.8, 1.0], PIXELS_AT_MAX_BIN_ERROR)
 
     # ACT
     correction = measure_slit_illumination(slit, *rest)
 
     # ASSERT
     assert correction.binCentres.size == 4
-    assert correction.binCounts[-1] == 2 * (MIN_PIXELS_PER_SLIT_BIN + 1)
+    assert correction.binCounts[-1] == 2 * PIXELS_AT_MAX_BIN_ERROR
     assert correction.binCentres[-1] == pytest.approx(0.875)
+
+
+def test_bin_means_are_weighted_by_the_inverse_variance_of_each_pixel() -> None:
+    # ARRANGE
+    slit, wavelength, skyModel, data, error, isUsable = _dense_bins([0.0, 1.0], PIXELS_AT_MAX_BIN_ERROR)
+    # EVERY PIXEL AT TWICE DENSE_SNR, BUT IN THE FIRST BIN HALF THE SKYLINE PIXELS ARE TWICE AS NOISY (STILL AT THE
+    # FLOOR) AND HIGH BY 4%: THEIR WEIGHT IS A QUARTER
+    isNoisy = np.zeros(slit.size, dtype=bool)
+    isNoisy[: PIXELS_AT_MAX_BIN_ERROR // 2] = True
+    error = np.where(isNoisy, error, error / 2.0)
+    data = np.where(isNoisy, data + 0.04 * skyModel, data)
+
+    # ACT
+    correction = measure_slit_illumination(slit, wavelength, skyModel, data, error, isUsable)
+
+    # ASSERT
+    # WEIGHTED: (0.25 * 0.04) / 1.25 = 0.008 ABOVE THE SECOND BIN'S 0.01 STEP. UNWEIGHTED IT WOULD BE 0.02
+    step = correction.binValues[1] - correction.binValues[0]
+    assert step == pytest.approx(0.01 - 0.008, abs=1e-9)
+
+
+def test_a_continuum_dominated_order_measures_the_curve_from_its_skylines_only() -> None:
+    # ARRANGE
+    # A CONTINUUM AT ABOUT 20 SIGMA PER PIXEL: EVERY PIXEL PASSES THE MIN_SKY_SNR FLOOR, AS IN THE THERMAL NIR ORDER 10.
+    # THE CONTINUUM HAS A STEEP OPPOSITE GRADIENT; THE LINES HAVE THE ILLUMINATION GRADIENT AND ARE BRIGHT ENOUGH THAT
+    # THE CONTINUUM UNDER THEIR 30 SIGMA PIXELS CARRIES LITTLE OF THE WEIGHT
+    rng = np.random.default_rng(5)
+    order = _synthetic_order(gradientPerArcsec=0.0, lineAmplitude=60000.0)
+    # CONTINUUM IS THE SYNTHETIC ORDER'S OWN BASELINE; IT IS REPLACED BY A BRIGHTER THERMAL CONTINUUM
+    thermalContinuum = 400.0
+    lines = order.skyModel - CONTINUUM
+    skyModel = thermalContinuum + lines
+    error = np.sqrt(skyModel + READ_NOISE**2)
+    data = (
+        thermalContinuum * (1.0 - 0.02 * order.slitPosition)
+        + lines * (1.0 + GRADIENT_PER_ARCSEC * order.slitPosition)
+        + rng.normal(0.0, 1.0, skyModel.size) * error
+    )
+    assert np.mean(skyModel >= MIN_SKY_SNR * error) > 0.9
+    assert np.median(skyModel / error) < CONTINUUM_SKY_SNR
+
+    # ACT
+    correction = measure_slit_illumination(order.slitPosition, order.wavelength, skyModel, data, error, order.isUsable)
+
+    # ASSERT
+    assert correction.isApplied
+    assert correction.skySnrFloor == CONTINUUM_SKY_SNR
+    slope = np.polyfit(correction.binCentres, correction.binValues, 1)[0]
+    assert slope == pytest.approx(GRADIENT_PER_ARCSEC, abs=0.0015)
+
+
+def test_a_line_dominated_order_uses_the_minimum_signal_to_noise_floor() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+
+    # ACT
+    correction = _measure(order)
+
+    # ASSERT
+    assert correction.skySnrFloor == MIN_SKY_SNR
+
+
+def test_the_fill_zone_takes_a_quadratic_fitted_to_the_bins_across_it() -> None:
+    # ARRANGE
+    # A CONCAVE-UP ILLUMINATION, LOWEST AT THE SLIT CENTRE, AS ON THE NIR SLIT1.0 TARGET 3FGL
+    curvature = 0.004
+    order = _synthetic_order(gradientPerArcsec=0.0)
+    data = order.data * (1.0 + curvature * order.slitPosition**2)
+    isZone = np.abs(order.slitPosition) <= 1.5
+
+    # ACT
+    filled = _measure(order, data=data, isUsable=~isZone, isFillZone=isZone)
+    interpolated = _measure(order, data=data, isUsable=~isZone)
+
+    # ASSERT
+    shape = curvature * order.slitPosition**2
+    outside = ~isZone & (np.abs(order.slitPosition) < 4.5)
+    offset = np.mean(filled.factor[outside] - shape[outside])
+    np.testing.assert_allclose(filled.factor[isZone], offset + shape[isZone], atol=BIN_TOLERANCE)
+    np.testing.assert_array_equal(filled.factor[~isZone], interpolated.factor[~isZone])
+    # LINEAR INTERPOLATION ACROSS THE ZONE STAYS AT THE LEVEL OF ITS EDGES, ABOUT 0.009 ABOVE THE CURVE AT THE CENTRE
+    isCentre = np.abs(order.slitPosition) < 0.3
+    assert interpolated.factor[isCentre].mean() > filled.factor[isCentre].mean() + 0.006
+
+
+def test_the_fill_zone_is_interpolated_when_too_few_bins_lie_near_the_slit_centre() -> None:
+    # ARRANGE
+    slit, wavelength, skyModel, data, error, isUsable = _dense_bins([0.0, 0.3, 0.8], PIXELS_AT_MAX_BIN_ERROR)
+    # THE FAINT PIXELS OF _dense_bins MOVE INTO THE ZONE: NOT USABLE, SO THEY TAKE THEIR FACTOR FROM THE CURVE. THE
+    # USABLE PIXELS ARE THEN MOSTLY BRIGHT, SO THE CONTINUUM FLOOR APPLIES: THE SKYLINES ARE MADE 40 SIGMA TO PASS IT
+    isZone = skyModel == 1.0
+    slit = np.where(isZone, 0.55, slit)
+    error = error / 4.0
+
+    # ACT
+    filled = measure_slit_illumination(slit, wavelength, skyModel, data, error, isUsable & ~isZone, isFillZone=isZone)
+
+    # ASSERT
+    assert filled.binCentres.size == 3
+    expected = 1.0 + np.interp(0.55, filled.binCentres, filled.binValues)
+    np.testing.assert_allclose(filled.factor[isZone], expected)
+
+
+def test_the_fill_zone_keeps_the_interpolated_curve_beyond_the_outermost_fitted_bins() -> None:
+    # ARRANGE
+    order = _synthetic_order(gradientPerArcsec=0.0)
+    data = order.data * (1.0 + 0.004 * order.slitPosition**2)
+    # AN OBJECT AT THE SLIT END: THE ZONE REACHES PAST THE LAST USABLE PIXEL, WHERE A QUADRATIC WOULD BE EXTRAPOLATED
+    isUsable = order.slitPosition <= 3.5
+    isZone = order.slitPosition > 3.5
+
+    # ACT
+    filled = _measure(order, data=data, isUsable=isUsable, isFillZone=isZone)
+    interpolated = _measure(order, data=data, isUsable=isUsable)
+
+    # ASSERT
+    assert filled.binCentres.max() < 3.5
+    np.testing.assert_array_equal(filled.factor, interpolated.factor)
+
+
+def test_a_skyline_pixel_with_an_overflowing_weight_is_left_out() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+    error = order.error.copy()
+    isTiny = order.skyModel > 1000.0
+    tinyIndex = np.flatnonzero(isTiny)[::50]
+    error[tinyIndex] = 1e-200
+
+    # ACT
+    clean = _measure(order)
+    withTiny = measure_slit_illumination(
+        order.slitPosition, order.wavelength, order.skyModel, order.data, error, order.isUsable
+    )
+
+    # ASSERT
+    assert np.isfinite(withTiny.factor).all()
+    assert withTiny.pixelCount < clean.pixelCount
+    np.testing.assert_allclose(withTiny.factor, clean.factor, atol=0.001)
 
 
 def test_inputs_of_different_lengths_raise_a_value_error() -> None:
