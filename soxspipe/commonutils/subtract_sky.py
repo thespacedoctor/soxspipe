@@ -68,9 +68,13 @@ LOW_FLAT_REFERENCE_PERCENTILE = 95
 # THE OBJECT-WING CORRECTION SETTINGS USED WHEN A WORKSPACE'S SETTINGS PREDATE THEM (DY-1279)
 DEFAULT_OBJECT_WING_CORRECTION = True
 DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA = 0.03
-# THE SLIT-TILT REFIT SETTING USED WHEN A WORKSPACE'S SETTINGS PREDATE IT (DY-2065). OFF UNTIL THE REAL-DATA A/B IS
-# RULED ON
-DEFAULT_SLIT_TILT_REFIT = False
+# THE ARMS THAT REFIT THE SKY FOR A SLIT TILT WHEN A WORKSPACE'S SETTINGS PREDATE THE slit_tilt_refit KEY (DY-2065):
+# NONE, UNTIL THE REAL-DATA A/B IS RULED ON
+SLIT_TILT_REFIT_ARMS = frozenset()
+SLIT_TILT_REFIT_KEY = "slit_tilt_refit"
+# THE SMALLEST FALL IN THE SKY-PIXEL CHI2 FOR WHICH A SLIT-TILT REFIT IS KEPT. TWO FREE COEFFICIENTS LOWER THE CHI2 BY
+# ABOUT 2 BY CHANCE, SO 25 (5 SIGMA) KEEPS ONLY A MEASURED TILT
+MIN_SLIT_TILT_CHI2_DECREASE = 25.0
 # THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE REPORTS THE LEAK AS A SHARE OF
 MIN_LOGGED_SKY_LEVEL = 1e-9
 
@@ -790,8 +794,8 @@ class subtract_sky:
         import numpy as np
 
         isWingCorrectionOn, minLeakSigma, minSkySigma = self._object_wing_settings()
-        # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NO slit_tilt_refit KEY
-        isSlitTiltRefitOn = bool(self.recipeSettings["sky-subtraction"].get("slit_tilt_refit", DEFAULT_SLIT_TILT_REFIT))
+        # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NO SLIT-TILT KEY
+        isSlitTiltRefitOn = self._arm_default_flag(SLIT_TILT_REFIT_KEY, SLIT_TILT_REFIT_ARMS)
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         fittedOrders = []
@@ -836,9 +840,10 @@ class subtract_sky:
         The residual of the first fit is regressed onto the slit position times the sky model's wavelength derivative
         (``slit_tilt_model``), over every pixel not clipped as an edge, bad pixel or object. The sky is refitted with
         each pixel at its corrected wavelength, and then the object-wing correction runs on that refit when it is on.
-        The result is kept only when it lowers the chi2 of those pixels against the baseline, the fit the order gets
-        with the refit off. A kept result carries the map wavelengths, so the steps after the sky fit see the same
-        wavelengths with the refit on or off.
+        The result is kept only when it lowers the chi2 of those pixels by at least ``MIN_SLIT_TILT_CHI2_DECREASE``
+        against the baseline, the fit the order gets with the refit off. A kept result carries the map wavelengths, so
+        the steps after the sky fit see the same wavelengths with the refit on or off; its spline and knots stay on the
+        corrected wavelengths, so a QC plot of the spline against the map wavelengths is slightly blurred.
 
         **Key Arguments:**
 
@@ -863,15 +868,22 @@ class subtract_sky:
         isSky = ~clipFlags.reindex(preFitOrder.index, fill_value=True).any(axis=1).to_numpy(dtype=bool)
         wavelength = preFitOrder["wavelength"].to_numpy(dtype=float)
         slitPosition = preFitOrder["slit_position"].to_numpy(dtype=float)
-        estimate = estimate_slit_tilt(
-            wavelength,
-            slitPosition,
-            preFitOrder["flux"].to_numpy(dtype=float),
-            firstFit["sky_model"].reindex(preFitOrder.index).to_numpy(dtype=float),
-            _evaluate_sky_spline(wavelength, tck, derivative=True),
-            preFitOrder["error"].to_numpy(dtype=float),
-            isSky,
-        )
+        error = preFitOrder["error"].to_numpy(dtype=float)
+        # THE CHI2 IS SCORED ON THE PIXELS THE TILT CAN BE MEASURED ON: A ZERO OR NON-FINITE ERROR HAS NO WEIGHT
+        isSky &= np.isfinite(error) & (error > 0)
+        try:
+            estimate = estimate_slit_tilt(
+                wavelength,
+                slitPosition,
+                preFitOrder["flux"].to_numpy(dtype=float),
+                firstFit["sky_model"].reindex(preFitOrder.index).to_numpy(dtype=float),
+                _evaluate_sky_spline(wavelength, tck, derivative=True),
+                error,
+                isSky,
+            )
+        except ValueError as exc:
+            self.log.warning(f"order {order}: the slit-tilt refit was skipped, so the fit without it is kept ({exc})")
+            return baselineResult
 
         refitInput = preFitOrder.copy()
         refitInput["wavelength"] = corrected_wavelength(estimate, wavelength, slitPosition)
@@ -889,7 +901,7 @@ class subtract_sky:
             return float(np.nansum(residual.to_numpy(dtype=float)[isSky] ** 2))
 
         baselineChi2, refitChi2 = sky_chi2(baselineResult[0]), sky_chi2(refitResult[0])
-        if not refitChi2 < baselineChi2:
+        if not baselineChi2 - refitChi2 >= MIN_SLIT_TILT_CHI2_DECREASE:
             self.log.print(
                 f"\n\tORDER {order}: SLIT-TILT REFIT NOT KEPT - CHI2 {baselineChi2:0.0f} TO {refitChi2:0.0f}\n"
             )

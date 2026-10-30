@@ -19,6 +19,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy as np
 
+# THE FEWEST USABLE PIXELS THAT MEASURE A TILT; AN ORDER WITH FEWER RAISES
+MIN_FIT_PIXELS = 100
+# THE NUMBER OF TILT COEFFICIENTS, C0 AND C1; A DESIGN OF LOWER RANK CANNOT MEASURE BOTH
+N_COEFFICIENTS = 2
+
 
 @dataclass(frozen=True)
 class SlitTiltEstimate:
@@ -63,23 +68,39 @@ def estimate_slit_tilt(
 
     - ``estimate`` -- the fitted ``SlitTiltEstimate``
 
+    **Raises:**
+
+    - ``ValueError`` -- when the inputs differ in length, the order spans no wavelength range, fewer than
+      ``MIN_FIT_PIXELS`` pixels are usable, or the pixels cannot measure both coefficients (for example a flat sky)
+
     **Usage:**
 
         estimate = estimate_slit_tilt(wavelength, slitPosition, flux, skyModel, skyDerivative, error, isFitted)
     """
     import numpy as np
 
-    wavelength = np.asarray(wavelength, dtype=float)
-    minWavelength, maxWavelength = float(np.nanmin(wavelength)), float(np.nanmax(wavelength))
-    u = 2 * (wavelength - minWavelength) / (maxWavelength - minWavelength) - 1
-    s = np.asarray(slitPosition, dtype=float)
-    d = np.asarray(skyDerivative, dtype=float)
-    residual = np.asarray(flux, dtype=float) - np.asarray(skyModel, dtype=float)
-    weight = 1 / np.asarray(error, dtype=float)
-    isUsed = np.asarray(isFitted, dtype=bool) & np.isfinite(residual) & np.isfinite(d) & np.isfinite(weight)
+    arrays = [np.asarray(a, dtype=float) for a in (wavelength, slitPosition, flux, skyModel, skyDerivative, error)]
+    wavelength, s, flux, skyModel, d, error = arrays
+    isFitted = np.asarray(isFitted, dtype=bool)
+    if len({a.size for a in arrays} | {isFitted.size}) != 1:
+        raise ValueError("the slit-tilt inputs must all have one value per pixel")
+    isFiniteWavelength = np.isfinite(wavelength)
+    if not isFiniteWavelength.any() or np.ptp(wavelength[isFiniteWavelength]) <= 0:
+        raise ValueError("the order spans no wavelength range, so its slit tilt cannot be measured")
+    minWavelength = float(wavelength[isFiniteWavelength].min())
+    maxWavelength = float(wavelength[isFiniteWavelength].max())
+    u = _order_coordinate(wavelength, minWavelength, maxWavelength)
+    residual = flux - skyModel
+    with np.errstate(divide="ignore"):
+        weight = 1 / error
+    isUsed = isFitted & np.isfinite(residual) & np.isfinite(d) & np.isfinite(weight) & np.isfinite(s) & np.isfinite(u)
+    if isUsed.sum() < MIN_FIT_PIXELS:
+        raise ValueError(f"only {isUsed.sum()} pixels are usable, fewer than the {MIN_FIT_PIXELS} a tilt needs")
 
     design = np.vstack([s * d, s * u * d]).T[isUsed] * weight[isUsed, None]
-    coefficients, *_ = np.linalg.lstsq(design, residual[isUsed] * weight[isUsed], rcond=None)
+    coefficients, _, rank, _ = np.linalg.lstsq(design, residual[isUsed] * weight[isUsed], rcond=None)
+    if rank < N_COEFFICIENTS:
+        raise ValueError("the usable pixels cannot measure the slit tilt (no skyline flanks along the slit)")
     return SlitTiltEstimate(float(coefficients[0]), float(coefficients[1]), minWavelength, maxWavelength)
 
 
@@ -103,5 +124,10 @@ def corrected_wavelength(estimate: SlitTiltEstimate, wavelength: np.ndarray, sli
     import numpy as np
 
     wavelength = np.asarray(wavelength, dtype=float)
-    u = 2 * (wavelength - estimate.minWavelength) / (estimate.maxWavelength - estimate.minWavelength) - 1
+    u = _order_coordinate(wavelength, estimate.minWavelength, estimate.maxWavelength)
     return wavelength + np.asarray(slitPosition, dtype=float) * (estimate.c0 + estimate.c1 * u)
+
+
+def _order_coordinate(wavelength: np.ndarray, minWavelength: float, maxWavelength: float) -> np.ndarray:
+    """*the wavelength scaled to u = -1 at the blue end of the order and +1 at its red end*"""
+    return 2 * (wavelength - minWavelength) / (maxWavelength - minWavelength) - 1

@@ -99,3 +99,36 @@ def test_corrected_wavelength_puts_each_pixel_at_its_true_wavelength():
     # ASSERT
     injectedError = np.abs(order["wavelength"] - trueWavelength).max()
     assert np.abs(corrected - trueWavelength).max() < 0.1 * injectedError
+
+
+def test_corrected_wavelength_leaves_an_untilted_order_at_its_map_wavelengths():
+    # ARRANGE
+    order = _order(0.0, 0.0)
+    estimate = estimate_slit_tilt(**order)
+
+    # ACT
+    corrected = corrected_wavelength(estimate, order["wavelength"], order["slitPosition"])
+
+    # ASSERT
+    assert np.abs(corrected - order["wavelength"]).max() < MAX_SPURIOUS_SHIFT
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    ["no-fitted-pixels", "one-wavelength", "nan-slit-positions", "flat-sky"],
+)
+def test_an_order_that_cannot_constrain_the_tilt_raises_a_value_error(spoil: str):
+    # ARRANGE
+    order = _order(INJECTED_C0, INJECTED_C1)
+    if spoil == "no-fitted-pixels":
+        order["isFitted"] = np.zeros_like(order["isFitted"])
+    elif spoil == "one-wavelength":
+        order["wavelength"] = np.full_like(order["wavelength"], START_WAVELENGTH)
+    elif spoil == "nan-slit-positions":
+        order["slitPosition"] = np.full_like(order["slitPosition"], np.nan)
+    else:
+        order["skyDerivative"] = np.zeros_like(order["skyDerivative"])
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError):
+        estimate_slit_tilt(**order)

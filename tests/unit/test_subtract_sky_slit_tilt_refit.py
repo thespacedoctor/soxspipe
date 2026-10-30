@@ -147,7 +147,7 @@ def test_the_refit_is_off_when_the_settings_do_not_carry_its_key(log: Any) -> No
     pd.testing.assert_frame_equal(keyAbsent, explicitOff)
 
 
-def test_the_refit_never_raises_the_chi2_of_an_untwisted_order(log: Any) -> None:
+def test_an_untwisted_order_is_left_exactly_as_with_the_refit_off(log: Any) -> None:
     # ARRANGE
     order = _order(0.0)
     off = _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit=False)), order)
@@ -156,7 +156,22 @@ def test_the_refit_never_raises_the_chi2_of_an_untwisted_order(log: Any) -> None
     on = _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit=True)), order)
 
     # ASSERT
-    assert _chi2(on) <= _chi2(off)
+    pd.testing.assert_frame_equal(on, off)
+
+
+def test_an_order_whose_tilt_cannot_be_measured_keeps_the_fit_without_the_refit(log: Any) -> None:
+    # ARRANGE
+    order = _order(TWIST_C1)
+    order["slit_position"] = np.nan
+    off = _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit=False)), order)
+
+    # ACT
+    on = _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit=True)), order)
+
+    # ASSERT
+    pd.testing.assert_frame_equal(on, off)
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("slit-tilt" in message and f"order {ORDER}" in message for message in warnings)
 
 
 def test_the_refit_returns_the_map_wavelengths(log: Any) -> None:
@@ -182,3 +197,12 @@ def test_with_the_object_wing_correction_the_refit_never_raises_the_chi2_of_the_
     # ASSERT
     assert "object_wing_model" in on
     assert _chi2(on[isSky]) <= _chi2(off[isSky])
+
+
+def test_a_slit_tilt_refit_setting_that_is_not_a_bool_raises(log: Any) -> None:
+    # ARRANGE
+    order = _order(TWIST_C1)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="slit_tilt_refit"):
+        _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit="false")), order)
