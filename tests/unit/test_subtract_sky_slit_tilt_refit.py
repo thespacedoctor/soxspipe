@@ -206,3 +206,21 @@ def test_a_slit_tilt_refit_setting_that_is_not_a_bool_raises(log: Any) -> None:
     # ACT / ASSERT
     with pytest.raises(ValueError, match="slit_tilt_refit"):
         _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit="false")), order)
+
+
+def test_pixels_with_zero_error_leave_a_finite_sky_model_no_worse_than_without_the_refit(log: Any) -> None:
+    # ZERO-ERROR PIXELS ALREADY DISTURB THE FIRST B-SPLINE FIT, SO THE REFIT IS NOT EXPECTED TO GAIN HERE; THE CHI2 MASK
+    # MUST STILL KEEP THEM FROM MAKING THE SCORE INFINITE OR NAN
+    # ARRANGE
+    order = _order(TWIST_C1)
+    order.loc[order.index[::50], "error"] = 0.0
+    off = _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit=False)), order)
+    isScored = order.loc[off.index, "error"] > 0
+
+    # ACT
+    on = _modelled(_bare_subtractor(log, _sky_settings(slit_tilt_refit=True)), order)
+
+    # ASSERT
+    assert np.isfinite(on["sky_model"]).all()
+    assert np.isfinite(_chi2(on[isScored]))
+    assert _chi2(on[isScored]) <= _chi2(off[isScored])
