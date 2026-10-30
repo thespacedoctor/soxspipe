@@ -223,13 +223,15 @@ def test_the_sky_model_inside_an_object_slit_range_keeps_the_wavelength_fit_leve
     mapDF = _order_frame()
     rows, columns = mapDF["y"].to_numpy(), mapDF["x"].to_numpy()
     slitPosition = mapDF["slit_position"].to_numpy()
-    # A RANGE AWAY FROM THE SLIT CENTRE, WHERE THE INTERPOLATED CURVE WOULD BE ABOUT +1%
-    isInRange = (slitPosition >= 1.95) & (slitPosition <= 3.05)
+    # A RANGE AWAY FROM THE SLIT CENTRE, WHERE THE INTERPOLATED CURVE WOULD BE ABOUT +1%. ITS ENDS ARE ON SAMPLED SLIT
+    # POSITIONS, SO THE PIXELS AT 2.0 AND 3.0 ARCSEC CHECK THAT THE RANGE IS CLOSED
+    isInRange = (slitPosition >= 2.0) & (slitPosition <= 3.0)
+    assert np.isclose(slitPosition, 2.0).any() and np.isclose(slitPosition, 3.0).any()
     outside = (slitPosition < 1.5) | (slitPosition > 3.5)
     expected = 1.0 + GRADIENT_PER_ARCSEC * slitPosition
 
     # ACT
-    skyModel, skySubtracted, _, _, _ = _reduce(log, mapDF, settingValue=True, objectRanges=[[1.95, 3.05]])
+    skyModel, skySubtracted, _, _, _ = _reduce(log, mapDF, settingValue=True, objectRanges=[[2.0, 3.0]])
 
     # ASSERT
     np.testing.assert_array_equal(skyModel.data[rows, columns][isInRange], mapDF["sky_model"].to_numpy()[isInRange])
