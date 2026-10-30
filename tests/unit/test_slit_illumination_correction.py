@@ -10,7 +10,10 @@ import pytest
 from soxspipe.commonutils.slit_illumination_correction import (
     CONTINUUM_SKY_SNR,
     MAX_BIN_ERROR,
+    MIN_CURVE_CHI2,
     MIN_SKY_SNR,
+    _bin_skyline_residuals,
+    _is_bright_sky,
     measure_slit_illumination,
 )
 
@@ -264,9 +267,11 @@ def test_a_uniform_offset_of_the_skyline_pixels_is_left_to_the_wavelength_fit() 
 # EXACTLY MAX_BIN_ERROR: 1 / (DENSE_SNR * SQRT(400)) = 0.005
 DENSE_SNR = 10.0
 PIXELS_AT_MAX_BIN_ERROR = 400
+# THE ILLUMINATION GRADIENT OF _dense_bins, LARGE ENOUGH THAT ITS BINS ARE FAR FROM A FLAT CURVE AT AN ERROR OF 0.5%
+DENSE_GRADIENT = 0.1
 
 
-def _dense_bins(positions: list[float], pixelsPerPosition: int):
+def _dense_bins(positions: list[float], pixelsPerPosition: int, gradient: float = DENSE_GRADIENT):
     """Skyline pixels of signal-to-noise DENSE_SNR stacked at the given slit positions, the same number of faint usable
     pixels (so the order is not continuum-dominated), and two usable pixels that mark the wavelength range."""
     bright = np.concatenate([np.full(pixelsPerPosition, position) for position in positions])
@@ -277,7 +282,7 @@ def _dense_bins(positions: list[float], pixelsPerPosition: int):
     skyModel[bright.size : 2 * bright.size] = 1.0
     skyModel[-2:] = 0.0
     error = np.full(slit.size, 1000.0 / DENSE_SNR)
-    data = skyModel * (1.0 + 0.01 * slit)
+    data = skyModel * (1.0 + gradient * slit)
     return slit, wavelength, skyModel, data, error, np.ones(slit.size, dtype=bool)
 
 
@@ -371,9 +376,9 @@ def test_bin_means_are_weighted_by_the_inverse_variance_of_each_pixel() -> None:
     correction = measure_slit_illumination(slit, wavelength, skyModel, data, error, isUsable)
 
     # ASSERT
-    # WEIGHTED: (0.25 * 0.04) / 1.25 = 0.008 ABOVE THE SECOND BIN'S 0.01 STEP. UNWEIGHTED IT WOULD BE 0.02
+    # WEIGHTED: (0.25 * 0.04) / 1.25 = 0.008 OFF THE SECOND BIN'S DENSE_GRADIENT STEP. UNWEIGHTED IT WOULD BE 0.02
     step = correction.binValues[1] - correction.binValues[0]
-    assert step == pytest.approx(0.01 - 0.008, abs=1e-9)
+    assert step == pytest.approx(DENSE_GRADIENT - 0.008, abs=1e-9)
 
 
 def test_a_continuum_dominated_order_measures_the_curve_from_its_skylines_only() -> None:
@@ -504,3 +509,108 @@ def test_inputs_of_different_lengths_raise_a_value_error() -> None:
         measure_slit_illumination(
             order.slitPosition, order.wavelength[:-1], order.skyModel, order.data, order.error, order.isUsable
         )
+
+
+def test_a_bin_whose_weight_sum_overflows_is_left_out() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+    error = order.error.copy()
+    # TWO SKYLINE PIXELS IN ONE SLIT BIN, EACH WITH A FINITE WEIGHT OF ABOUT 1E308: THEIR SUM OVERFLOWS TO INFINITY
+    # (IN THE MIDDLE OF THE ORDER, AWAY FROM THE WAVELENGTH ENDS THAT ARE LEFT OUT)
+    column = np.arange(order.slitPosition.size) % COLUMNS
+    isBin = (order.slitPosition == 2.0) & (order.skyModel > 1000.0) & (column > COLUMNS // 2)
+    pair = np.flatnonzero(isBin)[:2]
+    error[pair] = order.skyModel[pair] / 1e154
+
+    # ACT
+    correction = measure_slit_illumination(
+        order.slitPosition, order.wavelength, order.skyModel, order.data, error, order.isUsable
+    )
+
+    # ASSERT
+    assert correction.isApplied
+    assert np.isfinite(correction.factor).all()
+    assert np.isfinite(correction.binValues).all()
+    assert not np.any(np.isclose(correction.binCentres, 2.125))
+
+
+def test_the_mean_removal_holds_when_the_bin_weight_sums_overflow_only_when_added_together() -> None:
+    # ARRANGE
+    order = _synthetic_order()
+    error = order.error.copy()
+    # ONE SKYLINE PIXEL OF WEIGHT ABOUT 1.4E308 IN EACH OF TWO BINS: EACH BIN SUM IS FINITE, THEIR TOTAL IS NOT
+    column = np.arange(order.slitPosition.size) % COLUMNS
+    for position in (2.0, 3.0):
+        isBin = (order.slitPosition == position) & (order.skyModel > 1000.0) & (column > COLUMNS // 2)
+        pixel = np.flatnonzero(isBin)[0]
+        error[pixel] = order.skyModel[pixel] / 1.2e154
+
+    # ACT
+    correction = measure_slit_illumination(
+        order.slitPosition, order.wavelength, order.skyModel, order.data, error, order.isUsable
+    )
+
+    # ASSERT
+    # THE TWO HEAVY BINS DOMINATE THE WEIGHTED MEAN THAT IS REMOVED, SO THEIR MEAN-REMOVED VALUES AVERAGE TO ZERO
+    assert correction.isApplied
+    assert np.isfinite(correction.factor).all()
+    weights = (correction.binErrors.min() / correction.binErrors) ** 2
+    assert np.average(correction.binValues, weights=weights) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_a_curve_consistent_with_a_flat_illumination_is_not_applied() -> None:
+    # ARRANGE
+    # NO GRADIENT: THE BINS SCATTER ONLY BY THEIR NOISE, SO THEIR CHI2 PER BIN ABOUT ZERO IS NEAR 1
+    order = _synthetic_order(gradientPerArcsec=0.0)
+
+    # ACT
+    correction = _measure(order)
+
+    # ASSERT
+    assert not correction.isApplied
+    np.testing.assert_array_equal(correction.factor, np.ones(order.slitPosition.size))
+    assert correction.pixelCount > 0
+
+
+@pytest.mark.parametrize(("chi2PerBin", "isApplied"), [(MIN_CURVE_CHI2 * 0.75, False), (MIN_CURVE_CHI2 * 1.25, True)])
+def test_a_curve_is_applied_only_when_its_bins_differ_from_flat_by_the_chi2_limit(
+    chi2PerBin: float, isApplied: bool
+) -> None:
+    # ARRANGE
+    # TWO BINS OF ERROR MAX_BIN_ERROR, A STEP d APART: AFTER THE MEAN REMOVAL EACH IS d / 2 FROM ZERO
+    step = 2.0 * MAX_BIN_ERROR * np.sqrt(chi2PerBin)
+    inputs = _dense_bins([0.0, 1.0], PIXELS_AT_MAX_BIN_ERROR, gradient=step)
+
+    # ACT
+    correction = measure_slit_illumination(*inputs)
+
+    # ASSERT
+    assert correction.isApplied is isApplied
+
+
+def test_a_bright_sky_pixel_has_a_positive_sky_and_error_and_reaches_the_floor() -> None:
+    # ARRANGE
+    skyModel = np.array([100.0, 99.9, 100.0, 0.0, -100.0, 100.0])
+    error = np.array([10.0, 10.0, 0.0, 10.0, 10.0, np.nan])
+
+    # ACT
+    isBright = _is_bright_sky(skyModel, error, 10.0)
+
+    # ASSERT
+    np.testing.assert_array_equal(isBright, [True, False, False, False, False, False])
+
+
+def test_skyline_residuals_are_binned_into_weighted_sums_along_the_slit() -> None:
+    # ARRANGE
+    slit = np.array([0.0, 0.1, 0.3, 0.6])
+    weights = np.array([1.0, 3.0, 2.0, 5.0])
+    fractional = np.array([0.04, 0.0, 0.01, -0.02])
+
+    # ACT
+    bins = _bin_skyline_residuals(slit, weights, fractional, slitStart=0.0, slitBins=3, binWidth=0.25)
+
+    # ASSERT
+    np.testing.assert_array_equal(bins.counts, [2, 1, 1])
+    np.testing.assert_allclose(bins.weightSums, [4.0, 2.0, 5.0])
+    np.testing.assert_allclose(bins.means, [0.01, 0.01, -0.02])
+    np.testing.assert_allclose(bins.errors, 1.0 / np.sqrt([4.0, 2.0, 5.0]))

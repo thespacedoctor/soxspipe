@@ -13,11 +13,12 @@ to 3770), and returns the factor to multiply the sky model by:
    ``MAX_CONTINUUM_FRACTION`` of the usable pixels pass that floor, the bright pixels are the sky continuum, not
    skylines (the thermal NIR order 10), and the floor is ``CONTINUUM_SKY_SNR``.
 3. The inverse-variance weighted mean fractional residual is taken in slit-position bins of ``BIN_WIDTH_ARCSEC``,
-   with a weight of (sky model / error) squared per pixel. A bin is used when the error of its mean is at most
-   ``MAX_BIN_ERROR``, and at least ``MIN_BINS`` bins must be used.
+   with a weight of (sky model / error) squared per pixel. A bin is used when its weight sum is finite and the error of
+   its mean is at most ``MAX_BIN_ERROR``, and at least ``MIN_BINS`` bins must be used.
 4. The bin means are interpolated onto every pixel, and held flat outside the outer bins used. The factor is one plus
    that curve, less its weighted mean. The mean level of the sky belongs to the wavelength fit, so the factor only
-   moves sky light along the slit.
+   moves sky light along the slit. A curve whose mean-removed bins are consistent with a flat illumination (a mean
+   of (bin value / bin error) squared below ``MIN_CURVE_CHI2``) is noise, and the order is left as it is.
 5. Inside an optional fill zone (the object and the margin around it, where no bin is measured) the curve is a
    quadratic in slit position, inverse-variance fitted to the bins within ``FILL_FIT_HALF_WIDTH_ARCSEC`` of the slit
    centre, instead of a straight line between the bins at the zone edges. It is used only between the outermost of
@@ -56,6 +57,10 @@ WAVELENGTH_MARGIN_FRACTION = 0.05
 MAX_BIN_ERROR = 0.005
 # THE CURVE NEEDS AT LEAST THIS MANY USABLE BINS TO BE INTERPOLATED
 MIN_BINS = 2
+# THE CURVE IS APPLIED ONLY WHEN ITS MEAN-REMOVED BINS HAVE A MEAN (VALUE / ERROR) SQUARED OF AT LEAST THIS. ON THE SOXS
+# NIR FRAMES OF DY-2054 EVERY CORRECTED ORDER HAS 6 OR MORE, EXCEPT THE THERMAL ORDER 10 OF THE SLIT5.0 STANDARD 030147
+# AT 1.5: ITS CURVE IS NOISE, BUT ITS QUADRATIC FILL MOVED THE STAR'S FLUX BY 2.7%. 3FGL ORDER 10 HAS 23
+MIN_CURVE_CHI2 = 3.0
 # THE FILL-ZONE QUADRATIC IS FITTED TO THE BINS WITHIN THIS DISTANCE OF THE SLIT CENTRE, AND NEEDS THIS MANY OF THEM
 FILL_FIT_HALF_WIDTH_ARCSEC = 5.0
 MIN_FILL_BINS = 4
@@ -88,6 +93,16 @@ class illumination_correction:
     skySnrFloor: float
 
 
+@dataclass(frozen=True, eq=False)
+class _slit_bins:
+    """*the skyline pixels of one order binned along the slit: one value per bin*"""
+
+    counts: np.ndarray
+    weightSums: np.ndarray
+    means: np.ndarray
+    errors: np.ndarray
+
+
 def _unapplied(pixelTotal, pixelCount=0, skySnrFloor=MIN_SKY_SNR):
     """*the result for pixels that are left as they are*"""
     import numpy as np
@@ -96,13 +111,20 @@ def _unapplied(pixelTotal, pixelCount=0, skySnrFloor=MIN_SKY_SNR):
     return illumination_correction(np.ones(pixelTotal), False, pixelCount, empty, empty, empty, empty, skySnrFloor)
 
 
+def _is_bright_sky(skyModel, error, minSkySnr):
+    """*True for pixels with a positive sky model and error and a sky model of at least minSkySnr times the error*"""
+    import numpy as np
+
+    # A HUGE FINITE ERROR CAN OVERFLOW minSkySnr * error; SUCH A PIXEL IS NOT BRIGHT, AS THE COMPARISON GIVES
+    with np.errstate(invalid="ignore", over="ignore"):
+        return (skyModel > 0) & (error > 0) & (skyModel >= minSkySnr * error)
+
+
 def _sky_snr_floor(skyModel, error, isUsable, minSkySnr):
     """*the skyline floor of an order: minSkySnr, or CONTINUUM_SKY_SNR when most usable pixels pass minSkySnr*"""
     import numpy as np
 
-    with np.errstate(invalid="ignore"):
-        isBright = (skyModel > 0) & (error > 0) & (skyModel >= minSkySnr * error)
-    brightFraction = float(np.mean(isBright[isUsable]))
+    brightFraction = float(np.mean(_is_bright_sky(skyModel, error, minSkySnr)[isUsable]))
     return max(minSkySnr, CONTINUUM_SKY_SNR) if brightFraction > MAX_CONTINUUM_FRACTION else minSkySnr
 
 
@@ -116,10 +138,13 @@ def _fill_with_quadratic(curve, slitPosition, isFillZone, centres, values, error
     import numpy as np
 
     isNearCentre = np.abs(centres) < FILL_FIT_HALF_WIDTH_ARCSEC
-    if isNearCentre.sum() < MIN_FILL_BINS:
+    if not isFillZone.any() or isNearCentre.sum() < MIN_FILL_BINS:
         return curve
     fitCentres = centres[isNearCentre]
-    coefficients = np.polyfit(fitCentres, values[isNearCentre], 2, w=1.0 / errors[isNearCentre])
+    # THE FIT WEIGHTS ARE SCALED TO A MAXIMUM OF 1 (THE FIT DOES NOT DEPEND ON THEIR SCALE), SO A TINY BIN ERROR CANNOT
+    # OVERFLOW THE LEAST-SQUARES SUMS
+    fitErrors = errors[isNearCentre]
+    coefficients = np.polyfit(fitCentres, values[isNearCentre], 2, w=fitErrors.min() / fitErrors)
     with np.errstate(invalid="ignore"):
         isFilled = isFillZone & (slitPosition >= fitCentres.min()) & (slitPosition <= fitCentres.max())
     return np.where(isFilled, np.polyval(coefficients, slitPosition), curve)
@@ -138,10 +163,38 @@ def _skyline_pixels(wavelength, skyModel, dataMinusObject, error, isUsable, minS
     margin = WAVELENGTH_MARGIN_FRACTION * (highest - lowest)
     isInsideRange = (wavelength >= lowest + margin) & (wavelength <= highest - margin)
     with np.errstate(invalid="ignore"):
-        isBright = (skyModel > 0) & (error > 0) & (skyModel >= minSkySnr * error)
         isSmall = np.abs(fractional) <= MAX_FRACTIONAL_RESIDUAL
+    isBright = _is_bright_sky(skyModel, error, minSkySnr)
     isSkyline = isUsable & isInsideRange & isBright & isSmall & np.isfinite(fractional)
     return isSkyline, fractional
+
+
+def _bin_skyline_residuals(slitPosition, weights, fractional, slitStart, slitBins, binWidth):
+    """*the inverse-variance weighted mean fractional residual of the skyline pixels in each slit bin*
+
+    **Key Arguments:**
+
+    - ``slitPosition``, ``weights``, ``fractional`` -- the slit position, weight and fractional residual of each
+      skyline pixel
+    - ``slitStart`` -- the slit position of the lower edge of the first bin
+    - ``slitBins`` -- the number of bins
+    - ``binWidth`` -- the width of a bin in arcsec
+
+    **Return:**
+
+    - ``bins`` -- a ``_slit_bins``. A bin with no weight has a mean of NaN and an infinite error
+    """
+    import numpy as np
+
+    # A PIXEL AT THE FAR EDGE OF A SPAN THAT IS A WHOLE NUMBER OF BINS BELONGS TO THE LAST BIN
+    binIndex = np.clip(np.floor((slitPosition - slitStart) / binWidth).astype(int), 0, slitBins - 1)
+    counts = np.bincount(binIndex, minlength=slitBins)
+    weightSums = np.bincount(binIndex, weights=weights, minlength=slitBins)
+    weightedSums = np.bincount(binIndex, weights=weights * fractional, minlength=slitBins)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        means = weightedSums / weightSums
+        errors = 1.0 / np.sqrt(weightSums)
+    return _slit_bins(counts, weightSums, means, errors)
 
 
 def measure_slit_illumination(
@@ -221,34 +274,30 @@ def measure_slit_illumination(
     )
     slitStart = slitPosition[isUsable].min()
     slitBins = int(np.ceil((slitPosition[isUsable].max() - slitStart) / binWidth)) or 1
-    # A PIXEL AT THE FAR EDGE OF A SPAN THAT IS A WHOLE NUMBER OF BINS BELONGS TO THE LAST BIN
-    binIndex = np.floor((slitPosition[isSkyline] - slitStart) / binWidth).astype(int)
-    binIndex = np.clip(binIndex, 0, slitBins - 1)
     with np.errstate(over="ignore"):
         weights = (skyModel[isSkyline] / error[isSkyline]) ** 2
     # A WEIGHT THAT OVERFLOWS (A NEAR-ZERO ERROR) WOULD TURN ITS BIN MEAN, AND THE CURVE AROUND IT, INTO NAN
     isFiniteWeight = np.isfinite(weights)
     # DROP THOSE PIXELS FROM THE SKYLINE MASK ITSELF, SO fractional[isSkyline] STAYS ALIGNED WITH THE WEIGHTS
     isSkyline[isSkyline] = isFiniteWeight
-    weights = weights[isFiniteWeight]
     pixelCount = int(isSkyline.sum())
-    binIndex = binIndex[isFiniteWeight]
-    counts = np.bincount(binIndex, minlength=slitBins)
-    weightSums = np.bincount(binIndex, weights=weights, minlength=slitBins)
-    weightedSums = np.bincount(binIndex, weights=weights * fractional[isSkyline], minlength=slitBins)
-    with np.errstate(divide="ignore"):
-        binErrors = 1.0 / np.sqrt(weightSums)
-    isBinUsed = binErrors <= MAX_BIN_ERROR
+    bins = _bin_skyline_residuals(
+        slitPosition[isSkyline], weights[isFiniteWeight], fractional[isSkyline], slitStart, slitBins, binWidth
+    )
+    # FINITE WEIGHTS CAN STILL SUM TO INFINITY, WHICH GIVES AN ERROR OF ZERO AND A MEAN OF NAN
+    isBinUsed = np.isfinite(bins.weightSums) & (bins.weightSums > 0) & (bins.errors <= MAX_BIN_ERROR)
     if isBinUsed.sum() < MIN_BINS:
         return _unapplied(pixelTotal, pixelCount, floor)
 
-    centres = (slitStart + (np.arange(counts.size) + 0.5) * binWidth)[isBinUsed]
-    values = weightedSums[isBinUsed] / weightSums[isBinUsed]
+    centres = (slitStart + (np.arange(slitBins) + 0.5) * binWidth)[isBinUsed]
+    errors = bins.errors[isBinUsed]
     # THE MEAN LEVEL IS SET BY THE WAVELENGTH FIT, SO THE CURVE ONLY REDISTRIBUTES THE SKY ALONG THE SLIT
-    values = values - np.average(values, weights=weightSums[isBinUsed])
+    # THE BIN WEIGHT SUMS ARE SCALED TO A MAXIMUM OF 1, SO THEIR TOTAL CANNOT OVERFLOW WHEN EACH IS FINITE
+    weightSums = bins.weightSums[isBinUsed]
+    values = bins.means[isBinUsed] - np.average(bins.means[isBinUsed], weights=weightSums / weightSums.max())
+    if np.mean((values / errors) ** 2) < MIN_CURVE_CHI2:
+        return _unapplied(pixelTotal, pixelCount, floor)
     curve = np.interp(slitPosition, centres, values)
-    curve = _fill_with_quadratic(curve, slitPosition, isFillZone, centres, values, binErrors[isBinUsed])
+    curve = _fill_with_quadratic(curve, slitPosition, isFillZone, centres, values, errors)
     factor = np.where(np.isfinite(slitPosition), 1.0 + curve, 1.0)
-    return illumination_correction(
-        factor, True, pixelCount, centres, values, counts[isBinUsed], binErrors[isBinUsed], floor
-    )
+    return illumination_correction(factor, True, pixelCount, centres, values, bins.counts[isBinUsed], errors, floor)
