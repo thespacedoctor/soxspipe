@@ -1,11 +1,11 @@
-"""On the default pre-fit clip, ``subtract_sky.subtract`` gives the same products as before the DY-2055 prototype.
+"""With the shipped stare settings, ``subtract_sky.subtract`` gives the same products as develop a151d6c5.
 
 The golden file ``data/subtract_sky_default_golden_a151d6c5.npz`` holds the sky model, the sky-subtracted frame, its
-``ERRS`` and its mask for each arm, as develop a151d6c5 (the commit before the prototype) wrote them for the synthetic
+``ERRS`` and its mask for each arm, as develop a151d6c5 wrote them for the synthetic
 frame built here. The frame has a star, sky lines and cosmic rays, so the rolling clip, the object masking, the DY-1972
 skyline restore, the object-wing correction and (NIR) the DY-1973 error inflation all act on it.
 
-The file pins the pre-prototype behaviour. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
+The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. Re-record
 it only on purpose: a failure here means the default sky subtraction changed.
 """
@@ -178,7 +178,7 @@ def golden() -> dict[str, np.ndarray]:
 
 
 @pytest.mark.parametrize("arm", ARMS)
-def test_the_default_subtract_matches_the_pre_prototype_products(
+def test_the_default_subtract_matches_the_recorded_products(
     log: Any, tmp_path: Path, golden: dict[str, np.ndarray], arm: str
 ) -> None:
     # ARRANGE
