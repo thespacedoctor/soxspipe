@@ -14,7 +14,7 @@
 * **FIXED**: a recipe that failed or was interrupted on its previous run and now passes refreshes the session's SOF files once per recovered recipe (once per batch with `--multiprocess`), so its dependents run in the same `reduce` instead of the next one, and `reduce all` builds its blocking report after the final refresh, so a recovered recipe is no longer named as a "failed run" (DY-1699).
 * **FIXED**: the real-data gate's stare and NIR offset flux-calibrated median checks pass `abs=0` to `pytest.approx`, whose default absolute tolerance of 1e-12 had let any flux near 1e-15 pass, so a 6% NIR stare fall went unseen (DY-1980).
 * **TEST**: re-record the real-data gate's VIS and NIR stare baselines and the NIR offset row count, wavelength ends and flux-calibrated median from six bit-identical CI runs of develop 9869275e, after DY-1964, DY-1968, DY-1972, DY-1973, DY-1958 and DY-1975 moved them; the NIR offset blue end (795.06 to 795.3 nm) was failing the gate (DY-1980, DY-1646).
-* **TEST**: a golden test runs stare sky subtraction with the shipped NIR and VIS settings on a synthetic two-order frame (a star, sky lines and cosmic rays) and checks the sky model, sky-subtracted frame, `ERRS` and mask against products recorded on develop a151d6c5, so any change to the default sky subtraction fails it (DY-2082).
+* **TEST**: a golden test runs stare sky subtraction with the shipped NIR and VIS settings on a synthetic two-order frame (a star, sky lines and cosmic rays) and checks the sky model, sky-subtracted frame, `ERRS` and mask against products recorded on develop a151d6c5, so a change to the default sky subtraction that alters these products fails it (DY-2082).
 
 ## v0.19.0 - October 26, 2026
 

@@ -53,6 +53,8 @@ SKY_LINE_SIGMA_COLUMNS = 1.5
 COSMIC_COUNT = 25
 COSMIC_FLUX = 600.0
 FRAME_SHAPE = (2 * SLIT_PIXELS, COLUMNS)
+# ERROR OF THE FRAME PIXELS THAT NO ORDER COVERS
+OFF_ORDER_ERROR = 5.0
 # THE GOLDEN FILE STORES FLOAT32 TO STAY SMALL. THE TOLERANCE IS FAR BELOW THE NOISE (ABOUT 5 E-) AND WIDE ENOUGH FOR
 # THAT ROUNDING AND FOR FLOATING-POINT DIFFERENCES OF THE LINEAR ALGEBRA BETWEEN MACHINES
 ABSOLUTE_TOLERANCE = 1e-4
@@ -113,11 +115,16 @@ def _map_table() -> pd.DataFrame:
     return pd.concat([star, sky], ignore_index=True)
 
 
+def _input_error(mapTable: pd.DataFrame) -> np.ndarray:
+    error = np.full(FRAME_SHAPE, OFF_ORDER_ERROR)
+    error[mapTable["y"], mapTable["x"]] = mapTable["error"]
+    return error
+
+
 def _object_frame(mapTable: pd.DataFrame, arm: str) -> CCDData:
     data = np.zeros(FRAME_SHAPE)
     data[mapTable["y"], mapTable["x"]] = mapTable["flux"]
-    error = np.full(FRAME_SHAPE, 5.0)
-    error[mapTable["y"], mapTable["x"]] = mapTable["error"]
+    error = _input_error(mapTable)
     slitKeyword = "ESO INS NISE NAME" if arm == "NIR" else "ESO INS VISE NAME"
     return CCDData(
         data,
@@ -212,7 +219,6 @@ def test_the_golden_frame_exercises_the_sky_fit(golden: dict[str, np.ndarray]) -
 def test_the_nir_errs_are_inflated_at_the_sky_lines_and_the_vis_errs_are_not(golden: dict[str, np.ndarray]) -> None:
     # THE FRAME REACHES THE DY-1973 INFLATION: NIR ERRS RISE ABOVE THE INPUT ERROR SOMEWHERE, VIS ERRS DO NOT
     mapTable = _map_table()
-    inputError = np.full(FRAME_SHAPE, 5.0)
-    inputError[mapTable["y"], mapTable["x"]] = mapTable["error"]
+    inputError = _input_error(mapTable)
     assert (golden["NIR_errs"] > inputError * 1.01).any()
     assert not (golden["VIS_errs"] > inputError * 1.01).any()
