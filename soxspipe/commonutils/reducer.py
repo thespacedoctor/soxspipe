@@ -162,6 +162,9 @@ class reducer:
 
         from soxspipe.commonutils import data_organiser
 
+        # A RECIPE KILLED DURING AN EARLIER RUN LEAVES ITS SCRATCH FRAMES BEHIND
+        clear_workspace_scratch(self.log, self.workspaceDirectory)
+
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
         do.session_refresh(failure=None)
         do.close()
@@ -579,11 +582,53 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             turnOffMP=turnOffMP,
         )
 
-    productPath, qcTable = soxs_recipe.produce_product()
+    try:
+        productPath, qcTable = soxs_recipe.produce_product()
+    finally:
+        # A RECIPE THAT FINISHES HAS REMOVED ITS SCRATCH DIRECTORY IN ``clean_up``; ONE THAT RAISES HAS NOT
+        remove_scratch_tree(log, getattr(soxs_recipe, "outDir", None))
     del soxs_recipe
 
     log.debug("completed the ``run_recipe`` method")
     return productPath, qcTable
+
+
+def remove_scratch_tree(log, path):
+    """*remove a scratch directory tree, logging a failure instead of raising it*
+
+    A missing directory is not a failure. The function is safe to call from a ``finally`` block, because
+    it never replaces the exception that is already on its way out.
+
+    **Key Arguments:**
+
+    - ``log`` -- the logger to warn on
+    - ``path`` -- the directory to remove. *None* does nothing.
+    """
+    import shutil
+
+    if not path:
+        return
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        log.warning(f"Could not remove the scratch directory `{path}`: {e}")
+
+
+def clear_workspace_scratch(log, workspaceDirectory):
+    """*remove* ``<workspace>/tmp/``, *where recipes keep their prepared frames*
+
+    Only one soxspipe process runs in a workspace at a time (DY-1129), so every directory in ``tmp/``
+    is left over from a recipe that was killed or failed, or from a bulk run that has finished. The
+    directory is removed as a whole, and ``mkdtemp`` makes it again on the next recipe run.
+
+    **Key Arguments:**
+
+    - ``log`` -- the logger to warn on
+    - ``workspaceDirectory`` -- path to the root of the workspace
+    """
+    remove_scratch_tree(log, os.path.join(workspaceDirectory, "tmp"))
 
 
 def _worker_log(log, settings, logQueue):
@@ -1066,8 +1111,6 @@ def run_recipe_bulk(
     if "logging settings" not in settings:
         raise ValueError("The settings have no `logging settings` block, which spawned reduction workers need to log.")
 
-    import shutil
-
     import pandas as pd
 
     from soxspipe.commonutils import data_organiser
@@ -1193,9 +1236,7 @@ def run_recipe_bulk(
         do._dataframe_to_sqlite(qcTables, "quality_control", replace=False)
         do.close()
 
-    exists = os.path.exists(workspaceDirectory + "/tmp/")
-    if exists:
-        shutil.rmtree(workspaceDirectory + "/tmp/")
+    clear_workspace_scratch(log, workspaceDirectory)
 
     log.debug("completed the ``run_recipe_bulk`` method")
     return

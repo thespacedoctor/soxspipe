@@ -413,21 +413,12 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1700 (DY-37 I4): only the multiprocess reducer removes <workspace>/tmp/, so interrupted scratch piles up; "
-        "related to DY-36 L1 (raise path, tests/unit/test_resource_leak_pins.py); file together, fix must clear "
-        "both pins"
-    ),
-)
 def test_the_serial_reducer_removes_scratch_left_by_an_interrupted_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Pin I4: the serial reducer must clear scratch an interrupted recipe left in <workspace>/tmp/.
 
-    Related to DY-36 L1 (raise path, tests/unit/test_resource_leak_pins.py); file together, fix must clear both pins.
+    The raise path is pinned by DY-36 L1 (tests/unit/test_resource_leak_pins.py).
     """
     # ARRANGE
     orphan = tmp_path / "tmp" / "tmpinterrupted"
