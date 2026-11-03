@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
     'pyyaml==6.0.2',
-    'fundamentals==2.7.6',
+    'fundamentals==3.0.1',
     'astropy==7.2.2',
     'uncompresspy==0.4.1',
     'ccdproc==2.4.2',
