@@ -63,8 +63,8 @@ def _recipe(*, log: Any, tmp_path: Path, qc: pd.DataFrame, status: str) -> base_
     recipe.currentSession = "20240102"
     recipe.sofName = "synthetic"
     recipe.workspaceRootPath = str(tmp_path)
-    recipe.outDir = str(tmp_path / "intermediate")
-    Path(recipe.outDir).mkdir()
+    recipe.outDir = str(tmp_path / "tmp" / "intermediate")
+    Path(recipe.outDir).mkdir(parents=True)
     return recipe
 
 

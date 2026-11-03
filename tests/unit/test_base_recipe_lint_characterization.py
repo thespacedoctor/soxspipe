@@ -153,10 +153,11 @@ def _clean_up_recipe(
     recipe.sofName = "20240102T030405_VIS_1X1_FAST_MBIAS_SOXS"
     conn = _RecordingConnection()
     recipe.conn = conn
+    recipe.workspaceRootPath = str(tmp_path)
     # A DIRECTORY THAT DOES NOT EXIST, SO `shutil.rmtree` FAILS AND THE
     # METHOD SWALLOWS THE ERROR, MATCHING PRODUCTION WHEN THE SCRATCH
     # DIRECTORY IS ALREADY GONE. DELIBERATELY NOT NAMED "cache".
-    recipe.outDir = str(tmp_path / "already-removed")
+    recipe.outDir = str(tmp_path / "tmp" / "already-removed")
     return recipe, conn
 
 

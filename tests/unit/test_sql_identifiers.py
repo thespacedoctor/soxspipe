@@ -434,7 +434,8 @@ def test_clean_up_with_hostile_force_fail_message_writes_no_error_in_a_real_data
     recipe.currentSession = "base"
     recipe.sofName = "one"
     recipe.conn = connection
-    recipe.outDir = str(tmp_path / "already-removed")
+    recipe.workspaceRootPath = str(tmp_path)
+    recipe.outDir = str(tmp_path / "tmp" / "already-removed")
     # A MESSAGE THAT, IF STILL INTERPOLATED, WOULD CLOSE THE STRING LITERAL,
     # SUBSTITUTE AN ALWAYS-TRUE `where` CLAUSE, AND COMMENT OUT THE REAL ONE,
     # STAMPING EVERY ROW. THE TRAILING `--` MATTERS: WITHOUT IT THE INJECTED

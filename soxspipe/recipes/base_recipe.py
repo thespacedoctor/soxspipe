@@ -16,6 +16,13 @@ import sqlite3
 import sys
 
 from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, subtract_background
+from soxspipe.commonutils.scratch import (
+    absolute_path,
+    register_scratch_directory,
+    remove_scratch_tree,
+    scratch_root,
+    unregister_scratch_directory,
+)
 
 # VALIDATES A COLUMN OR TABLE NAME AT THE SQL TRUST BOUNDARY BEFORE IT IS
 # INTERPOLATED. A LEAF MODULE WITH NO IMPORTS OF ITS OWN, SO IT CANNOT
@@ -34,47 +41,6 @@ os.environ["TERM"] = "vt100"
 # DARK AND FRAME EXPOSURE TIMES CLOSER THAN THIS (IN SECONDS) COUNT AS EQUAL. IT ONLY
 # ABSORBS FLOAT NOISE IN THE HEADER VALUES; ANY REAL DIFFERENCE IS A MISMATCH.
 EXPTIME_MATCH_TOLERANCE_SECONDS = 1e-3
-
-# EVERY SCRATCH DIRECTORY THIS PROCESS HAS CREATED, IN ORDER. A CALLER THAT BUILDS A RECIPE CAN REMOVE THE
-# DIRECTORIES MADE DURING ITS CALL EVEN WHEN THE CONSTRUCTOR RAISES BEFORE IT RETURNS THE RECIPE OBJECT.
-CREATED_SCRATCH_DIRECTORIES: list[str] = []
-
-# THE WORKSPACE ROOT THAT `advanced_settings.yaml` SETS WHEN A SETTINGS FILE HAS NO `workspace-root-dir`
-DEFAULT_WORKSPACE_ROOT = "./"
-
-
-def absolute_path(path: str) -> str:
-    """*convert a path from a home directory to an absolute path*
-
-    **Key Arguments:**
-
-    - ``path`` -- path possibly relative to the home directory
-
-    **Return:**
-
-    - ``absolutePath`` -- the absolute path
-    """
-    from os.path import expanduser
-
-    home = expanduser("~")
-    if path[0] == "~":
-        path = home + "/" + path[1:]
-
-    return path.replace("//", "/")
-
-
-def scratch_root(settings: dict) -> str:
-    """*return the directory in which recipes make their scratch directories*
-
-    **Key Arguments:**
-
-    - ``settings`` -- the settings dictionary. A missing ``workspace-root-dir`` reads as the shipped default
-
-    **Return:**
-
-    - ``scratchRoot`` -- ``<workspace-root-dir>/tmp``, a subdirectory of the user's own workspace
-    """
-    return os.path.join(absolute_path(settings.get("workspace-root-dir", DEFAULT_WORKSPACE_ROOT)), "tmp")
 
 
 # THE FORMER `imstats` CLOSURE INSIDE `qc_ron`. A MODULE-LEVEL FUNCTION RATHER
@@ -191,7 +157,7 @@ class base_recipe:
         scratchRoot = scratch_root(self.settings)
         os.makedirs(scratchRoot, exist_ok=True)
         self.outDir = tempfile.mkdtemp(dir=scratchRoot)
-        CREATED_SCRATCH_DIRECTORIES.append(self.outDir)
+        register_scratch_directory(self.outDir)
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
@@ -1457,8 +1423,6 @@ class base_recipe:
         """
         self.log.debug("starting the ``clean_up`` method")
 
-        import shutil
-
         # FILTER QC TABLE ON qc_flag
         mask = self.qc["qc_flag"] == "fail"
         passToFail = False
@@ -1510,10 +1474,8 @@ class base_recipe:
 
         del self.conn
 
-        try:
-            shutil.rmtree(self.outDir)
-        except OSError as e:
-            self.log.debug(f"clean_up: `shutil.rmtree(self.outDir)` failed, continuing: {e}")
+        remove_scratch_tree(self.log, self.outDir, requiredParent=os.path.join(self.workspaceRootPath, "tmp"))
+        unregister_scratch_directory(self.outDir)
 
         if forceFail and isinstance(forceFail, str):
             self.log.error(f"\nRecipe marked as failed in the database. {forceFail}")

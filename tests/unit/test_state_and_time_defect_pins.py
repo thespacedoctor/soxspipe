@@ -488,8 +488,9 @@ def test_a_later_error_does_not_land_in_a_finished_recipes_error_log(tmp_path: P
         recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
         recipe.status = None
         recipe.conn = None
-        recipe.outDir = str(tmp_path / "intermediate")
-        Path(recipe.outDir).mkdir()
+        recipe.workspaceRootPath = str(tmp_path)
+        recipe.outDir = str(tmp_path / "tmp" / "intermediate")
+        Path(recipe.outDir).mkdir(parents=True)
         recipeHandlers = list(recipe.log.handlers)
         if not any(isinstance(handler, logging.FileHandler) for handler in recipeHandlers):
             pytest.fail("add_recipe_logger attached no file handlers")

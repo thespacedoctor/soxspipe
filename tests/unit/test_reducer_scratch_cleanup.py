@@ -9,6 +9,9 @@ clean-up that itself fails, and the bounds of every deletion.
 from __future__ import annotations
 
 import shutil
+import sqlite3
+import threading
+from collections.abc import Callable, Iterator
 from importlib import import_module
 from pathlib import Path
 from typing import Any
@@ -17,6 +20,8 @@ import pandas as pd
 import pytest
 
 import soxspipe.commonutils as commonutils
+from soxspipe.commonutils import scratch as scratch_store
+from tests.factories import logging_settings
 from tests.integration.test_recipe_from_frame_list import _bias_frames, _IsolatedOrganiser, _settings
 
 pytestmark = pytest.mark.unit
@@ -27,37 +32,53 @@ def _reducer_module() -> Any:
     return import_module("soxspipe.commonutils.reducer")
 
 
-def _base_recipe_module() -> Any:
-    """Return the base_recipe module; the package re-exports a class of the same name over it."""
-    return import_module("soxspipe.recipes.base_recipe")
+@pytest.fixture(autouse=True)
+def isolated_registry(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give each test its own scratch registry, so no test reads or leaves entries in the real one."""
+    monkeypatch.setattr(scratch_store, "_REGISTRY", threading.local())
+    yield
+
+
+def _install_recipes(monkeypatch: pytest.MonkeyPatch, behaviours: dict[str, Callable[[], Any]]) -> None:
+    """Replace ``soxs_mbias`` and ``soxs_mdark`` with recipes that register a scratch directory as base_recipe does.
+
+    ``behaviours`` maps a SOF name to ``(scratch, action)``: the recipe registers ``scratch`` in its
+    constructor, and ``produce_product`` calls ``action`` and returns its result.
+    """
+    recipesModule = import_module("soxspipe.recipes")
+
+    class FakeRecipe:
+        def __init__(self, **kwargs: object) -> None:
+            self.scratch, self.action, self.constructorError = behaviours[str(kwargs["inputFrames"])]
+            scratch_store.register_scratch_directory(str(self.scratch))
+            if self.constructorError is not None:
+                raise self.constructorError
+
+        def produce_product(self) -> tuple[str, pd.DataFrame]:
+            return self.action() or ("/workspace/product.fits", pd.DataFrame())
+
+    monkeypatch.setattr(recipesModule, "soxs_mbias", FakeRecipe)
+    monkeypatch.setattr(recipesModule, "soxs_mdark", FakeRecipe)
 
 
 def _install_recipe(
-    monkeypatch: pytest.MonkeyPatch, scratch: Path, error: Exception | None, *, raiseInConstructor: bool = False
+    monkeypatch: pytest.MonkeyPatch, scratchPath: Path, error: Exception | None, *, raiseInConstructor: bool = False
 ) -> None:
-    """Replace ``soxs_mbias`` with a recipe that registers ``scratch`` as base_recipe does."""
-    recipesModule = import_module("soxspipe.recipes")
-    baseRecipe = _base_recipe_module()
+    """Replace ``soxs_mbias`` with a recipe that registers ``scratchPath`` and raises ``error`` when it is given."""
 
-    class FakeRecipe:
-        def __init__(self, **_: object) -> None:
-            baseRecipe.CREATED_SCRATCH_DIRECTORIES.append(str(scratch))
-            if raiseInConstructor and error is not None:
-                raise error
+    def action() -> None:
+        if error is not None:
+            raise error
 
-        def produce_product(self) -> tuple[str, pd.DataFrame]:
-            if error is not None:
-                raise error
-            return "/workspace/product.fits", pd.DataFrame()
-
-    monkeypatch.setattr(recipesModule, "soxs_mbias", FakeRecipe)
+    constructorError = error if raiseInConstructor else None
+    _install_recipes(monkeypatch, {"input.sof": (scratchPath, action, constructorError)})
 
 
-def _run_mbias(log: Any, workspace: Path) -> tuple[str, pd.DataFrame]:
+def _run_mbias(log: Any, workspace: Path, recipe: str = "mbias", sof: str = "input.sof") -> tuple[str, pd.DataFrame]:
     return _reducer_module().run_recipe(
         log=log,
-        recipe="mbias",
-        sof="input.sof",
+        recipe=recipe,
+        sof=sof,
         settings={"workspace-root-dir": str(workspace)},
         overwrite=False,
         turnOffMP=True,
@@ -125,20 +146,16 @@ def test_run_recipe_leaves_the_scratch_directories_of_earlier_recipes_alone(
     """Only the directories created during this call go; a sibling already in ``tmp/`` stays."""
     # ARRANGE
     sibling = _scratch_with_frame(tmp_path, "tmpsibling")
-    baseRecipe = _base_recipe_module()
-    baseRecipe.CREATED_SCRATCH_DIRECTORIES.append(str(sibling))
-    scratch = _scratch_with_frame(tmp_path, "tmpmine")
-    _install_recipe(monkeypatch, scratch, RuntimeError("recipe failed"))
+    scratch_store.register_scratch_directory(str(sibling))
+    mine = _scratch_with_frame(tmp_path, "tmpmine")
+    _install_recipe(monkeypatch, mine, RuntimeError("recipe failed"))
 
     # ACT
-    try:
-        with pytest.raises(RuntimeError):
-            _run_mbias(log, tmp_path)
-    finally:
-        baseRecipe.CREATED_SCRATCH_DIRECTORIES.remove(str(sibling))
+    with pytest.raises(RuntimeError):
+        _run_mbias(log, tmp_path)
 
     # ASSERT
-    assert not scratch.exists()
+    assert not mine.exists()
     assert sibling.exists()
 
 
@@ -282,7 +299,7 @@ def test_run_recipe_logs_and_raises_the_recipes_error_when_the_scratch_root_cann
 def test_remove_scratch_tree_does_nothing_for_an_empty_path(log: Any) -> None:
     """A recipe with no scratch directory passes an empty value, and nothing happens."""
     # ACT
-    _reducer_module().remove_scratch_tree(log, "")
+    scratch_store.remove_scratch_tree(log, "")
 
     # ASSERT
     assert log.messages == []
@@ -294,7 +311,7 @@ def test_scratch_root_expands_a_home_directory_workspace_path(monkeypatch: pytes
     monkeypatch.setenv("HOME", str(tmp_path))
 
     # ACT
-    root = _base_recipe_module().scratch_root({"workspace-root-dir": "~/workspace"})
+    root = scratch_store.scratch_root({"workspace-root-dir": "~/workspace"})
 
     # ASSERT
     assert root == f"{tmp_path}/workspace/tmp"
@@ -305,21 +322,28 @@ def test_scratch_root_expands_a_home_directory_workspace_path(monkeypatch: pytes
 # ---------------------------------------------------------------------------
 
 
-def test_clear_workspace_scratch_removes_the_tmp_directory_and_keeps_the_rest_of_the_workspace(
+def test_clear_workspace_scratch_removes_the_mkdtemp_directories_and_keeps_everything_else(
     log: Any, tmp_path: Path
 ) -> None:
-    """Only ``<workspace>/tmp/`` goes; its siblings stay."""
+    """Only the ``tmp*`` directories in ``<workspace>/tmp/`` go; ``tmp/`` itself and other entries stay."""
     # ARRANGE
-    _scratch_with_frame(tmp_path)
+    leftover = _scratch_with_frame(tmp_path)
+    (tmp_path / "tmp" / "notes.txt").write_text("keep")
+    (tmp_path / "tmp" / "tmpfile.txt").write_text("keep")
+    (tmp_path / "tmp" / "keepme").mkdir()
+    (tmp_path / "tmp" / "keepme" / "data.fits").write_bytes(b"keep")
     (tmp_path / "soxspipe.db").write_bytes(b"db")
     (tmp_path / "reduced").mkdir()
     (tmp_path / "reduced" / "product.fits").write_bytes(b"product")
 
     # ACT
-    _reducer_module().clear_workspace_scratch(log, str(tmp_path))
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
 
     # ASSERT
-    assert not (tmp_path / "tmp").exists()
+    assert not leftover.exists()
+    assert (tmp_path / "tmp" / "notes.txt").read_text() == "keep"
+    assert (tmp_path / "tmp" / "tmpfile.txt").read_text() == "keep"
+    assert (tmp_path / "tmp" / "keepme" / "data.fits").read_bytes() == b"keep"
     assert (tmp_path / "soxspipe.db").read_bytes() == b"db"
     assert (tmp_path / "reduced" / "product.fits").read_bytes() == b"product"
 
@@ -330,7 +354,7 @@ def test_clear_workspace_scratch_does_nothing_when_there_is_no_tmp_directory(log
     entriesBefore = sorted(tmp_path.iterdir())
 
     # ACT
-    _reducer_module().clear_workspace_scratch(log, str(tmp_path))
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
 
     # ASSERT
     assert sorted(tmp_path.iterdir()) == entriesBefore
@@ -346,7 +370,7 @@ def test_clear_workspace_scratch_skips_an_empty_workspace_path(
     monkeypatch.chdir(tmp_path)
 
     # ACT
-    _reducer_module().clear_workspace_scratch(log, "")
+    scratch_store.clear_workspace_scratch(log, "")
 
     # ASSERT
     assert scratch.exists()
@@ -362,7 +386,7 @@ def test_clear_workspace_scratch_skips_the_home_directory(
     scratch = _scratch_with_frame(tmp_path)
 
     # ACT
-    _reducer_module().clear_workspace_scratch(log, str(tmp_path))
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
 
     # ASSERT
     assert scratch.exists()
@@ -380,7 +404,7 @@ def test_clear_workspace_scratch_does_not_follow_a_tmp_symlink_out_of_the_worksp
     (workspace / "tmp").symlink_to(outside, target_is_directory=True)
 
     # ACT
-    _reducer_module().clear_workspace_scratch(log, str(workspace))
+    scratch_store.clear_workspace_scratch(log, str(workspace))
 
     # ASSERT
     assert (workspace / "tmp").is_symlink()
@@ -397,8 +421,278 @@ def test_clear_workspace_scratch_logs_and_continues_when_removal_fails(
     monkeypatch.setattr(shutil, "rmtree", _refuse(PermissionError("cannot remove")))
 
     # ACT
-    _reducer_module().clear_workspace_scratch(log, str(tmp_path))
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
 
     # ASSERT
     assert scratch.exists()
     assert any(level == "warning" and "cannot remove" in message for level, message in log.messages)
+
+
+def test_clear_workspace_scratch_does_not_follow_a_tmp_prefixed_link_out_of_the_scratch_directory(
+    log: Any, tmp_path: Path
+) -> None:
+    """A ``tmp*`` link inside ``tmp/`` that leads outside it is refused and its target kept."""
+    # ARRANGE
+    (tmp_path / "tmp").mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep")
+    (tmp_path / "tmp" / "tmplinked").symlink_to(outside, target_is_directory=True)
+
+    # ACT
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
+
+    # ASSERT
+    assert (outside / "keep.txt").read_text() == "keep"
+    assert any(level == "warning" for level, _ in log.messages)
+
+
+# ---------------------------------------------------------------------------
+# THREADS AND NESTED CALLS: THE REGISTRY IS PER THREAD AND PER CALL
+# ---------------------------------------------------------------------------
+
+
+def test_a_failing_run_recipe_in_one_thread_leaves_the_live_scratch_of_another_thread_alone(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two overlapping ``run_recipe`` calls: the one that fails removes only the scratch it created."""
+    # ARRANGE
+    liveScratch = _scratch_with_frame(tmp_path, "tmplive")
+    failedScratch = _scratch_with_frame(tmp_path, "tmpfailed")
+    liveHasStarted = threading.Event()
+    releaseLive = threading.Event()
+    liveSawItsScratch: list[bool] = []
+
+    def live_action() -> None:
+        liveHasStarted.set()
+        assert releaseLive.wait(timeout=30)
+        liveSawItsScratch.append(liveScratch.exists())
+
+    def failing_action() -> None:
+        raise RuntimeError("other thread failed")
+
+    _install_recipes(
+        monkeypatch,
+        {
+            "live.sof": (liveScratch, live_action, None),
+            "failed.sof": (failedScratch, failing_action, None),
+        },
+    )
+    liveThread = threading.Thread(target=_run_mbias, args=(log, tmp_path, "mbias", "live.sof"))
+    liveThread.start()
+    assert liveHasStarted.wait(timeout=30)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="other thread failed"):
+        _run_mbias(log, tmp_path, "mdark", "failed.sof")
+    liveWasIntactAfterTheFailure = liveScratch.exists()
+    releaseLive.set()
+    liveThread.join(timeout=30)
+
+    # ASSERT
+    assert not failedScratch.exists()
+    assert liveWasIntactAfterTheFailure
+    assert liveSawItsScratch == [True]
+
+
+def test_a_nested_run_recipe_removes_only_its_own_scratch_and_the_outer_call_removes_the_rest(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The inner call's mark starts after the outer call's directory, so the inner clean-up cannot reach it."""
+    # ARRANGE
+    outerScratch = _scratch_with_frame(tmp_path, "tmpouter")
+    innerScratch = _scratch_with_frame(tmp_path, "tmpinner")
+    seenAfterInner: dict[str, bool] = {}
+
+    def inner_action() -> None:
+        raise ValueError("inner failed")
+
+    def outer_action() -> None:
+        with pytest.raises(ValueError, match="inner failed"):
+            _run_mbias(log, tmp_path, "mdark", "inner.sof")
+        seenAfterInner["inner"] = innerScratch.exists()
+        seenAfterInner["outer"] = outerScratch.exists()
+        raise RuntimeError("outer failed")
+
+    _install_recipes(
+        monkeypatch,
+        {"outer.sof": (outerScratch, outer_action, None), "inner.sof": (innerScratch, inner_action, None)},
+    )
+
+    # ACT
+    with pytest.raises(RuntimeError, match="outer failed"):
+        _run_mbias(log, tmp_path, "mbias", "outer.sof")
+
+    # ASSERT
+    assert seenAfterInner == {"inner": False, "outer": True}
+    assert not outerScratch.exists()
+    assert scratch_store.created_scratch_directories() == []
+
+
+def test_run_recipe_trims_the_registry_after_a_run(log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A long serial reduction does not grow the registry."""
+    # ARRANGE
+    _install_recipe(monkeypatch, tmp_path / "tmp" / "tmpdone", None)
+
+    # ACT
+    _run_mbias(log, tmp_path)
+
+    # ASSERT
+    assert scratch_store.created_scratch_directories() == []
+
+
+# ---------------------------------------------------------------------------
+# THE SCRATCH ROOT AND THE REGISTRY
+# ---------------------------------------------------------------------------
+
+
+def test_scratch_root_is_absolute_and_does_not_follow_a_later_change_of_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A relative workspace root is fixed when the root is read, so a recipe that changes directory cannot move it."""
+    # ARRANGE
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "elsewhere").mkdir()
+
+    # ACT
+    root = scratch_store.scratch_root({"workspace-root-dir": "./workspace"})
+    monkeypatch.chdir(tmp_path / "elsewhere")
+
+    # ASSERT
+    assert root == str(tmp_path / "workspace" / "tmp")
+
+
+def test_each_thread_has_its_own_scratch_registry() -> None:
+    """A directory registered in one thread is invisible to another."""
+    # ARRANGE
+    scratch_store.register_scratch_directory("/workspace/tmp/tmpmine")
+    seenByOtherThread: list[list[str]] = []
+
+    # ACT
+    thread = threading.Thread(
+        target=lambda: seenByOtherThread.append(list(scratch_store.created_scratch_directories()))
+    )
+    thread.start()
+    thread.join(timeout=30)
+
+    # ASSERT
+    assert seenByOtherThread == [[]]
+    assert scratch_store.created_scratch_directories() == ["/workspace/tmp/tmpmine"]
+
+
+def test_unregistering_a_directory_that_was_never_registered_is_ignored() -> None:
+    """``clean_up`` can run on a recipe whose directory was already forgotten."""
+    # ACT
+    scratch_store.unregister_scratch_directory("/workspace/tmp/tmpnever")
+
+    # ASSERT
+    assert scratch_store.created_scratch_directories() == []
+
+
+# ---------------------------------------------------------------------------
+# base_recipe.clean_up USES THE SAME GUARDED REMOVAL
+# ---------------------------------------------------------------------------
+
+
+def _finished_recipe(log: Any, workspace: Path, outDir: Path) -> Any:
+    """Return a recipe object that is ready for ``clean_up`` and has no database connection."""
+    from soxspipe.recipes import base_recipe
+
+    recipe = base_recipe.__new__(base_recipe)
+    recipe.log = log
+    recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["FLUX MEDIAN"]})
+    recipe.status = None
+    recipe.conn = None
+    recipe.workspaceRootPath = str(workspace)
+    recipe.outDir = str(outDir)
+    return recipe
+
+
+def test_clean_up_removes_its_scratch_directory_and_forgets_it(log: Any, tmp_path: Path) -> None:
+    """A finished recipe leaves nothing in ``tmp/`` and nothing in the registry."""
+    # ARRANGE
+    outDir = _scratch_with_frame(tmp_path)
+    scratch_store.register_scratch_directory(str(outDir))
+    recipe = _finished_recipe(log, tmp_path, outDir)
+
+    # ACT
+    recipe.clean_up()
+
+    # ASSERT
+    assert not outDir.exists()
+    assert scratch_store.created_scratch_directories() == []
+
+
+def test_clean_up_does_not_remove_an_out_dir_outside_the_workspace_tmp(log: Any, tmp_path: Path) -> None:
+    """``clean_up`` follows the same deletion policy as ``run_recipe``."""
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (outside / "keep.fits").write_bytes(b"keep")
+    recipe = _finished_recipe(log, workspace, outside)
+
+    # ACT
+    recipe.clean_up()
+
+    # ASSERT
+    assert (outside / "keep.fits").read_bytes() == b"keep"
+    assert any(level == "warning" and str(outside) in message for level, message in log.messages)
+
+
+# ---------------------------------------------------------------------------
+# run_recipe_bulk SWEEPS EVEN WHEN ITS RESULT PROCESSING RAISES
+# ---------------------------------------------------------------------------
+
+
+def test_run_recipe_bulk_clears_the_scratch_when_the_pool_raises(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failure after the workers started must not leave their scratch behind."""
+    # ARRANGE
+    leftover = _scratch_with_frame(tmp_path)
+    reducerModule = _reducer_module()
+
+    def failing_pool(**_: Any) -> list[dict[str, Any]]:
+        raise RuntimeError("pool failed")
+
+    monkeypatch.setattr(reducerModule, "_run_in_spawn_pool", failing_pool)
+    connection = sqlite3.connect(":memory:")
+
+    # ACT
+    with pytest.raises(RuntimeError, match="pool failed"):
+        reducerModule.run_recipe_bulk(
+            log=log,
+            recipe="mbias",
+            sofList=[str(tmp_path / "first.sof")],
+            commandList=["soxspipe mbias first.sof"],
+            settings=logging_settings(tmp_path / "x.log"),
+            overwrite=False,
+            workspaceDirectory=str(tmp_path),
+            conn=connection,
+            sessionId="night1",
+        )
+
+    # ASSERT
+    assert not leftover.exists()
+
+
+def test_clear_workspace_scratch_logs_and_continues_when_tmp_cannot_be_listed(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A ``tmp/`` that cannot be read stops the sweep with a warning, not an error."""
+    # ARRANGE
+    leftover = _scratch_with_frame(tmp_path)
+
+    def refuse_listing(path: object) -> list[str]:
+        raise PermissionError("cannot list")
+
+    monkeypatch.setattr("os.listdir", refuse_listing)
+
+    # ACT
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
+
+    # ASSERT
+    assert leftover.exists()
+    assert any(level == "warning" and "cannot list" in message for level, message in log.messages)
