@@ -384,8 +384,9 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     recipe.currentSession = SESSION
     recipe.sofName = "A"
     recipe.workspaceRootPath = str(tmp_path)
-    recipe.outDir = str(tmp_path / "intermediate")
-    Path(recipe.outDir).mkdir()
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
+    recipe.outDir = str(tmp_path / "tmp" / "intermediate")
+    Path(recipe.outDir).mkdir(parents=True)
     recipe.conn = _RecordingConnection()
     refreshes: list[object] = []
 
@@ -413,24 +414,15 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1700 (DY-37 I4): only the multiprocess reducer removes <workspace>/tmp/, so interrupted scratch piles up; "
-        "related to DY-36 L1 (raise path, tests/unit/test_resource_leak_pins.py); file together, fix must clear "
-        "both pins"
-    ),
-)
 def test_the_serial_reducer_removes_scratch_left_by_an_interrupted_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Pin I4: the serial reducer must clear scratch an interrupted recipe left in <workspace>/tmp/.
 
-    Related to DY-36 L1 (raise path, tests/unit/test_resource_leak_pins.py); file together, fix must clear both pins.
+    The raise path is pinned by DY-36 L1 (tests/unit/test_resource_leak_pins.py).
     """
     # ARRANGE
-    orphan = tmp_path / "tmp" / "tmpinterrupted"
+    orphan = tmp_path / "tmp" / "tmpa1b2c3d4"
     orphan.mkdir(parents=True)
     (orphan / "SOXS.2024-01-02T03:04:05.678_pre.fits").write_bytes(b"\0" * 2880)
 
@@ -497,8 +489,9 @@ def test_a_later_error_does_not_land_in_a_finished_recipes_error_log(tmp_path: P
         recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
         recipe.status = None
         recipe.conn = None
-        recipe.outDir = str(tmp_path / "intermediate")
-        Path(recipe.outDir).mkdir()
+        recipe.settings = {"workspace-root-dir": str(tmp_path)}
+        recipe.outDir = str(tmp_path / "tmp" / "intermediate")
+        Path(recipe.outDir).mkdir(parents=True)
         recipeHandlers = list(recipe.log.handlers)
         if not any(isinstance(handler, logging.FileHandler) for handler in recipeHandlers):
             pytest.fail("add_recipe_logger attached no file handlers")

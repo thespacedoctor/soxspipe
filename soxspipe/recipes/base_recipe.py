@@ -16,6 +16,13 @@ import sqlite3
 import sys
 
 from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, subtract_background
+from soxspipe.commonutils.scratch import (
+    absolute_path,
+    register_scratch_directory,
+    remove_scratch_tree,
+    scratch_root,
+    unregister_scratch_directory,
+)
 
 # VALIDATES A COLUMN OR TABLE NAME AT THE SQL TRUST BOUNDARY BEFORE IT IS
 # INTERPOLATED. A LEAF MODULE WITH NO IMPORTS OF ITS OWN, SO IT CANNOT
@@ -147,9 +154,10 @@ class base_recipe:
         # SYSTEM TEMPORARY DIRECTORY. `mkdtemp` CREATES A FRESH DIRECTORY, SO
         # CONCURRENT RECIPES NEVER SHARE ONE AND ONE RECIPE'S `clean_up` CANNOT
         # DELETE ANOTHER'S FRAMES (DY-49).
-        scratchRoot = os.path.join(self.workspaceRootPath, "tmp")
-        os.makedirs(scratchRoot, exist_ok=True)
-        self.outDir = tempfile.mkdtemp(dir=scratchRoot)
+        self.scratchRoot = scratch_root(self.settings)
+        os.makedirs(self.scratchRoot, exist_ok=True)
+        self.outDir = tempfile.mkdtemp(dir=self.scratchRoot)
+        register_scratch_directory(self.outDir)
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
@@ -861,13 +869,7 @@ class base_recipe:
         ```
         """
 
-        from os.path import expanduser
-
-        home = expanduser("~")
-        if path[0] == "~":
-            path = home + "/" + path[1:]
-
-        return path.replace("//", "/")
+        return absolute_path(path)
 
     def prepare_frames(self, save=False):
         """*prepare raw frames by converting pixel data from ADU to electrons and adding mask and uncertainty extensions*
@@ -1421,8 +1423,6 @@ class base_recipe:
         """
         self.log.debug("starting the ``clean_up`` method")
 
-        import shutil
-
         # FILTER QC TABLE ON qc_flag
         mask = self.qc["qc_flag"] == "fail"
         passToFail = False
@@ -1474,10 +1474,9 @@ class base_recipe:
 
         del self.conn
 
-        try:
-            shutil.rmtree(self.outDir)
-        except OSError as e:
-            self.log.debug(f"clean_up: `shutil.rmtree(self.outDir)` failed, continuing: {e}")
+        scratchPath = getattr(self, "scratchRoot", None) or scratch_root(self.settings)
+        remove_scratch_tree(self.log, self.outDir, requiredParent=scratchPath)
+        unregister_scratch_directory(self.outDir)
 
         if forceFail and isinstance(forceFail, str):
             self.log.error(f"\nRecipe marked as failed in the database. {forceFail}")

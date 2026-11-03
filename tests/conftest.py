@@ -123,7 +123,7 @@ class RecordingLogger:
     def info(self, message: object) -> None:
         self._record("info", message)
 
-    def warning(self, message: object) -> None:
+    def warning(self, message: object, **_: object) -> None:
         self._record("warning", message)
 
     def error(self, message: object) -> None:

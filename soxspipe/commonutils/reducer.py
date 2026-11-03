@@ -18,6 +18,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from soxspipe.commonutils.scratch import clear_workspace_scratch, created_scratch_directories, remove_recipe_scratch
+
 os.environ["TERM"] = "vt100"
 
 
@@ -161,6 +163,9 @@ class reducer:
         from fundamentals import times
 
         from soxspipe.commonutils import data_organiser
+
+        # A RECIPE KILLED DURING AN EARLIER RUN LEAVES ITS SCRATCH FRAMES BEHIND
+        clear_workspace_scratch(self.log, self.workspaceDirectory)
 
         do = data_organiser(log=self.log, rootDir=self.workspaceDirectory)
         do.session_refresh(failure=None)
@@ -460,6 +465,20 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     reducer.run_recipe("mbias", "/path/to/sofs/my_bias_files.sof")
     ```
     """
+    created = created_scratch_directories()
+    before = set(created)
+    try:
+        return _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP)
+    finally:
+        # A RECIPE THAT FINISHES HAS REMOVED ITS SCRATCH IN ``clean_up``. ONE THAT RAISES, IN ITS CONSTRUCTOR OR
+        # IN ``produce_product``, HAS NOT. THE REGISTRY IS THIS THREAD'S OWN, AND THE DIRECTORIES ABSENT FROM THE
+        # SNAPSHOT ARE THE ONES THIS CALL MADE, SO IT NEVER REMOVES ANOTHER RECIPE'S
+        remove_recipe_scratch(log, settings, [path for path in created if path not in before])
+        created[:] = [path for path in created if path in before]
+
+
+def _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP):
+    """*build the named recipe and produce its product; the scratch clean-up is the caller's*"""
     log.debug("starting the ``run_recipe`` method")
 
     if recipe == "mbias":
@@ -1061,12 +1080,23 @@ def run_recipe_bulk(
     A ``ValueError`` is raised if ``settings`` has no ``logging settings`` block, because spawned workers
     take their log level from it.
     """
+    try:
+        _run_recipe_bulk(
+            log, recipe, sofList, commandList, settings, overwrite, workspaceDirectory, conn, sessionId, poolSize
+        )
+    finally:
+        # THE WORKERS HAVE STOPPED, SO WHATEVER IS LEFT IN `tmp/` BELONGS TO A RECIPE THAT FAILED OR WAS KILLED
+        clear_workspace_scratch(log, workspaceDirectory)
+
+
+def _run_recipe_bulk(  # noqa: PLR0915
+    log, recipe, sofList, commandList, settings, overwrite, workspaceDirectory, conn, sessionId, poolSize
+):
+    """*run the reductions of* ``run_recipe_bulk`` *and record their results; the scratch sweep is the caller's*"""
     log.debug("starting the ``run_recipe_bulk`` method")
 
     if "logging settings" not in settings:
         raise ValueError("The settings have no `logging settings` block, which spawned reduction workers need to log.")
-
-    import shutil
 
     import pandas as pd
 
@@ -1192,10 +1222,6 @@ def run_recipe_bulk(
         do = data_organiser(log=log, rootDir=workspaceDirectory)
         do._dataframe_to_sqlite(qcTables, "quality_control", replace=False)
         do.close()
-
-    exists = os.path.exists(workspaceDirectory + "/tmp/")
-    if exists:
-        shutil.rmtree(workspaceDirectory + "/tmp/")
 
     log.debug("completed the ``run_recipe_bulk`` method")
     return
