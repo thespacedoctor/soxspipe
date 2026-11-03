@@ -466,15 +466,15 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     ```
     """
     created = created_scratch_directories()
-    scratchMark = len(created)
+    before = set(created)
     try:
         return _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP)
     finally:
         # A RECIPE THAT FINISHES HAS REMOVED ITS SCRATCH IN ``clean_up``. ONE THAT RAISES, IN ITS CONSTRUCTOR OR
-        # IN ``produce_product``, HAS NOT. ONLY THIS PROCESS CREATED THE DIRECTORIES SINCE THE MARK, SO A WORKER
-        # POOL NEVER REMOVES ANOTHER WORKER'S
-        remove_recipe_scratch(log, settings, created[scratchMark:])
-        del created[scratchMark:]
+        # IN ``produce_product``, HAS NOT. THE REGISTRY IS THIS THREAD'S OWN, AND THE DIRECTORIES ABSENT FROM THE
+        # SNAPSHOT ARE THE ONES THIS CALL MADE, SO IT NEVER REMOVES ANOTHER RECIPE'S
+        remove_recipe_scratch(log, settings, [path for path in created if path not in before])
+        created[:] = [path for path in created if path in before]
 
 
 def _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP):

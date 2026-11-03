@@ -6,6 +6,9 @@ Every recipe makes one ``mkdtemp`` directory in ``<workspace>/tmp/`` and writes 
 This module records those directories, and it holds the one deletion policy for them: a directory goes only
 when its resolved parent is the scratch root, and a failure to remove one is logged and never raised.
 
+The registry of created directories is per thread: it belongs to the thread that created each entry, so
+one thread's clean-up can never reach the scratch of a recipe running in another.
+
 The module imports nothing from the package, so ``base_recipe`` and ``reducer`` can both use it without
 disturbing the package's load-bearing import order.
 
@@ -17,6 +20,7 @@ Date Created
 """
 
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -24,8 +28,9 @@ import threading
 # THE WORKSPACE ROOT THAT `advanced_settings.yaml` SETS WHEN A SETTINGS FILE HAS NO `workspace-root-dir`
 DEFAULT_WORKSPACE_ROOT = "./"
 
-# `mkdtemp` NAMES ITS DIRECTORIES WITH THIS PREFIX, SO THE SWEEP LEAVES EVERYTHING ELSE IN `tmp/` ALONE
-SCRATCH_PREFIX = tempfile.template
+# THE NAME `mkdtemp` GIVES A DIRECTORY: THE PREFIX AND 8 RANDOM CHARACTERS.
+# THE SWEEP LEAVES EVERYTHING ELSE IN `tmp/` ALONE
+SCRATCH_NAME = re.compile(rf"{re.escape(tempfile.gettempprefix())}[a-z0-9_]{{8}}")
 
 # THE SCRATCH DIRECTORIES EACH THREAD HAS CREATED, IN ORDER. IT IS PER THREAD SO THAT A CALLER THAT CLEANS UP
 # AFTER A FAILED RECIPE CAN NEVER REACH THE LIVE SCRATCH OF A RECIPE RUNNING IN ANOTHER THREAD
@@ -44,7 +49,7 @@ def absolute_path(path: str) -> str:
     - ``absolutePath`` -- the path with a leading ``~`` expanded
     """
     home = os.path.expanduser("~")
-    if path[0] == "~":
+    if path.startswith("~"):
         path = home + "/" + path[1:]
 
     return path.replace("//", "/")
@@ -155,7 +160,7 @@ def clear_workspace_scratch(log, workspaceDirectory: str) -> None:
 
     Only one soxspipe process runs in a workspace at a time (DY-1129), so every such directory is left
     over from a recipe that was killed or failed, or from a bulk run that has finished. ``tmp/`` itself
-    and anything in it that ``mkdtemp`` did not make stay in place.
+    and anything in it whose name ``mkdtemp`` would not generate stay in place.
 
     Nothing is removed, and a warning is logged, when the workspace path is empty, is not a directory, or
     is the filesystem root or the home directory. A ``tmp`` that is a symbolic link is deliberately not
@@ -185,5 +190,5 @@ def clear_workspace_scratch(log, workspaceDirectory: str) -> None:
         return
     for name in names:
         child = os.path.join(scratchPath, name)
-        if name.startswith(SCRATCH_PREFIX) and (os.path.islink(child) or os.path.isdir(child)):
+        if SCRATCH_NAME.fullmatch(name) and (os.path.islink(child) or os.path.isdir(child)):
             remove_scratch_tree(log, child, requiredParent=scratchPath)

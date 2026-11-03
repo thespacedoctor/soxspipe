@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+import tempfile
 import threading
 from collections.abc import Callable, Iterator
 from importlib import import_module
@@ -278,7 +279,7 @@ def test_a_real_recipe_that_raises_in_its_constructor_removes_its_scratch_direct
 def test_run_recipe_logs_and_raises_the_recipes_error_when_the_scratch_root_cannot_be_found(
     log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A settings value that breaks the scratch-root lookup leaves the directory and the recipe's error intact."""
+    """Settings that break the scratch-root lookup leaves the directory and the recipe's error intact."""
     # ARRANGE
     scratch = _scratch_with_frame(tmp_path)
     failure = ValueError("recipe failed")
@@ -286,9 +287,7 @@ def test_run_recipe_logs_and_raises_the_recipes_error_when_the_scratch_root_cann
 
     # ACT
     with pytest.raises(ValueError) as caught:
-        _reducer_module().run_recipe(
-            log, "mbias", "input.sof", settings={"workspace-root-dir": ""}, overwrite=False, turnOffMP=True
-        )
+        _reducer_module().run_recipe(log, "mbias", "input.sof", settings=None, overwrite=False, turnOffMP=True)
 
     # ASSERT
     assert caught.value is failure
@@ -437,7 +436,7 @@ def test_clear_workspace_scratch_does_not_follow_a_tmp_prefixed_link_out_of_the_
     outside = tmp_path / "outside"
     outside.mkdir()
     (outside / "keep.txt").write_text("keep")
-    (tmp_path / "tmp" / "tmplinked").symlink_to(outside, target_is_directory=True)
+    (tmp_path / "tmp" / "tmplnk00001").symlink_to(outside, target_is_directory=True)
 
     # ACT
     scratch_store.clear_workspace_scratch(log, str(tmp_path))
@@ -445,6 +444,37 @@ def test_clear_workspace_scratch_does_not_follow_a_tmp_prefixed_link_out_of_the_
     # ASSERT
     assert (outside / "keep.txt").read_text() == "keep"
     assert any(level == "warning" for level, _ in log.messages)
+
+
+def test_clear_workspace_scratch_keeps_a_tmp_prefixed_directory_that_mkdtemp_did_not_make(
+    log: Any, tmp_path: Path
+) -> None:
+    """``tmp_backup`` starts with ``tmp`` but is not a ``mkdtemp`` name, so it stays."""
+    # ARRANGE
+    backup = tmp_path / "tmp" / "tmp_backup"
+    backup.mkdir(parents=True)
+    (backup / "data.fits").write_bytes(b"keep")
+
+    # ACT
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
+
+    # ASSERT
+    assert (backup / "data.fits").read_bytes() == b"keep"
+
+
+def test_clear_workspace_scratch_removes_a_directory_made_by_mkdtemp(log: Any, tmp_path: Path) -> None:
+    """A name that the standard library really generates is swept."""
+    # ARRANGE
+    root = Path(scratch_store.scratch_root({"workspace-root-dir": str(tmp_path)}))
+    root.mkdir()
+    made = Path(tempfile.mkdtemp(dir=root))
+
+    # ACT
+    scratch_store.clear_workspace_scratch(log, str(tmp_path))
+
+    # ASSERT
+    assert not made.exists()
+    assert root.is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -455,20 +485,29 @@ def test_clear_workspace_scratch_does_not_follow_a_tmp_prefixed_link_out_of_the_
 def test_a_failing_run_recipe_in_one_thread_leaves_the_live_scratch_of_another_thread_alone(
     log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Two overlapping ``run_recipe`` calls: the one that fails removes only the scratch it created."""
+    """The failing call takes its snapshot, then another thread registers scratch, then the failing call raises.
+
+    A registry shared by both threads would show the live thread's directory as new to the failing call, which
+    would remove it. A per-thread registry cannot.
+    """
     # ARRANGE
     liveScratch = _scratch_with_frame(tmp_path, "tmplive")
     failedScratch = _scratch_with_frame(tmp_path, "tmpfailed")
-    liveHasStarted = threading.Event()
+    liveHasRegistered = threading.Event()
     releaseLive = threading.Event()
     liveSawItsScratch: list[bool] = []
 
     def live_action() -> None:
-        liveHasStarted.set()
+        liveHasRegistered.set()
         assert releaseLive.wait(timeout=30)
         liveSawItsScratch.append(liveScratch.exists())
 
+    liveThread = threading.Thread(target=_run_mbias, args=(log, tmp_path, "mbias", "live.sof"))
+
     def failing_action() -> None:
+        # THE FAILING CALL IS ALREADY INSIDE run_recipe, SO ITS SNAPSHOT PRECEDES THE LIVE THREAD'S REGISTRATION
+        liveThread.start()
+        assert liveHasRegistered.wait(timeout=30)
         raise RuntimeError("other thread failed")
 
     _install_recipes(
@@ -478,21 +517,46 @@ def test_a_failing_run_recipe_in_one_thread_leaves_the_live_scratch_of_another_t
             "failed.sof": (failedScratch, failing_action, None),
         },
     )
-    liveThread = threading.Thread(target=_run_mbias, args=(log, tmp_path, "mbias", "live.sof"))
-    liveThread.start()
-    assert liveHasStarted.wait(timeout=30)
 
     # ACT
-    with pytest.raises(RuntimeError, match="other thread failed"):
-        _run_mbias(log, tmp_path, "mdark", "failed.sof")
-    liveWasIntactAfterTheFailure = liveScratch.exists()
-    releaseLive.set()
-    liveThread.join(timeout=30)
+    try:
+        with pytest.raises(RuntimeError, match="other thread failed"):
+            _run_mbias(log, tmp_path, "mdark", "failed.sof")
+        liveWasIntactAfterTheFailure = liveScratch.exists()
+    finally:
+        releaseLive.set()
+        liveThread.join(timeout=30)
 
     # ASSERT
+    assert not liveThread.is_alive()
     assert not failedScratch.exists()
     assert liveWasIntactAfterTheFailure
     assert liveSawItsScratch == [True]
+
+
+def test_run_recipe_removes_a_failed_recipes_scratch_after_an_outer_recipe_forgot_its_own(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An entry that leaves the registry before this call's entries must not hide them from the clean-up."""
+    # ARRANGE
+    outerScratch = _scratch_with_frame(tmp_path, "tmpouter")
+    failedScratch = _scratch_with_frame(tmp_path, "tmpfailed")
+    scratch_store.register_scratch_directory(str(outerScratch))
+
+    def failing_action() -> None:
+        # THE OUTER RECIPE FINISHES, AND ITS clean_up FORGETS ITS DIRECTORY, WHILE THIS CALL IS RUNNING
+        scratch_store.unregister_scratch_directory(str(outerScratch))
+        raise RuntimeError("recipe failed")
+
+    _install_recipes(monkeypatch, {"input.sof": (failedScratch, failing_action, None)})
+
+    # ACT
+    with pytest.raises(RuntimeError, match="recipe failed"):
+        _run_mbias(log, tmp_path)
+
+    # ASSERT
+    assert not failedScratch.exists()
+    assert scratch_store.created_scratch_directories() == []
 
 
 def test_a_nested_run_recipe_removes_only_its_own_scratch_and_the_outer_call_removes_the_rest(
@@ -603,6 +667,7 @@ def _finished_recipe(log: Any, workspace: Path, outDir: Path) -> Any:
     recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["FLUX MEDIAN"]})
     recipe.status = None
     recipe.conn = None
+    recipe.settings = {"workspace-root-dir": str(workspace)}
     recipe.workspaceRootPath = str(workspace)
     recipe.outDir = str(outDir)
     return recipe
@@ -621,6 +686,25 @@ def test_clean_up_removes_its_scratch_directory_and_forgets_it(log: Any, tmp_pat
     # ASSERT
     assert not outDir.exists()
     assert scratch_store.created_scratch_directories() == []
+
+
+def test_clean_up_judges_its_out_dir_against_the_scratch_root_made_at_creation(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A relative ``workspaceRootPath`` and a later directory change must not make ``clean_up`` refuse its scratch."""
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    outDir = _scratch_with_frame(workspace)
+    (tmp_path / "elsewhere").mkdir()
+    monkeypatch.chdir(tmp_path / "elsewhere")
+    recipe = _finished_recipe(log, workspace, outDir)
+    recipe.workspaceRootPath = "./"
+
+    # ACT
+    recipe.clean_up()
+
+    # ASSERT
+    assert not outDir.exists()
 
 
 def test_clean_up_does_not_remove_an_out_dir_outside_the_workspace_tmp(log: Any, tmp_path: Path) -> None:
@@ -696,3 +780,12 @@ def test_clear_workspace_scratch_logs_and_continues_when_tmp_cannot_be_listed(
     # ASSERT
     assert leftover.exists()
     assert any(level == "warning" and "cannot list" in message for level, message in log.messages)
+
+
+def test_absolute_path_returns_an_empty_path_unchanged() -> None:
+    """An empty path is not a home-directory path, and reading its first character must not raise."""
+    # ACT
+    result = scratch_store.absolute_path("")
+
+    # ASSERT
+    assert result == ""

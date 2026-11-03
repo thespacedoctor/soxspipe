@@ -219,6 +219,7 @@ def _clean_up_recipe(
     recipe.workspaceRootPath = str(tmp_path)
     conn = _RecordingConnection()
     recipe.conn = conn
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
     recipe.outDir = str(tmp_path / "already-removed")
     return recipe, conn
 
@@ -393,6 +394,7 @@ def test_clean_up_with_hostile_sof_name_updates_no_rows_in_a_real_database(
     recipe.sofName = "x' OR '1'='1' --"
     recipe.workspaceRootPath = str(tmp_path)
     recipe.conn = connection
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
     recipe.outDir = str(tmp_path / "already-removed")
 
     # ACT
@@ -434,7 +436,7 @@ def test_clean_up_with_hostile_force_fail_message_writes_no_error_in_a_real_data
     recipe.currentSession = "base"
     recipe.sofName = "one"
     recipe.conn = connection
-    recipe.workspaceRootPath = str(tmp_path)
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
     recipe.outDir = str(tmp_path / "tmp" / "already-removed")
     # A MESSAGE THAT, IF STILL INTERPOLATED, WOULD CLOSE THE STRING LITERAL,
     # SUBSTITUTE AN ALWAYS-TRUE `where` CLAUSE, AND COMMENT OUT THE REAL ONE,

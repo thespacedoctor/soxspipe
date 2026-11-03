@@ -384,8 +384,9 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     recipe.currentSession = SESSION
     recipe.sofName = "A"
     recipe.workspaceRootPath = str(tmp_path)
-    recipe.outDir = str(tmp_path / "intermediate")
-    Path(recipe.outDir).mkdir()
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
+    recipe.outDir = str(tmp_path / "tmp" / "intermediate")
+    Path(recipe.outDir).mkdir(parents=True)
     recipe.conn = _RecordingConnection()
     refreshes: list[object] = []
 
@@ -421,7 +422,7 @@ def test_the_serial_reducer_removes_scratch_left_by_an_interrupted_recipe(
     The raise path is pinned by DY-36 L1 (tests/unit/test_resource_leak_pins.py).
     """
     # ARRANGE
-    orphan = tmp_path / "tmp" / "tmpinterrupted"
+    orphan = tmp_path / "tmp" / "tmpa1b2c3d4"
     orphan.mkdir(parents=True)
     (orphan / "SOXS.2024-01-02T03:04:05.678_pre.fits").write_bytes(b"\0" * 2880)
 
@@ -488,7 +489,7 @@ def test_a_later_error_does_not_land_in_a_finished_recipes_error_log(tmp_path: P
         recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
         recipe.status = None
         recipe.conn = None
-        recipe.workspaceRootPath = str(tmp_path)
+        recipe.settings = {"workspace-root-dir": str(tmp_path)}
         recipe.outDir = str(tmp_path / "tmp" / "intermediate")
         Path(recipe.outDir).mkdir(parents=True)
         recipeHandlers = list(recipe.log.handlers)

@@ -1474,7 +1474,7 @@ class base_recipe:
 
         del self.conn
 
-        remove_scratch_tree(self.log, self.outDir, requiredParent=os.path.join(self.workspaceRootPath, "tmp"))
+        remove_scratch_tree(self.log, self.outDir, requiredParent=scratch_root(self.settings))
         unregister_scratch_directory(self.outDir)
 
         if forceFail and isinstance(forceFail, str):

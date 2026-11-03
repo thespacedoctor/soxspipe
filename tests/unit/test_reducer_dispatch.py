@@ -237,6 +237,7 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
         "noise",
     ]
     assert not temporaryPath.exists()
+    assert temporaryPath.parent.is_dir()
     output = capsys.readouterr().out
     printed = [message for level, message in log.messages if level == "print"]
     assert any("pool size of 3" in message for message in printed)
