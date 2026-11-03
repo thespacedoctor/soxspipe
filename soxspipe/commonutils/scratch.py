@@ -76,7 +76,8 @@ def created_scratch_directories() -> list[str]:
 
     **Return:**
 
-    - ``directories`` -- the live list. A caller can mark its length and later take the entries added after it.
+    - ``directories`` -- the live list. A caller can snapshot the entries, and later remove those that are not
+      in the snapshot.
     """
     if not hasattr(_REGISTRY, "directories"):
         _REGISTRY.directories = []

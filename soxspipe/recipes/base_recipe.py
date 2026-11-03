@@ -154,9 +154,9 @@ class base_recipe:
         # SYSTEM TEMPORARY DIRECTORY. `mkdtemp` CREATES A FRESH DIRECTORY, SO
         # CONCURRENT RECIPES NEVER SHARE ONE AND ONE RECIPE'S `clean_up` CANNOT
         # DELETE ANOTHER'S FRAMES (DY-49).
-        scratchRoot = scratch_root(self.settings)
-        os.makedirs(scratchRoot, exist_ok=True)
-        self.outDir = tempfile.mkdtemp(dir=scratchRoot)
+        self.scratchRoot = scratch_root(self.settings)
+        os.makedirs(self.scratchRoot, exist_ok=True)
+        self.outDir = tempfile.mkdtemp(dir=self.scratchRoot)
         register_scratch_directory(self.outDir)
 
         # FIND THE CURRENT SESSION
@@ -1474,7 +1474,8 @@ class base_recipe:
 
         del self.conn
 
-        remove_scratch_tree(self.log, self.outDir, requiredParent=scratch_root(self.settings))
+        scratchPath = getattr(self, "scratchRoot", None) or scratch_root(self.settings)
+        remove_scratch_tree(self.log, self.outDir, requiredParent=scratchPath)
         unregister_scratch_directory(self.outDir)
 
         if forceFail and isinstance(forceFail, str):

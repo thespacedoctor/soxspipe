@@ -707,6 +707,33 @@ def test_clean_up_judges_its_out_dir_against_the_scratch_root_made_at_creation(
     assert not outDir.exists()
 
 
+def test_a_real_recipe_with_a_relative_workspace_removes_its_scratch_after_a_change_of_directory(
+    log: Any, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The scratch root is fixed when the recipe is built, so ``clean_up`` still accepts its own directory."""
+    # ARRANGE
+    from soxspipe.recipes import soxs_mbias
+
+    monkeypatch.setattr(commonutils, "data_organiser", _IsolatedOrganiser)
+    framePaths = _bias_frames(tmp_path / "raw")
+    (tmp_path / "elsewhere").mkdir()
+    monkeypatch.chdir(tmp_path)
+    recipe = soxs_mbias(
+        log=log, settings=_settings(Path("rel")), inputFrames=framePaths, overwrite=False, turnOffMP=True
+    )
+    recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
+    scratchDirectory = Path(recipe.outDir)
+    assert scratchDirectory.is_dir()
+    assert tmp_path / "rel" in scratchDirectory.parents
+    monkeypatch.chdir(tmp_path / "elsewhere")
+
+    # ACT
+    recipe.clean_up()
+
+    # ASSERT
+    assert not scratchDirectory.exists()
+
+
 def test_clean_up_does_not_remove_an_out_dir_outside_the_workspace_tmp(log: Any, tmp_path: Path) -> None:
     """``clean_up`` follows the same deletion policy as ``run_recipe``."""
     # ARRANGE
