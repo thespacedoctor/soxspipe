@@ -463,6 +463,27 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     reducer.run_recipe("mbias", "/path/to/sofs/my_bias_files.sof")
     ```
     """
+    created = _created_scratch_directories()
+    scratchMark = len(created)
+    try:
+        return _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP)
+    finally:
+        # A RECIPE THAT FINISHES HAS REMOVED ITS SCRATCH IN ``clean_up``. ONE THAT RAISES, IN ITS CONSTRUCTOR OR
+        # IN ``produce_product``, HAS NOT. ONLY THIS PROCESS CREATED THE DIRECTORIES SINCE THE MARK, SO A WORKER
+        # POOL NEVER REMOVES ANOTHER WORKER'S
+        remove_recipe_scratch(log, settings, created[scratchMark:])
+        del created[scratchMark:]
+
+
+def _created_scratch_directories():
+    """*return the list in which* ``base_recipe`` *records the scratch directories this process creates*"""
+    from importlib import import_module
+
+    return import_module("soxspipe.recipes.base_recipe").CREATED_SCRATCH_DIRECTORIES
+
+
+def _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP):
+    """*build the named recipe and produce its product; the scratch clean-up is the caller's*"""
     log.debug("starting the ``run_recipe`` method")
 
     if recipe == "mbias":
@@ -582,53 +603,95 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
             turnOffMP=turnOffMP,
         )
 
-    try:
-        productPath, qcTable = soxs_recipe.produce_product()
-    finally:
-        # A RECIPE THAT FINISHES HAS REMOVED ITS SCRATCH DIRECTORY IN ``clean_up``; ONE THAT RAISES HAS NOT
-        remove_scratch_tree(log, getattr(soxs_recipe, "outDir", None))
+    productPath, qcTable = soxs_recipe.produce_product()
     del soxs_recipe
 
     log.debug("completed the ``run_recipe`` method")
     return productPath, qcTable
 
 
-def remove_scratch_tree(log, path):
+def remove_scratch_tree(log, path: str, requiredParent: str | None = None) -> None:
     """*remove a scratch directory tree, logging a failure instead of raising it*
 
     A missing directory is not a failure. The function is safe to call from a ``finally`` block, because
-    it never replaces the exception that is already on its way out.
+    it never replaces the exception that is already on its way out, whatever the type of its own failure.
 
     **Key Arguments:**
 
     - ``log`` -- the logger to warn on
-    - ``path`` -- the directory to remove. *None* does nothing.
+    - ``path`` -- the directory to remove. An empty value does nothing.
+    - ``requiredParent`` -- when given, ``path`` is removed only if its resolved parent directory is this
+      resolved directory; a symbolic link is judged by where it leads. Otherwise a warning is logged and
+      nothing is removed. Default *None* (no check).
     """
     import shutil
 
     if not path:
         return
     try:
+        if requiredParent is not None and os.path.dirname(os.path.realpath(path)) != os.path.realpath(requiredParent):
+            log.warning(f"Not removing `{path}`: it is not directly inside the scratch directory `{requiredParent}`.")
+            return
         shutil.rmtree(path)
     except FileNotFoundError:
         return
-    except OSError as e:
-        log.warning(f"Could not remove the scratch directory `{path}`: {e}")
+    except Exception as e:
+        log.warning(f"Could not remove the scratch directory `{path}`: {e}", exc_info=True)
 
 
-def clear_workspace_scratch(log, workspaceDirectory):
+def remove_recipe_scratch(log, settings: dict, scratchDirectories: list[str]) -> None:
+    """*remove the scratch directories a recipe run created, each only if it is inside* ``<workspace>/tmp``
+
+    Never raises, so it is safe in a ``finally`` block.
+
+    **Key Arguments:**
+
+    - ``log`` -- the logger to warn on
+    - ``settings`` -- the settings dictionary the recipe ran with. ``workspace-root-dir`` names the workspace,
+      read the way ``base_recipe`` reads it
+    - ``scratchDirectories`` -- the directories the run created
+    """
+    if not scratchDirectories:
+        return
+    try:
+        from importlib import import_module
+
+        scratchRoot = import_module("soxspipe.recipes.base_recipe").scratch_root(settings)
+    except Exception as e:
+        log.warning(f"Could not find the scratch root, so {scratchDirectories} stay: {e}", exc_info=True)
+        return
+    for path in scratchDirectories:
+        remove_scratch_tree(log, path, requiredParent=scratchRoot)
+
+
+def clear_workspace_scratch(log, workspaceDirectory: str) -> None:
     """*remove* ``<workspace>/tmp/``, *where recipes keep their prepared frames*
 
     Only one soxspipe process runs in a workspace at a time (DY-1129), so every directory in ``tmp/``
     is left over from a recipe that was killed or failed, or from a bulk run that has finished. The
     directory is removed as a whole, and ``mkdtemp`` makes it again on the next recipe run.
 
+    Nothing is removed, and a warning is logged, when the workspace path is empty, is not a directory, or
+    is the filesystem root or the home directory. A ``tmp`` that is a symbolic link is deliberately not
+    swept (a warning only), because the sweep must not reach outside the workspace.
+
     **Key Arguments:**
 
     - ``log`` -- the logger to warn on
     - ``workspaceDirectory`` -- path to the root of the workspace
     """
-    remove_scratch_tree(log, os.path.join(workspaceDirectory, "tmp"))
+    if not workspaceDirectory or not os.path.isdir(workspaceDirectory):
+        log.warning(f"Not sweeping scratch: `{workspaceDirectory}` is not a workspace directory.")
+        return
+    resolved = os.path.realpath(workspaceDirectory)
+    if resolved in (os.path.sep, os.path.realpath(os.path.expanduser("~"))):
+        log.warning(f"Not sweeping scratch: `{workspaceDirectory}` is the filesystem root or the home directory.")
+        return
+    scratchPath = os.path.join(workspaceDirectory, "tmp")
+    if os.path.islink(scratchPath):
+        log.warning(f"Not sweeping scratch: `{scratchPath}` is a symbolic link.")
+        return
+    remove_scratch_tree(log, scratchPath, requiredParent=workspaceDirectory)
 
 
 def _worker_log(log, settings, logQueue):

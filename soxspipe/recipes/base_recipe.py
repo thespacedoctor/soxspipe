@@ -35,6 +35,47 @@ os.environ["TERM"] = "vt100"
 # ABSORBS FLOAT NOISE IN THE HEADER VALUES; ANY REAL DIFFERENCE IS A MISMATCH.
 EXPTIME_MATCH_TOLERANCE_SECONDS = 1e-3
 
+# EVERY SCRATCH DIRECTORY THIS PROCESS HAS CREATED, IN ORDER. A CALLER THAT BUILDS A RECIPE CAN REMOVE THE
+# DIRECTORIES MADE DURING ITS CALL EVEN WHEN THE CONSTRUCTOR RAISES BEFORE IT RETURNS THE RECIPE OBJECT.
+CREATED_SCRATCH_DIRECTORIES: list[str] = []
+
+# THE WORKSPACE ROOT THAT `advanced_settings.yaml` SETS WHEN A SETTINGS FILE HAS NO `workspace-root-dir`
+DEFAULT_WORKSPACE_ROOT = "./"
+
+
+def absolute_path(path: str) -> str:
+    """*convert a path from a home directory to an absolute path*
+
+    **Key Arguments:**
+
+    - ``path`` -- path possibly relative to the home directory
+
+    **Return:**
+
+    - ``absolutePath`` -- the absolute path
+    """
+    from os.path import expanduser
+
+    home = expanduser("~")
+    if path[0] == "~":
+        path = home + "/" + path[1:]
+
+    return path.replace("//", "/")
+
+
+def scratch_root(settings: dict) -> str:
+    """*return the directory in which recipes make their scratch directories*
+
+    **Key Arguments:**
+
+    - ``settings`` -- the settings dictionary. A missing ``workspace-root-dir`` reads as the shipped default
+
+    **Return:**
+
+    - ``scratchRoot`` -- ``<workspace-root-dir>/tmp``, a subdirectory of the user's own workspace
+    """
+    return os.path.join(absolute_path(settings.get("workspace-root-dir", DEFAULT_WORKSPACE_ROOT)), "tmp")
+
 
 # THE FORMER `imstats` CLOSURE INSIDE `qc_ron`. A MODULE-LEVEL FUNCTION RATHER
 # THAN A METHOD, SO THAT THE READ-OUT-NOISE CALCULATION STAYS AS UNOVERRIDEABLE
@@ -147,9 +188,10 @@ class base_recipe:
         # SYSTEM TEMPORARY DIRECTORY. `mkdtemp` CREATES A FRESH DIRECTORY, SO
         # CONCURRENT RECIPES NEVER SHARE ONE AND ONE RECIPE'S `clean_up` CANNOT
         # DELETE ANOTHER'S FRAMES (DY-49).
-        scratchRoot = os.path.join(self.workspaceRootPath, "tmp")
+        scratchRoot = scratch_root(self.settings)
         os.makedirs(scratchRoot, exist_ok=True)
         self.outDir = tempfile.mkdtemp(dir=scratchRoot)
+        CREATED_SCRATCH_DIRECTORIES.append(self.outDir)
 
         # FIND THE CURRENT SESSION
         from os.path import expanduser
@@ -861,13 +903,7 @@ class base_recipe:
         ```
         """
 
-        from os.path import expanduser
-
-        home = expanduser("~")
-        if path[0] == "~":
-            path = home + "/" + path[1:]
-
-        return path.replace("//", "/")
+        return absolute_path(path)
 
     def prepare_frames(self, save=False):
         """*prepare raw frames by converting pixel data from ADU to electrons and adding mask and uncertainty extensions*
