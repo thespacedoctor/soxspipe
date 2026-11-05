@@ -130,7 +130,9 @@ def test_every_command_works_after_the_first_prep_of_a_vlt_workspace(vltMachine:
         f"bias{exposure}.fits" for exposure in range(BIAS_SET_SIZE)
     ]
     # THE SYNTHETIC FRAMES ARE TOO SMALL FOR THE DETECTOR MASK, SO THE RECIPE STOPS AFTER IT READS THEM THROUGH THE LINK
-    assert list(vltMachine.diskReduced.rglob("soxs-mbias/*.log")), reduction.stdout
+    recipeLogs = list(vltMachine.diskReduced.rglob("soxs-mbias/*.log"))
+    assert recipeLogs, reduction.stdout
+    assert any(f"PREPARING {BIAS_SET_SIZE} RAW FRAMES" in path.read_text(encoding="utf-8") for path in recipeLogs)
 
     sofName = next((vltMachine.workspace / "sof").iterdir()).name
     _assert_passed(_soxspipe(vltMachine, "raw", "sof", sofName))
@@ -167,6 +169,31 @@ def test_vlt_flag_replaces_the_link_and_leaves_the_vlt_folder_in_place(vltMachin
 
     assert (vltMachine.workspace / "raw").is_symlink()
     assert vltMachine.diskRaw.is_dir()
+
+
+@pytest.mark.usefixtures("vltOrganiserModule")
+def test_vlt_flag_refuses_a_real_raw_folder_and_keeps_its_frames(vltMachine: VltMachine, log: object) -> None:
+    """A workspace that holds its own `raw` folder is not replaced by the link."""
+    framePath = vltMachine.workspace / "raw" / "frame.fits"
+    framePath.parent.mkdir()
+    framePath.write_bytes(b"frame")
+
+    with pytest.raises(_UnsafePathError, match="not a symbolic link"):
+        data_organiser(log=log, rootDir=".", vlt=True, dbConnect=False)
+
+    assert framePath.read_bytes() == b"frame"
+
+
+@pytest.mark.usefixtures("vltOrganiserModule")
+def test_vlt_flag_refuses_a_file_named_raw_and_keeps_it(vltMachine: VltMachine, log: object) -> None:
+    """An ordinary file named `raw` is never unlinked to make way for the link."""
+    filePath = vltMachine.workspace / "raw"
+    filePath.write_bytes(b"notes")
+
+    with pytest.raises(_UnsafePathError, match="not a symbolic link"):
+        data_organiser(log=log, rootDir=".", vlt=True, dbConnect=False)
+
+    assert filePath.read_bytes() == b"notes"
 
 
 @pytest.mark.usefixtures("vltOrganiserModule")

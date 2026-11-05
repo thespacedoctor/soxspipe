@@ -2074,12 +2074,14 @@ class data_organiser:
 
         # `self.rawDir` IS RESOLVED, SO ONCE THE LINK EXISTS IT NAMES THE VLT FOLDER, NOT THE LINK
         rawLink = Path(self.rootDir) / "raw"
-        try:
-            os.symlink(vltRaw, rawLink)
-        except OSError as e:
-            self.log.debug(f"use_vlt_environment_folders: `os.symlink(vltRaw, rawLink)` failed, continuing: {e}")
-            os.unlink(rawLink)
-            os.symlink(vltRaw, rawLink)
+        if rawLink.is_symlink():
+            rawLink.unlink()
+        elif rawLink.exists():
+            raise _UnsafePathError(
+                f"Cannot use --vlt: `{os.path.abspath(rawLink)}` exists and is not a symbolic link. "
+                "Move it out of the workspace, then run the command again."
+            )
+        os.symlink(vltRaw, rawLink)
         self.rawDir = str(rawLink.resolve())
 
         self.log.debug("completed the ``use_vlt_environment_folders`` method")
