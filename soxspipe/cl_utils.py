@@ -196,12 +196,8 @@ def main(arguments=None):
         try:
             do = data_organiser(log=eLog, rootDir=".")
             currentSession, allSessions = do.session_list(silent=True)
-        except _UnsafePathError as error:
-            eLog.error(error)
-            raise SystemExit(1) from error
-        except DatabasePreservationError as error:
-            print(error, file=sys.stderr)
-            raise SystemExit(1) from error
+        except (_UnsafePathError, DatabasePreservationError) as error:
+            _exit_with_message(error)
 
         clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
@@ -495,6 +491,7 @@ def main(arguments=None):
 
                     from soxspipe.commonutils.data_organiser import (
                         _validate_owned_path,
+                        _validate_raw_directory,
                     )
 
                     exportDir = str(
@@ -504,11 +501,7 @@ def main(arguments=None):
                             "export directory",
                         )
                     )
-                    rawDir = _validate_owned_path(
-                        Path(a["workspaceDirectory"]) / "raw",
-                        a["workspaceDirectory"],
-                        "raw directory",
-                    )
+                    rawDir = _validate_raw_directory(a["workspaceDirectory"])
                     if not os.path.exists(exportDir):
                         os.makedirs(exportDir)
                     for rawFramePath in rawFramePaths:
@@ -528,7 +521,7 @@ def main(arguments=None):
 
     except _UnsafePathError as error:
         log.error(f"{error}\n{clCommand}", exc_info=True)
-        raise SystemExit(1) from error
+        _exit_with_message(error)
 
     except Exception as e:
         log.error(f"{e}\n{clCommand}", exc_info=True)

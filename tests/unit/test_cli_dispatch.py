@@ -550,6 +550,7 @@ def test_main_raw_rejects_frame_outside_workspace_raw_directory(
 def test_main_exits_cleanly_when_initial_session_lookup_is_unsafe(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Translate unsafe paths encountered before normal CLI setup into exit 1."""
     from soxspipe.commonutils.data_organiser import _UnsafePathError
@@ -563,11 +564,13 @@ def test_main_exits_cleanly_when_initial_session_lookup_is_unsafe(
         _run_cli(monkeypatch, tmp_path, ["soxspipe", "prep"])
 
     assert error.value.code == 1
+    assert "Unsafe sessions directory" in capsys.readouterr().err
 
 
 def test_main_raw_rejects_export_directory_symlink_outside_workspace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Do not export raw frames through a directory symlink outside the workspace."""
     workspacePath = tmp_path / "workspace"
@@ -588,6 +591,7 @@ def test_main_raw_rejects_export_directory_symlink_outside_workspace(
         )
 
     assert error.value.code == 1
+    assert "Unsafe export directory" in capsys.readouterr().err
     assert not (outsidePath / rawPath.name).exists()
 
 

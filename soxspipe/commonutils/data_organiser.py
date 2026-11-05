@@ -160,8 +160,40 @@ def _validate_owned_path(path, owner, label):
         resolvedCandidatePath = candidatePath.resolve()
         resolvedCandidatePath.relative_to(resolvedOwnerPath)
     except (OSError, RuntimeError, ValueError) as error:
-        raise _UnsafePathError(f"Unsafe {label}: path resolves outside {ownerPath}") from error
+        raise _UnsafePathError(
+            f"Unsafe {label}: `{os.path.abspath(candidatePath)}` resolves outside `{os.path.abspath(ownerPath)}`"
+        ) from error
     return resolvedCandidatePath
+
+
+def _vlt_data_folders():
+    """Return the `vlt-data-raw` and `vlt-data-reduced` folders from the packaged advanced settings."""
+    import yaml
+
+    settingsPath = Path(__file__).resolve().parent.parent / "advanced_settings.yaml"
+    with open(settingsPath) as stream:
+        advancedSettings = yaml.safe_load(stream)
+    return advancedSettings["vlt-data-raw"], advancedSettings["vlt-data-reduced"]
+
+
+def _validate_raw_directory(rootDir):
+    """Return the resolved raw directory of a workspace, inside it or at the configured VLT raw folder.
+
+    A `--vlt` workspace links `raw` to the `vlt-data-raw` folder. Only that exact folder is allowed: a link to any
+    other location outside the workspace, including a folder below `vlt-data-raw`, is refused.
+    """
+    rawPath = Path(rootDir) / "raw"
+    try:
+        return _validate_owned_path(rawPath, rootDir, "raw directory")
+    except _UnsafePathError:
+        vltRaw = _vlt_data_folders()[0]
+        try:
+            isVltRaw = rawPath.resolve() == Path(vltRaw).resolve()
+        except (OSError, RuntimeError):
+            isVltRaw = False
+        if not isVltRaw:
+            raise
+    return rawPath.resolve()
 
 
 def _validate_session_id(sessionId):
@@ -258,7 +290,7 @@ class data_organiser:
         rootDir = expanduser(rootDir)
 
         self.rootDir = rootDir
-        self.rawDir = str(_validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory"))
+        self.rawDir = str(_validate_raw_directory(rootDir))
         self.miscDir = str(_validate_owned_path(Path(rootDir) / "misc", rootDir, "misc directory"))
         self.sessionsDir = str(_validate_owned_path(Path(rootDir) / "sessions", rootDir, "sessions directory"))
 
@@ -982,7 +1014,7 @@ class data_organiser:
         framesByDirectory = {self.rootDir: [entry.name for entry in os.scandir(self.rootDir) if entry.is_file()]}
         if os.path.isdir(self.rawDir):
             # os.walk FOLLOWS A SYMLINKED raw/ ITSELF (VLT MODE) BUT NO LINK BELOW IT; THE OWNERSHIP CHECK
-            # BELOW KEEPS DELETES INSIDE THE WORKSPACE
+            # BELOW KEEPS DELETES INSIDE THE WORKSPACE, SO THE VLT RAW FOLDER KEEPS ITS FRAMES
             for directory, _, files in os.walk(self.rawDir):
                 framesByDirectory[directory] = [f for f in files if os.path.isfile(os.path.join(directory, f))]
         compressedInRaw = {
@@ -1230,10 +1262,8 @@ class data_organiser:
         dbFiles = [r[0].replace("//", "/") for r in c.fetchall()]
         normalizedDbFiles = {
             filePath: str(
-                _validate_owned_path(
-                    Path(filePath) if os.path.isabs(filePath) else Path(self.rootDir) / filePath,
-                    self.rootDir,
-                    "database filepath",
+                self._validate_database_filepath(
+                    Path(filePath) if os.path.isabs(filePath) else Path(self.rootDir) / filePath
                 )
             )
             for filePath in dbFiles
@@ -1260,7 +1290,7 @@ class data_organiser:
                 basename = os.path.basename(f)
                 if not is_fits_frame(basename):
                     pass
-                elif self.rootDir in f:
+                elif self.rootDir in f or directory in f:
                     exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
                     if not exists:
                         os.symlink(
@@ -1275,6 +1305,13 @@ class data_organiser:
 
         self.log.debug("completed the ``_sync_sql_table_to_directory`` method")
         return
+
+    def _validate_database_filepath(self, path):
+        """*return a resolved `raw_frames` path, which must sit in the workspace or in its validated raw directory*"""
+        try:
+            return _validate_owned_path(path, self.rootDir, "database filepath")
+        except _UnsafePathError:
+            return _validate_owned_path(path, self.rawDir, "database filepath")
 
     def _populate_raw_frames_extra_columns(self, filteredFrames, verbose=False):
         """*populate extra columns for raw frames to later filter on*
@@ -2026,28 +2063,7 @@ class data_organiser:
         """
         self.log.debug("starting the ``use_vlt_environment_folders`` method")
 
-        import yaml
-
-        # COLLECT ADVANCED SETTINGS
-        parentDirectory = os.path.dirname(__file__)
-        advs = parentDirectory + "/advanced_settings.yaml"
-        level = 0
-        exists = False
-        count = 1
-        while not exists and len(advs) and count < 10:
-            count += 1
-            level -= 1
-            exists = os.path.exists(advs)
-            if not exists:
-                advs = "/".join(parentDirectory.split("/")[:level]) + "/advanced_settings.yaml"
-        if not exists:
-            advs = {}
-        else:
-            with open(advs) as stream:
-                advs = yaml.safe_load(stream)
-
-        vltRaw = advs["vlt-data-raw"]
-        vltReduced = advs["vlt-data-reduced"]
+        vltRaw, vltReduced = _vlt_data_folders()
 
         # TEST THE VLT FOLDERS EXIST
         if not os.path.exists(vltRaw) or not os.path.exists(vltReduced):
@@ -2056,12 +2072,17 @@ class data_organiser:
             )
             sys.exit(0)
 
-        try:
-            os.symlink(vltRaw, self.rawDir)
-        except OSError as e:
-            self.log.debug(f"use_vlt_environment_folders: `os.symlink(vltRaw, self.rawDir)` failed, continuing: {e}")
-            os.unlink(self.rawDir)
-            os.symlink(vltRaw, self.rawDir)
+        # `self.rawDir` IS RESOLVED, SO ONCE THE LINK EXISTS IT NAMES THE VLT FOLDER, NOT THE LINK
+        rawLink = Path(self.rootDir) / "raw"
+        if rawLink.is_symlink():
+            rawLink.unlink()
+        elif rawLink.exists():
+            raise _UnsafePathError(
+                f"Cannot use --vlt: `{os.path.abspath(rawLink)}` exists and is not a symbolic link. "
+                "Move it out of the workspace, then run the command again."
+            )
+        os.symlink(vltRaw, rawLink)
+        self.rawDir = str(rawLink.resolve())
 
         self.log.debug("completed the ``use_vlt_environment_folders`` method")
         return vltReduced
