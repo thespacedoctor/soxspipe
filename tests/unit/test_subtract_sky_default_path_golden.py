@@ -1,9 +1,21 @@
-"""With the shipped stare settings, ``subtract_sky.subtract`` gives the same products as develop a151d6c5.
+"""With the shipped stare settings, ``subtract_sky.subtract`` gives the same products as develop cff556ae.
 
-The golden file ``data/subtract_sky_default_golden_a151d6c5.npz`` holds the sky model, the sky-subtracted frame, its
-``ERRS`` and its mask for each arm, as develop a151d6c5 wrote them for the synthetic
-frame built here. The frame has a star, sky lines and cosmic rays, so the rolling clip, the object masking, the DY-1972
-skyline restore, the object-wing correction and (NIR) the DY-1973 error inflation all act on it.
+The golden file ``data/subtract_sky_default_golden_cff556ae.npz`` holds the sky model, the sky-subtracted frame, its
+``ERRS`` and its mask for each arm, as develop cff556ae wrote them for the synthetic frame built here. The frame has two
+orders. Order 12 holds a star, sky lines and cosmic rays, and order 13 holds sky lines and cosmic rays, so the rolling
+clip, the object masking, the DY-1972 skyline restore, the object-wing correction and (NIR) the DY-1973 error
+inflation all act on it.
+
+The frame has 96 slit pixels per column and 100 cosmic rays per order. It had 24 slit pixels and 25 cosmic rays when the
+file was recorded from a151d6c5. At 24 pixels the pre-fit clip can flag every pixel of a sky-line core in the VIS arm,
+and the sky model then loses the line. Which lines it loses changes with the clip settings, so the old file pinned a
+lossy state (DY-2118). At 96 pixels per column every line is held.
+
+The geometry changes every array, the NIR arrays and ``ERRS`` included: the frame is 192 rows (was 48), and the noise
+draw and the cosmic rays are new. The sizes stay close. The NIR ``ERRS`` are at most 1.47 times the input error (was
+1.39) and 48% of the pixels are above 1.01 times it (was 41%). The VIS ``ERRS`` equal the input error, as before. The
+median sky model is 20.1 e- in NIR and 19.8 e- in VIS (was 19.9 and 20.0 e-), and the highest is 1520 e- in both arms
+(was 1515 and 1513 e-). The golden file is 1.3 MB (was 0.33 MB).
 
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. Re-record
@@ -33,13 +45,13 @@ from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
 
-GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_a151d6c5.npz"
+GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_cff556ae.npz"
 ARMS = ("NIR", "VIS")
 PRODUCTS = ("model", "subtracted", "errs", "mask")
 STAR_ORDER = 12
 SKY_ORDER = 13
 COLUMNS = 400
-SLIT_PIXELS = 24
+SLIT_PIXELS = 96
 SLIT_HALF_LENGTH = 5.5
 SKY_LEVEL = 20.0
 READ_NOISE = 3.3
@@ -50,7 +62,7 @@ MOFFAT_BETA = 4.765
 # (CENTRE COLUMN, PEAK IN E-) OF THE GAUSSIAN SKY LINES, AND THEIR SIGMA IN COLUMNS
 SKY_LINES = ((60.0, 400.0), (150.5, 1500.0), (240.0, 120.0), (330.2, 800.0))
 SKY_LINE_SIGMA_COLUMNS = 1.5
-COSMIC_COUNT = 25
+COSMIC_COUNT = 100
 COSMIC_FLUX = 600.0
 FRAME_SHAPE = (2 * SLIT_PIXELS, COLUMNS)
 # ERROR OF THE FRAME PIXELS THAT NO ORDER COVERS
