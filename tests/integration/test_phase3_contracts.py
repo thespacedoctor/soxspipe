@@ -81,3 +81,33 @@ def test_phase3_table_writer_omits_disabled_and_nan_qc_rows(
     with fits.open(outputPath) as hdus:
         assert "ESO QC DISABLED" not in hdus[0].header
         assert "ESO QC MISSING" not in hdus[0].header
+
+
+def test_phase3_table_writer_leaves_no_file_when_the_write_dies_mid_file(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DY-1697: a killed table write must not leave a truncated product at the final path."""
+    # ARRANGE
+    outDir = tmp_path / "out"
+    outDir.mkdir()
+
+    def cut_short(self: fits.HDUList, name: str, *args: object, **kwargs: object) -> None:
+        Path(name).write_bytes(b"SIMPLE  =")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(fits.HDUList, "writeto", cut_short)
+
+    # ACT
+    with pytest.raises(OSError, match="disk full"):
+        write_fits_table_to_disk(
+            log=log,
+            settings=pipeline_settings(tmp_path),
+            header=instrument_header(),
+            tables=[Table({"order": [10]})],
+            filePath=str(outDir / "phase3.fits"),
+        )
+
+    # ASSERT
+    assert list(outDir.iterdir()) == []

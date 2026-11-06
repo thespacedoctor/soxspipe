@@ -20,8 +20,10 @@ The estimate has five steps:
    G(λ)·(P(s) − P0), which is to be subtracted from the sky pixels before the sky is refitted.
 
 A negative zero point that is small against the noise of a faint-sky pixel, or against its own noise, is not
-corrected. Nor is an order whose slit profile shows more than one significant source (DY-1933): on a crowded slit no
-part of the slit is free of object light, so the far slit does not measure the sky.
+corrected. Nor is an order whose median sky fit is at or below a multiple of that noise (DY-1975): the sky there is
+too faint for the light that leaks into it to be told from a slit-wide pedestal, and the correction drives the sky
+fit negative. Nor is an order whose slit profile shows more than one significant source (DY-1933): on a crowded slit
+no part of the slit is free of object light, so the far slit does not measure the sky.
 """
 
 from __future__ import annotations
@@ -45,6 +47,8 @@ CORE_MEDIAN_WINDOW = 201
 MIN_CORE_PIXELS = 201
 MIN_PIXELS_PER_PROFILE_BIN = 20
 WING_BIAS_SIGNIFICANCE = 5
+# AN ORDER WHOSE MEDIAN SKY FIT IS AT OR BELOW THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL IS NOT CORRECTED (DY-1975)
+DEFAULT_MIN_SKY_SIGMA = 1.0
 # A SOURCE IS A PROFILE PEAK WHOSE PROMINENCE IS ABOVE THIS MANY TIMES ITS BIN NOISE (DY-1933)
 SOURCE_SIGNIFICANCE = 5
 # ... AND ABOVE THIS FRACTION OF THE PROFILE'S PEAK ABOVE ITS MEDIAN, SO A FAINT HALO BUMP NEXT TO A BRIGHT STAR IS NOT
@@ -76,8 +80,11 @@ class object_wing_estimate:
     - ``slitLossFraction`` -- the estimated share of the slit's object light that the sky fit removes
     - ``sourceCentres`` -- the slit positions in arcsec of the significant sources in the profile of every usable
       pixel, most prominent first. Empty if the profile was not measured
-    - ``isCrowdedSlit`` -- True if every other gate passed but the order is not corrected because the profile shows
-      more than one source
+    - ``isCrowdedSlit`` -- True if every other gate, the sky gate included, passed but the order is not corrected
+      because the profile shows more than one source
+    - ``isSkyBelowNoise`` -- True if the zero-point, leak and significance gates passed but the order is not corrected
+      because its median sky fit is at or below ``minSkySigma`` times ``faintSkyNoise`` (DY-1975). The sky gate runs
+      before the crowded-slit test, so a crowded slit with a faint sky is flagged only as sky below noise
     """
 
     isCorrected: bool
@@ -94,6 +101,7 @@ class object_wing_estimate:
     slitLossFraction: float
     sourceCentres: np.ndarray
     isCrowdedSlit: bool = False
+    isSkyBelowNoise: bool = False
 
 
 def _slit_bin_layout(slitPosition):
@@ -374,7 +382,17 @@ def _blank_estimate(reason, nPixels):
     )
 
 
-def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, minLeakSigma, isFitted=None):
+def estimate_object_wings(
+    wavelength,
+    slitPosition,
+    flux,
+    skyModel,
+    error,
+    isUsable,
+    minLeakSigma,
+    isFitted=None,
+    minSkySigma=DEFAULT_MIN_SKY_SIGMA,
+):
     """*estimate the object light that the first sky fit absorbed, from the frame's own spatial profile*
 
     **Key Arguments:**
@@ -388,6 +406,8 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
     - ``minLeakSigma`` -- the smallest bias, in units of the flux error of a faint-sky pixel, that is worth correcting
     - ``isFitted`` -- True for the pixels the first sky fit used. The profile and its zero point come from the usable
       pixels among these, so the wing model holds the light the fit saw. Default *None*, which is every usable pixel
+    - ``minSkySigma`` -- an order is corrected only when its median sky fit is above this many times the flux error of
+      a faint-sky pixel (DY-1975). Default ``DEFAULT_MIN_SKY_SIGMA``
 
     **Return:**
 
@@ -451,6 +471,12 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
     isFarFaintSky = isFaintSky & (np.abs(slitPosition - centre) > FAR_SLIT_ARCSEC)
     faintSkyNoise = float(np.median(error[isFarFaintSky if isFarFaintSky.any() else isFaintSky]))
     reason = _no_correction_reason(zeroPoint, biasLevel, biasNoise, faintSkyNoise, minLeakSigma)
+    isSkyBelowNoise = reason == "" and not skyLevel > minSkySigma * faintSkyNoise
+    if isSkyBelowNoise:
+        reason = (
+            f"the sky model median {skyLevel:.3g} is at or below {minSkySigma:g} times the noise of a faint-sky "
+            f"pixel {faintSkyNoise:.3g}"
+        )
     # THE SLIT LOSS AND THE SOURCE COUNT NEED THE WHOLE OBJECT ON EVERY USABLE PIXEL, AND THE PROFILE ABOVE HAS
     # NEITHER THE OBJECT CORE (WHICH THE FIT DID NOT USE) NOR THE BRIGHT-SKY PIXELS
     slitBins, slitProfile, slitNoise = slit_profile(
@@ -476,6 +502,7 @@ def estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsa
         slitLossFraction=_slit_loss_fraction(slitProfile, zeroPoint),
         sourceCentres=sourceCentres,
         isCrowdedSlit=isCrowdedSlit,
+        isSkyBelowNoise=isSkyBelowNoise,
     )
 
 

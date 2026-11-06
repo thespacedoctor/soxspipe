@@ -17,7 +17,9 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
+from astropy.io import fits
 
 import soxspipe.commonutils as commonutils
 import soxspipe.commonutils.toolkit as toolkit
@@ -131,11 +133,11 @@ def test_an_existing_product_refuses_to_run_again_without_the_overwrite_flag(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """An existing product raises `FileExistsError` and prints the product name."""
+    """A complete existing product raises `FileExistsError` and prints the product name."""
     # ARRANGE
     productPath = tmp_path / "reduced" / "synthetic.fits"
     productPath.parent.mkdir(parents=True, exist_ok=True)
-    productPath.write_bytes(b"")
+    fits.HDUList([fits.PrimaryHDU(np.zeros((8, 8), dtype="float32"))]).writeto(productPath)
     _isolate(monkeypatch, tmp_path, productPath=productPath)
 
     # ACT / ASSERT

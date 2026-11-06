@@ -45,6 +45,12 @@ MAD_TO_SIGMA = 1.4826
 # AND A COUNT ABOVE OBJECT_PEAK_COUNT (DY-596)
 OBJECT_MIN_RUN_BINS = 4
 OBJECT_PEAK_COUNT = 0.05
+# THE SLIT-POSITION BIN WIDTH (ARCSEC) OF THE OBJECT SEARCH. BIN EDGES ARE WHOLE MULTIPLES OF IT FROM SLIT POSITION 0,
+# SO THE FLAGGED SLIT EXTENT CANNOT MOVE THEM (DY-1982)
+OBJECT_BIN_WIDTH = 0.1
+# THE NUMBER OF BINS AT EACH END OF THE FLAGGED SLIT EXTENT THAT THE OBJECT SEARCH SKIPS. 6 x 0.1" IS THE OLD 5 BINS OF
+# AN 11"/99 WIDTH (0.55") ROUNDED UP (DY-1982)
+OBJECT_EDGE_MARGIN_BINS = 6
 
 # A VIS ORDER WITH A MEAN PERCENTILE-SMOOTHED FLUX ABOVE THIS (E-) IS TOO BRIGHT TO FIT A SKY MODEL TO (DY-1285)
 BRIGHT_ORDER_SKY_LIMIT = 2500
@@ -62,7 +68,14 @@ LOW_FLAT_REFERENCE_PERCENTILE = 95
 # THE OBJECT-WING CORRECTION SETTINGS USED WHEN A WORKSPACE'S SETTINGS PREDATE THEM (DY-1279)
 DEFAULT_OBJECT_WING_CORRECTION = True
 DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA = 0.03
-# THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE DIVIDES BY
+# THE ARMS THAT REFIT THE SKY FOR A SLIT TILT WHEN A WORKSPACE'S SETTINGS PREDATE THE slit_tilt_refit KEY (DY-2065):
+# NONE, UNTIL THE REAL-DATA A/B IS RULED ON
+SLIT_TILT_REFIT_ARMS = frozenset()
+SLIT_TILT_REFIT_KEY = "slit_tilt_refit"
+# THE SMALLEST FALL IN THE SKY-PIXEL CHI2 FOR WHICH A SLIT-TILT REFIT IS KEPT. TWO FREE COEFFICIENTS LOWER THE CHI2 BY
+# ABOUT 2 BY CHANCE, SO 25 (5 SIGMA) KEEPS ONLY A MEASURED TILT
+MIN_SLIT_TILT_CHI2_DECREASE = 25.0
+# THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE REPORTS THE LEAK AS A SHARE OF
 MIN_LOGGED_SKY_LEVEL = 1e-9
 
 # THE ARMS THAT RESTORE SKYLINE CORES OUTSIDE THE OBJECT WHEN A WORKSPACE'S SETTINGS PREDATE THE
@@ -86,6 +99,20 @@ SKYLINE_CONTINUUM_QUANTILE = 0.2
 SKYLINE_SIGMA = 3.0
 # THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
 SKYLINE_DILATE_SAMPLES = 50
+
+# THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
+# sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML
+ERROR_INFLATION_ARMS = frozenset({"NIR"})
+ERROR_INFLATION_KEY = "sky_error_inflation"
+# THE SAMPLES OF THE ROLLING WINDOW (SORTED BY WAVELENGTH) THAT MEASURES THE SCATTER OF THE SKY-FIT RESIDUALS (DY-1973).
+# A NIR ORDER HAS ABOUT 35 SLIT PIXELS PER COLUMN, SO 100 SAMPLES SPAN ABOUT 3 COLUMNS, THE WIDTH OF A SKYLINE. A WIDER
+# WINDOW IS DOMINATED BY THE QUIET PIXELS AROUND A LINE, AND THE MAD IGNORES THE LINE
+ERROR_INFLATION_WINDOW = 100
+# THE WINDOW IS EVALUATED EVERY ERROR_INFLATION_WINDOW // ERROR_INFLATION_STEPS SAMPLES, AND THE SCATTER BETWEEN THOSE
+# CENTRES IS INTERPOLATED
+ERROR_INFLATION_STEPS = 4
+# THE FEWEST FINITE RESIDUALS THAT GIVE A SCATTER; WITH FEWER THE ERRORS ARE NOT INFLATED
+ERROR_INFLATION_MIN_SAMPLES = 30
 
 
 def _sliding_mean(values, window):
@@ -115,6 +142,52 @@ def _sliding_mean(values, window):
     means = np.mean(np.lib.stride_tricks.sliding_window_view(values, (window,)), axis=1)
     halfWindow = window // 2
     return np.concatenate((np.full(halfWindow, means[0]), means, np.full(halfWindow, means[-1])))
+
+
+def _sky_residual_scatter_factor(wavelength, residual):
+    """*the local scatter of the sky-fit residuals along wavelength, as a factor of at least 1 for each pixel*
+
+    The scatter is ``1.4826 * MAD`` of the residuals in a rolling window of ``ERROR_INFLATION_WINDOW`` samples sorted
+    by wavelength. The MAD is robust, so a few outliers do not set it, but a skyline wider than half the window does.
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- 1D array of the wavelength of every pixel of an order
+    - ``residual`` -- 1D array, the same length, of the sky-fit residual of each pixel in units of its stated error.
+      NaN or infinite for a pixel that must not set the scatter (clipped, or with no error)
+
+    **Return:**
+
+    - ``factor`` -- array the same length as ``wavelength``, never below 1
+        - it is 1 everywhere when fewer than ``ERROR_INFLATION_MIN_SAMPLES`` residuals are finite
+        - an order shorter than the window is measured as one window
+        - a pixel with a non-finite wavelength gets 1
+    """
+    import numpy as np
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    wavelength = np.asarray(wavelength, dtype=float)
+    residual = np.asarray(residual, dtype=float)
+    factor = np.ones(wavelength.size)
+    isMeasured = np.isfinite(wavelength) & np.isfinite(residual)
+    if np.count_nonzero(isMeasured) < ERROR_INFLATION_MIN_SAMPLES:
+        return factor
+
+    byWavelength = np.argsort(wavelength[isMeasured], kind="stable")
+    sortedWavelength = wavelength[isMeasured][byWavelength]
+    sortedResidual = residual[isMeasured][byWavelength]
+    window = min(ERROR_INFLATION_WINDOW, sortedResidual.size)
+    starts = np.arange(0, sortedResidual.size - window + 1, max(window // ERROR_INFLATION_STEPS, 1))
+    starts = np.unique(np.append(starts, sortedResidual.size - window))
+    windows = sliding_window_view(sortedResidual, window)[starts]
+    medians = np.median(windows, axis=1, keepdims=True)
+    scatter = np.maximum(1.0, MAD_TO_SIGMA * np.median(np.abs(windows - medians), axis=1))
+
+    isFiniteWavelength = np.isfinite(wavelength)
+    factor[isFiniteWavelength] = np.interp(
+        wavelength[isFiniteWavelength], sortedWavelength[starts + window // 2], scatter
+    )
+    return factor
 
 
 def _evaluate_sky_spline(wavelength, tck, derivative=False):
@@ -203,12 +276,15 @@ def _object_wing_log_line(order, estimate):
 
     - ``line`` -- the message, framed by newlines because the fit's progress line erases the line above it
     """
-    skyShare = estimate.biasLevel / max(estimate.skyLevel, MIN_LOGGED_SKY_LEVEL) * 100
+    skyText = ""
+    # A SKY AT OR BELOW ZERO HAS NO SHARE TO REPORT (DY-1975)
+    if estimate.skyLevel > MIN_LOGGED_SKY_LEVEL:
+        skyText = f" ({estimate.biasLevel / estimate.skyLevel * 100:0.0f}% OF THE SKY)"
     loss = estimate.slitLossFraction
     lossText = f"ABOUT {loss * 100:0.2f}%" if math.isfinite(loss) else "AN UNKNOWN SHARE"
     return (
         f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
-        f"OBJECT LIGHT ({skyShare:0.0f}% OF THE SKY), REMOVING {lossText} OF THE OBJECT FLUX\n"
+        f"OBJECT LIGHT{skyText}, REMOVING {lossText} OF THE OBJECT FLUX\n"
     )
 
 
@@ -606,6 +682,9 @@ class subtract_sky:
 
         allimageMapOrder, alltck, allKnots = self._fit_sky_to_orders(allimageMapOrder)
 
+        # READ THE SETTING BEFORE ANY ORDER IS WRITTEN, SO A BAD VALUE RAISES WHETHER OR NOT ANY ORDER IS INFLATED
+        isInflatingErrors = self._error_inflation_enabled()
+
         # self.log.print(f'\t{allFluxErrorRatios.mean():0.3f},  {allFluxErrorRatios.std():0.3f},  {np.median(allFluxErrorRatios):0.3f},  {allFluxErrorRatios.max():0.3f},  {allFluxErrorRatios.min():0.3f}, {allFluxErrorRatios.max()-allFluxErrorRatios.min():0.3f},{np.mean(allResidualFloor):0.3f},{totalKnots}')
 
         for o, imageMapOrder, tck, knots in zip(modelledOrderIds, allimageMapOrder, alltck, allKnots, strict=True):
@@ -619,6 +698,8 @@ class subtract_sky:
                         skySubtractedResidualsCCDData,
                     )
                 )
+                if isInflatingErrors:
+                    self._inflate_order_errors(imageMapOrder, skySubtractedCCDData)
                 if self.debug or (
                     o == self.qcPlotOrder and self.recipeSettings["sky-subtraction"]["sky_model_qc_plot"]
                 ):
@@ -712,7 +793,9 @@ class subtract_sky:
         """
         import numpy as np
 
-        isWingCorrectionOn, minLeakSigma = self._object_wing_settings()
+        isWingCorrectionOn, minLeakSigma, minSkySigma = self._object_wing_settings()
+        # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NO SLIT-TILT KEY
+        isSlitTiltRefitOn = self._arm_default_flag(SLIT_TILT_REFIT_KEY, SLIT_TILT_REFIT_ARMS)
 
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         fittedOrders = []
@@ -723,10 +806,14 @@ class subtract_sky:
         totalKnots = 0
         for imageMapOrder in allimageMapOrder:
             # THE FIT SORTS AND WRITES COLUMNS IN PLACE, SO THE REFIT STARTS FROM A COPY OF THE CLIPPED ORDER
-            preFitOrder = imageMapOrder.copy() if isWingCorrectionOn else None
-            fitResult = self.fit_bspline_curve_to_sky(imageMapOrder)
+            preFitOrder = imageMapOrder.copy() if (isWingCorrectionOn or isSlitTiltRefitOn) else None
+            firstFitResult = self.fit_bspline_curve_to_sky(imageMapOrder)
+            fitResult = firstFitResult
             if isWingCorrectionOn:
-                fitResult = self._refit_without_object_wings(preFitOrder, fitResult, minLeakSigma)
+                fitResult = self._refit_without_object_wings(preFitOrder, fitResult, minLeakSigma, minSkySigma)
+            if isSlitTiltRefitOn:
+                wingSettings = (minLeakSigma, minSkySigma) if isWingCorrectionOn else None
+                fitResult = self._refit_with_slit_tilt(preFitOrder, firstFitResult, fitResult, wingSettings)
             imageMapOrder, tck, knots, flux_error_ratio, residualFloor = fitResult
             totalKnots += len(knots)
             fittedOrders.append(imageMapOrder)
@@ -747,6 +834,86 @@ class subtract_sky:
         )
         return fittedOrders, alltck, allKnots
 
+    def _refit_with_slit_tilt(self, preFitOrder, firstFitResult, baselineResult, wingSettings):
+        """*fit the map's slit tilt from an order's skylines and refit the sky on the corrected wavelengths (DY-2065)*
+
+        The residual of the first fit is regressed onto the slit position times the sky model's wavelength derivative
+        (``slit_tilt_model``), over every pixel not clipped as an edge, bad pixel or object. The sky is refitted with
+        each pixel at its corrected wavelength, and then the object-wing correction runs on that refit when it is on.
+        The result is kept only when it lowers the chi2 of those pixels by at least ``MIN_SLIT_TILT_CHI2_DECREASE``
+        against the baseline, the fit the order gets with the refit off. A kept result carries the map wavelengths, so
+        the steps after the sky fit see the same wavelengths with the refit on or off; its spline and knots stay on the
+        corrected wavelengths, so a QC plot of the spline against the map wavelengths is slightly blurred.
+
+        **Key Arguments:**
+
+        - ``preFitOrder`` -- copy of the clipped order dataframe taken before the first fit
+        - ``firstFitResult`` -- the tuple returned by ``fit_bspline_curve_to_sky`` for the first fit
+        - ``baselineResult`` -- the fit tuple the order gets with the refit off
+        - ``wingSettings`` -- ``(minLeakSigma, minSkySigma)`` when the object-wing correction is on, else None
+
+        **Return:**
+
+        - ``fitResult`` -- ``baselineResult`` unless the refit lowers the chi2, else the refit's tuple
+        """
+        import numpy as np
+
+        from soxspipe.commonutils.slit_tilt_model import corrected_wavelength, estimate_slit_tilt
+
+        firstFit, tck = firstFitResult[0], firstFitResult[1]
+        order = int(preFitOrder["order"].values[0])
+        # THE FIT SORTED ITS ORDER BY WAVELENGTH; THE INDEX STILL MATCHES THE COPY TAKEN BEFORE IT. THE FIT'S RESIDUAL
+        # CLIPPING REMOVES THE SKYLINE FLANKS A TILT MISPLACES, SO THE TILT IS MEASURED ON EVERY SKY PIXEL INSTEAD
+        clipFlags = firstFit[["flagged_edge_clipped", "flagged_bad_pixel_clipped", "flagged_object_clipped"]]
+        isSky = ~clipFlags.reindex(preFitOrder.index, fill_value=True).any(axis=1).to_numpy(dtype=bool)
+        wavelength = preFitOrder["wavelength"].to_numpy(dtype=float)
+        slitPosition = preFitOrder["slit_position"].to_numpy(dtype=float)
+        error = preFitOrder["error"].to_numpy(dtype=float)
+        # THE CHI2 IS SCORED ON THE PIXELS THE TILT CAN BE MEASURED ON: A ZERO OR NON-FINITE ERROR HAS NO WEIGHT
+        isSky &= np.isfinite(error) & (error > 0)
+        try:
+            estimate = estimate_slit_tilt(
+                wavelength,
+                slitPosition,
+                preFitOrder["flux"].to_numpy(dtype=float),
+                firstFit["sky_model"].reindex(preFitOrder.index).to_numpy(dtype=float),
+                _evaluate_sky_spline(wavelength, tck, derivative=True),
+                error,
+                isSky,
+            )
+        except ValueError as exc:
+            self.log.warning(f"order {order}: the slit-tilt refit was skipped, so the fit without it is kept ({exc})")
+            return baselineResult
+
+        refitInput = preFitOrder.copy()
+        refitInput["wavelength"] = corrected_wavelength(estimate, wavelength, slitPosition)
+        try:
+            refitResult = self.fit_bspline_curve_to_sky(refitInput.copy())
+        except ValueError as exc:
+            self.log.warning(f"order {order}: the slit-tilt refit failed, so the fit without it is kept ({exc})")
+            return baselineResult
+        if wingSettings is not None:
+            refitResult = self._refit_without_object_wings(refitInput, refitResult, *wingSettings)
+
+        def sky_chi2(fit):
+            # BOTH FITS ARE SCORED ON THE SAME SKY PIXELS
+            residual = (preFitOrder["flux"] - fit["sky_model"].reindex(preFitOrder.index)) / preFitOrder["error"]
+            return float(np.nansum(residual.to_numpy(dtype=float)[isSky] ** 2))
+
+        baselineChi2, refitChi2 = sky_chi2(baselineResult[0]), sky_chi2(refitResult[0])
+        if not baselineChi2 - refitChi2 >= MIN_SLIT_TILT_CHI2_DECREASE:
+            self.log.print(
+                f"\n\tORDER {order}: SLIT-TILT REFIT NOT KEPT - CHI2 {baselineChi2:0.0f} TO {refitChi2:0.0f}\n"
+            )
+            return baselineResult
+        refitOrder = refitResult[0]
+        refitOrder["wavelength"] = preFitOrder["wavelength"].reindex(refitOrder.index)
+        self.log.print(
+            f"\n\tORDER {order}: SLIT-TILT REFIT C0 {estimate.c0:0.3e}, C1 {estimate.c1:0.3e} NM/ARCSEC, "
+            f"CHI2 {baselineChi2:0.0f} TO {refitChi2:0.0f}\n"
+        )
+        return refitResult
+
     def _object_wing_settings(self):
         """*the object-wing correction switch and leak gate, with defaults for older workspace settings (DY-1279)*
 
@@ -755,7 +922,11 @@ class subtract_sky:
         - ``isOn`` -- True when the object-wing correction runs
         - ``minLeakSigma`` -- an order is corrected only when the object light in its sky model is above this many
           times the flux error of a faint-sky pixel (DY-1964)
+        - ``minSkySigma`` -- an order is corrected only when the median of its sky model is above this many times the
+          same flux error (DY-1975)
         """
+        from soxspipe.commonutils.object_wing_model import DEFAULT_MIN_SKY_SIGMA
+
         skySettings = self.recipeSettings["sky-subtraction"]
         # WORKSPACE SETTINGS ARE COPIED ONCE AT SETUP, SO AN OLDER WORKSPACE HAS NEITHER KEY
         isOn = bool(skySettings.get("object_wing_correction", DEFAULT_OBJECT_WING_CORRECTION))
@@ -766,9 +937,14 @@ class subtract_sky:
                 "the sky-subtraction setting object_wing_min_leak_sigma must be a finite number >= 0, "
                 f"got {minLeakSigma}"
             )
-        return isOn, minLeakSigma
+        minSkySigma = float(skySettings.get("object_wing_min_sky_sigma", DEFAULT_MIN_SKY_SIGMA))
+        if not (math.isfinite(minSkySigma) and minSkySigma >= 0):
+            raise ValueError(
+                f"the sky-subtraction setting object_wing_min_sky_sigma must be a finite number >= 0, got {minSkySigma}"
+            )
+        return isOn, minLeakSigma, minSkySigma
 
-    def _refit_without_object_wings(self, preFitOrder, fitResult, minLeakSigma):
+    def _refit_without_object_wings(self, preFitOrder, fitResult, minLeakSigma, minSkySigma):
         """*estimate the object light in an order's first sky fit and, if it is significant, refit without it (DY-1279)*
 
         The object's spatial profile, with its zero point at its mean level more than 3 arcsec from the object, gives a
@@ -781,6 +957,7 @@ class subtract_sky:
         - ``preFitOrder`` -- copy of the clipped order dataframe taken before the first fit
         - ``fitResult`` -- the tuple returned by ``fit_bspline_curve_to_sky`` for the first fit
         - ``minLeakSigma`` -- the ``object_wing_min_leak_sigma`` setting
+        - ``minSkySigma`` -- the ``object_wing_min_sky_sigma`` setting
 
         **Return:**
 
@@ -808,12 +985,20 @@ class subtract_sky:
         # THE UPPER-ONLY CLIP KEEPS THE BRIGHTER WING PIXELS OUT OF THE FIT, SO THE PROFILE USES ONLY THE PIXELS IT USED
         isFitted = ~firstFit["flagged_all_clipped"].reindex(preFitOrder.index, fill_value=True).to_numpy(dtype=bool)
         estimate = estimate_object_wings(
-            wavelength, slitPosition, flux, skyModel, error, isUsable, minLeakSigma, isFitted=isFitted
+            wavelength,
+            slitPosition,
+            flux,
+            skyModel,
+            error,
+            isUsable,
+            minLeakSigma,
+            isFitted=isFitted,
+            minSkySigma=minSkySigma,
         )
         order = int(preFitOrder["order"].values[0])
         if not estimate.isCorrected:
-            # A CROWDED-SLIT SKIP COULD BE MISTAKEN FOR A MISSED CORRECTION, SO IT IS PRINTED (DY-1933)
-            if estimate.isCrowdedSlit:
+            # A CROWDED-SLIT OR FAINT-SKY SKIP COULD BE MISTAKEN FOR A MISSED CORRECTION, SO IT IS PRINTED
+            if estimate.isCrowdedSlit or estimate.isSkyBelowNoise:
                 self.log.print(f"\n\tORDER {order}: NO OBJECT-WING CORRECTION - {estimate.reason.upper()}\n")
             else:
                 self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")
@@ -2843,6 +3028,68 @@ class subtract_sky:
             runPeak = 0.0
         return objectRanges
 
+    def _object_bin_edges(self, minSlitPosition, maxSlitPosition):
+        """*the slit-position bin edges of the object search, on a fixed grid anchored at slit position 0*
+
+        **Key Arguments:**
+
+        - ``minSlitPosition`` -- the smallest flagged slit position
+        - ``maxSlitPosition`` -- the largest flagged slit position
+
+        **Return:**
+
+        - ``binEdges`` -- whole multiples of ``OBJECT_BIN_WIDTH``
+            - the first is the multiple at or below ``minSlitPosition``
+            - the last is the multiple above ``maxSlitPosition``
+            - a change of the extent inside its outer bin moves no edge
+
+        **Usage:**
+
+        ```python
+        bins = self._object_bin_edges(-5.04, 4.9)
+        ```
+        """
+        import numpy as np
+
+        firstBin = int(np.floor(minSlitPosition / OBJECT_BIN_WIDTH))
+        lastBin = int(np.floor(maxSlitPosition / OBJECT_BIN_WIDTH)) + 1
+        # THE DIVISION AND THE MULTIPLICATION ROUND DIFFERENTLY, SO THE FIRST EDGE CAN LAND ABOVE THE MINIMUM. THE LAST
+        # EDGE CANNOT LAND BELOW THE MAXIMUM BECAUSE OF THE EXTRA BIN ADDED TO lastBin
+        if firstBin * OBJECT_BIN_WIDTH > minSlitPosition:
+            firstBin -= 1
+        return np.arange(firstBin, lastBin + 1) * OBJECT_BIN_WIDTH
+
+    def _normalised_object_counts(self, slitPositions):
+        """*the flagged pixel counts per slit-position bin of the object search, one per bin for a uniform distribution*
+
+        **Key Arguments:**
+
+        - ``slitPositions`` -- the slit positions of the flagged pixels; positions that are not finite are ignored
+
+        **Return:**
+
+        - ``binEdges`` -- the bin edges from ``_object_bin_edges``
+        - ``counts`` -- a pandas series of the counts, divided by their total and multiplied by the number of bins
+            - they sum to the number of bins
+            - both are empty when no finite slit position is flagged
+
+        **Usage:**
+
+        ```python
+        bins, counts = self._normalised_object_counts(allimageMapOrder["slit_position"])
+        ```
+        """
+        import numpy as np
+        import pandas as pd
+
+        positions = np.asarray(slitPositions, dtype=float)
+        positions = positions[np.isfinite(positions)]
+        if not len(positions):
+            return np.array([]), pd.Series(dtype=float)
+        binEdges = self._object_bin_edges(positions.min(), positions.max())
+        counts = np.histogram(positions, bins=binEdges)[0]
+        return binEdges, pd.Series(counts / counts.sum() * (len(binEdges) - 1))
+
     def clip_object_slit_positions(self, order_dataframes, aggressive=False):
         """*clip out pixels flagged as an object*
 
@@ -2880,32 +3127,16 @@ class subtract_sky:
         noise_rolling_window_size = self.recipeSettings["sky-subtraction"]["noise_rolling_window_size"]
 
         if aggressive:
-            # BIN FLAGGED PIXEL COUNTS INTO DISCRETE SLIT-POSITION RANGES
-            nbins = 100
-            minsp = allimageMapOrder["slit_position"].min()
-            maxsp = allimageMapOrder["slit_position"].max()
-            bins = np.linspace(minsp, maxsp, nbins)
-            result = allimageMapOrder["slit_position"].value_counts(bins=bins, sort=False, normalize=True) * nbins
+            # BIN FLAGGED PIXEL COUNTS INTO DISCRETE SLIT-POSITION RANGES ON A FIXED GRID (DY-1982)
+            bins, result = self._normalised_object_counts(allimageMapOrder["slit_position"])
+            object_ranges = []
+            if len(result):
+                # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
+                result -= result.median()
+                result -= result.abs().median()
 
-            # REMOVE MEDIAN x 3 -- ONLY OBJECTS SHOULD REMAIN POSITIVE IN COUNTS
-            result -= result.median()
-            result -= result.abs().median()
-            # result -= result.abs().median()
-
-            # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
-            edges = int(nbins / 20)
-            object_ranges = self._object_slit_ranges(result.to_numpy(), bins, edges)
-
-            if 1 == 0:
-                import matplotlib.pyplot as plt
-
-                self.log.print(object_ranges)
-                width = (maxsp - minsp) / nbins
-                fig, ax = plt.subplots()
-                bins = bins[:-1]
-                rects1 = ax.bar(bins - width / 2, result, width, label="count")
-                fig.tight_layout()
-                plt.show()
+                # AVOID EDGES WHEN SELECTING OBJECT SLIT-POSITIONS
+                object_ranges = self._object_slit_ranges(result.to_numpy(), bins, OBJECT_EDGE_MARGIN_BINS)
 
         # READ THE SETTING ON EVERY PATH, SO A BAD VALUE RAISES WHETHER OR NOT ANYTHING IS RESTORED (DY-1972)
         isRestoreEnabled = self._restore_skyline_cores_enabled()
@@ -2981,23 +3212,92 @@ class subtract_sky:
         self.log.debug("completed the ``clip_object_slit_positions`` method")
         return order_dataframes
 
+    def _arm_default_flag(self, key, defaultArms):
+        """*a boolean sky-subtraction setting, with a default by arm for a workspace whose settings predate the key*
+
+        **Key Arguments:**
+
+        - ``key`` -- the name of the ``sky-subtraction`` setting
+        - ``defaultArms`` -- the arms (upper case) for which the setting is True when the key is absent
+
+        **Return:**
+
+        - ``isOn`` -- the value of the setting
+            - the value must be a bool: any other value (a quoted ``"False"``, a number, null) raises a ``ValueError``
+            - when the key is absent it is True for the arms in ``defaultArms`` and False for the rest
+        """
+        skySettings = self.recipeSettings["sky-subtraction"]
+        if key not in skySettings:
+            return self.arm.upper() in defaultArms
+        isOn = skySettings[key]
+        if not isinstance(isOn, bool):
+            raise ValueError(f"the sky-subtraction setting `{key}` must be true or false, not {isOn!r}")
+        return isOn
+
     def _restore_skyline_cores_enabled(self):
         """*whether skyline cores outside the object are restored to the sky fit (DY-1972)*
 
         **Return:**
 
-        - ``isOn`` -- the ``restore_skyline_cores_outside_object`` sky-subtraction setting
-            - the value must be a bool: any other value (a quoted ``"False"``, a number, null) raises a ``ValueError``
-            - when the key is absent (a workspace settings file that predates it) it is True for the arms in
-              ``RESTORE_SKYLINE_CORES_ARMS`` (NIR) and False for the rest
+        - ``isOn`` -- the ``restore_skyline_cores_outside_object`` sky-subtraction setting, True by default for the
+          arms in ``RESTORE_SKYLINE_CORES_ARMS`` (NIR). See ``_arm_default_flag``
         """
-        skySettings = self.recipeSettings["sky-subtraction"]
-        if RESTORE_SETTING_KEY not in skySettings:
-            return self.arm.upper() in RESTORE_SKYLINE_CORES_ARMS
-        isOn = skySettings[RESTORE_SETTING_KEY]
-        if not isinstance(isOn, bool):
-            raise ValueError(f"the sky-subtraction setting `{RESTORE_SETTING_KEY}` must be true or false, not {isOn!r}")
-        return isOn
+        return self._arm_default_flag(RESTORE_SETTING_KEY, RESTORE_SKYLINE_CORES_ARMS)
+
+    def _error_inflation_enabled(self):
+        """*whether the sky-subtracted errors are inflated by the sky-residual scatter (DY-1973)*
+
+        **Return:**
+
+        - ``isOn`` -- the ``sky_error_inflation`` sky-subtraction setting, True by default for the arms in
+          ``ERROR_INFLATION_ARMS`` (NIR). See ``_arm_default_flag``
+        """
+        return self._arm_default_flag(ERROR_INFLATION_KEY, ERROR_INFLATION_ARMS)
+
+    def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):
+        """*multiply the uncertainty of every pixel of an order by the local scatter of its sky-fit residuals (DY-1973)*
+
+        The sky-subtracted uncertainty is the object frame's, so it carries no sky-model term, and a systematic skyline
+        residual enters the extraction with error bars that are too small. The residual is
+        ``(flux - sky_model) / error`` over the pixels the sky fit used. Its scatter is measured along wavelength by
+        ``_sky_residual_scatter_factor``, and never lowers an error.
+
+        **Key Arguments:**
+
+        - ``imageMapOrderDF`` -- the fitted order dataframe with the ``wavelength``, ``flux``, ``error``,
+          ``sky_model`` and ``flagged_all_clipped`` columns
+        - ``skySubtractedCCDData`` -- the sky-subtracted frame. Its uncertainty is updated in place.
+
+        **Return:**
+
+        - ``factor`` -- the factor applied to each pixel of the order, in the order of ``imageMapOrderDF``
+        """
+        import numpy as np
+
+        error = imageMapOrderDF["error"].to_numpy(dtype=float)
+        isUsed = ~imageMapOrderDF["flagged_all_clipped"].eq(True).to_numpy() & np.isfinite(error) & (error > 0)
+        # THE OBJECT-WING REFIT FITTED THE SKY TO THE FLUX MINUS THE WING MODEL, SO THE WINGS ARE NOT SKY RESIDUAL
+        wings = (
+            imageMapOrderDF["object_wing_model"].to_numpy(dtype=float)
+            if "object_wing_model" in imageMapOrderDF
+            else 0.0
+        )
+        with np.errstate(divide="ignore", invalid="ignore"):
+            residual = (
+                imageMapOrderDF["flux"].to_numpy(dtype=float)
+                - wings
+                - imageMapOrderDF["sky_model"].to_numpy(dtype=float)
+            ) / error
+        factor = _sky_residual_scatter_factor(
+            imageMapOrderDF["wavelength"].to_numpy(dtype=float), np.where(isUsed, residual, np.nan)
+        )
+        rows, columns = self._detector_rows_and_columns(imageMapOrderDF)
+        skySubtractedCCDData.uncertainty.array[rows, columns] *= factor
+        self.log.debug(
+            f"order {imageMapOrderDF['order'].iloc[0]} errors inflated by a median {np.median(factor):0.2f} "
+            f"(maximum {factor.max():0.2f})"
+        )
+        return factor
 
     def _restore_skyline_cores_outside_object(self, imageMapOrderDF, objectRanges):
         """*release the skyline pixels the pre-fit clip flagged as object that lie outside every object slit range*

@@ -752,8 +752,8 @@ def test_the_global_fit_first_pass_measures_every_order_exactly_as_the_per_order
     assert onShifts == pytest.approx(offShifts, abs=0)
 
 
-def test_the_global_fit_tight_matching_receives_the_isolated_catalogue_lines(log, tmp_path, monkeypatch):
-    # ARRANGE: THE FIRST LINE OF EVERY ORDER IS A DOUBLET, LISTED AS TWO ISOLATED LINES
+def test_the_global_fit_tight_matching_receives_each_doublet_as_one_merged_line(log, tmp_path, monkeypatch):
+    # ARRANGE: THE FIRST LINE OF EVERY ORDER IS A DOUBLET, LISTED AS TWO ISOLATED LINES (DY-1974)
     extractor = build_catalogue_extractor(log, tmp_path, blendedFirstLine=True)
     calls = _spy_global_fit(monkeypatch)
 
@@ -762,7 +762,11 @@ def test_the_global_fit_tight_matching_receives_the_isolated_catalogue_lines(log
 
     # ASSERT
     for order, lines in calls[0]["orderLines"].items():
-        assert len(lines.catalogueNm) == len(catalogue_nm(order)) + 1
+        expected = catalogue_nm(order).copy()
+        expected[0] += BLEND_GAP_NM / 2
+        assert lines.catalogueNm.tolist() == pytest.approx(sorted(expected))
+        # A MERGED LINE MAY BE MATCHED ON EITHER COMPONENT, A SINGLE LINE ONLY AT THE ORDER'S TOLERANCE
+        assert lines.halfWidthNm.tolist() == pytest.approx([BLEND_GAP_NM / 2] + [0.0] * (len(expected) - 1))
 
 
 def test_the_global_fit_snr_gate_runs_on_the_isolated_catalogue_lines(log, tmp_path, monkeypatch):
@@ -785,17 +789,17 @@ def test_the_global_fit_snr_gate_runs_on_the_isolated_catalogue_lines(log, tmp_p
     assert set(seen) == {()}
 
 
-def test_a_doublet_peak_is_matched_once_not_to_both_components(log, tmp_path, monkeypatch):
-    # ARRANGE: THE FIRST SKY LINE OF EVERY ORDER IS A BLEND HALFWAY BETWEEN TWO ISOLATED CATALOGUE COMPONENTS
+def test_a_doublet_peak_is_matched_to_the_centroid_of_its_two_components(log, tmp_path, monkeypatch):
+    # ARRANGE: THE FIRST SKY LINE OF EVERY ORDER IS A BLEND HALFWAY BETWEEN TWO ISOLATED CATALOGUE COMPONENTS (DY-1974)
     extractor = build_catalogue_extractor(log, tmp_path, blendedFirstLine=True)
     calls = _spy_global_fit(monkeypatch)
 
     # ACT
     _tune(extractor, build_orders(blendedFirstLine=True))
 
-    # ASSERT: 11 CATALOGUE LINES BUT 10 PEAKS, SO THE FIT GETS ONE ROW PER PEAK. ONLY ONE COMPONENT IS MATCHED
+    # ASSERT: 11 CATALOGUE LINES BUT 10 PEAKS, SO THE FIT GETS ONE ROW PER PEAK, MATCHED AT THE BLEND'S CENTRE
     lines = calls[0]["result"].lines
     assert len(lines) == len(ORDERS) * len(catalogue_nm(ORDERS[0]))
     for order, group in lines.groupby("order"):
-        components = [catalogue_nm(order)[0], catalogue_nm(order)[0] + BLEND_GAP_NM]
-        assert sum(np.isclose(group["catalogueNm"], c).any() for c in components) == 1
+        centroid = catalogue_nm(order)[0] + BLEND_GAP_NM / 2
+        assert np.isclose(group["catalogueNm"], centroid).sum() == 1

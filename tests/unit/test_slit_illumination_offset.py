@@ -444,7 +444,7 @@ def test_skyline_profile_is_unchanged_far_from_a_bright_continuum_object(tmp_pat
 calls = []
 
 
-def _measure(scene, tmp_path, log, monkeypatch, *, frame=None, masterFlat="scene", binx=1, biny=1, **kwargs):
+def _measure(scene, tmp_path, log, monkeypatch, *, frame=None, masterFlat="scene", binx=1, biny=1, arm="VIS", **kwargs):
     """Run ``measure_slit_illumination`` on a scene with the skyline table patched to the scene's lines."""
     calls.clear()
 
@@ -459,7 +459,7 @@ def _measure(scene, tmp_path, log, monkeypatch, *, frame=None, masterFlat="scene
         scene.masterFlat if isinstance(masterFlat, str) else masterFlat,
         scene.twoDMapPath,
         pipeline_settings(tmp_path),
-        "VIS",
+        arm,
         binx,
         biny,
         **kwargs,
@@ -678,7 +678,7 @@ def test_carries_the_overlap_margin_for_the_mask_that_follows(tmp_path, log, mon
     default = _measure(scene, tmp_path, log, monkeypatch)
     custom = _measure(scene, tmp_path, log, monkeypatch, illuminationSettings={"overlap-margin-arcsec": 0.5})
 
-    assert default.overlapMarginArcsec == pytest.approx(0.3)
+    assert default.overlapMarginArcsec == pytest.approx(0.45)
     assert custom.overlapMarginArcsec == pytest.approx(0.5)
 
 

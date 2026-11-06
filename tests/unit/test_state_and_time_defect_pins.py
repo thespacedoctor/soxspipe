@@ -77,11 +77,6 @@ def _recipe_from(settings: dict[str, Any], recipeName: str, arm: str, log: Any) 
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1694 (DY-37 S1): get_recipe_settings copies arm keys into the caller's shared recipe settings block",
-)
 def test_a_nir_recipe_does_not_hand_its_arm_settings_to_a_later_vis_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -109,14 +104,6 @@ def test_a_nir_recipe_does_not_hand_its_arm_settings_to_a_later_vis_recipe(
     assert settings == snapshot, "the caller's settings dictionary was changed"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1694 (DY-37 S1): a recipe's in-place settings change (soxs_stare sky fallback) reaches the next recipe; "
-        "pins aliasing of the returned settings block"
-    ),
-)
 def test_a_recipe_turning_sky_subtraction_off_does_not_turn_it_off_for_the_next_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -266,13 +253,6 @@ def test_a_complete_product_still_blocks_a_rerun_without_overwrite(
         recipe._resolve_product_path(log, str(tmp_path / "sof" / f"{I1_SOF_NAME}.sof"), False, False)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileExistsError,
-    reason=(
-        "DY-1697 (DY-37 I1): a truncated product from an interrupted run is skipped as 'already exists' on every rerun"
-    ),
-)
 def test_a_truncated_product_from_an_interrupted_run_is_not_treated_as_an_existing_product(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -284,6 +264,23 @@ def test_a_truncated_product_from_an_interrupted_run_is_not_treated_as_an_existi
 
     # ASSERT: THE RERUN PROCEEDS AND WILL WRITE THE PRODUCT AT THE SAME PATH
     assert recipe.productPath == str(productPath)
+
+
+def test_a_truncated_product_is_reported_by_name_as_being_replaced(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, productPath = _product_recipe(tmp_path, monkeypatch, truncate=True)
+    warnings: list[str] = []
+    recorder = SimpleNamespace(warning=warnings.append)
+
+    # ACT
+    recipe._resolve_product_path(recorder, str(tmp_path / "sof" / f"{I1_SOF_NAME}.sof"), False, False)
+
+    # ASSERT
+    assert len(warnings) == 1
+    assert productPath.name in warnings[0]
+    assert "being replaced" in warnings[0]
 
 
 # ---------------------------------------------------------------------------
@@ -302,11 +299,6 @@ def _session_database(path: Path) -> None:
         conn.execute("insert into product_frames (sof) values ('A.sof')")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1698 (DY-37 I2): the QC-range reconciliation turns an unfinished recipe's 'fail' into 'pass'",
-)
 def test_a_recipe_that_never_reached_clean_up_is_not_marked_pass_by_the_qc_range_reconciliation(
     log: Any, tmp_path: Path
 ) -> None:
@@ -336,6 +328,30 @@ def test_a_recipe_that_never_reached_clean_up_is_not_marked_pass_by_the_qc_range
     assert status != "pass"
 
 
+def test_a_recipe_that_finished_failing_on_qc_range_is_passed_when_the_ranges_now_accept_its_value(
+    tmp_path: Path,
+) -> None:
+    # ARRANGE: A FINISHED RUN LEFT `fail` AND A FAILING QC ROW (VALUE 5.0, THEN-RANGE 0 TO 1)
+    _session_database(tmp_path / "soxspipe.db")
+    with contextlib.closing(sqlite3.connect(tmp_path / "soxspipe.db")) as conn, conn:
+        conn.execute("update product_frames set status_base = 'fail' where sof = 'A.sof'")
+        conn.execute(
+            "insert into quality_control (soxspipe_recipe, sof_name, qc_name, qc_value, qc_value_min, qc_value_max, "
+            "qc_flag, qc_order) values ('soxs-mflat', 'A.sof', 'FLUX MEDIAN', '5.0', 0, 1, 'fail', '-1')"
+        )
+    widenedRanges = {"soxs-mflat": {"qc-acceptable-ranges": {"flux-median": [0, 10]}}}
+
+    # ACT: THE NEXT `soxspipe prep` RUNS WITH THE WIDENED RANGE
+    organiser = SimpleNamespace(sessionId=SESSION, settings=widenedRanges)
+    with contextlib.closing(sqlite3.connect(tmp_path / "soxspipe.db")) as conn, conn:
+        for sqlQuery, sqlParams in real_data_organiser._qc_acceptable_range_queries(organiser):
+            conn.execute(sqlQuery, sqlParams)
+        status = conn.execute("select status_base from product_frames where sof = 'A.sof'").fetchone()[0]
+
+    # ASSERT
+    assert status == "pass"
+
+
 # ---------------------------------------------------------------------------
 # I3: A PREVIOUSLY FAILED RECIPE THAT NOW PASSES NEVER REFRESHES THE DOWNSTREAM SOFS
 # ---------------------------------------------------------------------------
@@ -357,13 +373,6 @@ class _RecordingConnection:
         return None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1699 (DY-37 I3): clean_up's 'previously failed, now passing' branch can never run (passToFail needs 'pass')"
-    ),
-)
 def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -375,8 +384,9 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     recipe.currentSession = SESSION
     recipe.sofName = "A"
     recipe.workspaceRootPath = str(tmp_path)
-    recipe.outDir = str(tmp_path / "intermediate")
-    Path(recipe.outDir).mkdir()
+    recipe.settings = {"workspace-root-dir": str(tmp_path)}
+    recipe.outDir = str(tmp_path / "tmp" / "intermediate")
+    Path(recipe.outDir).mkdir(parents=True)
     recipe.conn = _RecordingConnection()
     refreshes: list[object] = []
 
@@ -396,8 +406,7 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
     recipe.clean_up()
 
     # ASSERT: EXACTLY ONE REFRESH, AND NOT A FAILURE REFRESH
-    assert len(refreshes) == 1, f"expected one session refresh, got {refreshes!r}"
-    assert refreshes[0] is not True, "the refresh was issued as a failure refresh"
+    assert refreshes == [False]
 
 
 # ---------------------------------------------------------------------------
@@ -405,24 +414,15 @@ def test_a_previously_failed_recipe_that_now_passes_refreshes_the_session(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1700 (DY-37 I4): only the multiprocess reducer removes <workspace>/tmp/, so interrupted scratch piles up; "
-        "related to DY-36 L1 (raise path, tests/unit/test_resource_leak_pins.py); file together, fix must clear "
-        "both pins"
-    ),
-)
 def test_the_serial_reducer_removes_scratch_left_by_an_interrupted_recipe(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Pin I4: the serial reducer must clear scratch an interrupted recipe left in <workspace>/tmp/.
 
-    Related to DY-36 L1 (raise path, tests/unit/test_resource_leak_pins.py); file together, fix must clear both pins.
+    The raise path is pinned by DY-36 L1 (tests/unit/test_resource_leak_pins.py).
     """
     # ARRANGE
-    orphan = tmp_path / "tmp" / "tmpinterrupted"
+    orphan = tmp_path / "tmp" / "tmpa1b2c3d4"
     orphan.mkdir(parents=True)
     (orphan / "SOXS.2024-01-02T03:04:05.678_pre.fits").write_bytes(b"\0" * 2880)
 
@@ -489,8 +489,9 @@ def test_a_later_error_does_not_land_in_a_finished_recipes_error_log(tmp_path: P
         recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
         recipe.status = None
         recipe.conn = None
-        recipe.outDir = str(tmp_path / "intermediate")
-        Path(recipe.outDir).mkdir()
+        recipe.settings = {"workspace-root-dir": str(tmp_path)}
+        recipe.outDir = str(tmp_path / "tmp" / "intermediate")
+        Path(recipe.outDir).mkdir(parents=True)
         recipeHandlers = list(recipe.log.handlers)
         if not any(isinstance(handler, logging.FileHandler) for handler in recipeHandlers):
             pytest.fail("add_recipe_logger attached no file handlers")

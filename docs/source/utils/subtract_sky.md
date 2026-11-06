@@ -65,7 +65,24 @@ The bspline fit is used to estimate the sky flux level in every pixel in the ori
 The uncertainties written with the products are not yet a full error budget:
 
 - The `ERRS` extension of the sky-model product (`SKYMODEL`) is a copy of the object frame's uncertainty. It is not the uncertainty of the model.
-- The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model.
+- The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model. For the NIR arm, the pipeline scales it by the scatter of the sky-fit residuals (see [Sky-residual error inflation](#sky-residual-error-inflation)).
+
+### Sky-residual error inflation
+
+The sky model is a bspline in wavelength only. It can not follow every detail of a bright skyline, so the sky-subtracted frame keeps a residual at each skyline. The residual is the same in all pixels of the slit at one wavelength. The object frame's uncertainty has no term for this residual. The optimal extraction therefore gives each skyline residual error bars that are too small, and the residual shows in the spectrum as a spike many times larger than its stated error.
+
+To correct the error bars, the pipeline measures the residual of each order after the sky fit:
+
+1. For each pixel that the sky fit used, it computes r = (flux − sky model) / error. Clipped pixels, such as pixels of the object or of cosmic rays, are not used.
+2. It sorts the pixels by wavelength and measures the scatter of r in a rolling window of 100 pixels. The scatter is 1.4826 times the median absolute deviation (MAD) of r. The MAD is not changed by a few outliers.
+3. The factor k(λ) is the larger of 1 and this scatter. The pipeline never makes an error smaller.
+4. It multiplies the `ERRS` value of every pixel of the order by k(λ).
+
+Where the sky model fits well, r is noise with a scatter of 1 and the errors do not change. At a skyline with a residual, r has a larger scatter and the errors grow by the same factor.
+
+The inflation changes only the `ERRS` extension of the sky-subtracted product (`SKYSUB`). The data, the sky model and the residuals product are not changed. An order with fewer than 30 usable pixels is not inflated, and neither is an order that is too bright to be modelled.
+
+The `sky_error_inflation` setting in the `sky-subtraction` block of the stare recipe settings turns the inflation on or off. It must be `True` or `False`. A workspace settings file that does not have the key uses the default: on for the NIR arm and off for the VIS arm. The VIS default is off because its effect on the VIS arm is not yet measured.
 
 ### Object-wing correction
 
@@ -73,13 +90,13 @@ The sky model is a bspline in wavelength only. Light from the wings of a bright 
 
 After the first fit of an order, the pipeline measures the spatial profile of the residual (the flux minus the first sky fit). It bins the profile in 0.25 arcsec slit bins, in units of the object's core spectrum. It uses only the pixels that the first fit used, not the clipped pixels. Of these, it uses only the pixels whose sky model is at or below the order's median sky, because a slit illumination error grows with the sky and the object light does not. The pipeline takes the profile more than 3 arcsec from the object to hold no object light. The mean of the profile there, on both sides of the object, is the zero point of the profile.
 
-If the zero point is negative, the first fit holds object light. The pipeline corrects the order when this light is above `object_wing_min_leak_sigma` times the noise of a faint-sky pixel (default 0.03) and above 5 times its own noise. It then subtracts the wing model from the sky pixels and refits the sky. The flux in the output is not changed, because only the sky model changes. The log reports each corrected order. An order that fails either test keeps the first fit.
+If the zero point is negative, the first fit holds object light. The pipeline corrects the order when this light is above `object_wing_min_leak_sigma` times the noise of a faint-sky pixel (default 0.03) and above 5 times its own noise. It then subtracts the wing model from the sky pixels and refits the sky. The flux in the output is not changed, because only the sky model changes. The log reports each corrected order. An order that fails any of these tests keeps the first fit. The pipeline also does not correct an order whose sky is too faint: the median of its sky model must be above `object_wing_min_sky_sigma` times the same noise (default 1). In a near-zero-sky NIR order the correction would drive the sky model negative. The log names such an order and the reason.
 
 This method cannot tell light that is constant along the whole slit from sky. It assumes that the slit more than 3 arcsec from the object has no object light. Where the object's wings reach further, for example on a wide slit with a very bright star, the light beyond 3 arcsec stays in the sky model. Before DY-1964 the zero point was the faintest 1 arcsec of the profile. That choice picked a dim slit end or the low side of a sloping profile, so the correction took too much light out of the sky model.
 
 On a crowded slit that assumption fails, because light from the other sources fills the far slit. So the pipeline also counts the sources in the profile of all usable pixels. A source is a peak whose prominence is more than 5 times the noise of its bin and more than 0.2 of the profile's maximum above its median, and that is at least 1.5 arcsec from a brighter source. If an order passes the two tests above but its profile shows more than one source, the pipeline does not correct it, and the log names the order and the slit positions of the sources.
 
-To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on and `object_wing_min_leak_sigma` is 0.03. A workspace settings file made before DY-1964 may still hold `object_wing_gate_fraction`. The pipeline ignores it.
+To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on, `object_wing_min_leak_sigma` is 0.03 and `object_wing_min_sky_sigma` is 1. A workspace settings file made before DY-1964 may still hold `object_wing_gate_fraction`. The pipeline ignores it.
 
 ### Utility API
 

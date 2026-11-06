@@ -244,7 +244,7 @@ def test_the_constructor_establishes_the_attributes_the_reduction_reads(
     assert recipe.supplementaryInput == {}
     assert recipe.imageType == "OBJECT"
     assert recipe.recipeName == "soxs-stare"
-    assert recipe.recipeSettings is recipe.settings["soxs-stare"]
+    assert recipe.recipeSettings is not recipe.settings["soxs-stare"]
     assert recipe.recipeSettings == STARE_SETTINGS
     assert recipe.sofName == "2024-01-02_stare"
     assert recipe.filenameTemplate == "2024-01-02_stare.fits"

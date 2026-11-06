@@ -152,6 +152,8 @@ soxs-stare:
         object_wing_correction: True
         # CORRECT AN ORDER ONLY WHEN THE OBJECT LIGHT IN ITS SKY MODEL IS ABOVE THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL (DY-1964)
         object_wing_min_leak_sigma: 0.03
+        # SKIP THE CORRECTION WHEN THE ORDER'S MEDIAN SKY MODEL IS AT OR BELOW THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL (DY-1975)
+        object_wing_min_sky_sigma: 1.0
         bspline_order: 3
 
 

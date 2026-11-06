@@ -160,8 +160,40 @@ def _validate_owned_path(path, owner, label):
         resolvedCandidatePath = candidatePath.resolve()
         resolvedCandidatePath.relative_to(resolvedOwnerPath)
     except (OSError, RuntimeError, ValueError) as error:
-        raise _UnsafePathError(f"Unsafe {label}: path resolves outside {ownerPath}") from error
+        raise _UnsafePathError(
+            f"Unsafe {label}: `{os.path.abspath(candidatePath)}` resolves outside `{os.path.abspath(ownerPath)}`"
+        ) from error
     return resolvedCandidatePath
+
+
+def _vlt_data_folders():
+    """Return the `vlt-data-raw` and `vlt-data-reduced` folders from the packaged advanced settings."""
+    import yaml
+
+    settingsPath = Path(__file__).resolve().parent.parent / "advanced_settings.yaml"
+    with open(settingsPath) as stream:
+        advancedSettings = yaml.safe_load(stream)
+    return advancedSettings["vlt-data-raw"], advancedSettings["vlt-data-reduced"]
+
+
+def _validate_raw_directory(rootDir):
+    """Return the resolved raw directory of a workspace, inside it or at the configured VLT raw folder.
+
+    A `--vlt` workspace links `raw` to the `vlt-data-raw` folder. Only that exact folder is allowed: a link to any
+    other location outside the workspace, including a folder below `vlt-data-raw`, is refused.
+    """
+    rawPath = Path(rootDir) / "raw"
+    try:
+        return _validate_owned_path(rawPath, rootDir, "raw directory")
+    except _UnsafePathError:
+        vltRaw = _vlt_data_folders()[0]
+        try:
+            isVltRaw = rawPath.resolve() == Path(vltRaw).resolve()
+        except (OSError, RuntimeError):
+            isVltRaw = False
+        if not isVltRaw:
+            raise
+    return rawPath.resolve()
 
 
 def _validate_session_id(sessionId):
@@ -196,6 +228,12 @@ _CYCLES_QC_PARENT_SOFS = (
 # THE CALLER FORMATS `{extra}` WITH A FIXED LITERAL CONDITION (OR NOTHING) THAT IS APPENDED TO BOTH SELECTS. IT MUST
 # NEVER BE A VALUE FROM DATA, A FILE OR A SETTING
 _SUB_QC_PARENT_SOFS = f"{_FRAME_QC_PARENT_SOFS}{{extra}} union {_CYCLES_QC_PARENT_SOFS}{{extra}}"
+
+# THE SOFS WHOSE STORED QC ROWS CARRY A FAILING FLAG, FROZEN WHILE A REBUILD RESTORES STATUSES: EACH QC-RANGE PASS
+# RECOMPUTES THE FLAGS, SO A `fail` RESTORED IN A LATER PASS WOULD OTHERWISE MEET FLAGS ALREADY RESET (DY-1698)
+_QC_FAILED_SNAPSHOT_NAME = "qc_failed_snapshot"
+_QC_FAILED_SNAPSHOT = f"temp.{_QC_FAILED_SNAPSHOT_NAME}"
+_FAILING_QC_FLAG = ' and qc_flag = "fail"'
 
 
 class data_organiser:
@@ -245,12 +283,14 @@ class data_organiser:
         self.log = log
         # NAMES PINNED FOR REJOINED SETS LIVE ONLY ON THIS INSTANCE; THEY ARE LOST WHEN THE PROCESS EXITS
         self.pinnedSofNames = {}
+        # THE TEMP TABLE THE QC-RANGE QUERIES READ FAILING-QC SOFS FROM WHILE A REBUILD RESTORES STATUSES, ELSE None
+        self.failedQcSnapshot = None
 
         # EXPAND HOME PATHS BEFORE DERIVING ANY WORKSPACE LOCATIONS
         rootDir = expanduser(rootDir)
 
         self.rootDir = rootDir
-        self.rawDir = str(_validate_owned_path(Path(rootDir) / "raw", rootDir, "raw directory"))
+        self.rawDir = str(_validate_raw_directory(rootDir))
         self.miscDir = str(_validate_owned_path(Path(rootDir) / "misc", rootDir, "misc directory"))
         self.sessionsDir = str(_validate_owned_path(Path(rootDir) / "sessions", rootDir, "sessions directory"))
 
@@ -600,7 +640,11 @@ class data_organiser:
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
-        self._apply_qc_acceptable_ranges()
+        # A REBUILD DEFERS THE RANGES UNTIL THE STATUSES ARE RESTORED (SEE `_restore_session_statuses`). THE QC ROWS ARE
+        # RESTORED BY NOW BUT THE STATUSES ARE NOT, AND `product_frames` IS STILL EMPTY, SO THIS CALL COULD ONLY
+        # RECOMPUTE THE FLAGS THAT A RESTORED `fail` NEEDS TO SEE UNCHANGED (DY-1698)
+        if not backupPath:
+            self._apply_qc_acceptable_ranges()
 
         self._flag_files_to_ignore()
         self._group_every_raw_frame()
@@ -657,27 +701,41 @@ class data_organiser:
     def _apply_qc_acceptable_ranges(self):
         """*apply this session's QC-acceptable-range settings to the QC rows and product statuses*"""
         with closing(self.conn.cursor()) as c:
-            for sqlQuery, sqlParams in self._qc_acceptable_range_queries():
+            for sqlQuery, sqlParams in self._qc_acceptable_range_queries(failedSofsSource=self.failedQcSnapshot):
                 c.execute(sqlQuery, sqlParams)
             self.conn.commit()
 
-    def _qc_acceptable_range_queries(self):
+    def _qc_acceptable_range_queries(self, failedSofsSource=None):
         """*build the `(sql, params)` pairs that apply this session's QC-acceptable-range settings*
 
         Recipe names and QC-range keys come from the workspace YAML settings,
         so they are bound as `?` parameters rather than interpolated into the
         SQL text.
 
+        **Key Arguments:**
+
+        - ``failedSofsSource`` -- name of a table whose `sof` column lists the SOFs a failing QC row accounts for
+          (see `_freeze_failed_qc_sofs`), or None to read the live `qc_flag` values
+
         **Return:**
 
         - a list of `(sqlQuery, sqlParams)` tuples, ready for `cursor.execute(sqlQuery, sqlParams)`
         """
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
+        if failedSofsSource:
+            failedQcSofs = f"select sof from {failedSofsSource}"  # noqa: S608
+        else:
+            failedQcSofs = (
+                'select sof_name from quality_control where qc_flag = "fail" '  # noqa: S608
+                f"union {_SUB_QC_PARENT_SOFS.format(extra=_FAILING_QC_FLAG)}"
+            )
         queries = [
+            # ONLY A `fail` THAT A FAILING QC ROW ACCOUNTS FOR CAN BE A QC-RANGE FAILURE. THE RECIPE CONSTRUCTOR ALSO
+            # WRITES `fail` WHEN A RECIPE STARTS, SO A RECIPE KILLED BEFORE `clean_up` (OR AN EXCEPTION AFTER
+            # `report_output`) HOLDS `fail` WITH PASSING QC ROWS, AND MUST STAY `fail` (DY-1698)
             (
                 f'update product_frames set {statusColumn} = "pass" '  # noqa: S608
-                f'where {statusColumn} = "fail" and (sof in (select sof_name from quality_control) '
-                f"or sof in ({_SUB_QC_PARENT_SOFS.format(extra='')}));",
+                f'where {statusColumn} = "fail" and sof in ({failedQcSofs});',
                 (),
             ),
             (
@@ -734,7 +792,7 @@ class data_organiser:
             (
                 f'update product_frames set {statusColumn} = "fail" '  # noqa: S608
                 'where sof in (select sof_name from quality_control where qc_flag = "fail") '
-                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=' and qc_flag = "fail"')});""",
+                f"""or sof in ({_SUB_QC_PARENT_SOFS.format(extra=_FAILING_QC_FLAG)});""",
                 (),
             ),
         ]
@@ -956,7 +1014,7 @@ class data_organiser:
         framesByDirectory = {self.rootDir: [entry.name for entry in os.scandir(self.rootDir) if entry.is_file()]}
         if os.path.isdir(self.rawDir):
             # os.walk FOLLOWS A SYMLINKED raw/ ITSELF (VLT MODE) BUT NO LINK BELOW IT; THE OWNERSHIP CHECK
-            # BELOW KEEPS DELETES INSIDE THE WORKSPACE
+            # BELOW KEEPS DELETES INSIDE THE WORKSPACE, SO THE VLT RAW FOLDER KEEPS ITS FRAMES
             for directory, _, files in os.walk(self.rawDir):
                 framesByDirectory[directory] = [f for f in files if os.path.isfile(os.path.join(directory, f))]
         compressedInRaw = {
@@ -1204,10 +1262,8 @@ class data_organiser:
         dbFiles = [r[0].replace("//", "/") for r in c.fetchall()]
         normalizedDbFiles = {
             filePath: str(
-                _validate_owned_path(
-                    Path(filePath) if os.path.isabs(filePath) else Path(self.rootDir) / filePath,
-                    self.rootDir,
-                    "database filepath",
+                self._validate_database_filepath(
+                    Path(filePath) if os.path.isabs(filePath) else Path(self.rootDir) / filePath
                 )
             )
             for filePath in dbFiles
@@ -1234,7 +1290,7 @@ class data_organiser:
                 basename = os.path.basename(f)
                 if not is_fits_frame(basename):
                     pass
-                elif self.rootDir in f:
+                elif self.rootDir in f or directory in f:
                     exists = os.path.exists(os.path.abspath(self.rootDir) + "/" + basename)
                     if not exists:
                         os.symlink(
@@ -1249,6 +1305,13 @@ class data_organiser:
 
         self.log.debug("completed the ``_sync_sql_table_to_directory`` method")
         return
+
+    def _validate_database_filepath(self, path):
+        """*return a resolved `raw_frames` path, which must sit in the workspace or in its validated raw directory*"""
+        try:
+            return _validate_owned_path(path, self.rootDir, "database filepath")
+        except _UnsafePathError:
+            return _validate_owned_path(path, self.rawDir, "database filepath")
 
     def _populate_raw_frames_extra_columns(self, filteredFrames, verbose=False):
         """*populate extra columns for raw frames to later filter on*
@@ -2000,28 +2063,7 @@ class data_organiser:
         """
         self.log.debug("starting the ``use_vlt_environment_folders`` method")
 
-        import yaml
-
-        # COLLECT ADVANCED SETTINGS
-        parentDirectory = os.path.dirname(__file__)
-        advs = parentDirectory + "/advanced_settings.yaml"
-        level = 0
-        exists = False
-        count = 1
-        while not exists and len(advs) and count < 10:
-            count += 1
-            level -= 1
-            exists = os.path.exists(advs)
-            if not exists:
-                advs = "/".join(parentDirectory.split("/")[:level]) + "/advanced_settings.yaml"
-        if not exists:
-            advs = {}
-        else:
-            with open(advs) as stream:
-                advs = yaml.safe_load(stream)
-
-        vltRaw = advs["vlt-data-raw"]
-        vltReduced = advs["vlt-data-reduced"]
+        vltRaw, vltReduced = _vlt_data_folders()
 
         # TEST THE VLT FOLDERS EXIST
         if not os.path.exists(vltRaw) or not os.path.exists(vltReduced):
@@ -2030,12 +2072,17 @@ class data_organiser:
             )
             sys.exit(0)
 
-        try:
-            os.symlink(vltRaw, self.rawDir)
-        except OSError as e:
-            self.log.debug(f"use_vlt_environment_folders: `os.symlink(vltRaw, self.rawDir)` failed, continuing: {e}")
-            os.unlink(self.rawDir)
-            os.symlink(vltRaw, self.rawDir)
+        # `self.rawDir` IS RESOLVED, SO ONCE THE LINK EXISTS IT NAMES THE VLT FOLDER, NOT THE LINK
+        rawLink = Path(self.rootDir) / "raw"
+        if rawLink.is_symlink():
+            rawLink.unlink()
+        elif rawLink.exists():
+            raise _UnsafePathError(
+                f"Cannot use --vlt: `{os.path.abspath(rawLink)}` exists and is not a symbolic link. "
+                "Move it out of the workspace, then run the command again."
+            )
+        os.symlink(vltRaw, rawLink)
+        self.rawDir = str(rawLink.resolve())
 
         self.log.debug("completed the ``use_vlt_environment_folders`` method")
         return vltReduced
@@ -2344,21 +2391,64 @@ class data_organiser:
           continues with empty statuses.
         """
         sessionIds = self._session_ids_on_disk()
+        # THE RESTORED QC ROWS STILL CARRY THE FLAGS THEIR RECIPES WROTE, AND NO QC-RANGE PASS HAS RUN YET
+        self._freeze_failed_qc_sofs()
         try:
-            snapshots = read_session_snapshots(backupPath, sessionIds, self.log)
-        except (sqlite3.Error, OSError, ValueError) as error:
-            self.log.warning(f"could not restore session statuses from `{backupPath}`: {error}")
-            self.log.debug(traceback.format_exc())
-            print(
-                "WARNING: could not restore session statuses from "
-                f"{self._describe_preserved_database(backupPath)} ({error}). "
-                "Status columns are left empty; the preserved file has been kept."
-            )
-            return {}
-        counts = self._converge_session_statuses(snapshots)
+            try:
+                snapshots = read_session_snapshots(backupPath, sessionIds, self.log)
+            except (sqlite3.Error, OSError, ValueError) as error:
+                self.log.warning(f"could not restore session statuses from `{backupPath}`: {error}")
+                self.log.debug(traceback.format_exc())
+                print(
+                    "WARNING: could not restore session statuses from "
+                    f"{self._describe_preserved_database(backupPath)} ({error}). "
+                    "Status columns are left empty; the preserved file has been kept."
+                )
+                self._apply_ranges_and_rebuild_sof_maps()
+                return {}
+            counts = self._converge_session_statuses(snapshots)
+        finally:
+            self._release_failed_qc_sofs()
         for sessionId in sorted(counts):
             print(format_session_summary(sessionId, *counts[sessionId], backupPath))
         return counts
+
+    def _freeze_failed_qc_sofs(self):
+        """*record the SOFs whose stored QC rows carry a failing flag, for the QC-range queries to read*
+
+        Each QC-range pass recomputes every QC flag from the current ranges. A rebuild runs several passes, so a
+        `fail` restored in a later one would meet flags already reset and could no longer be overturned when the
+        ranges widened. The record is a temporary table on this connection, filled once from fixed SQL.
+        """
+        sqlQueries = [
+            f"create temp table if not exists {_QC_FAILED_SNAPSHOT_NAME} (sof text primary key);",
+            f"delete from {_QC_FAILED_SNAPSHOT};",  # noqa: S608
+            f"insert or ignore into {_QC_FAILED_SNAPSHOT} "  # noqa: S608
+            'select sof_name from quality_control where qc_flag = "fail" '
+            f"union {_SUB_QC_PARENT_SOFS.format(extra=_FAILING_QC_FLAG)};",
+        ]
+        with closing(self.conn.cursor()) as c:
+            for sqlQuery in sqlQueries:
+                c.execute(sqlQuery)
+            self.conn.commit()
+        self.failedQcSnapshot = _QC_FAILED_SNAPSHOT
+
+    def _release_failed_qc_sofs(self):
+        """*stop the QC-range queries reading the record made by `_freeze_failed_qc_sofs`, and drop it*"""
+        self.failedQcSnapshot = None
+        with closing(self.conn.cursor()) as c:
+            c.execute(f"drop table if exists {_QC_FAILED_SNAPSHOT};")
+            self.conn.commit()
+
+    def _apply_ranges_and_rebuild_sof_maps(self):
+        """*apply the QC ranges and, when that adds a failure, rebuild the SOF maps*
+
+        A new failure can change which product a downstream SOF should hold, so the maps are rebuilt to re-match it.
+        """
+        failuresBefore = self._current_session_failures()
+        self._apply_qc_acceptable_ranges()
+        if not self._current_session_failures() <= failuresBefore:
+            self.build_sof_files()
 
     def _converge_session_statuses(self, snapshots):
         """*restore statuses until no restored failure changes what the remaining SOFs are built from*
@@ -2381,13 +2471,17 @@ class data_organiser:
         counts = dict.fromkeys(snapshots, (0, 0, 0))
         for _ in range(self._STATUS_RESTORE_MAX_PASSES):
             failuresBefore = self._current_session_failures()
-            results = self._restore_status_pass(snapshots, candidates)
-            for sessionId, result in results.items():
-                self._write_session_statuses(sessionId, result.toRestore)
+            try:
+                results = self._restore_status_pass(snapshots, candidates)
+                for sessionId, result in results.items():
+                    self._write_session_statuses(sessionId, result.toRestore)
+            finally:
+                # A RESTORED FAIL CAN BE OVERTURNED BY QC ROWS THAT NOW PASS, AND QC FAILURES MARK THEIR PRODUCTS AGAIN.
+                # THIS RUNS EVEN WHEN A RESTORE STEP RAISES, SO NO RAISED ERROR LEAVES THE QC FLAGS UN-RECOMPUTED. THE
+                # ERROR ITSELF STILL PROPAGATES
+                self._apply_qc_acceptable_ranges()
             counts = self._add_pass_counts(counts, results)
             candidates = {sessionId: result.pending for sessionId, result in results.items()}
-            # A RESTORED FAIL CAN BE OVERTURNED BY QC ROWS THAT NOW PASS, AND QC FAILURES MARK THEIR PRODUCTS AGAIN
-            self._apply_qc_acceptable_ranges()
             hasNewFailures = not self._current_session_failures() <= failuresBefore
             if hasNewFailures:
                 self.build_sof_files()

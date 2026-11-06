@@ -1,9 +1,9 @@
 """Strict-xfail pins for the resource leaks found by the DY-36 defect hunt.
 
-Every test here pins a leak that has been reported but not fixed. Each test asserts the
-CORRECT behaviour, so it fails today and is marked ``xfail(strict=True)``. When someone fixes
-the leak the test XPASSes, strict mode turns that into a suite failure, and the fixer must
-delete the ``xfail`` marker.
+Each pin asserts the CORRECT behaviour. A pin for a leak that is not fixed yet fails today and
+is marked ``xfail(strict=True)``. When someone fixes the leak the test XPASSes, strict mode
+turns that into a suite failure, and the fixer deletes the ``xfail`` marker, so the pin stays
+as a regression test (L1, L3 and L5 are fixed and have no marker).
 
 The ``reason`` of each marker reads ``<Linear issue> (DY-36 <ID>): <defect>``, naming the
 issue that tracks the leak and the leak's ID in the DY-36 findings table.
@@ -85,15 +85,6 @@ def _resource_warnings_for(path: Path, caught: list[warnings.WarningMessage]) ->
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1700 (DY-36 L1): a recipe that raises skips clean_up, so its workspace tmp/ scratch directory and the "
-        "prepared frames in it are never removed on the serial `reduce` path; related to DY-37 I4 (kill path, "
-        "tests/unit/test_state_and_time_defect_pins.py); file together, fix must clear both pins"
-    ),
-)
 def test_a_recipe_that_raises_removes_its_scratch_directory(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
@@ -101,8 +92,7 @@ def test_a_recipe_that_raises_removes_its_scratch_directory(
 ) -> None:
     """A real master-bias run that fails part-way must not leave its scratch directory behind.
 
-    Related to DY-37 I4 (kill path, tests/unit/test_state_and_time_defect_pins.py); file together, fix must
-    clear both pins.
+    The kill path is pinned by DY-37 I4 (tests/unit/test_state_and_time_defect_pins.py).
     """
     # ARRANGE
     monkeypatch.setattr(commonutils, "data_organiser", _IsolatedOrganiser)
@@ -192,7 +182,8 @@ def test_a_finished_recipe_is_freed_when_run_recipe_returns(
 
 
 # ---------------------------------------------------------------------------
-# L3: fundamentals.fmultiprocess LEAVES ITS POOL WORKERS RUNNING WHEN A TASK RAISES
+# L3: FUNDAMENTALS FMULTIPROCESS LEFT ITS POOL WORKERS RUNNING WHEN A TASK RAISED
+# (FIXED IN FUNDAMENTALS 3.0.1, DY-1701; THIS IS A REGRESSION TEST)
 # ---------------------------------------------------------------------------
 
 
@@ -233,14 +224,6 @@ def _stop_children_not_in(childrenBefore: set[int]) -> None:
     psutil.wait_procs(stillAlive, timeout=WORKER_EXIT_GRACE_SECONDS)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1701 (DY-36 L3): fundamentals.fmultiprocess skips Pool.close/join when a task raises, so the pool's "
-        "worker processes stay alive until a cyclic gc pass (an upstream defect in fundamentals)"
-    ),
-)
 @pytest.mark.filterwarnings("ignore:.*fork.*:DeprecationWarning")
 def test_fmultiprocess_stops_its_workers_when_a_task_raises(log: Any, cyclic_gc_disabled: None) -> None:
     """A failed parallel map must not leave its worker processes running."""

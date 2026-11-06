@@ -12,8 +12,10 @@ import soxspipe
 pytestmark = pytest.mark.unit
 
 PACKAGE_DIR = Path(soxspipe.__file__).parent
+# THE SOXS MARGIN WAS MEASURED ON SOXS NIR SLIT-END ROLL-OFF (DY-1958). THE X-SHOOTER BLOCKS ARE SWITCHED OFF AND
+# UNMEASURED, SO THEY KEEP THE OLD 0.3
+OVERLAP_MARGIN_BY_FILE = {"soxs_default_settings.yaml": 0.45, "xsh_default_settings.yaml": 0.3}
 BLOCK_NUMBERS = {
-    "overlap-margin-arcsec": 0.3,
     "profile-bin-arcsec": 0.1,
     "max-offset-arcsec": 3.0,
     "max-order-scatter-arcsec": 0.3,
@@ -42,7 +44,8 @@ def test_each_stare_arm_has_the_slit_illumination_block(fileName, recipe, arm, i
     assert block["measure-offset"] is isOn
     for key, value in BLOCK_NUMBERS.items():
         assert block[key] == value
-    assert set(block) == {"measure-offset", *BLOCK_NUMBERS}
+    assert block["overlap-margin-arcsec"] == OVERLAP_MARGIN_BY_FILE[fileName]
+    assert set(block) == {"measure-offset", "overlap-margin-arcsec", *BLOCK_NUMBERS}
 
 
 def test_no_slit_illumination_qc_has_an_acceptable_range():

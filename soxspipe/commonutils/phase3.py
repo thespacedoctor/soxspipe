@@ -153,6 +153,8 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
     from astropy.io import fits
     from astropy.table import Table
 
+    from soxspipe.commonutils.atomic_fits import write_hdulist_atomically
+
     if qc is not None:
         # ADD QC METRICS TO HEADER
         add_qc_to_header(header, qc)
@@ -170,6 +172,6 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None):
     priHDU = fits.PrimaryHDU(header=header)
     hduList = fits.HDUList([priHDU] + tableExensions)
     hduList.verify("fix")
-    hduList.writeto(filePath, checksum=True, overwrite=True)
+    write_hdulist_atomically(hduList, filePath, checksum=True, overwrite=True)
 
     log.debug("completed the ``write_fits_table_to_disk`` method")

@@ -994,7 +994,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
             "file_name": "OBJECT_VIS_SKYSUB.fits",
             "file_type": "FITS",
             "obs_date_utc": "2024-01-02T03:04:05.678",
-            "product_desc": "The sky-subtracted object (ERRS excludes the sky-model uncertainty)",
+            "product_desc": "The sky-subtracted object (ERRS scaled by the sky-residual scatter if enabled)",
             "file_path": str(tmp_path / "OBJECT_VIS_SKYSUB.fits"),
             "label": "PROD",
         },
