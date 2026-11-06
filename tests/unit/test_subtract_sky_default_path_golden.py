@@ -3,10 +3,10 @@
 The golden file ``data/subtract_sky_default_golden_cff556ae_dy2081.npz`` holds the sky model, the sky-subtracted frame,
 its ``ERRS`` and its mask for each arm, for the synthetic frame built here. The NIR arrays are those that develop
 cff556ae wrote. The VIS arrays were re-recorded from the DY-2081 fix (the pre-fit clip no longer retries once it clips
-as much as sky noise would): the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS mask. The frame has two
-orders. Order 12 holds a star, sky lines and cosmic rays, and order 13 holds sky lines and cosmic rays, so the rolling
-clip, the object masking, the DY-1972 skyline restore, the object-wing correction and (NIR) the DY-1973 error
-inflation all act on it.
+about half the pixels Gaussian sky noise would): the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS
+mask. The frame has two orders. Order 12 holds a star, sky lines and cosmic rays, and order 13 holds sky lines and
+cosmic rays, so the rolling clip, the object masking, the DY-1972 skyline restore, the object-wing correction and
+(NIR) the DY-1973 error inflation all act on it.
 
 The frame has 96 slit pixels per column and 100 cosmic rays per order. It had 24 slit pixels and 25 cosmic rays when the
 file was recorded from a151d6c5. At 24 pixels the pre-fit clip can flag every pixel of a sky-line core in the VIS arm,
@@ -16,17 +16,22 @@ lossy state (DY-2118). At 96 pixels per column every line is held.
 The geometry changes every array, the NIR arrays and ``ERRS`` included: the frame is 192 rows (was 48), and the noise
 draw and the cosmic rays are new. The sizes stay close. The NIR ``ERRS`` are at most 1.47 times the input error (was
 1.39) and 48% of the pixels are above 1.01 times it (was 41%). The VIS ``ERRS`` equal the input error, as before. The
-median sky model is 20.1 e- in NIR and 19.8 e- in VIS (was 19.9 and 20.0 e-), and the highest is 1520 e- in both arms
-(was 1515 and 1513 e-). The golden file is 1.3 MB (was 0.33 MB).
+median sky model is 20.1 e- in NIR and 20.1 e- in VIS (was 19.9 and 20.0 e-), and the highest is 1520 e- in NIR and
+1525 e- in VIS (was 1515 and 1513 e-). The golden file is 1.3 MB (was 0.33 MB).
 
 The DY-2081 fix changes the VIS sky model and sky-subtracted frame only: by 0.58 e- at the median and 106 e- at most
 (1690 of 76800 pixels move by more than 10 e-). In order 13 the mean of (model - true sky) over the input error goes
 from -0.210 to -0.021, because the clip no longer removes the high tail of the noise. Order 12 moves from +0.004 to
 +0.015.
 
+No VIS order retries its pre-fit clip on this frame under the fix, so the unit tests pin the retry, not this file. The
+DY-1972 skyline restore is NIR-only by default, so the VIS arm has no restore.
+
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
-imported from a checkout of the commit that is the new reference and this module imported from its file path. Re-record
-it only on purpose: a failure here means the default sky subtraction changed.
+imported from a checkout of the commit that is the new reference and this module imported from its file path. ``log`` is
+the ``log`` fixture of ``tests/conftest.py`` or any object with ``print``, ``debug`` and ``warning``. Recording from the
+DY-2081 fix commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
+sky subtraction changed.
 """
 
 from __future__ import annotations
@@ -92,6 +97,14 @@ def _sky_settings(arm: str) -> dict[str, Any]:
     return skySettings
 
 
+def _true_sky(tiltedColumn: np.ndarray) -> np.ndarray:
+    """The noiseless sky (e-) at each tilted column: the flat level plus the Gaussian sky lines."""
+    sky = np.full(tiltedColumn.size, SKY_LEVEL)
+    for centre, peak in SKY_LINES:
+        sky += peak * np.exp(-0.5 * ((tiltedColumn - centre) / SKY_LINE_SIGMA_COLUMNS) ** 2)
+    return sky
+
+
 def _order(order: int, starFluxPerColumn: float, firstRow: int, seed: int) -> pd.DataFrame:
     """One synthetic order: a flat sky, Gaussian sky lines, a Moffat star along the slit and noise."""
     rng = np.random.default_rng(seed)
@@ -102,9 +115,7 @@ def _order(order: int, starFluxPerColumn: float, firstRow: int, seed: int) -> pd
     slitPosition = slitGrid[slitPixel]
     # THE SLIT IS TILTED A LITTLE AGAINST THE WAVELENGTH AXIS, SO NEIGHBOURING COLUMNS INTERLEAVE IN WAVELENGTH
     tiltedColumn = column + 0.2 * slitPosition
-    sky = np.full(column.size, SKY_LEVEL)
-    for centre, peak in SKY_LINES:
-        sky += peak * np.exp(-0.5 * ((tiltedColumn - centre) / SKY_LINE_SIGMA_COLUMNS) ** 2)
+    sky = _true_sky(tiltedColumn)
     alpha = STAR_FWHM / (2.0 * np.sqrt(2.0 ** (1.0 / MOFFAT_BETA) - 1.0))
     profile = (1.0 + ((slitGrid - STAR_CENTRE) / alpha) ** 2) ** -MOFFAT_BETA
     star = starFluxPerColumn * (profile / profile.sum())[slitPixel]
@@ -233,6 +244,22 @@ def test_the_golden_frame_exercises_the_sky_fit(golden: dict[str, np.ndarray]) -
         assert np.nanmax(model) > 10 * SKY_LEVEL
         assert np.nanmedian(model) == pytest.approx(SKY_LEVEL, rel=0.1)
         assert not golden[f"{arm}_mask"].all()
+
+
+def test_the_golden_model_holds_every_sky_line_in_both_orders(golden: dict[str, np.ndarray]) -> None:
+    # THE PRE-FIT CLIP CAN FLAG A WHOLE LINE CORE AND THE FIT THEN LOSES THE LINE (DY-2118): THE OLD 24-PIXEL FRAME DID
+    mapTable = _map_table()
+    tiltedColumn = mapTable["x"].to_numpy(dtype=float) + 0.2 * mapTable["slit_position"].to_numpy(dtype=float)
+    trueSky = _true_sky(tiltedColumn)
+    for arm in ARMS:
+        model = golden[f"{arm}_model"][mapTable["y"].to_numpy(), mapTable["x"].to_numpy()]
+        for order in (STAR_ORDER, SKY_ORDER):
+            for centre, _ in SKY_LINES:
+                isCore = (mapTable["order"].to_numpy() == order) & (np.abs(tiltedColumn - centre) < 1.0)
+                held = model[isCore].sum() / trueSky[isCore].sum()
+                assert 0.95 < held < 1.05, (
+                    f"{arm} order {order} line at column {centre}: model over true sky {held:.3f}"
+                )
 
 
 def test_the_nir_errs_are_inflated_at_the_sky_lines_and_the_vis_errs_are_not(golden: dict[str, np.ndarray]) -> None:
