@@ -70,6 +70,17 @@ same amount in every pinhole, once, on the first fit. It dropped 3 of 131 sets o
 (`XY RES MEDIAN` 0.18952 to 0.16849, `GOODLINES FRAC` 0.868533 to 0.844784), 4 of 390
 on NIR 2025-11-28 (`XY RES MEDIAN` 0.23585 to 0.22101) and 6 of 443 on NIR 2025-05-14
 (0.21581 to 0.21303, inside its band and left as it is).
+
+The two NIR spatial solution entries were re-recorded on 2026-11-06 from six bit-identical
+CI runs (42199793267, 42199797269, 42199800679, 42199804834, 42199808749 and 42199812239)
+of develop a16739c0, after the rebuilt NIR O10 and O11 multi-pinhole lines and the higher
+NIR x fit degrees (DY-1989). `XY RES MEDIAN` fell from 0.21581 to 0.15177 on 2025-05-14
+and from 0.22101 to 0.15931 on 2025-11-28, both outside their bands. `GOODLINES FRAC`
+moved from 0.555556 to 0.5529 and from 0.458308 to 0.467116. Against gate run 42185090124
+of 94478855, the commit before DY-1989, the NIR standard-star response moved by 0.84% or
+less and its `EFF MEDIAN` and `SNR MEDIAN` by 0.26% or less. Against their centres the
+largest move is -1.2%, at the extrapolated 2020 nm point, 0.24 of its band. All stay inside
+their bands and were left as they are.
 """
 
 from __future__ import annotations
@@ -315,8 +326,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20250514T121227_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.21581),
-            "GOODLINES FRAC": fraction(0.555556),
+            "XY RES MEDIAN": level(0.15177),
+            "GOODLINES FRAC": fraction(0.5529),
             "PINHOLE COUNT MIN": count(9),
         },
     ),
@@ -333,8 +344,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-spat-solution",
         sofName="20251128T122217_NIR_3_SSOL_MULTPIN_15_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.22101),
-            "GOODLINES FRAC": fraction(0.458308),
+            "XY RES MEDIAN": level(0.15931),
+            "GOODLINES FRAC": fraction(0.467116),
             "PINHOLE COUNT MIN": count(9),
         },
     ),

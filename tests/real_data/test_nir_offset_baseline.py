@@ -22,6 +22,13 @@ count, both wavelength ends and the flux-calibrated median were re-recorded on
 40509980343, 40509989297 and 40509997772) of develop 9869275e, after the DY-1968 global
 NIR sky-line tuning moved the blue end from 795.06 to 795.3 nm, outside its band, and
 the flux-calibrated median rose 0.16% (DY-1980). DY-1972 to DY-1975 did not move it.
+The row count, the red end and the flux-calibrated median were re-recorded on 2026-11-06
+from six bit-identical CI runs (42199793267, 42199797269, 42199800679, 42199804834,
+42199808749 and 42199812239) of develop a16739c0, after the rebuilt NIR O10 and O11
+multi-pinhole lines and the higher NIR x fit degrees (DY-1989) moved the red end from
+2031.96 to 2030.76 nm, outside its band. The row count fell from 20612 to 20592 and the
+flux-calibrated median rose 0.13%. The SNR median and the detected fraction moved inside
+their bands and were left as they are.
 """
 
 from __future__ import annotations
@@ -120,16 +127,16 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     # THE MERGED GRID RUNS FROM THE BLUEST TO THE REDDEST EXTRACTED SAMPLE IN
     # 0.06 NM STEPS, SO THE ROW COUNT FOLLOWS THE RED END. ±25 ROWS IS ±1.5 NM
     # OF SPECTRAL COVERAGE
-    assert mergedRows == pytest.approx(20_612, abs=25)
+    assert mergedRows == pytest.approx(20_592, abs=25)
     # THE BLUE END IS PINNED BY THE ORDER LAYOUT, SO IT IS HELD TO TWO GRID STEPS
     assert waveMin == pytest.approx(795.3, abs=0.12)
-    assert waveMax == pytest.approx(2031.96, abs=1.0)
+    assert waveMax == pytest.approx(2030.76, abs=1.0)
     assert waveStep == pytest.approx(0.06, abs=1e-6)
     assert snrMedian == pytest.approx(149.8, abs=2.0)
-    assert fluxcalRows == pytest.approx(20_612, abs=25)
+    assert fluxcalRows == pytest.approx(20_592, abs=25)
     assert fluxcalRows == mergedRows
     # abs=0: WITH rel ALONE pytest.approx KEEPS AN ABSOLUTE TOLERANCE OF 1e-12, WHICH PASSES ANY FLUX NEAR 1e-15
-    assert fluxcalMedian == pytest.approx(8.256574435666687e-15, rel=0.05, abs=0)
+    assert fluxcalMedian == pytest.approx(8.26761842371472e-15, rel=0.05, abs=0)
     # EVERY ORDER MUST BE PRESENT: A MISSING ORDER IS A FAILURE, NOT DRIFT
     assert nOrders == 15
     assert detectedFraction == pytest.approx(0.984, abs=0.02)
