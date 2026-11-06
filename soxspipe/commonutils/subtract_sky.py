@@ -59,6 +59,10 @@ RETRY_SIGMA_STEP = 0.1
 MIN_CLIP_SIGMA = 1.5
 # ROUND EACH RETRY SIGMA SO REPEATED 0.1 STEPS DO NOT DRIFT PAST THE FLOOR
 RETRY_SIGMA_DECIMALS = 6
+# A RETRY RUNS ONLY WHEN THE CLIP REMOVED FEWER PIXELS THAN THIS FRACTION OF WHAT GAUSSIAN SKY NOISE ALONE LOSES AT THE
+# SAME SIGMA LIMIT AND PERCENTILE. AT OR ABOVE IT THE CLIP ALREADY REMOVES NOISE, AND A LOWER LIMIT WOULD ONLY CUT THE
+# UPPER TAIL OF THE SKY AND LOWER THE SKY MODEL (DY-2081)
+RETRY_NOISE_SHARE_FRACTION = 0.5
 
 # A PIXEL WHOSE MASTER FLAT IS BELOW THIS FRACTION OF THE 95TH PERCENTILE OF ITS ORDER'S FLAT IS OUT OF BAND (DY-1517)
 LOW_FLAT_FRACTION = 0.02
@@ -106,6 +110,24 @@ ERROR_INFLATION_WINDOW = 100
 ERROR_INFLATION_STEPS = 4
 # THE FEWEST FINITE RESIDUALS THAT GIVE A SCATTER; WITH FEWER THE ERRORS ARE NOT INFLATED
 ERROR_INFLATION_MIN_SAMPLES = 30
+
+
+def _gaussian_clip_share(sigmaLimit, quantile):
+    """*the share of Gaussian noise that the rolling-percentile clip removes*
+
+    **Key Arguments:**
+
+    - ``sigmaLimit`` -- the sigma limit of the clip, in standard deviations above the smoothed percentile
+    - ``quantile`` -- the percentile (0 to 1) the rolling window smooths the flux to
+
+    **Return:**
+
+    - ``share`` -- the fraction of pure Gaussian noise above the percentile plus the sigma limit
+    """
+    from statistics import NormalDist
+
+    normal = NormalDist()
+    return 1.0 - normal.cdf(normal.inv_cdf(quantile) + sigmaLimit)
 
 
 def _sliding_mean(values, window):
@@ -1573,6 +1595,8 @@ class subtract_sky:
 
         The rolling windows run in wavelength order.
         For finite, distinct wavelengths, the result does not depend on the row order of the input (DY-1528).
+        A VIS order with under 5% of its pixels clipped after 5 iterations retries with a lower limit.
+        It does not retry when the clip already removes ``RETRY_NOISE_SHARE_FRACTION`` of the Gaussian noise share.
 
         **Return:**
 
@@ -1611,6 +1635,8 @@ class subtract_sky:
 
         allPixels = len(imageMapOrderDF.index)
         order = imageMapOrderDF["order"].values[0]
+        # THE PIXELS THE EDGE AND BAD-PIXEL FLAGS LEAVE FOR THE CLIP TO JUDGE
+        judgedPixels = int((~imageMapOrderDF["flagged_all_clipped"].astype(bool)).sum())
 
         iteration = 0
         quantile = 0.3
@@ -1702,7 +1728,11 @@ class subtract_sky:
                     )
                     return None
                 retrySigma = round(sigma_clip_limit - RETRY_SIGMA_STEP, RETRY_SIGMA_DECIMALS)
-                if retrySigma < MIN_CLIP_SIGMA:
+                noiseClipped = _gaussian_clip_share(sigma_clip_limit, quantile) * judgedPixels
+                if totalClipped >= RETRY_NOISE_SHARE_FRACTION * noiseClipped:
+                    # THE CLIP ALREADY REMOVES ABOUT AS MUCH AS SKY NOISE WOULD: A LOWER LIMIT CUTS THE NOISE TAIL
+                    self.log.debug(f"ORDER {order}: CLIPPING REMOVES THE SKY NOISE TAIL - NOT RETRYING")
+                elif retrySigma < MIN_CLIP_SIGMA:
                     self.log.warning(
                         f"ORDER {order}: OBJECT CLIPPING IS AT OR BELOW THE MINIMUM SIGMA LIMIT OF {MIN_CLIP_SIGMA} "
                         "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING"

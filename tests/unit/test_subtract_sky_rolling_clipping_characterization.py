@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib
+import math
 from fractions import Fraction
 from typing import Any
 
@@ -15,6 +17,8 @@ from soxspipe.commonutils.subtract_sky import subtract_sky
 
 pytestmark = pytest.mark.unit
 
+subtractSkyModule = importlib.import_module("soxspipe.commonutils.subtract_sky")
+
 PIXEL_COUNT = 2000
 # PINNING EVERY ROW AS A LITERAL IS IMPRACTICAL; THESE ROWS SAMPLE THE FIRST
 # OBJECT FLANK, A CLIPPED ROW, THE THIRD OBJECT AND THE LAST ROW
@@ -23,6 +27,16 @@ FLOOR_WARNING = (
     "ORDER 10: OBJECT CLIPPING IS AT OR BELOW THE MINIMUM SIGMA LIMIT OF 1.5 "
     "WITH UNDER 5% OF PIXELS CLIPPED - NOT RETRYING"
 )
+
+
+@pytest.fixture(autouse=True)
+def retry_noise_gate_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let every under-5% VIS order retry, as it did before DY-2081, so these tests pin the retry mechanics.
+
+    The gate that withholds the retry from a clip already at the noise level is tested in
+    ``test_subtract_sky_prefit_clip_noise_tail.py``.
+    """
+    monkeypatch.setattr(subtractSkyModule, "RETRY_NOISE_SHARE_FRACTION", math.inf)
 
 
 def _subtractor(log: Any, *, arm: str) -> tuple[subtract_sky, list[str]]:

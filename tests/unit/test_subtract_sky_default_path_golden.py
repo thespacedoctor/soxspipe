@@ -1,7 +1,9 @@
-"""With the shipped stare settings, ``subtract_sky.subtract`` gives the same products as develop cff556ae.
+"""With the shipped stare settings, ``subtract_sky.subtract`` gives the products recorded from develop cff556ae/DY-2081.
 
-The golden file ``data/subtract_sky_default_golden_cff556ae.npz`` holds the sky model, the sky-subtracted frame, its
-``ERRS`` and its mask for each arm, as develop cff556ae wrote them for the synthetic frame built here. The frame has two
+The golden file ``data/subtract_sky_default_golden_cff556ae_dy2081.npz`` holds the sky model, the sky-subtracted frame,
+its ``ERRS`` and its mask for each arm, for the synthetic frame built here. The NIR arrays are those that develop
+cff556ae wrote. The VIS arrays were re-recorded from the DY-2081 fix (the pre-fit clip no longer retries once it clips
+as much as sky noise would): the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS mask. The frame has two
 orders. Order 12 holds a star, sky lines and cosmic rays, and order 13 holds sky lines and cosmic rays, so the rolling
 clip, the object masking, the DY-1972 skyline restore, the object-wing correction and (NIR) the DY-1973 error
 inflation all act on it.
@@ -16,6 +18,11 @@ draw and the cosmic rays are new. The sizes stay close. The NIR ``ERRS`` are at 
 1.39) and 48% of the pixels are above 1.01 times it (was 41%). The VIS ``ERRS`` equal the input error, as before. The
 median sky model is 20.1 e- in NIR and 19.8 e- in VIS (was 19.9 and 20.0 e-), and the highest is 1520 e- in both arms
 (was 1515 and 1513 e-). The golden file is 1.3 MB (was 0.33 MB).
+
+The DY-2081 fix changes the VIS sky model and sky-subtracted frame only: by 0.58 e- at the median and 106 e- at most
+(1690 of 76800 pixels move by more than 10 e-). In order 13 the mean of (model - true sky) over the input error goes
+from -0.210 to -0.021, because the clip no longer removes the high tail of the noise. Order 12 moves from +0.004 to
++0.015.
 
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. Re-record
@@ -45,7 +52,7 @@ from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
 
-GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_cff556ae.npz"
+GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_cff556ae_dy2081.npz"
 ARMS = ("NIR", "VIS")
 PRODUCTS = ("model", "subtracted", "errs", "mask")
 STAR_ORDER = 12
