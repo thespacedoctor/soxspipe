@@ -42,7 +42,7 @@ file (pixels counted where the change exceeds 1e-3, both medians signed as new m
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. ``log`` is
 the ``log`` fixture of ``tests/conftest.py`` or any object with ``print``, ``debug`` and ``warning``. Recording from the
-DY-2081 fix commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
+DY-2079 commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
 sky subtraction changed.
 """
 

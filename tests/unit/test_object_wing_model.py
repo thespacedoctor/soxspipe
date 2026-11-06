@@ -431,7 +431,7 @@ def test_estimate_recovers_the_injected_bias_of_a_bright_star_less_its_light_bey
 # BEYOND 3.1 ARCSEC THE INJECTED WING FALLS TO ABOUT 3 E-, SO A RELATIVE TOLERANCE ALONE TESTS THE ZERO POINT.
 # MEASURED (NOT DERIVED) ON THIS SCENE WITH 2 < |S| < 3.5 ARCSEC: 940 OF 24000 PIXELS FAIL RTOL = 0.2 ALONE, BY AT MOST
 # 0.48 E- OVER THE TOLERANCE. AT 3 TO 3.5 ARCSEC THE MEDIAN ERROR IS +0.44 E- AND THE LARGEST 1.9 E-. THE ABSOLUTE
-# TOLERANCE IS THE LARGEST EXCESS ROUNDED UP
+# TOLERANCE IS THE LARGEST EXCESS PLUS A MARGIN OF ABOUT 25%
 ZERO_POINT_ATOL = 0.6
 
 
@@ -1385,6 +1385,7 @@ def test_a_chunk_without_far_slit_pixels_takes_the_profile_of_the_whole_order():
 
     # ASSERT
     assert estimate.isCorrected, estimate.reason
+    assert estimate.chunks[0].isFallback
     assert np.isfinite(wings).all()
     assert np.any(isWing)
     np.testing.assert_allclose(wings[isWing], truth[isWing], rtol=0.2)
