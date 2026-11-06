@@ -1,6 +1,7 @@
 # Release Notes
 
 * **REFACTOR**: remove the stare sky-subtraction `slit_tilt_refit` setting, its refit and its slit-tilt model (DY-2083): with the DY-1989 arc shape the refit gains 0.005 rms/ERRS on order 11, and default sky subtraction is unchanged; a `slit_tilt_refit` key left in a workspace `soxspipe.yaml` is ignored.
+* **FIXED**: the VIS pre-fit clip no longer retries with a lower sigma limit once it already removes about half the pixels Gaussian sky noise would, so it stops clipping 6 to 9% of the off-object sky pixels (the high tail of the noise) on frames such as VV4580Sgr, and the VIS sky model is no longer 0.16 to 0.25 sigma too low (DY-2081). X-Shooter VIS takes the same branch with its default sigma of 3, so it is affected too.
 
 ## v0.19.1 - November 6, 2026
 
