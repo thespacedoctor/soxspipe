@@ -1730,7 +1730,7 @@ class subtract_sky:
                 retrySigma = round(sigma_clip_limit - RETRY_SIGMA_STEP, RETRY_SIGMA_DECIMALS)
                 noiseClipped = _gaussian_clip_share(sigma_clip_limit, quantile) * judgedPixels
                 if totalClipped >= RETRY_NOISE_SHARE_FRACTION * noiseClipped:
-                    # THE CLIP ALREADY REMOVES ABOUT AS MUCH AS SKY NOISE WOULD: A LOWER LIMIT CUTS THE NOISE TAIL
+                    # THE CLIP ALREADY REMOVES ABOUT HALF WHAT SKY NOISE WOULD: A LOWER LIMIT CUTS THE NOISE TAIL
                     self.log.debug(f"ORDER {order}: CLIPPING REMOVES THE SKY NOISE TAIL - NOT RETRYING")
                 elif retrySigma < MIN_CLIP_SIGMA:
                     self.log.warning(
