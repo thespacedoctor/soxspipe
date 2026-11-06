@@ -359,7 +359,7 @@ def test_an_order_with_real_sky_and_the_same_star_is_still_corrected_at_the_ship
 
 @pytest.mark.parametrize("skyLevel", [0.0, -5.0, 1e-12])
 def test_the_log_line_reports_the_leak_in_electrons_only_when_the_sky_is_near_zero(skyLevel: float) -> None:
-    estimate = SimpleNamespace(biasLevel=14.7, skyLevel=skyLevel, slitLossFraction=0.98)
+    estimate = SimpleNamespace(biasLevel=14.7, skyLevel=skyLevel, slitLossFraction=0.98, chunks=())
 
     line = subtractSkyModule._object_wing_log_line(23, estimate)
 
@@ -369,11 +369,20 @@ def test_the_log_line_reports_the_leak_in_electrons_only_when_the_sky_is_near_ze
 
 
 def test_the_log_line_gives_the_leak_as_a_share_of_a_real_sky() -> None:
-    estimate = SimpleNamespace(biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16)
+    estimate = SimpleNamespace(biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16, chunks=())
 
     line = subtractSkyModule._object_wing_log_line(16, estimate)
 
     assert "0.6 e- OF OBJECT LIGHT (2% OF THE SKY)" in line
+
+
+def test_the_log_line_counts_the_wavelength_chunks_that_use_the_whole_order_profile() -> None:
+    chunks = tuple(SimpleNamespace(isFallback=isFallback) for isFallback in (True, False, False, True, False, False))
+    estimate = SimpleNamespace(biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16, chunks=chunks)
+
+    line = subtractSkyModule._object_wing_log_line(16, estimate)
+
+    assert "2 OF 6 WAVELENGTH CHUNKS USE THE WHOLE-ORDER PROFILE" in line
 
 
 @pytest.mark.parametrize("minLeakSigma", [-0.1, float("nan"), float("inf")])

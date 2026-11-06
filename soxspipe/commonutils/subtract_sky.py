@@ -285,7 +285,8 @@ def _object_wing_log_line(order, estimate):
     **Key Arguments:**
 
     - ``order`` -- the order number
-    - ``estimate`` -- the ``object_wing_estimate`` the correction used
+    - ``estimate`` -- the ``object_wing_estimate`` the correction used. A count of its wavelength chunks that took the
+      whole-order profile is added when it is not 0 (DY-2079)
 
     **Return:**
 
@@ -297,9 +298,13 @@ def _object_wing_log_line(order, estimate):
         skyText = f" ({estimate.biasLevel / estimate.skyLevel * 100:0.0f}% OF THE SKY)"
     loss = estimate.slitLossFraction
     lossText = f"ABOUT {loss * 100:0.2f}%" if math.isfinite(loss) else "AN UNKNOWN SHARE"
+    nFallback = sum(chunk.isFallback for chunk in estimate.chunks)
+    chunkText = (
+        f" ({nFallback} OF {len(estimate.chunks)} WAVELENGTH CHUNKS USE THE WHOLE-ORDER PROFILE)" if nFallback else ""
+    )
     return (
         f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
-        f"OBJECT LIGHT{skyText}, REMOVING {lossText} OF THE OBJECT FLUX\n"
+        f"OBJECT LIGHT{skyText}, REMOVING {lossText} OF THE OBJECT FLUX{chunkText}\n"
     )
 
 

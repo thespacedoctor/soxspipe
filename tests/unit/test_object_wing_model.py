@@ -10,12 +10,16 @@ import pytest
 
 from soxspipe.commonutils.object_wing_model import (
     DEFAULT_MIN_SKY_SIGMA,
+    WING_CHUNKS,
+    chunk_weight,
     core_spectrum,
     estimate_object_wings,
     far_slit_zero_point,
     profile_peak,
     profile_sources,
     slit_profile,
+    wing_chunk,
+    wing_chunks,
     wing_model,
 )
 
@@ -174,6 +178,74 @@ def test_slit_profile_skips_pixels_where_the_core_spectrum_is_not_positive():
 
     # ASSERT
     np.testing.assert_allclose(profile, 0.0, atol=1e-12)
+
+
+def test_slit_profile_weights_the_residual_and_core_spectrum_of_each_pixel():
+    # ARRANGE
+    slitPosition, residual, error, coreSpectrum = _profile_scene(np.zeros(4))
+    isFirstHalf = np.arange(slitPosition.size) % PIXELS_PER_BIN < PIXELS_PER_BIN // 2
+    residual = np.where(isFirstHalf, 0.2 * CORE_LEVEL, 0.6 * CORE_LEVEL)
+    weights = np.where(isFirstHalf, 3.0, 1.0)
+
+    # ACT
+    _, profile, profileNoise = slit_profile(slitPosition, residual, error, coreSpectrum, weights)
+
+    # ASSERT
+    np.testing.assert_allclose(profile, (3 * 0.2 + 1 * 0.6) / 4)
+    expectedNoise = PIXEL_ERROR * np.sqrt(PIXELS_PER_BIN // 2 * (9 + 1)) / (PIXELS_PER_BIN // 2 * 4 * CORE_LEVEL)
+    np.testing.assert_allclose(profileNoise, expectedNoise)
+
+
+def test_slit_profile_counts_a_pixel_as_its_weight_when_it_asks_for_enough_pixels_in_a_bin():
+    # ARRANGE
+    slitPosition, residual, error, coreSpectrum = _profile_scene(np.zeros(4))
+    weights = np.full(slitPosition.shape, 0.25)
+    weights[slitPosition < BIN_ARCSEC] = 1.0
+
+    # ACT
+    _, profile, _ = slit_profile(slitPosition, residual, error, coreSpectrum, weights)
+
+    # ASSERT
+    assert np.isfinite(profile[0])
+    assert np.isnan(profile[1:]).all()
+
+
+def test_slit_profile_starts_its_bins_at_the_given_lowest_position():
+    # ARRANGE
+    slitPosition, residual, error, coreSpectrum = _profile_scene(np.zeros(6))
+    isKept = slitPosition >= 2 * BIN_ARCSEC
+
+    # ACT
+    binCentres, _, _ = slit_profile(
+        slitPosition[isKept], residual[isKept], error[isKept], coreSpectrum[isKept], lowest=0.0
+    )
+
+    # ASSERT
+    np.testing.assert_allclose(binCentres, BIN_ARCSEC * np.arange(6))
+
+
+def test_chunk_weight_falls_linearly_between_chunk_centres_and_add_up_to_one():
+    # ARRANGE
+    centres = np.array([10.0, 20.0, 40.0])
+    wavelength = np.array([5.0, 10.0, 15.0, 20.0, 30.0, 40.0, 50.0])
+
+    # ACT
+    weights = np.array([chunk_weight(wavelength, centres, index) for index in range(len(centres))])
+
+    # ASSERT
+    np.testing.assert_allclose(weights[0], [1.0, 1.0, 0.5, 0.0, 0.0, 0.0, 0.0])
+    np.testing.assert_allclose(weights[1], [0.0, 0.0, 0.5, 1.0, 0.5, 0.0, 0.0])
+    np.testing.assert_allclose(weights[2], [0.0, 0.0, 0.0, 0.0, 0.5, 1.0, 1.0])
+    np.testing.assert_allclose(weights.sum(axis=0), 1.0)
+
+
+def test_chunk_weight_of_a_pixel_without_a_wavelength_are_not_finite():
+    # ACT
+    weights = [chunk_weight(np.array([np.nan, 15.0]), np.array([10.0, 20.0]), index) for index in range(2)]
+
+    # ASSERT
+    assert all(np.isnan(row[0]) for row in weights)
+    assert all(np.isfinite(row[1]) for row in weights)
 
 
 NAN = float("nan")
@@ -356,6 +428,13 @@ def test_estimate_recovers_the_injected_bias_of_a_bright_star_less_its_light_bey
     assert estimate.centre == pytest.approx(0.0, abs=BIN_ARCSEC)
 
 
+# BEYOND 3.1 ARCSEC THE INJECTED WING FALLS TO ABOUT 3 E-, SO A RELATIVE TOLERANCE ALONE TESTS THE ZERO POINT.
+# MEASURED (NOT DERIVED) ON THIS SCENE WITH 2 < |S| < 3.5 ARCSEC: 940 OF 24000 PIXELS FAIL RTOL = 0.2 ALONE, BY AT MOST
+# 0.48 E- OVER THE TOLERANCE. AT 3 TO 3.5 ARCSEC THE MEDIAN ERROR IS +0.44 E- AND THE LARGEST 1.9 E-. THE ABSOLUTE
+# TOLERANCE IS THE LARGEST EXCESS ROUNDED UP
+ZERO_POINT_ATOL = 0.6
+
+
 def test_wing_model_matches_the_injected_wings_above_the_far_slit_level():
     # ARRANGE
     order = _build_order()
@@ -369,8 +448,10 @@ def test_wing_model_matches_the_injected_wings_above_the_far_slit_level():
 
     # ASSERT
     # LINEAR INTERPOLATION OF 0.25 ARCSEC BIN MEANS OVERSHOOTS A CONVEX MOFFAT WING BY ABOUT H^2/8 TIMES ITS CURVATURE
-    # (5 TO 15 PERCENT AT 2 ARCSEC), SO THE BANDS ARE WIDER THAN THE NOISE
-    np.testing.assert_allclose(wings[isWing], truth[isWing], rtol=0.2)
+    # (5 TO 15 PERCENT AT 2 ARCSEC), SO THE BANDS ARE WIDER THAN THE NOISE. EACH WAVELENGTH CHUNK FINDS ITS OWN ZERO
+    # POINT FROM A SIXTH OF THE PIXELS, WHICH MOVES THE WING BY A FRACTION OF AN E- WHERE THE INJECTED WING IS SMALL
+    assert np.any(isWing)
+    np.testing.assert_allclose(wings[isWing], truth[isWing], rtol=0.2, atol=ZERO_POINT_ATOL)
     assert wings[isOuter].sum() == pytest.approx(truth[isOuter].sum(), rel=0.15)
 
 
@@ -1174,3 +1255,287 @@ def test_the_estimate_default_sky_gate_is_the_shipped_default_and_skips_a_near_z
     assert inspect.signature(estimate_object_wings).parameters["minSkySigma"].default == DEFAULT_MIN_SKY_SIGMA
     assert DEFAULT_MIN_SKY_SIGMA == MIN_SKY_SIGMA
     assert estimate.isSkyBelowNoise
+
+
+FWHM_TILT = 0.2
+SKY_RIPPLE = 400.0
+# THE SKY MODEL HOLDS THE OBJECT LIGHT BEYOND THIS FAR FROM THE OBJECT. IT IS NEARER THAN THE 2.5 ARCSEC OF THE FLAT
+# SCENES SO THAT THE ZERO POINT OF EVERY CHUNK, EVEN AT THE NARROW BLUE END, STANDS WELL ABOVE ITS NOISE
+CHROMATIC_UNMASKED_ARCSEC = 1.5
+MIN_CHROMATIC_PIXELS = 1000
+
+
+def _chromatic_scene(fwhmTilt, seed=7, skyGradient=0.0):
+    """Build a shuffled order whose Moffat FWHM grows linearly along the order, and the truth that was injected.
+
+    The sky model carries the object light averaged over the unmasked slit (beyond 2.5 arcsec) at every wavelength, so
+    the estimate has the leak a fit without an object mask would absorb. ``farLevel`` is the profile averaged over the
+    bins more than 3 arcsec from the object at the wavelength of each pixel.
+    """
+    rng = np.random.default_rng(seed)
+    columns = np.arange(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH + BIN_ARCSEC / 2, BIN_ARCSEC)
+    rows = np.repeat(np.arange(N_ROWS), len(columns))
+    drift = (rows * SLIT_DRIFT_PER_ROW) % 1.0 - 0.5
+    slitPosition = np.tile(columns, N_ROWS) + BIN_ARCSEC * drift
+    wavelength = FIRST_WAVELENGTH + WAVELENGTH_PER_ROW * rows + WAVELENGTH_PER_ARCSEC * slitPosition
+    alpha = MOFFAT_ALPHA * (1.0 + fwhmTilt * (rows / N_ROWS - 0.5))
+
+    def moffat(position):
+        return (1.0 + (position / alpha) ** 2) ** -MOFFAT_BETA
+
+    def mean_over(isColumn):
+        return np.mean([moffat(column) for column in columns[isColumn]], axis=0)
+
+    spectrum = _object_spectrum(wavelength, BRIGHT_PEAK)
+    profile = moffat(slitPosition)
+    farLevel = mean_over(np.abs(columns) > FAR_ARCSEC)
+    unmaskedLevel = mean_over(np.abs(columns) > CHROMATIC_UNMASKED_ARCSEC)
+    # THE SKY CHANGES FASTER THAN THE OBJECT, SO EVERY WAVELENGTH CHUNK HAS FAINT-SKY PIXELS
+    sky = SKY_LEVEL + SKY_RIPPLE * np.sin(7.0 * wavelength) ** 2 + skyGradient * (rows / N_ROWS)
+    sigma = np.sqrt(np.maximum(sky + spectrum * profile, 1.0))
+    flux = sky + spectrum * profile + rng.normal(0.0, 1.0, wavelength.size) * sigma
+    skyModel = sky + unmaskedLevel * spectrum
+    shuffle = rng.permutation(wavelength.size)
+    return (
+        wavelength[shuffle],
+        slitPosition[shuffle],
+        flux[shuffle],
+        skyModel[shuffle],
+        sigma[shuffle],
+        (spectrum * (profile - farLevel))[shuffle],
+    )
+
+
+def test_wing_model_follows_a_wing_profile_that_widens_along_the_order():
+    # ARRANGE
+    wavelength, slitPosition, flux, skyModel, error, truth = _chromatic_scene(FWHM_TILT)
+    isUsable = np.ones(wavelength.size, dtype=bool)
+    estimate = estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, MIN_LEAK_SIGMA)
+    isWing = (np.abs(slitPosition) > 1.5) & (np.abs(slitPosition) < 3.0)
+    thirds = np.digitize(wavelength, np.quantile(wavelength, [1 / 3, 2 / 3]))
+
+    # ACT
+    wings = wing_model(estimate, slitPosition)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    # THE SCENE IS BUILT SO THAT EVERY CHUNK PASSES ITS OWN TESTS, SO THE MODEL IS THE CHUNKED ONE, NOT THE WHOLE-ORDER
+    # PROFILE
+    assert not any(chunk.isFallback for chunk in estimate.chunks)
+    for third in range(3):
+        isThird = isWing & (thirds == third)
+        assert np.count_nonzero(isThird) > MIN_CHROMATIC_PIXELS
+        # ONE PROFILE OVER-SUBTRACTS THE NARROW BLUE THIRD BY ABOUT 85 PERCENT AND UNDER-SUBTRACTS THE RED THIRD BY
+        # ABOUT A QUARTER. LINEAR INTERPOLATION OF A CONVEX WING LEAVES THE CHUNKED MODEL ABOUT 10 PERCENT HIGH
+        assert np.median(wings[isThird] / truth[isThird]) == pytest.approx(1.0, abs=0.15)
+
+
+def test_estimate_holds_one_chunk_per_wavelength_share_from_blue_to_red():
+    # ARRANGE
+    order = _build_order()
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    wavelengths = [chunk.wavelength for chunk in estimate.chunks]
+    assert len(wavelengths) == WING_CHUNKS
+    assert wavelengths == sorted(wavelengths)
+    assert wavelengths[0] > order.wavelength.min() and wavelengths[-1] < order.wavelength.max()
+    np.testing.assert_array_equal(estimate.wavelength, order.wavelength)
+
+
+def test_estimate_that_is_not_corrected_holds_no_chunks():
+    # ARRANGE
+    order = _build_order(peak=FAINT_PEAK)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert estimate.chunks == ()
+
+
+def test_chunk_profiles_of_a_scene_without_a_wavelength_trend_agree_with_the_whole_profile():
+    # ARRANGE
+    order = _build_order()
+    estimate = order.estimate()
+    isFinite = np.isfinite(estimate.profile)
+    wholeProfile = estimate.profile[isFinite] - estimate.zeroPoint
+    isWing = np.abs(estimate.binCentres[isFinite] - estimate.centre) > 1.0
+
+    # ACT AND ASSERT
+    for chunk in estimate.chunks:
+        np.testing.assert_allclose(chunk.binCentres, estimate.binCentres)
+        np.testing.assert_allclose(chunk.profile[isFinite][isWing], wholeProfile[isWing], rtol=0.1, atol=2e-5)
+
+
+def test_a_chunk_without_far_slit_pixels_takes_the_profile_of_the_whole_order():
+    # ARRANGE
+    order = _build_order()
+    isBlue = order.wavelength < np.quantile(order.wavelength, 1 / 3)
+    isUsable = ~(isBlue & (np.abs(order.slitPosition) > FAR_ARCSEC))
+    estimate = order.estimate(isUsable)
+    truth = order.spectrum * (order.profile - order.farLevel)
+    isWing = isBlue & (np.abs(order.slitPosition) > 2.0) & (np.abs(order.slitPosition) < 3.0)
+
+    # ACT
+    wings = wing_model(estimate, order.slitPosition)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert np.isfinite(wings).all()
+    assert np.any(isWing)
+    np.testing.assert_allclose(wings[isWing], truth[isWing], rtol=0.2)
+
+
+SKY_GRADIENT = 5000.0
+# THE FIRST SIXTH OF THE ORDER, WHERE THE TESTS BELOW SPOIL THE FAR SLIT OF ONE CHUNK
+FIRST_SIXTH_ARCSEC = 515.0
+FAR_SLIT_START_ARCSEC = 3.3
+SPOILED_FAR_LEVEL = 1.0e-4
+NOISY_FAR_SIGMA = 150.0
+
+
+def test_chunk_centres_lie_where_the_profile_is_measured_when_the_sky_rises_along_the_order():
+    # ARRANGE
+    wavelength, slitPosition, flux, skyModel, error, _ = _chromatic_scene(FWHM_TILT, skyGradient=SKY_GRADIENT)
+    isUsable = np.ones(wavelength.size, dtype=bool)
+    isFaint = skyModel <= np.quantile(skyModel, 0.5)
+
+    # ACT
+    estimate = estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, MIN_LEAK_SIGMA)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    # ONLY THE FAINT HALF OF THE SKY GOES INTO THE PROFILE, SO ONLY THE BLUE HALF OF THE ORDER IS MEASURED
+    assert wavelength[isFaint].max() < np.median(wavelength) + WAVELENGTH_PER_ROW * N_ROWS / 10
+    centres = [chunk.wavelength for chunk in estimate.chunks]
+    assert min(centres) >= wavelength[isFaint].min()
+    assert max(centres) <= wavelength[isFaint].max()
+
+
+def _spoil_the_far_slit_of_the_first_sixth(order, offset=0.0, sigma=0.0, seed=3):
+    """Return the order with an offset (in units of the object spectrum) and noise added far from the object."""
+    rng = np.random.default_rng(seed)
+    isSpoiled = (order.wavelength < FIRST_SIXTH_ARCSEC) & (np.abs(order.slitPosition) > FAR_SLIT_START_ARCSEC)
+    flux = order.flux + isSpoiled * (offset * order.spectrum + sigma * rng.standard_normal(order.flux.size))
+    error = np.where(isSpoiled, np.hypot(order.error, sigma), order.error)
+    return replace(order, flux=flux, error=error)
+
+
+def _first_chunk_and_wings_in_the_first_sixth(order):
+    """Return the first chunk of the order's estimate, and its wing model and truth in the first sixth."""
+    estimate = order.estimate()
+    truth = order.spectrum * (order.profile - order.farLevel)
+    isWing = (
+        (order.wavelength < FIRST_SIXTH_ARCSEC)
+        & (np.abs(order.slitPosition) > 2.0)
+        & (np.abs(order.slitPosition) < 3.0)
+    )
+    return estimate, wing_model(estimate, order.slitPosition), truth, isWing
+
+
+def test_a_chunk_whose_far_slit_level_is_positive_takes_the_profile_of_the_whole_order():
+    # ARRANGE
+    order = _spoil_the_far_slit_of_the_first_sixth(_build_order(), offset=SPOILED_FAR_LEVEL)
+
+    # ACT
+    estimate, wings, truth, isWing = _first_chunk_and_wings_in_the_first_sixth(order)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert estimate.chunks[0].isFallback
+    assert not any(chunk.isFallback for chunk in estimate.chunks[2:])
+    assert np.any(isWing)
+    np.testing.assert_allclose(wings[isWing], truth[isWing], rtol=0.25)
+
+
+def test_a_chunk_whose_far_slit_level_is_noise_takes_the_profile_of_the_whole_order():
+    # ARRANGE
+    order = _spoil_the_far_slit_of_the_first_sixth(_build_order(), sigma=NOISY_FAR_SIGMA)
+
+    # ACT
+    estimate, wings, truth, isWing = _first_chunk_and_wings_in_the_first_sixth(order)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert estimate.chunks[0].isFallback
+    assert np.any(isWing)
+    np.testing.assert_allclose(wings[isWing], truth[isWing], rtol=0.25)
+
+
+def test_a_chunk_with_no_pixels_at_one_slit_end_takes_the_profile_of_the_whole_order():
+    # ARRANGE
+    order = _build_order()
+    isUsable = ~((order.wavelength < FIRST_SIXTH_ARCSEC) & (order.slitPosition > 2.0))
+
+    # ACT
+    estimate = order.estimate(isUsable)
+    truth = order.spectrum * (order.profile - order.farLevel)
+    isWing = (order.wavelength < FIRST_SIXTH_ARCSEC) & (order.slitPosition > 2.0) & (order.slitPosition < 3.0)
+    wings = wing_model(estimate, order.slitPosition)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert estimate.chunks[0].isFallback
+    assert np.isfinite(wings).all()
+    # A CHUNK THAT HELD ITS LAST BIN OUT TO THE SLIT END WOULD GIVE THE WING AT THE END OF THE MEASURED SLIT, ABOUT 3 E-
+    # AT 2.0 ARCSEC, NOT THE FALLING WING
+    assert np.any(isWing)
+    np.testing.assert_allclose(wings[isWing], truth[isWing], rtol=0.25)
+
+
+def test_a_chunk_missing_only_the_outermost_slit_bin_is_kept():
+    # ARRANGE
+    order = _build_order()
+    isUsable = ~((order.wavelength < FIRST_SIXTH_ARCSEC) & (order.slitPosition > SLIT_HALF_LENGTH - BIN_ARCSEC))
+
+    # ACT
+    estimate = order.estimate(isUsable)
+
+    # ASSERT
+    # BEYOND 3 ARCSEC THE PROFILE IS AT ITS ZERO POINT BY DEFINITION, SO HOLDING IT OUT TO THE SLIT END IS NOT AN ERROR
+    assert estimate.isCorrected, estimate.reason
+    assert not estimate.chunks[0].isFallback
+
+
+def test_chunks_with_equal_centres_are_one_chunk():
+    # ARRANGE
+    wavelength = np.repeat([10.0, 20.0, 30.0], 300)
+    slitPosition = np.tile(np.arange(0.0, 3.0, 0.01), 3)
+    fallback = wing_chunk(np.nan, 0.25 * np.arange(13), np.zeros(13), False)
+    nPixels = wavelength.size
+    ones = np.ones(nPixels)
+
+    # ACT
+    chunks = wing_chunks(
+        wavelength,
+        slitPosition,
+        np.zeros(nPixels),
+        ones,
+        100.0 * ones,
+        np.ones(nPixels, dtype=bool),
+        1.0,
+        fallback,
+    )
+
+    # ASSERT
+    assert [chunk.wavelength for chunk in chunks] == [10.0, 20.0, 30.0]
+
+
+def test_the_estimate_keeps_its_own_copy_of_the_wavelengths():
+    # ARRANGE
+    order = _build_order()
+    wavelength = order.wavelength.copy()
+
+    # ACT
+    estimate = estimate_object_wings(
+        wavelength, order.slitPosition, order.flux, order.skyModel, order.error, order.isUsable, MIN_LEAK_SIGMA
+    )
+    wavelength[:] = 0.0
+
+    # ASSERT
+    assert not np.shares_memory(estimate.wavelength, wavelength)
+    np.testing.assert_array_equal(estimate.wavelength, order.wavelength)

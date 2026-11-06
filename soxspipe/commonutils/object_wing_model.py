@@ -18,6 +18,13 @@ The estimate has five steps:
    or a low side of the slit and over-corrected.
 5. If the zero point is negative and significant, the first sky fit holds object light of -P0·G(λ). The wing model is
    G(λ)·(P(s) − P0), which is to be subtracted from the sky pixels before the sky is refitted.
+6. The wings are wider in the red end of an order than in the blue end, so one profile over-subtracts one end and
+   under-subtracts the other (DY-2079). The wing model is therefore not a single G(λ)·P(s). It is G(λ)·P(s, λ),
+   where P(s, λ) is the linear interpolation along the wavelength between ``WING_CHUNKS`` profiles, each measured as
+   in steps 3 and 4 with its own zero point from the profile pixels near its own wavelength. Each profile is still
+   non-parametric. A chunk that fails the sign or significance test of step 5 on its own zero point, or that does not
+   cover the slit as the whole-order profile does, takes the whole-order profile. The gates, and the object-light
+   bias they test, use the whole-order profile of steps 3 and 4.
 
 A negative zero point that is small against the noise of a faint-sky pixel, or against its own noise, is not
 corrected. Nor is an order whose median sky fit is at or below a multiple of that noise (DY-1975): the sky there is
@@ -43,6 +50,8 @@ FAR_SLIT_MIN_ARCSEC = 1.0
 # THE PROFILE USES ONLY PIXELS WHOSE SKY MODEL IS AT OR BELOW THIS QUANTILE OF THE ORDER'S SKY, BECAUSE A SLIT
 # ILLUMINATION ERROR SCALES WITH THE SKY AND THE OBJECT LIGHT DOES NOT (DY-1964)
 FAINT_SKY_QUANTILE = 0.5
+# THE WING PROFILE IS MEASURED IN THIS MANY WAVELENGTH CHUNKS, EACH WITH THE SAME NUMBER OF PROFILE PIXELS (DY-2079)
+WING_CHUNKS = 6
 CORE_MEDIAN_WINDOW = 201
 MIN_CORE_PIXELS = 201
 MIN_PIXELS_PER_PROFILE_BIN = 20
@@ -56,6 +65,24 @@ SOURCE_SIGNIFICANCE = 5
 MIN_SOURCE_FRACTION = 0.2
 # ... AND AT LEAST THIS FAR FROM A BRIGHTER SOURCE, SO A NOISY CORE IS NOT SPLIT IN TWO
 MIN_SOURCE_SEPARATION_ARCSEC = 1.5
+
+
+@dataclass(frozen=True, eq=False)
+class wing_chunk:
+    """*the wing profile of one wavelength chunk of an order (DY-2079)*
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the centre of the chunk along the wavelength
+    - ``binCentres`` -- the centre of every profile bin in arcsec
+    - ``profile`` -- the profile of the chunk less its zero point, in units of the core spectrum. NaN for empty bins
+    - ``isFallback`` -- True if the chunk could not be measured and holds the profile of the whole order
+    """
+
+    wavelength: float
+    binCentres: np.ndarray
+    profile: np.ndarray
+    isFallback: bool = False
 
 
 @dataclass(frozen=True, eq=False)
@@ -85,6 +112,8 @@ class object_wing_estimate:
     - ``isSkyBelowNoise`` -- True if the zero-point, leak and significance gates passed but the order is not corrected
       because its median sky fit is at or below ``minSkySigma`` times ``faintSkyNoise`` (DY-1975). The sky gate runs
       before the crowded-slit test, so a crowded slit with a faint sky is flagged only as sky below noise
+    - ``wavelength`` -- a copy of the wavelength of every input pixel, for the chunks of the wing model (DY-2079)
+    - ``chunks`` -- the ``wing_chunk`` of each wavelength chunk, from blue to red. Empty if ``isCorrected`` is False
     """
 
     isCorrected: bool
@@ -102,14 +131,18 @@ class object_wing_estimate:
     sourceCentres: np.ndarray
     isCrowdedSlit: bool = False
     isSkyBelowNoise: bool = False
+    wavelength: np.ndarray | None = None
+    chunks: tuple[wing_chunk, ...] = ()
 
 
-def _slit_bin_layout(slitPosition):
+def _slit_bin_layout(slitPosition, lowest=None):
     """*bin the slit positions into ``PROFILE_BIN_ARCSEC`` bins that start at the lowest position*
 
     **Key Arguments:**
 
     - ``slitPosition`` -- the slit position of each pixel in arcsec. Must not be empty
+    - ``lowest`` -- the centre of the first bin. Default *None*, which is the lowest slit position. Pass it to give
+      the pixels of a subset the same bins as the whole set (DY-2079)
 
     **Return:**
 
@@ -118,7 +151,8 @@ def _slit_bin_layout(slitPosition):
     """
     import numpy as np
 
-    lowest = slitPosition.min()
+    if lowest is None:
+        lowest = slitPosition.min()
     binIndex = np.floor((slitPosition - lowest) / PROFILE_BIN_ARCSEC + 0.5).astype(int)
     binCentres = lowest + PROFILE_BIN_ARCSEC * np.arange(binIndex.max() + 1)
     return binIndex, binCentres
@@ -186,12 +220,15 @@ def core_spectrum(wavelength, slitPosition, residual, isUsable, centre):
     return np.interp(wavelength, coreWavelength, coreMedian), nCorePixels
 
 
-def slit_profile(slitPosition, residual, error, coreSpectrum):
+def slit_profile(slitPosition, residual, error, coreSpectrum, weights=None, lowest=None):
     """*measure the spatial profile of the residual, in units of the core spectrum*
 
     In every bin the profile is the summed residual over the summed core spectrum, and its noise is the summed error
     in quadrature over the summed core spectrum. Pixels where the core spectrum is not positive are skipped. A bin
-    with fewer than ``MIN_PIXELS_PER_PROFILE_BIN`` such pixels is NaN. The bins span all the pixels passed in.
+    with fewer than ``MIN_PIXELS_PER_PROFILE_BIN`` such pixels is NaN. The bins span all the pixels passed in. With
+    ``weights``, each pixel's residual, core spectrum and error are multiplied by its weight in those sums, and a
+    pixel counts as its weight. A bin of few pixels is NaN because their mean slit position can differ from the bin
+    centre by enough to change a steep wing by tens of percent.
 
     **Key Arguments:**
 
@@ -199,6 +236,9 @@ def slit_profile(slitPosition, residual, error, coreSpectrum):
     - ``residual`` -- the flux minus the first sky fit at each usable pixel
     - ``error`` -- the flux error at each usable pixel
     - ``coreSpectrum`` -- the core spectrum at each usable pixel
+    - ``weights`` -- the weight of each usable pixel. Default *None*, which weights every pixel by 1
+    - ``lowest`` -- the centre of the first bin, as in ``_slit_bin_layout``. Default *None*, which is the lowest slit
+      position passed in
 
     **Return:**
 
@@ -208,13 +248,15 @@ def slit_profile(slitPosition, residual, error, coreSpectrum):
     """
     import numpy as np
 
-    binIndex, binCentres = _slit_bin_layout(slitPosition)
+    binIndex, binCentres = _slit_bin_layout(slitPosition, lowest)
     nBins = len(binCentres)
+    if weights is None:
+        weights = np.ones(slitPosition.shape)
     isPositive = coreSpectrum > 0
-    counts = np.bincount(binIndex[isPositive], minlength=nBins)
-    coreSum = np.bincount(binIndex[isPositive], weights=coreSpectrum[isPositive], minlength=nBins)
-    residualSum = np.bincount(binIndex[isPositive], weights=residual[isPositive], minlength=nBins)
-    varianceSum = np.bincount(binIndex[isPositive], weights=error[isPositive] ** 2, minlength=nBins)
+    counts = np.bincount(binIndex[isPositive], weights=weights[isPositive], minlength=nBins)
+    coreSum = np.bincount(binIndex[isPositive], weights=(weights * coreSpectrum)[isPositive], minlength=nBins)
+    residualSum = np.bincount(binIndex[isPositive], weights=(weights * residual)[isPositive], minlength=nBins)
+    varianceSum = np.bincount(binIndex[isPositive], weights=(weights * error)[isPositive] ** 2, minlength=nBins)
     isFilled = counts >= MIN_PIXELS_PER_PROFILE_BIN
     profile = np.full(nBins, np.nan)
     profileNoise = np.full(nBins, np.nan)
@@ -250,6 +292,128 @@ def far_slit_zero_point(binCentres, profile, profileNoise, centre):
         return float("nan"), float("nan")
     noise = np.sqrt(np.sum(profileNoise[isFar] ** 2)) / nFar
     return float(np.mean(profile[isFar])), float(noise)
+
+
+def chunk_weight(wavelength, chunkWavelengths, index):
+    """*weight every pixel in one wavelength chunk by a hat function (DY-2079)*
+
+    The weight is 1 at the centre of the chunk and falls linearly to 0 at the centre of each neighbouring chunk. It is
+    1 beyond the centre of the first or last chunk, on that chunk's side. The weights of a pixel in all the chunks add
+    up to 1.
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the wavelength of each pixel
+    - ``chunkWavelengths`` -- the centre of every chunk, in increasing order
+    - ``index`` -- the position of the chunk in ``chunkWavelengths``
+
+    **Return:**
+
+    - ``weights`` -- the weight of each pixel in the chunk. NaN for a pixel with no wavelength
+    """
+    import numpy as np
+
+    return np.interp(wavelength, chunkWavelengths, np.eye(len(chunkWavelengths))[index])
+
+
+def _measure_chunk(slitPosition, residual, error, coreSpectrum, weights, lowest, nBins, centre, wholeFinite):
+    """*measure one chunk's profile on the bins of the whole profile, and return None if it fails its tests*
+
+    The tests are the zero-point tests of ``_no_correction_reason`` applied to the chunk: the zero point must exist and
+    be more than ``WING_BIAS_SIGNIFICANCE`` times its own noise below 0. On each side of the object where the
+    whole-order profile has a finite bin more than ``FAR_SLIT_ARCSEC`` from the object, the chunk must have one too. A
+    chunk with no pixels at one slit end would hold the last bin it has out to that end, and that is only harmless
+    where the profile is at its zero point, which is beyond ``FAR_SLIT_ARCSEC``.
+
+    **Key Arguments:**
+
+    - ``slitPosition`` -- the slit position in arcsec of the chunk's profile pixels
+    - ``residual`` -- the flux minus the first sky fit at those pixels
+    - ``error`` -- the flux error at those pixels
+    - ``coreSpectrum`` -- the core spectrum at those pixels
+    - ``weights`` -- the hat weight of those pixels in the chunk
+    - ``lowest`` -- the centre of the first bin of the whole-order profile
+    - ``nBins`` -- the number of bins of the whole-order profile
+    - ``centre`` -- the slit position of the object centre in arcsec
+    - ``wholeFinite`` -- True for each bin where the whole-order profile is finite
+
+    **Return:**
+
+    - ``profile`` -- the chunk profile less its zero point on all ``nBins`` bins, NaN where it is not measured, or
+      None if the chunk fails a test
+    """
+    import numpy as np
+
+    binCentres, profile, profileNoise = slit_profile(slitPosition, residual, error, coreSpectrum, weights, lowest)
+    # THE CHUNK'S PIXELS NEVER REACH BEYOND THE WHOLE PROFILE'S PIXELS, SO ITS BINS ARE A PREFIX OF THE WHOLE LAYOUT
+    padded = np.full(nBins, np.nan)
+    paddedNoise = np.full(nBins, np.nan)
+    padded[: len(profile)] = profile
+    paddedNoise[: len(profile)] = profileNoise
+    binCentres = lowest + PROFILE_BIN_ARCSEC * np.arange(nBins)
+    zeroPoint, zeroNoise = far_slit_zero_point(binCentres, padded, paddedNoise, centre)
+    # A NAN FAILS THE COMPARISON, AND SO DOES A ZERO POINT THAT IS NOT BELOW 0
+    if not -zeroPoint > WING_BIAS_SIGNIFICANCE * zeroNoise:
+        return None
+    for isSide in (binCentres < centre - FAR_SLIT_ARCSEC, binCentres > centre + FAR_SLIT_ARCSEC):
+        if (wholeFinite & isSide).any() and not (np.isfinite(padded) & isSide).any():
+            return None
+    return padded - zeroPoint
+
+
+def wing_chunks(wavelength, slitPosition, residual, error, coreSpectrum, isProfile, centre, fallback):
+    """*measure the wing profile and its zero point in each wavelength chunk of an order (DY-2079)*
+
+    There are up to ``WING_CHUNKS`` chunks. Their centres are the medians of equal shares of the profile pixels, so each
+    centre lies where its profile is measured. Two chunks whose centres are equal are one chunk. The chunks overlap
+    through the hat weights of ``chunk_weight``. A chunk's profile comes from the profile pixels with weight above 0, on
+    the bins of ``fallback`` (see ``_measure_chunk``). A chunk that fails the tests of ``_measure_chunk`` takes the
+    profile of ``fallback``.
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the wavelength of each pixel
+    - ``slitPosition`` -- the slit position of each pixel in arcsec
+    - ``residual`` -- the flux minus the first sky fit at each pixel
+    - ``error`` -- the flux error at each pixel
+    - ``coreSpectrum`` -- the core spectrum at each pixel
+    - ``isProfile`` -- True for the pixels the whole-order profile is measured from. Must not be all False
+    - ``centre`` -- the slit position of the object centre in arcsec
+    - ``fallback`` -- the ``wing_chunk`` of the whole-order profile, less its zero point, with its ``wavelength`` unset.
+      Its bins are the layout of every chunk
+
+    **Return:**
+
+    - ``chunks`` -- the ``wing_chunk`` of each chunk, from blue to red
+    """
+    import numpy as np
+
+    chunkWavelengths = np.unique(np.quantile(wavelength[isProfile], (np.arange(WING_CHUNKS) + 0.5) / WING_CHUNKS))
+    lowest = float(fallback.binCentres[0])
+    nBins = len(fallback.binCentres)
+    wholeFinite = np.isfinite(fallback.profile)
+    chunks = []
+    for index, chunkWavelength in enumerate(chunkWavelengths):
+        weights = chunk_weight(wavelength, chunkWavelengths, index)
+        isMember = isProfile & (weights > 0)
+        profile = None
+        if isMember.any():
+            profile = _measure_chunk(
+                slitPosition[isMember],
+                residual[isMember],
+                error[isMember],
+                coreSpectrum[isMember],
+                weights[isMember],
+                lowest,
+                nBins,
+                centre,
+                wholeFinite,
+            )
+        if profile is None:
+            chunks.append(replace(fallback, wavelength=float(chunkWavelength), isFallback=True))
+        else:
+            chunks.append(wing_chunk(float(chunkWavelength), fallback.binCentres, profile))
+    return tuple(chunks)
 
 
 def profile_sources(binCentres, profile, profileNoise):
@@ -439,7 +603,7 @@ def estimate_object_wings(
     if np.isnan(centre):
         return replace(estimate, reason="no slit bin has enough usable pixels to find the object centre")
     spectrum, nCore = core_spectrum(wavelength, slitPosition, residual, isUsable, centre)
-    estimate = replace(estimate, centre=centre, coreSpectrum=spectrum)
+    estimate = replace(estimate, centre=centre, coreSpectrum=spectrum, wavelength=wavelength.copy())
     if nCore < MIN_CORE_PIXELS:
         return replace(estimate, reason=f"only {nCore} core pixels, fewer than the {MIN_CORE_PIXELS} needed")
     # A CLIPPED FIT DID NOT SEE EVERY USABLE PIXEL, SO THE PROFILE COMES FROM THE PIXELS IT DID SEE
@@ -490,6 +654,10 @@ def estimate_object_wings(
             f"the slit profile shows {len(sourceCentres)} sources (at {positions} arcsec), so no part of the slit "
             "is free of object light"
         )
+    chunks = ()
+    if reason == "":
+        fallback = wing_chunk(float("nan"), binCentres, profile - zeroPoint)
+        chunks = wing_chunks(wavelength, slitPosition, residual, error, spectrum, isProfile, centre, fallback)
     return replace(
         estimate,
         isCorrected=reason == "",
@@ -503,15 +671,18 @@ def estimate_object_wings(
         sourceCentres=sourceCentres,
         isCrowdedSlit=isCrowdedSlit,
         isSkyBelowNoise=isSkyBelowNoise,
+        chunks=chunks,
     )
 
 
 def wing_model(estimate, slitPosition):
     """*evaluate the object wing light that the sky fit holds, at every pixel*
 
-    The wing model is G(λ)·Pc(s), where Pc is the profile minus its zero point, linearly interpolated over slit
-    position from the finite bins. Empty bins are bridged, and Pc is constant beyond the first and last finite bin.
-    The model is zero everywhere if the estimate is not corrected, and a value that is not finite becomes zero.
+    The wing model is G(λ)·Pc(s, λ), not a single G(λ)·P(s). At each wavelength, Pc is the sum of the chunk profiles
+    (each less its zero point) weighted by ``chunk_weight``, and each chunk profile is linearly interpolated over slit
+    position from its finite bins. Empty bins are bridged, and a chunk profile is constant beyond its first and last
+    finite bin. The model is zero everywhere if the estimate is not corrected, and a value that is not finite becomes
+    zero.
 
     **Key Arguments:**
 
@@ -528,8 +699,10 @@ def wing_model(estimate, slitPosition):
         raise ValueError("the slit positions must be those of the pixels the estimate was made from")
     if not estimate.isCorrected:
         return np.zeros(slitPosition.shape)
-    isFinite = np.isfinite(estimate.profile)
-    wingProfile = np.interp(
-        slitPosition, estimate.binCentres[isFinite], estimate.profile[isFinite] - estimate.zeroPoint
-    )
+    chunkWavelengths = [chunk.wavelength for chunk in estimate.chunks]
+    wingProfile = np.zeros(slitPosition.shape)
+    for index, chunk in enumerate(estimate.chunks):
+        isFinite = np.isfinite(chunk.profile)
+        weights = chunk_weight(estimate.wavelength, chunkWavelengths, index)
+        wingProfile += weights * np.interp(slitPosition, chunk.binCentres[isFinite], chunk.profile[isFinite])
     return np.nan_to_num(estimate.coreSpectrum * wingProfile, nan=0.0, posinf=0.0, neginf=0.0)
