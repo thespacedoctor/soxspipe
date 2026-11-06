@@ -63,6 +63,15 @@ end from 2032.02 to 2031.78 nm.
 Until 2026-10-27 the fluxcal assertions checked nothing. `pytest.approx` given only `rel`
 keeps its default absolute tolerance of 1e-12, which passes any flux near 1e-15, so the
 6.03% NIR fall above went unseen. They now pass `abs=0`.
+
+The NIR row count, red end and fluxcal median were re-recorded on 2026-11-06 from six
+bit-identical CI runs (42199793267, 42199797269, 42199800679, 42199804834, 42199808749 and
+42199812239) of develop a16739c0, after the rebuilt NIR O10 and O11 multi-pinhole lines
+and the higher NIR x fit degrees (DY-1989). The red end moved from 2031.78 to 2030.88 nm,
+0.9 nm of its 1.0 nm band, the row count fell from 20615 to 20600 and the fluxcal median
+fell 0.21%. The other NIR values and the VIS values moved inside their bands and were left
+as they are. The VIS values did not move across DY-1989: their drift from these centres
+arrived in earlier merges into develop, and gate run 42185090124 of 94478855 shows it.
 """
 
 from __future__ import annotations
@@ -138,14 +147,14 @@ BASELINES = [
             obsDate="2026-01-11T08:03:47.6362",
             nOrders=15,
             # 0.06 NM STEPS, SO ±25 ROWS IS ±1.5 NM OF SPECTRAL COVERAGE
-            rows=20_615,
+            rows=20_600,
             rowsAbs=25,
             waveMin=794.94,
             waveMinAbs=0.12,
-            waveMax=2031.78,
+            waveMax=2030.88,
             waveStep=0.06,
             snrMedian=13.95,
-            fluxcalMedian=2.822694869405165e-15,
+            fluxcalMedian=2.816848748728904e-15,
             skyCountsMedian=18.00847053527832,
             skyModelMedian=20.919416427612305,
             skyModelP90=91.07568664550783,
