@@ -1,5 +1,7 @@
 # Release Notes
 
+* **REFACTOR**: remove the stare sky-subtraction `slit_tilt_refit` setting, its refit and its slit-tilt model (DY-2083): with the DY-1989 arc shape the refit gains 0.005 rms/ERRS on order 11, and default sky subtraction is unchanged; a `slit_tilt_refit` key left in a workspace `soxspipe.yaml` is ignored.
+
 ## v0.19.1 - November 6, 2026
 
 * **ENHANCEMENT**: on the SOXS VIS SLIT1.0 and SLIT1.5, an order whose skyline slit-offset fit fails (no usable lines or too faint) now takes its offset from the sky-continuum edges, so the faint-frame r and i orders get an offset and the `method` is recorded per order; orders whose skyline fit passes, NIR and other slits are unchanged.
