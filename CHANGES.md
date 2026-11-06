@@ -1,6 +1,6 @@
 # Release Notes
 
-## v0.19.1 - November 5, 2026
+## v0.19.1 - November 6, 2026
 
 * **ENHANCEMENT**: on the SOXS VIS SLIT1.0 and SLIT1.5, an order whose skyline slit-offset fit fails (no usable lines or too faint) now takes its offset from the sky-continuum edges, so the faint-frame r and i orders get an offset and the `method` is recorded per order; orders whose skyline fit passes, NIR and other slits are unchanged.
 * **ENHANCEMENT**: stare sky subtraction multiplies the `ERRS` of the sky-subtracted frame by the local scatter of the sky-fit residuals, so skyline residuals no longer reach the extraction with error bars that are too small.
