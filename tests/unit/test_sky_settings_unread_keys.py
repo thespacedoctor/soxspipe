@@ -18,7 +18,7 @@ SETTINGS_FILES = [
     "test_settings_soxs_sim.yaml",
     "test_settings_xsh.yaml",
 ]
-UNREAD_KEYS = ["skyline_significance"]
+UNREAD_KEYS = ["skyline_significance", "slit_tilt_refit"]
 
 
 def _sky_subtraction_blocks(node):
