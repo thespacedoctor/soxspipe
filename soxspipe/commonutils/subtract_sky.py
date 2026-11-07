@@ -286,12 +286,14 @@ def _object_wing_log_line(order, estimate):
 
     - ``order`` -- the order number
     - ``estimate`` -- the ``object_wing_estimate`` the correction used. A count of its wavelength chunks that took the
-      whole-order profile is added when it is not 0 (DY-2079)
+      whole-order profile is added when it is not 0, and a thermal order says it used the single profile (DY-2079)
 
     **Return:**
 
     - ``line`` -- the message, framed by newlines because the fit's progress line erases the line above it
     """
+    from soxspipe.commonutils.object_wing_model import SINGLE_PROFILE_MIN_WAVELENGTH_NM
+
     skyText = ""
     # A SKY AT OR BELOW ZERO HAS NO SHARE TO REPORT (DY-1975)
     if estimate.skyLevel > MIN_LOGGED_SKY_LEVEL:
@@ -302,6 +304,10 @@ def _object_wing_log_line(order, estimate):
     chunkText = (
         f" ({nFallback} OF {len(estimate.chunks)} WAVELENGTH CHUNKS USE THE WHOLE-ORDER PROFILE)" if nFallback else ""
     )
+    if estimate.isThermalSingleProfile:
+        chunkText = (
+            f" (THERMAL ORDER ABOVE {SINGLE_PROFILE_MIN_WAVELENGTH_NM:g} nm, SO IT USED THE SINGLE WHOLE-ORDER PROFILE)"
+        )
     return (
         f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
         f"OBJECT LIGHT{skyText}, REMOVING {lossText} OF THE OBJECT FLUX{chunkText}\n"

@@ -24,7 +24,10 @@ The estimate has five steps:
    in steps 3 and 4 with its own zero point from the profile pixels near its own wavelength. Each profile is still
    non-parametric. A chunk that fails the sign or significance test of step 5 on its own zero point, or that does not
    cover the slit as the whole-order profile does, takes the whole-order profile. The gates, and the object-light
-   bias they test, use the whole-order profile of steps 3 and 4.
+   bias they test, use the whole-order profile of steps 3 and 4. An order whose median usable wavelength is above
+   ``SINGLE_PROFILE_MIN_WAVELENGTH_NM`` (the thermal NIR order) keeps the single whole-order profile of steps 3 and 4,
+   because the thermal sky rises so steeply to the red that the red part of the order has no faint-sky profile
+   pixels. The right correction there is open (DY-2120).
 
 A negative zero point that is small against the noise of a faint-sky pixel, or against its own noise, is not
 corrected. Nor is an order whose median sky fit is at or below a multiple of that noise (DY-1975): the sky there is
@@ -52,6 +55,10 @@ FAR_SLIT_MIN_ARCSEC = 1.0
 FAINT_SKY_QUANTILE = 0.5
 # THE WING PROFILE IS MEASURED IN THIS MANY WAVELENGTH CHUNKS, EACH WITH THE SAME NUMBER OF PROFILE PIXELS (DY-2079)
 WING_CHUNKS = 6
+# AN ORDER WHOSE MEDIAN USABLE WAVELENGTH, IN NM, IS ABOVE THIS USES ONE WHOLE-ORDER PROFILE, NOT WAVELENGTH CHUNKS. THE
+# THERMAL SKY RISES STEEPLY TO THE RED THERE, SO THE FAINT-SKY PROFILE PIXELS ALL SIT IN THE BLUE HALF OF THE ORDER AND
+# THE RED PART HAS NONE. THE RIGHT CORRECTION IN THAT PART IS STILL OPEN (DY-2120)
+SINGLE_PROFILE_MIN_WAVELENGTH_NM = 1900
 CORE_MEDIAN_WINDOW = 201
 MIN_CORE_PIXELS = 201
 MIN_PIXELS_PER_PROFILE_BIN = 20
@@ -112,8 +119,11 @@ class object_wing_estimate:
     - ``isSkyBelowNoise`` -- True if the zero-point, leak and significance gates passed but the order is not corrected
       because its median sky fit is at or below ``minSkySigma`` times ``faintSkyNoise`` (DY-1975). The sky gate runs
       before the crowded-slit test, so a crowded slit with a faint sky is flagged only as sky below noise
+    - ``isThermalSingleProfile`` -- True if the order is corrected with the single whole-order profile because its
+      median usable wavelength is above ``SINGLE_PROFILE_MIN_WAVELENGTH_NM`` (DY-2079, DY-2120)
     - ``wavelength`` -- a copy of the wavelength of every input pixel, for the chunks of the wing model (DY-2079)
-    - ``chunks`` -- the ``wing_chunk`` of each wavelength chunk, from blue to red. Empty if ``isCorrected`` is False
+    - ``chunks`` -- the ``wing_chunk`` of each wavelength chunk, from blue to red. Empty if ``isCorrected`` is False.
+      A single chunk, with ``isFallback`` True, if ``isThermalSingleProfile``
     """
 
     isCorrected: bool
@@ -131,6 +141,7 @@ class object_wing_estimate:
     sourceCentres: np.ndarray
     isCrowdedSlit: bool = False
     isSkyBelowNoise: bool = False
+    isThermalSingleProfile: bool = False
     wavelength: np.ndarray | None = None
     chunks: tuple[wing_chunk, ...] = ()
 
@@ -368,7 +379,8 @@ def wing_chunks(wavelength, slitPosition, residual, error, coreSpectrum, isProfi
     centre lies where its profile is measured. Two chunks whose centres are equal are one chunk. The chunks overlap
     through the hat weights of ``chunk_weight``. A chunk's profile comes from the profile pixels with weight above 0, on
     the bins of ``fallback`` (see ``_measure_chunk``). A chunk that fails the tests of ``_measure_chunk`` takes the
-    profile of ``fallback``.
+    profile of ``fallback``. ``estimate_object_wings`` does not call this for an order above
+    ``SINGLE_PROFILE_MIN_WAVELENGTH_NM``.
 
     **Key Arguments:**
 
@@ -561,7 +573,9 @@ def estimate_object_wings(
 
     **Key Arguments:**
 
-    - ``wavelength`` -- the wavelength of each pixel of one order, in any order
+    - ``wavelength`` -- the wavelength of each pixel of one order, in nm and in any order. An order with a median
+      usable wavelength above ``SINGLE_PROFILE_MIN_WAVELENGTH_NM`` is corrected with one whole-order profile, not
+      wavelength chunks (DY-2079)
     - ``slitPosition`` -- the slit position of each pixel in arcsec
     - ``flux`` -- the flux of each pixel
     - ``skyModel`` -- the first sky fit evaluated at each pixel
@@ -655,9 +669,16 @@ def estimate_object_wings(
             "is free of object light"
         )
     chunks = ()
+    isThermalSingleProfile = False
     if reason == "":
         fallback = wing_chunk(float("nan"), binCentres, profile - zeroPoint)
-        chunks = wing_chunks(wavelength, slitPosition, residual, error, spectrum, isProfile, centre, fallback)
+        medianWavelength = float(np.median(wavelength[isUsable]))
+        isThermalSingleProfile = medianWavelength > SINGLE_PROFILE_MIN_WAVELENGTH_NM
+        chunks = (
+            (replace(fallback, wavelength=medianWavelength, isFallback=True),)
+            if isThermalSingleProfile
+            else wing_chunks(wavelength, slitPosition, residual, error, spectrum, isProfile, centre, fallback)
+        )
     return replace(
         estimate,
         isCorrected=reason == "",
@@ -671,6 +692,7 @@ def estimate_object_wings(
         sourceCentres=sourceCentres,
         isCrowdedSlit=isCrowdedSlit,
         isSkyBelowNoise=isSkyBelowNoise,
+        isThermalSingleProfile=isThermalSingleProfile,
         chunks=chunks,
     )
 
@@ -681,8 +703,8 @@ def wing_model(estimate, slitPosition):
     The wing model is G(λ)·Pc(s, λ), not a single G(λ)·P(s). At each wavelength, Pc is the sum of the chunk profiles
     (each less its zero point) weighted by ``chunk_weight``, and each chunk profile is linearly interpolated over slit
     position from its finite bins. Empty bins are bridged, and a chunk profile is constant beyond its first and last
-    finite bin. The model is zero everywhere if the estimate is not corrected, and a value that is not finite becomes
-    zero.
+    finite bin. With one chunk, the weight is 1 at every pixel and the model is the single profile G(λ)·(P(s) − P0).
+    The model is zero everywhere if the estimate is not corrected, and a value that is not finite becomes zero.
 
     **Key Arguments:**
 

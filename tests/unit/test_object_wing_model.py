@@ -10,6 +10,7 @@ import pytest
 
 from soxspipe.commonutils.object_wing_model import (
     DEFAULT_MIN_SKY_SIGMA,
+    SINGLE_PROFILE_MIN_WAVELENGTH_NM,
     WING_CHUNKS,
     chunk_weight,
     core_spectrum,
@@ -246,6 +247,14 @@ def test_chunk_weight_of_a_pixel_without_a_wavelength_are_not_finite():
     # ASSERT
     assert all(np.isnan(row[0]) for row in weights)
     assert all(np.isfinite(row[1]) for row in weights)
+
+
+def test_chunk_weight_of_a_single_chunk_is_one_at_every_wavelength_including_a_missing_one():
+    # ACT
+    weights = chunk_weight(np.array([np.nan, 5.0, 10.0, 50.0]), np.array([10.0]), 0)
+
+    # ASSERT
+    np.testing.assert_array_equal(weights, 1.0)
 
 
 NAN = float("nan")
@@ -1265,19 +1274,20 @@ CHROMATIC_UNMASKED_ARCSEC = 1.5
 MIN_CHROMATIC_PIXELS = 1000
 
 
-def _chromatic_scene(fwhmTilt, seed=7, skyGradient=0.0):
+def _chromatic_scene(fwhmTilt, seed=7, skyGradient=0.0, firstWavelength=FIRST_WAVELENGTH):
     """Build a shuffled order whose Moffat FWHM grows linearly along the order, and the truth that was injected.
 
     The sky model carries the object light averaged over the unmasked slit (beyond 2.5 arcsec) at every wavelength, so
     the estimate has the leak a fit without an object mask would absorb. ``farLevel`` is the profile averaged over the
-    bins more than 3 arcsec from the object at the wavelength of each pixel.
+    bins more than 3 arcsec from the object at the wavelength of each pixel. ``firstWavelength`` is the wavelength of
+    the first row, in nm.
     """
     rng = np.random.default_rng(seed)
     columns = np.arange(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH + BIN_ARCSEC / 2, BIN_ARCSEC)
     rows = np.repeat(np.arange(N_ROWS), len(columns))
     drift = (rows * SLIT_DRIFT_PER_ROW) % 1.0 - 0.5
     slitPosition = np.tile(columns, N_ROWS) + BIN_ARCSEC * drift
-    wavelength = FIRST_WAVELENGTH + WAVELENGTH_PER_ROW * rows + WAVELENGTH_PER_ARCSEC * slitPosition
+    wavelength = firstWavelength + WAVELENGTH_PER_ROW * rows + WAVELENGTH_PER_ARCSEC * slitPosition
     alpha = MOFFAT_ALPHA * (1.0 + fwhmTilt * (rows / N_ROWS - 0.5))
 
     def moffat(position):
@@ -1540,3 +1550,103 @@ def test_the_estimate_keeps_its_own_copy_of_the_wavelengths():
     # ASSERT
     assert not np.shares_memory(estimate.wavelength, wavelength)
     np.testing.assert_array_equal(estimate.wavelength, order.wavelength)
+
+
+THERMAL_FIRST_WAVELENGTH = 1900.0
+BELOW_THERMAL_FIRST_WAVELENGTH = 1700.0
+
+
+def _thermal_scene_estimate(firstWavelength):
+    """Return the pixels and the estimate of a chromatic scene whose first row is at ``firstWavelength`` nm."""
+    wavelength, slitPosition, flux, skyModel, error, _ = _chromatic_scene(FWHM_TILT, firstWavelength=firstWavelength)
+    isUsable = np.ones(wavelength.size, dtype=bool)
+    estimate = estimate_object_wings(wavelength, slitPosition, flux, skyModel, error, isUsable, MIN_LEAK_SIGMA)
+    return slitPosition, estimate
+
+
+def test_an_order_above_the_thermal_wavelength_uses_the_single_profile_of_develop():
+    # ARRANGE
+    slitPosition, estimate = _thermal_scene_estimate(THERMAL_FIRST_WAVELENGTH)
+    isFinite = np.isfinite(estimate.profile)
+    developWings = estimate.coreSpectrum * np.interp(
+        slitPosition, estimate.binCentres[isFinite], (estimate.profile - estimate.zeroPoint)[isFinite]
+    )
+
+    # ACT
+    wings = wing_model(estimate, slitPosition)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert len(estimate.chunks) == 1
+    assert estimate.chunks[0].isFallback
+    assert np.isfinite(estimate.chunks[0].wavelength)
+    assert estimate.chunks[0].wavelength > SINGLE_PROFILE_MIN_WAVELENGTH_NM
+    np.testing.assert_array_equal(wings, developWings)
+
+
+def test_an_order_below_the_thermal_wavelength_still_uses_wavelength_chunks():
+    # ACT
+    _, estimate = _thermal_scene_estimate(BELOW_THERMAL_FIRST_WAVELENGTH)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert len(estimate.chunks) > 1
+
+
+def test_the_thermal_rule_leaves_the_gates_and_whole_order_outputs_unchanged(monkeypatch):
+    # ARRANGE
+    _, thermal = _thermal_scene_estimate(THERMAL_FIRST_WAVELENGTH)
+    monkeypatch.setattr("soxspipe.commonutils.object_wing_model.SINGLE_PROFILE_MIN_WAVELENGTH_NM", float("inf"))
+
+    # ACT
+    _, unruled = _thermal_scene_estimate(THERMAL_FIRST_WAVELENGTH)
+
+    # ASSERT
+    assert len(unruled.chunks) > 1
+    assert (thermal.isCorrected, thermal.reason) == (unruled.isCorrected, unruled.reason)
+    for name in ("zeroPoint", "biasLevel", "biasNoise", "slitLossFraction"):
+        assert getattr(thermal, name) == getattr(unruled, name)
+    np.testing.assert_array_equal(thermal.profile, unruled.profile)
+
+
+def test_a_thermal_order_that_is_not_corrected_holds_no_chunks_and_keeps_its_reason():
+    # ARRANGE
+    order = _build_order(peak=FAINT_PEAK)
+    thermal = replace(order, wavelength=order.wavelength + THERMAL_FIRST_WAVELENGTH)
+
+    # ACT
+    estimate = thermal.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert estimate.chunks == ()
+    assert estimate.reason != ""
+    assert not estimate.isThermalSingleProfile
+
+
+def test_the_single_profile_wing_model_keeps_the_single_profile_where_the_wavelength_is_not_finite():
+    # ARRANGE
+    slitPosition, estimate = _thermal_scene_estimate(THERMAL_FIRST_WAVELENGTH)
+    isFinite = np.isfinite(estimate.profile)
+    developWings = estimate.coreSpectrum * np.interp(
+        slitPosition, estimate.binCentres[isFinite], (estimate.profile - estimate.zeroPoint)[isFinite]
+    )
+    wavelength = estimate.wavelength.copy()
+    wavelength[:10] = np.nan
+    withNan = replace(estimate, wavelength=wavelength)
+
+    # ACT
+    wings = wing_model(withNan, slitPosition)
+
+    # ASSERT
+    np.testing.assert_array_equal(wings, developWings)
+
+
+def test_the_estimate_of_a_thermal_order_says_it_used_the_single_profile():
+    # ACT
+    _, thermal = _thermal_scene_estimate(THERMAL_FIRST_WAVELENGTH)
+    _, blue = _thermal_scene_estimate(BELOW_THERMAL_FIRST_WAVELENGTH)
+
+    # ASSERT
+    assert thermal.isThermalSingleProfile
+    assert not blue.isThermalSingleProfile
