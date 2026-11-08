@@ -1,10 +1,10 @@
-"""With the shipped stare settings, ``subtract_sky.subtract`` gives the products recorded from develop cff556ae/DY-2081.
+"""With the shipped stare settings, ``subtract_sky.subtract`` gives the products recorded for DY-2079 on f33c0e7b.
 
-The golden file ``data/subtract_sky_default_golden_cff556ae_dy2081.npz`` holds the sky model, the sky-subtracted frame,
-its ``ERRS`` and its mask for each arm, for the synthetic frame built here. The NIR arrays are those that develop
-cff556ae wrote. The VIS arrays were re-recorded from the DY-2081 fix (the pre-fit clip no longer retries once it clips
-about half the pixels Gaussian sky noise would): the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS
-mask. The frame has two orders. Order 12 holds a star, sky lines and cosmic rays, and order 13 holds sky lines and
+The golden file ``data/subtract_sky_default_golden_f33c0e7b_dy2079.npz`` holds the sky model, the sky-subtracted frame,
+its ``ERRS`` and its mask for each arm, for the synthetic frame built here. It was recorded from develop cff556ae and
+re-recorded for DY-2081 (the VIS arrays: the pre-fit clip no longer retries once it clips about half the pixels
+Gaussian sky noise would; the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS mask) and for DY-2079
+(below). The frame has two orders. Order 12 holds a star, sky lines and cosmic rays, and order 13 holds sky lines and
 cosmic rays, so the rolling clip, the object masking, the DY-1972 skyline restore, the object-wing correction and
 (NIR) the DY-1973 error inflation all act on it.
 
@@ -27,10 +27,22 @@ from -0.210 to -0.021, because the clip no longer removes the high tail of the n
 No VIS order retries its pre-fit clip on this frame under the fix, so the unit tests pin the retry, not this file. The
 DY-1972 skyline restore is NIR-only by default, so the VIS arm has no restore.
 
+DY-2079 re-recorded the file on f33c0e7b (develop with the DY-2081 clip fix) because the object-wing model now measures
+its profile in up to 6 wavelength chunks. Only order 12, the star order, changes, in both arms. Against the f33c0e7b
+file (pixels counted where the change exceeds 1e-3, both medians signed as new minus old):
+
+- NIR sky model and sky-subtracted frame: 37909 and 37911 of 76800 pixels change, by at most 0.28 e- (+0.23 up, -0.28
+  down). The median change over the changed pixels is +0.021 e- in the model and -0.021 e- in the subtracted frame.
+- NIR ``ERRS``: 23626 pixels change, by at most 2.46 e- (+2.03 up, -2.46 down). The median signed change is -0.0023 e-
+  and the median size is 0.098 e-, because the DY-1973 inflation follows the residuals of the new sky model.
+- VIS sky model and sky-subtracted frame: 38055 and 38054 pixels change, by at most 0.25 e- (+0.25 up, -0.20 down). The
+  median signed change is -0.003 e- in the model and +0.003 e- in the subtracted frame.
+- The VIS ``ERRS`` and both masks do not change. The model still holds every sky line in both orders.
+
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. ``log`` is
 the ``log`` fixture of ``tests/conftest.py`` or any object with ``print``, ``debug`` and ``warning``. Recording from the
-DY-2081 fix commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
+DY-2079 commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
 sky subtraction changed.
 """
 
@@ -57,7 +69,7 @@ from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
 
-GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_cff556ae_dy2081.npz"
+GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_f33c0e7b_dy2079.npz"
 ARMS = ("NIR", "VIS")
 PRODUCTS = ("model", "subtracted", "errs", "mask")
 STAR_ORDER = 12
