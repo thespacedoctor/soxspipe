@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pytest
 
-from soxspipe.commonutils.flat_slit_gradient import MAX_SLOPE_PER_ARCSEC, flat_slit_ratio
+from soxspipe.commonutils.flat_slit_gradient import MAX_SLOPE_PER_ARCSEC, _profile_extremes, flat_slit_ratio
 
 pytestmark = pytest.mark.unit
 
@@ -278,3 +280,45 @@ def test_ratio_is_one_and_the_reason_is_logged_when_the_flat_is_not_finite_anywh
     # ASSERT
     assert (ratio == 1.0).all()
     assert "too few populated flat bins" in _log_text(log)
+
+
+def test_ratio_is_one_and_the_reason_is_logged_when_no_usable_pixel_is_in_the_slit_interior(log):
+    # ARRANGE: THE FIT RANGE LIES ENTIRELY BEYOND THE 3 ARCSEC INTERIOR THAT SETS THE LEVEL OF EACH WAVELENGTH CHUNK
+    slit, column = _pixels()
+    flat = _flat(slit, column, lambda s: 1.0 + FLAT_SLOPE * s)
+
+    # ACT
+    ratio = flat_slit_ratio(log, ORDER, flat, slit, _wavelength(column), (3.5, 5.0), np.abs(slit) < 4.0)
+
+    # ASSERT
+    assert (ratio == 1.0).all()
+    assert "too few populated flat bins" in _log_text(log)
+
+
+def test_ratio_is_one_and_the_reason_is_logged_when_every_chunk_level_is_not_positive(log):
+    # ARRANGE: A FLAT THAT IS NEGATIVE EVERYWHERE, SO NO CHUNK HAS A LEVEL TO DIVIDE BY
+    slit, column = _pixels()
+    flat = -_flat(slit, column, lambda s: 1.0 + FLAT_SLOPE * s)
+
+    # ACT
+    ratio = flat_slit_ratio(log, ORDER, flat, slit, _wavelength(column), KEEP_RANGE, np.abs(slit) < 4.0)
+
+    # ASSERT
+    assert (ratio == 1.0).all()
+    assert "too few populated flat bins" in _log_text(log)
+
+
+def test_a_quadratic_term_too_small_to_have_a_vertex_gives_the_extremes_of_a_line():
+    # ARRANGE: A SUBNORMAL QUADRATIC TERM, WHOSE VERTEX -b / 2a OVERFLOWS
+    coefficients = np.array([5e-324, -0.0035, 1.0])
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        minimum, maxGradient, meanLevel, meanGradient = _profile_extremes(coefficients, -5.0, 5.0)
+
+    # ASSERT
+    assert minimum == pytest.approx(1.0 - 0.0035 * 5.0)
+    assert maxGradient == pytest.approx(0.0035)
+    assert meanLevel == pytest.approx(1.0)
+    assert meanGradient == pytest.approx(-0.0035)

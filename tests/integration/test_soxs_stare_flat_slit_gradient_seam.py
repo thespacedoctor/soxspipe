@@ -2,7 +2,7 @@
 
 The recipe's own constructor runs for real, with the shipped SOXS settings: it merges the NIR block, so the
 ``flat-slit-gradient`` key that the sky fitter reads is the one in ``soxs_default_settings.yaml``. The recipe's
-``_subtract_sky`` then builds the real ``subtract_sky`` with the kept slit ranges the recipe holds, and fits a
+``_subtract_sky`` then builds the real ``subtract_sky`` with the flat fit ranges the recipe holds, and fits a
 flat-fielded synthetic order whose master flat tilts along the slit. Only the inherited boundaries (the session lookup,
 the set of files, the frame preparation) and the sky fitter's own file reads (the 2D map, the plots) are replaced.
 """

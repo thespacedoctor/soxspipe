@@ -116,8 +116,11 @@ def _profile_extremes(coefficients, lower, upper):
     """*the minimum, the largest gradient (size), the mean and the mean gradient of a quadratic over [lower, upper]*"""
     a, b, c = coefficients
     candidates = [lower, upper]
-    if a != 0 and lower < -b / (2 * a) < upper:
-        candidates.append(-b / (2 * a))
+    # A QUADRATIC TERM TOO SMALL TO HAVE A VERTEX INSIDE THE RANGE (OR ONE THAT OVERFLOWS) LEAVES A LINE
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        vertex = -b / (2 * a)
+    if np.isfinite(vertex) and lower < vertex < upper:
+        candidates.append(vertex)
     minimum = np.polyval(coefficients, candidates).min()
     maxGradient = max(abs(2 * a * lower + b), abs(2 * a * upper + b))
     meanLevel = a * (lower**2 + lower * upper + upper**2) / 3 + b * (lower + upper) / 2 + c

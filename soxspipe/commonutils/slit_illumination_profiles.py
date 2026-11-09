@@ -156,6 +156,8 @@ def chunk_normalised_flat_profile(flatData, slit, wavelength, isOrder, binArcsec
     level[medians.index.to_numpy()] = medians.to_numpy()
     pixelLevel = level[chunk]
     isNormalisable = isUsable & (pixelLevel > 0)
+    if not isNormalisable.any():
+        return np.array([]), np.array([]), TOO_FEW_FLAT_BINS_REASON
     normalisedFlat = np.full(flatData.shape, np.nan)
     normalisedFlat[isNormalisable] = flatData[isNormalisable] / pixelLevel[isNormalisable]
     return normalised_flat_profile(normalisedFlat, slit, isNormalisable, binArcsec)
