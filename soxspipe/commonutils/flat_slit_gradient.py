@@ -18,6 +18,9 @@ from soxspipe.commonutils.slit_illumination_profiles import (
 # THE LARGEST MEAN GRADIENT OF THE FLAT ACROSS THE KEPT RANGE THAT IS TRUSTED, AS A FRACTION PER ARCSEC. THE MEASURED
 # NIR GRADIENT IS ABOUT 0.0035 (DY-1990), SO A LARGER ONE MEANS A BAD FLAT
 MAX_SLOPE_PER_ARCSEC = 0.015
+# THE QUADRATIC IS FITTED THIS FAR INSIDE THE KEPT RANGE (ARCSEC), SO THE ROLL-OFF OF THE FLAT'S LIT EDGES, WHICH
+# REACHES INTO THE KEPT RANGE, DOES NOT BEND THE FIT. THE RATIO IS STILL APPLIED OVER THE WHOLE KEPT RANGE
+FIT_EDGE_MARGIN_ARCSEC = 0.5
 PROFILE_DEGREE = 2
 # THE FITTED PROFILE IS CHECKED ON THIS MANY POINTS ACROSS THE KEPT RANGE
 CHECK_POINTS = 101
@@ -29,8 +32,9 @@ NOT_POSITIVE_REASON = "the fitted flat profile is not positive in the kept slit 
 def flat_slit_ratio(log, order, flat, slit, keepRange, isSky):
     """*the ratio 1 / P(s) of one order, from its master flat, normalised to mean 1 over the sky pixels*
 
-    P(s) is a quadratic fitted to the flat's slit profile inside ``keepRange`` only, so the roll-off at the slit ends
-    does not reach the fit. A pixel outside ``keepRange`` takes the ratio of the nearest limit. The ratio is 1 for
+    P(s) is a quadratic fitted to the flat's slit profile inside ``keepRange`` less ``FIT_EDGE_MARGIN_ARCSEC`` at each
+    end, so the roll-off at the slit ends does not reach the fit. The ratio is applied over the whole ``keepRange``,
+    and a pixel outside it takes the ratio of the nearest limit. The ratio is 1 for
     every pixel, with the reason logged as a warning, when the order has no kept range or no sky pixels, when too few
     slit bins hold flat pixels, when the fitted profile is not positive, or when the mean gradient of the profile
     across the kept range is above ``MAX_SLOPE_PER_ARCSEC``.
@@ -74,10 +78,11 @@ def _ratio_from_flat(flat, slit, keepRange, isSky):
     if not isSky.any():
         return None, np.nan, NO_SKY_REASON
     keepLower, keepUpper = keepRange
-    isKept = np.isfinite(flat) & np.isfinite(slit) & (slit >= keepLower) & (slit <= keepUpper)
-    if not isKept.any():
+    fitLower, fitUpper = keepLower + FIT_EDGE_MARGIN_ARCSEC, keepUpper - FIT_EDGE_MARGIN_ARCSEC
+    isFitted = np.isfinite(flat) & np.isfinite(slit) & (slit >= fitLower) & (slit <= fitUpper)
+    if not isFitted.any():
         return None, np.nan, TOO_FEW_FLAT_BINS_REASON
-    centres, profile, reason = normalised_flat_profile(flat, slit, isKept, PROFILE_BIN_ARCSEC)
+    centres, profile, reason = normalised_flat_profile(flat, slit, isFitted, PROFILE_BIN_ARCSEC)
     if reason:
         return None, np.nan, reason
     isBin = np.isfinite(profile)

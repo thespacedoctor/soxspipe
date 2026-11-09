@@ -106,9 +106,9 @@ The sky model is a bspline in wavelength only, but the sky in a flat-fielded NIR
 
 The `flat-slit-gradient` setting takes this gradient from the master flat. For each order, the pipeline does these steps:
 
-1. It takes the range of the slit where both the sky image and the master flat are lit, less the `overlap-margin-arcsec` margin. An order with no usable slit offset uses an offset of 0 for this range. The roll-off at the slit ends is outside the range and does not enter the fit.
-2. It bins the master flat pixels of the order in 0.1 arcsec slit bins, and divides the bins by the median of the bins in the middle of the range. It fits a quadratic P(s) to the bins, where s is the slit position.
-3. It sets the ratio r(s) = 1 / P(s), and scales r(s) so that its mean over the pixels used by the sky fit is 1.
+1. It takes the range of the slit where both the sky image and the master flat are lit, less the `overlap-margin-arcsec` margin. An order with no usable slit offset uses an offset of 0 for this range.
+2. It bins the master flat pixels of the order in 0.1 arcsec slit bins. Each bin value is the median of the raw flat pixels in the bin, over all wavelengths of the order. It divides the bins by the median of the bins in the middle of the range. It fits a quadratic P(s) to the bins, where s is the slit position. The fit leaves out the outer 0.5 arcsec of the range, because the roll-off at the slit ends reaches into the range and bends the fit.
+3. It sets the ratio r(s) = 1 / P(s) over the whole range, and scales r(s) so that its mean over the pixels used by the sky fit is 1.
 4. The sky fit divides the flux by r(s) before it fits the bspline. It multiplies the bspline by r(s) to make the sky model. The rest of the fit does not change.
 
 The ratio is 1 for the whole order, and the log gives the reason, when:

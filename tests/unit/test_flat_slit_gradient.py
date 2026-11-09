@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from soxspipe.commonutils.flat_slit_gradient import MAX_SLOPE_PER_ARCSEC, flat_slit_ratio
+from soxspipe.commonutils.flat_slit_gradient import FIT_EDGE_MARGIN_ARCSEC, MAX_SLOPE_PER_ARCSEC, flat_slit_ratio
 
 pytestmark = pytest.mark.unit
 
@@ -62,6 +62,22 @@ def test_edge_roll_off_outside_the_kept_range_does_not_change_the_ratio(log):
     withRollOff = flat_slit_ratio(log, ORDER, _flat(slit, column, rolloff), slit, KEEP_RANGE, isSky)
 
     # ASSERT
+    np.testing.assert_allclose(withRollOff, smooth, rtol=1e-9)
+
+
+def test_roll_off_inside_the_kept_range_but_outside_the_fit_window_does_not_change_the_ratio(log):
+    # ARRANGE: THE FLAT FALLS AWAY OVER THE LAST 0.4 ARCSEC OF THE KEPT RANGE, WHICH THE FIT WINDOW LEAVES OUT
+    slit, column = _pixels()
+    isSky = np.abs(slit) < 4.0
+    edgeStart = KEEP_RANGE[1] - FIT_EDGE_MARGIN_ARCSEC + 0.1
+    smooth = flat_slit_ratio(log, ORDER, _flat(slit, column, lambda s: 1.0 + FLAT_SLOPE * s), slit, KEEP_RANGE, isSky)
+    rolloff = lambda s: (1.0 + FLAT_SLOPE * s) * np.where(np.abs(s) > edgeStart, 0.5, 1.0)  # noqa: E731
+
+    # ACT
+    withRollOff = flat_slit_ratio(log, ORDER, _flat(slit, column, rolloff), slit, KEEP_RANGE, isSky)
+
+    # ASSERT
+    assert edgeStart < KEEP_RANGE[1]
     np.testing.assert_allclose(withRollOff, smooth, rtol=1e-9)
 
 
