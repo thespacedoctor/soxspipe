@@ -16,12 +16,20 @@ from soxspipe.commonutils.slit_illumination import STATUS_BORROWED, STATUS_FITTE
 from soxspipe.commonutils.slit_illumination_profiles import in_order_pixels
 
 __all__ = [
+    "FLAT_FIT_CLEARANCE_ARCSEC",
+    "flat_fit_ranges_from_result",
     "exclude_mask_from_result",
+    "kept_ranges_from_result",
     "kept_slit_range",
     "overlap_exclude_mask",
     "usable_flat_edges",
     "usable_offsets",
 ]
+
+
+# THE SLIT-END ROLL-OFF OF THE SOXS NIR MASTER FLAT REACHES THIS FAR (ARCSEC) INSIDE ITS LIT EDGE (DY-1958), SO A FIT OF
+# THE FLAT'S SLIT PROFILE STARTS NO NEARER THE EDGE (DY-2147). THE SHIPPED OVERLAP MARGIN IS THE SAME DISTANCE
+FLAT_FIT_CLEARANCE_ARCSEC = 0.45
 
 
 def usable_offsets(offsets):
@@ -65,6 +73,69 @@ def kept_slit_range(lower, upper, offset, marginArcsec):
     ```
     """
     return max(lower, lower + offset) + marginArcsec, min(upper, upper + offset) - marginArcsec
+
+
+def kept_ranges_from_result(result):
+    """*the both-lit slit range of every order with finite flat edges, from a slit-illumination measurement*
+
+    An order whose offset is not usable (it failed, or it has none) takes an offset of 0, so the range is the flat's
+    lit range less the margin. An order whose range is empty is left out.
+
+    **Key Arguments:**
+
+    - ``result`` -- the ``slit_illumination_result`` from ``measure_slit_illumination``
+
+    **Return:**
+
+    - ``keptRanges`` -- ``{order: (keepLower, keepUpper)}`` in arcsec. Empty if the measurement was not applied
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_illumination_mask import kept_ranges_from_result
+    keptRanges = kept_ranges_from_result(result)
+    ```
+    """
+    if not result.isApplied:
+        return {}
+    offsets = usable_offsets(result.offsets)
+    keptRanges = {}
+    for order, (lower, upper) in usable_flat_edges(result.flatEdges).items():
+        keepLower, keepUpper = kept_slit_range(lower, upper, offsets.get(order, 0.0), result.overlapMarginArcsec)
+        if keepLower < keepUpper:
+            keptRanges[order] = (keepLower, keepUpper)
+    return keptRanges
+
+
+def flat_fit_ranges_from_result(result):
+    """*the slit range of every order over which to fit the master flat's slit profile, from a measurement*
+
+    The both-lit range (``kept_ranges_from_result``), inset at each end by what the overlap margin leaves short of
+    ``FLAT_FIT_CLEARANCE_ARCSEC``, so the fit stays that far from the flat's lit edge whatever overlap margin the
+    workspace settings hold. A workspace that kept the older 0.3 arcsec margin is inset by 0.15 arcsec, and one with the
+    shipped 0.45 arcsec is not inset. An order whose inset range is empty is left out.
+
+    **Key Arguments:**
+
+    - ``result`` -- the ``slit_illumination_result`` from ``measure_slit_illumination``
+
+    **Return:**
+
+    - ``fitRanges`` -- ``{order: (lower, upper)}`` in arcsec. Empty if the measurement was not applied
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_illumination_mask import flat_fit_ranges_from_result
+    fitRanges = flat_fit_ranges_from_result(result)
+    ```
+    """
+    inset = max(0.0, FLAT_FIT_CLEARANCE_ARCSEC - result.overlapMarginArcsec)
+    return {
+        order: (lower + inset, upper - inset)
+        for order, (lower, upper) in kept_ranges_from_result(result).items()
+        if lower + inset < upper - inset
+    }
 
 
 def overlap_exclude_mask(log, slit, orderMap, flatEdges, offsets, marginArcsec):

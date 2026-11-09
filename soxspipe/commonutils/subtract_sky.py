@@ -97,6 +97,10 @@ SKYLINE_SIGMA = 3.0
 # THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
 SKYLINE_DILATE_SAMPLES = 50
 
+# THE SKY-SUBTRACTION SETTING THAT TAKES THE ALONG-SLIT ILLUMINATION OF THE SKY FROM THE MASTER FLAT (DY-2147). A
+# MISSING KEY MEANS FALSE, SO A WORKSPACE WHOSE SETTINGS PREDATE IT IS UNCHANGED
+FLAT_SLIT_GRADIENT_KEY = "flat-slit-gradient"
+
 # THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
 # sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML
 ERROR_INFLATION_ARMS = frozenset({"NIR"})
@@ -343,6 +347,10 @@ class subtract_sky:
       The sky fit then weights each pixel by its flat-fielded noise and leaves out the pixels where the flat is low
       (not finite, not positive, or below ``LOW_FLAT_FRACTION`` of the 95th percentile of the flat of their order),
       as for ``excludeMask``. Default *None*, which applies no flat
+    - ``flatFitRanges`` -- ``{order: (lower, upper)}``, the slit range in arcsec of each order over which the
+      ``flat-slit-gradient`` setting fits the master flat's slit profile, and outside which the fitted ratio is held
+      at its value at the nearest limit (``slit_illumination_mask.flat_fit_ranges_from_result``). Default *None*,
+      which gives no order a range, so the ratio is 1
     - ``ron`` -- the read noise (e-) of the sky-fit noise model, a plain float. Pass it when the frame's own header
       value is not the noise left in the frame, e.g. the single-frame read noise scaled by ``sqrt(1 + 1/N)`` for the
       master bias subtracted from it. A value that is not a finite, positive number falls back to the detector default.
@@ -375,6 +383,8 @@ class subtract_sky:
 
     # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
     maskedOrders = frozenset()
+    # THE SLIT RANGE OF EACH ORDER TO FIT THE MASTER FLAT'S SLIT PROFILE OVER; SET BY __init__ WHEN RANGES ARE GIVEN
+    flatFitRanges = None
 
     def __init__(
         self,
@@ -394,6 +404,7 @@ class subtract_sky:
         excludeMask=None,
         masterFlat=None,
         ron=None,
+        flatFitRanges=None,
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
@@ -409,6 +420,7 @@ class subtract_sky:
         self.startNightDate = startNightDate
         self.debug = debug
         self.debugInfo = debugInfo
+        self.flatFitRanges = dict(flatFitRanges) if flatFitRanges else {}
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -656,6 +668,9 @@ class subtract_sky:
 
         # THE BSPLINE ORDER TO FIT SKY WITH
         self.bspline_order = self.recipeSettings["sky-subtraction"]["bspline_order"]
+
+        # A SETTING THAT IS NOT TRUE OR FALSE STOPS THE RUN BEFORE ANY ORDER IS FITTED
+        self._flat_slit_gradient_enabled()
 
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         self.qcPlotOrder = int(np.median(uniqueOrders)) - 1
@@ -2116,8 +2131,8 @@ class subtract_sky:
         # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282)
         noiseModelSky = self._fill_nans_by_interpolation(imageMapOrder["flux_percentile_smoothed"].values)
 
-        # NO SLIT-ILLUMINATION CORRECTION IS APPLIED, SO THE RATIO IS A CONSTANT 1
-        imageMapOrder["slit_normalisation_ratio"] = 1
+        # THE RATIO IS 1 UNLESS THE FLAT-DERIVED ALONG-SLIT ILLUMINATION IS ON (DY-2147)
+        imageMapOrder["slit_normalisation_ratio"] = self._slit_normalisation_ratio(imageMapOrder)
 
         # FOR WEIGHTED BSPLINES WE ONLY NEED *INTERIOR* KNOTS (DON'T GO BEYOND RANGE OF DATA)
         # CAN'T HAVE MORE KNOTS THAN DATA POINTS
@@ -2293,13 +2308,8 @@ class subtract_sky:
             if iterationCount > 0:
                 imageMapOrder, residualFloor = self.determine_residual_floor(imageMapOrder, tck, iterationCount)
             else:
-                # COMPUTE NORMALISED ABSOLUTE RESIDUALS (flux - bspline model) / error
-                imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = imageMapOrder.loc[
-                    ~mask_all_clipped, "flux"
-                ].values - _evaluate_sky_spline(imageMapOrder.loc[~mask_all_clipped, "wavelength"].values, tck)
-                imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = (
-                    imageMapOrder.loc[~mask_all_clipped, "sky_residuals"].abs()
-                    / imageMapOrder.loc[~mask_all_clipped, "error"]
+                imageMapOrder.loc[~mask_all_clipped, "sky_residuals"] = self._normalised_abs_residuals(
+                    imageMapOrder, ~mask_all_clipped, tck
                 )
 
             if iterationCount >= 5:
@@ -3171,16 +3181,19 @@ class subtract_sky:
         **Return:**
 
         - ``isOn`` -- the value of the setting
-            - the value must be a bool: any other value (a quoted ``"False"``, a number, null) raises a ``ValueError``
+            - the value must be a bool (or a numpy bool): any other value (a quoted ``"False"``, a number, null)
+              raises a ``ValueError``
             - when the key is absent it is True for the arms in ``defaultArms`` and False for the rest
         """
+        import numpy as np
+
         skySettings = self.recipeSettings["sky-subtraction"]
         if key not in skySettings:
             return self.arm.upper() in defaultArms
         isOn = skySettings[key]
-        if not isinstance(isOn, bool):
+        if not isinstance(isOn, (bool, np.bool_)):
             raise ValueError(f"the sky-subtraction setting `{key}` must be true or false, not {isOn!r}")
-        return isOn
+        return bool(isOn)
 
     def _restore_skyline_cores_enabled(self):
         """*whether skyline cores outside the object are restored to the sky fit (DY-1972)*
@@ -3201,6 +3214,49 @@ class subtract_sky:
           ``ERROR_INFLATION_ARMS`` (NIR). See ``_arm_default_flag``
         """
         return self._arm_default_flag(ERROR_INFLATION_KEY, ERROR_INFLATION_ARMS)
+
+    def _flat_slit_gradient_enabled(self):
+        """*whether the along-slit illumination of the sky is taken from the master flat (DY-2147)*
+
+        **Return:**
+
+        - ``isOn`` -- the ``flat-slit-gradient`` sky-subtraction setting, False when the key is absent. See
+          ``_arm_default_flag``
+        """
+        return self._arm_default_flag(FLAT_SLIT_GRADIENT_KEY, frozenset())
+
+    def _slit_normalisation_ratio(self, imageMapOrder):
+        """*the along-slit illumination ratio of each pixel of an order, the sky fit's ``slit_normalisation_ratio``*
+
+        The fit divides the flux by this ratio and multiplies its sky model by it. With ``flat-slit-gradient`` off it
+        is 1. With it on, it is ``1 / P(s)`` from the master flat (see ``flat_slit_ratio``), normalised to mean 1
+        over the pixels the fit uses, and 1 again, with the reason logged, for an order that has no master flat or
+        no kept slit range.
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- single order dataframe sorted by wavelength, with ``order``, ``slit_position`` and
+          ``flagged_all_clipped`` columns and, when the map carries one, ``flat``
+
+        **Return:**
+
+        - ``ratio`` -- the scalar 1 when the setting is off, else a numpy array with one value per row
+        """
+        if not self._flat_slit_gradient_enabled():
+            return 1
+
+        from soxspipe.commonutils.flat_slit_gradient import flat_slit_ratio
+
+        order = int(imageMapOrder["order"].values[0])
+        return flat_slit_ratio(
+            self.log,
+            order,
+            self._flat_values(imageMapOrder),
+            imageMapOrder["slit_position"].to_numpy(dtype=float),
+            imageMapOrder["wavelength"].to_numpy(dtype=float),
+            (self.flatFitRanges or {}).get(order),
+            ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool),
+        )
 
     def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):
         """*multiply the uncertainty of every pixel of an order by the local scatter of its sky-fit residuals (DY-1973)*
@@ -3276,6 +3332,29 @@ class subtract_sky:
         imageMapOrderDF.loc[isReleased, "flagged_object_clipped"] = False
         self._rebuild_all_clipped_flag(imageMapOrderDF)
 
+    @staticmethod
+    def _normalised_abs_residuals(imageMapOrder, isUsed, tck):
+        """*the absolute residuals of the sky spline in noise units, in the space the spline was fitted in*
+
+        The spline is fitted to ``flux / slit_normalisation_ratio``, so the residual is that minus the spline, and its
+        noise is ``error / slit_normalisation_ratio`` (DY-2147). With a ratio of 1 this is ``|flux - spline| / error``.
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- order dataframe with ``flux``, ``error``, ``wavelength`` and ``slit_normalisation_ratio``
+        - ``isUsed`` -- boolean series, True for the pixels to measure
+        - ``tck`` -- the fitted spline
+
+        **Return:**
+
+        - ``residuals`` -- series of the absolute residuals of the used pixels. Infinite where the error is 0
+        """
+        used = imageMapOrder.loc[isUsed]
+        spline = _evaluate_sky_spline(used["wavelength"].values, tck)
+        # A FRAME THAT NO FIT HAS GIVEN A RATIO YET IS IN THE SPACE OF THE DATA
+        ratio = used["slit_normalisation_ratio"] if "slit_normalisation_ratio" in used.columns else 1
+        return (used["flux"] / ratio - spline).abs() / (used["error"] / ratio)
+
     def determine_residual_floor(self, imageMapOrder, tck, iteration):
         """*determine residual floor and flag sky-lines*
 
@@ -3317,12 +3396,8 @@ class subtract_sky:
 
         mask_unclipped = imageMapOrder["flagged_all_clipped"] == False
 
-        # COMPUTE NORMALISED ABSOLUTE RESIDUALS (flux - bspline model) / error
-        imageMapOrder.loc[mask_unclipped, "sky_residuals"] = imageMapOrder.loc[
-            mask_unclipped, "flux"
-        ].values - _evaluate_sky_spline(imageMapOrder.loc[mask_unclipped, "wavelength"].values, tck)
-        imageMapOrder.loc[mask_unclipped, "sky_residuals"] = (
-            imageMapOrder.loc[mask_unclipped, "sky_residuals"].abs() / imageMapOrder.loc[mask_unclipped, "error"]
+        imageMapOrder.loc[mask_unclipped, "sky_residuals"] = self._normalised_abs_residuals(
+            imageMapOrder, mask_unclipped, tck
         )
         # INF ARISES WHEN ERROR == 0 (NO DARK SUBTRACTION); REPLACE WITH 1 TO AVOID MASKING GOOD PIXELS
         # RESTRICTED TO sky_residuals SO NO OTHER COLUMN (E.G. THE FIT WEIGHTS) IS REWRITTEN (DY-1253)
@@ -3382,9 +3457,12 @@ class subtract_sky:
 
         # FLAG HIGH-FLUX PEAKS THAT WEREN'T CAUGHT BY THE RESIDUAL CRITERION
         mask_non_skyline = imageMapOrder["flagged_sky_line"] == False
-        sky_flux = imageMapOrder.loc[mask_unclipped & mask_unnoisy, "flux"].values
+        # THE FLUX IS TAKEN IN THE SPACE THE SPLINE WAS FITTED IN, SO A SLIT GRADIENT DOES NOT MAKE ONE END A PEAK
+        # (DY-2147)
+        fitSpaceFlux = imageMapOrder["flux"] / imageMapOrder.get("slit_normalisation_ratio", 1)
+        sky_flux = fitSpaceFlux[mask_unclipped & mask_unnoisy].values
         sky_flux_threshold = np.median(sky_flux) + 1.5 * sky_flux.std()
-        mask_high_flux = imageMapOrder["flux"] > sky_flux_threshold
+        mask_high_flux = fitSpaceFlux > sky_flux_threshold
         imageMapOrder.loc[
             mask_unclipped & mask_unnoisy & mask_non_skyline & mask_high_flux,
             "flagged_sky_line",
