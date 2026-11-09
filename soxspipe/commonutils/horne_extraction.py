@@ -51,6 +51,9 @@ SLIT_CENTRE_ARCSEC = 0.0
 EXTRACT_METHOD_QC_COMMENT = "Optimal, or boxcar if no trace"
 SKY_TUNING_QC_COMMENT = "Wavelength tuning to sky lines"
 SKY_TUNING_SKIPPED_QC_VALUE = "skipped: attached arc"
+# THE RECIPE SETTING THAT SWITCHES THE SKYLINE WAVELENGTH TUNING ON OR OFF (DY-1154), AND ITS QC VALUE WHEN OFF
+SKY_TUNING_SETTING = "tune-wavelength-to-skylines"
+SKY_TUNING_SWITCHED_OFF_QC_VALUE = "skipped: switched off"
 # THE SKY TUNING QC VALUES OF THE NIR GLOBAL FIT, AND OF ITS FALLBACK TO ONE MEDIAN SHIFT PER ORDER (DY-1968)
 SKY_TUNING_GLOBAL_QC_VALUE = "skylines-global"
 SKY_TUNING_PER_ORDER_QC_VALUE = "skylines-per-order"
@@ -1000,7 +1003,11 @@ class horne_extraction(base_util):
         return extractedOrdersDF
 
     def _tune_or_skip(self, extractedOrdersDF, arm):
-        """*tune the wavelength solution to the sky lines, unless a SOXS arc is attached to the science frame*
+        """*tune the wavelength solution to the sky lines, unless tuning is switched off or a SOXS arc is attached*
+
+        The recipe setting ``tune-wavelength-to-skylines`` switches tuning off when it is ``False`` (DY-1154). A
+        settings file without the key tunes. When tuning is switched off, the spectrum is returned unchanged and the
+        skip is logged, noted on the QC plots and recorded as the ``SKY TUNING`` QC.
 
         With an attached arc (``_arc_attachment``) the arc solution is accurate enough that tuning only adds noise
         (DY-1665), so the spectrum is returned unchanged and the skip is logged, noted on the QC plots and recorded
@@ -1014,23 +1021,25 @@ class horne_extraction(base_util):
         **Return:**
 
         - ``extractedOrdersDF`` -- the tuned data-frame, or the input if tuning was skipped
+
+        **Raises:**
+
+        - ``ValueError`` -- if ``tune-wavelength-to-skylines`` is neither ``True`` nor ``False``
         """
         from soxspipe.commonutils.toolkit import append_qc, utcnow_string
 
-        attachment = self._arc_attachment()
-        if attachment is None:
+        if not self._skyline_tuning_switched_on():
+            tuned = self._skip_tuning(extractedOrdersDF, "Skyline wavelength tuning is switched off in the settings")
+            qcValue = SKY_TUNING_SWITCHED_OFF_QC_VALUE
+        elif (attachment := self._arc_attachment()) is None:
             tuned, qcValue = self._tune_to_skylines(extractedOrdersDF, arm)
         else:
             message = (
                 f"Attached arc (Δt {attachment[0]:0.1f} min, Δrot {attachment[1]:0.1f}°): "
                 "skyline wavelength tuning skipped"
             )
-            self.log.print(message)
-            if isinstance(self.log, extraction_note_logger):
-                self.log.note(message)
-            tuned = extractedOrdersDF
+            tuned = self._skip_tuning(extractedOrdersDF, message)
             qcValue = SKY_TUNING_SKIPPED_QC_VALUE
-            self.skyShiftsNm = None
 
         if not isinstance(self.qc, bool):
             self.qc = append_qc(
@@ -1045,6 +1054,42 @@ class horne_extraction(base_util):
                 toHeader=True,
             )
         return tuned
+
+    def _skyline_tuning_switched_on(self):
+        """*whether the recipe setting ``tune-wavelength-to-skylines`` switches the skyline tuning on (DY-1154)*
+
+        A recipe settings file from before the key existed has none, and tunes.
+
+        **Return:**
+
+        - ``switchedOn`` -- *True* unless the setting is ``False``
+
+        **Raises:**
+
+        - ``ValueError`` -- if the setting is neither ``True`` nor ``False``
+        """
+        switchedOn = self.recipeSettings.get(SKY_TUNING_SETTING, True)
+        if not isinstance(switchedOn, bool):
+            raise ValueError(f"The `{SKY_TUNING_SETTING}` setting must be True or False, not {switchedOn!r}")
+        return switchedOn
+
+    def _skip_tuning(self, extractedOrdersDF, message):
+        """*log and note why the skyline tuning is skipped, and return the spectrum unchanged with no sky shifts*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``message`` -- the reason the tuning is skipped, for the log and the QC plots
+
+        **Return:**
+
+        - ``extractedOrdersDF`` -- the input data-frame
+        """
+        self.log.print(message)
+        if isinstance(self.log, extraction_note_logger):
+            self.log.note(message)
+        self.skyShiftsNm = None
+        return extractedOrdersDF
 
     def _read_nir_sky_tuning(self):
         """*the ``sky-tuning`` settings of a SOXS NIR extraction, or None for any other arm or instrument*

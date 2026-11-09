@@ -144,6 +144,8 @@ def build_extractor(
     extractor.kw = KEYWORDS.__getitem__
     extractor.qc = pd.DataFrame()
     extractor.recipeName = "soxs-stare"
+    # NO tune-wavelength-to-skylines KEY, SO THE SKYLINE TUNING RUNS (DY-1154)
+    extractor.recipeSettings = {}
     extractor.dateObs = "2026-07-05T05:26:29"
     extractor.nirSkyTuning = read_sky_tuning_settings(sky_tuning)
     extractor._get_local_skylines_for_order = catalogue_with_decoys(decoyOrders)
