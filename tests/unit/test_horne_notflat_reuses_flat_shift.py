@@ -149,6 +149,29 @@ def test_a_not_flattened_pass_without_a_hand_off_runs_no_peak_matching(log: obje
     assert any(level == "warning" for level, _ in log.messages)
 
 
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_switched_off_tuning_leaves_both_passes_untuned(log: object, tmp_path: Path, arm: str) -> None:
+    # ARRANGE: THE RECIPE SETTING SWITCHES THE SKYLINE TUNING OFF (DY-1154)
+    (tmp_path / "flat").mkdir()
+    (tmp_path / "notflat").mkdir()
+    flat = _extractor(log, tmp_path / "flat", notFlattened=False)
+    flat.recipeSettings = {"tune-wavelength-to-skylines": False}
+    before = _spectrum()
+
+    # ACT
+    flatAfter = flat._correct_wavelengths(before.copy(), arm)
+    notFlat = _extractor(log, tmp_path / "notflat", notFlattened=True, flatPass=flat.flatPassHandoff)
+    notFlat.recipeSettings = {"tune-wavelength-to-skylines": False}
+    notFlatAfter = notFlat._correct_wavelengths(before.copy(), arm)
+
+    # ASSERT
+    assert flat.calls == []
+    assert notFlat.calls == []
+    assert flat.flatPassHandoff.skyShiftsNm is None
+    pd.testing.assert_frame_equal(flatAfter, before)
+    pd.testing.assert_frame_equal(notFlatAfter, before)
+
+
 def _forbid_peak_matching(extractor: object) -> None:
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("the not-flattened pass must not run skyline peak matching")
