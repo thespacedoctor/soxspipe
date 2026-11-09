@@ -37,6 +37,7 @@
 | `slit-illumination: continuum-min-chunks-per-bin` | fewest chunks that a slit bin of the continuum profile needs (whole number, at least 2) | int | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: continuum-object-mask-arcsec` | bins within this distance of the object are left out of the continuum profile (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 | `slit-illumination: continuum-halves-max-diff-arcsec` | largest difference between the offsets of the blue and red halves of an order that still accepts its continuum offset (arcsec) | float | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
+| `sky-subtraction: flat-slit-gradient` | take the along-slit illumination of the sky from the slit profile of the master flat, so the sky model follows the gradient that the lamp leaves in the flat-fielded frame. `True` for SOXS NIR, `False` for SOXS VIS and X-Shooter. If the key is missing, it is `False`. It needs `slit-illumination: measure-offset` to be `True` | bool | settings file | [`subtract_sky`](../utils/subtract_sky.md) |
 
 
 :::

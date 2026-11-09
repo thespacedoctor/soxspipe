@@ -97,6 +97,11 @@ SKYLINE_SIGMA = 3.0
 # THE NUMBER OF SAMPLES EITHER SIDE OF A LINE SAMPLE THAT THE LINE MASK IS GROWN BY, TO TAKE IN THE LINE WINGS
 SKYLINE_DILATE_SAMPLES = 50
 
+# THE SKY-SUBTRACTION SETTING THAT TAKES THE ALONG-SLIT ILLUMINATION OF THE SKY FROM THE MASTER FLAT (DY-2147). A
+# MISSING KEY MEANS FALSE, SO A WORKSPACE WHOSE SETTINGS PREDATE IT IS UNCHANGED
+FLAT_SLIT_GRADIENT_KEY = "flat-slit-gradient"
+NO_MASTER_FLAT_REASON = "there is no master flat"
+
 # THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
 # sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML
 ERROR_INFLATION_ARMS = frozenset({"NIR"})
@@ -343,6 +348,9 @@ class subtract_sky:
       The sky fit then weights each pixel by its flat-fielded noise and leaves out the pixels where the flat is low
       (not finite, not positive, or below ``LOW_FLAT_FRACTION`` of the 95th percentile of the flat of their order),
       as for ``excludeMask``. Default *None*, which applies no flat
+    - ``keptSlitRanges`` -- ``{order: (lower, upper)}``, the slit range in arcsec of each order where both the sky and
+      the master flat are lit (``slit_illumination_mask.kept_ranges_from_result``). The ``flat-slit-gradient`` setting
+      fits the flat's slit profile inside it. Default *None*, which gives no order a range
     - ``ron`` -- the read noise (e-) of the sky-fit noise model, a plain float. Pass it when the frame's own header
       value is not the noise left in the frame, e.g. the single-frame read noise scaled by ``sqrt(1 + 1/N)`` for the
       master bias subtracted from it. A value that is not a finite, positive number falls back to the detector default.
@@ -375,6 +383,8 @@ class subtract_sky:
 
     # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
     maskedOrders = frozenset()
+    # THE BOTH-LIT SLIT RANGE OF EACH ORDER; SET BY __init__ WHEN RANGES ARE GIVEN
+    keptSlitRanges = None
 
     def __init__(
         self,
@@ -394,6 +404,7 @@ class subtract_sky:
         excludeMask=None,
         masterFlat=None,
         ron=None,
+        keptSlitRanges=None,
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
@@ -409,6 +420,7 @@ class subtract_sky:
         self.startNightDate = startNightDate
         self.debug = debug
         self.debugInfo = debugInfo
+        self.keptSlitRanges = dict(keptSlitRanges) if keptSlitRanges else {}
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -656,6 +668,9 @@ class subtract_sky:
 
         # THE BSPLINE ORDER TO FIT SKY WITH
         self.bspline_order = self.recipeSettings["sky-subtraction"]["bspline_order"]
+
+        # A SETTING THAT IS NOT TRUE OR FALSE STOPS THE RUN BEFORE ANY ORDER IS FITTED
+        self._flat_slit_gradient_enabled()
 
         # SELECT A SINGLE ORDER TO GENERATE QC PLOTS FOR
         self.qcPlotOrder = int(np.median(uniqueOrders)) - 1
@@ -2116,8 +2131,8 @@ class subtract_sky:
         # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282)
         noiseModelSky = self._fill_nans_by_interpolation(imageMapOrder["flux_percentile_smoothed"].values)
 
-        # NO SLIT-ILLUMINATION CORRECTION IS APPLIED, SO THE RATIO IS A CONSTANT 1
-        imageMapOrder["slit_normalisation_ratio"] = 1
+        # THE RATIO IS 1 UNLESS THE FLAT-DERIVED ALONG-SLIT ILLUMINATION IS ON (DY-2147)
+        imageMapOrder["slit_normalisation_ratio"] = self._slit_normalisation_ratio(imageMapOrder)
 
         # FOR WEIGHTED BSPLINES WE ONLY NEED *INTERIOR* KNOTS (DON'T GO BEYOND RANGE OF DATA)
         # CAN'T HAVE MORE KNOTS THAN DATA POINTS
@@ -3201,6 +3216,55 @@ class subtract_sky:
           ``ERROR_INFLATION_ARMS`` (NIR). See ``_arm_default_flag``
         """
         return self._arm_default_flag(ERROR_INFLATION_KEY, ERROR_INFLATION_ARMS)
+
+    def _flat_slit_gradient_enabled(self):
+        """*whether the along-slit illumination of the sky is taken from the master flat (DY-2147)*
+
+        **Return:**
+
+        - ``isOn`` -- the ``flat-slit-gradient`` sky-subtraction setting, False when the key is absent. See
+          ``_arm_default_flag``
+        """
+        return self._arm_default_flag(FLAT_SLIT_GRADIENT_KEY, frozenset())
+
+    def _slit_normalisation_ratio(self, imageMapOrder):
+        """*the along-slit illumination ratio of each pixel of an order, the sky fit's ``slit_normalisation_ratio``*
+
+        The fit divides the flux by this ratio and multiplies its sky model by it. With ``flat-slit-gradient`` off it
+        is 1. With it on, it is ``1 / P(s)`` from the master flat (see ``flat_slit_ratio``), normalised to mean 1
+        over the pixels the fit uses, and 1 again, with the reason logged, for an order that has no master flat or
+        no kept slit range.
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- single order dataframe sorted by wavelength, with ``order``, ``slit_position`` and
+          ``flagged_all_clipped`` columns and, when the map carries one, ``flat``
+
+        **Return:**
+
+        - ``ratio`` -- the scalar 1 when the setting is off, else a numpy array with one value per row
+        """
+        if not self._flat_slit_gradient_enabled():
+            return 1
+
+        import numpy as np
+
+        from soxspipe.commonutils.flat_slit_gradient import flat_slit_ratio
+
+        order = int(imageMapOrder["order"].values[0])
+        if "flat" not in imageMapOrder.columns:
+            self.log.warning(
+                f"order {order}: the slit ratio from the master flat is 1, because {NO_MASTER_FLAT_REASON}"
+            )
+            return np.ones(len(imageMapOrder))
+        return flat_slit_ratio(
+            self.log,
+            order,
+            imageMapOrder["flat"].to_numpy(dtype=float),
+            imageMapOrder["slit_position"].to_numpy(dtype=float),
+            (self.keptSlitRanges or {}).get(order),
+            ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool),
+        )
 
     def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):
         """*multiply the uncertainty of every pixel of an order by the local scatter of its sky-fit residuals (DY-1973)*

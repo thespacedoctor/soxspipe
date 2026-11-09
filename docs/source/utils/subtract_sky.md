@@ -100,6 +100,32 @@ On a crowded slit that assumption fails, because light from the other sources fi
 
 To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on, `object_wing_min_leak_sigma` is 0.03 and `object_wing_min_sky_sigma` is 1. A workspace settings file made before DY-1964 may still hold `object_wing_gate_fraction`. The pipeline ignores it.
 
+### Along-slit illumination from the master flat
+
+The sky model is a bspline in wavelength only, but the sky in a flat-fielded NIR frame is not the same at every slit position. The lamp that makes the master flat lights the slit bottom about 0.35 % per arcsec more than the sky does. The frame is divided by that flat, so the sky looks fainter at the slit bottom and brighter at the slit top. A model in wavelength alone leaves this gradient in the sky-subtracted frame. It was present in all 40 NIR stare frames that were measured, on four slit widths (DY-1990).
+
+The `flat-slit-gradient` setting takes this gradient from the master flat. For each order, the pipeline does these steps:
+
+1. It takes the range of the slit where both the sky image and the master flat are lit, less the `overlap-margin-arcsec` margin. An order with no usable slit offset uses an offset of 0 for this range. The roll-off at the slit ends is outside the range and does not enter the fit.
+2. It bins the master flat pixels of the order in 0.1 arcsec slit bins, and divides the bins by the median of the bins in the middle of the range. It fits a quadratic P(s) to the bins, where s is the slit position.
+3. It sets the ratio r(s) = 1 / P(s), and scales r(s) so that its mean over the pixels used by the sky fit is 1.
+4. The sky fit divides the flux by r(s) before it fits the bspline. It multiplies the bspline by r(s) to make the sky model. The rest of the fit does not change.
+
+The ratio is 1 for the whole order, and the log gives the reason, when:
+
+- the sky fit has no master flat, or the order has no slit range;
+- fewer than 20 slit bins hold at least 15 flat pixels each;
+- the fitted profile is not positive in the slit range;
+- the mean slope of the profile across the slit range is more than 1.5 % per arcsec. A slope this large means the flat is bad.
+
+The log also gives the measured gradient of each order that uses the correction.
+
+The `flat-slit-gradient` setting is in the `sky-subtraction` block of the stare recipe settings. It must be `True` or `False`. Any other value stops the recipe with a `ValueError` that names the key. A settings file that does not have the key uses `False`. The default settings use `True` for the SOXS NIR arm of `soxs_stare` and `soxs_stare_std`, and `False` for the SOXS VIS arm and for X-Shooter. The VIS arm has not been checked. The `soxs_nod` and `soxs_offset` recipes do not use the setting, because they remove the sky at the same pixel and the gradient cancels.
+
+The correction needs the slit-illumination measurement (`slit-illumination: measure-offset: True`) for the slit range of each order. Without it, the ratio is 1.
+
+The master flat gives the correct gradient in NIR orders 11 to 14. In orders 15 to 22 it gives a gradient that is 0.1 to 0.2 % per arcsec too large. The correction is still applied to these orders.
+
 ### Utility API
 
 :::{autodoc2-object} soxspipe.commonutils.subtract_sky.subtract_sky

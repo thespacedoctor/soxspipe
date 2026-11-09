@@ -32,7 +32,7 @@ from soxspipe.commonutils.slit_illumination import (
     _read_disp_map,
     slit_illumination_result,
 )
-from soxspipe.commonutils.slit_illumination_mask import overlap_exclude_mask
+from soxspipe.commonutils.slit_illumination_mask import kept_ranges_from_result, overlap_exclude_mask
 from soxspipe.recipes import soxs_stare
 from tests.factories import pipeline_settings, qc_table, response_product_fits, synthetic_ccd
 from tests.factories.slit_illumination import write_map_images
@@ -1173,6 +1173,58 @@ def test_the_measured_slit_offsets_reach_the_extractor_for_the_faint_order_trace
 
     # ASSERT
     assert captured["extractor"][0]["slitOffsetsArcsec"] == OFFSET_ARCSEC
+
+
+def test_the_kept_slit_ranges_of_the_slit_illumination_measurement_reach_the_sky_fit(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sky fit takes the flat's slit profile inside the both-lit range of each order (DY-2147)."""
+    # ARRANGE
+    routes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(_calibration_path(tmp_path, "MASTER_FLAT_VIS", FLAT_SEED))]}
+    recipe = _stare_recipe(
+        log, tmp_path, extraRoutes=routes, recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK)
+    )
+    _write_illumination_map(tmp_path)
+    Path(recipe.qcDir).mkdir()
+    result = _illumination_result()
+    _stub_measurement(monkeypatch, result)
+    captured = _patch_stare(
+        recipe,
+        monkeypatch,
+        tmp_path,
+        detrended=synthetic_ccd(seed=550, prepared=True, headerOverrides={"WIN_BINX": 1, "WIN_BINY": 1}),
+        skyResult=tuple(synthetic_ccd(seed=560 + n, prepared=True) for n in range(3)),
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert kept_ranges_from_result(result)
+    assert captured["sky"][0]["keptSlitRanges"] == kept_ranges_from_result(result)
+
+
+def test_a_frame_whose_slit_illumination_is_not_measured_hands_the_sky_fit_no_ranges_from_an_earlier_frame(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-frame mode reuses the recipe object, so a stale range dictionary must not outlive its frame."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path, recipeSettings=_illumination_recipe_settings(None))
+    recipe.slitIlluminationKeptRanges = {11: (-4.0, 4.0)}
+    captured = _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=540 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["sky"][0]["keptSlitRanges"] == {}
+    assert recipe.slitIlluminationKeptRanges == {}
 
 
 def test_a_frame_whose_offsets_are_not_measured_hands_the_extractor_no_offsets_from_an_earlier_frame(
