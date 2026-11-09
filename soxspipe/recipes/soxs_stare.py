@@ -58,8 +58,9 @@ class soxs_stare(base_recipe):
     See `produce_product` method for usage.
     """
 
-    # THE BOTH-LIT SLIT RANGE OF EACH ORDER FROM THE SLIT-ILLUMINATION MEASUREMENT OF THE LAST FRAME (DY-2147)
-    slitIlluminationKeptRanges = None
+    # THE SLIT RANGE OF EACH ORDER TO FIT THE MASTER FLAT'S SLIT PROFILE OVER, FROM THE SLIT-ILLUMINATION MEASUREMENT OF
+    # THE LAST FRAME (DY-2147)
+    slitIlluminationFitRanges = None
 
     # INITIALISATION
 
@@ -993,13 +994,13 @@ class soxs_stare(base_recipe):
         from soxspipe.commonutils.slit_illumination import measure_slit_illumination
         from soxspipe.commonutils.slit_illumination_mask import (
             exclude_mask_from_result,
-            kept_ranges_from_result,
+            flat_fit_ranges_from_result,
             usable_offsets,
         )
 
         # A RECIPE OBJECT SERVES EVERY FRAME OF A PER-FRAME RUN, SO NO FRAME KEEPS THE OFFSETS OF AN EARLIER ONE
         self.slitIlluminationOffsets = None
-        self.slitIlluminationKeptRanges = {}
+        self.slitIlluminationFitRanges = {}
         illuminationSettings = self._slit_illumination_settings()
         if illuminationSettings is None:
             return None
@@ -1021,7 +1022,7 @@ class soxs_stare(base_recipe):
             partners=None,
         )
         self.slitIlluminationOffsets = usable_offsets(result.offsets)
-        self.slitIlluminationKeptRanges = kept_ranges_from_result(result)
+        self.slitIlluminationFitRanges = flat_fit_ranges_from_result(result)
         self._record_slit_illumination_qcs(result)
         self._write_slit_illumination_qc_plot(result)
         return exclude_mask_from_result(self.log, result, twoDMap, binx, biny, self.kw)
@@ -1175,7 +1176,7 @@ class soxs_stare(base_recipe):
                 excludeMask=excludeMask,
                 masterFlat=masterFlat,
                 ron=None if self.readNoise is None else self.readNoise.skyFit,
-                keptSlitRanges=self.slitIlluminationKeptRanges,
+                flatFitRanges=self.slitIlluminationFitRanges,
             )
             (
                 skymodelCCDData,

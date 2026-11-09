@@ -12,93 +12,114 @@ import numpy as np
 from soxspipe.commonutils.slit_illumination_profiles import (
     PROFILE_BIN_ARCSEC,
     TOO_FEW_FLAT_BINS_REASON,
-    normalised_flat_profile,
+    chunk_normalised_flat_profile,
 )
 
-# THE LARGEST MEAN GRADIENT OF THE FLAT ACROSS THE KEPT RANGE THAT IS TRUSTED, AS A FRACTION PER ARCSEC. THE MEASURED
-# NIR GRADIENT IS ABOUT 0.0035 (DY-1990), SO A LARGER ONE MEANS A BAD FLAT
+# THE LARGEST MEAN GRADIENT OF THE FITTED PROFILE ACROSS THE FIT RANGE, AS A FRACTION OF ITS MEAN LEVEL PER ARCSEC, THAT
+# IS TRUSTED. THE MEASURED NIR GRADIENT IS ABOUT 0.0035 (DY-1990), SO A LARGER ONE MEANS A BAD FLAT
 MAX_SLOPE_PER_ARCSEC = 0.015
-# THE QUADRATIC IS FITTED THIS FAR INSIDE THE KEPT RANGE (ARCSEC), SO THE ROLL-OFF OF THE FLAT'S LIT EDGES, WHICH
-# REACHES INTO THE KEPT RANGE, DOES NOT BEND THE FIT. THE RATIO IS STILL APPLIED OVER THE WHOLE KEPT RANGE
-FIT_EDGE_MARGIN_ARCSEC = 0.5
+# THE LARGEST LOCAL GRADIENT ANYWHERE IN THE FIT RANGE, IN THE SAME UNITS. THE MASTER FLAT'S REAL CURVATURE (THE
+# ROLL-OFF TOWARD THE SLIT ENDS) MAKES THE GRADIENT AT THE ENDS 0.015 TO 0.024 IN SOXS NIR ORDERS 10 TO 22 OF THE
+# 2026-01-27 AND 2026-01-12 FLATS WHILE THE MEAN GRADIENT IS ABOUT 0.004. THIS LIMIT IS SET ABOVE THAT, AND BELOW THE
+# 0.029 TO 0.038 OF ORDERS 23 AND 24, WHICH HAVE THE WEAKEST FLAT. IT CATCHES A PROFILE THAT BENDS STEEPLY WITH NO NET
+# SLOPE (DY-2147)
+MAX_LOCAL_GRADIENT_PER_ARCSEC = 0.03
 PROFILE_DEGREE = 2
-# THE FITTED PROFILE IS CHECKED ON THIS MANY POINTS ACROSS THE KEPT RANGE
-CHECK_POINTS = 101
-NO_RANGE_REASON = "the order has no kept slit range"
+NO_RANGE_REASON = "the order has no slit range to fit the flat over"
 NO_SKY_REASON = "the order has no sky pixels"
-NOT_POSITIVE_REASON = "the fitted flat profile is not positive in the kept slit range"
+NO_FLAT_REASON = "there is no master flat"
+NOT_POSITIVE_REASON = "the fitted flat profile is not positive in the fit range"
 
 
-def flat_slit_ratio(log, order, flat, slit, keepRange, isSky):
+def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky):
     """*the ratio 1 / P(s) of one order, from its master flat, normalised to mean 1 over the sky pixels*
 
-    P(s) is a quadratic fitted to the flat's slit profile inside ``keepRange`` less ``FIT_EDGE_MARGIN_ARCSEC`` at each
-    end, so the roll-off at the slit ends does not reach the fit. The ratio is applied over the whole ``keepRange``,
-    and a pixel outside it takes the ratio of the nearest limit. The ratio is 1 for
-    every pixel, with the reason logged as a warning, when the order has no kept range or no sky pixels, when too few
-    slit bins hold flat pixels, when the fitted profile is not positive, or when the mean gradient of the profile
-    across the kept range is above ``MAX_SLOPE_PER_ARCSEC``.
+    P(s) is a quadratic fitted to the flat's slit profile (see ``chunk_normalised_flat_profile``) inside ``fitRange``
+    only, so the roll-off at the slit ends does not reach the fit. A pixel outside ``fitRange`` takes the ratio of the
+    nearest limit. The ratio is 1 for every pixel, with the reason logged as a warning, when there is no flat, when the
+    order has no fit range or no sky pixels, when too few slit bins hold flat pixels, when the fitted profile is not
+    positive anywhere in the fit range, or when its gradient is too steep (``MAX_SLOPE_PER_ARCSEC`` for the mean
+    gradient across the fit range, ``MAX_LOCAL_GRADIENT_PER_ARCSEC`` anywhere in it).
 
     **Key Arguments:**
 
     - ``log`` -- logger
     - ``order`` -- the order number, for the log
-    - ``flat`` -- the master flat value of each pixel of the order
+    - ``flat`` -- the master flat value of each pixel of the order, or None when the frame has no master flat
     - ``slit`` -- the slit position of each pixel of the order in arcsec, the shape of ``flat``
-    - ``keepRange`` -- the ``(lower, upper)`` both-lit slit range in arcsec from ``kept_slit_range``, or None
-    - ``isSky`` -- boolean array, the shape of ``flat``, True for the pixels the sky model is fitted to
+    - ``wavelength`` -- the wavelength of each pixel of the order, the shape of ``flat``
+    - ``fitRange`` -- the ``(lower, upper)`` slit range in arcsec to fit over, from ``flat_fit_ranges_from_result``, or
+      None
+    - ``isSky`` -- boolean array, the shape of ``slit``, True for the pixels the sky model is fitted to
 
     **Return:**
 
-    - ``ratio`` -- the ratio of each pixel, a new array the shape of ``flat``
+    - ``ratio`` -- the ratio of each pixel, a new array the shape of ``slit``
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.flat_slit_gradient import flat_slit_ratio
-    ratio = flat_slit_ratio(log, 12, flat, slit, (-4.9, 5.1), isSky)
+    ratio = flat_slit_ratio(log, 12, flat, slit, wavelength, (-4.9, 5.1), isSky)
     ```
     """
-    flat = np.asarray(flat, dtype=float)
     slit = np.asarray(slit, dtype=float)
     isSky = np.asarray(isSky, dtype=bool) & np.isfinite(slit)
-    unitRatio = np.ones(slit.shape)
-    ratio, slope, reason = _ratio_from_flat(flat, slit, keepRange, isSky)
+    ratio, slope, reason = _ratio_from_flat(flat, slit, wavelength, fitRange, isSky)
     if reason:
         log.warning(f"order {order}: the slit ratio from the master flat is 1, because {reason}")
-        return unitRatio
-    log.info(f"order {order}: the master flat gives a gradient of {slope * 100:+.2f} % per arcsec along the slit")
+        return np.ones(slit.shape)
+    log.info(
+        f"order {order}: the master flat gives a gradient of {slope * 100:+.2f} %/arcsec along the slit, "
+        f"over {fitRange[0]:+.2f} to {fitRange[1]:+.2f} arcsec"
+    )
     return ratio
 
 
-def _ratio_from_flat(flat, slit, keepRange, isSky):
+def _ratio_from_flat(flat, slit, wavelength, fitRange, isSky):
     """*the normalised ratio, the mean gradient of the flat profile and the reason the ratio is unusable (or "")*"""
-    if keepRange is None:
+    if flat is None:
+        return None, np.nan, NO_FLAT_REASON
+    if fitRange is None:
         return None, np.nan, NO_RANGE_REASON
     if not isSky.any():
         return None, np.nan, NO_SKY_REASON
-    keepLower, keepUpper = keepRange
-    fitLower, fitUpper = keepLower + FIT_EDGE_MARGIN_ARCSEC, keepUpper - FIT_EDGE_MARGIN_ARCSEC
-    isFitted = np.isfinite(flat) & np.isfinite(slit) & (slit >= fitLower) & (slit <= fitUpper)
+    flat = np.asarray(flat, dtype=float)
+    wavelength = np.asarray(wavelength, dtype=float)
+    fitLower, fitUpper = fitRange
+    isFitted = np.isfinite(slit) & (slit >= fitLower) & (slit <= fitUpper)
     if not isFitted.any():
         return None, np.nan, TOO_FEW_FLAT_BINS_REASON
-    centres, profile, reason = normalised_flat_profile(flat, slit, isFitted, PROFILE_BIN_ARCSEC)
+    centres, profile, reason = chunk_normalised_flat_profile(flat, slit, wavelength, isFitted, PROFILE_BIN_ARCSEC)
     if reason:
         return None, np.nan, reason
     isBin = np.isfinite(profile)
     coefficients = np.polyfit(centres[isBin], profile[isBin], PROFILE_DEGREE)
-    check = np.polyval(coefficients, np.linspace(keepLower, keepUpper, CHECK_POINTS))
-    if check.min() <= 0:
+    minimum, maxGradient, meanLevel, meanGradient = _profile_extremes(coefficients, fitLower, fitUpper)
+    if not (np.isfinite(minimum) and minimum > 0):
         return None, np.nan, NOT_POSITIVE_REASON
-    slope = (check[-1] - check[0]) / (keepUpper - keepLower) / check.mean()
-    if abs(slope) > MAX_SLOPE_PER_ARCSEC:
-        return (
-            None,
-            slope,
-            (
-                f"the flat slope of {slope * 100:+.2f} % per arcsec is beyond the limit of "
-                f"{MAX_SLOPE_PER_ARCSEC * 100:.1f} % per arcsec"
-            ),
-        )
-    ratio = np.where(np.isfinite(slit), 1.0 / np.polyval(coefficients, np.clip(slit, keepLower, keepUpper)), 1.0)
-    return ratio / ratio[isSky].mean(), slope, ""
+    meanSlope, steepestSlope = meanGradient / meanLevel, maxGradient / meanLevel
+    if abs(meanSlope) > MAX_SLOPE_PER_ARCSEC:
+        return None, meanSlope, _slope_reason("mean", abs(meanSlope), MAX_SLOPE_PER_ARCSEC)
+    if steepestSlope > MAX_LOCAL_GRADIENT_PER_ARCSEC:
+        return None, meanSlope, _slope_reason("local", steepestSlope, MAX_LOCAL_GRADIENT_PER_ARCSEC)
+    ratio = np.where(np.isfinite(slit), 1.0 / np.polyval(coefficients, np.clip(slit, fitLower, fitUpper)), 1.0)
+    return ratio / ratio[isSky].mean(), meanSlope, ""
+
+
+def _slope_reason(kind, value, limit):
+    """*the reason text for a flat profile whose mean or local slope is beyond its limit*"""
+    return f"the {kind} flat slope of {value * 100:.2f} %/arcsec is beyond the limit of {limit * 100:.1f} %/arcsec"
+
+
+def _profile_extremes(coefficients, lower, upper):
+    """*the minimum, the largest gradient (size), the mean and the mean gradient of a quadratic over [lower, upper]*"""
+    a, b, c = coefficients
+    candidates = [lower, upper]
+    if a != 0 and lower < -b / (2 * a) < upper:
+        candidates.append(-b / (2 * a))
+    minimum = np.polyval(coefficients, candidates).min()
+    maxGradient = max(abs(2 * a * lower + b), abs(2 * a * upper + b))
+    meanLevel = a * (lower**2 + lower * upper + upper**2) / 3 + b * (lower + upper) / 2 + c
+    meanGradient = (np.polyval(coefficients, upper) - np.polyval(coefficients, lower)) / (upper - lower)
+    return minimum, maxGradient, meanLevel, meanGradient

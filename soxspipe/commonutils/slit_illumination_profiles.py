@@ -20,6 +20,10 @@ INTERIOR_HALF_FRACTION = 0.5
 # A FLAT SLIT BIN NEEDS THIS MANY PIXELS TO GIVE A MEDIAN
 MIN_FLAT_PIXELS_PER_BIN = 15
 MIN_FLAT_BINS = 20
+# THE CHUNK-NORMALISED FLAT PROFILE SPLITS AN ORDER INTO THIS MANY EQUAL-COUNT WAVELENGTH CHUNKS, AND DIVIDES EACH BY
+# ITS MEDIAN OVER THE SLIT INTERIOR, WHICH IS THIS FAR (ARCSEC) EITHER SIDE OF THE SLIT CENTRE (DY-2147)
+FLAT_PROFILE_CHUNKS = 60
+FLAT_PROFILE_INTERIOR_HALF_ARCSEC = 3.0
 # SKYLINE WINDOWS, IN UNITS OF THE LOCAL WAVELENGTH STEP PER PIXEL. THE CORE HOLDS THE LINE, THE SIDE BANDS HOLD ONLY
 # CONTINUUM. VIS LINES ARE ABOUT 3 PIXELS FWHM, SO THE SIDE BANDS START WELL OUTSIDE THE WINGS
 CORE_HALF_WIDTH_PIXELS = 2.5
@@ -116,6 +120,45 @@ def normalised_flat_profile(flatData, slit, isOrder, binArcsec):
     if not (np.isfinite(level) and level > 0):
         return centres, np.full(len(centres), np.nan), NO_FLAT_LEVEL_REASON
     return centres, profile / level, ""
+
+
+def chunk_normalised_flat_profile(flatData, slit, wavelength, isOrder, binArcsec):
+    """*the order's flat in slit bins, with the spectral shape divided out in wavelength chunks first*
+
+    ``normalised_flat_profile`` takes the median of the raw flat in each slit bin. A curved order lights different
+    wavelengths at different slit positions, so a bin at one end of the slit can hold only the bright end of the
+    spectrum, and the raw median reads that as a gradient along the slit. Here each pixel is first divided by the
+    median, over the slit interior, of the pixels in its chunk of ``FLAT_PROFILE_CHUNKS`` equal-count wavelength
+    chunks.
+
+    **Key Arguments:**
+
+    - ``flatData`` -- the master flat's flux image
+    - ``slit`` -- the slit position of each pixel in arcsec, the shape of ``flatData``
+    - ``wavelength`` -- the wavelength of each pixel, the shape of ``flatData``
+    - ``isOrder`` -- boolean array, the shape of ``flatData``, True for the pixels of the order to use
+    - ``binArcsec`` -- the slit bin width in arcsec
+
+    **Return:**
+
+    - ``centres`` -- the slit bin centres in arcsec
+    - ``profile`` -- the normalised flat profile, NaN in sparse bins and everywhere if the profile is unusable
+    - ``reason`` -- why the profile is unusable, or an empty string
+    """
+    isUsable = isOrder & np.isfinite(flatData) & np.isfinite(wavelength)
+    if not isUsable.any():
+        return np.array([]), np.array([]), TOO_FEW_FLAT_BINS_REASON
+    chunkEdges = np.quantile(wavelength[isUsable], np.linspace(0, 1, FLAT_PROFILE_CHUNKS + 1))
+    chunk = np.clip(np.digitize(wavelength, chunkEdges) - 1, 0, FLAT_PROFILE_CHUNKS - 1)
+    isInterior = isUsable & (np.abs(slit) < FLAT_PROFILE_INTERIOR_HALF_ARCSEC)
+    level = np.full(FLAT_PROFILE_CHUNKS, np.nan)
+    medians = pd.Series(flatData[isInterior]).groupby(chunk[isInterior]).median()
+    level[medians.index.to_numpy()] = medians.to_numpy()
+    pixelLevel = level[chunk]
+    isNormalisable = isUsable & (pixelLevel > 0)
+    normalisedFlat = np.full(flatData.shape, np.nan)
+    normalisedFlat[isNormalisable] = flatData[isNormalisable] / pixelLevel[isNormalisable]
+    return normalised_flat_profile(normalisedFlat, slit, isNormalisable, binArcsec)
 
 
 def has_no_skylines_note(note):

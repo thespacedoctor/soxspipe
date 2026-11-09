@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.interpolate
 import yaml
 
 import soxspipe
@@ -66,11 +67,11 @@ def _bare_subtractor(log: Any, skySettings: dict[str, Any], keptRanges: dict | N
     subtractor.bspline_order = skySettings["bspline_order"]
     subtractor.qcPlotOrder = -1
     if keptRanges is not None:
-        subtractor.keptSlitRanges = keptRanges
+        subtractor.flatFitRanges = keptRanges
     return subtractor
 
 
-def _tilted_order(seed: int = 2147) -> pd.DataFrame:
+def _tilted_order(seed: int = 2147, tilt: float = FLAT_TILT) -> pd.DataFrame:
     """One flat-fielded sky-only order: a uniformly lit sky divided by a flat that tilts along the slit."""
     rng = np.random.default_rng(seed)
     column, slitPixel = np.meshgrid(np.arange(COLUMNS), np.arange(SLIT_PIXELS), indexing="ij")
@@ -80,7 +81,7 @@ def _tilted_order(seed: int = 2147) -> pd.DataFrame:
     wavelength = START_WAVELENGTH + DISPERSION * column
     centres = np.arange(LINE_SPACING_PX / 2, COLUMNS, LINE_SPACING_PX)
     lines = LINE_PEAK * np.exp(-0.5 * ((column[:, None] - centres[None, :]) / LINE_SIGMA_PX) ** 2).sum(axis=1)
-    flatProfile = 1.0 + FLAT_TILT * slitPosition / (2 * SLIT_HALF_LENGTH)
+    flatProfile = 1.0 + tilt * slitPosition / (2 * SLIT_HALF_LENGTH)
     flat = 1000.0 * (1.0 + 0.2 * np.sin(column / 150.0)) * flatProfile
     noiseless = (CONTINUUM + lines) / flatProfile
     error = np.sqrt(noiseless + READ_NOISE**2)
@@ -100,12 +101,21 @@ def _tilted_order(seed: int = 2147) -> pd.DataFrame:
     return frame.sort_values("wavelength", kind="stable").reset_index(drop=True)
 
 
-def _fit(subtractor: subtract_sky, order: pd.DataFrame) -> pd.DataFrame:
-    """Run the pre-fit clipping of ``subtract`` and then ``fit_bspline_curve_to_sky`` on one order."""
+def _clipped(subtractor: subtract_sky, order: pd.DataFrame) -> pd.DataFrame:
+    """Run the pre-fit clipping of ``subtract`` on one order."""
     settings = subtractor.recipeSettings["sky-subtraction"]
     clipped = subtractor.get_over_sampled_sky_from_order(order.copy(), clipBPs=True, clipSlitEdge=False)
-    clipped = subtractor.clip_object_slit_positions([clipped], aggressive=settings["aggressive_object_masking"])[0]
-    return subtractor.fit_bspline_curve_to_sky(clipped)[0]
+    return subtractor.clip_object_slit_positions([clipped], aggressive=settings["aggressive_object_masking"])[0]
+
+
+def _fit_all(subtractor: subtract_sky, clipped: pd.DataFrame) -> tuple:
+    """Run ``fit_bspline_curve_to_sky`` on a clipped order and return everything it returns."""
+    return subtractor.fit_bspline_curve_to_sky(clipped.copy())
+
+
+def _fit(subtractor: subtract_sky, order: pd.DataFrame) -> pd.DataFrame:
+    """Run the pre-fit clipping of ``subtract`` and then ``fit_bspline_curve_to_sky`` on one order."""
+    return _fit_all(subtractor, _clipped(subtractor, order))[0]
 
 
 def _rows(modelled: pd.DataFrame) -> pd.DataFrame:
@@ -172,7 +182,7 @@ def test_ratio_is_one_and_the_reason_logged_when_the_order_has_no_kept_range(log
 
     # ASSERT
     assert (modelled["slit_normalisation_ratio"] == 1).all()
-    assert any("no kept slit range" in message for _, message in log.messages)
+    assert any("no slit range to fit" in message for _, message in log.messages)
 
 
 def test_ratio_is_one_and_the_reason_logged_when_the_frame_has_no_master_flat(log: Any) -> None:
@@ -184,7 +194,9 @@ def test_ratio_is_one_and_the_reason_logged_when_the_frame_has_no_master_flat(lo
 
     # ASSERT
     assert (modelled["slit_normalisation_ratio"] == 1).all()
-    assert any("no master flat" in message for _, message in log.messages)
+    assert [message for _, message in log.messages].count(
+        "order 11: the slit ratio from the master flat is 1, because there is no master flat"
+    ) == 1
 
 
 def test_ratio_is_one_and_the_reason_logged_when_the_flat_slope_is_beyond_the_guard(log: Any) -> None:
@@ -215,6 +227,13 @@ def test_a_boolean_key_is_taken_as_it_is(log: Any, isOn: bool) -> None:
     assert subtractor._flat_slit_gradient_enabled() is isOn
 
 
+@pytest.mark.parametrize("isOn", [np.True_, np.False_])
+def test_a_numpy_boolean_key_is_taken_as_a_boolean(log: Any, isOn: np.bool_) -> None:
+    subtractor = _bare_subtractor(log, _sky_settings(**{SETTING_KEY: isOn}))
+
+    assert subtractor._flat_slit_gradient_enabled() is bool(isOn)
+
+
 @pytest.mark.parametrize("badValue", ["True", "false", 1, 0, None])
 def test_a_key_that_is_not_a_bool_raises_a_value_error_naming_the_key(log: Any, badValue: Any) -> None:
     subtractor = _bare_subtractor(log, _sky_settings(**{SETTING_KEY: badValue}), {ORDER: KEPT_RANGE})
@@ -224,3 +243,56 @@ def test_a_key_that_is_not_a_bool_raises_a_value_error_naming_the_key(log: Any, 
 
     with pytest.raises(ValueError, match=SETTING_KEY):
         _fit(subtractor, _tilted_order())
+
+
+def test_the_residuals_of_the_fit_are_measured_in_the_space_the_spline_was_fitted_in(log: Any) -> None:
+    # ARRANGE: A TILTED FLAT-FIELDED ORDER, FITTED WITH THE SETTING ON, AND THE SPLINE OF THE LAST FIT
+    subtractor = _bare_subtractor(log, _sky_settings(**{SETTING_KEY: True}), {ORDER: KEPT_RANGE})
+    modelled, tck, *_ = _fit_all(subtractor, _clipped(subtractor, _tilted_order()))
+    ratio = modelled["slit_normalisation_ratio"].to_numpy(dtype=float)
+    assert (ratio != 1).any()
+
+    # ACT
+    floored, _ = subtractor.determine_residual_floor(modelled.copy(), tck, 3)
+
+    # ASSERT: (FLUX / RATIO - SPLINE) / (ERROR / RATIO), AS THE FIT AND THE RESIDUAL CLIP USE
+    isUnclipped = ~floored["flagged_all_clipped"].to_numpy(dtype=bool)
+    spline = np.asarray(scipy.interpolate.splev(floored["wavelength"].to_numpy(), tck))
+    expected = np.abs(floored["flux"].to_numpy() - spline * ratio) / floored["error"].to_numpy()
+    np.testing.assert_allclose(floored["sky_residuals"].to_numpy()[isUnclipped], expected[isUnclipped], rtol=1e-9)
+
+
+def _untilted_twin(clipped: pd.DataFrame) -> pd.DataFrame:
+    """A copy of a clipped untilted order, with every flux-like column scaled by the inverse of its flat profile."""
+    slit = clipped["slit_position"].to_numpy(dtype=float)
+    profile = 1.0 + FLAT_TILT * slit / (2 * SLIT_HALF_LENGTH)
+    isUnclipped = ~clipped["flagged_all_clipped"].to_numpy(dtype=bool)
+    scale = (1.0 / profile) / np.mean((1.0 / profile)[isUnclipped])
+    twin = clipped.copy()
+    for column in ("flux", "error", "residual_windowed_std", "flux_percentile_smoothed", "flux_windowed_long_median"):
+        twin[column] = clipped[column].to_numpy(dtype=float) * scale
+    twin["flat"] = clipped["flat"].to_numpy(dtype=float) * profile
+    return twin
+
+
+def test_a_tilted_flat_with_the_setting_on_gives_the_residual_floor_noise_flags_and_knots_of_the_untilted_case(
+    log: Any,
+) -> None:
+    # ARRANGE: THE SAME ORDER TWICE. UNTILTED, AND TILTED BY A FLAT PROFILE THAT THE FIT DIVIDES OUT AGAIN
+    untiltedSubtractor = _bare_subtractor(log, _sky_settings(**{SETTING_KEY: False}), {ORDER: KEPT_RANGE})
+    untilted = _clipped(untiltedSubtractor, _tilted_order(tilt=0.0))
+    flatTilt = _untilted_twin(untilted)
+    tiltedSubtractor = _bare_subtractor(log, _sky_settings(**{SETTING_KEY: True}), {ORDER: KEPT_RANGE})
+
+    # ACT
+    reference = _fit_all(untiltedSubtractor, untilted)
+    modelled = _fit_all(tiltedSubtractor, flatTilt)
+
+    # ASSERT
+    assert not (modelled[0]["slit_normalisation_ratio"] == 1).all()
+    assert len(modelled[2]) == pytest.approx(len(reference[2]), rel=0.05)
+    assert modelled[4] == pytest.approx(reference[4], rel=0.05)
+    for column in ("flagged_noisy_region", "flagged_all_clipped"):
+        assert modelled[0][column].sum() == pytest.approx(reference[0][column].sum(), abs=0.01 * len(untilted))
+    skyLines = lambda frame: int((frame["flagged_sky_line"].astype(str) == "line").sum())  # noqa: E731
+    assert skyLines(modelled[0]) == pytest.approx(skyLines(reference[0]), rel=0.1)

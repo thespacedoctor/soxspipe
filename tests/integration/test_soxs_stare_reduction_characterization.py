@@ -32,7 +32,7 @@ from soxspipe.commonutils.slit_illumination import (
     _read_disp_map,
     slit_illumination_result,
 )
-from soxspipe.commonutils.slit_illumination_mask import kept_ranges_from_result, overlap_exclude_mask
+from soxspipe.commonutils.slit_illumination_mask import flat_fit_ranges_from_result, overlap_exclude_mask
 from soxspipe.recipes import soxs_stare
 from tests.factories import pipeline_settings, qc_table, response_product_fits, synthetic_ccd
 from tests.factories.slit_illumination import write_map_images
@@ -1202,8 +1202,8 @@ def test_the_kept_slit_ranges_of_the_slit_illumination_measurement_reach_the_sky
     recipe.produce_product()
 
     # ASSERT
-    assert kept_ranges_from_result(result)
-    assert captured["sky"][0]["keptSlitRanges"] == kept_ranges_from_result(result)
+    assert flat_fit_ranges_from_result(result)
+    assert captured["sky"][0]["flatFitRanges"] == flat_fit_ranges_from_result(result)
 
 
 def test_a_frame_whose_slit_illumination_is_not_measured_hands_the_sky_fit_no_ranges_from_an_earlier_frame(
@@ -1214,7 +1214,7 @@ def test_a_frame_whose_slit_illumination_is_not_measured_hands_the_sky_fit_no_ra
     """Per-frame mode reuses the recipe object, so a stale range dictionary must not outlive its frame."""
     # ARRANGE
     recipe = _stare_recipe(log, tmp_path, recipeSettings=_illumination_recipe_settings(None))
-    recipe.slitIlluminationKeptRanges = {11: (-4.0, 4.0)}
+    recipe.slitIlluminationFitRanges = {11: (-4.0, 4.0)}
     captured = _patch_stare(
         recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=540 + n, prepared=True) for n in range(3))
     )
@@ -1223,8 +1223,8 @@ def test_a_frame_whose_slit_illumination_is_not_measured_hands_the_sky_fit_no_ra
     recipe.produce_product()
 
     # ASSERT
-    assert captured["sky"][0]["keptSlitRanges"] == {}
-    assert recipe.slitIlluminationKeptRanges == {}
+    assert captured["sky"][0]["flatFitRanges"] == {}
+    assert recipe.slitIlluminationFitRanges == {}
 
 
 def test_a_frame_whose_offsets_are_not_measured_hands_the_extractor_no_offsets_from_an_earlier_frame(

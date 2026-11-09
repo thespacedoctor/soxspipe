@@ -14,14 +14,19 @@ from soxspipe.commonutils.slit_illumination import (
     STATUS_FITTED,
     slit_illumination_result,
 )
-from soxspipe.commonutils.slit_illumination_mask import kept_ranges_from_result, kept_slit_range
+from soxspipe.commonutils.slit_illumination_mask import (
+    FLAT_FIT_CLEARANCE_ARCSEC,
+    flat_fit_ranges_from_result,
+    kept_ranges_from_result,
+    kept_slit_range,
+)
 
 pytestmark = pytest.mark.unit
 
 MARGIN_ARCSEC = 0.3
 
 
-def _result(offsets, edges, isApplied=True):
+def _result(offsets, edges, isApplied=True, margin=MARGIN_ARCSEC):
     """A result whose ``offsets`` is ``{order: (offset, status)}`` and ``edges`` is ``{order: (lower, upper)}``."""
     offsetRows = [
         {
@@ -46,7 +51,7 @@ def _result(offsets, edges, isApplied=True):
         profiles=pd.DataFrame(columns=PROFILE_COLUMNS),
         isApplied=isApplied,
         reason="" if isApplied else "no order has a usable offset",
-        overlapMarginArcsec=MARGIN_ARCSEC,
+        overlapMarginArcsec=margin,
     )
 
 
@@ -89,3 +94,37 @@ def test_leaves_out_an_order_whose_kept_range_is_empty_or_whose_flat_edges_are_n
     )
 
     assert kept_ranges_from_result(result) == {}
+
+
+def test_the_flat_fit_range_is_inset_by_what_the_overlap_margin_leaves_short_of_the_clearance():
+    # ARRANGE: AN OVERLAP MARGIN 0.15 ARCSEC SHORT OF THE CLEARANCE, AS A WORKSPACE THAT KEPT THE OLD 0.3 HAS
+    inset = FLAT_FIT_CLEARANCE_ARCSEC - MARGIN_ARCSEC
+    result = _result({11: (1.0, STATUS_FITTED)}, {11: (-5.0, 5.0)})
+
+    # ACT
+    ranges = flat_fit_ranges_from_result(result)
+
+    # ASSERT
+    keepLower, keepUpper = kept_slit_range(-5.0, 5.0, 1.0, MARGIN_ARCSEC)
+    assert inset > 0
+    assert ranges == {11: (pytest.approx(keepLower + inset), pytest.approx(keepUpper - inset))}
+
+
+@pytest.mark.parametrize("margin", [FLAT_FIT_CLEARANCE_ARCSEC, FLAT_FIT_CLEARANCE_ARCSEC + 0.2])
+def test_the_flat_fit_range_is_the_kept_range_when_the_overlap_margin_reaches_the_clearance(margin):
+    result = _result({11: (1.0, STATUS_FITTED)}, {11: (-5.0, 5.0)}, margin=margin)
+
+    assert flat_fit_ranges_from_result(result) == kept_ranges_from_result(result)
+
+
+def test_the_flat_fit_range_leaves_out_an_order_the_inset_empties():
+    result = _result({11: (0.0, STATUS_FITTED)}, {11: (-0.3, 0.3)}, margin=0.0)
+
+    assert kept_ranges_from_result(result) != {}
+    assert flat_fit_ranges_from_result(result) == {}
+
+
+def test_the_flat_fit_range_is_empty_when_the_measurement_was_not_applied():
+    result = _result({11: (1.0, STATUS_FITTED)}, {11: (-5.0, 5.0)}, isApplied=False)
+
+    assert flat_fit_ranges_from_result(result) == {}
