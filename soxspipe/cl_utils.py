@@ -168,6 +168,7 @@ def main(arguments=None):
 
     from soxspipe.commonutils import data_organiser
     from soxspipe.commonutils.data_organiser import DatabasePreservationError, _UnsafePathError
+    from soxspipe.commonutils.scratch import removing_new_scratch
 
     arguments = docopt(__doc__)
     if arguments["<workspaceDirectory>"]:
@@ -304,131 +305,133 @@ def main(arguments=None):
 
         command = (" ").join(sys.argv)
 
-        if a["mbias"]:
-            from soxspipe.recipes import soxs_mbias
+        # ONE SCOPE FOR EVERY SINGLE-RECIPE COMMAND: A RECIPE THAT RAISES MUST NOT LEAVE ITS SCRATCH DIRECTORY BEHIND
+        with removing_new_scratch(log, settings):
+            if a["mbias"]:
+                from soxspipe.recipes import soxs_mbias
 
-            recipe = soxs_mbias(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            )
-            mbiasFrame = recipe.produce_product()
+                recipe = soxs_mbias(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                )
+                mbiasFrame = recipe.produce_product()
 
-        if a["mdark"]:
-            from soxspipe.recipes import soxs_mdark
+            if a["mdark"]:
+                from soxspipe.recipes import soxs_mdark
 
-            recipe = soxs_mdark(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            )
-            mdarkFrame = recipe.produce_product()
+                recipe = soxs_mdark(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                )
+                mdarkFrame = recipe.produce_product()
 
-        if a["disp_solution"]:
-            from soxspipe.recipes import soxs_disp_solution
+            if a["disp_solution"]:
+                from soxspipe.recipes import soxs_disp_solution
 
-            disp_map = soxs_disp_solution(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            ).produce_product()
+                disp_map = soxs_disp_solution(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    polyOrders=a["polyFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                ).produce_product()
 
-        if a["order_centres"]:
-            from soxspipe.recipes import soxs_order_centres
+            if a["order_centres"]:
+                from soxspipe.recipes import soxs_order_centres
 
-            order_table = soxs_order_centres(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            ).produce_product()
+                order_table = soxs_order_centres(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    polyOrders=a["polyFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                ).produce_product()
 
-        if a["spat_solution"]:
-            from soxspipe.recipes import soxs_spatial_solution
+            if a["spat_solution"]:
+                from soxspipe.recipes import soxs_spatial_solution
 
-            disp_map = soxs_spatial_solution(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                polyOrders=a["polyFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            ).produce_product()
+                disp_map = soxs_spatial_solution(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    polyOrders=a["polyFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                ).produce_product()
 
-        if a["mflat"]:
-            from soxspipe.recipes import soxs_mflat
+            if a["mflat"]:
+                from soxspipe.recipes import soxs_mflat
 
-            recipe = soxs_mflat(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            )
-            mflatFrame = recipe.produce_product()
+                recipe = soxs_mflat(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                )
+                mflatFrame = recipe.produce_product()
 
-        if a["stare"] or a["stare_std"]:
-            from soxspipe.recipes import soxs_stare
+            if a["stare"] or a["stare_std"]:
+                from soxspipe.recipes import soxs_stare
 
-            recipe = soxs_stare(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            )
-            reducedStare = recipe.produce_product()
+                recipe = soxs_stare(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                )
+                reducedStare = recipe.produce_product()
 
-        if a["nod"] or a["nod_std"]:
-            from soxspipe.recipes import soxs_nod
+            if a["nod"] or a["nod_std"]:
+                from soxspipe.recipes import soxs_nod
 
-            recipe = soxs_nod(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            )
-            reducedNod = recipe.produce_product()
+                recipe = soxs_nod(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                )
+                reducedNod = recipe.produce_product()
 
-        if a["offset"]:
-            from soxspipe.recipes import soxs_offset
+            if a["offset"]:
+                from soxspipe.recipes import soxs_offset
 
-            recipe = soxs_offset(
-                log=log,
-                settings=settings,
-                inputFrames=a["inputFrames"],
-                verbose=verbose,
-                overwrite=a["overwriteFlag"],
-                command=command,
-                debug=a["debugFlag"],
-            )
-            reducedOffset = recipe.produce_product()
+                recipe = soxs_offset(
+                    log=log,
+                    settings=settings,
+                    inputFrames=a["inputFrames"],
+                    verbose=verbose,
+                    overwrite=a["overwriteFlag"],
+                    command=command,
+                    debug=a["debugFlag"],
+                )
+                reducedOffset = recipe.produce_product()
 
         if a["prep"]:
             _prepared_organiser(log, rootDir=a["workspaceDirectory"], vlt=a["vltFlag"], refresh=a["refreshFlag"])

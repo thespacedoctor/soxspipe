@@ -18,7 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from soxspipe.commonutils.scratch import clear_workspace_scratch, created_scratch_directories, remove_recipe_scratch
+from soxspipe.commonutils.scratch import clear_workspace_scratch, removing_new_scratch
 
 os.environ["TERM"] = "vt100"
 
@@ -465,16 +465,8 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     reducer.run_recipe("mbias", "/path/to/sofs/my_bias_files.sof")
     ```
     """
-    created = created_scratch_directories()
-    before = set(created)
-    try:
+    with removing_new_scratch(log, settings):
         return _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP)
-    finally:
-        # A RECIPE THAT FINISHES HAS REMOVED ITS SCRATCH IN ``clean_up``. ONE THAT RAISES, IN ITS CONSTRUCTOR OR
-        # IN ``produce_product``, HAS NOT. THE REGISTRY IS THIS THREAD'S OWN, AND THE DIRECTORIES ABSENT FROM THE
-        # SNAPSHOT ARE THE ONES THIS CALL MADE, SO IT NEVER REMOVES ANOTHER RECIPE'S
-        remove_recipe_scratch(log, settings, [path for path in created if path not in before])
-        created[:] = [path for path in created if path in before]
 
 
 def _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP):
