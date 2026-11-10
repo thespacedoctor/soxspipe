@@ -24,6 +24,8 @@ import re
 import shutil
 import tempfile
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 # THE WORKSPACE ROOT THAT `advanced_settings.yaml` SETS WHEN A SETTINGS FILE HAS NO `workspace-root-dir`
 DEFAULT_WORKSPACE_ROOT = "./"
@@ -154,6 +156,29 @@ def remove_recipe_scratch(log, settings: dict, scratchDirectories: list[str]) ->
         return
     for path in scratchDirectories:
         remove_scratch_tree(log, path, requiredParent=scratchPath)
+
+
+@contextmanager
+def removing_new_scratch(log, settings: dict) -> Iterator[None]:
+    """*remove the scratch directories made inside the* ``with`` *block, whether or not it raises*
+
+    A recipe that finishes has removed its scratch in ``clean_up``. One that raises, in its constructor or
+    in ``produce_product``, has not. The registry is the calling thread's own, and the directories absent
+    from the snapshot taken on entry are the ones the block made, so the scope never removes the scratch
+    of an earlier recipe or of another thread. The block's exception propagates unchanged.
+
+    **Key Arguments:**
+
+    - ``log`` -- the logger to warn on
+    - ``settings`` -- the settings dictionary the recipe runs with. ``workspace-root-dir`` names the workspace
+    """
+    created = created_scratch_directories()
+    before = set(created)
+    try:
+        yield
+    finally:
+        remove_recipe_scratch(log, settings, [path for path in created if path not in before])
+        created[:] = [path for path in created if path in before]
 
 
 def clear_workspace_scratch(log, workspaceDirectory: str) -> None:
