@@ -244,45 +244,46 @@ class reducer:
                     sof = self.sessionPath + "/sof/" + sof
 
                     try:
-                        run_recipe(
-                            self.log,
-                            recipe,
-                            sof,
-                            settings=self.settings,
-                            overwrite=self.overwrite,
-                            command=row["command"],
-                            verbose=self.verbose,
-                        )
-                        batchCount += 1
-                    except FileExistsError:
+                        try:
+                            run_recipe(
+                                self.log,
+                                recipe,
+                                sof,
+                                settings=self.settings,
+                                overwrite=self.overwrite,
+                                command=row["command"],
+                                verbose=self.verbose,
+                            )
+                            batchCount += 1
+                        except FileExistsError:
+                            continue
+                        except Exception:
+                            # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                            self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                            self.log.error(
+                                f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
+                            )
+                            fail = True
+
+                            if self.quitOnFail:
+                                sys.exit(1)
+
+                            if self.reductionTarget != "all":
+                                self.overwrite = False
+
+                            if not self.daemon:
+                                print(f"{'=' * 70}\n")
+
+                        ## FINISH LOGGING ##
+                        endTime = times.get_now_sql_datetime()
+                        runningTime = times.calculate_time_difference(startTime, endTime)
+                        sys.argv[0] = os.path.basename(sys.argv[0])
+
+                        self.log.print(f"\nRecipe Command: {row['command'].replace('_obj ', ' ')} ")
+                        self.log.print(f"Recipe Run Time: {runningTime}\n\n")
+                    finally:
+                        # THE TRAILER IS THE RECIPE'S LAST MESSAGE, SO A LATER ERROR MUST NOT REACH ITS LOG FILES
                         toolkit.remove_recipe_logger(self.log)
-                        continue
-                    except Exception:
-                        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                        self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                        self.log.error(
-                            f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
-                        )
-                        fail = True
-
-                        if self.quitOnFail:
-                            sys.exit(1)
-
-                        if self.reductionTarget != "all":
-                            self.overwrite = False
-
-                        if not self.daemon:
-                            print(f"{'=' * 70}\n")
-
-                    ## FINISH LOGGING ##
-                    endTime = times.get_now_sql_datetime()
-                    runningTime = times.calculate_time_difference(startTime, endTime)
-                    sys.argv[0] = os.path.basename(sys.argv[0])
-
-                    self.log.print(f"\nRecipe Command: {row['command'].replace('_obj ', ' ')} ")
-                    self.log.print(f"Recipe Run Time: {runningTime}\n\n")
-                    # THE TRAILER IS THE RECIPE'S LAST MESSAGE, SO A LATER ERROR MUST NOT REACH ITS LOG FILES
-                    toolkit.remove_recipe_logger(self.log)
                     if not self.daemon:
                         print(f"{'=' * 70}\n")
 

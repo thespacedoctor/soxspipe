@@ -6,12 +6,9 @@ reducer detaches and closes them once the recipe has finished or failed and the 
 lands in its ``_ERROR.log``.
 """
 
-from __future__ import annotations
-
 import logging
 from importlib import import_module
 from pathlib import Path
-from typing import Any
 
 import pandas as pd
 import pytest
@@ -25,13 +22,13 @@ pytestmark = pytest.mark.unit
 RECIPE_HANDLER_NAMES = {"recipeLog", "recipeErr"}
 
 
-def _reducer_module() -> Any:
+def _reducer_module():
     """Return the reducer module; the package re-exports a class of the same name over it."""
     return import_module("soxspipe.commonutils.reducer")
 
 
 @pytest.fixture(name="sharedLog")
-def shared_log() -> Any:
+def shared_log():
     """Return an unregistered logger with a ``print`` method, and release its handlers afterwards."""
     sharedLogger = logging.Logger("dy1704", level=logging.DEBUG)
     sharedLogger.print = lambda message, *args, **kwargs: sharedLogger.log(logging.INFO + 5, message)
@@ -42,11 +39,31 @@ def shared_log() -> Any:
         sharedLogger.removeHandler(handler)
 
 
-def _recipe_handlers(logger: logging.Logger) -> list[logging.Handler]:
+@pytest.fixture(name="attachedHandlers")
+def attached_handlers(monkeypatch):
+    """Return the list of recipe handlers that ``add_recipe_logger`` attached during the test."""
+    attached = []
+    addRecipeLogger = toolkit.add_recipe_logger
+
+    def recording_add_recipe_logger(log, productPath):
+        result = addRecipeLogger(log, productPath)
+        attached.extend(_recipe_handlers(result))
+        return result
+
+    monkeypatch.setattr(toolkit, "add_recipe_logger", recording_add_recipe_logger)
+    return attached
+
+
+def _recipe_handlers(logger):
     return [handler for handler in logger.handlers if handler.get_name() in RECIPE_HANDLER_NAMES]
 
 
-def _finish_like_a_recipe(log: Any, productPath: Path, forceFail: bool | str = False) -> tuple[str, pd.DataFrame]:
+def _assert_closed(handlers):
+    assert handlers
+    assert all(handler.stream is None for handler in handlers if isinstance(handler, logging.FileHandler))
+
+
+def _finish_like_a_recipe(log, productPath, forceFail=False):
     """Attach the recipe handlers, then run the real ``clean_up`` as a recipe that finishes does."""
     recipe = base_recipe.__new__(base_recipe)
     recipe.log = toolkit.add_recipe_logger(log, str(productPath))
@@ -60,19 +77,19 @@ def _finish_like_a_recipe(log: Any, productPath: Path, forceFail: bool | str = F
     return str(productPath), recipe.qc
 
 
-def _finishing_run_recipe(productPath: Path) -> Any:
+def _finishing_run_recipe(productPath):
     """Return a ``run_recipe`` stand-in for a recipe that finishes."""
 
-    def fake_run_recipe(log: Any, *args: object, **kwargs: object) -> tuple[str, pd.DataFrame]:
+    def fake_run_recipe(log, *args, **kwargs):
         return _finish_like_a_recipe(log, productPath)
 
     return fake_run_recipe
 
 
-def _failing_run_recipe(productPath: Path, error: Exception) -> Any:
+def _failing_run_recipe(productPath, error):
     """Return a ``run_recipe`` stand-in that attaches the recipe handlers as a constructor does, then raises."""
 
-    def fake_run_recipe(log: Any, *args: object, **kwargs: object) -> None:
+    def fake_run_recipe(log, *args, **kwargs):
         toolkit.add_recipe_logger(log, str(productPath))
         raise error
 
@@ -80,20 +97,20 @@ def _failing_run_recipe(productPath: Path, error: Exception) -> Any:
 
 
 class _StubOrganiser:
-    def __init__(self, **kwargs: object) -> None:
+    def __init__(self, **kwargs):
         pass
 
-    def session_refresh(self, **kwargs: object) -> None:
+    def session_refresh(self, **kwargs):
         pass
 
-    def get_incomplete_sets_report(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def get_incomplete_sets_report(self):
         return pd.DataFrame(), pd.DataFrame()
 
-    def close(self) -> None:
+    def close(self):
         pass
 
 
-def _serial_reducer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any, fakeRunRecipe: Any) -> Any:
+def _serial_reducer(monkeypatch, tmp_path, log, fakeRunRecipe):
     """Return a reducer with one mbias SOF to reduce serially, with ``run_recipe`` replaced by ``fakeRunRecipe``."""
     reducerModule = _reducer_module()
     selected = [
@@ -120,7 +137,7 @@ def _serial_reducer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any, f
     return runner
 
 
-def _bulk_worker_result(tmp_path: Path, log: Any) -> dict[str, Any]:
+def _bulk_worker_result(tmp_path, log):
     return _reducer_module()._bulk_worker(
         {"sof": "A.sof", "command": "soxspipe mbias A.sof"},
         log=log,
@@ -132,7 +149,7 @@ def _bulk_worker_result(tmp_path: Path, log: Any) -> dict[str, Any]:
     )
 
 
-def test_remove_recipe_logger_detaches_and_closes_only_the_recipe_handlers(tmp_path: Path, sharedLog: Any) -> None:
+def test_remove_recipe_logger_detaches_and_closes_only_the_recipe_handlers(tmp_path, sharedLog):
     # ARRANGE
     toolkit.add_recipe_logger(sharedLog, str(tmp_path / "A" / "A.fits"))
     recipeHandlers = _recipe_handlers(sharedLog)
@@ -145,10 +162,10 @@ def test_remove_recipe_logger_detaches_and_closes_only_the_recipe_handlers(tmp_p
     # ASSERT
     assert _recipe_handlers(sharedLog) == []
     assert sharedLog.handlers == otherHandlers
-    assert all(handler.stream is None for handler in recipeHandlers if isinstance(handler, logging.FileHandler))
+    _assert_closed(recipeHandlers)
 
 
-def test_remove_recipe_logger_does_nothing_when_no_recipe_handler_is_attached(sharedLog: Any) -> None:
+def test_remove_recipe_logger_does_nothing_when_no_recipe_handler_is_attached(sharedLog):
     # ARRANGE
     handlersBefore = list(sharedLog.handlers)
 
@@ -159,9 +176,7 @@ def test_remove_recipe_logger_does_nothing_when_no_recipe_handler_is_attached(sh
     assert sharedLog.handlers == handlersBefore
 
 
-def test_clean_up_keeps_the_recipe_handlers_so_the_caller_can_write_the_run_trailer(
-    tmp_path: Path, sharedLog: Any
-) -> None:
+def test_clean_up_keeps_the_recipe_handlers_so_the_caller_can_write_the_run_trailer(tmp_path, sharedLog):
     # ACT
     _finish_like_a_recipe(sharedLog, tmp_path / "A" / "A.fits", forceFail="the recipe's own failure")
 
@@ -171,8 +186,8 @@ def test_clean_up_keeps_the_recipe_handlers_so_the_caller_can_write_the_run_trai
 
 
 def test_a_serial_reducer_success_writes_the_trailer_to_the_recipe_log_then_detaches(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sharedLog: Any
-) -> None:
+    monkeypatch, tmp_path, sharedLog, attachedHandlers
+):
     # ARRANGE
     runner = _serial_reducer(monkeypatch, tmp_path, sharedLog, _finishing_run_recipe(tmp_path / "A" / "A.fits"))
 
@@ -181,14 +196,17 @@ def test_a_serial_reducer_success_writes_the_trailer_to_the_recipe_log_then_deta
     sharedLog.error("a later recipe failed")
 
     # ASSERT
-    assert "Recipe Command: soxspipe mbias A.sof" in (tmp_path / "A" / "A.log").read_text()
+    recipeLogText = (tmp_path / "A" / "A.log").read_text()
+    assert "Recipe Command: soxspipe mbias A.sof" in recipeLogText
+    assert "Recipe Run Time:" in recipeLogText
     assert not (tmp_path / "A" / "A_ERROR.log").exists()
     assert _recipe_handlers(sharedLog) == []
+    _assert_closed(attachedHandlers)
 
 
 def test_a_serial_reducer_failure_is_logged_to_the_recipe_error_log_then_the_handlers_detach(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sharedLog: Any
-) -> None:
+    monkeypatch, tmp_path, sharedLog
+):
     # ARRANGE
     fakeRunRecipe = _failing_run_recipe(tmp_path / "A" / "A.fits", RuntimeError("boom"))
     runner = _serial_reducer(monkeypatch, tmp_path, sharedLog, fakeRunRecipe)
@@ -204,9 +222,24 @@ def test_a_serial_reducer_failure_is_logged_to_the_recipe_error_log_then_the_han
     assert _recipe_handlers(sharedLog) == []
 
 
-def test_a_serial_reducer_detaches_when_a_recipe_raises_file_exists_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sharedLog: Any
-) -> None:
+def test_a_serial_reducer_failure_detaches_when_quit_on_fail_exits(monkeypatch, tmp_path, sharedLog):
+    # ARRANGE
+    fakeRunRecipe = _failing_run_recipe(tmp_path / "A" / "A.fits", RuntimeError("boom"))
+    runner = _serial_reducer(monkeypatch, tmp_path, sharedLog, fakeRunRecipe)
+    runner.quitOnFail = True
+
+    # ACT
+    with pytest.raises(SystemExit):
+        runner.reduce(batch=10, multiprocess=False)
+    sharedLog.error("a later recipe failed")
+
+    # ASSERT
+    assert "boom" in (tmp_path / "A" / "A_ERROR.log").read_text()
+    assert "a later recipe failed" not in (tmp_path / "A" / "A_ERROR.log").read_text()
+    assert _recipe_handlers(sharedLog) == []
+
+
+def test_a_serial_reducer_detaches_when_a_recipe_raises_file_exists_error(monkeypatch, tmp_path, sharedLog):
     # ARRANGE
     fakeRunRecipe = _failing_run_recipe(tmp_path / "A" / "A.fits", FileExistsError("the product exists"))
     runner = _serial_reducer(monkeypatch, tmp_path, sharedLog, fakeRunRecipe)
@@ -218,23 +251,23 @@ def test_a_serial_reducer_detaches_when_a_recipe_raises_file_exists_error(
     assert _recipe_handlers(sharedLog) == []
 
 
-def test_a_bulk_worker_success_detaches_the_recipe_handlers(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sharedLog: Any
-) -> None:
+def test_a_bulk_worker_success_detaches_the_recipe_handlers(monkeypatch, tmp_path, sharedLog):
     # ARRANGE
     monkeypatch.setattr(_reducer_module(), "run_recipe", _finishing_run_recipe(tmp_path / "A" / "A.fits"))
 
     # ACT
     result = _bulk_worker_result(tmp_path, sharedLog)
+    sharedLog.error("a later recipe failed")
 
     # ASSERT
     assert result["status"] == "pass"
+    assert not (tmp_path / "A" / "A_ERROR.log").exists()
     assert _recipe_handlers(sharedLog) == []
 
 
 def test_a_bulk_worker_failure_is_logged_to_the_recipe_error_log_then_the_handlers_detach(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, sharedLog: Any
-) -> None:
+    monkeypatch, tmp_path, sharedLog
+):
     # ARRANGE
     errorLog = tmp_path / "A" / "A_ERROR.log"
     fakeRunRecipe = _failing_run_recipe(tmp_path / "A" / "A.fits", RuntimeError("worker boom"))
