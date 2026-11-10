@@ -3053,9 +3053,12 @@ def _fit_two_row_profile(
     return fitted, capRows
 
 
-@pytest.mark.parametrize("survivingPoints", [1, 7])
-def test_object_profile_is_zero_for_a_row_with_no_more_points_than_the_polynomial_order(survivingPoints: int) -> None:
-    # ARRANGE: A ROW WITH 1 OR 7 UNMASKED POINTS CANNOT CONSTRAIN A DEGREE-7 POLYNOMIAL
+@pytest.mark.parametrize(("survivingPoints", "zeroedRows"), [(0, 0), (1, 1), (7, 1)])
+def test_object_profile_is_zero_for_a_row_with_no_more_points_than_the_polynomial_order(
+    survivingPoints: int, zeroedRows: int
+) -> None:
+    # ARRANGE: A ROW WITH 1 OR 7 UNMASKED POINTS CANNOT CONSTRAIN A DEGREE-7 POLYNOMIAL.
+    # A FULLY MASKED ROW IS ROUTINE, SO IT IS NOT COUNTED
     fractions = np.linspace(0.4, 0.6, 10)
 
     # ACT
@@ -3063,7 +3066,7 @@ def test_object_profile_is_zero_for_a_row_with_no_more_points_than_the_polynomia
 
     # ASSERT
     np.testing.assert_array_equal(fitted["objectProfile"][0], 0.0)
-    assert capRows.zeroed == 1
+    assert capRows.zeroed == zeroedRows
 
 
 def test_object_profile_keeps_the_last_valid_fit_when_clipping_leaves_too_few_points() -> None:

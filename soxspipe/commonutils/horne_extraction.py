@@ -32,7 +32,7 @@ class profile_clip_cap_rows(NamedTuple):
     """Slit rows of one order that stopped at the profile clipping iteration limit while still clipping.
 
     ``zeroed`` counts the rows that held too few points for the polynomial order at the first fit and got a zero
-    profile.
+    profile. Rows with no usable points at all are not counted, because fully masked or off-order rows are routine.
     """
 
     refitted: int
@@ -3436,7 +3436,8 @@ def fit_object_profile(
             # A ROW WITH NO MORE POINTS THAN THE POLYNOMIAL ORDER CANNOT BE FITTED. ON THE FIRST PASS IT GETS A ZERO
             # PROFILE; ON A LATER PASS IT KEEPS THE LAST VALID COEFFICIENTS
             if len(dispersionAxisPixels) <= hornePolyOrder:
-                if not len(coeff) and len(dispersionAxisPixels):
+                # ROWS WITH ZERO USABLE POINTS ARE NOT COUNTED: FULLY MASKED OR OFF-ORDER ROWS ARE ROUTINE
+                if iteration == 0 and len(dispersionAxisPixels):
                     zeroedRows += 1
                 isFitCutShort = True
                 break
