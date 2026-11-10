@@ -59,6 +59,10 @@ The final flux for each cross-dispersion slice is a weighted sum, as reported in
 
 The dispersion map is made from daytime calibration frames. At night, flexure moves the spectra on the detector by a small amount. After extraction, the utility corrects for this order by order. It matches the sky lines in each extracted order to the catalogue of sky lines, measures the offset of every matched line, clips the outliers, and adds the median offset to the wavelength solution of the order. Each order gets a `SKY SHIFT O<N>` QC (in nm) and a `SKY SHIFT O<N> PX` QC (the same shift in detector pixels along the dispersion axis).
 
+#### Switching the tuning off
+
+Set `tune-wavelength-to-skylines: False` in the recipe block of the settings file (for example `soxs-stare`) to keep the arc wavelength solution as it is. The default is `True`. A settings file without the key tunes. When the tuning is switched off, the utility prints a line in the log, adds a note to the QC plot, and writes the `SKY TUNING` QC as `skipped: switched off`. No `SKY SHIFT` QCs are written. Any value other than `True` or `False` stops the recipe with an error.
+
 #### Attached arc: no tuning
 
 For SOXS, the utility skips this step when the arc is attached to the science exposures. An arc is attached when two conditions are true:
@@ -68,7 +72,7 @@ For SOXS, the utility skips this step when the arc is attached to the science ex
 
 The science exposures are all the raw science frames of the observation block: one frame for a single stare frame, or every frame of a nod, offset, or stacked stare sequence. Each exposure starts at `MJD-OBS`. It ends `ESO DET SEQ1 EXPTIME` seconds later when the frame has that keyword (NIR, where `EXPTIME` is one DIT and not the whole exposure), and `EXPTIME` seconds later when it does not (VIS). A frame with no usable rotator angle, start time or exposure time is never attached.
 
-The wavelength solution of an attached arc is accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned.
+The wavelength solution of an attached arc is accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned, unless the tuning is switched off.
 
 #### VIS r and i orders: sky-line signal-to-noise gate
 
