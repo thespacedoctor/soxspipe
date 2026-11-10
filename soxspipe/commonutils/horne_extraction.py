@@ -29,10 +29,15 @@ os.environ["TERM"] = "vt100"
 
 
 class profile_clip_cap_rows(NamedTuple):
-    """Slit rows of one order that stopped at the profile clipping iteration limit while still clipping."""
+    """Slit rows of one order that stopped at the profile clipping iteration limit while still clipping.
+
+    ``zeroed`` counts the rows that held too few points for the polynomial order at the first fit and got a zero
+    profile.
+    """
 
     refitted: int
     kept: int
+    zeroed: int = 0
 
 
 # WIDTH IN COLUMNS OVER WHICH THE LOCAL FRACTION OF USABLE PIXELS IS MEASURED IN EACH SLIT ROW
@@ -3016,7 +3021,13 @@ def extract_single_order(
             order=order,
             debug=debug,
         )
-        _log_profile_clip_cap(log=funclog, order=order, clippingIterationLimit=clippingIterationLimit, capRows=capRows)
+        _log_profile_clip_cap(
+            log=funclog,
+            order=order,
+            clippingIterationLimit=clippingIterationLimit,
+            hornePolyOrder=hornePolyOrder,
+            capRows=capRows,
+        )
 
     if "skyFlux" not in extractions.columns:
         extractions["skyFlux"] = np.nan
@@ -3089,7 +3100,9 @@ def _extract_optimal_order(
     return extractions, capRows
 
 
-def _log_profile_clip_cap(log, order: int, clippingIterationLimit: int, capRows: profile_clip_cap_rows) -> None:
+def _log_profile_clip_cap(
+    log, order: int, clippingIterationLimit: int, hornePolyOrder: int, capRows: profile_clip_cap_rows
+) -> None:
     """*log, once for the order, how many slit rows stopped at the profile clipping iteration limit*
 
     **Key Arguments:**
@@ -3097,10 +3110,17 @@ def _log_profile_clip_cap(log, order: int, clippingIterationLimit: int, capRows:
     - ``log`` -- logger
     - ``order`` -- the order number
     - ``clippingIterationLimit`` -- iteration limit for the profile clipping
-    - ``capRows`` -- counts of slit rows that hit the limit while still clipping, as ``refitted`` and ``kept``
+    - ``hornePolyOrder`` -- order of the polynomial fitted to each slit row
+    - ``capRows`` -- counts of slit rows that hit the limit while still clipping, as ``refitted`` and ``kept``, and of
+      rows given a zero profile for too few points, as ``zeroed``
 
-    Logs nothing when no row hit the limit.
+    Logs the ``zeroed`` count at debug level, and the other counts at info level when a row hit the limit.
     """
+    if capRows.zeroed:
+        log.debug(
+            f"fit_object_profile: order {order}: {capRows.zeroed} slit rows had too few points for a degree-"
+            f"{hornePolyOrder} fit and got a zero profile"
+        )
     totalRows = capRows.refitted + capRows.kept
     if not totalRows:
         return
@@ -3367,7 +3387,9 @@ def fit_object_profile(
     - ``orderRectifiedImages`` -- the rectified images with the object profile added
     - ``capRows`` -- a ``profile_clip_cap_rows`` count of the slit rows that stopped at ``clippingIterationLimit`` while
       still clipping: ``refitted`` to the surviving points, or ``kept`` at their last fit because too few points
-      survived. The function itself logs nothing, since a message per row would fire thousands of times
+      survived. Its ``zeroed`` count is the slit rows that held no more points than ``hornePolyOrder`` at the first
+      fit and got a zero profile, and a row that falls to that limit on a later pass keeps its last valid fit. The
+      function itself logs nothing, since a message per row would fire thousands of times
     """
     import numpy as np
     from astropy.stats import sigma_clip
@@ -3376,6 +3398,8 @@ def fit_object_profile(
     # SLIT ROWS THAT STOPPED AT THE CLIPPING ITERATION LIMIT WHILE STILL CLIPPING
     refittedRows = 0
     keptRows = 0
+    # SLIT ROWS WITH TOO FEW POINTS FOR THE POLYNOMIAL ORDER AT THE FIRST FIT, GIVEN A ZERO PROFILE
+    zeroedRows = 0
 
     shape = orderRectifiedImages["fluxRaw"].shape
     ww = shape[1]
@@ -3407,13 +3431,17 @@ def fit_object_profile(
         coeff = []
 
         # STOP AT THE ITERATION LIMIT, OR AS SOON AS A PASS CLIPS NOTHING (A FURTHER PASS WOULD REPEAT THE SAME FIT)
+        isFitCutShort = False
         while (iteration < clippingIterationLimit) and (clipped_count > 0):
-            # FIT A POLYNOMIAL TO THE FRACTIONAL FLUXES
-            if len(dispersionAxisPixels):
-                coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
-            else:
-                coeff = []
+            # A ROW WITH NO MORE POINTS THAN THE POLYNOMIAL ORDER CANNOT BE FITTED. ON THE FIRST PASS IT GETS A ZERO
+            # PROFILE; ON A LATER PASS IT KEEPS THE LAST VALID COEFFICIENTS
+            if len(dispersionAxisPixels) <= hornePolyOrder:
+                if not len(coeff) and len(dispersionAxisPixels):
+                    zeroedRows += 1
+                isFitCutShort = True
                 break
+            # FIT A POLYNOMIAL TO THE FRACTIONAL FLUXES
+            coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
             residuals = fractions - np.polyval(coeff, dispersionAxisPixels)
             passCount = len(fractions)
 
@@ -3436,7 +3464,7 @@ def fit_object_profile(
 
         # A CAP EXIT WITH POINTS STILL BEING CLIPPED LEAVES COEFFICIENTS THAT INCLUDE THE POINTS JUST REJECTED.
         # REFIT ONLY WHEN THE SURVIVORS CONSTRAIN EVERY COEFFICIENT; OTHERWISE KEEP THE LAST FIT
-        if len(coeff) and clipped_count > 0:
+        if len(coeff) and clipped_count > 0 and not isFitCutShort:
             if len(dispersionAxisPixels) > hornePolyOrder:
                 coeff = np.polyfit(dispersionAxisPixels, fractions, deg=hornePolyOrder)
                 refittedRows += 1
@@ -3483,7 +3511,7 @@ def fit_object_profile(
         orderRectifiedImages["objectProfile"] = crossDispersionProfile / crossDispersionProfileSums[np.newaxis :]
     crossDispersionSlicesDF["objectProfile"] = [x for x in orderRectifiedImages["objectProfile"].T]
 
-    return crossDispersionSlicesDF, orderRectifiedImages, profile_clip_cap_rows(refittedRows, keptRows)
+    return crossDispersionSlicesDF, orderRectifiedImages, profile_clip_cap_rows(refittedRows, keptRows, zeroedRows)
 
 
 def _unsupported_pixel_mask(fluxRaw, mask):

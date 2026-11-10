@@ -3026,6 +3026,86 @@ def test_object_profile_counts_nothing_when_every_row_converges() -> None:
     assert counts == profile_clip_cap_rows(refitted=0, kept=0)
 
 
+def _fit_two_row_profile(
+    fractions: np.ndarray, unmaskedColumns: int, hornePolyOrder: int, clippingSigma: float = 3.0
+) -> tuple[dict[str, np.ndarray], profile_clip_cap_rows]:
+    """Fit the profile of a two-row order whose first row holds `fractions` of each column's flux.
+
+    The second row holds the rest. The first row is masked beyond its first `unmaskedColumns` columns.
+    """
+    columns = len(fractions)
+    flux = np.vstack([fractions, 1.0 - fractions])
+    mask = np.zeros((2, columns), dtype=bool)
+    mask[0, unmaskedColumns:] = True
+    images = {"fluxRaw": flux, "mask": mask}
+    _, fitted, capRows = fit_object_profile(
+        pd.DataFrame(index=range(columns)),
+        images,
+        slitHalfLength=1,
+        clippingSigma=clippingSigma,
+        clippingIterationLimit=5,
+        hornePolyOrder=hornePolyOrder,
+        axisB="x",
+        order=7,
+        debug=False,
+        plt=None,
+    )
+    return fitted, capRows
+
+
+@pytest.mark.parametrize("survivingPoints", [1, 7])
+def test_object_profile_is_zero_for_a_row_with_no_more_points_than_the_polynomial_order(survivingPoints: int) -> None:
+    # ARRANGE: A ROW WITH 1 OR 7 UNMASKED POINTS CANNOT CONSTRAIN A DEGREE-7 POLYNOMIAL
+    fractions = np.linspace(0.4, 0.6, 10)
+
+    # ACT
+    fitted, capRows = _fit_two_row_profile(fractions, unmaskedColumns=survivingPoints, hornePolyOrder=7)
+
+    # ASSERT
+    np.testing.assert_array_equal(fitted["objectProfile"][0], 0.0)
+    assert capRows.zeroed == 1
+
+
+def test_object_profile_keeps_the_last_valid_fit_when_clipping_leaves_too_few_points() -> None:
+    # ARRANGE: PASS 1 FITS ALL 4 POINTS AND CLIPS 2 OF THEM, LEAVING FEWER THAN THE 3 A DEGREE-2 FIT NEEDS
+    fractions = np.array([0.50, 0.56, 0.47, 0.55])
+    columns = np.arange(len(fractions))
+    lastValidFit = np.polyval(np.polyfit(columns, fractions, deg=2), columns)
+
+    # ACT
+    fitted, capRows = _fit_two_row_profile(fractions, unmaskedColumns=4, hornePolyOrder=2, clippingSigma=1.2)
+
+    # ASSERT: THE SECOND ROW HOLDS THE REST OF EACH COLUMN, SO THE FIRST ROW'S NORMALISED PROFILE IS ITS OWN FIT
+    np.testing.assert_allclose(fitted["objectProfile"][0], lastValidFit, atol=1e-9)
+    assert capRows.zeroed == 0
+
+
+def test_single_order_extraction_logs_the_rows_zeroed_for_too_few_points_at_debug_level(log: object) -> None:
+    # ARRANGE: ONE SLIT ROW KEEPS A SINGLE UNMASKED PIXEL, TOO FEW FOR A DEGREE-7 FIT
+    columns = 10
+    images = _noisy_order_images(slitRows=5, columns=columns)
+    images["bpMask"][2, 1:] = True
+
+    # ACT
+    extract_single_order(
+        (pd.DataFrame({"order": [7] * columns}), images),
+        log,
+        slitHalfLength=2,
+        clippingSigma=5.0,
+        clippingIterationLimit=5,
+        globalClippingSigma=3.0,
+        axisA="y",
+        axisB="x",
+        hornePolyOrder=7,
+    )
+
+    # ASSERT
+    assert (
+        "debug",
+        "fit_object_profile: order 7: 1 slit rows had too few points for a degree-7 fit and got a zero profile",
+    ) in log.messages
+
+
 def test_single_order_extraction_logs_one_info_line_per_order_with_the_cap_counts(log: object) -> None:
     # ARRANGE / ACT
     _extract_noisy_order(log, clippingSigma=1.0, clippingIterationLimit=1, hornePolyOrder=0)
