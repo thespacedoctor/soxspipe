@@ -1,4 +1,4 @@
-"""Contracts for the packaged SOXS NIR multi-pinhole predicted-line table (DY-1989)."""
+"""Contracts for the packaged SOXS NIR multi-pinhole predicted-line table (DY-1989, DY-2084)."""
 
 from __future__ import annotations
 
@@ -31,10 +31,36 @@ MIN_O11_RED_HALF_LINES = 8
 # WITH THE O11 RED HALF NOW CONSTRAINED, THE X FIT NEEDS ONE MORE ORDER AND WAVELENGTH DEGREE
 NIR_X_ORDER_DEG = 5
 NIR_X_WAVELENGTH_DEG = 6
+# DY-2084: XeI AND SOME HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES. RITZ IS AT MOST 1.3 A AWAY
+RITZ_IONS = ["XeI", "HgI"]
+MAX_RITZ_SHIFT_NM = 0.13
+# (ORDER, ION, CATALOGUE NIST OBSERVED nm, NIST RITZ nm): THE ARC MEASURES THE RITZ VALUE FOR EACH OF THESE
+RITZ_LINES = [
+    (12, "XeI", 1605.203, 1605.329),
+    (13, "XeI", 1465.985, 1466.080),
+    (14, "XeI", 1365.649, 1365.706),
+    (16, "XeI", 1227.289, 1227.1902),
+    (16, "HgI", 1215.9, 1216.008),
+    (14, "HgI", 1342.658, 1342.635),
+    # O11 HgI LINES MOVE TOGETHER: WITH 1719.868 AND 1732.942 LEFT AT NIST OBSERVED, THE SET-OFFSET GUARD CLIPS 1692.017
+    (11, "HgI", 1692.017, 1692.027),
+    (11, "HgI", 1719.868, 1719.828),
+    (11, "HgI", 1732.942, 1732.896),
+]
+WAVELENGTH_ATOL_NM = 5e-4
 
 
 def _read_table(name: str) -> Table:
     return Table.read(CALIBRATIONS_DIR / name)
+
+
+def _rest(name: str) -> Table:
+    table = _read_table(name)
+    return table[~np.isin(table["order"], CURATED_ORDERS)]
+
+
+def _ions(table: Table) -> np.ndarray:
+    return np.array([i.decode().strip() if isinstance(i, bytes) else str(i).strip() for i in table["ion"]])
 
 
 def _nir_spatial_solution_settings() -> dict:
@@ -115,21 +141,50 @@ def test_o11_red_half_has_enough_lines() -> None:
     assert len(redLines) >= MIN_O11_RED_HALF_LINES
 
 
-def test_orders_outside_the_curation_are_unchanged() -> None:
-    # ARRANGE
-    curated = _read_table(MPH_TABLE)
-    shipped = _read_table(SPH_TABLE)
-
-    # ACT
-    curatedRest = curated[~np.isin(curated["order"], CURATED_ORDERS)]
-    shippedRest = shipped[~np.isin(shipped["order"], CURATED_ORDERS)]
+def _sorted(table: Table) -> Table:
     # THE SHIPPED TABLE REPEATS SOME (ORDER, WAVELENGTH, SLIT_INDEX) KEYS, SO POSITIONS BREAK THE TIES
-    sortKeys = ["order", "wavelength", "slit_index", "detector_x", "detector_y"]
-    curatedRest.sort(sortKeys)
-    shippedRest.sort(sortKeys)
+    rows = table.copy()
+    rows.sort(["order", "slit_index", "detector_x", "detector_y"], kind="stable")
+    return rows
+
+
+def test_orders_outside_the_curation_keep_the_clean_list_geometry() -> None:
+    # ACT
+    curatedRest = _sorted(_rest(MPH_TABLE))
+    shippedRest = _sorted(_rest(SPH_TABLE))
 
     # ASSERT
     assert curatedRest.colnames == shippedRest.colnames
     assert len(curatedRest) == len(shippedRest)
     for column in curatedRest.colnames:
-        assert np.array_equal(np.asarray(curatedRest[column]), np.asarray(shippedRest[column])), column
+        if column != "wavelength":
+            assert np.array_equal(np.asarray(curatedRest[column]), np.asarray(shippedRest[column])), column
+
+
+def test_only_ritz_ion_wavelengths_differ_from_the_clean_list() -> None:
+    # ARRANGE
+    curated = _sorted(_rest(MPH_TABLE))
+    shipped = _sorted(_rest(SPH_TABLE))
+
+    # ACT
+    shift = np.asarray(curated["wavelength"], dtype=float) - np.asarray(shipped["wavelength"], dtype=float)
+    moved = shift != 0
+
+    # ASSERT
+    assert moved.any()
+    assert set(_ions(curated[moved])) <= set(RITZ_IONS)
+    assert np.max(np.abs(shift)) <= MAX_RITZ_SHIFT_NM
+
+
+@pytest.mark.parametrize(("order", "ion", "observed", "ritz"), RITZ_LINES)
+def test_line_carries_its_nist_ritz_wavelength(order: int, ion: str, observed: float, ritz: float) -> None:
+    # ARRANGE
+    table = _read_table(MPH_TABLE)
+    rows = table[(table["order"] == order) & (_ions(table) == ion)]
+
+    # ACT
+    wavelengths = np.unique(np.asarray(rows["wavelength"], dtype=float))
+
+    # ASSERT
+    assert np.any(np.isclose(wavelengths, ritz, rtol=0, atol=WAVELENGTH_ATOL_NM))
+    assert not np.any(np.isclose(wavelengths, observed, rtol=0, atol=WAVELENGTH_ATOL_NM))
