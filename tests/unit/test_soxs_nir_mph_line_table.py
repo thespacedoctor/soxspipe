@@ -31,10 +31,10 @@ MIN_O11_RED_HALF_LINES = 8
 # WITH THE O11 RED HALF NOW CONSTRAINED, THE X FIT NEEDS ONE MORE ORDER AND WAVELENGTH DEGREE
 NIR_X_ORDER_DEG = 5
 NIR_X_WAVELENGTH_DEG = 6
-# DY-2084: XeI AND SOME HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES. RITZ IS AT MOST 1.3 A AWAY
+# DY-2084: XeI AND HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES; NO LINE MOVES MORE THAN 0.13 nm
 RITZ_IONS = ["XeI", "HgI"]
 MAX_RITZ_SHIFT_NM = 0.13
-# (ORDER, ION, CATALOGUE NIST OBSERVED nm, NIST RITZ nm): THE ARC MEASURES THE RITZ VALUE FOR EACH OF THESE
+# (ORDER, ION, NIST OBSERVED nm, NIST RITZ nm). THE ARC MEASURES THE RITZ VALUE FOR THE FIRST SIX
 RITZ_LINES = [
     (12, "XeI", 1605.203, 1605.329),
     (13, "XeI", 1465.985, 1466.080),
@@ -42,7 +42,8 @@ RITZ_LINES = [
     (16, "XeI", 1227.289, 1227.1902),
     (16, "HgI", 1215.9, 1216.008),
     (14, "HgI", 1342.658, 1342.635),
-    # O11 HgI LINES MOVE TOGETHER: WITH 1719.868 AND 1732.942 LEFT AT NIST OBSERVED, THE SET-OFFSET GUARD CLIPS 1692.017
+    # THE ARC PREFERS NIST OBSERVED FOR 1719.868 AND 1732.942 (BY 0.3 A), BUT LEFT THERE THEY MAKE THE SET-OFFSET GUARD
+    # CLIP 1692.017, AND THE O11 SKY GETS WORSE, SO ALL O11 HgI LINES TAKE RITZ
     (11, "HgI", 1692.017, 1692.027),
     (11, "HgI", 1719.868, 1719.828),
     (11, "HgI", 1732.942, 1732.896),
@@ -54,9 +55,16 @@ def _read_table(name: str) -> Table:
     return Table.read(CALIBRATIONS_DIR / name)
 
 
-def _rest(name: str) -> Table:
+def _uncurated_rows(name: str) -> Table:
     table = _read_table(name)
     return table[~np.isin(table["order"], CURATED_ORDERS)]
+
+
+def _stable_sorted(table: Table) -> Table:
+    # THE SHIPPED TABLE REPEATS SOME (ORDER, WAVELENGTH, SLIT_INDEX) KEYS, SO POSITIONS BREAK THE TIES
+    rows = table.copy()
+    rows.sort(["order", "slit_index", "detector_x", "detector_y"], kind="stable")
+    return rows
 
 
 def _ions(table: Table) -> np.ndarray:
@@ -141,30 +149,25 @@ def test_o11_red_half_has_enough_lines() -> None:
     assert len(redLines) >= MIN_O11_RED_HALF_LINES
 
 
-def _sorted(table: Table) -> Table:
-    # THE SHIPPED TABLE REPEATS SOME (ORDER, WAVELENGTH, SLIT_INDEX) KEYS, SO POSITIONS BREAK THE TIES
-    rows = table.copy()
-    rows.sort(["order", "slit_index", "detector_x", "detector_y"], kind="stable")
-    return rows
-
-
 def test_orders_outside_the_curation_keep_the_clean_list_geometry() -> None:
+    # ARRANGE
+    columns = [name for name in _read_table(MPH_TABLE).colnames if name != "wavelength"]
+
     # ACT
-    curatedRest = _sorted(_rest(MPH_TABLE))
-    shippedRest = _sorted(_rest(SPH_TABLE))
+    curatedRest = _stable_sorted(_uncurated_rows(MPH_TABLE))
+    shippedRest = _stable_sorted(_uncurated_rows(SPH_TABLE))
 
     # ASSERT
     assert curatedRest.colnames == shippedRest.colnames
     assert len(curatedRest) == len(shippedRest)
-    for column in curatedRest.colnames:
-        if column != "wavelength":
-            assert np.array_equal(np.asarray(curatedRest[column]), np.asarray(shippedRest[column])), column
+    for column in columns:
+        assert np.array_equal(np.asarray(curatedRest[column]), np.asarray(shippedRest[column])), column
 
 
 def test_only_ritz_ion_wavelengths_differ_from_the_clean_list() -> None:
     # ARRANGE
-    curated = _sorted(_rest(MPH_TABLE))
-    shipped = _sorted(_rest(SPH_TABLE))
+    curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
+    shipped = _stable_sorted(_uncurated_rows(SPH_TABLE))
 
     # ACT
     shift = np.asarray(curated["wavelength"], dtype=float) - np.asarray(shipped["wavelength"], dtype=float)
