@@ -162,7 +162,7 @@ class reducer:
 
         from fundamentals import times
 
-        from soxspipe.commonutils import data_organiser
+        from soxspipe.commonutils import data_organiser, toolkit
 
         # A RECIPE KILLED DURING AN EARLIER RUN LEAVES ITS SCRATCH FRAMES BEHIND
         clear_workspace_scratch(self.log, self.workspaceDirectory)
@@ -262,6 +262,7 @@ class reducer:
                         self.log.error(
                             f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
                         )
+                        toolkit.remove_recipe_logger(self.log)
                         fail = True
 
                         if self.quitOnFail:
@@ -756,6 +757,8 @@ def _bulk_worker(
     """
     import traceback
 
+    from soxspipe.commonutils import toolkit
+
     log = _worker_log(log, settings, logQueue)
 
     returnDict = {
@@ -799,6 +802,7 @@ def _bulk_worker(
         # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
         log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
         log.error(f"\nRecipe Command: {inputDict['command'].replace('-obj ', ' ').replace('_obj ', ' ')}\n\n")
+        toolkit.remove_recipe_logger(log)
         returnDict["status"] = "fail"
         returnDict["error_message"] = str(e)
 

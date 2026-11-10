@@ -466,18 +466,10 @@ def test_the_serial_reducer_removes_scratch_left_by_an_interrupted_recipe(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1704 (DY-37 S2): clean_up leaves the recipe log handlers on the shared logger; later errors "
-        "hit its _ERROR.log"
-    ),
-)
 def test_a_later_error_does_not_land_in_a_finished_recipes_error_log(tmp_path: Path) -> None:
-    """Pin S2: clean_up must detach and close the recipe's file handlers.
+    """S2 (DY-1704): clean_up detaches and closes the recipe's file handlers.
 
-    The pin expects ``clean_up`` itself to detach them. If the fix lands in the reducer instead, move the pin there.
+    The failure path is covered by ``tests/unit/test_recipe_log_handlers.py``.
     """
     # ARRANGE: AN UNREGISTERED LOGGER, SO NOTHING IS LEFT IN THE GLOBAL LOGGER REGISTRY
     sharedLog = logging.Logger("dy37-s2", level=logging.DEBUG)
