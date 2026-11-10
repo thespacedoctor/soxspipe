@@ -1421,8 +1421,6 @@ class base_recipe:
         recipe.clean_up(forceFail=True)
         ```
         """
-        from soxspipe.commonutils import toolkit
-
         self.log.debug("starting the ``clean_up`` method")
 
         # FILTER QC TABLE ON qc_flag
@@ -1489,8 +1487,6 @@ class base_recipe:
             )
 
         self.log.debug("completed the ``clean_up`` method")
-        # THE RECIPE HAS LOGGED ITS LAST MESSAGE, SO A LATER ERROR ON THE SHARED LOGGER MUST NOT REACH ITS LOG FILES
-        toolkit.remove_recipe_logger(self.log)
         return
 
     def xsh2soxs(self, frame):

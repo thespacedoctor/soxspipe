@@ -255,6 +255,7 @@ class reducer:
                         )
                         batchCount += 1
                     except FileExistsError:
+                        toolkit.remove_recipe_logger(self.log)
                         continue
                     except Exception:
                         # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
@@ -262,7 +263,6 @@ class reducer:
                         self.log.error(
                             f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
                         )
-                        toolkit.remove_recipe_logger(self.log)
                         fail = True
 
                         if self.quitOnFail:
@@ -281,6 +281,8 @@ class reducer:
 
                     self.log.print(f"\nRecipe Command: {row['command'].replace('_obj ', ' ')} ")
                     self.log.print(f"Recipe Run Time: {runningTime}\n\n")
+                    # THE TRAILER IS THE RECIPE'S LAST MESSAGE, SO A LATER ERROR MUST NOT REACH ITS LOG FILES
+                    toolkit.remove_recipe_logger(self.log)
                     if not self.daemon:
                         print(f"{'=' * 70}\n")
 
@@ -802,9 +804,11 @@ def _bulk_worker(
         # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
         log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
         log.error(f"\nRecipe Command: {inputDict['command'].replace('-obj ', ' ').replace('_obj ', ' ')}\n\n")
-        toolkit.remove_recipe_logger(log)
         returnDict["status"] = "fail"
         returnDict["error_message"] = str(e)
+    finally:
+        # THE RECIPE'S LAST MESSAGE IS LOGGED, SO A LATER ERROR IN THIS WORKER MUST NOT REACH ITS LOG FILES
+        toolkit.remove_recipe_logger(log)
 
     return returnDict
 
