@@ -162,7 +162,7 @@ class reducer:
 
         from fundamentals import times
 
-        from soxspipe.commonutils import data_organiser
+        from soxspipe.commonutils import data_organiser, toolkit
 
         # A RECIPE KILLED DURING AN EARLIER RUN LEAVES ITS SCRATCH FRAMES BEHIND
         clear_workspace_scratch(self.log, self.workspaceDirectory)
@@ -244,42 +244,46 @@ class reducer:
                     sof = self.sessionPath + "/sof/" + sof
 
                     try:
-                        run_recipe(
-                            self.log,
-                            recipe,
-                            sof,
-                            settings=self.settings,
-                            overwrite=self.overwrite,
-                            command=row["command"],
-                            verbose=self.verbose,
-                        )
-                        batchCount += 1
-                    except FileExistsError:
-                        continue
-                    except Exception:
-                        # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
-                        self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
-                        self.log.error(
-                            f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
-                        )
-                        fail = True
+                        try:
+                            run_recipe(
+                                self.log,
+                                recipe,
+                                sof,
+                                settings=self.settings,
+                                overwrite=self.overwrite,
+                                command=row["command"],
+                                verbose=self.verbose,
+                            )
+                            batchCount += 1
+                        except FileExistsError:
+                            continue
+                        except Exception:
+                            # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
+                            self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
+                            self.log.error(
+                                f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
+                            )
+                            fail = True
 
-                        if self.quitOnFail:
-                            sys.exit(1)
+                            if self.quitOnFail:
+                                sys.exit(1)
 
-                        if self.reductionTarget != "all":
-                            self.overwrite = False
+                            if self.reductionTarget != "all":
+                                self.overwrite = False
 
-                        if not self.daemon:
-                            print(f"{'=' * 70}\n")
+                            if not self.daemon:
+                                print(f"{'=' * 70}\n")
 
-                    ## FINISH LOGGING ##
-                    endTime = times.get_now_sql_datetime()
-                    runningTime = times.calculate_time_difference(startTime, endTime)
-                    sys.argv[0] = os.path.basename(sys.argv[0])
+                        ## FINISH LOGGING ##
+                        endTime = times.get_now_sql_datetime()
+                        runningTime = times.calculate_time_difference(startTime, endTime)
+                        sys.argv[0] = os.path.basename(sys.argv[0])
 
-                    self.log.print(f"\nRecipe Command: {row['command'].replace('_obj ', ' ')} ")
-                    self.log.print(f"Recipe Run Time: {runningTime}\n\n")
+                        self.log.print(f"\nRecipe Command: {row['command'].replace('_obj ', ' ')} ")
+                        self.log.print(f"Recipe Run Time: {runningTime}\n\n")
+                    finally:
+                        # THE TRAILER IS THE RECIPE'S LAST MESSAGE, SO A LATER ERROR MUST NOT REACH ITS LOG FILES
+                        toolkit.remove_recipe_logger(self.log)
                     if not self.daemon:
                         print(f"{'=' * 70}\n")
 
@@ -756,6 +760,8 @@ def _bulk_worker(
     """
     import traceback
 
+    from soxspipe.commonutils import toolkit
+
     log = _worker_log(log, settings, logQueue)
 
     returnDict = {
@@ -801,6 +807,9 @@ def _bulk_worker(
         log.error(f"\nRecipe Command: {inputDict['command'].replace('-obj ', ' ').replace('_obj ', ' ')}\n\n")
         returnDict["status"] = "fail"
         returnDict["error_message"] = str(e)
+    finally:
+        # THE RECIPE'S LAST MESSAGE IS LOGGED, SO A LATER ERROR IN THIS WORKER MUST NOT REACH ITS LOG FILES
+        toolkit.remove_recipe_logger(log)
 
     return returnDict
 

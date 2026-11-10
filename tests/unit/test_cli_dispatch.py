@@ -20,6 +20,7 @@ class CliLogger:
 
     def __init__(self) -> None:
         self.messages: list[tuple[str, str]] = []
+        self.handlers: list[object] = []
         self.keywordArguments: list[dict[str, object]] = []
         self.instances.append(self)
 
@@ -117,6 +118,7 @@ def _run_cli(
     currentSession: str | None = None,
     allowSleep: bool = False,
     settings: dict[str, object] | None = None,
+    logger: Any = None,
 ) -> tuple[CliLogger, list[dict[str, object]]]:
     clUtils = import_module("soxspipe.cl_utils")
     commonutilsModule = import_module("soxspipe.commonutils")
@@ -126,7 +128,7 @@ def _run_cli(
         parsedArguments = {**parsedArguments, **argumentOverrides}
     parserCalls: list[dict[str, object]] = []
     CliLogger.instances = []
-    logger = CliLogger()
+    logger = logger if logger is not None else CliLogger()
 
     def fake_docopt(docString: str, **kwargs: object) -> dict[str, object]:
         parserCalls.append(kwargs)
@@ -1077,3 +1079,41 @@ def test_main_gives_the_reducer_unchanged_settings_without_no_stack(
 
     # ASSERT
     assert initCalls[0]["settings"] == STACKING_SETTINGS
+
+
+def test_main_writes_the_run_trailer_to_the_recipe_log_then_detaches_its_handlers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A programmatic ``main()`` caller must not keep the recipe's log handlers after the trailer is written."""
+    import logging
+
+    recipesModule = import_module("soxspipe.recipes")
+    toolkitModule = import_module("soxspipe.commonutils.toolkit")
+    sharedLog = logging.Logger("dy1704-cli", level=logging.DEBUG)
+    sharedLog.print = lambda message, **kwargs: sharedLog.log(logging.INFO + 5, message)
+    attached: list[logging.Handler] = []
+
+    class AttachingRecipe:
+        def __init__(self, **kwargs: Any) -> None:
+            toolkitModule.add_recipe_logger(kwargs["log"], str(tmp_path / "A" / "A.fits"))
+            attached.extend(kwargs["log"].handlers)
+
+        def produce_product(self) -> None:
+            return None
+
+    monkeypatch.setattr(recipesModule, "soxs_mbias", AttachingRecipe)
+
+    try:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "mbias", "frames"], logger=sharedLog)
+        sharedLog.error("a later error")
+    finally:
+        for handler in list(sharedLog.handlers):
+            handler.close()
+            sharedLog.removeHandler(handler)
+
+    recipeLogText = (tmp_path / "A" / "A.log").read_text()
+    assert "Recipe Command: soxspipe mbias frames" in recipeLogText
+    assert "Recipe Run Time: 0s" in recipeLogText
+    assert not (tmp_path / "A" / "A_ERROR.log").exists()
+    assert attached

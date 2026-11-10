@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import contextlib
 import copy
-import logging
 import shutil
 import sqlite3
 from pathlib import Path
@@ -459,58 +458,3 @@ def test_the_serial_reducer_removes_scratch_left_by_an_interrupted_recipe(
 
     # ASSERT
     assert not orphan.exists()
-
-
-# ---------------------------------------------------------------------------
-# S2: A FINISHED RECIPE'S LOG HANDLERS STAY ON THE SHARED LOGGER
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1704 (DY-37 S2): clean_up leaves the recipe log handlers on the shared logger; later errors "
-        "hit its _ERROR.log"
-    ),
-)
-def test_a_later_error_does_not_land_in_a_finished_recipes_error_log(tmp_path: Path) -> None:
-    """Pin S2: clean_up must detach and close the recipe's file handlers.
-
-    The pin expects ``clean_up`` itself to detach them. If the fix lands in the reducer instead, move the pin there.
-    """
-    # ARRANGE: AN UNREGISTERED LOGGER, SO NOTHING IS LEFT IN THE GLOBAL LOGGER REGISTRY
-    sharedLog = logging.Logger("dy37-s2", level=logging.DEBUG)
-    productPath = tmp_path / "A" / "A.fits"
-    productPath.parent.mkdir()
-    try:
-        recipe = base_recipe.__new__(base_recipe)
-        recipe.log = toolkit.add_recipe_logger(sharedLog, str(productPath))
-        recipe.qc = pd.DataFrame({"qc_flag": ["pass"], "qc_name": ["RON"]})
-        recipe.status = None
-        recipe.conn = None
-        recipe.settings = {"workspace-root-dir": str(tmp_path)}
-        recipe.outDir = str(tmp_path / "tmp" / "intermediate")
-        Path(recipe.outDir).mkdir(parents=True)
-        recipeHandlers = list(recipe.log.handlers)
-        if not any(isinstance(handler, logging.FileHandler) for handler in recipeHandlers):
-            pytest.fail("add_recipe_logger attached no file handlers")
-        recipe.clean_up()
-
-        # ACT: THE REDUCER LOGS THE NEXT RECIPE'S FAILURE ON THE SAME LOGGER
-        sharedLog.error("Recipe failed with the following error: a later recipe")
-        stillAttached = [handler.get_name() for handler in recipeHandlers if handler in sharedLog.handlers]
-        stillOpen = [
-            handler.get_name()
-            for handler in recipeHandlers
-            if isinstance(handler, logging.FileHandler) and handler.stream is not None
-        ]
-    finally:
-        for handler in list(sharedLog.handlers):
-            handler.close()
-            sharedLog.removeHandler(handler)
-
-    # ASSERT
-    assert not stillAttached, f"clean_up left the recipe handlers on the shared logger: {stillAttached}"
-    assert not stillOpen, f"clean_up left the recipe file handlers open: {stillOpen}"
-    assert not (tmp_path / "A" / "A_ERROR.log").exists()

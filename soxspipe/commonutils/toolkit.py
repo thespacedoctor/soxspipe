@@ -2102,14 +2102,7 @@ def add_recipe_logger(log, productPath):
     import logging
     import os
 
-    i = 0
-    while i < 3:
-        for handler in log.handlers:
-            if handler.get_name() == "recipeLog":
-                log.removeHandler(handler)
-            if handler.get_name() == "recipeErr":
-                log.removeHandler(handler)
-        i += 1
+    remove_recipe_logger(log)
 
     # GET THE EXTENSION (WITH DOT PREFIX)
     loggingPath = os.path.splitext(productPath)[0] + ".log"
@@ -2147,6 +2140,29 @@ def add_recipe_logger(log, productPath):
     log.addHandler(recipeErr)
 
     return log
+
+
+def remove_recipe_logger(log):
+    """*detach and close the recipe-specific handlers that ``add_recipe_logger`` attached*
+
+    Call this once the recipe has logged its last message, so a later message on the shared logger cannot reach the
+    recipe's log files. A logger with no recipe handlers is left as it is.
+
+    **Key Arguments:**
+
+    - ``log`` -- the logger the recipe handlers were attached to
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import remove_recipe_logger
+    remove_recipe_logger(log)
+    ```
+    """
+    recipeHandlers = [handler for handler in log.handlers if handler.get_name() in ("recipeLog", "recipeErr")]
+    for handler in recipeHandlers:
+        log.removeHandler(handler)
+        handler.close()
 
 
 class MaxFilter:
