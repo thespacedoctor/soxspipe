@@ -49,6 +49,17 @@ RITZ_LINES = [
     (11, "HgI", 1732.942, 1732.896),
 ]
 WAVELENGTH_ATOL_NM = 5e-4
+# (ORDER, ION, nm) SETS REMOVED IN DY-2084: THE ARC FEATURE IS NOT THE LISTED LINE, WHOSE NIST WAVELENGTH IS RIGHT
+DROPPED_SETS = [
+    (13, "NeI", 1534.82),
+    (13, "Ar", 1534.88),
+    (16, "ArII", 1167.79),
+    (17, "ArII", 1167.79),
+    (16, "ArII", 1172.05),
+    (17, "ArII", 1172.05),
+    (16, "ArII", 1202.71),
+]
+DROPPED_SET_ATOL_NM = 0.006
 
 
 def _read_table(name: str) -> Table:
@@ -65,6 +76,23 @@ def _stable_sorted(table: Table) -> Table:
     rows = table.copy()
     rows.sort(["order", "slit_index", "detector_x", "detector_y"], kind="stable")
     return rows
+
+
+def _dropped_set_rows(table: Table) -> np.ndarray:
+    ions = _ions(table)
+    rows = np.zeros(len(table), dtype=bool)
+    for order, ion, wavelength in DROPPED_SETS:
+        rows |= (
+            (np.asarray(table["order"]) == order)
+            & (ions == ion)
+            & np.isclose(np.asarray(table["wavelength"], dtype=float), wavelength, rtol=0, atol=DROPPED_SET_ATOL_NM)
+        )
+    return rows
+
+
+def _clean_list_rows_kept() -> Table:
+    table = _uncurated_rows(SPH_TABLE)
+    return table[~_dropped_set_rows(table)]
 
 
 def _ions(table: Table) -> np.ndarray:
@@ -149,13 +177,27 @@ def test_o11_red_half_has_enough_lines() -> None:
     assert len(redLines) >= MIN_O11_RED_HALF_LINES
 
 
+def test_misidentified_sets_are_removed() -> None:
+    # ARRANGE
+    clean = _uncurated_rows(SPH_TABLE)
+    curated = _read_table(MPH_TABLE)
+
+    # ACT
+    inClean = _dropped_set_rows(clean).sum()
+    inCurated = _dropped_set_rows(curated).sum()
+
+    # ASSERT
+    assert inClean == PINHOLES_PER_LINE * len(DROPPED_SETS)
+    assert inCurated == 0
+
+
 def test_orders_outside_the_curation_keep_the_clean_list_geometry() -> None:
     # ARRANGE
     columns = [name for name in _read_table(MPH_TABLE).colnames if name != "wavelength"]
 
     # ACT
     curatedRest = _stable_sorted(_uncurated_rows(MPH_TABLE))
-    shippedRest = _stable_sorted(_uncurated_rows(SPH_TABLE))
+    shippedRest = _stable_sorted(_clean_list_rows_kept())
 
     # ASSERT
     assert curatedRest.colnames == shippedRest.colnames
@@ -167,7 +209,7 @@ def test_orders_outside_the_curation_keep_the_clean_list_geometry() -> None:
 def test_only_ritz_ion_wavelengths_differ_from_the_clean_list() -> None:
     # ARRANGE
     curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
-    shipped = _stable_sorted(_uncurated_rows(SPH_TABLE))
+    shipped = _stable_sorted(_clean_list_rows_kept())
 
     # ACT
     shift = np.asarray(curated["wavelength"], dtype=float) - np.asarray(shipped["wavelength"], dtype=float)
