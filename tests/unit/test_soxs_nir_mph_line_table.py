@@ -78,25 +78,28 @@ def _stable_sorted(table: Table) -> Table:
     return rows
 
 
+def _ions(table: Table) -> np.ndarray:
+    return np.array([i.decode().strip() if isinstance(i, bytes) else str(i).strip() for i in table["ion"]])
+
+
+def _set_rows(table: Table, order: int, ion: str, wavelength: float) -> np.ndarray:
+    return (
+        (np.asarray(table["order"]) == order)
+        & (_ions(table) == ion)
+        & np.isclose(np.asarray(table["wavelength"], dtype=float), wavelength, rtol=0, atol=DROPPED_SET_ATOL_NM)
+    )
+
+
 def _dropped_set_rows(table: Table) -> np.ndarray:
-    ions = _ions(table)
     rows = np.zeros(len(table), dtype=bool)
     for order, ion, wavelength in DROPPED_SETS:
-        rows |= (
-            (np.asarray(table["order"]) == order)
-            & (ions == ion)
-            & np.isclose(np.asarray(table["wavelength"], dtype=float), wavelength, rtol=0, atol=DROPPED_SET_ATOL_NM)
-        )
+        rows |= _set_rows(table, order, ion, wavelength)
     return rows
 
 
 def _clean_list_rows_kept() -> Table:
     table = _uncurated_rows(SPH_TABLE)
     return table[~_dropped_set_rows(table)]
-
-
-def _ions(table: Table) -> np.ndarray:
-    return np.array([i.decode().strip() if isinstance(i, bytes) else str(i).strip() for i in table["ion"]])
 
 
 def _nir_spatial_solution_settings() -> dict:
@@ -177,17 +180,18 @@ def test_o11_red_half_has_enough_lines() -> None:
     assert len(redLines) >= MIN_O11_RED_HALF_LINES
 
 
-def test_misidentified_sets_are_removed() -> None:
+@pytest.mark.parametrize(("order", "ion", "wavelength"), DROPPED_SETS)
+def test_misidentified_set_is_removed(order: int, ion: str, wavelength: float) -> None:
     # ARRANGE
     clean = _uncurated_rows(SPH_TABLE)
     curated = _read_table(MPH_TABLE)
 
     # ACT
-    inClean = _dropped_set_rows(clean).sum()
-    inCurated = _dropped_set_rows(curated).sum()
+    inClean = _set_rows(clean, order, ion, wavelength).sum()
+    inCurated = _set_rows(curated, order, ion, wavelength).sum()
 
     # ASSERT
-    assert inClean == PINHOLES_PER_LINE * len(DROPPED_SETS)
+    assert inClean == PINHOLES_PER_LINE
     assert inCurated == 0
 
 
