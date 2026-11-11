@@ -1,4 +1,4 @@
-"""Contracts for the packaged SOXS NIR multi-pinhole predicted-line table (DY-1989)."""
+"""Contracts for the packaged SOXS NIR multi-pinhole predicted-line table (DY-1989, DY-2084)."""
 
 from __future__ import annotations
 
@@ -31,10 +31,75 @@ MIN_O11_RED_HALF_LINES = 8
 # WITH THE O11 RED HALF NOW CONSTRAINED, THE X FIT NEEDS ONE MORE ORDER AND WAVELENGTH DEGREE
 NIR_X_ORDER_DEG = 5
 NIR_X_WAVELENGTH_DEG = 6
+# DY-2084: XeI AND HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES; NO LINE MOVES MORE THAN 0.13 nm
+RITZ_IONS = ["XeI", "HgI"]
+MAX_RITZ_SHIFT_NM = 0.13
+# (ORDER, ION, NIST OBSERVED nm, NIST RITZ nm). THE ARC MEASURES THE RITZ VALUE FOR THE FIRST SIX
+RITZ_LINES = [
+    (12, "XeI", 1605.203, 1605.329),
+    (13, "XeI", 1465.985, 1466.080),
+    (14, "XeI", 1365.649, 1365.706),
+    (16, "XeI", 1227.289, 1227.1902),
+    (16, "HgI", 1215.9, 1216.008),
+    (14, "HgI", 1342.658, 1342.635),
+    # THE ARC PREFERS NIST OBSERVED FOR 1719.868 AND 1732.942 (BY 0.3 A), BUT LEFT THERE THEY MAKE THE SET-OFFSET GUARD
+    # CLIP 1692.017, AND THE O11 SKY GETS WORSE, SO ALL O11 HgI LINES TAKE RITZ
+    (11, "HgI", 1692.017, 1692.027),
+    (11, "HgI", 1719.868, 1719.828),
+    (11, "HgI", 1732.942, 1732.896),
+]
+WAVELENGTH_ATOL_NM = 5e-4
+# (ORDER, ION, nm) SETS REMOVED IN DY-2084: THE ARC FEATURE IS NOT THE LISTED LINE, WHOSE NIST WAVELENGTH IS RIGHT
+DROPPED_SETS = [
+    (13, "NeI", 1534.82),
+    (13, "Ar", 1534.88),
+    (16, "ArII", 1167.79),
+    (17, "ArII", 1167.79),
+    (16, "ArII", 1172.05),
+    (17, "ArII", 1172.05),
+    (16, "ArII", 1202.71),
+]
+DROPPED_SET_ATOL_NM = 0.006
 
 
 def _read_table(name: str) -> Table:
     return Table.read(CALIBRATIONS_DIR / name)
+
+
+def _uncurated_rows(name: str) -> Table:
+    table = _read_table(name)
+    return table[~np.isin(table["order"], CURATED_ORDERS)]
+
+
+def _stable_sorted(table: Table) -> Table:
+    # THE SHIPPED TABLE REPEATS SOME (ORDER, WAVELENGTH, SLIT_INDEX) KEYS, SO POSITIONS BREAK THE TIES
+    rows = table.copy()
+    rows.sort(["order", "slit_index", "detector_x", "detector_y"], kind="stable")
+    return rows
+
+
+def _ions(table: Table) -> np.ndarray:
+    return np.array([i.decode().strip() if isinstance(i, bytes) else str(i).strip() for i in table["ion"]])
+
+
+def _set_rows(table: Table, order: int, ion: str, wavelength: float) -> np.ndarray:
+    return (
+        (np.asarray(table["order"]) == order)
+        & (_ions(table) == ion)
+        & np.isclose(np.asarray(table["wavelength"], dtype=float), wavelength, rtol=0, atol=DROPPED_SET_ATOL_NM)
+    )
+
+
+def _dropped_set_rows(table: Table) -> np.ndarray:
+    rows = np.zeros(len(table), dtype=bool)
+    for order, ion, wavelength in DROPPED_SETS:
+        rows |= _set_rows(table, order, ion, wavelength)
+    return rows
+
+
+def _clean_list_rows_kept() -> Table:
+    table = _uncurated_rows(SPH_TABLE)
+    return table[~_dropped_set_rows(table)]
 
 
 def _nir_spatial_solution_settings() -> dict:
@@ -115,21 +180,60 @@ def test_o11_red_half_has_enough_lines() -> None:
     assert len(redLines) >= MIN_O11_RED_HALF_LINES
 
 
-def test_orders_outside_the_curation_are_unchanged() -> None:
+@pytest.mark.parametrize(("order", "ion", "wavelength"), DROPPED_SETS)
+def test_misidentified_set_is_removed(order: int, ion: str, wavelength: float) -> None:
     # ARRANGE
+    clean = _uncurated_rows(SPH_TABLE)
     curated = _read_table(MPH_TABLE)
-    shipped = _read_table(SPH_TABLE)
 
     # ACT
-    curatedRest = curated[~np.isin(curated["order"], CURATED_ORDERS)]
-    shippedRest = shipped[~np.isin(shipped["order"], CURATED_ORDERS)]
-    # THE SHIPPED TABLE REPEATS SOME (ORDER, WAVELENGTH, SLIT_INDEX) KEYS, SO POSITIONS BREAK THE TIES
-    sortKeys = ["order", "wavelength", "slit_index", "detector_x", "detector_y"]
-    curatedRest.sort(sortKeys)
-    shippedRest.sort(sortKeys)
+    inClean = _set_rows(clean, order, ion, wavelength).sum()
+    inCurated = _set_rows(curated, order, ion, wavelength).sum()
+
+    # ASSERT
+    assert inClean == PINHOLES_PER_LINE
+    assert inCurated == 0
+
+
+def test_orders_outside_the_curation_keep_the_clean_list_geometry() -> None:
+    # ARRANGE
+    columns = [name for name in _read_table(MPH_TABLE).colnames if name != "wavelength"]
+
+    # ACT
+    curatedRest = _stable_sorted(_uncurated_rows(MPH_TABLE))
+    shippedRest = _stable_sorted(_clean_list_rows_kept())
 
     # ASSERT
     assert curatedRest.colnames == shippedRest.colnames
     assert len(curatedRest) == len(shippedRest)
-    for column in curatedRest.colnames:
+    for column in columns:
         assert np.array_equal(np.asarray(curatedRest[column]), np.asarray(shippedRest[column])), column
+
+
+def test_only_ritz_ion_wavelengths_differ_from_the_clean_list() -> None:
+    # ARRANGE
+    curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
+    shipped = _stable_sorted(_clean_list_rows_kept())
+
+    # ACT
+    shift = np.asarray(curated["wavelength"], dtype=float) - np.asarray(shipped["wavelength"], dtype=float)
+    moved = shift != 0
+
+    # ASSERT
+    assert moved.any()
+    assert set(_ions(curated[moved])) <= set(RITZ_IONS)
+    assert np.max(np.abs(shift)) <= MAX_RITZ_SHIFT_NM
+
+
+@pytest.mark.parametrize(("order", "ion", "observed", "ritz"), RITZ_LINES)
+def test_line_carries_its_nist_ritz_wavelength(order: int, ion: str, observed: float, ritz: float) -> None:
+    # ARRANGE
+    table = _read_table(MPH_TABLE)
+    rows = table[(table["order"] == order) & (_ions(table) == ion)]
+
+    # ACT
+    wavelengths = np.unique(np.asarray(rows["wavelength"], dtype=float))
+
+    # ASSERT
+    assert np.any(np.isclose(wavelengths, ritz, rtol=0, atol=WAVELENGTH_ATOL_NM))
+    assert not np.any(np.isclose(wavelengths, observed, rtol=0, atol=WAVELENGTH_ATOL_NM))
