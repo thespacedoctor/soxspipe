@@ -952,8 +952,9 @@ class subtract_sky:
         )
         order = int(preFitOrder["order"].values[0])
         if not estimate.isCorrected:
-            # A CROWDED-SLIT OR FAINT-SKY SKIP COULD BE MISTAKEN FOR A MISSED CORRECTION, SO IT IS PRINTED
-            if estimate.isCrowdedSlit or estimate.isSkyBelowNoise:
+            # A CROWDED-SLIT, FAINT-SKY OR HIGH SKY-TO-CORE SKIP COULD BE MISTAKEN FOR A MISSED CORRECTION, SO IT IS
+            # PRINTED
+            if estimate.isCrowdedSlit or estimate.isSkyBelowNoise or estimate.isSkyToCoreHigh:
                 self.log.print(f"\n\tORDER {order}: NO OBJECT-WING CORRECTION - {estimate.reason.upper()}\n")
             else:
                 self.log.debug(f"order {order}: no object-wing correction ({estimate.reason})")

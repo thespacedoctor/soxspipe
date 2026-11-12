@@ -65,6 +65,11 @@ MIN_PIXELS_PER_PROFILE_BIN = 20
 WING_BIAS_SIGNIFICANCE = 5
 # AN ORDER WHOSE MEDIAN SKY FIT IS AT OR BELOW THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL IS NOT CORRECTED (DY-1975)
 DEFAULT_MIN_SKY_SIGMA = 1.0
+# AN ORDER WHOSE MEDIAN SKY-TO-CORE RATIO S/G OF THE PROFILE PIXELS IS ABOVE THIS IS NOT CORRECTED. THE ZERO POINT IS
+# MEASURED IN UNITS OF THE CORE SPECTRUM G, SO WHERE THE SKY S IS MANY TIMES G, A SLIT-ILLUMINATION MISMATCH OF A
+# FRACTION F MOVES IT BY ABOUT F * S/G AND A PEDESTAL C BY C/G. THE ZERO POINT THEN CANNOT BE TOLD FROM THOSE TERMS
+# (DY-2120)
+MAX_SKY_TO_CORE_RATIO = 1
 # A SOURCE IS A PROFILE PEAK WHOSE PROMINENCE IS ABOVE THIS MANY TIMES ITS BIN NOISE (DY-1933)
 SOURCE_SIGNIFICANCE = 5
 # ... AND ABOVE THIS FRACTION OF THE PROFILE'S PEAK ABOVE ITS MEDIAN, SO A FAINT HALO BUMP NEXT TO A BRIGHT STAR IS NOT
@@ -121,6 +126,11 @@ class object_wing_estimate:
       before the crowded-slit test, so a crowded slit with a faint sky is flagged only as sky below noise
     - ``isThermalSingleProfile`` -- True if the order is corrected with the single whole-order profile because its
       median usable wavelength is above ``SINGLE_PROFILE_MIN_WAVELENGTH_NM`` (DY-2079, DY-2120)
+    - ``skyToCoreRatio`` -- the median first sky fit over the core spectrum S/G, over the profile pixels with a positive
+      core spectrum. NaN if the order did not get as far as the profile, or no profile pixel has a positive core
+      spectrum (DY-2120)
+    - ``isSkyToCoreHigh`` -- True if every other gate, the crowded-slit test included, passed but the order is not
+      corrected because ``skyToCoreRatio`` is above ``MAX_SKY_TO_CORE_RATIO`` (DY-2120)
     - ``wavelength`` -- a copy of the wavelength of every input pixel, for the chunks of the wing model (DY-2079)
     - ``chunks`` -- the ``wing_chunk`` of each wavelength chunk, from blue to red. Empty if ``isCorrected`` is False.
       A single chunk, with ``isFallback`` True, if ``isThermalSingleProfile``
@@ -142,6 +152,8 @@ class object_wing_estimate:
     isCrowdedSlit: bool = False
     isSkyBelowNoise: bool = False
     isThermalSingleProfile: bool = False
+    skyToCoreRatio: float = float("nan")
+    isSkyToCoreHigh: bool = False
     wavelength: np.ndarray | None = None
     chunks: tuple[wing_chunk, ...] = ()
 
@@ -526,6 +538,28 @@ def _no_correction_reason(zeroPoint, biasLevel, biasNoise, faintSkyNoise, minLea
     return ""
 
 
+def sky_to_core_ratio(skyModel, coreSpectrum, isProfile):
+    """*measure the median sky-to-core ratio S/G of the profile pixels (DY-2120)*
+
+    **Key Arguments:**
+
+    - ``skyModel`` -- the first sky fit evaluated at each pixel
+    - ``coreSpectrum`` -- the object spectrum G at each pixel
+    - ``isProfile`` -- True for the pixels the wing profile is measured from. A pixel whose core spectrum is not
+      positive is skipped, because the profile skips it too
+
+    **Return:**
+
+    - ``ratio`` -- the median of ``skyModel / coreSpectrum`` over those pixels, or NaN if there are none
+    """
+    import numpy as np
+
+    isRatio = isProfile & (coreSpectrum > 0)
+    if not isRatio.any():
+        return float("nan")
+    return float(np.median(skyModel[isRatio] / coreSpectrum[isRatio]))
+
+
 def _blank_estimate(reason, nPixels):
     """*build an estimate that makes no correction and holds no measurements*
 
@@ -668,6 +702,15 @@ def estimate_object_wings(
             f"the slit profile shows {len(sourceCentres)} sources (at {positions} arcsec), so no part of the slit "
             "is free of object light"
         )
+    # RUNS AFTER THE CROWDED-SLIT TEST SO THAT AN ORDER THE EARLIER GATES ALREADY STOP KEEPS ITS REASON
+    skyToCoreRatio = sky_to_core_ratio(skyModel, spectrum, isProfile)
+    isSkyToCoreHigh = reason == "" and skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
+    if isSkyToCoreHigh:
+        reason = (
+            f"the median sky-to-core ratio S/G of the profile pixels {skyToCoreRatio:.3g} is above "
+            f"{MAX_SKY_TO_CORE_RATIO:g}, so the zero point cannot be told from a slit-illumination mismatch or a "
+            "pedestal over a small core spectrum"
+        )
     chunks = ()
     isThermalSingleProfile = False
     if reason == "":
@@ -693,6 +736,8 @@ def estimate_object_wings(
         isCrowdedSlit=isCrowdedSlit,
         isSkyBelowNoise=isSkyBelowNoise,
         isThermalSingleProfile=isThermalSingleProfile,
+        skyToCoreRatio=skyToCoreRatio,
+        isSkyToCoreHigh=isSkyToCoreHigh,
         chunks=chunks,
     )
 
