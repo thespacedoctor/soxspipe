@@ -39,7 +39,7 @@ SOXS_NIR_GRADIENT_SCALE_BY_ORDER = {15: 0.80, 16: 0.75, 17: 0.60, 18: 0.70, 19: 
 UNSCALED = 1.0
 
 
-def gradient_scale(instrument, arm, order):
+def gradient_scale(instrument: str, arm: str, order: int) -> float:
     """*the factor k by which the master flat's gradient is scaled in one order*
 
     **Key Arguments:**
@@ -78,7 +78,7 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradien
 
     ``gradientScale`` is the factor k that scales the fitted gradient (DY-2150). The profile used is
     ``P_k(s) = M + k (P(s) - M)``, where M is the mean of P over the fit range, so its gradient everywhere, and its
-    deviation from the mean, are k times those of P. Use 0 < k <= 1: it keeps the profile positive.
+    deviation from the mean, are k times those of P. The table holds only 0 < k <= 1, which keeps the profile positive.
 
     **Key Arguments:**
 
