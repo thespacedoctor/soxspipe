@@ -34,40 +34,44 @@ UNSCALED = 1.0
 SCALE_KEY = "flat-slit-gradient-scale"
 
 
-def gradient_scale(detectorParams: dict, order: int) -> float:
-    """*the factor k by which the master flat's gradient is scaled in one order*
+def load_gradient_scales(detectorParams: dict) -> dict[int, float]:
+    """*read the per-order factor k, by which the master flat's gradient is scaled, from the arm's detector parameters*
 
     The factors are the ``flat-slit-gradient-scale`` table of the arm in ``soxs_detector_parameters.yaml``, which maps
-    an order number to k. Every k in the table must be a number above 0 and at most 1, so the scaled profile stays
-    positive (see ``flat_slit_ratio``). A table with any other value raises, whichever order is asked for.
+    an order number to k. Every order must be an integer and every k a number above 0 and at most 1, so the scaled
+    profile stays positive (see ``flat_slit_ratio``). The table is checked here, once, so a bad entry raises before any
+    order is fitted. An order that is not in the result keeps k = ``UNSCALED``.
 
     **Key Arguments:**
 
     - ``detectorParams`` -- the detector parameters of the arm, from ``detector_lookup``
-    - ``order`` -- the order number
 
     **Return:**
 
-    - ``k`` -- the table entry of the order, or 1 when the arm has no table or the table has no entry for the order
+    - ``scales`` -- a new ``{order: k}`` dictionary, empty when the arm has no ``flat-slit-gradient-scale`` table
+
+    A table that is not a mapping, an order that is not an integer, or a k that is not a number in (0, 1] raises
+    ``ValueError``.
 
     **Usage:**
 
     ```python
-    from soxspipe.commonutils.detector_lookup import detector_lookup
-    from soxspipe.commonutils.flat_slit_gradient import gradient_scale
-    detectorParams = detector_lookup(log=log, settings=settings).get("NIR")
-    k = gradient_scale(detectorParams, 17)
+    from soxspipe.commonutils.flat_slit_gradient import UNSCALED, load_gradient_scales
+    scales = load_gradient_scales(self.detectorParams)
+    k = scales.get(17, UNSCALED)
     ```
     """
     table = detectorParams.get(SCALE_KEY, {})
     if not isinstance(table, dict):
         raise ValueError(f"{SCALE_KEY} must map an order to a factor k, not {type(table).__name__}")
     for tableOrder, k in table.items():
+        if isinstance(tableOrder, bool) or not isinstance(tableOrder, int):
+            raise ValueError(f"{SCALE_KEY} has the order {tableOrder!r}, but an order must be an integer")
         if isinstance(k, bool) or not isinstance(k, (int, float)) or not 0 < k <= 1:
             raise ValueError(
                 f"{SCALE_KEY} for order {tableOrder} is {k!r}, but k must be a number above 0 and at most 1"
             )
-    return table.get(order, UNSCALED)
+    return dict(table)
 
 
 def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradientScale=UNSCALED):
@@ -83,8 +87,8 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradien
 
     ``gradientScale`` is the factor k that scales the fitted gradient (DY-2150). The profile used is
     ``P_k(s) = M + k (P(s) - M)``, where M is the mean of P over the fit range, so its gradient everywhere, and its
-    deviation from the mean, are k times those of P. ``gradient_scale`` accepts only 0 < k <= 1, which keeps the profile
-    positive.
+    deviation from the mean, are k times those of P. ``load_gradient_scales`` accepts only 0 < k <= 1, which keeps the
+    profile positive.
 
     **Key Arguments:**
 
@@ -96,7 +100,7 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradien
     - ``fitRange`` -- the ``(lower, upper)`` slit range in arcsec to fit over, from ``flat_fit_ranges_from_result``, or
       None
     - ``isSky`` -- boolean array, the shape of ``slit``, True for the pixels the sky model is fitted to
-    - ``gradientScale`` -- the factor k for this order, from ``gradient_scale``. 1 (the default) leaves the flat's
+    - ``gradientScale`` -- the factor k for this order, from ``load_gradient_scales``. 1 (the default) leaves the flat's
       gradient as fitted
 
     **Return:**

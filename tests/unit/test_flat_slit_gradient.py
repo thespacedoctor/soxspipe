@@ -12,7 +12,9 @@ from soxspipe.commonutils.flat_slit_gradient import (
     MAX_SLOPE_PER_ARCSEC,
     _profile_extremes,
     flat_slit_ratio,
-    gradient_scale,
+    SCALE_KEY,
+    UNSCALED,
+    load_gradient_scales,
 )
 
 pytestmark = pytest.mark.unit
@@ -408,8 +410,7 @@ def test_a_refused_flat_stays_refused_whatever_the_gradient_scale(log):
     assert "beyond the limit" in _log_text(log)
 
 
-OLD_SOXS_NIR_TABLE = {15: 0.80, 16: 0.75, 17: 0.60, 18: 0.70, 19: 0.60, 20: 0.60, 21: 0.60, 22: 0.60}
-TABLE_KEY = "flat-slit-gradient-scale"
+SOXS_NIR_TABLE = {15: 0.80, 16: 0.75, 17: 0.60, 18: 0.70, 19: 0.60, 20: 0.60, 21: 0.60, 22: 0.60}
 
 
 def _detector_parameters(log, instrument, arm):
@@ -419,22 +420,22 @@ def _detector_parameters(log, instrument, arm):
 
 def test_the_shipped_soxs_nir_table_is_the_measured_k_of_orders_15_to_22(log):
     # ACT
-    table = _detector_parameters(log, "soxs", "NIR")[TABLE_KEY]
+    table = _detector_parameters(log, "soxs", "NIR")[SCALE_KEY]
 
     # ASSERT
-    assert table == OLD_SOXS_NIR_TABLE
+    assert table == SOXS_NIR_TABLE
 
 
 @pytest.mark.parametrize("order", range(1, 31))
 def test_every_soxs_nir_order_has_the_scale_of_the_table_or_one(log, order):
     # ARRANGE
-    detectorParams = _detector_parameters(log, "soxs", "NIR")
+    scales = load_gradient_scales(_detector_parameters(log, "soxs", "NIR"))
 
     # ACT
-    k = gradient_scale(detectorParams, order)
+    k = scales.get(order, UNSCALED)
 
     # ASSERT
-    assert k == OLD_SOXS_NIR_TABLE.get(order, 1.0)
+    assert k == SOXS_NIR_TABLE.get(order, 1.0)
 
 
 @pytest.mark.parametrize(("instrument", "arm"), [("soxs", "VIS"), ("xsh", "NIR"), ("xsh", "VIS")])
@@ -443,44 +444,70 @@ def test_arms_without_a_table_keep_the_flat_gradient_in_every_order(log, instrum
     detectorParams = _detector_parameters(log, instrument, arm)
 
     # ACT
-    scales = {gradient_scale(detectorParams, order) for order in range(1, 31)}
+    scales = load_gradient_scales(detectorParams)
 
     # ASSERT
-    assert TABLE_KEY not in detectorParams
-    assert scales == {1.0}
+    assert SCALE_KEY not in detectorParams
+    assert scales == {}
+    assert {scales.get(order, UNSCALED) for order in range(1, 31)} == {1.0}
 
 
-def test_the_scale_is_one_for_every_order_when_the_parameters_have_no_table():
+def test_the_scales_are_empty_when_the_parameters_have_no_table():
     # ACT
-    k = gradient_scale({}, 17)
+    scales = load_gradient_scales({})
 
     # ASSERT
-    assert k == 1.0
+    assert scales == {}
+
+
+def test_the_loaded_scales_are_a_new_dictionary_the_table_does_not_change_with():
+    # ARRANGE
+    table = {17: 0.6}
+    scales = load_gradient_scales({SCALE_KEY: table})
+
+    # ACT
+    table[17] = 0.5
+
+    # ASSERT
+    assert scales == {17: 0.6}
 
 
 @pytest.mark.parametrize("badValue", [0, 0.0, -0.5, 1.01, 2, float("nan"), float("inf"), "0.6", None, True, [0.6]])
-def test_a_scale_that_is_not_a_number_above_zero_and_up_to_one_raises(badValue):
+def test_a_scale_that_is_not_a_number_above_zero_and_up_to_one_raises_at_load(badValue):
     # ARRANGE
-    detectorParams = {TABLE_KEY: {17: 0.60, 18: badValue}}
+    detectorParams = {SCALE_KEY: {17: 0.60, 18: badValue}}
 
     # ACT
-    with pytest.raises(ValueError, match="flat-slit-gradient-scale") as error:
-        gradient_scale(detectorParams, 17)
+    with pytest.raises(ValueError, match=SCALE_KEY) as error:
+        load_gradient_scales(detectorParams)
 
     # ASSERT
     assert "order 18" in str(error.value)
 
 
+@pytest.mark.parametrize("badKey", ["17", 17.0, True, None, (17,)])
+def test_an_order_key_that_is_not_an_integer_raises_at_load(badKey):
+    # ARRANGE
+    detectorParams = {SCALE_KEY: {badKey: 0.60}}
+
+    # ACT
+    with pytest.raises(ValueError, match=SCALE_KEY) as error:
+        load_gradient_scales(detectorParams)
+
+    # ASSERT
+    assert repr(badKey) in str(error.value)
+
+
 @pytest.mark.parametrize("goodValue", [1, 1.0, 0.05, 0.6])
 def test_a_scale_up_to_one_and_above_zero_is_accepted(goodValue):
     # ACT
-    k = gradient_scale({TABLE_KEY: {17: goodValue}}, 17)
+    scales = load_gradient_scales({SCALE_KEY: {17: goodValue}})
 
     # ASSERT
-    assert k == goodValue
+    assert scales == {17: goodValue}
 
 
-def test_a_table_that_is_not_a_mapping_raises():
+def test_a_table_that_is_not_a_mapping_raises_at_load():
     # ACT / ASSERT
-    with pytest.raises(ValueError, match="flat-slit-gradient-scale"):
-        gradient_scale({TABLE_KEY: [0.6, 0.7]}, 17)
+    with pytest.raises(ValueError, match=SCALE_KEY):
+        load_gradient_scales({SCALE_KEY: [0.6, 0.7]})

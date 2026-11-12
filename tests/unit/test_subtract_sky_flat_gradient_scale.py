@@ -1,8 +1,8 @@
 """The sky fit scales the master flat's gradient by the per-order factor k of SOXS NIR (DY-2150).
 
-``_slit_normalisation_ratio`` asks ``gradient_scale`` for the factor of the order, from the detector parameters of the
-object frame's arm, and passes it to ``flat_slit_ratio``. These tests read the slope of the ratio it returns along the
-slit.
+``_slit_normalisation_ratio`` takes the factor of the order from ``gradientScales``, which ``subtract_sky`` loads from
+the detector parameters of the object frame's arm, and passes it to ``flat_slit_ratio``. These tests read the slope of
+the ratio it returns along the slit.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.detector_lookup import detector_lookup
+from soxspipe.commonutils.flat_slit_gradient import load_gradient_scales
 from soxspipe.commonutils.subtract_sky import subtract_sky
 
 pytestmark = pytest.mark.unit
@@ -32,7 +33,8 @@ def _subtractor(log: Any, instrument: str, arm: str, order: int, isOn: bool = Tr
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
     subtractor.arm = arm
-    subtractor.detectorParams = detector_lookup(log=log, settings={"instrument": instrument}).get(arm)
+    detectorParams = detector_lookup(log=log, settings={"instrument": instrument}).get(arm)
+    subtractor.gradientScales = load_gradient_scales(detectorParams)
     subtractor.recipeSettings = {"sky-subtraction": {SETTING_KEY: isOn}}
     subtractor.flatFitRanges = {order: KEPT_RANGE}
     return subtractor
