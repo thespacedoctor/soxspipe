@@ -427,11 +427,14 @@ class subtract_sky:
         self.kw = keyword_lookup(log=self.log, settings=self.settings).get
         kw = self.kw
         self.arm = objectFrame.header[kw("SEQ_ARM")]
-        self.inst = objectFrame.header[kw("INSTRUME")]
 
         # DETECTOR PARAMETERS LOOKUP OBJECT
         self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
         dp = self.detectorParams
+        # CHECK THE FLAT-GRADIENT k TABLE ONCE, SO A BAD ENTRY FAILS BEFORE ANY ORDER IS FITTED (DY-2150)
+        from soxspipe.commonutils.flat_slit_gradient import load_gradient_scales
+
+        self.gradientScales = load_gradient_scales(self.detectorParams)
 
         # UNPACK THE 2D DISP IMAGE MAP AND THE OBJECT IMAGE TO GIVE A
         # DATA FRAME CONTAINING ONE ROW FOR EACH PIXEL WITH COLUMNS X, Y, FLUX, WAVELENGTH, SLIT-POSITION, ORDER
@@ -3267,7 +3270,9 @@ class subtract_sky:
         The fit divides the flux by this ratio and multiplies its sky model by it. With ``flat-slit-gradient`` off it
         is 1. With it on, it is ``1 / P(s)`` from the master flat (see ``flat_slit_ratio``), normalised to mean 1
         over the pixels the fit uses, and 1 again, with the reason logged, for an order that has no master flat or
-        no kept slit range.
+        no kept slit range. The gradient of P(s) is first scaled by the factor k of the order, from the
+        ``flat-slit-gradient-scale`` table of the arm's detector parameters, loaded once in ``__init__`` (see
+        ``load_gradient_scales``, DY-2150).
 
         **Key Arguments:**
 
@@ -3281,7 +3286,7 @@ class subtract_sky:
         if not self._flat_slit_gradient_enabled():
             return 1
 
-        from soxspipe.commonutils.flat_slit_gradient import flat_slit_ratio
+        from soxspipe.commonutils.flat_slit_gradient import UNSCALED, flat_slit_ratio
 
         order = int(imageMapOrder["order"].values[0])
         return flat_slit_ratio(
@@ -3292,6 +3297,7 @@ class subtract_sky:
             imageMapOrder["wavelength"].to_numpy(dtype=float),
             (self.flatFitRanges or {}).get(order),
             ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool),
+            gradientScale=self.gradientScales.get(order, UNSCALED),
         )
 
     def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):

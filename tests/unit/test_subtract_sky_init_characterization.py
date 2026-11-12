@@ -13,6 +13,7 @@ from astropy import units as u
 from astropy.nddata import CCDData
 
 import soxspipe.commonutils.toolkit as toolkit
+from soxspipe.commonutils.flat_slit_gradient import SCALE_KEY
 from soxspipe.commonutils.subtract_sky import subtract_sky
 from tests.factories import instrument_header
 
@@ -146,3 +147,42 @@ def test_the_frame_header_read_noise_is_used_when_none_is_given(log: Any, collab
     subtractor = _construct(log, frame)
 
     assert subtractor.ron == pytest.approx(3.3)
+
+
+def test_a_nir_frame_loads_the_flat_gradient_scales_of_its_arm_and_a_vis_frame_loads_none(
+    log: Any, collaborators: dict[str, list]
+) -> None:
+    """The k table of the arm's detector parameters is read once, in the constructor (DY-2150)."""
+    nirFrame = CCDData(
+        np.ones((3, 3)), unit=u.electron, meta=instrument_header(arm="NIR", overrides={"ESO INS NISE NAME": "JH1.0"})
+    )
+    visFrame = CCDData(
+        np.ones((3, 3)), unit=u.electron, meta=instrument_header(arm="VIS", overrides={"ESO INS VISE NAME": "SLIT1.0"})
+    )
+
+    nirScales = _construct(log, nirFrame).gradientScales
+    visScales = _construct(log, visFrame).gradientScales
+
+    assert nirScales == {15: 0.80, 16: 0.75, 17: 0.60, 18: 0.70, 19: 0.60, 20: 0.60, 21: 0.60, 22: 0.60}
+    assert visScales == {}
+
+
+def test_a_bad_flat_gradient_scale_in_the_detector_parameters_raises_when_the_subtractor_is_built(
+    log: Any, collaborators: dict[str, list], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A k outside (0, 1] stops the constructor, before any order is fitted (DY-2150)."""
+
+    class _BadLookup:
+        def __init__(self, log: Any, settings: Any) -> None:
+            pass
+
+        def get(self, arm: str) -> dict:
+            return {"slit_length": 12, "dispersion-axis": "y", SCALE_KEY: {17: 1.5}}
+
+    monkeypatch.setattr(subtractSkyModule, "detector_lookup", _BadLookup)
+    frame = CCDData(
+        np.ones((3, 3)), unit=u.electron, meta=instrument_header(arm="NIR", overrides={"ESO INS NISE NAME": "JH1.0"})
+    )
+
+    with pytest.raises(ValueError, match="order 17"):
+        _construct(log, frame)

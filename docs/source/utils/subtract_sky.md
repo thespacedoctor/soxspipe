@@ -111,7 +111,7 @@ The `flat-slit-gradient` setting takes this gradient from the master flat. For e
 1. It takes the range of the slit where both the sky image and the master flat are lit, less the `overlap-margin-arcsec` margin. An order with no usable slit offset uses an offset of 0 for this range. The roll-off at the slit ends reaches about 0.45 arcsec inside the lit edge of the master flat (DY-1958). The fit range is therefore the slit range less the amount by which `overlap-margin-arcsec` falls short of 0.45 arcsec, at each end. The shipped margin of 0.45 arcsec gives no change, and a workspace that kept the older margin of 0.3 arcsec uses a fit range 0.15 arcsec narrower at each end. The fit uses only the master flat pixels inside the fit range, so the roll-off does not enter the fit. A pixel outside the fit range uses the ratio of the nearest end.
 2. It splits the pixels of the order into 60 chunks of equal pixel count in wavelength. It divides each pixel by the median of the pixels of its chunk that are less than 3 arcsec from the slit centre. This removes the spectral shape of the flat. It is needed because a curved order lights different wavelengths at different slit positions, and a raw median would read the spectral shape as a gradient along the slit.
 3. It bins the divided pixels in 0.1 arcsec slit bins. Each bin value is the median of the pixels in the bin. It divides the bins by the median of the bins in the middle of the range. It fits a quadratic P(s) to the bins, where s is the slit position.
-4. It sets the ratio r(s) = 1 / P(s), and scales r(s) so that its mean over the pixels used by the sky fit is 1.
+4. It scales the gradient of P(s) by the factor k of the order (see the table below). The scaled profile is P_k(s) = M + k (P(s) - M), where M is the mean of P(s) over the fit range. It sets the ratio r(s) = 1 / P_k(s), and scales r(s) so that its mean over the pixels used by the sky fit is 1.
 5. The sky fit divides the flux by r(s) before it fits the bspline. It multiplies the bspline by r(s) to make the sky model. The residuals that the fit uses to clip pixels, to place knots and to flag noisy regions and skylines are measured in the same divided space: (flux / r − bspline) / (error / r). The rest of the fit does not change.
 
 The ratio is 1 for the whole order, and the log gives the reason, when:
@@ -122,7 +122,7 @@ The ratio is 1 for the whole order, and the log gives the reason, when:
 - the mean gradient of the fitted profile across the slit range is more than 1.5 %/arcsec of its mean level. A gradient this large means the flat is bad;
 - the gradient of the fitted profile is more than 3 %/arcsec of its mean level anywhere in the slit range. This refuses a profile that bends sharply but has no net slope. The roll-off of a good flat toward the slit ends gives 1.5 to 2.4 %/arcsec at the ends of the range in NIR orders 10 to 22, so the limit is above that.
 
-The log also gives the mean gradient of each order that uses the correction.
+The log also gives the mean gradient of the master flat for each order that uses the correction, and the factor k that scales it (`scaled by k = 0.60`). The gradient in the log is the gradient of the master flat before the scaling.
 
 The fit and the DY-1990 measurement use the same method: the same chunks and the same slit interior. They differ in the bin width (0.1 arcsec here, 0.5 arcsec in DY-1990) and in the fit window (the fit range here, |s| ≤ 5.25 arcsec in DY-1990). With the shipped margin, the fitted profile of the SLIT1.5 master flat of 2026-01-27 is within 0.35 % of the DY-1990 profile in NIR orders 10 to 19 over the slit range (DY-2147). With the older margin of 0.3 arcsec and no narrower fit range, the difference is up to 2.6 %.
 
@@ -130,7 +130,20 @@ The `flat-slit-gradient` setting is in the `sky-subtraction` block of the stare 
 
 The correction needs the slit-illumination measurement (`slit-illumination: measure-offset: True`) for the slit range of each order. Without it, the ratio is 1.
 
-The master flat gives the correct gradient in NIR orders 11 to 14. In orders 15 to 22 it gives a gradient that is 0.1 to 0.2 %/arcsec too large. The correction is still applied to these orders.
+#### Scale factor k for SOXS NIR (DY-2150)
+
+The master flat gives a good gradient in SOXS NIR orders 11 to 14. In orders 15 to 22 it gives a gradient that is about 30 to 40 % too large, so the full correction takes too much out of the sky: in orders 17 to 19 the residual slope along the slit was +0.2 %/arcsec without the correction and −0.2 %/arcsec with it. The pipeline therefore multiplies the gradient of the master flat by a fixed factor k for each SOXS NIR order. The factors are in the `flat-slit-gradient-scale` key of the `NIR` arm in `soxspipe/resources/soxs_detector_parameters.yaml`. They come from 16 NIR stare frames, on four slit widths and 12 nights in January 2026. The sky slope divided by the slope that the flat predicts gives k. An order that the key does not list, and an arm that does not have the key, use k = 1. Each order must be a whole number and each k must be above 0 and at most 1. The pipeline checks this when it starts the sky subtraction, and it stops with an error if a value is wrong.
+
+| order | 10 to 14 | 15 | 16 | 17 | 18 | 19 | 20 to 22 | 23 and 24 |
+|---|---|---|---|---|---|---|---|---|
+| k | 1.00 | 0.80 | 0.75 | 0.60 | 0.70 | 0.60 | 0.60 | 1.00 |
+
+- Orders 10 to 14 keep k = 1.00. Their under-correction is smaller than the frame-to-frame scatter of k.
+- k of orders 20 to 22 has a large error, because the sky slope is poorly measured there.
+- Orders 23 and 24 keep k = 1.00, because no sky slope could be measured in them.
+- k is fixed. It does not change with the slit width or the night. On the 16 frames the scatter of the residual slope about this table is 0.05 to 0.10 %/arcsec in orders 15 to 19, and SLIT1.5 frames give a k that is 0.15 to 0.3 lower than SLIT1.0 frames in orders 15 to 17.
+- The SOXS VIS arm and X-Shooter always use k = 1.00. The pipeline picks the table from the `INSTRUME` and `SEQ.ARM` keywords of the object frame.
+- The tests that refuse a bad flat (the limits above) judge the flat before the scaling. A flat that is refused has a ratio of 1 whatever k is.
 
 ### Utility API
 

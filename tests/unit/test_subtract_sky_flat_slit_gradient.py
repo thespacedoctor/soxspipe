@@ -18,6 +18,8 @@ import scipy.interpolate
 import yaml
 
 import soxspipe
+from soxspipe.commonutils.detector_lookup import detector_lookup
+from soxspipe.commonutils.flat_slit_gradient import load_gradient_scales
 from soxspipe.commonutils.subtract_sky import subtract_sky
 
 pytestmark = pytest.mark.unit
@@ -57,6 +59,9 @@ def _bare_subtractor(log: Any, skySettings: dict[str, Any], keptRanges: dict | N
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
     subtractor.arm = "NIR"
+    subtractor.gradientScales = load_gradient_scales(
+        detector_lookup(log=log, settings={"instrument": "soxs"}).get("NIR")
+    )
     subtractor.debug = False
     subtractor.binx = 1
     subtractor.biny = 1
