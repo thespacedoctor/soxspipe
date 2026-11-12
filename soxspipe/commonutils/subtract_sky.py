@@ -1998,6 +1998,9 @@ class subtract_sky:
         knots do not yet resolve, is left for knot insertion; an isolated outlier is flagged.
         The noise model is the one that weights the fit (DY-1282), σ² = max(sky, 0) + RON², with the sky taken as
         the model plus that local median residual. Once the knots resolve the sky, the local residual is near zero.
+        The model and the residual are in the fitted space, ``flux / slit_normalisation_ratio``, so the noise model
+        is given that sky times the ratio (raw-flux units) and its noise is divided by the ratio: the clip noise is
+        1 / ``_fit_weights`` (DY-2152). With a ratio of 1 this is the noise of the sky itself.
         Where the neighbouring residuals scatter more than the noise model (a misfit that varies along the slit),
         their robust (MAD) scatter is used instead, so the clip does not hide that misfit from knot insertion.
         Flagged pixels get ``flagged_bspline_clipped`` and ``flagged_all_clipped`` (DY-1281).
@@ -2029,7 +2032,8 @@ class subtract_sky:
         localScatter = np.full(residual.shape, np.nan)
         localScatter[isUnclipped] = MAD_TO_SIGMA * localMad.to_numpy()
         # THE NOISE OF THE LOCAL SKY, NOT OF A MODEL THAT MAY NOT YET RESOLVE A SKYLINE
-        noise = 1.0 / self._inverse_noise_weights(model + localResidual, self.ron, self._flat_values(imageMapOrder))
+        ratio = imageMapOrder["slit_normalisation_ratio"].to_numpy(dtype=float)
+        noise = 1.0 / self._fit_weights(imageMapOrder, (model + localResidual) * ratio)
         # A MISFIT THAT VARIES ALONG THE SLIT (E.G. A SMALL WAVELENGTH ERROR ON A SKYLINE FLANK) SCATTERS THE
         # NEIGHBOURS TOO; THE CLIP NEVER CUTS INSIDE THAT SCATTER, AND NEVER INSIDE THE NOISE MODEL
         noise = np.fmax(noise, localScatter)
@@ -2160,7 +2164,8 @@ class subtract_sky:
         data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
         imageMapOrder["residual_windowed_std"] = data
 
-        # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282)
+        # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282).
+        # noiseModelSky IS ALWAYS THE RAW-FLUX SKY: THE PERCENTILE-SMOOTHED FLUX FIRST, THE SPLINE TIMES THE RATIO AFTER
         noiseModelSky = self._fill_nans_by_interpolation(imageMapOrder["flux_percentile_smoothed"].values)
 
         # THE RATIO IS 1 UNLESS THE FLAT-DERIVED ALONG-SLIT ILLUMINATION IS ON (DY-2147)
