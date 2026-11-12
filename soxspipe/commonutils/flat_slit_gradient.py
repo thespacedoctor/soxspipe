@@ -29,9 +29,43 @@ NO_RANGE_REASON = "the order has no slit range to fit the flat over"
 NO_SKY_REASON = "the order has no sky pixels"
 NO_FLAT_REASON = "there is no master flat"
 NOT_POSITIVE_REASON = "the fitted flat profile is not positive in the fit range"
+# THE FACTOR K BY WHICH THE MASTER FLAT'S GRADIENT IS SCALED BEFORE THE SKY FIT DIVIDES IT OUT, FOR SOXS NIR ORDERS.
+# ABOVE ORDER 14 THE FLAT PREDICTS A STEEPER ALONG-SLIT GRADIENT THAN THE SKY SHOWS, SO THE UNSCALED CORRECTION
+# OVER-CORRECTS ORDERS 15 TO 22. K IS THE SKY SLOPE DIVIDED BY THE FLAT PREDICTION, ROUNDED TO 0.05, FROM 16 FRAMES ON
+# 4 SLITS AND 12 NIGHTS (DY-2150). ORDERS 20 TO 22 ARE POORLY MEASURED. AN ORDER NOT LISTED HERE KEEPS K = 1: ORDERS 14
+# AND BELOW (THE FLAT UNDER-CORRECTS THERE BY LESS THAN THE FRAME-TO-FRAME SCATTER) AND ORDERS 23 AND 24 (NO SKY
+# MEASUREMENT)
+SOXS_NIR_GRADIENT_SCALE_BY_ORDER = {15: 0.80, 16: 0.75, 17: 0.60, 18: 0.70, 19: 0.60, 20: 0.60, 21: 0.60, 22: 0.60}
+UNSCALED = 1.0
 
 
-def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky):
+def gradient_scale(instrument, arm, order):
+    """*the factor k by which the master flat's gradient is scaled in one order*
+
+    **Key Arguments:**
+
+    - ``instrument`` -- the instrument name from the ``INSTRUME`` header card, in any case
+    - ``arm`` -- the arm name, in any case
+    - ``order`` -- the order number
+
+    **Return:**
+
+    - ``k`` -- the entry of ``SOXS_NIR_GRADIENT_SCALE_BY_ORDER`` for a SOXS NIR order in the table, else 1. The VIS arm
+      and X-Shooter always get 1
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.flat_slit_gradient import gradient_scale
+    k = gradient_scale("SOXS", "NIR", 17)
+    ```
+    """
+    if instrument.upper() != "SOXS" or arm.upper() != "NIR":
+        return UNSCALED
+    return SOXS_NIR_GRADIENT_SCALE_BY_ORDER.get(order, UNSCALED)
+
+
+def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradientScale=UNSCALED):
     """*the ratio 1 / P(s) of one order, from its master flat, normalised to mean 1 over the sky pixels*
 
     P(s) is a quadratic fitted to the flat's slit profile (see ``chunk_normalised_flat_profile``) inside ``fitRange``
@@ -39,7 +73,12 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky):
     nearest limit. The ratio is 1 for every pixel, with the reason logged as a warning, when there is no flat, when the
     order has no fit range or no sky pixels, when too few slit bins hold flat pixels, when the fitted profile is not
     positive anywhere in the fit range, or when its gradient is too steep (``MAX_SLOPE_PER_ARCSEC`` for the mean
-    gradient across the fit range, ``MAX_LOCAL_GRADIENT_PER_ARCSEC`` anywhere in it).
+    gradient across the fit range, ``MAX_LOCAL_GRADIENT_PER_ARCSEC`` anywhere in it). Those tests judge the flat as it
+    is, before ``gradientScale``.
+
+    ``gradientScale`` is the factor k that scales the fitted gradient (DY-2150). The profile used is
+    ``P_k(s) = M + k (P(s) - M)``, where M is the mean of P over the fit range, so its gradient everywhere, and its
+    deviation from the mean, are k times those of P. Use 0 < k <= 1: it keeps the profile positive.
 
     **Key Arguments:**
 
@@ -51,6 +90,8 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky):
     - ``fitRange`` -- the ``(lower, upper)`` slit range in arcsec to fit over, from ``flat_fit_ranges_from_result``, or
       None
     - ``isSky`` -- boolean array, the shape of ``slit``, True for the pixels the sky model is fitted to
+    - ``gradientScale`` -- the factor k for this order, from ``gradient_scale``. 1 (the default) leaves the flat's
+      gradient as fitted
 
     **Return:**
 
@@ -65,18 +106,18 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky):
     """
     slit = np.asarray(slit, dtype=float)
     isSky = np.asarray(isSky, dtype=bool) & np.isfinite(slit)
-    ratio, slope, reason = _ratio_from_flat(flat, slit, wavelength, fitRange, isSky)
+    ratio, slope, reason = _ratio_from_flat(flat, slit, wavelength, fitRange, isSky, gradientScale)
     if reason:
         log.warning(f"order {order}: the slit ratio from the master flat is 1, because {reason}")
         return np.ones(slit.shape)
     log.info(
         f"order {order}: the master flat gives a gradient of {slope * 100:+.2f} %/arcsec along the slit, "
-        f"over {fitRange[0]:+.2f} to {fitRange[1]:+.2f} arcsec"
+        f"over {fitRange[0]:+.2f} to {fitRange[1]:+.2f} arcsec, scaled by k = {gradientScale:.2f}"
     )
     return ratio
 
 
-def _ratio_from_flat(flat, slit, wavelength, fitRange, isSky):
+def _ratio_from_flat(flat, slit, wavelength, fitRange, isSky, gradientScale):
     """*the normalised ratio, the mean gradient of the flat profile and the reason the ratio is unusable (or "")*"""
     if flat is None:
         return None, np.nan, NO_FLAT_REASON
@@ -103,7 +144,10 @@ def _ratio_from_flat(flat, slit, wavelength, fitRange, isSky):
         return None, meanSlope, _slope_reason("mean", abs(meanSlope), MAX_SLOPE_PER_ARCSEC)
     if steepestSlope > MAX_LOCAL_GRADIENT_PER_ARCSEC:
         return None, meanSlope, _slope_reason("local", steepestSlope, MAX_LOCAL_GRADIENT_PER_ARCSEC)
-    ratio = np.where(np.isfinite(slit), 1.0 / np.polyval(coefficients, np.clip(slit, fitLower, fitUpper)), 1.0)
+    # SCALING THE DEVIATION FROM THE MEAN LEVEL SCALES THE GRADIENT AT EVERY SLIT POSITION AND KEEPS THE MEAN LEVEL
+    scaled = gradientScale * coefficients
+    scaled[-1] += (1 - gradientScale) * meanLevel
+    ratio = np.where(np.isfinite(slit), 1.0 / np.polyval(scaled, np.clip(slit, fitLower, fitUpper)), 1.0)
     return ratio / ratio[isSky].mean(), meanSlope, ""
 
 

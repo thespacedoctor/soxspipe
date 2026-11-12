@@ -7,7 +7,13 @@ import warnings
 import numpy as np
 import pytest
 
-from soxspipe.commonutils.flat_slit_gradient import MAX_SLOPE_PER_ARCSEC, _profile_extremes, flat_slit_ratio
+from soxspipe.commonutils.flat_slit_gradient import (
+    MAX_SLOPE_PER_ARCSEC,
+    SOXS_NIR_GRADIENT_SCALE_BY_ORDER,
+    _profile_extremes,
+    flat_slit_ratio,
+    gradient_scale,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -322,3 +328,119 @@ def test_a_quadratic_term_too_small_to_have_a_vertex_gives_the_extremes_of_a_lin
     assert maxGradient == pytest.approx(0.0035)
     assert meanLevel == pytest.approx(1.0)
     assert meanGradient == pytest.approx(-0.0035)
+
+
+def _linear_ratio(log, gradientScale, **kwargs):
+    """The ratio for a flat whose slit profile is a straight line of slope ``FLAT_SLOPE``, and the slit positions."""
+    slit, column = _pixels()
+    flat = _flat(slit, column, lambda s: 1.0 + FLAT_SLOPE * s)
+    isSky = np.abs(slit) < 4.0
+    ratio = flat_slit_ratio(
+        log, ORDER, flat, slit, _wavelength(column), KEEP_RANGE, isSky, gradientScale=gradientScale, **kwargs
+    )
+    return ratio, slit, isSky
+
+
+def test_ratio_follows_k_times_the_flat_gradient_when_the_gradient_scale_is_k(log):
+    # ARRANGE
+    k = 0.6
+
+    # ACT
+    ratio, slit, isSky = _linear_ratio(log, k)
+
+    # ASSERT: THE PROFILE IS THE MEAN LEVEL PLUS K TIMES ITS DEVIATION FROM THE MEAN, WHICH IS 1 FOR A SYMMETRIC LINE
+    expected = 1.0 / (1.0 + k * FLAT_SLOPE * np.clip(slit, *KEEP_RANGE))
+    expected = expected / expected[isSky].mean()
+    np.testing.assert_allclose(ratio, expected, rtol=1e-3)
+    assert ratio[isSky].mean() == pytest.approx(1.0)
+
+
+def test_ratio_is_the_same_with_a_gradient_scale_of_one_as_without_one(log):
+    # ARRANGE
+    slit, column = _pixels()
+    flat = _flat(slit, column, lambda s: 1.0 + FLAT_SLOPE * s + 0.0004 * s**2)
+    isSky = np.abs(slit) < 4.0
+    unscaled = flat_slit_ratio(log, ORDER, flat, slit, _wavelength(column), KEEP_RANGE, isSky)
+
+    # ACT
+    scaled = flat_slit_ratio(log, ORDER, flat, slit, _wavelength(column), KEEP_RANGE, isSky, gradientScale=1.0)
+
+    # ASSERT
+    np.testing.assert_array_equal(scaled, unscaled)
+
+
+def test_the_gradient_scale_does_not_change_the_gradient_the_log_reports(log):
+    # ARRANGE
+    unscaledLog = type(log)()
+    _linear_ratio(unscaledLog, 1.0)
+
+    # ACT
+    _linear_ratio(log, 0.6)
+
+    # ASSERT
+    gradientText = _log_text(unscaledLog).split(", scaled by")[0]
+    assert gradientText in _log_text(log)
+    assert "gradient of -0.35 %/arcsec" in gradientText
+
+
+@pytest.mark.parametrize("k", [0.6, 1.0])
+def test_the_log_gives_the_gradient_scale_next_to_the_flat_gradient(log, k):
+    # ACT
+    _linear_ratio(log, k)
+
+    # ASSERT
+    assert "the master flat gives a gradient of -0.35 %/arcsec along the slit" in _log_text(log)
+    assert f"scaled by k = {k:.2f}" in _log_text(log)
+
+
+def test_a_refused_flat_stays_refused_whatever_the_gradient_scale(log):
+    # ARRANGE
+    slit, column = _pixels()
+    flat = _flat(slit, column, lambda s: 1.0 + 2 * MAX_SLOPE_PER_ARCSEC * s)
+
+    # ACT
+    ratio = flat_slit_ratio(
+        log, ORDER, flat, slit, _wavelength(column), KEEP_RANGE, np.abs(slit) < 4.0, gradientScale=0.6
+    )
+
+    # ASSERT
+    assert (ratio == 1.0).all()
+    assert "beyond the limit" in _log_text(log)
+
+
+@pytest.mark.parametrize(
+    ("order", "expected"),
+    [(15, 0.80), (16, 0.75), (17, 0.60), (18, 0.70), (19, 0.60), (20, 0.60), (21, 0.60), (22, 0.60)],
+)
+def test_soxs_nir_orders_in_the_table_have_their_scale(order, expected):
+    # ACT
+    k = gradient_scale("SOXS", "NIR", order)
+
+    # ASSERT
+    assert k == expected
+
+
+@pytest.mark.parametrize("order", [10, 11, 12, 13, 14, 23, 24])
+def test_soxs_nir_orders_outside_the_table_keep_the_flat_gradient(order):
+    # ACT
+    k = gradient_scale("SOXS", "NIR", order)
+
+    # ASSERT
+    assert k == 1.0
+
+
+@pytest.mark.parametrize(("instrument", "arm"), [("SOXS", "VIS"), ("XSHOOTER", "NIR"), ("XSHOOTER", "VIS")])
+def test_vis_and_xshooter_keep_the_flat_gradient_in_every_order(instrument, arm):
+    # ACT
+    scales = {gradient_scale(instrument, arm, order) for order in range(1, 30)}
+
+    # ASSERT
+    assert scales == {1.0}
+
+
+def test_the_instrument_and_arm_are_read_without_regard_to_case():
+    # ACT
+    k = gradient_scale("soxs", "nir", 17)
+
+    # ASSERT
+    assert k == SOXS_NIR_GRADIENT_SCALE_BY_ORDER[17]

@@ -52,6 +52,7 @@ def _bare_subtractor(log: Any, skySettings: dict[str, Any]) -> subtract_sky:
     """A subtract_sky with only the attributes the per-order steps read."""
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
+    subtractor.inst = "SOXS"
     subtractor.arm = "NIR"
     subtractor.debug = False
     subtractor.binx = 1
