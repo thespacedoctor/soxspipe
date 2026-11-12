@@ -1891,6 +1891,42 @@ class subtract_sky:
         return np.where(isUsable, usableFlat / np.sqrt(positiveSky * usableFlat + ron**2), 0.0)
 
     @staticmethod
+    def _raw_flux_sky(imageMapOrder, tck):
+        """*the sky of a fitted spline in the raw-flux units of the pixels, spline × ``slit_normalisation_ratio``*
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- order dataframe with ``wavelength`` and ``slit_normalisation_ratio`` columns
+        - ``tck`` -- a spline fitted to ``flux / slit_normalisation_ratio``
+
+        **Return:**
+
+        - ``rawSky`` -- numpy array of the model sky, one value per pixel
+        """
+        spline = _evaluate_sky_spline(imageMapOrder["wavelength"].to_numpy(), tck)
+        return spline * imageMapOrder["slit_normalisation_ratio"].to_numpy(dtype=float)
+
+    def _fit_weights(self, imageMapOrder, rawSky):
+        """*return the B-spline sky-fit weights of the fitted data, ``flux / slit_normalisation_ratio`` (DY-2152)*
+
+        The noise model gives the weight of a pixel in raw-flux units. The fitted value is the flux divided by the
+        ratio ``r``, so its noise is σ / r and its weight is ``r`` times the noise-model weight. With ``r`` = 1 the
+        weights are the noise-model weights.
+
+        **Key Arguments:**
+
+        - ``imageMapOrder`` -- order dataframe with a ``slit_normalisation_ratio`` column and, when the map carries
+          one, ``flat``
+        - ``rawSky`` -- array of model sky values in raw-flux units, one per pixel; never the measured flux (DY-1282)
+
+        **Return:**
+
+        - ``weights`` -- numpy array of finite, non-negative weights, one per pixel
+        """
+        noiseWeights = self._inverse_noise_weights(rawSky, self.ron, self._flat_values(imageMapOrder))
+        return noiseWeights * imageMapOrder["slit_normalisation_ratio"].to_numpy(dtype=float)
+
+    @staticmethod
     def _flat_values(imageMapOrder):
         """*the master flat of each pixel of an order, or None when the map carries no flat*
 
@@ -1962,6 +1998,9 @@ class subtract_sky:
         knots do not yet resolve, is left for knot insertion; an isolated outlier is flagged.
         The noise model is the one that weights the fit (DY-1282), σ² = max(sky, 0) + RON², with the sky taken as
         the model plus that local median residual. Once the knots resolve the sky, the local residual is near zero.
+        The model and the residual are in the fitted space, ``flux / slit_normalisation_ratio``, so the noise model
+        is given that sky times the ratio (raw-flux units) and its noise is divided by the ratio: the clip noise is
+        1 / ``_fit_weights`` (DY-2152). With a ratio of 1 this is the noise of the sky itself.
         Where the neighbouring residuals scatter more than the noise model (a misfit that varies along the slit),
         their robust (MAD) scatter is used instead, so the clip does not hide that misfit from knot insertion.
         Flagged pixels get ``flagged_bspline_clipped`` and ``flagged_all_clipped`` (DY-1281).
@@ -1993,7 +2032,8 @@ class subtract_sky:
         localScatter = np.full(residual.shape, np.nan)
         localScatter[isUnclipped] = MAD_TO_SIGMA * localMad.to_numpy()
         # THE NOISE OF THE LOCAL SKY, NOT OF A MODEL THAT MAY NOT YET RESOLVE A SKYLINE
-        noise = 1.0 / self._inverse_noise_weights(model + localResidual, self.ron, self._flat_values(imageMapOrder))
+        ratio = imageMapOrder["slit_normalisation_ratio"].to_numpy(dtype=float)
+        noise = 1.0 / self._fit_weights(imageMapOrder, (model + localResidual) * ratio)
         # A MISFIT THAT VARIES ALONG THE SLIT (E.G. A SMALL WAVELENGTH ERROR ON A SKYLINE FLANK) SCATTERS THE
         # NEIGHBOURS TOO; THE CLIP NEVER CUTS INSIDE THAT SCATTER, AND NEVER INSIDE THE NOISE MODEL
         noise = np.fmax(noise, localScatter)
@@ -2036,11 +2076,7 @@ class subtract_sky:
         refits = 0
         while notYetRefit.any():
             # THE WEIGHTS OF THIS REFIT COME FROM THE FIT BEFORE IT, AS IN EVERY FIT (DY-1282)
-            imageMapOrder["weights"] = self._inverse_noise_weights(
-                _evaluate_sky_spline(imageMapOrder["wavelength"].to_numpy(), tck),
-                self.ron,
-                self._flat_values(imageMapOrder),
-            )
+            imageMapOrder["weights"] = self._fit_weights(imageMapOrder, self._raw_flux_sky(imageMapOrder, tck))
             mask_all_clipped = imageMapOrder["flagged_all_clipped"].astype(bool)
             if int((~mask_all_clipped).sum()) <= self.bspline_order:
                 ier, msg = POOR_FITPACK_IER, "too few unclipped pixels left to fit"
@@ -2128,7 +2164,8 @@ class subtract_sky:
         data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
         imageMapOrder["residual_windowed_std"] = data
 
-        # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282)
+        # THE FIRST FIT IS WEIGHTED BY THE ROLLING-PERCENTILE SKY; EACH LATER FIT BY THE PREVIOUS FIT (DY-1282).
+        # noiseModelSky IS ALWAYS THE RAW-FLUX SKY: THE PERCENTILE-SMOOTHED FLUX FIRST, THE SPLINE TIMES THE RATIO AFTER
         noiseModelSky = self._fill_nans_by_interpolation(imageMapOrder["flux_percentile_smoothed"].values)
 
         # THE RATIO IS 1 UNLESS THE FLAT-DERIVED ALONG-SLIT ILLUMINATION IS ON (DY-2147)
@@ -2198,10 +2235,8 @@ class subtract_sky:
             iterationCount += 1
 
             if tck_previous is not None:
-                noiseModelSky = _evaluate_sky_spline(imageMapOrder["wavelength"].values, tck_previous)
-            imageMapOrder["weights"] = self._inverse_noise_weights(
-                noiseModelSky, self.ron, self._flat_values(imageMapOrder)
-            )
+                noiseModelSky = self._raw_flux_sky(imageMapOrder, tck_previous)
+            imageMapOrder["weights"] = self._fit_weights(imageMapOrder, noiseModelSky)
 
             goodWl, goodFlux, goodWeights = self._spline_fit_samples(imageMapOrder, mask_all_clipped, starterKnots)
 
