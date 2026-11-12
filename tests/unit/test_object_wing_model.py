@@ -10,6 +10,7 @@ import pytest
 
 from soxspipe.commonutils.object_wing_model import (
     DEFAULT_MIN_SKY_SIGMA,
+    MAX_SKY_TO_CORE_RATIO,
     SINGLE_PROFILE_MIN_WAVELENGTH_NM,
     WING_CHUNKS,
     chunk_weight,
@@ -18,6 +19,7 @@ from soxspipe.commonutils.object_wing_model import (
     far_slit_zero_point,
     profile_peak,
     profile_sources,
+    sky_to_core_ratio,
     slit_profile,
     wing_chunk,
     wing_chunks,
@@ -1650,3 +1652,114 @@ def test_the_estimate_of_a_thermal_order_says_it_used_the_single_profile():
     # ASSERT
     assert thermal.isThermalSingleProfile
     assert not blue.isThermalSingleProfile
+
+
+# ----- THE SKY-TO-CORE GATE (DY-2120) -----
+
+# A SKY 2E5 E- DEEP OVER A 1E5 E- CORE GIVES S/G OF ABOUT 2, AND A BIAS FRACTION OF 50 KEEPS THE LEAK AND SIGNIFICANCE
+# GATES OPEN, SO ONLY THE SKY-TO-CORE GATE IS LEFT TO STOP THE ORDER
+THERMAL_SKY_LEVEL = 2.0e5
+MODERATE_SKY_LEVEL = 1.0e4
+SKY_DOMINATED_BIAS_FRACTION = 50.0
+
+
+def test_sky_to_core_limit_is_one():
+    assert MAX_SKY_TO_CORE_RATIO == 1
+
+
+def test_sky_to_core_ratio_is_the_median_sky_over_core_spectrum_of_the_profile_pixels():
+    # ARRANGE
+    skyModel = np.array([10.0, 20.0, 30.0, 1000.0])
+    spectrum = np.array([10.0, 10.0, 10.0, 10.0])
+    isProfile = np.array([True, True, True, False])
+
+    # ACT
+    ratio = sky_to_core_ratio(skyModel, spectrum, isProfile)
+
+    # ASSERT
+    assert ratio == pytest.approx(2.0)
+
+
+def test_sky_to_core_ratio_skips_pixels_whose_core_spectrum_is_not_positive():
+    # ARRANGE
+    skyModel = np.array([10.0, 10.0, 10.0, 10.0])
+    spectrum = np.array([5.0, 0.0, -3.0, np.nan])
+    isProfile = np.ones(4, dtype=bool)
+
+    # ACT
+    ratio = sky_to_core_ratio(skyModel, spectrum, isProfile)
+
+    # ASSERT
+    assert ratio == pytest.approx(2.0)
+
+
+def test_sky_to_core_ratio_is_nan_when_no_profile_pixel_has_a_positive_core_spectrum():
+    # ARRANGE
+    skyModel = np.array([10.0, 10.0])
+    spectrum = np.array([0.0, -1.0])
+
+    # ACT
+    ratio = sky_to_core_ratio(skyModel, spectrum, np.ones(2, dtype=bool))
+
+    # ASSERT
+    assert np.isnan(ratio)
+
+
+def test_order_whose_sky_is_deeper_than_its_core_spectrum_is_not_corrected_and_the_reason_gives_the_ratio():
+    # ARRANGE
+    order = _build_order(skyLevel=THERMAL_SKY_LEVEL, biasFraction=SKY_DOMINATED_BIAS_FRACTION)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert estimate.isSkyToCoreHigh
+    # THE SKY IS FLAT, SO S/G IS THE SKY OVER THE CORE SPECTRUM, WHICH RIPPLES BY +-30% AROUND THE PEAK
+    assert estimate.skyToCoreRatio == pytest.approx(THERMAL_SKY_LEVEL / BRIGHT_PEAK, rel=0.2)
+    assert estimate.skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
+    assert "sky-to-core ratio" in estimate.reason
+    assert f"{estimate.skyToCoreRatio:.3g}" in estimate.reason
+    assert estimate.chunks == ()
+
+
+def test_order_whose_sky_is_well_below_its_core_spectrum_is_corrected_as_before():
+    # ARRANGE
+    order = _build_order(skyLevel=MODERATE_SKY_LEVEL, biasFraction=SKY_DOMINATED_BIAS_FRACTION)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert not estimate.isSkyToCoreHigh
+    assert estimate.skyToCoreRatio == pytest.approx(MODERATE_SKY_LEVEL / BRIGHT_PEAK, rel=0.2)
+    assert estimate.biasLevel == pytest.approx(order.visibleBias, rel=0.1)
+    assert len(estimate.chunks) == WING_CHUNKS
+
+
+def test_crowded_slit_with_a_deep_sky_is_still_reported_as_crowded_not_as_sky_to_core():
+    # ARRANGE
+    order = _with_companion(_build_order(skyLevel=THERMAL_SKY_LEVEL, biasFraction=CROWDED_BIAS_FRACTION), 0.5)
+
+    # ACT
+    estimate = order.estimate()
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert estimate.isCrowdedSlit
+    assert not estimate.isSkyToCoreHigh
+    assert "sources" in estimate.reason
+
+
+def test_order_that_another_gate_stops_does_not_set_the_sky_to_core_flag():
+    # ARRANGE
+    order = _build_order(skyLevel=THERMAL_SKY_LEVEL, biasFraction=SKY_DOMINATED_BIAS_FRACTION)
+
+    # ACT
+    estimate = order.estimate(minLeakSigma=1.0e6)
+
+    # ASSERT
+    assert not estimate.isCorrected
+    assert not estimate.isSkyToCoreHigh
+    assert "noise of a faint-sky pixel" in estimate.reason

@@ -357,6 +357,37 @@ def test_an_order_with_real_sky_and_the_same_star_is_still_corrected_at_the_ship
     assert "object_wing_model" in modelled
 
 
+# ----- THE SKY-TO-CORE GATE (DY-2120) -----
+
+# THE SKY IS A FEW TIMES DEEPER THAN THE CORE OF THE STAR, AS IN THE THERMAL WATER BAND OF NIR ORDER 10
+DEEP_SKY_LEVEL = 3000.0
+
+
+def test_an_order_whose_sky_is_deeper_than_the_core_is_not_corrected_and_the_skip_is_logged_with_its_ratio(
+    log: Any,
+) -> None:
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN, skyLevel=DEEP_SKY_LEVEL)
+    uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order)
+
+    modelled = _modelled(_bare_subtractor(log), order)
+
+    pd.testing.assert_frame_equal(modelled, uncorrected)
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any(
+        f"ORDER {STAR_ORDER}" in message and "NO OBJECT-WING CORRECTION" in message and "SKY-TO-CORE RATIO" in message
+        for message in printed
+    )
+    assert not any("FIRST SKY MODEL CARRIED" in message for message in printed)
+
+
+def test_an_order_whose_sky_is_far_below_the_core_is_still_corrected_at_the_shipped_sky_to_core_limit(log: Any) -> None:
+    modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN))
+
+    assert "object_wing_model" in modelled
+    printed = [message for level, message in log.messages if level == "print"]
+    assert not any("SKY-TO-CORE RATIO" in message for message in printed)
+
+
 @pytest.mark.parametrize("skyLevel", [0.0, -5.0, 1e-12])
 def test_the_log_line_reports_the_leak_in_electrons_only_when_the_sky_is_near_zero(skyLevel: float) -> None:
     estimate = SimpleNamespace(
