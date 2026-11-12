@@ -3267,8 +3267,8 @@ class subtract_sky:
         The fit divides the flux by this ratio and multiplies its sky model by it. With ``flat-slit-gradient`` off it
         is 1. With it on, it is ``1 / P(s)`` from the master flat (see ``flat_slit_ratio``), normalised to mean 1
         over the pixels the fit uses, and 1 again, with the reason logged, for an order that has no master flat or
-        no kept slit range. For SOXS NIR the gradient of P(s) is first scaled by the factor k of the order (see
-        ``gradient_scale``, DY-2150).
+        no kept slit range. The gradient of P(s) is first scaled by the factor k of the order, from the
+        ``flat-slit-gradient-scale`` table of the arm's detector parameters (see ``gradient_scale``, DY-2150).
 
         **Key Arguments:**
 
@@ -3293,7 +3293,7 @@ class subtract_sky:
             imageMapOrder["wavelength"].to_numpy(dtype=float),
             (self.flatFitRanges or {}).get(order),
             ~imageMapOrder["flagged_all_clipped"].to_numpy(dtype=bool),
-            gradientScale=gradient_scale(self.inst, self.arm, order),
+            gradientScale=gradient_scale(self.detectorParams, order),
         )
 
     def _inflate_order_errors(self, imageMapOrderDF, skySubtractedCCDData):

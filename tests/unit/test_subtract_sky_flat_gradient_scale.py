@@ -1,7 +1,8 @@
 """The sky fit scales the master flat's gradient by the per-order factor k of SOXS NIR (DY-2150).
 
-``_slit_normalisation_ratio`` asks ``gradient_scale`` for the factor of the order, from the instrument and arm of the
-object frame, and passes it to ``flat_slit_ratio``. These tests read the slope of the ratio it returns along the slit.
+``_slit_normalisation_ratio`` asks ``gradient_scale`` for the factor of the order, from the detector parameters of the
+object frame's arm, and passes it to ``flat_slit_ratio``. These tests read the slope of the ratio it returns along the
+slit.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.detector_lookup import detector_lookup
 from soxspipe.commonutils.subtract_sky import subtract_sky
 
 pytestmark = pytest.mark.unit
@@ -29,8 +31,8 @@ def _subtractor(log: Any, instrument: str, arm: str, order: int, isOn: bool = Tr
     """A subtract_sky with only the attributes ``_slit_normalisation_ratio`` reads."""
     subtractor = subtract_sky.__new__(subtract_sky)
     subtractor.log = log
-    subtractor.inst = instrument
     subtractor.arm = arm
+    subtractor.detectorParams = detector_lookup(log=log, settings={"instrument": instrument}).get(arm)
     subtractor.recipeSettings = {"sky-subtraction": {SETTING_KEY: isOn}}
     subtractor.flatFitRanges = {order: KEPT_RANGE}
     return subtractor
@@ -61,10 +63,10 @@ def _ratio_slope(log: Any, instrument: str, arm: str, order: int) -> float:
 
 def test_ratio_gradient_is_k_times_the_flat_gradient_for_a_soxs_nir_order_in_the_table(log: Any) -> None:
     # ARRANGE
-    unscaledSlope = _ratio_slope(log, "XSHOOTER", "NIR", 17)
+    unscaledSlope = _ratio_slope(log, "xsh", "NIR", 17)
 
     # ACT
-    slope = _ratio_slope(log, "SOXS", "NIR", 17)
+    slope = _ratio_slope(log, "soxs", "NIR", 17)
 
     # ASSERT: ORDER 17 HAS K = 0.6
     assert slope == pytest.approx(0.6 * unscaledSlope, rel=0.01)
@@ -72,17 +74,17 @@ def test_ratio_gradient_is_k_times_the_flat_gradient_for_a_soxs_nir_order_in_the
 
 def test_ratio_gradient_is_the_flat_gradient_for_a_soxs_nir_order_with_k_of_one(log: Any) -> None:
     # ARRANGE
-    unscaledSlope = _ratio_slope(log, "XSHOOTER", "NIR", 12)
+    unscaledSlope = _ratio_slope(log, "xsh", "NIR", 12)
 
     # ACT
-    slope = _ratio_slope(log, "SOXS", "NIR", 12)
+    slope = _ratio_slope(log, "soxs", "NIR", 12)
 
     # ASSERT
     assert slope == pytest.approx(unscaledSlope, rel=1e-9)
     assert abs(unscaledSlope) > 0.003
 
 
-@pytest.mark.parametrize(("instrument", "arm"), [("SOXS", "VIS"), ("XSHOOTER", "NIR"), ("XSHOOTER", "VIS")])
+@pytest.mark.parametrize(("instrument", "arm"), [("soxs", "VIS"), ("xsh", "NIR"), ("xsh", "VIS")])
 def test_ratio_gradient_is_the_flat_gradient_for_vis_and_xshooter_in_a_table_order(
     log: Any, instrument: str, arm: str
 ) -> None:
@@ -95,8 +97,8 @@ def test_ratio_gradient_is_the_flat_gradient_for_vis_and_xshooter_in_a_table_ord
 
 def test_the_log_gives_the_k_used_in_each_order(log: Any) -> None:
     # ACT
-    _ratio_slope(log, "SOXS", "NIR", 17)
-    _ratio_slope(log, "SOXS", "NIR", 12)
+    _ratio_slope(log, "soxs", "NIR", 17)
+    _ratio_slope(log, "soxs", "NIR", 12)
 
     # ASSERT
     messages = [message for _, message in log.messages if "the master flat gives a gradient" in message]

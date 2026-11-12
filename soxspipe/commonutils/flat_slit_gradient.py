@@ -29,40 +29,45 @@ NO_RANGE_REASON = "the order has no slit range to fit the flat over"
 NO_SKY_REASON = "the order has no sky pixels"
 NO_FLAT_REASON = "there is no master flat"
 NOT_POSITIVE_REASON = "the fitted flat profile is not positive in the fit range"
-# THE FACTOR K BY WHICH THE MASTER FLAT'S GRADIENT IS SCALED BEFORE THE SKY FIT DIVIDES IT OUT, FOR SOXS NIR ORDERS.
-# ABOVE ORDER 14 THE FLAT PREDICTS A STEEPER ALONG-SLIT GRADIENT THAN THE SKY SHOWS, SO THE UNSCALED CORRECTION
-# OVER-CORRECTS ORDERS 15 TO 22. K IS THE SKY SLOPE DIVIDED BY THE FLAT PREDICTION, ROUNDED TO 0.05, FROM 16 FRAMES ON
-# 4 SLITS AND 12 NIGHTS (DY-2150). ORDERS 20 TO 22 ARE POORLY MEASURED. AN ORDER NOT LISTED HERE KEEPS K = 1: ORDERS 14
-# AND BELOW (THE FLAT UNDER-CORRECTS THERE BY LESS THAN THE FRAME-TO-FRAME SCATTER) AND ORDERS 23 AND 24 (NO SKY
-# MEASUREMENT)
-SOXS_NIR_GRADIENT_SCALE_BY_ORDER = {15: 0.80, 16: 0.75, 17: 0.60, 18: 0.70, 19: 0.60, 20: 0.60, 21: 0.60, 22: 0.60}
 UNSCALED = 1.0
+# THE KEY OF THE PER-ORDER FACTOR K IN THE DETECTOR PARAMETERS OF AN ARM (DY-2150). AN ARM WITHOUT THE KEY KEEPS K = 1
+SCALE_KEY = "flat-slit-gradient-scale"
 
 
-def gradient_scale(instrument: str, arm: str, order: int) -> float:
+def gradient_scale(detectorParams: dict, order: int) -> float:
     """*the factor k by which the master flat's gradient is scaled in one order*
+
+    The factors are the ``flat-slit-gradient-scale`` table of the arm in ``soxs_detector_parameters.yaml``, which maps
+    an order number to k. Every k in the table must be a number above 0 and at most 1, so the scaled profile stays
+    positive (see ``flat_slit_ratio``). A table with any other value raises, whichever order is asked for.
 
     **Key Arguments:**
 
-    - ``instrument`` -- the instrument name from the ``INSTRUME`` header card, in any case
-    - ``arm`` -- the arm name, in any case
+    - ``detectorParams`` -- the detector parameters of the arm, from ``detector_lookup``
     - ``order`` -- the order number
 
     **Return:**
 
-    - ``k`` -- the entry of ``SOXS_NIR_GRADIENT_SCALE_BY_ORDER`` for a SOXS NIR order in the table, else 1. The VIS arm
-      and X-Shooter always get 1
+    - ``k`` -- the table entry of the order, or 1 when the arm has no table or the table has no entry for the order
 
     **Usage:**
 
     ```python
+    from soxspipe.commonutils.detector_lookup import detector_lookup
     from soxspipe.commonutils.flat_slit_gradient import gradient_scale
-    k = gradient_scale("SOXS", "NIR", 17)
+    detectorParams = detector_lookup(log=log, settings=settings).get("NIR")
+    k = gradient_scale(detectorParams, 17)
     ```
     """
-    if instrument.upper() != "SOXS" or arm.upper() != "NIR":
-        return UNSCALED
-    return SOXS_NIR_GRADIENT_SCALE_BY_ORDER.get(order, UNSCALED)
+    table = detectorParams.get(SCALE_KEY, {})
+    if not isinstance(table, dict):
+        raise ValueError(f"{SCALE_KEY} must map an order to a factor k, not {type(table).__name__}")
+    for tableOrder, k in table.items():
+        if isinstance(k, bool) or not isinstance(k, (int, float)) or not 0 < k <= 1:
+            raise ValueError(
+                f"{SCALE_KEY} for order {tableOrder} is {k!r}, but k must be a number above 0 and at most 1"
+            )
+    return table.get(order, UNSCALED)
 
 
 def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradientScale=UNSCALED):
@@ -78,7 +83,8 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradien
 
     ``gradientScale`` is the factor k that scales the fitted gradient (DY-2150). The profile used is
     ``P_k(s) = M + k (P(s) - M)``, where M is the mean of P over the fit range, so its gradient everywhere, and its
-    deviation from the mean, are k times those of P. The table holds only 0 < k <= 1, which keeps the profile positive.
+    deviation from the mean, are k times those of P. ``gradient_scale`` accepts only 0 < k <= 1, which keeps the profile
+    positive.
 
     **Key Arguments:**
 

@@ -7,9 +7,9 @@ import warnings
 import numpy as np
 import pytest
 
+from soxspipe.commonutils.detector_lookup import detector_lookup
 from soxspipe.commonutils.flat_slit_gradient import (
     MAX_SLOPE_PER_ARCSEC,
-    SOXS_NIR_GRADIENT_SCALE_BY_ORDER,
     _profile_extremes,
     flat_slit_ratio,
     gradient_scale,
@@ -408,39 +408,79 @@ def test_a_refused_flat_stays_refused_whatever_the_gradient_scale(log):
     assert "beyond the limit" in _log_text(log)
 
 
-@pytest.mark.parametrize(
-    ("order", "expected"),
-    [(15, 0.80), (16, 0.75), (17, 0.60), (18, 0.70), (19, 0.60), (20, 0.60), (21, 0.60), (22, 0.60)],
-)
-def test_soxs_nir_orders_in_the_table_have_their_scale(order, expected):
+OLD_SOXS_NIR_TABLE = {15: 0.80, 16: 0.75, 17: 0.60, 18: 0.70, 19: 0.60, 20: 0.60, 21: 0.60, 22: 0.60}
+TABLE_KEY = "flat-slit-gradient-scale"
+
+
+def _detector_parameters(log, instrument, arm):
+    """The detector parameters of one arm, read from the YAML file the pipeline ships."""
+    return detector_lookup(log=log, settings={"instrument": instrument}).get(arm)
+
+
+def test_the_shipped_soxs_nir_table_is_the_measured_k_of_orders_15_to_22(log):
     # ACT
-    k = gradient_scale("SOXS", "NIR", order)
+    table = _detector_parameters(log, "soxs", "NIR")[TABLE_KEY]
 
     # ASSERT
-    assert k == expected
+    assert table == OLD_SOXS_NIR_TABLE
 
 
-@pytest.mark.parametrize("order", [10, 11, 12, 13, 14, 23, 24])
-def test_soxs_nir_orders_outside_the_table_keep_the_flat_gradient(order):
+@pytest.mark.parametrize("order", range(1, 31))
+def test_every_soxs_nir_order_has_the_scale_of_the_table_or_one(log, order):
+    # ARRANGE
+    detectorParams = _detector_parameters(log, "soxs", "NIR")
+
     # ACT
-    k = gradient_scale("SOXS", "NIR", order)
+    k = gradient_scale(detectorParams, order)
+
+    # ASSERT
+    assert k == OLD_SOXS_NIR_TABLE.get(order, 1.0)
+
+
+@pytest.mark.parametrize(("instrument", "arm"), [("soxs", "VIS"), ("xsh", "NIR"), ("xsh", "VIS")])
+def test_arms_without_a_table_keep_the_flat_gradient_in_every_order(log, instrument, arm):
+    # ARRANGE
+    detectorParams = _detector_parameters(log, instrument, arm)
+
+    # ACT
+    scales = {gradient_scale(detectorParams, order) for order in range(1, 31)}
+
+    # ASSERT
+    assert TABLE_KEY not in detectorParams
+    assert scales == {1.0}
+
+
+def test_the_scale_is_one_for_every_order_when_the_parameters_have_no_table():
+    # ACT
+    k = gradient_scale({}, 17)
 
     # ASSERT
     assert k == 1.0
 
 
-@pytest.mark.parametrize(("instrument", "arm"), [("SOXS", "VIS"), ("XSHOOTER", "NIR"), ("XSHOOTER", "VIS")])
-def test_vis_and_xshooter_keep_the_flat_gradient_in_every_order(instrument, arm):
+@pytest.mark.parametrize("badValue", [0, 0.0, -0.5, 1.01, 2, float("nan"), float("inf"), "0.6", None, True, [0.6]])
+def test_a_scale_that_is_not_a_number_above_zero_and_up_to_one_raises(badValue):
+    # ARRANGE
+    detectorParams = {TABLE_KEY: {17: 0.60, 18: badValue}}
+
     # ACT
-    scales = {gradient_scale(instrument, arm, order) for order in range(1, 30)}
+    with pytest.raises(ValueError, match="flat-slit-gradient-scale") as error:
+        gradient_scale(detectorParams, 17)
 
     # ASSERT
-    assert scales == {1.0}
+    assert "order 18" in str(error.value)
 
 
-def test_the_instrument_and_arm_are_read_without_regard_to_case():
+@pytest.mark.parametrize("goodValue", [1, 1.0, 0.05, 0.6])
+def test_a_scale_up_to_one_and_above_zero_is_accepted(goodValue):
     # ACT
-    k = gradient_scale("soxs", "nir", 17)
+    k = gradient_scale({TABLE_KEY: {17: goodValue}}, 17)
 
     # ASSERT
-    assert k == SOXS_NIR_GRADIENT_SCALE_BY_ORDER[17]
+    assert k == goodValue
+
+
+def test_a_table_that_is_not_a_mapping_raises():
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="flat-slit-gradient-scale"):
+        gradient_scale({TABLE_KEY: [0.6, 0.7]}, 17)
