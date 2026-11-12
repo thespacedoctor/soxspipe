@@ -355,6 +355,9 @@ def test_an_order_with_real_sky_and_the_same_star_is_still_corrected_at_the_ship
     modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN))
 
     assert "object_wing_model" in modelled
+    # THE SAME ORDER ALSO PASSES THE SKY-TO-CORE GATE (DY-2120): NO SKIP IS PRINTED
+    printed = [message for level, message in log.messages if level == "print"]
+    assert not any("SKY-TO-CORE RATIO" in message for message in printed)
 
 
 # ----- THE SKY-TO-CORE GATE (DY-2120) -----
@@ -378,14 +381,6 @@ def test_an_order_whose_sky_is_deeper_than_the_core_is_not_corrected_and_the_ski
         for message in printed
     )
     assert not any("FIRST SKY MODEL CARRIED" in message for message in printed)
-
-
-def test_an_order_whose_sky_is_far_below_the_core_is_still_corrected_at_the_shipped_sky_to_core_limit(log: Any) -> None:
-    modelled = _modelled(_bare_subtractor(log), _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN))
-
-    assert "object_wing_model" in modelled
-    printed = [message for level, message in log.messages if level == "print"]
-    assert not any("SKY-TO-CORE RATIO" in message for message in printed)
 
 
 @pytest.mark.parametrize("skyLevel", [0.0, -5.0, 1e-12])

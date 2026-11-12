@@ -1748,6 +1748,7 @@ def test_crowded_slit_with_a_deep_sky_is_still_reported_as_crowded_not_as_sky_to
     # ASSERT
     assert not estimate.isCorrected
     assert estimate.isCrowdedSlit
+    assert estimate.skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
     assert not estimate.isSkyToCoreHigh
     assert "sources" in estimate.reason
 
@@ -1761,5 +1762,6 @@ def test_order_that_another_gate_stops_does_not_set_the_sky_to_core_flag():
 
     # ASSERT
     assert not estimate.isCorrected
+    assert estimate.skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
     assert not estimate.isSkyToCoreHigh
     assert "noise of a faint-sky pixel" in estimate.reason

@@ -539,7 +539,7 @@ def _no_correction_reason(zeroPoint, biasLevel, biasNoise, faintSkyNoise, minLea
 
 
 def sky_to_core_ratio(skyModel, coreSpectrum, isProfile):
-    """*the median sky-to-core ratio S/G of the profile pixels (DY-2120)*
+    """*measure the median sky-to-core ratio S/G of the profile pixels (DY-2120)*
 
     **Key Arguments:**
 
