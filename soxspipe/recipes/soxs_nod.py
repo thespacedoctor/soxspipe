@@ -121,6 +121,10 @@ class soxs_nod(base_recipe):
     # THE UVB/VIS MASTER BIAS THAT TAKES THE BIAS PEDESTAL OUT OF THE A AND B ERRORS, OR False (DY-1390)
     masterBias = False
 
+    # THE HOST FEATURES FOUND IN THE A-B DIFFERENCES OF THE CURRENT PASS, OR None WHEN NO CHECK HAS RUN IN IT
+    # (DY-2193). AN IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) WHEN A CHECK RUNS
+    hostFeatures = None
+
     def __init__(
         self,
         log,
@@ -636,15 +640,94 @@ class soxs_nod(base_recipe):
         """
         from soxspipe.commonutils.nod_shift_and_add import horne_aperture_pixels
 
-        binx = biny = 1
-        try:
-            binx = int(frame.header[self.kw("WIN_BINX")])
-            biny = int(frame.header[self.kw("WIN_BINY")])
-        except (KeyError, TypeError, ValueError) as e:
-            self.log.debug(f"_horne_aperture_pixels: no usable binning in the header, so 1 by 1 is used: {e}")
+        binx, biny = self._frame_binning(frame)
         return horne_aperture_pixels(
             self.recipeSettings["horne-extraction-slit-length"], self.detectorParams["dispersion-axis"], binx, biny
         )
+
+    def _frame_binning(self, frame):
+        """*the binning of a frame, or 1 by 1 when its header has no usable binning*
+
+        **Key Arguments:**
+
+        - ``frame`` -- a frame whose header gives the binning
+
+        **Return:**
+
+        - ``binning`` -- the ``(binx, biny)`` binning
+        """
+        try:
+            return int(frame.header[self.kw("WIN_BINX")]), int(frame.header[self.kw("WIN_BINY")])
+        except (KeyError, TypeError, ValueError) as e:
+            self.log.debug(f"_frame_binning: no usable binning in the header, so 1 by 1 is used: {e}")
+            return 1, 1
+
+    def _check_host_contamination(self, difference):
+        """*look for host emission at the opposite nod position of an A-B difference (DY-2193)*
+
+        The features are added to ``self.hostFeatures``, which `_record_host_contamination` reads. The check is
+        information only: when it cannot run, the log says why and the reduction goes on. An offset run has no
+        opposite nod position, so it is not checked.
+
+        **Key Arguments:**
+
+        - ``difference`` -- the A-B difference before flat-fielding. The flat's fall-off at the slit edges would
+          otherwise give false traces there
+        """
+        from soxspipe.commonutils.nod_host_contamination import DEFAULT_SIGMA_LIMIT, find_host_contamination
+        from soxspipe.commonutils.slit_alignment import read_two_d_map_images
+        from soxspipe.commonutils.toolkit import get_skylines_dataframe
+
+        if "nod" not in self.recipeName:
+            return
+        # THE CHECK ONLY FLAGS THE PRODUCT, SO NO FAILURE OF IT MAY STOP THE REDUCTION
+        try:
+            features = find_host_contamination(
+                difference,
+                read_two_d_map_images(self.twoDMap, *self._frame_binning(difference), self.kw),
+                self._horne_aperture_pixels(difference),
+                sigmaLimit=float(self.recipeSettings.get("host-contamination-sigma", DEFAULT_SIGMA_LIMIT)),
+                skylineWavelengthsNm=get_skylines_dataframe(self.log, self.settings, self.arm)["WAVELENGTH"].to_numpy(),
+                log=self.log,
+            )
+        except Exception as e:
+            self.log.warning(f"The check for host emission at the opposite nod position could not run: {e}")
+            return
+        self.hostFeatures = (*(self.hostFeatures or ()), *features)
+
+    def _record_host_contamination(self, dateFrame):
+        """*record the host features of the pass as a QC, and warn with their wavelengths when there are any*
+
+        The QC is information only and has no acceptable range, so it never fails the recipe. Nothing is recorded
+        when no check ran in the pass. ``self.hostFeatures`` is reset, so the next pass starts clean. Updates
+        ``self.qc`` and ``self.extractionNotes``.
+
+        **Key Arguments:**
+
+        - ``dateFrame`` -- the frame whose observation date is recorded against the QC
+        """
+        from soxspipe.commonutils.extraction_notes import format_extraction_notes
+        from soxspipe.commonutils.nod_host_contamination import host_contamination_message, merge_host_features
+
+        if self.hostFeatures is None:
+            return
+        merged = merge_host_features(self.hostFeatures)
+        self.hostFeatures = None
+        self.add_qc(
+            qcName="NOD HOST CONTAM",
+            qcValue=len(merged),
+            qcComment="Narrow features at the opposite nod position the object does not explain (host emission)",
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
+            obsDateUtc=dateFrame.header[self.kw("DATE_OBS")],
+        )
+        message = host_contamination_message(merged)
+        if message is None:
+            return
+        self.log.warning(message)
+        notes = [note for note in format_extraction_notes([("WARNING", message)]) if note not in self.extractionNotes]
+        self.extractionNotes = (*self.extractionNotes, *notes)
 
     def _record_nod_combination(self, shiftAndAdd, obsDateUtc):
         """*record in the QC table whether the nod pair was combined, and how many shifts were median-filled*
@@ -1098,6 +1181,7 @@ class soxs_nod(base_recipe):
                 allSpectrumB = self._append_spectrum(allSpectrumB, mergedSpectrumDF_B)
 
             sequenceCount += 1
+        self._record_host_contamination(allFrameA[0])
         stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB], orderJoins=orderJoins)
 
         return stackedSpectrum, orderJoins
@@ -1172,6 +1256,7 @@ class soxs_nod(base_recipe):
             masterFlat=masterFlat,
             shiftAndAdd=shiftAndAdd,
         )
+        self._record_host_contamination(aFrame)
         stackedSpectrum, extractionPath = self.stack_extractions(
             self._spectra_to_stack(mergedSpectrumDF_A, mergedSpectrumDF_B), orderJoins=orderJoins
         )
@@ -1404,6 +1489,9 @@ class soxs_nod(base_recipe):
             masterFlat=masterFlat,
             orderTablePath=orderTablePath,
         )
+
+        if not notFlattened:
+            self._check_host_contamination(A_minus_B_notflattened)
 
         combinedFrames = self._combined_cycle_frames(
             A_minus_B, B_minus_A, A_minus_B_notflattened, combinedNotFlattened, (aFrame, bFrame), shiftAndAdd
