@@ -260,3 +260,18 @@ def test_a_compact_unmasked_hit_on_the_negative_trace_is_not_extended_emission(s
 
     # ASSERT
     assert features == ()
+
+
+def test_each_skipped_order_is_logged_with_its_reason(scene, map_images, log) -> None:
+    # ARRANGE: AN APERTURE LONGER THAN THE THROW, SO NO ORDER CAN BE CHECKED
+    difference = _difference(scene, hasHost=True)
+
+    # ACT
+    find_host_contamination(difference, map_images, aperturePixels=20, log=log)
+
+    # ASSERT
+    messages = [message for level, message in log.messages if level == "debug"]
+    assert [message for message in messages if "not checked" in message and "closer than" in message] == [
+        f"Host contamination: order {order} not checked: the traces are missing or closer than the aperture"
+        for order in scene.orders
+    ]

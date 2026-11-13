@@ -688,6 +688,7 @@ class soxs_nod(base_recipe):
                 self._horne_aperture_pixels(difference),
                 sigmaLimit=float(self.recipeSettings.get("host-contamination-sigma", DEFAULT_SIGMA_LIMIT)),
                 skylineWavelengthsNm=get_skylines_dataframe(self.log, self.settings, self.arm)["WAVELENGTH"].to_numpy(),
+                log=self.log,
             )
         except Exception as e:
             self.log.warning(f"The check for host emission at the opposite nod position could not run: {e}")

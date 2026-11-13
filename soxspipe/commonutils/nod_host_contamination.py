@@ -21,7 +21,9 @@ It only flags the features; it changes no data. A host that is symmetric about t
 negative trace, so this check cannot see it.
 """
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -66,8 +68,13 @@ class host_feature:
 
 
 def find_host_contamination(
-    difference, mapImages, aperturePixels, sigmaLimit=DEFAULT_SIGMA_LIMIT, skylineWavelengthsNm=()
-):
+    difference: Any,
+    mapImages: Any,
+    aperturePixels: float,
+    sigmaLimit: float = DEFAULT_SIGMA_LIMIT,
+    skylineWavelengthsNm: Sequence[float] = (),
+    log: Any = None,
+) -> tuple[host_feature, ...]:
     """*find the narrow features at the negative trace of an A-B difference that the object does not explain*
 
     **Key Arguments:**
@@ -77,10 +84,19 @@ def find_host_contamination(
     - ``aperturePixels`` -- the full aperture length in binned pixels along the slit
     - ``sigmaLimit`` -- a feature must exceed this many times the local noise. Default *5*
     - ``skylineWavelengthsNm`` -- wavelengths (nm) of bright skylines whose neighbourhood is not searched
+    - ``log`` -- logger. When given, each order that could not be checked is logged at debug level with the reason.
+      Default *None*
 
     **Return:**
 
     - ``features`` -- a tuple of ``host_feature``, ordered by order and wavelength. Empty when none is found
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.nod_host_contamination import find_host_contamination
+    features = find_host_contamination(abDifference, mapImages, aperturePixels=11, skylineWavelengthsNm=skylines)
+    ```
     """
     data = np.asarray(difference.data, dtype=float)
     error = np.asarray(difference.uncertainty.array, dtype=float)
@@ -94,36 +110,65 @@ def find_host_contamination(
         isOrder = (mapImages.order == order) & isUsable & np.isfinite(mapImages.wavelength)
         if not isOrder.any():
             continue
-        rows, columns = np.nonzero(isOrder)
-        stepRow = float(np.median(np.abs(mapImages.wavelengthRow[isOrder])))
-        stepColumn = float(np.median(np.abs(mapImages.wavelengthCol[isOrder])))
-        pixels = pd.DataFrame(
-            {
-                # A DETECTOR LINE ALONG THE SLIT: A ROW WHEN THE WAVELENGTH CHANGES FASTEST DOWN THE ROWS
-                "line": rows if stepRow >= stepColumn else columns,
-                "slit": mapImages.slit[isOrder],
-                "wavelength": mapImages.wavelength[isOrder],
-                "flux": data[isOrder],
-                "variance": error[isOrder] ** 2,
-            }
+        pixels, stepNm = _order_pixels(mapImages, isOrder, data, error)
+        orderFeatures, skipReason = _order_features(
+            int(order),
+            pixels,
+            aperturePixels=aperturePixels,
+            slitScale=slit_pixel_scale(mapImages, order),
+            stepNm=stepNm,
+            sigmaLimit=sigmaLimit,
+            skylines=skylines,
         )
-        scales = (aperturePixels, slit_pixel_scale(mapImages, order), max(stepRow, stepColumn))
-        features.extend(_order_features(order, pixels, scales, sigmaLimit, skylines))
+        if skipReason and log is not None:
+            log.debug(f"Host contamination: order {order} not checked: {skipReason}")
+        features.extend(orderFeatures)
     return tuple(features)
 
 
-def _order_features(order, pixels, scales, sigmaLimit, skylines):
-    """*the host features of one order, from its usable pixels and its (aperture pixels, arcsec/pixel, nm/line)*"""
-    aperturePixels, slitScale, stepNm = scales
+def _order_pixels(
+    mapImages: Any, isOrder: np.ndarray, data: np.ndarray, error: np.ndarray
+) -> tuple[pd.DataFrame, float]:
+    """*the usable pixels of one order as a table, and the wavelength step (nm) of one detector line*"""
+    rows, columns = np.nonzero(isOrder)
+    stepRow = float(np.median(np.abs(mapImages.wavelengthRow[isOrder])))
+    stepColumn = float(np.median(np.abs(mapImages.wavelengthCol[isOrder])))
+    pixels = pd.DataFrame(
+        {
+            # A DETECTOR LINE ALONG THE SLIT: A ROW WHEN THE WAVELENGTH CHANGES FASTEST DOWN THE ROWS
+            "line": rows if stepRow >= stepColumn else columns,
+            "slit": mapImages.slit[isOrder],
+            "wavelength": mapImages.wavelength[isOrder],
+            "flux": data[isOrder],
+            "variance": error[isOrder] ** 2,
+        }
+    )
+    return pixels, max(stepRow, stepColumn)
+
+
+def _order_features(
+    order: int,
+    pixels: pd.DataFrame,
+    *,
+    aperturePixels: float,
+    slitScale: float,
+    stepNm: float,
+    sigmaLimit: float,
+    skylines: np.ndarray,
+) -> tuple[list[host_feature], str | None]:
+    """*the host features of one order, and the reason the order could not be checked (None when it was)*
+
+    ``slitScale`` is the arcsec per pixel along the slit and ``stepNm`` the wavelength step of one detector line.
+    """
     apertureArcsec = aperturePixels * slitScale
     traces = _trace_positions(pixels, apertureArcsec, slitScale)
     if traces is None:
-        return []
+        return [], "the traces are missing or closer than the aperture"
     pixels = _without_slit_background(pixels, traces, apertureArcsec)
     spectra = _paired_spectra(*(_aperture_spectrum(pixels, position, apertureArcsec) for position in traces))
     ratio = _trace_ratio(spectra) if len(spectra) else None
     if ratio is None:
-        return []
+        return [], "the negative trace is not a constant multiple of the positive trace"
     residual = spectra["flux_neg"] + ratio * spectra["flux_pos"]
     propagated = np.sqrt(spectra["variance_neg"] + ratio**2 * spectra["variance_pos"])
     significance = _significance(residual, propagated)
@@ -132,18 +177,19 @@ def _order_features(order, pixels, scales, sigmaLimit, skylines):
     significance[~isAtNegativeTrace] = 0.0
     wavelengths = spectra["wavelength"].to_numpy()
     significance[_near_skylines(wavelengths, skylines, stepNm)] = 0.0
-    return [
+    features = [
         host_feature(
-            order=int(order),
+            order=order,
             wavelengthMinNm=float(wavelengths[first]),
             wavelengthMaxNm=float(wavelengths[last]),
             significance=float(np.max(significance[first : last + 1])),
         )
         for first, last in _flagged_runs(significance > sigmaLimit)
     ]
+    return features, None
 
 
-def _trace_positions(pixels, apertureArcsec, slitScale):
+def _trace_positions(pixels: pd.DataFrame, apertureArcsec: float, slitScale: float) -> tuple[float, float] | None:
     """*the slit positions of the positive and the negative trace, or None when they are less than an aperture apart*
 
     The slit is cut into bins one pixel long, and each trace is the bin with the most extreme median flux.
@@ -159,7 +205,7 @@ def _trace_positions(pixels, apertureArcsec, slitScale):
     return positive, negative
 
 
-def _without_slit_background(pixels, traces, apertureArcsec):
+def _without_slit_background(pixels: pd.DataFrame, traces: tuple[float, float], apertureArcsec: float) -> pd.DataFrame:
     """*the pixels less the median of each detector line away from both traces*
 
     The sky changes between the nod exposures, so the A-B difference keeps a sky residual that is flat along the slit,
@@ -174,7 +220,7 @@ def _without_slit_background(pixels, traces, apertureArcsec):
     return pixels.assign(flux=pixels["flux"].to_numpy() - level)
 
 
-def _aperture_spectrum(pixels, position, apertureArcsec):
+def _aperture_spectrum(pixels: pd.DataFrame, position: float, apertureArcsec: float) -> pd.DataFrame:
     """*the flux and its variance, and the mean wavelength, of each detector line of an aperture along the slit*
 
     The flux is the median of the aperture pixels times their number. Emission that fills the aperture moves the
@@ -195,7 +241,7 @@ def _aperture_spectrum(pixels, position, apertureArcsec):
     return spectrum.loc[spectrum["count"] >= spectrum["count"].median()].sort_values("wavelength")
 
 
-def _paired_spectra(positive, negative):
+def _paired_spectra(positive: pd.DataFrame, negative: pd.DataFrame) -> pd.DataFrame:
     """*the positive trace spectrum with the negative trace spectrum interpolated onto its wavelengths*
 
     The two traces of a line sit at slightly different wavelengths when the lines of constant wavelength tilt across
@@ -218,7 +264,7 @@ def _paired_spectra(positive, negative):
     )
 
 
-def _trace_ratio(spectra):
+def _trace_ratio(spectra: pd.DataFrame) -> float | None:
     """*the ratio of the negative trace to the positive trace, or None when it is not a usable constant*"""
     positiveLevel = float(np.median(spectra["flux_pos"]))
     negativeLevel = float(np.median(spectra["flux_neg"]))
@@ -230,7 +276,7 @@ def _trace_ratio(spectra):
     return ratio
 
 
-def _significance(residual, propagated):
+def _significance(residual: pd.Series, propagated: pd.Series) -> np.ndarray:
     """*the absolute residual above its running median, in units of the larger of the propagated and local noise*"""
     window = {"window": TREND_WINDOW_LINES, "center": True, "min_periods": 1}
     detrended = residual - residual.rolling(**window).median()
@@ -245,7 +291,7 @@ def _significance(residual, propagated):
     return significance
 
 
-def _near_skylines(wavelengths, skylines, stepNm):
+def _near_skylines(wavelengths: np.ndarray, skylines: np.ndarray, stepNm: float) -> np.ndarray:
     """*a mask of the wavelengths that lie within the sky mask of a catalogue skyline*"""
     if not len(skylines):
         return np.zeros(len(wavelengths), dtype=bool)
@@ -253,7 +299,7 @@ def _near_skylines(wavelengths, skylines, stepNm):
     return distance <= SKY_MASK_HALF_WIDTH_LINES * stepNm
 
 
-def _flagged_runs(isFlagged):
+def _flagged_runs(isFlagged: np.ndarray) -> list[tuple[int, int]]:
     """*the (first, last) indices of each run of flagged detector lines long enough to be a feature*"""
     indices = np.flatnonzero(isFlagged)
     if not len(indices):
@@ -268,7 +314,7 @@ def _flagged_runs(isFlagged):
     ]
 
 
-def merge_host_features(features):
+def merge_host_features(features: Iterable[host_feature]) -> tuple[host_feature, ...]:
     """*merge features whose wavelength ranges overlap, or nearly do, across orders and nodding cycles*
 
     **Key Arguments:**
@@ -278,6 +324,13 @@ def merge_host_features(features):
     **Return:**
 
     - ``merged`` -- a tuple of ``host_feature`` with no order, sorted by wavelength. One per distinct feature
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.nod_host_contamination import merge_host_features
+    merged = merge_host_features(featuresOfEveryCycle)
+    ```
     """
     merged = []
     for feature in sorted(features, key=lambda item: item.wavelengthMinNm):
@@ -294,7 +347,7 @@ def merge_host_features(features):
     return tuple(merged)
 
 
-def host_contamination_message(features):
+def host_contamination_message(features: Sequence[host_feature]) -> str | None:
     """*the warning that names the wavelength ranges of merged host features*
 
     **Key Arguments:**
@@ -304,6 +357,13 @@ def host_contamination_message(features):
     **Return:**
 
     - ``message`` -- the warning text, or *None* when there are no features
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.nod_host_contamination import host_contamination_message
+    message = host_contamination_message(merge_host_features(features))
+    ```
     """
     if not features:
         return None
