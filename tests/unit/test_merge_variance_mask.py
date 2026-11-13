@@ -16,13 +16,16 @@ import pytest
 import yaml
 
 import soxspipe
-from soxspipe.commonutils.horne_extraction import horne_extraction
+from soxspipe.commonutils.horne_extraction import MERGE_VARIANCE_CLIP_DEFAULT, horne_extraction
 
 pytestmark = pytest.mark.unit
 
 PACKAGE_DIR = Path(soxspipe.__file__).parent
+FIRST_WAVELENGTH = 1000.0
+PIXEL_STEP_NM = 0.03
 PIXEL_COUNT = 400
 SPIKE_INDEX = 200
+SPIKE_WAVELENGTH = FIRST_WAVELENGTH + PIXEL_STEP_NM * SPIKE_INDEX
 SPIKE_FLUX = -2.26e6
 SPIKE_VARIANCE = 4.9e12
 SPIKE_SKY = 5.0e5
@@ -45,8 +48,8 @@ def _orders(varianceScale: float = 1.0) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "order": 10,
-            "wavelengthMean": 1000.0 + 0.03 * index,
-            "pixelScaleNm": 0.03,
+            "wavelengthMean": FIRST_WAVELENGTH + PIXEL_STEP_NM * index,
+            "pixelScaleNm": PIXEL_STEP_NM,
             "extractedFluxOptimal": 1000.0 + 2.0 * index,
             "extractedFluxBoxcar": 1000.0 + 2.0 * index,
             "extractedFluxBoxcarRobust": 1000.0 + 2.0 * index,
@@ -80,7 +83,7 @@ def test_one_huge_variance_pixel_does_not_change_the_merged_spectrum(log: object
 
     # ASSERT
     cleanColumns, spikedColumns = _columns(mergedClean), _columns(mergedSpiked)
-    nearPixel = np.abs(cleanColumns["WAVE"] - (1000.0 + 0.03 * SPIKE_INDEX)) < 0.2
+    nearPixel = np.abs(cleanColumns["WAVE"] - SPIKE_WAVELENGTH) < 0.2
     assert nearPixel.sum() >= 3
     np.testing.assert_allclose(
         spikedColumns["FLUX_COUNTS"][nearPixel], cleanColumns["FLUX_COUNTS"][nearPixel], rtol=1e-5
@@ -155,7 +158,7 @@ def test_a_smaller_factor_in_the_recipe_settings_drops_a_milder_pixel(log: objec
     droppedByFactor, _ = _extractor(log, recipeSettings={SETTING: 1000.0}).merge_extracted_orders(milder.copy())
 
     # ASSERT
-    nearPixel = np.abs(_columns(keptByDefault)["WAVE"] - (1000.0 + 0.03 * SPIKE_INDEX)) < 0.1
+    nearPixel = np.abs(_columns(keptByDefault)["WAVE"] - SPIKE_WAVELENGTH) < 0.1
     assert _columns(keptByDefault)["FLUX_COUNTS"][nearPixel].min() < -1.0e5
     assert _columns(droppedByFactor)["FLUX_COUNTS"][nearPixel].min() > 0.0
 
@@ -184,7 +187,7 @@ def test_a_dropped_end_pixel_does_not_leave_a_zero_bin_at_the_end_of_the_spectru
 
     # ASSERT: NO GRID POINT LIES BEYOND THE LAST KEPT PIXEL, AND NO BIN IS ZERO
     columns = _columns(merged)
-    assert columns["WAVE"].max() <= 1000.0 + 0.03 * (PIXEL_COUNT - 2)
+    assert columns["WAVE"].max() <= FIRST_WAVELENGTH + PIXEL_STEP_NM * (PIXEL_COUNT - 2)
     assert (columns["VARIANCE"] > 0.0).all()
 
 
@@ -233,4 +236,4 @@ def test_every_extracting_recipe_block_ships_the_merge_variance_factor(fileName:
 
     # ASSERT
     for recipe in recipes:
-        assert settings[recipe][SETTING] == 1.0e6, recipe
+        assert settings[recipe][SETTING] == MERGE_VARIANCE_CLIP_DEFAULT, recipe

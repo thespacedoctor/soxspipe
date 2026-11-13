@@ -21,6 +21,7 @@ from .figure_guard import closes_its_figures
 from .filenamer import filenamer
 
 if TYPE_CHECKING:
+    import numpy as np
     import pandas as pd
 
     from .nir_sky_refit import order_sky_correction
@@ -2525,9 +2526,10 @@ class horne_extraction(base_util):
         # AGAIN WOULD COUNT THE DISPERSION TWICE, SO ONLY THE NOT-FLATTENED SPECTRUM (USED FOR THE EFFICIENCY) GETS THE
         # FLUX DENSITY COLUMN, AND ONLY IT PAYS FOR COMPUTING ONE
         if self.notFlattened:
+            keptRowIdx = np.flatnonzero(keepMask)[unique_idx]
             merged_orders["FLUX_DENSITY_COUNTS"] = (
                 self._add_and_resample_flux_density(
-                    extractedOrdersDF, wave_in[unique_idx], np.flatnonzero(keepMask)[unique_idx], wave_resample_grid
+                    extractedOrdersDF, wave_in[unique_idx], keptRowIdx, wave_resample_grid
                 )
                 * u.electron
                 / u.nm
@@ -2550,7 +2552,7 @@ class horne_extraction(base_util):
 
         return merged_orders, orderJoins
 
-    def _variance_keep_mask(self, variance):
+    def _variance_keep_mask(self, variance: "np.ndarray") -> "np.ndarray":
         """*flag the pixels the order merge keeps: those whose variance is not far above the local median (DY-2078)*
 
         The merge resamples by linear interpolation, so a pixel with a huge variance would carry its full flux into the
