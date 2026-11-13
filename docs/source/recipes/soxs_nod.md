@@ -71,6 +71,28 @@ The `--no-stack` option sets `stack_before_extraction` to `False` for one run. I
 
 Note a boxcar extraction is also preformed alongside the Horne extraction. Use the `horne-extraction-slit-length` to control the size of the aperture used to preform the boxcar extraction on the object trace.
 
+### Host contamination check
+
+The recipe checks each nod pass for extended emission, for example light from a host galaxy. The check is for information only. It does not change the spectrum and it never makes the recipe fail.
+
+Extended emission that is longer than the throw is not removed by the A-B subtraction. It appears in both nod positions at different places on the slit, and the subtraction leaves a false feature in the spectrum.
+
+The check works on the A-B difference of each pass before flat-fielding, for every order. The flat-field fall-off at the slit edges gives false traces. The check does these steps:
+
+1. It finds the positive trace and the negative trace. They are the slit positions with the most extreme median flux.
+2. It subtracts the median of each detector line outside both trace apertures. This removes the sky residual that is flat along the slit and is left when the sky changes between the nods.
+3. It sums each trace over an aperture of `horne-extraction-slit-length` pixels for each detector line. The sum is the median of the pixels times their number, so a cosmic ray of 1 or 2 pixels hardly changes it.
+4. It models the negative trace as the positive trace times one constant ratio.
+5. It counts the narrow features. A feature is a run of at least 2 detector lines where both the residual (the negative trace plus the ratio times the positive trace) and the negative trace itself are above `host-contamination-sigma` times the local noise (default 5).
+
+The local noise is the larger of the propagated error and a running median absolute deviation over 51 detector lines. The check first removes a running median of 51 detector lines. It does not search within 8 detector lines of a catalogue skyline, or in the 25 detector lines at each end of an order. Features within 0.2 nm across orders and cycles count once.
+
+The number of features is the `NOD HOST CONTAM` QC. If the QC is above 0, the recipe logs a warning with the wavelength ranges, and the same warning is printed under the merged-spectrum QC plot. If the check cannot run, the recipe logs a warning and does not write the QC.
+
+The check runs in the `soxs_nod` and `soxs_nod_std` recipes. It does not run in the `soxs_offset` recipe.
+
+**Limitation:** a host that is symmetric about the object leaves no residual at the negative trace. The check does not see this case.
+
 ## Output
 
 :::{include} output/soxs_nod.inc

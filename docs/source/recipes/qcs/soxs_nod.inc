@@ -35,6 +35,7 @@
 | `SLIT ALIGN FALLBACK NUM` | Number of slit shifts that took the median shift of the other orders or frames, because no reliable object trace was found. Written to the header | | - |
 | `NOD COMBINED` | 1 if the stacked A-B and B-A differences were combined and extracted once, 0 if they were extracted separately. Written to the header | | - |
 | `NOD COMBINE FALLBACK NUM` | Number of orders whose shift between the nod positions took the median of the other orders, because a nod position had no reliable object trace. 0 when `NOD COMBINED` is 0. Written to the header | | - |
+| `NOD HOST CONTAM` | Number of narrow features at the negative trace of the A-B difference that the object does not explain. A feature is a run of at least 2 detector lines where both the residual and the negative trace are above `host-contamination-sigma` times the local noise. Features within 0.2 nm are counted once. Written to the header. It has no acceptable range and never fails the recipe. See [`soxs_nod`](../soxs_nod.md) | | - |
 | `UG SHIFT SOURCE` | How the SOXS VIS u and g shifts were found: `model` (predicted from the r and i shifts and the rotator angle) or `none` (u and g left unshifted). The comment gives the reason. Written only for SOXS VIS | | - |
 
 :::
