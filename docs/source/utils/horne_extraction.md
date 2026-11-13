@@ -125,6 +125,8 @@ On eight well-attached VIS stare frames from 2026 June and July, the model gave 
 
 The spectrum is extracted on each order separately. When all orders are extracted, they are merged together in a single spectrum. Since regions of different orders overlap in the wavelength space, they are first rectified on a common, equally spaced wavelength grid in order to merge together. Flux during resampling is conserved. 
 
+Before the merge resamples, it drops each pixel whose variance is more than 1 000 000 times the median variance of the 101 pixels around it. A pixel like this has almost no information, but resampling by linear interpolation would still carry its flux into the merged spectrum. The pixel is removed from the flux, variance, and sky columns. The extracted orders table keeps it. The merge writes the number of dropped pixels to the log. Set `merge-variance-clip-factor` in the recipe block of the settings file to change the factor. A settings file without the key uses 1 000 000, and `inf` switches the mask off. The value must be a number above 1. On the recorded VIS and NIR extractions, sky-line pixels reach 560 000 times the local median at most, so they are kept.
+
 
 
 

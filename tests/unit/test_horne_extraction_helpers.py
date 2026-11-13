@@ -38,6 +38,7 @@ def _extractor(log: object) -> horne_extraction:
     extractor = object.__new__(horne_extraction)
     extractor.log = log
     extractor.notFlattened = ""
+    extractor.recipeSettings = {}
     return extractor
 
 
