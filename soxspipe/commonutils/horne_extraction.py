@@ -21,6 +21,7 @@ from .figure_guard import closes_its_figures
 from .filenamer import filenamer
 
 if TYPE_CHECKING:
+    import numpy as np
     import pandas as pd
 
     from .nir_sky_refit import order_sky_correction
@@ -72,6 +73,14 @@ NIR_SKY_PEAK_MIN_SEPARATION_PX = 5
 SKYLINE_TOLERANCES_NM = (0.5, 0.1, 0.1)
 # MATCH TOLERANCE (nm) FOR EACH ITERATION OF THE VIS r ORDER WHEN IT STARTS AT THE SHIFT PREDICTED FROM i (DY-1645)
 R_SEEDED_TOLERANCE_NM = 0.05
+
+# THE RECIPE SETTING FOR THE ORDER MERGE: A PIXEL WITH MORE THAN THIS MANY TIMES THE LOCAL MEDIAN VARIANCE IS DROPPED
+# BEFORE THE MERGE RESAMPLES (DY-2078). 1e6 SITS ABOVE THE LARGEST RATIO OF A SKYLINE PIXEL (5.6e5) AND BELOW THE
+# DY-2078 PIXEL (6.6e6) ON THE RECORDED NIR AND VIS EXTRACTIONS. A SETTINGS FILE WITHOUT THE KEY USES THE DEFAULT
+MERGE_VARIANCE_CLIP_SETTING = "merge-variance-clip-factor"
+MERGE_VARIANCE_CLIP_DEFAULT = 1.0e6
+# NUMBER OF NEIGHBOURING PIXELS, IN WAVELENGTH ORDER, THAT THE LOCAL MEDIAN VARIANCE IS TAKEN OVER
+MERGE_VARIANCE_WINDOW = 101
 
 
 @dataclass(frozen=True)
@@ -2429,11 +2438,15 @@ class horne_extraction(base_util):
         # SORT BY COLUMN NAME
         extractedOrdersDF.sort_values(["wavelengthMean"], ascending=[True], inplace=True, kind="stable")
 
+        # DROP PIXELS WHOSE VARIANCE IS FAR ABOVE THEIR NEIGHBOURS' BEFORE RESAMPLING. THE ORDERS TABLE IS LEFT AS IT IS
+        keepMask = self._variance_keep_mask(extractedOrdersDF["varianceSpectrum"].values)
+        keptWavelength = extractedOrdersDF["wavelengthMean"][keepMask]
+
         # DEFINE THE WAVELENGTH ARRAY
         # ENSURE THE COLUMN IS NOT EMPTY AND CONTAINS VALID NUMERIC VALUES
-        if extractedOrdersDF["wavelengthMean"].notna().any():
-            min_wavelength = np.min(extractedOrdersDF["wavelengthMean"])
-            max_wavelength = np.max(extractedOrdersDF["wavelengthMean"])
+        if keptWavelength.notna().any():
+            min_wavelength = np.min(keptWavelength)
+            max_wavelength = np.max(keptWavelength)
 
             # ENSURE THE RANGE IS VALID
             if min_wavelength < max_wavelength and stepWavelengthOrderMerge > 0:
@@ -2470,10 +2483,10 @@ class horne_extraction(base_util):
 
         # Fast linear resampling — np.interp is O(N log M) vs FluxConservingResampler's
         # O(N·M), and is accurate for output grids with similar resolution to the input.
-        wave_in = spectrum_orig.spectral_axis.to_value(u.nm)
-        flux_in = spectrum_orig.flux.to_value(u.electron)
-        var_in = spectrum_orig.uncertainty.array
-        sky_in = spectrumSky_orig.flux.to_value(u.electron)
+        wave_in = spectrum_orig.spectral_axis.to_value(u.nm)[keepMask]
+        flux_in = spectrum_orig.flux.to_value(u.electron)[keepMask]
+        var_in = spectrum_orig.uncertainty.array[keepMask]
+        sky_in = spectrumSky_orig.flux.to_value(u.electron)[keepMask]
 
         # Deduplicate wavelengths that may overlap at order join boundaries
         _, unique_idx = np.unique(wave_in, return_index=True)
@@ -2513,9 +2526,10 @@ class horne_extraction(base_util):
         # AGAIN WOULD COUNT THE DISPERSION TWICE, SO ONLY THE NOT-FLATTENED SPECTRUM (USED FOR THE EFFICIENCY) GETS THE
         # FLUX DENSITY COLUMN, AND ONLY IT PAYS FOR COMPUTING ONE
         if self.notFlattened:
+            keptRowIdx = np.flatnonzero(keepMask)[unique_idx]
             merged_orders["FLUX_DENSITY_COUNTS"] = (
                 self._add_and_resample_flux_density(
-                    extractedOrdersDF, wave_in[unique_idx], unique_idx, wave_resample_grid
+                    extractedOrdersDF, wave_in[unique_idx], keptRowIdx, wave_resample_grid
                 )
                 * u.electron
                 / u.nm
@@ -2537,6 +2551,44 @@ class horne_extraction(base_util):
             )
 
         return merged_orders, orderJoins
+
+    def _variance_keep_mask(self, variance: "np.ndarray") -> "np.ndarray":
+        """*flag the pixels the order merge keeps: those whose variance is not far above the local median (DY-2078)*
+
+        The merge resamples by linear interpolation, so a pixel with a huge variance would carry its full flux into the
+        merged spectrum. A pixel is dropped when its variance is above the recipe setting
+        ``merge-variance-clip-factor`` times the median variance of the ``MERGE_VARIANCE_WINDOW`` pixels around it. The
+        number dropped is logged. A pixel with no variance value, or in a stretch with no positive median variance, is
+        kept.
+
+        **Key Arguments:**
+
+        - ``variance`` -- the variance of each pixel, sorted by wavelength
+
+        **Return:**
+
+        - ``keepMask`` -- boolean array, *True* for each pixel to keep
+
+        **Raises:**
+
+        - ``ValueError`` -- if the setting is not a number above 1
+        """
+        import numpy as np
+        import pandas as pd
+
+        factor = self.recipeSettings.get(MERGE_VARIANCE_CLIP_SETTING, MERGE_VARIANCE_CLIP_DEFAULT)
+        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not factor > 1:
+            raise ValueError(f"The `{MERGE_VARIANCE_CLIP_SETTING}` setting must be a number above 1, not {factor!r}")
+
+        variance = pd.Series(np.asarray(variance, dtype=float))
+        localMedian = variance.rolling(MERGE_VARIANCE_WINDOW, center=True, min_periods=1).median()
+        isExtreme = ((localMedian > 0) & (variance > factor * localMedian)).values
+
+        self.log.print(
+            f"Dropped {int(isExtreme.sum())} of {len(variance)} pixels with a variance above {factor:g} times "
+            "the local median variance, before resampling"
+        )
+        return ~isExtreme
 
     def _add_and_resample_flux_density(self, extractedOrdersDF, uniqueWave, uniqueIdx, waveGrid):
         """*add the flux density columns to the order rows and return the optimal one resampled onto the merge grid*
