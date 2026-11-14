@@ -82,6 +82,12 @@ MERGE_VARIANCE_CLIP_DEFAULT = 1.0e6
 # NUMBER OF NEIGHBOURING PIXELS, IN WAVELENGTH ORDER, THAT THE LOCAL MEDIAN VARIANCE IS TAKEN OVER
 MERGE_VARIANCE_WINDOW = 101
 
+# THE RECIPE SETTING FOR THE OPTIMAL EXTRACTION: A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE
+# NORMALISED OBJECT PROFILE GETS NO OPTIMAL FLUX AND IS DROPPED (DY-2195; THE DEFAULT IS CHOSEN IN THE HORNE EXTRACTION
+# DOCS). A SETTINGS FILE WITHOUT THE KEY USES THE DEFAULT; 0 KEEPS EVERY SLICE
+MINIMUM_PROFILE_FRACTION_SETTING = "horne-extraction-minimum-profile-fraction"
+MINIMUM_PROFILE_FRACTION_DEFAULT = 0.05
+
 
 @dataclass(frozen=True)
 class FlatPassHandoff:
@@ -599,6 +605,7 @@ class horne_extraction(base_util):
             axisA=self.axisA,
             axisB=self.axisB,
             hornePolyOrder=self.recipeSettings["horne-extraction-profile-poly-order"],
+            minimumProfileFraction=read_minimum_profile_fraction(self.recipeSettings),
             debug=self.debug,
             boxcarOnly=self.traceFallback,
             turnOffMP=True,
@@ -3012,6 +3019,7 @@ def extract_single_order(
     axisA,
     axisB,
     hornePolyOrder=3,
+    minimumProfileFraction=MINIMUM_PROFILE_FRACTION_DEFAULT,
     debug=False,
     boxcarOnly=False,
 ):
@@ -3029,6 +3037,8 @@ def extract_single_order(
     - ``axisA`` -- the dispersion axis
     - ``axisB`` -- the cross-dispersion axis
     - ``hornePolyOrder`` -- order of the polynomial fitted to the object profile along the dispersion axis. Default *3*
+    - ``minimumProfileFraction`` -- a slice whose unmasked pixels hold less than this fraction of the normalised object
+      profile is dropped from the optimal extraction. Default ``MINIMUM_PROFILE_FRACTION_DEFAULT``
     - ``debug`` -- show the rectified images. Default *False*
     - ``boxcarOnly`` -- skip the object-profile fit and report the robust boxcar sum as the extracted spectrum. Used
       when no object trace was found. Default *False*
@@ -3072,6 +3082,7 @@ def extract_single_order(
             axisB=axisB,
             order=order,
             debug=debug,
+            minimumProfileFraction=minimumProfileFraction,
         )
         _log_profile_clip_cap(
             log=funclog,
@@ -3109,7 +3120,8 @@ def _extract_optimal_order(
     hornePolyOrder,
     axisB,
     order,
-    debug,
+    minimumProfileFraction=MINIMUM_PROFILE_FRACTION_DEFAULT,
+    debug=False,
 ):
     """*fit the object profile of one order and extract it optimally*
 
@@ -3147,7 +3159,10 @@ def _extract_optimal_order(
         plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
 
     extractions = compute_extractions(
-        crossDispersionSlicesDF=crossDispersionSlicesDF, orderRectifiedImages=orderRectifiedImages, order=order
+        crossDispersionSlicesDF=crossDispersionSlicesDF,
+        orderRectifiedImages=orderRectifiedImages,
+        order=order,
+        minimumProfileFraction=minimumProfileFraction,
     )
     return extractions, capRows
 
@@ -3183,8 +3198,59 @@ def _log_profile_clip_cap(
     )
 
 
-def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
-    """Compute optimal and boxcar extracted spectra from cross-dispersion slices."""
+def read_minimum_profile_fraction(recipeSettings: Mapping) -> float:
+    """*read the minimum unmasked profile fraction of an optimally extracted slice from the recipe settings*
+
+    **Key Arguments:**
+
+    - ``recipeSettings`` -- the recipe settings dictionary
+
+    **Return:**
+
+    - ``minimumProfileFraction`` -- the setting, or ``MINIMUM_PROFILE_FRACTION_DEFAULT`` when the key is absent
+
+    **Raises:**
+
+    - ``ValueError`` -- if the setting is not a number from 0 up to, but not including, 1
+
+    **Usage:**
+
+        minimumProfileFraction = read_minimum_profile_fraction(self.recipeSettings)
+    """
+    fraction = recipeSettings.get(MINIMUM_PROFILE_FRACTION_SETTING, MINIMUM_PROFILE_FRACTION_DEFAULT)
+    if isinstance(fraction, bool) or not isinstance(fraction, (int, float)) or not 0 <= fraction < 1:
+        raise ValueError(
+            f"The `{MINIMUM_PROFILE_FRACTION_SETTING}` setting must be a number at least 0 and less than 1, "
+            f"not {fraction!r}"
+        )
+    return float(fraction)
+
+
+def compute_extractions(
+    crossDispersionSlicesDF: "pd.DataFrame",
+    orderRectifiedImages: dict,
+    order: int,
+    minimumProfileFraction: float = MINIMUM_PROFILE_FRACTION_DEFAULT,
+) -> "pd.DataFrame":
+    """*compute the optimal and boxcar extracted spectra of an order from its cross-dispersion slices*
+
+    **Key Arguments:**
+
+    - ``crossDispersionSlicesDF`` -- dataframe of the order's cross-dispersion slices. This dataframe is not modified
+    - ``orderRectifiedImages`` -- the rectified images of the order, including the normalised ``objectProfile``
+    - ``order`` -- the order number
+    - ``minimumProfileFraction`` -- a slice whose unmasked pixels hold less than this fraction of the normalised object
+      profile gets no optimal flux and is dropped (DY-2195). Default ``MINIMUM_PROFILE_FRACTION_DEFAULT``
+
+    **Return:**
+
+    - ``crossDispersionSlicesDF`` -- a filtered copy of the slices dataframe with the extracted columns added, sorted by
+      wavelength
+
+    **Usage:**
+
+        extractions = compute_extractions(slices, orderRectifiedImages, order=12, minimumProfileFraction=0.05)
+    """
     import numpy as np
 
     # WORK ON A COPY SO THE CALLER'S SLICES FRAME IS NEVER MODIFIED
@@ -3213,6 +3279,14 @@ def compute_extractions(crossDispersionSlicesDF, orderRectifiedImages, order):
 
     wavelengthMasked = np.ma.masked_array(orderRectifiedImages["wavelength"], mask=orderRectifiedImages["mask"])
     crossDispersionSlicesDF["wavelengthMean"] = np.ma.mean(wavelengthMasked.T, axis=1)
+
+    # A SLICE WHOSE UNMASKED PIXELS HOLD ALMOST NONE OF THE PROFILE HAS TINY HORNE SUMS WITH A FINITE BUT MEANINGLESS
+    # RATIO. GIVE IT NO OPTIMAL FLUX, SO THE CLEAN-UP BELOW DROPS IT (DY-2195)
+    unmaskedProfileFraction = (
+        np.ma.masked_array(orderRectifiedImages["objectProfile"], mask=orderRectifiedImages["mask"]).T.sum(axis=1)
+    ).filled(0.0)
+    tooLittleProfile = unmaskedProfileFraction < minimumProfileFraction
+    horneDenominatorSum = np.ma.masked_where(tooLittleProfile, horneDenominatorSum)
 
     # CALCULATE THE FINAL EXTRACTED SPECTRA
     crossDispersionSlicesDF["varianceSpectrum"] = 1 / horneDenominatorSum

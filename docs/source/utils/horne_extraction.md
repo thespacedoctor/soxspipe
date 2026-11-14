@@ -55,6 +55,12 @@ is computed. The extraction does not include pixels for which this quantity exce
 
 The final flux for each cross-dispersion slice is a weighted sum, as reported in {cite:t}`horne1986`, with the bad pixels and outliers accounted for. Note, if more than 3 bad/outlying pixels are found within a cross-dispersion slice, then the slice is ignored.
 
+The weighted sum needs the unmasked pixels of a slice to hold a useful part of the object profile. The profile is normalised so that it sums to 1 over the slit. If the sum of the profile over the unmasked pixels of a slice is less than `horne-extraction-minimum-profile-fraction`, the slice gets no optimal flux and is removed from the extracted orders table. Without this check, a slice whose object pixels are all masked keeps a finite flux of millions of counts with a variance of 10¹² or more, because both sums of the weighted sum are then tiny but not zero.
+
+The default is 0.05, set in each stare, nod and offset recipe block of the settings file. A settings file without the key uses 0.05, and 0 keeps every slice. The value must be at least 0 and less than 1.
+
+On 10 recorded VIS and NIR stare, nod and offset frames, the lowest unmasked profile fraction of an ordinary slice is 0.12 (NIR) and 0.32 (VIS). Every slice below 0.05 has a variance at least 99 times the median variance of the slices around it. The default is therefore 2.4 times below the lowest ordinary NIR slice.
+
 ### 3 Tuning the wavelength solution to the sky lines
 
 The dispersion map is made from daytime calibration frames. At night, flexure moves the spectra on the detector by a small amount. After extraction, the utility corrects for this order by order. It matches the sky lines in each extracted order to the catalogue of sky lines, measures the offset of every matched line, clips the outliers, and adds the median offset to the wavelength solution of the order. Each order gets a `SKY SHIFT O<N>` QC (in nm) and a `SKY SHIFT O<N> PX` QC (the same shift in detector pixels along the dispersion axis).

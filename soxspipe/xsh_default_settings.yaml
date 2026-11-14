@@ -320,6 +320,8 @@ soxs-stare:
         horne-extraction-profile-clipping-sigma: 3.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
         horne-extraction-profile-clipping-iteration-count: 10
+        # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
+        horne-extraction-minimum-profile-fraction: 0.05
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
@@ -404,6 +406,8 @@ soxs-stare:
         horne-extraction-profile-clipping-sigma: 3.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
         horne-extraction-profile-clipping-iteration-count: 10
+        # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
+        horne-extraction-minimum-profile-fraction: 0.05
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
@@ -488,6 +492,8 @@ soxs-stare:
         horne-extraction-profile-clipping-sigma: 3.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
         horne-extraction-profile-clipping-iteration-count: 10
+        # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
+        horne-extraction-minimum-profile-fraction: 0.05
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 100
@@ -595,6 +601,8 @@ soxs-nod:
     horne-extraction-profile-clipping-sigma: 3.0
     # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
     horne-extraction-profile-clipping-iteration-count: 10
+    # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
+    horne-extraction-minimum-profile-fraction: 0.05
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     uvb:
