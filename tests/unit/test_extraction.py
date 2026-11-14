@@ -58,7 +58,8 @@ def test_compute_extractions_recovers_a_known_profile_and_sorts_wavelengths() ->
 
 
 def test_sigma_clip_mask_keeps_bad_pixels_and_nan_values_masked() -> None:
-    flux = np.ones((3, 64), dtype=float)
+    # 75 SLIT ROWS BY 64 WAVELENGTH COLUMNS; THE CLIP RUNS ALONG THE SLIT AND NEEDS ABOUT 50 ROWS TO REACH 7 SIGMA
+    flux = np.ones((75, 64), dtype=float)
     flux[0, 0] = np.nan
     flux[1, -1] = 10_000.0
     badPixels = np.zeros_like(flux, dtype=np.uint8)
