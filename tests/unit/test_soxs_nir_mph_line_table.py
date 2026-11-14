@@ -10,6 +10,8 @@ import yaml
 from astropy.table import Table
 
 import soxspipe
+from tests.unit._nir_line_tables import MPH_O10_ROWS_BEFORE, order_checksums
+from tests.unit._nir_line_tables import set_rows as o10_set_rows
 
 pytestmark = pytest.mark.unit
 
@@ -60,6 +62,35 @@ DROPPED_SETS = [
     (16, "ArII", 1202.71),
 ]
 DROPPED_SET_ATOL_NM = 0.006
+
+# DY-1970: THREE O10 ArII SETS ARE OTHER LINES, 7 TO 9 A BLUER; REPLACED BY NIST-BACKED SETS (OPTION E)
+O10_REMOVED_ARII_NM = [1948.118, 1982.643, 1995.242]
+# (ION, nm, (X, Y) AT SLIT INDEX 4) OF THE O10 SETS ADDED IN DY-1970
+O10_ADDED_SETS = [
+    ("XeI", 1878.8146, (235.24139291562463, 400.64647062444766)),
+    ("NeI", 1957.7118, (1128.92364794532, 393.0473836343341)),
+    ("HgI", 1970.018, (1274.551644963742, 406.6691489833562)),
+]
+O10_POSITION_ATOL_PX = 1e-6
+SLIT_INDEX_AT_CENTRE = 4
+# SHA-256 OF EVERY ROW OF EACH UNEDITED ORDER ON DEVELOP b9ab9446, IN FILE ORDER
+UNEDITED_ORDER_CHECKSUMS = {
+    9: "5145cb61322757b7173fc23a2c9cec44f5f74e53cf6ee617926841fc4fd82f09",
+    11: "aa56f3527760a2d88299240d517f3a98de10bfeec9fa9c7a431f36dfab1f1fbd",
+    12: "3bf55257e87b67c53720590575c1cd341ac9cead0177f4965ddbfb662420695e",
+    13: "9e8f07f8b388191084b55750d6c17ab8f1e91cb6044387a98a5f951701902ed0",
+    14: "7d23b5adfc85c58fce36586d0fafb71c7949f4c065f9639681158a6dff2f3b3d",
+    15: "3aaef09975e18769be823c5020185c07e8112b81505ecc8cb87e4c702a7f0108",
+    16: "3bef626deaf1cd600aa0971b59f31692ec583f2ae165895f98626d562fa47ab3",
+    17: "d3da003cd0a07c443fd38578f18e39650f7823d3bcb9ad18ae669a88f8de2776",
+    18: "2bdd32cf4e8eabf96e3b61f89906a978d70a18fc39b0960be5efcda5930065cd",
+    19: "8f372c54790a7367bcd5eb5e4510e430f2e25e416b9334bf3faa786a7161e707",
+    20: "f6e1368155a6253460751c97cf4ab2ccd10987fac658c0612949243065ab77d6",
+    21: "a693398eea40ba6d151d8e50373265b29a4d55f349cf9ff370df55bcbb22d8c7",
+    22: "a650f53acabff5cb84faf0b4fdf4d13961a8e6ef59d9c8bf8f67ee01bd20c714",
+    23: "5e8089ed3e6af14587778d190e51830d4996ec647f02eb914b3ad08e798d36de",
+    24: "620216674bf04fdb6053ac473a4ec5eab3c2791470e8a16562b4a3ed30e26c82",
+}
 
 
 def _read_table(name: str) -> Table:
@@ -237,3 +268,56 @@ def test_line_carries_its_nist_ritz_wavelength(order: int, ion: str, observed: f
     # ASSERT
     assert np.any(np.isclose(wavelengths, ritz, rtol=0, atol=WAVELENGTH_ATOL_NM))
     assert not np.any(np.isclose(wavelengths, observed, rtol=0, atol=WAVELENGTH_ATOL_NM))
+
+
+@pytest.mark.parametrize("wavelength", O10_REMOVED_ARII_NM)
+def test_mislabelled_arii_set_is_absent_from_order_10(wavelength: float) -> None:
+    # ARRANGE
+    table = _read_table(MPH_TABLE)
+
+    # ACT
+    rows = o10_set_rows(table, "ArII", wavelength)
+
+    # ASSERT
+    assert len(rows) == 0
+
+
+@pytest.mark.parametrize(("ion", "wavelength", "centre"), O10_ADDED_SETS)
+def test_added_order_10_line_is_a_full_set_with_its_measured_centre(ion: str, wavelength: float, centre: tuple) -> None:
+    # ARRANGE
+    table = _read_table(MPH_TABLE)
+
+    # ACT
+    rows = o10_set_rows(table, ion, wavelength)
+    middle = rows[rows["slit_index"] == SLIT_INDEX_AT_CENTRE]
+
+    # ASSERT
+    assert sorted(rows["slit_index"]) == list(range(PINHOLES_PER_LINE))
+    assert len(middle) == 1
+    assert (float(middle["detector_x"][0]), float(middle["detector_y"][0])) == pytest.approx(
+        centre, rel=0, abs=O10_POSITION_ATOL_PX
+    )
+
+
+def test_order_10_row_count_is_unchanged_with_three_sets_out_and_three_in() -> None:
+    # ARRANGE
+    table = _read_table(MPH_TABLE)
+
+    # ACT
+    rowCount = int(np.sum(np.asarray(table["order"]) == 10))
+
+    # ASSERT
+    assert len(O10_REMOVED_ARII_NM) == len(O10_ADDED_SETS)
+    assert rowCount == MPH_O10_ROWS_BEFORE
+
+
+@pytest.mark.parametrize("order", sorted(UNEDITED_ORDER_CHECKSUMS))
+def test_orders_other_than_10_match_develop_row_for_row(order: int) -> None:
+    # ARRANGE
+    table = _read_table(MPH_TABLE)
+
+    # ACT
+    checksums = order_checksums(table)
+
+    # ASSERT
+    assert checksums[order] == UNEDITED_ORDER_CHECKSUMS[order]
