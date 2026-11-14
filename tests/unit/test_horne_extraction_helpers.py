@@ -3141,23 +3141,11 @@ def test_single_order_extraction_logs_nothing_when_every_row_converges(log: obje
     assert log.messages == []
 
 
-def test_extract_logs_one_cap_line_for_each_order_that_has_capped_rows(
-    log: object,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # ARRANGE: THREE ORDERS RUN THROUGH THE REAL PER-ORDER EXTRACTION; ORDERS 7 AND 9 HOLD A SPIKE, ORDER 8 IS CLEAN
-    import fundamentals
+def _synthetic_orders_transformer(orders: dict[int, bool], columns: int) -> type:
+    """A rectification collaborator class that hands out one synthetic order per key of orders (value: has a spike)."""
 
-    transformerModule = importlib.import_module("soxspipe.commonutils.image_transformer")
-    extractor, extraction, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
-    extractor.clippingSigma = 5.0
-    extractor.clippingIterationLimit = 1
-    extractor.recipeSettings = {"horne-extraction-profile-poly-order": 0}
-    orders = {7: True, 8: False, 9: True}
-    columns = 40
-
-    class ThreeOrderTransformer:
-        """Rectification collaborator that hands out three synthetic orders."""
+    class SyntheticOrdersTransformer:
+        """Rectification collaborator that hands out synthetic orders."""
 
         def __init__(self, **kwargs: object) -> None:
             pass
@@ -3174,13 +3162,33 @@ def test_extract_logs_one_cap_line_for_each_order_that_has_capped_rows(
         def get_order_rectified(self) -> list[dict[str, np.ndarray]]:
             return [_noisy_order_images(slitRows=5, columns=columns, hasSpike=hasSpike) for hasSpike in orders.values()]
 
-    def run_serially(function: object, inputArray: list[object], **kwargs: object) -> list[object]:
-        fmultiprocessOnly = {"log", "poolSize", "timeout", "turnOffMP", "progressBar"}
-        funcKwargs = {key: value for key, value in kwargs.items() if key not in fmultiprocessOnly}
-        return [function(item, **funcKwargs) for item in inputArray]
+    return SyntheticOrdersTransformer
 
-    monkeypatch.setattr(transformerModule, "image_transformer", ThreeOrderTransformer)
-    monkeypatch.setattr(fundamentals, "fmultiprocess", run_serially)
+
+def _run_serially(function: object, inputArray: list[object], **kwargs: object) -> list[object]:
+    """Stand-in for fmultiprocess: call function on each item in-process, with the function's own keyword arguments."""
+    fmultiprocessOnly = {"log", "poolSize", "timeout", "turnOffMP", "progressBar"}
+    funcKwargs = {key: value for key, value in kwargs.items() if key not in fmultiprocessOnly}
+    return [function(item, **funcKwargs) for item in inputArray]
+
+
+def test_extract_logs_one_cap_line_for_each_order_that_has_capped_rows(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THREE ORDERS RUN THROUGH THE REAL PER-ORDER EXTRACTION; ORDERS 7 AND 9 HOLD A SPIKE, ORDER 8 IS CLEAN
+    import fundamentals
+
+    transformerModule = importlib.import_module("soxspipe.commonutils.image_transformer")
+    extractor, extraction, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.clippingSigma = 5.0
+    extractor.clippingIterationLimit = 1
+    extractor.recipeSettings = {"horne-extraction-profile-poly-order": 0}
+    orders = {7: True, 8: False, 9: True}
+    columns = 40
+
+    monkeypatch.setattr(transformerModule, "image_transformer", _synthetic_orders_transformer(orders, columns))
+    monkeypatch.setattr(fundamentals, "fmultiprocess", _run_serially)
     extractor.merge_extracted_orders = lambda orders: (extraction.iloc[:0].copy(), {})
 
     # ACT
@@ -3191,3 +3199,38 @@ def test_extract_logs_one_cap_line_for_each_order_that_has_capped_rows(
     assert len(capLines) == 2
     assert "order 7:" in capLines[0]
     assert "order 9:" in capLines[1]
+
+
+def test_extract_hands_the_minimum_profile_fraction_setting_to_every_order_extraction(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: TWO ORDERS RUN THROUGH THE REAL PER-ORDER EXTRACTION, WITH compute_extractions SPIED ON (DY-2195)
+    import fundamentals
+
+    transformerModule = importlib.import_module("soxspipe.commonutils.image_transformer")
+    horneModule = importlib.import_module("soxspipe.commonutils.horne_extraction")
+    extractor, extraction, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.clippingSigma = 5.0
+    extractor.clippingIterationLimit = 1
+    extractor.recipeSettings = {
+        "horne-extraction-profile-poly-order": 0,
+        "horne-extraction-minimum-profile-fraction": 0.25,
+    }
+    received = []
+    originalCompute = horneModule.compute_extractions
+
+    def spy(*args: object, **kwargs: object) -> pd.DataFrame:
+        received.append(kwargs.get("minimumProfileFraction"))
+        return originalCompute(*args, **kwargs)
+
+    monkeypatch.setattr(transformerModule, "image_transformer", _synthetic_orders_transformer({7: False, 8: False}, 40))
+    monkeypatch.setattr(fundamentals, "fmultiprocess", _run_serially)
+    monkeypatch.setattr(horneModule, "compute_extractions", spy)
+    extractor.merge_extracted_orders = lambda orders: (extraction.iloc[:0].copy(), {})
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    assert received == [0.25, 0.25]
