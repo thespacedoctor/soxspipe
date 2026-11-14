@@ -314,8 +314,6 @@ soxs-stare:
         horne-extraction-slit-length: 20
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
         horne-extraction-profile-poly-order: 7
-        # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
-        horne-extraction-profile-global-clipping-sigma: 25
         # SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
         horne-extraction-profile-clipping-sigma: 3.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
@@ -400,8 +398,6 @@ soxs-stare:
         horne-extraction-slit-length: 20
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
         horne-extraction-profile-poly-order: 7
-        # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
-        horne-extraction-profile-global-clipping-sigma: 25
         # SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
         horne-extraction-profile-clipping-sigma: 3.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
@@ -486,8 +482,6 @@ soxs-stare:
         horne-extraction-slit-length: 20
         # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
         horne-extraction-profile-poly-order: 7
-        # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
-        horne-extraction-profile-global-clipping-sigma: 25
         ## SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
         horne-extraction-profile-clipping-sigma: 3.0
         # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
@@ -595,8 +589,6 @@ soxs-nod:
     horne-extraction-slit-length: 20
     # DEGREE OF THE POLYNOMIAL USED TO FIT THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
     horne-extraction-profile-poly-order: 7
-    # SIGMA CLIPPING LIMIT WHEN FITTING THE OBJECT PROFILE (GLOBAL OVER THE ORDER)
-    horne-extraction-profile-global-clipping-sigma: 25
     # SIGMA CLIPPING LIMIT WHEN FITTING THE DISPERSION-DIRECTION PROFILES OF THE OBJECT
     horne-extraction-profile-clipping-sigma: 3.0
     # MAXIMUM NUMBER OF CLIPPING ITERATIONS WHEN FITTING DISPERSION-DIRECTION PROFILES
