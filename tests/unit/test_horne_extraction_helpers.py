@@ -3275,3 +3275,38 @@ def test_extract_hands_the_minimum_profile_fraction_setting_to_every_order_extra
 
     # ASSERT
     assert received == [0.25, 0.25]
+
+
+def test_extract_hands_the_residual_clipping_sigma_setting_to_every_order_extraction(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: TWO ORDERS RUN THROUGH THE REAL PER-ORDER EXTRACTION, WITH compute_extractions SPIED ON (DY-2221)
+    import fundamentals
+
+    transformerModule = importlib.import_module("soxspipe.commonutils.image_transformer")
+    horneModule = importlib.import_module("soxspipe.commonutils.horne_extraction")
+    extractor, extraction, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    extractor.clippingSigma = 5.0
+    extractor.clippingIterationLimit = 1
+    extractor.recipeSettings = {
+        "horne-extraction-profile-poly-order": 0,
+        "horne-extraction-residual-clipping-sigma": 7.5,
+    }
+    received = []
+    originalCompute = horneModule.compute_extractions
+
+    def spy(*args: object, **kwargs: object) -> pd.DataFrame:
+        received.append(kwargs.get("residualClippingSigma"))
+        return originalCompute(*args, **kwargs)
+
+    monkeypatch.setattr(transformerModule, "image_transformer", _synthetic_orders_transformer({7: False, 8: False}, 40))
+    monkeypatch.setattr(fundamentals, "fmultiprocess", _run_serially)
+    monkeypatch.setattr(horneModule, "compute_extractions", spy)
+    extractor.merge_extracted_orders = lambda orders: (extraction.iloc[:0].copy(), {})
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    assert received == [7.5, 7.5]

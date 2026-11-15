@@ -329,6 +329,8 @@ soxs-stare-std:
         horne-extraction-profile-clipping-iteration-count: 10
         # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
         horne-extraction-minimum-profile-fraction: 0.05
+        # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+        horne-extraction-residual-clipping-sigma: 5.0
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -433,6 +435,8 @@ soxs-stare-std:
         horne-extraction-profile-clipping-iteration-count: 10
         # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
         horne-extraction-minimum-profile-fraction: 0.05
+        # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+        horne-extraction-residual-clipping-sigma: 5.0
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -548,6 +552,8 @@ soxs-stare:
         horne-extraction-profile-clipping-iteration-count: 10
         # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
         horne-extraction-minimum-profile-fraction: 0.05
+        # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+        horne-extraction-residual-clipping-sigma: 5.0
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -666,6 +672,8 @@ soxs-stare:
         horne-extraction-profile-clipping-iteration-count: 10
         # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
         horne-extraction-minimum-profile-fraction: 0.05
+        # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+        horne-extraction-residual-clipping-sigma: 5.0
         detect-continuum:
             # NUMBER OF CROSS-ORDER SLICES PER ORDER
             order-sample-count: 150
@@ -780,6 +788,8 @@ soxs-nod-std:
     horne-extraction-profile-clipping-iteration-count: 10
     # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
     horne-extraction-minimum-profile-fraction: 0.05
+    # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+    horne-extraction-residual-clipping-sigma: 5.0
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
@@ -889,6 +899,8 @@ soxs-nod:
     horne-extraction-profile-clipping-iteration-count: 10
     # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
     horne-extraction-minimum-profile-fraction: 0.05
+    # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+    horne-extraction-residual-clipping-sigma: 5.0
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
@@ -990,6 +1002,8 @@ soxs-offset:
     horne-extraction-profile-clipping-iteration-count: 10
     # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
     horne-extraction-minimum-profile-fraction: 0.05
+    # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+    horne-extraction-residual-clipping-sigma: 5.0
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:
@@ -1089,6 +1103,8 @@ soxs-offset-std:
     horne-extraction-profile-clipping-iteration-count: 10
     # DROP A SLICE WHOSE UNMASKED PIXELS HOLD LESS THAN THIS FRACTION OF THE OBJECT PROFILE (DY-2195). 0 KEEPS EVERY SLICE
     horne-extraction-minimum-profile-fraction: 0.05
+    # LEAVE A PIXEL OUT OF THE OPTIMAL FLUX WHEN (D - P.f)^2 / V IS MORE THAN THE SQUARE OF THIS SIGMA (DY-2221)
+    horne-extraction-residual-clipping-sigma: 5.0
     # USE LA COSMIC TO REMOVE CRHs BEFORE EXTRACTION
     use_lacosmic: True
     vis:

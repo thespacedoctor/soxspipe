@@ -48,10 +48,14 @@ Where $V_{0}$ is the square of the readout noise of the detector, $f_{\lambda}$ 
 Cosmic rays and uncorrected deviant pixels are removed from the extraction by comparing their value with a certain threshold. In particular, for each pixel $i$ in the extraction window the quantity
 
 $$
-\frac{(D_{i}^{\lambda} - P_{i}{\lambda} f_{\lambda} - S_{i}{\lambda})^2}{V_{i}^{\lambda}}
+\frac{(D_{i}^{\lambda} - P_{i}^{\lambda} f_{\lambda} - S_{i}^{\lambda})^2}{V_{i}^{\lambda}}
 $$
 
-is computed. Note: unverified. The current code applies no clip to this quantity; the only outlier clips are the profile-fit clip above and the pre-fit clip below. Confirm before publishing.
+is computed. Here $D - S$ is the sky-subtracted flux, and $V$ is the rectified variance from the error extension, not the model variance above. The profile-fraction check below is applied after this clip.
+
+In each wavelength column, the pixel with the largest value is removed from the optimal flux if the value is more than the square of `horne-extraction-residual-clipping-sigma` (default 5). Then $f_{\lambda}$ is computed again from the remaining pixels, and the step repeats until no pixel passes the limit, for at most 5 passes. The boxcar fluxes keep the removed pixels. If cosmic rays hit most of the profile in one column, for example the two brightest rows of a short slit, the clip cannot tell them from the object and can remove clean pixels instead.
+
+In NIR columns with no object, the stated variance is larger than the scatter of the rectified pixels, so the default limit removes fewer noise pixels than a limit of 5 standard deviations of the real noise. On 10 VIS and NIR stare, nod and offset frames, the clip mostly removes positive spikes in faint orders. In bright columns it also removes pixels where the fitted profile does not match the data, and the order median flux of a bright order changes by 0.7% or less.
 
 Before the profile is fitted, the utility also clips cosmic rays from the rectified order image. It clips along the slit, one wavelength column at a time. It multiplies each pixel by a weight that grows with the distance of its row from the slit centre, so a hot pixel far from the centre is clipped sooner than a bright pixel on the trace. The upper limit is 7 standard deviations, and the clip runs for up to 3 iterations. One pixel in a column of n pixels can be at most √(n − 1) standard deviations from the column mean, so the clip can only fire on slits of about 50 rows or more. The default `horne-extraction-slit-length` is 10 to 20 rows in every shipped recipe block, so the clip clips nothing.
 
