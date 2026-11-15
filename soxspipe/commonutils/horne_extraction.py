@@ -88,6 +88,13 @@ MERGE_VARIANCE_WINDOW = 101
 MINIMUM_PROFILE_FRACTION_SETTING = "horne-extraction-minimum-profile-fraction"
 MINIMUM_PROFILE_FRACTION_DEFAULT = 0.05
 
+# THE RECIPE SETTING FOR THE OPTIMAL EXTRACTION: A PIXEL WHOSE RESIDUAL FROM THE PROFILE MODEL, (D - P.f)^2 / V, IS
+# MORE THAN THE SQUARE OF THIS SIGMA IS LEFT OUT OF THE OPTIMAL FLUX (HORNE 1986 STEP 8, DY-2221). ONE PIXEL PER
+# WAVELENGTH COLUMN IS REJECTED PER PASS, FOR AT MOST RESIDUAL_CLIP_MAX_PASSES PASSES
+RESIDUAL_CLIPPING_SIGMA_SETTING = "horne-extraction-residual-clipping-sigma"
+RESIDUAL_CLIPPING_SIGMA_DEFAULT = 5.0
+RESIDUAL_CLIP_MAX_PASSES = 5
+
 
 @dataclass(frozen=True)
 class FlatPassHandoff:
@@ -601,6 +608,7 @@ class horne_extraction(base_util):
             axisB=self.axisB,
             hornePolyOrder=self.recipeSettings["horne-extraction-profile-poly-order"],
             minimumProfileFraction=read_minimum_profile_fraction(self.recipeSettings),
+            residualClippingSigma=read_residual_clipping_sigma(self.recipeSettings),
             debug=self.debug,
             boxcarOnly=self.traceFallback,
             turnOffMP=True,
@@ -3014,6 +3022,7 @@ def extract_single_order(
     axisB,
     hornePolyOrder=3,
     minimumProfileFraction=MINIMUM_PROFILE_FRACTION_DEFAULT,
+    residualClippingSigma=RESIDUAL_CLIPPING_SIGMA_DEFAULT,
     debug=False,
     boxcarOnly=False,
 ):
@@ -3032,6 +3041,8 @@ def extract_single_order(
     - ``hornePolyOrder`` -- order of the polynomial fitted to the object profile along the dispersion axis. Default *3*
     - ``minimumProfileFraction`` -- a slice whose unmasked pixels hold less than this fraction of the normalised object
       profile is dropped from the optimal extraction. Default ``MINIMUM_PROFILE_FRACTION_DEFAULT``
+    - ``residualClippingSigma`` -- a pixel whose residual from the profile model passes this many standard deviations is
+      left out of the optimal flux. Default ``RESIDUAL_CLIPPING_SIGMA_DEFAULT``
     - ``debug`` -- show the rectified images. Default *False*
     - ``boxcarOnly`` -- skip the object-profile fit and report the robust boxcar sum as the extracted spectrum. Used
       when no object trace was found. Default *False*
@@ -3076,6 +3087,7 @@ def extract_single_order(
             order=order,
             debug=debug,
             minimumProfileFraction=minimumProfileFraction,
+            residualClippingSigma=residualClippingSigma,
         )
         _log_profile_clip_cap(
             log=funclog,
@@ -3114,6 +3126,7 @@ def _extract_optimal_order(
     axisB,
     order,
     minimumProfileFraction=MINIMUM_PROFILE_FRACTION_DEFAULT,
+    residualClippingSigma=RESIDUAL_CLIPPING_SIGMA_DEFAULT,
     debug=False,
 ):
     """*fit the object profile of one order and extract it optimally*
@@ -3156,6 +3169,7 @@ def _extract_optimal_order(
         orderRectifiedImages=orderRectifiedImages,
         order=order,
         minimumProfileFraction=minimumProfileFraction,
+        residualClippingSigma=residualClippingSigma,
     )
     return extractions, capRows
 
@@ -3219,11 +3233,41 @@ def read_minimum_profile_fraction(recipeSettings: Mapping) -> float:
     return float(fraction)
 
 
+def read_residual_clipping_sigma(recipeSettings: Mapping) -> float:
+    """*read the residual clipping threshold of the optimal extraction from the recipe settings*
+
+    **Key Arguments:**
+
+    - ``recipeSettings`` -- the recipe settings dictionary
+
+    **Return:**
+
+    - ``residualClippingSigma`` -- the setting, or ``RESIDUAL_CLIPPING_SIGMA_DEFAULT`` when the key is absent
+
+    **Raises:**
+
+    - ``ValueError`` -- if the setting is not a finite number above 0
+
+    **Usage:**
+
+        residualClippingSigma = read_residual_clipping_sigma(self.recipeSettings)
+    """
+    import math
+
+    sigma = recipeSettings.get(RESIDUAL_CLIPPING_SIGMA_SETTING, RESIDUAL_CLIPPING_SIGMA_DEFAULT)
+    if isinstance(sigma, bool) or not isinstance(sigma, (int, float)) or not math.isfinite(sigma) or sigma <= 0:
+        raise ValueError(
+            f"The `{RESIDUAL_CLIPPING_SIGMA_SETTING}` setting must be a finite number above 0, not {sigma!r}"
+        )
+    return float(sigma)
+
+
 def compute_extractions(
     crossDispersionSlicesDF: "pd.DataFrame",
     orderRectifiedImages: dict,
     order: int,
     minimumProfileFraction: float = MINIMUM_PROFILE_FRACTION_DEFAULT,
+    residualClippingSigma: float = RESIDUAL_CLIPPING_SIGMA_DEFAULT,
 ) -> "pd.DataFrame":
     """*compute the optimal and boxcar extracted spectra of an order from its cross-dispersion slices*
 
@@ -3234,6 +3278,9 @@ def compute_extractions(
     - ``order`` -- the order number
     - ``minimumProfileFraction`` -- a slice whose unmasked pixels hold less than this fraction of the normalised object
       profile gets no optimal flux and is dropped (DY-2195). Default ``MINIMUM_PROFILE_FRACTION_DEFAULT``
+    - ``residualClippingSigma`` -- a pixel whose residual from the profile model passes this many standard deviations is
+      left out of the optimal flux, its variance and its SNR (DY-2221). The boxcar columns keep it. Default
+      ``RESIDUAL_CLIPPING_SIGMA_DEFAULT``
 
     **Return:**
 
@@ -3249,23 +3296,33 @@ def compute_extractions(
     # WORK ON A COPY SO THE CALLER'S SLICES FRAME IS NEVER MODIFIED
     crossDispersionSlicesDF = crossDispersionSlicesDF.copy()
 
+    # REJECT COSMIC RAYS AND DEVIANT PIXELS THAT SURVIVED THE PROFILE FIT (HORNE 86 STEP 8). ONLY THE OPTIMAL SUMS USE
+    # THIS MASK; THE BOXCAR COLUMNS AND THE MEAN WAVELENGTH KEEP THE INPUT MASK
+    optimalMask = _clip_residual_outliers(
+        fluxRaw=orderRectifiedImages["fluxRaw"],
+        objectProfile=orderRectifiedImages["objectProfile"],
+        variance=orderRectifiedImages["variance"],
+        mask=orderRectifiedImages["mask"],
+        clippingSigma=residualClippingSigma,
+    )
+
     # CALCULATE HORNE 86 NUMERATOR (EQU 8)
     orderRectifiedImages["horneNumerator"] = np.ma.masked_array(
         orderRectifiedImages["fluxRaw"] * orderRectifiedImages["objectProfile"] / orderRectifiedImages["variance"],
-        mask=orderRectifiedImages["mask"],
+        mask=optimalMask,
     )
     horneNumeratorSum = orderRectifiedImages["horneNumerator"].T.sum(axis=1)
 
     # CALCULATE HORNE 86 DENOMINATOR (EQU 8)
     orderRectifiedImages["horneDenominator"] = np.ma.masked_array(
         np.power(orderRectifiedImages["objectProfile"], 2) / orderRectifiedImages["variance"],
-        mask=orderRectifiedImages["mask"],
+        mask=optimalMask,
     )
     horneDenominatorSum = orderRectifiedImages["horneDenominator"].T.sum(axis=1)
 
     orderRectifiedImages["optimalExtraction"] = np.ma.masked_array(
         orderRectifiedImages["horneNumerator"] / orderRectifiedImages["horneDenominator"],
-        mask=orderRectifiedImages["mask"],
+        mask=optimalMask,
     )
 
     # plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
@@ -3274,9 +3331,10 @@ def compute_extractions(
     crossDispersionSlicesDF["wavelengthMean"] = np.ma.mean(wavelengthMasked.T, axis=1)
 
     # A SLICE WHOSE UNMASKED PIXELS HOLD ALMOST NONE OF THE PROFILE HAS TINY HORNE SUMS WITH A FINITE BUT MEANINGLESS
-    # RATIO. GIVE IT NO OPTIMAL FLUX, SO THE CLEAN-UP BELOW DROPS IT (DY-2195)
+    # RATIO. GIVE IT NO OPTIMAL FLUX, SO THE CLEAN-UP BELOW DROPS IT (DY-2195). MEASURED AFTER THE RESIDUAL CLIP, SO A
+    # SLICE THAT LOSES ITS CORE TO THE CLIP IS DROPPED TOO
     unmaskedProfileFraction = (
-        np.ma.masked_array(orderRectifiedImages["objectProfile"], mask=orderRectifiedImages["mask"]).T.sum(axis=1)
+        np.ma.masked_array(orderRectifiedImages["objectProfile"], mask=optimalMask).T.sum(axis=1)
     ).filled(0.0)
     tooLittleProfile = unmaskedProfileFraction < minimumProfileFraction
     horneDenominatorSum = np.ma.masked_where(tooLittleProfile, horneDenominatorSum)
@@ -3297,6 +3355,53 @@ def compute_extractions(
     )
 
     return _sort_and_clean_extractions(crossDispersionSlicesDF)
+
+
+def _clip_residual_outliers(
+    fluxRaw: "np.ndarray",
+    objectProfile: "np.ndarray",
+    variance: "np.ndarray",
+    mask: "np.ndarray",
+    clippingSigma: float,
+) -> "np.ndarray":
+    """*mask the pixels whose residual from the optimal-extraction profile model is too large (Horne 1986 step 8)*
+
+    Each pass computes the optimal flux f of every wavelength column from its unmasked pixels, then the residual
+    (D - P.f)^2 / V of each unmasked pixel. In every column, the pixel with the largest residual is masked when the
+    residual passes ``clippingSigma`` squared. The passes stop when no column has such a pixel, or after
+    ``RESIDUAL_CLIP_MAX_PASSES`` passes. A column with a non-finite flux or residual is left as it is.
+
+    **Key Arguments:**
+
+    - ``fluxRaw`` -- the rectified sky-subtracted flux D (rows are slit positions, columns are wavelength)
+    - ``objectProfile`` -- the normalised object profile P, same shape
+    - ``variance`` -- the rectified variance V, same shape
+    - ``mask`` -- the boolean input mask, True where a pixel is masked. It is not modified
+    - ``clippingSigma`` -- the rejection threshold in standard deviations
+
+    **Return:**
+
+    - ``clippedMask`` -- a new boolean mask: the input mask plus the rejected pixels
+    """
+    import numpy as np
+
+    clippedMask = np.array(mask, dtype=bool)
+    threshold = clippingSigma**2
+    columns = np.arange(fluxRaw.shape[1])
+    with np.errstate(divide="ignore", invalid="ignore"):
+        weights = objectProfile / variance
+        for _ in range(RESIDUAL_CLIP_MAX_PASSES):
+            numerator = np.where(clippedMask, 0.0, weights * fluxRaw).sum(axis=0)
+            denominator = np.where(clippedMask, 0.0, weights * objectProfile).sum(axis=0)
+            flux = numerator / denominator
+            residual = (fluxRaw - objectProfile * flux) ** 2 / variance
+            residual = np.where(clippedMask | ~np.isfinite(residual), -np.inf, residual)
+            worstRow = np.argmax(residual, axis=0)
+            isOutlier = residual[worstRow, columns] > threshold
+            if not isOutlier.any():
+                break
+            clippedMask[worstRow[isOutlier], columns[isOutlier]] = True
+    return clippedMask
 
 
 def compute_boxcar_extractions(crossDispersionSlicesDF, orderRectifiedImages):
