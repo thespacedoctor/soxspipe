@@ -50,7 +50,7 @@
 ```
 ````
 
-````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, globalClippingSigma, axisA, axisB, hornePolyOrder=3, debug=False)
+````{py:function} extract_single_order(crossDispersionSlices, funclog, ron, slitHalfLength, clippingSigma, clippingIterationLimit, axisA, axisB, hornePolyOrder=3, debug=False)
 :canonical: soxspipe.commonutils.horne_extraction.extract_single_order
 
 ```{autodoc2-docstring} soxspipe.commonutils.horne_extraction.extract_single_order

@@ -121,7 +121,6 @@ def _configure_synthetic_orchestration(
     extractor.turnOffMP = True
     extractor.clippingSigma = 3.0
     extractor.clippingIterationLimit = 2
-    extractor.globalClippingSigma = 3.0
     extractor.axisA = "x"
     extractor.axisB = "y"
     extractor.recipeSettings = {"horne-extraction-profile-poly-order": 2}
@@ -340,8 +339,14 @@ def _construct_extractor(
     omitHeaderKeys: tuple[str, ...] = (),
     scienceHeaders: object = False,
     slitOffsetsArcsec: object = None,
+    unflattenedLevel: float | None = None,
+    extraRecipeSettings: dict[str, object] | None = None,
 ) -> tuple[horne_extraction, dict[str, object]]:
-    """Build an extractor through its real constructor, with synthetic trace detection."""
+    """Build an extractor through its real constructor, with synthetic trace detection.
+
+    The sky-subtracted frame is all ones. ``unflattenedLevel`` gives the unflattened frame that constant value instead
+    of passing the sky-subtracted frame as both.
+    """
     import soxspipe.commonutils as commonutils
     import soxspipe.commonutils.toolkit as toolkit
     from soxspipe.commonutils.base_util import base_util
@@ -360,6 +365,9 @@ def _construct_extractor(
         mask=np.zeros((3, 3), dtype=bool),
         uncertainty=StdDevUncertainty(np.ones((3, 3)), unit=u.electron),
     )
+    unflattenedFrame = frame if unflattenedLevel is None else frame.copy()
+    if unflattenedLevel is not None:
+        unflattenedFrame.data[:] = unflattenedLevel
     orderPixels = pd.DataFrame(
         {
             "order": [10, 10],
@@ -425,10 +433,10 @@ def _construct_extractor(
             "horne-extraction-slit-length": slitLength,
             "horne-extraction-profile-clipping-sigma": 3.0,
             "horne-extraction-profile-clipping-iteration-count": 2,
-            "horne-extraction-profile-global-clipping-sigma": 4.0,
+            **(extraRecipeSettings or {}),
         },
         skySubtractedFrame=frame,
-        unflattenedFrame=frame,
+        unflattenedFrame=unflattenedFrame,
         twoDMapPath="two-d-map.fits",
         recipeName=recipeName,
         qcTable=pd.DataFrame(),
@@ -547,6 +555,45 @@ def test_constructor_tells_trace_detection_whether_the_extraction_is_not_flatten
     )
 
     assert captured["notFlattened"] is notFlattened
+
+
+@pytest.mark.parametrize("notFlattened", [False, True])
+def test_constructor_extracts_from_the_sky_subtracted_frame_the_caller_passes(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    notFlattened: bool,
+) -> None:
+    """The not-flattened pass reads the frame passed as ``skySubtractedFrame``, not the unflattened frame (DY-1976)."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        notFlattened=notFlattened,
+        unflattenedLevel=5.0,
+    )
+
+    np.testing.assert_array_equal(extractor.skySubtractedFrame.data, np.ones((3, 3)))
+    np.testing.assert_array_equal(extractor.unflattenedFrame.data, np.full((3, 3), 5.0))
+
+
+def test_constructor_ignores_the_removed_global_clipping_sigma_key_in_a_workspace_settings_file(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A workspace ``soxspipe.yaml`` that still holds the removed key changes nothing (DY-1976)."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=False,
+        extraRecipeSettings={"horne-extraction-profile-global-clipping-sigma": 4.0},
+    )
+
+    assert extractor.clippingSigma == 3.0
+    assert not hasattr(extractor, "globalClippingSigma")
 
 
 def test_constructor_builds_a_table_of_every_order_when_no_trace_is_found_and_fallback_is_on(
@@ -817,7 +864,6 @@ def test_constructor_names_products_without_a_sof_name(
             "horne-extraction-slit-length": 20,
             "horne-extraction-profile-clipping-sigma": 3,
             "horne-extraction-profile-clipping-iteration-count": 5,
-            "horne-extraction-profile-global-clipping-sigma": 25,
         },
         skySubtractedFrame=frame,
         unflattenedFrame=frame,
@@ -2517,7 +2563,6 @@ def test_single_order_extraction_returns_sorted_science_columns(log: object) -> 
         slitHalfLength=1,
         clippingSigma=3.0,
         clippingIterationLimit=2,
-        globalClippingSigma=3.0,
         axisA="y",
         axisB="x",
         hornePolyOrder=0,
@@ -2558,7 +2603,6 @@ def _boxcar_only_order(log: object) -> pd.DataFrame | None:
         slitHalfLength=1,
         clippingSigma=3.0,
         clippingIterationLimit=2,
-        globalClippingSigma=3.0,
         axisA="y",
         axisB="x",
         hornePolyOrder=0,
@@ -2611,7 +2655,6 @@ def test_single_order_extraction_marks_slices_where_the_object_spills_over_the_s
         slitHalfLength=6,
         clippingSigma=3.0,
         clippingIterationLimit=5,
-        globalClippingSigma=3.0,
         axisA="y",
         axisB="x",
         hornePolyOrder=0,
@@ -2974,7 +3017,6 @@ def _extract_noisy_order(
         slitHalfLength=2,
         clippingSigma=clippingSigma,
         clippingIterationLimit=clippingIterationLimit,
-        globalClippingSigma=3.0,
         axisA="y",
         axisB="x",
         hornePolyOrder=hornePolyOrder,
@@ -3097,7 +3139,6 @@ def test_single_order_extraction_logs_the_rows_zeroed_for_too_few_points_at_debu
         slitHalfLength=2,
         clippingSigma=5.0,
         clippingIterationLimit=5,
-        globalClippingSigma=3.0,
         axisA="y",
         axisB="x",
         hornePolyOrder=7,

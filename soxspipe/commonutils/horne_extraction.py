@@ -283,9 +283,6 @@ class horne_extraction(base_util):
         else:
             self.notFlattened = ""
 
-        if notFlattened:
-            self.skySubtractedFrame = unflattenedFrame
-
         # DETECTING SEQUENCE AUTOMATICALLY
         self.noddingSequence = nodding_sequence_suffix(
             header=skySubtractedFrame.header, locationSetIndex=locationSetIndex, recipeName=recipeName
@@ -296,7 +293,6 @@ class horne_extraction(base_util):
         self.slitHalfLength = self.recipeSettings["horne-extraction-slit-length"] / 2
         self.clippingSigma = self.recipeSettings["horne-extraction-profile-clipping-sigma"]
         self.clippingIterationLimit = self.recipeSettings["horne-extraction-profile-clipping-iteration-count"]
-        self.globalClippingSigma = self.recipeSettings["horne-extraction-profile-global-clipping-sigma"]
 
         # OPEN THE SKY-SUBTRACTED FRAME
         if isinstance(skySubtractedFrame, CCDData):
@@ -601,7 +597,6 @@ class horne_extraction(base_util):
             slitHalfLength=self.slitHalfLength,
             clippingSigma=self.clippingSigma,
             clippingIterationLimit=self.clippingIterationLimit,
-            globalClippingSigma=self.globalClippingSigma,
             axisA=self.axisA,
             axisB=self.axisB,
             hornePolyOrder=self.recipeSettings["horne-extraction-profile-poly-order"],
@@ -3015,7 +3010,6 @@ def extract_single_order(
     slitHalfLength,
     clippingSigma,
     clippingIterationLimit,
-    globalClippingSigma,
     axisA,
     axisB,
     hornePolyOrder=3,
@@ -3033,7 +3027,6 @@ def extract_single_order(
     - ``slitHalfLength`` -- half-length of the extraction aperture in detector pixels
     - ``clippingSigma`` -- sigma used to clip outliers when fitting the object profile
     - ``clippingIterationLimit`` -- iteration limit for the profile clipping
-    - ``globalClippingSigma`` -- sigma used to clip the profile globally
     - ``axisA`` -- the dispersion axis
     - ``axisB`` -- the cross-dispersion axis
     - ``hornePolyOrder`` -- order of the polynomial fitted to the object profile along the dispersion axis. Default *3*
@@ -3707,11 +3700,14 @@ def _sigma_clip_and_mask(fluxRaw, bpMask):
     import numpy as np
     from astropy.stats import sigma_clip
 
-    # BUILDS A 2D DISTANCE-FROM-CENTER WEIGHTING ARRAY (SAME SHAPE AS fluxRaw) .. ONLY USED FOR SIGMA-CLIPPING THE FLUX ARRAY, NOT FOR WEIGHTING THE PROFILE FITTING
-    # EACH ROW GETS IDENTICAL CENTER-DISTANCE WEIGHTS, LATER USED TO BIAS SIGMA-CLIPPING SO OUTLIERS FARTHER FROM THE CENTER ARE PENALIZED MORE.
+    # IN A RECTIFIED ORDER IMAGE THE ROWS ARE SLIT POSITIONS AND THE COLUMNS ARE WAVELENGTHS
+    # BUILDS A 2D DISTANCE-FROM-SLIT-CENTRE WEIGHTING ARRAY (SAME SHAPE AS fluxRaw) .. ONLY USED FOR SIGMA-CLIPPING THE
+    # FLUX ARRAY, NOT FOR WEIGHTING THE PROFILE FITTING
+    # EVERY COLUMN GETS IDENTICAL CENTRE-DISTANCE WEIGHTS, LATER USED TO BIAS SIGMA-CLIPPING SO OUTLIERS FARTHER FROM
+    # THE SLIT CENTRE ARE PENALISED MORE. THE CLIP RUNS ALONG THE SLIT (AXIS 0), ONE WAVELENGTH COLUMN AT A TIME
     sliceIndexArray = np.tile(
-        np.abs(np.arange(fluxRaw.shape[1]) - fluxRaw.shape[1] // 2) * 50 + 1,
-        (fluxRaw.shape[0], 1),
+        (np.abs(np.arange(fluxRaw.shape[0]) - fluxRaw.shape[0] // 2) * 50 + 1)[:, np.newaxis],
+        (1, fluxRaw.shape[1]),
     )
     bpMask[bpMask > 1] = 1
     fluxRawMasked = np.ma.array(fluxRaw, mask=np.isnan(fluxRaw) | bpMask)
@@ -3722,7 +3718,7 @@ def _sigma_clip_and_mask(fluxRaw, bpMask):
         maxiters=3,
         cenfunc="mean",
         stdfunc="std",
-        axis=1,
+        axis=0,
     )
 
     ## COMPUTE NUMBER OF NEWLY MASKED PIXELS IN EACH ROW AFTER SIGMA-CLIPPING

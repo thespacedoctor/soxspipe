@@ -51,7 +51,9 @@ $$
 \frac{(D_{i}^{\lambda} - P_{i}{\lambda} f_{\lambda} - S_{i}{\lambda})^2}{V_{i}^{\lambda}}
 $$
 
-is computed. The extraction does not include pixels for which this quantity exceeds the `horne-extraction-profile-global-clipping-sigma`. 
+is computed. Note: unverified. The current code applies no clip to this quantity; the only outlier clips are the profile-fit clip above and the pre-fit clip below. Confirm before publishing.
+
+Before the profile is fitted, the utility also clips cosmic rays from the rectified order image. It clips along the slit, one wavelength column at a time. It multiplies each pixel by a weight that grows with the distance of its row from the slit centre, so a hot pixel far from the centre is clipped sooner than a bright pixel on the trace. The upper limit is 7 standard deviations, and the clip runs for up to 3 iterations. One pixel in a column of n pixels can be at most √(n − 1) standard deviations from the column mean, so the clip can only fire on slits of about 50 rows or more. The default `horne-extraction-slit-length` is 10 to 20 rows in every shipped recipe block, so the clip clips nothing.
 
 The final flux for each cross-dispersion slice is a weighted sum, as reported in {cite:t}`horne1986`, with the bad pixels and outliers accounted for. Note, if more than 3 bad/outlying pixels are found within a cross-dispersion slice, then the slice is ignored.
 
