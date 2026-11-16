@@ -8,7 +8,24 @@ Date Created
 : November 16, 2026
 """
 
+from typing import NamedTuple
+
 from soxspipe.commonutils.toolkit import utcnow_string
+
+
+class reduction_inputs(NamedTuple):
+    """The calibration inputs of a stare reduction: the calibration frames and the paths of the calibration tables.
+
+    ``masterBias``, ``dark`` and ``masterFlat`` are a frame or False. ``responseFunctionPath`` is a path or False.
+    """
+
+    masterBias: object
+    dark: object
+    masterFlat: object
+    orderTablePath: str
+    dispMap: str
+    twoDMap: str
+    responseFunctionPath: object
 
 
 class nod_stare_stacking:
@@ -55,12 +72,19 @@ class nod_stare_stacking:
         - ``framesB`` -- the B frames
         - ``namesA`` -- the raw file names of the A frames
         - ``namesB`` -- the raw file names of the B frames
+
+        **Raises:**
+
+        - ``ValueError`` -- when ``objectFrameNames`` does not hold one name for each frame
         """
         from soxspipe.commonutils.nod_frames import check_ab_balance, split_ab_frames
 
         names = list(self.objectFrameNames)
         if len(names) != len(allObjectFrames):
-            names = [None] * len(allObjectFrames)
+            raise ValueError(
+                f"The recipe holds {len(allObjectFrames)} object frames but {len(names)} raw file names, so the "
+                "frames cannot be named for the slit alignment."
+            )
         framesA, framesB, offsetsA, offsetsB, namesA, namesB = split_ab_frames(allObjectFrames, names, self.kw)
         check_ab_balance(self.log, offsetsA, offsetsB)
         return framesA, framesB, namesA, namesB
@@ -78,7 +102,7 @@ class nod_stare_stacking:
         - ``framesB`` -- the B frames
         - ``namesA`` -- the raw file names of the A frames
         - ``namesB`` -- the raw file names of the B frames
-        - ``inputs`` -- the calibration inputs of `_read_reduction_inputs`
+        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`
 
         **Return:**
 
@@ -86,21 +110,21 @@ class nod_stare_stacking:
         - ``flattened`` -- the stack of the flat-fielded frames. The same frame as ``notFlattened`` when no master flat
           is used
         """
-        master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, _ = inputs
-
-        framesA = self._detrend_nod_frames(framesA, master_bias, dark, orderTablePath)
-        framesB = self._detrend_nod_frames(framesB, master_bias, dark, orderTablePath)
+        framesA = self._detrend_nod_frames(framesA, inputs.masterBias, inputs.dark, inputs.orderTablePath)
+        framesB = self._detrend_nod_frames(framesB, inputs.masterBias, inputs.dark, inputs.orderTablePath)
         if len(framesA) + len(framesB) > 1:
             # EACH FRAME'S SCATTERED-LIGHT FIT ADDED A ROW FOR THE ONE PLOT FILE THE LAST FRAME LEFT
             self.products = self.products.drop_duplicates(subset=["product_label", "file_name"], keep="last")
 
-        plan = self._align_nod_frames(framesA, framesB, namesA, namesB, twoDMap, dispMap)
+        framesA, framesB, plan = self._align_nod_frames(
+            framesA, framesB, namesA, namesB, inputs.twoDMap, inputs.dispMap
+        )
         notFlattened = self._stack_shifted_nod_frames(framesA, framesB, plan)
-        if master_flat is False:
+        if inputs.masterFlat is False:
             return notFlattened, notFlattened
 
-        framesA = self._flat_field_nod_frames(framesA, master_flat)
-        framesB = self._flat_field_nod_frames(framesB, master_flat)
+        framesA = self._flat_field_nod_frames(framesA, inputs.masterFlat)
+        framesB = self._flat_field_nod_frames(framesB, inputs.masterFlat)
         return notFlattened, self._stack_shifted_nod_frames(framesA, framesB, plan)
 
     def _detrend_nod_frames(self, frames, master_bias, dark, orderTablePath):
@@ -144,9 +168,10 @@ class nod_stare_stacking:
     def _align_nod_frames(self, framesA, framesB, namesA, namesB, twoDMap, dispMap):
         """*align the A frames to each other and the B frames to each other, and plan the shift of B onto A*
 
-        The ``framesA`` and ``framesB`` lists are changed in place: each original frame is replaced by its aligned
-        frame. The plan comes from the object position measured at both nod positions. When it cannot be measured
-        there, the plan is the nominal nod throw of the headers. Updates ``self.qc``.
+        The slit alignment also replaces the items of the ``framesA`` and ``framesB`` lists, to release the original
+        frames early. The caller uses the lists this method returns. The plan comes from the object position measured
+        at both nod positions. When it cannot be measured there, the plan is the nominal nod throw of the headers.
+        Updates ``self.qc``.
 
         **Key Arguments:**
 
@@ -159,7 +184,13 @@ class nod_stare_stacking:
 
         **Return:**
 
+        - ``framesA`` -- the aligned A frames
+        - ``framesB`` -- the aligned B frames
         - ``plan`` -- the ``shift_and_add_plan`` whose ``orderShifts`` move a B frame onto the A frames
+
+        **Raises:**
+
+        - ``ValueError`` -- when the alignment measured no group, so there is no 2D map for the nominal throw
         """
         from soxspipe.commonutils.nod_frames import aligns_each_order, nominal_throw_shift_plan
         from soxspipe.commonutils.nod_shift_and_add import build_shift_and_add_plan
@@ -177,13 +208,16 @@ class nod_stare_stacking:
             startNightDate=self.startNightDate,
             measureSingleFrames=True,
         )
+        framesA, framesB = list(results[0].frames), list(results[1].frames)
         plan = build_shift_and_add_plan(self.log, *results)
         isNominal = plan is None
         if isNominal:
             mapImages = results[0].mapImages if results[0].mapImages is not None else results[1].mapImages
+            if mapImages is None:
+                raise ValueError("The slit alignment read no 2D map, so the nominal nod throw cannot be applied.")
             plan = nominal_throw_shift_plan(self.log, framesA, framesB, mapImages, self.kw)
         self._record_nod_shift_source(isNominal, framesA[0].header[self.kw("DATE_OBS")])
-        return plan
+        return framesA, framesB, plan
 
     def _record_nod_shift_source(self, isNominal, obsDateUtc):
         """*record in the QC table whether the B frames were shifted by the nominal nod throw*

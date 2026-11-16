@@ -62,7 +62,7 @@ In stare mode:
 - The recipe models the sky in each frame and subtracts it. It does not subtract the frame at the other nod position.
 - The recipe stacks the frames, or extracts each frame with `--no-stack`, as for a stare SOF.
 - The NIR arm needs a master dark (`MASTER_DARK_NIR`) in the SOF, because no subtraction of frames removes the dark. The data organiser adds a matching master dark to the NIR nodding SOFs when one exists. If your workspace is older, run `soxspipe prep --refresh`. A NIR stare-mode run without a master dark stops with an error before the reduction.
-- The recipe writes the product files with the marker `_STAREMODE` in their names (see [file naming](../../soxs_file_naming_scheme.md)). The data organiser does not predict these products. A later SOF does not use them, for example the response curve of a standard star. Nod-mode products and the status of the nod SOF do not change.
+- The recipe writes the product files with the marker `_STAREMODE` in their names (see [file naming](../../soxs_file_naming_scheme.md)). The data organiser does not predict these products. A later SOF does not use them, for example the response curve of a standard star. The files of an earlier nod-mode reduction of the SOF stay as they are. The stare-mode run writes the status of the SOF (pass or fail) to the database, so it replaces the status of an earlier nod-mode run of the same SOF.
 
 ## Speed up Reductions with Multiprocessing
 

@@ -1265,3 +1265,97 @@ def test_main_writes_the_run_trailer_to_the_recipe_log_then_detaches_its_handler
     assert "Recipe Run Time: 0s" in recipeLogText
     assert not (tmp_path / "A" / "A_ERROR.log").exists()
     assert attached
+
+
+def _predict_by_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, existing: set[str]) -> list[tuple[object, ...]]:
+    """Make `predict_product_path` name a file in `tmp_path` by recipe and marker, and create those in ``existing``."""
+    calls: list[tuple[object, ...]] = []
+
+    def predict(*args: object) -> tuple[str, str]:
+        calls.append(args)
+        path = tmp_path / f"{args[1]}{args[2] if len(args) > 2 else ''}.fits"
+        if path.name in existing:
+            path.touch()
+        return str(path), "2025-12-11"
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils.toolkit"), "predict_product_path", predict)
+    return calls
+
+
+def _recording_recipes(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[dict[str, object]]]:
+    calls: dict[str, list[dict[str, object]]] = {"stare": [], "nod": []}
+
+    def recorder(name: str) -> type:
+        class Recording:
+            def __init__(self, **kwargs: object) -> None:
+                calls[name].append(kwargs)
+
+            def produce_product(self) -> str:
+                return "product.fits"
+
+        return Recording
+
+    recipes = import_module("soxspipe.recipes")
+    monkeypatch.setattr(recipes, "soxs_stare", recorder("stare"))
+    monkeypatch.setattr(recipes, "soxs_nod", recorder("nod"))
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("argv", "settings", "existing", "expectsRun"),
+    [
+        # THE KEY MAKES THE RUN A STARE-MODE RUN, SO AN EXISTING NOD PRODUCT IS NOT ITS PRODUCT
+        (
+            ["soxspipe", "nod", "x_NOD_OBJ.sof", "-s", "soxspipe.yaml"],
+            {"soxs-nod": {"reduce-as-stare": True}},
+            {"soxs-nod.fits"},
+            True,
+        ),
+        (
+            ["soxspipe", "nod", "x_NOD_OBJ.sof", "-s", "soxspipe.yaml"],
+            {"soxs-nod": {"reduce-as-stare": True}},
+            {"soxs-stare_STAREMODE.fits"},
+            False,
+        ),
+        (["soxspipe", "nod", "x_NOD_OBJ.sof", "-s", "soxspipe.yaml"], {}, {"soxs-nod.fits"}, False),
+        (["soxspipe", "nod", "x_NOD_OBJ.sof", "-s", "soxspipe.yaml"], {}, {"soxs-stare_STAREMODE.fits"}, True),
+        (["soxspipe", "nod", "x_NOD_OBJ.sof", "--stare"], {}, {"soxs-nod.fits"}, True),
+        (["soxspipe", "nod_std", "x_NOD_STD_FLUX.sof", "--stare"], {}, {"soxs-stare-std_STAREMODE.fits"}, False),
+    ],
+)
+def test_main_skips_a_nod_command_only_when_the_product_of_its_own_mode_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    settings: dict[str, object],
+    existing: set[str],
+    expectsRun: bool,
+) -> None:
+    # ARRANGE
+    _predict_by_marker(monkeypatch, tmp_path, existing)
+    calls = _recording_recipes(monkeypatch)
+
+    # ACT
+    try:
+        _run_cli(monkeypatch, tmp_path, argv, settings={"workspace-root-dir": str(tmp_path), **settings})
+    except SystemExit as error:
+        assert error.code == 0
+
+    # ASSERT
+    assert (len(calls["nod"]) + len(calls["stare"]) == 1) is expectsRun
+    assert ("already exists" in capsys.readouterr().out) is not expectsRun
+
+
+def test_main_does_not_skip_a_nod_command_with_an_existing_product_when_overwrite_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    _predict_by_marker(monkeypatch, tmp_path, {"soxs-nod.fits"})
+    calls = _recording_recipes(monkeypatch)
+
+    # ACT
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", "-x", "nod", "x_NOD_OBJ.sof", "-s", "soxspipe.yaml"])
+
+    # ASSERT
+    assert len(calls["nod"]) == 1

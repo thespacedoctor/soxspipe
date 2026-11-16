@@ -134,3 +134,36 @@ def test_nod_recipe_reads_the_standard_block_for_a_standard_sof(monkeypatch: pyt
     # ASSERT
     assert stareCalls == []
     assert len(nodCalls) == 1
+
+
+@pytest.mark.parametrize(
+    ("settings", "inputFrames", "isRequested", "recipeName", "marker"),
+    [
+        ({}, SCIENCE_SOF, False, "soxs-nod", ""),
+        ({}, STANDARD_SOF, False, "soxs-nod-std", ""),
+        ({"soxs-nod": {KEY: True}}, SCIENCE_SOF, False, "soxs-stare", "_STAREMODE"),
+        ({"soxs-nod-std": {KEY: True}}, STANDARD_SOF, False, "soxs-stare-std", "_STAREMODE"),
+        ({}, SCIENCE_SOF, True, "soxs-stare", "_STAREMODE"),
+    ],
+)
+def test_predicted_nod_product_path_follows_the_mode_the_recipe_will_run_in(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: dict,
+    inputFrames: str,
+    isRequested: bool,
+    recipeName: str,
+    marker: str,
+) -> None:
+    # ARRANGE
+    calls: list[tuple] = []
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(
+        toolkit, "predict_product_path", lambda *args: calls.append(args) or ("predicted.fits", "night")
+    )
+
+    # ACT
+    path = _stare_mode().predicted_nod_product_path(settings, inputFrames, isRequested)
+
+    # ASSERT
+    assert path == "predicted.fits"
+    assert calls == [(inputFrames, recipeName, marker)]

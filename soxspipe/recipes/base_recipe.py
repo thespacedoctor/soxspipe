@@ -30,6 +30,9 @@ from soxspipe.commonutils.scratch import (
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
 
+# THE `_STD_` RULE THAT NAMES A STANDARD-STAR SOF. ANOTHER LEAF MODULE, WITH NO IMPORTS AT MODULE LEVEL
+from soxspipe.commonutils.stare_mode import is_standard_input
+
 # THE "CALLER DID NOT PASS THIS KEYWORD" SENTINEL USED BY THE add_qc AND
 # add_product DELEGATORS BELOW. IMPORTED FROM `toolkit` RATHER THAN REDEFINED
 # HERE SO THE DELEGATORS FORWARD THE SAME OBJECT `append_qc` AND
@@ -137,7 +140,7 @@ class base_recipe:
 
         self.darkDetrendWarningIssued2 = False
 
-        if isinstance(inputFrames, str) and "_STD_" in inputFrames:
+        if is_standard_input(inputFrames):
             self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
             self.recipeName = self.recipeName.replace("soxs-stare", "soxs-stare-std")
             self.recipeName = self.recipeName.replace("soxs-offset", "soxs-offset-std")

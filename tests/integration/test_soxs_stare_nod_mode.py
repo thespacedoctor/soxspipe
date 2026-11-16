@@ -16,6 +16,7 @@ from astropy.nddata import CCDData
 
 from soxspipe.recipes import soxs_stare
 from soxspipe.recipes.base_recipe import base_recipe
+from soxspipe.recipes.nod_stare_stacking import reduction_inputs
 from tests.factories import synthetic_ccd
 from tests.integration.test_observing_recipe_orchestration import _route, _write_prepared_frame
 from tests.integration.test_soxs_stare_reduction_characterization import _patch_stare, _stare_recipe
@@ -264,7 +265,7 @@ def test_the_tail_uses_a_stack_that_was_detrended_before_stacking_without_detren
     captured = _patch_stare(recipe, monkeypatch, tmp_path, skyResult=_sky_result())
     notFlattened = synthetic_ccd(seed=3, prepared=True)
     flattened = synthetic_ccd(seed=4, prepared=True)
-    inputs = (False, False, False, "order.fits", "disp.fits", "map.fits", False)
+    inputs = reduction_inputs(False, False, False, "order.fits", "disp.fits", "map.fits", False)
     recipe.scienceHeaders = []
     recipe.subtractSky = True
 

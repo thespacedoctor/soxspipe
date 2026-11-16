@@ -26,7 +26,7 @@ from soxspipe.commonutils.toolkit import (
 )
 
 from .base_recipe import base_recipe
-from .nod_stare_stacking import nod_stare_stacking
+from .nod_stare_stacking import nod_stare_stacking, reduction_inputs
 
 os.environ["TERM"] = "vt100"
 
@@ -107,7 +107,8 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             debug=debug,
             verbose=verbose,
             turnOffMP=turnOffMP,
-            # A STARE RECIPE THAT REDUCES STARE FRAMES PASSES NOTHING NEW TO THE BASE RECIPE
+            # PASSED ONLY IN NOD MODE: THE CONSTRUCTOR-CONTRACT TEST (`test_recipe_contracts.py`) PINS THE EXACT
+            # KEYWORDS A NORMAL STARE RECIPE PASSES TO `base_recipe.__init__`
             **({"productNameMarker": NOD_STARE_MARKER} if reduceNodAsStare else {}),
         )
         self.log = log
@@ -604,18 +605,15 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         # THE SKY-MODEL FALLBACK EDITS THE RECIPE SETTINGS IN PLACE, SO EACH FRAME RUNS ON A COPY OF THE ORIGINAL,
         # WHICH IS RESTORED UNTOUCHED
         recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
-        templateStem, templateExtension = os.path.splitext(filenameTemplate)
-        # THE FRAME NUMBER GOES BEFORE THE MARKER, AS THE SOF NAME AND THE STEM DO: <SOF>_F<N>_STAREMODE
-        if self.productNameMarker and templateStem.endswith(self.productNameMarker):
-            templateStem = templateStem[: -len(self.productNameMarker)]
         qcTables = []
         productPath = None
         forceFailure = False
         try:
             for index, (frame, name) in enumerate(zip(allObjectFrames, allObjectNames, strict=True), start=1):
                 self.log.print(f"\n# EXTRACTING OBJECT FRAME {index} OF {len(allObjectFrames)} ({name}) ON ITS OWN")
+                # THE FRAME NUMBER GOES BEFORE THE MARKER: <SOF>_F<N>_STAREMODE
                 self.sofName = f"{sofName}_F{index}"
-                self.filenameTemplate = f"{templateStem}_F{index}{self.productNameMarker}{templateExtension}"
+                self.filenameTemplate = f"{self.productStem}.fits"
                 self.recipeSettings, self.subtractSky = copy.deepcopy(recipeSettings), subtractSky
                 productPath, frameFailure = self._reduce_object_frames([frame], rawFrames=[name])
                 forceFailure = self._combine_failures(forceFailure, frameFailure)
@@ -690,8 +688,9 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
         **Return:**
 
-        - ``inputs`` -- the master bias, the dark, the master flat, the order table path, the dispersion map table
-          path, the dispersion map image path and the response table path (False when none was supplied)
+        - ``inputs`` -- the ``reduction_inputs``: the master bias, the dark, the master flat, the order table path,
+          the dispersion map table path, the dispersion map image path and the response table path (False when none
+          was supplied)
         """
         master_bias, dark, master_flat = self._read_calibration_frames(kw, arm)
         orderTablePath, dispMap, twoDMap, responseFunctionPath = self._locate_calibration_tables(kw, arm)
@@ -703,7 +702,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             self.log.debug(f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}")
             master_flat = False
 
-        return master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath
+        return reduction_inputs(master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath)
 
     def _reduce_stacked_object(
         self, combined_object_notflattened, allObjectFrames, rawFrames=False, inputs=None, detrended=None
@@ -716,7 +715,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``allObjectFrames`` -- the object frames in the stack
         - ``rawFrames`` -- the raw file names the product header lists. Default *False* lists every raw frame of
           the SOF
-        - ``inputs`` -- the calibration inputs of `_read_reduction_inputs`. Default *None* reads them
+        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`. Default *None* reads them
         - ``detrended`` -- the detrended (and flat-fielded) stack, when the frames were detrended before they were
           stacked. Default *None* detrends ``combined_object_notflattened`` here
 

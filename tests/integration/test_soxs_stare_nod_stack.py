@@ -15,7 +15,9 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils.slit_alignment import build_two_d_map_images
 from soxspipe.recipes import soxs_stare
+from soxspipe.recipes.nod_stare_stacking import reduction_inputs
 from tests.factories import pipeline_settings, qc_table
 from tests.factories.slit_alignment import FOOTPRINT_HALF, PIXEL_ARCSEC, synthetic_alignment_map, synthetic_nod_frame
 from tests.integration.test_observing_recipe_orchestration import _empty_products
@@ -66,14 +68,14 @@ def _recipe(log: Any, tmpPath: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
     recipe.qc = qc_table().iloc[0:0].copy()
     recipe.products = _empty_products()
     recipe.dateObs = "2024-01-02T03:04:05.678"
-    recipe.objectFrameNames = ()
+    recipe.objectFrameNames = [f"frame-{index}.fits" for index in range(4)]
     _use_synthetic_trace_samples(monkeypatch, scene)
     return recipe
 
 
 def _inputs(scene: Any, *, masterFlat: Any = "FLAT") -> tuple:
     """The calibration inputs: a bias, no dark, a flat or none, and the order, dispersion and 2D map paths."""
-    return "BIAS", False, masterFlat, "order.fits", "disp.fits", scene.path, False
+    return reduction_inputs("BIAS", False, masterFlat, "order.fits", "disp.fits", scene.path, False)
 
 
 def _record_detrend(recipe: Any, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
@@ -157,7 +159,8 @@ def test_the_dark_is_what_the_nir_frames_are_detrended_with(
 
     # ACT
     recipe._stack_nod_frames(
-        *recipe._split_nod_frames(_frames(scene)), (False, "DARK", False, "order.fits", "disp.fits", scene.path, False)
+        *recipe._split_nod_frames(_frames(scene)),
+        reduction_inputs(False, "DARK", False, "order.fits", "disp.fits", scene.path, False),
     )
 
     # ASSERT: NO FLAT, SO THE FOUR DETRENDS ARE THE ONLY ONES
@@ -278,6 +281,7 @@ def test_unbalanced_nodding_frames_are_refused_before_any_frame_is_detrended(
     detrends = _record_detrend(recipe, monkeypatch)
 
     # ACT / ASSERT
+    recipe.objectFrameNames = recipe.objectFrameNames[:3]
     with pytest.raises(Exception, match="Found 2 A frames and 1 B frames"):
         recipe._split_nod_frames(_frames(scene)[:3])
 
@@ -386,3 +390,67 @@ def test_a_repeated_background_product_row_is_kept_once(
 
     # ASSERT
     assert len(recipe.products) == 1
+
+
+def test_frames_and_names_of_different_numbers_are_refused(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    recipe.objectFrameNames = ["a1.fits", "b1.fits"]
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="4 object frames but 2 raw file names"):
+        recipe._split_nod_frames(_frames(scene))
+
+
+def _stub_alignment(monkeypatch: pytest.MonkeyPatch, alignedA: list[Any], alignedB: list[Any], mapImages: Any) -> None:
+    """Replace the slit alignment with one that leaves the caller's lists alone and returns other frames."""
+    from soxspipe.commonutils.slit_alignment import slit_alignment_result
+
+    results = [
+        slit_alignment_result(tuple(alignedA), pd.DataFrame(), 0, mapImages),
+        slit_alignment_result(tuple(alignedB), pd.DataFrame(), 0, mapImages),
+    ]
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.slit_alignment"), "align_frame_groups_along_slit", lambda **_: results
+    )
+
+
+def test_the_aligned_frames_come_from_the_alignment_results_not_from_a_change_to_the_input_lists(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    framesA, framesB, namesA, namesB = recipe._split_nod_frames(_frames(scene))
+    alignedA, alignedB = list(reversed(framesA)), list(reversed(framesB))
+    _stub_alignment(
+        monkeypatch, alignedA, alignedB, build_two_d_map_images(scene.wavelength, scene.slit, scene.orderMap)
+    )
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.nod_shift_and_add"), "build_shift_and_add_plan", lambda *_: "PLAN"
+    )
+
+    # ACT
+    returnedA, returnedB, plan = recipe._align_nod_frames(framesA, framesB, namesA, namesB, "map.fits", "disp.fits")
+
+    # ASSERT
+    assert returnedA == alignedA
+    assert returnedB == alignedB
+    assert plan == "PLAN"
+
+
+def test_a_nominal_throw_with_no_2d_map_from_the_alignment_is_refused_with_a_clear_error(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    framesA, framesB, namesA, namesB = recipe._split_nod_frames(_frames(scene))
+    _stub_alignment(monkeypatch, framesA, framesB, None)
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.nod_shift_and_add"), "build_shift_and_add_plan", lambda *_: None
+    )
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="read no 2D map"):
+        recipe._align_nod_frames(framesA, framesB, namesA, namesB, "map.fits", "disp.fits")
