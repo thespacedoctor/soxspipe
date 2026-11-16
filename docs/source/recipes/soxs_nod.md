@@ -71,6 +71,31 @@ The `--no-stack` option sets `stack_before_extraction` to `False` for one run. I
 
 Note a boxcar extraction is also preformed alongside the Horne extraction. Use the `horne-extraction-slit-length` to control the size of the aperture used to preform the boxcar extraction on the object trace.
 
+### Reduce the frames in stare mode (`--stare`)
+
+Extended emission that is longer than the throw leaves a false feature in the A-B difference (see the host contamination check below). To avoid the subtraction, you can reduce the frames of a nodding SOF with the stare algorithm. Use the `--stare` option of `soxspipe nod` and `soxspipe nod_std` for one run. Set `reduce-as-stare: True` in the `soxs-nod` block (science) or the `soxs-nod-std` block (standard stars) of the settings file for `soxspipe reduce`. The option overrides the setting. The `reduce` command has no `--stare` option. The `soxs_offset` recipe has no stare mode.
+
+```bash
+soxspipe nod sof/20251212T045200_VIS_1X1_1_NOD_OBJ_SLIT1_0_1800_0S_SOXS_AT2025aggl.sof --stare
+```
+
+In stare mode, the `soxs_stare` recipe reduces the SOF, with these differences from a stare SOF:
+
+1. It reads the frames with the technique `ECHELLE,SLIT,NODDING`.
+2. It uses the `soxs-stare` settings, or the `soxs-stare-std` settings for a standard star. The `soxs-nod` settings do not apply, except `reduce-as-stare`. The recipe writes its files to the `soxs-stare` or `soxs-stare-std` directory.
+3. It detrends each frame with the master bias (UVB and VIS) or the master dark (NIR), and subtracts the scattered light. It does not flat-field yet.
+4. It aligns the A frames to each other and the B frames to each other along the slit, with the same method as the nod mode. It then measures the position of the object at both nod positions, and shifts the B frames onto the A frames.
+5. It flat-fields each frame, before the shift, because the flat is fixed on the detector. It then stacks all frames. A pixel that the shift flagged as off the slit in a B frame does not enter the stack.
+6. It models and subtracts the sky, extracts the object with the Horne method and, for a standard star, makes the response curve. These are the steps of the [`soxs_stare`](soxs_stare.md) recipe.
+
+If the recipe cannot measure the position of the object at both nod positions, it shifts the B frames by the nominal throw. The nominal throw is the cumulative offset (`ESO SEQ CUMOFF Y`) of the first A frame minus that of the first B frame, in arcsec. It is the same shift for every order. The recipe logs a warning, and the `NOD STARE NOMINAL THROW` QC is 1. The QC is 0 when the recipe measured the position.
+
+The number of A frames and B frames must be the same. If it is not, the recipe stops with an error, as in nod mode. With `--no-stack`, the recipe reduces each frame on its own and does not align frames.
+
+On the NIR arm, the SOF needs a master dark (`MASTER_DARK_NIR`). The data organiser adds a matching master dark to the NIR nodding SOFs when one exists (see [the data organiser](../data_organiser_and_reducer/data_organiser.md)). Nod mode ignores the dark. A NIR stare-mode run without it stops before the reduction, with an error that says how to add the dark.
+
+The recipe writes the product files with the marker `_STAREMODE` after the SOF name, for example `<sof name>_STAREMODE_EXTRACTED_MERGED.fits` and `<sof name>_STAREMODE_RESP.fits`. With `--no-stack`, the name of frame N is `<sof name>_F<N>_STAREMODE_...`. The headers of the products have `ESO PRO TECH` set to `ECHELLE,SLIT,STARE` and `ESO PRO STARE MODE` set to `T`. The data organiser does not predict these products. A later SOF does not use them, so a science SOF still uses the response curve of the nod-mode reduction of its standard star. The nod-mode products of the SOF, and its status, do not change.
+
 ### Host contamination check
 
 The recipe checks each nod pass for extended emission, for example light from a host galaxy. The check is for information only. It does not change the spectrum and it never makes the recipe fail.

@@ -686,6 +686,83 @@ def test_the_passing_path_sets_the_image_type_and_prints_nothing(
     assert [message for level, message in log.messages if level == "print"] == []
 
 
+@pytest.mark.parametrize("recipeName", ["soxs-nod", "soxs-offset"])
+def test_the_stare_technique_of_a_stare_mode_product_passes_the_technique_check(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    recipeName: str,
+) -> None:
+    """A stare-mode product (`ECHELLE,SLIT,STARE`, DY-2194) in the SOF, such as its RESP table, is never refused."""
+    # ARRANGE
+    recipe = _unconstructed_recipe(log, recipeName=recipeName)
+    _stub_basics_direct(
+        monkeypatch,
+        imageTypes=["OBJECT"],
+        imageTech=["ECHELLE,SLIT,STARE"],
+        imageCat=list(NOD_CATEGORIES),
+    )
+
+    # ACT
+    recipe.verify_input_frames()
+
+    # ASSERT
+    assert recipe.imageType == "OBJECT"
+
+
+def test_a_nir_nod_sof_with_a_master_dark_passes_verification(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The master dark the data organiser adds to NIR nod SOFs (DY-2194) is no reason to refuse the SOF."""
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    _stub_basics_direct(
+        monkeypatch,
+        imageTypes=["OBJECT", "DARK"],
+        imageTech=["ECHELLE,SLIT,NODDING", "IMAGE"],
+        imageCat=["DISP_TAB_NIR", "ORDER_TAB_NIR", "DISP_IMAGE_NIR", "MASTER_FLAT_NIR", "MASTER_DARK_NIR"],
+        arm="NIR",
+    )
+
+    # ACT
+    recipe.verify_input_frames()
+
+    # ASSERT
+    assert recipe.imageType == "OBJECT"
+
+
+class RecordingCollection:
+    """Collection stub that records every filter the recipe asks for and finds no file."""
+
+    def __init__(self) -> None:
+        self.filters: list[dict[str, str]] = []
+
+    def files_filtered(self, *, include_path: bool, **filters: str) -> list[str]:
+        self.filters.append(filters)
+        return []
+
+    def filter(self, **filters: str) -> Any:
+        self.filters.append(filters)
+        return self
+
+
+def test_nod_mode_never_reads_the_master_dark(log: Any) -> None:
+    """The nod recipe ignores the master dark of a NIR SOF: the A-B difference removes it (DY-2194)."""
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    recipe.inputFrames = RecordingCollection()
+    recipe.arm = "NIR"
+
+    # ACT
+    with pytest.raises(IndexError):
+        # NO ORDER TABLE IN THE STUB, SO THE LOOKUP STOPS AFTER THE FLAT AND BIAS READS
+        recipe._read_nod_calibration_inputs(recipe.kw, "NIR")
+
+    # ASSERT
+    assert recipe.inputFrames.filters
+    assert all("MASTER_DARK" not in value for filters in recipe.inputFrames.filters for value in filters.values())
+
+
 # THE CONSTRUCTOR-RULE METHODS BOTH RECIPES OF THE NOD/OFFSET CHAIN NOW DEFINE.
 SHARED_CONSTRUCTOR_STEPS = (
     "_collect_input_frames",

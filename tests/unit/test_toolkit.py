@@ -283,6 +283,54 @@ def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod
     assert productPath == (f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}")
 
 
+@pytest.mark.parametrize(
+    ("sofName", "expectedProductName"),
+    [
+        ("20240102T030405_NOD_STD.sof", "20240102T030405_NOD_STD_STAREMODE_RESP.fits"),
+        ("20240102T030405_NOD_OBJ.sof", "20240102T030405_NOD_OBJ_STAREMODE_EXTRACTED_MERGED.fits"),
+    ],
+)
+def test_predict_product_path_puts_the_marker_before_the_product_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    sofName: str,
+    expectedProductName: str,
+) -> None:
+    class Organiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_list(self, silent: bool) -> tuple[str, list[str]]:
+            return "session_01", ["session_01"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", Organiser)
+
+    productPath, night = toolkit.predict_product_path(sofName, "soxs-stare", "_STAREMODE")
+
+    assert night == "2024-01-01"
+    assert productPath == f"./sessions/session_01/reduced/2024-01-01/soxs-stare/{expectedProductName}"
+
+
+def test_predict_product_path_adds_no_marker_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Organiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_list(self, silent: bool) -> tuple[str, list[str]]:
+            return "session_01", ["session_01"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", Organiser)
+
+    productPath, _ = toolkit.predict_product_path("20240102T030405_NOD_OBJ.sof", "soxs-nod")
+
+    assert productPath.endswith("/soxs-nod/20240102T030405_NOD_OBJ_EXTRACTED_MERGED.fits")
+
+
 def test_add_recipe_logger_replaces_handlers_and_separates_messages(
     tmp_path: Path,
 ) -> None:

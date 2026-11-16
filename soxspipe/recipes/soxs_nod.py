@@ -228,9 +228,14 @@ class soxs_nod(base_recipe):
         isOffset = "offset" in self.recipeName
         recipe, frames = ("offset", "offset") if isOffset else ("nod", "nodding")
 
+        # A NIR NOD SOF MAY CARRY A MASTER DARK, WHICH ONLY THE STARE MODE USES (DY-2194). AN OFFSET SOF CARRIES NONE
+        allowedTypes = ["OBJECT", "LAMP,FLAT", "STD,FLUX", "STD,TELLURIC"]
+        if not isOffset:
+            allowedTypes.append("DARK")
+
         if not error:
             for i in imageTypes:
-                if i not in ["OBJECT", "LAMP,FLAT", "STD,FLUX", "STD,TELLURIC"]:
+                if i not in allowedTypes:
                     error = (
                         f"Found a {i} file. Input frames for soxspipe {recipe} need to be an object/std {frames} "
                         f"frames, a dispersion map image (DISP_IMAGE_{arm}), a dispersion map table "
@@ -293,6 +298,7 @@ class soxs_nod(base_recipe):
                 "ECHELLE,MULTI-PINHOLE",
                 "ECHELLE,SLIT,OFFSET",
                 "ECHELLE,SLIT,NODDING",
+                "ECHELLE,SLIT,STARE",
             ]:
                 error = (
                     f"Found a {i} file. Input frames for soxspipe offset need to be an object/std offset "
@@ -325,6 +331,7 @@ class soxs_nod(base_recipe):
                 "ECHELLE,SLIT",
                 "ECHELLE,MULTI-PINHOLE",
                 "ECHELLE,SLIT,NODDING",
+                "ECHELLE,SLIT,STARE",
             ]:
                 error = (
                     f"Found a {i} file. Input frames for soxspipe nod need to be an object/std nodding "
@@ -578,13 +585,15 @@ class soxs_nod(base_recipe):
     def _aligns_each_order(self):
         """*decide whether each order of a frame gets its own slit shift*
 
-        Only SOXS VIS does. SOXS NIR and every X-Shooter arm get one shift per frame.
+        Only SOXS VIS does. SOXS NIR and every X-Shooter arm get one shift per frame. See `aligns_each_order`.
 
         **Return:**
 
         - ``isPerOrder`` -- True for SOXS VIS
         """
-        return self.inst.upper() == "SOXS" and self.arm.upper() == "VIS"
+        from soxspipe.commonutils.nod_frames import aligns_each_order
+
+        return aligns_each_order(self.inst, self.arm)
 
     def _align_ab_frames(self, allFrameA, allFrameB, allFrameANames, allFrameBNames):
         """*align the A frames to each other and the B frames to each other along the slit*
@@ -989,6 +998,8 @@ class soxs_nod(base_recipe):
     def _split_ab_frames(self, allObjectFrames, allFilenames, kw):
         """*split the science frames into A and B frames by the sign of their cumulative nodding offset*
 
+        See `split_ab_frames`.
+
         **Key Arguments:**
 
         - ``allObjectFrames`` -- the science frames
@@ -1000,49 +1011,14 @@ class soxs_nod(base_recipe):
         - ``allFrameA``, ``allFrameB``, ``allFrameAOffsets``, ``allFrameBOffsets``, ``allFrameANames``,
           ``allFrameBNames`` -- the A and B frames, their offsets and their file names
         """
-        # DIVIDING IN A AND B SEQUENCES
-        (
-            allFrameA,
-            allFrameB,
-            allFrameAOffsets,
-            allFrameBOffsets,
-            allFrameANames,
-            allFrameBNames,
-        ) = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
+        from soxspipe.commonutils.nod_frames import split_ab_frames
 
-        # CUMOFF Y IS THE OFFSET IN THE Y DIRECTION OF THE NODDING SEQUENCE. POSITIVE A, NEGATIVE B
-        for frame, filename in zip(allObjectFrames, allFilenames, strict=False):
-            # offset = frame.header[kw(f"NOD_CUMULATIVE_OFFSET{self.axisA.upper()}")]
-            offset = frame.header[kw("NOD_CUMULATIVE_OFFSETY")]
-            if offset == 0:
-                pass
-            if offset > 0:
-                allFrameAOffsets.append(offset)
-                allFrameA.append(frame)
-                allFrameANames.append(filename)
-            else:
-                allFrameBOffsets.append(offset)
-                allFrameB.append(frame)
-                allFrameBNames.append(filename)
-
-        return (
-            allFrameA,
-            allFrameB,
-            allFrameAOffsets,
-            allFrameBOffsets,
-            allFrameANames,
-            allFrameBNames,
-        )
+        return split_ab_frames(allObjectFrames, allFilenames, kw)
 
     def _check_ab_balance(self, allFrameAOffsets, allFrameBOffsets):
         """*refuse an unbalanced or A-less set of nodding frames and announce the cycles to process*
+
+        See `check_ab_balance`.
 
         **Key Arguments:**
 
@@ -1053,29 +1029,9 @@ class soxs_nod(base_recipe):
 
         - ``uniqueOffsets`` -- the distinct A-frame offsets
         """
-        uniqueOffsets = list(set(allFrameAOffsets))
+        from soxspipe.commonutils.nod_frames import check_ab_balance
 
-        if len(allFrameAOffsets) != len(allFrameBOffsets):
-            error = f"Found {len(allFrameAOffsets)} A frames and {len(allFrameBOffsets)} B frames. The number of A and B frames must be the same for nodding reductions."
-            self.log.error(
-                f"Found {len(allFrameAOffsets)} A frames and {len(allFrameBOffsets)} B frames. The number of A and B frames must be the same for nodding reductions."
-            )
-            raise Exception(error)
-
-        if len(uniqueOffsets) == 0:
-            error = "Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
-            self.log.error(
-                "Did not find frames with a positive offset. Please check the `NOD_CUMULATIVE_OFFSETY` header keyword in the providing nodding frames."
-            )
-            raise Exception(error)
-
-        s = "S" if len(uniqueOffsets) > 1 else ""
-        self.log.print(
-            f"# PROCESSING {len(allFrameAOffsets)} AB NODDING CYCLES WITH {len(uniqueOffsets)} UNIQUE "
-            f"PAIR{s} OF OFFSET LOCATIONS"
-        )
-
-        return uniqueOffsets
+        return check_ab_balance(self.log, allFrameAOffsets, allFrameBOffsets)
 
     def _reduce_each_nodding_cycle(
         self, allFrameA, allFrameB, allFrameANames, allFrameBNames, orderTablePath, master_flat

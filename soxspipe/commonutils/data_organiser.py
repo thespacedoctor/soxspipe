@@ -3244,6 +3244,8 @@ class data_organiser:
                 calibrationTypes = filters["calibrations"]
             else:
                 calibrationTypes = []
+            # CALIBRATIONS A SOF GETS WHEN A MATCH EXISTS, BUT NEVER NEEDS TO BE COMPLETE (DY-2194)
+            optionalCalibrationTypes = filters.get("optional calibrations") or {}
 
             for ttype in ttypes:
                 rawFrames, rawGroups = self.get_raw_frames_and_groups(
@@ -3276,8 +3278,9 @@ class data_organiser:
                 else:
                     if isinstance(calibrationTypes, dict):
                         for arm, calType in calibrationTypes.items():
+                            optionalTypes = list(optionalCalibrationTypes.get(arm, []))
                             # MATCH THIS RECIPE'S INCOMPLETE SOFS ON THIS ARM AGAINST THE CURRENT UPSTREAM PRODUCTS
-                            refresh_calibration_matches(self.conn, calType, recipe=recipe, arm=arm)
+                            refresh_calibration_matches(self.conn, [*calType, *optionalTypes], recipe=recipe, arm=arm)
                             sqlQuery, sqlParams = self._calibration_completeness_select_query(
                                 recipe, arm, ttype, calType
                             )
@@ -3291,7 +3294,7 @@ class data_organiser:
 
                             # FOR COMPLETE PRODUCTS, ADD CALIBRATION FILES TO SOF MAP
                             # NEED TO ALSO ADD THE RAW FILES TOO ... ADD RAW FRAMES, SET COMPLETE = 1 WHERE PRODUCT FRAMES COMPLETE = 1
-                            for ct in calType:
+                            for ct in [*calType, *optionalTypes]:
                                 sqlQuery = self._calibration_raw_frames_query(ct)
                                 newSof = pd.read_sql(sqlQuery, con=self.conn)
 

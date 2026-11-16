@@ -34,6 +34,12 @@ During the running of each pipeline recipe, Quality Control (QC) metrics are gen
 
 The DO puts all stare science frames (`ECHELLE,SLIT,STARE`) of one observation block (`eso obs id`) and arm into one SOF, if they have the same slit, binning, readout speed, exposure time and other grouping keywords. Frames that differ in any of these keys go into separate SOFs. The SOF is named after the earliest frame. The `soxs_stare` recipe stacks the frames of the SOF by default. See the `stack_before_extraction` setting in [`soxs_stare`](../recipes/soxs_stare.md). To extract each frame on its own for one run, use the `--no-stack` option of `soxspipe reduce`.
 
+### Optional calibrations of NIR nodding frames
+
+The `calibrations` list of an entry in `soxs_sof_map.yaml` names the calibrations that a SOF needs before it is complete. An entry can also have an `optional calibrations` list for each arm. The DO adds a matching product of an optional calibration to the SOF when one exists. A SOF without one is still complete.
+
+The NIR nodding entries (`science_nodding`, `flux_standard_nodding` and `telluric_standard_nodding`) list `mdark` as optional. The DO uses the same matching rule as for NIR stare SOFs. The nod recipes ignore the master dark. The stare mode of a nodding SOF (`--stare` or `reduce-as-stare`) needs it. The DO does not change the predicted products of a nodding SOF, so a stare-mode reduction of the SOF is not used by later SOFs.
+
 ### Sessions group every raw frame
 
 A workspace holds one set of raw frames and any number of sessions. Each session has its own `sof_map` rows, its own `sof/` directory and its own `status` for every product.

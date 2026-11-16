@@ -40,6 +40,10 @@ A stare SOF holds all the frames of one observation block (OB) and arm that shar
 - When `stack_before_extraction` is `False`, the recipe runs the steps above on each object frame on its own. The products and QC rows of frame N are named `<sof name>_F<N>` (for example `..._F1` and `..._F2`), and the header of each product lists only its own raw frame. If any frame fails a QC, the recipe marks the whole SOF as failed. Only stare frames are extracted one by one: the PAE flat-lamp and nodding-standard fallbacks are always stacked.
 - Flux-standard frames (`STD,FLUX`) are always stacked first, even when the setting is `False`. The stacked pass writes the SOF-level response curve (`<sof name>_RESP.fits`) that later science SOFs read. If the setting is `False` and you did not give `--no-stack`, the recipe logs a warning and stops there.
 
+### Nodding frames reduced in stare mode
+
+The recipe also reduces the frames of a nodding SOF, when you use the `--stare` option of `soxspipe nod` and `nod_std` or the `reduce-as-stare` setting. The recipe then reads the frames with the technique `ECHELLE,SLIT,NODDING`, aligns the A and B frames along the slit before it stacks them, needs a master dark on the NIR arm, and marks its products with `_STAREMODE`. See [Reduce the frames in stare mode](soxs_nod.md#reduce-the-frames-in-stare-mode---stare) in the `soxs_nod` page.
+
 ### Extract each frame with `--no-stack`
 
 The `--no-stack` option sets `stack_before_extraction` to `False` for one run. It does not change your settings file. It works on `soxspipe reduce all`, `soxspipe reduce sof`, `soxspipe stare` and `soxspipe stare_std`. It has no short form.

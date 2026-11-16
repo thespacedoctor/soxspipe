@@ -51,3 +51,15 @@ Those variables within square brackets are present only for the frames that requ
 | `phot_std`       | photometric standard |
 | `acqu`       | acquisition |
 | `obj` | science object |
+
+## Stare-mode products of nodding frames
+
+You can reduce the frames of a nodding SOF in stare mode (the `--stare` option, or the `reduce-as-stare` setting). The recipe then writes the product files of the SOF with the marker `_STAREMODE` after the SOF name, before the rest of the file name. The marker keeps the stare-mode products apart from the nod-mode products of the same SOF. The recipe writes them to the `soxs-stare` or `soxs-stare-std` product directory, not to the `soxs-nod` directory.
+
+| Product | Nod-mode name | Stare-mode name |
+| ------- | ------------- | --------------- |
+| Merged spectrum | `<SOF>_EXTRACTED_MERGED.fits` | `<SOF>_STAREMODE_EXTRACTED_MERGED.fits` |
+| Response curve of a standard star | `<SOF>_RESP.fits` | `<SOF>_STAREMODE_RESP.fits` |
+| Product of one frame (`--no-stack`) | - | `<SOF>_F<N>_STAREMODE_EXTRACTED_MERGED.fits` |
+
+In `--no-stack` mode, the frame number comes before the marker. The names of the SOF in the database, in the QC metrics and in the status of the SOF do not carry the marker. The data organiser does not predict the stare-mode products, so a later SOF never uses them.

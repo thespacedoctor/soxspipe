@@ -19,7 +19,7 @@
         soxspipe [-Vxd] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vxd] spat_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
         soxspipe [-Vxd] (stare|stare_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack]
-        soxspipe [-Vxd] (nod|nod_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack]
+        soxspipe [-Vxd] (nod|nod_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack --stare]
         soxspipe [-Vxd] offset <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack]
         soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
     
@@ -67,6 +67,7 @@
         -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
         -x, --overwrite                        overwrite existing products
         --no-stack                             extract each frame or cycle on its own, not stacked (use -x to redo a SOF)
+        --stare                                reduce nodding frames in stare mode (nod and nod_std only)
         --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
         --vlt                                  only use this flag if setting up a workspace on a VLT environment workstation
     
