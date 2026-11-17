@@ -45,6 +45,25 @@ The option does not change your settings file. It also works with `soxspipe redu
 
 If you set `stack_before_extraction: False` in the settings file and do not use `--no-stack`, science SOFs are extracted frame by frame or cycle by cycle. Standard stars are still stacked, and the recipe logs a warning.
 
+## Reduce nodding frames in stare mode
+
+A nodding SOF is reduced in nod mode by default: the recipe subtracts the frame at the other nod position. This subtraction removes light from an extended object, such as a host galaxy, that is longer on the slit than the nod throw. To reduce the frames of a nodding SOF with the stare algorithm instead, set `reduce-as-stare: True` in the `soxs-nod` block (science) and the `soxs-nod-std` block (standard stars) of the settings file:
+
+```yaml
+soxs-nod:
+    reduce-as-stare: True
+```
+
+`soxspipe reduce all` and `soxspipe reduce sof` then reduce the nodding SOFs in stare mode. The option `--stare` of `soxspipe nod` and `soxspipe nod_std` does the same for one run, and it overrides the setting. The `reduce` command has no `--stare` option.
+
+In stare mode:
+
+- The recipe uses the `soxs-stare` settings (`soxs-stare-std` for a standard star), not the `soxs-nod` settings.
+- The recipe models the sky in each frame and subtracts it. It does not subtract the frame at the other nod position.
+- The recipe stacks the frames, or extracts each frame with `--no-stack`, as for a stare SOF.
+- The NIR arm needs a master dark (`MASTER_DARK_NIR`) in the SOF, because no subtraction of frames removes the dark. The data organiser adds a matching master dark to the NIR nodding SOFs when one exists. If your workspace is older, run `soxspipe prep --refresh`. A NIR stare-mode run without a master dark stops with an error before the reduction.
+- The recipe writes the product files with the marker `_STAREMODE` in their names (see [file naming](../../soxs_file_naming_scheme.md)). The data organiser does not predict these products. A later SOF does not use them, for example the response curve of a standard star. The files of an earlier nod-mode reduction of the SOF stay as they are. The stare-mode run writes the status of the SOF (pass or fail) to the database, so it replaces the status of an earlier nod-mode run of the same SOF.
+
 ## Speed up Reductions with Multiprocessing
 
 If you have a large dataset, you can dramatically speed up reductions by using the `--multiprocess` (`-m`) flag. In this mode, the reduce command will reduce recipes in parallel. Instead of seeing each recipe's output logs in the terminal, the user will see a progress bar showing the pipeline's progress as it reduces all the sof files for each recipe.

@@ -176,6 +176,11 @@ flux_standard_nodding:
     NIR:
       - mflat
       - spat_solution
+  # THE NIR DARK IS OPTIONAL: NOD MODE IGNORES IT, AND THE STARE MODE OF A NOD SOF (--stare, reduce-as-stare) NEEDS IT.
+  # THE SOF STAYS COMPLETE AND REDUCIBLE IN NOD MODE WHEN NO MATCHING MASTER DARK EXISTS
+  optional calibrations:
+    NIR:
+      - mdark
   products: 
     - fits table:
         eso pro type: REDUCED
@@ -205,6 +210,11 @@ telluric_standard_nodding:
     NIR:
       - mflat
       - spat_solution
+  # THE NIR DARK IS OPTIONAL: NOD MODE IGNORES IT, AND THE STARE MODE OF A NOD SOF (--stare, reduce-as-stare) NEEDS IT.
+  # THE SOF STAYS COMPLETE AND REDUCIBLE IN NOD MODE WHEN NO MATCHING MASTER DARK EXISTS
+  optional calibrations:
+    NIR:
+      - mdark
   products: 
     - fits table:
         eso pro type: REDUCED
@@ -305,6 +315,11 @@ science_nodding:
       - mflat
       - spat_solution
       - std_flux
+  # THE NIR DARK IS OPTIONAL: NOD MODE IGNORES IT, AND THE STARE MODE OF A NOD SOF (--stare, reduce-as-stare) NEEDS IT.
+  # THE SOF STAYS COMPLETE AND REDUCIBLE IN NOD MODE WHEN NO MATCHING MASTER DARK EXISTS
+  optional calibrations:
+    NIR:
+      - mdark
   products: 
   - fits table:
         eso pro type: REDUCED

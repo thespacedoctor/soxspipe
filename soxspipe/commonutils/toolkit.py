@@ -1995,13 +1995,15 @@ def start_night_date_from_frames(log, settings, inputFrames):
     return start_night_date(Time(earliestMjd, format="mjd", scale="utc")), str(arm).strip()
 
 
-def predict_product_path(sofName, recipeName=False):
+def predict_product_path(sofName, recipeName=False, productMarker=""):
     """*predict the path of the recipe product from a given SOF name*
 
     **Key Arguments:**
 
     - ``sofName`` -- name or full path to the sof file
     - ``recipeName`` -- name of the recipe being considered. Default *False*.
+    - ``productMarker`` -- a marker added to the SOF name in the product name, before the product suffix (the stare-mode
+      reduction of a nodding SOF uses ``_STAREMODE``). Default ""
 
     **Return:**
 
@@ -2064,9 +2066,9 @@ def predict_product_path(sofName, recipeName=False):
     do.close()
 
     if "_STARE_STD" in sofName or "_NOD_STD" in sofName:
-        sofName += "_RESP"
+        sofName += productMarker + "_RESP"
     elif "_STARE" in sofName or "_NOD" in sofName:
-        sofName += "_EXTRACTED_MERGED"
+        sofName += productMarker + "_EXTRACTED_MERGED"
     productPath = (
         f"./sessions/{currentSession}/reduced/{startNightDate}/"
         + recipeName.replace("_", "-")

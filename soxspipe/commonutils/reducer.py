@@ -569,9 +569,10 @@ def _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOff
         )
 
     if "nod" in recipe:
-        from soxspipe.recipes import soxs_nod
+        from soxspipe.commonutils.stare_mode import nod_recipe
 
-        soxs_recipe = soxs_nod(
+        # NO FLAG HERE: THE `reduce-as-stare` SETTINGS KEY DECIDES BETWEEN THE NOD AND THE STARE ALGORITHM
+        soxs_recipe = nod_recipe(
             log=log,
             settings=settings,
             inputFrames=sof,

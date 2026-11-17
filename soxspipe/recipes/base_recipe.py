@@ -30,6 +30,9 @@ from soxspipe.commonutils.scratch import (
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
 
+# THE `_STD_` RULE THAT NAMES A STANDARD-STAR SOF. ANOTHER LEAF MODULE, WITH NO IMPORTS AT MODULE LEVEL
+from soxspipe.commonutils.stare_mode import is_standard_input
+
 # THE "CALLER DID NOT PASS THIS KEYWORD" SENTINEL USED BY THE add_qc AND
 # add_product DELEGATORS BELOW. IMPORTED FROM `toolkit` RATHER THAN REDEFINED
 # HERE SO THE DELEGATORS FORWARD THE SAME OBJECT `append_qc` AND
@@ -81,6 +84,7 @@ class base_recipe:
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- debug mode. True or False. Default *False*
     - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*
+    - ``productNameMarker`` -- a marker the product file names carry after the SOF name. Default "" (no marker)
 
 
     **Usage**
@@ -95,6 +99,10 @@ class base_recipe:
     defaultRon = None
     # THE COSMIC-RAY MASK PRODUCT WRITTEN BY FRAME PREPARATION, WAITING TO BE REGISTERED BY THE FIRST `report_output`
     cosmicRayProduct = None
+    # A MARKER THE PRODUCT FILE NAMES CARRY AFTER THE SOF NAME, SO TWO REDUCTIONS OF ONE SOF NEVER SHARE A FILE NAME
+    # (DY-2194). DATABASE AND QC KEYS KEEP THE BARE SOF NAME. A CLASS ATTRIBUTE, SO A RECIPE OBJECT BUILT WITHOUT
+    # `__init__` HAS ONE TOO
+    productNameMarker = ""
 
     def __init__(
         self,
@@ -107,6 +115,7 @@ class base_recipe:
         command=False,
         debug=False,
         turnOffMP=False,
+        productNameMarker="",
     ):
         import tempfile
 
@@ -115,6 +124,7 @@ class base_recipe:
 
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
+        self.productNameMarker = productNameMarker
         # Merge before any constructor work reads settings.  Keep the merge
         # non-mutating so callers can safely reuse their input dictionary.
         settings = {**self._advanced_settings(), **settings}
@@ -130,7 +140,7 @@ class base_recipe:
 
         self.darkDetrendWarningIssued2 = False
 
-        if isinstance(inputFrames, str) and "_STD_" in inputFrames:
+        if is_standard_input(inputFrames):
             self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
             self.recipeName = self.recipeName.replace("soxs-stare", "soxs-stare-std")
             self.recipeName = self.recipeName.replace("soxs-offset", "soxs-offset-std")
@@ -204,6 +214,16 @@ class base_recipe:
         return
 
     @property
+    def productStem(self) -> str:  # noqa: N802
+        """*the stem of every product file name: the SOF name followed by the product-name marker*
+
+        **Return:**
+
+        - ``productStem`` -- the SOF name and the marker
+        """
+        return f"{self.sofName}{self.productNameMarker}"
+
+    @property
     def runSerially(self) -> bool:  # noqa: N802
         """*True when work must run in this process: multiprocessing is turned off or debug mode is on*"""
         return bool(self.turnOffMP or self.debug)
@@ -263,7 +283,9 @@ class base_recipe:
         # CHECK IF PRODUCT ALREADY EXISTS
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
-            self.productPath, self.startNightDate = toolkit.predict_product_path(inputFrames, self.recipeName)
+            self.productPath, self.startNightDate = toolkit.predict_product_path(
+                inputFrames, self.recipeName, self.productNameMarker
+            )
             errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
             basename = os.path.basename(self.productPath)
 
@@ -745,7 +767,7 @@ class base_recipe:
 
         # OBSERVATION ORDER, NOT THE ORDER THE FRAMES WERE LISTED IN, SO THE EXTENSIONS ARE ALWAYS IN THE SAME ORDER
         entries = sorted(self.cosmicRayMasks, key=cosmic_ray_entry_order)
-        filename = f"{self.sofName}_LACOSMIC_MASK.fits"
+        filename = f"{self.productStem}_LACOSMIC_MASK.fits"
         filePath = os.path.join(self.qcDir, filename)
         cosmic_ray_mask_hdulist(entries).writeto(filePath, overwrite=True)
 
@@ -1602,7 +1624,7 @@ class base_recipe:
         frame.header = sort_keywords(log=self.log, header=frame.header)
 
         if not filename and self.sofName:
-            filename = self.sofName + ".fits"
+            filename = self.productStem + ".fits"
         if not filename:
             filename = filenamer(log=self.log, frame=frame, settings=self.settings)
 
@@ -2068,7 +2090,7 @@ class base_recipe:
         background = subtract_background(
             log=self.log,
             frame=processedFrame,
-            sofName=self.sofName,
+            sofName=self.productStem,
             recipeName=self.recipeName,
             orderTable=order_table,
             settings=self.settings,

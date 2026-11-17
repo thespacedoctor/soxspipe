@@ -177,6 +177,7 @@ def _construct(
     settings: dict[str, Any] | None = None,
     inputFrames: str | list[str] | None = None,
     preparedFrames: object | None = None,
+    recipeKwargs: dict[str, Any] | None = None,
 ) -> tuple[soxs_stare, dict[str, Any]]:
     """Construct a recipe for real against a stubbed set of files.
 
@@ -221,6 +222,7 @@ def _construct(
         inputFrames=str(tmpPath / "2024-01-02_stare.sof") if inputFrames is None else inputFrames,
         verbose=verbose,
         turnOffMP=True,
+        **(recipeKwargs or {}),
     )
     recipe.preparedFramesSentinel = preparedFrames
     return recipe, sofArguments
@@ -537,6 +539,302 @@ def test_a_missing_set_of_files_name_falls_back_to_the_first_frame_when_no_objec
 
     # ASSERT
     assert recipe.filenameTemplate == "2024.01.02T03.04.05.678_VIS_RO2_BIAS.fits"
+
+
+NOD_SOF = "20251212T045200_VIS_1X1_1_NOD_OBJ_SLIT1_SOXS.sof"
+
+
+def test_a_nod_sof_in_stare_mode_names_its_products_with_the_marker_and_keeps_its_database_name(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Stare mode marks the file-name template and the stem, and leaves the SOF name and recipe name alone (DY-2194)."""
+    # ARRANGE
+    inventory = FrameInventory()
+    calls: list[str] = []
+
+    # ACT
+    recipe, _ = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        inputFrames=str(tmp_path / NOD_SOF),
+        recipeKwargs={"reduceNodAsStare": True},
+    )
+
+    # ASSERT
+    assert recipe.reduceNodAsStare is True
+    assert recipe.productNameMarker == "_STAREMODE"
+    assert recipe.sofName == NOD_SOF.replace(".sof", "")
+    assert recipe.productStem == recipe.sofName + "_STAREMODE"
+    assert recipe.filenameTemplate == recipe.sofName + "_STAREMODE.fits"
+    assert recipe.recipeName == "soxs-stare"
+
+
+def test_a_standard_nod_sof_in_stare_mode_reads_the_stare_standard_settings(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE
+    inventory = FrameInventory()
+    calls: list[str] = []
+    stdSettings = {"sky-subtraction": {"subtract_sky": False}, "use_flat": False}
+
+    # ACT
+    recipe, _ = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        inputFrames=str(tmp_path / "20251212T045200_VIS_1X1_1_NOD_STD_SLIT1_SOXS.sof"),
+        settings=_settings(tmp_path, **{"soxs-stare-std": stdSettings}),
+        recipeKwargs={"reduceNodAsStare": True},
+    )
+
+    # ASSERT
+    assert recipe.recipeName == "soxs-stare-std"
+    assert recipe.recipeSettings == stdSettings
+
+
+def test_a_stare_recipe_has_no_marker_and_is_not_in_nod_mode_by_default(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE
+    inventory = FrameInventory()
+    calls: list[str] = []
+
+    # ACT
+    recipe, _ = _construct(log, monkeypatch, tmp_path, inventory=inventory, calls=calls)
+
+    # ASSERT
+    assert recipe.reduceNodAsStare is False
+    assert recipe.productNameMarker == ""
+    assert recipe.productStem == recipe.sofName
+
+
+def test_a_missing_set_of_files_name_names_a_stare_mode_product_from_the_nodding_frame_with_the_marker(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The header-derived template filters on the nodding technique in stare mode and carries the marker."""
+    # ARRANGE
+    inventory = FrameInventory()
+    calls: list[str] = []
+    nodPath = str(tmp_path / "nod_object.fits")
+    stareKeywords = {_stare_keyword(log, "DPR_TYPE"): "OBJECT"}
+    preparedFrames = FramesWithFiles(
+        frames=[
+            (nodPath, {**stareKeywords, _stare_keyword(log, "DPR_TECH"): "ECHELLE,SLIT,NODDING"}),
+        ]
+    )
+    objectFrame = synthetic_ccd(
+        headerOverrides={"DPR_TYPE": "OBJECT", "DPR_TECH": "ECHELLE,SLIT,NODDING", "OBJECT": "REAL TARGET"}
+    )
+
+    def unnamed_product_path(self: soxs_stare, log: Any, *_: object) -> None:
+        self.sofName = False
+        self.productPath = False
+        self.startNightDate = "2024-01-02"
+        self.log = log
+
+    def fake_ccddata_read(path: str, **_: object) -> CCDData:
+        assert path == nodPath
+        return objectFrame
+
+    monkeypatch.setattr(base_recipe, "_resolve_product_path", unnamed_product_path)
+    monkeypatch.setattr(CCDData, "read", staticmethod(fake_ccddata_read))
+
+    # ACT
+    recipe, _ = _construct(
+        log,
+        monkeypatch,
+        tmp_path,
+        inventory=inventory,
+        calls=calls,
+        preparedFrames=preparedFrames,
+        recipeKwargs={"reduceNodAsStare": True},
+    )
+
+    # ASSERT
+    assert recipe.filenameTemplate.endswith("_STAREMODE.fits")
+    assert "REAL_TARGET" in recipe.filenameTemplate
+
+
+def test_a_nir_nod_sof_in_stare_mode_without_a_master_dark_is_refused_before_reduction(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The refusal names the dark, the stare flag and key, and the command that adds the dark."""
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    recipe.reduceNodAsStare = True
+    _stub_basics(
+        monkeypatch,
+        imageTechniques=["ECHELLE,SLIT,NODDING"],
+        imageCategories=["MASTER_FLAT_NIR", "DISP_TAB_NIR"],
+        arm="NIR",
+    )
+
+    # ACT / ASSERT
+    with pytest.raises(TypeError) as raised:
+        recipe.verify_input_frames()
+
+    assert str(raised.value) == (
+        "NIR nodding frames reduced in stare mode (`--stare` or `reduce-as-stare`) need a master dark "
+        "(MASTER_DARK_NIR) in the SOF, because no A-B difference removes the dark. Run `soxspipe prep --refresh` "
+        "to add it to the NIR nod SOFs, or reduce without `--stare`."
+    )
+
+
+def test_the_nir_off_frame_does_not_stand_in_for_the_master_dark_in_stare_mode(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    recipe.reduceNodAsStare = True
+    _stub_basics(
+        monkeypatch,
+        imageTypes=["OBJECT"],
+        imageTechniques=["ECHELLE,SLIT,NODDING", "IMAGE"],
+        imageCategories=["MASTER_FLAT_NIR"],
+        arm="NIR",
+    )
+
+    # ACT / ASSERT
+    with pytest.raises(TypeError, match="MASTER_DARK_NIR"):
+        recipe.verify_input_frames()
+
+
+def test_a_nir_nod_sof_in_stare_mode_with_a_master_dark_passes(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    recipe.reduceNodAsStare = True
+    _stub_basics(
+        monkeypatch,
+        imageTypes=["OBJECT"],
+        imageTechniques=["ECHELLE,SLIT,NODDING"],
+        imageCategories=["MASTER_FLAT_NIR", "MASTER_DARK_NIR"],
+        arm="NIR",
+    )
+
+    # ACT
+    recipe.verify_input_frames()
+
+    # ASSERT
+    assert recipe.imageType == "OBJECT"
+
+
+def test_a_nir_stare_sof_without_a_master_dark_still_passes_outside_stare_mode(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dark requirement belongs to the stare mode of nodding frames only."""
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    _stub_basics(monkeypatch, imageCategories=["MASTER_FLAT_NIR"], arm="NIR")
+
+    # ACT
+    recipe.verify_input_frames()
+
+    # ASSERT
+    assert recipe.reduceNodAsStare is False
+
+
+@pytest.mark.parametrize("arm", ["UVB", "VIS"])
+def test_a_uvb_or_vis_nod_sof_in_stare_mode_needs_no_master_dark(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    arm: str,
+) -> None:
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    recipe.reduceNodAsStare = True
+    _stub_basics(
+        monkeypatch,
+        imageTechniques=["ECHELLE,SLIT,NODDING"],
+        imageCategories=[f"MASTER_BIAS_{arm}", f"DISP_TAB_{arm}"],
+        arm=arm,
+    )
+
+    # ACT
+    recipe.verify_input_frames()
+
+    # ASSERT
+    assert recipe.imageType == "OBJECT"
+
+
+NOD_FRAME_HEADERS = {"DPR_TECH": "ECHELLE,SLIT,NODDING"}
+
+
+@pytest.mark.parametrize(
+    ("frameType", "isStandard"),
+    [("OBJECT", False), ("OBJECT,ASYNC", False), ("STD,FLUX", True), ("STD,TELLURIC", False)],
+)
+def test_stare_mode_reads_the_nodding_frames_as_stare_frames(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    frameType: str,
+    isStandard: bool,
+) -> None:
+    """Each science type is read at the nodding technique, and `--no-stack` can then extract frames on their own."""
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    recipe.reduceNodAsStare = True
+    recipe.generateReponseCurve = False
+    kw = recipe.kw
+    recipe.inputFrames = FramesWithFiles(
+        frames=[("/data/a_pre.fits", {kw("DPR_TYPE"): frameType, kw("DPR_TECH"): "ECHELLE,SLIT,NODDING"})]
+    )
+    reads: list[str] = []
+
+    def fake_read(path: str, **_: object) -> str:
+        reads.append(path)
+        return "frame"
+
+    monkeypatch.setattr(CCDData, "read", staticmethod(fake_read))
+
+    # ACT
+    frames, names = recipe._read_stare_object_frames(kw)
+
+    # ASSERT
+    assert reads == ["/data/a_pre.fits"]
+    assert (frames, names) == (["frame"], ["a.fits"])
+    assert recipe.readStareFrames is True
+    assert recipe.generateReponseCurve is isStandard
+
+
+def test_stare_mode_ignores_frames_of_the_stare_technique(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _unconstructed_recipe(log)
+    recipe.reduceNodAsStare = True
+    recipe.generateReponseCurve = False
+    kw = recipe.kw
+    recipe.inputFrames = FramesWithFiles(
+        frames=[("/data/a_pre.fits", {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"})]
+    )
+    monkeypatch.setattr(CCDData, "read", staticmethod(lambda path, **_: "frame"))
+
+    # ACT
+    frames, _ = recipe._read_stare_object_frames(kw)
+
+    # ASSERT
+    assert frames == []
+    assert recipe.readStareFrames is False
 
 
 def test_a_vis_object_frame_with_its_calibrations_passes(

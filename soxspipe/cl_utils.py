@@ -17,7 +17,7 @@ Usage:
     soxspipe [-Vxd] mflat <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] spat_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<oowwss>]
     soxspipe [-Vxd] (stare|stare_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack]
-    soxspipe [-Vxd] (nod|nod_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack]
+    soxspipe [-Vxd] (nod|nod_std) <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack --stare]
     soxspipe [-Vxd] offset <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --no-stack]
     soxspipe watch (start|stop|status) [-s <pathToSettingsFile>]
 
@@ -65,6 +65,7 @@ Options:
     -w, --watch                            watch the workspace and reduce new raw data as it is added (similar to 'watch' mode but runs in the foreground)
     -x, --overwrite                        overwrite existing products
     --no-stack                             extract each frame or cycle on its own, not stacked (use -x to redo a SOF)
+    --stare                                reduce nodding frames in stare mode (nod and nod_std only)
     --poly=<ORDERS>                        polynomial degrees (overrides parameters found in setting file). oowwss = order_x,order_y,wavelength_x,wavelength_y,slit_x,slit_y e.g. 345435. od = order,dispersion-axis
     --vlt                                  only use this flag if setting up a workspace on a VLT environment workstation
 """
@@ -159,6 +160,32 @@ def _pool_size_from_cores(cores, multiprocess):
     return poolSize
 
 
+def _exit_if_nod_product_exists(settings, inputFrames, isRequested):
+    """*print a message and exit with status 0 when the product of a nod or nod_std command already exists*
+
+    The product is that of the mode the recipe runs in: the nod mode, or the stare mode that ``--stare`` or the
+    ``reduce-as-stare`` setting chooses. Only a SOF file has a predicted product.
+
+    **Key Arguments:**
+
+    - ``settings`` -- the settings dictionary
+    - ``inputFrames`` -- the ``<inputFrames>`` argument of the command
+    - ``isRequested`` -- True when the command has ``--stare``
+    """
+    from soxspipe.commonutils.stare_mode import predicted_nod_product_path
+
+    if not (len(inputFrames) > 3 and inputFrames.split(".")[-1].lower() == "sof"):
+        return
+    productPath = predicted_nod_product_path(settings, inputFrames, isRequested)
+    if os.path.exists(productPath):
+        basename = os.path.basename(productPath)
+        print(
+            f"The product of this recipe already exists: `{basename}`. "
+            "To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
+        )
+        sys.exit(0)
+
+
 def main(arguments=None):
     """
     *The main function used when `cl_utils.py` is run as a single script from the cl, or when installed as a cl command*
@@ -179,18 +206,19 @@ def main(arguments=None):
     # setup the command-line util settings
     arguments = None
 
-    # QUICKLY SKIP IF PRODUCT EXIST
-    if len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4:
-        if len(sys.argv[2]) > 3 and sys.argv[2].split(".")[-1].lower() == "sof":
-            from soxspipe.commonutils import toolkit
+    # QUICKLY SKIP IF PRODUCT EXIST. A NODDING SOF WAITS FOR ITS SETTINGS, WHICH CHOOSE THE NOD OR THE STARE MODE
+    isQuickSkip = (len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4) and sys.argv[1] not in ("nod", "nod_std")
+    if isQuickSkip and len(sys.argv[2]) > 3 and sys.argv[2].split(".")[-1].lower() == "sof":
+        from soxspipe.commonutils import toolkit
 
-            productPath, startNightDate = toolkit.predict_product_path(sys.argv[2])
-            if os.path.exists(productPath):
-                basename = os.path.basename(productPath)
-                print(
-                    f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
-                )
-                sys.exit(0)
+        productPath, startNightDate = toolkit.predict_product_path(sys.argv[2])
+        if os.path.exists(productPath):
+            basename = os.path.basename(productPath)
+            print(
+                f"The product of this recipe already exists: `{basename}`. "
+                "To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
+            )
+            sys.exit(0)
 
     if "-v" not in sys.argv:
         eLog = emptyLogger()
@@ -305,6 +333,9 @@ def main(arguments=None):
 
         command = (" ").join(sys.argv)
 
+        if (a["nod"] or a["nod_std"]) and not a["overwriteFlag"]:
+            _exit_if_nod_product_exists(settings, a["inputFrames"], a["stareFlag"])
+
         # ONE SCOPE FOR EVERY SINGLE-RECIPE COMMAND: A RECIPE THAT RAISES MUST NOT LEAVE ITS SCRATCH DIRECTORY BEHIND
         with removing_new_scratch(log, settings):
             if a["mbias"]:
@@ -406,12 +437,13 @@ def main(arguments=None):
                 reducedStare = recipe.produce_product()
 
             if a["nod"] or a["nod_std"]:
-                from soxspipe.recipes import soxs_nod
+                from soxspipe.commonutils.stare_mode import nod_recipe
 
-                recipe = soxs_nod(
+                recipe = nod_recipe(
                     log=log,
                     settings=settings,
                     inputFrames=a["inputFrames"],
+                    isRequested=a["stareFlag"],
                     verbose=verbose,
                     overwrite=a["overwriteFlag"],
                     command=command,

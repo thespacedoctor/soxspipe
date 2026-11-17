@@ -1,10 +1,12 @@
 The [`soxs_nod_std`](../../../recipes/soxs_nod.md) recipe can be run with the following convention:
 
 ```bash
-soxspipe [-Vx] nod_std <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
+soxspipe [-Vx] nod_std <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --stare]
 ```
 
 Select `nod_std` when reducing spectroscopic standard stars taken in nodding mode. For spectroscopic standard stars, the pipeline produces a response curve that can be used to flux-calibrate the science sources.
+
+Add `--stare` to reduce the nodding frames in stare mode, with a sky model in each frame and no subtraction of the other nod position. See [Reduce the frames in stare mode](../../../recipes/soxs_nod.md).
 
 To rerun a previously executed `nod_std` recipe, you can find the execution command at the end of the [recipe log file](../../logging.md) (found in the workspace `products/soxs_nod_std ` directory). Use the `-x` flag to overwrite the product files if they already exist. For example, from the root of your workspace, you would run a command like:
 

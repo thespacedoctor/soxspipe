@@ -111,6 +111,82 @@ def test_run_recipe_dispatches_supported_tokens_with_unchanged_arguments(
     ]
 
 
+@pytest.mark.parametrize(
+    ("recipeToken", "sofName", "settingsBlock"),
+    [
+        ("nod_obj", "/workspace/20251212T045200_VIS_1X1_1_NOD_OBJ_SOXS.sof", "soxs-nod"),
+        ("nod_std", "/workspace/20251212T045200_VIS_1X1_1_NOD_STD_SOXS.sof", "soxs-nod-std"),
+    ],
+)
+def test_run_recipe_reduces_a_nod_sof_in_stare_mode_when_the_settings_key_is_true(
+    monkeypatch: pytest.MonkeyPatch, log: Any, recipeToken: str, sofName: str, settingsBlock: str
+) -> None:
+    """The reducer has no flag: the `reduce-as-stare` key of the SOF's own block picks the stare recipe."""
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    recipesModule = import_module("soxspipe.recipes")
+    stareCalls: list[dict[str, object]] = []
+    nodCalls: list[dict[str, object]] = []
+
+    class RecordingStare:
+        def __init__(self, **kwargs: object) -> None:
+            stareCalls.append(kwargs)
+
+        def produce_product(self) -> tuple[str, str]:
+            return "/workspace/stare.fits", "qc"
+
+    class RecordingNod(RecordingStare):
+        def __init__(self, **kwargs: object) -> None:
+            nodCalls.append(kwargs)
+
+    monkeypatch.setattr(recipesModule, "soxs_stare", RecordingStare)
+    monkeypatch.setattr(recipesModule, "soxs_nod", RecordingNod)
+    settings = {"workspace-root-dir": "/workspace", settingsBlock: {"reduce-as-stare": True}}
+
+    # ACT
+    result = reducerModule.run_recipe(
+        log=log, recipe=recipeToken, sof=sofName, settings=settings, overwrite=False, turnOffMP=True
+    )
+
+    # ASSERT
+    assert result == ("/workspace/stare.fits", "qc")
+    assert nodCalls == []
+    assert len(stareCalls) == 1
+    assert stareCalls[0]["reduceNodAsStare"] is True
+    assert stareCalls[0]["inputFrames"] == sofName
+
+
+def test_run_recipe_keeps_nod_mode_for_a_nod_sof_when_the_settings_key_is_false(
+    monkeypatch: pytest.MonkeyPatch, log: Any
+) -> None:
+    # ARRANGE
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    recipesModule = import_module("soxspipe.recipes")
+    stareCalls: list[dict[str, object]] = []
+    nodCalls: list[dict[str, object]] = []
+
+    class RecordingNod:
+        def __init__(self, **kwargs: object) -> None:
+            nodCalls.append(kwargs)
+
+        def produce_product(self) -> tuple[str, str]:
+            return "/workspace/nod.fits", "qc"
+
+    monkeypatch.setattr(recipesModule, "soxs_stare", lambda **kwargs: stareCalls.append(kwargs))
+    monkeypatch.setattr(recipesModule, "soxs_nod", RecordingNod)
+    settings = {"workspace-root-dir": "/workspace", "soxs-nod": {"reduce-as-stare": False}}
+
+    # ACT
+    reducerModule.run_recipe(
+        log=log, recipe="nod_obj", sof="/workspace/a_NOD_OBJ.sof", settings=settings, overwrite=False
+    )
+
+    # ASSERT
+    assert stareCalls == []
+    assert len(nodCalls) == 1
+    assert "reduceNodAsStare" not in nodCalls[0]
+
+
 def test_run_recipe_preserves_unknown_token_failure(log: Any) -> None:
     """Keep the current failure type for unsupported recipe tokens."""
     reducerModule = import_module("soxspipe.commonutils.reducer")

@@ -17,6 +17,7 @@ from contextlib import closing
 
 from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
 from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
+from soxspipe.commonutils.stare_mode import NOD_STARE_MARKER
 from soxspipe.commonutils.toolkit import (
     generic_quality_checks,
     get_calibrations_path,
@@ -25,6 +26,7 @@ from soxspipe.commonutils.toolkit import (
 )
 
 from .base_recipe import base_recipe
+from .nod_stare_stacking import nod_stare_stacking, reduction_inputs
 
 os.environ["TERM"] = "vt100"
 
@@ -37,8 +39,19 @@ NO_TRACE_STANDARD_MESSAGE = (
     "The spectrum is a robust boxcar extraction; check the pointing and conditions."
 )
 
+# THE ``ESO DPR TECH`` OF THE SCIENCE FRAMES OF A STARE SOF, AND OF A NODDING SOF REDUCED IN STARE MODE
+STARE_TECHNIQUE = "ECHELLE,SLIT,STARE"
+NODDING_TECHNIQUE = "ECHELLE,SLIT,NODDING"
 
-class soxs_stare(base_recipe):
+# THE FAILURE OF A NIR NODDING SOF REDUCED IN STARE MODE WITH NO MASTER DARK, WHICH NO A-B DIFFERENCE REMOVES (DY-2194)
+NIR_NOD_STARE_DARK_MESSAGE = (
+    "NIR nodding frames reduced in stare mode (`--stare` or `reduce-as-stare`) need a master dark (MASTER_DARK_NIR) in "
+    "the SOF, because no A-B difference removes the dark. Run `soxspipe prep --refresh` to add it to the NIR nod SOFs, "
+    "or reduce without `--stare`."
+)
+
+
+class soxs_stare(nod_stare_stacking, base_recipe):
     """
     *Reduce SOXS/Xshooter data taken in stare mode*
 
@@ -52,11 +65,17 @@ class soxs_stare(base_recipe):
     - ``command`` -- the command called to run the recipe
     - ``debug`` -- show debug plots. Default *False*
     - ``turnOffMP`` -- turn off multiprocessing. True or False. Default *False*. If True, multiprocessing will be turned off and the recipe will run in serial. This is useful for debugging.
+    - ``reduceNodAsStare`` -- reduce the frames of a nodding SOF with the stare algorithm (``--stare`` or the
+      ``reduce-as-stare`` setting). The recipe then reads the nodding frames, needs a master dark on the NIR arm and
+      marks its product file names with ``_STAREMODE``. Default *False*
 
 
 
     See `produce_product` method for usage.
     """
+
+    # TRUE WHEN THE FRAMES OF A NODDING SOF ARE REDUCED IN STARE MODE (DY-2194)
+    reduceNodAsStare = False
 
     # THE SLIT RANGE OF EACH ORDER TO FIT THE MASTER FLAT'S SLIT PROFILE OVER, FROM THE SLIT-ILLUMINATION MEASUREMENT OF
     # THE LAST FRAME (DY-2147)
@@ -74,7 +93,9 @@ class soxs_stare(base_recipe):
         command=False,
         debug=False,
         turnOffMP=False,
+        reduceNodAsStare=False,
     ):
+        self.reduceNodAsStare = reduceNodAsStare
         # INHERIT INITIALISATION FROM  BASE_RECIPE
         super().__init__(
             log=log,
@@ -86,6 +107,9 @@ class soxs_stare(base_recipe):
             debug=debug,
             verbose=verbose,
             turnOffMP=turnOffMP,
+            # PASSED ONLY IN NOD MODE: THE CONSTRUCTOR-CONTRACT TEST (`test_recipe_contracts.py`) PINS THE EXACT
+            # KEYWORDS A NORMAL STARE RECIPE PASSES TO `base_recipe.__init__`
+            **({"productNameMarker": NOD_STARE_MARKER} if reduceNodAsStare else {}),
         )
         self.log = log
         log.debug("instantiating a new 'soxs_stare' object")
@@ -105,7 +129,7 @@ class soxs_stare(base_recipe):
 
         # GET A TEMPLATE FILENAME USED TO NAME PRODUCTS
         if self.sofName:
-            self.filenameTemplate = self.sofName + ".fits"
+            self.filenameTemplate = self.productStem + ".fits"
         else:
             # NO SET-OF-FILES NAME TO FALL BACK ON, SO NAME PRODUCTS FROM THE
             # OBJECT/STANDARD FRAME INSTEAD (DY-111 REVIEW FOLLOW-UP)
@@ -145,11 +169,12 @@ class soxs_stare(base_recipe):
         from astropy.nddata import CCDData
 
         kw = self.kw
+        technique = self._science_technique
         scienceFilters = [
-            {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
-            {kw("DPR_TYPE"): "OBJECT,ASYNC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
-            {kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
-            {kw("DPR_TYPE"): "STD,TELLURIC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+            {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): technique},
+            {kw("DPR_TYPE"): "OBJECT,ASYNC", kw("DPR_TECH"): technique},
+            {kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): technique},
+            {kw("DPR_TYPE"): "STD,TELLURIC", kw("DPR_TECH"): technique},
         ]
 
         framePath = None
@@ -172,7 +197,34 @@ class soxs_stare(base_recipe):
         # SKIP LOADING THE UNCERTAINTY, MASK AND FLAGS EXTENSIONS
         frame = CCDData.read(framePath, hdu=0, unit=u.electron)
 
-        return filenamer(log=self.log, frame=frame, settings=self.settings)
+        templateStem, templateExtension = os.path.splitext(filenamer(log=self.log, frame=frame, settings=self.settings))
+        return f"{templateStem}{self.productNameMarker}{templateExtension}"
+
+    @property
+    def _science_technique(self):
+        """*the ``ESO DPR TECH`` of the science frames this recipe reads: nodding in stare mode, else stare*
+
+        **Return:**
+
+        - ``technique`` -- the technique string to filter the science frames on
+        """
+        return NODDING_TECHNIQUE if self.reduceNodAsStare else STARE_TECHNIQUE
+
+    def update_fits_keywords(self, frame, rawFrames=False):
+        """*update the fits keywords of a frame, and in stare mode record that it was reduced as a stare frame*
+
+        The ESO Phase 3 keywords are those of `base_recipe.update_fits_keywords`. In stare mode the technique of the
+        product is then ``ECHELLE,SLIT,STARE`` and the stare-mode keyword is True.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame to update
+        - ``rawFrames`` -- limit the raw frames to be listed in the fits header to only these frames (list)
+        """
+        super().update_fits_keywords(frame=frame, rawFrames=rawFrames)
+        if self.reduceNodAsStare:
+            frame.header[self.kw("PRO_TECH")] = STARE_TECHNIQUE
+            frame.header[self.kw("PRO_STARE_MODE")] = True
 
     def _verify_and_announce_input_frames(self):
         """*verify the collected frames and report the result to the user*
@@ -212,6 +264,10 @@ class soxs_stare(base_recipe):
 
         if self.arm == "NIR":
             error = self._nir_input_frame_error(imageTypes, imageTech, arm)
+            # NO A-B DIFFERENCE REMOVES THE DARK OF NODDING FRAMES REDUCED IN STARE MODE, AND THE OFF-FRAME FALLBACK
+            # DOES NOT COUNT (DY-2194)
+            if not error and self.reduceNodAsStare and "MASTER_DARK_NIR" not in imageCat:
+                error = NIR_NOD_STARE_DARK_MESSAGE
         else:
             error = self._uvb_vis_input_frame_error(imageTypes, imageCat, arm)
 
@@ -361,6 +417,7 @@ class soxs_stare(base_recipe):
         self.subtractSky = self.recipeSettings["sky-subtraction"]["subtract_sky"]
 
         allObjectFrames, allObjectNames = self._read_stare_object_frames(kw)
+        self.objectFrameNames = allObjectNames
         # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
         self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
 
@@ -548,15 +605,15 @@ class soxs_stare(base_recipe):
         # THE SKY-MODEL FALLBACK EDITS THE RECIPE SETTINGS IN PLACE, SO EACH FRAME RUNS ON A COPY OF THE ORIGINAL,
         # WHICH IS RESTORED UNTOUCHED
         recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
-        templateStem, templateExtension = os.path.splitext(filenameTemplate)
         qcTables = []
         productPath = None
         forceFailure = False
         try:
             for index, (frame, name) in enumerate(zip(allObjectFrames, allObjectNames, strict=True), start=1):
                 self.log.print(f"\n# EXTRACTING OBJECT FRAME {index} OF {len(allObjectFrames)} ({name}) ON ITS OWN")
+                # THE FRAME NUMBER GOES BEFORE THE MARKER: <SOF>_F<N>_STAREMODE
                 self.sofName = f"{sofName}_F{index}"
-                self.filenameTemplate = f"{templateStem}_F{index}{templateExtension}"
+                self.filenameTemplate = f"{self.productStem}.fits"
                 self.recipeSettings, self.subtractSky = copy.deepcopy(recipeSettings), subtractSky
                 productPath, frameFailure = self._reduce_object_frames([frame], rawFrames=[name])
                 forceFailure = self._combine_failures(forceFailure, frameFailure)
@@ -593,6 +650,9 @@ class soxs_stare(base_recipe):
     def _reduce_object_frames(self, allObjectFrames, rawFrames=False):
         """*stack the object frames, then detrend, sky-subtract, extract and flux-calibrate the stack*
 
+        The frames of a nodding SOF reduced in stare mode are aligned along the slit before they are stacked, as the
+        object sits at two slit positions (see `_reduce_nod_frames_as_stare`). One frame is used as it is.
+
         **Key Arguments:**
 
         - ``allObjectFrames`` -- the object frames to stack; one frame is used as it is
@@ -605,8 +665,8 @@ class soxs_stare(base_recipe):
         - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe, or the failure message
           when a standard star has no object trace
         """
-        arm = self.arm
-        kw = self.kw
+        if self.reduceNodAsStare and len(allObjectFrames) > 1:
+            return self._reduce_nod_frames_as_stare(allObjectFrames, rawFrames)
 
         combined_object_notflattened = self.clip_and_stack(
             frames=allObjectFrames,
@@ -614,8 +674,24 @@ class soxs_stare(base_recipe):
             ignore_input_masks=True,
             post_stack_clipping=False,
         )
-        self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
+        return self._reduce_stacked_object(combined_object_notflattened, allObjectFrames, rawFrames)
 
+    def _read_reduction_inputs(self, kw, arm):
+        """*read the master bias, the dark and the master flat, and locate the calibration tables*
+
+        The master flat is False when the ``use_flat`` recipe setting is off.
+
+        **Key Arguments:**
+
+        - ``kw`` -- the keyword lookup
+        - ``arm`` -- the arm the frames were taken with
+
+        **Return:**
+
+        - ``inputs`` -- the ``reduction_inputs``: the master bias, the dark, the master flat, the order table path,
+          the dispersion map table path, the dispersion map image path and the response table path (False when none
+          was supplied)
+        """
         master_bias, dark, master_flat = self._read_calibration_frames(kw, arm)
         orderTablePath, dispMap, twoDMap, responseFunctionPath = self._locate_calibration_tables(kw, arm)
 
@@ -626,13 +702,48 @@ class soxs_stare(base_recipe):
             self.log.debug(f"produce_product: `if not self.recipeSettings['use_flat']: mas...` failed, continuing: {e}")
             master_flat = False
 
-        combined_object = self.detrend(
-            inputFrame=combined_object_notflattened,
-            master_bias=master_bias,
-            dark=dark,
-            master_flat=master_flat,
-            order_table=orderTablePath,
-        )
+        return reduction_inputs(master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath)
+
+    def _reduce_stacked_object(
+        self, combined_object_notflattened, allObjectFrames, rawFrames=False, inputs=None, detrended=None
+    ):
+        """*detrend, sky-subtract, extract and flux-calibrate the stack of the object frames*
+
+        **Key Arguments:**
+
+        - ``combined_object_notflattened`` -- the stack of the object frames, not flat-fielded
+        - ``allObjectFrames`` -- the object frames in the stack
+        - ``rawFrames`` -- the raw file names the product header lists. Default *False* lists every raw frame of
+          the SOF
+        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`. Default *None* reads them
+        - ``detrended`` -- the detrended (and flat-fielded) stack, when the frames were detrended before they were
+          stacked. Default *None* detrends ``combined_object_notflattened`` here
+
+        **Return:**
+
+        - ``productPath`` -- the path to the product
+        - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe, or the failure message
+          when a standard star has no object trace
+        """
+        arm = self.arm
+        kw = self.kw
+
+        self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
+
+        if inputs is None:
+            inputs = self._read_reduction_inputs(kw, arm)
+        master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath = inputs
+
+        if detrended is None:
+            combined_object = self.detrend(
+                inputFrame=combined_object_notflattened,
+                master_bias=master_bias,
+                dark=dark,
+                master_flat=master_flat,
+                order_table=orderTablePath,
+            )
+        else:
+            combined_object = detrended
 
         # INJECT KEYWORDS INTO HEADER
         self.update_fits_keywords(frame=combined_object, rawFrames=rawFrames)
@@ -691,7 +802,7 @@ class soxs_stare(base_recipe):
             qcTable=self.qc,
             productsTable=self.products,
             dispersionMap=dispMap,
-            sofName=self.sofName,
+            sofName=self.productStem,
             startNightDate=self.startNightDate,
             debug=self.debug,
             turnOffMP=self.turnOffMP,
@@ -762,18 +873,20 @@ class soxs_stare(base_recipe):
         """
         self.readStareFrames = False
 
+        technique = self._science_technique
+
         # OBJECT FRAMES
         allObjectFrames, allObjectNames = self._read_science_frames(
             [
-                {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
-                {kw("DPR_TYPE"): "OBJECT,ASYNC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"},
+                {kw("DPR_TYPE"): "OBJECT", kw("DPR_TECH"): technique},
+                {kw("DPR_TYPE"): "OBJECT,ASYNC", kw("DPR_TECH"): technique},
             ]
         )
 
         # FLUX STD FRAMES
         if not len(allObjectFrames):
             allObjectFrames, allObjectNames = self._read_science_frames(
-                [{kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"}]
+                [{kw("DPR_TYPE"): "STD,FLUX", kw("DPR_TECH"): technique}]
             )
             if len(allObjectFrames):
                 self.generateReponseCurve = True
@@ -781,7 +894,7 @@ class soxs_stare(base_recipe):
         # TELLURIC STD FRAMES
         if not len(allObjectFrames):
             allObjectFrames, allObjectNames = self._read_science_frames(
-                [{kw("DPR_TYPE"): "STD,TELLURIC", kw("DPR_TECH"): "ECHELLE,SLIT,STARE"}]
+                [{kw("DPR_TYPE"): "STD,TELLURIC", kw("DPR_TECH"): technique}]
             )
 
         self.readStareFrames = bool(len(allObjectFrames))
@@ -1169,7 +1282,7 @@ class soxs_stare(base_recipe):
                 qcTable=self.qc,
                 productsTable=self.products,
                 dispMap=dispMap,
-                sofName=self.sofName,
+                sofName=self.productStem,
                 recipeName=self.recipeName,
                 startNightDate=self.startNightDate,
                 debug=self.debug,
@@ -1411,7 +1524,7 @@ class soxs_stare(base_recipe):
             header=combined_object.header,
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
-            sofName=self.sofName,
+            sofName=self.productStem,
             debug=self.debug,
         )
         filePath_fluxcal, prod = fluxCalibrator.calibrate()
@@ -1468,7 +1581,7 @@ class soxs_stare(base_recipe):
             qcTable=self.qc,
             productsTable=self.products,
             dispersionMap=dispMap,
-            sofName=self.sofName,
+            sofName=self.productStem,
             startNightDate=self.startNightDate,
             debug=self.debug,
             notFlattened=True,
@@ -1488,7 +1601,7 @@ class soxs_stare(base_recipe):
             log=self.log,
             settings=self.settings,
             recipeName=self.recipeName,
-            sofName=self.sofName,
+            sofName=self.productStem,
             stdExtractionPath=extractionPath,
             qcTable=self.qc,
             productsTable=self.products,
