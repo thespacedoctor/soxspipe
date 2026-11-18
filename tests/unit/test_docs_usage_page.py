@@ -45,7 +45,9 @@ def _generate_usage_page(configDirectory: Path) -> str:
     exec(compile(ast.Module(body=functionNodes, type_ignores=[]), "conf.py", "exec"), namespace)  # noqa: S102
     namespace[USAGE_FUNCTION_NAME]()
 
-    return (configDirectory / "usage.md").read_text(encoding="utf-8")
+    usagePath = configDirectory / "usage.md"
+    assert usagePath.exists(), f"{USAGE_FUNCTION_NAME}() wrote no usage.md; check the cl_utils docstring"
+    return usagePath.read_text(encoding="utf-8")
 
 
 def test_tracked_usage_page_matches_the_generated_page(tmp_path: Path) -> None:
@@ -56,4 +58,6 @@ def test_tracked_usage_page_matches_the_generated_page(tmp_path: Path) -> None:
     generatedPage = _generate_usage_page(tmp_path)
 
     # ASSERT
-    assert trackedPage == generatedPage
+    assert trackedPage == generatedPage, (
+        "docs/source/usage.md is out of date; run updateUsageMd() (or build the docs) and commit usage.md"
+    )
