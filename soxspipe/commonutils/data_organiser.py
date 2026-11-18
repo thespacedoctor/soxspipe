@@ -65,6 +65,9 @@ os.environ["TERM"] = "vt100"
 # THE TEMPORARY GROUPING KEY THAT KEEPS THE FRAMES OF DIFFERENT KNOWN SETS APART
 KNOWN_SET_COLUMN = "known set"
 
+# THE TEMPORARY COPY OF A SESSION'S SOF MAP THAT THE SEARCH FOR THE SETS BUILT FROM A REJOINED SET READS
+MAP_SNAPSHOT_TABLE = "late_frame_map_snapshot"
+
 
 def print_incomplete_sets_report(incompleteSets, blockingSets=None):
     """*print the "cannot be reduced" report shared by `data_organiser.prepare` and `reducer.reduce`*
@@ -3163,6 +3166,10 @@ class data_organiser:
         self._require_calibration_matches_table()
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
 
+        # THE LOOP BELOW DROPS FROM THE SOF MAP EVERY SET THAT USES A FAILED OR INCOMPLETE PRODUCT, SO THE SETS
+        # BUILT FROM A REJOINED SET ARE FOUND IN THIS COPY OF THE MAP INSTEAD
+        mapSnapshot = self._snapshot_session_map(self.sessionId) if rejoinLateFrames else None
+
         c = self.conn.cursor()
         sqlQuery = f"update product_frames set status = {statusColumn};"  # noqa: S608
         c.execute(sqlQuery)
@@ -3254,7 +3261,7 @@ class data_organiser:
             self._start_session_regroup(sofMapTableName)
 
         # A FRAME ADDED AFTER ITS SET WAS GROUPED REJOINS THAT SET, WHICH IS THEN GROUPED AND REDUCED AGAIN
-        rejoined, consumers = self._rejoin_late_frames(sofMapTableName) if rejoinLateFrames else ({}, {})
+        rejoined, consumers = self._rejoin_late_frames(sofMapTableName, mapSnapshot) if rejoinLateFrames else ({}, {})
         compromisedSofs = compromisedSofs + sorted(rejoined) + sorted(consumers)
 
         sofNamePins = {**self.pinnedSofNames, **self.pinnedConsumerNames}
@@ -3465,7 +3472,26 @@ class data_organiser:
                 self.conn.execute("ROLLBACK")
             raise
 
-    def _rejoin_late_frames(self, sofMapTableName):
+    def _snapshot_session_map(self, sessionId):
+        """*copy the session's SOF map into a temporary table and return the table's name*
+
+        The copy lives only on this connection. `_rejoin_late_frames` drops it.
+
+        **Key Arguments:**
+
+        - ``sessionId`` -- the current session's ID
+
+        **Return:**
+
+        - ``snapshotTable`` -- the name of the temporary table
+        """
+        sofMapTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+        # TABLE NAMES CANNOT BE BOUND; THE SESSION TABLE IS CHECKED BY validate_sql_identifier ABOVE
+        self.conn.execute(f"DROP TABLE IF EXISTS temp.{MAP_SNAPSHOT_TABLE};")
+        self.conn.execute(f"CREATE TEMP TABLE {MAP_SNAPSHOT_TABLE} AS SELECT * FROM {sofMapTableName};")  # noqa: S608
+        return MAP_SNAPSHOT_TABLE
+
+    def _rejoin_late_frames(self, sofMapTableName, mapSnapshot=None):
         """*reset the sets a late-arriving raw frame belongs to, and the sets built from them, to be reduced again*
 
         The sets that use a product of a rejoined set are reset the same way, at every level, whatever their status
@@ -3474,6 +3500,9 @@ class data_organiser:
         **Key Arguments:**
 
         - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
+        - ``mapSnapshot`` -- the table `_snapshot_session_map` made before the build dropped the sets that use a
+          failed product. The sets built from a rejoined set are searched for there. It is dropped before this
+          method returns. Defaults to the session's own table
 
         **Return:**
 
@@ -3489,9 +3518,15 @@ class data_organiser:
         """
         groupingKeys = [key for key in self.filterKeywords if key not in self.proKeywords]
         rejoined = find_rejoined_sofs(self.conn, sofMapTableName, groupingKeys)
+        try:
+            consumers = (
+                find_consumer_sofs(self.conn, mapSnapshot or sofMapTableName, rejoined, self.log) if rejoined else {}
+            )
+        finally:
+            if mapSnapshot:
+                self.conn.execute(f"DROP TABLE IF EXISTS temp.{mapSnapshot};")
         if not rejoined:
             return rejoined, {}
-        consumers = find_consumer_sofs(self.conn, sofMapTableName, rejoined)
         self.pinnedSofNames = {**self.pinnedSofNames, **rejoined}
         self.pinnedConsumerNames = {**self.pinnedConsumerNames, **consumers}
 

@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.late_frame_rejoin import (
+    PLACEHOLDER_PRODUCT_FILE,
     collect_sof_name_pins,
     delete_stale_files,
     find_consumer_sofs,
@@ -293,43 +294,43 @@ def _chain_of_consumers():
     return connection
 
 
-def test_find_consumer_sofs_follows_the_products_through_every_level() -> None:
+def test_find_consumer_sofs_follows_the_products_through_every_level(log) -> None:
     # ARRANGE
     connection = _chain_of_consumers()
 
     # ACT
-    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF], log)
 
     # ASSERT
     connection.close()
     assert list(consumers) == sorted([LEVEL_ONE_SOF, LEVEL_TWO_SOF, LEVEL_THREE_SOF])
 
 
-def test_find_consumer_sofs_returns_the_recipe_and_raw_frames_of_each_consumer() -> None:
+def test_find_consumer_sofs_returns_the_recipe_and_raw_frames_of_each_consumer(log) -> None:
     # ARRANGE
     connection = _chain_of_consumers()
 
     # ACT
-    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF], log)
 
     # ASSERT
     connection.close()
     assert consumers[LEVEL_TWO_SOF] == ("recipe", frozenset({f"{LEVEL_TWO_SOF}.raw"}))
 
 
-def test_find_consumer_sofs_leaves_out_the_sofs_it_starts_from() -> None:
+def test_find_consumer_sofs_leaves_out_the_sofs_it_starts_from(log) -> None:
     # ARRANGE
     connection = _chain_of_consumers()
 
     # ACT
-    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF, LEVEL_ONE_SOF])
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF, LEVEL_ONE_SOF], log)
 
     # ASSERT
     connection.close()
     assert list(consumers) == sorted([LEVEL_TWO_SOF, LEVEL_THREE_SOF])
 
 
-def test_find_consumer_sofs_stops_when_two_sofs_take_each_others_products() -> None:
+def test_find_consumer_sofs_stops_when_two_sofs_take_each_others_products(log) -> None:
     # ARRANGE
     connection = _chain_of_consumers()
     connection.execute(
@@ -337,36 +338,63 @@ def test_find_consumer_sofs_stops_when_two_sofs_take_each_others_products() -> N
     )
 
     # ACT
-    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF], log)
 
     # ASSERT
     connection.close()
     assert list(consumers) == sorted([LEVEL_ONE_SOF, LEVEL_TWO_SOF, LEVEL_THREE_SOF])
 
 
-def test_find_consumer_sofs_ignores_a_product_with_the_placeholder_file_name() -> None:
+def test_find_consumer_sofs_ignores_a_product_with_the_placeholder_file_name(log) -> None:
     # ARRANGE
     connection = _chain_of_consumers()
-    connection.execute("UPDATE product_frames SET file = 'XXXX' WHERE sof = ?", (ROOT_SOF,))
+    connection.execute("UPDATE product_frames SET file = ? WHERE sof = ?", (PLACEHOLDER_PRODUCT_FILE, ROOT_SOF))
 
     # ACT
-    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF], log)
 
     # ASSERT
     connection.close()
     assert consumers == {}
 
 
-def test_find_consumer_sofs_finds_nothing_when_no_sof_is_given() -> None:
+def test_find_consumer_sofs_finds_nothing_when_no_sof_is_given(log) -> None:
     # ARRANGE
     connection = _chain_of_consumers()
 
     # ACT
-    consumers = find_consumer_sofs(connection, "sof_map_test", [])
+    consumers = find_consumer_sofs(connection, "sof_map_test", [], log)
 
     # ASSERT
     connection.close()
     assert consumers == {}
+
+
+def test_find_consumer_sofs_warns_about_a_consumer_it_cannot_queue_again(log) -> None:
+    # ARRANGE: LEVEL TWO HAS NO RAW FRAME IN THE `raw_frames` TABLE, SO IT CANNOT BE GROUPED AGAIN
+    connection = _chain_of_consumers()
+    connection.execute("DELETE FROM raw_frames WHERE filepath = ?", (f"{LEVEL_TWO_SOF}.raw",))
+
+    # ACT
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF], log)
+
+    # ASSERT
+    connection.close()
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert LEVEL_TWO_SOF not in consumers
+    assert len(warnings) == 1 and LEVEL_TWO_SOF in warnings[0]
+
+
+def test_find_consumer_sofs_does_not_warn_when_every_consumer_can_be_queued_again(log) -> None:
+    # ARRANGE
+    connection = _chain_of_consumers()
+
+    # ACT
+    find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF], log)
+
+    # ASSERT
+    connection.close()
+    assert [message for level, message in log.messages if level == "warning"] == []
 
 
 def test_requeue_summary_names_every_consumer_in_order() -> None:
@@ -377,5 +405,5 @@ def test_requeue_summary_names_every_consumer_in_order() -> None:
     summary = format_requeue_summary(sofs)
 
     # ASSERT
-    assert summary.startswith("2 SOF(S)")
-    assert summary.index(OLD_SOF) < summary.index(NEW_SOF)
+    assert summary.startswith("2 SOF(S) USE A PRODUCT THAT WILL BE REBUILT")
+    assert summary.endswith(f": {OLD_SOF}, {NEW_SOF}")
