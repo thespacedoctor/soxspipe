@@ -224,7 +224,10 @@ def main(arguments=None):
         eLog = emptyLogger()
         try:
             do = data_organiser(log=eLog, rootDir=".")
-            currentSession, allSessions = do.session_list(silent=True)
+            try:
+                currentSession, allSessions = do.session_list(silent=True)
+            finally:
+                do.close()
         except (_UnsafePathError, DatabasePreservationError) as error:
             _exit_with_message(error)
 
@@ -644,8 +647,14 @@ def main(arguments=None):
                     thisLog.error(refusal.__cause__)
                     raise
 
+                # THE ORGANISER IS ONLY NEEDED FOR THE SESSION LOOKUP; RELEASE ITS CONNECTION BEFORE REDUCING
+                try:
+                    sessionLookup = None if currentSession else do.session_list(silent=True)
+                finally:
+                    do.close()
+
                 if not currentSession:
-                    currentSession, allSessions = do.session_list(silent=True)
+                    currentSession, allSessions = sessionLookup
 
                     if currentSession:
                         import logging
