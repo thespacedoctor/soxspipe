@@ -3,7 +3,7 @@
 Each pin asserts the CORRECT behaviour. A pin for a leak that is not fixed yet fails today and
 is marked ``xfail(strict=True)``. When someone fixes the leak the test XPASSes, strict mode
 turns that into a suite failure, and the fixer deletes the ``xfail`` marker, so the pin stays
-as a regression test (L1, L3 and L5 are fixed and have no marker).
+as a regression test (L1, L3, L4 and L5 are fixed and have no marker).
 
 The ``reason`` of each marker reads ``<Linear issue> (DY-36 <ID>): <defect>``, naming the
 issue that tracks the leak and the leak's ID in the DY-36 findings table.
@@ -45,7 +45,7 @@ from tests.integration.test_toolkit_split_characterization import (
     _two_by_two_binned_2d_map,
     _vis_frame,
 )
-from tests.unit.test_cli_dispatch import RecordingOrganiser, _run_cli
+from tests.unit.test_cli_dispatch import RecordingDaemon, RecordingOrganiser, _run_cli
 
 pytestmark = pytest.mark.unit
 
@@ -259,14 +259,6 @@ def test_fmultiprocess_stops_its_workers_when_a_task_raises(log: Any, cyclic_gc_
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1708 (DY-36 L4): cl_utils.main opens a data_organiser (and its soxspipe.db connection) to look up the "
-        "session and never closes it, so it stays open for the whole reduction"
-    ),
-)
 def test_cli_reduce_closes_the_session_lookup_organiser_before_reducing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -278,7 +270,7 @@ def test_cli_reduce_closes_the_session_lookup_organiser_before_reducing(
 
     class SnapshotReducer:
         def __init__(self, **kwargs: object) -> None:
-            return None
+            pass
 
         def reduce(self, **kwargs: object) -> None:
             organiserCallsAtReduce.append(list(RecordingOrganiser.calls))
@@ -292,6 +284,44 @@ def test_cli_reduce_closes_the_session_lookup_organiser_before_reducing(
     assert len(organiserCallsAtReduce) == 1
     calls = [name for name, _ in organiserCallsAtReduce[0]]
     assert ("session_list", {"silent": True}) in organiserCallsAtReduce[0]
+
+    # ASSERT: AND CLOSED IT BEFORE THE REDUCTION STARTED
+    assert calls.count("close") == calls.count("init")
+
+
+def test_watch_daemon_closes_its_organiser_before_reducing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The watch daemon must close the organiser it opens before it reduces."""
+
+    # ARRANGE
+    class StopDaemonError(Exception):
+        pass
+
+    organiserCallsAtReduce: list[list[tuple[str, object]]] = []
+
+    class SnapshotReducer:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def reduce(self, **kwargs: object) -> None:
+            organiserCallsAtReduce.append(list(RecordingOrganiser.calls))
+            raise StopDaemonError
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "reducer", SnapshotReducer)
+    _run_cli(monkeypatch, tmp_path, ["soxspipe", "watch", "start"], currentSession="session-one")
+    daemon = RecordingDaemon.instances[0]
+    RecordingOrganiser.calls.clear()
+
+    # ACT
+    with pytest.raises(StopDaemonError):
+        daemon.action(pwd=str(tmp_path))
+
+    # ASSERT: THE DAEMON REALLY OPENED AN ORGANISER BEFORE THE REDUCTION
+    assert len(organiserCallsAtReduce) == 1
+    calls = [name for name, _ in organiserCallsAtReduce[0]]
+    assert "init" in calls
 
     # ASSERT: AND CLOSED IT BEFORE THE REDUCTION STARTED
     assert calls.count("close") == calls.count("init")
