@@ -3548,8 +3548,8 @@ def generate_masks(crossDispersionSlicesDF, orderRectifiedImages):
     this = np.append(this, np.nan)
     crossDispersionSlicesDF["pixelScaleNm"] = np.abs(this)
 
-    # MASK THE NAN AND FLAGGED BAD PIXELS. COSMIC RAYS ARE REJECTED LATER BY THE RESIDUAL CLIP OF THE EXTRACTION
-    fluxRawMask = _bad_pixel_mask(fluxRaw, bpMask)
+    # MASK THE NON-FINITE AND FLAGGED BAD PIXELS. COSMIC RAYS ARE REJECTED LATER BY THE RESIDUAL CLIP OF THE EXTRACTION
+    fluxRawMask = _non_finite_or_bad_pixel_mask(fluxRaw, bpMask)
 
     # FAIL SAFE FOR BAD WAVELENGTH VALUES - SOME ODD WAVELENGTHS FROM DISPERSION SOLUTION CAN CAUSE PROBLEMS WITH PROFILE FITTING
     wlMask = wavelength.copy()
@@ -3801,8 +3801,8 @@ def _slit_edge_truncated_columns(fluxRaw, mask, unsupported):
     return hasSupport & (peak > 0) & (topSpill | bottomSpill)
 
 
-def _bad_pixel_mask(fluxRaw, bpMask):
-    """*mask the NaN pixels and every pixel flagged in the bad-pixel mask*
+def _non_finite_or_bad_pixel_mask(fluxRaw, bpMask):
+    """*mask the non-finite pixels and every pixel flagged in the bad-pixel mask*
 
     Cosmic rays are not clipped here. The residual clip in ``compute_extractions`` rejects them.
 
@@ -3813,8 +3813,8 @@ def _bad_pixel_mask(fluxRaw, bpMask):
 
     **Return:**
 
-    - ``mask`` -- a new boolean array, True where the flux is NaN or the pixel is flagged
+    - ``mask`` -- a new boolean array, True where the flux is NaN or infinite or the pixel is flagged
     """
     import numpy as np
 
-    return np.isnan(fluxRaw) | (bpMask != 0)
+    return ~np.isfinite(fluxRaw) | (bpMask != 0)

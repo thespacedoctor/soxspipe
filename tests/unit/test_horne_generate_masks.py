@@ -1,11 +1,13 @@
-"""DY-2223: the optimal extraction has no pre-fit cosmic-ray clip, and the Horne residual clip rejects the cosmic ray.
+"""``generate_masks`` masks non-finite and flagged pixels only; the residual clip rejects cosmic rays (DY-2223).
 
 In a rectified order image the rows are slit positions and the columns are wavelengths. ``generate_masks`` masks the
-flagged bad pixels and the NaN pixels only. The residual clip in ``compute_extractions`` (DY-2221) rejects cosmic rays
-on any slit length. The shipped slit lengths are 10 to 20 rows; the old pre-fit clip needed about 50 rows to fire.
+flagged bad pixels and the non-finite pixels only. The residual clip in ``compute_extractions`` (DY-2221) rejects
+cosmic rays on any slit length. The shipped slit lengths are 10 to 20 rows.
 """
 
 from __future__ import annotations
+
+import importlib
 
 import numpy as np
 import pandas as pd
@@ -74,6 +76,26 @@ def test_generate_masks_masks_nan_pixels_and_every_nonzero_bad_pixel_value() -> 
 
     # ASSERT
     assert {tuple(index) for index in np.argwhere(result["mask"])} == {(0, 0), (3, 4), (5, 6)}
+
+
+def test_generate_masks_masks_infinite_flux_pixels() -> None:
+    # ARRANGE
+    slices, images = _order_images(SLIT_ROWS_SHIPPED)
+    images["fluxRaw"][1, 2] = np.inf
+    images["fluxRaw"][3, 4] = -np.inf
+
+    # ACT
+    _, result = generate_masks(slices, images)
+
+    # ASSERT
+    assert {tuple(index) for index in np.argwhere(result["mask"])} == {(1, 2), (3, 4)}
+
+
+def test_the_pre_fit_sigma_clip_function_is_gone() -> None:
+    # THE PACKAGE ATTRIBUTE horne_extraction IS THE CLASS, SO RESOLVE THE MODULE ITSELF
+    module = importlib.import_module("soxspipe.commonutils.horne_extraction")
+
+    assert not hasattr(module, "_sigma_clip_and_mask")
 
 
 def test_generate_masks_leaves_the_callers_bad_pixel_mask_unchanged() -> None:

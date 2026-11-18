@@ -57,7 +57,7 @@ In each wavelength column, the pixel with the largest value is removed from the 
 
 In NIR columns with no object, the stated variance is larger than the scatter of the rectified pixels, so the default limit removes fewer noise pixels than a limit of 5 standard deviations of the real noise. On 10 VIS and NIR stare, nod and offset frames, the clip mostly removes positive spikes in faint orders. In bright columns it also removes pixels where the fitted profile does not match the data, and the order median flux of a bright order changes by 0.7% or less.
 
-The utility does not clip cosmic rays before the profile is fitted. Before DY-2223 it clipped each wavelength column of the rectified order image along the slit at 7 standard deviations, but one pixel in a column of n pixels can be at most √(n − 1) standard deviations from the column mean, so that clip could only fire on slits of about 50 rows or more. The default `horne-extraction-slit-length` is 10 to 20 rows in every shipped recipe block, so it clipped nothing. Before the profile is fitted, only the pixels that are NaN or flagged in the bad-pixel mask are masked. The residual clip above rejects the cosmic rays, on any slit length.
+The utility does not clip cosmic rays before it fits the profile. Before the fit, it masks only the pixels with a non-finite flux and the pixels flagged in the bad-pixel mask. The residual clip described above rejects the cosmic rays, on any slit length.
 
 The final flux for each cross-dispersion slice is a weighted sum, as reported in {cite:t}`horne1986`, with the bad pixels and outliers accounted for. Note, if more than 3 bad/outlying pixels are found within a cross-dispersion slice, then the slice is ignored.
 
