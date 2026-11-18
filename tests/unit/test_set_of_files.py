@@ -16,7 +16,7 @@ from astropy.io import fits
 from soxspipe.commonutils.set_of_files import (
     set_of_files,
 )
-from tests.factories import prepared_fits, raw_fits, sof_file
+from tests.factories import prepared_fits, raw_fits, session_workspace, sof_file
 
 pytestmark = pytest.mark.unit
 
@@ -537,3 +537,71 @@ def test_create_supplementary_dictionary_matches_several_arms_and_kinds(tmp_path
             "2D_MAP": "vis_2D_MAP.CSV",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# DY-1702: THE API BUILDS EVERY PATH FROM rootDir, NOT THE PROCESS CWD
+# ---------------------------------------------------------------------------
+
+
+def test_init_reads_the_workspace_session_from_root_dir_whatever_the_cwd(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = session_workspace(tmp_path, "mysession")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    sof = set_of_files(log=log, settings=_settings(tmp_path), verbose=False, rootDir=str(root))
+
+    assert sof.currentSession == "mysession"
+    assert not (elsewhere / "sessions").exists()
+
+
+def test_get_sof_resolves_relative_frame_paths_under_root_dir_whatever_the_cwd(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "workspace"
+    rawDir = root / "raw" / "2024-01-01"
+    rawDir.mkdir(parents=True)
+    raw_fits(rawDir / "a.fits")
+    inputPath = tmp_path / "input.sof"
+    inputPath.write_text("./raw/2024-01-01/a.fits BIAS_VIS\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    sof = set_of_files(
+        log=log,
+        settings=_settings(tmp_path, default=["DPR_TYPE"]),
+        inputFrames=str(inputPath),
+        verbose=False,
+        rootDir=str(root),
+    )
+
+    collection, _supplementary = sof.get()
+
+    assert list(collection.summary["file"]) == ["a.fits"]
+    assert collection.location == str(rawDir)
+
+
+def test_get_sof_reports_a_missing_relative_frame_against_root_dir(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / "raw" / "2024-01-01").mkdir(parents=True)
+    raw_fits(elsewhere / "raw" / "2024-01-01" / "a.fits")
+    inputPath = tmp_path / "input.sof"
+    inputPath.write_text("./raw/2024-01-01/a.fits BIAS_VIS\n", encoding="utf-8")
+    monkeypatch.chdir(elsewhere)
+    sof = set_of_files(
+        log=log,
+        settings=_settings(tmp_path, default=["DPR_TYPE"]),
+        inputFrames=str(inputPath),
+        verbose=False,
+        rootDir=str(root),
+    )
+
+    with pytest.raises(FileNotFoundError, match="does not appear to exist"):
+        sof.get()

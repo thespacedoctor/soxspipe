@@ -11,11 +11,13 @@ import pytest
 
 from soxspipe.commonutils.data_organiser import OutdatedWorkspaceError
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
-from tests.factories import raw_flat_run_table, raw_frame_table, workspace_organiser
-from tests.integration.test_data_organiser_late_frames import (
-    _calibration_chain_frames,
-    _insert_frames,
-    _pinhole_frame,
+from tests.factories import (
+    calibration_chain_frames,
+    insert_frames,
+    pinhole_frame,
+    raw_flat_run_table,
+    raw_frame_table,
+    workspace_organiser,
 )
 
 pytestmark = pytest.mark.integration
@@ -37,7 +39,7 @@ def prepared_workspace(tmp_path, log, monkeypatch):
         organiser = workspace_organiser(tmp_path, log=log)
         connection, _ = organiser._get_or_create_db_connection()
         organiser.conn = connection
-        _insert_frames(connection, frames)
+        insert_frames(connection, frames)
         organiser.session_create("alpha")
 
         monkeypatch.setattr(organiser, "_fits_files_exist", lambda: True)
@@ -106,7 +108,7 @@ def test_session_switch_gives_the_session_frames_that_were_grouped_while_another
     organiser = prepared_workspace(raw_frame_table())
     organiser.session_create("beta")
     organiser.session_switch("alpha")
-    _insert_frames(organiser.conn, _second_bias_pair())
+    insert_frames(organiser.conn, _second_bias_pair())
     organiser.prepare(report=False)
     laterMbias = "20240103T030405_VIS_1X1_FAST_MBIAS_SOXS.sof"
     assert {row[2] for row in _sof_map_rows(organiser, "alpha")} == {MBIAS, laterMbias}
@@ -188,7 +190,7 @@ def test_regrouping_two_sessions_over_the_same_frames_adds_no_product_rows(prepa
 
 def _half_flat_workspace(prepared_workspace):
     """Return a workspace whose active session `alpha` has grouped half of a flat run, plus an idle session `beta`."""
-    frames = pd.concat([_calibration_chain_frames(), raw_flat_run_table(FIRST_HALF)])
+    frames = pd.concat([calibration_chain_frames(), raw_flat_run_table(FIRST_HALF)])
     organiser = prepared_workspace(frames)
     organiser.session_create("beta")
     organiser.session_switch("alpha")
@@ -199,7 +201,7 @@ def _half_flat_workspace(prepared_workspace):
 
 def _late_prepare(organiser):
     """Add the second half of the flat run to the workspace, then run a plain `prep` in the active session."""
-    _insert_frames(organiser.conn, raw_flat_run_table(SECOND_HALF))
+    insert_frames(organiser.conn, raw_flat_run_table(SECOND_HALF))
     organiser.prepare(report=False)
 
 
@@ -249,9 +251,9 @@ def test_switching_to_a_session_gives_it_the_late_frame_and_queues_the_set_again
 
 def test_session_create_keeps_two_template_runs_with_the_same_keys_as_two_sofs(prepared_workspace) -> None:
     # ARRANGE: THE SECOND RUN ARRIVES AFTER THE FIRST WAS GROUPED, SO IT FORMS ITS OWN SOF
-    frames = pd.concat([_calibration_chain_frames(), raw_flat_run_table(FIRST_HALF + SECOND_HALF)])
+    frames = pd.concat([calibration_chain_frames(), raw_flat_run_table(FIRST_HALF + SECOND_HALF)])
     organiser = prepared_workspace(frames)
-    _insert_frames(
+    insert_frames(
         organiser.conn, raw_flat_run_table(FIRST_HALF + SECOND_HALF, namePrefix="later", tplStart="2024-01-02T09:04:00")
     )
     organiser.prepare(report=False)
@@ -272,9 +274,9 @@ MFLAT_NAMED_AFTER_EXPNO_6 = "20240102T060416_VIS_1X1_FAST_MFLAT_1_0_10_0S_SOXS.s
 
 def _workspace_with_early_late_frames(prepared_workspace):
     """Return a workspace whose active session `alpha` grouped the second half of a run, then gained the first half."""
-    frames = pd.concat([_calibration_chain_frames(), raw_flat_run_table(SECOND_HALF)])
+    frames = pd.concat([calibration_chain_frames(), raw_flat_run_table(SECOND_HALF)])
     organiser = prepared_workspace(frames)
-    _insert_frames(organiser.conn, raw_flat_run_table(FIRST_HALF))
+    insert_frames(organiser.conn, raw_flat_run_table(FIRST_HALF))
     organiser.prepare(report=False)
     return organiser
 
@@ -338,9 +340,9 @@ def test_a_failed_set_keeps_its_status_and_its_map_rows_through_a_regroup(prepar
 
 def test_two_pinhole_arcs_that_share_every_key_stay_two_sofs_in_every_session(prepared_workspace) -> None:
     # ARRANGE: THE SECOND ARC ARRIVES AFTER THE FIRST WAS GROUPED AND HAS THE SAME KEYS, TEMPLATE START AND `mjd-obs`
-    organiser = prepared_workspace(_calibration_chain_frames())
-    secondArc = _pinhole_frame(raw_frame_table(), "arc-2", "LAMP,WAVE", "2024-01-02T04:04:00", "2024-01-02T04:04:09")
-    _insert_frames(organiser.conn, secondArc)
+    organiser = prepared_workspace(calibration_chain_frames())
+    secondArc = pinhole_frame(raw_frame_table(), "arc-2", "LAMP,WAVE", "2024-01-02T04:04:00", "2024-01-02T04:04:09")
+    insert_frames(organiser.conn, secondArc)
     organiser.prepare(report=False)
     alphaArcSofs = {row[2] for row in _sof_map_rows(organiser, "alpha") if "DISP_SOLUTION" in row[2]}
     assert len(alphaArcSofs) == 2
@@ -425,7 +427,7 @@ def test_session_create_works_in_a_workspace_with_no_raw_frames(tmp_path, log) -
 
 def test_a_stale_sof_symlink_is_skipped_and_its_target_survives(prepared_workspace) -> None:
     # ARRANGE
-    frames = pd.concat([_calibration_chain_frames(), raw_flat_run_table(FIRST_HALF)])
+    frames = pd.concat([calibration_chain_frames(), raw_flat_run_table(FIRST_HALF)])
     organiser = prepared_workspace(frames)
     sofDir = Path(organiser.sessionsDir) / "alpha" / "sof"
     target = sofDir / "keep.txt"
@@ -501,7 +503,7 @@ def test_session_create_takes_the_instrument_from_the_first_frame_that_names_one
     organiser.conn = connection
     frames = raw_frame_table()
     frames["instrume"] = [None, "XSHOOTER"]
-    _insert_frames(connection, frames)
+    insert_frames(connection, frames)
     organiserModule = sys.modules["soxspipe.commonutils.data_organiser"]
     defaultSettingsFiles = []
 

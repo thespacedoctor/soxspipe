@@ -19,6 +19,7 @@ from ccdproc import ImageFileCollection
 from soxspipe.commonutils.fits_frame_names import is_fits_frame
 from soxspipe.commonutils.fits_headers import read_header
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
+from soxspipe.commonutils.workspace_paths import path_under_root
 
 # A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits (ANY CASE) OR .fits.Z. THE MATCH ENDS AT
 # THE FIRST SUCH SUFFIX FOLLOWED BY WHITESPACE, SO A TRAILING COMMENT NAMING ANOTHER FRAME IS IGNORED
@@ -260,6 +261,8 @@ class set_of_files:
     - ``recipeName`` -- the name of the recipe. Default *False*
     - ``ext`` -- the data extension for the frame. Default 0.
     - ``session`` -- unused; the workspace session is read from the data organiser. Default *None*
+    - ``rootDir`` -- the workspace root. The session is read from it, and a relative path in an SOF file is taken
+      from it. Default *"."*, the current working directory
 
     **Usage**
 
@@ -294,6 +297,7 @@ class set_of_files:
         recipeName=False,
         ext=0,
         session=None,
+        rootDir=".",
     ):
         self.log = log
         log.debug("instantiating a new 'sof' object")
@@ -302,6 +306,7 @@ class set_of_files:
         self.verbose = verbose
         self.recipeName = recipeName
         self.ext = ext
+        self.rootDir = rootDir
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -328,7 +333,7 @@ class set_of_files:
         # GRAB THE WORKSPACE SESSION
         from soxspipe.commonutils import data_organiser
 
-        do = data_organiser(log=self.log, rootDir=".", dbConnect=False)
+        do = data_organiser(log=self.log, rootDir=self.rootDir, dbConnect=False)
         self.currentSession, allSessions = do.session_list(silent=True)
         do.close()
 
@@ -514,6 +519,10 @@ class set_of_files:
             supplementaryFilepaths[:] = [
                 f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in supplementaryFilepaths
             ]
+
+        # RELATIVE PATHS BELONG TO THE WORKSPACE, WHEREVER THE PROCESS HAPPENS TO RUN
+        fitsFiles = [path_under_root(f, self.rootDir) for f in fitsFiles]
+        supplementaryFilepaths = [path_under_root(f, self.rootDir) for f in supplementaryFilepaths]
 
         # MAKE SURE FILES EXIST
         for f in fitsFiles + supplementaryFilepaths:
