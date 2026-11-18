@@ -26,8 +26,10 @@ from soxspipe.commonutils.fits_frame_names import is_fits_frame, superseded_fram
 from soxspipe.commonutils.late_frame_rejoin import (
     collect_sof_name_pins,
     delete_stale_files,
+    find_consumer_sofs,
     find_rejoined_sofs,
     format_rejoin_summary,
+    format_requeue_summary,
     partition_labels,
     pin_rejoined_sof_names,
     reset_rejoined_sofs,
@@ -63,6 +65,9 @@ os.environ["TERM"] = "vt100"
 
 # THE TEMPORARY GROUPING KEY THAT KEEPS THE FRAMES OF DIFFERENT KNOWN SETS APART
 KNOWN_SET_COLUMN = "known set"
+
+# THE TEMPORARY COPY OF A SESSION'S SOF MAP THAT THE SEARCH FOR THE SETS BUILT FROM A REJOINED SET READS
+MAP_SNAPSHOT_TABLE = "late_frame_map_snapshot"
 
 
 def print_incomplete_sets_report(incompleteSets, blockingSets=None):
@@ -294,6 +299,8 @@ class data_organiser:
         self.log = log
         # NAMES PINNED FOR REJOINED SETS LIVE ONLY ON THIS INSTANCE; THEY ARE LOST WHEN THE PROCESS EXITS
         self.pinnedSofNames = {}
+        # THE SAME FOR THE SETS BUILT FROM A REJOINED SET: THEY KEEP THEIR NAMES, BUT THEIR FRAMES DO NOT CHANGE
+        self.pinnedConsumerNames = {}
         # THE TEMP TABLE THE QC-RANGE QUERIES READ FAILING-QC SOFS FROM WHILE A REBUILD RESTORES STATUSES, ELSE None
         self.failedQcSnapshot = None
 
@@ -3264,6 +3271,10 @@ class data_organiser:
         self._require_calibration_matches_table()
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
 
+        # THE LOOP BELOW DROPS FROM THE SOF MAP EVERY SET THAT USES A FAILED OR INCOMPLETE PRODUCT, SO THE SETS
+        # BUILT FROM A REJOINED SET ARE FOUND IN THIS COPY OF THE MAP INSTEAD
+        mapSnapshot = self._snapshot_session_map(self.sessionId) if rejoinLateFrames else None
+
         c = self.conn.cursor()
         sqlQuery = f"update product_frames set status = {statusColumn};"  # noqa: S608
         c.execute(sqlQuery)
@@ -3355,16 +3366,16 @@ class data_organiser:
             self._start_session_regroup(sofMapTableName)
 
         # A FRAME ADDED AFTER ITS SET WAS GROUPED REJOINS THAT SET, WHICH IS THEN GROUPED AND REDUCED AGAIN
-        rejoined = self._rejoin_late_frames(sofMapTableName) if rejoinLateFrames else {}
-        compromisedSofs = compromisedSofs + sorted(rejoined)
+        rejoined, consumers = self._rejoin_late_frames(sofMapTableName, mapSnapshot) if rejoinLateFrames else ({}, {})
+        compromisedSofs = compromisedSofs + sorted(rejoined) + sorted(consumers)
 
-        sofNamePins = self.pinnedSofNames
+        sofNamePins = {**self.pinnedSofNames, **self.pinnedConsumerNames}
         regroupedSofs = set()
         knownSetsByRecipe = {}
         if rejoinLateFrames:
             # SETS KEEP THE NAMES AND THE FRAMES THEY HAVE IN THIS SESSION AND IN THE OTHERS; A SET THAT GAINED A
             # LATE FRAME IS LEFT OUT OF THE FRAME LABELS SO ITS OLD FRAMES GROUP WITH THE NEW ONE
-            sofNamePins = collect_sof_name_pins(self.conn, sofMapTableName, self.pinnedSofNames)
+            sofNamePins = collect_sof_name_pins(self.conn, sofMapTableName, sofNamePins)
             regroupedSofs = set(rejoined) | set(self.pinnedSofNames)
             knownSetsByRecipe = {
                 recipe: partition_labels(sofNamePins, recipe, regroupedSofs)
@@ -3566,18 +3577,45 @@ class data_organiser:
                 self.conn.execute("ROLLBACK")
             raise
 
-    def _rejoin_late_frames(self, sofMapTableName):
-        """*reset every set that a late-arriving raw frame belongs to, so it is grouped and reduced again*
+    def _snapshot_session_map(self, sessionId):
+        """*copy the session's SOF map into a temporary table and return the table's name*
+
+        The copy lives only on this connection. `_rejoin_late_frames` drops it.
+
+        **Key Arguments:**
+
+        - ``sessionId`` -- the current session's ID
+
+        **Return:**
+
+        - ``snapshotTable`` -- the name of the temporary table
+        """
+        sofMapTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+        # TABLE NAMES CANNOT BE BOUND; THE SESSION TABLE IS CHECKED BY validate_sql_identifier ABOVE
+        self.conn.execute(f"DROP TABLE IF EXISTS temp.{MAP_SNAPSHOT_TABLE};")
+        self.conn.execute(f"CREATE TEMP TABLE {MAP_SNAPSHOT_TABLE} AS SELECT * FROM {sofMapTableName};")  # noqa: S608
+        return MAP_SNAPSHOT_TABLE
+
+    def _rejoin_late_frames(self, sofMapTableName, mapSnapshot=None):
+        """*reset the sets a late-arriving raw frame belongs to, and the sets built from them, to be reduced again*
+
+        The sets that use a product of a rejoined set are reset the same way, at every level, whatever their status
+        (a failed set may have failed on the old product). Only the current session's SOF map is searched for them.
 
         **Key Arguments:**
 
         - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
+        - ``mapSnapshot`` -- the table `_snapshot_session_map` made before the build dropped the sets that use a
+          failed product. The sets built from a rejoined set are searched for there. It is dropped before this
+          method returns. Defaults to the session's own table
 
         **Return:**
 
         - ``rejoined`` -- SOF name to (recipe, frozenset of raw frame filepaths) for the sets that gained a frame in
           this call, empty when none did. Their names stay pinned in `self.pinnedSofNames` for the rest of this
           instance's life
+        - ``consumers`` -- the same for the sets that use their products, directly or through other products. Their
+          names stay pinned in `self.pinnedConsumerNames`
 
         The pin lives only on this instance. A rejoined set that is still unprocessed after both `prepare()` passes
         (for example, while a calibration is missing) loses its pin when the process exits, and a later `prepare()`
@@ -3585,19 +3623,31 @@ class data_organiser:
         """
         groupingKeys = [key for key in self.filterKeywords if key not in self.proKeywords]
         rejoined = find_rejoined_sofs(self.conn, sofMapTableName, groupingKeys)
+        try:
+            consumers = (
+                find_consumer_sofs(self.conn, mapSnapshot or sofMapTableName, rejoined, self.log) if rejoined else {}
+            )
+        finally:
+            if mapSnapshot:
+                self.conn.execute(f"DROP TABLE IF EXISTS temp.{mapSnapshot};")
         if not rejoined:
-            return rejoined
+            return rejoined, {}
         self.pinnedSofNames = {**self.pinnedSofNames, **rejoined}
+        self.pinnedConsumerNames = {**self.pinnedConsumerNames, **consumers}
 
         stalePaths = reset_rejoined_sofs(
-            self.conn, sofMapTableName, rejoined, self.rootDir, _validate_owned_path, self.log
+            self.conn, sofMapTableName, {**rejoined, **consumers}, self.rootDir, _validate_owned_path, self.log
         )
         self.conn.commit()
         # DELETE ONLY AFTER THE COMMIT, SO A FAILED COMMIT NEVER LEAVES A PRODUCT THE DATABASE STILL EXPECTS DELETED
         delete_stale_files(stalePaths, self.log)
-        self.log.debug(f"_rejoin_late_frames: reset {len(rejoined)} SOF(s) that gained late frames")
+        self.log.debug(
+            f"_rejoin_late_frames: reset {len(rejoined)} SOF(s) that gained late frames, {len(consumers)} that use them"
+        )
         print(format_rejoin_summary(rejoined))
-        return rejoined
+        if consumers:
+            print(format_requeue_summary(consumers))
+        return rejoined, consumers
 
     def get_raw_frames_and_groups(
         self,
