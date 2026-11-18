@@ -120,3 +120,23 @@ def test_sync_never_deletes_the_target_of_a_linked_duplicate_outside_the_workspa
 
     # ASSERT
     assert victim.is_file()
+
+
+def test_prepare_files_the_good_frame_and_moves_an_empty_fits_file_to_misc(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    organiser = workspace_organiser(tmp_path, log=log)
+    root = Path(organiser.rootDir)
+    harvestable_raw_fits(root / "frame1.fits")
+    (root / "empty.fits").write_bytes(b"")
+    foreignCwd = tmp_path / "foreign"
+    foreignCwd.mkdir()
+    monkeypatch.chdir(foreignCwd)
+
+    # ACT
+    _prepare(organiser)
+
+    # ASSERT
+    assert list((root / "raw").rglob("frame1.fits"))
+    assert (root / "misc" / "empty.fits").exists()

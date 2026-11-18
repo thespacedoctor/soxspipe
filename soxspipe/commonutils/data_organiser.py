@@ -3982,16 +3982,16 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
     from soxspipe.commonutils.toolkit import NIGHT_START_OFFSET_SECONDS, PREPARED_FRAME_KEYWORD
 
+    # READ EACH HEADER FROM THE WORKSPACE, NOT THE PROCESS CWD. THE COLLECTION IS GIVEN FULL PATHS AND SKIPS A FILE IT
+    # CANNOT READ, SO THE SUMMARY NAMES ARE MAPPED BACK TO THE WORKSPACE-RELATIVE ENTRIES OF THE BATCH (A LINKED FRAME
+    # KEEPS ITS `raw/` PATH, AND TWO ENTRIES SHARING A BASENAME KEEP THEIR OWN NAMES)
+    namesByFullPath = {path_under_root(name, pathToDirectory): name for name in batch}
     # THE PREPARED-FRAME MARKER RIDES ALONG WITH THE KEYWORDS, SO IT COSTS NO EXTRA HEADER READ
-    # READ EACH HEADER FROM THE WORKSPACE, NOT THE PROCESS CWD. WITH A LOCATION THE SUMMARY HOLDS BASENAMES, SO
-    # RESTORE THE WORKSPACE-RELATIVE NAMES (A LINKED FRAME KEEPS ITS `raw/` PATH)
     masterTable = ImageFileCollection(
-        location=pathToDirectory, filenames=batch, keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()]
+        filenames=list(namesByFullPath), keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()]
     )
     summary = masterTable.summary
-    if len(summary) != len(batch):
-        raise ValueError(f"read {len(summary)} headers for {len(batch)} frames; the summary cannot be matched to them")
-    summary["file"] = list(batch)
+    summary["file"] = [namesByFullPath[fullPath] for fullPath in summary["file"]]
     masterTable = _drop_prepared_frames(summary, log)
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:
