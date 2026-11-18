@@ -102,6 +102,25 @@ def test_plot_merged_spectrum_qc_wave_as_quantity_column_raises_type_error(
         plt.close("all")
 
 
+def test_plot_merged_spectrum_qc_accepts_the_quantity_backed_columns_of_an_extracted_spectrum(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stare recipe plots the merged spectrum straight from the extractor, whose columns are Quantity arrays
+    stored in a float64 column, not a column of per-row Quantity scalars."""
+    figures = spy_figures(monkeypatch)
+    stub_merged_skylines(monkeypatch)
+    plain = synthetic_merged_orders()
+    merged = pd.DataFrame()
+    merged["WAVE"] = plain["WAVE"].values * u.nm
+    merged["FLUX_COUNTS"] = plain["FLUX_COUNTS"].values * u.electron
+    merged["SNR"] = plain["SNR"].values * u.electron**0.5
+    merged["SKY_COUNTS"] = plain["SKY_COUNTS"].values * u.electron
+
+    call_plot_merged_spectrum_qc(monkeypatch, tmp_path, log, merged)
+
+    assert figures[-1].axes[0].get_xlim() == pytest.approx((500.0, 600.0), rel=1e-12)
+
+
 @pytest.mark.parametrize("fluxCalibrated", [False, True])
 def test_plot_merged_spectrum_qc_ylim_and_yscale_pin_sigma_clipped_statistics(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch, fluxCalibrated: bool
