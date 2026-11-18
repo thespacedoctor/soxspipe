@@ -37,7 +37,7 @@ from soxspipe.commonutils.stare_mode import is_standard_input
 # add_product DELEGATORS BELOW. IMPORTED FROM `toolkit` RATHER THAN REDEFINED
 # HERE SO THE DELEGATORS FORWARD THE SAME OBJECT `append_qc` AND
 # `append_product` TEST FOR, AND SO A CALLER MAY PASS `OMITTED` EXPLICITLY.
-from soxspipe.commonutils.toolkit import OMITTED
+from soxspipe.commonutils.toolkit import OMITTED, PREPARED_FRAME_KEYWORD
 
 os.environ["TERM"] = "vt100"
 
@@ -512,9 +512,9 @@ class base_recipe:
                 self.log.info(f"{filepath} is a FITS Binary Table")
                 return filepath
 
-        # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND "SXSPRE" DOES NOT
+        # CHECK THE NUMBER OF EXTENSIONS IS ONLY 1 AND THE PREPARED-FRAME MARKER DOES NOT
         # EXIST. i.e. THIS IS A RAW UNTOUCHED FRAME
-        if len(frame.to_hdu()) > 1 or "SXSPRE" in frame.header:
+        if len(frame.to_hdu()) > 1 or PREPARED_FRAME_KEYWORD in frame.header:
             return filepath
 
         # MANIPULATE XSH DATA
@@ -844,7 +844,7 @@ class base_recipe:
             outDir = self.outDir
 
         # INJECT THE PRE KEYWORD
-        frame.header["SXSPRE"] = (
+        frame.header[PREPARED_FRAME_KEYWORD] = (
             toolkit.utcnow_string(microseconds=True),
             "UTC timestamp",
         )

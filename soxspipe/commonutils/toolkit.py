@@ -1854,6 +1854,9 @@ def _add_pixel_scale_column(mapDF, dispAxis):
     mapDF.sort_values(["wavelength"], inplace=True, kind="stable")
 
 
+# THE HEADER CARD `_write_prepared_frame` STAMPS ON EVERY PREPARED FRAME. SUCH A FRAME IS NEVER A RAW FRAME
+PREPARED_FRAME_KEYWORD = "SXSPRE"
+
 # AN OBSERVING NIGHT IS DATED BY THE UTC DAY THAT BEGAN 15 HOURS BEFORE THE OBSERVATION
 NIGHT_START_OFFSET_SECONDS = 15.0 * 60 * 60
 

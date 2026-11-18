@@ -17,6 +17,7 @@ import sys
 import traceback
 from contextlib import closing
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fundamentals import tools
 
@@ -51,6 +52,11 @@ from soxspipe.commonutils.session_status_restore import (
 )
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
+
+if TYPE_CHECKING:
+    import logging
+
+    from astropy.table import Table
 
 os.environ["TERM"] = "vt100"
 
@@ -3869,15 +3875,44 @@ class data_organiser:
         write_dataframe_to_sqlite(self.conn, self.log, dataframe, table_name, replace=replace, sentinels=("--", -99.99))
 
 
+def _drop_prepared_frames(summary: "Table", log: "logging.Logger") -> "Table":
+    """*remove the prepared frames from a header summary, and the marker column with them*
+
+    A prepared frame (saved with `save-intermediate-products`) keeps its raw header, so left in the table it
+    would be indexed as a second raw frame.
+
+    **Key Arguments:**
+
+    - ``summary`` -- the header summary table, with a column for the `SXSPRE` marker
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``summary`` -- the summary without the prepared frames and without the marker column
+    """
+    import numpy as np
+
+    from soxspipe.commonutils.toolkit import PREPARED_FRAME_KEYWORD
+
+    markerColumn = PREPARED_FRAME_KEYWORD.lower()
+    isPrepared = ~np.ma.getmaskarray(summary[markerColumn])
+    if isPrepared.any():
+        log.info(f"skipping {int(isPrepared.sum())} prepared frame(s) carrying `{PREPARED_FRAME_KEYWORD}`")
+    summary = summary[~isPrepared]
+    summary.remove_column(markerColumn)
+    return summary
+
+
 def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, instrument, kw):
     import numpy as np
     from astropy.time import Time, TimeDelta
 
     from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
-    from soxspipe.commonutils.toolkit import NIGHT_START_OFFSET_SECONDS
+    from soxspipe.commonutils.toolkit import NIGHT_START_OFFSET_SECONDS, PREPARED_FRAME_KEYWORD
 
-    masterTable = ImageFileCollection(filenames=batch, keywords=keywords)
-    masterTable = masterTable.summary
+    # THE PREPARED-FRAME MARKER RIDES ALONG WITH THE KEYWORDS, SO IT COSTS NO EXTRA HEADER READ
+    masterTable = ImageFileCollection(filenames=batch, keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()])
+    masterTable = _drop_prepared_frames(masterTable.summary, log)
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:
         if fil in filterKeys and fil not in ["exptime"]:

@@ -129,13 +129,6 @@ def test_a_recipe_turning_sky_subtraction_off_does_not_turn_it_off_for_the_next_
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1703 (DY-37 W3): a saved _pre frame is written to the workspace root and the next prep indexes it as raw"
-    ),
-)
 def test_a_saved_prepared_frame_is_not_indexed_as_a_raw_frame(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
