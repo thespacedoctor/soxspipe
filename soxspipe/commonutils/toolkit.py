@@ -15,7 +15,7 @@ import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from os.path import expanduser
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.dispersion_map_to_pixel_arrays import (
@@ -676,6 +676,41 @@ def _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst):
                 alpha=0.8,
                 color="black",
             )
+
+
+ORDER_CENTRES_MUST_BE_UNBINNED = (
+    "Order-centre frames must be unbinned (1x1): make the order-centre table from an unbinned order-centre frame."
+)
+
+
+def require_unbinned_order_centres(binx: float, biny: float, name: str, kind: Literal["frame", "table"]) -> None:
+    """*raise an error when an order-centre frame or table is binned*
+
+    Order-centre tables are fitted in unbinned pixels, and the consumers of the table scale it by the binning of
+    their own frame. A binned order-centre frame or table would be scaled by the wrong factor.
+
+    **Key Arguments:**
+
+    - ``binx`` -- the x binning of the order-centre frame, or of the frame the order-centre table was made from
+    - ``biny`` -- the y binning of the order-centre frame, or of the frame the order-centre table was made from
+    - ``name`` -- the name of the frame or the path of the table, used in the error message
+    - ``kind`` -- ``frame`` or ``table``, used in the error message
+
+    **Raise:**
+
+    - ``ValueError`` -- if either binning is not 1
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import require_unbinned_order_centres
+    require_unbinned_order_centres(binx=1, biny=1, name="orders.fits", kind="table")
+    ```
+    """
+    if binx != 1 or biny != 1:
+        raise ValueError(
+            f"The order-centre {kind} {name} is binned {int(binx)}x{int(biny)}. {ORDER_CENTRES_MUST_BE_UNBINNED}"
+        )
 
 
 def unpack_order_table(
