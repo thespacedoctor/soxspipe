@@ -902,7 +902,6 @@ class data_organiser:
         """
         self.log.debug("starting the ``_sync_raw_frames`` method")
 
-        import re
         import shutil
 
         import pandas as pd
@@ -960,7 +959,7 @@ class data_organiser:
                         ]
 
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
-                rawFrames = self._without_frames_to_move_from_outside(rawFrames)
+                rawFrames = self._without_unsafe_frames(rawFrames)
                 databaseDeletes = []
                 if len(rawFrames.index):
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
@@ -983,9 +982,7 @@ class data_organiser:
                             realSource = os.path.realpath(source)
                             realDest = os.path.realpath(destination)
 
-                            matchObject = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource)
-
-                            if matchObject and realSource != realDest:
+                            if self._is_dated_raw_frame(realSource) and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
                                 databaseDeletes.append(realDest)
                             elif realSource != realDest:
@@ -1006,12 +1003,13 @@ class data_organiser:
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return
 
-    def _without_frames_to_move_from_outside(self, rawFrames):
-        """*drop the frames that filing would move from outside the workspace*
+    def _without_unsafe_frames(self, rawFrames):
+        """*drop the frames that filing would move or write outside the workspace*
 
-        A link in the workspace root to a frame in an external raw archive laid out as ``raw/<date>/`` is left in
-        place and handled by the caller. A link to any other outside frame would have its target moved into the
-        workspace, so the frame is skipped and logged.
+        A frame is skipped, with a warning, when its destination folder resolves outside the workspace and outside
+        the validated raw directory (a dated folder that is a link to another place), or when the root entry
+        resolves outside the workspace and is not a dated frame under the validated raw directory. A link to such
+        a dated frame, as in an external raw archive, is left in place and handled by the caller.
 
         **Key Arguments:**
 
@@ -1021,19 +1019,60 @@ class data_organiser:
 
         - ``rawFrames`` -- the frames that are safe to file
         """
-        import re
-
         keep = []
-        for n in rawFrames["file"]:
+        for p, n in zip(rawFrames["filepath"], rawFrames["file"], strict=True):
             source = path_under_root(n, self.rootDir)
             realSource = os.path.realpath(source)
-            isDatedArchiveFrame = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource) is not None
-            isOutside = os.path.exists(source) and not self._is_inside_workspace(realSource)
-            isSkipped = isOutside and not isDatedArchiveFrame
-            if isSkipped:
-                self.log.warning(f"not filing `{n}`: it resolves to `{realSource}`, outside the workspace")
-            keep.append(not isSkipped)
+            destinationFolder = os.path.dirname(path_under_root(p, self.rootDir))
+            reason = None
+            if not (self._is_inside_workspace(destinationFolder) or self._is_inside_raw_directory(destinationFolder)):
+                reason = f"its destination folder `{destinationFolder}` is outside the workspace"
+            elif (
+                os.path.exists(source)
+                and not self._is_inside_workspace(realSource)
+                and not self._is_dated_raw_frame(realSource)
+            ):
+                reason = f"it resolves to `{realSource}`, outside the workspace"
+            if reason:
+                self.log.warning(f"not filing `{n}`: {reason}")
+            keep.append(reason is None)
         return rawFrames.loc[keep]
+
+    def _is_inside_raw_directory(self, path):
+        """*return True when the path resolves to a place inside the validated raw directory*
+
+        **Key Arguments:**
+
+        - ``path`` -- the path to check. It need not exist yet
+
+        **Return:**
+
+        - ``isInside`` -- True when the resolved path lies at or below ``rawDir``
+        """
+        try:
+            _validate_owned_path(path, self.rawDir, "raw path")
+        except _UnsafePathError:
+            return False
+        return True
+
+    def _is_dated_raw_frame(self, realPath):
+        """*return True when a resolved path is a frame in a dated folder of the validated raw directory*
+
+        **Key Arguments:**
+
+        - ``realPath`` -- the resolved path of a frame
+
+        **Return:**
+
+        - ``isDated`` -- True for ``<rawDir>/<YYYY-MM-DD>/...``
+        """
+        import re
+
+        try:
+            relativePath = Path(realPath).relative_to(Path(self.rawDir))
+        except ValueError:
+            return False
+        return len(relativePath.parts) > 1 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", relativePath.parts[0]) is not None
 
     def _is_inside_workspace(self, path):
         """*return True when the path resolves to a place inside the workspace*

@@ -93,6 +93,8 @@ def test_prepare_never_moves_a_linked_frame_that_lies_outside_the_workspace(
     # ASSERT
     assert victim.is_file()
     assert not list((root / "raw").rglob("victim.fits"))
+    assert (root / "misc" / "linked.fits").is_symlink()
+    assert any(level == "warning" and "victim.fits" in message for level, message in log.messages)
 
 
 def test_sync_never_deletes_the_target_of_a_linked_duplicate_outside_the_workspace(
@@ -140,3 +142,54 @@ def test_prepare_files_the_good_frame_and_moves_an_empty_fits_file_to_misc(
     # ASSERT
     assert list((root / "raw").rglob("frame1.fits"))
     assert (root / "misc" / "empty.fits").exists()
+
+
+def test_prepare_refuses_to_file_a_frame_into_a_dated_folder_that_links_outside_the_workspace(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE DATED FOLDER THE FRAME BELONGS IN IS A LINK TO A FOLDER THAT ALREADY HOLDS A FILE OF THAT NAME
+    organiser = workspace_organiser(tmp_path, log=log)
+    root = Path(organiser.rootDir)
+    outsideFolder = tmp_path / "outside-folder"
+    outsideFolder.mkdir()
+    precious = outsideFolder / "frame1.fits"
+    precious.write_bytes(b"precious")
+    (root / "raw" / "2024-01-02").symlink_to(outsideFolder, target_is_directory=True)
+    harvestable_raw_fits(root / "frame1.fits")
+    foreignCwd = tmp_path / "foreign"
+    foreignCwd.mkdir()
+    monkeypatch.chdir(foreignCwd)
+
+    # ACT
+    _prepare(organiser)
+
+    # ASSERT
+    assert precious.read_bytes() == b"precious"
+    assert (root / "misc" / "frame1.fits").exists()
+    assert any(level == "warning" and "frame1.fits" in message for level, message in log.messages)
+
+
+def _frames_table(*names: str) -> pd.DataFrame:
+    return pd.DataFrame({"file": list(names), "filepath": [f"./raw/2024-01-02/{name}" for name in names]})
+
+
+def test_a_link_outside_the_workspace_is_exempt_only_when_it_resolves_under_the_raw_directory(
+    log: Any, tmp_path: Path
+) -> None:
+    # ARRANGE: BOTH TARGETS LIVE IN A `raw/<date>/` FOLDER OUTSIDE THE WORKSPACE, ONLY ONE UNDER ITS RAW DIRECTORY
+    organiser = workspace_organiser(tmp_path, log=log)
+    root = Path(organiser.rootDir)
+    vltRaw = tmp_path / "vlt" / "raw"
+    stranger = tmp_path / "stranger" / "raw" / "2024-01-01"
+    (vltRaw / "2024-01-01").mkdir(parents=True)
+    stranger.mkdir(parents=True)
+    (root / "archived.fits").symlink_to(harvestable_raw_fits(vltRaw / "2024-01-01" / "archived.fits"))
+    (root / "stray.fits").symlink_to(harvestable_raw_fits(stranger / "stray.fits"))
+    organiser.rawDir = str(vltRaw.resolve())
+
+    # ACT
+    kept = organiser._without_unsafe_frames(_frames_table("archived.fits", "stray.fits"))
+
+    # ASSERT
+    assert kept["file"].tolist() == ["archived.fits"]
+    assert any(level == "warning" and "stray.fits" in message for level, message in log.messages)

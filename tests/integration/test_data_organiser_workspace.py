@@ -533,6 +533,8 @@ def test_sync_raw_frames_binds_a_hostile_mismatch_delete_as_a_parameter(tmp_path
     # ROW TO DELETE, RATHER THAN A NEW FRAME TO MOVE.
     organiser.rootDir = str(tmp_path / "raw" / "2024-01-02")
     os.makedirs(organiser.rootDir)
+    # THE DATED FOLDERS BELONG TO THE VALIDATED RAW DIRECTORY, WHICH THE FILING GUARD ALLOWS AS A DESTINATION
+    organiser.rawDir = str(tmp_path / "raw")
     sourcePath = Path(organiser.rootDir) / "dup.fits"
     sourcePath.write_text("synthetic frame", encoding="utf-8")
     hostileDestination = str(tmp_path / "raw" / "2024-01-03" / 'evil") OR 1=1 --.fits')
