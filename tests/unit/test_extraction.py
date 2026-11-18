@@ -6,10 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.horne_extraction import (
-    _sigma_clip_and_mask,
-    compute_extractions,
-)
+from soxspipe.commonutils.horne_extraction import compute_extractions
 
 pytestmark = pytest.mark.unit
 
@@ -55,19 +52,3 @@ def test_compute_extractions_recovers_a_known_profile_and_sorts_wavelengths() ->
         rtol=1e-12,
         atol=1e-12,
     )
-
-
-def test_sigma_clip_mask_keeps_bad_pixels_and_nan_values_masked() -> None:
-    # 75 SLIT ROWS BY 64 WAVELENGTH COLUMNS; THE CLIP RUNS ALONG THE SLIT AND NEEDS ABOUT 50 ROWS TO REACH 7 SIGMA
-    flux = np.ones((75, 64), dtype=float)
-    flux[0, 0] = np.nan
-    flux[1, -1] = 10_000.0
-    badPixels = np.zeros_like(flux, dtype=np.uint8)
-    badPixels[2, 3] = 2
-
-    result = _sigma_clip_and_mask(flux, badPixels)
-
-    assert result[0, 0]
-    assert result[1, -1]
-    assert result[2, 3]
-    assert badPixels[2, 3] == 1

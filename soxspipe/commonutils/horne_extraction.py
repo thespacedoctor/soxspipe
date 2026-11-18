@@ -3548,8 +3548,8 @@ def generate_masks(crossDispersionSlicesDF, orderRectifiedImages):
     this = np.append(this, np.nan)
     crossDispersionSlicesDF["pixelScaleNm"] = np.abs(this)
 
-    ## REMOVE BAD PIXELS AND COSMIC RAYS FROM THE FLUX ARRAY
-    fluxRawMask = _sigma_clip_and_mask(fluxRaw, bpMask)
+    # MASK THE NAN AND FLAGGED BAD PIXELS. COSMIC RAYS ARE REJECTED LATER BY THE RESIDUAL CLIP OF THE EXTRACTION
+    fluxRawMask = _bad_pixel_mask(fluxRaw, bpMask)
 
     # FAIL SAFE FOR BAD WAVELENGTH VALUES - SOME ODD WAVELENGTHS FROM DISPERSION SOLUTION CAN CAUSE PROBLEMS WITH PROFILE FITTING
     wlMask = wavelength.copy()
@@ -3801,36 +3801,20 @@ def _slit_edge_truncated_columns(fluxRaw, mask, unsupported):
     return hasSupport & (peak > 0) & (topSpill | bottomSpill)
 
 
-def _sigma_clip_and_mask(fluxRaw, bpMask):
+def _bad_pixel_mask(fluxRaw, bpMask):
+    """*mask the NaN pixels and every pixel flagged in the bad-pixel mask*
+
+    Cosmic rays are not clipped here. The residual clip in ``compute_extractions`` rejects them.
+
+    **Key Arguments:**
+
+    - ``fluxRaw`` -- the rectified order flux (rows are slit positions, columns are wavelength)
+    - ``bpMask`` -- the rectified bad-pixel mask, nonzero where a pixel is flagged. It is not modified
+
+    **Return:**
+
+    - ``mask`` -- a new boolean array, True where the flux is NaN or the pixel is flagged
+    """
     import numpy as np
-    from astropy.stats import sigma_clip
 
-    # IN A RECTIFIED ORDER IMAGE THE ROWS ARE SLIT POSITIONS AND THE COLUMNS ARE WAVELENGTHS
-    # BUILDS A 2D DISTANCE-FROM-SLIT-CENTRE WEIGHTING ARRAY (SAME SHAPE AS fluxRaw) .. ONLY USED FOR SIGMA-CLIPPING THE
-    # FLUX ARRAY, NOT FOR WEIGHTING THE PROFILE FITTING
-    # EVERY COLUMN GETS IDENTICAL CENTRE-DISTANCE WEIGHTS, LATER USED TO BIAS SIGMA-CLIPPING SO OUTLIERS FARTHER FROM
-    # THE SLIT CENTRE ARE PENALISED MORE. THE CLIP RUNS ALONG THE SLIT (AXIS 0), ONE WAVELENGTH COLUMN AT A TIME
-    sliceIndexArray = np.tile(
-        (np.abs(np.arange(fluxRaw.shape[0]) - fluxRaw.shape[0] // 2) * 50 + 1)[:, np.newaxis],
-        (1, fluxRaw.shape[1]),
-    )
-    bpMask[bpMask > 1] = 1
-    fluxRawMasked = np.ma.array(fluxRaw, mask=np.isnan(fluxRaw) | bpMask)
-    fluxRawMasked = sigma_clip(
-        fluxRawMasked * sliceIndexArray,
-        sigma_lower=3000,
-        sigma_upper=7,
-        maxiters=3,
-        cenfunc="mean",
-        stdfunc="std",
-        axis=0,
-    )
-
-    ## COMPUTE NUMBER OF NEWLY MASKED PIXELS IN EACH ROW AFTER SIGMA-CLIPPING
-    newlyMaskedPixels = np.zeros(fluxRaw.shape[0])
-    for i in range(fluxRaw.shape[0]):
-        newlyMaskedPixels[i] = np.sum(fluxRawMasked.mask[i]) - np.sum(bpMask[i])
-        # print(f"Row {i}: {np.sum(fluxRawMasked.mask[i])} pixels masked, {np.sum(bpMask[i])} pixels were already masked, {newlyMaskedPixels[i]} newly masked")
-    # print(f"Total newly masked pixels across all slices: {int(np.sum(newlyMaskedPixels))}")
-
-    return fluxRawMasked.mask
+    return np.isnan(fluxRaw) | (bpMask != 0)
