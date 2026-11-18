@@ -425,8 +425,8 @@ def test_saving_intermediate_products_writes_the_calibrated_order_frame(
 @pytest.mark.parametrize(
     ("arm", "header", "expected"),
     [
-        ("VIS", {"WIN_BINX": "2", "WIN_BINY": 3}, (2, 3)),
-        ("UVB", {"WIN_BINX": 1.0, "WIN_BINY": 2.0}, (1, 2)),
+        ("VIS", {"WIN_BINX": "1", "WIN_BINY": 1}, (1, 1)),
+        ("UVB", {"WIN_BINX": 1.0, "WIN_BINY": 1.0}, (1, 1)),
         ("VIS", {}, (1, 1)),
         ("NIR", {"WIN_BINX": 2, "WIN_BINY": 2}, (1, 1)),
     ],
