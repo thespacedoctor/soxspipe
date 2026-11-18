@@ -3,7 +3,7 @@
 Each pin asserts the CORRECT behaviour. A pin for a leak that is not fixed yet fails today and
 is marked ``xfail(strict=True)``. When someone fixes the leak the test XPASSes, strict mode
 turns that into a suite failure, and the fixer deletes the ``xfail`` marker, so the pin stays
-as a regression test (L1, L3 and L5 are fixed and have no marker).
+as a regression test (L1, L2, L3 and L5 are fixed and have no marker).
 
 The ``reason`` of each marker reads ``<Linear issue> (DY-36 <ID>): <defect>``, naming the
 issue that tracks the leak and the leak's ID in the DY-36 findings table.
@@ -57,7 +57,7 @@ FAILING_TASK_INPUT = 3
 
 @pytest.fixture
 def cyclic_gc_disabled() -> Iterator[None]:
-    """Turn the cyclic garbage collector off, so only reference counting frees objects."""
+    """Turn automatic cyclic collection off, so only reference counting or an explicit ``gc.collect()`` frees."""
     gc.collect()
     wasEnabled = gc.isenabled()
     gc.disable()
@@ -134,21 +134,17 @@ def test_a_recipe_that_raises_removes_its_scratch_directory(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "DY-1707 (DY-36 L2): after run_recipe returns, the finished recipe and every array it holds stay alive "
-        "until a cyclic gc pass, because the recipe is reachable from frames in reference cycles"
-    ),
-)
 def test_a_finished_recipe_is_freed_when_run_recipe_returns(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     cyclic_gc_disabled: None,
 ) -> None:
-    """`del soxs_recipe` in `run_recipe` must release the recipe without waiting for the cyclic collector."""
+    """The finished recipe must be freed by the time `run_recipe` returns, without waiting for an automatic collection.
+
+    Automatic collection is disabled here, and the recipe is held by exception reference cycles, so only the explicit
+    ``gc.collect()`` in `run_recipe` can free it. Removing that call makes this test fail.
+    """
     # ARRANGE
     monkeypatch.setattr(commonutils, "data_organiser", _IsolatedOrganiser)
     workspace = tmp_path / "workspace"
@@ -177,7 +173,7 @@ def test_a_finished_recipe_is_freed_when_run_recipe_returns(
     assert len(recipeRefs) == 1
     assert Path(productPath).exists()
 
-    # ASSERT: AND WAS FREED BY REFERENCE COUNTING ALONE
+    # ASSERT: AND WAS FREED BEFORE `run_recipe` RETURNED, BY ITS EXPLICIT COLLECT, NOT BY AN AUTOMATIC PASS
     assert recipeRefs[0]() is None
 
 
