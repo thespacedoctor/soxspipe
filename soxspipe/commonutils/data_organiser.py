@@ -105,6 +105,10 @@ class DatabasePreservationError(sqlite3.DatabaseError):
     """The workspace database could not be copied into `backups/`, so it was left in place and not rebuilt."""
 
 
+class LooseRawFrameError(RuntimeError):
+    """A FITS frame sits directly in the VLT raw folder, where `prep` cannot file it into a dated subfolder."""
+
+
 class _UnreadableDatabaseError(sqlite3.DatabaseError):
     """A database that opens but whose SQLite snapshot fails its `quick_check`."""
 
@@ -563,6 +567,8 @@ class data_organiser:
           The database is then left in place and nothing is rebuilt.
         """
         self.log.debug("starting the ``prepare`` method")
+
+        self._refuse_loose_frames_in_external_raw_folder()
 
         backupPath = None
         if refresh:
@@ -2086,6 +2092,31 @@ class data_organiser:
 
         self.log.debug("completed the ``use_vlt_environment_folders`` method")
         return vltReduced
+
+    def _refuse_loose_frames_in_external_raw_folder(self) -> None:
+        """*stop `prep` if a FITS frame sits directly in a raw folder that lies outside the workspace*
+
+        Only a `--vlt` workspace has such a folder: its `raw` link leads to the VLT raw folder. A frame there is
+        filed by the `raw/<date>/` part of its real path. A frame directly in that folder has no such part, so the
+        sync builds a wrong path for it. Nothing is changed before this check runs.
+
+        **Raises:**
+
+        - `LooseRawFrameError` naming each loose frame, when one is found.
+        """
+        if Path(self.rawDir).is_relative_to(Path(self.rootDir).resolve()) or not os.path.isdir(self.rawDir):
+            return
+        looseFrames = sorted(
+            entry.name
+            for entry in os.scandir(self.rawDir)
+            if not entry.name.startswith(".") and entry.is_file() and is_fits_frame(entry.name)
+        )
+        if looseFrames:
+            raise LooseRawFrameError(
+                f"The raw folder `{self.rawDir}` holds FITS frames outside a dated subfolder: "
+                f"{', '.join(looseFrames)}. Frames must be in dated subfolders (`raw/YYYY-MM-DD/`). "
+                "Move them into one and run `soxspipe prep` again. Nothing has been changed."
+            )
 
     def _fits_files_exist(self):
         """Check if any FITS files exist in rawDir or rootDir."""
