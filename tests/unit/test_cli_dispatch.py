@@ -119,11 +119,12 @@ def _run_cli(
     allowSleep: bool = False,
     settings: dict[str, object] | None = None,
     logger: Any = None,
+    parseArgv: list[str] | None = None,
 ) -> tuple[CliLogger, list[dict[str, object]]]:
     clUtils = import_module("soxspipe.cl_utils")
     commonutilsModule = import_module("soxspipe.commonutils")
     fundamentalsModule = import_module("fundamentals")
-    parsedArguments = parse_docopt(clUtils.__doc__, argv=argv[1:])
+    parsedArguments = parse_docopt(clUtils.__doc__, argv=argv[1:] if parseArgv is None else parseArgv)
     if argumentOverrides:
         parsedArguments = {**parsedArguments, **argumentOverrides}
     parserCalls: list[dict[str, object]] = []
@@ -680,11 +681,13 @@ def test_main_watch_dispatches_daemon_lifecycle_without_starting_action(
     assert (daemonCommand, None) in RecordingDaemon.calls
 
 
-def test_main_file_exists_failure_exits_successfully(
+def test_main_existing_product_exits_successfully(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Preserve the CLI's successful exit status for existing products."""
+    """Preserve the CLI's successful exit status for a recipe whose product already exists."""
+    from soxspipe.recipes.base_recipe import RecipeProductExistsError
+
     recipesModule = import_module("soxspipe.recipes")
 
     class ExistingRecipe:
@@ -692,7 +695,7 @@ def test_main_file_exists_failure_exits_successfully(
             pass
 
         def produce_product(self) -> None:
-            raise FileExistsError("already exists")
+            raise RecipeProductExistsError("already exists")
 
     monkeypatch.setattr(recipesModule, "soxs_mbias", ExistingRecipe)
 
@@ -700,6 +703,58 @@ def test_main_file_exists_failure_exits_successfully(
         _run_cli(monkeypatch, tmp_path, ["soxspipe", "mbias", "frames"])
 
     assert error.value.code == 0
+
+
+@pytest.mark.parametrize(
+    ("argv", "failingMethod"),
+    [
+        (["soxspipe", "prep"], "prepare"),
+        (["soxspipe", "session", "new"], "session_create"),
+    ],
+)
+def test_main_unexpected_file_exists_error_logs_and_exits_non_zero(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    failingMethod: str,
+) -> None:
+    """A `FileExistsError` that is not an existing recipe product is an error, not a success (DY-2109)."""
+
+    def fail_command(self: object, *args: object, **kwargs: object) -> None:
+        raise FileExistsError("database backup `/workspace/backups/x.db` already exists")
+
+    monkeypatch.setattr(RecordingOrganiser, failingMethod, fail_command)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, argv)
+
+    assert error.value.code == 1
+    assert "database backup `/workspace/backups/x.db` already exists" in capsys.readouterr().err
+    logger = CliLogger.instances[-1]
+    assert any(
+        level == "error" and "database backup `/workspace/backups/x.db` already exists" in message
+        for level, message in logger.messages
+    )
+
+
+def test_main_unexpected_file_exists_error_exits_non_zero_with_the_verbose_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The error path does not rely on the session lookup that the verbose flag skips (DY-2109)."""
+
+    def fail_command(self: object, *args: object, **kwargs: object) -> None:
+        raise FileExistsError("output already in place")
+
+    monkeypatch.setattr(RecordingOrganiser, "prepare", fail_command)
+
+    with pytest.raises(SystemExit) as error:
+        _run_cli(monkeypatch, tmp_path, ["soxspipe", "prep", "-v"], parseArgv=["prep"])
+
+    assert error.value.code == 1
+    assert "output already in place" in capsys.readouterr().err
 
 
 def test_main_recipe_failure_exits_with_error_without_success_output(

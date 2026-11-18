@@ -108,15 +108,20 @@ def _prepared_organiser(log, rootDir, vlt=False, **prepareArguments):
     **Raises:**
 
     - `SystemExit` (status 1), chained from the `DatabasePreservationError`, when a database rebuild is refused,
-      or from the `OutdatedWorkspaceError`, when the workspace was made by an older soxspipe
+      from the `OutdatedWorkspaceError`, when the workspace was made by an older soxspipe, or from the
+      `LooseRawFrameError`, when a frame sits directly in the VLT raw folder
     """
     from soxspipe.commonutils import data_organiser
-    from soxspipe.commonutils.data_organiser import DatabasePreservationError, OutdatedWorkspaceError
+    from soxspipe.commonutils.data_organiser import (
+        DatabasePreservationError,
+        LooseRawFrameError,
+        OutdatedWorkspaceError,
+    )
 
     try:
         do = data_organiser(log=log, rootDir=rootDir, vlt=vlt)
         do.prepare(**prepareArguments)
-    except (DatabasePreservationError, OutdatedWorkspaceError) as error:
+    except (DatabasePreservationError, LooseRawFrameError, OutdatedWorkspaceError) as error:
         _exit_with_message(error)
     return do
 
@@ -220,6 +225,8 @@ def main(arguments=None):
             )
             sys.exit(0)
 
+    clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
+
     if "-v" not in sys.argv:
         eLog = emptyLogger()
         try:
@@ -230,8 +237,6 @@ def main(arguments=None):
                 do.close()
         except (_UnsafePathError, DatabasePreservationError) as error:
             _exit_with_message(error)
-
-        clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
         if "-s" not in sys.argv and "prep" not in sys.argv and "session" not in sys.argv and currentSession:
             settingsFile = f"./sessions/{currentSession}/soxspipe.yaml"
@@ -554,10 +559,13 @@ def main(arguments=None):
                     )
                 return
 
-    except FileExistsError:
-        sys.exit(0)
+    except (FileExistsError, _UnsafePathError) as error:
+        # A RECIPE THAT FINDS ITS PRODUCT OR ERROR LOG ALREADY IN PLACE EXITS 0; ANY OTHER FileExistsError IS AN ERROR
+        if isinstance(error, FileExistsError):
+            from soxspipe.recipes.base_recipe import RecipeProductExistsError
 
-    except _UnsafePathError as error:
+            if isinstance(error, RecipeProductExistsError):
+                sys.exit(0)
         log.error(f"{error}\n{clCommand}", exc_info=True)
         _exit_with_message(error)
 

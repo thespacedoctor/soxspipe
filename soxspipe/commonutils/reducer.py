@@ -164,6 +164,7 @@ class reducer:
         from fundamentals import times
 
         from soxspipe.commonutils import data_organiser, toolkit
+        from soxspipe.recipes.base_recipe import RecipeProductExistsError
 
         # A RECIPE KILLED DURING AN EARLIER RUN LEAVES ITS SCRATCH FRAMES BEHIND
         clear_workspace_scratch(self.log, self.workspaceDirectory)
@@ -256,7 +257,7 @@ class reducer:
                                 verbose=self.verbose,
                             )
                             batchCount += 1
-                        except FileExistsError:
+                        except RecipeProductExistsError:
                             continue
                         except Exception:
                             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
@@ -760,6 +761,7 @@ def _bulk_worker(
     import traceback
 
     from soxspipe.commonutils import toolkit
+    from soxspipe.recipes.base_recipe import RecipeProductExistsError
 
     log = _worker_log(log, settings, logQueue)
 
@@ -792,7 +794,7 @@ def _bulk_worker(
             returnDict["error_message"] = (
                 f"The following QC values are outside of acceptable limits: {', '.join(failedQcs)}."
             )
-    except FileExistsError as e:
+    except RecipeProductExistsError as e:
         if "previously failed" in str(e):
             returnDict["status"] = "previous-fail"
         elif "product of this recipe" in str(e):

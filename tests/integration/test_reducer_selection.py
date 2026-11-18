@@ -10,6 +10,8 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from soxspipe.recipes.base_recipe import RecipeProductExistsError
+
 pytestmark = pytest.mark.integration
 
 SESSION_ID = "20261022t120000"
@@ -406,6 +408,7 @@ def test_reduce_serial_dispatches_rows_and_refreshes_after_failure(
         [
             {"recipe": "stare_obj", "sof": "good.sof", "command": "good"},
             {"recipe": "mflat", "sof": "exists.sof", "command": "exists"},
+            {"recipe": "mflat", "sof": "clash.sof", "command": "clash"},
             {"recipe": "nod_obj", "sof": "bad.sof", "command": "bad_obj"},
         ]
     )
@@ -430,7 +433,9 @@ def test_reduce_serial_dispatches_rows_and_refreshes_after_failure(
         runCalls.append((args, kwargs))
         sofPath = str(args[2])
         if sofPath.endswith("exists.sof"):
-            raise FileExistsError("already exists")
+            raise RecipeProductExistsError("already exists")
+        if sofPath.endswith("clash.sof"):
+            raise FileExistsError("an unrelated file is in the way")
         if sofPath.endswith("bad.sof"):
             raise RuntimeError("failed")
 
@@ -451,14 +456,19 @@ def test_reduce_serial_dispatches_rows_and_refreshes_after_failure(
     assert [Path(str(call[0][2])).name for call in runCalls] == [
         "good.sof",
         "exists.sof",
+        "clash.sof",
         "bad.sof",
     ]
-    assert [call[0][1] for call in runCalls] == ["stare", "mflat", "nod"]
+    assert [call[0][1] for call in runCalls] == ["stare", "mflat", "mflat", "nod"]
     assert collection.recipeList == [False]
     assert collection.overwrite is False
     assert ("refresh", {}) in organiserCalls
     assert sum(call == ("refresh", {"failure": None}) for call in organiserCalls) == 2
-    assert any(level == "error" and "Recipe failed" in message for level, message in log.messages)
+    # AN EXISTING PRODUCT IS SKIPPED QUIETLY; AN UNRELATED FileExistsError IS A LOGGED FAILURE (DY-2109)
+    failureMessages = [message for level, message in log.messages if level == "error" and "Recipe failed" in message]
+    assert len(failureMessages) == 2
+    assert any("an unrelated file is in the way" in message for message in failureMessages)
+    assert not any("already exists" in message for message in failureMessages)
 
 
 @pytest.mark.parametrize(
