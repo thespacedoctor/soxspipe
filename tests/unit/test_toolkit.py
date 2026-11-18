@@ -221,6 +221,30 @@ def test_predict_product_path_uses_observation_night_and_cli_recipe(
     )
 
 
+def test_predict_product_path_reads_the_session_and_builds_the_path_from_root_dir_whatever_the_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    root = tmp_path / "workspace"
+    (root / "sessions" / "mysession").mkdir(parents=True)
+    (root / "sessions" / ".sessionid").write_text("mysession", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path(
+        "20240102T030405_STARE.sof", recipeName="soxs-stare", rootDir=str(root)
+    )
+
+    # ASSERT
+    assert night == "2024-01-01"
+    assert productPath == (
+        f"{root}/sessions/mysession/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+    )
+    assert not (elsewhere / "sessions").exists()
+
+
 @pytest.mark.parametrize(
     ("sofName", "expectedProductName"),
     [

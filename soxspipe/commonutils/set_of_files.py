@@ -157,6 +157,24 @@ def _fits_path_from_sof_line(line, home):
     return fitsPath.replace("~/", home + "/")
 
 
+def _under_root(path, rootDir):
+    """*return ``path`` taken from the workspace root when it is relative*
+
+    **Key Arguments:**
+
+    - ``path`` -- a file path from an SOF file
+    - ``rootDir`` -- the workspace root. ``"."`` keeps the path as written, relative to the current working directory
+
+    **Return:**
+
+    - ``rootedPath`` -- ``path`` unchanged when it is absolute or ``rootDir`` is ``"."``, else ``path`` joined to
+      ``rootDir``
+    """
+    if rootDir == "." or os.path.isabs(path):
+        return path
+    return os.path.normpath(os.path.join(rootDir, path))
+
+
 def _supplementary_path_from_sof_line(line, home):
     """*return the path column from a supplementary SOF row*
 
@@ -260,6 +278,8 @@ class set_of_files:
     - ``recipeName`` -- the name of the recipe. Default *False*
     - ``ext`` -- the data extension for the frame. Default 0.
     - ``session`` -- unused; the workspace session is read from the data organiser. Default *None*
+    - ``rootDir`` -- the workspace root. The session is read from it, and a relative path in an SOF file is taken
+      from it. Default *"."*, the current working directory
 
     **Usage**
 
@@ -294,6 +314,7 @@ class set_of_files:
         recipeName=False,
         ext=0,
         session=None,
+        rootDir=".",
     ):
         self.log = log
         log.debug("instantiating a new 'sof' object")
@@ -302,6 +323,7 @@ class set_of_files:
         self.verbose = verbose
         self.recipeName = recipeName
         self.ext = ext
+        self.rootDir = rootDir
 
         # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
         # FOLDER
@@ -328,7 +350,7 @@ class set_of_files:
         # GRAB THE WORKSPACE SESSION
         from soxspipe.commonutils import data_organiser
 
-        do = data_organiser(log=self.log, rootDir=".", dbConnect=False)
+        do = data_organiser(log=self.log, rootDir=self.rootDir, dbConnect=False)
         self.currentSession, allSessions = do.session_list(silent=True)
         do.close()
 
@@ -514,6 +536,10 @@ class set_of_files:
             supplementaryFilepaths[:] = [
                 f.replace("./reduced", f"./sessions/{self.currentSession}/reduced") for f in supplementaryFilepaths
             ]
+
+        # RELATIVE PATHS BELONG TO THE WORKSPACE, WHEREVER THE PROCESS HAPPENS TO RUN
+        fitsFiles = [_under_root(f, self.rootDir) for f in fitsFiles]
+        supplementaryFilepaths = [_under_root(f, self.rootDir) for f in supplementaryFilepaths]
 
         # MAKE SURE FILES EXIST
         for f in fitsFiles + supplementaryFilepaths:

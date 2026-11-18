@@ -951,7 +951,7 @@ class data_organiser:
                     if len(matchedFiles.index):
                         for file in matchedFiles["file"]:
                             try:
-                                os.remove(file)
+                                os.remove(os.path.join(self.rootDir, file))
                             except OSError as e:
                                 self.log.debug(f"_sync_raw_frames: `os.remove(file)` failed, continuing: {e}")
                         # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
@@ -973,13 +973,15 @@ class data_organiser:
                     filepaths = rawFrames["filepath"]
                     filenames = rawFrames["file"]
                     for p, n in zip(filepaths, filenames):
-                        parentDirectory = os.path.dirname(p)
+                        # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
+                        destination = os.path.join(self.rootDir, p)
+                        parentDirectory = os.path.dirname(destination)
                         if not os.path.exists(parentDirectory):
                             # Recursively create missing directories
                             os.makedirs(parentDirectory)
                         if os.path.exists(self.rootDir + "/" + n):
                             realSource = os.path.realpath(self.rootDir + "/" + n)
-                            realDest = os.path.realpath(p)
+                            realDest = os.path.realpath(destination)
 
                             matchObject = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource)
 
@@ -3911,8 +3913,15 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     from soxspipe.commonutils.toolkit import NIGHT_START_OFFSET_SECONDS, PREPARED_FRAME_KEYWORD
 
     # THE PREPARED-FRAME MARKER RIDES ALONG WITH THE KEYWORDS, SO IT COSTS NO EXTRA HEADER READ
-    masterTable = ImageFileCollection(filenames=batch, keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()])
-    masterTable = _drop_prepared_frames(masterTable.summary, log)
+    # READ EACH HEADER FROM THE WORKSPACE, NOT THE PROCESS CWD. WITH A LOCATION THE SUMMARY HOLDS BASENAMES, SO
+    # RESTORE THE WORKSPACE-RELATIVE NAMES (A LINKED FRAME KEEPS ITS `raw/` PATH)
+    masterTable = ImageFileCollection(
+        location=pathToDirectory, filenames=batch, keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()]
+    )
+    summary = masterTable.summary
+    namesByBasename = {os.path.basename(name): name for name in batch}
+    summary["file"] = [namesByBasename[name] for name in summary["file"]]
+    masterTable = _drop_prepared_frames(summary, log)
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:
         if fil in filterKeys and fil not in ["exptime"]:

@@ -2033,7 +2033,7 @@ def start_night_date_from_frames(log, settings, inputFrames):
     return start_night_date(Time(earliestMjd, format="mjd", scale="utc")), str(arm).strip()
 
 
-def predict_product_path(sofName, recipeName=False, productMarker=""):
+def predict_product_path(sofName, recipeName=False, productMarker="", rootDir="."):
     """*predict the path of the recipe product from a given SOF name*
 
     **Key Arguments:**
@@ -2042,6 +2042,8 @@ def predict_product_path(sofName, recipeName=False, productMarker=""):
     - ``recipeName`` -- name of the recipe being considered. Default *False*.
     - ``productMarker`` -- a marker added to the SOF name in the product name, before the product suffix (the stare-mode
       reduction of a nodding SOF uses ``_STAREMODE``). Default ""
+    - ``rootDir`` -- the workspace root. The session is read from it, and a root other than *"."* is prefixed to the
+      product path. Default *"."*, the current working directory
 
     **Return:**
 
@@ -2099,7 +2101,7 @@ def predict_product_path(sofName, recipeName=False, productMarker=""):
     from soxspipe.commonutils import data_organiser
 
     log = emptyLogger()
-    do = data_organiser(log=log, rootDir=".", dbConnect=False)
+    do = data_organiser(log=log, rootDir=rootDir, dbConnect=False)
     currentSession, allSessions = do.session_list(silent=True)
     do.close()
 
@@ -2115,6 +2117,8 @@ def predict_product_path(sofName, recipeName=False, productMarker=""):
         + ".fits"
     )
     productPath = productPath.replace("//", "/")
+    if rootDir != ".":
+        productPath = os.path.normpath(os.path.join(rootDir, productPath))
 
     return productPath, startNightDate
 
