@@ -39,3 +39,11 @@ def workspace_organiser(destination: Path, *, log: Any) -> data_organiser:
     """Return an organizer rooted in a fresh workspace without opening SQLite."""
     layout = workspace_layout(destination)
     return data_organiser(log=log, rootDir=str(layout.root), dbConnect=False)
+
+
+def session_workspace(destination: Path, sessionId: str) -> Path:
+    """Create a workspace whose current reduction session is `sessionId` and return its root."""
+    rootPath = destination / "workspace"
+    (rootPath / "sessions" / sessionId).mkdir(parents=True)
+    (rootPath / "sessions" / ".sessionid").write_text(sessionId, encoding="utf-8")
+    return rootPath

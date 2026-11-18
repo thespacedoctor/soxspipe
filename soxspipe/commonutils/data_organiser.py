@@ -26,8 +26,10 @@ from soxspipe.commonutils.fits_frame_names import is_fits_frame, superseded_fram
 from soxspipe.commonutils.late_frame_rejoin import (
     collect_sof_name_pins,
     delete_stale_files,
+    find_consumer_sofs,
     find_rejoined_sofs,
     format_rejoin_summary,
+    format_requeue_summary,
     partition_labels,
     pin_rejoined_sof_names,
     reset_rejoined_sofs,
@@ -52,6 +54,7 @@ from soxspipe.commonutils.session_status_restore import (
 )
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
+from soxspipe.commonutils.workspace_paths import path_under_root
 
 if TYPE_CHECKING:
     import logging
@@ -62,6 +65,9 @@ os.environ["TERM"] = "vt100"
 
 # THE TEMPORARY GROUPING KEY THAT KEEPS THE FRAMES OF DIFFERENT KNOWN SETS APART
 KNOWN_SET_COLUMN = "known set"
+
+# THE TEMPORARY COPY OF A SESSION'S SOF MAP THAT THE SEARCH FOR THE SETS BUILT FROM A REJOINED SET READS
+MAP_SNAPSHOT_TABLE = "late_frame_map_snapshot"
 
 
 def print_incomplete_sets_report(incompleteSets, blockingSets=None):
@@ -293,6 +299,8 @@ class data_organiser:
         self.log = log
         # NAMES PINNED FOR REJOINED SETS LIVE ONLY ON THIS INSTANCE; THEY ARE LOST WHEN THE PROCESS EXITS
         self.pinnedSofNames = {}
+        # THE SAME FOR THE SETS BUILT FROM A REJOINED SET: THEY KEEP THEIR NAMES, BUT THEIR FRAMES DO NOT CHANGE
+        self.pinnedConsumerNames = {}
         # THE TEMP TABLE THE QC-RANGE QUERIES READ FAILING-QC SOFS FROM WHILE A REBUILD RESTORES STATUSES, ELSE None
         self.failedQcSnapshot = None
 
@@ -901,7 +909,6 @@ class data_organiser:
         """
         self.log.debug("starting the ``_sync_raw_frames`` method")
 
-        import re
         import shutil
 
         import pandas as pd
@@ -950,10 +957,7 @@ class data_organiser:
                     )
                     if len(matchedFiles.index):
                         for file in matchedFiles["file"]:
-                            try:
-                                os.remove(file)
-                            except OSError as e:
-                                self.log.debug(f"_sync_raw_frames: `os.remove(file)` failed, continuing: {e}")
+                            self._remove_workspace_entry(file)
                         # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
                         rawFrames = rawFrames[
                             ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
@@ -962,6 +966,7 @@ class data_organiser:
                         ]
 
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
+                rawFrames = self._without_unsafe_frames(rawFrames)
                 databaseDeletes = []
                 if len(rawFrames.index):
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
@@ -973,23 +978,24 @@ class data_organiser:
                     filepaths = rawFrames["filepath"]
                     filenames = rawFrames["file"]
                     for p, n in zip(filepaths, filenames):
-                        parentDirectory = os.path.dirname(p)
+                        # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
+                        destination = path_under_root(p, self.rootDir)
+                        parentDirectory = os.path.dirname(destination)
                         if not os.path.exists(parentDirectory):
                             # Recursively create missing directories
                             os.makedirs(parentDirectory)
-                        if os.path.exists(self.rootDir + "/" + n):
-                            realSource = os.path.realpath(self.rootDir + "/" + n)
-                            realDest = os.path.realpath(p)
+                        source = path_under_root(n, self.rootDir)
+                        if os.path.exists(source):
+                            realSource = os.path.realpath(source)
+                            realDest = os.path.realpath(destination)
 
-                            matchObject = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource)
-
-                            if matchObject and realSource != realDest:
+                            if self._is_dated_raw_frame(realSource) and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
                                 databaseDeletes.append(realDest)
                             elif realSource != realDest:
                                 shutil.move(realSource, realDest)
-                            if os.path.islink(self.rootDir + "/" + n):
-                                os.remove(self.rootDir + "/" + n)
+                            if os.path.islink(source):
+                                self._remove_workspace_entry(n)
 
                 if len(databaseDeletes):
                     c = self.conn.cursor()
@@ -1002,6 +1008,118 @@ class data_organiser:
             self._sync_sql_table_to_directory(self.rawDir, "raw_frames", recursive=False)
 
         self.log.debug("completed the ``_sync_raw_frames`` method")
+        return
+
+    def _without_unsafe_frames(self, rawFrames):
+        """*drop the frames that filing would move or write outside the workspace*
+
+        A frame is skipped, with a warning, when its destination folder resolves outside the workspace and outside
+        the validated raw directory (a dated folder that is a link to another place), or when the root entry
+        resolves outside the workspace and is not a dated frame under the validated raw directory. A link to such
+        a dated frame, as in an external raw archive, is left in place and handled by the caller.
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the newly found frames, with ``file`` and ``filepath`` columns
+
+        **Return:**
+
+        - ``rawFrames`` -- the frames that are safe to file
+        """
+        keep = []
+        for p, n in zip(rawFrames["filepath"], rawFrames["file"], strict=True):
+            source = path_under_root(n, self.rootDir)
+            realSource = os.path.realpath(source)
+            destinationFolder = os.path.dirname(path_under_root(p, self.rootDir))
+            reason = None
+            if not (self._is_inside_workspace(destinationFolder) or self._is_inside_raw_directory(destinationFolder)):
+                reason = f"its destination folder `{destinationFolder}` is outside the workspace"
+            elif (
+                os.path.exists(source)
+                and not self._is_inside_workspace(realSource)
+                and not self._is_dated_raw_frame(realSource)
+            ):
+                reason = f"it resolves to `{realSource}`, outside the workspace"
+            if reason:
+                self.log.warning(f"not filing `{n}`: {reason}")
+            keep.append(reason is None)
+        return rawFrames.loc[keep]
+
+    def _is_inside_raw_directory(self, path):
+        """*return True when the path resolves to a place inside the validated raw directory*
+
+        **Key Arguments:**
+
+        - ``path`` -- the path to check. It need not exist yet
+
+        **Return:**
+
+        - ``isInside`` -- True when the resolved path lies at or below ``rawDir``
+        """
+        try:
+            _validate_owned_path(path, self.rawDir, "raw path")
+        except _UnsafePathError:
+            return False
+        return True
+
+    def _is_dated_raw_frame(self, realPath):
+        """*return True when a resolved path is a frame in a dated folder of the validated raw directory*
+
+        **Key Arguments:**
+
+        - ``realPath`` -- the resolved path of a frame
+
+        **Return:**
+
+        - ``isDated`` -- True for ``<rawDir>/<YYYY-MM-DD>/...``
+        """
+        import re
+
+        try:
+            relativePath = Path(realPath).relative_to(Path(self.rawDir))
+        except ValueError:
+            return False
+        return len(relativePath.parts) > 1 and re.fullmatch(r"\d{4}-\d{2}-\d{2}", relativePath.parts[0]) is not None
+
+    def _is_inside_workspace(self, path):
+        """*return True when the path resolves to a place inside the workspace*
+
+        **Key Arguments:**
+
+        - ``path`` -- the path to check. It need not exist yet
+
+        **Return:**
+
+        - ``isInside`` -- True when the resolved path lies at or below ``rootDir``
+        """
+        try:
+            _validate_owned_path(path, self.rootDir, "workspace path")
+        except _UnsafePathError:
+            return False
+        return True
+
+    def _remove_workspace_entry(self, name):
+        """*delete one file, or one link, that sits in the workspace*
+
+        A link is unlinked and its target is never touched. A file is deleted only when its folder lies inside the
+        workspace, so a ``..`` name from a link into an external folder cannot reach beyond it.
+
+        **Key Arguments:**
+
+        - ``name`` -- the path of the entry, relative to the workspace
+
+        **Return:**
+
+        - None
+        """
+        entry = path_under_root(name, self.rootDir)
+        if not self._is_inside_workspace(os.path.dirname(entry)):
+            self.log.warning(f"not deleting `{entry}`: it is outside the workspace")
+            return
+        try:
+            os.remove(entry)
+        except OSError as error:
+            self.log.debug(f"_remove_workspace_entry: could not delete `{entry}`, continuing: {error}")
         return
 
     def _delete_superseded_frames(self):
@@ -2635,6 +2753,8 @@ class data_organiser:
         import sqlite3 as sql
         import time
 
+        from soxspipe.commonutils.workspace_database import connect_workspace_database
+
         reset = False
 
         self.rootDbPath = str(_validate_owned_path(self.rootDbPath, self.rootDir, "database path"))
@@ -2661,11 +2781,8 @@ class data_organiser:
                     self.freshRun = True
                     emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
                     shutil.copyfile(emptyDb, self.rootDbPath)
-                conn = sql.connect(
-                    self.rootDbPath,
-                    timeout=self._DB_BUSY_TIMEOUT_SECONDS,
-                    autocommit=True,
-                    check_same_thread=False,
+                conn = connect_workspace_database(
+                    self.rootDbPath, timeout=self._DB_BUSY_TIMEOUT_SECONDS, applyBusyTimeout=False
                 )
             c = conn.cursor()
 
@@ -2675,7 +2792,6 @@ class data_organiser:
                 if integrityCheckRows != [("ok",)]:
                     raise sql.DatabaseError(f"database integrity check failed: {integrityCheckRows}")
                 c.execute("PRAGMA busy_timeout = 100000")
-                c.execute("PRAGMA synchronous = OFF")
 
                 i = tries + 1
             except Exception as error:
@@ -2700,15 +2816,11 @@ class data_organiser:
                     self._rebuild_database_that_failed_to_open(lastError)
                     if not reset:
                         reset = True
-                conn = sql.connect(
-                    self.rootDbPath,
-                    timeout=self._DB_BUSY_TIMEOUT_SECONDS,
-                    autocommit=True,
-                    check_same_thread=False,
+                conn = connect_workspace_database(
+                    self.rootDbPath, timeout=self._DB_BUSY_TIMEOUT_SECONDS, applyBusyTimeout=False
                 )
                 c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
-        c.execute("PRAGMA synchronous = OFF")
 
         c.close()
 
@@ -3159,6 +3271,10 @@ class data_organiser:
         self._require_calibration_matches_table()
         statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
 
+        # THE LOOP BELOW DROPS FROM THE SOF MAP EVERY SET THAT USES A FAILED OR INCOMPLETE PRODUCT, SO THE SETS
+        # BUILT FROM A REJOINED SET ARE FOUND IN THIS COPY OF THE MAP INSTEAD
+        mapSnapshot = self._snapshot_session_map(self.sessionId) if rejoinLateFrames else None
+
         c = self.conn.cursor()
         sqlQuery = f"update product_frames set status = {statusColumn};"  # noqa: S608
         c.execute(sqlQuery)
@@ -3250,16 +3366,16 @@ class data_organiser:
             self._start_session_regroup(sofMapTableName)
 
         # A FRAME ADDED AFTER ITS SET WAS GROUPED REJOINS THAT SET, WHICH IS THEN GROUPED AND REDUCED AGAIN
-        rejoined = self._rejoin_late_frames(sofMapTableName) if rejoinLateFrames else {}
-        compromisedSofs = compromisedSofs + sorted(rejoined)
+        rejoined, consumers = self._rejoin_late_frames(sofMapTableName, mapSnapshot) if rejoinLateFrames else ({}, {})
+        compromisedSofs = compromisedSofs + sorted(rejoined) + sorted(consumers)
 
-        sofNamePins = self.pinnedSofNames
+        sofNamePins = {**self.pinnedSofNames, **self.pinnedConsumerNames}
         regroupedSofs = set()
         knownSetsByRecipe = {}
         if rejoinLateFrames:
             # SETS KEEP THE NAMES AND THE FRAMES THEY HAVE IN THIS SESSION AND IN THE OTHERS; A SET THAT GAINED A
             # LATE FRAME IS LEFT OUT OF THE FRAME LABELS SO ITS OLD FRAMES GROUP WITH THE NEW ONE
-            sofNamePins = collect_sof_name_pins(self.conn, sofMapTableName, self.pinnedSofNames)
+            sofNamePins = collect_sof_name_pins(self.conn, sofMapTableName, sofNamePins)
             regroupedSofs = set(rejoined) | set(self.pinnedSofNames)
             knownSetsByRecipe = {
                 recipe: partition_labels(sofNamePins, recipe, regroupedSofs)
@@ -3461,18 +3577,45 @@ class data_organiser:
                 self.conn.execute("ROLLBACK")
             raise
 
-    def _rejoin_late_frames(self, sofMapTableName):
-        """*reset every set that a late-arriving raw frame belongs to, so it is grouped and reduced again*
+    def _snapshot_session_map(self, sessionId):
+        """*copy the session's SOF map into a temporary table and return the table's name*
+
+        The copy lives only on this connection. `_rejoin_late_frames` drops it.
+
+        **Key Arguments:**
+
+        - ``sessionId`` -- the current session's ID
+
+        **Return:**
+
+        - ``snapshotTable`` -- the name of the temporary table
+        """
+        sofMapTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+        # TABLE NAMES CANNOT BE BOUND; THE SESSION TABLE IS CHECKED BY validate_sql_identifier ABOVE
+        self.conn.execute(f"DROP TABLE IF EXISTS temp.{MAP_SNAPSHOT_TABLE};")
+        self.conn.execute(f"CREATE TEMP TABLE {MAP_SNAPSHOT_TABLE} AS SELECT * FROM {sofMapTableName};")  # noqa: S608
+        return MAP_SNAPSHOT_TABLE
+
+    def _rejoin_late_frames(self, sofMapTableName, mapSnapshot=None):
+        """*reset the sets a late-arriving raw frame belongs to, and the sets built from them, to be reduced again*
+
+        The sets that use a product of a rejoined set are reset the same way, at every level, whatever their status
+        (a failed set may have failed on the old product). Only the current session's SOF map is searched for them.
 
         **Key Arguments:**
 
         - ``sofMapTableName`` -- the current session's validated `sof_map_<id>` table name
+        - ``mapSnapshot`` -- the table `_snapshot_session_map` made before the build dropped the sets that use a
+          failed product. The sets built from a rejoined set are searched for there. It is dropped before this
+          method returns. Defaults to the session's own table
 
         **Return:**
 
         - ``rejoined`` -- SOF name to (recipe, frozenset of raw frame filepaths) for the sets that gained a frame in
           this call, empty when none did. Their names stay pinned in `self.pinnedSofNames` for the rest of this
           instance's life
+        - ``consumers`` -- the same for the sets that use their products, directly or through other products. Their
+          names stay pinned in `self.pinnedConsumerNames`
 
         The pin lives only on this instance. A rejoined set that is still unprocessed after both `prepare()` passes
         (for example, while a calibration is missing) loses its pin when the process exits, and a later `prepare()`
@@ -3480,19 +3623,31 @@ class data_organiser:
         """
         groupingKeys = [key for key in self.filterKeywords if key not in self.proKeywords]
         rejoined = find_rejoined_sofs(self.conn, sofMapTableName, groupingKeys)
+        try:
+            consumers = (
+                find_consumer_sofs(self.conn, mapSnapshot or sofMapTableName, rejoined, self.log) if rejoined else {}
+            )
+        finally:
+            if mapSnapshot:
+                self.conn.execute(f"DROP TABLE IF EXISTS temp.{mapSnapshot};")
         if not rejoined:
-            return rejoined
+            return rejoined, {}
         self.pinnedSofNames = {**self.pinnedSofNames, **rejoined}
+        self.pinnedConsumerNames = {**self.pinnedConsumerNames, **consumers}
 
         stalePaths = reset_rejoined_sofs(
-            self.conn, sofMapTableName, rejoined, self.rootDir, _validate_owned_path, self.log
+            self.conn, sofMapTableName, {**rejoined, **consumers}, self.rootDir, _validate_owned_path, self.log
         )
         self.conn.commit()
         # DELETE ONLY AFTER THE COMMIT, SO A FAILED COMMIT NEVER LEAVES A PRODUCT THE DATABASE STILL EXPECTS DELETED
         delete_stale_files(stalePaths, self.log)
-        self.log.debug(f"_rejoin_late_frames: reset {len(rejoined)} SOF(s) that gained late frames")
+        self.log.debug(
+            f"_rejoin_late_frames: reset {len(rejoined)} SOF(s) that gained late frames, {len(consumers)} that use them"
+        )
         print(format_rejoin_summary(rejoined))
-        return rejoined
+        if consumers:
+            print(format_requeue_summary(consumers))
+        return rejoined, consumers
 
     def get_raw_frames_and_groups(
         self,
@@ -3910,9 +4065,17 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
     from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
     from soxspipe.commonutils.toolkit import NIGHT_START_OFFSET_SECONDS, PREPARED_FRAME_KEYWORD
 
+    # READ EACH HEADER FROM THE WORKSPACE, NOT THE PROCESS CWD. THE COLLECTION IS GIVEN FULL PATHS AND SKIPS A FILE IT
+    # CANNOT READ, SO THE SUMMARY NAMES ARE MAPPED BACK TO THE WORKSPACE-RELATIVE ENTRIES OF THE BATCH (A LINKED FRAME
+    # KEEPS ITS `raw/` PATH, AND TWO ENTRIES SHARING A BASENAME KEEP THEIR OWN NAMES)
+    namesByFullPath = {path_under_root(name, pathToDirectory): name for name in batch}
     # THE PREPARED-FRAME MARKER RIDES ALONG WITH THE KEYWORDS, SO IT COSTS NO EXTRA HEADER READ
-    masterTable = ImageFileCollection(filenames=batch, keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()])
-    masterTable = _drop_prepared_frames(masterTable.summary, log)
+    masterTable = ImageFileCollection(
+        filenames=list(namesByFullPath), keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()]
+    )
+    summary = masterTable.summary
+    summary["file"] = [namesByFullPath[fullPath] for fullPath in summary["file"]]
+    masterTable = _drop_prepared_frames(summary, log)
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:
         if fil in filterKeys and fil not in ["exptime"]:

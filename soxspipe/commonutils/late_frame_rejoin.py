@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-*Find the sets a late-arriving raw frame belongs to, reset them so they are reduced again, and keep their SOF names*
+*Find the sets a late frame belongs to and the sets built from them, reset them, and keep their names*
 
 Author
 : David Young
@@ -271,12 +271,12 @@ def status_columns(connection: sqlite3.Connection) -> list[str]:
 def reset_rejoined_sofs(
     connection: sqlite3.Connection,
     sofMapTable: str,
-    rejoined: Mapping[str, SetClaim],
+    sofsToReset: Mapping[str, SetClaim],
     workspaceRoot: str | os.PathLike,
     validateOwnedPath: Callable[[Path, Path, str], Path],
     log: logging.Logger,
 ) -> list[Path]:
-    """*queue rejoined SOFs to be grouped and reduced again*
+    """*queue rejoined SOFs, and the SOFs built from them, to be grouped and reduced again*
 
     Marks each SOF's products incomplete with this session's status and `set_first_file` cleared, frees its raw
     frames to be grouped again, and drops its rows from the SOF map and the raw frame sets. The `product_frames`
@@ -287,7 +287,7 @@ def reset_rejoined_sofs(
 
     - ``connection`` -- open connection to the workspace database
     - ``sofMapTable`` -- the current session's `sof_map_<id>` table
-    - ``rejoined`` -- the result of `find_rejoined_sofs`
+    - ``sofsToReset`` -- the SOFs to queue: the result of `find_rejoined_sofs`, with the result of `find_consumer_sofs`
     - ``workspaceRoot`` -- the workspace root; no file outside it is deleted
     - ``validateOwnedPath`` -- `data_organiser._validate_owned_path`, passed in to avoid a circular import
     - ``log`` -- logger
@@ -297,12 +297,12 @@ def reset_rejoined_sofs(
     - ``stalePaths`` -- the validated product and `_ERROR.log` paths to delete once the changes are committed
     """
     sofMapTable = validate_sql_identifier(sofMapTable, "sof map table name")
-    sofs = sorted(rejoined)
+    sofs = sorted(sofsToReset)
     if not sofs:
         return []
 
     _clear_product_state(connection, sofMapTable, sofs)
-    filepaths = sorted({filepath for _, members in rejoined.values() for filepath in members})
+    filepaths = sorted({filepath for _, members in sofsToReset.values() for filepath in members})
     for chunk in _chunks(filepaths):
         # `_placeholders` IS ALWAYS LITERAL `?` MARKS; THE VALUES ARE BOUND
         connection.execute(
@@ -440,6 +440,12 @@ def pin_rejoined_sof_names(rawGroups, rejoined: Mapping[str, SetClaim]):
     return pinnedGroups
 
 
+def _format_summary(sofs: Iterable[str], description: str) -> str:
+    """*return the one-line message that counts the SOFs, says what happened to them, and names them in order*"""
+    names = sorted(sofs)
+    return f"{len(names)} SOF(S) {description}: {', '.join(names)}"
+
+
 def format_rejoin_summary(sofs: Iterable[str]) -> str:
     """*return the one-line message naming the SOFs that were regrouped*
 
@@ -451,5 +457,87 @@ def format_rejoin_summary(sofs: Iterable[str]) -> str:
 
     - ``summary`` -- the message
     """
-    names = sorted(sofs)
-    return f"{len(names)} SOF(S) GAINED LATE-ARRIVING FRAMES AND WILL BE REDUCED AGAIN: {', '.join(names)}"
+    return _format_summary(sofs, "GAINED LATE-ARRIVING FRAMES AND WILL BE REDUCED AGAIN")
+
+
+def _product_filepaths(connection: sqlite3.Connection, sofs: Sequence[str]) -> list[str]:
+    """*read the filepaths of the products that each SOF in ``sofs`` makes, leaving out placeholder rows*"""
+    filepaths: set[str] = set()
+    for chunk in _chunks(sofs):
+        # `_placeholders` IS ALWAYS LITERAL `?` MARKS; THE VALUES ARE BOUND
+        sqlQuery = (
+            f"SELECT DISTINCT filepath FROM product_frames WHERE sof IN ({_placeholders(len(chunk))}) "  # noqa: S608
+            "AND filepath IS NOT NULL AND file != ?;"
+        )
+        filepaths.update(row[0] for row in connection.execute(sqlQuery, (*chunk, PLACEHOLDER_PRODUCT_FILE)))
+    return sorted(filepaths)
+
+
+def _sofs_that_list(connection: sqlite3.Connection, sofMapTable: str, filepaths: Sequence[str]) -> set[str]:
+    """*read the SOFs of one session's SOF map that list any of ``filepaths`` as an input*"""
+    sofs: set[str] = set()
+    for chunk in _chunks(filepaths):
+        # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier BY THE CALLER. THE VALUES ARE BOUND
+        sqlQuery = (
+            f"SELECT DISTINCT sof FROM {sofMapTable} "  # noqa: S608
+            f"WHERE sof IS NOT NULL AND filepath IN ({_placeholders(len(chunk))});"
+        )
+        sofs.update(row[0] for row in connection.execute(sqlQuery, tuple(chunk)))
+    return sofs
+
+
+def find_consumer_sofs(
+    connection: sqlite3.Connection, sofMapTable: str, rootSofs: Iterable[str], log: logging.Logger
+) -> dict[str, SetClaim]:
+    """*find every SOF that took a product of ``rootSofs`` as an input, directly or through other products*
+
+    A consumer lists the product of the SOF it takes in its own rows of the session's SOF map. The search repeats for
+    the products of each consumer found, until no new consumer turns up. Only the session that owns ``sofMapTable``
+    is searched. A consumer with no raw frame in the map, or with no row in `product_frames` to name its recipe, is
+    left out and logged as a warning, because it cannot be grouped again.
+
+    **Key Arguments:**
+
+    - ``connection`` -- open connection to the workspace database
+    - ``sofMapTable`` -- the current session's `sof_map_<id>` table, or a copy of it taken before the build dropped
+      the SOFs that use a failed product (checked again by `validate_sql_identifier`)
+    - ``rootSofs`` -- the SOF names to start from, for example the result of `find_rejoined_sofs`; they are never
+      returned
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``consumers`` -- SOF name to (recipe, frozenset of the raw frame filepaths the SOF holds), sorted by name
+    """
+    sofMapTable = validate_sql_identifier(sofMapTable, "sof map table name")
+    roots = set(rootSofs)
+    found: set[str] = set()
+    frontier = sorted(roots)
+    while frontier:
+        consumers = _sofs_that_list(connection, sofMapTable, _product_filepaths(connection, frontier)) - roots - found
+        found |= consumers
+        frontier = sorted(consumers)
+    if not found:
+        return {}
+
+    members = read_set_members(connection, sofMapTable)
+    for sof in sorted(found - members.keys()):
+        log.warning(
+            f"late_frame_rejoin: `{sof}` uses a product that will be rebuilt, but it has no raw frame in the SOF map "
+            "or no row in `product_frames`, so it was not queued again"
+        )
+    return {sof: members[sof] for sof in sorted(found) if sof in members}
+
+
+def format_requeue_summary(sofs: Iterable[str]) -> str:
+    """*return the one-line message naming the SOFs that are reduced again because a product they use was rebuilt*
+
+    **Key Arguments:**
+
+    - ``sofs`` -- the names of the consumer SOFs that were queued again
+
+    **Return:**
+
+    - ``summary`` -- the message
+    """
+    return _format_summary(sofs, "USE A PRODUCT THAT WILL BE REBUILT AND WILL BE REDUCED AGAIN")

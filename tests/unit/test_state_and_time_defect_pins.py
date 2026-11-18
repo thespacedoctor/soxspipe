@@ -176,11 +176,6 @@ def test_a_saved_prepared_frame_is_not_indexed_as_a_raw_frame(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="DY-1702 (DY-37 W1): data_organiser.prepare builds ./raw paths relative to the cwd, not rootDir",
-)
 def test_prepare_through_the_api_files_frames_inside_the_workspace_whatever_the_cwd(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
