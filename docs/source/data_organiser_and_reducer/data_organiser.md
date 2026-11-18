@@ -72,6 +72,7 @@ When a late frame joins a set, the DO does these things in the same `prep` run:
 2. The status of the set's products is reset to NULL in the current session, so the session queues the set to run again. Each other session adds the late frame and resets the set the next time you switch to it or run `prep` in it.
 3. The set's stale product file and its `_ERROR.log` file are deleted. This happens at `prep`, not at `reduce`.
 4. The DO prints a line that names the SOFs that gained late frames.
+5. Every set that used a product of the rejoined set as an input is queued again in the current session. This includes the sets that used a product of those sets, and so on, until no new set is found. For example, a late flat frame queues the spatial-solution set and the standard-star sets that used the master flat. Each of these sets gets the same treatment as the rejoined set: its status is reset to NULL (a `fail` status too, because the set may have failed on the old product), it keeps its SOF name, and its stale product file and `_ERROR.log` file are deleted. The DO prints a second line that names these sets.
 
 A frame from a different template run has a different `eso tpl start` value. It does not join the set and forms a new SOF. Stare frames are the exception: they are grouped by OB, so a late stare frame joins its OB's SOF whatever its `eso tpl start` value.
 
@@ -84,7 +85,7 @@ The DO does not add a late frame to a set in these cases:
 #### Limits
 
 - The other sessions keep their own `sof_map` rows, `sof/` files and statuses for the set until you switch to them or run `prep` in them.
-- Products that are downstream of the rejoined set are not queued again, in the current session or in any other. This is tracked as DY-264.
+- Only the current session queues the downstream sets again in the `prep` run. Each other session queues them again, as it does the rejoined set, the next time you switch to it or run `prep` in it.
 - A rejoined set that is still not in the session's `sof_map` when the run ends (for example, while a calibration is missing) loses its old name, because the name is held in memory. A later `prep` names the set after its earliest frame. Once the set is in a session's `sof_map`, the session and every session created or switched to later keep its name.
 - `soxspipe prep --refresh` rebuilds the database and groups all frames again. It does not keep the old SOF names in this way.
 

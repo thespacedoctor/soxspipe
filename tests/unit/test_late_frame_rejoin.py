@@ -10,8 +10,10 @@ import pytest
 from soxspipe.commonutils.late_frame_rejoin import (
     collect_sof_name_pins,
     delete_stale_files,
+    find_consumer_sofs,
     find_rejoined_sofs,
     format_rejoin_summary,
+    format_requeue_summary,
     partition_labels,
     pin_rejoined_sof_names,
     read_set_members,
@@ -261,3 +263,119 @@ def test_find_rejoined_sofs_does_not_read_the_frames_when_the_sof_map_is_empty()
     # ASSERT
     connection.close()
     assert rejoined == {}
+
+
+# CONSUMERS OF A REJOINED SET (DY-264)
+
+ROOT_SOF = "ROOT.sof"
+LEVEL_ONE_SOF = "LEVEL_ONE.sof"
+LEVEL_TWO_SOF = "LEVEL_TWO.sof"
+LEVEL_THREE_SOF = "LEVEL_THREE.sof"
+UNRELATED_SOF = "UNRELATED.sof"
+
+
+def _chain_of_consumers():
+    """A session map where each SOF takes the product of the one before it, and the last takes none of them."""
+    connection = sqlite3.connect(":memory:")
+    connection.execute("CREATE TABLE raw_frames (filepath TEXT)")
+    connection.execute("CREATE TABLE product_frames (sof TEXT, recipe TEXT, file TEXT, filepath TEXT)")
+    connection.execute("CREATE TABLE sof_map_test (file TEXT, tag TEXT, sof TEXT, filepath TEXT, complete INT)")
+    chain = [ROOT_SOF, LEVEL_ONE_SOF, LEVEL_TWO_SOF, LEVEL_THREE_SOF, UNRELATED_SOF]
+    for sof in chain:
+        connection.execute("INSERT INTO raw_frames VALUES (?)", (f"{sof}.raw",))
+        connection.execute("INSERT INTO sof_map_test (sof, filepath) VALUES (?, ?)", (sof, f"{sof}.raw"))
+        connection.execute(
+            "INSERT INTO product_frames VALUES (?, 'recipe', 'product.fits', ?)", (sof, f"{sof}.product")
+        )
+    # A PRODUCT TAKEN AS AN INPUT IS LISTED IN THE CONSUMER'S SOF MAP BESIDE ITS RAW FRAMES
+    for upstream, consumer in zip(chain[:3], chain[1:4], strict=True):
+        connection.execute("INSERT INTO sof_map_test (sof, filepath) VALUES (?, ?)", (consumer, f"{upstream}.product"))
+    return connection
+
+
+def test_find_consumer_sofs_follows_the_products_through_every_level() -> None:
+    # ARRANGE
+    connection = _chain_of_consumers()
+
+    # ACT
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+
+    # ASSERT
+    connection.close()
+    assert list(consumers) == sorted([LEVEL_ONE_SOF, LEVEL_TWO_SOF, LEVEL_THREE_SOF])
+
+
+def test_find_consumer_sofs_returns_the_recipe_and_raw_frames_of_each_consumer() -> None:
+    # ARRANGE
+    connection = _chain_of_consumers()
+
+    # ACT
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+
+    # ASSERT
+    connection.close()
+    assert consumers[LEVEL_TWO_SOF] == ("recipe", frozenset({f"{LEVEL_TWO_SOF}.raw"}))
+
+
+def test_find_consumer_sofs_leaves_out_the_sofs_it_starts_from() -> None:
+    # ARRANGE
+    connection = _chain_of_consumers()
+
+    # ACT
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF, LEVEL_ONE_SOF])
+
+    # ASSERT
+    connection.close()
+    assert list(consumers) == sorted([LEVEL_TWO_SOF, LEVEL_THREE_SOF])
+
+
+def test_find_consumer_sofs_stops_when_two_sofs_take_each_others_products() -> None:
+    # ARRANGE
+    connection = _chain_of_consumers()
+    connection.execute(
+        "INSERT INTO sof_map_test (sof, filepath) VALUES (?, ?)", (LEVEL_ONE_SOF, f"{LEVEL_THREE_SOF}.product")
+    )
+
+    # ACT
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+
+    # ASSERT
+    connection.close()
+    assert list(consumers) == sorted([LEVEL_ONE_SOF, LEVEL_TWO_SOF, LEVEL_THREE_SOF])
+
+
+def test_find_consumer_sofs_ignores_a_product_with_the_placeholder_file_name() -> None:
+    # ARRANGE
+    connection = _chain_of_consumers()
+    connection.execute("UPDATE product_frames SET file = 'XXXX' WHERE sof = ?", (ROOT_SOF,))
+
+    # ACT
+    consumers = find_consumer_sofs(connection, "sof_map_test", [ROOT_SOF])
+
+    # ASSERT
+    connection.close()
+    assert consumers == {}
+
+
+def test_find_consumer_sofs_finds_nothing_when_no_sof_is_given() -> None:
+    # ARRANGE
+    connection = _chain_of_consumers()
+
+    # ACT
+    consumers = find_consumer_sofs(connection, "sof_map_test", [])
+
+    # ASSERT
+    connection.close()
+    assert consumers == {}
+
+
+def test_requeue_summary_names_every_consumer_in_order() -> None:
+    # ARRANGE
+    sofs = [NEW_SOF, OLD_SOF]
+
+    # ACT
+    summary = format_requeue_summary(sofs)
+
+    # ASSERT
+    assert summary.startswith("2 SOF(S)")
+    assert summary.index(OLD_SOF) < summary.index(NEW_SOF)
