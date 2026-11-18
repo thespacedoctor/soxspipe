@@ -352,7 +352,6 @@ class base_recipe:
             )
             c = self.conn.cursor()
             c.execute("PRAGMA busy_timeout = 100000")
-            c.execute("PRAGMA synchronous = OFF")
 
             self.conn.row_factory = dict_factory
 

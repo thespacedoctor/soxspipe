@@ -2675,7 +2675,6 @@ class data_organiser:
                 if integrityCheckRows != [("ok",)]:
                     raise sql.DatabaseError(f"database integrity check failed: {integrityCheckRows}")
                 c.execute("PRAGMA busy_timeout = 100000")
-                c.execute("PRAGMA synchronous = OFF")
 
                 i = tries + 1
             except Exception as error:
@@ -2708,7 +2707,6 @@ class data_organiser:
                 )
                 c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
-        c.execute("PRAGMA synchronous = OFF")
 
         c.close()
 

@@ -210,7 +210,6 @@ class reducer:
                     )
                     c = conn.cursor()
                     c.execute("PRAGMA busy_timeout = 100000")
-                    c.execute("PRAGMA synchronous = OFF")
 
                     sofList = rawGroups["sof"].tolist()
                     sofList = [self.sessionPath + "/sof/" + sof for sof in sofList]
@@ -369,7 +368,6 @@ class reducer:
         conn = sql.connect(databasePath, timeout=300, autocommit=True, check_same_thread=False)
         c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
-        c.execute("PRAGMA synchronous = OFF")
 
         allBranchParams = {}
 
