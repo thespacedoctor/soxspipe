@@ -115,6 +115,26 @@ def test_header_harvest_and_toolkit_share_the_night_boundary(tmp_path, log, obse
     assert harvested.loc[0, "night start date"] == toolkitNightDate
 
 
+def test_header_harvest_keeps_each_name_when_two_entries_share_a_basename(tmp_path, log) -> None:
+    """Two linked frames from different folders keep their own workspace-relative names."""
+    for folder in ("a", "b"):
+        (tmp_path / folder).mkdir()
+        harvestable_raw_fits(tmp_path / folder / "x.fits")
+    kw, keywords = _organiser_header_keywords(log)
+
+    harvested = _harvest_fits_headers(
+        batch=["./a/x.fits", "./b/x.fits"],
+        log=log,
+        pathToDirectory=str(tmp_path),
+        keywords=keywords,
+        filterKeys=["mjd-obs", "eso dpr catg", "eso dpr tech", "eso dpr type", "exptime"],
+        instrument="SOXS",
+        kw=kw,
+    )
+
+    assert sorted(harvested["file"]) == ["./a/x.fits", "./b/x.fits"]
+
+
 def test_directory_table_returns_empty_contract_when_no_fits_exist(tmp_path, log) -> None:
     """Return the established all-None result for an empty workspace scan."""
     organiser = workspace_organiser(tmp_path, log=log)
@@ -513,6 +533,8 @@ def test_sync_raw_frames_binds_a_hostile_mismatch_delete_as_a_parameter(tmp_path
     # ROW TO DELETE, RATHER THAN A NEW FRAME TO MOVE.
     organiser.rootDir = str(tmp_path / "raw" / "2024-01-02")
     os.makedirs(organiser.rootDir)
+    # THE DATED FOLDERS BELONG TO THE VALIDATED RAW DIRECTORY, WHICH THE FILING GUARD ALLOWS AS A DESTINATION
+    organiser.rawDir = str(tmp_path / "raw")
     sourcePath = Path(organiser.rootDir) / "dup.fits"
     sourcePath.write_text("synthetic frame", encoding="utf-8")
     hostileDestination = str(tmp_path / "raw" / "2024-01-03" / 'evil") OR 1=1 --.fits')
