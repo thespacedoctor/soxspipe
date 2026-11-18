@@ -1,8 +1,9 @@
 """Open a connection to the workspace database `soxspipe.db` (DY-1706).
 
-Every connection to the workspace database starts here, so the durability settings live in one place. The
-connection keeps SQLite's default `synchronous = FULL` and the rollback journal (`DELETE`): an operating-system crash
-or a power loss cannot corrupt the database. Do not weaken the `synchronous` setting or switch to WAL here. WAL is
+Every read-write connection to the workspace database starts here, so the durability settings live in one place.
+The read-only connection that the backup opens is the one exception. The connection keeps SQLite's default
+`synchronous = FULL` and the rollback journal (`DELETE`): an operating-system crash or a power loss cannot corrupt
+the database. Do not weaken the `synchronous` setting or switch to WAL here. WAL is
 unsafe on network volumes, and a workspace can sit on one.
 """
 

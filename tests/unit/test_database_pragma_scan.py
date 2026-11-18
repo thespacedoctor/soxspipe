@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 PACKAGE_ROOT = Path(soxspipe.__file__).resolve().parent
 # POSSESSIVE QUANTIFIERS (`*+`) STOP THE MATCH BACKTRACKING INTO THE SPACE BEFORE THE VALUE, WHICH WOULD HIDE IT FROM
 # THE LOOKAHEAD
-NON_DURABLE_SYNCHRONOUS = re.compile(r"synchronous\s*+(?:=|\()\s*+['\"]?+\s*+(?!(?:FULL|EXTRA|2|3)\b)", re.IGNORECASE)
+NON_DURABLE_SYNCHRONOUS = re.compile(r"\bsynchronous\s*+(?:=|\()\s*+['\"]?+\s*+(?!(?:FULL|EXTRA|2|3)\b)", re.IGNORECASE)
 NON_ROLLBACK_JOURNAL_MODE = re.compile(r"journal_mode\s*+(?:=|\()\s*+['\"]?+\s*+(?!DELETE\b)", re.IGNORECASE)
 
 
