@@ -69,6 +69,10 @@ def _image_stats(dat):
     return (dat.min(), dat.max(), dat.mean(), dat.std())
 
 
+class RecipeProductExistsError(FileExistsError):
+    """A recipe refused to run because its product, or the error log of an earlier failed run, is already in place."""
+
+
 class base_recipe:
     """
     The base recipe class which all other recipes inherit
@@ -264,7 +268,7 @@ class base_recipe:
 
         Sets ``self.sofName``, ``self.productPath``, ``self.startNightDate`` and
         ``self.log``. A product or an error log already in place raises
-        ``FileExistsError`` unless ``overwrite`` is set. That refusal applies to
+        ``RecipeProductExistsError`` (a ``FileExistsError``) unless ``overwrite`` is set. That refusal applies to
         a ``.sof`` input only.
 
         A list of frame paths or a directory has no ``.sof`` name to read, so
@@ -294,7 +298,7 @@ class base_recipe:
                     print(
                         f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
                     )
-                raise FileExistsError(
+                raise RecipeProductExistsError(
                     f"This recipe previously failed (see `{basename}`). To rerun the recipe, run the recipe command with the overwrite flag (-x)."
                 )
             if not overwrite and self._complete_product_exists(log):
@@ -303,7 +307,7 @@ class base_recipe:
                     print(
                         f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
                     )
-                raise FileExistsError(
+                raise RecipeProductExistsError(
                     f"The product of this recipe already exists: `{basename}`. To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
                 )
 

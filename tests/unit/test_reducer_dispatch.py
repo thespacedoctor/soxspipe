@@ -10,6 +10,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from soxspipe.recipes.base_recipe import RecipeProductExistsError
 from tests.factories import logging_settings
 
 pytestmark = pytest.mark.unit
@@ -229,9 +230,9 @@ def test_run_recipe_bulk_records_status_qc_errors_and_refreshes_changed_sofs(
                 ]
             )
         if sofName == "previous-fail.sof":
-            raise FileExistsError("this recipe previously failed")
+            raise RecipeProductExistsError("this recipe previously failed")
         if sofName == "previous-pass.sof":
-            raise FileExistsError("the product of this recipe exists")
+            raise RecipeProductExistsError("the product of this recipe exists")
         if sofName == "other-exists.sof":
             raise FileExistsError("unclassified existing output")
         raise RuntimeError("worker exploded")

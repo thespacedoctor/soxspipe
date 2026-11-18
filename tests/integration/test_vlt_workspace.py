@@ -13,7 +13,7 @@ import pytest
 from astropy.io import fits
 
 from soxspipe.commonutils import data_organiser
-from soxspipe.commonutils.data_organiser import _UnsafePathError
+from soxspipe.commonutils.data_organiser import LooseRawFrameError, _UnsafePathError
 from tests.factories import harvestable_raw_fits
 
 pytestmark = pytest.mark.integration
@@ -279,3 +279,35 @@ def test_superseded_frame_in_the_vlt_raw_folder_is_not_deleted(vltMachine: VltMa
     organiser._delete_superseded_frames()
 
     assert twinPath.exists()
+
+
+def _tree_snapshot(*roots: Path) -> dict[str, list[str]]:
+    """List every path below each root, without following links, so two snapshots can be compared."""
+    return {str(root): sorted(str(path.relative_to(root)) for path in root.rglob("*")) for root in roots}
+
+
+def test_prepare_refuses_a_loose_frame_in_the_vlt_raw_folder_and_changes_nothing(
+    vltMachine: VltMachine, vltOrganiserModule: object, log: object
+) -> None:
+    """A frame outside a dated folder cannot be filed, so prep stops before it changes anything (DY-2109)."""
+    _bias_frame(vltMachine.diskRaw / "loose.fits", 0)
+    organiser = data_organiser(log=log, rootDir=str(vltMachine.workspace), vlt=True, dbConnect=False)
+    before = _tree_snapshot(vltMachine.workspace, vltMachine.diskRaw)
+
+    with pytest.raises(LooseRawFrameError, match=r"loose\.fits.*dated"):
+        organiser.prepare(report=False)
+
+    assert _tree_snapshot(vltMachine.workspace, vltMachine.diskRaw) == before
+
+
+def test_prep_command_exits_non_zero_naming_a_loose_vlt_frame(vltMachine: VltMachine) -> None:
+    """The command line prints the refusal on stderr and exits 1, as a script or monit check needs (DY-2109)."""
+    _bias_frame(vltMachine.diskRaw / "loose.fits", 0)
+    before = _tree_snapshot(vltMachine.diskRaw)
+
+    result = _soxspipe(vltMachine, "prep", ".", "--vlt")
+
+    assert result.returncode == 1, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "loose.fits" in result.stderr
+    assert not (vltMachine.workspace / "loose.fits").exists()
+    assert _tree_snapshot(vltMachine.diskRaw) == before
