@@ -14,7 +14,7 @@ import os
 import sys
 
 from soxspipe.commonutils import detect_continuum
-from soxspipe.commonutils.toolkit import append_product, utcnow_string
+from soxspipe.commonutils.toolkit import append_product, require_unbinned_order_centres, utcnow_string
 
 from .base_recipe import base_recipe
 
@@ -409,6 +409,8 @@ class soxs_order_centres(base_recipe):
         - ``orderDef_image`` -- the last frame matching the instrument's filter list, or
           False when the set carries none
 
+        Sets ``self.orderFramePath`` to the path of that frame, or an empty string when there is none.
+
         **Usage:**
 
         ```python
@@ -419,6 +421,7 @@ class soxs_order_centres(base_recipe):
         from astropy.nddata import CCDData
 
         orderDef_image = False
+        self.orderFramePath = ""
 
         if self.inst == "SOXS":
             filter_list = [
@@ -441,6 +444,7 @@ class soxs_order_centres(base_recipe):
 
         for add_filters in filter_list:
             for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
+                self.orderFramePath = i
                 orderDef_image = CCDData.read(
                     i,
                     hdu=0,
@@ -485,6 +489,10 @@ class soxs_order_centres(base_recipe):
 
         - ``binx`` -- the x binning; 1 on the NIR arm or when the header carries none
         - ``biny`` -- the y binning; 1 on the NIR arm or when the header carries none
+
+        **Raise:**
+
+        - ``ValueError`` -- if the frame is binned
         """
         # FIND THE APPROPRIATE PREDICTED LINE-LIST
         if arm != "NIR" and kw("WIN_BINX") in self.orderFrame.header:
@@ -493,6 +501,9 @@ class soxs_order_centres(base_recipe):
         else:
             binx = 1
             biny = 1
+
+        frameName = f"{os.path.basename(self.orderFramePath)} (SOF {self.sofName})"
+        require_unbinned_order_centres(binx, biny, frameName, "frame")
 
         return binx, biny
 

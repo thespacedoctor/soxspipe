@@ -49,7 +49,7 @@ def _tuning_recipe(
         monkeypatch,
         productPath=tmpPath / "ORDER_TAB_VIS.fits",
         fittedQc=_fitted_qc(),
-        header={"WIN_BINX": 2, "WIN_BINY": 2},
+        header={"WIN_BINX": 1, "WIN_BINY": 1},
     )
 
     tuningArguments: dict[str, Any] = {}
@@ -90,7 +90,7 @@ def test_tuning_samples_the_trace_once_then_sweeps_the_polynomial_grid(
     assert detector["traceFrame"] is recipe.orderFrame
     assert detector["dispersion_map"] == str(tmp_path / "DISP_TAB_VIS.fits")
     assert detector["recipeName"] == "soxs-order-centres"
-    assert (detector["binx"], detector["biny"]) == (2, 2)
+    assert (detector["binx"], detector["biny"]) == (1, 1)
 
     assert tuningArguments["function"] is ORDER_MODULE.parameterTuning
     assert len(tuningArguments["inputArray"]) == TUNING_PERMUTATIONS
@@ -111,7 +111,7 @@ def test_tuning_samples_the_trace_once_then_sweeps_the_polynomial_grid(
     assert tuningArguments["qc"] is recipe.qc
     assert tuningArguments["products"] is recipe.products
     assert tuningArguments["sofName"] == "synthetic-order-centres"
-    assert (tuningArguments["binx"], tuningArguments["biny"]) == (2, 2)
+    assert (tuningArguments["binx"], tuningArguments["biny"]) == (1, 1)
 
 
 def test_tuning_forwards_the_start_night_date_to_every_worker(

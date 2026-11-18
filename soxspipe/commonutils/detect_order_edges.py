@@ -17,6 +17,7 @@ from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.polynomials import chebyshev_order_xy_polynomials
 from soxspipe.commonutils.toolkit import (
+    ORDER_CENTRES_MUST_BE_UNBINNED,
     QC_PLOT_DECORATION_HEIGHT_INCHES,
     cut_image_slice,
     legend_below_axis,
@@ -45,8 +46,8 @@ class detect_order_edges(_base_detect):
     - ``productsTable`` -- the data frame to collect output products
     - ``tag`` -- e.g. '_DLAMP' to differentiate between UV-VIS lamps
     - ``sofName`` -- name of the originating SOF file
-    - ``binx`` -- binning in x-axis
-    - ``biny`` -- binning in y-axis
+    - ``binx`` -- binning of the flat in x-axis, divided by the order-centre table's. Must be 1 or more
+    - ``biny`` -- binning of the flat in y-axis, divided by the order-centre table's. Must be 1 or more
     - ``extendToEdges`` -- if true, extend the order edge tracing to the edges of the frame (Default *True*)
     - ``lampTag`` -- add this tag to the end of the product filename (Default *False*)
     - ``startNightDate`` -- YYYY-MM-DD date of the observation night. Default ""
@@ -125,6 +126,12 @@ class detect_order_edges(_base_detect):
 
         # if self.exptime < 59 or self.exptime > 61:
         #     raise Exception("too short")
+
+        if binx < 1 or biny < 1:
+            raise ValueError(
+                f"The flat/order-table binning ratio is {binx} in x and {biny} in y, below 1: the order-centre table "
+                f"is binned. {ORDER_CENTRES_MUST_BE_UNBINNED}"
+            )
 
         self.binx = binx
         self.biny = biny

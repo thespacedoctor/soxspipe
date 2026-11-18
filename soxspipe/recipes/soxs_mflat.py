@@ -23,6 +23,7 @@ from soxspipe.commonutils.toolkit import (
     append_qc,
     generic_quality_checks,
     quicklook_image,
+    require_unbinned_order_centres,
     spectroscopic_image_quality_checks,
     unpack_order_table,
     utcnow_string,
@@ -1079,6 +1080,10 @@ class soxs_mflat(base_recipe):
         - ``inputFlats`` -- the input flat field frames
         - ``orderTablePath`` -- path to the order table
         - ``kw`` -- the keyword lookup
+
+        **Raise:**
+
+        - ``ValueError`` -- if the order table records a binning other than 1
         """
         from astropy.io import fits
 
@@ -1101,6 +1106,9 @@ class soxs_mflat(base_recipe):
             self.log.debug(f"normalise_flats: `dpBinx = header[kw('WIN_BINX')]` failed, continuing: {e}")
             dpBinx = 1
             dpBiny = 1
+
+        # A BINNED ORDER-CENTRE TABLE IS NOT SUPPORTED, AND GIVES A FLAT/TABLE RATIO BELOW 1 ON AN UNBINNED FLAT
+        require_unbinned_order_centres(int(dpBinx), int(dpBiny), orderTablePath, "table")
 
         self.binRatioX = self.binx / dpBinx
         self.binRatioY = self.biny / dpBiny
