@@ -32,7 +32,7 @@ from .late_frames import (
 from .settings import logging_settings, pipeline_settings
 from .signals import synthetic_signal
 from .slit_illumination import illumination_scene, synthetic_illumination_scene
-from .workspaces import WorkspaceLayout, workspace_layout, workspace_organiser
+from .workspaces import WorkspaceLayout, session_workspace, workspace_layout, workspace_organiser
 
 __all__ = [
     "calibration_chain_frames",
@@ -63,6 +63,7 @@ __all__ = [
     "raw_frame_table",
     "raw_group_table",
     "response_product_fits",
+    "session_workspace",
     "sof_file",
     "synthetic_ccd",
     "synthetic_illumination_scene",
