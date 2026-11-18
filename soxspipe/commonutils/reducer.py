@@ -11,6 +11,7 @@ Date Created
 
 # from memory_profiler import profile
 import contextlib
+import gc
 import logging
 import os
 import sys
@@ -471,7 +472,12 @@ def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=Fal
     ```
     """
     with removing_new_scratch(log, settings):
-        return _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP)
+        try:
+            return _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP)
+        finally:
+            # THE RECIPE IS REACHABLE FROM THIRD-PARTY EXCEPTION CYCLES (MATPLOTLIB MATHTEXT), SO `del` ALONE LEAVES
+            # IT AND ITS ARRAYS ALIVE UNTIL THE NEXT GENERATION-2 PASS (DY-1707)
+            gc.collect()
 
 
 def _run_recipe(log, recipe, sof, settings, overwrite, command, verbose, turnOffMP):

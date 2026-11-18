@@ -643,6 +643,7 @@ class data_organiser:
             options_first=False,
             projectName="soxspipe",
             createLogger=False,
+            quitIfRunning=False,
         )
         arguments, self.settings, replacedLog, dbConn = su.setup()
 
@@ -1671,6 +1672,7 @@ class data_organiser:
                 projectName="soxspipe",
                 defaultSettingsFile=f"{inst}_default_settings.yaml",
                 createLogger=False,
+                quitIfRunning=False,
             )
             arguments, settings, replacedLog, dbConn = su.setup()
 

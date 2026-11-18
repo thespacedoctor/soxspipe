@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from soxspipe.commonutils.data_organiser import data_organiser
 from tests.factories import raw_frame_table, workspace_organiser
 
 pytestmark = pytest.mark.integration
@@ -22,6 +25,22 @@ def _insert_complete_raw_frame(connection) -> None:
             '2024-01-02T03:04:05', 60310, 'CALIB', 'BIAS', 'IMAGE', 0, 'BIAS',
             './raw/bias-1.fits')"""
     )
+
+
+def _stub_prepare_collaborators(organiser: data_organiser, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace the steps of `prepare` that need real FITS files."""
+    monkeypatch.setattr(organiser, "_select_instrument", lambda: None)
+    monkeypatch.setattr(organiser, "_fits_files_exist", lambda: True)
+    monkeypatch.setattr(organiser, "_sync_raw_frames", lambda: _insert_complete_raw_frame(organiser.conn))
+    monkeypatch.setattr(organiser, "_move_misc_files", lambda: None)
+    monkeypatch.setattr(organiser, "_flag_files_to_ignore", lambda: None)
+    monkeypatch.setattr(organiser, "build_sof_files", lambda **_: None)
+
+
+def _report_another_process_with_the_same_argv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the fundamentals running-process check find a match for this process."""
+    otherProcess = SimpleNamespace(pid=-1, cmdline=lambda: ["python", "".join(sys.argv)])
+    monkeypatch.setattr("psutil.process_iter", lambda: [otherProcess])
 
 
 def test_session_create_initialises_sqlite_view_assets_and_workspace_links(tmp_path, log) -> None:
@@ -55,6 +74,23 @@ def test_session_create_initialises_sqlite_view_assets_and_workspace_links(tmp_p
         assert rootAsset.resolve() == sessionPath / assetName
 
 
+def test_session_create_ignores_another_process_with_the_same_argv(tmp_path, log, monkeypatch) -> None:
+    """Create a session while the fundamentals running-process check reports a match."""
+    # ARRANGE
+    organiser = workspace_organiser(tmp_path, log=log)
+    connection, _ = organiser._get_or_create_db_connection()
+    organiser.conn = connection
+    _insert_complete_raw_frame(connection)
+    _report_another_process_with_the_same_argv(monkeypatch)
+
+    # ACT
+    sessionId = organiser.session_create("science")
+
+    # ASSERT
+    assert sessionId == "science"
+    assert (Path(organiser.sessionsDir) / "science" / "soxspipe.yaml").is_file()
+
+
 def test_prepare_refresh_restores_every_session_database_object(tmp_path, log, monkeypatch) -> None:
     """Rebuild a named-session workspace without leaving its schema unusable."""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -71,12 +107,7 @@ def test_prepare_refresh_restores_every_session_database_object(tmp_path, log, m
     (Path(organiser.sessionsDir) / "not-a-session").mkdir()
     (Path(organiser.sessionsDir) / "README.txt").write_text("not a session", encoding="utf-8")
 
-    monkeypatch.setattr(organiser, "_select_instrument", lambda: None)
-    monkeypatch.setattr(organiser, "_fits_files_exist", lambda: True)
-    monkeypatch.setattr(organiser, "_sync_raw_frames", lambda: _insert_complete_raw_frame(organiser.conn))
-    monkeypatch.setattr(organiser, "_move_misc_files", lambda: None)
-    monkeypatch.setattr(organiser, "_flag_files_to_ignore", lambda: None)
-    monkeypatch.setattr(organiser, "build_sof_files", lambda **_: None)
+    _stub_prepare_collaborators(organiser, monkeypatch)
 
     organiser.prepare(refresh=True, report=False)
 
@@ -91,6 +122,25 @@ def test_prepare_refresh_restores_every_session_database_object(tmp_path, log, m
     assert "Skipping invalid session directory" in " ".join(message for _, message in log.messages)
 
     organiser.prepare(report=False)
+
+
+def test_prepare_ignores_another_process_with_the_same_argv(tmp_path, log, monkeypatch) -> None:
+    """Prepare a workspace while the fundamentals running-process check reports a match."""
+    # ARRANGE
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    organiser = workspace_organiser(tmp_path, log=log)
+    connection, _ = organiser._get_or_create_db_connection()
+    organiser.conn = connection
+    _insert_complete_raw_frame(connection)
+    organiser.session_create("science")
+    _stub_prepare_collaborators(organiser, monkeypatch)
+    _report_another_process_with_the_same_argv(monkeypatch)
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    assert Path(organiser.sessionIdFile).read_text(encoding="utf-8") == "science"
 
 
 def test_session_build_sof_files_creates_complete_bias_inventory(tmp_path, log) -> None:

@@ -308,21 +308,21 @@ def test_binning_ratios_are_read_from_the_frame_and_order_table_headers(
     """`binRatioX`/`binRatioY` compare the frame's own binning to the order table's."""
     # ARRANGE
     recipe = _recipe(log)
-    orderTable = _order_table(tmp_path, binx=2, biny=4)
+    orderTable = _order_table(tmp_path, binx=1, biny=1)
     _stub_unpack_order_table(monkeypatch, _centre_pixels(12))
     monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
     frame = _frame(
         np.random.default_rng(101).normal(loc=1000.0, scale=25.0, size=(12, 12)),
-        binx=8,
-        biny=8,
+        binx=4,
+        biny=2,
     )
 
     # ACT
     recipe.normalise_flats([frame], str(orderTable))
 
     # ASSERT
-    assert recipe.binx == 8
-    assert recipe.biny == 8
+    assert recipe.binx == 4
+    assert recipe.biny == 2
     assert recipe.binRatioX == pytest.approx(4.0)
     assert recipe.binRatioY == pytest.approx(2.0)
 
