@@ -722,18 +722,18 @@ class horne_extraction(base_util):
                     value = value.value
                 return round(float(value), decimals)
 
-            for col, decimals in [
-                ("WAVE", 2),
-                ("FLUX_COUNTS", 3),
-                ("SNR", 2),
-                ("FLUX_DENSITY_COUNTS", 3),
-            ]:
-                # ONLY THE NOT-FLATTENED SPECTRUM HAS A FLUX DENSITY COLUMN
-                if col not in mergedSpectumDF.columns:
-                    continue
-                mergedSpectumDF[col] = mergedSpectumDF[col].apply(lambda x: _round_scalar_or_quantity(x, decimals))
+            # ROUND INTO A NEW FRAME SO THE SPECTRUM RETURNED TO THE CALLER KEEPS ITS QUANTITY COLUMNS AT FULL
+            # PRECISION. BUILD IT ONE COLUMN AT A TIME: DataFrame.copy() CONSOLIDATES THE MIXED-UNIT QUANTITY
+            # COLUMNS AND RAISES UnitConversionError. ONLY THE NOT-FLATTENED SPECTRUM HAS A FLUX DENSITY COLUMN
+            roundingDecimals = {"WAVE": 2, "FLUX_COUNTS": 3, "SNR": 2, "FLUX_DENSITY_COUNTS": 3}
+            roundedMergedDF = pd.DataFrame(index=mergedSpectumDF.index)
+            for col in mergedSpectumDF.columns:
+                values = mergedSpectumDF[col]
+                if col in roundingDecimals:
+                    values = values.apply(_round_scalar_or_quantity, decimals=roundingDecimals[col])
+                roundedMergedDF[col] = values
 
-            mergedTable = Table.from_pandas(mergedSpectumDF)
+            mergedTable = Table.from_pandas(roundedMergedDF)
             write_fits_table_to_disk(
                 log=self.log,
                 settings=self.settings,

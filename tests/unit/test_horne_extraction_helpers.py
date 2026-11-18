@@ -908,6 +908,58 @@ def test_extract_writes_order_and_merged_product_contracts(
     assert joins == {"10-11": 501.0}
 
 
+def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged_product(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Round only the written merged product, so the returned spectrum keeps its Quantity columns at full precision."""
+    import soxspipe.commonutils.phase3 as phase3
+
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    waveGrid = np.array([500.12345, 502.98765])
+    fluxCounts = np.array([1.23456, 3.65432], dtype=np.float32)
+    variance = np.array([4.0, 9.0], dtype=np.float32)
+
+    def build_merged_spectrum(_: object) -> tuple[pd.DataFrame, dict[str, float]]:
+        # BUILT ONE COLUMN AT A TIME WITH MIXED UNITS, AS merge_extracted_orders BUILDS IT
+        merged = pd.DataFrame()
+        merged["WAVE"] = waveGrid * u.nm
+        merged["FLUX_COUNTS"] = fluxCounts * u.electron
+        merged["VARIANCE"] = variance * u.electron
+        merged["SKY_COUNTS"] = variance * u.electron
+        merged["SNR"] = merged["FLUX_COUNTS"].values / np.sqrt(merged["VARIANCE"].values)
+        merged["FLUX_DENSITY_COUNTS"] = np.array([0.123456, 0.345678]) * u.electron / u.nm
+        return merged, {"10-11": 501.0}
+
+    extractor.merge_extracted_orders = build_merged_spectrum
+    writtenTables: dict[str, object] = {}
+
+    def snapshot_written_table(**kwargs: object) -> None:
+        # THE ASCII EXPORT LATER RESCALES THE SAME TABLE, SO COPY IT AT WRITE TIME
+        writtenTables[kwargs["filePath"]] = kwargs["tables"][0].copy()
+
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", snapshot_written_table)
+
+    _, _, mergedSpectrum, _, _ = extractor.extract()
+
+    mergedTable = writtenTables[str(tmp_path / "SYNTHETIC_EXTRACTED_MERGED.fits")]
+    assert mergedTable["WAVE"].tolist() == [500.12, 502.99]
+    assert mergedTable["FLUX_COUNTS"].tolist() == [1.235, 3.654]
+    assert mergedTable["FLUX_DENSITY_COUNTS"].tolist() == [0.123, 0.346]
+    assert mergedTable.colnames == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR", "FLUX_DENSITY_COUNTS"]
+    assert np.asarray(mergedTable["VARIANCE"]).tolist() == variance.tolist()
+    assert np.asarray(mergedTable["SKY_COUNTS"]).tolist() == variance.tolist()
+    assert all(hasattr(wave, "value") for wave in mergedSpectrum["WAVE"])
+    assert [wave.value for wave in mergedSpectrum["WAVE"]] == pytest.approx(waveGrid.tolist(), rel=1e-12)
+    assert np.asarray(mergedSpectrum["SNR"].values.value) == pytest.approx(fluxCounts / np.sqrt(variance), rel=1e-6)
+    # THE NOD STACKER READS EACH WAVE AS A QUANTITY
+    assert mergedSpectrum["WAVE"].apply(lambda x: round(float(x.value), 4)).tolist() == [500.1234, 502.9876]
+
+
 @pytest.mark.parametrize("recipeName", ["soxs-stare", "soxs-nod", "soxs-offset"])
 def test_extract_labels_every_product_row_with_the_running_recipe(
     log: object,
