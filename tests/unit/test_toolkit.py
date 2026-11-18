@@ -16,6 +16,7 @@ from numpy.testing import assert_allclose, assert_array_equal
 
 from soxspipe.commonutils import toolkit
 from soxspipe.commonutils.detect_order_edges import detect_order_edges
+from tests.factories import session_workspace
 
 pytestmark = pytest.mark.unit
 
@@ -225,9 +226,7 @@ def test_predict_product_path_reads_the_session_and_builds_the_path_from_root_di
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # ARRANGE
-    root = tmp_path / "workspace"
-    (root / "sessions" / "mysession").mkdir(parents=True)
-    (root / "sessions" / ".sessionid").write_text("mysession", encoding="utf-8")
+    root = session_workspace(tmp_path, "mysession")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)

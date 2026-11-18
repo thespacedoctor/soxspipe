@@ -25,6 +25,7 @@ from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
 )
+from soxspipe.commonutils.workspace_paths import path_under_root
 
 if TYPE_CHECKING:
     import numpy as np
@@ -2117,8 +2118,7 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
         + ".fits"
     )
     productPath = productPath.replace("//", "/")
-    if rootDir != ".":
-        productPath = os.path.normpath(os.path.join(rootDir, productPath))
+    productPath = path_under_root(productPath, rootDir)
 
     return productPath, startNightDate
 

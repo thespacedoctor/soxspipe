@@ -16,7 +16,7 @@ from astropy.io import fits
 from soxspipe.commonutils.set_of_files import (
     set_of_files,
 )
-from tests.factories import prepared_fits, raw_fits, sof_file
+from tests.factories import prepared_fits, raw_fits, session_workspace, sof_file
 
 pytestmark = pytest.mark.unit
 
@@ -544,18 +544,10 @@ def test_create_supplementary_dictionary_matches_several_arms_and_kinds(tmp_path
 # ---------------------------------------------------------------------------
 
 
-def _workspace_with_session(tmp_path: Path, sessionId: str) -> Path:
-    """Return a workspace directory whose current reduction session is `sessionId`."""
-    root = tmp_path / "workspace"
-    (root / "sessions" / sessionId).mkdir(parents=True)
-    (root / "sessions" / ".sessionid").write_text(sessionId, encoding="utf-8")
-    return root
-
-
 def test_init_reads_the_workspace_session_from_root_dir_whatever_the_cwd(
     tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    root = _workspace_with_session(tmp_path, "mysession")
+    root = session_workspace(tmp_path, "mysession")
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)

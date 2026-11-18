@@ -52,6 +52,7 @@ from soxspipe.commonutils.session_status_restore import (
 )
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 from soxspipe.commonutils.sqlite_dataframe_writer import write_dataframe_to_sqlite
+from soxspipe.commonutils.workspace_paths import path_under_root
 
 if TYPE_CHECKING:
     import logging
@@ -950,10 +951,7 @@ class data_organiser:
                     )
                     if len(matchedFiles.index):
                         for file in matchedFiles["file"]:
-                            try:
-                                os.remove(os.path.join(self.rootDir, file))
-                            except OSError as e:
-                                self.log.debug(f"_sync_raw_frames: `os.remove(file)` failed, continuing: {e}")
+                            self._remove_workspace_entry(file)
                         # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
                         rawFrames = rawFrames[
                             ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
@@ -962,6 +960,7 @@ class data_organiser:
                         ]
 
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
+                rawFrames = self._without_frames_to_move_from_outside(rawFrames)
                 databaseDeletes = []
                 if len(rawFrames.index):
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
@@ -974,13 +973,14 @@ class data_organiser:
                     filenames = rawFrames["file"]
                     for p, n in zip(filepaths, filenames):
                         # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
-                        destination = os.path.join(self.rootDir, p)
+                        destination = path_under_root(p, self.rootDir)
                         parentDirectory = os.path.dirname(destination)
                         if not os.path.exists(parentDirectory):
                             # Recursively create missing directories
                             os.makedirs(parentDirectory)
-                        if os.path.exists(self.rootDir + "/" + n):
-                            realSource = os.path.realpath(self.rootDir + "/" + n)
+                        source = path_under_root(n, self.rootDir)
+                        if os.path.exists(source):
+                            realSource = os.path.realpath(source)
                             realDest = os.path.realpath(destination)
 
                             matchObject = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource)
@@ -990,8 +990,8 @@ class data_organiser:
                                 databaseDeletes.append(realDest)
                             elif realSource != realDest:
                                 shutil.move(realSource, realDest)
-                            if os.path.islink(self.rootDir + "/" + n):
-                                os.remove(self.rootDir + "/" + n)
+                            if os.path.islink(source):
+                                self._remove_workspace_entry(n)
 
                 if len(databaseDeletes):
                     c = self.conn.cursor()
@@ -1004,6 +1004,76 @@ class data_organiser:
             self._sync_sql_table_to_directory(self.rawDir, "raw_frames", recursive=False)
 
         self.log.debug("completed the ``_sync_raw_frames`` method")
+        return
+
+    def _without_frames_to_move_from_outside(self, rawFrames):
+        """*drop the frames that filing would move from outside the workspace*
+
+        A link in the workspace root to a frame in an external raw archive laid out as ``raw/<date>/`` is left in
+        place and handled by the caller. A link to any other outside frame would have its target moved into the
+        workspace, so the frame is skipped and logged.
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the newly found frames, with ``file`` and ``filepath`` columns
+
+        **Return:**
+
+        - ``rawFrames`` -- the frames that are safe to file
+        """
+        import re
+
+        keep = []
+        for n in rawFrames["file"]:
+            source = path_under_root(n, self.rootDir)
+            realSource = os.path.realpath(source)
+            isDatedArchiveFrame = re.match(r".*?(raw\/\d{4}-\d{2}-\d{2}.*)", realSource) is not None
+            isOutside = os.path.exists(source) and not self._is_inside_workspace(realSource)
+            isSkipped = isOutside and not isDatedArchiveFrame
+            if isSkipped:
+                self.log.warning(f"not filing `{n}`: it resolves to `{realSource}`, outside the workspace")
+            keep.append(not isSkipped)
+        return rawFrames.loc[keep]
+
+    def _is_inside_workspace(self, path):
+        """*return True when the path resolves to a place inside the workspace*
+
+        **Key Arguments:**
+
+        - ``path`` -- the path to check. It need not exist yet
+
+        **Return:**
+
+        - ``isInside`` -- True when the resolved path lies at or below ``rootDir``
+        """
+        try:
+            _validate_owned_path(path, self.rootDir, "workspace path")
+        except _UnsafePathError:
+            return False
+        return True
+
+    def _remove_workspace_entry(self, name):
+        """*delete one file, or one link, that sits in the workspace*
+
+        A link is unlinked and its target is never touched. A file is deleted only when its folder lies inside the
+        workspace, so a ``..`` name from a link into an external folder cannot reach beyond it.
+
+        **Key Arguments:**
+
+        - ``name`` -- the path of the entry, relative to the workspace
+
+        **Return:**
+
+        - None
+        """
+        entry = path_under_root(name, self.rootDir)
+        if not self._is_inside_workspace(os.path.dirname(entry)):
+            self.log.warning(f"not deleting `{entry}`: it is outside the workspace")
+            return
+        try:
+            os.remove(entry)
+        except OSError as error:
+            self.log.debug(f"_remove_workspace_entry: could not delete `{entry}`, continuing: {error}")
         return
 
     def _delete_superseded_frames(self):
@@ -3919,8 +3989,9 @@ def _harvest_fits_headers(batch, log, pathToDirectory, keywords, filterKeys, ins
         location=pathToDirectory, filenames=batch, keywords=[*keywords, PREPARED_FRAME_KEYWORD.lower()]
     )
     summary = masterTable.summary
-    namesByBasename = {os.path.basename(name): name for name in batch}
-    summary["file"] = [namesByBasename[name] for name in summary["file"]]
+    if len(summary) != len(batch):
+        raise ValueError(f"read {len(summary)} headers for {len(batch)} frames; the summary cannot be matched to them")
+    summary["file"] = list(batch)
     masterTable = _drop_prepared_frames(summary, log)
     # ADD FILLED VALUES FOR MISSING CELLS
     for fil in keywords:

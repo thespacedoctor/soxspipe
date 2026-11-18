@@ -19,6 +19,7 @@ from ccdproc import ImageFileCollection
 from soxspipe.commonutils.fits_frame_names import is_fits_frame
 from soxspipe.commonutils.fits_headers import read_header
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
+from soxspipe.commonutils.workspace_paths import path_under_root
 
 # A SOF LINE IS A FRAME PATH THEN ITS TAG; THE PATH MAY END IN .fits (ANY CASE) OR .fits.Z. THE MATCH ENDS AT
 # THE FIRST SUCH SUFFIX FOLLOWED BY WHITESPACE, SO A TRAILING COMMENT NAMING ANOTHER FRAME IS IGNORED
@@ -155,24 +156,6 @@ def _fits_path_from_sof_line(line, home):
     match = SOF_FITS_PATH.match(line)
     fitsPath = match.group(1) if match else line[: line.lower().index(".fits")] + ".fits"
     return fitsPath.replace("~/", home + "/")
-
-
-def _under_root(path, rootDir):
-    """*return ``path`` taken from the workspace root when it is relative*
-
-    **Key Arguments:**
-
-    - ``path`` -- a file path from an SOF file
-    - ``rootDir`` -- the workspace root. ``"."`` keeps the path as written, relative to the current working directory
-
-    **Return:**
-
-    - ``rootedPath`` -- ``path`` unchanged when it is absolute or ``rootDir`` is ``"."``, else ``path`` joined to
-      ``rootDir``
-    """
-    if rootDir == "." or os.path.isabs(path):
-        return path
-    return os.path.normpath(os.path.join(rootDir, path))
 
 
 def _supplementary_path_from_sof_line(line, home):
@@ -538,8 +521,8 @@ class set_of_files:
             ]
 
         # RELATIVE PATHS BELONG TO THE WORKSPACE, WHEREVER THE PROCESS HAPPENS TO RUN
-        fitsFiles = [_under_root(f, self.rootDir) for f in fitsFiles]
-        supplementaryFilepaths = [_under_root(f, self.rootDir) for f in supplementaryFilepaths]
+        fitsFiles = [path_under_root(f, self.rootDir) for f in fitsFiles]
+        supplementaryFilepaths = [path_under_root(f, self.rootDir) for f in supplementaryFilepaths]
 
         # MAKE SURE FILES EXIST
         for f in fitsFiles + supplementaryFilepaths:
