@@ -2746,6 +2746,8 @@ class data_organiser:
         import sqlite3 as sql
         import time
 
+        from soxspipe.commonutils.workspace_database import connect_workspace_database
+
         reset = False
 
         self.rootDbPath = str(_validate_owned_path(self.rootDbPath, self.rootDir, "database path"))
@@ -2772,11 +2774,8 @@ class data_organiser:
                     self.freshRun = True
                     emptyDb = os.path.dirname(os.path.dirname(__file__)) + "/resources/soxspipe.db"
                     shutil.copyfile(emptyDb, self.rootDbPath)
-                conn = sql.connect(
-                    self.rootDbPath,
-                    timeout=self._DB_BUSY_TIMEOUT_SECONDS,
-                    autocommit=True,
-                    check_same_thread=False,
+                conn = connect_workspace_database(
+                    self.rootDbPath, timeout=self._DB_BUSY_TIMEOUT_SECONDS, applyBusyTimeout=False
                 )
             c = conn.cursor()
 
@@ -2786,7 +2785,6 @@ class data_organiser:
                 if integrityCheckRows != [("ok",)]:
                     raise sql.DatabaseError(f"database integrity check failed: {integrityCheckRows}")
                 c.execute("PRAGMA busy_timeout = 100000")
-                c.execute("PRAGMA synchronous = OFF")
 
                 i = tries + 1
             except Exception as error:
@@ -2811,15 +2809,11 @@ class data_organiser:
                     self._rebuild_database_that_failed_to_open(lastError)
                     if not reset:
                         reset = True
-                conn = sql.connect(
-                    self.rootDbPath,
-                    timeout=self._DB_BUSY_TIMEOUT_SECONDS,
-                    autocommit=True,
-                    check_same_thread=False,
+                conn = connect_workspace_database(
+                    self.rootDbPath, timeout=self._DB_BUSY_TIMEOUT_SECONDS, applyBusyTimeout=False
                 )
                 c = conn.cursor()
         c.execute("PRAGMA busy_timeout = 100000")
-        c.execute("PRAGMA synchronous = OFF")
 
         c.close()
 
