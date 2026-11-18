@@ -333,7 +333,7 @@ class base_recipe:
         'fail' up front, so a recipe that crashes leaves a failure behind
         rather than its previous result.
         """
-        import sqlite3 as sql
+        from soxspipe.commonutils.workspace_database import connect_workspace_database
 
         if self.currentSession and self.sofName:
             self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
@@ -344,16 +344,7 @@ class base_recipe:
                     d[col[0]] = row[idx]
                 return d
 
-            self.conn = sql.connect(
-                self.sessionDb,
-                check_same_thread=False,
-                timeout=300,
-                autocommit=True,
-            )
-            c = self.conn.cursor()
-            c.execute("PRAGMA busy_timeout = 100000")
-
-            self.conn.row_factory = dict_factory
+            self.conn = connect_workspace_database(self.sessionDb, rowFactory=dict_factory)
 
         # SET RECIPE TO 'FAIL' AND SWITCH TO 'PASS' ONLY IF RECIPE COMPLETES
         if self.conn:

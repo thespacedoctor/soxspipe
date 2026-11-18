@@ -1,7 +1,8 @@
-"""Every connection to the workspace database keeps SQLite's durable defaults (DY-1706).
+"""Every connection site of the workspace database goes through the helper and keeps SQLite's durable defaults.
 
 `synchronous` stays `FULL` and the journal stays the rollback journal (`DELETE`), so an operating-system crash or a
-power loss cannot corrupt `soxspipe.db`.
+power loss cannot corrupt `soxspipe.db`. The helper itself is pinned in `tests/unit/test_workspace_database.py`. These
+tests pin that the organiser, the recipe and the reducer reach it.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import pytest
 
 from soxspipe.recipes import base_recipe
 from tests.factories import workspace_organiser
+from tests.unit.test_base_recipe_init_characterization import TEST_SESSION, _isolate, _settings
 
 pytestmark = pytest.mark.integration
 
@@ -43,32 +45,40 @@ def test_data_organiser_connection_uses_full_synchronous_and_the_rollback_journa
 
 
 def test_recipe_session_database_connection_uses_full_synchronous_and_the_rollback_journal(
-    tmp_path: Path, log: Any
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The connection a recipe opens to record its status is `FULL` with a `DELETE` journal."""
+    """The connection a real recipe constructor opens to record its status is `FULL` with a `DELETE` journal."""
+    # ARRANGE
     databasePath = tmp_path / "soxspipe.db"
     setup = sqlite3.connect(databasePath)
-    setup.execute(f"create table product_frames (sof text, status_{SESSION_ID} text)")
+    setup.execute(f"create table product_frames (sof text, status_{TEST_SESSION} text)")
     setup.execute("insert into product_frames values ('synthetic.sof', 'pass')")
     setup.commit()
     setup.close()
-    recipe = base_recipe.__new__(base_recipe)
-    recipe.log = log
-    recipe.currentSession = SESSION_ID
-    recipe.sofName = "synthetic"
-    recipe.settings = {"workspace-root-dir": str(tmp_path)}
-    recipe.conn = None
+    _isolate(
+        monkeypatch,
+        tmp_path,
+        productPath=tmp_path / "reduced" / "synthetic.fits",
+        currentSession=TEST_SESSION,
+    )
 
-    recipe._open_session_database(home=str(tmp_path))
+    # ACT
+    recipe = base_recipe(
+        log=log,
+        settings=_settings(tmp_path),
+        inputFrames=str(tmp_path / "synthetic.sof"),
+        recipeName="soxs-mbias",
+    )
 
+    # ASSERT
     assert _connection_settings(recipe.conn) == (SYNCHRONOUS_FULL, "delete")
     recipe.conn.close()
 
 
-def test_reducer_selection_connection_does_not_set_synchronous(
+def test_reducer_selection_connection_reaches_the_helper_and_sets_no_synchronous_pragma(
     tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Selecting SOFs to process opens a connection that never issues a `synchronous` pragma."""
+    """Selecting SOFs to process opens its connection through the helper, which issues no `synchronous` pragma."""
     databasePath = tmp_path / "soxspipe.db"
     setup = sqlite3.connect(databasePath)
     setup.execute(
@@ -79,6 +89,7 @@ def test_reducer_selection_connection_does_not_set_synchronous(
     setup.execute("INSERT INTO raw_frame_sets VALUES (1, 1, 'mbias', 'bias.sof', 'UVB')")
     setup.commit()
     setup.close()
+    # IMPORT THE MODULE BY NAME BECAUSE `soxspipe.commonutils` EXPORTS THE `reducer` CLASS UNDER THE MODULE'S OWN NAME
     reducerModule = import_module("soxspipe.commonutils.reducer")
     collection = reducerModule.reducer.__new__(reducerModule.reducer)
     collection.log = log
@@ -100,4 +111,6 @@ def test_reducer_selection_connection_does_not_set_synchronous(
     selected = collection.select_sof_files_to_process(reductionTarget="all")
 
     assert selected["sof"].tolist() == ["bias.sof"]
+    # POSITIVE CONTROL: THE HELPER'S OWN PRAGMA WAS TRACED, SO THE SPY SAW THE CONNECTION THE REDUCER OPENED
+    assert any("busy_timeout" in statement.lower() for statement in statements)
     assert [statement for statement in statements if "synchronous" in statement.lower()] == []

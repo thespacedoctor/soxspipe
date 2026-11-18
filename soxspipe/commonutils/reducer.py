@@ -191,25 +191,17 @@ class reducer:
                     break
 
                 if multiprocess:
-                    import sqlite3 as sql
-
                     from soxspipe.commonutils.data_organiser import (
                         _validate_owned_path,
                     )
+                    from soxspipe.commonutils.workspace_database import connect_workspace_database
 
                     databasePath = _validate_owned_path(
                         self.sessionDB,
                         self.workspaceDirectory,
                         "database path",
                     )
-                    conn = sql.connect(
-                        databasePath,
-                        timeout=300,
-                        autocommit=True,
-                        check_same_thread=False,
-                    )
-                    c = conn.cursor()
-                    c.execute("PRAGMA busy_timeout = 100000")
+                    conn = connect_workspace_database(databasePath)
 
                     sofList = rawGroups["sof"].tolist()
                     sofList = [self.sessionPath + "/sof/" + sof for sof in sofList]
@@ -358,16 +350,13 @@ class reducer:
         """
         self.log.debug("starting the ``select_sof_files_to_process`` method")
 
-        import sqlite3 as sql
-
         import pandas as pd
 
         from soxspipe.commonutils.data_organiser import _validate_owned_path
+        from soxspipe.commonutils.workspace_database import connect_workspace_database
 
         databasePath = _validate_owned_path(self.sessionDB, self.workspaceDirectory, "database path")
-        conn = sql.connect(databasePath, timeout=300, autocommit=True, check_same_thread=False)
-        c = conn.cursor()
-        c.execute("PRAGMA busy_timeout = 100000")
+        conn = connect_workspace_database(databasePath)
 
         allBranchParams = {}
 
