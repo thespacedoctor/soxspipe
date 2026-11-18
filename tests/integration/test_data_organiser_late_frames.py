@@ -6,17 +6,18 @@ import sqlite3
 import sys
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 from soxspipe.commonutils.data_organiser import _validate_owned_path
-from soxspipe.commonutils.late_frame_rejoin import find_rejoined_sofs, reset_rejoined_sofs
+from soxspipe.commonutils.late_frame_rejoin import (
+    PLACEHOLDER_PRODUCT_FILE,
+    find_rejoined_sofs,
+    reset_rejoined_sofs,
+)
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
-from tests.factories import raw_flat_run_table, raw_frame_table, workspace_organiser
+from tests.factories import insert_frames, pinhole_frame, raw_flat_run_table, raw_frame_table
 
 pytestmark = pytest.mark.integration
-
-INSTRUMENT = "SOXS"
 
 FIRST_HALF = [1, 2, 3, 4, 5]
 SECOND_HALF = [6, 7, 8, 9, 10]
@@ -31,73 +32,9 @@ MFLAT_FROM_EXPNO_6 = "20240102T060416_VIS_1X1_FAST_MFLAT_1_0_10_0S_SOXS.sof"
 PRODUCT_TYPES_OF_MFLAT = 2
 
 
-def _raw_frames_columns(connection):
-    return {row[1] for row in connection.execute("PRAGMA table_info(raw_frames);")}
-
-
-def _insert_frames(connection, frames):
-    """Insert dataframe rows into `raw_frames`, keeping only the columns the table has."""
-    known = frames.loc[:, frames.columns.isin(_raw_frames_columns(connection))]
-    known.to_sql("raw_frames", con=connection, index=False, if_exists="append")
-
-
-def _pinhole_frame(biases, name, dprType, tplStart, obsTime):
-    """One VIS pinhole exposure that is its own template run."""
-    frame = biases.iloc[[0]].copy()
-    frame["file"] = f"{name}.fits"
-    frame["filepath"] = f"./raw/2024-01-01/{name}.fits"
-    frame["eso dpr type"] = dprType
-    frame["eso dpr tech"] = "ECHELLE,PINHOLE"
-    frame["eso tpl nexp"] = 1
-    frame["eso tpl name"] = "SOXS_orderdef" if dprType == "LAMP,FLAT" else "SOXS_arc"
-    frame["exptime"] = 10.0
-    frame["date-obs"] = f"{obsTime}.000"
-    frame["mjd-obs"] = frame["mjd-obs"] + 0.04
-    frame["eso tpl start"] = tplStart
-    frame["set_first_file"] = f"{name}.fits"
-    return frame
-
-
-def _calibration_chain_frames():
-    """Two biases, a pinhole arc and an order-centre flat: everything a slit-flat SOF needs upstream."""
-    biases = raw_frame_table()
-    arc = _pinhole_frame(biases, "arc-1", "LAMP,WAVE", "2024-01-02T04:04:00", "2024-01-02T04:04:05")
-    orderCentreFlat = _pinhole_frame(biases, "ocflat-1", "LAMP,FLAT", "2024-01-02T05:04:00", "2024-01-02T05:04:05")
-    return pd.concat([biases, arc, orderCentreFlat])
-
-
-@pytest.fixture
-def workspace_with_frames(tmp_path, log, monkeypatch):
-    """Build a prepared two-session workspace holding the calibration chain plus any flat exposures given."""
-    organisers = []
-
-    def build(flatFrames):
-        monkeypatch.setenv("HOME", str(tmp_path / "home"))
-        organiser = workspace_organiser(tmp_path, log=log)
-        connection, _ = organiser._get_or_create_db_connection()
-        organiser.conn = connection
-        _insert_frames(connection, _calibration_chain_frames())
-        _insert_frames(connection, flatFrames)
-        organiser.session_create("archive")
-        organiser.session_create("science")
-
-        monkeypatch.setattr(organiser, "_fits_files_exist", lambda: True)
-        monkeypatch.setattr(organiser, "_move_misc_files", lambda: None)
-        monkeypatch.setattr(organiser, "_sync_raw_frames", lambda: organiser._select_instrument(inst=INSTRUMENT))
-        monkeypatch.setattr(organiser, "get_incomplete_sets_report", lambda: (None, None))
-        organiser.prepare(report=False)
-        organisers.append(organiser)
-        return organiser
-
-    yield build
-    for organiser in organisers:
-        if getattr(organiser, "conn", None) is not None:
-            organiser.conn.close()
-
-
 def _late_prepare(organiser, frames):
     """Add ``frames`` to the workspace after its first `prep`, then run a plain `prep` again."""
-    _insert_frames(organiser.conn, frames)
+    insert_frames(organiser.conn, frames)
     organiser.conn.commit()
     organiser.prepare(report=False)
 
@@ -263,7 +200,8 @@ def _grouping_keys(organiser):
 
 def _product_paths(organiser, sof):
     rows = organiser.conn.execute(
-        "SELECT filepath FROM product_frames WHERE sof = ? AND file != 'XXXX' ORDER BY filepath", (sof,)
+        "SELECT filepath FROM product_frames WHERE sof = ? AND file != ? ORDER BY filepath",
+        (sof, PLACEHOLDER_PRODUCT_FILE),
     ).fetchall()
     return [Path(organiser.rootDir) / row[0] for row in rows]
 
@@ -275,7 +213,7 @@ def _touch(path):
 
 def _insert_late_frames(organiser, frames):
     """Insert ``frames`` and give every flat the set_size `build_sof_files` computes before the rejoin step runs."""
-    _insert_frames(organiser.conn, frames)
+    insert_frames(organiser.conn, frames)
     organiser.conn.execute("UPDATE raw_frames SET set_size = ? WHERE file LIKE 'flat-%'", (len(WHOLE_RUN),))
 
 
@@ -579,7 +517,7 @@ def test_a_late_pinhole_arc_sharing_a_template_start_resets_no_set(workspace_wit
     # ARRANGE
     organiser = workspace_with_frames(_flat_flats(FIRST_HALF))
     _seed_status(organiser, "science", DISP_SOLUTION, "pass")
-    lateArc = _pinhole_frame(raw_frame_table(), "arc-2", "LAMP,WAVE", "2024-01-02T04:04:00", "2024-01-02T04:04:09")
+    lateArc = pinhole_frame(raw_frame_table(), "arc-2", "LAMP,WAVE", "2024-01-02T04:04:00", "2024-01-02T04:04:09")
 
     # ACT
     _late_prepare(organiser, lateArc)
@@ -616,7 +554,7 @@ def test_a_direct_build_of_sof_files_does_not_rejoin_late_frames(workspace_with_
     # ARRANGE
     organiser = workspace_with_frames(_flat_flats(FIRST_HALF))
     _seed_status(organiser, "science", MFLAT_FROM_EXPNO_1, "pass")
-    _insert_frames(organiser.conn, _flat_flats(SECOND_HALF))
+    insert_frames(organiser.conn, _flat_flats(SECOND_HALF))
 
     # ACT
     organiser.build_sof_files()

@@ -3,7 +3,7 @@
 Each pin asserts the CORRECT behaviour. A pin for a leak that is not fixed yet fails today and
 is marked ``xfail(strict=True)``. When someone fixes the leak the test XPASSes, strict mode
 turns that into a suite failure, and the fixer deletes the ``xfail`` marker, so the pin stays
-as a regression test (L1, L2, L3 and L5 are fixed and have no marker).
+as a regression test (L1, L2, L3, L4 and L5 are fixed and have no marker).
 
 The ``reason`` of each marker reads ``<Linear issue> (DY-36 <ID>): <defect>``, naming the
 issue that tracks the leak and the leak's ID in the DY-36 findings table.
