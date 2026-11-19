@@ -24,6 +24,11 @@ from soxspipe.commonutils.toolkit import (
     spectroscopic_image_quality_checks,
     utcnow_string,
 )
+from soxspipe.commonutils.unusable_flat_pixels import (
+    flag_unusable_pixels,
+    neutralise_unusable_flat,
+    unusable_flat_pixel_mask,
+)
 
 from .base_recipe import base_recipe
 from .nod_stare_stacking import nod_stare_stacking, reduction_inputs
@@ -1494,12 +1499,16 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
         if self.subtractSky:
             if master_flat:
-                unflattenedSkySubtractedCCDData = skySubtractedCCDData.multiply(master_flat)
+                # A FLAT PIXEL THAT IS ZERO, NEGATIVE OR NOT FINITE CANNOT BE MULTIPLIED BACK IN (DY-2279)
+                unusableFlat = unusable_flat_pixel_mask(master_flat.data)
+                neutralFlat = neutralise_unusable_flat(master_flat, unusableFlat)
+                unflattenedSkySubtractedCCDData = skySubtractedCCDData.multiply(neutralFlat)
                 # SCALE THE ERROR BACK BY THE FLAT; MULTIPLY WOULD COUNT THE FLAT'S OWN ERROR TWICE
                 unflattenedSkySubtractedCCDData.uncertainty = StdDevUncertainty(
-                    np.abs(master_flat.data) * skySubtractedCCDData.uncertainty.array
+                    np.abs(neutralFlat.data) * skySubtractedCCDData.uncertainty.array
                 )
                 unflattenedSkySubtractedCCDData.header = skySubtractedCCDData.header
+                flag_unusable_pixels(unflattenedSkySubtractedCCDData, unusableFlat)
             else:
                 unflattenedSkySubtractedCCDData = skySubtractedCCDData
         else:
