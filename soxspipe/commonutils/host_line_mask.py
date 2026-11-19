@@ -193,23 +193,21 @@ def _slit_cells(imageMapOrder: Any) -> tuple[pd.DataFrame, pd.DataFrame, np.ndar
     wavelength = imageMapOrder["wavelength"].to_numpy(dtype=float)
     flux = imageMapOrder["flux"].to_numpy(dtype=float)
     error = imageMapOrder["error"].to_numpy(dtype=float)
+    slit = imageMapOrder["slit_position"].to_numpy(dtype=float)
     isUsable = (
         np.isfinite(wavelength)
         & np.isfinite(flux)
         & np.isfinite(error)
+        & np.isfinite(slit)
         & ~imageMapOrder["flagged_bad_pixel_clipped"].to_numpy(dtype=bool)
         & ~imageMapOrder["flagged_edge_clipped"].to_numpy(dtype=bool)
     )
-    # AN ORDER IS TENS OF PIXELS ACROSS THE SLIT AND THOUSANDS ALONG THE DISPERSION, WHICHEVER DETECTOR AXIS THAT IS
-    nLines = max(imageMapOrder["x"].nunique(), imageMapOrder["y"].nunique())
-    if not isUsable.any() or nLines < 2:
+    lineStepNm = _line_step_nm(imageMapOrder)
+    if not isUsable.any() or lineStepNm is None:
         return None
-    firstNm = float(np.nanmin(wavelength))
-    lineStepNm = (float(np.nanmax(wavelength)) - firstNm) / (nLines - 1)
-    if lineStepNm <= 0:
-        return None
-    slit = imageMapOrder["slit_position"].to_numpy(dtype=float)
-    slitBin = np.floor((slit - np.nanmin(slit)) / SLIT_BIN_ARCSEC).astype(int)
+    firstNm = float(np.min(wavelength[isUsable]))
+    slitBin = np.zeros(len(slit), dtype=int)
+    slitBin[isUsable] = np.floor((slit[isUsable] - np.min(slit[isUsable])) / SLIT_BIN_ARCSEC).astype(int)
     # THE CORES OF SKYLINES ARE KEPT: LEFT OUT, THE FLANKS THAT REMAIN ARE SAMPLED DIFFERENTLY IN EACH SLIT BIN
     isObjectPixel = imageMapOrder["flagged_object_clipped"].to_numpy(dtype=bool)
     objectShare = pd.Series(isObjectPixel).groupby(slitBin).transform("mean").to_numpy()
@@ -218,7 +216,7 @@ def _slit_cells(imageMapOrder: Any) -> tuple[pd.DataFrame, pd.DataFrame, np.ndar
         return None
     pixels = pd.DataFrame(
         {
-            "bin": np.floor((wavelength - firstNm) / (LINES_PER_BIN * lineStepNm)).astype(int),
+            "bin": np.floor(np.where(isUsable, wavelength - firstNm, 0.0) / (LINES_PER_BIN * lineStepNm)).astype(int),
             "slit": slitBin,
             "flux": flux,
             "variance": error**2,
@@ -232,6 +230,25 @@ def _slit_cells(imageMapOrder: Any) -> tuple[pd.DataFrame, pd.DataFrame, np.ndar
     cellVariance = (grouped["variance"].sum()[isCell] / count[isCell] ** 2).unstack("slit").reindex(binIndex)
     centres = firstNm + (binIndex + 0.5) * LINES_PER_BIN * lineStepNm
     return cellFlux, cellVariance, centres, lineStepNm
+
+
+def _line_step_nm(imageMapOrder: Any) -> float | None:
+    """*the median wavelength increment (nm) of one detector line along the dispersion, or None when there is none*
+
+    An order is tens of pixels across the slit and thousands along the dispersion, whichever detector axis that is, so
+    the axis with more distinct pixel values is the dispersion axis. The increment is taken between neighbouring lines
+    of one slit pixel, so the tilt of the slit, which adds its own spread to the wavelength range of the order, does
+    not bias it.
+    """
+    lineAxis, crossAxis = ("x", "y") if imageMapOrder["x"].nunique() >= imageMapOrder["y"].nunique() else ("y", "x")
+    ordered = imageMapOrder.sort_values([crossAxis, lineAxis])
+    line = ordered[lineAxis].to_numpy()
+    cross = ordered[crossAxis].to_numpy()
+    wavelength = ordered["wavelength"].to_numpy(dtype=float)
+    isNeighbour = (np.diff(line) == 1) & (np.diff(cross) == 0)
+    increments = np.abs(np.diff(wavelength))[isNeighbour]
+    increments = increments[np.isfinite(increments) & (increments > 0)]
+    return float(np.median(increments)) if len(increments) else None
 
 
 def _running(values: Any, how: str) -> Any:

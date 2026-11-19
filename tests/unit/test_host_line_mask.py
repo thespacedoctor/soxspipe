@@ -7,11 +7,13 @@ do not.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.host_line_mask import find_host_line_windows, host_line_pixel_mask
+from soxspipe.commonutils.host_line_mask import _slit_cells, find_host_line_windows, host_line_pixel_mask
 from soxspipe.commonutils.nod_host_contamination import host_feature
 
 pytestmark = pytest.mark.unit
@@ -31,7 +33,7 @@ HOST_PEAK = 150.0
 HOST_SLIT_SIGMA_ARCSEC = 3.0
 HOST_ROTATION_NM_PER_ARCSEC = 0.04
 # A HOST LINE THAT PASSES A LIMIT OF 5 SIGMA AND FAILS A LIMIT OF 8
-FAINT_HOST_PEAK = 30.0
+FAINT_HOST_PEAK = 45.0
 SKY_LINE_NM = 640.0
 SKY_LINE_PEAK = 800.0
 SKY_LINE_SIGMA_NM = 0.05
@@ -251,3 +253,57 @@ def test_finds_nothing_in_an_order_with_no_usable_pixel_outside_the_object_trace
     frame["flagged_object_clipped"] = frame["slit_position"] < 4.0
 
     assert _windows(frame) == ()
+
+
+def test_finds_nothing_and_warns_of_nothing_when_every_slit_position_is_not_a_number() -> None:
+    frame = _add_host_line(_order_frame()).assign(slit_position=np.nan)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        windows = _windows(frame)
+
+    assert windows == ()
+
+
+def test_still_finds_the_line_when_some_slit_positions_are_not_a_number() -> None:
+    frame = _add_host_line(_order_frame())
+    frame.loc[frame.index[::97], "slit_position"] = np.nan
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        windows = _windows(frame)
+
+    assert len(windows) == 1
+    assert windows[0].wavelengthMinNm < HOST_NM < windows[0].wavelengthMaxNm
+
+
+@pytest.mark.parametrize("tilt", [0.0, 0.2, 5.0])
+def test_the_line_step_is_the_median_wavelength_increment_of_one_pixel_whatever_the_slit_tilt(tilt: float) -> None:
+    # A STRONG TILT ADDS ITS SPREAD ACROSS THE SLIT TO THE WAVELENGTH RANGE OF THE ORDER, WHICH BIASED THE OLD ESTIMATE
+    frame = _order_frame()
+    frame["wavelength"] = FIRST_NM + STEP_NM * (frame["y"] + tilt * frame["slit_position"])
+
+    cells = _slit_cells(frame)
+
+    assert cells is not None
+    assert cells[3] == pytest.approx(STEP_NM, rel=1e-6)
+
+
+def test_the_line_step_follows_the_dispersion_axis_when_it_is_x() -> None:
+    frame = _order_frame().rename(columns={"x": "y", "y": "x"})
+
+    cells = _slit_cells(frame)
+
+    assert cells is not None
+    assert cells[3] == pytest.approx(STEP_NM, rel=1e-6)
+
+
+def test_the_padding_is_in_true_detector_lines_for_a_strongly_tilted_order() -> None:
+    frame = _order_frame()
+    frame["wavelength"] = FIRST_NM + STEP_NM * (frame["y"] + 5.0 * frame["slit_position"])
+    frame = _add_host_line(frame)
+
+    (bare,) = _windows(frame, paddingLines=0)
+    (padded,) = _windows(frame, paddingLines=6)
+
+    assert padded.wavelengthMinNm == pytest.approx(bare.wavelengthMinNm - 6 * STEP_NM, rel=1e-6)

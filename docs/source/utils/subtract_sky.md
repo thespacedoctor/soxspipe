@@ -112,7 +112,7 @@ The pipeline looks for these lines in the frame. You do not give it a redshift. 
 2. It takes the running median along wavelength out of each slit bin. The remainder is the narrow excess.
 3. It measures two things for each wavelength bin: the median of the excess over the slit, and how much the excess changes along the slit.
 4. A bin is a host line when both are above `host-line-sigma` times the local noise, and the change along the slit is at least `host-line-min-slit-contrast` of the peak excess. A sky line is the same at every slit position, so its change is near 0. A star's wings, a cosmic ray and telluric absorption do not pass the first test.
-5. Bins within 8 detector lines of a catalogue skyline, and the ends of the order, are not searched.
+5. Bins within 8 detector lines of a catalogue skyline, and the ends of the order, are not searched. A host line inside that distance of a catalogue skyline is therefore not masked, and it stays in the sky fit.
 
 The window of a line covers its wavelengths at every slit position, so the rotation of the host is inside it. `host-line-padding-pixels` detector lines are added at each end. The pipeline leaves the pixels inside the windows out of the sky fit, and the sky is interpolated across them. The object-wing refit uses the same flags. The extracted spectrum then keeps the host lines.
 

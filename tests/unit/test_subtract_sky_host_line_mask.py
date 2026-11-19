@@ -326,6 +326,15 @@ def test_an_invalid_host_line_setting_raises_naming_the_key(log: Any, key: str, 
         subtractor._host_line_settings()
 
 
+@pytest.mark.parametrize("key", ["host-line-sigma", "host-line-min-slit-contrast"])
+@pytest.mark.parametrize("value", [True, False, np.True_, np.False_], ids=["True", "False", "np.True_", "np.False_"])
+def test_a_boolean_is_not_a_number_for_a_host_line_limit(log: Any, key: str, value: Any) -> None:
+    subtractor = _subtractor(log, **{key: value})
+
+    with pytest.raises(ValueError, match=key):
+        subtractor._host_line_settings()
+
+
 def test_a_host_line_switch_that_is_not_true_or_false_raises(log: Any) -> None:
     subtractor = _subtractor(log, **{"host-line-mask": "yes"})
 
@@ -344,3 +353,82 @@ def test_the_shipped_defaults_keep_the_mask_on_in_stare_and_stare_std_for_both_a
             assert math.isclose(sky["host-line-sigma"], 5.0)
             assert math.isclose(sky["host-line-min-slit-contrast"], 0.3)
             assert sky["host-line-padding-pixels"] == 3
+
+
+class _TracebackLogger:
+    """A logger that keeps the keyword arguments of each warning, which the shared recording logger drops."""
+
+    def __init__(self) -> None:
+        self.warnings: list[tuple[str, dict[str, Any]]] = []
+
+    def warning(self, message: object, **kwargs: Any) -> None:
+        self.warnings.append((str(message), kwargs))
+
+    def __getattr__(self, name: str) -> Any:
+        return lambda *args, **kwargs: None
+
+
+def test_a_detection_that_fails_logs_a_warning_with_its_traceback(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(*args: Any, **kwargs: Any) -> pd.DataFrame:
+        raise OSError("NO CATALOGUE")
+
+    monkeypatch.setattr(toolkit, "get_skylines_dataframe", fail)
+    log = _TracebackLogger()
+
+    _subtractor(log)._mask_host_lines([_order(hasHost=False)])
+
+    assert [kwargs.get("exc_info") for message, kwargs in log.warnings if "NO CATALOGUE" in message] == [True]
+
+
+# ----- NOTHING DETECTED LEAVES THE OUTPUT UNCHANGED -----
+
+STAR_FLUX_PER_COLUMN = 3000.0
+STAR_CENTRE = 0.4
+STAR_SIGMA_ARCSEC = 0.5
+UNCATALOGUED_SKY_LINES_NM = (610.0, 650.0)
+UNCATALOGUED_SKY_LINE_PEAK = 500.0
+UNCATALOGUED_SKY_LINE_SIGMA_NM = 0.05
+
+
+def _realistic_order() -> pd.DataFrame:
+    """A flat sky with a bright star and two sky lines that are not in the catalogue, and no host line."""
+    order = _order(hasHost=False)
+    star = STAR_FLUX_PER_COLUMN * np.exp(-0.5 * ((order["slit_position"] - STAR_CENTRE) / STAR_SIGMA_ARCSEC) ** 2)
+    lines = sum(
+        UNCATALOGUED_SKY_LINE_PEAK
+        * np.exp(-0.5 * ((order["wavelength"] - centre) / UNCATALOGUED_SKY_LINE_SIGMA_NM) ** 2)
+        for centre in UNCATALOGUED_SKY_LINES_NM
+    )
+    error = np.sqrt(order["error"] ** 2 + star.clip(lower=0) + lines)
+    return order.assign(flux=order["flux"] + star + lines, error=error)
+
+
+def _fit_and_record(subtractor: subtract_sky, order: pd.DataFrame) -> tuple[Any, ...]:
+    """Clip the order, run ``_fit_sky_to_orders`` and ``_record_host_line_windows``; return everything they produce."""
+    settings = subtractor.recipeSettings["sky-subtraction"]
+    clipped = subtractor.get_over_sampled_sky_from_order(
+        order.copy(), clipBPs=True, clipSlitEdge=settings["clip-slit-edge-fraction"]
+    )
+    clipped = subtractor.clip_object_slit_positions([clipped], aggressive=settings["aggressive_object_masking"])
+    fittedOrders, alltck, allKnots = subtractor._fit_sky_to_orders(clipped)
+    subtractor._record_host_line_windows()
+    return fittedOrders, alltck, allKnots, subtractor.qc
+
+
+def test_when_nothing_is_detected_the_fit_and_the_qc_table_are_those_of_a_run_with_the_mask_off(
+    log: Any, no_catalogue_skylines: None
+) -> None:
+    order = _realistic_order()
+    masked = _subtractor(log)
+    unmasked = _subtractor(log, **{"host-line-mask": False})
+
+    maskedFrames, maskedTck, maskedKnots, maskedQc = _fit_and_record(masked, order)
+    unmaskedFrames, unmaskedTck, unmaskedKnots, unmaskedQc = _fit_and_record(unmasked, order)
+
+    assert masked.hostLineWindows == ()
+    pd.testing.assert_frame_equal(maskedFrames[0], unmaskedFrames[0])
+    for maskedValue, unmaskedValue in zip(maskedTck[0], unmaskedTck[0], strict=True):
+        np.testing.assert_array_equal(maskedValue, unmaskedValue)
+    np.testing.assert_array_equal(maskedKnots[0], unmaskedKnots[0])
+    pd.testing.assert_frame_equal(maskedQc, unmaskedQc)
+    assert maskedQc.empty

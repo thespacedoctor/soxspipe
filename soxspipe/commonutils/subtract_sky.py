@@ -130,6 +130,13 @@ ERROR_INFLATION_STEPS = 4
 ERROR_INFLATION_MIN_SAMPLES = 30
 
 
+def _is_number(value):
+    """*True for a real number that is not a boolean, Python or NumPy*"""
+    import numpy as np
+
+    return isinstance(value, numbers.Real) and not isinstance(value, bool | np.bool_)
+
+
 def _gaussian_clip_share(sigmaLimit, quantile):
     """*the share of Gaussian noise that the rolling-percentile clip removes*
 
@@ -917,12 +924,12 @@ class subtract_sky:
         if not isinstance(isOn, bool):
             raise ValueError(f"the sky-subtraction setting {HOST_LINE_MASK_KEY} must be True or False, got {isOn!r}")
         sigmaLimit = skySettings.get(HOST_LINE_SIGMA_KEY, DEFAULT_SIGMA_LIMIT)
-        if not (isinstance(sigmaLimit, numbers.Real) and math.isfinite(sigmaLimit) and sigmaLimit > 0):
+        if not (_is_number(sigmaLimit) and math.isfinite(sigmaLimit) and sigmaLimit > 0):
             raise ValueError(
                 f"the sky-subtraction setting {HOST_LINE_SIGMA_KEY} must be a number > 0, got {sigmaLimit!r}"
             )
         minSlitContrast = skySettings.get(HOST_LINE_CONTRAST_KEY, DEFAULT_MIN_SLIT_CONTRAST)
-        if not (isinstance(minSlitContrast, numbers.Real) and 0 <= minSlitContrast <= 1):
+        if not (_is_number(minSlitContrast) and 0 <= minSlitContrast <= 1):
             raise ValueError(
                 f"the sky-subtraction setting {HOST_LINE_CONTRAST_KEY} must be a number from 0 to 1, "
                 f"got {minSlitContrast!r}"
@@ -966,7 +973,8 @@ class subtract_sky:
             ]
         except Exception as e:
             self.log.warning(
-                f"The search for host emission lines could not run, so none is left out of the sky fit: {e}"
+                f"The search for host emission lines could not run, so none is left out of the sky fit: {e}",
+                exc_info=True,
             )
             return
 
