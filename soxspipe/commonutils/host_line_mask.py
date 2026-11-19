@@ -24,6 +24,7 @@ interpolates the sky across them. Nothing here changes any data.
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -36,6 +37,15 @@ from soxspipe.commonutils.nod_host_contamination import (
     host_feature,
 )
 
+# THE RESOURCE THAT LISTS THE REST-FRAME HOST EMISSION LINES
+HOST_LINES_FILE = Path(__file__).resolve().parent.parent / "resources" / "host_emission_lines.yaml"
+# TWO WINDOWS THAT AGREE ON ONE REDSHIFT, FOR DISTINCT LINES, WITHIN THIS TOLERANCE (150 KM/S), GIVE THE HOST REDSHIFT.
+# THE CENTRE OF A WINDOW IS GOOD TO ABOUT 0.1 NM BECAUSE THE HOST ROTATES, WHICH IS 2E-4 AT 500 NM
+REDSHIFT_TOLERANCE = 5e-4
+MIN_REDSHIFT_WINDOWS = 2
+# THE HOST REDSHIFTS THAT ARE SEARCHED: A LITTLE BLUE FOR A NEARBY GALAXY, AND UP TO WHERE THE LINES LEAVE THE ARMS
+MIN_REDSHIFT = -0.005
+MAX_REDSHIFT = 0.5
 # THE DEFAULTS OF THE host-line-sigma, host-line-min-slit-contrast AND host-line-padding-pixels SETTINGS
 DEFAULT_SIGMA_LIMIT = 5.5
 DEFAULT_MIN_SLIT_CONTRAST = 0.3
@@ -290,3 +300,165 @@ def _feature_runs(isNeighbour: np.ndarray, isSeed: np.ndarray) -> list[tuple[int
         if last - first + 1 >= MIN_FEATURE_BINS and isSeed[first : last + 1].any():
             runs.append((first, last))
     return runs
+
+
+@dataclass(frozen=True)
+class host_redshift:
+    """The host redshift inferred from detected windows.
+
+    ``z`` is the median redshift of the matched windows, ``lineNames`` the rest-frame lines they were matched to in
+    wavelength order, and ``halfWidthFraction`` the median half width of the matched windows as a fraction of their
+    centre wavelength, which sets the width of the companion windows.
+    """
+
+    z: float
+    lineNames: tuple[str, ...]
+    halfWidthFraction: float
+
+
+def load_host_lines() -> tuple[tuple[str, float], ...]:
+    """*the rest-frame host emission lines of ``resources/host_emission_lines.yaml``*
+
+    **Return:**
+
+    - ``lines`` -- a tuple of ``(name, wavelength in nm in air)``, in the order of the file
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.host_line_mask import load_host_lines
+    restLines = load_host_lines()
+    ```
+    """
+    import yaml
+
+    with HOST_LINES_FILE.open() as stream:
+        entries = yaml.safe_load(stream)["lines"]
+    return tuple((entry["name"], float(entry["wavelength-nm"])) for entry in entries)
+
+
+def infer_host_redshift(
+    windows: Sequence[host_feature], restLines: Sequence[tuple[str, float]]
+) -> host_redshift | None:
+    """*infer the host redshift from the centres of detected windows*
+
+    Each window centre is matched to each rest-frame line, which gives a redshift per pair. A redshift is accepted
+    when at least ``MIN_REDSHIFT_WINDOWS`` windows agree on it within ``REDSHIFT_TOLERANCE`` for distinct lines. Where
+    two redshifts qualify, the one with the most windows wins, then the one with the smaller scatter.
+
+    **Key Arguments:**
+
+    - ``windows`` -- the detected ``host_feature`` windows, of any orders
+    - ``restLines`` -- the ``(name, wavelength)`` pairs from ``load_host_lines``
+
+    **Return:**
+
+    - ``redshift`` -- a ``host_redshift``, or *None* when no redshift is supported by two windows
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.host_line_mask import infer_host_redshift, load_host_lines
+    redshift = infer_host_redshift(windows, load_host_lines())
+    ```
+    """
+    if len(windows) < MIN_REDSHIFT_WINDOWS:
+        return None
+    centres = np.array([(window.wavelengthMinNm + window.wavelengthMaxNm) / 2 for window in windows])
+    rest = np.array([wavelength for _, wavelength in restLines])
+    candidates = centres[:, None] / rest[None, :] - 1.0
+    best = None
+    for seed in candidates[(candidates >= MIN_REDSHIFT) & (candidates <= MAX_REDSHIFT)]:
+        matches = _matches_of_redshift(candidates, seed)
+        if len(matches) < MIN_REDSHIFT_WINDOWS:
+            continue
+        scatter = sum(abs(candidates[window, line] - seed) for window, line in matches)
+        key = (len(matches), -scatter)
+        if best is None or key > best[0]:
+            best = (key, matches)
+    if best is None:
+        return None
+    matches = best[1]
+    redshifts = [candidates[window, line] for window, line in matches]
+    fractions = [
+        (windows[window].wavelengthMaxNm - windows[window].wavelengthMinNm) / 2 / centres[window]
+        for window, _ in matches
+    ]
+    names = [restLines[line][0] for _, line in sorted(matches, key=lambda match: rest[match[1]])]
+    return host_redshift(
+        z=float(np.median(redshifts)), lineNames=tuple(names), halfWidthFraction=float(np.median(fractions))
+    )
+
+
+def _matches_of_redshift(candidates: np.ndarray, seed: float) -> list[tuple[int, int]]:
+    """*the (window, line) pairs that agree with ``seed``, at most one window per line and one line per window*"""
+    distance = np.abs(candidates - seed)
+    pairs = sorted(
+        ((window, line) for window, line in zip(*np.nonzero(distance <= REDSHIFT_TOLERANCE), strict=True)),
+        key=lambda pair: distance[pair],
+    )
+    usedWindows, usedLines, matches = set(), set(), []
+    for window, line in pairs:
+        if window in usedWindows or line in usedLines:
+            continue
+        usedWindows.add(window)
+        usedLines.add(line)
+        matches.append((int(window), int(line)))
+    return matches
+
+
+def companion_windows(
+    imageMapOrder: Any,
+    detected: Sequence[host_feature],
+    redshift: host_redshift,
+    restLines: Sequence[tuple[str, float]],
+    skylineWavelengthsNm: Sequence[float] = (),
+) -> tuple[host_feature, ...]:
+    """*the windows of the rest-frame lines of the host that were not detected in one order*
+
+    A line gets a window when it falls inside the searched part of the order (the detector skips the
+    ``TREND_WINDOW_BINS // 2`` bins at each end), does not fall in a detected window of the order, and no catalogue
+    skyline lies within the window widened by 8 detector lines. The window is centred at the line at the inferred
+    redshift and has the half width fraction of the detected windows.
+
+    **Key Arguments:**
+
+    - ``imageMapOrder`` -- the order table, with ``wavelength``, ``x`` and ``y``
+    - ``detected`` -- the windows detected in this order
+    - ``redshift`` -- the ``host_redshift`` from ``infer_host_redshift``
+    - ``restLines`` -- the ``(name, wavelength)`` pairs from ``load_host_lines``
+    - ``skylineWavelengthsNm`` -- wavelengths (nm) of catalogue skylines. Default *()*
+
+    **Return:**
+
+    - ``windows`` -- a tuple of ``host_feature`` of this order, sorted by wavelength. Empty when none is added
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.host_line_mask import companion_windows
+    extra = companion_windows(imageMapOrder, windows, redshift, restLines, skylineWavelengthsNm=skylines)
+    ```
+    """
+    lineStepNm = _line_step_nm(imageMapOrder)
+    if lineStepNm is None:
+        return ()
+    wavelength = imageMapOrder["wavelength"].to_numpy(dtype=float)
+    edgeNm = (TREND_WINDOW_BINS // 2) * LINES_PER_BIN * lineStepNm
+    searched = (float(np.nanmin(wavelength)) + edgeNm, float(np.nanmax(wavelength)) - edgeNm)
+    skylines = np.asarray(skylineWavelengthsNm, dtype=float)
+    order = int(imageMapOrder["order"].iloc[0])
+    windows = []
+    for _, restNm in sorted(restLines, key=lambda line: line[1]):
+        centre = restNm * (1.0 + redshift.z)
+        halfWidth = redshift.halfWidthFraction * centre
+        first, last = centre - halfWidth, centre + halfWidth
+        if first < searched[0] or last > searched[1]:
+            continue
+        if any(window.wavelengthMinNm <= centre <= window.wavelengthMaxNm for window in detected):
+            continue
+        margin = SKY_MASK_HALF_WIDTH_LINES * lineStepNm
+        if len(skylines) and np.any((skylines >= first - margin) & (skylines <= last + margin)):
+            continue
+        windows.append(host_feature(order=order, wavelengthMinNm=first, wavelengthMaxNm=last, significance=0.0))
+    return tuple(windows)

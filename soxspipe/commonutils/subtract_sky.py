@@ -88,6 +88,8 @@ HOST_LINE_PADDING_KEY = "host-line-padding-pixels"
 DEFAULT_HOST_LINE_MASK = True
 # THE QC THAT COUNTS THE HOST-LINE WINDOWS LEFT OUT OF THE SKY FIT
 HOST_LINE_QC_NAME = "SKY HOST LINES MASKED"
+HOST_REDSHIFT_QC_NAME = "SKY HOST REDSHIFT"
+HOST_INFERRED_QC_NAME = "SKY HOST LINES INFERRED"
 
 # THE ARMS THAT RESTORE SKYLINE CORES OUTSIDE THE OBJECT WHEN A WORKSPACE'S SETTINGS PREDATE THE
 # restore_skyline_cores_outside_object KEY (DY-1972). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY
@@ -408,6 +410,9 @@ class subtract_sky:
     flatFitRanges = None
     # THE MERGED WINDOWS OF THE HOST EMISSION LINES LEFT OUT OF THE SKY FIT; SET BY _fit_sky_to_orders (DY-2242)
     hostLineWindows = ()
+    # THE REDSHIFT INFERRED FROM THE DETECTED WINDOWS, AND THE COMPANION WINDOWS IT ADDED, SET WITH hostLineWindows
+    hostRedshift = None
+    hostInferredWindows = ()
 
     def __init__(
         self,
@@ -947,30 +952,27 @@ class subtract_sky:
         The stare sky model is constant along the slit, so a host line that fills the slit is taken into it and then
         subtracted from the object. The windows of the lines are found without a redshift (``host_line_mask``) and
         every pixel of the order inside a window is flagged as clipped before the fit. The spline drops the knots that
-        have no samples and interpolates the sky across the window. A frame with no window is not touched, so its
-        products are those of a run with the mask switched off. The detection only flags pixels: when it cannot run,
-        the log says why and the sky is fitted as before. Sets ``self.hostLineWindows``.
+        have no samples and interpolates the sky across the window. When two or more windows agree on one redshift,
+        the weaker companion lines of the host that the detection cannot find on their own (such as [NII] 6548) get
+        windows too. A frame with fewer than two windows is not touched beyond its own windows, so a frame with none
+        gives the products of a run with the mask switched off. The detection only flags pixels: when it cannot run,
+        the log says why and the sky is fitted as before. Sets ``self.hostLineWindows``, ``self.hostRedshift`` and
+        ``self.hostInferredWindows``.
 
         **Key Arguments:**
 
         - ``allimageMapOrder`` -- list of clipped order dataframes, flagged in place
         """
-        from soxspipe.commonutils.host_line_mask import find_host_line_windows, host_line_pixel_mask
+        from soxspipe.commonutils.host_line_mask import host_line_pixel_mask
         from soxspipe.commonutils.nod_host_contamination import merge_host_features
-        from soxspipe.commonutils.toolkit import get_skylines_dataframe
 
         self.hostLineWindows = ()
-        isOn, sigmaLimit, minSlitContrast, paddingLines = self._host_line_settings()
-        if not isOn:
+        self.hostRedshift = None
+        self.hostInferredWindows = ()
+        if not self._host_line_settings()[0]:
             return
         try:
-            skylines = get_skylines_dataframe(
-                self.log, self.settings, self.arm, minBrightnessVIS=0, minBrightnessNIR=0
-            )["WAVELENGTH"].to_numpy(dtype=float)
-            orderWindows = [
-                find_host_line_windows(imageMapOrder, skylines, sigmaLimit, minSlitContrast, paddingLines)
-                for imageMapOrder in allimageMapOrder
-            ]
+            detected, added, redshift = self._find_host_line_windows(allimageMapOrder)
         except Exception as e:
             self.log.warning(
                 f"The search for host emission lines could not run, so none is left out of the sky fit: {e}",
@@ -978,39 +980,122 @@ class subtract_sky:
             )
             return
 
-        for imageMapOrder, windows in zip(allimageMapOrder, orderWindows, strict=True):
-            if windows:
-                isInWindow = host_line_pixel_mask(imageMapOrder["wavelength"].to_numpy(dtype=float), windows)
+        for imageMapOrder, windows, extra in zip(allimageMapOrder, detected, added, strict=True):
+            if windows or extra:
+                isInWindow = host_line_pixel_mask(imageMapOrder["wavelength"].to_numpy(dtype=float), (*windows, *extra))
                 imageMapOrder.loc[isInWindow, "flagged_all_clipped"] = True
-        self.hostLineWindows = merge_host_features(window for windows in orderWindows for window in windows)
-        if self.hostLineWindows:
-            ranges = ", ".join(f"{w.wavelengthMinNm:0.2f}-{w.wavelengthMaxNm:0.2f} nm" for w in self.hostLineWindows)
-            self.log.print(
-                f"\n\t{len(self.hostLineWindows)} HOST EMISSION LINE WINDOW(S) LEFT OUT OF THE SKY FIT, "
-                f"THE SKY IS INTERPOLATED ACROSS THEM: {ranges}\n"
-            )
+        allDetected = [window for windows in detected for window in windows]
+        allAdded = [window for windows in added for window in windows]
+        self.hostLineWindows = merge_host_features([*allDetected, *allAdded])
+        self.hostRedshift = redshift
+        self.hostInferredWindows = merge_host_features(allAdded)
+        self._log_host_line_windows(len(merge_host_features(allDetected)))
+
+    def _find_host_line_windows(self, allimageMapOrder):
+        """*the detected windows and the companion windows of each order, and the inferred redshift*
+
+        **Key Arguments:**
+
+        - ``allimageMapOrder`` -- list of clipped order dataframes
+
+        **Return:**
+
+        - ``detected`` -- a tuple of the detected windows of each order
+        - ``added`` -- a tuple of the companion windows of each order, all empty when no redshift is inferred
+        - ``redshift`` -- the ``host_redshift`` inferred from the detected windows, or *None*
+        """
+        from soxspipe.commonutils.host_line_mask import (
+            companion_windows,
+            find_host_line_windows,
+            infer_host_redshift,
+            load_host_lines,
+        )
+        from soxspipe.commonutils.toolkit import get_skylines_dataframe
+
+        _, sigmaLimit, minSlitContrast, paddingLines = self._host_line_settings()
+        skylines = get_skylines_dataframe(self.log, self.settings, self.arm, minBrightnessVIS=0, minBrightnessNIR=0)[
+            "WAVELENGTH"
+        ].to_numpy(dtype=float)
+        detected = tuple(
+            find_host_line_windows(imageMapOrder, skylines, sigmaLimit, minSlitContrast, paddingLines)
+            for imageMapOrder in allimageMapOrder
+        )
+        restLines = load_host_lines()
+        redshift = infer_host_redshift([window for windows in detected for window in windows], restLines)
+        if redshift is None:
+            return detected, tuple(() for _ in detected), None
+        added = tuple(
+            companion_windows(imageMapOrder, windows, redshift, restLines, skylines)
+            for imageMapOrder, windows in zip(allimageMapOrder, detected, strict=True)
+        )
+        return detected, added, redshift
+
+    def _log_host_line_windows(self, nDetected):
+        """*print the host-line windows left out of the sky fit, and the redshift and companions when there are any*
+
+        **Key Arguments:**
+
+        - ``nDetected`` -- the number of merged windows that were detected, before any companion was added
+        """
+        if not self.hostLineWindows:
+            return
+        ranges = ", ".join(f"{w.wavelengthMinNm:0.2f}-{w.wavelengthMaxNm:0.2f} nm" for w in self.hostLineWindows)
+        self.log.print(
+            f"\n\t{len(self.hostLineWindows)} HOST EMISSION LINE WINDOW(S) LEFT OUT OF THE SKY FIT, "
+            f"THE SKY IS INTERPOLATED ACROSS THEM: {ranges}\n"
+        )
+        if self.hostRedshift is None:
+            return
+        added = ", ".join(f"{w.wavelengthMinNm:0.2f}-{w.wavelengthMaxNm:0.2f} nm" for w in self.hostInferredWindows)
+        self.log.print(
+            f"\n\tHOST REDSHIFT {self.hostRedshift.z:0.4f} FROM {nDetected} DETECTED WINDOW(S) "
+            f"({', '.join(self.hostRedshift.lineNames)}). {len(self.hostInferredWindows)} COMPANION WINDOW(S) ADDED: "
+            f"{added or 'NONE IN THE ORDERS'}\n"
+        )
 
     def _record_host_line_windows(self):
-        """*record the number of host-line windows left out of the sky fit as a QC, when there are any (DY-2242)*
+        """*record the host-line windows left out of the sky fit as QCs, when there are any (DY-2242)*
 
-        The QC is information only and has no acceptable range. A frame with no window gets no row, so its QC table
-        is that of a run with the mask switched off. Updates ``self.qc``.
+        The QCs are information only and have no acceptable range. ``SKY HOST LINES MASKED`` counts every merged window.
+        When a redshift was inferred, ``SKY HOST REDSHIFT`` and ``SKY HOST LINES INFERRED`` (the companion windows) are
+        added. A frame with no window gets no row, so its QC table is that of a run with the mask switched off. Updates
+        ``self.qc``.
         """
         from soxspipe.commonutils.toolkit import append_qc, utcnow_string
 
         if not self.hostLineWindows:
             return
-        self.qc = append_qc(
-            self.qc,
-            recipeName=self.recipeName,
-            qcName=HOST_LINE_QC_NAME,
-            qcValue=len(self.hostLineWindows),
-            qcComment="Host emission lines that fill the slit, left out of the sky fit (wavelength windows)",
-            obsDateUtc=self.dateObs,
-            reductionDateUtc=utcnow_string(),
-            qcUnit=None,
-            toHeader=True,
-        )
+        rows = [
+            (
+                HOST_LINE_QC_NAME,
+                len(self.hostLineWindows),
+                "Host emission lines that fill the slit, left out of the sky fit (wavelength windows)",
+            )
+        ]
+        if self.hostRedshift is not None:
+            rows.append(
+                (HOST_REDSHIFT_QC_NAME, self.hostRedshift.z, "Host redshift inferred from the detected windows")
+            )
+            rows.append(
+                (
+                    HOST_INFERRED_QC_NAME,
+                    len(self.hostInferredWindows),
+                    "Companion host-line windows added at the inferred redshift",
+                )
+            )
+        reductionDateUtc = utcnow_string()
+        for qcName, qcValue, qcComment in rows:
+            self.qc = append_qc(
+                self.qc,
+                recipeName=self.recipeName,
+                qcName=qcName,
+                qcValue=qcValue,
+                qcComment=qcComment,
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=reductionDateUtc,
+                qcUnit=None,
+                toHeader=True,
+            )
 
     def _object_wing_settings(self):
         """*the object-wing correction switch and leak gate, with defaults for older workspace settings (DY-1279)*

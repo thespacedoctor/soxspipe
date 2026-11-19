@@ -432,3 +432,130 @@ def test_when_nothing_is_detected_the_fit_and_the_qc_table_are_those_of_a_run_wi
     np.testing.assert_array_equal(maskedKnots[0], unmaskedKnots[0])
     pd.testing.assert_frame_equal(maskedQc, unmaskedQc)
     assert maskedQc.empty
+
+
+# ----- THE REDSHIFT FROM THE DETECTED WINDOWS AND THE COMPANION LINES -----
+
+HOST_Z = 0.01
+HALPHA_REST_NM = 656.28
+NII_6583_REST_NM = 658.35
+NII_6548_REST_NM = 654.80
+SII_REST_NM = (671.64, 673.08)
+ORDER_FIRST_NM = 640.0
+ORDER_COLUMNS = 1250
+
+
+def _hosted_order(strongRestNm: tuple[float, ...], seed: int = 2243) -> pd.DataFrame:
+    """One order from 640 to 690 nm on a flat sky, with a slit-filling host line at each strong rest wavelength."""
+    rng = np.random.default_rng(seed)
+    column, slitPixel = np.meshgrid(np.arange(ORDER_COLUMNS), np.arange(SLIT_PIXELS), indexing="ij")
+    column = column.ravel()
+    slit = np.linspace(-SLIT_HALF_LENGTH, SLIT_HALF_LENGTH, SLIT_PIXELS)[slitPixel.ravel()]
+    wavelength = ORDER_FIRST_NM + STEP_NM * column
+    noiseless = np.full(column.shape, SKY_LEVEL)
+    for restNm in strongRestNm:
+        centre = restNm * (1 + HOST_Z) + HOST_ROTATION_NM_PER_ARCSEC * slit
+        lineProfile = np.exp(-0.5 * ((wavelength - centre) / HOST_SIGMA_NM) ** 2)
+        noiseless = noiseless + HOST_PEAK * lineProfile * np.exp(-0.5 * (slit / HOST_SLIT_SIGMA_ARCSEC) ** 2)
+    error = np.sqrt(noiseless + READ_NOISE**2)
+    frame = pd.DataFrame(
+        {
+            "order": float(ORDER),
+            "x": column,
+            "y": slitPixel.ravel(),
+            "wavelength": wavelength + 0.002 * slit,
+            "slit_position": slit,
+            "flux": noiseless + rng.standard_normal(noiseless.size) * error,
+            "error": error,
+            "mask": False,
+        }
+    )
+    return frame.sort_values("wavelength", kind="stable").reset_index(drop=True)
+
+
+TWO_STRONG_LINES = (HALPHA_REST_NM, NII_6583_REST_NM)
+
+
+def test_two_detected_lines_give_the_host_redshift(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log)
+
+    _fit(subtractor, _hosted_order(TWO_STRONG_LINES))
+
+    assert subtractor.hostRedshift is not None
+    assert subtractor.hostRedshift.z == pytest.approx(HOST_Z, abs=2e-4)
+
+
+def test_the_weak_companion_lines_are_left_out_of_the_fit_too(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log)
+
+    fitted = _fit(subtractor, _hosted_order(TWO_STRONG_LINES))
+
+    for restNm in (NII_6548_REST_NM, *SII_REST_NM):
+        isInLine = (fitted["wavelength"] - restNm * (1 + HOST_Z)).abs() < 0.1
+        assert fitted.loc[isInLine, "flagged_all_clipped"].all(), restNm
+    assert len(subtractor.hostInferredWindows) == 3
+
+
+def test_a_companion_next_to_a_catalogue_skyline_is_not_added(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        toolkit,
+        "get_skylines_dataframe",
+        lambda *args, **kwargs: pd.DataFrame({"WAVELENGTH": [NII_6548_REST_NM * (1 + HOST_Z) + 0.2]}),
+    )
+    subtractor = _subtractor(log)
+
+    _fit(subtractor, _hosted_order(TWO_STRONG_LINES))
+
+    assert len(subtractor.hostInferredWindows) == 2
+
+
+def test_one_detected_line_gives_no_redshift_and_no_companion(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log)
+    order = _hosted_order((HALPHA_REST_NM,))
+
+    fitted = _fit(subtractor, order)
+    unmasked = _fit(_subtractor(log, **{"host-line-mask": False}), order)
+
+    assert subtractor.hostRedshift is None
+    assert subtractor.hostInferredWindows == ()
+    isInCompanion = (fitted["wavelength"] - NII_6548_REST_NM * (1 + HOST_Z)).abs() < 0.1
+    np.testing.assert_array_equal(
+        fitted.loc[isInCompanion, "flagged_all_clipped"], unmasked.loc[isInCompanion, "flagged_all_clipped"]
+    )
+
+
+def test_the_log_gives_the_redshift_and_the_added_windows(log: Any, no_catalogue_skylines: None) -> None:
+    _fit(_subtractor(log), _hosted_order(TWO_STRONG_LINES))
+
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("REDSHIFT" in message and "0.010" in message and "ADDED" in message for message in printed)
+
+
+def test_the_qc_records_the_redshift_and_the_number_of_added_windows(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log)
+    _fit(subtractor, _hosted_order(TWO_STRONG_LINES))
+
+    subtractor._record_host_line_windows()
+
+    rows = subtractor.qc.set_index("qc_name")["qc_value"]
+    assert rows["SKY HOST LINES MASKED"] == 5
+    assert rows["SKY HOST LINES INFERRED"] == 3
+    assert rows["SKY HOST REDSHIFT"] == pytest.approx(HOST_Z, abs=2e-4)
+
+
+def test_the_qc_has_no_redshift_rows_when_none_was_inferred(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log)
+    _fit(subtractor, _hosted_order((HALPHA_REST_NM,)))
+
+    subtractor._record_host_line_windows()
+
+    assert list(subtractor.qc["qc_name"]) == ["SKY HOST LINES MASKED"]
+
+
+def test_with_the_mask_off_no_redshift_is_inferred(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log, **{"host-line-mask": False})
+
+    _fit(subtractor, _hosted_order(TWO_STRONG_LINES))
+
+    assert subtractor.hostRedshift is None
+    assert subtractor.hostInferredWindows == ()
