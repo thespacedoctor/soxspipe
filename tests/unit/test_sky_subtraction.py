@@ -12,7 +12,7 @@ from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 from scipy.interpolate import splrep
 
-from soxspipe.commonutils.subtract_sky import _sliding_mean, subtract_sky
+from soxspipe.commonutils.subtract_sky import SKY_LINE_NOT_FLAGGED, _sliding_mean, subtract_sky
 from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
@@ -493,7 +493,7 @@ def test_residual_floor_normalises_errors_and_flags_local_excess(
     assert result.loc[5, "sky_residuals"] == 1.0
     assert np.isfinite(result["sky_residuals"]).all()
     assert result.loc[10, "flagged_sky_line"] == "line"
-    assert result.loc[0, "flagged_sky_line"] == False
+    assert result.loc[0, "flagged_sky_line"] == SKY_LINE_NOT_FLAGGED
     assert not result["flagged_noisy_region"].any()
 
 
