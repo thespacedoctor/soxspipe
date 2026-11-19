@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -276,6 +277,49 @@ def test_predict_product_path_expands_the_home_directory_of_the_output_directory
 
     # ASSERT
     assert productPath == f"{tmp_path}/out/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+
+
+@pytest.mark.parametrize("workspaceRoot", ["{tmp}/out", "~/out", "relative/out", "{tmp}/out/"])
+def test_predict_product_path_names_the_directory_utility_setup_writes_the_product_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, log: object, workspaceRoot: str
+) -> None:
+    # ARRANGE
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    root = workspaceRoot.format(tmp=tmp_path)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir=root)
+    _, productDir = toolkit.utility_setup(log, {"workspace-root-dir": root}, "soxs-stare", night)
+
+    # ASSERT
+    assert os.path.dirname(productPath) == productDir.rstrip("/")
+
+
+@pytest.mark.parametrize("workspaceRoot", [None, "", ".", "./"])
+def test_predict_product_path_keeps_the_session_layout_for_a_workspace_root_in_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, workspaceRoot: str | None
+) -> None:
+    # ARRANGE
+    class Organiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_list(self, silent: bool) -> tuple[str, list[str]]:
+            return "session_01", ["session_01"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", Organiser)
+
+    # ACT
+    productPath, _ = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir=workspaceRoot)
+
+    # ASSERT
+    assert productPath == (
+        "./sessions/session_01/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+    )
 
 
 @pytest.mark.parametrize(

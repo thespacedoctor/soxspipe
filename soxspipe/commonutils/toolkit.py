@@ -25,7 +25,7 @@ from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
 )
-from soxspipe.commonutils.workspace_paths import path_under_root
+from soxspipe.commonutils.workspace_paths import CURRENT_DIRECTORY_ROOTS, expand_workspace_root, path_under_root
 
 if TYPE_CHECKING:
     import numpy as np
@@ -2045,10 +2045,11 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
       reduction of a nodding SOF uses ``_STAREMODE``). Default ""
     - ``rootDir`` -- the workspace root. The session is read from it, and a root other than *"."* is prefixed to the
       product path. Default *"."*, the current working directory
-    - ``outputDir`` -- the output directory of the ``-o`` option, the ``workspace-root-dir`` the recipe runs with. The
-      recipe writes its product to ``<outputDir>/reduced/<night>/<recipe>/``, so the path is predicted there, and
-      ``rootDir`` and the session are not read. A leading ``~`` is expanded. Default *None*, which predicts under
-      ``rootDir``
+    - ``outputDir`` -- the ``workspace-root-dir`` the recipe runs with (the ``-o`` option sets it). The recipe writes
+      its product to ``<outputDir>/reduced/<night>/<recipe>/``, so the path is predicted there, and ``rootDir`` and the
+      session are not read. *None* and the current working directory (``"."``, ``"./"`` and ``""``) predict the
+      session path under ``rootDir``, which ``<outputDir>/reduced`` is a link to in a prepared workspace. Default
+      *None*
 
     **Return:**
 
@@ -2107,22 +2108,20 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
         sofName += productMarker + "_EXTRACTED_MERGED"
     productFile = f"{startNightDate}/{recipeName.replace('_', '-')}/{sofName}.fits"
 
-    if outputDir:
-        productPath = os.path.join(os.path.expanduser(outputDir), "reduced", productFile)
-        return productPath.replace("//", "/"), startNightDate
+    if outputDir and outputDir not in CURRENT_DIRECTORY_ROOTS:
+        productPath = os.path.join(expand_workspace_root(outputDir), "reduced", productFile)
+    else:
+        from fundamentals.logs import emptyLogger
 
-    from fundamentals.logs import emptyLogger
+        from soxspipe.commonutils import data_organiser
 
-    from soxspipe.commonutils import data_organiser
+        log = emptyLogger()
+        do = data_organiser(log=log, rootDir=rootDir, dbConnect=False)
+        currentSession, allSessions = do.session_list(silent=True)
+        do.close()
 
-    log = emptyLogger()
-    do = data_organiser(log=log, rootDir=rootDir, dbConnect=False)
-    currentSession, allSessions = do.session_list(silent=True)
-    do.close()
-
-    productPath = f"./sessions/{currentSession}/reduced/{productFile}"
+        productPath = path_under_root(f"./sessions/{currentSession}/reduced/{productFile}", rootDir)
     productPath = productPath.replace("//", "/")
-    productPath = path_under_root(productPath, rootDir)
 
     return productPath, startNightDate
 
@@ -2612,20 +2611,16 @@ def utility_setup(log, settings, recipeName, startNightDate):
     """
     log.debug("starting the ``utility_setup`` function")
 
-    from os.path import expanduser
-
-    home = expanduser("~")
-
     recipeName = recipeName.replace("-obj", "")
     # QC DIR
-    qcDir = settings["workspace-root-dir"].replace("~", home) + f"/qc/{startNightDate}/{recipeName}/"
+    qcDir = expand_workspace_root(settings["workspace-root-dir"]) + f"/qc/{startNightDate}/{recipeName}/"
     qcDir = qcDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES. A CONCURRENT RUN MAY WIN THE RACE,
     # SO exist_ok ABSORBS THAT; ANY OTHER FAILURE PROPAGATES.
     os.makedirs(qcDir, exist_ok=True)
 
     # PRODUCT DIR
-    productDir = settings["workspace-root-dir"].replace("~", home) + f"/reduced/{startNightDate}/{recipeName}/"
+    productDir = expand_workspace_root(settings["workspace-root-dir"]) + f"/reduced/{startNightDate}/{recipeName}/"
     productDir = productDir.replace("//", "/")
     # RECURSIVELY CREATE MISSING DIRECTORIES. A CONCURRENT RUN MAY WIN THE RACE,
     # SO exist_ok ABSORBS THAT; ANY OTHER FAILURE PROPAGATES.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
 from typing import Any, ClassVar
@@ -1326,7 +1327,7 @@ def _predict_by_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, existing
     """Make `predict_product_path` name a file in `tmp_path` by recipe and marker, and create those in ``existing``."""
     calls: list[tuple[object, ...]] = []
 
-    def predict(*args: object) -> tuple[str, str]:
+    def predict(*args: object, **kwargs: object) -> tuple[str, str]:
         calls.append(args)
         path = tmp_path / f"{args[1]}{args[2] if len(args) > 2 else ''}.fits"
         if path.name in existing:
@@ -1444,6 +1445,7 @@ def _run_with_recorded_recipe(
     tmp_path: Path,
     argv: list[str],
     recipeAttribute: str,
+    settings: dict[str, object] | None = None,
 ) -> list[dict[str, object]]:
     """Run the CLI in a ``tmp_path/workspace`` working directory, and return the constructor calls of the recipe."""
     constructorCalls: list[dict[str, object]] = []
@@ -1457,7 +1459,7 @@ def _run_with_recorded_recipe(
 
     monkeypatch.setattr(import_module("soxspipe.recipes"), recipeAttribute, RecordingRecipe)
     try:
-        _run_cli(monkeypatch, tmp_path, argv, currentSession="S1")
+        _run_cli(monkeypatch, tmp_path, argv, currentSession="S1", settings=settings)
     except SystemExit as error:
         assert error.code == 0
     return constructorCalls
@@ -1520,11 +1522,13 @@ def test_main_runs_a_command_whose_product_exists_only_in_the_working_directory_
     assert "already exists" not in capsys.readouterr().out
 
 
+@pytest.mark.parametrize("extraArguments", [[], ["-s", "soxspipe.yaml"]], ids=["sof-only", "with-settings"])
 @pytest.mark.parametrize(("command", "recipeAttribute", "recipeDir", "sofStem", "productName"), OUTPUT_DIR_CASES)
 def test_main_skips_a_command_whose_product_exists_in_the_working_directory_session_without_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    extraArguments: list[str],
     command: str,
     recipeAttribute: str,
     recipeDir: str,
@@ -1539,7 +1543,91 @@ def test_main_skips_a_command_whose_product_exists_in_the_working_directory_sess
 
     # ACT
     calls = _run_with_recorded_recipe(
-        monkeypatch, tmp_path, ["soxspipe", command, f"{sofStem}.sof", "-s", "soxspipe.yaml"], recipeAttribute
+        monkeypatch,
+        tmp_path,
+        ["soxspipe", command, f"{sofStem}.sof", *extraArguments],
+        recipeAttribute,
+        settings={},
+    )
+
+    # ASSERT
+    assert calls == []
+    assert "already exists" in capsys.readouterr().out
+
+
+OUTPUT_ARGV_FORMS = [
+    pytest.param(lambda sof, out: ["soxspipe", "mbias", sof, "-o", out], id="output-after-the-sof"),
+    pytest.param(lambda sof, out: ["soxspipe", "mbias", "-o", out, sof], id="output-before-the-sof"),
+    pytest.param(lambda sof, out: ["soxspipe", "mbias", sof, f"--output={out}"], id="long-option-with-equals"),
+    pytest.param(lambda sof, out: ["soxspipe", "-d", "mbias", sof, "-o", out], id="a-flag-before-the-command"),
+    pytest.param(lambda sof, out: ["soxspipe", "mbias", sof, "-o", out, "-s", "soxspipe.yaml"], id="with-settings"),
+]
+
+
+@pytest.mark.parametrize("makeArgv", OUTPUT_ARGV_FORMS)
+def test_main_skips_a_recipe_command_in_every_argument_form_when_the_product_exists_under_the_output_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    makeArgv: Callable[[str, str], list[str]],
+) -> None:
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    outputDir = tmp_path / "output"
+    _touch_product(outputDir, "reduced", "soxs-mbias", "20251211T123456_MBIAS.fits")
+
+    # ACT
+    calls = _run_with_recorded_recipe(
+        monkeypatch, tmp_path, makeArgv("20251211T123456_MBIAS.sof", str(outputDir)), "soxs_mbias"
+    )
+
+    # ASSERT
+    assert calls == []
+    assert "already exists" in capsys.readouterr().out
+
+
+def test_main_runs_a_recipe_command_over_an_existing_product_when_overwrite_is_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    outputDir = tmp_path / "output"
+    _touch_product(outputDir, "reduced", "soxs-mbias", "20251211T123456_MBIAS.fits")
+
+    # ACT
+    calls = _run_with_recorded_recipe(
+        monkeypatch,
+        tmp_path,
+        ["soxspipe", "-x", "mbias", "20251211T123456_MBIAS.sof", "-o", str(outputDir)],
+        "soxs_mbias",
+    )
+
+    # ASSERT
+    assert len(calls) == 1
+    assert "already exists" not in capsys.readouterr().out
+
+
+def test_main_skips_a_nod_command_whose_product_exists_under_the_settings_workspace_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    workspaceRoot = tmp_path / "root"
+    _touch_product(workspaceRoot, "reduced", "soxs-nod", "20251211T123456_NOD_OBJ_EXTRACTED_MERGED.fits")
+
+    # ACT
+    calls = _run_with_recorded_recipe(
+        monkeypatch,
+        tmp_path,
+        ["soxspipe", "nod", "20251211T123456_NOD_OBJ.sof", "-s", "soxspipe.yaml"],
+        "soxs_nod",
+        settings={"workspace-root-dir": str(workspaceRoot)},
     )
 
     # ASSERT

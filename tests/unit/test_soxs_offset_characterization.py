@@ -74,7 +74,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, tmpPath: Path) -> None:
     monkeypatch.setattr(
         toolkit,
         "predict_product_path",
-        lambda *_: (str(tmpPath / "reduced" / "offset.fits"), "2024-01-02"),
+        lambda *_, **__: (str(tmpPath / "reduced" / "offset.fits"), "2024-01-02"),
     )
     monkeypatch.setattr(toolkit, "add_recipe_logger", lambda receivedLog, _: receivedLog)
     monkeypatch.setattr(toolkit, "get_calibrations_path", lambda **_: "calibrations")

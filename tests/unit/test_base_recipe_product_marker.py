@@ -142,8 +142,8 @@ def _isolate(monkeypatch: pytest.MonkeyPatch, tmpPath: Path, predictCalls: list[
         def close(self) -> None:
             return None
 
-    def predict(*args: object) -> tuple[str, str]:
-        predictCalls.append(args)
+    def predict(*args: object, **kwargs: object) -> tuple[str, str]:
+        predictCalls.append((*args, kwargs))
         return str(tmpPath / "reduced" / "p.fits"), "2024-01-02"
 
     monkeypatch.setattr(commonutils, "data_organiser", IsolatedOrganiser)
@@ -175,7 +175,9 @@ def test_the_constructor_predicts_the_product_path_with_the_marker(
     recipe = _construct(log, tmp_path, productNameMarker=MARKER)
 
     # ASSERT
-    assert predictCalls == [(str(tmp_path / "20240102T030405_NOD_OBJ.sof"), "soxs-stare", MARKER)]
+    assert predictCalls == [
+        (str(tmp_path / "20240102T030405_NOD_OBJ.sof"), "soxs-stare", MARKER, {"outputDir": str(tmp_path)})
+    ]
     assert recipe.productNameMarker == MARKER
     assert recipe.sofName == "20240102T030405_NOD_OBJ"
 
@@ -191,5 +193,7 @@ def test_the_constructor_predicts_an_unmarked_product_path_by_default(
     recipe = _construct(log, tmp_path)
 
     # ASSERT
-    assert predictCalls == [(str(tmp_path / "20240102T030405_NOD_OBJ.sof"), "soxs-stare", "")]
+    assert predictCalls == [
+        (str(tmp_path / "20240102T030405_NOD_OBJ.sof"), "soxs-stare", "", {"outputDir": str(tmp_path)})
+    ]
     assert recipe.productStem == "20240102T030405_NOD_OBJ"
