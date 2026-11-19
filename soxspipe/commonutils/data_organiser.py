@@ -975,31 +975,36 @@ class data_organiser:
                     # MOVE THE FILES TO THE CORRECT LOCATION
                     filepaths = rawFrames["filepath"]
                     filenames = rawFrames["file"]
-                    for p, n in zip(filepaths, filenames):
+                    dprTechs = rawFrames["eso dpr tech"]
+                    for filepath, filename, dprTech in zip(filepaths, filenames, dprTechs, strict=True):
                         # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
-                        destination = path_under_root(p, self.rootDir)
+                        destination = path_under_root(filepath, self.rootDir)
                         parentDirectory = os.path.dirname(destination)
                         if not os.path.exists(parentDirectory):
                             # Recursively create missing directories
                             os.makedirs(parentDirectory)
-                        source = path_under_root(n, self.rootDir)
+                        source = path_under_root(filename, self.rootDir)
                         if os.path.exists(source):
                             realSource = os.path.realpath(source)
                             realDest = os.path.realpath(destination)
 
                             if self._is_dated_raw_frame(realSource) and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
-                                databaseDeletes.append(realDest)
+                                databaseDeletes.append((filepath, filename, dprTech))
                             elif self._would_move(source, destination):
-                                self._move_root_frame_unless_taken(destination, realSource, realDest, n, p)
+                                self._move_root_frame_unless_taken(
+                                    destination, realSource, realDest, filename, filepath
+                                )
                             if os.path.islink(source):
-                                self._remove_workspace_entry(n)
+                                self._remove_workspace_entry(filename)
 
                 if len(databaseDeletes):
+                    # THE STORED FILEPATH, WITH THE KEY OF THE ROW JUST INSERTED, SO NO OTHER FRAME'S ROW IS DELETED
                     c = self.conn.cursor()
-                    placeholders = ", ".join("?" for _ in databaseDeletes)
-                    sqlQuery = f"delete from raw_frames where filepath in ({placeholders});"  # noqa: S608
-                    c.execute(sqlQuery, databaseDeletes)
+                    c.executemany(
+                        'delete from raw_frames where filepath = ? and file = ? and "eso dpr tech" = ?;',
+                        databaseDeletes,
+                    )
                     c.close()
 
         if not skipSqlSync:
@@ -1508,10 +1513,7 @@ class data_organiser:
             placeholders = ", ".join("?" for _ in filesNotInFS)
             sqlQuery = f"delete from {tableName} where filepath in ({placeholders});"  # noqa: S608
             c.execute(sqlQuery, filesNotInFS)
-            sessionId = _validate_session_id(self.sessionId)
-            sofTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
-            sqlQuery = f"delete from {sofTableName} where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"  # noqa: S608
-            c.execute(sqlQuery, filesNotInFS)
+            self._delete_sof_map_rows_of_frames(c, filesNotInFS, placeholders)
 
         if len(filesNotInDB):
             for f in filesNotInDB:
@@ -1534,6 +1536,34 @@ class data_organiser:
 
         self.log.debug("completed the ``_sync_sql_table_to_directory`` method")
         return
+
+    def _delete_sof_map_rows_of_frames(self, cursor, filepaths, placeholders):
+        """*delete from the current session's SOF map every set that uses one of the frames*
+
+        Nothing is deleted when no session exists yet (a first `prepare`) or the session has no SOF map table (a
+        stale `.sessionid` that names a session directory that is gone).
+
+        **Key Arguments:**
+
+        - ``cursor`` -- cursor of the workspace database
+        - ``filepaths`` -- the ``filepath`` values of the frames that are gone
+        - ``placeholders`` -- the ``?`` list that matches ``filepaths``
+        """
+        if not hasattr(self, "sessionId"):
+            return
+        sessionId = _validate_session_id(self.sessionId)
+        sofTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+        hasTable = cursor.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?", (sofTableName,)
+        ).fetchone()
+        if not hasTable:
+            self.log.debug(f"_delete_sof_map_rows_of_frames: no `{sofTableName}` table, so no SOF map to clean")
+            return
+        sqlQuery = (
+            f"delete from {sofTableName} "  # noqa: S608
+            f"where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"
+        )
+        cursor.execute(sqlQuery, filepaths)
 
     def _validate_database_filepath(self, path):
         """*return a resolved `raw_frames` path, which must sit in the workspace or in its validated raw directory*"""
