@@ -3691,8 +3691,11 @@ def _align_all_na_columns(tables):
     """*give every all-NA column the dtype the other tables hold in that column*
 
     pandas 2 leaves an all-NA column out when it picks the result dtype, and pandas 3 will not. Casting the column
-    first gives the result the same dtype on both versions and raises no warning. A float or object donor column
-    keeps its dtype. Any other donor dtype cannot hold a missing value, and pandas 2 returns object for that mix.
+    first gives the result the same dtype on both versions and raises no warning. The dtype comes from every table
+    that holds values in the column, so the order of the tables does not matter: float if any of them is float, else
+    object if any is object. If all of them are NumPy int or bool columns, which cannot hold a missing value, they and
+    the all-NA column become object, as pandas 2 returns for that mix. The helper is written for float, object, int
+    and bool columns. Nullable, string, datetime and categorical columns are not handled and also become object.
 
     **Key Arguments:**
 
@@ -3712,9 +3715,12 @@ def _align_all_na_columns(tables):
         naTables = [table for table in holders if _is_all_na_column(table, column)]
         if not donors or not naTables:
             continue
-        donorDtype = donors[0][column].dtype
-        if pd.api.types.is_float_dtype(donorDtype) or pd.api.types.is_object_dtype(donorDtype):
-            targetDtype = donorDtype
+        donorDtypes = [table[column].dtype for table in donors]
+        floatDtypes = [dtype for dtype in donorDtypes if pd.api.types.is_float_dtype(dtype)]
+        if floatDtypes:
+            targetDtype = floatDtypes[0]
+        elif any(pd.api.types.is_object_dtype(dtype) for dtype in donorDtypes):
+            targetDtype = object
         else:
             targetDtype = object
             for table in donors:
@@ -3741,6 +3747,10 @@ def concat_tables(tables, **concatKwargs):
 
     - ``combined`` -- the concatenated table
 
+    **Raises:**
+
+    - ``ValueError`` -- a table has duplicate column labels
+
     **Usage:**
 
     ```python
@@ -3750,6 +3760,10 @@ def concat_tables(tables, **concatKwargs):
     """
     import numpy as np
     import pandas as pd
+
+    duplicates = [column for table in tables for column in table.columns[table.columns.duplicated()].unique()]
+    if duplicates:
+        raise ValueError(f"cannot concatenate tables with duplicate column labels: {list(dict.fromkeys(duplicates))}")
 
     nonEmpty = [table for table in tables if not table.empty]
     if not nonEmpty:

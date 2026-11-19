@@ -1,8 +1,9 @@
 """Sites that raised a pandas ``FutureWarning`` and would break in pandas 3 (DY-2280).
 
-Every test runs with ``FutureWarning`` promoted to an error, which is what
-pandas 3 will do for the sky-line flag column and what changes the result
-dtypes of a ``pd.concat`` onto an empty table.
+Every test runs with the two pandas ``FutureWarning`` messages promoted to
+errors: the incompatible-dtype assignment that pandas 3 turns into an error,
+and the ``pd.concat`` onto an empty or all-missing table that changes the
+result dtypes.
 """
 
 from __future__ import annotations
@@ -24,7 +25,13 @@ from tests.unit.test_sky_subtraction import _subtractor
 
 DISPERSION_MODULE = import_module("soxspipe.recipes.soxs_disp_solution")
 
-pytestmark = [pytest.mark.unit, pytest.mark.filterwarnings("error::FutureWarning")]
+# THE TWO PANDAS WARNINGS THESE SITES RAISED. pandas REPORTS THEM AT THE CALLING LINE,
+# SO A MODULE FILTER CANNOT SELECT THEM
+pytestmark = [
+    pytest.mark.unit,
+    pytest.mark.filterwarnings("error:Setting an item of incompatible dtype:FutureWarning"),
+    pytest.mark.filterwarnings("error:The behavior of DataFrame concatenation:FutureWarning"),
+]
 
 NOT_FLAGGED = "none"
 
@@ -261,3 +268,49 @@ def test_concat_tables_adds_the_columns_of_an_empty_table_after_its_own_order() 
     assert list(result.columns) == ["b", "a", "c"]
     assert result["b"].dtype == object
     assert result["a"].dtype == np.float64
+
+
+@pytest.mark.parametrize("floatFirst", [True, False])
+def test_concat_tables_gives_an_all_missing_column_float_when_any_other_table_holds_floats(floatFirst: bool) -> None:
+    floats = pd.DataFrame({"value": [1.5]})
+    integers = pd.DataFrame({"value": [3]})
+    donors = [floats, integers] if floatFirst else [integers, floats]
+    missing = pd.DataFrame({"value": [None]})
+
+    result = toolkit.concat_tables([*donors, missing], ignore_index=True)
+
+    assert result["value"].dtype == np.float64
+    assert result["value"].isna().tolist() == [False, False, True]
+
+
+@pytest.mark.parametrize("objectFirst", [True, False])
+def test_concat_tables_gives_an_all_missing_column_object_when_a_donor_is_object_and_none_is_float(
+    objectFirst: bool,
+) -> None:
+    objects = pd.DataFrame({"value": ["a"]})
+    integers = pd.DataFrame({"value": [3]})
+    donors = [objects, integers] if objectFirst else [integers, objects]
+    missing = pd.DataFrame({"value": [None]})
+
+    result = toolkit.concat_tables([*donors, missing], ignore_index=True)
+
+    assert result["value"].dtype == object
+
+
+def test_concat_tables_rejects_duplicate_column_labels_naming_them() -> None:
+    duplicated = pd.DataFrame([[1.5, 2.5, 3.5]], columns=["a", "b", "a"])
+
+    with pytest.raises(ValueError, match="duplicate column labels.*'a'"):
+        toolkit.concat_tables([pd.DataFrame({"a": [1.0]}), duplicated])
+
+
+def test_concat_tables_rebuilds_an_empty_table_column_on_the_index_of_the_rows() -> None:
+    empty = pd.DataFrame({"a": pd.Series([], dtype=object), "b": pd.Series([], dtype=object)})
+    rows = pd.DataFrame({"a": [1.5, 2.5]}, index=[4, 7])
+
+    result = toolkit.concat_tables([empty, rows])
+
+    assert list(result.index) == [4, 7]
+    assert list(result.columns) == ["a", "b"]
+    assert result["b"].isna().all()
+    assert result["b"].dtype == object
