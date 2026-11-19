@@ -257,6 +257,7 @@ class reducer:
                                 f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
                             )
                             fail = True
+                            self._record_failed_sof(sof)
 
                             if self.quitOnFail:
                                 sys.exit(1)
@@ -304,6 +305,35 @@ class reducer:
 
         self.log.debug("completed the ``reduce`` method")
         return
+
+    def _record_failed_sof(self, sof):
+        """*write* ``fail`` *to the session status of a SOF whose recipe raised in the serial loop*
+
+        A recipe that fails before it writes its own status leaves the ``pass`` of an earlier run. The write uses a
+        fresh connection, as the multiprocessing path does. An error in the write is logged and not raised, so the
+        failure handling of the caller goes on.
+
+        **Key Arguments:**
+
+        - ``sof`` -- the path to the SOF file of the failed recipe
+        """
+        from soxspipe.commonutils.data_organiser import _validate_owned_path
+        from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+        from soxspipe.commonutils.workspace_database import connect_workspace_database
+
+        sofName = os.path.basename(sof)
+        try:
+            databasePath = _validate_owned_path(self.sessionDB, self.workspaceDirectory, "database path")
+            statusColumn = validate_sql_identifier(f"status_{self.sessionId}", "status column")
+            conn = connect_workspace_database(databasePath)
+            try:
+                cursor = conn.cursor()
+                _write_sof_statuses(cursor, statusColumn, [], [sofName])
+                cursor.close()
+            finally:
+                conn.close()
+        except Exception as error:
+            self.log.error(f"Could not write the `fail` status of `{sofName}` to the workspace database: {error}")
 
     def _passed_this_session_clause(self):
         """*return the SQL condition that leaves out the SOFs that already passed this session*
@@ -437,6 +467,34 @@ class reducer:
 
         self.log.debug("completed the ``select_sof_files_to_process`` method")
         return rawGroups[["recipe", "sof", "command"]].drop_duplicates()
+
+
+def _write_sof_statuses(cursor, statusColumn, passing, failing):
+    """*set the session status of the SOFs that passed and of the SOFs that failed*
+
+    **Key Arguments:**
+
+    - ``cursor`` -- a cursor on the workspace database
+    - ``statusColumn`` -- the validated ``status_<session>`` column of ``product_frames``
+    - ``passing`` -- the SOF file names to set to ``pass``
+    - ``failing`` -- the SOF file names to set to ``fail``
+    """
+    passingClause, passingParams = _sql_in_placeholders(passing)
+    failingClause, failingParams = _sql_in_placeholders(failing)
+    sqlQueries = [
+        (
+            f"update product_frames set {statusColumn} = 'pass' where sof in ({passingClause}) "  # noqa: S608
+            f"and ({statusColumn} != 'pass' or {statusColumn} is null)",
+            passingParams,
+        ),
+        (
+            f"update product_frames set {statusColumn} = 'fail' where sof in ({failingClause}) "  # noqa: S608
+            f"and ({statusColumn} != 'fail' or {statusColumn} is null)",
+            failingParams,
+        ),
+    ]
+    for sqlQuery, sqlParams in sqlQueries:
+        cursor.execute(sqlQuery, sqlParams)
 
 
 def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False, turnOffMP=False):
@@ -1186,20 +1244,7 @@ def _run_recipe_bulk(  # noqa: PLR0915
     c.execute(sqlQuery, passingParams + failingParams)
     count = c.fetchone()[0]
     if len(passing) or len(failing):
-        sqlQueries = [
-            (
-                f"update product_frames set {statusColumn} = 'pass' where sof in ({passingClause}) "  # noqa: S608
-                f"and ({statusColumn} != 'pass' or {statusColumn} is null)",
-                passingParams,
-            ),
-            (
-                f"update product_frames set {statusColumn} = 'fail' where sof in ({failingClause}) "  # noqa: S608
-                f"and ({statusColumn} != 'fail' or {statusColumn} is null)",
-                failingParams,
-            ),
-        ]
-        for sqlQuery, sqlParams in sqlQueries:
-            c.execute(sqlQuery, sqlParams)
+        _write_sof_statuses(c, statusColumn, passing, failing)
     if len(errorSOF):
         error_rows = [(str(error), sof) for sof, error in zip(errorSOF, errorMessages)]
         c.executemany(

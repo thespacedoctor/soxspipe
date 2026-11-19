@@ -602,3 +602,142 @@ def test_reduce_all_builds_the_blocking_report_after_the_final_refresh(
 
     assert events == ["refresh", "recipe", "refresh", "report"]
     assert printedReports[0]["reason"].tolist() == ["not yet reduced"]
+
+
+def _serial_reducer_with_database(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+    sofNames: list[str],
+    raisedBy: dict[str, Exception],
+) -> tuple[object, Path, list[str]]:
+    """Return a serial reducer over a real workspace database holding a stale `pass` row for each SOF.
+
+    ``raisedBy`` maps a SOF name to the exception its recipe raises; the other SOFs succeed. The last item is the list
+    of SOF names ``run_recipe`` was called for, in order.
+    """
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    commonutilsModule = import_module("soxspipe.commonutils")
+    workspacePath = tmp_path / "workspace"
+    workspacePath.mkdir()
+    databasePath = workspacePath / "soxspipe.db"
+    _create_selection_database(databasePath)
+    for sofName in sofNames:
+        _insert_product_row(databasePath, sofName, f"{sofName}.fits", "pass")
+    collection = _uninitialized_reducer(log, databasePath)
+    collection.sessionPath = str(workspacePath / "sessions" / SESSION_ID)
+    collection.reductionTarget = "all"
+    collection.recipeList = ["mbias"]
+    collection.settings = {}
+    collection.verbose = False
+    collection.quitOnFail = False
+    collection.daemon = True
+    selectedFrames = [
+        pd.DataFrame([{"recipe": "mbias", "sof": sofName, "command": f"run {sofName}"} for sofName in sofNames]),
+        pd.DataFrame(columns=["recipe", "sof", "command"]),
+    ]
+    monkeypatch.setattr(collection, "select_sof_files_to_process", lambda **kwargs: selectedFrames.pop(0))
+    ranSofs: list[str] = []
+
+    def fake_run_recipe(log: object, recipe: str, sof: str, **kwargs: object) -> None:
+        sofName = Path(sof).name
+        ranSofs.append(sofName)
+        if sofName in raisedBy:
+            raise raisedBy[sofName]
+
+    class QuietOrganiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_refresh(self, **kwargs: object) -> bool:
+            return False
+
+        def get_incomplete_sets_report(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+            return pd.DataFrame(), pd.DataFrame()
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr(commonutilsModule, "data_organiser", QuietOrganiser)
+    monkeypatch.setattr(reducerModule, "run_recipe", fake_run_recipe)
+    return collection, databasePath, ranSofs
+
+
+def _read_statuses(databasePath: Path) -> dict[str, str | None]:
+    """Return the session status of each SOF in the database."""
+    readSql = f"SELECT sof, {STATUS_COLUMN} FROM product_frames"  # noqa: S608
+    with sqlite3.connect(databasePath) as connection:
+        return dict(connection.execute(readSql).fetchall())
+
+
+def test_serial_reduce_records_fail_over_a_stale_pass_when_a_recipe_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any
+) -> None:
+    """A recipe that fails before it writes its own `fail` must not leave the `pass` of an earlier run (DY-2285)."""
+    collection, databasePath, _ = _serial_reducer_with_database(
+        monkeypatch,
+        tmp_path,
+        log,
+        ["bad.sof", "good.sof"],
+        {"bad.sof": RuntimeError("failed before its own status write")},
+    )
+
+    collection.reduce(batch=10, multiprocess=False)
+
+    assert _read_statuses(databasePath) == {"bad.sof": "fail", "good.sof": "pass"}
+
+
+def test_serial_reduce_leaves_the_status_alone_when_the_product_exists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any
+) -> None:
+    collection, databasePath, _ = _serial_reducer_with_database(
+        monkeypatch, tmp_path, log, ["exists.sof"], {"exists.sof": RecipeProductExistsError("already exists")}
+    )
+
+    collection.reduce(batch=10, multiprocess=False)
+
+    assert _read_statuses(databasePath) == {"exists.sof": "pass"}
+
+
+def test_serial_reduce_logs_a_failed_status_write_and_carries_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any
+) -> None:
+    """If the `fail` write errors, the reducer logs it and still runs the next SOF."""
+    workspaceDatabaseModule = import_module("soxspipe.commonutils.workspace_database")
+    collection, databasePath, ranSofs = _serial_reducer_with_database(
+        monkeypatch,
+        tmp_path,
+        log,
+        ["bad.sof", "good.sof"],
+        {"bad.sof": RuntimeError("recipe failed")},
+    )
+
+    def locked_database(*args: object, **kwargs: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(workspaceDatabaseModule, "connect_workspace_database", locked_database)
+
+    collection.reduce(batch=10, multiprocess=False)
+
+    errorMessages = [message for level, message in log.messages if level == "error"]
+    assert any("bad.sof" in message and "database is locked" in message for message in errorMessages)
+    assert ranSofs == ["bad.sof", "good.sof"]
+    assert _read_statuses(databasePath) == {"bad.sof": "pass", "good.sof": "pass"}
+
+
+def test_serial_reduce_still_quits_on_fail_when_the_status_write_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any
+) -> None:
+    workspaceDatabaseModule = import_module("soxspipe.commonutils.workspace_database")
+    collection, _, _ = _serial_reducer_with_database(
+        monkeypatch, tmp_path, log, ["bad.sof"], {"bad.sof": RuntimeError("recipe failed")}
+    )
+    collection.quitOnFail = True
+
+    def locked_database(*args: object, **kwargs: object) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(workspaceDatabaseModule, "connect_workspace_database", locked_database)
+
+    with pytest.raises(SystemExit):
+        collection.reduce(batch=10, multiprocess=False)
