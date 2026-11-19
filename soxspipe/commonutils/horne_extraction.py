@@ -3274,7 +3274,8 @@ def compute_extractions(
     **Key Arguments:**
 
     - ``crossDispersionSlicesDF`` -- dataframe of the order's cross-dispersion slices. This dataframe is not modified
-    - ``orderRectifiedImages`` -- the rectified images of the order, including the normalised ``objectProfile``
+    - ``orderRectifiedImages`` -- the rectified images of the order, including the normalised ``objectProfile``.
+      This dict is not modified
     - ``order`` -- the order number
     - ``minimumProfileFraction`` -- a slice whose unmasked pixels hold less than this fraction of the normalised object
       profile gets no optimal flux and is dropped (DY-2195). Default ``MINIMUM_PROFILE_FRACTION_DEFAULT``
@@ -3307,25 +3308,18 @@ def compute_extractions(
     )
 
     # CALCULATE HORNE 86 NUMERATOR (EQU 8)
-    orderRectifiedImages["horneNumerator"] = np.ma.masked_array(
+    horneNumerator = np.ma.masked_array(
         orderRectifiedImages["fluxRaw"] * orderRectifiedImages["objectProfile"] / orderRectifiedImages["variance"],
         mask=optimalMask,
     )
-    horneNumeratorSum = orderRectifiedImages["horneNumerator"].T.sum(axis=1)
+    horneNumeratorSum = horneNumerator.T.sum(axis=1)
 
     # CALCULATE HORNE 86 DENOMINATOR (EQU 8)
-    orderRectifiedImages["horneDenominator"] = np.ma.masked_array(
+    horneDenominator = np.ma.masked_array(
         np.power(orderRectifiedImages["objectProfile"], 2) / orderRectifiedImages["variance"],
         mask=optimalMask,
     )
-    horneDenominatorSum = orderRectifiedImages["horneDenominator"].T.sum(axis=1)
-
-    orderRectifiedImages["optimalExtraction"] = np.ma.masked_array(
-        orderRectifiedImages["horneNumerator"] / orderRectifiedImages["horneDenominator"],
-        mask=optimalMask,
-    )
-
-    # plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
+    horneDenominatorSum = horneDenominator.T.sum(axis=1)
 
     wavelengthMasked = np.ma.masked_array(orderRectifiedImages["wavelength"], mask=orderRectifiedImages["mask"])
     crossDispersionSlicesDF["wavelengthMean"] = np.ma.mean(wavelengthMasked.T, axis=1)
