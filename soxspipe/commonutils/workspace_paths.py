@@ -48,10 +48,11 @@ def path_under_root(path: str, rootDir: str) -> str:
 
 
 def expand_workspace_root(rootDir: str) -> str:
-    """*return the workspace root with every ``~`` replaced by the home directory*
+    """*return the workspace root with a leading ``~`` or ``~user`` expanded to the home directory*
 
-    The recipes build the directories they write to from the ``workspace-root-dir`` setting this way, so anything
-    that predicts where a recipe writes must expand the root the same way.
+    A ``~`` anywhere else in the root is part of the name and stays. The recipes build the directories they write to
+    from the ``workspace-root-dir`` setting this way, so anything that predicts where a recipe writes must expand the
+    root the same way.
 
     **Key Arguments:**
 
@@ -59,7 +60,7 @@ def expand_workspace_root(rootDir: str) -> str:
 
     **Return:**
 
-    - ``expandedRoot`` -- ``rootDir`` with the home directory in place of each ``~``
+    - ``expandedRoot`` -- ``rootDir`` with the home directory in place of a leading ``~``
 
     **Usage:**
 
@@ -67,6 +68,8 @@ def expand_workspace_root(rootDir: str) -> str:
     from soxspipe.commonutils.workspace_paths import expand_workspace_root
     expand_workspace_root("~/workspace")
     # "/Users/me/workspace"
+    expand_workspace_root("/data/a~b")
+    # "/data/a~b"
     ```
     """
-    return rootDir.replace("~", os.path.expanduser("~"))
+    return os.path.expanduser(rootDir)

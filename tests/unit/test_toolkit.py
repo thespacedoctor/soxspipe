@@ -311,6 +311,30 @@ def test_predict_product_path_names_the_directory_utility_setup_writes_the_produ
     assert os.path.dirname(productPath) == productDir.rstrip("/")
 
 
+@pytest.mark.parametrize(
+    ("workspaceRoot", "expectedRoot"),
+    [("{tmp}/a~b", "{tmp}/a~b"), ("~/x", "{tmp}/x"), ("~/a~b", "{tmp}/a~b")],
+)
+def test_writer_and_prediction_expand_only_a_leading_tilde_of_the_workspace_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, log: object, workspaceRoot: str, expectedRoot: str
+) -> None:
+    # ARRANGE
+    homeDir = tmp_path / "tilde-home"
+    homeDir.mkdir()
+    monkeypatch.setenv("HOME", str(homeDir))
+    root = workspaceRoot.format(tmp=tmp_path)
+    expected = expectedRoot.format(tmp=homeDir if workspaceRoot.startswith("~") else tmp_path)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir=root)
+    _, productDir = toolkit.utility_setup(log, {"workspace-root-dir": root}, "soxs-stare", night)
+
+    # ASSERT
+    assert productDir == f"{expected}/reduced/{night}/soxs-stare/"
+    assert os.path.dirname(productPath) == productDir.rstrip("/")
+    assert Path(productDir).is_dir()
+
+
 @pytest.mark.parametrize("workspaceRoot", [None, "", ".", "./"])
 def test_predict_product_path_keeps_the_session_layout_for_a_workspace_root_in_the_working_directory(
     monkeypatch: pytest.MonkeyPatch, workspaceRoot: str | None

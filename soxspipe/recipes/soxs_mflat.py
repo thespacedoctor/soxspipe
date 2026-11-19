@@ -13,7 +13,6 @@ Date Created
 import os
 import sys
 from dataclasses import dataclass
-from os.path import expanduser
 from types import MappingProxyType
 from typing import Any
 
@@ -28,6 +27,7 @@ from soxspipe.commonutils.toolkit import (
     unpack_order_table,
     utcnow_string,
 )
+from soxspipe.commonutils.workspace_paths import expand_workspace_root
 
 from .base_recipe import base_recipe
 
@@ -358,8 +358,7 @@ class soxs_mflat(base_recipe):
         arm = self.arm
         kw = self.kw
 
-        home = expanduser("~")
-        outDir = self.settings["workspace-root-dir"].replace("~", home)
+        outDir = expand_workspace_root(self.settings["workspace-root-dir"])
 
         # CALIBRATE THE FRAMES BY SUBTRACTING BIAS AND/OR DARK
         calibratedFlats, dcalibratedFlats, qcalibratedFlats, domecalibratedFlats = self.calibrate_frame_set()

@@ -297,7 +297,7 @@ def test_a_recipe_that_never_reached_clean_up_is_not_marked_pass_by_the_qc_range
     recipe.sofName = "A"
     recipe.settings = {"workspace-root-dir": str(tmp_path)}
     recipe.conn = None
-    recipe._open_session_database(home=str(tmp_path))
+    recipe._open_session_database()
     # THE RECIPE WRITES ITS (PASSING) QC ROWS, THEN THE PROCESS IS KILLED BEFORE clean_up
     recipe.conn.execute(
         "insert into quality_control values ('soxs-mflat', 'A.sof', 'FLUX MEDIAN', '1.0', null, null, 'pass', '-1')"

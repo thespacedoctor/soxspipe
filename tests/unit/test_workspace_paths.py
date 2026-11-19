@@ -30,11 +30,11 @@ def test_leading_tilde_of_the_root_is_expanded(tmp_path: Path, monkeypatch: pyte
     assert path_under_root("raw/a.fits", "~/workspace") == str(tmp_path / "workspace" / "raw" / "a.fits")
 
 
-def test_workspace_root_has_every_tilde_replaced_by_the_home_directory_as_the_recipe_writer_does(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_workspace_root_expands_a_leading_tilde_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
 
     assert expand_workspace_root("~/workspace") == f"{tmp_path}/workspace"
-    assert expand_workspace_root("/data/a~b") == f"/data/a{tmp_path}b"
+    assert expand_workspace_root("~") == str(tmp_path)
+    assert expand_workspace_root("/data/a~b") == "/data/a~b"
+    assert expand_workspace_root("/data/~/workspace") == "/data/~/workspace"
     assert expand_workspace_root("/data/workspace") == "/data/workspace"

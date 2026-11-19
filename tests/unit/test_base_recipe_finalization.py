@@ -87,6 +87,29 @@ def _patch_organiser(monkeypatch: pytest.MonkeyPatch) -> list[bool | None]:
     return refreshes
 
 
+def test_session_database_is_opened_under_a_workspace_root_that_holds_a_tilde_after_the_start(
+    log: Any, tmp_path: Path
+) -> None:
+    """Only a leading `~` of the workspace root is expanded, so `<dir>/a~b/soxspipe.db` is the database."""
+    # ARRANGE
+    workspace = tmp_path / "a~b"
+    workspace.mkdir()
+    with contextlib.closing(sqlite3.connect(workspace / "soxspipe.db")) as setup, setup:
+        setup.execute("create table product_frames (sof text, error_message text, status_20240102 text)")
+        setup.execute("insert into product_frames (sof, status_20240102) values ('synthetic.sof', 'pass')")
+    recipe = _recipe(log=log, tmp_path=tmp_path, qc=pd.DataFrame(), status="")
+    recipe.settings = {"workspace-root-dir": str(workspace)}
+    recipe.conn = None
+
+    # ACT
+    recipe._open_session_database()
+    recipe.conn.close()
+
+    # ASSERT
+    assert recipe.sessionDb == f"{workspace}/soxspipe.db"
+    assert recipe.status == "pass"
+
+
 def test_clean_up_marks_successful_recipe_complete_and_removes_intermediates(
     log: Any,
     tmp_path: Path,
@@ -529,7 +552,7 @@ def test_a_sof_stored_as_failed_is_refreshed_once_by_the_real_open_then_clean_up
     refreshes = _patch_organiser(monkeypatch)
 
     # ACT
-    recipe._open_session_database(home=str(tmp_path))
+    recipe._open_session_database()
     previousStatus = recipe.status
     recipe.clean_up()
 
