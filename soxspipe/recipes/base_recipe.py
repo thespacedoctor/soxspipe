@@ -331,7 +331,8 @@ class base_recipe:
 
         Sets ``self.conn`` and ``self.status``. The stored status is set to
         'fail' up front, so a recipe that crashes leaves a failure behind
-        rather than its previous result.
+        rather than its previous result. If that write errors, the connection
+        is closed and a ``RuntimeError`` stops the recipe (DY-2263).
         """
         from soxspipe.commonutils.workspace_database import connect_workspace_database
 
@@ -359,17 +360,51 @@ class base_recipe:
             statusColumn = validate_sql_identifier(f"status_{self.currentSession}", "session status column")
             sqlQuery = f"select {statusColumn} as status from product_frames where sof = ?"  # noqa: S608
             c.execute(sqlQuery, (f"{self.sofName}.sof",))
-            try:
-                self.status = c.fetchone()["status"]
-                sqlQuery = f"update product_frames set {statusColumn} = 'fail' where sof = ?"  # noqa: S608
-                c.execute(sqlQuery, (f"{self.sofName}.sof",))
-            except (sqlite3.Error, TypeError) as e:
-                self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
+            row = c.fetchone()
+            if row is None:
+                # NO ROW FOR THIS SOF, SO NO EARLIER STATUS CAN GO STALE
+                self.log.warning(
+                    f"__init__: `self.status = c.fetchone()['status']` failed, continuing: "
+                    f"no product_frames row for `{self.sofName}.sof`"
+                )
                 self.status = None
+            else:
+                self.status = row["status"]
+                self._write_start_of_run_fail_status(c, statusColumn)
 
             c.close()
 
         return
+
+    def _write_start_of_run_fail_status(self, cursor: sqlite3.Cursor, statusColumn: str) -> None:
+        """*write* ``fail`` *to this recipe's product row, and stop the recipe if the write errors*
+
+        **Key Arguments:**
+
+        - ``cursor`` -- a cursor on the open workspace database
+        - ``statusColumn`` -- the validated name of the session status column
+
+        A recipe that ran on without the write could crash before ``clean_up`` and leave the ``pass`` of an
+        earlier run in place, so downstream recipes would trust a product that the last run did not finish. The
+        connection is closed before the error is raised, and the write is not retried: the connection
+        already waits for the busy timeout (DY-2263).
+        """
+        sofFile = f"{self.sofName}.sof"
+        sqlQuery = f"update product_frames set {statusColumn} = 'fail' where sof = ?"  # noqa: S608
+        try:
+            cursor.execute(sqlQuery, (sofFile,))
+        except sqlite3.Error as e:
+            from contextlib import suppress
+
+            # BEST-EFFORT CLEANUP, SO A FAILING CLOSE CANNOT HIDE THE WRITE ERROR
+            with suppress(sqlite3.Error):
+                cursor.close()
+            with suppress(sqlite3.Error):
+                self.conn.close()
+            raise RuntimeError(
+                f"The recipe could not write the `fail` status for `{sofFile}` to the workspace database "
+                f"and was stopped, because a crash would leave the status of an earlier run in place: {e}"
+            ) from e
 
     def _advanced_settings(self):
         """*read the advanced settings shipped with the package*
