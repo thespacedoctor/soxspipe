@@ -3695,7 +3695,8 @@ def _align_all_na_columns(tables):
     that holds values in the column, so the order of the tables does not matter: float if any of them is float, else
     object if any is object. If all of them are NumPy int or bool columns, which cannot hold a missing value, they and
     the all-NA column become object, as pandas 2 returns for that mix. The helper is written for float, object, int
-    and bool columns. Nullable, string, datetime and categorical columns are not handled and also become object.
+    and bool columns. A nullable ``Float64`` donor counts as float; other nullable, string, datetime and categorical
+    columns are not handled and become object.
 
     **Key Arguments:**
 
