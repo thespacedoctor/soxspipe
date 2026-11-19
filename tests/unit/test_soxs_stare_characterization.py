@@ -43,6 +43,17 @@ from tests.factories import raw_fits, synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture(autouse=True)
+def stubbed_ascii_spectrum(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the ASCII writer off the synthetic extraction paths, which name no FITS file on disk."""
+    import soxspipe.commonutils.spectrum_ascii as spectrum_ascii
+
+    monkeypatch.setattr(
+        spectrum_ascii, "write_ascii_spectrum_product", lambda mergedPath, fluxcalPath, products, *_: products
+    )
+
+
 # THE STARE RECIPE SETTINGS THE CONSTRUCTOR READS BEFORE IT COLLECTS FRAMES.
 STARE_SETTINGS = {"sky-subtraction": {"subtract_sky": True}, "use_flat": True}
 

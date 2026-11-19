@@ -2,6 +2,7 @@
 
 from .dataframes import (
     dispersion_table,
+    merged_spectrum,
     order_table,
     product_table,
     qc_row,
@@ -50,6 +51,7 @@ __all__ = [
     "logging_settings",
     "lzw_compress",
     "lzw_compressed_fits",
+    "merged_spectrum",
     "noise_frame_pair",
     "order_table",
     "order_table_fits",

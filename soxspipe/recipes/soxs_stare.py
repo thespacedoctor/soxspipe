@@ -817,11 +817,11 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         extractionNotes = list(optimalExtractor.extractionNotes)
 
         # CHECK IF FLUX CALIBRATION IS NEEDED
-        filePath_fluxcal = None
+        filePathFluxcal = None
 
         forceFailure = False
         if responseFunctionPath:
-            filePath_fluxcal = self._flux_calibrate_spectrum(
+            filePathFluxcal = self._flux_calibrate_spectrum(
                 responseFunctionPath, mergedSpectumDF, combined_object, allObjectFrames
             )
 
@@ -851,11 +851,31 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                     "as failed and will not be used to flux-calibrate other frames."
                 )
 
+        self._write_ascii_spectrum(extractionPath, filePathFluxcal)
         self._plot_merged_spectrum_qcs(
-            mergedSpectumDF, orderJoins, filePath_fluxcal, extractionNotes, optimalExtractor.traceFallback
+            mergedSpectumDF, orderJoins, filePathFluxcal, extractionNotes, optimalExtractor.traceFallback
         )
 
         return productPath, forceFailure
+
+    def _write_ascii_spectrum(self, extractionPath, filePathFluxcal):
+        """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
+
+        Updates ``self.products``. A pass with no flux-calibrated table (no response product, a standard star, or a
+        failed flux calibration) writes the ASCII spectrum from the order-merged table, in counts.
+
+        **Key Arguments:**
+
+        - ``extractionPath`` -- the path to the order-merged spectrum table, or False when none was written
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum table, or None
+        """
+        from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
+
+        if not extractionPath:
+            return
+        self.products = write_ascii_spectrum_product(
+            extractionPath, filePathFluxcal, self.products, self.recipeName, self.dateObs
+        )
 
     def _read_stare_object_frames(self, kw):
         """*read the science frames of the first stare input type that has any*
@@ -1502,7 +1522,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
         **Return:**
 
-        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum
         """
         import pandas as pd
 
@@ -1530,12 +1550,12 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             sofName=self.productStem,
             debug=self.debug,
         )
-        filePath_fluxcal, prod = fluxCalibrator.calibrate()
+        filePathFluxcal, prod = fluxCalibrator.calibrate()
         self.products = pd.concat([self.products, prod], ignore_index=True)
         # self.qc, self.products, calibratedSpectrumDF, calibrationPath = fluxCalibrator.calibrate()
         self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
-        return filePath_fluxcal
+        return filePathFluxcal
 
     def _generate_response_curve(
         self,
@@ -1618,7 +1638,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         return forceFailure
 
     def _plot_merged_spectrum_qcs(
-        self, mergedSpectumDF, orderJoins, filePath_fluxcal, extractionNotes=(), boxcarExtraction=False
+        self, mergedSpectumDF, orderJoins, filePathFluxcal, extractionNotes=(), boxcarExtraction=False
     ):
         """*plot the merged spectrum QC and, when the spectrum was flux calibrated, the calibrated one too*
 
@@ -1628,7 +1648,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
         - ``mergedSpectumDF`` -- the merged extracted spectrum
         - ``orderJoins`` -- the order joins of the extraction
-        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum, or None when it was not calibrated
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum, or None when it was not calibrated
         - ``extractionNotes`` -- the ``(level, message)`` warnings and errors of the extraction, to print under
           both plots. Default *()*
         - ``boxcarExtraction`` -- title both plots as a robust boxcar extraction. Default *False*
@@ -1656,15 +1676,14 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             boxcarExtraction=boxcarExtraction,
         )
 
-        if filePath_fluxcal:
+        if filePathFluxcal:
             from astropy import units as u
             from astropy.table import Table
 
-            fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
+            fluxcal_spec = Table.read(filePathFluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            fluxcal_spec["SNR"] = mergedSpectumDF["SNR"]
-            fluxcal_spec["SKY_COUNTS"] = mergedSpectumDF["SKY_COUNTS"]
+            # THE PLOT DRAWS THE CALIBRATED FLUX FROM THE COUNTS COLUMN. SNR AND SKY_COUNTS ARE IN THE TABLE ALREADY
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,
                 products=self.products,

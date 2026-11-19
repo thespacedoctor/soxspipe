@@ -661,16 +661,31 @@ def test_stack_extractions_sets_the_reduced_header_keywords_and_date_obs(
     assert recipe.dateObs == recipe.masterHeaderFrame.header["DATE-OBS"]
 
 
-def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting(
+def test_stack_extractions_writes_no_ascii_for_the_flattened_stack(
     log: Any,
     tmp_path: Path,
     passthrough_snr_qcs: None,
 ) -> None:
-    """The ASCII companion converts WAVE to Angstrom (x10) and formats it to 2 decimal places."""
+    """The flattened ASCII spectrum is written by the recipe after flux calibration, not while stacking (DY-1361)."""
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
     _, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
+
+    assert not list(tmp_path.glob("*.txt"))
+    assert recipe.products["product_label"].tolist() == ["EXTRACTED_MERGED_TABLE"]
+
+
+def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_for_the_notflat_ascii(
+    log: Any,
+    tmp_path: Path,
+    passthrough_snr_qcs: None,
+) -> None:
+    """The NOTFLAT ASCII companion converts WAVE to Angstrom (x10) and formats it to 2 decimal places."""
+    recipe = _stack_recipe(log, tmp_path)
+    first, second = _spectrum_frames()
+
+    _, fitsPath = recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
     asciiLines = Path(fitsPath.replace(".fits", ".txt")).read_text().splitlines()
     assert asciiLines[0] == "WAVE FLUX_COUNTS VARIANCE FLUX_DENSITY_COUNTS SNR"
@@ -694,7 +709,7 @@ def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_colum
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    _, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
+    _, fitsPath = recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
     assert list(recipe.products.columns) == [
         "soxspipe_recipe",
@@ -735,7 +750,7 @@ def test_stack_extractions_stamps_both_product_rows_with_one_whole_second_timest
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
+    recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
     reductionDates = recipe.products["reduction_date_utc"].tolist()
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", reductionDates[0])
@@ -767,7 +782,7 @@ def test_stack_extractions_reads_the_clock_exactly_once(
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
-    recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
+    recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
     assert reads == ["read"]
     assert recipe.products["reduction_date_utc"].tolist() == ["2024-01-02T03:04:01"] * 2
@@ -784,7 +799,7 @@ def test_stack_extractions_stamps_product_rows_with_the_current_recipe_name(
     recipe = _stack_recipe(log, tmp_path, recipeName=recipeName)
     first, second = _spectrum_frames()
 
-    recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
+    recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
     assert recipe.products["soxspipe_recipe"].tolist() == [recipeName, recipeName]
 

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+import numpy as np
 import pandas as pd
+from astropy import units as u
+from astropy.table import Table
 
 
 def order_table() -> pd.DataFrame:
@@ -244,3 +247,31 @@ def raw_flat_run_table(
         )
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+def merged_spectrum(
+    waves: Sequence[float],
+    flux: Sequence[float],
+    variance: Sequence[float],
+    sky: Sequence[float] | None = None,
+    *,
+    asTable: bool = False,
+) -> pd.DataFrame | Table:
+    """Return an order-merged spectrum built like production.
+
+    Each column is assigned from an astropy Quantity array (``u.nm`` and ``u.electron``), one at a time, as
+    ``merge_extracted_orders`` does; the frame's dtypes are plain floats (float64 ``WAVE``, float32 counts, variance
+    and sky). ``SNR`` is the flux over the square root of the variance. With ``asTable`` the result is a table of
+    plain arrays that keep those dtypes. ``sky`` is optional: nod and offset spectra carry no ``SKY_COUNTS``.
+    """
+    spectrum = pd.DataFrame()
+    spectrum["WAVE"] = np.asarray(waves, dtype=np.float64) * u.nm
+    spectrum["FLUX_COUNTS"] = np.asarray(flux, dtype=np.float32) * u.electron
+    spectrum["VARIANCE"] = np.asarray(variance, dtype=np.float32) * u.electron
+    if sky is not None:
+        spectrum["SKY_COUNTS"] = np.asarray(sky, dtype=np.float32) * u.electron
+    spectrum["SNR"] = spectrum["FLUX_COUNTS"].values / np.sqrt(spectrum["VARIANCE"].values)
+    if not asTable:
+        return spectrum
+    columns = {name: np.asarray(spectrum[name]) for name in spectrum.columns}
+    return Table(columns)

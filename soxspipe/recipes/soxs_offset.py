@@ -224,13 +224,14 @@ class soxs_offset(soxs_nod):
             )
 
         # CHECK IF FLUX CALIBRATION IS REQUESTED
-        filePath_fluxcal = None
+        filePathFluxcal = None
         if responseFunctionPath:
-            filePath_fluxcal = self._flux_calibrate_stack(responseFunctionPath, stackedSpectrum, allFrameON)
+            filePathFluxcal = self._flux_calibrate_stack(responseFunctionPath, stackedSpectrum, allFrameON)
 
-        self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePath_fluxcal)
-        if filePath_fluxcal:
-            productPath = filePath_fluxcal
+        self._write_ascii_spectrum(filePathFluxcal)
+        self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePathFluxcal)
+        if filePathFluxcal:
+            productPath = filePathFluxcal
 
         qcTable = self.report_output()
         if cycleFrames:
@@ -257,6 +258,7 @@ class soxs_offset(soxs_nod):
         stackedSpectrum, _, orderJoins = self._reduce_each_offset_cycle(
             *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
         )
+        self._write_ascii_spectrum(None)
         self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
         return self.report_output()
 
@@ -709,7 +711,7 @@ class soxs_offset(soxs_nod):
 
         **Return:**
 
-        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum
         """
         import pandas as pd
 
@@ -735,20 +737,20 @@ class soxs_offset(soxs_nod):
             sofName=self.sofName,
             debug=self.debug,
         )
-        filePath_fluxcal, products = fluxCalibrator.calibrate()
+        filePathFluxcal, products = fluxCalibrator.calibrate()
         self.products = pd.concat([self.products, products], ignore_index=True)
         self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
-        return filePath_fluxcal
+        return filePathFluxcal
 
-    def _plot_stacked_spectrum_qcs(self, stackedSpectrum, orderJoins, filePath_fluxcal):
+    def _plot_stacked_spectrum_qcs(self, stackedSpectrum, orderJoins, filePathFluxcal):
         """*plot the merged-spectrum QC, and the flux-calibrated one when there is one*
 
         **Key Arguments:**
 
         - ``stackedSpectrum`` -- the stacked extraction
         - ``orderJoins`` -- the order joins
-        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum, or None
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum, or None
         """
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
@@ -770,15 +772,14 @@ class soxs_offset(soxs_nod):
             extractionNotes=list(self.extractionNotes),
         )
 
-        if filePath_fluxcal:
+        if filePathFluxcal:
             from astropy import units as u
             from astropy.table import Table
 
-            fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
+            fluxcal_spec = Table.read(filePathFluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            # ADD THE SNR COLUMN AND COPY VALUES FROM STACKEDSPECTRUM
-            fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
+            # THE PLOT DRAWS THE CALIBRATED FLUX FROM THE COUNTS COLUMN. THE TABLE CARRIES ITS OWN SNR
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]
 
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,

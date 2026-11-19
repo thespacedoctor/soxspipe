@@ -12,7 +12,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 from soxspipe.commonutils.flux_calibration import flux_calibration
-from tests.factories import pipeline_settings
+from tests.factories import merged_spectrum, pipeline_settings
 
 pytestmark = pytest.mark.integration
 
@@ -66,7 +66,7 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
     calibration.log = log
     calibration.settings = {}
     calibration.responseFunction = str(responsePath)
-    calibration.extractedSpectrum = pd.DataFrame({"WAVE": [500.0, 600.0], "FLUX_COUNTS": [20.0, 40.0]})
+    calibration.extractedSpectrum = merged_spectrum([500.0, 600.0], [20.0, 40.0], [16.0, 64.0], [3.0, 5.0])
     calibration.exptime = 10.0
     calibration.airmass = 1.0
     calibration.extinctionPath = ""
@@ -125,7 +125,7 @@ def test_calibrate_applies_vis_extinction_factor(
     calibration.log = log
     calibration.settings = {}
     calibration.responseFunction = str(responsePath)
-    calibration.extractedSpectrum = pd.DataFrame({"WAVE": [500.0, 600.0], "FLUX_COUNTS": [20.0, 40.0]})
+    calibration.extractedSpectrum = merged_spectrum([500.0, 600.0], [20.0, 40.0], [16.0, 64.0], [3.0, 5.0])
     calibration.exptime = 10.0
     calibration.airmass = 1.4
     calibration.extinctionPath = "extinction.fits"
@@ -236,7 +236,7 @@ def _nir_calibration(tmp_path: Path, log: object, responsePath: Path) -> flux_ca
     calibration.log = log
     calibration.settings = {}
     calibration.responseFunction = str(responsePath)
-    calibration.extractedSpectrum = pd.DataFrame({"WAVE": [500.0, 600.0], "FLUX_COUNTS": [20.0, 40.0]})
+    calibration.extractedSpectrum = merged_spectrum([500.0, 600.0], [20.0, 40.0], [16.0, 64.0], [3.0, 5.0])
     calibration.exptime = 10.0
     calibration.airmass = 1.0
     calibration.extinctionPath = ""

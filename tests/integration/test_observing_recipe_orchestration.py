@@ -26,6 +26,16 @@ from tests.factories import (
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def stubbed_ascii_spectrum(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the ASCII writer off the synthetic extraction paths, which name no FITS file on disk."""
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.spectrum_ascii"),
+        "write_ascii_spectrum_product",
+        lambda mergedPath, fluxcalPath, products, *_: products,
+    )
+
+
 @dataclass
 class RouteCollection:
     """Route image-collection filters to deterministic temporary files."""
@@ -212,6 +222,7 @@ def _patch_nodding_collaborators(
         "clean_up": [],
         "align": [],
         "align_plot": [],
+        "ascii": [],
     }
     spectrum = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0]})
     extractionQc = qc_row(
@@ -266,6 +277,15 @@ def _patch_nodding_collaborators(
         recipe,
         "stack_extractions",
         fake_stack_extractions,
+    )
+
+    def fake_write_ascii(mergedPath: str, fluxcalPath: str | None, products: pd.DataFrame, *_: object) -> pd.DataFrame:
+        # THE CALLS SO FAR ARE KEPT APART, SO THE SEQUENCE OTHER TESTS PIN DOES NOT GAIN AN ENTRY
+        captured["ascii"].append({"merged": mergedPath, "fluxcal": fluxcalPath, "callsBefore": list(calls)})
+        return products
+
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.spectrum_ascii"), "write_ascii_spectrum_product", fake_write_ascii
     )
     slitAlignment = import_module("soxspipe.commonutils.slit_alignment")
     alignmentQc = import_module("soxspipe.commonutils.slit_alignment_qc")
@@ -418,6 +438,8 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
     )
 
     assert len(calls) == 2
+    # A NOD DIFFERENCE HAS NO SKY MODEL, SO THE MERGED SPECTRUM CARRIES NO SKY_COUNTS COLUMN (DY-1361)
+    assert [call["carrySkyCounts"] for call in calls] == [False, False]
     assert calls[0]["skySubtractedFrame"].data[0, 0] == pytest.approx(aFrame.data[0, 0] - bFrame.data[0, 0])
     assert calls[1]["skySubtractedFrame"].data[0, 0] == pytest.approx(bFrame.data[0, 0] - aFrame.data[0, 0])
     assert spectrumA["WAVE"].tolist() == [500.0]
@@ -425,7 +447,7 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
     assert joins == {"10-11": 1}
 
 
-def test_nod_stack_extractions_writes_merged_fits_and_ascii_products(
+def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_the_recipe(
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -472,14 +494,11 @@ def test_nod_stack_extractions_writes_merged_fits_and_ascii_products(
     stacked, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert Path(fitsPath).is_file()
-    assert Path(fitsPath.replace(".fits", ".txt")).is_file()
+    assert not Path(fitsPath.replace(".fits", ".txt")).exists()
     assert stacked["FLUX_COUNTS"].tolist() == [12.0, 18.0]
     # TWO SPECTRA: THE VARIANCE IS SUM(VAR) / 4, SO SNR IS 12 / SQRT(4.5) AND 18 / SQRT(2) (DY-1675)
     assert stacked["SNR"].tolist() == [5.66, 12.73]
-    assert recipe.products["product_label"].tolist() == [
-        "EXTRACTED_MERGED_TABLE",
-        "EXTRACTED_MERGED_ASCII",
-    ]
+    assert recipe.products["product_label"].tolist() == ["EXTRACTED_MERGED_TABLE"]
     with fits.open(fitsPath) as hdus:
         assert hdus[0].header["ESO PRO CATG"] == "SCI_SLIT_FLUX_VIS"
 

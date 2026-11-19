@@ -434,7 +434,7 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     recipe.detectorParams = {"extinction": "extinction.dat"}
     calls, captured = _patch(recipe, monkeypatch, tmp_path)
     fluxPath = tmp_path / "OBJECT_VIS_FLUXCAL.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5], "SNR": [9.0]}).write(fluxPath)
     fluxProducts = _empty_products()
     fluxProducts.loc[0] = ["soxs-offset", "FLUXCAL", "f.fits", "FITS", "o", "r", "d", "p", "PROD"]
     calibratorArguments: list[dict[str, object]] = []
@@ -472,7 +472,13 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     calibrated = secondPlot["merged_orders"]
     assert calibrated["WAVE"].unit == u.nm
     assert list(calibrated["FLUX_COUNTS"]) == [2.5]
-    assert list(calibrated["SNR"]) == [20.0]
+    # THE FLUX-CALIBRATED TABLE CARRIES ITS OWN SNR, AND AN OFFSET SPECTRUM HAS NO SKY COLUMN
+    assert list(calibrated["SNR"]) == [9.0]
+    assert "SKY_COUNTS" not in calibrated.colnames
+    # THE ASCII SPECTRUM COMES FROM THE FLUX-CALIBRATED TABLE, ONCE
+    mergedPath = f"{recipe.productDir}/{recipe.filenameTemplate.replace('.fits', '_EXTRACTED_MERGED.fits')}"
+    assert [(entry["merged"], entry["fluxcal"]) for entry in captured["ascii"]] == [(mergedPath, str(fluxPath))]
+    assert captured["ascii"][0]["callsBefore"][-2:] == ["flux_calibrator", "calibrate"]
 
 
 def test_an_empty_inventory_fails_at_the_first_quicklook(
@@ -490,6 +496,43 @@ def test_an_empty_inventory_fails_at_the_first_quicklook(
         recipe.produce_product()
 
     assert calls == []
+
+
+def test_the_offset_ascii_spectrum_falls_back_to_the_stacked_table_without_a_response(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe, _ = _offset_recipe(log, tmp_path, SINGLE_PAIR)
+    calls, captured = _patch(recipe, monkeypatch, tmp_path)
+    recipe.filenameTemplate = "2024-01-02_offset.fits"
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: ONCE, IN COUNTS, BEFORE THE PLOT
+    mergedPath = f"{recipe.productDir}/2024-01-02_offset_EXTRACTED_MERGED.fits"
+    assert [(entry["merged"], entry["fluxcal"]) for entry in captured["ascii"]] == [(mergedPath, None)]
+    assert "plot" not in captured["ascii"][0]["callsBefore"]
+    assert calls.count("plot") == 1
+
+
+def test_with_no_stack_the_offset_cycle_pass_writes_its_own_ascii_spectrum(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _, captured = _no_stack_standard(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: THE STACKED PASS AND THE _CYCLES PASS WRITE ONE EACH, NEITHER FLUX CALIBRATED
+    assert [Path(entry["merged"]).name for entry in captured["ascii"]] == [
+        "OBJECT_VIS_EXTRACTED_MERGED.fits",
+        "OBJECT_VIS_CYCLES_EXTRACTED_MERGED.fits",
+    ]
+    assert [entry["fluxcal"] for entry in captured["ascii"]] == [None, None]
 
 
 def test_each_cycle_and_the_stacked_pair_extract_under_their_own_location_set(

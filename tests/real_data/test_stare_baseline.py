@@ -213,9 +213,20 @@ def _measure_stare_reduction(
 
     with fits.open(product_directory / f"{stem}_FLUXCAL.fits") as fluxcal_hdus:
         fluxcal_table = fluxcal_hdus[1].data
-        assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
+        # THE FLUX-CALIBRATED TABLE CARRIES THE MERGED COLUMNS, THE SKY AMONG THEM (DY-1361)
+        assert fluxcal_table.names == [
+            "WAVE",
+            "FLUX_CALIBRATED",
+            "ERR_CALIBRATED",
+            "FLUX_COUNTS",
+            "VARIANCE",
+            "SKY_COUNTS",
+            "SNR",
+        ]
         measured["fluxcal rows"] = len(fluxcal_table)
         measured["fluxcal median"] = float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"]))
+        measured["fluxcal sky counts median"] = float(np.nanmedian(fluxcal_table["SKY_COUNTS"]))
+        assert measured["fluxcal sky counts median"] == measured["sky counts median"]
 
     measured["sky model median"], measured["sky model p90"] = _sky_model_levels(
         product_directory / f"{stem}_SKYMODEL.fits"
@@ -243,9 +254,9 @@ def test_stare_reduction_matches_approved_baseline(reduced_workspace: Path, base
     expected_products = {
         f"{stem}_EXTRACTED_MERGED.fits",
         f"{stem}_EXTRACTED_MERGED.log",
-        f"{stem}_EXTRACTED_MERGED.txt",
         f"{stem}_EXTRACTED_ORDERS.fits",
         f"{stem}_FLUXCAL.fits",
+        f"{stem}_FLUXCAL.txt",
         f"{stem}_SKYMODEL.fits",
         f"{stem}_SKYSUB.fits",
         f"{stem}_SKYSUB_RESIDUALS.fits",
