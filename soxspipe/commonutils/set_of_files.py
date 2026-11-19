@@ -168,7 +168,7 @@ class ImageFileCollection(ImageFileCollection):
 os.environ["TERM"] = "vt100"
 
 
-def _fits_path_from_sof_line(line, home):
+def _fits_path_from_sof_line(line):
     """*return the frame path from one SOF line, keeping any ``.Z`` suffix*
 
     The path ends at the first ``.fits`` or ``.fits.Z`` that is followed by
@@ -178,7 +178,6 @@ def _fits_path_from_sof_line(line, home):
     **Key Arguments:**
 
     - ``line`` -- one SOF line, the frame path then its tag
-    - ``home`` -- the home directory that replaces a leading ``~/``
 
     **Return:**
 
@@ -186,23 +185,22 @@ def _fits_path_from_sof_line(line, home):
     """
     match = SOF_FITS_PATH.match(line)
     fitsPath = match.group(1) if match else line[: line.lower().index(".fits")] + ".fits"
-    return fitsPath.replace("~/", home + "/")
+    return os.path.expanduser(fitsPath)
 
 
-def _supplementary_path_from_sof_line(line, home):
+def _supplementary_path_from_sof_line(line):
     """*return the path column from a supplementary SOF row*
 
     **Key Arguments:**
 
     - ``line`` -- one line of the SOF file
-    - ``home`` -- the user's home directory, substituted for a leading ``~/``
 
     **Return:**
 
     - ``path`` -- the supplementary file path, with a trailing arm tag removed when the line is not itself an
       existing path
     """
-    expandedLine = line.replace("~/", home + "/")
+    expandedLine = os.path.expanduser(line)
     if os.path.exists(expandedLine):
         return expandedLine
     columns = expandedLine.rsplit(maxsplit=1)
@@ -355,11 +353,8 @@ class set_of_files:
         self.keys.append("file")
         # INITIAL ACTIONS
         # FIX RELATIVE HOME PATHS
-        from os.path import expanduser
-
-        home = expanduser("~")
-        if isinstance(self.inputFrames, str) and self.inputFrames.startswith("~"):
-            self.inputFrames = home + "/" + self.inputFrames[1:]
+        if isinstance(self.inputFrames, str):
+            self.inputFrames = os.path.expanduser(self.inputFrames)
 
         # GRAB THE WORKSPACE SESSION
         from soxspipe.commonutils import data_organiser
@@ -403,13 +398,8 @@ class set_of_files:
         kw = keyword_lookup(log=self.log, settings=self.settings).get
 
         # MAKE RELATIVE HOME PATH ABSOLUTE
-        from os.path import expanduser
-
-        home = expanduser("~")
-        if directory[0] == "~":
-            directory = directory.replace("~", home)
-        if sofPath[0] == "~":
-            sofPath = sofPath.replace("~", home)
+        directory = os.path.expanduser(directory)
+        sofPath = os.path.expanduser(sofPath)
 
         content = ""
         for d in sorted(os.listdir(directory)):
@@ -475,12 +465,8 @@ class set_of_files:
         """
         self.log.debug("starting the ``get`` method")
 
-        from os.path import expanduser
-
-        home = expanduser("~")
-
-        if isinstance(self.inputFrames, str) and self.inputFrames.startswith("~"):
-            self.inputFrames = home + "/" + self.inputFrames[1:]
+        if isinstance(self.inputFrames, str):
+            self.inputFrames = os.path.expanduser(self.inputFrames)
 
         # DIRECTORY OF FRAMES
         if isinstance(self.inputFrames, str) and os.path.isdir(self.inputFrames):
@@ -488,7 +474,7 @@ class set_of_files:
             supplementaryFilepaths = _supplementary_files_in_directory(self.inputFrames)
 
         elif isinstance(self.inputFrames, str) and os.path.isfile(self.inputFrames) and ".sof" in self.inputFrames:
-            fitsFiles, supplementaryFilepaths = self._frames_from_sof_file(home)
+            fitsFiles, supplementaryFilepaths = self._frames_from_sof_file()
             location, fitsFiles = _common_location(fitsFiles)
             sof = self._collection_from_frames(location=location, filenames=fitsFiles)
 
@@ -514,12 +500,10 @@ class set_of_files:
         self.log.debug("completed the ``get`` method")
         return sof, supplementary_sof
 
-    def _frames_from_sof_file(self, home):
+    def _frames_from_sof_file(self):
         """*read the FITS and supplementary file paths listed in the SOF file*
 
         **Key Arguments:**
-
-        - ``home`` -- the user's home directory, substituted for a leading ``~/``
 
         **Return:**
 
@@ -536,10 +520,10 @@ class set_of_files:
         # REMOVE COMMENTED LINES
         lines = [sofLine for sofLine in lines if len(sofLine) and sofLine[0] != "#"]
 
-        fitsFiles = [_fits_path_from_sof_line(sofLine, home) for sofLine in lines if ".fits" in sofLine.lower()]
+        fitsFiles = [_fits_path_from_sof_line(sofLine) for sofLine in lines if ".fits" in sofLine.lower()]
 
         supplementaryFilepaths = [
-            _supplementary_path_from_sof_line(sofLine, home)
+            _supplementary_path_from_sof_line(sofLine)
             for sofLine in lines
             if ".fits" not in sofLine.lower() and len(sofLine) > 3
         ]

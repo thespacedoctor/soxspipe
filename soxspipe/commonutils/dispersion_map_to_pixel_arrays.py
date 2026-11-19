@@ -73,8 +73,7 @@ def read_dispersion_map_axes(dispersionMapPath):
 
     A missing or non-FITS file raises ``OSError`` and a file holding no table raises ``ValueError``.
     """
-    home = expanduser("~")
-    resolvedPath = os.path.realpath(dispersionMapPath.replace("~", home))
+    resolvedPath = os.path.realpath(expanduser(dispersionMapPath))
     return _read_dispersion_map_axes(resolvedPath, os.path.getmtime(resolvedPath))
 
 
