@@ -622,6 +622,8 @@ def _serial_reducer_with_database(
     workspacePath.mkdir()
     databasePath = workspacePath / "soxspipe.db"
     _create_selection_database(databasePath)
+    with sqlite3.connect(databasePath) as connection:
+        connection.execute("ALTER TABLE product_frames ADD COLUMN error_message TEXT")
     for sofName in sofNames:
         _insert_product_row(databasePath, sofName, f"{sofName}.fits", "pass")
     collection = _uninitialized_reducer(log, databasePath)
@@ -670,6 +672,12 @@ def _read_statuses(databasePath: Path) -> dict[str, str | None]:
         return dict(connection.execute(readSql).fetchall())
 
 
+def _read_error_messages(databasePath: Path) -> dict[str, str | None]:
+    """Return the stored error message of each SOF in the database."""
+    with sqlite3.connect(databasePath) as connection:
+        return dict(connection.execute("SELECT sof, error_message FROM product_frames").fetchall())
+
+
 def test_serial_reduce_records_fail_over_a_stale_pass_when_a_recipe_raises(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any
 ) -> None:
@@ -685,6 +693,10 @@ def test_serial_reduce_records_fail_over_a_stale_pass_when_a_recipe_raises(
     collection.reduce(batch=10, multiprocess=False)
 
     assert _read_statuses(databasePath) == {"bad.sof": "fail", "good.sof": "pass"}
+    assert _read_error_messages(databasePath) == {
+        "bad.sof": "failed before its own status write",
+        "good.sof": None,
+    }
 
 
 def test_serial_reduce_leaves_the_status_alone_when_the_product_exists(
@@ -740,4 +752,22 @@ def test_serial_reduce_still_quits_on_fail_when_the_status_write_errors(
     monkeypatch.setattr(workspaceDatabaseModule, "connect_workspace_database", locked_database)
 
     with pytest.raises(SystemExit):
+        collection.reduce(batch=10, multiprocess=False)
+
+
+def test_serial_reduce_does_not_swallow_a_programming_error_in_the_status_write(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: Any
+) -> None:
+    """Only the errors a status write can really raise are logged; a bug must still surface."""
+    reducerModule = import_module("soxspipe.commonutils.reducer")
+    collection, _, _ = _serial_reducer_with_database(
+        monkeypatch, tmp_path, log, ["bad.sof"], {"bad.sof": RuntimeError("recipe failed")}
+    )
+
+    def broken_helper(*args: object, **kwargs: object) -> None:
+        raise AttributeError("a bug in the helper")
+
+    monkeypatch.setattr(reducerModule, "_write_sof_statuses", broken_helper)
+
+    with pytest.raises(AttributeError, match="a bug in the helper"):
         collection.reduce(batch=10, multiprocess=False)

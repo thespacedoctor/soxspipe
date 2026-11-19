@@ -250,14 +250,14 @@ class reducer:
                             batchCount += 1
                         except RecipeProductExistsError:
                             continue
-                        except Exception:
+                        except Exception as error:
                             # ONE FAILURE RESET THE SOF FILES SO FUTURE RECIPES DON'T RELY ON FAILED PRODUCTS
                             self.log.error(f"\n\nRecipe failed with the following error:\n\n{traceback.format_exc()}")
                             self.log.error(
                                 f"\nRecipe Command: {row['command'].replace('-obj ', ' ').replace('-std ', ' ')}\n\n"
                             )
                             fail = True
-                            self._record_failed_sof(sof)
+                            self._record_failed_sof(sof, str(error))
 
                             if self.quitOnFail:
                                 sys.exit(1)
@@ -306,19 +306,23 @@ class reducer:
         self.log.debug("completed the ``reduce`` method")
         return
 
-    def _record_failed_sof(self, sof):
+    def _record_failed_sof(self, sof, errorMessage):
         """*write* ``fail`` *to the session status of a SOF whose recipe raised in the serial loop*
 
         A recipe that fails before it writes its own status leaves the ``pass`` of an earlier run. The write uses a
         fresh connection, as the multiprocessing path does. An error in the write is logged and not raised, so the
-        failure handling of the caller goes on.
+        failure handling of the caller goes on. Only the errors the write can raise are caught.
 
         **Key Arguments:**
 
         - ``sof`` -- the path to the SOF file of the failed recipe
+        - ``errorMessage`` -- the message of the recipe's exception, stored in ``error_message`` as the
+          multiprocessing path does
         """
-        from soxspipe.commonutils.data_organiser import _validate_owned_path
-        from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
+        import sqlite3
+
+        from soxspipe.commonutils.data_organiser import _UnsafePathError, _validate_owned_path
+        from soxspipe.commonutils.sql_identifiers import UnsafeSqlIdentifierError, validate_sql_identifier
         from soxspipe.commonutils.workspace_database import connect_workspace_database
 
         sofName = os.path.basename(sof)
@@ -328,11 +332,11 @@ class reducer:
             conn = connect_workspace_database(databasePath)
             try:
                 cursor = conn.cursor()
-                _write_sof_statuses(cursor, statusColumn, [], [sofName])
+                _write_sof_statuses(cursor, statusColumn, [], [sofName], {sofName: errorMessage})
                 cursor.close()
             finally:
                 conn.close()
-        except Exception as error:
+        except (sqlite3.Error, OSError, _UnsafePathError, UnsafeSqlIdentifierError) as error:
             self.log.error(f"Could not write the `fail` status of `{sofName}` to the workspace database: {error}")
 
     def _passed_this_session_clause(self):
@@ -469,8 +473,8 @@ class reducer:
         return rawGroups[["recipe", "sof", "command"]].drop_duplicates()
 
 
-def _write_sof_statuses(cursor, statusColumn, passing, failing):
-    """*set the session status of the SOFs that passed and of the SOFs that failed*
+def _write_sof_statuses(cursor, statusColumn, passing, failing, errorMessages=None):
+    """*set the session status of the SOFs that passed and of the SOFs that failed, and store the failure messages*
 
     **Key Arguments:**
 
@@ -478,23 +482,35 @@ def _write_sof_statuses(cursor, statusColumn, passing, failing):
     - ``statusColumn`` -- the validated ``status_<session>`` column of ``product_frames``
     - ``passing`` -- the SOF file names to set to ``pass``
     - ``failing`` -- the SOF file names to set to ``fail``
+    - ``errorMessages`` -- a dictionary of SOF file name to the failure message to store in ``error_message``.
+      Default *None*
     """
-    passingClause, passingParams = _sql_in_placeholders(passing)
-    failingClause, failingParams = _sql_in_placeholders(failing)
-    sqlQueries = [
-        (
-            f"update product_frames set {statusColumn} = 'pass' where sof in ({passingClause}) "  # noqa: S608
-            f"and ({statusColumn} != 'pass' or {statusColumn} is null)",
-            passingParams,
-        ),
-        (
-            f"update product_frames set {statusColumn} = 'fail' where sof in ({failingClause}) "  # noqa: S608
-            f"and ({statusColumn} != 'fail' or {statusColumn} is null)",
-            failingParams,
-        ),
-    ]
+    sqlQueries = []
+    if passing:
+        passingClause, passingParams = _sql_in_placeholders(passing)
+        sqlQueries.append(
+            (
+                f"update product_frames set {statusColumn} = 'pass' where sof in ({passingClause}) "  # noqa: S608
+                f"and ({statusColumn} != 'pass' or {statusColumn} is null)",
+                passingParams,
+            )
+        )
+    if failing:
+        failingClause, failingParams = _sql_in_placeholders(failing)
+        sqlQueries.append(
+            (
+                f"update product_frames set {statusColumn} = 'fail' where sof in ({failingClause}) "  # noqa: S608
+                f"and ({statusColumn} != 'fail' or {statusColumn} is null)",
+                failingParams,
+            )
+        )
     for sqlQuery, sqlParams in sqlQueries:
         cursor.execute(sqlQuery, sqlParams)
+    if errorMessages:
+        cursor.executemany(
+            "update product_frames set error_message = ? where sof = ?",
+            [(str(message), sof) for sof, message in errorMessages.items()],
+        )
 
 
 def run_recipe(log, recipe, sof, settings, overwrite, command=False, verbose=False, turnOffMP=False):
@@ -1243,14 +1259,7 @@ def _run_recipe_bulk(  # noqa: PLR0915
     )
     c.execute(sqlQuery, passingParams + failingParams)
     count = c.fetchone()[0]
-    if len(passing) or len(failing):
-        _write_sof_statuses(c, statusColumn, passing, failing)
-    if len(errorSOF):
-        error_rows = [(str(error), sof) for sof, error in zip(errorSOF, errorMessages)]
-        c.executemany(
-            "update product_frames set error_message = ? where sof = ?",
-            error_rows,
-        )
+    _write_sof_statuses(c, statusColumn, passing, failing, dict(zip(errorSOF, errorMessages, strict=True)))
     c.close()
     conn.close()
 
