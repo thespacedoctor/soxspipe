@@ -10,6 +10,7 @@ import pytest
 from astropy import stats as astropy_stats
 from astropy.nddata import CCDData
 
+from soxspipe.recipes.soxs_mflat import soxs_mflat
 from tests.factories.unusable_flat import (
     FLAT_SHAPE,
     USABLE_FLAT_VALUE,
@@ -60,3 +61,18 @@ def test_second_pass_normalises_the_frame_to_the_level_of_the_usable_pixels(
 
     # ASSERT
     np.testing.assert_allclose(normalised[0].data, np.full(FLAT_SHAPE, 2.0))
+
+
+def test_the_ratio_of_integer_frame_and_flat_data_is_a_float_with_nan_where_the_flat_is_unusable() -> None:
+    # ARRANGE
+    frameData = np.array([[10, 10, 10, 10]], dtype=np.int32)
+    flatData = np.array([[2, 0, -1, 5]], dtype=np.int32)
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        ratio = soxs_mflat._ratio_to_usable_flat(frameData, flatData)
+
+    # ASSERT
+    assert ratio.dtype.kind == "f"
+    np.testing.assert_array_equal(ratio, [[5.0, np.nan, np.nan, 2.0]])

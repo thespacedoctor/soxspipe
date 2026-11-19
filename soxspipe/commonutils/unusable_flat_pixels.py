@@ -59,30 +59,36 @@ def neutralise_unusable_flat(flat, unusable):
 
 
 def flag_unusable_pixels(frame, unusable):
-    """*set the unusable pixels of a frame to NaN and mask them*
+    """*return a copy of a frame with the unusable pixels set to NaN and masked*
 
-    The data and the uncertainty become NaN, and the mask is set, where ``unusable`` is True.
+    The data and the uncertainty become NaN, and the mask is set, where ``unusable`` is True. Integer data or an
+    integer uncertainty array is promoted to float first, because an integer array cannot hold NaN. ``frame`` is
+    not changed.
 
     **Key Arguments:**
 
-    - ``frame`` -- the frame (CCDData) to flag. It is changed in place, so pass a frame that arithmetic with the
-      flat has just made
+    - ``frame`` -- the frame (CCDData) to flag
     - ``unusable`` -- boolean image of the unusable pixels, from ``unusable_flat_pixel_mask``
 
     **Return:**
 
-    - ``frame`` -- the same frame, flagged
+    - ``flaggedFrame`` -- a copy of ``frame``, flagged
 
     **Usage:**
 
     ```python
-    flag_unusable_pixels(frame, unusable)
+    flaggedFrame = flag_unusable_pixels(frame, unusable)
     ```
     """
     import numpy as np
 
-    frame.data[unusable] = np.nan
-    if frame.uncertainty is not None:
-        frame.uncertainty.array[unusable] = np.nan
-    frame.mask = unusable.copy() if frame.mask is None else (frame.mask | unusable)
-    return frame
+    flaggedFrame = frame.copy()
+    flaggedFrame.data = flaggedFrame.data.astype(np.result_type(flaggedFrame.data.dtype, np.float32), copy=False)
+    flaggedFrame.data[unusable] = np.nan
+    if flaggedFrame.uncertainty is not None:
+        uncertaintyArray = flaggedFrame.uncertainty.array
+        uncertaintyArray = uncertaintyArray.astype(np.result_type(uncertaintyArray.dtype, np.float32), copy=False)
+        uncertaintyArray[unusable] = np.nan
+        flaggedFrame.uncertainty.array = uncertaintyArray
+    flaggedFrame.mask = unusable.copy() if flaggedFrame.mask is None else (flaggedFrame.mask | unusable)
+    return flaggedFrame

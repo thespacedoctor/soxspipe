@@ -1507,8 +1507,8 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                 unflattenedSkySubtractedCCDData.uncertainty = StdDevUncertainty(
                     np.abs(neutralFlat.data) * skySubtractedCCDData.uncertainty.array
                 )
+                unflattenedSkySubtractedCCDData = flag_unusable_pixels(unflattenedSkySubtractedCCDData, unusableFlat)
                 unflattenedSkySubtractedCCDData.header = skySubtractedCCDData.header
-                flag_unusable_pixels(unflattenedSkySubtractedCCDData, unusableFlat)
             else:
                 unflattenedSkySubtractedCCDData = skySubtractedCCDData
         else:

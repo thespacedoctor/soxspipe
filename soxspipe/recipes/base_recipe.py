@@ -2285,7 +2285,7 @@ class base_recipe:
                 norm_value=1.0,
                 add_keyword=None,
             )
-            flag_unusable_pixels(processedFrame, unusableFlat)
+            processedFrame = flag_unusable_pixels(processedFrame, unusableFlat)
             toolkit.frame_to_32(processedFrame)
 
         self.log.debug("completed the ``detrend`` method")

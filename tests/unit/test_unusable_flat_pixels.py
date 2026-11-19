@@ -51,13 +51,17 @@ def test_neutralising_the_flat_sets_the_unusable_pixels_to_one_with_no_error() -
 def test_neutralising_the_flat_leaves_the_original_flat_unchanged() -> None:
     # ARRANGE
     flat = flat_with_unusable_pixels()
-    before = flat.data.copy()
+    dataBefore = flat.data.copy()
+    uncertaintyBefore = flat.uncertainty.array.copy()
+    maskBefore = flat.mask.copy()
 
     # ACT
     neutralise_unusable_flat(flat, expected_unusable())
 
     # ASSERT
-    np.testing.assert_array_equal(flat.data, before)
+    np.testing.assert_array_equal(flat.data, dataBefore)
+    np.testing.assert_array_equal(flat.uncertainty.array, uncertaintyBefore)
+    np.testing.assert_array_equal(flat.mask, maskBefore)
 
 
 def test_neutralising_a_flat_with_no_uncertainty_sets_only_the_data() -> None:
@@ -83,14 +87,14 @@ def test_flagging_sets_data_and_uncertainty_to_nan_and_masks_the_unusable_pixels
     unusable = np.array([[False, True, False]])
 
     # ACT
-    flag_unusable_pixels(frame, unusable)
+    flagged = flag_unusable_pixels(frame, unusable)
 
     # ASSERT
-    assert np.isnan(frame.data[0, 1])
-    assert np.isnan(frame.uncertainty.array[0, 1])
-    np.testing.assert_array_equal(frame.mask, [[True, True, False]])
-    np.testing.assert_array_equal(frame.data[0, [0, 2]], 5.0)
-    np.testing.assert_array_equal(frame.uncertainty.array[0, [0, 2]], 0.5)
+    assert np.isnan(flagged.data[0, 1])
+    assert np.isnan(flagged.uncertainty.array[0, 1])
+    np.testing.assert_array_equal(flagged.mask, [[True, True, False]])
+    np.testing.assert_array_equal(flagged.data[0, [0, 2]], 5.0)
+    np.testing.assert_array_equal(flagged.uncertainty.array[0, [0, 2]], 0.5)
 
 
 def test_flagging_a_frame_with_no_mask_or_uncertainty_creates_the_mask() -> None:
@@ -98,9 +102,50 @@ def test_flagging_a_frame_with_no_mask_or_uncertainty_creates_the_mask() -> None
     frame = CCDData(np.full((1, 2), 5.0), unit=u.electron)
 
     # ACT
-    flag_unusable_pixels(frame, np.array([[False, True]]))
+    flagged = flag_unusable_pixels(frame, np.array([[False, True]]))
 
     # ASSERT
-    np.testing.assert_array_equal(frame.mask, [[False, True]])
-    assert np.isnan(frame.data[0, 1])
-    assert frame.uncertainty is None
+    np.testing.assert_array_equal(flagged.mask, [[False, True]])
+    assert np.isnan(flagged.data[0, 1])
+    assert flagged.uncertainty is None
+
+
+def test_flagging_leaves_the_original_frame_unchanged() -> None:
+    # ARRANGE
+    frame = CCDData(
+        np.full((1, 3), 5.0),
+        unit=u.electron,
+        uncertainty=StdDevUncertainty(np.full((1, 3), 0.5)),
+        mask=np.array([[True, False, False]]),
+    )
+
+    # ACT
+    flagged = flag_unusable_pixels(frame, np.array([[False, True, False]]))
+
+    # ASSERT
+    assert flagged is not frame
+    np.testing.assert_array_equal(frame.data, [[5.0, 5.0, 5.0]])
+    np.testing.assert_array_equal(frame.uncertainty.array, [[0.5, 0.5, 0.5]])
+    np.testing.assert_array_equal(frame.mask, [[True, False, False]])
+
+
+def test_flagging_an_integer_frame_promotes_it_to_float_and_leaves_the_original_integer() -> None:
+    # ARRANGE
+    frame = CCDData(
+        np.array([[5, 6, 7]], dtype=np.int32),
+        unit=u.electron,
+        uncertainty=StdDevUncertainty(np.array([[1, 2, 3]], dtype=np.int32)),
+    )
+
+    # ACT
+    flagged = flag_unusable_pixels(frame, np.array([[False, True, False]]))
+
+    # ASSERT
+    assert flagged.data.dtype.kind == "f"
+    assert flagged.uncertainty.array.dtype.kind == "f"
+    assert np.isnan(flagged.data[0, 1]) and np.isnan(flagged.uncertainty.array[0, 1])
+    np.testing.assert_array_equal(flagged.data[0, [0, 2]], [5.0, 7.0])
+    np.testing.assert_array_equal(flagged.uncertainty.array[0, [0, 2]], [1.0, 3.0])
+    assert frame.data.dtype == np.int32
+    np.testing.assert_array_equal(frame.data, [[5, 6, 7]])
+    np.testing.assert_array_equal(frame.uncertainty.array, [[1, 2, 3]])

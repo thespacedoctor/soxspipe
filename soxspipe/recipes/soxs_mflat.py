@@ -1380,7 +1380,7 @@ class soxs_mflat(base_recipe):
         import numpy as np
 
         usable = ~unusable_flat_pixel_mask(flatData)
-        ratio = np.full(frameData.shape, np.nan, dtype=np.result_type(frameData, flatData))
+        ratio = np.full(frameData.shape, np.nan, dtype=np.result_type(frameData.dtype, flatData.dtype, np.float32))
         np.divide(frameData, flatData, out=ratio, where=usable)
         return ratio
 
