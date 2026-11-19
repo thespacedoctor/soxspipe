@@ -79,6 +79,16 @@ DEFAULT_OBJECT_WING_MIN_LEAK_SIGMA = 0.03
 # THE SMALLEST SKY LEVEL (E-) THE OBJECT-WING LOG LINE REPORTS THE LEAK AS A SHARE OF
 MIN_LOGGED_SKY_LEVEL = 1e-9
 
+# THE SKY-SUBTRACTION SETTINGS OF THE HOST-LINE MASK (DY-2242). A WORKSPACE KEEPS ITS OWN COPY OF THE YAML, SO A MISSING
+# KEY TAKES THE DEFAULT IN host_line_mask AND DEFAULT_HOST_LINE_MASK
+HOST_LINE_MASK_KEY = "host-line-mask"
+HOST_LINE_SIGMA_KEY = "host-line-sigma"
+HOST_LINE_CONTRAST_KEY = "host-line-min-slit-contrast"
+HOST_LINE_PADDING_KEY = "host-line-padding-pixels"
+DEFAULT_HOST_LINE_MASK = True
+# THE QC THAT COUNTS THE HOST-LINE WINDOWS LEFT OUT OF THE SKY FIT
+HOST_LINE_QC_NAME = "SKY HOST LINES MASKED"
+
 # THE ARMS THAT RESTORE SKYLINE CORES OUTSIDE THE OBJECT WHEN A WORKSPACE'S SETTINGS PREDATE THE
 # restore_skyline_cores_outside_object KEY (DY-1972). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY
 # OF THE YAML
@@ -389,6 +399,8 @@ class subtract_sky:
     maskedOrders = frozenset()
     # THE SLIT RANGE OF EACH ORDER TO FIT THE MASTER FLAT'S SLIT PROFILE OVER; SET BY __init__ WHEN RANGES ARE GIVEN
     flatFitRanges = None
+    # THE MERGED WINDOWS OF THE HOST EMISSION LINES LEFT OUT OF THE SKY FIT; SET BY _fit_sky_to_orders (DY-2242)
+    hostLineWindows = ()
 
     def __init__(
         self,
@@ -729,6 +741,7 @@ class subtract_sky:
         self.log.print("\n  ## FITTING SKY-FLUX WITH A BSPLINE (WAVELENGTH)\n")
 
         allimageMapOrder, alltck, allKnots = self._fit_sky_to_orders(allimageMapOrder)
+        self._record_host_line_windows()
 
         # READ THE SETTING BEFORE ANY ORDER IS WRITTEN, SO A BAD VALUE RAISES WHETHER OR NOT ANY ORDER IS INFLATED
         isInflatingErrors = self._error_inflation_enabled()
@@ -843,6 +856,9 @@ class subtract_sky:
 
         isWingCorrectionOn, minLeakSigma, minSkySigma = self._object_wing_settings()
 
+        # THE HOST LINES ARE FLAGGED BEFORE THE FIRST FIT, SO THE OBJECT-WING REFIT'S COPY CARRIES THE FLAGS
+        self._mask_host_lines(allimageMapOrder)
+
         # NOTE MULTIPROCESSING THIS BLOCK RESULTS IN SLOWER PERFORMANCE
         fittedOrders = []
         allFluxErrorRatios = []
@@ -875,6 +891,118 @@ class subtract_sky:
             f"MEAN RES FLOOR: {meanResidualFloor:0.3f}, KNOT COUNT: {totalKnots}"
         )
         return fittedOrders, alltck, allKnots
+
+    def _host_line_settings(self):
+        """*the host-line mask switch, limits and padding, with defaults for older workspace settings (DY-2242)*
+
+        **Return:**
+
+        - ``isOn`` -- True when host emission lines are left out of the sky fit
+        - ``sigmaLimit`` -- the significance a seed bin of a line needs
+        - ``minSlitContrast`` -- the share of the peak excess that must vary along the slit, between 0 and 1
+        - ``paddingLines`` -- detector lines added to each end of a window, a whole number of 0 or more
+
+        **Raises:**
+
+        - ``ValueError`` -- if the switch is not True or False, or a limit is out of range, naming the key
+        """
+        from soxspipe.commonutils.host_line_mask import (
+            DEFAULT_MIN_SLIT_CONTRAST,
+            DEFAULT_PADDING_LINES,
+            DEFAULT_SIGMA_LIMIT,
+        )
+
+        skySettings = self.recipeSettings["sky-subtraction"]
+        isOn = skySettings.get(HOST_LINE_MASK_KEY, DEFAULT_HOST_LINE_MASK)
+        if not isinstance(isOn, bool):
+            raise ValueError(f"the sky-subtraction setting {HOST_LINE_MASK_KEY} must be True or False, got {isOn!r}")
+        sigmaLimit = skySettings.get(HOST_LINE_SIGMA_KEY, DEFAULT_SIGMA_LIMIT)
+        if not (isinstance(sigmaLimit, numbers.Real) and math.isfinite(sigmaLimit) and sigmaLimit > 0):
+            raise ValueError(
+                f"the sky-subtraction setting {HOST_LINE_SIGMA_KEY} must be a number > 0, got {sigmaLimit!r}"
+            )
+        minSlitContrast = skySettings.get(HOST_LINE_CONTRAST_KEY, DEFAULT_MIN_SLIT_CONTRAST)
+        if not (isinstance(minSlitContrast, numbers.Real) and 0 <= minSlitContrast <= 1):
+            raise ValueError(
+                f"the sky-subtraction setting {HOST_LINE_CONTRAST_KEY} must be a number from 0 to 1, "
+                f"got {minSlitContrast!r}"
+            )
+        paddingLines = skySettings.get(HOST_LINE_PADDING_KEY, DEFAULT_PADDING_LINES)
+        if not (isinstance(paddingLines, int) and not isinstance(paddingLines, bool) and paddingLines >= 0):
+            raise ValueError(
+                f"the sky-subtraction setting {HOST_LINE_PADDING_KEY} must be a whole number >= 0, got {paddingLines!r}"
+            )
+        return isOn, float(sigmaLimit), float(minSlitContrast), paddingLines
+
+    def _mask_host_lines(self, allimageMapOrder):
+        """*flag the pixels of host emission lines that fill the slit, so the sky fit leaves them out (DY-2242)*
+
+        The stare sky model is constant along the slit, so a host line that fills the slit is taken into it and then
+        subtracted from the object. The windows of the lines are found without a redshift (``host_line_mask``) and
+        every pixel of the order inside a window is flagged as clipped before the fit. The spline drops the knots that
+        have no samples and interpolates the sky across the window. A frame with no window is not touched, so its
+        products are those of a run with the mask switched off. The detection only flags pixels: when it cannot run,
+        the log says why and the sky is fitted as before. Sets ``self.hostLineWindows``.
+
+        **Key Arguments:**
+
+        - ``allimageMapOrder`` -- list of clipped order dataframes, flagged in place
+        """
+        from soxspipe.commonutils.host_line_mask import find_host_line_windows, host_line_pixel_mask
+        from soxspipe.commonutils.nod_host_contamination import merge_host_features
+        from soxspipe.commonutils.toolkit import get_skylines_dataframe
+
+        self.hostLineWindows = ()
+        isOn, sigmaLimit, minSlitContrast, paddingLines = self._host_line_settings()
+        if not isOn:
+            return
+        try:
+            skylines = get_skylines_dataframe(
+                self.log, self.settings, self.arm, minBrightnessVIS=0, minBrightnessNIR=0
+            )["WAVELENGTH"].to_numpy(dtype=float)
+            orderWindows = [
+                find_host_line_windows(imageMapOrder, skylines, sigmaLimit, minSlitContrast, paddingLines)
+                for imageMapOrder in allimageMapOrder
+            ]
+        except Exception as e:
+            self.log.warning(
+                f"The search for host emission lines could not run, so none is left out of the sky fit: {e}"
+            )
+            return
+
+        for imageMapOrder, windows in zip(allimageMapOrder, orderWindows, strict=True):
+            if windows:
+                isInWindow = host_line_pixel_mask(imageMapOrder["wavelength"].to_numpy(dtype=float), windows)
+                imageMapOrder.loc[isInWindow, "flagged_all_clipped"] = True
+        self.hostLineWindows = merge_host_features(window for windows in orderWindows for window in windows)
+        if self.hostLineWindows:
+            ranges = ", ".join(f"{w.wavelengthMinNm:0.2f}-{w.wavelengthMaxNm:0.2f} nm" for w in self.hostLineWindows)
+            self.log.print(
+                f"\n\t{len(self.hostLineWindows)} HOST EMISSION LINE WINDOW(S) LEFT OUT OF THE SKY FIT, "
+                f"THE SKY IS INTERPOLATED ACROSS THEM: {ranges}\n"
+            )
+
+    def _record_host_line_windows(self):
+        """*record the number of host-line windows left out of the sky fit as a QC, when there are any (DY-2242)*
+
+        The QC is information only and has no acceptable range. A frame with no window gets no row, so its QC table
+        is that of a run with the mask switched off. Updates ``self.qc``.
+        """
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        if not self.hostLineWindows:
+            return
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName=HOST_LINE_QC_NAME,
+            qcValue=len(self.hostLineWindows),
+            qcComment="Host emission lines that fill the slit, left out of the sky fit (wavelength windows)",
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
+        )
 
     def _object_wing_settings(self):
         """*the object-wing correction switch and leak gate, with defaults for older workspace settings (DY-1279)*
