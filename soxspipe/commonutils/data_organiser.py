@@ -1562,6 +1562,7 @@ class data_organiser:
             "select 1 from sqlite_master where type = 'table' and name = ?", (sofTableName,)
         ).fetchone()
         if not hasTable:
+            self.log.debug(f"_delete_sof_map_rows_of_frames: no `{sofTableName}` table, so no SOF map to clean")
             return
         sqlQuery = (
             f"delete from {sofTableName} "  # noqa: S608

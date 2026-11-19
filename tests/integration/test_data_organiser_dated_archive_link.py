@@ -186,11 +186,13 @@ def test_sync_raw_frames_leaves_no_row_for_a_dated_archive_frame_whose_dpr_tech_
     organiser.conn, _ = organiser._get_or_create_db_connection()
     organiser._select_instrument()
     scan = organiser._create_directory_table
+    scannedFrameCounts: list[int] = []
 
     def scan_without_tech(**kwargs: Any) -> tuple[Any, Any, Any]:
         rawFrames, fitsPaths, remainingFiles = scan(**kwargs)
         if rawFrames is not None:
             rawFrames["eso dpr tech"] = "--"
+            scannedFrameCounts.append(len(rawFrames.index))
         return rawFrames, fitsPaths, remainingFiles
 
     monkeypatch.setattr(organiser, "_create_directory_table", scan_without_tech)
@@ -203,6 +205,8 @@ def test_sync_raw_frames_leaves_no_row_for_a_dated_archive_frame_whose_dpr_tech_
         organiser.close()
 
     # ASSERT
+    # THE SCAN MUST HAVE FOUND THE FRAME, OR AN EMPTY TABLE WOULD PROVE NOTHING
+    assert scannedFrameCounts and scannedFrameCounts[0] > 0
     assert rowPaths == []
 
 
@@ -222,11 +226,13 @@ def test_sync_raw_frames_deletes_the_archive_row_and_holds_a_root_frame_whose_de
     try:
         organiser._sync_raw_frames(skipSqlSync=True)
         rowPaths = _raw_frame_paths(organiser)
+        heldRootFrames = set(organiser.heldRootFrames)
     finally:
         organiser.close()
 
     # ASSERT
     assert rowPaths == []
+    assert heldRootFrames == {"y.fits"}
     assert archivedFrame.is_file()
     assert not (root / "x.fits").exists()
     assert heldFrame.is_file()
