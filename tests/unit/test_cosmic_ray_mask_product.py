@@ -18,13 +18,8 @@ from astropy.io import fits
 from astropy.nddata import CCDData
 
 from soxspipe.recipes import base_recipe
-from tests.unit.test_base_recipe_prepare_frame_characterization import (
-    KEYWORDS,
-    QC_COLUMNS,
-)
-from tests.unit.test_base_recipe_prepare_frame_characterization import (
-    _recipe as _stub_recipe,
-)
+from tests.factories.prepared_frames import KEYWORDS, QC_COLUMNS
+from tests.factories.prepared_frames import prepare_frame_recipe as _stub_recipe
 
 pytestmark = pytest.mark.unit
 

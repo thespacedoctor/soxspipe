@@ -42,17 +42,9 @@ from soxspipe.commonutils.set_of_files import ImageFileCollection
 from soxspipe.commonutils.specutils_calls import generic_continuum_fit, spectrum1d
 from soxspipe.recipes.base_recipe import base_recipe
 from tests.factories import instrument_header, pipeline_settings, raw_fits
-from tests.unit.test_base_recipe_output_characterization import _keyword_recipe, _raw_frame_table
-from tests.unit.test_base_recipe_prepare_frame_characterization import _bad_pixel_map, _raw_frame, _recipe
-from tests.unit.test_soxs_mflat_verification_characterization import (
-    _bare_recipe as _bare_mflat_recipe,
-)
-from tests.unit.test_soxs_mflat_verification_characterization import (
-    _stub_basics as _stub_mflat_basics,
-)
-from tests.unit.test_soxs_mflat_verification_characterization import (
-    _VerificationInventory,
-)
+from tests.factories.keyword_recipes import keyword_recipe, raw_frame_table_with_calibration
+from tests.factories.mflat_verification import VerificationInventory, bare_mflat_recipe, stub_mflat_basics
+from tests.factories.prepared_frames import bad_pixel_map_file, prepare_frame_recipe, raw_frame_file
 
 pytestmark = pytest.mark.unit
 
@@ -84,9 +76,9 @@ def _filters_snapshot() -> list[Any]:
 def test_preparing_a_frame_leaves_the_warning_filters_unchanged(log: Any, tmp_path: Path) -> None:
     """`_prepare_single_frame` installs no process-wide filter."""
     # ARRANGE
-    _bad_pixel_map(tmp_path / "calibrations")
-    recipe = _recipe(log, tmp_path)
-    rawPath = _raw_frame(tmp_path)
+    bad_pixel_map_file(tmp_path / "calibrations")
+    recipe = prepare_frame_recipe(log, tmp_path)
+    rawPath = raw_frame_file(tmp_path)
     filtersBefore = _filters_snapshot()
 
     # ACT
@@ -109,9 +101,9 @@ def test_a_runtime_warning_during_frame_preparation_reaches_the_log(
     recipe's own `.log` file does not take it: that handler excludes WARNING and above by design.
     """
     # ARRANGE
-    _bad_pixel_map(tmp_path / "calibrations")
-    recipe = _recipe(log, tmp_path)
-    rawPath = _raw_frame(tmp_path)
+    bad_pixel_map_file(tmp_path / "calibrations")
+    recipe = prepare_frame_recipe(log, tmp_path)
+    rawPath = raw_frame_file(tmp_path)
     badPixelMask = base_recipe._bad_pixel_mask
 
     def noisy_bad_pixel_mask(self: base_recipe, frame: Any) -> Any:
@@ -134,14 +126,14 @@ def test_verifying_master_flat_inputs_leaves_the_warning_filters_unchanged(
 ) -> None:
     """`soxs_mflat.verify_input_frames` installs no process-wide filter."""
     # ARRANGE
-    _stub_mflat_basics(
+    stub_mflat_basics(
         monkeypatch,
         imageTypes=["LAMP,FLAT"],
         imageTech=["ECHELLE,SLIT"],
         imageCategories=["MASTER_BIAS_VIS", "ORDER_TAB_VIS"],
         arm="VIS",
     )
-    recipe = _bare_mflat_recipe(log, _VerificationInventory())
+    recipe = bare_mflat_recipe(log, VerificationInventory())
     filtersBefore = _filters_snapshot()
 
     # ACT
@@ -280,7 +272,7 @@ def test_stamping_a_product_header_raises_no_hierarch_notice(log: Any, tmp_path:
     # ARRANGE
     calibrationPath = tmp_path / "master_bias.fits"
     calibrationPath.write_bytes(b"synthetic calibration payload")
-    recipe = _keyword_recipe(tmp_path, log, _raw_frame_table(tmp_path, calibrationPath))
+    recipe = keyword_recipe(tmp_path, log, raw_frame_table_with_calibration(tmp_path, calibrationPath))
     recipe.recipeSettings = {"stacked-clipping-sigma": 3.0, "clipping": {"iterations": 2}}
     frame = CCDData(np.zeros((2, 2)), unit=u.electron, meta=instrument_header())
 
