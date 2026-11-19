@@ -81,7 +81,7 @@ def nod_recipe(log, settings, inputFrames, isRequested=False, **recipeKwargs):
     return soxs_nod(log=log, settings=settings, inputFrames=inputFrames, **recipeKwargs)
 
 
-def predicted_nod_product_path(settings, inputFrames, isRequested=False):
+def predicted_nod_product_path(settings, inputFrames, isRequested=False, outputDir=None):
     """*predict the product path of a nodding SOF in the mode the recipe will run in*
 
     The nod mode and the stare mode write their products to different directories, and the stare mode names them with
@@ -92,6 +92,8 @@ def predicted_nod_product_path(settings, inputFrames, isRequested=False):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- the SOF the recipe reduces
     - ``isRequested`` -- True when the command line asked for stare mode. Default *False*
+    - ``outputDir`` -- the ``-o`` output directory the product is predicted under. Default *None*, the workspace in the
+      current working directory
 
     **Return:**
 
@@ -102,5 +104,7 @@ def predicted_nod_product_path(settings, inputFrames, isRequested=False):
     isStandard = is_standard_input(inputFrames)
     isStare = reduces_nod_as_stare(settings, isStandard, isRequested)
     recipeName = ("soxs-stare" if isStare else "soxs-nod") + ("-std" if isStandard else "")
-    productPath, _ = toolkit.predict_product_path(inputFrames, recipeName, NOD_STARE_MARKER if isStare else "")
+    marker = NOD_STARE_MARKER if isStare else ""
+    outputArguments = {"outputDir": outputDir} if outputDir else {}
+    productPath, _ = toolkit.predict_product_path(inputFrames, recipeName, marker, **outputArguments)
     return productPath

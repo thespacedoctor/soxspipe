@@ -165,7 +165,7 @@ def _pool_size_from_cores(cores, multiprocess):
     return poolSize
 
 
-def _exit_if_nod_product_exists(settings, inputFrames, isRequested):
+def _exit_if_nod_product_exists(settings, inputFrames, isRequested, outputDir=None):
     """*print a message and exit with status 0 when the product of a nod or nod_std command already exists*
 
     The product is that of the mode the recipe runs in: the nod mode, or the stare mode that ``--stare`` or the
@@ -176,12 +176,14 @@ def _exit_if_nod_product_exists(settings, inputFrames, isRequested):
     - ``settings`` -- the settings dictionary
     - ``inputFrames`` -- the ``<inputFrames>`` argument of the command
     - ``isRequested`` -- True when the command has ``--stare``
+    - ``outputDir`` -- the ``-o`` output directory, where the recipe writes its product. Default *None*, the workspace
+      in the current working directory
     """
     from soxspipe.commonutils.stare_mode import predicted_nod_product_path
 
     if not (len(inputFrames) > 3 and inputFrames.split(".")[-1].lower() == "sof"):
         return
-    productPath = predicted_nod_product_path(settings, inputFrames, isRequested)
+    productPath = predicted_nod_product_path(settings, inputFrames, isRequested, outputDir)
     if os.path.exists(productPath):
         basename = os.path.basename(productPath)
         print(
@@ -207,6 +209,7 @@ def main(arguments=None):
         # CHANGE INTO WORKSPACE DIRECTORY
         os.chdir(arguments["<workspaceDirectory>"])
     arguments["<workspaceDirectory>"] = "."
+    outputDir = arguments.get("--output")
 
     # setup the command-line util settings
     arguments = None
@@ -216,7 +219,8 @@ def main(arguments=None):
     if isQuickSkip and len(sys.argv[2]) > 3 and sys.argv[2].split(".")[-1].lower() == "sof":
         from soxspipe.commonutils import toolkit
 
-        productPath, startNightDate = toolkit.predict_product_path(sys.argv[2])
+        outputArguments = {"outputDir": outputDir} if outputDir else {}
+        productPath, startNightDate = toolkit.predict_product_path(sys.argv[2], **outputArguments)
         if os.path.exists(productPath):
             basename = os.path.basename(productPath)
             print(
@@ -342,7 +346,7 @@ def main(arguments=None):
         command = (" ").join(sys.argv)
 
         if (a["nod"] or a["nod_std"]) and not a["overwriteFlag"]:
-            _exit_if_nod_product_exists(settings, a["inputFrames"], a["stareFlag"])
+            _exit_if_nod_product_exists(settings, a["inputFrames"], a["stareFlag"], a["outputFlag"])
 
         # ONE SCOPE FOR EVERY SINGLE-RECIPE COMMAND: A RECIPE THAT RAISES MUST NOT LEAVE ITS SCRATCH DIRECTORY BEHIND
         with removing_new_scratch(log, settings):

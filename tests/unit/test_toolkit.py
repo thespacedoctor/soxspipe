@@ -244,6 +244,40 @@ def test_predict_product_path_reads_the_session_and_builds_the_path_from_root_di
     assert not (elsewhere / "sessions").exists()
 
 
+def test_predict_product_path_builds_the_path_under_the_output_directory_where_the_recipe_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    outputDir = tmp_path / "output"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path(
+        "20240102T030405_STARE.sof", recipeName="soxs-stare", outputDir=str(outputDir)
+    )
+
+    # ASSERT
+    assert night == "2024-01-01"
+    assert productPath == (f"{outputDir}/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits")
+    assert not (elsewhere / "sessions").exists()
+    assert not outputDir.exists()
+
+
+def test_predict_product_path_expands_the_home_directory_of_the_output_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    # ACT
+    productPath, _ = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir="~/out")
+
+    # ASSERT
+    assert productPath == f"{tmp_path}/out/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+
+
 @pytest.mark.parametrize(
     ("sofName", "expectedProductName"),
     [

@@ -2034,7 +2034,7 @@ def start_night_date_from_frames(log, settings, inputFrames):
     return start_night_date(Time(earliestMjd, format="mjd", scale="utc")), str(arm).strip()
 
 
-def predict_product_path(sofName, recipeName=False, productMarker="", rootDir="."):
+def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".", outputDir=None):
     """*predict the path of the recipe product from a given SOF name*
 
     **Key Arguments:**
@@ -2045,6 +2045,10 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
       reduction of a nodding SOF uses ``_STAREMODE``). Default ""
     - ``rootDir`` -- the workspace root. The session is read from it, and a root other than *"."* is prefixed to the
       product path. Default *"."*, the current working directory
+    - ``outputDir`` -- the output directory of the ``-o`` option, the ``workspace-root-dir`` the recipe runs with. The
+      recipe writes its product to ``<outputDir>/reduced/<night>/<recipe>/``, so the path is predicted there, and
+      ``rootDir`` and the session are not read. A leading ``~`` is expanded. Default *None*, which predicts under
+      ``rootDir``
 
     **Return:**
 
@@ -2097,6 +2101,16 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
             print("Could not determine OBSDATE from sof filename")
             pass
 
+    if "_STARE_STD" in sofName or "_NOD_STD" in sofName:
+        sofName += productMarker + "_RESP"
+    elif "_STARE" in sofName or "_NOD" in sofName:
+        sofName += productMarker + "_EXTRACTED_MERGED"
+    productFile = f"{startNightDate}/{recipeName.replace('_', '-')}/{sofName}.fits"
+
+    if outputDir:
+        productPath = os.path.join(os.path.expanduser(outputDir), "reduced", productFile)
+        return productPath.replace("//", "/"), startNightDate
+
     from fundamentals.logs import emptyLogger
 
     from soxspipe.commonutils import data_organiser
@@ -2106,17 +2120,7 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
     currentSession, allSessions = do.session_list(silent=True)
     do.close()
 
-    if "_STARE_STD" in sofName or "_NOD_STD" in sofName:
-        sofName += productMarker + "_RESP"
-    elif "_STARE" in sofName or "_NOD" in sofName:
-        sofName += productMarker + "_EXTRACTED_MERGED"
-    productPath = (
-        f"./sessions/{currentSession}/reduced/{startNightDate}/"
-        + recipeName.replace("_", "-")
-        + "/"
-        + sofName
-        + ".fits"
-    )
+    productPath = f"./sessions/{currentSession}/reduced/{productFile}"
     productPath = productPath.replace("//", "/")
     productPath = path_under_root(productPath, rootDir)
 

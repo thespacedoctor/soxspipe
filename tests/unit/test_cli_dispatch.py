@@ -1414,3 +1414,134 @@ def test_main_does_not_skip_a_nod_command_with_an_existing_product_when_overwrit
 
     # ASSERT
     assert len(calls["nod"]) == 1
+
+
+OUTPUT_DIR_CASES = [
+    pytest.param(
+        "nod",
+        "soxs_nod",
+        "soxs-nod",
+        "20251211T123456_NOD_OBJ",
+        "20251211T123456_NOD_OBJ_EXTRACTED_MERGED.fits",
+        id="nod",
+    ),
+    pytest.param(
+        "mbias", "soxs_mbias", "soxs-mbias", "20251211T123456_MBIAS", "20251211T123456_MBIAS.fits", id="mbias"
+    ),
+]
+
+
+def _touch_product(root: Path, layout: str, recipeDir: str, productName: str) -> Path:
+    """Create an empty product under ``root`` in the ``layout`` directory and return its path."""
+    path = root / layout / "2025-12-10" / recipeDir / productName
+    path.parent.mkdir(parents=True)
+    path.touch()
+    return path
+
+
+def _run_with_recorded_recipe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    argv: list[str],
+    recipeAttribute: str,
+) -> list[dict[str, object]]:
+    """Run the CLI in a ``tmp_path/workspace`` working directory, and return the constructor calls of the recipe."""
+    constructorCalls: list[dict[str, object]] = []
+
+    class RecordingRecipe:
+        def __init__(self, **kwargs: object) -> None:
+            constructorCalls.append(kwargs)
+
+        def produce_product(self) -> str:
+            return "product.fits"
+
+    monkeypatch.setattr(import_module("soxspipe.recipes"), recipeAttribute, RecordingRecipe)
+    try:
+        _run_cli(monkeypatch, tmp_path, argv, currentSession="S1")
+    except SystemExit as error:
+        assert error.code == 0
+    return constructorCalls
+
+
+@pytest.mark.parametrize(("command", "recipeAttribute", "recipeDir", "sofStem", "productName"), OUTPUT_DIR_CASES)
+def test_main_skips_a_command_whose_product_exists_only_under_the_output_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    recipeAttribute: str,
+    recipeDir: str,
+    sofStem: str,
+    productName: str,
+) -> None:
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    outputDir = tmp_path / "output"
+    _touch_product(outputDir, "reduced", recipeDir, productName)
+
+    # ACT
+    calls = _run_with_recorded_recipe(
+        monkeypatch, tmp_path, ["soxspipe", command, f"{sofStem}.sof", "-o", str(outputDir)], recipeAttribute
+    )
+
+    # ASSERT
+    assert calls == []
+    assert "already exists" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("command", "recipeAttribute", "recipeDir", "sofStem", "productName"), OUTPUT_DIR_CASES)
+def test_main_runs_a_command_whose_product_exists_only_in_the_working_directory_when_output_is_given(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    recipeAttribute: str,
+    recipeDir: str,
+    sofStem: str,
+    productName: str,
+) -> None:
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    _touch_product(workspace, "sessions/S1/reduced", recipeDir, productName)
+    outputDir = tmp_path / "output"
+    outputDir.mkdir()
+
+    # ACT
+    calls = _run_with_recorded_recipe(
+        monkeypatch, tmp_path, ["soxspipe", command, f"{sofStem}.sof", "-o", str(outputDir)], recipeAttribute
+    )
+
+    # ASSERT
+    assert len(calls) == 1
+    assert "already exists" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(("command", "recipeAttribute", "recipeDir", "sofStem", "productName"), OUTPUT_DIR_CASES)
+def test_main_skips_a_command_whose_product_exists_in_the_working_directory_session_without_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    recipeAttribute: str,
+    recipeDir: str,
+    sofStem: str,
+    productName: str,
+) -> None:
+    # ARRANGE
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.chdir(workspace)
+    _touch_product(workspace, "sessions/S1/reduced", recipeDir, productName)
+
+    # ACT
+    calls = _run_with_recorded_recipe(
+        monkeypatch, tmp_path, ["soxspipe", command, f"{sofStem}.sof", "-s", "soxspipe.yaml"], recipeAttribute
+    )
+
+    # ASSERT
+    assert calls == []
+    assert "already exists" in capsys.readouterr().out
