@@ -149,8 +149,11 @@ def test_every_prepare_warns_again_while_the_skipped_frame_stays_in_the_root(log
     secondOrganiser.close()
 
     # ASSERT
-    assert len(_warnings(log)) == 2
+    warnings = _warnings(log)
+    assert len(warnings) == 2
+    assert all(str(root / "frame1.fits") in w and str(archived.resolve()) in w for w in warnings)
     assert (root / "frame1.fits").is_file()
+    assert list((root / "misc").iterdir()) == []
     assert archived.read_bytes() == archivedBytes
 
 
@@ -179,3 +182,34 @@ def test_a_destination_that_appears_after_the_filter_is_not_replaced_by_the_move
     [warning] = _warnings(log)
     assert str(root / "frame1.fits") in warning
     assert str(archived.resolve()) in warning
+
+
+def test_a_dangling_link_that_appears_after_the_filter_is_not_written_through_by_the_move(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE FILTER SEES A FREE DESTINATION, THEN A LINK TO A MISSING FILE TAKES ITS PLACE
+    organiser = workspace_organiser(tmp_path, log=log)
+    root = Path(organiser.rootDir)
+    rootFrame = harvestable_raw_fits(root / "frame1.fits")
+    rootBytes = rootFrame.read_bytes()
+    linkTarget = tmp_path / "elsewhere" / "frame1.fits"
+    linkTarget.parent.mkdir()
+    destination = root / "raw" / NIGHT / "frame1.fits"
+
+    def filter_then_link(frames: pd.DataFrame) -> pd.DataFrame:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.symlink_to(linkTarget)
+        return frames
+
+    monkeypatch.setattr(organiser, "_without_overwriting_frames", filter_then_link)
+
+    # ACT
+    organiser.prepare(report=False)
+
+    # ASSERT
+    indexed = _indexed_files(organiser)
+    organiser.close()
+    assert not linkTarget.exists()
+    assert rootFrame.read_bytes() == rootBytes
+    assert indexed == []
+    assert any(str(root / "frame1.fits") in warning for warning in _warnings(log))

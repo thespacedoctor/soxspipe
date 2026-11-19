@@ -304,8 +304,7 @@ class data_organiser:
         self.pinnedConsumerNames = {}
         # THE TEMP TABLE THE QC-RANGE QUERIES READ FAILING-QC SOFS FROM WHILE A REBUILD RESTORES STATUSES, ELSE None
         self.failedQcSnapshot = None
-        # ROOT FRAMES THAT `prepare` HELD BACK BECAUSE THEIR DESTINATION IS TAKEN; THE MISC SWEEP LEAVES THEM (DY-2262)
-        self.heldRootFrames = set()
+        self._reset_held_root_frames()
 
         # EXPAND HOME PATHS BEFORE DERIVING ANY WORKSPACE LOCATIONS
         rootDir = expanduser(rootDir)
@@ -585,7 +584,7 @@ class data_organiser:
         """
         self.log.debug("starting the ``prepare`` method")
 
-        self.heldRootFrames = set()
+        self._reset_held_root_frames()
         self._refuse_loose_frames_in_external_raw_folder()
 
         backupPath = None
@@ -997,16 +996,7 @@ class data_organiser:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
                                 databaseDeletes.append(realDest)
                             elif self._would_move(source, destination):
-                                if os.path.lexists(realDest):
-                                    # THE DESTINATION APPEARED AFTER THE FILTER RAN: KEEP THE FRAME OUT OF THE INDEX TOO
-                                    self._hold_root_frame(n, realDest)
-                                    self.conn.execute(
-                                        "DELETE FROM raw_frames WHERE rowid = "
-                                        "(SELECT max(rowid) FROM raw_frames WHERE filepath = ? AND file = ?)",
-                                        (p, n),
-                                    )
-                                else:
-                                    shutil.move(realSource, realDest)
+                                self._move_root_frame_unless_taken(destination, realSource, realDest, n, p)
                             if os.path.islink(source):
                                 self._remove_workspace_entry(n)
 
@@ -1076,10 +1066,48 @@ class data_organiser:
         realSource = os.path.realpath(source)
         return not self._is_dated_raw_frame(realSource) and realSource != os.path.realpath(destination)
 
+    def _reset_held_root_frames(self) -> None:
+        """*forget the root frames held back by an earlier `prepare`*
+
+        ``heldRootFrames`` holds the file names of the root frames that `prepare` left in the workspace root because
+        their ``raw/<date>/`` destination is taken. The sweep of unfiled root files skips them (DY-2262).
+        """
+        self.heldRootFrames = set()
+
+    def _move_root_frame_unless_taken(
+        self, destination: str, realSource: str, realDest: str, name: str, filepath: str
+    ) -> None:
+        """*move a root frame to its dated folder, unless a file or link has taken the place since the filter ran*
+
+        The destination is checked again here, as a link and as its resolved target, so a dangling link that appeared
+        after `_without_overwriting_frames` is not written through. A taken destination holds the frame and removes
+        the ``raw_frames`` row that was just added for it.
+
+        **Key Arguments:**
+
+        - ``destination`` -- where the frame belongs, as a path under the workspace
+        - ``realSource`` -- the resolved path of the root frame
+        - ``realDest`` -- the resolved destination
+        - ``name`` -- the frame's path relative to the workspace root
+        - ``filepath`` -- the ``filepath`` stored for the frame in ``raw_frames``
+        """
+        if os.path.lexists(destination) or os.path.lexists(realDest):
+            self._hold_root_frame(name, realDest)
+            self.conn.execute(
+                "DELETE FROM raw_frames WHERE rowid = "
+                "(SELECT max(rowid) FROM raw_frames WHERE filepath = ? AND file = ?)",
+                (filepath, name),
+            )
+            return
+        # A FILE CAN STILL APPEAR BETWEEN THE CHECK ABOVE AND THE MOVE, AND THE MOVE THEN REPLACES IT. THIS WINDOW IS
+        # ACCEPTED: THE ARCHIVE IS OFTEN ON ANOTHER VOLUME, SO `os.link` IS NOT AN OPTION, AND SOXSPIPE SUPPORTS ONE
+        # PROCESS PER WORKSPACE (DY-1129)
+        shutil.move(realSource, realDest)
+
     def _hold_root_frame(self, name: str, takenPath: str) -> None:
         """*leave a root frame where it is, because its destination is taken, and say so*
 
-        The name goes in ``heldRootFrames``, so the sweep of unfiled root files leaves the frame in the workspace
+        The file name goes in ``heldRootFrames``, so the sweep of unfiled root files leaves the frame in the workspace
         root. The warning comes once per `prepare`, and every later `prep` finds the frame, and warns, again.
 
         **Key Arguments:**
