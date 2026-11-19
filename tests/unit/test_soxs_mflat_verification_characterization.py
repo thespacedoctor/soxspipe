@@ -351,6 +351,8 @@ def test_a_lamp_type_with_two_distinct_exptimes_raises_the_exptime_message(
     with pytest.raises(TypeError) as excinfo:
         recipe.verify_input_frames()
     assert str(excinfo.value) == "Input LAMP,FLAT frames for soxspipe mflat need to have a unique exptime"
+    # THE CHECK ASKS FOR UNIQUE VALUES, OR TWO EQUAL EXPOSURE TIMES WOULD LOOK LIKE TWO
+    assert [request for collection in inventory.subCollections for request in collection.uniqueRequests] == [True]
 
 
 def test_the_exptime_check_filters_each_lamp_type_in_order_on_a_passing_call(

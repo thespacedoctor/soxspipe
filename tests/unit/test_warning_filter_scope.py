@@ -18,6 +18,7 @@ import ast
 import importlib
 import logging
 import warnings
+from collections import OrderedDict
 from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -447,16 +448,19 @@ def test_a_record_valued_keyword_is_written_as_astropy_writes_it() -> None:
     assert header.tostring() == expected.tostring()
 
 
-def test_a_plain_dict_header_keeps_the_keyword_it_was_given() -> None:
-    """A dict has no `HIERARCH` cards, so reading the key back must use the same text."""
+def test_a_dict_header_gets_the_hierarch_keyword_so_astropy_raises_no_notice_when_it_becomes_a_header() -> None:
+    """A CCDData with a plain dict header is turned into a `fits.Header` on write; the long key must not warn then."""
     # ARRANGE
-    meta: dict[str, object] = {}
+    frame = CCDData(np.zeros((2, 2)), unit=u.adu, meta=OrderedDict())
 
     # ACT
-    set_header_card(meta, "ESO DET BINX", 2, "binning in x")
+    set_header_card(frame.header, "ESO PRO CATG", "MASTER_BIAS_VIS")
+    raised = _raised_while(lambda: fits.Header(frame.meta))
 
     # ASSERT
-    assert meta == {"ESO DET BINX": (2, "binning in x")}
+    assert _of_category(raised, VerifyWarning) == []
+    assert fits.Header(frame.meta)["ESO PRO CATG"] == "MASTER_BIAS_VIS"
+    assert list(frame.meta) == ["HIERARCH ESO PRO CATG"]
 
 
 def test_reading_a_frame_still_shows_a_wcs_fix_that_is_not_one_of_the_known_notes(tmp_path: Path) -> None:
@@ -478,7 +482,8 @@ def test_reading_a_frame_still_shows_a_wcs_fix_that_is_not_one_of_the_known_note
     raised = _raised_while(lambda: read_ccd(str(framePath), hdu=0, unit=u.adu))
 
     # ASSERT
-    assert [str(warning.message) for warning in _of_category(raised, FITSFixedWarning)] != []
+    messages = [str(warning.message) for warning in _of_category(raised, FITSFixedWarning)]
+    assert any("MJD-OBS and DATE-OBS are inconsistent" in message for message in messages)
 
 
 def test_saving_a_qc_plot_with_collapsed_axes_raises_no_layout_notice(tmp_path: Path) -> None:
@@ -551,10 +556,11 @@ def test_every_header_card_the_package_writes_goes_through_the_helper() -> None:
     assert offenders == []
 
 
-def test_the_nod_recipe_reads_its_frames_through_read_ccd() -> None:
+@pytest.mark.parametrize("recipeFile", ["soxs_nod.py", "soxs_offset.py"])
+def test_the_nodding_recipes_read_their_frames_through_read_ccd(recipeFile: str) -> None:
     """`CCDData.read` called directly would show astropy's WCS notes that `read_ccd` ignores."""
     # ARRANGE
-    tree = ast.parse((PACKAGE_PATH / "recipes" / "soxs_nod.py").read_text())
+    tree = ast.parse((PACKAGE_PATH / "recipes" / recipeFile).read_text())
 
     # ACT
     directReads = [

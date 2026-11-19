@@ -16,9 +16,10 @@ class SubCollection:
     def __init__(self, files: list[str], exptimes: list[float]) -> None:
         self.files = files
         self._exptimes = exptimes
+        self.uniqueRequests: list[bool] = []
 
     def values(self, keyword: str, unique: bool) -> list[float]:
-        assert unique is True
+        self.uniqueRequests.append(unique)
         return list(dict.fromkeys(self._exptimes))
 
 
@@ -40,13 +41,17 @@ class VerificationInventory:
         self.summary = summary
         self._matches = {} if matches is None else matches
         self.filterCalls: list[dict[str, str]] = []
+        self.subCollections: list[SubCollection] = []
 
     def filter(self, **filters: str) -> SubCollection:
         self.filterCalls.append(dict(filters))
         matched = self._matches.get(tuple(sorted(filters.items())))
         if matched is None:
-            return SubCollection(files=[], exptimes=[])
-        return SubCollection(files=matched["files"], exptimes=matched.get("exptimes", []))
+            subCollection = SubCollection(files=[], exptimes=[])
+        else:
+            subCollection = SubCollection(files=matched["files"], exptimes=matched.get("exptimes", []))
+        self.subCollections.append(subCollection)
+        return subCollection
 
 
 def stub_mflat_basics(

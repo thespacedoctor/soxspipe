@@ -221,7 +221,8 @@ def hierarch(keyword: str) -> str:
 
     Writing ``header["ESO DET BINX"]`` makes astropy store a ``HIERARCH`` card and warn that it did. Writing
     ``header[hierarch("ESO DET BINX")]`` stores the same card and raises no warning. A record-valued keyword such as
-    ``DP1.AXIS.1`` (a dot, no space) is left as it is, because astropy stores it as ``DP1 = 'AXIS.1: 1'``.
+    ``DP1.AXIS.1`` (a dot, no space) is left as it is, because astropy stores it as ``DP1 = 'AXIS.1: 1'``. That holds
+    for a numeric value. Astropy stores a string value under such a keyword as a ``HIERARCH`` card, with its warning.
 
     **Key Arguments:**
 
@@ -248,8 +249,9 @@ def hierarch(keyword: str) -> str:
 def set_header_card(header: MutableMapping[str, Any], keyword: str, value: Any, comment: str | None = None) -> None:
     """*set one header card, naming a long ESO keyword as a* ``HIERARCH`` *card so astropy does not warn*
 
-    Every card the package writes goes through here, so a new writer cannot forget the prefix. A plain dict has no
-    ``HIERARCH`` cards, so it keeps the keyword it was given.
+    Every card the package writes goes through here, so a new writer cannot forget the prefix. A dict header gets the
+    prefixed key too, so that ``fits.Header(meta)`` raises no warning when a ``CCDData`` is written. Read such a key
+    back as ``HIERARCH ESO ...``, or after the dict has become a ``fits.Header``.
 
     **Key Arguments:**
 
@@ -265,8 +267,7 @@ def set_header_card(header: MutableMapping[str, Any], keyword: str, value: Any, 
     set_header_card(header, "ESO QC RON", 3.5, "read noise [e-]")
     ```
     """
-    key = hierarch(keyword) if isinstance(header, fits.Header) else keyword
-    header[key] = value if comment is None else (value, comment)
+    header[hierarch(keyword)] = value if comment is None else (value, comment)
 
 
 def _read_ccd_quietly(source: str | os.PathLike | io.BytesIO, **kwargs: Any) -> CCDData:
