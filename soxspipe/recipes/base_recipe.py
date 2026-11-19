@@ -331,7 +331,8 @@ class base_recipe:
 
         Sets ``self.conn`` and ``self.status``. The stored status is set to
         'fail' up front, so a recipe that crashes leaves a failure behind
-        rather than its previous result.
+        rather than its previous result. If that write errors, the connection
+        is closed and a ``RuntimeError`` stops the recipe (DY-2263).
         """
         from soxspipe.commonutils.workspace_database import connect_workspace_database
 
@@ -359,19 +360,23 @@ class base_recipe:
             statusColumn = validate_sql_identifier(f"status_{self.currentSession}", "session status column")
             sqlQuery = f"select {statusColumn} as status from product_frames where sof = ?"  # noqa: S608
             c.execute(sqlQuery, (f"{self.sofName}.sof",))
-            try:
-                self.status = c.fetchone()["status"]
-            except TypeError as e:
-                self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
+            row = c.fetchone()
+            if row is None:
+                # NO ROW FOR THIS SOF, SO NO EARLIER STATUS CAN GO STALE
+                self.log.warning(
+                    f"__init__: `self.status = c.fetchone()['status']` failed, continuing: "
+                    f"no product_frames row for `{self.sofName}.sof`"
+                )
                 self.status = None
             else:
+                self.status = row["status"]
                 self._write_start_of_run_fail_status(c, statusColumn)
 
             c.close()
 
         return
 
-    def _write_start_of_run_fail_status(self, cursor, statusColumn):
+    def _write_start_of_run_fail_status(self, cursor: sqlite3.Cursor, statusColumn: str) -> None:
         """*write* ``fail`` *to this recipe's product row, and stop the recipe if the write errors*
 
         **Key Arguments:**
@@ -389,8 +394,13 @@ class base_recipe:
         try:
             cursor.execute(sqlQuery, (sofFile,))
         except sqlite3.Error as e:
-            cursor.close()
-            self.conn.close()
+            from contextlib import suppress
+
+            # BEST-EFFORT CLEANUP, SO A FAILING CLOSE CANNOT HIDE THE WRITE ERROR
+            with suppress(sqlite3.Error):
+                cursor.close()
+            with suppress(sqlite3.Error):
+                self.conn.close()
             raise RuntimeError(
                 f"The recipe could not write the `fail` status for `{sofFile}` to the workspace database "
                 f"and was stopped, because a crash would leave the status of an earlier run in place: {e}"

@@ -307,15 +307,17 @@ def test_a_failed_start_of_run_status_write_stops_the_recipe_and_leaves_the_stor
     holder = _lock_database_for_writes(databasePath)
 
     # ACT
-    with pytest.raises(RuntimeError, match="could not write the `fail` status") as raised:
-        base_recipe(
-            log=log,
-            settings=_settings(tmp_path),
-            inputFrames=str(tmp_path / "synthetic.sof"),
-            recipeName="soxs-mbias",
-        )
-    holder.rollback()
-    holder.close()
+    try:
+        with pytest.raises(RuntimeError, match="could not write the `fail` status") as raised:
+            base_recipe(
+                log=log,
+                settings=_settings(tmp_path),
+                inputFrames=str(tmp_path / "synthetic.sof"),
+                recipeName="soxs-mbias",
+            )
+    finally:
+        holder.rollback()
+        holder.close()
 
     # ASSERT
     assert isinstance(raised.value.__cause__, sqlite3.OperationalError)
