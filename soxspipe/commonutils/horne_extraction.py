@@ -3307,25 +3307,18 @@ def compute_extractions(
     )
 
     # CALCULATE HORNE 86 NUMERATOR (EQU 8)
-    orderRectifiedImages["horneNumerator"] = np.ma.masked_array(
+    horneNumerator = np.ma.masked_array(
         orderRectifiedImages["fluxRaw"] * orderRectifiedImages["objectProfile"] / orderRectifiedImages["variance"],
         mask=optimalMask,
     )
-    horneNumeratorSum = orderRectifiedImages["horneNumerator"].T.sum(axis=1)
+    horneNumeratorSum = horneNumerator.T.sum(axis=1)
 
     # CALCULATE HORNE 86 DENOMINATOR (EQU 8)
-    orderRectifiedImages["horneDenominator"] = np.ma.masked_array(
+    horneDenominator = np.ma.masked_array(
         np.power(orderRectifiedImages["objectProfile"], 2) / orderRectifiedImages["variance"],
         mask=optimalMask,
     )
-    horneDenominatorSum = orderRectifiedImages["horneDenominator"].T.sum(axis=1)
-
-    orderRectifiedImages["optimalExtraction"] = np.ma.masked_array(
-        orderRectifiedImages["horneNumerator"] / orderRectifiedImages["horneDenominator"],
-        mask=optimalMask,
-    )
-
-    # plot_rectified_images(orderRectifiedImages=orderRectifiedImages, order=order)
+    horneDenominatorSum = horneDenominator.T.sum(axis=1)
 
     wavelengthMasked = np.ma.masked_array(orderRectifiedImages["wavelength"], mask=orderRectifiedImages["mask"])
     crossDispersionSlicesDF["wavelengthMean"] = np.ma.mean(wavelengthMasked.T, axis=1)
