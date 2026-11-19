@@ -81,6 +81,8 @@ def sort_keywords(log, header):
     header = sort_keywords(log=log, header=frame.header)
     ```
     """
+    from soxspipe.commonutils.fits_headers import hierarch
+
     log.debug("starting the ``sort_keywords`` method")
 
     # NEATLY SORT KEYWORDS
@@ -94,7 +96,7 @@ def sort_keywords(log, header):
             if k == "COMMENT":
                 header[k] = v
             else:
-                header[k] = (v, c)
+                header[hierarch(k)] = (v, c)
 
     log.debug("completed the ``sort_keywords`` method")
     return header
@@ -116,6 +118,8 @@ def add_qc_to_header(header, qc):
     """
     import numpy as np
 
+    from soxspipe.commonutils.fits_headers import hierarch
+
     for n, v, c, h in zip(
         qc["qc_name"].values,
         qc["qc_value"].values,
@@ -125,7 +129,7 @@ def add_qc_to_header(header, qc):
     ):
         isMissing = isinstance(v, (float, np.floating)) and not np.isfinite(v)
         if h and not isMissing:
-            header[f"ESO QC {n}".upper()] = (v, c)
+            header[hierarch(f"ESO QC {n}".upper())] = (v, c)
     return header
 
 

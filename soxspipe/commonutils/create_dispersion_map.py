@@ -2222,6 +2222,7 @@ class create_dispersion_map:
         import pandas as pd
         from astropy.table import Table
 
+        from soxspipe.commonutils.fits_headers import hierarch
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         arm = self.arm
@@ -2306,10 +2307,10 @@ class create_dispersion_map:
         # SET PROCESSING TECHNIQUE BASED ON FRAME TYPE
         if slitDeg == 0 or slitDeg == [0, 0]:
             # SINGLE PINHOLE FRAME
-            header[kw("PRO_TECH").upper()] = "ECHELLE,PINHOLE"
+            header[hierarch(kw("PRO_TECH").upper())] = "ECHELLE,PINHOLE"
         else:
             # MULTI-PINHOLE FRAME
-            header[kw("PRO_TECH").upper()] = "ECHELLE,MULTI-PINHOLE"
+            header[hierarch(kw("PRO_TECH").upper())] = "ECHELLE,MULTI-PINHOLE"
         filePath = f"{self.productDir}/{filename}"
 
         # CREATE BINARY TABLE WITH COEFFICIENT DICTIONARIES
@@ -2325,9 +2326,9 @@ class create_dispersion_map:
         t = t[cols]
 
         # UPDATE HEADER WITH STANDARD PROCESSING KEYWORDS
-        header[kw("SEQ_ARM").upper()] = arm
-        header[kw("PRO_TYPE").upper()] = "REDUCED"
-        header[kw("PRO_CATG").upper()] = f"DISP_TAB_{arm}".upper()
+        header[hierarch(kw("SEQ_ARM").upper())] = arm
+        header[hierarch(kw("PRO_TYPE").upper())] = "REDUCED"
+        header[hierarch(kw("PRO_CATG").upper())] = f"DISP_TAB_{arm}".upper()
         self.dispMapHeader = header
 
         write_fits_table_to_disk(

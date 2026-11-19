@@ -1967,9 +1967,9 @@ class soxs_nod(base_recipe):
         import pandas as pd
         from astropy import units as u
         from astropy.table import Table
-        from specutils import Spectrum1D
 
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+        from soxspipe.commonutils.specutils_calls import spectrum1d
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
         )
@@ -2019,7 +2019,7 @@ class soxs_nod(base_recipe):
         flux_orig = groupedDataframe["FLUX_COUNTS"].values * u.electron
         # THE RESULT IS UNUSED, BUT BUILDING IT VALIDATES THE GROUPED FLUX AND WAVELENGTH ARRAYS AGAINST EACH
         # OTHER AND RAISES WHEN THEY DISAGREE. DELETING IT WOULD REMOVE THAT CHECK.
-        spectrum_orig = Spectrum1D(  # noqa: F841
+        spectrum_orig = spectrum1d(  # noqa: F841
             flux=flux_orig,
             spectral_axis=groupedDataframe["WAVE"].values * u.nm,
             bin_specification="center",

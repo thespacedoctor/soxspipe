@@ -930,14 +930,15 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``names`` -- their raw file names: the prepared file name without its `_pre` suffix
         """
         from astropy import units as u
-        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         frames = []
         names = []
         for filters in filterList:
             for path in self.inputFrames.files_filtered(include_path=True, **filters):
                 frames.append(
-                    CCDData.read(
+                    read_ccd(
                         path,
                         hdu=0,
                         unit=u.electron,

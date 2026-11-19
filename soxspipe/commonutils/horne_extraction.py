@@ -1823,16 +1823,15 @@ class horne_extraction(base_util):
         import numpy as np
         from astropy import units as u
         from scipy.signal import find_peaks, savgol_filter
-        from specutils import Spectrum1D
-        from specutils.fitting import fit_generic_continuum
+        from soxspipe.commonutils.specutils_calls import generic_continuum_fit, spectrum1d
 
         skyValsOriginal = sky[valid].to_numpy()
         waveVals = wave.loc[valid].to_numpy()
         objectVals = objectFlux.loc[valid].to_numpy()
         skyVals = savgol_filter(sky[valid], window_length=3, polyorder=2)
 
-        spec = Spectrum1D(flux=skyValsOriginal * u.Unit(""), spectral_axis=waveVals * u.nm)
-        cont_fit = fit_generic_continuum(spec)
+        spec = spectrum1d(flux=skyValsOriginal * u.Unit(""), spectral_axis=waveVals * u.nm)
+        cont_fit = generic_continuum_fit(spec)
         continuum = cont_fit(waveVals * u.nm)
         skyVals = skyValsOriginal / continuum.value
 
@@ -2389,8 +2388,8 @@ class horne_extraction(base_util):
         import numpy as np
         import pandas as pd
         from astropy.nddata import VarianceUncertainty
-        from specutils import Spectrum1D
 
+        from soxspipe.commonutils.specutils_calls import spectrum1d
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
         logging.getLogger().setLevel(logging.INFO + 5)
@@ -2477,7 +2476,7 @@ class horne_extraction(base_util):
         extractedOrdersDF["wavelengthMean"] = extractedOrdersDF["wavelengthMean"].values * u.nm
 
         flux_orig = extractedOrdersDF["extractedFluxOptimal"].values
-        spectrum_orig = Spectrum1D(
+        spectrum_orig = spectrum1d(
             flux=flux_orig,
             spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
@@ -2485,7 +2484,7 @@ class horne_extraction(base_util):
         )
 
         sky_orig = extractedOrdersDF["skyFlux"].values * u.electron
-        spectrumSky_orig = Spectrum1D(
+        spectrumSky_orig = spectrum1d(
             flux=sky_orig,
             spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             bin_specification="center",

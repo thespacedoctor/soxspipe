@@ -2768,6 +2768,8 @@ class base_recipe:
         """
         import math
 
+        from soxspipe.commonutils.fits_headers import hierarch
+
         kw = self.kw
 
         iterator = 1
@@ -2782,8 +2784,8 @@ class base_recipe:
                 valueLen = 80 - len(f"ESO PRO REC1 RAW{iterator} NAME" + "HIERARCH  = '")
                 if len(f) > valueLen:
                     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
-                frame.header[f"ESO PRO REC1 RAW{iterator} NAME"] = f[:valueLen]
-                frame.header[f"ESO PRO REC1 RAW{iterator} CATG"] = t
+                frame.header[hierarch(f"ESO PRO REC1 RAW{iterator} NAME")] = f[:valueLen]
+                frame.header[hierarch(f"ESO PRO REC1 RAW{iterator} CATG")] = t
                 iterator += 1
         return
 
@@ -2808,6 +2810,8 @@ class base_recipe:
 
         from astropy.utils.data import compute_hash
 
+        from soxspipe.commonutils.fits_headers import hierarch
+
         kw = self.kw
 
         iterator = 1
@@ -2822,9 +2826,9 @@ class base_recipe:
                 valueLen = 80 - len(f"ESO PRO REC1 CAL{iterator} NAME" + "HIERARCH  = '")
                 # if len(f) > valueLen:
                 #     self.log.warning(f"The filename {f} has been trucated to {f[:valueLen]} in the FITS header")
-                frame.header[f"ESO PRO REC1 CAL{iterator} NAME"] = f[:valueLen]
-                frame.header[f"ESO PRO REC1 CAL{iterator} CATG"] = c
-                frame.header[f"ESO PRO REC1 CAL{iterator} DATAMD5"] = compute_hash(p)
+                frame.header[hierarch(f"ESO PRO REC1 CAL{iterator} NAME")] = f[:valueLen]
+                frame.header[hierarch(f"ESO PRO REC1 CAL{iterator} CATG")] = c
+                frame.header[hierarch(f"ESO PRO REC1 CAL{iterator} DATAMD5")] = compute_hash(p)
                 iterator += 1
         return
 
@@ -2844,6 +2848,8 @@ class base_recipe:
         self._stamp_recipe_parameter_records(frame)
         ```
         """
+        from soxspipe.commonutils.fits_headers import hierarch
+
         iterator = 1
         for k, v in self.recipeSettings.items():
             if k.lower() in ["uvb", "vis", "nir", "qc-acceptable-ranges"]:
@@ -2853,13 +2859,13 @@ class base_recipe:
                 if isinstance(v, list):
                     v = ", ".join(map(str, v)).strip()
 
-                frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k[:40]
-                frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v
+                frame.header[hierarch(f"ESO PRO REC1 PARAM{iterator} NAME")] = k[:40]
+                frame.header[hierarch(f"ESO PRO REC1 PARAM{iterator} VALUE")] = v
                 iterator += 1
             else:
                 for k2, v2 in v.items():
-                    frame.header[f"ESO PRO REC1 PARAM{iterator} NAME"] = k2[:40]
-                    frame.header[f"ESO PRO REC1 PARAM{iterator} VALUE"] = v2
+                    frame.header[hierarch(f"ESO PRO REC1 PARAM{iterator} NAME")] = k2[:40]
+                    frame.header[hierarch(f"ESO PRO REC1 PARAM{iterator} VALUE")] = v2
                     iterator += 1
         return
 
@@ -2887,6 +2893,7 @@ class base_recipe:
         self.log.debug("starting the ``update_fits_keywords`` method")
 
         import soxspipe.__version__ as version
+        from soxspipe.commonutils.fits_headers import hierarch
 
         arm = self.arm
         kw = self.kw
@@ -2896,13 +2903,15 @@ class base_recipe:
         if "FLAT" in imageType:
             imageType = "FLAT"
 
-        frame.header[kw("SEQ_ARM").upper()] = arm
-        frame.header[kw("PRO_TYPE").upper()] = "REDUCED"
+        frame.header[hierarch(kw("SEQ_ARM").upper())] = arm
+        frame.header[hierarch(kw("PRO_TYPE").upper())] = "REDUCED"
 
         # PROD CATG
         if imageType in ["BIAS", "DARK", "FLAT"]:
-            frame.header[kw("PRO_CATG")] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace("DLAMP", "LAMP")
-            frame.header[kw("PRO_TECH")] = "IMAGE"
+            frame.header[hierarch(kw("PRO_CATG"))] = f"MASTER_{imageType}_{arm}".replace("QLAMP", "LAMP").replace(
+                "DLAMP", "LAMP"
+            )
+            frame.header[hierarch(kw("PRO_TECH"))] = "IMAGE"
 
         # SPEC FORMAT TO PANDAS DATAFRAME
         tableData = self.rawFrames.to_pandas()
@@ -2915,11 +2924,11 @@ class base_recipe:
         self._stamp_recipe_parameter_records(frame)
 
         # SOXSPIPE VERSION
-        frame.header["ESO PRO REC1 PIPE ID"] = f"soxspipe/v{version}"
+        frame.header[hierarch("ESO PRO REC1 PIPE ID")] = f"soxspipe/v{version}"
 
         # RECIPE
         if self.recipeName:
-            frame.header["ESO PRO REC1 ID"] = self.recipeName
+            frame.header[hierarch("ESO PRO REC1 ID")] = self.recipeName
 
         # from tabulate import tabulate
         # print(tabulate(tableData, headers='keys', tablefmt='github'))

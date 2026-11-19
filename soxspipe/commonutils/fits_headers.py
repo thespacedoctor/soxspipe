@@ -28,6 +28,7 @@ Date Created
 import io
 import logging
 import os
+import re
 import shutil
 import subprocess
 import warnings
@@ -36,6 +37,7 @@ from collections import OrderedDict
 import uncompresspy
 from astropy.io import fits
 from astropy.nddata import CCDData
+from astropy.wcs import FITSFixedWarning
 from ccdproc import ImageFileCollection
 
 from soxspipe.commonutils.fits_frame_names import LZW_SUFFIX, is_fits_frame
@@ -45,6 +47,8 @@ GZIP_TIMEOUT_SECONDS = 120
 GZIP_STDERR_LOG_LIMIT = 500
 FITS_CARD_SIZE = 80
 END_CARD = b"END" + b" " * (FITS_CARD_SIZE - 3)
+# A KEYWORD THIS PATTERN MATCHES IS A STANDARD FITS CARD; ANY OTHER KEYWORD IS STORED AS A HIERARCH CARD
+STANDARD_KEYWORD = re.compile(r"[A-Z0-9_-]{1,8}")
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +210,42 @@ def _warn_once_gzip_missing():
     )
 
 
+def hierarch(keyword):
+    """*the keyword with the* ``HIERARCH`` *prefix when FITS cannot hold it as a standard card*
+
+    Writing ``header["ESO DET BINX"]`` makes astropy store a ``HIERARCH`` card and warn that it did. Writing
+    ``header[hierarch("ESO DET BINX")]`` stores the same card and raises no warning.
+
+    **Key Arguments:**
+
+    - ``keyword`` -- the header keyword
+
+    **Return:**
+
+    - ``keyword`` -- the keyword, with ``HIERARCH`` in front when it is longer than 8 characters or holds a character
+      a standard FITS keyword cannot
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.fits_headers import hierarch
+    header[hierarch("ESO QC RON")] = (ron, "read noise")
+    ```
+    """
+    if keyword.startswith("HIERARCH ") or STANDARD_KEYWORD.fullmatch(keyword.upper()):
+        return keyword
+    return f"HIERARCH {keyword}"
+
+
+def _read_ccd_quietly(source, **kwargs):
+    """*``CCDData.read`` with astropy's WCS header notes ignored for this call only*"""
+    with warnings.catch_warnings():
+        # RAW ESO HEADERS CARRY AN OLD `RADECSYS` CARD AND MORE WCS AXES THAN THE IMAGE; ASTROPY FIXES THEM AND SAYS SO,
+        # AND NOBODY CAN CHANGE THE RAW FRAME
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        return CCDData.read(source, **kwargs)
+
+
 def read_ccd(path, **kwargs):
     """*return a CCDData frame, decompressing an LZW frame with the system* ``gzip``
 
@@ -227,19 +267,19 @@ def read_ccd(path, **kwargs):
     - ``frame`` -- the frame, as an ``astropy.nddata.CCDData``
     """
     if not _is_lzw_frame_path(path):
-        return CCDData.read(path, **kwargs)
+        return _read_ccd_quietly(path, **kwargs)
     try:
         data = _decompress_lzw(os.fsdecode(path))
     except FileNotFoundError as e:
         _warn_once_gzip_missing()
         log.debug(f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {e}")
-        return CCDData.read(path, **kwargs)
+        return _read_ccd_quietly(path, **kwargs)
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         log.debug(
             f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {_describe_failure(e)}"
         )
-        return CCDData.read(path, **kwargs)
-    return CCDData.read(io.BytesIO(data), **{**kwargs, "format": "fits"})
+        return _read_ccd_quietly(path, **kwargs)
+    return _read_ccd_quietly(io.BytesIO(data), **{**kwargs, "format": "fits"})
 
 
 class HeaderImageFileCollection(ImageFileCollection):

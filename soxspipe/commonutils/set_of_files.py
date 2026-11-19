@@ -12,8 +12,10 @@ Date Created
 import logging
 import os
 import re
+import warnings
 from os import path
 
+from astropy.utils.exceptions import AstropyUserWarning
 from ccdproc import ImageFileCollection
 
 from soxspipe.commonutils.fits_frame_names import is_fits_frame
@@ -27,6 +29,25 @@ SOF_FITS_PATH = re.compile(r"(.*?\.(?i:fits)(?:\.Z)?)(?=\s|$)")
 
 
 class ImageFileCollection(ImageFileCollection):
+    def filter(self, **kwd):
+        """*the frames that match the header values, with no warning when none do (overrides the ccdproc method)*
+
+        The recipes probe for optional calibrations by filtering and then checking ``files``, so an empty result is
+        routine.
+
+        **Key Arguments:**
+
+        - ``kwd`` -- the header keywords and values to match, as ccdproc's ``filter`` takes them
+
+        **Return:**
+
+        - ``collection`` -- the matching frames, as an ``ImageFileCollection``
+        """
+        with warnings.catch_warnings():
+            # CCDPROC WARNS WHEN A COLLECTION IS EMPTY, AND AN EMPTY RESULT IS ROUTINE FOR THIS CALL
+            warnings.filterwarnings("ignore", message="no FITS files in the collection", category=AstropyUserWarning)
+            return super().filter(**kwd)
+
     def _dict_from_fits_header(self, file_name, input_summary=None, missing_marker=None):
         """*summarise one file's header, keeping keyword case (overrides the ccdproc method)*
 
