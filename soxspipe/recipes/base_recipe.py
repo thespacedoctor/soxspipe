@@ -38,6 +38,11 @@ from soxspipe.commonutils.stare_mode import is_standard_input
 # HERE SO THE DELEGATORS FORWARD THE SAME OBJECT `append_qc` AND
 # `append_product` TEST FOR, AND SO A CALLER MAY PASS `OMITTED` EXPLICITLY.
 from soxspipe.commonutils.toolkit import OMITTED, PREPARED_FRAME_KEYWORD
+from soxspipe.commonutils.unusable_flat_pixels import (
+    flag_unusable_pixels,
+    neutralise_unusable_flat,
+    unusable_flat_pixel_mask,
+)
 from soxspipe.commonutils.workspace_paths import expand_workspace_root
 
 os.environ["TERM"] = "vt100"
@@ -2272,7 +2277,15 @@ class base_recipe:
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")  # noqa: F841
 
         if master_flat != False:  # noqa: E712
-            processedFrame = ccdproc.flat_correct(processedFrame, master_flat, norm_value=1.0, add_keyword=None)
+            # A FLAT PIXEL THAT IS ZERO, NEGATIVE OR NOT FINITE CANNOT FLAT-FIELD THE FRAME (DY-2279)
+            unusableFlat = unusable_flat_pixel_mask(master_flat.data)
+            processedFrame = ccdproc.flat_correct(
+                processedFrame,
+                neutralise_unusable_flat(master_flat, unusableFlat),
+                norm_value=1.0,
+                add_keyword=None,
+            )
+            processedFrame = flag_unusable_pixels(processedFrame, unusableFlat)
             toolkit.frame_to_32(processedFrame)
 
         self.log.debug("completed the ``detrend`` method")

@@ -27,6 +27,7 @@ from soxspipe.commonutils.toolkit import (
     unpack_order_table,
     utcnow_string,
 )
+from soxspipe.commonutils.unusable_flat_pixels import unusable_flat_pixel_mask
 from soxspipe.commonutils.workspace_paths import expand_workspace_root
 
 from .base_recipe import base_recipe
@@ -1363,6 +1364,26 @@ class soxs_mflat(base_recipe):
 
         return normalisedFrames
 
+    @staticmethod
+    def _ratio_to_usable_flat(frameData, flatData):
+        """*divide frame data by the master flat, leaving NaN where the flat is unusable*
+
+        **Key Arguments:**
+
+        - ``frameData`` -- the frame data, or a chunk of it
+        - ``flatData`` -- the master-flat data, with the same shape as ``frameData``
+
+        **Return:**
+
+        - ``ratio`` -- ``frameData / flatData``, NaN where the flat is zero, negative or not finite (DY-2279)
+        """
+        import numpy as np
+
+        usable = ~unusable_flat_pixel_mask(flatData)
+        ratio = np.full(frameData.shape, np.nan, dtype=np.result_type(frameData.dtype, flatData.dtype, np.float32))
+        np.divide(frameData, flatData, out=ratio, where=usable)
+        return ratio
+
     def _normalise_flats_second_pass(self, inputFlats, mask, firstPassMasterFlat, frameNames=None):
         """*normalise each flat frame, divided by the first-pass master flat, to its sigma-clipped unmasked mean*
 
@@ -1397,7 +1418,9 @@ class soxs_mflat(base_recipe):
             chunk_vals = []
             for row_start in range(0, nrows, chunk_size):
                 row_end = min(row_start + chunk_size, nrows)
-                chunk_data = frame.data[row_start:row_end] / firstPassMasterFlat.data[row_start:row_end]
+                chunk_data = self._ratio_to_usable_flat(
+                    frame.data[row_start:row_end], firstPassMasterFlat.data[row_start:row_end]
+                )
                 chunk_nan_mask = np.isnan(chunk_data)
                 chunk_combined_mask = mask[row_start:row_end] | chunk_nan_mask
                 valid = chunk_data[~chunk_combined_mask]
