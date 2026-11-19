@@ -1323,6 +1323,43 @@ def test_main_writes_the_run_trailer_to_the_recipe_log_then_detaches_its_handler
     assert attached
 
 
+def test_main_detaches_the_recipe_log_handlers_even_when_writing_the_trailer_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A failure while the run trailer is written must not leave the recipe's log handlers on the shared logger."""
+    import logging
+
+    recipesModule = import_module("soxspipe.recipes")
+    toolkitModule = import_module("soxspipe.commonutils.toolkit")
+    sharedLog = logging.Logger("dy2284-cli", level=logging.DEBUG)
+
+    def failing_print(message: object, **kwargs: object) -> None:
+        raise OSError("the terminal went away")
+
+    sharedLog.print = failing_print
+
+    class AttachingRecipe:
+        def __init__(self, **kwargs: Any) -> None:
+            toolkitModule.add_recipe_logger(kwargs["log"], str(tmp_path / "A" / "A.fits"))
+
+        def produce_product(self) -> None:
+            return None
+
+    monkeypatch.setattr(recipesModule, "soxs_mbias", AttachingRecipe)
+
+    try:
+        with pytest.raises(OSError, match="the terminal went away"):
+            _run_cli(monkeypatch, tmp_path, ["soxspipe", "mbias", "frames"], logger=sharedLog)
+        recipeHandlers = [handler for handler in sharedLog.handlers if handler.get_name() in ("recipeLog", "recipeErr")]
+    finally:
+        for handler in list(sharedLog.handlers):
+            handler.close()
+            sharedLog.removeHandler(handler)
+
+    assert recipeHandlers == []
+
+
 def _predict_by_marker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, existing: set[str]) -> list[tuple[object, ...]]:
     """Make `predict_product_path` name a file in `tmp_path` by recipe and marker, and create those in ``existing``."""
     calls: list[tuple[object, ...]] = []

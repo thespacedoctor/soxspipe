@@ -496,9 +496,8 @@ def test_add_recipe_logger_replaces_handlers_and_separates_messages(
     errorText = (tmp_path / "nested" / "product_ERROR.log").read_text()
     assert "recipe failure" in errorText
     assert "excluded warning" not in errorText
-    for handler in tuple(logger.handlers):
-        handler.close()
-        logger.removeHandler(handler)
+    # DETACH FROM BOTH THE RECIPE LOGGER AND `py.warnings`, AS THE CALLERS DO
+    toolkit.remove_recipe_logger(logger)
 
 
 def test_max_filter_accepts_only_records_below_limit() -> None:
@@ -506,6 +505,13 @@ def test_max_filter_accepts_only_records_below_limit() -> None:
 
     assert filterObject.filter(logging.LogRecord("x", logging.INFO, "", 1, "", (), None)) is True
     assert filterObject.filter(logging.LogRecord("x", logging.WARNING, "", 1, "", (), None)) is None
+
+
+def test_max_filter_admits_every_record_from_the_logger_it_is_told_to_also_admit() -> None:
+    filterObject = toolkit.MaxFilter(logging.WARNING, alsoAdmit="py.warnings")
+
+    assert filterObject.filter(logging.LogRecord("py.warnings", logging.WARNING, "", 1, "", (), None)) is True
+    assert filterObject.filter(logging.LogRecord("other", logging.WARNING, "", 1, "", (), None)) is None
 
 
 def test_calibration_lamp_normalizes_and_concatenates_header_values(

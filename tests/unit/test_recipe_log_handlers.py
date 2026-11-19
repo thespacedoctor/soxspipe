@@ -7,9 +7,11 @@ lands in its ``_ERROR.log``.
 """
 
 import logging
+import warnings
 from importlib import import_module
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -39,6 +41,16 @@ def shared_log():
         sharedLogger.removeHandler(handler)
 
 
+@pytest.fixture(name="capturedWarnings")
+def captured_warnings():
+    """Send Python warnings to the ``py.warnings`` logger for one test, as a recipe step does (DY-1480)."""
+    wasCapturing = warnings.showwarning is logging._showwarning
+    logging.captureWarnings(False)
+    logging.captureWarnings(True)
+    yield
+    logging.captureWarnings(wasCapturing)
+
+
 @pytest.fixture(name="attachedHandlers")
 def attached_handlers(monkeypatch):
     """Return the list of recipe handlers that ``add_recipe_logger`` attached during the test."""
@@ -56,6 +68,12 @@ def attached_handlers(monkeypatch):
 
 def _recipe_handlers(logger):
     return [handler for handler in logger.handlers if handler.get_name() in RECIPE_HANDLER_NAMES]
+
+
+def _assert_detached(logger):
+    """Assert that no recipe handler is left on ``logger`` or on the ``py.warnings`` logger."""
+    assert _recipe_handlers(logger) == []
+    assert _recipe_handlers(logging.getLogger("py.warnings")) == []
 
 
 def _assert_closed(handlers):
@@ -183,6 +201,8 @@ def test_clean_up_keeps_the_recipe_handlers_so_the_caller_can_write_the_run_trai
     # ASSERT
     assert "the recipe's own failure" in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert len(_recipe_handlers(sharedLog)) == 2
+    # THE CALLER DETACHES THE HANDLERS AFTER THE TRAILER, SO THIS TEST DOES IT TOO
+    toolkit.remove_recipe_logger(sharedLog)
 
 
 def test_a_serial_reducer_success_writes_the_trailer_to_the_recipe_log_then_detaches(
@@ -200,7 +220,7 @@ def test_a_serial_reducer_success_writes_the_trailer_to_the_recipe_log_then_deta
     assert "Recipe Command: soxspipe mbias A.sof" in recipeLogText
     assert "Recipe Run Time:" in recipeLogText
     assert not (tmp_path / "A" / "A_ERROR.log").exists()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
     _assert_closed(attachedHandlers)
 
 
@@ -219,7 +239,7 @@ def test_a_serial_reducer_failure_is_logged_to_the_recipe_error_log_then_the_han
     assert "boom" in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert "a later recipe failed" not in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert "Recipe Command: soxspipe mbias A.sof" in (tmp_path / "A" / "A.log").read_text()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_serial_reducer_failure_detaches_when_quit_on_fail_exits(monkeypatch, tmp_path, sharedLog):
@@ -236,7 +256,7 @@ def test_a_serial_reducer_failure_detaches_when_quit_on_fail_exits(monkeypatch, 
     # ASSERT
     assert "boom" in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert "a later recipe failed" not in (tmp_path / "A" / "A_ERROR.log").read_text()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_serial_reducer_detaches_when_a_recipe_raises_file_exists_error(monkeypatch, tmp_path, sharedLog):
@@ -248,7 +268,7 @@ def test_a_serial_reducer_detaches_when_a_recipe_raises_file_exists_error(monkey
     runner.reduce(batch=10, multiprocess=False)
 
     # ASSERT
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_bulk_worker_success_detaches_the_recipe_handlers(monkeypatch, tmp_path, sharedLog):
@@ -262,7 +282,7 @@ def test_a_bulk_worker_success_detaches_the_recipe_handlers(monkeypatch, tmp_pat
     # ASSERT
     assert result["status"] == "pass"
     assert not (tmp_path / "A" / "A_ERROR.log").exists()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_bulk_worker_failure_is_logged_to_the_recipe_error_log_then_the_handlers_detach(
@@ -281,4 +301,79 @@ def test_a_bulk_worker_failure_is_logged_to_the_recipe_error_log_then_the_handle
     assert result["status"] == "fail"
     assert "worker boom" in errorLog.read_text()
     assert "a later recipe failed" not in errorLog.read_text()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
+
+
+def test_a_python_warning_raised_during_a_recipe_step_reaches_the_recipe_log(tmp_path, sharedLog, capturedWarnings):
+    # ARRANGE
+    toolkit.add_recipe_logger(sharedLog, str(tmp_path / "A" / "A.fits"))
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        np.sqrt(np.array([-1.0]))
+
+    # ASSERT
+    toolkit.remove_recipe_logger(sharedLog)
+    recipeLogText = (tmp_path / "A" / "A.log").read_text()
+    assert "RuntimeWarning" in recipeLogText
+    assert "invalid value encountered in sqrt" in recipeLogText
+
+
+def test_the_recipes_own_warning_and_error_messages_stay_out_of_the_recipe_log_beside_a_python_warning(
+    tmp_path, sharedLog, capturedWarnings
+):
+    # ARRANGE
+    toolkit.add_recipe_logger(sharedLog, str(tmp_path / "A" / "A.fits"))
+
+    # ACT
+    sharedLog.log(logging.INFO + 1, "recipe progress")
+    sharedLog.warning("the recipe's own warning")
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        np.sqrt(np.array([-1.0]))
+    sharedLog.error("the recipe's own error")
+
+    # ASSERT
+    toolkit.remove_recipe_logger(sharedLog)
+    recipeLogText = (tmp_path / "A" / "A.log").read_text()
+    assert "recipe progress" in recipeLogText
+    assert "RuntimeWarning" in recipeLogText
+    assert "the recipe's own warning" not in recipeLogText
+    assert "the recipe's own error" not in recipeLogText
+    errorLogText = (tmp_path / "A" / "A_ERROR.log").read_text()
+    assert "the recipe's own error" in errorLogText
+    assert "RuntimeWarning" not in errorLogText
+
+
+def test_a_python_warning_after_the_recipe_ends_does_not_reach_the_recipe_log(tmp_path, sharedLog, capturedWarnings):
+    # ARRANGE
+    toolkit.add_recipe_logger(sharedLog, str(tmp_path / "A" / "A.fits"))
+    toolkit.remove_recipe_logger(sharedLog)
+    warningsLogger = logging.getLogger("py.warnings")
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        np.sqrt(np.array([-1.0]))
+
+    # ASSERT
+    assert _recipe_handlers(warningsLogger) == []
+    assert "RuntimeWarning" not in (tmp_path / "A" / "A.log").read_text()
+
+
+def test_a_second_recipe_logger_replaces_the_first_on_the_warnings_logger(tmp_path, sharedLog, capturedWarnings):
+    # ARRANGE
+    toolkit.add_recipe_logger(sharedLog, str(tmp_path / "A" / "A.fits"))
+    toolkit.add_recipe_logger(sharedLog, str(tmp_path / "B" / "B.fits"))
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("always")
+        np.sqrt(np.array([-1.0]))
+
+    # ASSERT
+    toolkit.remove_recipe_logger(sharedLog)
+    assert len(_recipe_handlers(logging.getLogger("py.warnings"))) == 0
+    assert "RuntimeWarning" not in (tmp_path / "A" / "A.log").read_text()
+    assert "RuntimeWarning" in (tmp_path / "B" / "B.log").read_text()

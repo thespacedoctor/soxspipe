@@ -1,6 +1,6 @@
 # Logging
 
-When running a recipe, `soxspipe` writes informative logs to the terminal (stdout), allowing the user to keep track of the reduction progress in real-time. For provenance, this information is also written to a log file adjacent to the recipe's product file(s).
+When running a recipe, `soxspipe` writes informative logs to the terminal (stdout), allowing the user to keep track of the reduction progress in real-time. For provenance, this information is also written to a log file adjacent to the recipe's product file(s). Python warnings raised while the recipe runs, such as a numpy `RuntimeWarning`, are also printed to the terminal and written to the same file.
 
 
 :::{figure-md} log_file
