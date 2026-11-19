@@ -361,15 +361,40 @@ class base_recipe:
             c.execute(sqlQuery, (f"{self.sofName}.sof",))
             try:
                 self.status = c.fetchone()["status"]
-                sqlQuery = f"update product_frames set {statusColumn} = 'fail' where sof = ?"  # noqa: S608
-                c.execute(sqlQuery, (f"{self.sofName}.sof",))
-            except (sqlite3.Error, TypeError) as e:
+            except TypeError as e:
                 self.log.warning(f"__init__: `self.status = c.fetchone()['status']` failed, continuing: {e}")
                 self.status = None
+            else:
+                self._write_start_of_run_fail_status(c, statusColumn)
 
             c.close()
 
         return
+
+    def _write_start_of_run_fail_status(self, cursor, statusColumn):
+        """*write* ``fail`` *to this recipe's product row, and stop the recipe if the write errors*
+
+        **Key Arguments:**
+
+        - ``cursor`` -- a cursor on the open workspace database
+        - ``statusColumn`` -- the validated name of the session status column
+
+        A recipe that ran on without the write could crash before ``clean_up`` and leave the ``pass`` of an
+        earlier run in place, so downstream recipes would trust a product that the last run did not finish. The
+        connection is closed before the error is raised, and the write is not retried: the connection
+        already waits for the busy timeout (DY-2263).
+        """
+        sofFile = f"{self.sofName}.sof"
+        sqlQuery = f"update product_frames set {statusColumn} = 'fail' where sof = ?"  # noqa: S608
+        try:
+            cursor.execute(sqlQuery, (sofFile,))
+        except sqlite3.Error as e:
+            cursor.close()
+            self.conn.close()
+            raise RuntimeError(
+                f"The recipe could not write the `fail` status for `{sofFile}` to the workspace database "
+                f"and was stopped, because a crash would leave the status of an earlier run in place: {e}"
+            ) from e
 
     def _advanced_settings(self):
         """*read the advanced settings shipped with the package*

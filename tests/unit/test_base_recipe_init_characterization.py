@@ -23,6 +23,7 @@ from astropy.io import fits
 
 import soxspipe.commonutils as commonutils
 import soxspipe.commonutils.toolkit as toolkit
+import soxspipe.commonutils.workspace_database as workspace_database
 from soxspipe.recipes import base_recipe
 
 pytestmark = pytest.mark.unit
@@ -261,6 +262,75 @@ def test_a_set_of_files_missing_from_the_database_leaves_the_status_unset(
     assert recipe.status is None
     assert any("`self.status = c.fetchone()['status']` failed" in str(message) for message in log.messages)
     recipe.conn.close()
+
+
+def _lock_database_for_writes(databasePath: Path) -> sqlite3.Connection:
+    """Hold a write lock from a second connection: readers still read, but every writer waits and times out."""
+    holder = sqlite3.connect(str(databasePath), autocommit=True)
+    holder.execute("begin immediate")
+    return holder
+
+
+def test_a_failed_start_of_run_status_write_stops_the_recipe_and_leaves_the_stored_status_alone(
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When the initial `fail` write errors, the constructor raises instead of letting the recipe run on.
+
+    A recipe that ran on could crash before `clean_up` and leave the stale `pass` of an earlier run in place, so
+    downstream recipes would trust a product that the last run did not finish (DY-2263).
+    """
+    # ARRANGE
+    databasePath = tmp_path / "soxspipe.db"
+    connection = sqlite3.connect(str(databasePath))
+    connection.execute(f"create table product_frames (sof text, status_{TEST_SESSION} text)")
+    connection.execute("insert into product_frames values ('synthetic.sof', 'pass')")
+    connection.commit()
+    connection.close()
+    _isolate(
+        monkeypatch,
+        tmp_path,
+        productPath=tmp_path / "reduced" / "synthetic.fits",
+        currentSession=TEST_SESSION,
+    )
+    # A SHORT WAIT, SO THE BLOCKED WRITE GIVES UP AT ONCE
+    monkeypatch.setattr(workspace_database, "BUSY_TIMEOUT_MILLISECONDS", 50)
+    openedConnections: list[sqlite3.Connection] = []
+    realConnect = workspace_database.connect_workspace_database
+
+    def recording_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        openedConnections.append(realConnect(*args, **kwargs))
+        return openedConnections[-1]
+
+    monkeypatch.setattr(workspace_database, "connect_workspace_database", recording_connect)
+    holder = _lock_database_for_writes(databasePath)
+
+    # ACT
+    with pytest.raises(RuntimeError, match="could not write the `fail` status") as raised:
+        base_recipe(
+            log=log,
+            settings=_settings(tmp_path),
+            inputFrames=str(tmp_path / "synthetic.sof"),
+            recipeName="soxs-mbias",
+        )
+    holder.rollback()
+    holder.close()
+
+    # ASSERT
+    assert isinstance(raised.value.__cause__, sqlite3.OperationalError)
+    assert "synthetic.sof" in str(raised.value)
+    assert "stopped" in str(raised.value)
+    assert len(openedConnections) == 1
+    with pytest.raises(sqlite3.ProgrammingError):
+        openedConnections[0].execute("select 1")
+    stored = sqlite3.connect(str(databasePath))
+    # THE COLUMN NAME COMES FROM A CONSTANT IN THIS FILE, NOT FROM INPUT
+    storedStatus = stored.execute(
+        f"select status_{TEST_SESSION} from product_frames where sof = 'synthetic.sof'"  # noqa: S608
+    ).fetchone()[0]
+    stored.close()
+    assert storedStatus == "pass"
 
 
 def test_multiprocessing_turned_off_opens_no_database_connection(
