@@ -101,7 +101,8 @@ def test_a_runtime_warning_during_frame_preparation_reaches_the_log(
 
     `logging.captureWarnings` sends it to the `py.warnings` logger, which propagates to the root logger. That is where
     the console and `soxspipe.log` handlers of the `logging settings` block sit, and where `caplog` listens. The
-    recipe's own `.log` file does not take it: that handler excludes WARNING and above by design.
+    recipe's own `.log` file takes it too (DY-2284), through `add_recipe_logger`; the recipe's own WARNING and
+    ERROR messages stay out of that file.
     """
     # ARRANGE
     bad_pixel_map_file(tmp_path / "calibrations")

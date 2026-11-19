@@ -484,6 +484,13 @@ def test_max_filter_accepts_only_records_below_limit() -> None:
     assert filterObject.filter(logging.LogRecord("x", logging.WARNING, "", 1, "", (), None)) is None
 
 
+def test_max_filter_admits_every_record_from_the_logger_it_is_told_to_also_admit() -> None:
+    filterObject = toolkit.MaxFilter(logging.WARNING, alsoAdmit="py.warnings")
+
+    assert filterObject.filter(logging.LogRecord("py.warnings", logging.WARNING, "", 1, "", (), None)) is True
+    assert filterObject.filter(logging.LogRecord("other", logging.WARNING, "", 1, "", (), None)) is None
+
+
 def test_calibration_lamp_normalizes_and_concatenates_header_values(
     log: object,
 ) -> None:

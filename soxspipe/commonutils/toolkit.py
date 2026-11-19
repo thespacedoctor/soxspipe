@@ -49,6 +49,8 @@ QC_STRIP_ROW_HEIGHT_INCHES = 2.0
 # DROP THE LEGENDS BELOW THE TICK LABELS, BESIDE THE AXIS LABEL
 QC_LEGEND_OFFSET_POINTS = 14
 
+# THE LOGGER THAT `logging.captureWarnings` SENDS PYTHON WARNINGS TO
+WARNINGS_LOGGER_NAME = "py.warnings"
 # EXTRACTION NOTES PRINTED UNDER A QC PLOT
 # THE MOST NOTES DRAWN ON A PLOT. THE REST ARE SUMMARISED AS A COUNT
 MAX_PLOT_NOTES = 20
@@ -2174,8 +2176,11 @@ def add_recipe_logger(log, productPath):
     recipeLog.set_name("recipeLog")
     recipeLog.setLevel(logging.INFO + 1)
     recipeLog.setFormatter(recipeLogFormatter)
-    recipeLog.addFilter(MaxFilter(logging.WARNING))
+    recipeLog.addFilter(MaxFilter(logging.WARNING, alsoAdmit=WARNINGS_LOGGER_NAME))
     log.addHandler(recipeLog)
+
+    # `logging.captureWarnings` LOGS TO `py.warnings`, A SIBLING OF `log`, SO THE HANDLER MUST SIT THERE TOO
+    logging.getLogger(WARNINGS_LOGGER_NAME).addHandler(recipeLog)
 
     recipeErr = logging.FileHandler(loggingErrorPath, mode="a", encoding=None, delay=True)
     recipeErrFormatter = logging.Formatter(
@@ -2207,18 +2212,34 @@ def remove_recipe_logger(log):
     remove_recipe_logger(log)
     ```
     """
-    recipeHandlers = [handler for handler in log.handlers if handler.get_name() in ("recipeLog", "recipeErr")]
-    for handler in recipeHandlers:
-        log.removeHandler(handler)
-        handler.close()
+    import logging
+
+    for logger in (log, logging.getLogger(WARNINGS_LOGGER_NAME)):
+        recipeHandlers = [handler for handler in logger.handlers if handler.get_name() in ("recipeLog", "recipeErr")]
+        for handler in recipeHandlers:
+            logger.removeHandler(handler)
+            handler.close()
 
 
 class MaxFilter:
-    def __init__(self, max_level):
+    """*admit records below a level, and every record from a named logger*
+
+    The recipe log holds the recipe's progress messages (below WARNING). The recipe's own WARNING and ERROR messages
+    go to the console and, for errors, the ``_ERROR.log``. A Python warning arrives from the ``py.warnings`` logger
+    and has no other place in the recipe's files, so ``alsoAdmit`` lets it through.
+
+    **Key Arguments:**
+
+    - ``max_level`` -- admit records with a level below this
+    - ``alsoAdmit`` -- name of a logger whose records are admitted at any level. Default *None*
+    """
+
+    def __init__(self, max_level, alsoAdmit=None):
         self.max_level = max_level
+        self.alsoAdmit = alsoAdmit
 
     def filter(self, record):
-        if record.levelno < self.max_level:
+        if record.levelno < self.max_level or record.name == self.alsoAdmit:
             return True
         return None
 
