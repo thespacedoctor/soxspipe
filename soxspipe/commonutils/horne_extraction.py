@@ -1823,6 +1823,7 @@ class horne_extraction(base_util):
         import numpy as np
         from astropy import units as u
         from scipy.signal import find_peaks, savgol_filter
+
         from soxspipe.commonutils.specutils_calls import generic_continuum_fit, spectrum1d
 
         skyValsOriginal = sky[valid].to_numpy()

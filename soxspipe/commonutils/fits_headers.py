@@ -15,6 +15,9 @@ the file with the system ``gzip`` (about 0.06 s), which reads LZW natively, and 
 the bytes to astropy. If ``gzip`` is missing or fails, it falls back to ``CCDData.read``
 on the path.
 
+``hierarch`` is the one writing helper here: it names a long keyword so astropy stores it as a ``HIERARCH`` card
+without a warning.
+
 This module imports nothing from soxspipe except ``fits_frame_names``, which
 itself imports nothing from soxspipe, so it cannot create an import cycle.
 
