@@ -258,7 +258,7 @@ def main(arguments=None):
     # DETERMINE CURRENT DATA-REDUCTION SESSION
     from fundamentals.logs import emptyLogger
 
-    from soxspipe.commonutils import data_organiser
+    from soxspipe.commonutils import data_organiser, toolkit
     from soxspipe.commonutils.data_organiser import DatabasePreservationError, _UnsafePathError
     from soxspipe.commonutils.scratch import removing_new_scratch
 
@@ -308,6 +308,7 @@ def main(arguments=None):
         defaultSettingsFile=False,
     )
     arguments, settings, log, dbConn = su.setup()
+    toolkit.route_warnings_to_console(log)
 
     arguments["workspaceDirectory"] = "."
     arguments["--settings"] = "./soxspipe.yaml"
@@ -795,12 +796,12 @@ def main(arguments=None):
     sys.argv[0] = os.path.basename(sys.argv[0])
 
     if not a["prep"] and not a["session"] and not a["reduce"] and not a["watch"] and not a["list"]:
-        from soxspipe.commonutils import toolkit
-
-        log.print(f"\nRecipe Command: {(' ').join(sys.argv)}")
-        log.print(f"Recipe Run Time: {runningTime}\n\n")
-        # THE TRAILER IS THE RECIPE'S LAST MESSAGE, SO A LATER ERROR MUST NOT REACH ITS LOG FILES
-        toolkit.remove_recipe_logger(log)
+        try:
+            log.print(f"\nRecipe Command: {(' ').join(sys.argv)}")
+            log.print(f"Recipe Run Time: {runningTime}\n\n")
+        finally:
+            # THE TRAILER IS THE RECIPE'S LAST MESSAGE, SO A LATER ERROR MUST NOT REACH ITS LOG FILES
+            toolkit.remove_recipe_logger(log)
         print(f"{'=' * 70}\n")
 
     return

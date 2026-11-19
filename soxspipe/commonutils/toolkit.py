@@ -51,6 +51,7 @@ QC_LEGEND_OFFSET_POINTS = 14
 
 # THE LOGGER THAT `logging.captureWarnings` SENDS PYTHON WARNINGS TO
 WARNINGS_LOGGER_NAME = "py.warnings"
+
 # EXTRACTION NOTES PRINTED UNDER A QC PLOT
 # THE MOST NOTES DRAWN ON A PLOT. THE REST ARE SUMMARISED AS A COUNT
 MAX_PLOT_NOTES = 20
@@ -2127,6 +2128,37 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
     productPath = productPath.replace("//", "/")
 
     return productPath, startNightDate
+
+
+def route_warnings_to_console(log):
+    """*print Python warnings on the terminal as well as in the log files*
+
+    `logging.captureWarnings` sends each warning to the ``py.warnings`` logger, which reaches the root logger's file
+    handler and no further. The terminal handler (named ``consoleLog``) sits on ``log``, so this attaches it to
+    ``py.warnings`` as well. A handler that is already attached is not attached twice, so a warning prints once.
+
+    **Key Arguments:**
+
+    - ``log`` -- the logger that holds the ``consoleLog`` handler
+
+    **Return:**
+
+    - ``log`` -- the same logger
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import route_warnings_to_console
+    log = route_warnings_to_console(log)
+    ```
+    """
+    import logging
+
+    warningsLog = logging.getLogger(WARNINGS_LOGGER_NAME)
+    for handler in log.handlers:
+        if handler.get_name() == "consoleLog" and handler not in warningsLog.handlers:
+            warningsLog.addHandler(handler)
+    return log
 
 
 def add_recipe_logger(log, productPath):

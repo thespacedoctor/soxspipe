@@ -44,10 +44,11 @@ def shared_log():
 @pytest.fixture(name="capturedWarnings")
 def captured_warnings():
     """Send Python warnings to the ``py.warnings`` logger for one test, as a recipe step does (DY-1480)."""
+    wasCapturing = warnings.showwarning is logging._showwarning
     logging.captureWarnings(False)
     logging.captureWarnings(True)
     yield
-    logging.captureWarnings(False)
+    logging.captureWarnings(wasCapturing)
 
 
 @pytest.fixture(name="attachedHandlers")
@@ -67,6 +68,12 @@ def attached_handlers(monkeypatch):
 
 def _recipe_handlers(logger):
     return [handler for handler in logger.handlers if handler.get_name() in RECIPE_HANDLER_NAMES]
+
+
+def _assert_detached(logger):
+    """Assert that no recipe handler is left on ``logger`` or on the ``py.warnings`` logger."""
+    assert _recipe_handlers(logger) == []
+    assert _recipe_handlers(logging.getLogger("py.warnings")) == []
 
 
 def _assert_closed(handlers):
@@ -211,7 +218,7 @@ def test_a_serial_reducer_success_writes_the_trailer_to_the_recipe_log_then_deta
     assert "Recipe Command: soxspipe mbias A.sof" in recipeLogText
     assert "Recipe Run Time:" in recipeLogText
     assert not (tmp_path / "A" / "A_ERROR.log").exists()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
     _assert_closed(attachedHandlers)
 
 
@@ -230,7 +237,7 @@ def test_a_serial_reducer_failure_is_logged_to_the_recipe_error_log_then_the_han
     assert "boom" in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert "a later recipe failed" not in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert "Recipe Command: soxspipe mbias A.sof" in (tmp_path / "A" / "A.log").read_text()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_serial_reducer_failure_detaches_when_quit_on_fail_exits(monkeypatch, tmp_path, sharedLog):
@@ -247,7 +254,7 @@ def test_a_serial_reducer_failure_detaches_when_quit_on_fail_exits(monkeypatch, 
     # ASSERT
     assert "boom" in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert "a later recipe failed" not in (tmp_path / "A" / "A_ERROR.log").read_text()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_serial_reducer_detaches_when_a_recipe_raises_file_exists_error(monkeypatch, tmp_path, sharedLog):
@@ -259,7 +266,7 @@ def test_a_serial_reducer_detaches_when_a_recipe_raises_file_exists_error(monkey
     runner.reduce(batch=10, multiprocess=False)
 
     # ASSERT
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_bulk_worker_success_detaches_the_recipe_handlers(monkeypatch, tmp_path, sharedLog):
@@ -273,7 +280,7 @@ def test_a_bulk_worker_success_detaches_the_recipe_handlers(monkeypatch, tmp_pat
     # ASSERT
     assert result["status"] == "pass"
     assert not (tmp_path / "A" / "A_ERROR.log").exists()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_bulk_worker_failure_is_logged_to_the_recipe_error_log_then_the_handlers_detach(
@@ -292,7 +299,7 @@ def test_a_bulk_worker_failure_is_logged_to_the_recipe_error_log_then_the_handle
     assert result["status"] == "fail"
     assert "worker boom" in errorLog.read_text()
     assert "a later recipe failed" not in errorLog.read_text()
-    assert _recipe_handlers(sharedLog) == []
+    _assert_detached(sharedLog)
 
 
 def test_a_python_warning_raised_during_a_recipe_step_reaches_the_recipe_log(tmp_path, sharedLog, capturedWarnings):

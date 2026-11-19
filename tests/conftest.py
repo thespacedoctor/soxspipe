@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
 import socket
@@ -291,3 +292,14 @@ def block_network(monkeypatch: pytest.MonkeyPatch) -> None:
 def log() -> RecordingLogger:
     """Return a fresh in-memory logger."""
     return RecordingLogger()
+
+
+@pytest.fixture(autouse=True)
+def detach_recipe_handlers_from_the_warnings_logger() -> Iterator[None]:
+    """Remove any recipe log handler a test left on the process-wide ``py.warnings`` logger."""
+    yield
+    warningsLogger = logging.getLogger("py.warnings")
+    for handler in list(warningsLogger.handlers):
+        if handler.get_name() in ("recipeLog", "recipeErr"):
+            warningsLogger.removeHandler(handler)
+            handler.close()
