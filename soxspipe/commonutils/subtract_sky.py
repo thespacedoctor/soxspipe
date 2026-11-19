@@ -954,25 +954,28 @@ class subtract_sky:
         every pixel of the order inside a window is flagged as clipped before the fit. The spline drops the knots that
         have no samples and interpolates the sky across the window. When two or more windows agree on one redshift,
         the weaker companion lines of the host that the detection cannot find on their own (such as [NII] 6548) get
-        windows too. A frame with fewer than two windows is not touched beyond its own windows, so a frame with none
-        gives the products of a run with the mask switched off. The detection only flags pixels: when it cannot run,
-        the log says why and the sky is fitted as before. Sets ``self.hostLineWindows``, ``self.hostRedshift`` and
-        ``self.hostInferredWindows``.
+        windows too. A frame with no window is not touched, so its products are those of a run with the mask switched
+        off. The detection only flags pixels: when it cannot run, the log says why and the sky is fitted as before.
+        Sets ``self.hostLineWindows``, ``self.hostRedshift`` and ``self.hostInferredWindows`` (the companion windows
+        that are new, that is, that touch no detected window of any order).
 
         **Key Arguments:**
 
         - ``allimageMapOrder`` -- list of clipped order dataframes, flagged in place
         """
-        from soxspipe.commonutils.host_line_mask import host_line_pixel_mask
+        from soxspipe.commonutils.host_line_mask import host_line_pixel_mask, new_windows
         from soxspipe.commonutils.nod_host_contamination import merge_host_features
 
         self.hostLineWindows = ()
         self.hostRedshift = None
         self.hostInferredWindows = ()
-        if not self._host_line_settings()[0]:
+        isOn, sigmaLimit, minSlitContrast, paddingLines = self._host_line_settings()
+        if not isOn:
             return
         try:
-            detected, added, redshift = self._find_host_line_windows(allimageMapOrder)
+            detected, added, redshift = self._find_host_line_windows(
+                allimageMapOrder, sigmaLimit, minSlitContrast, paddingLines
+            )
         except Exception as e:
             self.log.warning(
                 f"The search for host emission lines could not run, so none is left out of the sky fit: {e}",
@@ -985,18 +988,24 @@ class subtract_sky:
                 isInWindow = host_line_pixel_mask(imageMapOrder["wavelength"].to_numpy(dtype=float), (*windows, *extra))
                 imageMapOrder.loc[isInWindow, "flagged_all_clipped"] = True
         allDetected = [window for windows in detected for window in windows]
-        allAdded = [window for windows in added for window in windows]
+        allAdded = merge_host_features(window for windows in added for window in windows)
         self.hostLineWindows = merge_host_features([*allDetected, *allAdded])
         self.hostRedshift = redshift
-        self.hostInferredWindows = merge_host_features(allAdded)
-        self._log_host_line_windows(len(merge_host_features(allDetected)))
+        self.hostInferredWindows = new_windows(allAdded, allDetected)
+        self._log_host_line_windows()
 
-    def _find_host_line_windows(self, allimageMapOrder):
+    def _find_host_line_windows(self, allimageMapOrder, sigmaLimit, minSlitContrast, paddingLines):
         """*the detected windows and the companion windows of each order, and the inferred redshift*
+
+        A line list that cannot be read is logged with its traceback, and the detected windows are kept without a
+        redshift.
 
         **Key Arguments:**
 
         - ``allimageMapOrder`` -- list of clipped order dataframes
+        - ``sigmaLimit`` -- the ``host-line-sigma`` setting
+        - ``minSlitContrast`` -- the ``host-line-min-slit-contrast`` setting
+        - ``paddingLines`` -- the ``host-line-padding-pixels`` setting
 
         **Return:**
 
@@ -1012,7 +1021,6 @@ class subtract_sky:
         )
         from soxspipe.commonutils.toolkit import get_skylines_dataframe
 
-        _, sigmaLimit, minSlitContrast, paddingLines = self._host_line_settings()
         skylines = get_skylines_dataframe(self.log, self.settings, self.arm, minBrightnessVIS=0, minBrightnessNIR=0)[
             "WAVELENGTH"
         ].to_numpy(dtype=float)
@@ -1020,7 +1028,13 @@ class subtract_sky:
             find_host_line_windows(imageMapOrder, skylines, sigmaLimit, minSlitContrast, paddingLines)
             for imageMapOrder in allimageMapOrder
         )
-        restLines = load_host_lines()
+        try:
+            restLines = load_host_lines()
+        except Exception as e:
+            self.log.warning(
+                f"The host emission line list could not be read, so no host redshift is inferred: {e}", exc_info=True
+            )
+            return detected, tuple(() for _ in detected), None
         redshift = infer_host_redshift([window for windows in detected for window in windows], restLines)
         if redshift is None:
             return detected, tuple(() for _ in detected), None
@@ -1030,13 +1044,8 @@ class subtract_sky:
         )
         return detected, added, redshift
 
-    def _log_host_line_windows(self, nDetected):
-        """*print the host-line windows left out of the sky fit, and the redshift and companions when there are any*
-
-        **Key Arguments:**
-
-        - ``nDetected`` -- the number of merged windows that were detected, before any companion was added
-        """
+    def _log_host_line_windows(self):
+        """*print the host-line windows left out of the sky fit, and the redshift and new companions, if any*"""
         if not self.hostLineWindows:
             return
         ranges = ", ".join(f"{w.wavelengthMinNm:0.2f}-{w.wavelengthMaxNm:0.2f} nm" for w in self.hostLineWindows)
@@ -1048,7 +1057,7 @@ class subtract_sky:
             return
         added = ", ".join(f"{w.wavelengthMinNm:0.2f}-{w.wavelengthMaxNm:0.2f} nm" for w in self.hostInferredWindows)
         self.log.print(
-            f"\n\tHOST REDSHIFT {self.hostRedshift.z:0.4f} FROM {nDetected} DETECTED WINDOW(S) "
+            f"\n\tHOST REDSHIFT {self.hostRedshift.z:0.4f} FROM {self.hostRedshift.nWindows} DETECTED WINDOW(S) "
             f"({', '.join(self.hostRedshift.lineNames)}). {len(self.hostInferredWindows)} COMPANION WINDOW(S) ADDED: "
             f"{added or 'NONE IN THE ORDERS'}\n"
         )

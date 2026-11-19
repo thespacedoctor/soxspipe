@@ -445,7 +445,7 @@ ORDER_FIRST_NM = 640.0
 ORDER_COLUMNS = 1250
 
 
-def _hosted_order(strongRestNm: tuple[float, ...], seed: int = 2243) -> pd.DataFrame:
+def _hosted_order(strongRestNm: tuple[float, ...], seed: int = 2243, orderNumber: int = ORDER) -> pd.DataFrame:
     """One order from 640 to 690 nm on a flat sky, with a slit-filling host line at each strong rest wavelength."""
     rng = np.random.default_rng(seed)
     column, slitPixel = np.meshgrid(np.arange(ORDER_COLUMNS), np.arange(SLIT_PIXELS), indexing="ij")
@@ -460,7 +460,7 @@ def _hosted_order(strongRestNm: tuple[float, ...], seed: int = 2243) -> pd.DataF
     error = np.sqrt(noiseless + READ_NOISE**2)
     frame = pd.DataFrame(
         {
-            "order": float(ORDER),
+            "order": float(orderNumber),
             "x": column,
             "y": slitPixel.ravel(),
             "wavelength": wavelength + 0.002 * slit,
@@ -559,3 +559,83 @@ def test_with_the_mask_off_no_redshift_is_inferred(log: Any, no_catalogue_skylin
 
     assert subtractor.hostRedshift is None
     assert subtractor.hostInferredWindows == ()
+
+
+def _clipped_orders(subtractor: subtract_sky, orders: list[pd.DataFrame]) -> list[pd.DataFrame]:
+    """The orders as they reach ``_fit_sky_to_orders``: clipped, with the object ranges flagged."""
+    settings = subtractor.recipeSettings["sky-subtraction"]
+    clipped = [
+        subtractor.get_over_sampled_sky_from_order(
+            order.copy(), clipBPs=True, clipSlitEdge=settings["clip-slit-edge-fraction"]
+        )
+        for order in orders
+    ]
+    return subtractor.clip_object_slit_positions(clipped, aggressive=settings["aggressive_object_masking"])
+
+
+def test_a_line_detected_in_the_neighbouring_order_is_masked_but_not_counted_as_inferred(
+    log: Any, no_catalogue_skylines: None
+) -> None:
+    subtractor = _subtractor(log)
+    withNii6548 = _hosted_order((NII_6548_REST_NM, *TWO_STRONG_LINES), orderNumber=1)
+    withoutNii6548 = _hosted_order(TWO_STRONG_LINES, seed=2244, orderNumber=2)
+    orders = _clipped_orders(subtractor, [withNii6548, withoutNii6548])
+
+    subtractor._mask_host_lines(orders)
+
+    isInNii6548 = (orders[1]["wavelength"] - NII_6548_REST_NM * (1 + HOST_Z)).abs() < 0.1
+    assert orders[1].loc[isInNii6548, "flagged_all_clipped"].all()
+    assert subtractor.hostRedshift is not None
+    assert subtractor.hostRedshift.nWindows == 3
+    assert len(subtractor.hostLineWindows) == 5
+    assert len(subtractor.hostInferredWindows) == 2
+
+
+def test_the_log_gives_the_number_of_windows_that_support_the_redshift(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log)
+    orders = _clipped_orders(
+        subtractor,
+        [
+            _hosted_order((NII_6548_REST_NM, *TWO_STRONG_LINES), orderNumber=1),
+            _hosted_order(TWO_STRONG_LINES, seed=7, orderNumber=2),
+        ],
+    )
+
+    subtractor._mask_host_lines(orders)
+
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("FROM 3 DETECTED WINDOW(S)" in message for message in printed)
+
+
+def test_the_settings_are_read_and_checked_once_for_the_search(log: Any, no_catalogue_skylines: None) -> None:
+    subtractor = _subtractor(log)
+    orders = _clipped_orders(subtractor, [_hosted_order(TWO_STRONG_LINES)])
+    calls = []
+    original = subtractor._host_line_settings
+    subtractor._host_line_settings = lambda: calls.append(1) or original()
+
+    subtractor._mask_host_lines(orders)
+
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("failure", ["missing", "malformed"])
+def test_a_line_list_that_cannot_be_read_keeps_the_detected_windows_and_logs_the_traceback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_catalogue_skylines: None, failure: str
+) -> None:
+    from soxspipe.commonutils import host_line_mask
+
+    path = tmp_path / "host_emission_lines.yaml"
+    if failure == "malformed":
+        path.write_text("lines: 5\n")
+    monkeypatch.setattr(host_line_mask, "HOST_LINES_FILE", path)
+    log = _TracebackLogger()
+    subtractor = _subtractor(log)
+    orders = _clipped_orders(subtractor, [_hosted_order(TWO_STRONG_LINES)])
+
+    subtractor._mask_host_lines(orders)
+
+    assert len(subtractor.hostLineWindows) == 2
+    assert subtractor.hostRedshift is None
+    assert subtractor.hostInferredWindows == ()
+    assert [kwargs.get("exc_info") for message, kwargs in log.warnings if "line list" in message] == [True]

@@ -22,6 +22,7 @@ padding of detector lines. ``subtract_sky`` leaves the pixels inside the windows
 interpolates the sky across them. Nothing here changes any data.
 """
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +43,9 @@ HOST_LINES_FILE = Path(__file__).resolve().parent.parent / "resources" / "host_e
 # TWO WINDOWS THAT AGREE ON ONE REDSHIFT, FOR DISTINCT LINES, WITHIN THIS TOLERANCE (150 KM/S), GIVE THE HOST REDSHIFT.
 # THE CENTRE OF A WINDOW IS GOOD TO ABOUT 0.1 NM BECAUSE THE HOST ROTATES, WHICH IS 2E-4 AT 500 NM
 REDSHIFT_TOLERANCE = 5e-4
+# THE REDSHIFT IS KNOWN TO HALF THE TOLERANCE, WHICH IS ABOUT 0.17 NM AT 670 NM. IT IS ADDED IN QUADRATURE TO THE
+# RELATIVE HALF WIDTH OF THE DETECTED WINDOWS WHEN A COMPANION WINDOW IS SET
+REDSHIFT_UNCERTAINTY = REDSHIFT_TOLERANCE / 2
 MIN_REDSHIFT_WINDOWS = 2
 # THE HOST REDSHIFTS THAT ARE SEARCHED: A LITTLE BLUE FOR A NEARBY GALAXY, AND UP TO WHERE THE LINES LEAVE THE ARMS
 MIN_REDSHIFT = -0.005
@@ -204,14 +208,7 @@ def _slit_cells(imageMapOrder: Any) -> tuple[pd.DataFrame, pd.DataFrame, np.ndar
     flux = imageMapOrder["flux"].to_numpy(dtype=float)
     error = imageMapOrder["error"].to_numpy(dtype=float)
     slit = imageMapOrder["slit_position"].to_numpy(dtype=float)
-    isUsable = (
-        np.isfinite(wavelength)
-        & np.isfinite(flux)
-        & np.isfinite(error)
-        & np.isfinite(slit)
-        & ~imageMapOrder["flagged_bad_pixel_clipped"].to_numpy(dtype=bool)
-        & ~imageMapOrder["flagged_edge_clipped"].to_numpy(dtype=bool)
-    )
+    isUsable = _usable_pixels(imageMapOrder)
     lineStepNm = _line_step_nm(imageMapOrder)
     if not isUsable.any() or lineStepNm is None:
         return None
@@ -240,6 +237,18 @@ def _slit_cells(imageMapOrder: Any) -> tuple[pd.DataFrame, pd.DataFrame, np.ndar
     cellVariance = (grouped["variance"].sum()[isCell] / count[isCell] ** 2).unstack("slit").reindex(binIndex)
     centres = firstNm + (binIndex + 0.5) * LINES_PER_BIN * lineStepNm
     return cellFlux, cellVariance, centres, lineStepNm
+
+
+def _usable_pixels(imageMapOrder: Any) -> np.ndarray:
+    """*a mask of the pixels with a finite wavelength, flux, error and slit position that are not bad or edge pixels*"""
+    return (
+        np.isfinite(imageMapOrder["wavelength"].to_numpy(dtype=float))
+        & np.isfinite(imageMapOrder["flux"].to_numpy(dtype=float))
+        & np.isfinite(imageMapOrder["error"].to_numpy(dtype=float))
+        & np.isfinite(imageMapOrder["slit_position"].to_numpy(dtype=float))
+        & ~imageMapOrder["flagged_bad_pixel_clipped"].to_numpy(dtype=bool)
+        & ~imageMapOrder["flagged_edge_clipped"].to_numpy(dtype=bool)
+    )
 
 
 def _line_step_nm(imageMapOrder: Any) -> float | None:
@@ -307,13 +316,24 @@ class host_redshift:
     """The host redshift inferred from detected windows.
 
     ``z`` is the median redshift of the matched windows, ``lineNames`` the rest-frame lines they were matched to in
-    wavelength order, and ``halfWidthFraction`` the median half width of the matched windows as a fraction of their
-    centre wavelength, which sets the width of the companion windows.
+    wavelength order, ``nWindows`` the number of windows that support the redshift (one for each line), and
+    ``halfWidthFraction`` the median half width of the matched windows as a fraction of their centre wavelength,
+    which sets the width of the companion windows.
     """
 
     z: float
     lineNames: tuple[str, ...]
+    nWindows: int
     halfWidthFraction: float
+
+
+@dataclass(frozen=True)
+class _hypothesis:
+    """One redshift and the (window, line) pairs that agree with it."""
+
+    z: float
+    matches: tuple[tuple[int, int], ...]
+    scatter: float
 
 
 def load_host_lines() -> tuple[tuple[str, float], ...]:
@@ -322,6 +342,11 @@ def load_host_lines() -> tuple[tuple[str, float], ...]:
     **Return:**
 
     - ``lines`` -- a tuple of ``(name, wavelength in nm in air)``, in the order of the file
+
+    **Raises:**
+
+    - ``FileNotFoundError`` -- if the file is missing
+    - ``ValueError`` -- if the file is not a ``lines`` list of entries with a ``name`` and a numeric ``wavelength-nm``
 
     **Usage:**
 
@@ -333,8 +358,13 @@ def load_host_lines() -> tuple[tuple[str, float], ...]:
     import yaml
 
     with HOST_LINES_FILE.open() as stream:
-        entries = yaml.safe_load(stream)["lines"]
-    return tuple((entry["name"], float(entry["wavelength-nm"])) for entry in entries)
+        content = yaml.safe_load(stream)
+    try:
+        return tuple((str(entry["name"]), float(entry["wavelength-nm"])) for entry in content["lines"])
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(
+            f"{HOST_LINES_FILE.name} must hold a list `lines` of entries with a name and wavelength-nm: {e!r}"
+        ) from e
 
 
 def infer_host_redshift(
@@ -343,8 +373,10 @@ def infer_host_redshift(
     """*infer the host redshift from the centres of detected windows*
 
     Each window centre is matched to each rest-frame line, which gives a redshift per pair. A redshift is accepted
-    when at least ``MIN_REDSHIFT_WINDOWS`` windows agree on it within ``REDSHIFT_TOLERANCE`` for distinct lines. Where
-    two redshifts qualify, the one with the most windows wins, then the one with the smaller scatter.
+    when at least ``MIN_REDSHIFT_WINDOWS`` windows agree on it within ``REDSHIFT_TOLERANCE`` for distinct lines, and it
+    lies between ``MIN_REDSHIFT`` and ``MAX_REDSHIFT``. A pair of windows can fit two redshifts, because some pairs of
+    lines have wavelength ratios within the tolerance. When the best redshift and the best one that differs from it by
+    more than the tolerance have the same number of windows, none is returned.
 
     **Key Arguments:**
 
@@ -353,7 +385,8 @@ def infer_host_redshift(
 
     **Return:**
 
-    - ``redshift`` -- a ``host_redshift``, or *None* when no redshift is supported by two windows
+    - ``redshift`` -- a ``host_redshift``, or *None* when no redshift is supported by two windows or two redshifts
+      are supported equally
 
     **Usage:**
 
@@ -362,32 +395,58 @@ def infer_host_redshift(
     redshift = infer_host_redshift(windows, load_host_lines())
     ```
     """
-    if len(windows) < MIN_REDSHIFT_WINDOWS:
+    if len(windows) < MIN_REDSHIFT_WINDOWS or not len(restLines):
         return None
     centres = np.array([(window.wavelengthMinNm + window.wavelengthMaxNm) / 2 for window in windows])
     rest = np.array([wavelength for _, wavelength in restLines])
     candidates = centres[:, None] / rest[None, :] - 1.0
-    best = None
+    hypotheses = _redshift_hypotheses(candidates)
+    if not hypotheses:
+        return None
+    best = max(hypotheses, key=lambda hypothesis: (len(hypothesis.matches), -hypothesis.scatter))
+    rivals = [h for h in hypotheses if abs(h.z - best.z) > REDSHIFT_TOLERANCE]
+    if any(len(rival.matches) == len(best.matches) for rival in rivals):
+        return None
+    if not MIN_REDSHIFT <= best.z <= MAX_REDSHIFT:
+        return None
+    return _redshift_of(best, windows, centres, restLines)
+
+
+def _redshift_of(
+    hypothesis: _hypothesis,
+    windows: Sequence[host_feature],
+    centres: np.ndarray,
+    restLines: Sequence[tuple[str, float]],
+) -> host_redshift:
+    """*the ``host_redshift`` of an accepted hypothesis: its lines in wavelength order and the median relative width*"""
+    fractions = [
+        (windows[window].wavelengthMaxNm - windows[window].wavelengthMinNm) / 2 / centres[window]
+        for window, _ in hypothesis.matches
+    ]
+    ordered = sorted(hypothesis.matches, key=lambda match: restLines[match[1]][1])
+    return host_redshift(
+        z=hypothesis.z,
+        lineNames=tuple(restLines[line][0] for _, line in ordered),
+        nWindows=len(hypothesis.matches),
+        halfWidthFraction=float(np.median(fractions)),
+    )
+
+
+def _redshift_hypotheses(candidates: np.ndarray) -> list[_hypothesis]:
+    """*one hypothesis for each seed redshift in range that at least ``MIN_REDSHIFT_WINDOWS`` windows support*
+
+    ``candidates`` holds the redshift of each (window, line) pair. A hypothesis keeps its seed's matches and takes the
+    median of their redshifts as its own.
+    """
+    hypotheses = []
     for seed in candidates[(candidates >= MIN_REDSHIFT) & (candidates <= MAX_REDSHIFT)]:
         matches = _matches_of_redshift(candidates, seed)
         if len(matches) < MIN_REDSHIFT_WINDOWS:
             continue
-        scatter = sum(abs(candidates[window, line] - seed) for window, line in matches)
-        key = (len(matches), -scatter)
-        if best is None or key > best[0]:
-            best = (key, matches)
-    if best is None:
-        return None
-    matches = best[1]
-    redshifts = [candidates[window, line] for window, line in matches]
-    fractions = [
-        (windows[window].wavelengthMaxNm - windows[window].wavelengthMinNm) / 2 / centres[window]
-        for window, _ in matches
-    ]
-    names = [restLines[line][0] for _, line in sorted(matches, key=lambda match: rest[match[1]])]
-    return host_redshift(
-        z=float(np.median(redshifts)), lineNames=tuple(names), halfWidthFraction=float(np.median(fractions))
-    )
+        redshifts = [candidates[window, line] for window, line in matches]
+        scatter = sum(abs(redshift - seed) for redshift in redshifts)
+        hypotheses.append(_hypothesis(z=float(np.median(redshifts)), matches=tuple(matches), scatter=float(scatter)))
+    return hypotheses
 
 
 def _matches_of_redshift(candidates: np.ndarray, seed: float) -> list[tuple[int, int]]:
@@ -416,22 +475,22 @@ def companion_windows(
 ) -> tuple[host_feature, ...]:
     """*the windows of the rest-frame lines of the host that were not detected in one order*
 
-    A line gets a window when it falls inside the searched part of the order (the detector skips the
-    ``TREND_WINDOW_BINS // 2`` bins at each end), does not fall in a detected window of the order, and no catalogue
-    skyline lies within the window widened by 8 detector lines. The window is centred at the line at the inferred
-    redshift and has the half width fraction of the detected windows.
+    A line gets a window when it lies inside the searched part of the usable pixels of the order, touches no
+    detected window of the order, and has no catalogue skyline within 8 detector lines. The window is centred on the
+    line at the inferred redshift. Its half width is the detected relative half width and ``REDSHIFT_UNCERTAINTY``
+    added in quadrature, times the wavelength.
 
     **Key Arguments:**
 
-    - ``imageMapOrder`` -- the order table, with ``wavelength``, ``x`` and ``y``
+    - ``imageMapOrder`` -- the order table, as for ``find_host_line_windows``
     - ``detected`` -- the windows detected in this order
     - ``redshift`` -- the ``host_redshift`` from ``infer_host_redshift``
-    - ``restLines`` -- the ``(name, wavelength)`` pairs from ``load_host_lines``
+    - ``restLines`` -- the pairs from ``load_host_lines``
     - ``skylineWavelengthsNm`` -- wavelengths (nm) of catalogue skylines. Default *()*
 
     **Return:**
 
-    - ``windows`` -- a tuple of ``host_feature`` of this order, sorted by wavelength. Empty when none is added
+    - ``windows`` -- a tuple of ``host_feature`` of this order, by wavelength
 
     **Usage:**
 
@@ -441,24 +500,77 @@ def companion_windows(
     ```
     """
     lineStepNm = _line_step_nm(imageMapOrder)
-    if lineStepNm is None:
+    searched = _searched_range_nm(imageMapOrder, lineStepNm)
+    if searched is None:
         return ()
-    wavelength = imageMapOrder["wavelength"].to_numpy(dtype=float)
-    edgeNm = (TREND_WINDOW_BINS // 2) * LINES_PER_BIN * lineStepNm
-    searched = (float(np.nanmin(wavelength)) + edgeNm, float(np.nanmax(wavelength)) - edgeNm)
     skylines = np.asarray(skylineWavelengthsNm, dtype=float)
     order = int(imageMapOrder["order"].iloc[0])
-    windows = []
-    for _, restNm in sorted(restLines, key=lambda line: line[1]):
-        centre = restNm * (1.0 + redshift.z)
-        halfWidth = redshift.halfWidthFraction * centre
-        first, last = centre - halfWidth, centre + halfWidth
-        if first < searched[0] or last > searched[1]:
-            continue
-        if any(window.wavelengthMinNm <= centre <= window.wavelengthMaxNm for window in detected):
-            continue
-        margin = SKY_MASK_HALF_WIDTH_LINES * lineStepNm
-        if len(skylines) and np.any((skylines >= first - margin) & (skylines <= last + margin)):
-            continue
-        windows.append(host_feature(order=order, wavelengthMinNm=first, wavelengthMaxNm=last, significance=0.0))
-    return tuple(windows)
+    fraction = math.hypot(redshift.halfWidthFraction, REDSHIFT_UNCERTAINTY)
+    candidates = (
+        host_feature(
+            order, restNm * (1.0 + redshift.z) * (1.0 - fraction), restNm * (1.0 + redshift.z) * (1.0 + fraction), 0.0
+        )
+        for _, restNm in sorted(restLines, key=lambda line: line[1])
+    )
+    margin = SKY_MASK_HALF_WIDTH_LINES * lineStepNm
+    return tuple(c for c in candidates if _is_wanted(c, searched, detected, skylines, margin))
+
+
+def _is_wanted(
+    window: host_feature,
+    searched: tuple[float, float],
+    detected: Sequence[host_feature],
+    skylines: np.ndarray,
+    margin: float,
+) -> bool:
+    """*True when a companion window is in the searched range, touches no detected window and has no skyline near*"""
+    first, last = window.wavelengthMinNm, window.wavelengthMaxNm
+    if first < searched[0] or last > searched[1]:
+        return False
+    if any(first <= other.wavelengthMaxNm and last >= other.wavelengthMinNm for other in detected):
+        return False
+    return not _near_catalogue_skyline(skylines, first, last, margin)
+
+
+def new_windows(candidates: Sequence[host_feature], detected: Sequence[host_feature]) -> tuple[host_feature, ...]:
+    """*the candidate windows that touch none of the detected windows*
+
+    **Key Arguments:**
+
+    - ``candidates`` -- the windows to check, for example the merged companion windows
+    - ``detected`` -- the detected windows of every order
+
+    **Return:**
+
+    - ``windows`` -- the candidates that share no wavelength with any detected window, in their order
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.host_line_mask import new_windows
+    added = new_windows(merge_host_features(companions), detected)
+    ```
+    """
+    return tuple(
+        candidate
+        for candidate in candidates
+        if not any(
+            candidate.wavelengthMinNm <= window.wavelengthMaxNm and candidate.wavelengthMaxNm >= window.wavelengthMinNm
+            for window in detected
+        )
+    )
+
+
+def _searched_range_nm(imageMapOrder: Any, lineStepNm: float | None) -> tuple[float, float] | None:
+    """*the wavelength range of the usable pixels of an order that the detector searches, or None when it has none*"""
+    isUsable = _usable_pixels(imageMapOrder)
+    if lineStepNm is None or not isUsable.any():
+        return None
+    wavelength = imageMapOrder["wavelength"].to_numpy(dtype=float)[isUsable]
+    edgeNm = (TREND_WINDOW_BINS // 2) * LINES_PER_BIN * lineStepNm
+    return float(wavelength.min()) + edgeNm, float(wavelength.max()) - edgeNm
+
+
+def _near_catalogue_skyline(skylines: np.ndarray, firstNm: float, lastNm: float, marginNm: float) -> bool:
+    """*True when a catalogue skyline lies within ``marginNm`` of the window from ``firstNm`` to ``lastNm``*"""
+    return bool(len(skylines) and np.any((skylines >= firstNm - marginNm) & (skylines <= lastNm + marginNm)))
