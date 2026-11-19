@@ -880,7 +880,7 @@ def test_extract_writes_order_and_merged_product_contracts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Write stable extracted-spectrum product metadata and an ASCII companion file."""
+    """Write stable extracted-spectrum product metadata; the ASCII file is written later, after flux calibration."""
     import soxspipe.commonutils.phase3 as phase3
 
     extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
@@ -897,12 +897,8 @@ def test_extract_writes_order_and_merged_product_contracts(
     assert calls[1]["filePath"].endswith("SYNTHETIC_EXTRACTED_MERGED.fits")
     assert calls[1]["header"]["PRO_TYPE"] == "REDUCED"
     assert calls[1]["header"]["PRO_CATG"] == "SCI_SLIT_FLUX_VIS"
-    assert products["product_label"].tolist() == [
-        "EXTRACTED_ORDERS_TABLE",
-        "EXTRACTED_MERGED_ASCII",
-        "EXTRACTED_MERGED_TABLE",
-    ]
-    assert (tmp_path / "SYNTHETIC_EXTRACTED_MERGED.txt").is_file()
+    assert products["product_label"].tolist() == ["EXTRACTED_ORDERS_TABLE", "EXTRACTED_MERGED_TABLE"]
+    assert not list(tmp_path.glob("*.txt"))
     assert filePath == str(tmp_path / "SYNTHETIC_EXTRACTED_MERGED.fits")
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
     assert joins == {"10-11": 501.0}
@@ -939,7 +935,6 @@ def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged
     writtenTables: dict[str, object] = {}
 
     def snapshot_written_table(**kwargs: object) -> None:
-        # THE ASCII EXPORT LATER RESCALES THE SAME TABLE, SO COPY IT AT WRITE TIME
         writtenTables[kwargs["filePath"]] = kwargs["tables"][0].copy()
 
     monkeypatch.setattr(phase3, "write_fits_table_to_disk", snapshot_written_table)
@@ -979,12 +974,8 @@ def test_extract_labels_every_product_row_with_the_running_recipe(
 
     _, products, _, _, _ = extractor.extract()
 
-    assert products["product_label"].tolist() == [
-        "EXTRACTED_ORDERS_TABLE",
-        "EXTRACTED_MERGED_ASCII",
-        "EXTRACTED_MERGED_TABLE",
-    ]
-    assert products["soxspipe_recipe"].tolist() == [recipeName] * 3
+    assert products["product_label"].tolist() == ["EXTRACTED_ORDERS_TABLE", "EXTRACTED_MERGED_TABLE"]
+    assert products["soxspipe_recipe"].tolist() == [recipeName] * 2
 
 
 @pytest.mark.parametrize("recipeName", ["soxs-stare", "soxs-nod", "soxs-offset"])
@@ -1864,6 +1855,41 @@ def test_order_merge_resamples_nir_flux_and_preserves_variance(log: object) -> N
     np.testing.assert_allclose(merged["SKY_COUNTS"].values.value, [4.0 / 3, 7.0 / 3])
     np.testing.assert_allclose(merged["SNR"].values.value, [6.0, 9.0])
     assert joins == {}
+
+
+def test_order_merge_gives_nan_sky_counts_when_the_extraction_had_no_sky_frame(log: object) -> None:
+    """A run with no sky model has NaN sky in the orders table, and the merge keeps it NaN rather than 0 (DY-1361)."""
+    # ARRANGE
+    extractor = _extractor(log)
+    extractor.arm = "NIR"
+    extractor.kw = lambda key: key
+    extractedOrders = _merge_rows([(10, [1000.00, 1000.06, 1000.12], [12.0, 18.0, 24.0])], pixelScale=0.06)
+    extractedOrders["skyFlux"] = np.nan
+
+    # ACT
+    merged, _ = extractor.merge_extracted_orders(extractedOrders)
+
+    # ASSERT
+    assert merged["SKY_COUNTS"].values.value.shape == (2,)
+    assert np.isnan(merged["SKY_COUNTS"].values.value).all()
+
+
+def test_order_merge_carries_no_sky_column_when_the_extractor_extracts_no_sky_model(log: object) -> None:
+    """Nod and offset extractions difference two frames, so there is no sky model to carry (DY-1361)."""
+    # ARRANGE
+    extractor = _extractor(log)
+    extractor.arm = "NIR"
+    extractor.kw = lambda key: key
+    extractor.carrySkyCounts = False
+    extractedOrders = _merge_rows([(10, [1000.00, 1000.06, 1000.12], [12.0, 18.0, 24.0])], pixelScale=0.06)
+    extractedOrders["skyFlux"] = 5.0
+
+    # ACT
+    merged, _ = extractor.merge_extracted_orders(extractedOrders)
+
+    # ASSERT
+    assert list(merged.columns) == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SNR"]
+    np.testing.assert_allclose(merged["FLUX_COUNTS"].values.value, [14.0, 20.0])
 
 
 @pytest.mark.parametrize(("notFlattened", "hasDensity"), [("", False), ("_NOTFLAT", True)])

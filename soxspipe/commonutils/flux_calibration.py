@@ -14,6 +14,10 @@ from typing import Any
 
 os.environ["TERM"] = "vt100"
 
+# THE COLUMNS OF THE EXTRACTED SPECTRUM THE FLUX CALIBRATION READS, AND THE ONE IT CARRIES WHEN THE SPECTRUM HAS IT
+REQUIRED_SPECTRUM_COLUMNS = ("WAVE", "FLUX_COUNTS", "VARIANCE", "SNR")
+OPTIONAL_SPECTRUM_COLUMNS = ("SKY_COUNTS",)
+
 
 def _calculate_flux_calibration(
     counts: Any,
@@ -23,6 +27,39 @@ def _calculate_flux_calibration(
 ) -> Any:
     """Return calibrated flux values from the pipeline calibration factors."""
     return counts / exposureTime * extinctionFactors * responseFactors * 10**-17
+
+
+def _require_spectrum_columns(spectrum: Any) -> None:
+    """Raise a ValueError that names the columns of the extracted spectrum the flux calibration needs and lacks."""
+    missing = [name for name in REQUIRED_SPECTRUM_COLUMNS if name not in spectrum.columns]
+    if missing:
+        raise ValueError(
+            f"The extracted spectrum has no {', '.join(missing)} column, so it cannot be flux calibrated; "
+            f"it needs {', '.join(REQUIRED_SPECTRUM_COLUMNS)}."
+        )
+
+
+def _flux_calibrated_columns(spectrum: Any, fluxCalibrated: Any, errorCalibrated: Any) -> "dict[str, Any]":
+    """Return the columns of the flux-calibrated table, in order.
+
+    The calibrated flux and error come first. The counts, variance, sky and SNR of the extracted spectrum follow
+    unchanged, so the sky stays in electrons per pixel. ``SKY_COUNTS`` is carried only when the spectrum has it: the
+    nod and offset recipes extract no sky model.
+    """
+    import numpy as np
+
+    columns = {
+        "WAVE": np.asarray(spectrum["WAVE"], dtype=float),
+        "FLUX_CALIBRATED": np.asarray(fluxCalibrated, dtype=float),
+        "ERR_CALIBRATED": np.asarray(errorCalibrated, dtype=float),
+        "FLUX_COUNTS": np.asarray(spectrum["FLUX_COUNTS"]),
+        "VARIANCE": np.asarray(spectrum["VARIANCE"]),
+    }
+    for name in OPTIONAL_SPECTRUM_COLUMNS:
+        if name in spectrum.columns:
+            columns[name] = np.asarray(spectrum[name])
+    columns["SNR"] = np.asarray(spectrum["SNR"])
+    return columns
 
 
 def _response_factors_from_table(wavelengths: Any, tableWave: Any, tableResponse: Any) -> Any:
@@ -200,6 +237,7 @@ class flux_calibration:
         import copy
         from contextlib import suppress
 
+        import numpy as np
         import pandas as pd
 
         from soxspipe.commonutils.fits_headers import set_header_card
@@ -208,6 +246,7 @@ class flux_calibration:
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
         flux_calibration = None
+        _require_spectrum_columns(self.extractedSpectrum)
 
         self.log.debug("completed the ``calibrate`` method")
         # STEP TO DO:
@@ -229,19 +268,24 @@ class flux_calibration:
         responseFactors = load_response_factors(self.responseFunction, self.extractedSpectrum["WAVE"], self.log)
 
         # THE RESPONSE SCALES FLAT-FIELDED ELECTRONS PER UNBINNED PIXEL, SO A BINNED SPECTRUM IS SCALED DOWN FIRST
-        counts = counts_per_unbinned_pixel(self.extractedSpectrum, dispersion_binning(self.header, self.arm, self.kw))
+        binning = dispersion_binning(self.header, self.arm, self.kw)
+        counts = counts_per_unbinned_pixel(self.extractedSpectrum, binning)
         flux_calibration = _calculate_flux_calibration(
             counts,
             self.exptime,
             responseFactors,
             extinctionCorrectionFactor,
         )
+        # THE ERROR IS THE SQUARE ROOT OF THE VARIANCE, PASSED THROUGH THE SAME FACTOR AS THE FLUX
+        errorCalibrated = _calculate_flux_calibration(
+            np.sqrt(np.asarray(self.extractedSpectrum["VARIANCE"], dtype=float)) / binning,
+            self.exptime,
+            responseFactors,
+            extinctionCorrectionFactor,
+        )
 
         fluxCalSpectrum = pd.DataFrame(
-            {
-                "WAVE": self.extractedSpectrum["WAVE"],
-                "FLUX_CALIBRATED": flux_calibration,
-            }
+            _flux_calibrated_columns(self.extractedSpectrum, flux_calibration, errorCalibrated)
         )
 
         if self.debug:

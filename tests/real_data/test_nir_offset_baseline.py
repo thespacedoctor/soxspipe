@@ -59,8 +59,8 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     expected_products = {
         f"{_PRODUCT_STEM}.log",
         f"{_PRODUCT_STEM}_EXTRACTED_MERGED.fits",
-        f"{_PRODUCT_STEM}_EXTRACTED_MERGED.txt",
         f"{_PRODUCT_STEM}_FLUXCAL.fits",
+        f"{_PRODUCT_STEM}_FLUXCAL.txt",
         f"{_PRODUCT_STEM}_OBJTRACE_STACK.fits",
         f"{_PRODUCT_STEM}_ONOFF_STACK.fits",
     }
@@ -74,11 +74,11 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert merged_hdus[0].header["ESO PRO REC1 ID"] == "soxs-offset"
         dateObs = merged_hdus[0].header["DATE-OBS"]
         merged_table = merged_hdus[1].data
+        # AN OFFSET SPECTRUM CARRIES NO SKY COLUMN: ITS "SKY" FRAME IS THE OFF FRAME, NOT A SKY MODEL (DY-1361)
         assert set(merged_table.names) == {
             "WAVE",
             "FLUX_COUNTS",
             "VARIANCE",
-            "SKY_COUNTS",
             "SNR",
         }
         mergedRows = len(merged_table)
@@ -91,7 +91,7 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     with fits.open(fluxcal_path) as fluxcal_hdus:
         assert len(fluxcal_hdus) == 2
         fluxcal_table = fluxcal_hdus[1].data
-        assert set(fluxcal_table.names) == {"WAVE", "FLUX_CALIBRATED"}
+        assert fluxcal_table.names == ["WAVE", "FLUX_CALIBRATED", "ERR_CALIBRATED", "FLUX_COUNTS", "VARIANCE", "SNR"]
         fluxcalRows = len(fluxcal_table)
         fluxcalMedian = float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"]))
 

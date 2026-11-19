@@ -126,6 +126,7 @@ def _patch_stare(
         "extractor": [],
         "quicklook": [],
         "cleanUp": [],
+        "ascii": [],
     }
 
     def fake_stack(**kwargs: object) -> Any:
@@ -179,6 +180,14 @@ def _patch_stare(
     monkeypatch.setattr(stareModule, "spectroscopic_image_quality_checks", lambda **kwargs: kwargs["qcTable"])
     commonutils = import_module("soxspipe.commonutils")
     monkeypatch.setattr(commonutils, "horne_extraction", FakeExtractor)
+
+    def fake_write_ascii(mergedPath: str, fluxcalPath: str | None, products: pd.DataFrame, *_: object) -> pd.DataFrame:
+        captured["ascii"].append({"merged": mergedPath, "fluxcal": fluxcalPath})
+        return products
+
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.spectrum_ascii"), "write_ascii_spectrum_product", fake_write_ascii
+    )
     toolkit = import_module("soxspipe.commonutils.toolkit")
     monkeypatch.setattr(toolkit, "quicklook_image", lambda **kwargs: captured["quicklook"].append(kwargs))
     monkeypatch.setattr(
@@ -1007,6 +1016,22 @@ def test_the_stare_extractor_is_asked_for_the_no_trace_boxcar_fallback(
     assert captured["extractor"][0]["noTraceFallback"] is True
 
 
+def test_the_stare_extractor_keeps_the_sky_counts_column(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT: STARE ASKS FOR NO CHANGE, SO THE EXTRACTOR KEEPS ITS DEFAULT OF CARRYING THE SKY
+    assert captured["extractor"][0].get("carrySkyCounts", True) is True
+
+
 def test_a_standard_star_without_an_object_trace_makes_no_response_curve_and_fails_the_recipe(
     log: Any,
     tmp_path: Path,
@@ -1117,6 +1142,125 @@ def test_a_science_frame_without_an_object_trace_or_a_response_does_not_fail_the
 
     assert captured["cleanUp"] == [{"forceFail": False}]
     assert calls["plot"][0][3] == []
+
+
+def test_the_ascii_spectrum_is_written_once_from_the_fluxcal_table_when_a_response_is_given(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(response_product_fits(tmp_path / "RESP_TAB_VIS.fits"))]}
+    recipe = _stare_recipe(log, tmp_path, extraRoutes=routes)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+    _spy_response_and_plot(recipe, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["ascii"] == [{"merged": str(tmp_path / "extracted.fits"), "fluxcal": "fluxcal.fits"}]
+
+
+def test_the_ascii_spectrum_falls_back_to_the_merged_table_without_a_response(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+    _spy_response_and_plot(recipe, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["ascii"] == [{"merged": str(tmp_path / "extracted.fits"), "fluxcal": None}]
+
+
+def test_a_standard_star_writes_its_ascii_spectrum_from_the_merged_table(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: A STANDARD BUILDS A RESPONSE AND IS NEVER FLUX CALIBRATED IN THE SAME RUN
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.generateReponseCurve = True
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+    _spy_response_and_plot(recipe, monkeypatch)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["ascii"] == [{"merged": str(tmp_path / "extracted.fits"), "fluxcal": None}]
+
+
+def test_the_ascii_spectrum_is_written_before_the_merged_spectrum_plots(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path)
+    order: list[str] = []
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *args: order.append("plot"))
+    monkeypatch.setattr(recipe, "_write_ascii_spectrum", lambda *args: order.append("ascii"))
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert order == ["ascii", "plot"]
+    assert captured["ascii"] == []
+
+
+def test_no_ascii_spectrum_is_written_when_the_extraction_wrote_no_merged_table(
+    log: Any,
+    tmp_path: Path,
+) -> None:
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.dateObs = "2024-01-02T03:04:05"
+
+    # ACT
+    recipe._write_ascii_spectrum(False, None)
+
+    # ASSERT: NOTHING TO READ, SO NO PRODUCT ROW
+    assert recipe.products.empty
+
+
+def test_the_fluxcal_plot_reads_snr_and_sky_from_the_fluxcal_table(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from astropy.table import Table
+
+    # ARRANGE: THE FLUX-CALIBRATED TABLE CARRIES ITS OWN SNR AND SKY, SO THE MERGED SPECTRUM'S ARE NOT COPIED OVER
+    recipe = _stare_recipe(log, tmp_path)
+    recipe.dateObs = "2024-01-02T03:04:05"
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    plotKwargs: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        toolkit,
+        "plot_merged_spectrum_qc",
+        lambda **kwargs: plotKwargs.append(kwargs) or (kwargs["products"], str(tmp_path / "merged.pdf")),
+    )
+    fluxCalPath = tmp_path / "fluxcal.fits"
+    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [1.0], "SKY_COUNTS": [7.0], "SNR": [9.0]}).write(fluxCalPath)
+    merged = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [1.0]})
+
+    # ACT
+    recipe._plot_merged_spectrum_qcs(merged, {"10-11": 11}, str(fluxCalPath), [])
+
+    # ASSERT
+    fluxcalSpectrum = plotKwargs[1]["merged_orders"]
+    assert list(fluxcalSpectrum["SKY_COUNTS"]) == [7.0]
+    assert list(fluxcalSpectrum["SNR"]) == [9.0]
+    assert list(fluxcalSpectrum["FLUX_COUNTS"]) == [1.0]
 
 
 @pytest.mark.parametrize("isBoxcar", [False, True])

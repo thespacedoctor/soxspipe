@@ -228,6 +228,7 @@ class soxs_offset(soxs_nod):
         if responseFunctionPath:
             filePath_fluxcal = self._flux_calibrate_stack(responseFunctionPath, stackedSpectrum, allFrameON)
 
+        self._write_ascii_spectrum(filePath_fluxcal)
         self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePath_fluxcal)
         if filePath_fluxcal:
             productPath = filePath_fluxcal
@@ -257,6 +258,7 @@ class soxs_offset(soxs_nod):
         stackedSpectrum, _, orderJoins = self._reduce_each_offset_cycle(
             *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
         )
+        self._write_ascii_spectrum(None)
         self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
         return self.report_output()
 
@@ -776,9 +778,8 @@ class soxs_offset(soxs_nod):
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            # ADD THE SNR COLUMN AND COPY VALUES FROM STACKEDSPECTRUM
-            fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
+            # THE PLOT DRAWS THE CALIBRATED FLUX FROM THE COUNTS COLUMN. THE TABLE CARRIES ITS OWN SNR
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]
 
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,

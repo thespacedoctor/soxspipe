@@ -19,6 +19,7 @@ from astropy.table import Table
 from soxspipe.commonutils.flux_calibration import flux_calibration
 from soxspipe.commonutils.response_basis import counts_per_unbinned_pixel, dispersion_binning
 from soxspipe.commonutils.response_function import response_function
+from tests.factories import merged_spectrum
 
 pytestmark = pytest.mark.integration
 responseModule = importlib.import_module("soxspipe.commonutils.response_function")
@@ -42,6 +43,12 @@ def _spectrum(dispersionBinning: int) -> dict[str, np.ndarray]:
         "WAVE": WAVELENGTHS,
         "FLUX_COUNTS": np.full(WAVELENGTHS.size, COUNTS_PER_UNBINNED_PIXEL * dispersionBinning),
     }
+
+
+def _merged_spectrum(dispersionBinning: int) -> pd.DataFrame:
+    """Return the order-merged spectrum the star gives with ``dispersionBinning`` pixels binned together."""
+    counts = _spectrum(dispersionBinning)["FLUX_COUNTS"]
+    return merged_spectrum(WAVELENGTHS, counts, counts, np.ones(WAVELENGTHS.size))
 
 
 def _header(dispersionBinning: int) -> fits.Header:
@@ -112,7 +119,7 @@ def _calibrate(tmp_path: Path, log: object, responsePath: Path, dispersionBinnin
     calibration.log = log
     calibration.settings = {}
     calibration.responseFunction = str(responsePath)
-    calibration.extractedSpectrum = pd.DataFrame(_spectrum(dispersionBinning))
+    calibration.extractedSpectrum = _merged_spectrum(dispersionBinning)
     calibration.exptime = EXPOSURE_TIME
     calibration.airmass = 1.0
     calibration.extinctionPath = "ext.fits"

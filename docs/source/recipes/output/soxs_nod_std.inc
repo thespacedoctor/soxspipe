@@ -7,10 +7,10 @@
 | ------------------------- | -------------------------------------------- | --------- |---------- |---------- |---------- |
 | `EXTRACTED ORDERS TABLE`    | Table of the extracted source in each order  | FITS      |     `SCI_SLIT_FLUX_NIR`      |      `REDUCED`     |     `ECHELLE,SLIT`      |
 | `EXTRACTED MERGED TABLE`    | Table of the extracted, order-merged         | FITS      |     `SCI_SLIT_FLUX_NIR`      |      `REDUCED`     |     `ECHELLE,SLIT`      |
-| `EXTRACTED FLUXCAL SPECTRUM` | Table of the flux calibrated extracted spectrum | FITS | `SCI_SLIT_FLUX_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
+| `EXTRACTED FLUXCAL SPECTRUM` | Table of the flux calibrated extracted spectrum: `WAVE`, `FLUX_CALIBRATED`, `ERR_CALIBRATED`, `FLUX_COUNTS`, `VARIANCE`, `SNR` | FITS | `SCI_SLIT_FLUX_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `RESPONSE_FUNC` | Response curve | FITS | `RESP_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `EFFICIENCY` | Efficiency estimate | FITS | `EFFICIENCY_TAB_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
-| `EXTRACTED MERGED ASCII`    | Ascii version of extracted source spectrum   | TXT       |     -       |    -       |     -      |
+| `EXTRACTED MERGED ASCII`    | ASCII spectrum, `WAVE` in Å: `<stem>_FLUXCAL.txt` from the flux calibrated table, or `<stem>_EXTRACTED_MERGED.txt` from the merged table when there is none  | TXT       |     -       |    -       |     -      |
 | `LACOSMIC_MASK` | QC product: the pixels L.A.Cosmic flagged as cosmic rays, without the default bad-pixel mask. One `CRMASK` image extension (1 = flagged, 0 = not) per raw frame in observation time order. Each header gives the raw file name (`ORIGFILE`), `MJD-OBS`, `DATE-OBS` and the flagged-pixel count (`NCRPIX`). Written to the QC directory as `_LACOSMIC_MASK.fits`, only if `use_lacosmic` is on | FITS      |     -       |    -       |     -      |
 | `OBJECT TRACE RES`          | Residuals of the object trace polynomial fit | PDF       |     -       |    -       |     -      |
 | `BKGROUND`                  | Fitted intra-order image background          | PDF       |     -       |    -       |     -      |

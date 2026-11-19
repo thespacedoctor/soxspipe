@@ -210,6 +210,10 @@ class horne_extraction(base_util):
     noTraceFallback = False
     traceFallback = False
 
+    # WHETHER THE ORDER-MERGED SPECTRUM CARRIES A SKY_COUNTS COLUMN. NOD AND OFFSET EXTRACTIONS TURN IT OFF: THEIR "SKY"
+    # FRAME IS THE OTHER NOD POSITION, NOT A SKY MODEL
+    carrySkyCounts = True
+
     # {ORDER: SLIT-ILLUMINATION OFFSET (ARCSEC)} FOR THE FAINT-ORDER TRACE, OR NONE WHEN NOT MEASURED
     slitOffsetsArcsec = None
 
@@ -254,6 +258,7 @@ class horne_extraction(base_util):
         scienceHeaders=False,
         flatPass=None,
         slitOffsetsArcsec=None,
+        carrySkyCounts=True,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -284,6 +289,7 @@ class horne_extraction(base_util):
         self.noTraceFallback = noTraceFallback
         self.flatPass = flatPass
         self.slitOffsetsArcsec = slitOffsetsArcsec
+        self.carrySkyCounts = carrySkyCounts
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -744,42 +750,11 @@ class horne_extraction(base_util):
                 qc=self.qc,
             )
 
-            # EXPORTING SPECTRUM IN ASCII FORMAT
-
-            # CHECKING IF WE ARE IN A NODDING SEQUENCE
+            # THE ASCII SPECTRUM IS WRITTEN BY THE RECIPE AFTER FLUX CALIBRATION (SEE spectrum_ascii). A NODDING PASS
+            # REGISTERS NO MERGED-TABLE ROW HERE: THE NOD RECIPE REGISTERS THE STACKED ONE
             if self.noddingSequence or len(self.noddingSequence) > 0 and not self.notFlattened:
                 pass
             elif not self.notFlattened:
-                # SAVE THE MERGED ASTROPY TABLE TO TXT FILE
-                # SAVE THE TABLE stackedSpectrum TO DISK IN ASCII FORMAT
-                asciiFilepath = filePath.replace(".fits", ".txt")
-                asciiFilename = filename.replace(".fits", ".txt")
-                mergedTable["WAVE"] = mergedTable["WAVE"] * 10  # CONVERTING TO ANGSTROMS
-                mergedTable["WAVE"].format = "{:.2f}"
-                mergedTable.write(asciiFilepath, format="ascii", overwrite=True)
-
-                self.products = pd.concat(
-                    [
-                        self.products,
-                        pd.DataFrame(
-                            [
-                                {
-                                    "soxspipe_recipe": self.recipeName,
-                                    "product_label": f"EXTRACTED_MERGED_ASCII{self.notFlattened}",
-                                    "file_name": asciiFilename,
-                                    "file_type": "TXT",
-                                    "obs_date_utc": self.dateObs,
-                                    "reduction_date_utc": utcnow,
-                                    "product_desc": "Ascii version of extracted source spectrum",
-                                    "file_path": asciiFilepath,
-                                    "label": "PROD",
-                                }
-                            ]
-                        ),
-                    ],
-                    ignore_index=True,
-                )
-
                 self.products = pd.concat(
                     [
                         self.products,
@@ -2485,19 +2460,19 @@ class horne_extraction(base_util):
             bin_specification="center",
         )
 
-        sky_orig = extractedOrdersDF["skyFlux"].values * u.electron
-        spectrumSky_orig = spectrum1d_quietly(
-            flux=sky_orig,
-            spectral_axis=extractedOrdersDF["wavelengthMean"].values,
-            bin_specification="center",
-        )
+        if self.carrySkyCounts:
+            sky_orig = extractedOrdersDF["skyFlux"].values * u.electron
+            spectrumSky_orig = spectrum1d_quietly(
+                flux=sky_orig,
+                spectral_axis=extractedOrdersDF["wavelengthMean"].values,
+                bin_specification="center",
+            )
 
         # Fast linear resampling — np.interp is O(N log M) vs FluxConservingResampler's
         # O(N·M), and is accurate for output grids with similar resolution to the input.
         wave_in = spectrum_orig.spectral_axis.to_value(u.nm)[keepMask]
         flux_in = spectrum_orig.flux.to_value(u.electron)[keepMask]
         var_in = spectrum_orig.uncertainty.array[keepMask]
-        sky_in = spectrumSky_orig.flux.to_value(u.electron)[keepMask]
 
         # Deduplicate wavelengths that may overlap at order join boundaries
         _, unique_idx = np.unique(wave_in, return_index=True)
@@ -2515,20 +2490,23 @@ class horne_extraction(base_util):
             left=0.0,
             right=0.0,
         ).astype(np.float32)
-        sky_resampled = np.interp(
-            wave_resample_grid,
-            wave_in[unique_idx],
-            sky_in[unique_idx],
-            left=0.0,
-            right=0.0,
-        ).astype(np.float32)
 
         # flux_resampled = median_smooth(flux_resampled, width=3)
         merged_orders = pd.DataFrame()
         merged_orders["WAVE"] = wave_resample_grid * u.nm
         merged_orders["FLUX_COUNTS"] = flux_resampled * u.electron
         merged_orders["VARIANCE"] = variance_resampled * u.electron
-        merged_orders["SKY_COUNTS"] = sky_resampled * u.electron
+        if self.carrySkyCounts:
+            # THE SKY IS RESAMPLED WITH THE SAME KEPT ROWS, GRID AND INTERPOLATION AS THE FLUX
+            sky_in = spectrumSky_orig.flux.to_value(u.electron)[keepMask]
+            sky_resampled = np.interp(
+                wave_resample_grid,
+                wave_in[unique_idx],
+                sky_in[unique_idx],
+                left=0.0,
+                right=0.0,
+            ).astype(np.float32)
+            merged_orders["SKY_COUNTS"] = sky_resampled * u.electron
         merged_orders["SNR"] = merged_orders["FLUX_COUNTS"].values / np.sqrt(merged_orders["VARIANCE"].values)
 
         # merged_orders = calculate_rolling_snr(dataframe=merged_orders, flux_column="FLUX_COUNTS", window_size=300)

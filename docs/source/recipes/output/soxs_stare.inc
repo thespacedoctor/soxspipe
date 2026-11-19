@@ -7,11 +7,11 @@
 | ------------------------- | -------------------------------------------- | --------- |---------- |---------- |---------- |
 | `EXTRACTED ORDERS TABLE`    | Table of the extracted source in each order  | FITS      |     `SCI_SLIT_FLUX_<ARM>`     |      `REDUCED`     |     `ECHELLE,SLIT`      |
 | `EXTRACTED MERGED TABLE`    | Table of the extracted, order-merged         | FITS      |      `SCI_SLIT_FLUX_<ARM>`      |     `REDUCED`      |      `ECHELLE,SLIT`     |
-| `EXTRACTED FLUXCAL SPECTRUM` | Table of the flux calibrated extracted spectrum | FITS | `SCI_SLIT_FLUX_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
+| `EXTRACTED FLUXCAL SPECTRUM` | Table of the flux calibrated extracted spectrum: `WAVE`, `FLUX_CALIBRATED`, `ERR_CALIBRATED`, `FLUX_COUNTS`, `VARIANCE`, `SKY_COUNTS`, `SNR` | FITS | `SCI_SLIT_FLUX_<ARM>` | `REDUCED` | `ECHELLE,SLIT` |
 | `SKY SUBTRACTED OBJECT`     | The sky-subtracted object                    | FITS      |       -       |    -       |     -      |
 | `SKY MODEL`                 | The sky background model                     | FITS      |         -       |    -       |     -      |
 | `SKY SUB RESIDUALS`         | The sky subtraction residuals                | FITS      |        -       |    -       |     -      |
-| `EXTRACTED MERGED ASCII`    | Ascii version of extracted source spectrum   | TXT       |       -       |    -       |     -      |
+| `EXTRACTED MERGED ASCII`    | ASCII spectrum, `WAVE` in Å: `<stem>_FLUXCAL.txt` from the flux calibrated table, or `<stem>_EXTRACTED_MERGED.txt` from the merged table when there is none  | TXT       |       -       |    -       |     -      |
 | `BKGROUND`                  | Fitted intra-order image background          | PDF     |     -       |    -       |     -      |
 | `SKY MODEL QC PLOTS`        | QC plots for the sky-background modelling    | PDF       |     -       |    -       |     -      |
 | `SKY SUBTRACTION QUICKLOOK` | Sky-subtraction quicklook                    | PDF       |     -       |    -       |     -      |

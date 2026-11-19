@@ -435,6 +435,7 @@ class soxs_nod(base_recipe):
                 responseFunctionPath, stackedSpectrum, allFrameA, allFrameB
             )
 
+        self._write_ascii_spectrum(filePath_fluxcal)
         self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePath_fluxcal)
 
         qcTable = self.report_output()
@@ -579,8 +580,27 @@ class soxs_nod(base_recipe):
         stackedSpectrum, orderJoins = self._reduce_each_nodding_cycle(
             *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
         )
+        self._write_ascii_spectrum(None)
         self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
         return self.report_output()
+
+    def _write_ascii_spectrum(self, filePath_fluxcal):
+        """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
+
+        Updates ``self.products``. The stacked table is the one `stack_extractions` wrote under the current filename
+        template, so the ``_CYCLES`` inspection pass finds its own. A pass with no flux-calibrated table (no response
+        product, a standard star, or the ``_CYCLES`` pass) writes the ASCII spectrum from the stacked table, in counts.
+
+        **Key Arguments:**
+
+        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum table, or None
+        """
+        from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
+
+        mergedPath = f"{self.productDir}/{self.filenameTemplate.replace('.fits', '_EXTRACTED_MERGED.fits')}"
+        self.products = write_ascii_spectrum_product(
+            mergedPath, filePath_fluxcal, self.products, self.recipeName, self.dateObs
+        )
 
     def _aligns_each_order(self):
         """*decide whether each order of a frame gets its own slit shift*
@@ -1356,9 +1376,8 @@ class soxs_nod(base_recipe):
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            # ADD THE SNR COLUMN AND COPY VALUES FROM STACKEDSPECTRUM
-            fluxcal_spec["SNR"] = stackedSpectrum["SNR"]
+            # THE PLOT DRAWS THE CALIBRATED FLUX FROM THE COUNTS COLUMN. THE TABLE CARRIES ITS OWN SNR
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]
 
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,
@@ -1906,6 +1925,8 @@ class soxs_nod(base_recipe):
             turnOffMP=self.turnOffMP,
             scienceHeaders=self.scienceHeaders,
             flatPass=self.flatPassHandoffs.get(extractionKey) if notFlattened else None,
+            # THE "SKY" OF A NOD OR OFFSET DIFFERENCE IS THE OTHER NOD FRAME, SO THERE IS NO SKY MODEL TO CARRY
+            carrySkyCounts=False,
         )
         self.qc, theseProducts, mergedSpectrumDF, orderJoins, _ = optimalExtractor.extract()
         if not notFlattened:
@@ -2079,14 +2100,6 @@ class soxs_nod(base_recipe):
             qc=self.qc,
         )
 
-        # SAVE THE TABLE STACKEDSPECTRUM TO DISK IN ASCII FORMAT
-        asciiFilename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".txt")
-        asciiFilePath = f"{self.productDir}/{asciiFilename}"
-        stackedSpectrum2 = stackedSpectrum.copy()
-        stackedSpectrum2["WAVE"] = stackedSpectrum2["WAVE"] * 10
-        stackedSpectrum2["WAVE"].format = "{:.2f}"  # CONVERTING TO ANGSTROMS
-        stackedSpectrum2.write(asciiFilePath, format="ascii", overwrite=True)
-
         self.add_product(
             productLabel="EXTRACTED_MERGED_TABLE",
             fileName=filename,
@@ -2097,15 +2110,24 @@ class soxs_nod(base_recipe):
             label="PROD",
         )
 
-        self.add_product(
-            productLabel="EXTRACTED_MERGED_ASCII",
-            fileName=asciiFilename,
-            filePath=asciiFilePath,
-            productDesc="Ascii version of extracted source spectrum",
-            reductionDateUtc=self.utcnow,
-            fileType="TXT",
-            label="PROD",
-        )
+        # THE FLATTENED ASCII SPECTRUM IS WRITTEN AFTER FLUX CALIBRATION (SEE _write_ascii_spectrum). ONLY THE
+        # NOT-FLATTENED STACK, WHICH IS NEVER FLUX CALIBRATED, GETS ITS ASCII FILE HERE
+        if notFlattened:
+            asciiFilename = filename.replace(".fits", ".txt")
+            asciiFilePath = f"{self.productDir}/{asciiFilename}"
+            stackedSpectrum2 = stackedSpectrum.copy()
+            stackedSpectrum2["WAVE"] = stackedSpectrum2["WAVE"] * 10
+            stackedSpectrum2["WAVE"].format = "{:.2f}"  # CONVERTING TO ANGSTROMS
+            stackedSpectrum2.write(asciiFilePath, format="ascii", overwrite=True)
+            self.add_product(
+                productLabel="EXTRACTED_MERGED_ASCII",
+                fileName=asciiFilename,
+                filePath=asciiFilePath,
+                productDesc="Ascii version of extracted source spectrum",
+                reductionDateUtc=self.utcnow,
+                fileType="TXT",
+                label="PROD",
+            )
 
         self.log.debug("completed the ``stack_extractions`` method")
         return stackedSpectrum, filePath

@@ -851,11 +851,31 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                     "as failed and will not be used to flux-calibrate other frames."
                 )
 
+        self._write_ascii_spectrum(extractionPath, filePath_fluxcal)
         self._plot_merged_spectrum_qcs(
             mergedSpectumDF, orderJoins, filePath_fluxcal, extractionNotes, optimalExtractor.traceFallback
         )
 
         return productPath, forceFailure
+
+    def _write_ascii_spectrum(self, extractionPath, filePath_fluxcal):
+        """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
+
+        Updates ``self.products``. A pass with no flux-calibrated table (no response product, a standard star, or a
+        failed flux calibration) writes the ASCII spectrum from the order-merged table, in counts.
+
+        **Key Arguments:**
+
+        - ``extractionPath`` -- the path to the order-merged spectrum table, or False when none was written
+        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum table, or None
+        """
+        from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
+
+        if not extractionPath:
+            return
+        self.products = write_ascii_spectrum_product(
+            extractionPath, filePath_fluxcal, self.products, self.recipeName, self.dateObs
+        )
 
     def _read_stare_object_frames(self, kw):
         """*read the science frames of the first stare input type that has any*
@@ -1662,9 +1682,8 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
             fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]  # BACK COMPATIBILITY WITH THE CODE
-            fluxcal_spec["SNR"] = mergedSpectumDF["SNR"]
-            fluxcal_spec["SKY_COUNTS"] = mergedSpectumDF["SKY_COUNTS"]
+            # THE PLOT DRAWS THE CALIBRATED FLUX FROM THE COUNTS COLUMN. SNR AND SKY_COUNTS ARE IN THE TABLE ALREADY
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,
                 products=self.products,
