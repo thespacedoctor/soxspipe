@@ -10,6 +10,7 @@ none.
 from __future__ import annotations
 
 import math
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -67,17 +68,23 @@ def test_the_rest_line_list_holds_the_strong_host_lines_in_air_wavelengths() -> 
     assert all(wavelength > 0 for wavelength in REST_NM.values())
 
 
-def test_a_missing_line_list_raises(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def test_a_missing_line_list_raises_a_value_error_naming_the_file(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     monkeypatch.setattr(host_line_mask, "HOST_LINES_FILE", tmp_path / "missing.yaml")
 
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ValueError, match="missing.yaml"):
         load_host_lines()
 
 
 @pytest.mark.parametrize(
     "text",
-    ["lines: 5\n", "other: []\n", "lines:\n  - {name: Halpha}\n", "lines:\n  - {name: Halpha, wavelength-nm: red}\n"],
-    ids=["not-a-list", "no-lines-key", "no-wavelength", "wavelength-not-a-number"],
+    [
+        "lines: 5\n",
+        "other: []\n",
+        "lines:\n  - {name: Halpha}\n",
+        "lines:\n  - {name: Halpha, wavelength-nm: red}\n",
+        "lines: [unclosed\n",
+    ],
+    ids=["not-a-list", "no-lines-key", "no-wavelength", "wavelength-not-a-number", "invalid-yaml"],
 )
 def test_a_malformed_line_list_raises_a_value_error_naming_the_file(
     monkeypatch: pytest.MonkeyPatch, tmp_path, text: str
@@ -248,6 +255,19 @@ def test_a_redshift_inside_the_limits_is_returned() -> None:
     assert redshift.z == pytest.approx(z, abs=1e-6)
 
 
+def test_a_rival_redshift_outside_the_limits_does_not_make_the_inside_one_ambiguous() -> None:
+    # THE RIVAL IS SUPPORTED BY TWO WINDOWS AND ITS SEED IS INSIDE THE LIMIT, BUT ITS MEDIAN IS NOT
+    z = host_line_mask.MAX_REDSHIFT
+    rival = [_window(REST_NM["Hbeta"], z=z - 1e-4), _window(REST_NM["[OIII] 5007"], z=z + 3e-4)]
+    windows = [_window(HALPHA_NM), _window(953.1), *rival]
+
+    redshift = infer_host_redshift(windows, load_host_lines())
+
+    assert redshift is not None
+    assert redshift.z == pytest.approx(Z, abs=1e-5)
+    assert redshift.lineNames == ("Halpha", "[SIII] 9531")
+
+
 def test_a_redshift_above_the_upper_limit_gives_none_even_when_its_seed_is_inside() -> None:
     # THE SEED OF THE FIRST WINDOW IS INSIDE THE LIMIT, BUT THE MEDIAN OF THE TWO WINDOWS IS NOT
     z = host_line_mask.MAX_REDSHIFT
@@ -348,8 +368,6 @@ def test_pixels_with_a_wavelength_that_is_not_a_number_do_not_set_the_searched_r
 
 
 def test_an_order_with_no_usable_pixel_gets_no_window_and_no_warning() -> None:
-    import warnings
-
     detected = [_window(HALPHA_NM), _window(NII_6583_NM)]
     order = _order(655.0, 690.0).assign(wavelength=np.nan)
 
@@ -395,7 +413,7 @@ def test_a_window_inside_a_detected_window_is_not_new() -> None:
 def test_a_window_that_only_touches_a_detected_window_is_not_new() -> None:
     detected = [host_feature(1, 10.0, 11.0, 9.0)]
 
-    assert host_line_mask.new_windows([host_feature(2, 10.9, 12.0, 0.0)], detected) == ()
+    assert host_line_mask.new_windows([host_feature(2, 11.0, 12.0, 0.0)], detected) == ()
 
 
 def test_a_window_clear_of_the_detected_windows_is_new() -> None:

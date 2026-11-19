@@ -619,7 +619,7 @@ def test_the_settings_are_read_and_checked_once_for_the_search(log: Any, no_cata
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("failure", ["missing", "malformed"])
+@pytest.mark.parametrize("failure", ["missing", "malformed", "invalid-yaml"])
 def test_a_line_list_that_cannot_be_read_keeps_the_detected_windows_and_logs_the_traceback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_catalogue_skylines: None, failure: str
 ) -> None:
@@ -628,6 +628,8 @@ def test_a_line_list_that_cannot_be_read_keeps_the_detected_windows_and_logs_the
     path = tmp_path / "host_emission_lines.yaml"
     if failure == "malformed":
         path.write_text("lines: 5\n")
+    elif failure == "invalid-yaml":
+        path.write_text("lines: [unclosed\n")
     monkeypatch.setattr(host_line_mask, "HOST_LINES_FILE", path)
     log = _TracebackLogger()
     subtractor = _subtractor(log)

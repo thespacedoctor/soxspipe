@@ -345,8 +345,8 @@ def load_host_lines() -> tuple[tuple[str, float], ...]:
 
     **Raises:**
 
-    - ``FileNotFoundError`` -- if the file is missing
-    - ``ValueError`` -- if the file is not a ``lines`` list of entries with a ``name`` and a numeric ``wavelength-nm``
+    - ``ValueError`` -- naming the file, if it cannot be read (missing, no permission), is not valid YAML, or is not a
+      ``lines`` list of entries with a ``name`` and a numeric ``wavelength-nm``
 
     **Usage:**
 
@@ -357,8 +357,11 @@ def load_host_lines() -> tuple[tuple[str, float], ...]:
     """
     import yaml
 
-    with HOST_LINES_FILE.open() as stream:
-        content = yaml.safe_load(stream)
+    try:
+        with HOST_LINES_FILE.open() as stream:
+            content = yaml.safe_load(stream)
+    except (OSError, yaml.YAMLError) as e:
+        raise ValueError(f"{HOST_LINES_FILE.name} could not be read: {e!r}") from e
     try:
         return tuple((str(entry["name"]), float(entry["wavelength-nm"])) for entry in content["lines"])
     except (KeyError, TypeError, ValueError) as e:
@@ -407,8 +410,6 @@ def infer_host_redshift(
     rivals = [h for h in hypotheses if abs(h.z - best.z) > REDSHIFT_TOLERANCE]
     if any(len(rival.matches) == len(best.matches) for rival in rivals):
         return None
-    if not MIN_REDSHIFT <= best.z <= MAX_REDSHIFT:
-        return None
     return _redshift_of(best, windows, centres, restLines)
 
 
@@ -436,7 +437,8 @@ def _redshift_hypotheses(candidates: np.ndarray) -> list[_hypothesis]:
     """*one hypothesis for each seed redshift in range that at least ``MIN_REDSHIFT_WINDOWS`` windows support*
 
     ``candidates`` holds the redshift of each (window, line) pair. A hypothesis keeps its seed's matches and takes the
-    median of their redshifts as its own.
+    median of their redshifts as its own. One whose median is outside ``MIN_REDSHIFT`` and ``MAX_REDSHIFT`` is dropped,
+    so it is neither returned nor a rival.
     """
     hypotheses = []
     for seed in candidates[(candidates >= MIN_REDSHIFT) & (candidates <= MAX_REDSHIFT)]:
@@ -444,8 +446,10 @@ def _redshift_hypotheses(candidates: np.ndarray) -> list[_hypothesis]:
         if len(matches) < MIN_REDSHIFT_WINDOWS:
             continue
         redshifts = [candidates[window, line] for window, line in matches]
-        scatter = sum(abs(redshift - seed) for redshift in redshifts)
-        hypotheses.append(_hypothesis(z=float(np.median(redshifts)), matches=tuple(matches), scatter=float(scatter)))
+        z = float(np.median(redshifts))
+        if MIN_REDSHIFT <= z <= MAX_REDSHIFT:
+            scatter = float(sum(abs(redshift - seed) for redshift in redshifts))
+            hypotheses.append(_hypothesis(z=z, matches=tuple(matches), scatter=scatter))
     return hypotheses
 
 

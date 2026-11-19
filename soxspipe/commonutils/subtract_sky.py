@@ -1030,7 +1030,7 @@ class subtract_sky:
         )
         try:
             restLines = load_host_lines()
-        except Exception as e:
+        except ValueError as e:
             self.log.warning(
                 f"The host emission line list could not be read, so no host redshift is inferred: {e}", exc_info=True
             )
