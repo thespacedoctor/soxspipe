@@ -980,7 +980,7 @@ class data_organiser:
                     # MOVE THE FILES TO THE CORRECT LOCATION
                     filepaths = rawFrames["filepath"]
                     filenames = rawFrames["file"]
-                    for p, n in zip(filepaths, filenames):
+                    for p, n, tech in zip(filepaths, filenames, rawFrames["eso dpr tech"], strict=True):
                         # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
                         destination = path_under_root(p, self.rootDir)
                         parentDirectory = os.path.dirname(destination)
@@ -994,17 +994,19 @@ class data_organiser:
 
                             if self._is_dated_raw_frame(realSource) and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
-                                databaseDeletes.append(realDest)
+                                databaseDeletes.append((p, n, tech))
                             elif self._would_move(source, destination):
                                 self._move_root_frame_unless_taken(destination, realSource, realDest, n, p)
                             if os.path.islink(source):
                                 self._remove_workspace_entry(n)
 
                 if len(databaseDeletes):
+                    # THE STORED FILEPATH, WITH THE KEY OF THE ROW JUST INSERTED, SO NO OTHER FRAME'S ROW IS DELETED
                     c = self.conn.cursor()
-                    placeholders = ", ".join("?" for _ in databaseDeletes)
-                    sqlQuery = f"delete from raw_frames where filepath in ({placeholders});"  # noqa: S608
-                    c.execute(sqlQuery, databaseDeletes)
+                    c.executemany(
+                        'delete from raw_frames where filepath = ? and file = ? and "eso dpr tech" = ?;',
+                        databaseDeletes,
+                    )
                     c.close()
 
         if not skipSqlSync:
@@ -1513,10 +1515,15 @@ class data_organiser:
             placeholders = ", ".join("?" for _ in filesNotInFS)
             sqlQuery = f"delete from {tableName} where filepath in ({placeholders});"  # noqa: S608
             c.execute(sqlQuery, filesNotInFS)
-            sessionId = _validate_session_id(self.sessionId)
-            sofTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
-            sqlQuery = f"delete from {sofTableName} where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"  # noqa: S608
-            c.execute(sqlQuery, filesNotInFS)
+            # A FIRST `prepare` HAS NO SESSION YET, AND SO NO SOF MAP TO CLEAN
+            if hasattr(self, "sessionId"):
+                sessionId = _validate_session_id(self.sessionId)
+                sofTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+                sqlQuery = (
+                    f"delete from {sofTableName} "  # noqa: S608
+                    f"where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"
+                )
+                c.execute(sqlQuery, filesNotInFS)
 
         if len(filesNotInDB):
             for f in filesNotInDB:
