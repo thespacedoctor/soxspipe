@@ -157,3 +157,77 @@ def test_sync_sql_table_to_directory_clears_the_sof_map_of_a_missing_frame_once_
 
     # ASSERT
     assert remainingRows == (0,)
+
+
+def test_sync_sql_table_to_directory_skips_the_sof_map_when_the_session_has_no_table(log: Any, tmp_path: Path) -> None:
+    # ARRANGE: A STALE `.sessionid` NAMES A SESSION WHOSE DIRECTORY, AND SO WHOSE SOF MAP TABLE, DOES NOT EXIST
+    organiser = workspace_organiser(tmp_path, log=log)
+    organiser.sessionId = "stale"
+    organiser.conn = sqlite3.connect(":memory:")
+    organiser.conn.execute("CREATE TABLE raw_frames (filepath TEXT)")
+    organiser.conn.execute("INSERT INTO raw_frames VALUES (?)", (f"./raw/{NIGHT}/gone.fits",))
+
+    # ACT
+    try:
+        organiser._sync_sql_table_to_directory(organiser.rawDir, "raw_frames")
+        rowPaths = _raw_frame_paths(organiser)
+    finally:
+        organiser.close()
+
+    # ASSERT
+    assert rowPaths == []
+
+
+def test_sync_raw_frames_leaves_no_row_for_a_dated_archive_frame_whose_dpr_tech_is_missing(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE FRAME'S TECH READS `--`; THE COLUMN IS NOT NULL ON CONFLICT IGNORE, SO NO ROW IS STORED FOR IT
+    organiser, _, _ = _archive_workspace(tmp_path, log)
+    organiser.conn, _ = organiser._get_or_create_db_connection()
+    organiser._select_instrument()
+    scan = organiser._create_directory_table
+
+    def scan_without_tech(**kwargs: Any) -> tuple[Any, Any, Any]:
+        rawFrames, fitsPaths, remainingFiles = scan(**kwargs)
+        if rawFrames is not None:
+            rawFrames["eso dpr tech"] = "--"
+        return rawFrames, fitsPaths, remainingFiles
+
+    monkeypatch.setattr(organiser, "_create_directory_table", scan_without_tech)
+
+    # ACT
+    try:
+        organiser._sync_raw_frames(skipSqlSync=True)
+        rowPaths = _raw_frame_paths(organiser)
+    finally:
+        organiser.close()
+
+    # ASSERT
+    assert rowPaths == []
+
+
+def test_sync_raw_frames_deletes_the_archive_row_and_holds_a_root_frame_whose_destination_is_taken(
+    log: Any, tmp_path: Path
+) -> None:
+    # ARRANGE: ONE ROOT LINK TO A DATED ARCHIVE FRAME, AND ONE ROOT FRAME WHOSE `raw/<date>/` DESTINATION IS TAKEN
+    organiser, root, archivedFrame = _archive_workspace(tmp_path, log)
+    heldFrame = harvestable_raw_fits(root / "y.fits")
+    takenDestination = root / "raw" / NIGHT / "y.fits"
+    takenDestination.parent.mkdir(parents=True)
+    takenDestination.write_bytes(b"already here")
+    organiser.conn, _ = organiser._get_or_create_db_connection()
+    organiser._select_instrument()
+
+    # ACT
+    try:
+        organiser._sync_raw_frames(skipSqlSync=True)
+        rowPaths = _raw_frame_paths(organiser)
+    finally:
+        organiser.close()
+
+    # ASSERT
+    assert rowPaths == []
+    assert archivedFrame.is_file()
+    assert not (root / "x.fits").exists()
+    assert heldFrame.is_file()
+    assert takenDestination.read_bytes() == b"already here"
