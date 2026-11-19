@@ -3274,7 +3274,8 @@ def compute_extractions(
     **Key Arguments:**
 
     - ``crossDispersionSlicesDF`` -- dataframe of the order's cross-dispersion slices. This dataframe is not modified
-    - ``orderRectifiedImages`` -- the rectified images of the order, including the normalised ``objectProfile``
+    - ``orderRectifiedImages`` -- the rectified images of the order, including the normalised ``objectProfile``.
+      This dict is not modified
     - ``order`` -- the order number
     - ``minimumProfileFraction`` -- a slice whose unmasked pixels hold less than this fraction of the normalised object
       profile gets no optimal flux and is dropped (DY-2195). Default ``MINIMUM_PROFILE_FRACTION_DEFAULT``
