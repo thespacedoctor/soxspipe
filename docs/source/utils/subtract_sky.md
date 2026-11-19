@@ -123,7 +123,7 @@ This changes the stare sky model only. A nod reduction without `--stare` has no 
 | Setting | Default | Meaning |
 | -- | -- | -- |
 | `host-line-mask` | `True` | `False` turns the search and the mask off. |
-| `host-line-sigma` | `5` | Significance a line needs, in units of the local noise. |
+| `host-line-sigma` | `5.5` | Significance a line needs, in units of the local noise. |
 | `host-line-min-slit-contrast` | `0.3` | Least share of the line peak that changes along the slit, 0 to 1. |
 | `host-line-padding-pixels` | `3` | Detector lines added at each end of a window. |
 

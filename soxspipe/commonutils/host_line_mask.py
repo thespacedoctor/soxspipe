@@ -37,7 +37,7 @@ from soxspipe.commonutils.nod_host_contamination import (
 )
 
 # THE DEFAULTS OF THE host-line-sigma, host-line-min-slit-contrast AND host-line-padding-pixels SETTINGS
-DEFAULT_SIGMA_LIMIT = 5.0
+DEFAULT_SIGMA_LIMIT = 5.5
 DEFAULT_MIN_SLIT_CONTRAST = 0.3
 DEFAULT_PADDING_LINES = 3
 # A NEIGHBOUR OF A SEED BIN, WHICH TAKES IN THE WEAK WINGS OF A LINE, NEEDS THIS MANY SIGMA
@@ -90,7 +90,7 @@ def find_host_line_windows(
     - ``skylineWavelengthsNm`` -- wavelengths (nm) of catalogue skylines. Bins within 8 detector lines of one are not
       searched. Default *()*
     - ``sigmaLimit`` -- the common excess and the slit variation of a seed bin must both exceed this many times the
-      local noise. Default *5*
+      local noise. Default *5.5*
     - ``minSlitContrast`` -- the slit variation, summed over a feature, must be at least this share of its summed peak
       excess. A sky line, which is constant along the slit, has a share near 0. Default *0.3*
     - ``paddingLines`` -- detector lines added to each end of a window, for the wings of the line. Default *3*

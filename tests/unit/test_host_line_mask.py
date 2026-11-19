@@ -34,6 +34,8 @@ HOST_SLIT_SIGMA_ARCSEC = 3.0
 HOST_ROTATION_NM_PER_ARCSEC = 0.04
 # A HOST LINE THAT PASSES A LIMIT OF 5 SIGMA AND FAILS A LIMIT OF 8
 FAINT_HOST_PEAK = 45.0
+# A HOST LINE AT ABOUT 5.4 SIGMA, WHICH PASSES A LIMIT OF 5 AND FAILS 5.5
+MARGINAL_HOST_PEAK = 40.0
 SKY_LINE_NM = 640.0
 SKY_LINE_PEAK = 800.0
 SKY_LINE_SIGMA_NM = 0.05
@@ -307,3 +309,12 @@ def test_the_padding_is_in_true_detector_lines_for_a_strongly_tilted_order() -> 
     (padded,) = _windows(frame, paddingLines=6)
 
     assert padded.wavelengthMinNm == pytest.approx(bare.wavelengthMinNm - 6 * STEP_NM, rel=1e-6)
+
+
+def test_the_default_sigma_limit_is_above_a_marginal_five_sigma_line() -> None:
+    # A MARGINAL LINE AT ABOUT 5.4 SIGMA CAME AND WENT WITH THE PHASE OF THE WAVELENGTH BINS ON A NIR STANDARD, SO THE
+    # DEFAULT LIMIT IS 5.5 AND A LINE BELOW IT IS NOT FOUND UNLESS THE LIMIT IS LOWERED
+    frame = _add_host_line(_order_frame(), peak=MARGINAL_HOST_PEAK)
+
+    assert _windows(frame) == ()
+    assert len(_windows(frame, sigmaLimit=5.0)) == 1

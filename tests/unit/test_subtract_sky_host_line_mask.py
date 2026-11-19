@@ -297,7 +297,7 @@ def test_settings_without_the_host_line_keys_use_the_shipped_defaults(log: Any) 
     for key in ("host-line-mask", "host-line-sigma", "host-line-min-slit-contrast", "host-line-padding-pixels"):
         del subtractor.recipeSettings["sky-subtraction"][key]
 
-    assert subtractor._host_line_settings() == (True, 5.0, 0.3, 3)
+    assert subtractor._host_line_settings() == (True, 5.5, 0.3, 3)
 
 
 def test_the_host_line_keys_are_read(log: Any) -> None:
@@ -350,7 +350,7 @@ def test_the_shipped_defaults_keep_the_mask_on_in_stare_and_stare_std_for_both_a
         for arm in ("vis", "nir"):
             sky = settings[recipe][arm]["sky-subtraction"]
             assert sky["host-line-mask"] is True
-            assert math.isclose(sky["host-line-sigma"], 5.0)
+            assert math.isclose(sky["host-line-sigma"], 5.5)
             assert math.isclose(sky["host-line-min-slit-contrast"], 0.3)
             assert sky["host-line-padding-pixels"] == 3
 
