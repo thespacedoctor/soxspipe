@@ -122,9 +122,7 @@ def test_init_expands_a_leading_tilde_in_input_frames_string(
 
     sof = set_of_files(log=log, settings=settings, inputFrames="~/x/y.fits", verbose=False)
 
-    # NOTE THE DOUBLE SLASH: `home + "/" + inputFrames[1:]` KEEPS THE LEADING
-    # "/" FROM THE ORIGINAL "~/x/y.fits" STRING
-    assert sof.inputFrames == f"{fakeHome}//x/y.fits"
+    assert sof.inputFrames == f"{fakeHome}/x/y.fits"
 
 
 def test_init_current_session_is_none_without_a_workspace_session(tmp_path: Path, log: object) -> None:
@@ -459,6 +457,23 @@ def test_generate_sof_expands_a_leading_tilde_in_directory_and_sof_path(
     result = sof._generate_sof_file_from_directory("~/frames_dir", "~/out/frames.sof")
 
     assert result == str(fakeHome / "out" / "frames.sof")
+    assert Path(result).read_text(encoding="utf-8") == f"{framePath.resolve()} BIAS_VIS\n"
+
+
+def test_generate_sof_keeps_a_tilde_after_the_start_of_the_directory_and_sof_path(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakeHome = tmp_path / "fakehome"
+    framesDir = fakeHome / "a~b" / "frames_dir"
+    framesDir.mkdir(parents=True)
+    (fakeHome / "a~b" / "out").mkdir()
+    monkeypatch.setenv("HOME", str(fakeHome))
+    framePath = raw_fits(framesDir / "a.fits")
+    sof = set_of_files(log=log, settings=_settings(tmp_path, default=["DPR_TYPE"]), verbose=False)
+
+    result = sof._generate_sof_file_from_directory("~/a~b/frames_dir", "~/a~b/out/frames.sof")
+
+    assert result == str(fakeHome / "a~b" / "out" / "frames.sof")
     assert Path(result).read_text(encoding="utf-8") == f"{framePath.resolve()} BIAS_VIS\n"
 
 

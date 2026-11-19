@@ -61,7 +61,7 @@ def test_supplementary_path_returns_an_existing_path_unchanged(
     existingPath = tmp_path / "existing.csv"
     existingPath.write_text("data", encoding="utf-8")
 
-    result = _supplementary_path_from_sof_line(str(existingPath), str(tmp_path))
+    result = _supplementary_path_from_sof_line(str(existingPath))
 
     assert result == str(existingPath)
 
@@ -69,7 +69,7 @@ def test_supplementary_path_returns_an_existing_path_unchanged(
 def test_supplementary_path_strips_a_recognised_arm_tag(tmp_path: Path) -> None:
     line = f"{tmp_path / 'missing.csv'} ORDER_TAB_VIS"
 
-    result = _supplementary_path_from_sof_line(line, str(tmp_path))
+    result = _supplementary_path_from_sof_line(line)
 
     assert result == str(tmp_path / "missing.csv")
 
@@ -77,7 +77,7 @@ def test_supplementary_path_strips_a_recognised_arm_tag(tmp_path: Path) -> None:
 def test_supplementary_path_keeps_a_lowercase_tag(tmp_path: Path) -> None:
     line = f"{tmp_path / 'missing.csv'} order_tab_vis"
 
-    result = _supplementary_path_from_sof_line(line, str(tmp_path))
+    result = _supplementary_path_from_sof_line(line)
 
     assert result == line
 
@@ -87,13 +87,15 @@ def test_supplementary_path_keeps_a_tag_with_an_unrecognised_suffix(
 ) -> None:
     line = f"{tmp_path / 'missing.csv'} ORDER_TAB_XYZ"
 
-    result = _supplementary_path_from_sof_line(line, str(tmp_path))
+    result = _supplementary_path_from_sof_line(line)
 
     assert result == line
 
 
-def test_supplementary_path_expands_a_leading_tilde(tmp_path: Path) -> None:
-    result = _supplementary_path_from_sof_line("~/foo.csv", "/fake/home")
+def test_supplementary_path_expands_a_leading_tilde(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", "/fake/home")
+
+    result = _supplementary_path_from_sof_line("~/foo.csv")
 
     assert result == "/fake/home/foo.csv"
 

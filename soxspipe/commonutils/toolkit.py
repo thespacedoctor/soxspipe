@@ -767,9 +767,7 @@ def unpack_order_table(
         pixelDelta += 1  # RETURN THE NEAREST ODD NUMBER ABOVE IF IT'S EVEN
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
-
-    home = expanduser("~")
-    orderTablePath = orderTablePath.replace("~", home)
+    orderTablePath = expanduser(orderTablePath)
 
     dat = Table.read(orderTablePath, format="fits", hdu=1)
     orderPolyTable = dat.to_pandas()
@@ -1607,14 +1605,10 @@ def twoD_disp_map_image_to_dataframe(  # noqa: N802
     log.debug("starting the ``twoD_disp_map_image_to_dataframe`` function")
 
     # MAKE RELATIVE HOME PATH ABSOLUTE
-    from os.path import expanduser
-
     import numpy as np
     import pandas as pd
 
-    home = expanduser("~")
-    if twoDMapPath[0] == "~":
-        twoDMapPath = twoDMapPath.replace("~", home)
+    twoDMapPath = expanduser(twoDMapPath)
 
     binx, biny = _associated_frame_binning(associatedFrame, kw)
 

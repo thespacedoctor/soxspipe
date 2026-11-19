@@ -38,6 +38,7 @@ from soxspipe.commonutils.stare_mode import is_standard_input
 # HERE SO THE DELEGATORS FORWARD THE SAME OBJECT `append_qc` AND
 # `append_product` TEST FOR, AND SO A CALLER MAY PASS `OMITTED` EXPLICITLY.
 from soxspipe.commonutils.toolkit import OMITTED, PREPARED_FRAME_KEYWORD
+from soxspipe.commonutils.workspace_paths import expand_workspace_root
 
 os.environ["TERM"] = "vt100"
 
@@ -174,14 +175,11 @@ class base_recipe:
         register_scratch_directory(self.outDir)
 
         # FIND THE CURRENT SESSION
-        from os.path import expanduser
-
-        home = expanduser("~")
         from soxspipe.commonutils import data_organiser
 
         do = data_organiser(
             log=self.log,
-            rootDir=self.settings["workspace-root-dir"].replace("~", home),
+            rootDir=expand_workspace_root(self.settings["workspace-root-dir"]),
             dbConnect=False,
         )
         self.currentSession, allSessions = do.session_list(silent=True)
@@ -191,7 +189,7 @@ class base_recipe:
         self.conn = None
         self.status = None
         if not self.turnOffMP:
-            self._open_session_database(home)
+            self._open_session_database()
 
         # DATAFRAMES TO COLLECT QCs AND PRODUCTS
         self.qc, self.products = self._empty_qc_and_product_tables(pd)
@@ -325,12 +323,8 @@ class base_recipe:
 
         return
 
-    def _open_session_database(self, home):
+    def _open_session_database(self):
         """*open the workspace database and mark this recipe as failed until it completes*
-
-        **Key Arguments:**
-
-        - ``home`` -- the user's home directory, used to expand the workspace path
 
         Sets ``self.conn`` and ``self.status``. The stored status is set to
         'fail' up front, so a recipe that crashes leaves a failure behind
@@ -340,7 +334,7 @@ class base_recipe:
         from soxspipe.commonutils.workspace_database import connect_workspace_database
 
         if self.currentSession and self.sofName:
-            self.sessionDb = self.settings["workspace-root-dir"].replace("~", home) + "/soxspipe.db"
+            self.sessionDb = expand_workspace_root(self.settings["workspace-root-dir"]) + "/soxspipe.db"
 
             def dict_factory(cursor, row):
                 d = {}

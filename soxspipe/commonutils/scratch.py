@@ -48,13 +48,9 @@ def absolute_path(path: str) -> str:
 
     **Return:**
 
-    - ``absolutePath`` -- the path with a leading ``~`` expanded
+    - ``absolutePath`` -- the path with a leading ``~`` or ``~user`` expanded. A ``~`` elsewhere stays
     """
-    home = os.path.expanduser("~")
-    if path.startswith("~"):
-        path = home + "/" + path[1:]
-
-    return path.replace("//", "/")
+    return os.path.expanduser(path).replace("//", "/")
 
 
 def scratch_root(settings: dict) -> str:
