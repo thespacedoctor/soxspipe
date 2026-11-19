@@ -311,3 +311,30 @@ def test_prep_command_exits_non_zero_naming_a_loose_vlt_frame(vltMachine: VltMac
     assert "loose.fits" in result.stderr
     assert not (vltMachine.workspace / "loose.fits").exists()
     assert _tree_snapshot(vltMachine.diskRaw) == before
+
+
+@pytest.mark.usefixtures("vltOrganiserModule")
+def test_prepare_never_replaces_an_archive_frame_with_a_root_frame_of_the_same_name(
+    vltMachine: VltMachine, log: object
+) -> None:
+    """A root frame whose filing destination holds a frame is skipped, warned about and not indexed (DY-2262)."""
+    archiveFrame = vltMachine.diskRaw / NIGHT / "bias0.fits"
+    archiveBytes = archiveFrame.read_bytes()
+    rootFrame = vltMachine.workspace / "bias0.fits"
+    _bias_frame(rootFrame, 1)
+    rootBytes = rootFrame.read_bytes()
+    assert rootBytes != archiveBytes
+
+    organiser = data_organiser(log=log, rootDir=str(vltMachine.workspace), vlt=True)
+    organiser.prepare(report=False)
+
+    assert archiveFrame.read_bytes() == archiveBytes
+    # BOTH FRAMES STAY WHERE THEY ARE: THE SKIPPED FRAME IS NOT SWEPT INTO `misc/`
+    assert rootFrame.read_bytes() == rootBytes
+    assert not (vltMachine.workspace / "misc" / "bias0.fits").exists()
+    indexed = {row[0] for row in organiser.conn.execute("SELECT file FROM raw_frames")}
+    assert "bias0.fits" not in indexed
+    assert any(
+        level == "warning" and str(archiveFrame.resolve()) in message and str(rootFrame) in message
+        for level, message in log.messages
+    )

@@ -202,6 +202,7 @@ class flux_calibration:
 
         import pandas as pd
 
+        from soxspipe.commonutils.fits_headers import set_header_card
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.response_basis import counts_per_unbinned_pixel, dispersion_binning
         from soxspipe.commonutils.toolkit import extinction_correction_factor
@@ -265,11 +266,13 @@ class flux_calibration:
         with suppress(KeyError):
             header.pop(self.kw("RON"))
 
-        header[self.kw("SEQ_ARM")] = self.arm
-        header["HIERARCH " + self.kw("PRO_TYPE")] = "REDUCED"
-        header["HIERARCH " + self.kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        set_header_card(header, self.kw("SEQ_ARM"), self.arm)
+        set_header_card(header, self.kw("PRO_TYPE"), "REDUCED")
+        set_header_card(header, self.kw("PRO_CATG"), f"SCI_SLIT_FLUX_{self.arm}".upper())
         if self.airmass is not None:
-            header["HIERARCH " + self.kw("PRO_AIRM_MEAN")] = (
+            set_header_card(
+                header,
+                self.kw("PRO_AIRM_MEAN"),
                 float(self.airmass),
                 "mean airmass of the frames in the product",
             )

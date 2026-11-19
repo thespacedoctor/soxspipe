@@ -59,6 +59,7 @@ from soxspipe.commonutils.workspace_paths import path_under_root
 if TYPE_CHECKING:
     import logging
 
+    import pandas as pd
     from astropy.table import Table
 
 os.environ["TERM"] = "vt100"
@@ -286,12 +287,7 @@ class data_organiser:
 
     def __init__(self, log, rootDir, vlt=False, dbConnect=True):
         import codecs
-        import warnings
         from os.path import expanduser
-
-        from astropy.utils.exceptions import AstropyWarning
-
-        warnings.simplefilter("ignore", AstropyWarning)
 
         self.vlt = vlt
         self.PAE = False
@@ -303,6 +299,7 @@ class data_organiser:
         self.pinnedConsumerNames = {}
         # THE TEMP TABLE THE QC-RANGE QUERIES READ FAILING-QC SOFS FROM WHILE A REBUILD RESTORES STATUSES, ELSE None
         self.failedQcSnapshot = None
+        self._reset_held_root_frames()
 
         # EXPAND HOME PATHS BEFORE DERIVING ANY WORKSPACE LOCATIONS
         rootDir = expanduser(rootDir)
@@ -582,6 +579,7 @@ class data_organiser:
         """
         self.log.debug("starting the ``prepare`` method")
 
+        self._reset_held_root_frames()
         self._refuse_loose_frames_in_external_raw_folder()
 
         backupPath = None
@@ -966,7 +964,7 @@ class data_organiser:
                         ]
 
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
-                rawFrames = self._without_unsafe_frames(rawFrames)
+                rawFrames = self._without_overwriting_frames(self._without_unsafe_frames(rawFrames))
                 databaseDeletes = []
                 if len(rawFrames.index):
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
@@ -977,31 +975,36 @@ class data_organiser:
                     # MOVE THE FILES TO THE CORRECT LOCATION
                     filepaths = rawFrames["filepath"]
                     filenames = rawFrames["file"]
-                    for p, n in zip(filepaths, filenames):
+                    dprTechs = rawFrames["eso dpr tech"]
+                    for filepath, filename, dprTech in zip(filepaths, filenames, dprTechs, strict=True):
                         # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
-                        destination = path_under_root(p, self.rootDir)
+                        destination = path_under_root(filepath, self.rootDir)
                         parentDirectory = os.path.dirname(destination)
                         if not os.path.exists(parentDirectory):
                             # Recursively create missing directories
                             os.makedirs(parentDirectory)
-                        source = path_under_root(n, self.rootDir)
+                        source = path_under_root(filename, self.rootDir)
                         if os.path.exists(source):
                             realSource = os.path.realpath(source)
                             realDest = os.path.realpath(destination)
 
                             if self._is_dated_raw_frame(realSource) and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
-                                databaseDeletes.append(realDest)
-                            elif realSource != realDest:
-                                shutil.move(realSource, realDest)
+                                databaseDeletes.append((filepath, filename, dprTech))
+                            elif self._would_move(source, destination):
+                                self._move_root_frame_unless_taken(
+                                    destination, realSource, realDest, filename, filepath
+                                )
                             if os.path.islink(source):
-                                self._remove_workspace_entry(n)
+                                self._remove_workspace_entry(filename)
 
                 if len(databaseDeletes):
+                    # THE STORED FILEPATH, WITH THE KEY OF THE ROW JUST INSERTED, SO NO OTHER FRAME'S ROW IS DELETED
                     c = self.conn.cursor()
-                    placeholders = ", ".join("?" for _ in databaseDeletes)
-                    sqlQuery = f"delete from raw_frames where filepath in ({placeholders});"  # noqa: S608
-                    c.execute(sqlQuery, databaseDeletes)
+                    c.executemany(
+                        'delete from raw_frames where filepath = ? and file = ? and "eso dpr tech" = ?;',
+                        databaseDeletes,
+                    )
                     c.close()
 
         if not skipSqlSync:
@@ -1043,6 +1046,106 @@ class data_organiser:
             if reason:
                 self.log.warning(f"not filing `{n}`: {reason}")
             keep.append(reason is None)
+        return rawFrames.loc[keep]
+
+    def _would_move(self, source: str, destination: str) -> bool:
+        """*return True when filing a root entry means moving a file onto a different path*
+
+        **Key Arguments:**
+
+        - ``source`` -- the entry in the workspace root
+        - ``destination`` -- where the frame belongs in ``raw/<date>/``
+
+        **Return:**
+
+        - ``isMove`` -- True when the source exists, is not already a frame in a dated raw folder, and does not
+          resolve to the destination
+        """
+        if not os.path.exists(source):
+            return False
+        realSource = os.path.realpath(source)
+        return not self._is_dated_raw_frame(realSource) and realSource != os.path.realpath(destination)
+
+    def _reset_held_root_frames(self) -> None:
+        """*forget the root frames held back by an earlier `prepare`*
+
+        ``heldRootFrames`` holds the file names of the root frames that `prepare` left in the workspace root because
+        their ``raw/<date>/`` destination is taken. The sweep of unfiled root files skips them (DY-2262).
+        """
+        self.heldRootFrames = set()
+
+    def _move_root_frame_unless_taken(
+        self, destination: str, realSource: str, realDest: str, name: str, filepath: str
+    ) -> None:
+        """*move a root frame to its dated folder, unless a file or link has taken the place since the filter ran*
+
+        The destination is checked again here, as a link and as its resolved target, so a dangling link that appeared
+        after `_without_overwriting_frames` is not written through. A taken destination holds the frame and removes
+        the ``raw_frames`` row that was just added for it.
+
+        **Key Arguments:**
+
+        - ``destination`` -- where the frame belongs, as a path under the workspace
+        - ``realSource`` -- the resolved path of the root frame
+        - ``realDest`` -- the resolved destination
+        - ``name`` -- the frame's path relative to the workspace root
+        - ``filepath`` -- the ``filepath`` stored for the frame in ``raw_frames``
+        """
+        if os.path.lexists(destination) or os.path.lexists(realDest):
+            self._hold_root_frame(name, realDest)
+            self.conn.execute(
+                "DELETE FROM raw_frames WHERE rowid = "
+                "(SELECT max(rowid) FROM raw_frames WHERE filepath = ? AND file = ?)",
+                (filepath, name),
+            )
+            return
+        # A FILE CAN STILL APPEAR BETWEEN THE CHECK ABOVE AND THE MOVE, AND THE MOVE THEN REPLACES IT. THIS WINDOW IS
+        # ACCEPTED: THE ARCHIVE IS OFTEN ON ANOTHER VOLUME, SO `os.link` IS NOT AN OPTION, AND SOXSPIPE SUPPORTS ONE
+        # PROCESS PER WORKSPACE (DY-1129)
+        shutil.move(realSource, realDest)
+
+    def _hold_root_frame(self, name: str, takenPath: str) -> None:
+        """*leave a root frame where it is, because its destination is taken, and say so*
+
+        The file name goes in ``heldRootFrames``, so the sweep of unfiled root files leaves the frame in the workspace
+        root. The warning comes once per `prepare`, and every later `prep` finds the frame, and warns, again.
+
+        **Key Arguments:**
+
+        - ``name`` -- the frame's path relative to the workspace root
+        - ``takenPath`` -- the resolved destination that already exists
+        """
+        source = path_under_root(name, self.rootDir)
+        # A SECOND SCAN OF THE SAME `prepare` FINDS THE FRAME AGAIN; WARN ONCE PER `prepare`
+        if os.path.basename(source) in self.heldRootFrames:
+            return
+        self.heldRootFrames.add(os.path.basename(source))
+        self.log.warning(f"not filing `{source}`: `{takenPath}` already exists and a move would replace it")
+
+    def _without_overwriting_frames(self, rawFrames: "pd.DataFrame") -> "pd.DataFrame":
+        """*drop the frames whose filing would replace a file that already sits at the destination*
+
+        A root frame is filed into ``raw/<date>/`` with a move, and a move replaces an existing file without a
+        word. In a VLT workspace ``raw/`` is the external archive, so the replaced file could be an archive frame.
+        A frame whose destination is taken is held (see `_hold_root_frame`): it is skipped with a warning that names
+        both paths, and neither file is touched. Dropping it here also keeps it out of ``raw_frames``, so no row
+        points at the file that holds the place of the frame.
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the newly found frames, with ``file`` and ``filepath`` columns
+
+        **Return:**
+
+        - ``rawFrames`` -- the frames whose destination is free, or that are already in place
+        """
+        keep = []
+        for p, n in zip(rawFrames["filepath"], rawFrames["file"], strict=True):
+            destination = path_under_root(p, self.rootDir)
+            isTaken = self._would_move(path_under_root(n, self.rootDir), destination) and os.path.lexists(destination)
+            if isTaken:
+                self._hold_root_frame(n, os.path.realpath(destination))
+            keep.append(not isTaken)
         return rawFrames.loc[keep]
 
     def _is_inside_raw_directory(self, path):
@@ -1410,10 +1513,7 @@ class data_organiser:
             placeholders = ", ".join("?" for _ in filesNotInFS)
             sqlQuery = f"delete from {tableName} where filepath in ({placeholders});"  # noqa: S608
             c.execute(sqlQuery, filesNotInFS)
-            sessionId = _validate_session_id(self.sessionId)
-            sofTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
-            sqlQuery = f"delete from {sofTableName} where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"  # noqa: S608
-            c.execute(sqlQuery, filesNotInFS)
+            self._delete_sof_map_rows_of_frames(c, filesNotInFS, placeholders)
 
         if len(filesNotInDB):
             for f in filesNotInDB:
@@ -1436,6 +1536,34 @@ class data_organiser:
 
         self.log.debug("completed the ``_sync_sql_table_to_directory`` method")
         return
+
+    def _delete_sof_map_rows_of_frames(self, cursor, filepaths, placeholders):
+        """*delete from the current session's SOF map every set that uses one of the frames*
+
+        Nothing is deleted when no session exists yet (a first `prepare`) or the session has no SOF map table (a
+        stale `.sessionid` that names a session directory that is gone).
+
+        **Key Arguments:**
+
+        - ``cursor`` -- cursor of the workspace database
+        - ``filepaths`` -- the ``filepath`` values of the frames that are gone
+        - ``placeholders`` -- the ``?`` list that matches ``filepaths``
+        """
+        if not hasattr(self, "sessionId"):
+            return
+        sessionId = _validate_session_id(self.sessionId)
+        sofTableName = validate_sql_identifier(f"sof_map_{sessionId}", "sof map table name")
+        hasTable = cursor.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ?", (sofTableName,)
+        ).fetchone()
+        if not hasTable:
+            self.log.debug(f"_delete_sof_map_rows_of_frames: no `{sofTableName}` table, so no SOF map to clean")
+            return
+        sqlQuery = (
+            f"delete from {sofTableName} "  # noqa: S608
+            f"where sof in (select sof from {sofTableName} where filepath in ({placeholders}));"
+        )
+        cursor.execute(sqlQuery, filepaths)
 
     def _validate_database_filepath(self, path):
         """*return a resolved `raw_frames` path, which must sit in the workspace or in its validated raw directory*"""
@@ -1643,6 +1771,7 @@ class data_organiser:
                 and os.path.splitext(filepath)[1] != ".db"
                 and "readme." not in d.lower()
                 and "soxspipe" not in d.lower()
+                and d not in self.heldRootFrames
             ):
                 shutil.move(filepath, self.miscDir + "/" + d)
 

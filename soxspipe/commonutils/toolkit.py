@@ -3822,12 +3822,18 @@ def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
     save_qc_plot(filePath)
     ```
     """
+    import warnings
+
     import matplotlib.pyplot as plt
 
     kwargs = {"dpi": dpi, "format": "pdf"}
     if bboxInches is not None:
         kwargs["bbox_inches"] = bboxInches
-    plt.savefig(filePath, **kwargs)
+    with warnings.catch_warnings():
+        # MATPLOTLIB KEEPS THE UNCONSTRAINED LAYOUT AND STILL WRITES THE FIGURE, SO THE NOTICE CHANGES NOTHING IN THE
+        # PRODUCT; IT REPEATS FOR EVERY QC FIGURE THAT HAS A COLLAPSED PANEL
+        warnings.filterwarnings("ignore", message="constrained_layout not applied", category=UserWarning)
+        plt.savefig(filePath, **kwargs)
     return filePath
 
 

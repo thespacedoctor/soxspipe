@@ -22,8 +22,9 @@ from typing import Any
 
 import pytest
 
-from soxspipe.recipes.base_recipe import base_recipe
-from soxspipe.recipes.soxs_mflat import soxs_mflat
+from tests.factories.mflat_verification import VerificationInventory as _VerificationInventory
+from tests.factories.mflat_verification import bare_mflat_recipe as _bare_recipe
+from tests.factories.mflat_verification import stub_mflat_basics as _stub_basics
 
 pytestmark = pytest.mark.unit
 
@@ -36,73 +37,6 @@ UVB_VIS_SHARED_MESSAGE = (
     "Input frames for soxspipe mflat need to be flat-lamp frames,"
     "a master-bias frame, an order-locations tables and possibly a master dark for UVB/VIS"
 )
-
-
-class _SubCollection:
-    """A single filtered slice of the recipe's input-frame inventory."""
-
-    def __init__(self, files: list[str], exptimes: list[float]) -> None:
-        self.files = files
-        self._exptimes = exptimes
-
-    def values(self, keyword: str, unique: bool) -> list[float]:
-        assert unique is True
-        return list(dict.fromkeys(self._exptimes))
-
-
-class _VerificationInventory:
-    """Inventory double exposing exactly the surface `verify_input_frames` reads.
-
-    `filter` is keyed by the exact filter dict a caller passes (order
-    independent), so a scenario can either serve a specific lamp's exptime
-    collection or leave every filter unmatched, which behaves like an
-    ordinary empty `ImageFileCollection.filter(...)` result.
-    """
-
-    def __init__(
-        self,
-        *,
-        matches: dict[tuple[tuple[str, str], ...], dict[str, Any]] | None = None,
-        summary: str = "FAKE SUMMARY TABLE",
-    ) -> None:
-        self.summary = summary
-        self._matches = {} if matches is None else matches
-        self.filterCalls: list[dict[str, str]] = []
-
-    def filter(self, **filters: str) -> _SubCollection:
-        self.filterCalls.append(dict(filters))
-        matched = self._matches.get(tuple(sorted(filters.items())))
-        if matched is None:
-            return _SubCollection(files=[], exptimes=[])
-        return _SubCollection(files=matched["files"], exptimes=matched.get("exptimes", []))
-
-
-def _stub_basics(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    imageTypes: list[str],
-    imageTech: list[str],
-    imageCategories: list[str],
-    arm: str = "VIS",
-    inst: str = "SOXS",
-) -> None:
-    """Replace the inherited basic verification with the classifications a scenario needs."""
-
-    def fake_basics(self: soxs_mflat) -> tuple[list[str], list[str], list[str]]:
-        self.arm = arm
-        self.inst = inst
-        return list(imageTypes), list(imageTech), list(imageCategories)
-
-    monkeypatch.setattr(base_recipe, "_verify_input_frames_basics", fake_basics)
-
-
-def _bare_recipe(log: Any, inventory: _VerificationInventory) -> soxs_mflat:
-    """Return a recipe carrying only what `verify_input_frames` reads."""
-    recipe = soxs_mflat.__new__(soxs_mflat)
-    recipe.log = log
-    recipe.kw = lambda keyword: keyword
-    recipe.inputFrames = inventory
-    return recipe
 
 
 def test_nir_without_a_lamp_flat_type_raises_the_locals_formatted_message(
@@ -417,6 +351,8 @@ def test_a_lamp_type_with_two_distinct_exptimes_raises_the_exptime_message(
     with pytest.raises(TypeError) as excinfo:
         recipe.verify_input_frames()
     assert str(excinfo.value) == "Input LAMP,FLAT frames for soxspipe mflat need to have a unique exptime"
+    # THE CHECK ASKS FOR UNIQUE VALUES, OR TWO EQUAL EXPOSURE TIMES WOULD LOOK LIKE TWO
+    assert [request for collection in inventory.subCollections for request in collection.uniqueRequests] == [True]
 
 
 def test_the_exptime_check_filters_each_lamp_type_in_order_on_a_passing_call(
