@@ -221,10 +221,12 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``frame`` -- the frame to update
         - ``rawFrames`` -- limit the raw frames to be listed in the fits header to only these frames (list)
         """
+        from soxspipe.commonutils.fits_headers import set_header_card
+
         super().update_fits_keywords(frame=frame, rawFrames=rawFrames)
         if self.reduceNodAsStare:
-            frame.header[self.kw("PRO_TECH")] = STARE_TECHNIQUE
-            frame.header[self.kw("PRO_STARE_MODE")] = True
+            set_header_card(frame.header, self.kw("PRO_TECH"), STARE_TECHNIQUE)
+            set_header_card(frame.header, self.kw("PRO_STARE_MODE"), True)
 
     def _verify_and_announce_input_frames(self):
         """*verify the collected frames and report the result to the user*
@@ -930,14 +932,15 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``names`` -- their raw file names: the prepared file name without its `_pre` suffix
         """
         from astropy import units as u
-        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         frames = []
         names = []
         for filters in filterList:
             for path in self.inputFrames.files_filtered(include_path=True, **filters):
                 frames.append(
-                    CCDData.read(
+                    read_ccd(
                         path,
                         hdu=0,
                         unit=u.electron,

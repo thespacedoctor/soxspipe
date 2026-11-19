@@ -15,6 +15,9 @@ the file with the system ``gzip`` (about 0.06 s), which reads LZW natively, and 
 the bytes to astropy. If ``gzip`` is missing or fails, it falls back to ``CCDData.read``
 on the path.
 
+``hierarch`` is the one writing helper here: it names a long keyword so astropy stores it as a ``HIERARCH`` card
+without a warning.
+
 This module imports nothing from soxspipe except ``fits_frame_names``, which
 itself imports nothing from soxspipe, so it cannot create an import cycle.
 
@@ -28,10 +31,13 @@ Date Created
 import io
 import logging
 import os
+import re
 import shutil
 import subprocess
 import warnings
 from collections import OrderedDict
+from collections.abc import MutableMapping
+from typing import Any
 
 import uncompresspy
 from astropy.io import fits
@@ -45,6 +51,10 @@ GZIP_TIMEOUT_SECONDS = 120
 GZIP_STDERR_LOG_LIMIT = 500
 FITS_CARD_SIZE = 80
 END_CARD = b"END" + b" " * (FITS_CARD_SIZE - 3)
+# A KEYWORD THIS PATTERN MATCHES IS A STANDARD FITS CARD; ANY OTHER KEYWORD IS STORED AS A HIERARCH CARD
+STANDARD_KEYWORD = re.compile(r"[A-Z0-9_-]{1,8}")
+# THE START OF EACH WCS NOTE THAT RAW ESO HEADERS ALWAYS RAISE WHEN THEY ARE READ
+KNOWN_WCS_NOTES = ("RADECSYS=", "The WCS transformation has more axes")
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +216,72 @@ def _warn_once_gzip_missing():
     )
 
 
+def hierarch(keyword: str) -> str:
+    """*the keyword with the* ``HIERARCH`` *prefix when FITS cannot hold it as a standard card*
+
+    Writing ``header["ESO DET BINX"]`` makes astropy store a ``HIERARCH`` card and warn that it did. Writing
+    ``header[hierarch("ESO DET BINX")]`` stores the same card and raises no warning. A record-valued keyword such as
+    ``DP1.AXIS.1`` (a dot, no space) is left as it is, because astropy stores it as ``DP1 = 'AXIS.1: 1'``. That holds
+    for a numeric value. Astropy stores a string value under such a keyword as a ``HIERARCH`` card, with its warning.
+
+    **Key Arguments:**
+
+    - ``keyword`` -- the header keyword
+
+    **Return:**
+
+    - ``keyword`` -- the keyword, with ``HIERARCH`` in front when it is longer than 8 characters or holds a character
+      a standard FITS keyword cannot
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.fits_headers import hierarch
+    keyword = hierarch("ESO QC RON")
+    ```
+    """
+    isRecordValued = "." in keyword and " " not in keyword
+    if isRecordValued or keyword.startswith("HIERARCH ") or STANDARD_KEYWORD.fullmatch(keyword.upper()):
+        return keyword
+    return f"HIERARCH {keyword}"
+
+
+def set_header_card(header: MutableMapping[str, Any], keyword: str, value: Any, comment: str | None = None) -> None:
+    """*set one header card, naming a long ESO keyword as a* ``HIERARCH`` *card so astropy does not warn*
+
+    Every card the package writes goes through here, so a new writer cannot forget the prefix. A dict header gets the
+    prefixed key too, so that ``fits.Header(meta)`` raises no warning when a ``CCDData`` is written. Read such a key
+    back as ``HIERARCH ESO ...``, or after the dict has become a ``fits.Header``.
+
+    **Key Arguments:**
+
+    - ``header`` -- the astropy header (or dict) to update in place
+    - ``keyword`` -- the header keyword
+    - ``value`` -- the card value
+    - ``comment`` -- the card comment. Default *None*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.fits_headers import set_header_card
+    set_header_card(header, "ESO QC RON", 3.5, "read noise [e-]")
+    ```
+    """
+    header[hierarch(keyword)] = value if comment is None else (value, comment)
+
+
+def _read_ccd_quietly(source: str | os.PathLike | io.BytesIO, **kwargs: Any) -> CCDData:
+    """*``CCDData.read`` with two known astropy WCS header notes ignored for this call only*"""
+    from astropy.wcs import FITSFixedWarning
+
+    with warnings.catch_warnings():
+        # RAW ESO HEADERS CARRY AN OLD `RADECSYS` CARD AND MORE WCS AXES THAN THE IMAGE; ASTROPY FIXES BOTH AND SAYS SO,
+        # AND NOBODY CAN CHANGE THE RAW FRAME. ANY OTHER WCS FIX STILL SHOWS
+        for message in KNOWN_WCS_NOTES:
+            warnings.filterwarnings("ignore", message=message, category=FITSFixedWarning)
+        return CCDData.read(source, **kwargs)
+
+
 def read_ccd(path, **kwargs):
     """*return a CCDData frame, decompressing an LZW frame with the system* ``gzip``
 
@@ -227,19 +303,19 @@ def read_ccd(path, **kwargs):
     - ``frame`` -- the frame, as an ``astropy.nddata.CCDData``
     """
     if not _is_lzw_frame_path(path):
-        return CCDData.read(path, **kwargs)
+        return _read_ccd_quietly(path, **kwargs)
     try:
         data = _decompress_lzw(os.fsdecode(path))
     except FileNotFoundError as e:
         _warn_once_gzip_missing()
         log.debug(f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {e}")
-        return CCDData.read(path, **kwargs)
+        return _read_ccd_quietly(path, **kwargs)
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         log.debug(
             f"read_ccd: gzip decompression of `{path}` failed, falling back to CCDData.read: {_describe_failure(e)}"
         )
-        return CCDData.read(path, **kwargs)
-    return CCDData.read(io.BytesIO(data), **{**kwargs, "format": "fits"})
+        return _read_ccd_quietly(path, **kwargs)
+    return _read_ccd_quietly(io.BytesIO(data), **{**kwargs, "format": "fits"})
 
 
 class HeaderImageFileCollection(ImageFileCollection):

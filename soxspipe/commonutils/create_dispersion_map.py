@@ -382,7 +382,6 @@ class create_dispersion_map:
         log.debug("instantiating a new 'create_dispersion_map' object")
 
         import copy
-        import warnings
 
         # STORE INITIALIZATION PARAMETERS
         self._store_init_params(
@@ -415,8 +414,8 @@ class create_dispersion_map:
         # INITIALIZE DETECTOR PARAMETERS
         self._setup_detector_params()
 
-        # CONFIGURE WARNINGS AND LOGGING LEVELS
-        self._configure_warnings_and_logging(warnings)
+        # CONFIGURE LOGGING LEVELS
+        self._configure_logging()
 
         # SET IMAGE ORIENTATION AXES
         self._set_image_orientation()
@@ -505,14 +504,9 @@ class create_dispersion_map:
         """*Initialize detector parameters lookup for the current arm*"""
         self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
 
-    def _configure_warnings_and_logging(self, warnings):
-        """*Configure warning filters and reset logging levels*"""
+    def _configure_logging(self):
+        """*Reset logging levels*"""
         import logging
-
-        from photutils.utils import NoDetectionsWarning
-
-        # SUPPRESS PHOTUTILS NO DETECTIONS WARNINGS
-        warnings.simplefilter("ignore", NoDetectionsWarning)
 
         # FIX ASTROPY LOGGING LEVEL RESET
         logging.getLogger().setLevel(logging.INFO + 5)
@@ -2228,6 +2222,7 @@ class create_dispersion_map:
         import pandas as pd
         from astropy.table import Table
 
+        from soxspipe.commonutils.fits_headers import set_header_card
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         arm = self.arm
@@ -2312,10 +2307,10 @@ class create_dispersion_map:
         # SET PROCESSING TECHNIQUE BASED ON FRAME TYPE
         if slitDeg == 0 or slitDeg == [0, 0]:
             # SINGLE PINHOLE FRAME
-            header[kw("PRO_TECH").upper()] = "ECHELLE,PINHOLE"
+            set_header_card(header, kw("PRO_TECH").upper(), "ECHELLE,PINHOLE")
         else:
             # MULTI-PINHOLE FRAME
-            header[kw("PRO_TECH").upper()] = "ECHELLE,MULTI-PINHOLE"
+            set_header_card(header, kw("PRO_TECH").upper(), "ECHELLE,MULTI-PINHOLE")
         filePath = f"{self.productDir}/{filename}"
 
         # CREATE BINARY TABLE WITH COEFFICIENT DICTIONARIES
@@ -2331,9 +2326,9 @@ class create_dispersion_map:
         t = t[cols]
 
         # UPDATE HEADER WITH STANDARD PROCESSING KEYWORDS
-        header[kw("SEQ_ARM").upper()] = arm
-        header[kw("PRO_TYPE").upper()] = "REDUCED"
-        header[kw("PRO_CATG").upper()] = f"DISP_TAB_{arm}".upper()
+        set_header_card(header, kw("SEQ_ARM").upper(), arm)
+        set_header_card(header, kw("PRO_TYPE").upper(), "REDUCED")
+        set_header_card(header, kw("PRO_CATG").upper(), f"DISP_TAB_{arm}".upper())
         self.dispMapHeader = header
 
         write_fits_table_to_disk(
@@ -3417,6 +3412,7 @@ class create_dispersion_map:
 
         from soxspipe.commonutils import toolkit
         from soxspipe.commonutils.combiner import Combiner
+        from soxspipe.commonutils.fits_headers import set_header_card
 
         self.log.print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
@@ -3498,7 +3494,7 @@ class create_dispersion_map:
         # WRITE CCDDATA OBJECT TO FILE
         # from astropy.io import fits
         header = copy.deepcopy(self.dispMapHeader)
-        header[kw("PRO_CATG")] = f"DISP_IMAGE_{arm}".upper()
+        set_header_card(header, kw("PRO_CATG"), f"DISP_IMAGE_{arm}".upper())
         primary_hdu = fits.PrimaryHDU(combinedWlImage.data, header=header)
         primary_hdu.header["EXTNAME"] = "WAVELENGTH"
         image_hdu = fits.ImageHDU(combinedSlitImage.data)
@@ -5086,10 +5082,12 @@ def measure_line_position(
     log.debug("starting the ``measure_line_position`` function")
 
     import logging
+    import warnings
 
     import numpy as np
     from astropy.stats import sigma_clipped_stats
     from photutils import DAOStarFinder, IRAFStarFinder
+    from photutils.utils import NoDetectionsWarning
 
     # FIX ASTROPY LOGGING LEVEL RESET
     logging.getLogger().setLevel(logging.INFO + 5)
@@ -5124,7 +5122,11 @@ def measure_line_position(
             exclude_border=exclude_border,
         )
         # SUBTRACT MEDIAN FOR BETTER DETECTION IN LOW SIGNAL IMAGES
-        sources = daofind(stamp.data - median, mask=stamp.mask)
+        with warnings.catch_warnings():
+            # A STAMP WITH NO LINE IN IT IS ROUTINE: `sources` IS THEN None AND THE CODE BELOW HANDLES THAT,
+            # SO THE WARNING ADDS NOTHING
+            warnings.simplefilter("ignore", NoDetectionsWarning)
+            sources = daofind(stamp.data - median, mask=stamp.mask)
     except Exception:
         sources = None
 

@@ -302,7 +302,8 @@ class soxs_offset(soxs_nod):
         - ``allFilenames`` -- the frames' file names, with the ``_pre`` suffix removed
         """
         from astropy import units as u
-        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         # OBJECT/STANDARD FRAMES
         types = ["OBJECT", "STD,FLUX", "STD,TELLURIC"]
@@ -315,7 +316,7 @@ class soxs_offset(soxs_nod):
                     self.recipeName += "-std"
                     self.recipeSettings = self.get_recipe_settings()
                     self.productDir = self.productDir.replace("soxs-offset", "soxs-offset-std")
-                singleFrame = CCDData.read(
+                singleFrame = read_ccd(
                     i,
                     hdu=0,
                     unit=u.electron,
@@ -350,14 +351,15 @@ class soxs_offset(soxs_nod):
         - ``responseFunctionPath`` -- the path to the response table, or False when none was supplied
         """
         from astropy import units as u
-        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         master_flat = False
 
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): "MASTER_FLAT_" + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            master_flat = CCDData.read(
+            master_flat = read_ccd(
                 i,
                 hdu=0,
                 unit=u.electron,

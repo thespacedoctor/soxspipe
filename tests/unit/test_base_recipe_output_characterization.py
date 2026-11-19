@@ -10,11 +10,12 @@ import pandas as pd
 import pytest
 from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
-from astropy.table import MaskedColumn, Table
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.recipes import base_recipe
 from tests.factories import StubInputFrames, instrument_header, noise_frame_pair, pipeline_settings, qc_row, qc_table
+from tests.factories.keyword_recipes import keyword_recipe as _keyword_recipe
+from tests.factories.keyword_recipes import raw_frame_table_with_calibration as _raw_frame_table
 
 pytestmark = pytest.mark.unit
 
@@ -288,36 +289,6 @@ def test_measure_raw_frame_ron_reads_only_the_first_two_frames(log: Any) -> None
     # ASSERT
     assert rawRon > 0
     assert consumed == [0, 1]
-
-
-def _keyword_recipe(tmp_path: Path, log: Any, rawFrames: Table) -> base_recipe:
-    recipe = base_recipe.__new__(base_recipe)
-    recipe.log = log
-    recipe.settings = pipeline_settings(tmp_path)
-    recipe.kw = keyword_lookup(log=log, settings=recipe.settings).get
-    recipe.arm = "VIS"
-    recipe.imageType = "BIAS"
-    recipe.detectorParams = {}
-    recipe.recipeName = "soxs-mbias"
-    recipe.rawFrames = rawFrames
-    return recipe
-
-
-def _raw_frame_table(tmp_path: Path, calibrationPath: Path) -> Table:
-    """Return a raw-frame summary carrying one raw and one calibration row."""
-    # A RAW ROW IS ONE WHOSE PRO TYPE IS MISSING, WHICH REACHES PANDAS AS NaN
-    proType = MaskedColumn(["", "REDUCED"], name="ESO PRO TYPE", mask=[True, False])
-    return Table(
-        {
-            "filename": ["raw_one_pre.fits", "master_bias.fits"],
-            "file": [str(tmp_path / "raw_one.fits"), str(calibrationPath)],
-            "TYPE": ["BIAS", "MASTER_BIAS"],
-            "ARM": ["VIS", "VIS"],
-            "ESO PRO TYPE": proType,
-            "ESO PRO CATG": ["", "MASTER_BIAS_VIS"],
-        },
-        masked=True,
-    )
 
 
 def test_update_fits_keywords_stamps_raw_calibration_and_parameter_records(

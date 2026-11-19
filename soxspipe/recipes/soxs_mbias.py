@@ -391,6 +391,7 @@ class soxs_mbias(base_recipe):
         self.log.debug("starting the ``produce_product`` method")
 
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.fits_headers import set_header_card
 
         arm = self.arm
         kw = self.kw
@@ -436,7 +437,7 @@ class soxs_mbias(base_recipe):
         )
 
         self.update_fits_keywords(frame=combined_bias_mean)
-        combined_bias_mean.header[kw("DATANCOM")] = len(self.inputFrames.files)
+        set_header_card(combined_bias_mean.header, kw("DATANCOM"), len(self.inputFrames.files))
 
         # WRITE TO DISK
         toolkit.frame_to_32(combined_bias_mean)

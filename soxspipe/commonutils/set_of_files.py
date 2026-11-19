@@ -27,6 +27,37 @@ SOF_FITS_PATH = re.compile(r"(.*?\.(?i:fits)(?:\.Z)?)(?=\s|$)")
 
 
 class ImageFileCollection(ImageFileCollection):
+    def filter(self, **kwd: object) -> "ImageFileCollection":
+        """*the frames that match the header values, with no warning when none do (overrides the ccdproc method)*
+
+        The recipes probe for optional calibrations by filtering and then checking ``files``, so an empty result is
+        routine.
+
+        **Key Arguments:**
+
+        - ``kwd`` -- the header keywords and values to match, as ccdproc's ``filter`` takes them
+
+        **Return:**
+
+        - ``collection`` -- the matching frames, as an ``ImageFileCollection``
+
+        **Usage:**
+
+        ```python
+        calibrations = inputFrames.filter(**{"ESO PRO CATG": "MASTER_BIAS_VIS"})
+        if len(calibrations.files):
+            ...
+        ```
+        """
+        import warnings
+
+        from astropy.utils.exceptions import AstropyUserWarning
+
+        with warnings.catch_warnings():
+            # CCDPROC WARNS WHEN A COLLECTION IS EMPTY, AND AN EMPTY RESULT IS ROUTINE FOR THIS CALL
+            warnings.filterwarnings("ignore", message="no FITS files in the collection", category=AstropyUserWarning)
+            return super().filter(**kwd)
+
     def _dict_from_fits_header(self, file_name, input_summary=None, missing_marker=None):
         """*summarise one file's header, keeping keyword case (overrides the ccdproc method)*
 
