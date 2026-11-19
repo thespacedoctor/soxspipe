@@ -966,7 +966,7 @@ class data_organiser:
                         ]
 
                 # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
-                rawFrames = self._without_unsafe_frames(rawFrames)
+                rawFrames = self._without_overwriting_frames(self._without_unsafe_frames(rawFrames))
                 databaseDeletes = []
                 if len(rawFrames.index):
                     # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
@@ -1043,6 +1043,41 @@ class data_organiser:
             if reason:
                 self.log.warning(f"not filing `{n}`: {reason}")
             keep.append(reason is None)
+        return rawFrames.loc[keep]
+
+    def _without_overwriting_frames(self, rawFrames):
+        """*drop the frames whose filing would replace a file that already sits at the destination*
+
+        A root frame is filed into ``raw/<date>/`` with a move, and a move replaces an existing file without a
+        word. In a VLT workspace ``raw/`` is the external archive, so the replaced file could be an archive frame.
+        A frame whose destination is taken is skipped with a warning that names both paths, and neither file is
+        touched. Dropping it here also keeps it out of ``raw_frames``, so no row points at the file that holds the
+        place of the frame.
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the newly found frames, with ``file`` and ``filepath`` columns
+
+        **Return:**
+
+        - ``rawFrames`` -- the frames whose destination is free, or that are already in place
+        """
+        keep = []
+        for p, n in zip(rawFrames["filepath"], rawFrames["file"], strict=True):
+            source = path_under_root(n, self.rootDir)
+            destination = path_under_root(p, self.rootDir)
+            isMove = (
+                os.path.exists(source)
+                and not self._is_dated_raw_frame(os.path.realpath(source))
+                and os.path.realpath(source) != os.path.realpath(destination)
+            )
+            isTaken = isMove and os.path.lexists(destination)
+            if isTaken:
+                realDestination = os.path.realpath(destination)
+                self.log.warning(
+                    f"not filing `{source}`: `{realDestination}` already exists and a move would replace it"
+                )
+            keep.append(not isTaken)
         return rawFrames.loc[keep]
 
     def _is_inside_raw_directory(self, path):
