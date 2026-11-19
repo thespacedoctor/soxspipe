@@ -1000,9 +1000,10 @@ class data_organiser:
 
                 if len(databaseDeletes):
                     # THE STORED FILEPATH, WITH THE KEY OF THE ROW JUST INSERTED, SO NO OTHER FRAME'S ROW IS DELETED
+                    # `IS ?` ALSO MATCHES A NULL TECH, WHICH `= ?` NEVER DOES
                     c = self.conn.cursor()
                     c.executemany(
-                        'delete from raw_frames where filepath = ? and file = ? and "eso dpr tech" = ?;',
+                        'delete from raw_frames where filepath = ? and file = ? and "eso dpr tech" is ?;',
                         databaseDeletes,
                     )
                     c.close()
