@@ -2106,7 +2106,8 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
         sofName += productMarker + "_RESP"
     elif "_STARE" in sofName or "_NOD" in sofName:
         sofName += productMarker + "_EXTRACTED_MERGED"
-    productFile = f"{startNightDate}/{recipeName.replace('_', '-')}/{sofName}.fits"
+    # WITH NO NIGHT THE FILE PART MUST NOT START WITH `/`, OR `os.path.join` WOULD DROP THE ROOT
+    productFile = os.path.join(startNightDate, recipeName.replace("_", "-"), f"{sofName}.fits")
 
     if outputDir and outputDir not in CURRENT_DIRECTORY_ROOTS:
         productPath = os.path.join(expand_workspace_root(outputDir), "reduced", productFile)

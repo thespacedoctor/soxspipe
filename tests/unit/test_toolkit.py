@@ -266,6 +266,21 @@ def test_predict_product_path_builds_the_path_under_the_output_directory_where_t
     assert not outputDir.exists()
 
 
+def test_predict_product_path_keeps_the_output_directory_for_a_sof_name_with_no_night(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: A SOF NAME WITH NO LEADING TIMESTAMP GIVES NO NIGHT
+    outputDir = tmp_path / "output"
+    monkeypatch.chdir(tmp_path)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path("my_bias.sof", recipeName="soxs-mbias", outputDir=str(outputDir))
+
+    # ASSERT
+    assert night == ""
+    assert productPath == f"{outputDir}/reduced/soxs-mbias/my_bias.fits"
+
+
 def test_predict_product_path_expands_the_home_directory_of_the_output_directory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
