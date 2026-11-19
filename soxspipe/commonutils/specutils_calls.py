@@ -12,10 +12,10 @@ Date Created
 : November 19, 2026
 """
 
-import warnings
+from typing import Any
 
 
-def spectrum1d(**kwargs):
+def spectrum1d_quietly(**kwargs: Any) -> Any:
     """*build a* ``specutils.Spectrum1D`` *without gwcs' deprecation notice*
 
     **Key Arguments:**
@@ -29,10 +29,12 @@ def spectrum1d(**kwargs):
     **Usage:**
 
     ```python
-    from soxspipe.commonutils.specutils_calls import spectrum1d
-    spectrum = spectrum1d(flux=flux, spectral_axis=wavelength)
+    from soxspipe.commonutils.specutils_calls import spectrum1d_quietly
+    spectrum = spectrum1d_quietly(flux=flux, spectral_axis=wavelength)
     ```
     """
+    import warnings
+
     from astropy.utils.exceptions import AstropyDeprecationWarning
     from specutils import Spectrum1D
 
@@ -44,7 +46,7 @@ def spectrum1d(**kwargs):
         return Spectrum1D(**kwargs)
 
 
-def generic_continuum_fit(spectrum):
+def fit_generic_continuum_quietly(spectrum: Any) -> Any:
     """*fit the generic continuum of a spectrum without astropy's note about the fitter specutils chose*
 
     **Key Arguments:**
@@ -58,10 +60,12 @@ def generic_continuum_fit(spectrum):
     **Usage:**
 
     ```python
-    from soxspipe.commonutils.specutils_calls import generic_continuum_fit
-    continuum = generic_continuum_fit(spectrum)
+    from soxspipe.commonutils.specutils_calls import fit_generic_continuum_quietly
+    continuum = fit_generic_continuum_quietly(spectrum)
     ```
     """
+    import warnings
+
     from astropy.utils.exceptions import AstropyUserWarning
     from specutils.fitting import fit_generic_continuum
 

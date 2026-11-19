@@ -571,6 +571,7 @@ class _base_detect:
 
         - ``order_table_path`` -- path to the order table file
         """
+        from soxspipe.commonutils.fits_headers import set_header_card
 
         self.log.debug("starting the ``write_order_table_to_file`` method")
 
@@ -620,20 +621,20 @@ class _base_detect:
         with suppress(KeyError):
             header.pop(kw("RON"))
 
-        header["HIERARCH " + kw("PRO_TECH")] = "ECHELLE,SLIT"
+        set_header_card(header, kw("PRO_TECH"), "ECHELLE,SLIT")
 
-        header[kw("SEQ_ARM")] = arm
-        header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
+        set_header_card(header, kw("SEQ_ARM"), arm)
+        set_header_card(header, kw("PRO_TYPE"), "REDUCED")
         tables = [orderPolyTable, orderMetaTable]
         if (
             "stare" not in self.recipeName.lower()
             and "nod" not in self.recipeName.lower()
             and "offset" not in self.recipeName.lower()
         ):
-            header["HIERARCH " + kw("PRO_CATG")] = f"ORDER_TAB_{arm}".upper()
+            set_header_card(header, kw("PRO_CATG"), f"ORDER_TAB_{arm}".upper())
             tables.append(self.build_order_traces_extension(frame, orderPolyTable, orderMetaTable))
         else:
-            header["HIERARCH " + kw("PRO_CATG")] = f"OBJECT_TAB_{arm}".upper()
+            set_header_card(header, kw("PRO_CATG"), f"OBJECT_TAB_{arm}".upper())
 
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 

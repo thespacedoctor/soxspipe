@@ -523,6 +523,7 @@ class horne_extraction(base_util):
         import pandas as pd
         from astropy.table import Table
 
+        from soxspipe.commonutils.fits_headers import set_header_card
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
@@ -665,9 +666,9 @@ class horne_extraction(base_util):
 
             # header["HIERARCH " + kw("PRO_TECH")] = header.pop(kw("DPR_TECH"))
 
-            header[kw("SEQ_ARM")] = arm
-            header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
-            header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{arm}".upper()
+            set_header_card(header, kw("SEQ_ARM"), arm)
+            set_header_card(header, kw("PRO_TYPE"), "REDUCED")
+            set_header_card(header, kw("PRO_CATG"), f"SCI_SLIT_FLUX_{arm}".upper())
 
             # DISCRETE ORDERS
             filename = self.filenameTemplate.replace(
@@ -1824,15 +1825,15 @@ class horne_extraction(base_util):
         from astropy import units as u
         from scipy.signal import find_peaks, savgol_filter
 
-        from soxspipe.commonutils.specutils_calls import generic_continuum_fit, spectrum1d
+        from soxspipe.commonutils.specutils_calls import fit_generic_continuum_quietly, spectrum1d_quietly
 
         skyValsOriginal = sky[valid].to_numpy()
         waveVals = wave.loc[valid].to_numpy()
         objectVals = objectFlux.loc[valid].to_numpy()
         skyVals = savgol_filter(sky[valid], window_length=3, polyorder=2)
 
-        spec = spectrum1d(flux=skyValsOriginal * u.Unit(""), spectral_axis=waveVals * u.nm)
-        cont_fit = generic_continuum_fit(spec)
+        spec = spectrum1d_quietly(flux=skyValsOriginal * u.Unit(""), spectral_axis=waveVals * u.nm)
+        cont_fit = fit_generic_continuum_quietly(spec)
         continuum = cont_fit(waveVals * u.nm)
         skyVals = skyValsOriginal / continuum.value
 
@@ -2390,7 +2391,7 @@ class horne_extraction(base_util):
         import pandas as pd
         from astropy.nddata import VarianceUncertainty
 
-        from soxspipe.commonutils.specutils_calls import spectrum1d
+        from soxspipe.commonutils.specutils_calls import spectrum1d_quietly
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
         logging.getLogger().setLevel(logging.INFO + 5)
@@ -2477,7 +2478,7 @@ class horne_extraction(base_util):
         extractedOrdersDF["wavelengthMean"] = extractedOrdersDF["wavelengthMean"].values * u.nm
 
         flux_orig = extractedOrdersDF["extractedFluxOptimal"].values
-        spectrum_orig = spectrum1d(
+        spectrum_orig = spectrum1d_quietly(
             flux=flux_orig,
             spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             uncertainty=VarianceUncertainty(extractedOrdersDF["varianceSpectrum"].values),
@@ -2485,7 +2486,7 @@ class horne_extraction(base_util):
         )
 
         sky_orig = extractedOrdersDF["skyFlux"].values * u.electron
-        spectrumSky_orig = spectrum1d(
+        spectrumSky_orig = spectrum1d_quietly(
             flux=sky_orig,
             spectral_axis=extractedOrdersDF["wavelengthMean"].values,
             bin_specification="center",

@@ -255,6 +255,8 @@ class response_function:
         from scipy.interpolate import interp1d
         from scipy.signal import savgol_filter
 
+        from soxspipe.commonutils.fits_headers import set_header_card
+
         response_function = None
 
         # GET THE EXTRACTED STANDARD STAR'S WAVELENGTH AND FLUX
@@ -405,9 +407,9 @@ class response_function:
             filepath = f"{self.productDir}/{filename}"
 
             header = copy.deepcopy(self.header)
-            header[self.kw("SEQ_ARM").upper()] = self.arm
-            header[self.kw("PRO_TYPE").upper()] = "REDUCED"
-            header[self.kw("PRO_CATG").upper()] = f"EFFICIENCY_TAB_{self.arm}".upper()
+            set_header_card(header, self.kw("SEQ_ARM").upper(), self.arm)
+            set_header_card(header, self.kw("PRO_TYPE").upper(), "REDUCED")
+            set_header_card(header, self.kw("PRO_CATG").upper(), f"EFFICIENCY_TAB_{self.arm}".upper())
 
             self.qc = add_snr_efficiency_qcs(
                 log=self.log,
@@ -597,6 +599,7 @@ class response_function:
         from astropy.io import fits
 
         from soxspipe.commonutils.atomic_fits import write_hdulist_atomically
+        from soxspipe.commonutils.fits_headers import set_header_card
         from soxspipe.commonutils.phase3 import add_qc_to_header
 
         arm = self.arm
@@ -608,10 +611,10 @@ class response_function:
 
         filePath = f"{self.productDir}/{filename}"
 
-        header[kw("SEQ_ARM").upper()] = arm
-        header[kw("PRO_TYPE").upper()] = "REDUCED"
-        header[kw("PRO_CATG").upper()] = f"RESP_TAB_{arm}".upper()
-        header[RESPONSE_BASIS_KEYWORD] = (RESPONSE_BASIS, RESPONSE_BASIS_COMMENT)
+        set_header_card(header, kw("SEQ_ARM").upper(), arm)
+        set_header_card(header, kw("PRO_TYPE").upper(), "REDUCED")
+        set_header_card(header, kw("PRO_CATG").upper(), f"RESP_TAB_{arm}".upper())
+        set_header_card(header, RESPONSE_BASIS_KEYWORD, RESPONSE_BASIS, RESPONSE_BASIS_COMMENT)
 
         # WRITE QCs TO HEADERS
         add_qc_to_header(header, self.qc)

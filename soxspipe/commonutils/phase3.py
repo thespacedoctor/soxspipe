@@ -29,6 +29,7 @@ def basic_header_scrubbing(log, settings, header):
     """
     log.debug("starting the ``basic_header_scrubbing`` method")
     from soxspipe.commonutils import keyword_lookup
+    from soxspipe.commonutils.fits_headers import set_header_card
 
     # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
     # FOLDER
@@ -60,7 +61,7 @@ def basic_header_scrubbing(log, settings, header):
     for oldKw, newKw in renameKw.items():
         if oldKw in header:
             comment = header.comments[oldKw]
-            header[newKw] = (header.pop(oldKw), comment)
+            set_header_card(header, newKw, header.pop(oldKw), comment)
 
     log.debug("completed the ``basic_header_scrubbing`` method")
     return header
@@ -81,7 +82,7 @@ def sort_keywords(log, header):
     header = sort_keywords(log=log, header=frame.header)
     ```
     """
-    from soxspipe.commonutils.fits_headers import hierarch
+    from soxspipe.commonutils.fits_headers import set_header_card
 
     log.debug("starting the ``sort_keywords`` method")
 
@@ -94,9 +95,9 @@ def sort_keywords(log, header):
         header.clear()
         for k, v, c in zip(keywords, values, comments):
             if k == "COMMENT":
-                header[k] = v
+                set_header_card(header, k, v)
             else:
-                header[hierarch(k)] = (v, c)
+                set_header_card(header, k, v, c)
 
     log.debug("completed the ``sort_keywords`` method")
     return header
@@ -118,7 +119,7 @@ def add_qc_to_header(header, qc):
     """
     import numpy as np
 
-    from soxspipe.commonutils.fits_headers import hierarch
+    from soxspipe.commonutils.fits_headers import set_header_card
 
     for n, v, c, h in zip(
         qc["qc_name"].values,
@@ -129,7 +130,7 @@ def add_qc_to_header(header, qc):
     ):
         isMissing = isinstance(v, (float, np.floating)) and not np.isfinite(v)
         if h and not isMissing:
-            header[hierarch(f"ESO QC {n}".upper())] = (v, c)
+            set_header_card(header, f"ESO QC {n}".upper(), v, c)
     return header
 
 

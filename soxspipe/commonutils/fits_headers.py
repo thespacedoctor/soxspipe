@@ -36,11 +36,12 @@ import shutil
 import subprocess
 import warnings
 from collections import OrderedDict
+from collections.abc import MutableMapping
+from typing import Any
 
 import uncompresspy
 from astropy.io import fits
 from astropy.nddata import CCDData
-from astropy.wcs import FITSFixedWarning
 from ccdproc import ImageFileCollection
 
 from soxspipe.commonutils.fits_frame_names import LZW_SUFFIX, is_fits_frame
@@ -52,6 +53,8 @@ FITS_CARD_SIZE = 80
 END_CARD = b"END" + b" " * (FITS_CARD_SIZE - 3)
 # A KEYWORD THIS PATTERN MATCHES IS A STANDARD FITS CARD; ANY OTHER KEYWORD IS STORED AS A HIERARCH CARD
 STANDARD_KEYWORD = re.compile(r"[A-Z0-9_-]{1,8}")
+# THE START OF EACH WCS NOTE THAT RAW ESO HEADERS ALWAYS RAISE WHEN THEY ARE READ
+KNOWN_WCS_NOTES = ("RADECSYS=", "The WCS transformation has more axes")
 
 log = logging.getLogger(__name__)
 
@@ -213,11 +216,12 @@ def _warn_once_gzip_missing():
     )
 
 
-def hierarch(keyword):
+def hierarch(keyword: str) -> str:
     """*the keyword with the* ``HIERARCH`` *prefix when FITS cannot hold it as a standard card*
 
     Writing ``header["ESO DET BINX"]`` makes astropy store a ``HIERARCH`` card and warn that it did. Writing
-    ``header[hierarch("ESO DET BINX")]`` stores the same card and raises no warning.
+    ``header[hierarch("ESO DET BINX")]`` stores the same card and raises no warning. A record-valued keyword such as
+    ``DP1.AXIS.1`` (a dot, no space) is left as it is, because astropy stores it as ``DP1 = 'AXIS.1: 1'``.
 
     **Key Arguments:**
 
@@ -232,20 +236,48 @@ def hierarch(keyword):
 
     ```python
     from soxspipe.commonutils.fits_headers import hierarch
-    header[hierarch("ESO QC RON")] = (ron, "read noise")
+    keyword = hierarch("ESO QC RON")
     ```
     """
-    if keyword.startswith("HIERARCH ") or STANDARD_KEYWORD.fullmatch(keyword.upper()):
+    isRecordValued = "." in keyword and " " not in keyword
+    if isRecordValued or keyword.startswith("HIERARCH ") or STANDARD_KEYWORD.fullmatch(keyword.upper()):
         return keyword
     return f"HIERARCH {keyword}"
 
 
-def _read_ccd_quietly(source, **kwargs):
-    """*``CCDData.read`` with astropy's WCS header notes ignored for this call only*"""
+def set_header_card(header: MutableMapping[str, Any], keyword: str, value: Any, comment: str | None = None) -> None:
+    """*set one header card, naming a long ESO keyword as a* ``HIERARCH`` *card so astropy does not warn*
+
+    Every card the package writes goes through here, so a new writer cannot forget the prefix. A plain dict has no
+    ``HIERARCH`` cards, so it keeps the keyword it was given.
+
+    **Key Arguments:**
+
+    - ``header`` -- the astropy header (or dict) to update in place
+    - ``keyword`` -- the header keyword
+    - ``value`` -- the card value
+    - ``comment`` -- the card comment. Default *None*
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.fits_headers import set_header_card
+    set_header_card(header, "ESO QC RON", 3.5, "read noise [e-]")
+    ```
+    """
+    key = hierarch(keyword) if isinstance(header, fits.Header) else keyword
+    header[key] = value if comment is None else (value, comment)
+
+
+def _read_ccd_quietly(source: str | os.PathLike | io.BytesIO, **kwargs: Any) -> CCDData:
+    """*``CCDData.read`` with two known astropy WCS header notes ignored for this call only*"""
+    from astropy.wcs import FITSFixedWarning
+
     with warnings.catch_warnings():
-        # RAW ESO HEADERS CARRY AN OLD `RADECSYS` CARD AND MORE WCS AXES THAN THE IMAGE; ASTROPY FIXES THEM AND SAYS SO,
-        # AND NOBODY CAN CHANGE THE RAW FRAME
-        warnings.simplefilter("ignore", FITSFixedWarning)
+        # RAW ESO HEADERS CARRY AN OLD `RADECSYS` CARD AND MORE WCS AXES THAN THE IMAGE; ASTROPY FIXES BOTH AND SAYS SO,
+        # AND NOBODY CAN CHANGE THE RAW FRAME. ANY OTHER WCS FIX STILL SHOWS
+        for message in KNOWN_WCS_NOTES:
+            warnings.filterwarnings("ignore", message=message, category=FITSFixedWarning)
         return CCDData.read(source, **kwargs)
 
 

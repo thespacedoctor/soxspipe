@@ -858,7 +858,8 @@ class soxs_nod(base_recipe):
         - ``allFilenames`` -- the frames' file names, with the ``_pre`` suffix removed
         """
         from astropy import units as u
-        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         # OBJECT/STANDARD FRAMES
         types = ["OBJECT", "STD,FLUX", "STD,TELLURIC"]
@@ -871,7 +872,7 @@ class soxs_nod(base_recipe):
                     self.recipeName += "-std"
                     self.recipeSettings = self.get_recipe_settings()
                     self.productDir = self.productDir.replace("soxs-nod", "soxs-nod-std")
-                singleFrame = CCDData.read(
+                singleFrame = read_ccd(
                     i,
                     hdu=0,
                     unit=u.electron,
@@ -906,14 +907,15 @@ class soxs_nod(base_recipe):
         - ``responseFunctionPath`` -- the path to the response table, or False when none was supplied
         """
         from astropy import units as u
-        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         master_flat = False
 
         # UVB/VIS/NIR FLAT
         add_filters = {kw("PRO_CATG"): "MASTER_FLAT_" + arm}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            master_flat = CCDData.read(
+            master_flat = read_ccd(
                 i,
                 hdu=0,
                 unit=u.electron,
@@ -969,7 +971,8 @@ class soxs_nod(base_recipe):
         - ``masterBias`` -- the master bias, or False on NIR or when the SOF names none
         """
         from astropy import units as u
-        from astropy.nddata import CCDData
+
+        from soxspipe.commonutils.fits_headers import read_ccd
 
         if arm.upper() not in ("UVB", "VIS"):
             return False
@@ -977,7 +980,7 @@ class soxs_nod(base_recipe):
         masterBias = False
         add_filters = {kw("PRO_CATG"): f"MASTER_BIAS_{arm}"}
         for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-            masterBias = CCDData.read(
+            masterBias = read_ccd(
                 i,
                 hdu=0,
                 unit=u.electron,
@@ -1968,8 +1971,9 @@ class soxs_nod(base_recipe):
         from astropy import units as u
         from astropy.table import Table
 
+        from soxspipe.commonutils.fits_headers import set_header_card
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
-        from soxspipe.commonutils.specutils_calls import spectrum1d
+        from soxspipe.commonutils.specutils_calls import spectrum1d_quietly
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
         )
@@ -2013,13 +2017,13 @@ class soxs_nod(base_recipe):
         self.update_fits_keywords(frame=self.masterHeaderFrame)
         header = self.masterHeaderFrame.header
 
-        header["HIERARCH " + kw("PRO_TYPE")] = "REDUCED"
-        header["HIERARCH " + kw("PRO_CATG")] = f"SCI_SLIT_FLUX_{self.arm}".upper()
+        set_header_card(header, kw("PRO_TYPE"), "REDUCED")
+        set_header_card(header, kw("PRO_CATG"), f"SCI_SLIT_FLUX_{self.arm}".upper())
 
         flux_orig = groupedDataframe["FLUX_COUNTS"].values * u.electron
         # THE RESULT IS UNUSED, BUT BUILDING IT VALIDATES THE GROUPED FLUX AND WAVELENGTH ARRAYS AGAINST EACH
         # OTHER AND RAISES WHEN THEY DISAGREE. DELETING IT WOULD REMOVE THAT CHECK.
-        spectrum_orig = spectrum1d(  # noqa: F841
+        spectrum_orig = spectrum1d_quietly(  # noqa: F841
             flux=flux_orig,
             spectral_axis=groupedDataframe["WAVE"].values * u.nm,
             bin_specification="center",

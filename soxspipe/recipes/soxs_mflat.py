@@ -1688,6 +1688,8 @@ class soxs_mflat(base_recipe):
 
         import numpy as np
 
+        from soxspipe.commonutils.fits_headers import set_header_card
+
         kw = self.kw
 
         dLamp = self._stitch_lamp(D_LAMP_TAG)
@@ -1750,7 +1752,11 @@ class soxs_mflat(base_recipe):
             dLamp, qLamp, axisAStitchCoords, axisBStitchCoords, stitchedFlat.mask.shape
         )
 
-        stitchedFlat.header[kw("DPR_TYPE")] = stitchedFlat.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ",")
+        set_header_card(
+            stitchedFlat.header,
+            kw("DPR_TYPE"),
+            stitchedFlat.header[kw("DPR_TYPE")].replace(",D", ",").replace(",Q", ","),
+        )
 
         from soxspipe.commonutils.toolkit import quicklook_image
 

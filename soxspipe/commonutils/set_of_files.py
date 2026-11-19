@@ -12,10 +12,8 @@ Date Created
 import logging
 import os
 import re
-import warnings
 from os import path
 
-from astropy.utils.exceptions import AstropyUserWarning
 from ccdproc import ImageFileCollection
 
 from soxspipe.commonutils.fits_frame_names import is_fits_frame
@@ -29,7 +27,7 @@ SOF_FITS_PATH = re.compile(r"(.*?\.(?i:fits)(?:\.Z)?)(?=\s|$)")
 
 
 class ImageFileCollection(ImageFileCollection):
-    def filter(self, **kwd):
+    def filter(self, **kwd: object) -> "ImageFileCollection":
         """*the frames that match the header values, with no warning when none do (overrides the ccdproc method)*
 
         The recipes probe for optional calibrations by filtering and then checking ``files``, so an empty result is
@@ -42,7 +40,19 @@ class ImageFileCollection(ImageFileCollection):
         **Return:**
 
         - ``collection`` -- the matching frames, as an ``ImageFileCollection``
+
+        **Usage:**
+
+        ```python
+        calibrations = inputFrames.filter(**{"ESO PRO CATG": "MASTER_BIAS_VIS"})
+        if len(calibrations.files):
+            ...
+        ```
         """
+        import warnings
+
+        from astropy.utils.exceptions import AstropyUserWarning
+
         with warnings.catch_warnings():
             # CCDPROC WARNS WHEN A COLLECTION IS EMPTY, AND AN EMPTY RESULT IS ROUTINE FOR THIS CALL
             warnings.filterwarnings("ignore", message="no FITS files in the collection", category=AstropyUserWarning)

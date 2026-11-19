@@ -14,6 +14,7 @@ is what exposes it.
 
 from __future__ import annotations
 
+import ast
 import importlib
 import logging
 import warnings
@@ -36,10 +37,11 @@ from photutils.utils import NoDetectionsWarning
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.create_dispersion_map import create_dispersion_map, measure_line_position
 from soxspipe.commonutils.data_organiser import data_organiser
-from soxspipe.commonutils.fits_headers import hierarch, read_ccd
+from soxspipe.commonutils.fits_headers import STANDARD_KEYWORD, hierarch, read_ccd, set_header_card
 from soxspipe.commonutils.phase3 import add_qc_to_header, sort_keywords
 from soxspipe.commonutils.set_of_files import ImageFileCollection
-from soxspipe.commonutils.specutils_calls import generic_continuum_fit, spectrum1d
+from soxspipe.commonutils.specutils_calls import fit_generic_continuum_quietly, spectrum1d_quietly
+from soxspipe.commonutils.toolkit import save_qc_plot
 from soxspipe.recipes.base_recipe import base_recipe
 from tests.factories import instrument_header, pipeline_settings, raw_fits
 from tests.factories.keyword_recipes import keyword_recipe, raw_frame_table_with_calibration
@@ -342,7 +344,14 @@ def test_reading_a_frame_with_a_deprecated_wcs_keyword_raises_no_wcs_fix_notice(
     # ARRANGE
     framePath = raw_fits(
         tmp_path / "frame.fits",
-        headerOverrides={"RADECSYS": "FK5", "CTYPE1": "RA---TAN", "CTYPE2": "DEC--TAN", "CRVAL1": 10.0, "CRVAL2": 20.0},
+        headerOverrides={
+            "RADECSYS": "FK5",
+            "CTYPE1": "RA---TAN",
+            "CTYPE2": "DEC--TAN",
+            "CRVAL1": 10.0,
+            "CRVAL2": 20.0,
+            "MJD-OBS": 60311.1278436,
+        },
     )
 
     # ACT
@@ -361,6 +370,7 @@ def test_reading_a_frame_with_a_deprecated_wcs_keyword_raises_no_wcs_fix_notice(
         ("ESO DET BINX", "HIERARCH ESO DET BINX"),
         ("EXPOSURE1", "HIERARCH EXPOSURE1"),
         ("HIERARCH ESO DET BINX", "HIERARCH ESO DET BINX"),
+        ("DP1.AXIS.1", "DP1.AXIS.1"),
     ],
 )
 def test_a_keyword_is_prefixed_with_hierarch_only_when_fits_needs_it(keyword: str, expected: str) -> None:
@@ -379,7 +389,7 @@ def test_building_a_spectrum_raises_no_gwcs_deprecation_notice() -> None:
     filtersBefore = _filters_snapshot()
 
     # ACT
-    raised = _raised_while(lambda: spectrum1d(flux=np.ones(20) * u.electron, spectral_axis=wavelength))
+    raised = _raised_while(lambda: spectrum1d_quietly(flux=np.ones(20) * u.electron, spectral_axis=wavelength))
 
     # ASSERT
     assert _of_category(raised, AstropyDeprecationWarning) == []
@@ -390,13 +400,172 @@ def test_a_continuum_fit_raises_no_linear_model_notice_and_returns_the_continuum
     """The fitter note is ignored for the continuum call only, and the fit still comes back."""
     # ARRANGE
     wavelength = np.linspace(500.0, 510.0, 200)
-    spectrum = spectrum1d(flux=(2.0 + 0.01 * wavelength) * u.Unit(""), spectral_axis=wavelength * u.nm)
+    spectrum = spectrum1d_quietly(flux=(2.0 + 0.01 * wavelength) * u.Unit(""), spectral_axis=wavelength * u.nm)
     fitted: list[Any] = []
 
     # ACT
-    raised = _raised_while(lambda: fitted.append(generic_continuum_fit(spectrum)))
+    raised = _raised_while(lambda: fitted.append(fit_generic_continuum_quietly(spectrum)))
 
     # ASSERT
     assert _of_category(raised, AstropyUserWarning) == []
     continuum = fitted[0](wavelength * u.nm)
     assert continuum.value == pytest.approx(2.0 + 0.01 * wavelength, rel=1e-3)
+
+
+def test_a_header_card_set_through_the_helper_is_the_card_astropy_makes_for_hierarch() -> None:
+    """`set_header_card` writes the same bytes as astropy's own `HIERARCH` card, with no warning."""
+    # ARRANGE
+    header = fits.Header()
+    expected = fits.Header()
+    expected["HIERARCH ESO DET BINX"] = (2, "binning in x")
+    expected["EXPTIME"] = 30.0
+
+    # ACT
+    raised = _raised_while(
+        lambda: (
+            set_header_card(header, "ESO DET BINX", 2, "binning in x"),
+            set_header_card(header, "EXPTIME", 30.0),
+        )
+    )
+
+    # ASSERT
+    assert _of_category(raised, VerifyWarning) == []
+    assert header.tostring() == expected.tostring()
+
+
+def test_a_record_valued_keyword_is_written_as_astropy_writes_it() -> None:
+    """`DP1.AXIS.1` stays a record-valued card, not a `HIERARCH` one."""
+    # ARRANGE
+    header = fits.Header()
+    expected = fits.Header()
+    expected["DP1.AXIS.1"] = 1
+
+    # ACT
+    set_header_card(header, "DP1.AXIS.1", 1)
+
+    # ASSERT
+    assert header.tostring() == expected.tostring()
+
+
+def test_a_plain_dict_header_keeps_the_keyword_it_was_given() -> None:
+    """A dict has no `HIERARCH` cards, so reading the key back must use the same text."""
+    # ARRANGE
+    meta: dict[str, object] = {}
+
+    # ACT
+    set_header_card(meta, "ESO DET BINX", 2, "binning in x")
+
+    # ASSERT
+    assert meta == {"ESO DET BINX": (2, "binning in x")}
+
+
+def test_reading_a_frame_still_shows_a_wcs_fix_that_is_not_one_of_the_known_notes(tmp_path: Path) -> None:
+    """Only the two known WCS notes are ignored; a date fix on the same read is still raised."""
+    # ARRANGE
+    framePath = raw_fits(
+        tmp_path / "frame.fits",
+        headerOverrides={
+            "CTYPE1": "RA---TAN",
+            "CTYPE2": "DEC--TAN",
+            "CRVAL1": 10.0,
+            "CRVAL2": 20.0,
+            "DATE-OBS": "2024-01-02T03:04:05",
+            "MJD-OBS": 1.0,
+        },
+    )
+
+    # ACT
+    raised = _raised_while(lambda: read_ccd(str(framePath), hdu=0, unit=u.adu))
+
+    # ASSERT
+    assert [str(warning.message) for warning in _of_category(raised, FITSFixedWarning)] != []
+
+
+def test_saving_a_qc_plot_with_collapsed_axes_raises_no_layout_notice(tmp_path: Path) -> None:
+    """matplotlib still writes the figure when it cannot apply the constrained layout, so its notice is dropped."""
+    # ARRANGE
+    import matplotlib.pyplot as plt
+
+    figure = plt.figure(figsize=(0.3, 0.3), layout="constrained")
+    axes = figure.add_subplot(111)
+    axes.set_title("a long title")
+    axes.set_xlabel("x label")
+    axes.set_ylabel("y label")
+    plotPath = tmp_path / "plot.pdf"
+
+    # ACT
+    try:
+        raised = _raised_while(lambda: save_qc_plot(str(plotPath)))
+    finally:
+        plt.close(figure)
+
+    # ASSERT
+    assert [warning for warning in raised if "constrained_layout" in str(warning.message)] == []
+    assert plotPath.stat().st_size > 0
+
+
+PACKAGE_PATH = Path(__file__).resolve().parents[2] / "soxspipe"
+
+
+def _header_names(node: ast.expr) -> bool:
+    """True for ``header`` and for ``<anything>.header``."""
+    return (isinstance(node, ast.Name) and node.id == "header") or (
+        isinstance(node, ast.Attribute) and node.attr == "header"
+    )
+
+
+def _is_standard_literal(key: ast.expr) -> bool:
+    """True for a string literal that FITS stores as a standard card, such as ``"EXTNAME"``."""
+    return isinstance(key, ast.Constant) and isinstance(key.value, str) and bool(STANDARD_KEYWORD.fullmatch(key.value))
+
+
+def test_every_header_card_the_package_writes_goes_through_the_helper() -> None:
+    """Only a standard literal keyword is written by subscript, so a new ESO keyword cannot skip `hierarch`."""
+    # ARRANGE
+    offenders = []
+
+    # ACT
+    for sourcePath in sorted(PACKAGE_PATH.rglob("*.py")):
+        if "tests" in sourcePath.relative_to(PACKAGE_PATH).parts:
+            continue
+        tree = ast.parse(sourcePath.read_text())
+        helperLines = {
+            line
+            for function in ast.walk(tree)
+            if isinstance(function, ast.FunctionDef) and function.name == "set_header_card"
+            for line in range(function.lineno, function.end_lineno + 1)
+        }
+        for node in ast.walk(tree):
+            if getattr(node, "lineno", None) in helperLines:
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
+            for target in targets:
+                if (
+                    isinstance(target, ast.Subscript)
+                    and _header_names(target.value)
+                    and not _is_standard_literal(target.slice)
+                ):
+                    offenders.append(f"{sourcePath.relative_to(PACKAGE_PATH)}:{node.lineno}")
+
+    # ASSERT
+    assert offenders == []
+
+
+def test_the_nod_recipe_reads_its_frames_through_read_ccd() -> None:
+    """`CCDData.read` called directly would show astropy's WCS notes that `read_ccd` ignores."""
+    # ARRANGE
+    tree = ast.parse((PACKAGE_PATH / "recipes" / "soxs_nod.py").read_text())
+
+    # ACT
+    directReads = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "read"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "CCDData"
+    ]
+
+    # ASSERT
+    assert directReads == []

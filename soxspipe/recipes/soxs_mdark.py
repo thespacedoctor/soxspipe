@@ -186,6 +186,8 @@ class soxs_mdark(base_recipe):
 
         - ``productPath`` -- the path to master dark frame
         """
+        from soxspipe.commonutils.fits_headers import set_header_card
+
         self.log.debug("starting the ``produce_product`` method")
 
         kw = self.kw
@@ -200,7 +202,7 @@ class soxs_mdark(base_recipe):
         )
 
         self.update_fits_keywords(frame=combined_dark_mean)
-        combined_dark_mean.header[kw("DATANCOM")] = len(self.inputFrames.files)
+        set_header_card(combined_dark_mean.header, kw("DATANCOM"), len(self.inputFrames.files))
 
         productPath = self._write_and_record_product(frame=combined_dark_mean, kw=kw)
 

@@ -2222,7 +2222,7 @@ class create_dispersion_map:
         import pandas as pd
         from astropy.table import Table
 
-        from soxspipe.commonutils.fits_headers import hierarch
+        from soxspipe.commonutils.fits_headers import set_header_card
         from soxspipe.commonutils.phase3 import write_fits_table_to_disk
 
         arm = self.arm
@@ -2307,10 +2307,10 @@ class create_dispersion_map:
         # SET PROCESSING TECHNIQUE BASED ON FRAME TYPE
         if slitDeg == 0 or slitDeg == [0, 0]:
             # SINGLE PINHOLE FRAME
-            header[hierarch(kw("PRO_TECH").upper())] = "ECHELLE,PINHOLE"
+            set_header_card(header, kw("PRO_TECH").upper(), "ECHELLE,PINHOLE")
         else:
             # MULTI-PINHOLE FRAME
-            header[hierarch(kw("PRO_TECH").upper())] = "ECHELLE,MULTI-PINHOLE"
+            set_header_card(header, kw("PRO_TECH").upper(), "ECHELLE,MULTI-PINHOLE")
         filePath = f"{self.productDir}/{filename}"
 
         # CREATE BINARY TABLE WITH COEFFICIENT DICTIONARIES
@@ -2326,9 +2326,9 @@ class create_dispersion_map:
         t = t[cols]
 
         # UPDATE HEADER WITH STANDARD PROCESSING KEYWORDS
-        header[hierarch(kw("SEQ_ARM").upper())] = arm
-        header[hierarch(kw("PRO_TYPE").upper())] = "REDUCED"
-        header[hierarch(kw("PRO_CATG").upper())] = f"DISP_TAB_{arm}".upper()
+        set_header_card(header, kw("SEQ_ARM").upper(), arm)
+        set_header_card(header, kw("PRO_TYPE").upper(), "REDUCED")
+        set_header_card(header, kw("PRO_CATG").upper(), f"DISP_TAB_{arm}".upper())
         self.dispMapHeader = header
 
         write_fits_table_to_disk(
@@ -3412,6 +3412,7 @@ class create_dispersion_map:
 
         from soxspipe.commonutils import toolkit
         from soxspipe.commonutils.combiner import Combiner
+        from soxspipe.commonutils.fits_headers import set_header_card
 
         self.log.print("\n# CREATING 2D IMAGE MAP FROM DISPERSION SOLUTION\n\n")
 
@@ -3493,7 +3494,7 @@ class create_dispersion_map:
         # WRITE CCDDATA OBJECT TO FILE
         # from astropy.io import fits
         header = copy.deepcopy(self.dispMapHeader)
-        header[kw("PRO_CATG")] = f"DISP_IMAGE_{arm}".upper()
+        set_header_card(header, kw("PRO_CATG"), f"DISP_IMAGE_{arm}".upper())
         primary_hdu = fits.PrimaryHDU(combinedWlImage.data, header=header)
         primary_hdu.header["EXTNAME"] = "WAVELENGTH"
         image_hdu = fits.ImageHDU(combinedSlitImage.data)
