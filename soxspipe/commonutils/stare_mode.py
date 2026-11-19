@@ -89,7 +89,8 @@ def predicted_nod_product_path(settings, inputFrames, isRequested=False):
 
     **Key Arguments:**
 
-    - ``settings`` -- the settings dictionary
+    - ``settings`` -- the settings dictionary. Its ``workspace-root-dir``, which ``-o`` sets, is where the recipe writes
+      the product
     - ``inputFrames`` -- the SOF the recipe reduces
     - ``isRequested`` -- True when the command line asked for stare mode. Default *False*
 
@@ -102,5 +103,8 @@ def predicted_nod_product_path(settings, inputFrames, isRequested=False):
     isStandard = is_standard_input(inputFrames)
     isStare = reduces_nod_as_stare(settings, isStandard, isRequested)
     recipeName = ("soxs-stare" if isStare else "soxs-nod") + ("-std" if isStandard else "")
-    productPath, _ = toolkit.predict_product_path(inputFrames, recipeName, NOD_STARE_MARKER if isStare else "")
+    marker = NOD_STARE_MARKER if isStare else ""
+    productPath, _ = toolkit.predict_product_path(
+        inputFrames, recipeName, marker, outputDir=settings.get("workspace-root-dir")
+    )
     return productPath

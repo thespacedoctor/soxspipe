@@ -158,7 +158,9 @@ def test_predicted_nod_product_path_follows_the_mode_the_recipe_will_run_in(
     calls: list[tuple] = []
     toolkit = import_module("soxspipe.commonutils.toolkit")
     monkeypatch.setattr(
-        toolkit, "predict_product_path", lambda *args: calls.append(args) or ("predicted.fits", "night")
+        toolkit,
+        "predict_product_path",
+        lambda *args, **kwargs: calls.append((*args, kwargs)) or ("predicted.fits", "night"),
     )
 
     # ACT
@@ -166,4 +168,23 @@ def test_predicted_nod_product_path_follows_the_mode_the_recipe_will_run_in(
 
     # ASSERT
     assert path == "predicted.fits"
-    assert calls == [(inputFrames, recipeName, marker)]
+    assert calls == [(inputFrames, recipeName, marker, {"outputDir": settings.get("workspace-root-dir")})]
+
+
+def test_predicted_nod_product_path_is_predicted_under_the_workspace_root_of_the_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    calls: list[tuple] = []
+    toolkit = import_module("soxspipe.commonutils.toolkit")
+    monkeypatch.setattr(
+        toolkit,
+        "predict_product_path",
+        lambda *args, **kwargs: calls.append((*args, kwargs)) or ("predicted.fits", "night"),
+    )
+
+    # ACT
+    _stare_mode().predicted_nod_product_path({"workspace-root-dir": "/data/out"}, SCIENCE_SOF)
+
+    # ASSERT
+    assert calls == [(SCIENCE_SOF, "soxs-nod", "", {"outputDir": "/data/out"})]

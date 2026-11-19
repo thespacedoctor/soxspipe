@@ -83,6 +83,20 @@ from fundamentals import times, tools
 
 os.environ["TERM"] = "vt100"
 
+# THE SINGLE-RECIPE COMMANDS WHOSE PRODUCT IS CHECKED BEFORE THE SETTINGS LOAD. THE NOD COMMANDS WAIT FOR
+# THEIR SETTINGS, WHICH CHOOSE THE NOD OR THE STARE MODE
+QUICK_SKIP_COMMANDS = (
+    "mdark",
+    "mbias",
+    "disp_solution",
+    "order_centres",
+    "mflat",
+    "spat_solution",
+    "stare",
+    "stare_std",
+    "offset",
+)
+
 
 def tab_complete(text, state):
     return (glob.glob(text + "*") + [None])[state]
@@ -165,6 +179,59 @@ def _pool_size_from_cores(cores, multiprocess):
     return poolSize
 
 
+def _is_sof_name(inputFrames):
+    """*return True when the ``<inputFrames>`` argument names a SOF file*
+
+    **Key Arguments:**
+
+    - ``inputFrames`` -- the ``<inputFrames>`` argument of the command
+
+    **Return:**
+
+    - ``isSof`` -- True when the argument ends in ``.sof``
+    """
+    return bool(inputFrames) and len(inputFrames) > 3 and inputFrames.split(".")[-1].lower() == "sof"
+
+
+def _exit_if_product_exists(productPath):
+    """*print a message and exit with status 0 when the product at the predicted path exists*
+
+    **Key Arguments:**
+
+    - ``productPath`` -- the predicted path of the product of the recipe
+    """
+    if os.path.exists(productPath):
+        basename = os.path.basename(productPath)
+        print(
+            f"The product of this recipe already exists: `{basename}`. "
+            "To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
+        )
+        sys.exit(0)
+
+
+def _exit_if_recipe_product_exists(arguments, outputDir):
+    """*print a message and exit with status 0 when the product of a single-recipe command already exists*
+
+    This runs before the settings load, so it can only see the ``-o`` output directory. A nod command is left to
+    ``_exit_if_nod_product_exists``, because the settings choose its nod or stare mode. A command without a SOF
+    file, or with the overwrite flag, has nothing to check.
+
+    **Key Arguments:**
+
+    - ``arguments`` -- the parsed command line
+    - ``outputDir`` -- the ``-o`` output directory, where the recipe writes its product. *None* when it is not given,
+      and the workspace in the current working directory is used
+    """
+    from soxspipe.commonutils import toolkit
+
+    command = next((name for name in QUICK_SKIP_COMMANDS if arguments.get(name)), None)
+    inputFrames = arguments.get("<inputFrames>")
+    if not command or arguments.get("--overwrite") or not _is_sof_name(inputFrames):
+        return
+    productPath, _ = toolkit.predict_product_path(inputFrames, f"soxs-{command}", outputDir=outputDir)
+    _exit_if_product_exists(productPath)
+
+
 def _exit_if_nod_product_exists(settings, inputFrames, isRequested):
     """*print a message and exit with status 0 when the product of a nod or nod_std command already exists*
 
@@ -179,16 +246,9 @@ def _exit_if_nod_product_exists(settings, inputFrames, isRequested):
     """
     from soxspipe.commonutils.stare_mode import predicted_nod_product_path
 
-    if not (len(inputFrames) > 3 and inputFrames.split(".")[-1].lower() == "sof"):
+    if not _is_sof_name(inputFrames):
         return
-    productPath = predicted_nod_product_path(settings, inputFrames, isRequested)
-    if os.path.exists(productPath):
-        basename = os.path.basename(productPath)
-        print(
-            f"The product of this recipe already exists: `{basename}`. "
-            "To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
-        )
-        sys.exit(0)
+    _exit_if_product_exists(predicted_nod_product_path(settings, inputFrames, isRequested))
 
 
 def main(arguments=None):
@@ -207,23 +267,13 @@ def main(arguments=None):
         # CHANGE INTO WORKSPACE DIRECTORY
         os.chdir(arguments["<workspaceDirectory>"])
     arguments["<workspaceDirectory>"] = "."
+    outputDir = arguments.get("--output")
+
+    # QUICKLY SKIP IF PRODUCT EXIST
+    _exit_if_recipe_product_exists(arguments, outputDir)
 
     # setup the command-line util settings
     arguments = None
-
-    # QUICKLY SKIP IF PRODUCT EXIST. A NODDING SOF WAITS FOR ITS SETTINGS, WHICH CHOOSE THE NOD OR THE STARE MODE
-    isQuickSkip = (len(sys.argv[1:]) == 2 or len(sys.argv[1:]) == 4) and sys.argv[1] not in ("nod", "nod_std")
-    if isQuickSkip and len(sys.argv[2]) > 3 and sys.argv[2].split(".")[-1].lower() == "sof":
-        from soxspipe.commonutils import toolkit
-
-        productPath, startNightDate = toolkit.predict_product_path(sys.argv[2])
-        if os.path.exists(productPath):
-            basename = os.path.basename(productPath)
-            print(
-                f"The product of this recipe already exists: `{basename}`. "
-                "To overwrite this product, rerun the pipeline command with the overwrite flag (-x)."
-            )
-            sys.exit(0)
 
     clCommand = sys.argv[0].split("/")[-1] + " " + " ".join(sys.argv[1:])
 
@@ -336,8 +386,8 @@ def main(arguments=None):
 
     try:
         # PACK UP SOME OF THE CL SWITCHES INTO SETTINGS DICTIONARY
-        if a["outputFlag"]:
-            settings["workspace-root-dir"] = a["outputFlag"]
+        if outputDir:
+            settings["workspace-root-dir"] = outputDir
 
         command = (" ").join(sys.argv)
 

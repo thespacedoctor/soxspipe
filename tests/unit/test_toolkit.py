@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -242,6 +243,98 @@ def test_predict_product_path_reads_the_session_and_builds_the_path_from_root_di
         f"{root}/sessions/mysession/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
     )
     assert not (elsewhere / "sessions").exists()
+
+
+def test_predict_product_path_builds_the_path_under_the_output_directory_where_the_recipe_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    outputDir = tmp_path / "output"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path(
+        "20240102T030405_STARE.sof", recipeName="soxs-stare", outputDir=str(outputDir)
+    )
+
+    # ASSERT
+    assert night == "2024-01-01"
+    assert productPath == (f"{outputDir}/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits")
+    assert not (elsewhere / "sessions").exists()
+    assert not outputDir.exists()
+
+
+def test_predict_product_path_keeps_the_output_directory_for_a_sof_name_with_no_night(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: A SOF NAME WITH NO LEADING TIMESTAMP GIVES NO NIGHT
+    outputDir = tmp_path / "output"
+    monkeypatch.chdir(tmp_path)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path("my_bias.sof", recipeName="soxs-mbias", outputDir=str(outputDir))
+
+    # ASSERT
+    assert night == ""
+    assert productPath == f"{outputDir}/reduced/soxs-mbias/my_bias.fits"
+
+
+def test_predict_product_path_expands_the_home_directory_of_the_output_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    # ACT
+    productPath, _ = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir="~/out")
+
+    # ASSERT
+    assert productPath == f"{tmp_path}/out/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+
+
+@pytest.mark.parametrize("workspaceRoot", ["{tmp}/out", "~/out", "relative/out", "{tmp}/out/"])
+def test_predict_product_path_names_the_directory_utility_setup_writes_the_product_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, log: object, workspaceRoot: str
+) -> None:
+    # ARRANGE
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    root = workspaceRoot.format(tmp=tmp_path)
+
+    # ACT
+    productPath, night = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir=root)
+    _, productDir = toolkit.utility_setup(log, {"workspace-root-dir": root}, "soxs-stare", night)
+
+    # ASSERT
+    assert os.path.dirname(productPath) == productDir.rstrip("/")
+
+
+@pytest.mark.parametrize("workspaceRoot", [None, "", ".", "./"])
+def test_predict_product_path_keeps_the_session_layout_for_a_workspace_root_in_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, workspaceRoot: str | None
+) -> None:
+    # ARRANGE
+    class Organiser:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def session_list(self, silent: bool) -> tuple[str, list[str]]:
+            return "session_01", ["session_01"]
+
+        def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("soxspipe.commonutils.data_organiser", Organiser)
+
+    # ACT
+    productPath, _ = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir=workspaceRoot)
+
+    # ASSERT
+    assert productPath == (
+        "./sessions/session_01/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+    )
 
 
 @pytest.mark.parametrize(

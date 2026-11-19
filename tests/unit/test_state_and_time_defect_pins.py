@@ -220,11 +220,11 @@ def _product_recipe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, truncate
         fullSize = productPath.stat().st_size
         with open(productPath, "r+b") as handle:
             handle.truncate(fullSize // 2)
-    monkeypatch.setattr(toolkit, "predict_product_path", lambda *_: (str(productPath), "2024-01-01"))
+    monkeypatch.setattr(toolkit, "predict_product_path", lambda *_, **__: (str(productPath), "2024-01-01"))
     monkeypatch.setattr(toolkit, "add_recipe_logger", lambda receivedLog, _: receivedLog)
     recipe = base_recipe.__new__(base_recipe)
     recipe.recipeName = "soxs-mbias"
-    recipe.settings = {}
+    recipe.settings = {"workspace-root-dir": "./"}
     return recipe, productPath
 
 

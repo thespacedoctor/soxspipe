@@ -59,7 +59,7 @@ def _isolate(
     monkeypatch.setattr(
         toolkit,
         "predict_product_path",
-        lambda *_: (str(productPath), "2024-01-02"),
+        lambda *_, **__: (str(productPath), "2024-01-02"),
     )
     monkeypatch.setattr(toolkit, "add_recipe_logger", lambda receivedLog, _: receivedLog)
     monkeypatch.setattr(toolkit, "get_calibrations_path", lambda **_: "calibrations")

@@ -288,7 +288,10 @@ class base_recipe:
         if inputFrames and not isinstance(inputFrames, list) and inputFrames.split(".")[-1].lower() == "sof":
             self.sofName = os.path.basename(inputFrames).replace(".sof", "")
             self.productPath, self.startNightDate = toolkit.predict_product_path(
-                inputFrames, self.recipeName, self.productNameMarker
+                inputFrames,
+                self.recipeName,
+                self.productNameMarker,
+                outputDir=self.settings["workspace-root-dir"],
             )
             errorLog = os.path.splitext(self.productPath)[0] + "_ERROR.log"
             basename = os.path.basename(self.productPath)

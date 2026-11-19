@@ -312,7 +312,7 @@ def test_constructor_initializes_a_sof_recipe_in_an_isolated_workspace(
     monkeypatch.setattr(
         toolkit,
         "predict_product_path",
-        lambda *_: (str(productPath), "2024-01-02"),
+        lambda *_, **__: (str(productPath), "2024-01-02"),
     )
     monkeypatch.setattr(toolkit, "add_recipe_logger", lambda receivedLog, _: receivedLog)
     monkeypatch.setattr(toolkit, "get_calibrations_path", lambda **_: "calibrations")
