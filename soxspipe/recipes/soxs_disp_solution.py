@@ -14,7 +14,7 @@ import os
 import sys
 
 from soxspipe.commonutils import create_dispersion_map
-from soxspipe.commonutils.toolkit import append_product, utcnow_string
+from soxspipe.commonutils.toolkit import append_product, concat_tables, utcnow_string
 
 from .base_recipe import base_recipe
 
@@ -555,8 +555,6 @@ class soxs_disp_solution(base_recipe):
         productPath, qcTable = self._fit_dispersion_solution(self.kw)
         ```
         """
-        import pandas as pd
-
         if self.polyOrders:
             self.polyOrders = str(self.polyOrders)
             self.polyOrders = [int(digit) for digit in str(self.polyOrders)]
@@ -586,8 +584,8 @@ class soxs_disp_solution(base_recipe):
 
         utcnow = utcnow_string()
 
-        self.products = pd.concat([self.products, productsTable])
-        self.qc = pd.concat([self.qc, qcTable])
+        self.products = concat_tables([self.products, productsTable])
+        self.qc = concat_tables([self.qc, qcTable])
 
         self.dateObs = self.pinholeFrame.header[kw("DATE_OBS")]
 

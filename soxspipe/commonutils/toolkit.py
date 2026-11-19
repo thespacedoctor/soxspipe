@@ -3682,6 +3682,92 @@ class _omitted:
 OMITTED = _omitted()
 
 
+def _is_all_na_column(table, column):
+    """*whether a column of a table holds no value at all*"""
+    return bool(table[column].isna().all())
+
+
+def _align_all_na_columns(tables):
+    """*give every all-NA column the dtype the other tables hold in that column*
+
+    pandas 2 leaves an all-NA column out when it picks the result dtype, and pandas 3 will not. Casting the column
+    first gives the result the same dtype on both versions and raises no warning. A float or object donor column
+    keeps its dtype. Any other donor dtype cannot hold a missing value, and pandas 2 returns object for that mix.
+
+    **Key Arguments:**
+
+    - ``tables`` -- the non-empty tables about to be concatenated
+
+    **Return:**
+
+    - ``aligned`` -- new tables, with the all-NA columns cast
+    """
+    import pandas as pd
+
+    aligned = [table.copy() for table in tables]
+    columns = list(dict.fromkeys(column for table in tables for column in table.columns))
+    for column in columns:
+        holders = [table for table in aligned if column in table.columns]
+        donors = [table for table in holders if not _is_all_na_column(table, column)]
+        naTables = [table for table in holders if _is_all_na_column(table, column)]
+        if not donors or not naTables:
+            continue
+        donorDtype = donors[0][column].dtype
+        if pd.api.types.is_float_dtype(donorDtype) or pd.api.types.is_object_dtype(donorDtype):
+            targetDtype = donorDtype
+        else:
+            targetDtype = object
+            for table in donors:
+                table[column] = table[column].astype(object)
+        for table in naTables:
+            table[column] = table[column].astype(targetDtype)
+    return aligned
+
+
+def concat_tables(tables, **concatKwargs):
+    """*concatenate tables without the pandas FutureWarning for empty and all-NA entries*
+
+    ``pd.concat`` warns when an empty or all-NA entry would change the result dtype under pandas 3. The result of
+    this function has the dtypes pandas 2 gave, which the QC and product tables depend on. The empty tables are left
+    out of the concatenation. Their columns are kept, in their order, and an empty ``object`` column keeps a
+    non-float result column as ``object``.
+
+    **Key Arguments:**
+
+    - ``tables`` -- the list of tables to concatenate, in order
+    - ``concatKwargs`` -- keyword arguments for ``pd.concat``, such as ``ignore_index``
+
+    **Return:**
+
+    - ``combined`` -- the concatenated table
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import concat_tables
+    self.qc = concat_tables([self.qc, qcTable])
+    ```
+    """
+    import numpy as np
+    import pandas as pd
+
+    nonEmpty = [table for table in tables if not table.empty]
+    if not nonEmpty:
+        return pd.concat(tables, **concatKwargs)
+
+    columns = list(dict.fromkeys(column for table in tables for column in table.columns))
+    combined = pd.concat(_align_all_na_columns(nonEmpty), **concatKwargs)
+    for table in tables:
+        if not table.empty:
+            continue
+        for column in table.columns:
+            if column not in combined.columns:
+                combined[column] = pd.Series(np.nan, index=combined.index, dtype=table[column].dtype)
+            elif pd.api.types.is_object_dtype(table[column]) and not pd.api.types.is_float_dtype(combined[column]):
+                combined[column] = combined[column].astype(object)
+    return combined[columns]
+
+
 def append_qc(
     qcTable,
     recipeName,
@@ -3760,7 +3846,7 @@ def append_qc(
     if toHeader is not OMITTED:
         row["to_header"] = toHeader
 
-    return pd.concat([qcTable, pd.DataFrame([row])], ignore_index=True)
+    return concat_tables([qcTable, pd.DataFrame([row])], ignore_index=True)
 
 
 def append_product(

@@ -132,7 +132,7 @@ def _approx_list(values: list[float], rel: float = 1e-12) -> list[Any]:
                 "model": [174.74608674747722, 192.86804214647503, 196.7791613425638, 225.86930966138416],
                 "subtractedSum": -16.42140450779459,
                 "subtracted": [4.284941318843067, -5.207069078611795, -4.779611629836637, -5.88112066208879],
-                "skyLineCounts": {"line": 2780, "False": 217, "peak": 3},
+                "skyLineCounts": {"line": 2780, "none": 217, "peak": 3},
             },
         ),
         (
@@ -147,7 +147,7 @@ def _approx_list(values: list[float], rel: float = 1e-12) -> list[Any]:
                 "model": [174.86477575821786, 188.84856909025592, 196.61711894592233, 226.43588573952812],
                 "subtractedSum": -15.947558285668038,
                 "subtracted": [4.166252308102429, -1.1875960223926825, -4.617569233195155, -6.447696740232743],
-                "skyLineCounts": {"line": 2861, "False": 139},
+                "skyLineCounts": {"line": 2861, "none": 139},
             },
         ),
     ],

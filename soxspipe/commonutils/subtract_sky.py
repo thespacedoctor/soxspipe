@@ -26,6 +26,10 @@ os.environ["TERM"] = "vt100"
 # FITPACK RETURNS ier >= 10 (10, 30, 50 ...) WHEN THE FIT FAILED OR THE KNOT VECTOR IS INVALID
 POOR_FITPACK_IER = 10
 
+# THE VALUE OF THE flagged_sky_line COLUMN FOR A PIXEL NO SKY LINE OR PEAK FLAG HAS REACHED. THE COLUMN HOLDS ONLY
+# STRINGS: THIS, "line", "peak", "rise", "fall" AND "node" (DY-2280)
+SKY_LINE_NOT_FLAGGED = "none"
+
 # THE SIGMA LIMIT AND THE MAXIMUM NUMBER OF CLIP-AND-REFIT PASSES OF THE ORDER-END ANCHOR LINE FITS (DY-593)
 ANCHOR_CLIP_SIGMA = 3
 ANCHOR_CLIP_MAX_PASSES = 5
@@ -3434,7 +3438,7 @@ class subtract_sky:
         imageMapOrder["sky_residuals"] = np.nan
         imageMapOrder["sky_residuals_clipped"] = False
         if "flagged_sky_line" not in imageMapOrder.columns:
-            imageMapOrder["flagged_sky_line"] = False
+            imageMapOrder["flagged_sky_line"] = SKY_LINE_NOT_FLAGGED
 
         mask_unclipped = imageMapOrder["flagged_all_clipped"] == False
 
@@ -3498,7 +3502,7 @@ class subtract_sky:
         imageMapOrder.loc[mask_unclipped & mask_skyline, "flagged_sky_line"] = "line"
 
         # FLAG HIGH-FLUX PEAKS THAT WEREN'T CAUGHT BY THE RESIDUAL CRITERION
-        mask_non_skyline = imageMapOrder["flagged_sky_line"] == False
+        mask_non_skyline = imageMapOrder["flagged_sky_line"] == SKY_LINE_NOT_FLAGGED
         # THE FLUX IS TAKEN IN THE SPACE THE SPLINE WAS FITTED IN, SO A SLIT GRADIENT DOES NOT MAKE ONE END A PEAK
         # (DY-2147)
         fitSpaceFlux = imageMapOrder["flux"] / imageMapOrder.get("slit_normalisation_ratio", 1)
@@ -3608,7 +3612,7 @@ class subtract_sky:
 
         if tck:
             mask_noisy = imageMapOrder["flagged_noisy_region"] == True
-            mask_nonSkyline = imageMapOrder["flagged_sky_line"] == False
+            mask_nonSkyline = imageMapOrder["flagged_sky_line"] == SKY_LINE_NOT_FLAGGED
             mask_skyline = imageMapOrder["flagged_sky_line"].isin(["rise", "fall", "line"])
             mask_skynode = imageMapOrder["flagged_sky_line"].isin(["node"])
             mask_bspline_clipped = imageMapOrder["flagged_bspline_clipped"] == True

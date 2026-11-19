@@ -60,6 +60,7 @@ from soxspipe.commonutils.toolkit import (
     QC_PLOT_DECORATION_HEIGHT_INCHES,
     QC_RESIDUAL_ROW_HEIGHT_INCHES,
     QC_STRIP_ROW_HEIGHT_INCHES,
+    concat_tables,
     get_calibrations_path,
     legend_below_axis,
     order_label,
@@ -2678,7 +2679,7 @@ class create_dispersion_map:
             for name, value, unit, comment, order in zip(qc_names, qc_values, qc_units, qc_comments, qc_order):
                 if unit != "lines":
                     value = round(float(value), 5)
-                self.qc = pd.concat(
+                self.qc = concat_tables(
                     [
                         self.qc,
                         pd.DataFrame(

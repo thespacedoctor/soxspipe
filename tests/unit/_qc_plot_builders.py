@@ -19,7 +19,7 @@ from scipy.interpolate import splrep
 import soxspipe.commonutils.toolkit as toolkit
 from soxspipe.commonutils.detect_continuum import detect_continuum
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-from soxspipe.commonutils.subtract_sky import subtract_sky
+from soxspipe.commonutils.subtract_sky import SKY_LINE_NOT_FLAGGED, subtract_sky
 from tests.factories import instrument_header, pipeline_settings, product_table, qc_table
 
 FLAG_COLUMNS = (
@@ -186,8 +186,7 @@ def quicklook_order_pixels() -> pd.DataFrame:
     index = np.arange(ORDER_PIXEL_COUNT)
     flux = 100.0 + 20.0 * np.sin(index / 7.0)
     flux[::37] = -80.0
-    skyLine = np.where(index % 11 == 0, "line", np.where(index % 13 == 0, "node", "")).astype(object)
-    skyLine[skyLine == ""] = False
+    skyLine = np.where(index % 11 == 0, "line", np.where(index % 13 == 0, "node", SKY_LINE_NOT_FLAGGED)).astype(object)
     return pd.DataFrame(
         {
             "wavelength": np.linspace(500.0, 510.0, ORDER_PIXEL_COUNT),
