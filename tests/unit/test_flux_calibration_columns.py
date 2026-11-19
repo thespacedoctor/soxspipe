@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from astropy.io import fits
-from astropy.table import Table
+from astropy.table import MaskedColumn, Table
 
 from soxspipe.commonutils.flux_calibration import (
     _calculate_flux_calibration,
@@ -221,8 +221,30 @@ def test_fluxcal_carries_nan_sky_counts_unchanged_when_the_extraction_had_no_sky
     assert np.isfinite(np.asarray(table["ERR_CALIBRATED"])).all()
 
 
-@pytest.mark.parametrize("asTable", [False, True], ids=["quantity-dataframe", "astropy-table"])
-def test_fluxcal_accepts_a_quantity_dataframe_and_an_astropy_table(tmp_path, log, monkeypatch, asTable):
+def test_fluxcal_turns_masked_cells_into_nan_instead_of_exposing_their_fill_values(tmp_path, log, monkeypatch):
+    # ARRANGE: A TABLE WITH A MASKED SKY CELL, WHOSE UNDERLYING DATA IS A FILL VALUE
+    spectrum = Table(
+        {
+            "WAVE": WAVES,
+            "FLUX_COUNTS": np.asarray(FLUX, dtype=np.float32),
+            "VARIANCE": np.asarray(VARIANCE, dtype=np.float32),
+            "SKY_COUNTS": MaskedColumn(np.asarray([3.0, 1.0e20], dtype=np.float32), mask=[False, True]),
+            "SNR": np.asarray(FLUX) / np.sqrt(VARIANCE),
+        }
+    )
+
+    # ACT
+    table = _calibrate(tmp_path, log, monkeypatch, spectrum)
+
+    # ASSERT
+    sky = np.asarray(table["SKY_COUNTS"])
+    assert sky[0] == 3.0
+    assert np.isnan(sky[1])
+    assert sky.dtype == np.float32
+
+
+@pytest.mark.parametrize("asTable", [False, True], ids=["pandas-dataframe", "astropy-table"])
+def test_fluxcal_accepts_a_pandas_dataframe_and_an_astropy_table(tmp_path, log, monkeypatch, asTable):
     # ARRANGE
     spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY, asTable=asTable)
 
@@ -231,6 +253,21 @@ def test_fluxcal_accepts_a_quantity_dataframe_and_an_astropy_table(tmp_path, log
 
     # ASSERT
     np.testing.assert_allclose(table["ERR_CALIBRATED"], [4 / 10 * 7e-17, 8 / 10 * 8e-17], rtol=1e-14)
+    np.testing.assert_array_equal(np.asarray(table["SKY_COUNTS"]), SKY)
+
+
+@pytest.mark.parametrize("asTable", [False, True], ids=["pandas-dataframe", "astropy-table"])
+def test_fluxcal_keeps_the_float32_dtype_of_the_counts_variance_and_sky(tmp_path, log, monkeypatch, asTable):
+    # ARRANGE: THE MERGE STORES COUNTS, VARIANCE AND SKY AS FLOAT32, AND THE COPIED COLUMNS MUST NOT BE WIDENED
+    spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY, asTable=asTable)
+    assert np.asarray(spectrum["SKY_COUNTS"]).dtype == np.float32
+
+    # ACT
+    table = _calibrate(tmp_path, log, monkeypatch, spectrum)
+
+    # ASSERT
+    for name in ("FLUX_COUNTS", "VARIANCE", "SKY_COUNTS"):
+        assert np.asarray(table[name]).dtype == np.float32, name
     np.testing.assert_array_equal(np.asarray(table["SKY_COUNTS"]), SKY)
 
 
@@ -243,12 +280,22 @@ def test_fluxcal_refuses_a_spectrum_without_variance(tmp_path, log, monkeypatch)
         _calibrate(tmp_path, log, monkeypatch, spectrum)
 
 
-def test_fluxcal_error_column_is_float64(tmp_path, log, monkeypatch):
-    # ARRANGE: A FAINT SOURCE'S CALIBRATED VARIANCE IS NEAR 1E-38 AND WOULD UNDERFLOW FLOAT32
-    spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY)
+def test_fluxcal_error_column_is_float64_and_does_not_underflow(tmp_path, log, monkeypatch):
+    # ARRANGE: A VARIANCE OF 1E-60 GIVES A CALIBRATED ERROR OF ABOUT 7E-48, WHICH FLOAT32 WOULD ROUND TO ZERO
+    spectrum = Table(
+        {
+            "WAVE": WAVES,
+            "FLUX_COUNTS": FLUX,
+            "VARIANCE": [1.0e-60, 4.0e-60],
+            "SNR": [1.0, 1.0],
+        }
+    )
 
     # ACT
     table = _calibrate(tmp_path, log, monkeypatch, spectrum)
 
     # ASSERT
-    assert np.asarray(table["ERR_CALIBRATED"]).dtype == np.float64
+    error = np.asarray(table["ERR_CALIBRATED"])
+    assert error.dtype == np.float64
+    np.testing.assert_allclose(error, [1.0e-30 / 10 * 7e-17, 2.0e-30 / 10 * 8e-17], rtol=1e-12)
+    assert (error > 0).all()

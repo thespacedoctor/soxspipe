@@ -14,6 +14,8 @@ Date Created
 
 import os
 
+import pandas as pd
+
 FLUXCAL_DESCRIPTION = "ASCII version of the flux-calibrated extracted spectrum"
 COUNTS_DESCRIPTION = "ASCII version of the extracted spectrum (not flux calibrated)"
 ASCII_PRODUCT_LABEL = "EXTRACTED_MERGED_ASCII"
@@ -33,7 +35,8 @@ def ascii_spectrum_path(mergedFitsPath: str, fluxcalFitsPath: str | None = None)
     - ``asciiPath`` -- the source table's path with a ``.txt`` extension, so ``<stem>_FLUXCAL.txt`` for a
       flux-calibrated spectrum and ``<stem>_EXTRACTED_MERGED.txt`` for the fallback
     """
-    return os.path.splitext(fluxcalFitsPath or mergedFitsPath)[0] + ".txt"
+    sourcePath = mergedFitsPath if fluxcalFitsPath is None else fluxcalFitsPath
+    return os.path.splitext(sourcePath)[0] + ".txt"
 
 
 def write_ascii_spectrum(sourceFitsPath: str, asciiPath: str) -> None:
@@ -50,6 +53,10 @@ def write_ascii_spectrum(sourceFitsPath: str, asciiPath: str) -> None:
 
     # NAN VALUES (NO SKY MODEL, OUTSIDE THE RESPONSE RANGE) MUST STAY NAN, NOT BECOME MASKED, SO THEY ARE WRITTEN AS NAN
     table = Table.read(sourceFitsPath, format="fits", hdu=1, mask_invalid=False)
+    # A MASKED CELL IS MISSING DATA; ASTROPY WOULD WRITE IT AS A BLANK, SO IT BECOMES NAN IN A FLOATING-POINT COLUMN
+    for name in table.colnames:
+        if hasattr(table[name], "mask") and table[name].dtype.kind == "f":
+            table[name] = table[name].filled(float("nan"))
     table["WAVE"] = table["WAVE"] * NM_TO_ANGSTROM
     table["WAVE"].format = "{:.2f}"
     table.write(asciiPath, format="ascii", overwrite=True)
@@ -58,10 +65,10 @@ def write_ascii_spectrum(sourceFitsPath: str, asciiPath: str) -> None:
 def write_ascii_spectrum_product(
     mergedFitsPath: str,
     fluxcalFitsPath: str | None,
-    productsTable,
+    productsTable: pd.DataFrame,
     recipeName: str,
     obsDateUtc: str,
-):
+) -> pd.DataFrame:
     """*write the ASCII spectrum of a pass once and record it as a product*
 
     **Key Arguments:**
@@ -80,14 +87,14 @@ def write_ascii_spectrum_product(
     from soxspipe.commonutils.toolkit import append_product, utcnow_string
 
     asciiPath = ascii_spectrum_path(mergedFitsPath, fluxcalFitsPath)
-    write_ascii_spectrum(fluxcalFitsPath or mergedFitsPath, asciiPath)
+    write_ascii_spectrum(mergedFitsPath if fluxcalFitsPath is None else fluxcalFitsPath, asciiPath)
     return append_product(
         productsTable,
         recipeName=recipeName,
         productLabel=ASCII_PRODUCT_LABEL,
         fileName=os.path.basename(asciiPath),
         filePath=asciiPath,
-        productDesc=FLUXCAL_DESCRIPTION if fluxcalFitsPath else COUNTS_DESCRIPTION,
+        productDesc=COUNTS_DESCRIPTION if fluxcalFitsPath is None else FLUXCAL_DESCRIPTION,
         obsDateUtc=obsDateUtc,
         reductionDateUtc=utcnow_string(),
         fileType="TXT",

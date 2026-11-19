@@ -750,11 +750,11 @@ class horne_extraction(base_util):
                 qc=self.qc,
             )
 
-            # THE ASCII SPECTRUM IS WRITTEN BY THE RECIPE AFTER FLUX CALIBRATION (SEE spectrum_ascii). A NODDING PASS
-            # REGISTERS NO MERGED-TABLE ROW HERE: THE NOD RECIPE REGISTERS THE STACKED ONE
-            if self.noddingSequence or len(self.noddingSequence) > 0 and not self.notFlattened:
-                pass
-            elif not self.notFlattened:
+            # THE ASCII SPECTRUM IS WRITTEN BY THE RECIPE AFTER FLUX CALIBRATION (SEE spectrum_ascii). THE MERGED-TABLE
+            # ROW IS REGISTERED FOR THE FLATTENED PASS OF A STARE RUN, WHATEVER THE FRAMES' NODDING OFFSET. A NOD OR
+            # OFFSET RECIPE REGISTERS NO ROW FOR A SINGLE POSITION: IT REGISTERS THE STACKED ONE ITSELF
+            isNodPosition = bool(self.noddingSequence) and not self._is_stare_recipe()
+            if not isNodPosition and not self.notFlattened:
                 self.products = pd.concat(
                     [
                         self.products,
@@ -762,7 +762,7 @@ class horne_extraction(base_util):
                             [
                                 {
                                     "soxspipe_recipe": self.recipeName,
-                                    "product_label": f"EXTRACTED_MERGED_TABLE{self.noddingSequence}{self.notFlattened}",
+                                    "product_label": "EXTRACTED_MERGED_TABLE",
                                     "file_name": filename,
                                     "file_type": "FITS",
                                     "obs_date_utc": self.dateObs,
@@ -782,6 +782,18 @@ class horne_extraction(base_util):
 
         self.log.debug("completed the ``extract`` method")
         return self.qc, self.products, mergedSpectumDF, orderJoins, extractionFilepath
+
+    def _is_stare_recipe(self) -> bool:
+        """*decide whether a stare recipe runs this extraction, as opposed to a nod or offset recipe*
+
+        ``nod --stare`` reduces nodding frames through the stare recipe, so the frames' nodding offset says nothing
+        about the caller.
+
+        **Return:**
+
+        - ``isStare`` -- True when the recipe name is a stare recipe
+        """
+        return isinstance(self.recipeName, str) and "stare" in self.recipeName.lower()
 
     @property
     def extractionNotes(self) -> list[tuple[str, str]]:  # noqa: N802

@@ -259,9 +259,10 @@ def merged_spectrum(
 ) -> pd.DataFrame | Table:
     """Return an order-merged spectrum built like production.
 
-    The frame has one Quantity column per name (``u.nm`` and ``u.electron``), as ``merge_extracted_orders`` builds
-    it, and ``SNR`` is the flux over the square root of the variance. With ``asTable`` the result is a table of plain
-    floats, as ``stack_extractions`` returns. ``sky`` is optional: nod and offset spectra carry no ``SKY_COUNTS``.
+    Each column is assigned from an astropy Quantity array (``u.nm`` and ``u.electron``), one at a time, as
+    ``merge_extracted_orders`` does; the frame's dtypes are plain floats (float64 ``WAVE``, float32 counts, variance
+    and sky). ``SNR`` is the flux over the square root of the variance. With ``asTable`` the result is a table of
+    plain arrays that keep those dtypes. ``sky`` is optional: nod and offset spectra carry no ``SKY_COUNTS``.
     """
     spectrum = pd.DataFrame()
     spectrum["WAVE"] = np.asarray(waves, dtype=np.float64) * u.nm
@@ -272,5 +273,5 @@ def merged_spectrum(
     spectrum["SNR"] = spectrum["FLUX_COUNTS"].values / np.sqrt(spectrum["VARIANCE"].values)
     if not asTable:
         return spectrum
-    columns = {name: np.asarray(spectrum[name], dtype=float) for name in spectrum.columns}
+    columns = {name: np.asarray(spectrum[name]) for name in spectrum.columns}
     return Table(columns)

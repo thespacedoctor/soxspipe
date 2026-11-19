@@ -6,9 +6,13 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from astropy.table import Table
+from astropy.table import MaskedColumn, Table
 
-from soxspipe.commonutils.spectrum_ascii import ascii_spectrum_path, write_ascii_spectrum_product
+from soxspipe.commonutils.spectrum_ascii import (
+    ascii_spectrum_path,
+    write_ascii_spectrum,
+    write_ascii_spectrum_product,
+)
 from tests.factories import merged_spectrum, product_table
 
 pytestmark = pytest.mark.unit
@@ -166,3 +170,22 @@ def test_ascii_keeps_a_nan_sky_as_nan_not_zero(tmp_path):
     # ASSERT
     row = (tmp_path / "STEM_FLUXCAL.txt").read_text().splitlines()[1].split()
     assert row[FLUXCAL_HEADER.split().index("SKY_COUNTS")].lower() == "nan"
+
+
+def test_ascii_writes_a_masked_cell_as_nan_not_blank(tmp_path, monkeypatch):
+    # ARRANGE: THE FITS READER HANDS BACK A MASKED CELL
+    maskedTable = Table(
+        {
+            "WAVE": [500.0, 500.02],
+            "FLUX_COUNTS": MaskedColumn([20.0, 1.0e20], mask=[False, True]),
+            "SNR": [5.0, 5.0],
+        }
+    )
+    monkeypatch.setattr(Table, "read", classmethod(lambda cls, *args, **kwargs: maskedTable))
+
+    # ACT
+    write_ascii_spectrum(str(tmp_path / "ignored.fits"), str(tmp_path / "STEM.txt"))
+
+    # ASSERT
+    lines = (tmp_path / "STEM.txt").read_text().splitlines()
+    assert lines[2].split() == ["5000.20", "nan", "5.0"]

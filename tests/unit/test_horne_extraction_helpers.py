@@ -904,6 +904,62 @@ def test_extract_writes_order_and_merged_product_contracts(
     assert joins == {"10-11": 501.0}
 
 
+def _extract_labels_for_sequence(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, recipeName: str, cumulativeOffset: float
+) -> list[str]:
+    """Run ``extract`` for a frame with ``ESO SEQ CUMOFF Y`` and return the product labels it registers."""
+    import soxspipe.commonutils.phase3 as phase3
+    from soxspipe.commonutils.toolkit import nodding_sequence_suffix
+
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.recipeName = recipeName
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    # THE SUFFIX THE CONSTRUCTOR BUILDS FOR A FRAME WITH A NODDING OFFSET: STARE-MODE FRAMES OF A NODDING SOF CARRY IT
+    extractor.noddingSequence = nodding_sequence_suffix(
+        header={"HIERARCH ESO SEQ CUMOFF Y": cumulativeOffset}, locationSetIndex=False, recipeName=recipeName
+    )
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: None)
+
+    _, products, _, _, _ = extractor.extract()
+
+    assert not list(tmp_path.glob("*.txt"))
+    return products["product_label"].tolist()
+
+
+@pytest.mark.parametrize(("cumulativeOffset", "suffix"), [(3.0, "_A"), (-3.0, "_B")])
+@pytest.mark.parametrize("recipeName", ["soxs-stare", "soxs-stare-std"])
+def test_a_stare_pass_over_nodding_frames_registers_the_merged_table_like_a_normal_stare_run(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recipeName: str,
+    cumulativeOffset: float,
+    suffix: str,
+) -> None:
+    """``nod --stare`` frames carry ``CUMOFF Y``, but the stare recipe still gets its merged-table row (DY-1361)."""
+    # ACT
+    labels = _extract_labels_for_sequence(log, monkeypatch, tmp_path, recipeName, cumulativeOffset)
+
+    # ASSERT: THE ORDERS TABLE KEEPS ITS SEQUENCE SUFFIX; THE MERGED TABLE HAS THE LABEL OF A NORMAL STARE RUN
+    assert labels == [f"EXTRACTED_ORDERS_TABLE{suffix}", "EXTRACTED_MERGED_TABLE"]
+
+
+@pytest.mark.parametrize("recipeName", ["soxs-nod", "soxs-nod-std", "soxs-offset", "soxs-offset-std"])
+def test_a_nod_mode_extraction_of_one_position_registers_no_merged_table(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recipeName: str,
+) -> None:
+    """The nod recipes register the stacked table themselves, so a single position adds no row (DY-1361)."""
+    # ACT
+    labels = _extract_labels_for_sequence(log, monkeypatch, tmp_path, recipeName, 3.0)
+
+    # ASSERT
+    assert labels == ["EXTRACTED_ORDERS_TABLE_A"]
+
+
 def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged_product(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

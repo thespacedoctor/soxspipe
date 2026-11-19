@@ -429,14 +429,14 @@ class soxs_nod(base_recipe):
             )
 
         # CHECK IF FLUX CALIBRATION IS REQUESTED
-        filePath_fluxcal = None
+        filePathFluxcal = None
         if responseFunctionPath:
-            filePath_fluxcal = self._flux_calibrate_nod_stack(
+            filePathFluxcal = self._flux_calibrate_nod_stack(
                 responseFunctionPath, stackedSpectrum, allFrameA, allFrameB
             )
 
-        self._write_ascii_spectrum(filePath_fluxcal)
-        self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePath_fluxcal)
+        self._write_ascii_spectrum(filePathFluxcal)
+        self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePathFluxcal)
 
         qcTable = self.report_output()
         if cycleFrames:
@@ -584,7 +584,7 @@ class soxs_nod(base_recipe):
         self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
         return self.report_output()
 
-    def _write_ascii_spectrum(self, filePath_fluxcal):
+    def _write_ascii_spectrum(self, filePathFluxcal):
         """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
 
         Updates ``self.products``. The stacked table is the one `stack_extractions` wrote under the current filename
@@ -593,13 +593,13 @@ class soxs_nod(base_recipe):
 
         **Key Arguments:**
 
-        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum table, or None
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum table, or None
         """
         from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
 
         mergedPath = f"{self.productDir}/{self.filenameTemplate.replace('.fits', '_EXTRACTED_MERGED.fits')}"
         self.products = write_ascii_spectrum_product(
-            mergedPath, filePath_fluxcal, self.products, self.recipeName, self.dateObs
+            mergedPath, filePathFluxcal, self.products, self.recipeName, self.dateObs
         )
 
     def _aligns_each_order(self):
@@ -1309,7 +1309,7 @@ class soxs_nod(base_recipe):
 
         **Return:**
 
-        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum
         """
         import pandas as pd
 
@@ -1335,20 +1335,20 @@ class soxs_nod(base_recipe):
             sofName=self.sofName,
             debug=self.debug,
         )
-        filePath_fluxcal, products = fluxCalibrator.calibrate()
+        filePathFluxcal, products = fluxCalibrator.calibrate()
         self.products = pd.concat([self.products, products], ignore_index=True)
         self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
-        return filePath_fluxcal
+        return filePathFluxcal
 
-    def _plot_nod_stacked_spectrum_qcs(self, stackedSpectrum, orderJoins, filePath_fluxcal):
+    def _plot_nod_stacked_spectrum_qcs(self, stackedSpectrum, orderJoins, filePathFluxcal):
         """*plot the merged-spectrum QC, and the flux-calibrated one when there is one*
 
         **Key Arguments:**
 
         - ``stackedSpectrum`` -- the stacked extraction
         - ``orderJoins`` -- the order joins
-        - ``filePath_fluxcal`` -- the path to the flux-calibrated spectrum, or None
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum, or None
         """
         from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
 
@@ -1370,11 +1370,11 @@ class soxs_nod(base_recipe):
             extractionNotes=list(self.extractionNotes),
         )
 
-        if filePath_fluxcal:
+        if filePathFluxcal:
             from astropy import units as u
             from astropy.table import Table
 
-            fluxcal_spec = Table.read(filePath_fluxcal, format="fits")
+            fluxcal_spec = Table.read(filePathFluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
             # THE PLOT DRAWS THE CALIBRATED FLUX FROM THE COUNTS COLUMN. THE TABLE CARRIES ITS OWN SNR
             fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]

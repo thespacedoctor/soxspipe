@@ -34,12 +34,28 @@ def _require_spectrum_columns(spectrum: Any) -> None:
     missing = [name for name in REQUIRED_SPECTRUM_COLUMNS if name not in spectrum.columns]
     if missing:
         raise ValueError(
-            f"The extracted spectrum has no {', '.join(missing)} column, so it cannot be flux calibrated; "
+            f"The extracted spectrum is missing the column(s) {', '.join(missing)}, so it cannot be flux calibrated; "
             f"it needs {', '.join(REQUIRED_SPECTRUM_COLUMNS)}."
         )
 
 
-def _flux_calibrated_columns(spectrum: Any, fluxCalibrated: Any, errorCalibrated: Any) -> "dict[str, Any]":
+def _column_values(spectrum: Any, name: str, dtype: Any = None) -> Any:
+    """Return a column as a plain array, with masked cells set to NaN.
+
+    ``np.asarray`` on an astropy ``MaskedColumn`` returns the data under the mask, which holds fill values. A masked
+    cell is missing data, so it becomes NaN in a floating-point column. Other columns are returned as they are.
+    """
+    import numpy as np
+
+    column = spectrum[name]
+    if np.ma.isMaskedArray(column):
+        column = np.ma.asarray(column) if dtype is None else np.ma.asarray(column, dtype=dtype)
+        if column.dtype.kind == "f":
+            return column.filled(np.nan)
+    return np.asarray(column, dtype=dtype)
+
+
+def _flux_calibrated_columns(spectrum: Any, fluxCalibrated: Any, errorCalibrated: Any) -> dict[str, Any]:
     """Return the columns of the flux-calibrated table, in order.
 
     The calibrated flux and error come first. The counts, variance, sky and SNR of the extracted spectrum follow
@@ -49,16 +65,16 @@ def _flux_calibrated_columns(spectrum: Any, fluxCalibrated: Any, errorCalibrated
     import numpy as np
 
     columns = {
-        "WAVE": np.asarray(spectrum["WAVE"], dtype=float),
+        "WAVE": _column_values(spectrum, "WAVE", float),
         "FLUX_CALIBRATED": np.asarray(fluxCalibrated, dtype=float),
         "ERR_CALIBRATED": np.asarray(errorCalibrated, dtype=float),
-        "FLUX_COUNTS": np.asarray(spectrum["FLUX_COUNTS"]),
-        "VARIANCE": np.asarray(spectrum["VARIANCE"]),
+        "FLUX_COUNTS": _column_values(spectrum, "FLUX_COUNTS"),
+        "VARIANCE": _column_values(spectrum, "VARIANCE"),
     }
     for name in OPTIONAL_SPECTRUM_COLUMNS:
         if name in spectrum.columns:
-            columns[name] = np.asarray(spectrum[name])
-    columns["SNR"] = np.asarray(spectrum["SNR"])
+            columns[name] = _column_values(spectrum, name)
+    columns["SNR"] = _column_values(spectrum, "SNR")
     return columns
 
 
