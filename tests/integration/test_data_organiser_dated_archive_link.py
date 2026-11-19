@@ -210,6 +210,43 @@ def test_sync_raw_frames_leaves_no_row_for_a_dated_archive_frame_whose_dpr_tech_
     assert rowPaths == []
 
 
+def test_sync_raw_frames_deletes_the_row_of_a_dated_archive_frame_whose_dpr_tech_is_null(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: A `raw_frames` TABLE THAT ALLOWS A NULL TECH (THE SHIPPED COLUMN IS NOT NULL ON CONFLICT IGNORE)
+    organiser, _, _ = _archive_workspace(tmp_path, log)
+    organiser.conn, _ = organiser._get_or_create_db_connection()
+    organiser._select_instrument()
+    shippedSql = organiser.conn.execute("SELECT sql FROM sqlite_master WHERE name = 'raw_frames'").fetchone()[0]
+    relaxedSql = shippedSql.replace('"eso dpr tech" text NOT NULL ON CONFLICT IGNORE', '"eso dpr tech" text')
+    assert relaxedSql != shippedSql
+    organiser.conn.execute("DROP TABLE raw_frames")
+    organiser.conn.execute(relaxedSql)
+    scan = organiser._create_directory_table
+    scannedFrameCounts: list[int] = []
+
+    def scan_with_null_tech(**kwargs: Any) -> tuple[Any, Any, Any]:
+        rawFrames, fitsPaths, remainingFiles = scan(**kwargs)
+        if rawFrames is not None:
+            rawFrames["eso dpr tech"] = None
+            scannedFrameCounts.append(len(rawFrames.index))
+        return rawFrames, fitsPaths, remainingFiles
+
+    monkeypatch.setattr(organiser, "_create_directory_table", scan_with_null_tech)
+
+    # ACT
+    try:
+        organiser._sync_raw_frames(skipSqlSync=True)
+        rowPaths = _raw_frame_paths(organiser)
+    finally:
+        organiser.close()
+
+    # ASSERT
+    # THE SCAN MUST HAVE FOUND THE FRAME, OR AN EMPTY TABLE WOULD PROVE NOTHING
+    assert scannedFrameCounts and scannedFrameCounts[0] > 0
+    assert rowPaths == []
+
+
 def test_sync_raw_frames_deletes_the_archive_row_and_holds_a_root_frame_whose_destination_is_taken(
     log: Any, tmp_path: Path
 ) -> None:

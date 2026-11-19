@@ -98,14 +98,52 @@ def test_routing_the_console_twice_still_prints_a_warning_once(setupLogs: SetupL
 
 def test_a_logger_with_no_console_handler_is_left_alone(setupLogs: SetupLogs) -> None:
     # ARRANGE
+    # A HANDLER WITH ANOTHER NAME, SO THE TEST FAILS IF ANY HANDLER IS ATTACHED, NOT ONLY `consoleLog`
     bareLog = logging.getLogger("dy2284.bare")
+    otherHandler = logging.StreamHandler(io.StringIO())
+    otherHandler.set_name("otherLog")
+    bareLog.addHandler(otherHandler)
     warningsHandlersBefore = list(logging.getLogger(toolkit.WARNINGS_LOGGER_NAME).handlers)
 
     # ACT
-    toolkit.route_warnings_to_console(bareLog)
+    try:
+        toolkit.route_warnings_to_console(bareLog)
+        warningsHandlersAfter = list(logging.getLogger(toolkit.WARNINGS_LOGGER_NAME).handlers)
+    finally:
+        bareLog.removeHandler(otherHandler)
 
     # ASSERT
-    assert logging.getLogger(toolkit.WARNINGS_LOGGER_NAME).handlers == warningsHandlersBefore
+    assert warningsHandlersAfter == warningsHandlersBefore
+
+
+def test_a_spawned_worker_logger_has_no_terminal_handler_so_the_parent_alone_prints_a_warning() -> None:
+    # ARRANGE
+    import queue
+    from logging.handlers import QueueHandler
+
+    reducer: Any = import_module("soxspipe.commonutils.reducer")
+    rootLogger = logging.getLogger()
+    rootLevel = rootLogger.level
+    rootHandlersBefore = list(rootLogger.handlers)
+    wasCapturing = warnings.showwarning is logging._showwarning
+    bareWorkerLog = logging.getLogger("dy2284.worker")
+
+    # ACT
+    try:
+        workerLog = reducer._worker_log(bareWorkerLog, {"logging settings": {}}, queue.Queue())
+        loggersToCheck = [workerLog, rootLogger, logging.getLogger(toolkit.WARNINGS_LOGGER_NAME)]
+        handlerNames = [handler.get_name() for logger in loggersToCheck for handler in logger.handlers]
+        addedToRoot = [handler for handler in rootLogger.handlers if handler not in rootHandlersBefore]
+    finally:
+        for handler in list(rootLogger.handlers):
+            if handler not in rootHandlersBefore:
+                rootLogger.removeHandler(handler)
+        rootLogger.setLevel(rootLevel)
+        logging.captureWarnings(wasCapturing)
+
+    # ASSERT
+    assert "consoleLog" not in handlerNames
+    assert len(addedToRoot) == 1 and isinstance(addedToRoot[0], QueueHandler)
 
 
 def test_the_command_line_routes_warnings_to_the_console_after_the_logging_setup(

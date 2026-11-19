@@ -296,10 +296,15 @@ def log() -> RecordingLogger:
 
 @pytest.fixture(autouse=True)
 def detach_recipe_handlers_from_the_warnings_logger() -> Iterator[None]:
-    """Remove any recipe log handler a test left on the process-wide ``py.warnings`` logger."""
+    """Fail a test that leaves a recipe log handler on the process-wide ``py.warnings`` logger.
+
+    The handler is removed first, so one leak does not spread into later tests.
+    """
     yield
     warningsLogger = logging.getLogger("py.warnings")
-    for handler in list(warningsLogger.handlers):
-        if handler.get_name() in ("recipeLog", "recipeErr"):
-            warningsLogger.removeHandler(handler)
-            handler.close()
+    leaked = [handler for handler in warningsLogger.handlers if handler.get_name() in ("recipeLog", "recipeErr")]
+    for handler in leaked:
+        warningsLogger.removeHandler(handler)
+        handler.close()
+    if leaked:
+        pytest.fail(f"the test left recipe log handlers on `py.warnings`: {[h.get_name() for h in leaked]}")

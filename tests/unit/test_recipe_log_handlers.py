@@ -201,6 +201,8 @@ def test_clean_up_keeps_the_recipe_handlers_so_the_caller_can_write_the_run_trai
     # ASSERT
     assert "the recipe's own failure" in (tmp_path / "A" / "A_ERROR.log").read_text()
     assert len(_recipe_handlers(sharedLog)) == 2
+    # THE CALLER DETACHES THE HANDLERS AFTER THE TRAILER, SO THIS TEST DOES IT TOO
+    toolkit.remove_recipe_logger(sharedLog)
 
 
 def test_a_serial_reducer_success_writes_the_trailer_to_the_recipe_log_then_detaches(

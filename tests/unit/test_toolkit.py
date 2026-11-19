@@ -472,9 +472,8 @@ def test_add_recipe_logger_replaces_handlers_and_separates_messages(
     errorText = (tmp_path / "nested" / "product_ERROR.log").read_text()
     assert "recipe failure" in errorText
     assert "excluded warning" not in errorText
-    for handler in tuple(logger.handlers):
-        handler.close()
-        logger.removeHandler(handler)
+    # DETACH FROM BOTH THE RECIPE LOGGER AND `py.warnings`, AS THE CALLERS DO
+    toolkit.remove_recipe_logger(logger)
 
 
 def test_max_filter_accepts_only_records_below_limit() -> None:
