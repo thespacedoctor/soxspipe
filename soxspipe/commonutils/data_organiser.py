@@ -286,12 +286,7 @@ class data_organiser:
 
     def __init__(self, log, rootDir, vlt=False, dbConnect=True):
         import codecs
-        import warnings
         from os.path import expanduser
-
-        from astropy.utils.exceptions import AstropyWarning
-
-        warnings.simplefilter("ignore", AstropyWarning)
 
         self.vlt = vlt
         self.PAE = False

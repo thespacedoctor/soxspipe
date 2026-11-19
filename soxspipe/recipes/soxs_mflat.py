@@ -197,12 +197,6 @@ class soxs_mflat(base_recipe):
 
         error = False
 
-        import warnings
-
-        from astropy.utils.exceptions import AstropyWarning
-
-        warnings.simplefilter("ignore", AstropyWarning)
-
         # BASIC VERIFICATION COMMON TO ALL RECIPES
         imageTypes, imageTech, imageCat = self._verify_input_frames_basics()
 

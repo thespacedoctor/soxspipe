@@ -461,7 +461,6 @@ class base_recipe:
         self.log.debug("starting the ``_prepare_single_frame`` method")
 
         import logging
-        import warnings
 
         import ccdproc
         from astropy import units as u
@@ -469,7 +468,6 @@ class base_recipe:
         from soxspipe.commonutils import toolkit
         from soxspipe.commonutils.fits_headers import read_ccd
 
-        warnings.filterwarnings(action="ignore")
         logging.captureWarnings(True)
 
         kw = self.kw

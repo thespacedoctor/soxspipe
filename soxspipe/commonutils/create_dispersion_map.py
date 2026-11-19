@@ -382,7 +382,6 @@ class create_dispersion_map:
         log.debug("instantiating a new 'create_dispersion_map' object")
 
         import copy
-        import warnings
 
         # STORE INITIALIZATION PARAMETERS
         self._store_init_params(
@@ -415,8 +414,8 @@ class create_dispersion_map:
         # INITIALIZE DETECTOR PARAMETERS
         self._setup_detector_params()
 
-        # CONFIGURE WARNINGS AND LOGGING LEVELS
-        self._configure_warnings_and_logging(warnings)
+        # CONFIGURE LOGGING LEVELS
+        self._configure_logging()
 
         # SET IMAGE ORIENTATION AXES
         self._set_image_orientation()
@@ -505,14 +504,9 @@ class create_dispersion_map:
         """*Initialize detector parameters lookup for the current arm*"""
         self.detectorParams = detector_lookup(log=self.log, settings=self.settings).get(self.arm)
 
-    def _configure_warnings_and_logging(self, warnings):
-        """*Configure warning filters and reset logging levels*"""
+    def _configure_logging(self):
+        """*Reset logging levels*"""
         import logging
-
-        from photutils.utils import NoDetectionsWarning
-
-        # SUPPRESS PHOTUTILS NO DETECTIONS WARNINGS
-        warnings.simplefilter("ignore", NoDetectionsWarning)
 
         # FIX ASTROPY LOGGING LEVEL RESET
         logging.getLogger().setLevel(logging.INFO + 5)
@@ -5086,10 +5080,12 @@ def measure_line_position(
     log.debug("starting the ``measure_line_position`` function")
 
     import logging
+    import warnings
 
     import numpy as np
     from astropy.stats import sigma_clipped_stats
     from photutils import DAOStarFinder, IRAFStarFinder
+    from photutils.utils import NoDetectionsWarning
 
     # FIX ASTROPY LOGGING LEVEL RESET
     logging.getLogger().setLevel(logging.INFO + 5)
@@ -5124,7 +5120,11 @@ def measure_line_position(
             exclude_border=exclude_border,
         )
         # SUBTRACT MEDIAN FOR BETTER DETECTION IN LOW SIGNAL IMAGES
-        sources = daofind(stamp.data - median, mask=stamp.mask)
+        with warnings.catch_warnings():
+            # A STAMP WITH NO LINE IN IT IS ROUTINE: `sources` IS THEN None AND THE CODE BELOW HANDLES THAT,
+            # SO THE WARNING ADDS NOTHING
+            warnings.simplefilter("ignore", NoDetectionsWarning)
+            sources = daofind(stamp.data - median, mask=stamp.mask)
     except Exception:
         sources = None
 
