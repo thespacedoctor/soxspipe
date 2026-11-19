@@ -52,3 +52,21 @@ def test_compute_extractions_recovers_a_known_profile_and_sorts_wavelengths() ->
         rtol=1e-12,
         atol=1e-12,
     )
+
+
+def test_compute_extractions_leaves_the_callers_rectified_image_keys_unchanged() -> None:
+    wavelengths = np.array([501.0, 502.0, 503.0])
+    profile = np.tile(np.array([[0.25], [0.5], [0.25]]), (1, wavelengths.size))
+    orderImages = {
+        "fluxRaw": profile * 50.0,
+        "objectProfile": profile,
+        "variance": np.full_like(profile, 4.0),
+        "wavelength": np.tile(wavelengths, (3, 1)),
+        "mask": np.zeros_like(profile, dtype=bool),
+    }
+    slices = pd.DataFrame({"order": np.full(wavelengths.size, 12), "pixelScaleNm": np.full(wavelengths.size, 0.1)})
+    keysBefore = list(orderImages.keys())
+
+    compute_extractions(slices, orderImages, order=12)
+
+    assert list(orderImages.keys()) == keysBefore
