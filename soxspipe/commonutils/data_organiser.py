@@ -59,6 +59,7 @@ from soxspipe.commonutils.workspace_paths import path_under_root
 if TYPE_CHECKING:
     import logging
 
+    import pandas as pd
     from astropy.table import Table
 
 os.environ["TERM"] = "vt100"
@@ -303,6 +304,8 @@ class data_organiser:
         self.pinnedConsumerNames = {}
         # THE TEMP TABLE THE QC-RANGE QUERIES READ FAILING-QC SOFS FROM WHILE A REBUILD RESTORES STATUSES, ELSE None
         self.failedQcSnapshot = None
+        # ROOT FRAMES THAT `prepare` HELD BACK BECAUSE THEIR DESTINATION IS TAKEN; THE MISC SWEEP LEAVES THEM (DY-2262)
+        self.heldRootFrames = set()
 
         # EXPAND HOME PATHS BEFORE DERIVING ANY WORKSPACE LOCATIONS
         rootDir = expanduser(rootDir)
@@ -582,6 +585,7 @@ class data_organiser:
         """
         self.log.debug("starting the ``prepare`` method")
 
+        self.heldRootFrames = set()
         self._refuse_loose_frames_in_external_raw_folder()
 
         backupPath = None
@@ -992,8 +996,17 @@ class data_organiser:
                             if self._is_dated_raw_frame(realSource) and realSource != realDest:
                                 # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
                                 databaseDeletes.append(realDest)
-                            elif realSource != realDest:
-                                shutil.move(realSource, realDest)
+                            elif self._would_move(source, destination):
+                                if os.path.lexists(realDest):
+                                    # THE DESTINATION APPEARED AFTER THE FILTER RAN: KEEP THE FRAME OUT OF THE INDEX TOO
+                                    self._hold_root_frame(n, realDest)
+                                    self.conn.execute(
+                                        "DELETE FROM raw_frames WHERE rowid = "
+                                        "(SELECT max(rowid) FROM raw_frames WHERE filepath = ? AND file = ?)",
+                                        (p, n),
+                                    )
+                                else:
+                                    shutil.move(realSource, realDest)
                             if os.path.islink(source):
                                 self._remove_workspace_entry(n)
 
@@ -1045,14 +1058,50 @@ class data_organiser:
             keep.append(reason is None)
         return rawFrames.loc[keep]
 
-    def _without_overwriting_frames(self, rawFrames):
+    def _would_move(self, source: str, destination: str) -> bool:
+        """*return True when filing a root entry means moving a file onto a different path*
+
+        **Key Arguments:**
+
+        - ``source`` -- the entry in the workspace root
+        - ``destination`` -- where the frame belongs in ``raw/<date>/``
+
+        **Return:**
+
+        - ``isMove`` -- True when the source exists, is not already a frame in a dated raw folder, and does not
+          resolve to the destination
+        """
+        if not os.path.exists(source):
+            return False
+        realSource = os.path.realpath(source)
+        return not self._is_dated_raw_frame(realSource) and realSource != os.path.realpath(destination)
+
+    def _hold_root_frame(self, name: str, takenPath: str) -> None:
+        """*leave a root frame where it is, because its destination is taken, and say so*
+
+        The name goes in ``heldRootFrames``, so the sweep of unfiled root files leaves the frame in the workspace
+        root. The warning comes once per `prepare`, and every later `prep` finds the frame, and warns, again.
+
+        **Key Arguments:**
+
+        - ``name`` -- the frame's path relative to the workspace root
+        - ``takenPath`` -- the resolved destination that already exists
+        """
+        source = path_under_root(name, self.rootDir)
+        # A SECOND SCAN OF THE SAME `prepare` FINDS THE FRAME AGAIN; WARN ONCE PER `prepare`
+        if os.path.basename(source) in self.heldRootFrames:
+            return
+        self.heldRootFrames.add(os.path.basename(source))
+        self.log.warning(f"not filing `{source}`: `{takenPath}` already exists and a move would replace it")
+
+    def _without_overwriting_frames(self, rawFrames: "pd.DataFrame") -> "pd.DataFrame":
         """*drop the frames whose filing would replace a file that already sits at the destination*
 
         A root frame is filed into ``raw/<date>/`` with a move, and a move replaces an existing file without a
         word. In a VLT workspace ``raw/`` is the external archive, so the replaced file could be an archive frame.
-        A frame whose destination is taken is skipped with a warning that names both paths, and neither file is
-        touched. Dropping it here also keeps it out of ``raw_frames``, so no row points at the file that holds the
-        place of the frame.
+        A frame whose destination is taken is held (see `_hold_root_frame`): it is skipped with a warning that names
+        both paths, and neither file is touched. Dropping it here also keeps it out of ``raw_frames``, so no row
+        points at the file that holds the place of the frame.
 
         **Key Arguments:**
 
@@ -1064,19 +1113,10 @@ class data_organiser:
         """
         keep = []
         for p, n in zip(rawFrames["filepath"], rawFrames["file"], strict=True):
-            source = path_under_root(n, self.rootDir)
             destination = path_under_root(p, self.rootDir)
-            isMove = (
-                os.path.exists(source)
-                and not self._is_dated_raw_frame(os.path.realpath(source))
-                and os.path.realpath(source) != os.path.realpath(destination)
-            )
-            isTaken = isMove and os.path.lexists(destination)
+            isTaken = self._would_move(path_under_root(n, self.rootDir), destination) and os.path.lexists(destination)
             if isTaken:
-                realDestination = os.path.realpath(destination)
-                self.log.warning(
-                    f"not filing `{source}`: `{realDestination}` already exists and a move would replace it"
-                )
+                self._hold_root_frame(n, os.path.realpath(destination))
             keep.append(not isTaken)
         return rawFrames.loc[keep]
 
@@ -1678,6 +1718,7 @@ class data_organiser:
                 and os.path.splitext(filepath)[1] != ".db"
                 and "readme." not in d.lower()
                 and "soxspipe" not in d.lower()
+                and d not in self.heldRootFrames
             ):
                 shutil.move(filepath, self.miscDir + "/" + d)
 
