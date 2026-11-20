@@ -33,6 +33,10 @@ TRACE_SAMPLES_PER_PIXEL = 4
 # SLIT OFFSET (ARCSEC) FROM THE TRACE CENTRE USED TO MEASURE EACH ORDER'S ARCSEC-PER-PIXEL SCALE
 SLIT_SCALE_PROBE_ARCSEC = 1.0
 
+# NUMBER OF CELL-CORNER ROWS HANDED TO THE DISPERSION-MAP CONVERTER AT ONCE. THE CONVERTER'S TEMPORARY ARRAYS
+# GROW WITH THE ROW COUNT (ABOUT 250 BYTES PER ROW), SO THIS CAPS THEM AT ABOUT 0.25 GB
+CORNER_CHUNK_ROWS = 1_000_000
+
 
 class image_transformer(base_util):
     """*rectify frame arrays, order-by-order, into cross-dispersion slices ready for spectral extraction*
@@ -336,6 +340,61 @@ class image_transformer(base_util):
         self.log.debug("completed the ``_cache_true_wavelength_slit_images`` method")
         return
 
+    def _corner_pixel_positions(self, order, wavelengths, slitPositions, chunkRows=CORNER_CHUNK_ROWS):
+        """*Convert one order's cell-corner points to detector pixels, a chunk of rows at a time*
+
+        ``dispersion_map_to_pixel_arrays`` builds temporary arrays that grow with the row count, so the
+        points are converted ``chunkRows`` rows at a time and written into preallocated float32 arrays.
+        The conversion works row by row, so the result equals a single call on the whole table.
+        Off-detector points are kept, so the row order and count are preserved.
+
+        **Key Arguments:**
+
+        - ``order`` -- the echelle order number of every point
+        - ``wavelengths`` -- the wavelength of each point
+        - ``slitPositions`` -- the absolute slit position of each point
+        - ``chunkRows`` -- the most rows converted in one call. Default *CORNER_CHUNK_ROWS*
+
+        **Return:**
+
+        - ``fitX``, ``fitY`` -- the detector pixel positions in the frame's binning, one per input point
+
+        **Usage:**
+
+        ```python
+        fitX, fitY = self._corner_pixel_positions(order, wavelengths, slitPositions)
+        ```
+        """
+        import pandas as pd
+
+        from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+
+        rowCount = len(wavelengths)
+        fitX = np.empty(rowCount, dtype=np.float32)
+        fitY = np.empty(rowCount, dtype=np.float32)
+
+        for start in range(0, rowCount, chunkRows):
+            stop = min(start + chunkRows, rowCount)
+            # THE COLUMNS ARE BUILT WITH THE DTYPES THE CONVERTER WANTS, SO IT NEEDS NO CONVERTING COPIES
+            cornersDF = pd.DataFrame(
+                {
+                    "order": np.full(stop - start, order, dtype=int),
+                    "wavelength": np.asarray(wavelengths[start:stop], dtype=float),
+                    "slit_position": np.asarray(slitPositions[start:stop], dtype=float),
+                }
+            )
+            resultDF = dispersion_map_to_pixel_arrays(
+                log=self.log,
+                dispersionMapPath=self.dispersionMap,
+                orderPixelTable=cornersDF,
+                removeOffDetectorLocation=False,
+                trimColumns=True,
+            )
+            fitX[start:stop] = resultDF["fit_x"].to_numpy()
+            fitY[start:stop] = resultDF["fit_y"].to_numpy()
+
+        return self._to_frame_binning(fitX, fitY)
+
     def _precompute_resampling_weights(self):
         """*Precompute, once per instance, the detector-pixel/output-cell polygon-overlap weights used to rectify any cached image*
 
@@ -351,16 +410,13 @@ class image_transformer(base_util):
         """
         self.log.debug("starting the ``_precompute_resampling_weights`` method")
 
-        import numpy as np
-        import pandas as pd
-
-        from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
-
         ncorners = 4 * self.edgeSamples
 
-        # BUILD ONE FLAT TABLE OF BOUNDARY CORNER POINTS ACROSS ALL ORDERS AND CELLS
-        orderChunks, wlChunks, spChunks = [], [], []
-        records = []
+        # REBUILD THE PER-ORDER RESAMPLING WEIGHTS FROM EACH ORDER'S BOUNDARY CORNER POINTS.
+        # THE PER-CELL PIXEL-OVERLAP CLIP/AREA WORK ITSELF RUNS IN THE NUMBA-JIT-COMPILED
+        # _resample_weights_kernel (MILLIONS OF CELLS ACROSS ALL ORDERS) — EVERYTHING HERE
+        # IS EITHER A ONE-OFF VECTORIZED NUMPY PRE-PASS OR O(NUMBER OF ORDERS) BOOKKEEPING
+        resamplingWeights = {}
 
         for order, sp_edges, wl_edges, centreCoeffs in zip(
             self.uniqueOrders,
@@ -375,48 +431,12 @@ class image_transformer(base_util):
             # CONVERT SLIT OFFSETS FROM THE TRACE TO ABSOLUTE SLIT POSITIONS BEFORE THEY ARE
             # HANDED TO THE WAVELENGTH/SLIT -> DETECTOR-PIXEL CONVERTER
             spBlock = spBlock + np.polyval(centreCoeffs, wlBlock)
-            nrows = n_sp * n_wl * ncorners
-            spChunks.append(spBlock.reshape(-1))
-            wlChunks.append(wlBlock.reshape(-1))
-            orderChunks.append(np.full(nrows, order))
-            records.append({"order": order, "n_sp": n_sp, "n_wl": n_wl, "nrows": nrows})
 
-        cornersDF = pd.DataFrame(
-            {
-                "order": np.concatenate(orderChunks),
-                "wavelength": np.concatenate(wlChunks),
-                "slit_position": np.concatenate(spChunks),
-            }
-        )
-
-        cornersDF = cornersDF.astype({"order": int, "wavelength": float, "slit_position": float})
-
-        # SINGLE BATCHED CONVERSION OF ALL BOUNDARY CORNER POINTS FROM WAVELENGTH/SLIT/ORDER TO DETECTOR X,Y
-        # removeOffDetectorLocation=False: EVERY CORNER (EVEN OFF-DETECTOR) MUST BE KEPT TO PRESERVE POLYGON GEOMETRY AND ROW ORDER
-        resultDF = dispersion_map_to_pixel_arrays(
-            log=self.log,
-            dispersionMapPath=self.dispersionMap,
-            orderPixelTable=cornersDF,
-            removeOffDetectorLocation=False,
-            trimColumns=True,
-        )
-        fit_x, fit_y = self._to_frame_binning(resultDF["fit_x"].to_numpy(), resultDF["fit_y"].to_numpy())
-
-        # REBUILD THE PER-ORDER RESAMPLING WEIGHTS FROM THE FLAT BOUNDARY CORNER TABLE.
-        # THE PER-CELL PIXEL-OVERLAP CLIP/AREA WORK ITSELF RUNS IN THE NUMBA-JIT-COMPILED
-        # _resample_weights_kernel (MILLIONS OF CELLS ACROSS ALL ORDERS) — EVERYTHING HERE
-        # IS EITHER A ONE-OFF VECTORIZED NUMPY PRE-PASS OR O(NUMBER OF ORDERS) BOOKKEEPING
-        resamplingWeights = {}
-        offset = 0
-        for record in records:
-            order = record["order"]
-            n_sp = record["n_sp"]
-            n_wl = record["n_wl"]
-            nrows = record["nrows"]
-
-            xb = np.ascontiguousarray(fit_x[offset : offset + nrows].reshape(n_sp, n_wl, ncorners))
-            yb = np.ascontiguousarray(fit_y[offset : offset + nrows].reshape(n_sp, n_wl, ncorners))
-            offset += nrows
+            # EVERY CORNER (EVEN OFF-DETECTOR) IS KEPT TO PRESERVE POLYGON GEOMETRY AND ROW ORDER
+            fit_x, fit_y = self._corner_pixel_positions(order, wlBlock.reshape(-1), spBlock.reshape(-1))
+            xb = np.ascontiguousarray(fit_x.reshape(n_sp, n_wl, ncorners))
+            yb = np.ascontiguousarray(fit_y.reshape(n_sp, n_wl, ncorners))
+            del fit_x, fit_y
 
             # VECTORIZED PER-CELL CANDIDATE-PIXEL BOUNDING BOX (REPLACES THE OLD PER-CELL
             # np.isfinite()/.min()/.max() PYTHON LOOP)
