@@ -592,12 +592,14 @@ class base_recipe:
         - ``frame`` -- the frame with its uncertainty extension populated
 
         A bias frame's uncertainty is the readnoise alone. Every other frame
-        also carries the photon noise of its own counts.
+        also carries the photon noise of its own counts. A frame that is the
+        mean of NDIT integrations has its variance divided by NDIT (DY-2317).
         """
         import ccdproc
         import numpy as np
 
         from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.ndit import read_ndit
 
         kw = self.kw
         dp = self.detectorParams
@@ -611,6 +613,11 @@ class base_recipe:
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
             frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True, add_keyword=None)
+
+        # A RAW NIR FILE IS THE MEAN OF ITS NDIT INTEGRATIONS, SO BOTH THE POISSON AND THE READ-NOISE TERMS SCALE
+        ndit = read_ndit(frame.header, kw, self.log)
+        if ndit > 1:
+            frame.uncertainty.array = frame.uncertainty.array / np.float32(np.sqrt(ndit))
         toolkit.frame_to_32(frame)
 
         return frame
@@ -1413,6 +1420,9 @@ class base_recipe:
         self.readNoise = resolve_read_noise(
             masterHeader, self.rawHeaderRon, self.defaultRon, self.kw, self.log, masterLabel=masterLabel
         )
+        # THE MASTER DARK'S QC RAW RON IS TAKEN AS THE NOISE OF ONE INTEGRATION. A MASTER BUILT FROM NDIT > 1 DARKS
+        # (X-SHOOTER NIR ONLY; EVERY SOXS DARK IS NDIT 1) WOULD NEED IT SCALED BY SQRT(NDIT) OF THE MASTER
+        # (DY-2317, DY-2322)
         self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
 
         return
