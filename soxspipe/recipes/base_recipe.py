@@ -113,6 +113,9 @@ class base_recipe:
     # (DY-2194). DATABASE AND QC KEYS KEEP THE BARE SOF NAME. A CLASS ATTRIBUTE, SO A RECIPE OBJECT BUILT WITHOUT
     # `__init__` HAS ONE TOO
     productNameMarker = ""
+    # THE ARM OF THE INPUT FRAMES, SET WHEN THEY ARE VERIFIED. A CLASS ATTRIBUTE, SO A RECIPE OBJECT BUILT WITHOUT
+    # `__init__` READS AS NO ARM (DY-2322)
+    arm = None
 
     def __init__(
         self,
@@ -2518,13 +2521,16 @@ class base_recipe:
         return
 
     def _measure_raw_frame_ron(self):
-        """*measure the read-out noise in a single raw frame, from the first two input frames*
+        """*measure the read-out noise in a single raw frame*
 
-        The noise is measured on the difference of the first two input frames,
-        so any fixed pattern the frames share cancels. The mask returned
-        alongside it is the mask of that difference and is needed by the caller
-        to measure the master frame against the same pixels. At least two input
-        frames are required.
+        The mask returned alongside the noise is the mask of the difference of the first two input frames and is
+        needed by the caller to measure the master frame against the same pixels. At least two input frames are
+        required.
+
+        UVB and VIS (bias) noise is the clipped standard deviation of the difference of the first two input
+        frames, so any fixed pattern the frames share cancels. NIR (dark) noise is measured by
+        ``_measure_nir_dark_ron``, because the first two NIR darks carry a heavy tail and a first frame that is
+        still settling.
 
         **Return:**
 
@@ -2537,26 +2543,49 @@ class base_recipe:
         rawRon, combinedMask = self._measure_raw_frame_ron()
         ```
         """
-        import math
         from itertools import islice
+
+        ccds = self.inputFrames.ccds(
+            ccd_kwargs={
+                "hdu_uncertainty": "ERRS",
+                "hdu_mask": "QUAL",
+                "hdu_flags": "FLAGS",
+                "key_uncertainty_type": "UTYPE",
+            }
+        )
+
+        if self.arm == "NIR":
+            return self._measure_nir_dark_ron(ccds)
+
+        # ONLY THE FIRST TWO RAW FRAMES ARE NEEDED, SO NO MORE ARE LOADED
+        raw_one, raw_two = islice(ccds, 2)
+        return self._first_pair_ron(raw_one, raw_two)
+
+    def _first_pair_ron(self, raw_one, raw_two):
+        """*measure the read-out noise and the bad-pixel mask from the difference of two raw frames*
+
+        **Key Arguments:**
+
+        - ``raw_one`` -- the first raw frame (CCDData object)
+        - ``raw_two`` -- the second raw frame (CCDData object)
+
+        **Return:**
+
+        - ``rawRon`` -- the clipped standard deviation of the difference, divided by the square root of two (e-)
+        - ``combinedMask`` -- the bad-pixel mask of the sigma-clipped frame difference
+
+        **Usage:**
+
+        ```python
+        rawRon, combinedMask = self._first_pair_ron(raw_one, raw_two)
+        ```
+        """
+        import math
 
         import numpy as np
         from astropy.stats import sigma_clip
 
         from soxspipe.commonutils import toolkit
-
-        # ONLY THE FIRST TWO RAW FRAMES ARE NEEDED, SO NO MORE ARE LOADED
-        raw_one, raw_two = islice(
-            self.inputFrames.ccds(
-                ccd_kwargs={
-                    "hdu_uncertainty": "ERRS",
-                    "hdu_mask": "QUAL",
-                    "hdu_flags": "FLAGS",
-                    "key_uncertainty_type": "UTYPE",
-                }
-            ),
-            2,
-        )
 
         # SINGLE FRAME RON
         raw_diff = raw_one.subtract(raw_two)
@@ -2584,6 +2613,53 @@ class base_recipe:
 
         # ACCOUNT FOR EXTRA NOISE ADDED FROM SUBTRACTING FRAMES
         return dstd / math.sqrt(2), combinedMask
+
+    def _measure_nir_dark_ron(self, ccds):
+        """*measure the NIR read-out noise as a robust median over consecutive raw-dark pairs*
+
+        The noise of a pair is the MAD sigma of the difference of two consecutive raw darks, divided by the square
+        root of two. The result is the median of the pair noises. The first dark is still settling, so with three
+        or more darks it is left out of the pairs; with two darks the one pair is used. The darks are read one at a
+        time, so only the previous dark is held in memory. The returned mask is that of the difference of the first
+        two darks, as for the bias, so the master noise is measured against the same pixels.
+
+        **Key Arguments:**
+
+        - ``ccds`` -- the raw dark frames (CCDData objects), in order, as an iterable that is read once
+
+        **Return:**
+
+        - ``rawRon`` -- raw read-out-noise in electrons
+        - ``combinedMask`` -- the bad-pixel mask of the sigma-clipped difference of the first two darks
+
+        **Usage:**
+
+        ```python
+        rawRon, combinedMask = self._measure_nir_dark_ron(ccds)
+        ```
+        """
+        import math
+
+        import numpy as np
+        from astropy.stats import mad_std
+
+        combinedMask = None
+        pairRons = []
+        previous = None
+        for frame in ccds:
+            if previous is not None:
+                if combinedMask is None:
+                    _firstPairRon, combinedMask = self._first_pair_ron(previous, frame)
+                # MASKED ARITHMETIC TAKES THE UNION OF THE TWO MASKS
+                difference = np.ma.array(frame.data, mask=frame.mask, dtype=np.float64) - np.ma.array(
+                    previous.data, mask=previous.mask, dtype=np.float64
+                )
+                pairRons.append(mad_std(difference, ignore_nan=True) / math.sqrt(2))
+            previous = frame
+
+        # THE FIRST DARK IS STILL SETTLING, SO PAIR 1-2 IS USED ONLY WHEN IT IS THE ONLY PAIR
+        usedRons = pairRons[1:] or pairRons
+        return float(np.median(usedRons)), combinedMask
 
     def qc_ron(
         self,
