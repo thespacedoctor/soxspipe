@@ -95,9 +95,13 @@ One gate run per merge into develop since then named each cause (DY-2325):
   0.15931 to 0.13778 (2025-11-28). The Ritz wavelengths of the NIR multi-pinhole lines
   (DY-2084) gave 92% and 66% of the fall, and DY-1970 the rest.
 - NIR standard-star `SNR MEDIAN` went from 70.14 to 90.08. It fell from 70.26 to 62.47 at
-  the DY-2194 merge (cause not yet found, DY-2335). The NDIT error model raised it by 1.413, the
-  square root of its NDIT of 2, to 88.36 (DY-2317). The read noise from the median dark
-  pair raised it to 90.08 (DY-2322).
+  the DY-2194 merge: the data organiser began adding the 15 s master dark to the SOF, and the
+  nod recipe took its read noise (12.91 e- against the nominal 7.3 e-), which raised the error
+  by 10% with the flux unchanged. The nod recipe no longer takes the dark's read noise, which
+  reverses that fall (DY-2335). The NDIT error model raised it by 1.413, the square root of its
+  NDIT of 2, to 88.36 (DY-2317). The read noise from the median dark pair raised it to 90.08
+  (DY-2322). The centre 90.08 still includes the dark's read noise: it is to be re-recorded
+  from gate runs after DY-2335, and a local reduction without the dark gave about 98.9.
 
 Since v0.19.1 the NIR response moved by 0.6% or less and both `EFF MEDIAN` values by 0.1%
 or less. Against its centre the 2020 nm response point is now 1.7% low, 0.35 of its band.

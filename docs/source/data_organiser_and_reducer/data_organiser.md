@@ -38,7 +38,7 @@ The DO puts all stare science frames (`ECHELLE,SLIT,STARE`) of one observation b
 
 The `calibrations` list of an entry in `soxs_sof_map.yaml` names the calibrations that a SOF needs before it is complete. An entry can also have an `optional calibrations` list for each arm. The DO adds a matching product of an optional calibration to the SOF when one exists. A SOF without one is still complete.
 
-The NIR nodding entries (`science_nodding`, `flux_standard_nodding` and `telluric_standard_nodding`) list `mdark` as optional. The DO uses the same matching rule as for NIR stare SOFs. The nod recipes ignore the master dark. The stare mode of a nodding SOF (`--stare` or `reduce-as-stare`) needs it. The DO does not change the predicted products of a nodding SOF, so a stare-mode reduction of the SOF is not used by later SOFs.
+The NIR nodding entries (`science_nodding`, `flux_standard_nodding` and `telluric_standard_nodding`) list `mdark` as optional. The DO uses the same matching rule as for NIR stare SOFs. The nod recipes ignore the master dark, including its read noise, because the A-B subtraction removes the dark. The stare mode of a nodding SOF (`--stare` or `reduce-as-stare`) needs it. The DO does not change the predicted products of a nodding SOF, so a stare-mode reduction of the SOF is not used by later SOFs.
 
 ### Sessions group every raw frame
 
