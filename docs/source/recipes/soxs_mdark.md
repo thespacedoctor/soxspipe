@@ -29,6 +29,10 @@ The raw dark frames are stacked together (using the [`clip_and_stack`](../utils/
 The soxs-mdark recipe algorithm.
 :::
 
+### Read noise cross-check (NIR)
+
+The `RAW RON` QC of a NIR master dark is a quality-control value only. No later recipe takes its read noise from it. The recipe compares `RAW RON` with the value of the `read-noise-by-ndsamples` table at the `ESO DET NDSAMPLES` of the master dark (see [prepare frames](../utils/prepare_frames.md)). If the two differ by more than 20% of the table value, the recipe writes a warning to the log. The check does not change the QC flag or the product. It does not run if the master dark has no usable `ESO DET NDSAMPLES`, and it does not run for X-Shooter, UVB or VIS.
+
 ## Output
 
 :::{include} output/soxs_mdark.inc
