@@ -35,6 +35,9 @@
 | `SKY SHIFT O<N>` | Wavelength shift that the skyline tuning added to the wavelength solution of order N. Written for every order. For SOXS VIS orders 2 (u) and 3 (g) it is the modelled shift if the model applied, and 0 if not | nm | - |
 | `SKY SHIFT O<N> PX` | The same shift as detector motion along the dispersion axis, using the signed dispersion of the order. Positive means the features moved to larger pixel numbers. Not written for an order with no usable dispersion | px | - |
 | `SKY LINE SNR O<N>` | Combined signal-to-noise of the catalogue sky lines in order N. Written for each SOXS VIS order measured from its own sky lines (orders 1 and 4). The skyline tuning does not apply the shift of an order below 5.4 | | - |
+| `SKY HOST LINES MASKED` | Number of host emission-line windows left out of the sky fit, after merging windows of different orders. Written only when at least one was found. Information only: it has no acceptable range | | - |
+| `SKY HOST REDSHIFT` | Host redshift inferred from at least 2 detected host-line windows that agree on it. Written only when one was inferred. Information only | | - |
+| `SKY HOST LINES INFERRED` | Number of companion host-line windows added at the inferred redshift that touch no detected window of any order, after merging windows of different orders. Written only when a redshift was inferred. Information only | | - |
 | `UG SHIFT SOURCE` | How the SOXS VIS u and g shifts were found: `model` (predicted from the r and i shifts and the rotator angle) or `none` (u and g left unshifted). The comment gives the reason. Written only for SOXS VIS | | - |
 
 :::

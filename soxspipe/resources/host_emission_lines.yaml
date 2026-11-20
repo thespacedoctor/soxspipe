@@ -1,0 +1,17 @@
+# STRONG EMISSION LINES OF A STAR-FORMING HOST GALAXY, AT REST. WAVELENGTHS ARE IN NM IN AIR, THE SCALE OF THE PIPELINE
+# WAVELENGTH SOLUTION. host_line_mask INFERS THE HOST REDSHIFT FROM THE LINES IT FINDS IN A STARE FRAME AND ADDS THE
+# COMPANIONS IN THIS LIST THAT IT DID NOT FIND (DY-2242)
+lines:
+  - {name: "Hbeta", wavelength-nm: 486.13}
+  - {name: "[OIII] 4959", wavelength-nm: 495.89}
+  - {name: "[OIII] 5007", wavelength-nm: 500.68}
+  - {name: "[OI] 6300", wavelength-nm: 630.03}
+  - {name: "[NII] 6548", wavelength-nm: 654.80}
+  - {name: "Halpha", wavelength-nm: 656.28}
+  - {name: "[NII] 6583", wavelength-nm: 658.35}
+  - {name: "[SII] 6716", wavelength-nm: 671.64}
+  - {name: "[SII] 6731", wavelength-nm: 673.08}
+  - {name: "[SIII] 9069", wavelength-nm: 906.9}
+  - {name: "[SIII] 9531", wavelength-nm: 953.1}
+  - {name: "Pabeta", wavelength-nm: 1281.81}
+  - {name: "Paalpha", wavelength-nm: 1875.10}

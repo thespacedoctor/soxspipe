@@ -102,6 +102,35 @@ The pipeline also does not correct an order whose sky is brighter than the core 
 
 To turn the correction off, set `object_wing_correction: False` in the `sky-subtraction` block of the stare recipe settings. A workspace settings file that does not have these keys uses the defaults: the correction is on, `object_wing_min_leak_sigma` is 0.03 and `object_wing_min_sky_sigma` is 1. A workspace settings file made before DY-1964 may still hold `object_wing_gate_fraction`. The pipeline ignores it.
 
+### Host emission lines that fill the slit
+
+The stare sky model is one curve in wavelength for each order. It is the same at every slit position. A host galaxy that fills the slit puts its emission lines into the pixels that the model treats as sky. The model then takes the line light out from under the object, and the lines can fall below the continuum.
+
+The pipeline looks for these lines in the frame. You do not give it a redshift. For each order it does the following:
+
+1. It bins the pixels that are not object, edge or bad pixels by wavelength and by slit position, and takes the median of each cell.
+2. It takes the running median along wavelength out of each slit bin. The remainder is the narrow excess.
+3. It measures two things for each wavelength bin: the median of the excess over the slit, and how much the excess changes along the slit.
+4. A bin is a host line when both are above `host-line-sigma` times the local noise, and the change along the slit is at least `host-line-min-slit-contrast` of the peak excess. A sky line is the same at every slit position, so its change is near 0. A star's wings, a cosmic ray and telluric absorption do not pass the first test.
+5. Bins within 8 detector lines of a catalogue skyline, and the ends of the order, are not searched. A host line inside that distance of a catalogue skyline is therefore not masked, and it stays in the sky fit.
+
+The window of a line covers its wavelengths at every slit position, so the rotation of the host is inside it. `host-line-padding-pixels` detector lines are added at each end. The pipeline leaves the pixels inside the windows out of the sky fit, and the sky is interpolated across them. The object-wing refit uses the same flags. The extracted spectrum then keeps the host lines.
+
+A weak line, such as [NII] 6548, can be under the detection limit even when the strong lines of the same host are found. The pipeline therefore infers the host redshift from the windows it found. It matches the centre of each window to the rest-frame lines in `soxspipe/resources/host_emission_lines.yaml` (Hβ, [OIII], [OI], [NII], Hα, [SII], [SIII], Paβ and Paα, in air). It accepts a redshift only when at least 2 windows agree on it for different lines, within 5e-4 (150 km/s), and the redshift is between -0.005 and 0.5. Some pairs of lines in the list have almost the same wavelength ratio (for example [NII] 6548 with Hα, and the two [SII] lines), so two windows can fit two redshifts. When two redshifts that differ by more than 5e-4 have the same number of windows, the pipeline infers none. A third window on the true redshift removes the doubt. The other lines of the list that fall in an order then get a window at that redshift. Its half width is the median relative half width of the matched windows and 2.5e-4 (the redshift uncertainty), added in quadrature. A companion window is not added when it touches a detected window of the same order, when it is not inside the usable wavelength range of the order, or when a catalogue skyline lies within 8 detector lines of it. A frame with fewer than 2 windows, or with windows that agree on no redshift, gets no companion window. You cannot set the redshift.
+
+The log lists the windows, the inferred redshift and the companion windows. The `SKY HOST LINES MASKED` QC is the number of merged windows, companions included. When a redshift was inferred, `SKY HOST REDSHIFT` is the redshift and `SKY HOST LINES INFERRED` is the number of companion windows that are new, that is, that touch no detected window of any order. A line that was detected in a neighbouring order is masked in every order, but it is not counted. None is written when there is no window. A frame with no window gives the same products as a run with `host-line-mask: False`.
+
+This changes the stare sky model only. A nod reduction without `--stare` has no sky model, so it is not changed. For nod frames with a host that fills the slit, use `--stare`. The mask does not recover host continuum that the sky model removes.
+
+| Setting | Default | Meaning |
+| -- | -- | -- |
+| `host-line-mask` | `True` | `False` turns the search and the mask off. |
+| `host-line-sigma` | `5.5` | Significance a line needs, in units of the local noise. |
+| `host-line-min-slit-contrast` | `0.3` | Least share of the line peak that changes along the slit, 0 to 1. |
+| `host-line-padding-pixels` | `3` | Detector lines added at each end of a window. |
+
+A workspace settings file that does not have these keys uses these defaults.
+
 ### Along-slit illumination from the master flat
 
 The sky model is a bspline in wavelength only, but the sky in a flat-fielded NIR frame is not the same at every slit position. The lamp that makes the master flat lights the slit bottom about 0.35 %/arcsec more than the sky does. The frame is divided by that flat, so the sky looks fainter at the slit bottom and brighter at the slit top. A model in wavelength alone leaves this gradient in the sky-subtracted frame. It was present in all 40 NIR stare frames that were measured, on four slit widths (DY-1990).
