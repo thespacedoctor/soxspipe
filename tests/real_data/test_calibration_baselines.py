@@ -84,9 +84,9 @@ their bands and were left as they are.
 
 Seven NIR entries were re-recorded on 2026-11-20 from six bit-identical CI runs
 (44753125473, 44753130854, 44753135752, 44753140806, 44753145774 and 44753149843)
-of the DY-2322 branch at 3695bd00. The gate had not run since v0.19.1, and develop b117894e already failed the same
-checks (runs 44756130842, 44756135404 and 44756140818). One gate run per merge into develop
-since then named each cause (DY-2325):
+of the DY-2322 branch at 3695bd00. The gate had not run since v0.19.1, and develop
+b117894e already failed the same checks (runs 44756130842, 44756135404 and 44756140818).
+One gate run per merge into develop since then named each cause (DY-2325):
 
 - NIR dispersion solution `XY RES MEDIAN` fell from 0.25505 to 0.2334 (2025-05-14) and from
   0.29097 to 0.2664 (2025-11-28), and `DETLINES NUM` from 611 to 605 and from 603 to 597,
@@ -95,12 +95,13 @@ since then named each cause (DY-2325):
   0.15931 to 0.13778 (2025-11-28). The Ritz wavelengths of the NIR multi-pinhole lines
   (DY-2084) gave 92% and 66% of the fall, and DY-1970 the rest.
 - NIR standard-star `SNR MEDIAN` went from 70.14 to 90.08. It fell from 70.26 to 62.47 at
-  the DY-2194 merge (cause not yet found). The NDIT error model raised it by 1.413, the
+  the DY-2194 merge (cause not yet found, DY-2335). The NDIT error model raised it by 1.413, the
   square root of its NDIT of 2, to 88.36 (DY-2317). The read noise from the median dark
   pair raised it to 90.08 (DY-2322).
 
-The NIR response moved by 0.6% or less and both `EFF MEDIAN` values by 0.1% or less, inside
-their bands, and were left as they are.
+Since v0.19.1 the NIR response moved by 0.6% or less and both `EFF MEDIAN` values by 0.1%
+or less. Against its centre the 2020 nm response point is now 1.7% low, 0.35 of its band.
+All stay inside their bands and were left as they are.
 """
 
 from __future__ import annotations

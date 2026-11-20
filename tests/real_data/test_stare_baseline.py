@@ -76,10 +76,12 @@ arrived in earlier merges into develop, and gate run 42185090124 of 94478855 sho
 The VIS sky model p90 and the NIR SNR median were re-recorded on 2026-11-20 from six
 bit-identical CI runs (44753125473, 44753130854, 44753135752, 44753140806, 44753145774 and 44753149843) of
 the DY-2322 branch at 3695bd00. One gate run per merge into develop since v0.19.1 named each
-cause (DY-2325). The VIS p90 rose from 274.43 to 307.61 when the wing model stopped
+cause (DY-2325). Against the old centres, the VIS p90 rose from 274.43 to 307.61 when the wing model stopped
 overshooting (DY-2079). The NIR SNR median rose from 13.95 to 23.94: this frame has NDIT 4,
-and the NDIT error model took it from 14.09 to 24.06 (DY-2317). It rises by less than the
-square root of 4 because the sky-error inflation grows as the errors shrink (DY-1973). The
+and in gate runs the NDIT error model took it from 14.09 to 24.06 (DY-2317). It rises by
+less than the square root of 4, as the SNR of the NDIT 2 ATLAS26lxa frames rose by less
+than the square root of 2 in DY-2317, where the sky-error inflation (DY-1973) grew as the
+errors shrank. The
 read noise from the median dark pair moved it by -0.5% (DY-2322). The other values moved
 inside their bands, the largest being the NIR fluxcal median at +3.1% and the VIS sky model
 median at -3.7%, and were left as they are.
