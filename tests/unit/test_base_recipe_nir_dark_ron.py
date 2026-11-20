@@ -20,6 +20,8 @@ TRUE_SIGMA = 7.0
 SIGMA_TOLERANCE = 0.03
 # A HEAVY-TAIL SPIKE OF 60 e- IS ABOUT 6 SIGMA OF A PAIR DIFFERENCE, SO THE 10 SIGMA CLIP OF THE BIAS STATISTIC KEEPS IT
 TAIL_AMPLITUDE = 60.0
+# THE MASKED MASTER STD IS ABOUT 0.03 (ONE 9 e- PIXEL IN A FLAT FRAME); THE UNMASKED 1000 e- PIXEL GIVES ABOUT 7.7
+MASKED_MASTER_RON_BOUND = 0.2
 
 
 def _frame(data: np.ndarray, arm: str = "NIR") -> CCDData:
@@ -41,6 +43,12 @@ def _recipe(log: Any, frames: list[CCDData], arm: str | None = "NIR") -> base_re
     recipe.arm = arm
     recipe.inputFrames = StubInputFrames(frames)
     return recipe
+
+
+def _spike_mask() -> np.ndarray:
+    mask = np.zeros(SHAPE, dtype=bool)
+    mask[3, 3] = True
+    return mask
 
 
 def _gaussian_frames(
@@ -134,13 +142,7 @@ def test_nir_master_ron_still_uses_the_mask_of_the_first_pair(log: Any) -> None:
     # ASSERT
     # UNMASKED, THE 1000 e- PIXEL WOULD GIVE A MASTER NOISE OF ABOUT 7.7
     assert masterRon == pytest.approx(float(np.ma.std(np.ma.array(masterFrame.data, mask=_spike_mask()))))
-    assert masterRon < 0.2
-
-
-def _spike_mask() -> np.ndarray:
-    mask = np.zeros(SHAPE, dtype=bool)
-    mask[3, 3] = True
-    return mask
+    assert masterRon < MASKED_MASTER_RON_BOUND
 
 
 def test_nir_raw_ron_rejects_frames_with_no_measurable_spread(log: Any) -> None:
@@ -168,3 +170,57 @@ def test_non_nir_raw_ron_still_measures_only_the_first_pair(log: Any, arm: str |
 
     # ASSERT
     assert tripletRon == pairRon
+
+
+def test_nir_raw_ron_rejects_a_single_frame(log: Any) -> None:
+    """One dark makes no pair, so the measurement raises instead of returning NaN."""
+    # ARRANGE
+    recipe = _recipe(log, _gaussian_frames([TRUE_SIGMA]))
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="appear to be corrupted"):
+        recipe._measure_raw_frame_ron()
+
+
+def test_nir_raw_ron_rejects_fully_masked_pairs(log: Any) -> None:
+    """Pairs whose pixels are all masked have no spread, so no NaN reaches the QC."""
+    # ARRANGE
+    frames = _gaussian_frames([TRUE_SIGMA] * 4)
+    for frame in frames[1:]:
+        frame.mask[...] = True
+    recipe = _recipe(log, frames)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="appear to be corrupted"):
+        recipe.qc_ron(frameType="MDARK", frameName="master dark")
+    assert recipe.qc.empty
+
+
+def test_nir_raw_ron_rejects_identical_frames_among_the_used_pairs(log: Any) -> None:
+    """Identical darks after the first give a zero spread, so no zero reaches the QC."""
+    # ARRANGE
+    # PAIR 1-2 HAS A SPREAD BUT IS SKIPPED; PAIRS 2-3 AND 3-4 ARE IDENTICAL FRAMES
+    flat = np.full(SHAPE, 12.0)
+    frames = _gaussian_frames([TRUE_SIGMA]) + [_frame(flat), _frame(flat), _frame(flat)]
+    recipe = _recipe(log, frames)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="appear to be corrupted"):
+        recipe.qc_ron(frameType="MDARK", frameName="master dark")
+    assert recipe.qc.empty
+
+
+def test_nir_raw_ron_drops_an_unusable_pair_from_the_median(log: Any) -> None:
+    """A pair with no spread is left out, and the usable pairs still give the noise."""
+    # ARRANGE
+    # PAIR 2-3 IS TWO IDENTICAL FRAMES (ZERO SPREAD); PAIRS 3-4 AND 4-5 ARE NOISE
+    good = _gaussian_frames([TRUE_SIGMA] * 3, seed=5)
+    flat = np.full(SHAPE, 12.0)
+    recipe = _recipe(log, [good[0], _frame(flat), _frame(flat), good[1], good[2]])
+
+    # ACT
+    rawRon, _masterRon = recipe.qc_ron(frameType="MDARK", frameName="master dark")
+
+    # ASSERT
+    assert np.isfinite(rawRon)
+    assert rawRon > 0

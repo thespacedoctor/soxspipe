@@ -2619,9 +2619,12 @@ class base_recipe:
 
         The noise of a pair is the MAD sigma of the difference of two consecutive raw darks, divided by the square
         root of two. The result is the median of the pair noises. The first dark is still settling, so with three
-        or more darks it is left out of the pairs; with two darks the one pair is used. The darks are read one at a
-        time, so only the previous dark is held in memory. The returned mask is that of the difference of the first
-        two darks, as for the bias, so the master noise is measured against the same pixels.
+        or more darks it is left out of the pairs; with two darks the one pair is used. A pair with no spread (a
+        fully masked difference or identical darks) is left out of the median. The darks are read one at a time, so
+        only the previous dark is held in memory. The returned mask is that of the difference of the first two
+        darks, as for the bias, so the master noise is measured against the same pixels.
+
+        A ValueError is raised when no pair gives a usable noise, for example with a single dark.
 
         **Key Arguments:**
 
@@ -2654,11 +2657,16 @@ class base_recipe:
                 difference = np.ma.array(frame.data, mask=frame.mask, dtype=np.float64) - np.ma.array(
                     previous.data, mask=previous.mask, dtype=np.float64
                 )
-                pairRons.append(mad_std(difference, ignore_nan=True) / math.sqrt(2))
+                # A FULLY MASKED DIFFERENCE GIVES A MASKED RESULT, WHICH BECOMES NaN HERE
+                pairSigma = float(np.ma.filled(mad_std(difference, ignore_nan=True), np.nan))
+                pairRons.append(pairSigma / math.sqrt(2))
             previous = frame
 
         # THE FIRST DARK IS STILL SETTLING, SO PAIR 1-2 IS USED ONLY WHEN IT IS THE ONLY PAIR
-        usedRons = pairRons[1:] or pairRons
+        usedRons = [ron for ron in (pairRons[1:] or pairRons) if np.isfinite(ron) and ron > 0]
+        if not usedRons:
+            message = "The raw input frames appear to be corrupted. Cannot calculate the read-out noise. Please check the raw frames."  # noqa: E501
+            raise ValueError(message)
         return float(np.median(usedRons)), combinedMask
 
     def qc_ron(
@@ -2670,9 +2678,13 @@ class base_recipe:
     ):
         """*calculate the read-out-noise from bias/dark frames*
 
-        The raw read-out-noise is measured on the difference of the first two raw
-        frames, so fixed pattern noise cancels. With fewer than two raw frames it
-        cannot be measured, and no ``RAW RON`` QC is recorded.
+        For UVB and VIS bias frames the raw read-out-noise is measured on the difference
+        of the first two raw frames, so fixed pattern noise cancels. For NIR dark frames
+        it is the median, over consecutive raw-frame pairs, of the MAD sigma of the pair
+        difference divided by the square root of two, with the first frame skipped when
+        there are at least three. The ``MASTER RON`` mask is that of the frame 1-2
+        difference in both cases. With fewer than two raw frames the raw noise cannot be
+        measured, and no ``RAW RON`` QC is recorded.
 
         **Key Arguments:**
 
