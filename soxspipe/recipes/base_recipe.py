@@ -118,7 +118,7 @@ class base_recipe:
     arm = None
     # WHETHER A NIR RECIPE TAKES ITS READ NOISE FROM THE MASTER DARK IN THE SOF. A NODDING RECIPE SETS IT False, AS A-B
     # REMOVES THE DARK (DY-2335)
-    usesMasterDarkReadNoise = True
+    usesMasterDarkReadNoise: bool = True
 
     def __init__(
         self,

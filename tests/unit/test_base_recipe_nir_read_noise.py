@@ -15,7 +15,7 @@ from astropy.io import fits
 
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
 from soxspipe.commonutils.set_of_files import ImageFileCollection
-from soxspipe.recipes import base_recipe, soxs_nod, soxs_stare
+from soxspipe.recipes import base_recipe, soxs_nod, soxs_offset, soxs_stare
 
 pytestmark = pytest.mark.unit
 
@@ -239,13 +239,14 @@ def test_several_nir_master_darks_use_the_last_by_name_and_warn(tmp_path: Path, 
     assert any("2 master darks" in message and "master_dark_b.fits" in message for message in _warnings(log))
 
 
+@pytest.mark.parametrize("recipeClass", [soxs_nod, soxs_offset], ids=["nod", "offset"])
 def test_a_nir_nod_recipe_keeps_the_nominal_read_noise_whatever_master_dark_the_sof_names(
-    tmp_path: Path, log: Any
+    tmp_path: Path, log: Any, recipeClass: type[base_recipe]
 ) -> None:
     """A nodding frame takes no dark, as A-B removes it, so the dark's read noise plays no part (DY-2335)."""
     # ARRANGE
     _write_scene(tmp_path, "NIR", NIR_RAW, {"ESO QC RAW RON": 12.9, "ESO PRO DATANCOM": N_COMBINED})
-    recipe = _recipe(tmp_path, log, "NIR", soxs_nod)
+    recipe = _recipe(tmp_path, log, "NIR", recipeClass)
 
     # ACT
     _verify_read_noise(recipe)
@@ -253,15 +254,19 @@ def test_a_nir_nod_recipe_keeps_the_nominal_read_noise_whatever_master_dark_the_
     # ASSERT
     assert recipe.detectorParams["ron"].value == pytest.approx(YAML_RON)
     assert recipe.readNoise is None
-    assert not any("master dark" in message for _, message in log.messages)
+    assert not any("master dark" in message.lower() for _, message in log.messages)
 
 
-def test_a_nir_nod_recipe_does_not_warn_about_several_master_darks(tmp_path: Path, log: Any) -> None:
+@pytest.mark.parametrize("recipeClass", [soxs_nod, soxs_offset], ids=["nod", "offset"])
+def test_a_nir_nod_recipe_does_not_warn_about_several_master_darks(
+    tmp_path: Path, log: Any, recipeClass: type[base_recipe]
+) -> None:
+    """A nodding recipe ignores every master dark in its SOF, so several of them raise no warning (DY-2335)."""
     # ARRANGE
     _write_scene(tmp_path, "NIR", NIR_RAW, None)
     for name in ("master_dark_a.fits", "master_dark_b.fits"):
         _write_frame(tmp_path, name, "NIR", {"ESO PRO CATG": "MASTER_DARK_NIR", **MEASURED_CARDS})
-    recipe = _recipe(tmp_path, log, "NIR", soxs_nod)
+    recipe = _recipe(tmp_path, log, "NIR", recipeClass)
 
     # ACT
     _verify_read_noise(recipe)
@@ -271,14 +276,11 @@ def test_a_nir_nod_recipe_does_not_warn_about_several_master_darks(tmp_path: Pat
     assert _warnings(log) == []
 
 
-@pytest.mark.parametrize("reduceNodAsStare", [False, True], ids=["stare", "nod as stare"])
-def test_a_nir_stare_recipe_takes_the_read_noise_from_its_master_dark(
-    tmp_path: Path, log: Any, reduceNodAsStare: bool
-) -> None:
+def test_a_nir_stare_recipe_takes_the_read_noise_from_its_master_dark(tmp_path: Path, log: Any) -> None:
+    """The stare recipe, which also runs nodding frames in stare mode, subtracts the dark and takes its read noise."""
     # ARRANGE
     _write_scene(tmp_path, "NIR", NIR_RAW, MEASURED_CARDS)
     recipe = _recipe(tmp_path, log, "NIR", soxs_stare)
-    recipe.reduceNodAsStare = reduceNodAsStare
 
     # ACT
     _verify_read_noise(recipe)
@@ -292,6 +294,7 @@ def test_a_nir_stare_recipe_takes_the_read_noise_from_its_master_dark(
 def test_a_uvb_or_vis_nod_recipe_still_takes_the_read_noise_from_its_master_bias(
     tmp_path: Path, log: Any, arm: str
 ) -> None:
+    """Nod mode subtracts the master bias, so a UVB or VIS nod SOF still takes the read noise from it."""
     # ARRANGE
     _write_scene(tmp_path, arm, {"ESO DET OUT1 RON": 3.3}, None)
     _write_frame(tmp_path, "master_bias.fits", arm, {"ESO PRO CATG": f"MASTER_BIAS_{arm}", **VIS_BIAS_CARDS})
