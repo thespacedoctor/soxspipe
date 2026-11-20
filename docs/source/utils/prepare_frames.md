@@ -22,9 +22,13 @@ $$\rm{electron\ count} = \rm{adu\ count} \times \rm{gain}$$
 
 Next, an uncertainty map is generated for the raw image and added as the 'ERR' extension of the image.
 
-<!-- For each pixel, the uncertainty is calculated as:
+For each pixel, the uncertainty is the square root of the variance:
 
-$$\rm{error} = \sqrt{\rm{readnoise}^2+\rm{electron\ count}^2}$$ -->
+$$\rm{error} = \sqrt{\frac{\max(\rm{electron\ count}, 0) + \rm{readnoise}^2}{\rm{NDIT}}}$$
+
+A bias frame has the read noise only, so its error is $\rm{readnoise} / \sqrt{\rm{NDIT}}$.
+
+NDIT is the number of integrations in the file (`ESO DET NDIT`). A raw NIR file is the mean of its NDIT integrations, so its variance is the variance of one integration divided by NDIT. A frame with no NDIT card, such as a VIS or X-Shooter UVB frame, is one integration (NDIT is 1). The same is true for a card that is not a whole number of at least 1, and the recipe writes a warning. The read noise is the value for one integration. Stacking and flux calibration need no NDIT term, because the error of each prepared frame already includes it.
 
 <!-- **Bitmap Extension**
 
