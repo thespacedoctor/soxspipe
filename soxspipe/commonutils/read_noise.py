@@ -9,6 +9,8 @@ the raw-frame header, then to the detector default.
 import math
 from dataclasses import dataclass
 
+import numpy as np
+
 # THE HEADER CARD OF THE READ NOISE MEASURED FROM A RAW-FRAME PAIR
 MEASURED_RON_CARD = "ESO QC RAW RON"
 # THE CARD OF THE FIRST RAW FRAME A PRODUCT WAS BUILT FROM; THE OTHERS COUNT UP FROM 1
@@ -20,6 +22,7 @@ SOURCE_MASTER_BIAS = "master bias"
 SOURCE_MASTER_DARK = "master dark"
 SOURCE_RAW_HEADER = "raw-frame header"
 SOURCE_DETECTOR_DEFAULT = "detector default"
+SOURCE_NDSAMPLES_TABLE = "NDSAMPLES table"
 
 
 @dataclass(frozen=True)
@@ -149,3 +152,75 @@ def _count_raw_frames(header):
     while RAW_FRAME_CARD_TEMPLATE.format(index=count + 1) in header:
         count += 1
     return count or None
+
+
+def table_read_noise(ndsamples, table):
+    """*the NIR read noise (e-) at a sample count, interpolated linearly in log(NDSAMPLES) between the table points*
+
+    **Key Arguments:**
+
+    - ``ndsamples`` -- the ``ESO DET NDSAMPLES`` value of a frame
+    - ``table`` -- the measured read noise (e-) keyed by sample count, from the detector parameters
+
+    **Return:**
+
+    - ``ron`` -- the read noise (e-), or *None* when ``ndsamples`` is not a whole number inside the range of the table
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.read_noise import table_read_noise
+    ron = table_read_noise(97, detectorParams["read-noise-by-ndsamples"])
+    ```
+    """
+    if _ndsamples_problem(ndsamples, table) is not None:
+        return None
+    counts = sorted(table)
+    return float(np.interp(math.log(ndsamples), np.log(counts), [table[count] for count in counts]))
+
+
+def read_noise_from_ndsamples(ndsamples, table, fallbackRon, frameLabel, log):
+    """*the NIR read noise (e-) of a frame from its sample count, else the fallback with a warning*
+
+    **Key Arguments:**
+
+    - ``ndsamples`` -- the ``ESO DET NDSAMPLES`` value of the frame, or *None* when it has no such card
+    - ``table`` -- the measured read noise (e-) keyed by sample count
+    - ``fallbackRon`` -- the read noise (e-) for a frame whose count the table cannot serve
+    - ``frameLabel`` -- the frame name, for the warning
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``ron`` -- the table value from ``table_read_noise``, or ``fallbackRon`` with a warning that names the frame and
+      the reason
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.read_noise import read_noise_from_ndsamples
+    ron = read_noise_from_ndsamples(10, table, 7.55, "SOXS.2026-01-31T19:16:38.123.fits", log)
+    ```
+    """
+    ron = table_read_noise(ndsamples, table)
+    if ron is not None:
+        return ron
+
+    log.warning(
+        f"The frame {frameLabel} has {_ndsamples_problem(ndsamples, table)}; "
+        f"the read noise is the detector value of {float(fallbackRon)} e-."
+    )
+    return float(fallbackRon)
+
+
+def _ndsamples_problem(ndsamples, table):
+    """*say why a sample count cannot be looked up in the table, or None when it can*"""
+    if ndsamples is None or ndsamples is np.ma.masked:
+        return "no ESO DET NDSAMPLES card"
+    isNumber = isinstance(ndsamples, (int, float, np.integer, np.floating)) and not isinstance(ndsamples, bool)
+    if not isNumber or not math.isfinite(ndsamples) or ndsamples != int(ndsamples):
+        return f"an ESO DET NDSAMPLES value ({ndsamples!r}) that is not a whole number"
+    lowest, highest = min(table), max(table)
+    if not lowest <= ndsamples <= highest:
+        return f"an ESO DET NDSAMPLES of {int(ndsamples)}, outside the measured range of {lowest} to {highest}"
+    return None
