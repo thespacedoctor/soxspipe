@@ -72,6 +72,17 @@ and the higher NIR x fit degrees (DY-1989). The red end moved from 2031.78 to 20
 fell 0.21%. The other NIR values and the VIS values moved inside their bands and were left
 as they are. The VIS values did not move across DY-1989: their drift from these centres
 arrived in earlier merges into develop, and gate run 42185090124 of 94478855 shows it.
+
+The VIS sky model p90 and the NIR SNR median were re-recorded on 2026-11-20 from six
+bit-identical CI runs (44753125473, 44753130854, 44753135752, 44753140806, 44753145774 and 44753149843) of
+the DY-2322 branch at 3695bd00. One gate run per merge into develop since v0.19.1 named each
+cause (DY-2325). The VIS p90 rose from 274.43 to 307.61 when the wing model stopped
+overshooting (DY-2079). The NIR SNR median rose from 13.95 to 23.94: this frame has NDIT 4,
+and the NDIT error model took it from 14.09 to 24.06 (DY-2317). It rises by less than the
+square root of 4 because the sky-error inflation grows as the errors shrink (DY-1973). The
+read noise from the median dark pair moved it by -0.5% (DY-2322). The other values moved
+inside their bands, the largest being the NIR fluxcal median at +3.1% and the VIS sky model
+median at -3.7%, and were left as they are.
 """
 
 from __future__ import annotations
@@ -135,7 +146,7 @@ BASELINES = [
             fluxcalMedian=6.034633199242182e-14,
             skyCountsMedian=23.88184356689453,
             skyModelMedian=43.19798278808594,
-            skyModelP90=274.4321044921875,
+            skyModelP90=307.6141235351561,
             detectedFraction=0.931,
             objtraceStem="20251013T043511_VIS_1X1_1_STARE_OBJ_SLIT5_0_300_0S_SOXS_FEIGE110",
         ),
@@ -153,7 +164,7 @@ BASELINES = [
             waveMinAbs=0.12,
             waveMax=2030.88,
             waveStep=0.06,
-            snrMedian=13.95,
+            snrMedian=23.94,
             fluxcalMedian=2.816848748728904e-15,
             skyCountsMedian=18.00847053527832,
             skyModelMedian=20.919416427612305,
