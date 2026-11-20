@@ -2657,7 +2657,8 @@ class base_recipe:
                 difference = np.ma.array(frame.data, mask=frame.mask, dtype=np.float64) - np.ma.array(
                     previous.data, mask=previous.mask, dtype=np.float64
                 )
-                # A FULLY MASKED DIFFERENCE GIVES A MASKED RESULT, WHICH BECOMES NaN HERE
+                # A FULLY MASKED OR NaN DIFFERENCE GIVES 0.0, OR A MASKED CONSTANT ON SOME ASTROPY
+                # VERSIONS (FILLED AS NaN HERE); BOTH ARE DROPPED BELOW
                 pairSigma = float(np.ma.filled(mad_std(difference, ignore_nan=True), np.nan))
                 pairRons.append(pairSigma / math.sqrt(2))
             previous = frame

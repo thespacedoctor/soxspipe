@@ -172,7 +172,7 @@ def test_non_nir_raw_ron_still_measures_only_the_first_pair(log: Any, arm: str |
     assert tripletRon == pairRon
 
 
-def test_nir_raw_ron_rejects_a_single_frame(log: Any) -> None:
+def test_nir_dark_ron_helper_rejects_a_single_frame(log: Any) -> None:
     """One dark makes no pair, so the measurement raises instead of returning NaN."""
     # ARRANGE
     recipe = _recipe(log, _gaussian_frames([TRUE_SIGMA]))
