@@ -21,7 +21,8 @@ RAW_DIRECTORY_NAME = "raw"
 # THE MOST RAW FRAMES OF ONE NAME THAT A MASTER DARK'S SAMPLE COUNT IS LOOKED FOR IN
 MAX_RAW_CANDIDATES = 10
 # WHAT READING A CORRUPT FITS FILE CAN RAISE
-FITS_READ_ERRORS = (OSError, ValueError, EOFError)
+# IMPORTERROR: ASTROPY NEEDS AN OPTIONAL PACKAGE TO DECOMPRESS A .Z FILE
+FITS_READ_ERRORS = (OSError, ValueError, EOFError, ImportError)
 # A MEASURED VALUE THIS FAR (AS A FRACTION) FROM THE NOMINAL ONE IS WORTH A WARNING
 NOMINAL_DISAGREEMENT_FRACTION = 0.15
 # A NIR MASTER DARK QC RAW RON THIS FAR (AS A FRACTION) FROM THE TABLE VALUE AT ITS SAMPLE COUNT IS WORTH A WARNING
@@ -331,10 +332,16 @@ def _master_ndsamples(masterHeader, workspaceRoot, kw, log):
 
 
 def _is_plain_file_name(name):
-    """*True for a string that is one file name: no directory part, not absolute, no ``..``*"""
+    """*True for a string that is one file name: no directory part, backslash or NUL, and not ``.`` or ``..``*"""
     import os
 
-    return isinstance(name, str) and name == os.path.basename(name) and not os.path.isabs(name) and ".." not in name
+    return (
+        isinstance(name, str)
+        and name not in ("", ".", "..")
+        and not any(character in name for character in ("/", "\\", "\0"))
+        and name == os.path.basename(name)
+        and not os.path.isabs(name)
+    )
 
 
 def _raw_frame_candidates(rawName, workspaceRoot):
@@ -351,9 +358,20 @@ def _raw_frame_candidates(rawName, workspaceRoot):
     for name in (rawName, rawName + ".Z"):
         for path in sorted(glob.glob(os.path.join(glob.escape(rawRoot), "*", glob.escape(name)))):
             resolved = os.path.realpath(path)
-            if os.path.commonpath([rawRoot, resolved]) == rawRoot and os.path.isfile(resolved):
-                candidates.append(path)
+            if _is_inside(resolved, rawRoot) and os.path.isfile(resolved):
+                # THE CHECKED PATH IS THE ONE READ, SO A LINK SWAPPED AFTER THE CHECK IS NOT FOLLOWED
+                candidates.append(resolved)
     return candidates[:MAX_RAW_CANDIDATES]
+
+
+def _is_inside(path, root):
+    """*True when ``path`` lies inside ``root``; paths on different drives are not inside*"""
+    import os
+
+    try:
+        return os.path.commonpath([root, path]) == root
+    except ValueError:
+        return False
 
 
 def _raw_frame_ndsamples(rawPath, rawName, card, log):

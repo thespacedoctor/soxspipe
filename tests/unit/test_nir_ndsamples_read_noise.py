@@ -13,7 +13,13 @@ import pytest
 
 from soxspipe.commonutils.detector_lookup import detector_lookup
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-from soxspipe.commonutils.read_noise import read_noise_from_ndsamples, table_read_noise
+from soxspipe.commonutils.read_noise import (
+    FITS_READ_ERRORS,
+    _is_inside,
+    _is_plain_file_name,
+    read_noise_from_ndsamples,
+    table_read_noise,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -120,3 +126,40 @@ def test_an_unusable_sample_count_falls_back_with_a_warning_naming_the_frame_and
     assert FRAME_LABEL in warnings[0]
     assert reason in warnings[0]
     assert "7.55" in warnings[0]
+
+
+@pytest.mark.parametrize("name", ["SOXS.2026-01-31T19:16:38.872.fits", "a..b.fits"])
+def test_a_bare_file_name_is_a_plain_file_name(name: str) -> None:
+    # ACT
+    isPlain = _is_plain_file_name(name)
+
+    # ASSERT
+    assert isPlain
+
+
+@pytest.mark.parametrize(
+    "name", ["", ".", "..", "../frame.fits", "/abs/frame.fits", "dir/frame.fits", "dir\\frame.fits", "a\0b", 12]
+)
+def test_a_name_with_a_directory_part_or_a_special_character_is_not_a_plain_file_name(name: Any) -> None:
+    # ACT
+    isPlain = _is_plain_file_name(name)
+
+    # ASSERT
+    assert not isPlain
+
+
+def test_a_path_is_inside_its_root_and_a_sibling_with_a_longer_name_is_not() -> None:
+    # ACT AND ASSERT
+    assert _is_inside("/w/raw/2026-01-31/f.fits", "/w/raw")
+    assert not _is_inside("/w/raw-other/f.fits", "/w/raw")
+
+
+def test_paths_that_cannot_be_compared_are_not_inside() -> None:
+    # ARRANGE: AN ABSOLUTE AND A RELATIVE PATH MAKE COMMONPATH RAISE, AS TWO WINDOWS DRIVES DO
+    # ACT AND ASSERT
+    assert not _is_inside("relative/f.fits", "/w/raw")
+
+
+def test_a_missing_decompression_package_counts_as_an_unreadable_frame() -> None:
+    # ASSERT: ASTROPY RAISES MODULENOTFOUNDERROR FOR A .Z FILE WITHOUT ITS OPTIONAL PACKAGE
+    assert issubclass(ModuleNotFoundError, FITS_READ_ERRORS)
