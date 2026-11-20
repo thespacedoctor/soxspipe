@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +25,7 @@ SMALL_CHUNK_ROWS = 7
 
 
 @pytest.fixture(autouse=True)
-def clear_coefficient_cache() -> None:
+def clear_coefficient_cache() -> Iterator[None]:
     _read_dispersion_map_axes.cache_clear()
     yield
     _read_dispersion_map_axes.cache_clear()
@@ -108,7 +109,8 @@ def test_corner_conversion_hands_the_converter_no_more_rows_than_the_chunk_size(
 
     transformer._corner_pixel_positions(ORDER_NUMBER, wavelengths, slitPositions, chunkRows=SMALL_CHUNK_ROWS)
 
-    assert rowCounts == [7, 7, 7, 4]
+    wholeChunks, remainder = divmod(CORNER_COUNT, SMALL_CHUNK_ROWS)
+    assert rowCounts == [SMALL_CHUNK_ROWS] * wholeChunks + [remainder]
 
 
 def test_corner_conversion_applies_the_frame_binning_to_every_chunk(log: object, tmp_path: Path) -> None:
@@ -125,3 +127,13 @@ def test_corner_conversion_applies_the_frame_binning_to_every_chunk(log: object,
     binnedX, binnedY = transformer._to_frame_binning(expected["fit_x"].to_numpy(), expected["fit_y"].to_numpy())
     np.testing.assert_array_equal(fitX, binnedX)
     np.testing.assert_array_equal(fitY, binnedY)
+
+
+@pytest.mark.parametrize("chunkRows", [0, -3])
+def test_corner_conversion_rejects_a_chunk_size_below_one(log: object, tmp_path: Path, chunkRows: int) -> None:
+    mapPath = _curved_map(tmp_path / "map.fits")
+    wavelengths, slitPositions = _corners()
+    transformer = _transformer(log, mapPath)
+
+    with pytest.raises(ValueError, match="chunkRows must be at least 1"):
+        transformer._corner_pixel_positions(ORDER_NUMBER, wavelengths, slitPositions, chunkRows=chunkRows)

@@ -340,7 +340,13 @@ class image_transformer(base_util):
         self.log.debug("completed the ``_cache_true_wavelength_slit_images`` method")
         return
 
-    def _corner_pixel_positions(self, order, wavelengths, slitPositions, chunkRows=CORNER_CHUNK_ROWS):
+    def _corner_pixel_positions(
+        self,
+        order: int,
+        wavelengths: np.ndarray,
+        slitPositions: np.ndarray,
+        chunkRows: int = CORNER_CHUNK_ROWS,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """*Convert one order's cell-corner points to detector pixels, a chunk of rows at a time*
 
         ``dispersion_map_to_pixel_arrays`` builds temporary arrays that grow with the row count, so the
@@ -353,11 +359,13 @@ class image_transformer(base_util):
         - ``order`` -- the echelle order number of every point
         - ``wavelengths`` -- the wavelength of each point
         - ``slitPositions`` -- the absolute slit position of each point
-        - ``chunkRows`` -- the most rows converted in one call. Default *CORNER_CHUNK_ROWS*
+        - ``chunkRows`` -- the most rows converted in one call, at least 1. Default *CORNER_CHUNK_ROWS*
 
         **Return:**
 
         - ``fitX``, ``fitY`` -- the detector pixel positions in the frame's binning, one per input point
+
+        A ``chunkRows`` below 1 raises ``ValueError``.
 
         **Usage:**
 
@@ -368,6 +376,9 @@ class image_transformer(base_util):
         import pandas as pd
 
         from .dispersion_map_to_pixel_arrays import dispersion_map_to_pixel_arrays
+
+        if chunkRows < 1:
+            raise ValueError(f"chunkRows must be at least 1, got {chunkRows}")
 
         rowCount = len(wavelengths)
         fitX = np.empty(rowCount, dtype=np.float32)
@@ -433,10 +444,9 @@ class image_transformer(base_util):
             spBlock = spBlock + np.polyval(centreCoeffs, wlBlock)
 
             # EVERY CORNER (EVEN OFF-DETECTOR) IS KEPT TO PRESERVE POLYGON GEOMETRY AND ROW ORDER
-            fit_x, fit_y = self._corner_pixel_positions(order, wlBlock.reshape(-1), spBlock.reshape(-1))
-            xb = np.ascontiguousarray(fit_x.reshape(n_sp, n_wl, ncorners))
-            yb = np.ascontiguousarray(fit_y.reshape(n_sp, n_wl, ncorners))
-            del fit_x, fit_y
+            fitX, fitY = self._corner_pixel_positions(order, wlBlock.reshape(-1), spBlock.reshape(-1))
+            xb = np.ascontiguousarray(fitX.reshape(n_sp, n_wl, ncorners))
+            yb = np.ascontiguousarray(fitY.reshape(n_sp, n_wl, ncorners))
 
             # VECTORIZED PER-CELL CANDIDATE-PIXEL BOUNDING BOX (REPLACES THE OLD PER-CELL
             # np.isfinite()/.min()/.max() PYTHON LOOP)
