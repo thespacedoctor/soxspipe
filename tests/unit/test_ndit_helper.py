@@ -13,7 +13,7 @@ import pytest
 from astropy.io import fits
 
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-from soxspipe.commonutils.ndit import read_ndit
+from soxspipe.commonutils.ndit import MAX_NDIT, read_ndit
 
 pytestmark = pytest.mark.unit
 
@@ -59,7 +59,7 @@ def test_returns_one_without_a_message_when_the_card_is_missing(log: Any, instru
     assert not [message for level, message in log.messages if level == "warning"]
 
 
-@pytest.mark.parametrize("value", [0, -2, 2.5, float("nan"), float("inf"), "two", "", True])
+@pytest.mark.parametrize("value", [0, -2, 2.5, float("nan"), float("inf"), "two", "", True, 1e20, 10**30, MAX_NDIT + 1])
 def test_returns_one_with_a_warning_when_the_card_is_invalid(log: Any, value: object) -> None:
     # ARRANGE
     kw = _kw(log, "soxs")
@@ -72,6 +72,18 @@ def test_returns_one_with_a_warning_when_the_card_is_invalid(log: Any, value: ob
     warnings = [message for level, message in log.messages if level == "warning"]
     assert len(warnings) == 1
     assert "ESO DET NDIT" in warnings[0]
+
+
+def test_accepts_the_largest_ndit_allowed(log: Any) -> None:
+    # ARRANGE
+    kw = _kw(log, "soxs")
+
+    # ACT
+    result = read_ndit(_header(MAX_NDIT), kw, log)
+
+    # ASSERT
+    assert result == MAX_NDIT
+    assert not [message for level, message in log.messages if level == "warning"]
 
 
 def test_accepts_a_whole_number_float_and_a_numpy_integer(log: Any) -> None:

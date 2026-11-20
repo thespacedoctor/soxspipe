@@ -175,6 +175,22 @@ def test_an_invalid_ndit_card_leaves_the_develop_error_and_warns_once(log: Any) 
     assert len([level for level, _ in log.messages if level == "warning"]) == 1
 
 
+@pytest.mark.parametrize("value", [1e20, 10**30])
+def test_an_out_of_range_ndit_card_leaves_the_develop_error_and_warns_once(log: Any, value: float) -> None:
+    # ARRANGE
+    recipe = _recipe(log)
+    data = np.random.default_rng(5).poisson(SKY_LEVEL, SHAPE).astype(np.float32)
+    frame = _frame(recipe, data)
+    frame.header[recipe.kw("DET_NDIT")] = value
+
+    # ACT
+    prepared = recipe._add_uncertainty_map(frame)
+
+    # ASSERT
+    np.testing.assert_array_equal(prepared.uncertainty.array, _develop_error(recipe, data))
+    assert len([level for level, _ in log.messages if level == "warning"]) == 1
+
+
 def test_stacking_ndit_frames_divides_the_per_frame_error_by_root_n_without_scaling_it_again(
     log: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -222,3 +238,23 @@ def test_a_prepared_nir_frame_with_ndit_2_is_written_with_the_scaled_error(log: 
     assert single.uncertainty.array[1, 1] == pytest.approx(expected, rel=1e-6)
     assert double.uncertainty.array[1, 1] == pytest.approx(expected / np.sqrt(2), rel=1e-6)
     assert double.data[1, 1] == single.data[1, 1]
+
+
+def test_preparing_an_already_prepared_ndit_2_frame_does_not_scale_the_error_again(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    _bad_pixel_map(tmp_path / "calibrations")
+    recipe = _prepare_recipe(log, tmp_path, arm="NIR")
+    rawPath = _raw_frame(tmp_path, dprType="LAMP,FLAT", DET_NDIT=2)
+    preparedPath = recipe._prepare_single_frame(rawPath)
+    first = CCDData.read(preparedPath, hdu=0, unit=u.electron, hdu_uncertainty="ERRS")
+
+    # ACT
+    secondPath = recipe._prepare_single_frame(preparedPath)
+
+    # ASSERT
+    second = CCDData.read(secondPath, hdu=0, unit=u.electron, hdu_uncertainty="ERRS")
+    assert secondPath == preparedPath
+    np.testing.assert_array_equal(second.uncertainty.array, first.uncertainty.array)
+    assert second.uncertainty.array[1, 1] == pytest.approx(
+        np.sqrt(9.0 * TEST_GAIN + TEST_RON**2) / np.sqrt(2), rel=1e-6
+    )

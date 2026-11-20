@@ -1421,7 +1421,8 @@ class base_recipe:
             masterHeader, self.rawHeaderRon, self.defaultRon, self.kw, self.log, masterLabel=masterLabel
         )
         # THE MASTER DARK'S QC RAW RON IS TAKEN AS THE NOISE OF ONE INTEGRATION. A MASTER BUILT FROM NDIT > 1 DARKS
-        # (X-SHOOTER NIR ONLY; EVERY SOXS DARK IS NDIT 1) WOULD NEED IT SCALED BY SQRT(NDIT) OF THE MASTER (DY-2317)
+        # (X-SHOOTER NIR ONLY; EVERY SOXS DARK IS NDIT 1) WOULD NEED IT SCALED BY SQRT(NDIT) OF THE MASTER
+        # (DY-2317, DY-2322)
         self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
 
         return

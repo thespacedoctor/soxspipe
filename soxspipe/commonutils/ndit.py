@@ -7,6 +7,10 @@ integration divided by NDIT. VIS and UVB frames carry no NDIT card and are one i
 import math
 from numbers import Real
 
+# THE LARGEST NDIT A CARD MAY HOLD. THE ARCHIVE MAXIMUM IS 600 (AN ABORTED TEST DARK), SO 10000 IS FAR ABOVE ANY REAL
+# VALUE AND FAR BELOW THE POINT WHERE int(value) STOPS FITTING A NUMPY INTEGER
+MAX_NDIT = 10000
+
 
 def _is_whole_number(value):
     """*True for a finite integer or integer-valued float, and False for anything else, a boolean included*"""
@@ -26,8 +30,9 @@ def read_ndit(header, kw, log):
 
     **Return:**
 
-    - ``ndit`` -- the NDIT as an integer of at least 1. A missing card gives 1 with no message; a card that is not a
-      whole number of at least 1 gives 1 and a warning
+    - ``ndit`` -- the NDIT as an integer from 1 to ``MAX_NDIT`` (10000, about 16 times the largest archive value of 600,
+      and far below the point where a huge card value would no longer fit a NumPy integer). A missing card gives 1
+      with no message; a card that is not a whole number in that range gives 1 and a warning
 
     **Usage:**
 
@@ -41,8 +46,10 @@ def read_ndit(header, kw, log):
         return 1
 
     value = header[card]
-    if not _is_whole_number(value) or value < 1:
-        log.warning(f"The {card} card holds {value!r}, which is not a whole number of at least 1; NDIT is taken as 1.")
+    if not _is_whole_number(value) or not 1 <= value <= MAX_NDIT:
+        log.warning(
+            f"The {card} card holds {value!r}, which is not a whole number from 1 to {MAX_NDIT}; NDIT is taken as 1."
+        )
         return 1
 
     return int(value)

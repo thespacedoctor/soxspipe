@@ -28,7 +28,7 @@ $$\rm{error} = \sqrt{\frac{\max(\rm{electron\ count}, 0) + \rm{readnoise}^2}{\rm
 
 A bias frame has the read noise only, so its error is $\rm{readnoise} / \sqrt{\rm{NDIT}}$.
 
-NDIT is the number of integrations in the file (`ESO DET NDIT`). A raw NIR file is the mean of its NDIT integrations, so its variance is the variance of one integration divided by NDIT. A frame with no NDIT card, such as a VIS or X-Shooter UVB frame, is one integration (NDIT is 1). The same is true for a card that is not a whole number of at least 1, and the recipe writes a warning. The read noise is the value for one integration. Stacking and flux calibration need no NDIT term, because the error of each prepared frame already includes it.
+NDIT is the number of integrations in the file (`ESO DET NDIT`). A raw NIR file is the mean of its NDIT integrations, so its variance is the variance of one integration divided by NDIT. A frame with no NDIT card, such as a VIS or X-Shooter UVB frame, is one integration (NDIT is 1). The same is true for a card that is not a whole number from 1 to 10000, and the recipe writes a warning. X-Shooter NIR frames carry the same card, so those with an NDIT above 1 change in the same way. The read noise is the value for one integration. Stacking and flux calibration need no NDIT term, because the error of each prepared frame already includes it.
 
 <!-- **Bitmap Extension**
 
