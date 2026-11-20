@@ -125,6 +125,10 @@ class soxs_nod(base_recipe):
     # (DY-2193). AN IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) WHEN A CHECK RUNS
     hostFeatures = None
 
+    # A NODDING FRAME TAKES NO DARK, AS A-B REMOVES IT, SO A MASTER DARK IN A NIR NOD SOF DOES NOT SET THE READ NOISE
+    # (DY-2335). THE STARE RECIPE KEEPS IT
+    usesMasterDarkReadNoise: bool = False
+
     def __init__(
         self,
         log,

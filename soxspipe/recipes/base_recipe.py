@@ -116,6 +116,9 @@ class base_recipe:
     # THE ARM OF THE INPUT FRAMES, SET WHEN THEY ARE VERIFIED. A CLASS ATTRIBUTE, SO A RECIPE OBJECT BUILT WITHOUT
     # `__init__` READS AS NO ARM (DY-2322)
     arm = None
+    # WHETHER A NIR RECIPE TAKES ITS READ NOISE FROM THE MASTER DARK IN THE SOF. A NODDING RECIPE SETS IT False, AS A-B
+    # REMOVES THE DARK (DY-2335)
+    usesMasterDarkReadNoise: bool = True
 
     def __init__(
         self,
@@ -1382,8 +1385,9 @@ class base_recipe:
         """*replace the nominal read noise with the one measured on the master frame the SOF names*
 
         UVB and VIS frames use the master bias (``MASTER_BIAS_<arm>``); NIR frames use the master dark
-        (``MASTER_DARK_NIR``). A UVB/VIS SOF never takes its read noise from a master dark. Without that master frame
-        in the SOF, or for any other arm, the nominal read noise stays. Otherwise ``self.detectorParams["ron"]`` is set
+        (``MASTER_DARK_NIR``). A UVB/VIS SOF never takes its read noise from a master dark, and neither does a NIR
+        recipe with ``usesMasterDarkReadNoise`` False (the nodding recipe, DY-2335). Without that master frame in the
+        SOF, or for any other arm, the nominal read noise stays. Otherwise ``self.detectorParams["ron"]`` is set
         to the single-frame read noise, which the prepared uncertainty and the bias-pedestal correction use. The master
         frame's noise reaches a detrended frame through ``ccdproc.subtract_bias`` or ``ccdproc.subtract_dark``, so it
         is not added here. The sky-subtraction noise model has no such propagation; ``self.readNoise.skyFit`` holds
@@ -1397,7 +1401,7 @@ class base_recipe:
         arm = self.arm.upper()
         if arm in ("UVB", "VIS"):
             masterCatg, masterLabel, masterPlural = f"MASTER_BIAS_{arm}", SOURCE_MASTER_BIAS, "master biases"
-        elif arm == "NIR":
+        elif arm == "NIR" and self.usesMasterDarkReadNoise:
             masterCatg, masterLabel, masterPlural = "MASTER_DARK_NIR", SOURCE_MASTER_DARK, "master darks"
         else:
             return
