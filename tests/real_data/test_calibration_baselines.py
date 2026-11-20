@@ -105,6 +105,12 @@ One gate run per merge into develop since then named each cause (DY-2325):
 Since v0.19.1 the NIR response moved by 0.6% or less and both `EFF MEDIAN` values by 0.1%
 or less. Against its centre the 2020 nm response point is now 1.7% low, 0.35 of its band.
 All stay inside their bands and were left as they are.
+
+The NIR standard-star `SNR MEDIAN` was re-recorded on 2026-11-20 from six bit-identical CI runs (44837121586,
+44837124961, 44837128846, 44837131758, 44837134615 and 44837138301) of the
+DY-2341 branch at e5776edb. It fell from 99.22 to 98.73 (-0.49%). The 150 s standard has 96 up-the-ramp samples, so
+its read noise is now 7.59 e- from the NDSAMPLES table, not the nominal 7.3 e-. Develop run 44829384479 gave 99.22, so
+the move is DY-2341's. The NIR response moved by 0.014% or less and was left as it is.
 """
 
 from __future__ import annotations
@@ -393,8 +399,8 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         sofName="20251128T030328_NIR_3_NOD_STD_FLUX_SLIT5_0_150_0S_SOXS.sof",
         values={
             "EFF MEDIAN": level(0.1181),
-            # 70.14 UNTIL 2026-11-20 (DY-2194, DY-2317, DY-2322)
-            "SNR MEDIAN": level(99.22),
+            # 70.14 UNTIL 2026-11-20 (DY-2194, DY-2317, DY-2322); 99.22 UNTIL DY-2341
+            "SNR MEDIAN": level(98.73),
             "N ORDERS": count(15),
         },
     ),

@@ -85,6 +85,13 @@ errors shrank. The
 read noise from the median dark pair moved it by -0.5% (DY-2322). The other values moved
 inside their bands, the largest being the NIR fluxcal median at +3.1% and the VIS sky model
 median at -3.7%, and were left as they are.
+
+The NIR SNR median was re-recorded on 2026-11-20 from six bit-identical CI runs (44837121586, 44837124961,
+44837128846, 44837131758, 44837134615 and 44837138301) of the DY-2341 branch at
+e5776edb. The SNR median fell from 23.94 to 23.70 (-1.0%). The frame has 20 up-the-ramp samples, so its read noise is
+now 11.01 e- from the NDSAMPLES table, not the master dark's `QC RAW RON`, and the stare sky fit adds the master dark's
+own table noise. Develop run 44829384479 gave 23.94, so the move is DY-2341's. The other NIR values moved by 0.4% or
+less, and the VIS values did not move. They were left as they are.
 """
 
 from __future__ import annotations
@@ -166,7 +173,7 @@ BASELINES = [
             waveMinAbs=0.12,
             waveMax=2030.88,
             waveStep=0.06,
-            snrMedian=23.94,
+            snrMedian=23.70,
             fluxcalMedian=2.816848748728904e-15,
             skyCountsMedian=18.00847053527832,
             skyModelMedian=20.919416427612305,
