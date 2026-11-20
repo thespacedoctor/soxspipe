@@ -300,6 +300,9 @@ class soxs_mdark(base_recipe):
             masterRon=masterRon,
         )
 
+        if rawRon is not None:
+            self._cross_check_nir_dark_ron(rawRon, frame.header)
+
         # FILL THE MASKED UNCERTAINTY WITH THE MEASURED RAW RON, OR THE MEAN FRAME RON IF THERE WAS NO RAW PAIR
         self._fill_masked_uncertainty(frame, meanFrameRon if rawRon is None else rawRon)
 
