@@ -9,13 +9,8 @@ A SOXS NIR frame takes its read noise from its own up-the-ramp sample count inst
 in a table of the detector parameters. The master dark's ``ESO QC RAW RON`` is a QC value there and sets nothing.
 """
 
-import glob
 import math
-import os
 from dataclasses import dataclass
-
-import numpy as np
-from astropy.io import fits
 
 # THE HEADER CARD OF THE READ NOISE MEASURED FROM A RAW-FRAME PAIR
 MEASURED_RON_CARD = "ESO QC RAW RON"
@@ -23,6 +18,10 @@ MEASURED_RON_CARD = "ESO QC RAW RON"
 RAW_FRAME_CARD_TEMPLATE = "ESO PRO REC1 RAW{index} NAME"
 # THE WORKSPACE DIRECTORY HOLDING THE RAW FRAMES, IN ONE DATED FOLDER EACH
 RAW_DIRECTORY_NAME = "raw"
+# THE MOST RAW FRAMES OF ONE NAME THAT A MASTER DARK'S SAMPLE COUNT IS LOOKED FOR IN
+MAX_RAW_CANDIDATES = 10
+# WHAT READING A CORRUPT FITS FILE CAN RAISE
+FITS_READ_ERRORS = (OSError, ValueError, EOFError)
 # A MEASURED VALUE THIS FAR (AS A FRACTION) FROM THE NOMINAL ONE IS WORTH A WARNING
 NOMINAL_DISAGREEMENT_FRACTION = 0.15
 # A NIR MASTER DARK QC RAW RON THIS FAR (AS A FRACTION) FROM THE TABLE VALUE AT ITS SAMPLE COUNT IS WORTH A WARNING
@@ -185,6 +184,8 @@ def table_read_noise(ndsamples, table):
     ron = table_read_noise(97, detectorParams["read-noise-by-ndsamples"])
     ```
     """
+    import numpy as np
+
     if _ndsamples_problem(ndsamples, table) is not None:
         return None
     counts = sorted(table)
@@ -257,6 +258,10 @@ def resolve_nir_read_noise(rawFrames, masterDarkPath, table, fallbackRon, worksp
     readNoise = resolve_nir_read_noise([("raw_1.fits", 128)], "master_dark.fits", table, 7.55, workspaceRoot, kw, log)
     ```
     """
+    import os
+
+    from astropy.io import fits
+
     if not rawFrames:
         return None
 
@@ -269,7 +274,7 @@ def resolve_nir_read_noise(rawFrames, masterDarkPath, table, fallbackRon, worksp
 
     try:
         masterHeader = fits.getheader(masterDarkPath)
-    except OSError as e:
+    except FITS_READ_ERRORS as e:
         log.warning(f"The master dark header could not be read ({e}); the sky fit adds no master dark noise.")
         return ReadNoise(frameRon, None, frameRon, source)
 
@@ -298,7 +303,11 @@ def _raw_frames_read_noise(rawFrames, table, fallbackRon, log):
 
 
 def _master_ndsamples(masterHeader, workspaceRoot, kw, log):
-    """*the sample count of a master dark: its own card, else that of the first raw frame it lists, else None*"""
+    """*the sample count of a master dark: its own card, else that of a raw frame it lists, else None*
+
+    The raw frame is the first one the master dark lists. Its name comes from file content, so it is used only when
+    it is a plain file name, and only files that resolve inside ``<workspaceRoot>/raw`` are read.
+    """
     card = kw("DET_NDSAMPLES")
     ndsamples = masterHeader.get(card)
     if ndsamples is not None:
@@ -307,13 +316,55 @@ def _master_ndsamples(masterHeader, workspaceRoot, kw, log):
     rawName = masterHeader.get(RAW_FRAME_CARD_TEMPLATE.format(index=1))
     if not rawName:
         return None
-    pattern = os.path.join(glob.escape(str(workspaceRoot)), RAW_DIRECTORY_NAME, "*", glob.escape(rawName) + "*")
-    for rawPath in sorted(glob.glob(pattern)):
-        try:
-            return fits.getheader(rawPath).get(card)
-        except OSError as e:
-            log.warning(f"The raw frame {rawName} listed by the master dark could not be read ({e}).")
+    if not _is_plain_file_name(rawName):
+        log.warning(
+            f"The master dark lists the raw frame {rawName!r}, which is not a plain file name; "
+            "its sample count is not looked up there."
+        )
+        return None
+
+    for rawPath in _raw_frame_candidates(rawName, workspaceRoot):
+        ndsamples = _raw_frame_ndsamples(rawPath, rawName, card, log)
+        if ndsamples is not None:
+            return ndsamples
     return None
+
+
+def _is_plain_file_name(name):
+    """*True for a string that is one file name: no directory part, not absolute, no ``..``*"""
+    import os
+
+    return isinstance(name, str) and name == os.path.basename(name) and not os.path.isabs(name) and ".." not in name
+
+
+def _raw_frame_candidates(rawName, workspaceRoot):
+    """*the files named ``rawName`` in a dated folder of ``<workspaceRoot>/raw``, at most ``MAX_RAW_CANDIDATES``*
+
+    An uncompressed file comes before a ``.Z`` one, then by path. A file that resolves outside the raw directory (for
+    example through a symbolic link) is left out.
+    """
+    import glob
+    import os
+
+    rawRoot = os.path.realpath(os.path.join(str(workspaceRoot), RAW_DIRECTORY_NAME))
+    candidates = []
+    for name in (rawName, rawName + ".Z"):
+        for path in sorted(glob.glob(os.path.join(glob.escape(rawRoot), "*", glob.escape(name)))):
+            resolved = os.path.realpath(path)
+            if os.path.commonpath([rawRoot, resolved]) == rawRoot and os.path.isfile(resolved):
+                candidates.append(path)
+    return candidates[:MAX_RAW_CANDIDATES]
+
+
+def _raw_frame_ndsamples(rawPath, rawName, card, log):
+    """*the ``card`` value in the header of a raw frame, or None when it has none or cannot be read*"""
+    from astropy.io import fits
+
+    try:
+        return fits.getheader(rawPath).get(card)
+    except FITS_READ_ERRORS as e:
+        log.warning(f"The raw frame {rawName} listed by the master dark could not be read ({e}).")
+        return None
 
 
 def _combined_frame_count(masterHeader, kw, log):
@@ -327,6 +378,8 @@ def _combined_frame_count(masterHeader, kw, log):
 
 def _ndsamples_problem(ndsamples, table):
     """*say why a sample count cannot be looked up in the table, or None when it can*"""
+    import numpy as np
+
     if ndsamples is None or ndsamples is np.ma.masked:
         return "no ESO DET NDSAMPLES card"
     isNumber = isinstance(ndsamples, (int, float, np.integer, np.floating)) and not isinstance(ndsamples, bool)

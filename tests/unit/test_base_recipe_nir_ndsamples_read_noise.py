@@ -18,6 +18,7 @@ from astropy.io import fits
 
 from soxspipe.commonutils.detector_lookup import detector_lookup
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
+from soxspipe.commonutils.read_noise import MAX_RAW_CANDIDATES
 from soxspipe.commonutils.set_of_files import ImageFileCollection
 from soxspipe.recipes import (
     base_recipe,
@@ -421,3 +422,150 @@ def test_an_unreadable_raw_frame_listed_by_the_master_dark_warns_and_uses_the_fa
     warnings = _warnings(log)
     assert any("could not be read" in message for message in warnings)
     assert any("master_dark.fits" in message and "NDSAMPLES" in message for message in warnings)
+
+
+def test_a_frame_summary_without_the_ndsamples_column_takes_the_fallback_noise_with_a_warning(
+    tmp_path: Path, log: Any
+) -> None:
+    # ARRANGE: A USER SETTINGS FILE WITH ITS OWN summary-keys REPLACES THE SHIPPED BLOCK, SO THE COLUMN IS MISSING
+    _write_scene(tmp_path, _raw(DARK_NDSAMPLES), None, nRaw=1)
+    recipe = _recipe(tmp_path, log, soxs_stare)
+    kw = recipe.kw
+    recipe.inputFrames = ImageFileCollection(
+        location=str(tmp_path),
+        keywords=[kw("SEQ_ARM"), kw("PRO_CATG"), kw("RON"), kw("CHIP_RON"), "file"],
+    )
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT: EVERY FRAME COUNTS AS HAVING NO CARD
+    assert _ron(recipe) == pytest.approx(FALLBACK_RON)
+    assert recipe.readNoise.source == "detector default"
+    warnings = _warnings(log)
+    assert len(warnings) == 1
+    assert "raw_1.fits" in warnings[0]
+    assert "NDSAMPLES" in warnings[0]
+
+
+# THE MASTER DARK LISTS A RAW FRAME NAME; THESE SCENES GIVE THE DARK NO NDSAMPLES CARD OF ITS OWN
+LISTED_NAME = "SOXS.2026-01-31T19:16:38.123.fits"
+
+
+def _dark_listing(rawName: str) -> dict[str, object]:
+    return _dark(**{"ESO DET NDSAMPLES": None, "ESO PRO REC1 RAW1 NAME": rawName})
+
+
+def _stare_with_listed_raw(tmp_path: Path, log: Any, rawName: str = LISTED_NAME) -> base_recipe:
+    sofDirectory = tmp_path / "sof"
+    _write_scene(sofDirectory, _raw(SCIENCE_NDSAMPLES), _dark_listing(rawName))
+    return _recipe(sofDirectory, log, soxs_stare, tmp_path / "workspace")
+
+
+def _sky_fit_with_dark_ron(darkRon: float) -> float:
+    return math.sqrt(TABLE[128] ** 2 + darkRon**2 / DARK_NCOMBINED)
+
+
+@pytest.mark.parametrize("kind", ["absolute", "parent"])
+def test_a_raw_frame_name_that_is_not_a_plain_file_name_is_not_looked_up_and_warns(
+    tmp_path: Path, log: Any, kind: str
+) -> None:
+    # ARRANGE: THE TARGET HOLDS A SAMPLE COUNT OF 10, SO A LOOKUP THERE WOULD SHOW
+    _write_frame(tmp_path / "workspace", "secret.fits", _raw(DARK_NDSAMPLES))
+    rawName = str(tmp_path / "workspace" / "secret.fits") if kind == "absolute" else "../../secret.fits"
+    _write_frame(tmp_path / "workspace" / "raw" / "2026-01-30", "placeholder.fits", _raw(DARK_NDSAMPLES))
+    recipe = _stare_with_listed_raw(tmp_path, log, rawName)
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT
+    assert recipe.readNoise.skyFit == pytest.approx(_sky_fit_with_dark_ron(FALLBACK_RON))
+    assert any("plain file name" in message for message in _warnings(log))
+
+
+def test_a_later_matching_raw_frame_that_holds_the_card_is_used_when_an_earlier_one_lacks_it(
+    tmp_path: Path, log: Any
+) -> None:
+    # ARRANGE
+    rawDirectory = tmp_path / "workspace" / "raw"
+    _write_frame(rawDirectory / "2026-01-29", LISTED_NAME, _raw(None))
+    _write_frame(rawDirectory / "2026-01-30", LISTED_NAME, _raw(DARK_NDSAMPLES))
+    recipe = _stare_with_listed_raw(tmp_path, log)
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT
+    assert recipe.readNoise.skyFit == pytest.approx(_sky_fit_with_dark_ron(TABLE[10]))
+
+
+def test_an_uncompressed_raw_frame_is_read_before_a_compressed_one(tmp_path: Path, log: Any) -> None:
+    # ARRANGE: THE COMPRESSED FILE SITS IN THE EARLIER FOLDER AND IS NOT A VALID ARCHIVE, SO READING IT WOULD WARN
+    rawDirectory = tmp_path / "workspace" / "raw"
+    (rawDirectory / "2026-01-29").mkdir(parents=True)
+    (rawDirectory / "2026-01-29" / f"{LISTED_NAME}.Z").write_text("not a fits file")
+    _write_frame(rawDirectory / "2026-01-30", LISTED_NAME, _raw(DARK_NDSAMPLES))
+    recipe = _stare_with_listed_raw(tmp_path, log)
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT
+    assert recipe.readNoise.skyFit == pytest.approx(_sky_fit_with_dark_ron(TABLE[10]))
+    assert _warnings(log) == []
+
+
+def test_a_raw_frame_that_resolves_outside_the_raw_directory_is_not_read(tmp_path: Path, log: Any) -> None:
+    # ARRANGE: A SYMLINK IN A DATED FOLDER POINTS OUT OF THE WORKSPACE TO A FRAME WITH 10 SAMPLES
+    _write_frame(tmp_path / "elsewhere", "target.fits", _raw(DARK_NDSAMPLES))
+    datedDirectory = tmp_path / "workspace" / "raw" / "2026-01-30"
+    datedDirectory.mkdir(parents=True)
+    (datedDirectory / LISTED_NAME).symlink_to(tmp_path / "elsewhere" / "target.fits")
+    recipe = _stare_with_listed_raw(tmp_path, log)
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT
+    assert recipe.readNoise.skyFit == pytest.approx(_sky_fit_with_dark_ron(FALLBACK_RON))
+
+
+def test_the_search_for_the_listed_raw_frame_stops_at_the_candidate_cap(tmp_path: Path, log: Any) -> None:
+    # ARRANGE: ONLY THE CANDIDATE JUST PAST THE CAP HOLDS THE CARD
+    rawDirectory = tmp_path / "workspace" / "raw"
+    for index in range(MAX_RAW_CANDIDATES):
+        _write_frame(rawDirectory / f"2026-01-{index + 1:02d}", LISTED_NAME, _raw(None))
+    _write_frame(rawDirectory / f"2026-02-{1:02d}", LISTED_NAME, _raw(DARK_NDSAMPLES))
+    recipe = _stare_with_listed_raw(tmp_path, log)
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT
+    assert recipe.readNoise.skyFit == pytest.approx(_sky_fit_with_dark_ron(FALLBACK_RON))
+
+
+def test_a_raw_frame_that_raises_a_value_error_on_read_is_skipped_for_the_next_candidate(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: A CORRUPT FITS FILE CAN RAISE ValueError, NOT ONLY OSError
+    rawDirectory = tmp_path / "workspace" / "raw"
+    _write_frame(rawDirectory / "2026-01-29", LISTED_NAME, _raw(DARK_NDSAMPLES))
+    _write_frame(rawDirectory / "2026-01-30", LISTED_NAME, _raw(DARK_NDSAMPLES))
+    recipe = _stare_with_listed_raw(tmp_path, log)
+    realGetheader = fits.getheader
+
+    def corrupt_first(path: Any, *args: Any, **kwargs: Any) -> fits.Header:
+        if "2026-01-29" in str(path):
+            raise ValueError("corrupt header")
+        return realGetheader(path, *args, **kwargs)
+
+    monkeypatch.setattr(fits, "getheader", corrupt_first)
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT
+    assert recipe.readNoise.skyFit == pytest.approx(_sky_fit_with_dark_ron(TABLE[10]))
+    assert any("could not be read" in message for message in _warnings(log))

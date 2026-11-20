@@ -118,7 +118,7 @@ class base_recipe:
     arm = None
     # WHETHER A NIR RECIPE SUBTRACTS THE MASTER DARK IN THE SOF. A SOXS RECIPE THEN ADDS THE DARK'S NOISE TO ITS SKY
     # FIT (THE READ NOISE ITSELF COMES FROM THE FRAME'S NDSAMPLES, DY-2341); AN X-SHOOTER RECIPE TAKES ITS READ NOISE
-    # FROM THE DARK. A NODDING RECIPE SETS IT False, AS A-B REMOVES THE DARK (DY-2335)
+    # FROM THE DARK. A NODDING RECIPE SETS IT FALSE, AS A-B REMOVES THE DARK (DY-2335)
     usesMasterDarkReadNoise: bool = True
 
     def __init__(
@@ -1473,11 +1473,11 @@ class base_recipe:
 
         kw = self.kw
         summary = self.inputFrames.summary
+        # A SETTINGS FILE WITH ITS OWN summary-keys HAS NO SAMPLE-COUNT COLUMN: EVERY FRAME THEN HAS NO CARD
+        counts = summary[kw("DET_NDSAMPLES")] if kw("DET_NDSAMPLES") in summary.colnames else [None] * len(summary)
         rawFrames = [
             (os.path.basename(str(name)), None if count is None or count is np.ma.masked else count)
-            for name, catg, count in zip(
-                summary["file"], summary[kw("PRO_CATG")], summary[kw("DET_NDSAMPLES")], strict=True
-            )
+            for name, catg, count in zip(summary["file"], summary[kw("PRO_CATG")], counts, strict=True)
             if catg is None or catg is np.ma.masked
         ]
         masterPath = None
