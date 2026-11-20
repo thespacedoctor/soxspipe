@@ -394,3 +394,30 @@ def test_the_shipped_frame_summary_carries_the_ndsamples_column(tmp_path: Path, 
 
     # ASSERT
     assert list(frames.summary["ESO DET NDSAMPLES"]) == [DARK_NDSAMPLES]
+
+
+def test_an_unreadable_raw_frame_listed_by_the_master_dark_warns_and_uses_the_fallback_noise(
+    tmp_path: Path, log: Any
+) -> None:
+    # ARRANGE: THE LISTED RAW FRAME IS ON DISK BUT NOT A FITS FILE
+    workspace = tmp_path / "workspace"
+    rawDirectory = workspace / "raw" / "2026-01-30"
+    rawDirectory.mkdir(parents=True)
+    (rawDirectory / "SOXS.2026-01-31T19:16:38.123.fits").write_text("not a fits file")
+    sofDirectory = tmp_path / "sof"
+    _write_scene(
+        sofDirectory,
+        _raw(SCIENCE_NDSAMPLES),
+        _dark(**{"ESO DET NDSAMPLES": None, "ESO PRO REC1 RAW1 NAME": "SOXS.2026-01-31T19:16:38.123.fits"}),
+    )
+    recipe = _recipe(sofDirectory, log, soxs_stare, workspace)
+
+    # ACT
+    _verify_read_noise(recipe)
+
+    # ASSERT
+    expected = math.sqrt(TABLE[128] ** 2 + FALLBACK_RON**2 / DARK_NCOMBINED)
+    assert recipe.readNoise.skyFit == pytest.approx(expected)
+    warnings = _warnings(log)
+    assert any("could not be read" in message for message in warnings)
+    assert any("master_dark.fits" in message and "NDSAMPLES" in message for message in warnings)
