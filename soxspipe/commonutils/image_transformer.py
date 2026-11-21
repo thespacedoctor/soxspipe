@@ -800,7 +800,6 @@ class image_transformer(base_util):
     def _determine_rectified_image_boundaries(self):
         """*Setup the individual order dataframes for each order in the order pixel table*"""
         self.log.debug("starting the ``_determine_rectified_image_boundaries`` method")
-        import numpy as np
         import pandas as pd
 
         globalSlitCentreArcsec = self._global_slit_centre()
