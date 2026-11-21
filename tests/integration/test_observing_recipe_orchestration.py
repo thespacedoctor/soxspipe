@@ -12,8 +12,10 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.offset_frames import OffsetClassificationError
 from soxspipe.recipes import soxs_nod, soxs_offset, soxs_stare
 from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
+from tests.factories.offset_frames import fixed_sky_run
 from tests.factories import (
     pipeline_settings,
     product_table,
@@ -65,7 +67,8 @@ class RouteCollection:
 
 
 def _route(**filters: object) -> frozenset[tuple[str, object]]:
-    return frozenset(filters.items())
+    """Return the key of a route, naming each filter by the header keyword the recipe's keyword lookup gives it."""
+    return frozenset((_keyword(alias), value) for alias, value in filters.items())
 
 
 def _write_prepared_frame(
@@ -95,6 +98,11 @@ def _keyword(keyword: str) -> str:
         "NOD_CUMULATIVE_OFFSETY": "ESO SEQ CUMOFF Y",
         "OFFSET_RA": "HIERARCH ESO SEQ FIXOFF RA",
         "OFFSET_DEC": "HIERARCH ESO SEQ FIXOFF DEC",
+        "NOD_JITTER_BOX": "ESO SEQ JITTER WIDTH",
+        "TPL_START": "ESO TPL START",
+        "TPL_EXPNO": "ESO TPL EXPNO",
+        "DPR_TECH": "ESO DPR TECH",
+        "DPR_TYPE": "ESO DPR TYPE",
         "AIRMASS_START": "ESO TEL AIRM START",
         "AIRMASS_END": "ESO TEL AIRM END",
         "SEQ_EXPTIME": "ESO DET SEQ1 EXPTIME",
@@ -588,22 +596,9 @@ def test_offset_success_returns_extraction_and_records_qc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A balanced ON/OFF pair returns its path and complete extraction QC."""
-    frameOn = _write_prepared_frame(
-        tmp_path / "offset-on.fits",
-        seed=43,
-        headerOverrides={
-            "HIERARCH ESO SEQ FIXOFF RA": -2.0,
-            "HIERARCH ESO SEQ FIXOFF DEC": 0.0,
-        },
-    )
-    frameOff = _write_prepared_frame(
-        tmp_path / "offset-off.fits",
-        seed=44,
-        headerOverrides={
-            "HIERARCH ESO SEQ FIXOFF RA": 0.0,
-            "HIERARCH ESO SEQ FIXOFF DEC": 0.0,
-        },
-    )
+    onHeader, offHeader = fixed_sky_run([(0.0, 0.0), (20.0, 20.0)])
+    frameOn = _write_prepared_frame(tmp_path / "offset-on.fits", seed=43, headerOverrides=onHeader)
+    frameOff = _write_prepared_frame(tmp_path / "offset-off.fits", seed=44, headerOverrides=offHeader)
     recipe = soxs_offset.__new__(soxs_offset)
     _configure_nodding_recipe(
         recipe,
@@ -645,8 +640,8 @@ def test_offset_success_returns_extraction_and_records_qc(
         "soxs_offset",
         "soxs_offset",
     ]
-    assert captured["stack"][0]["frames"][0].header["HIERARCH ESO SEQ FIXOFF RA"] == -2.0
-    assert captured["stack"][1]["frames"][0].header["HIERARCH ESO SEQ FIXOFF RA"] == 0.0
+    assert captured["stack"][0]["frames"][0].header["ESO TPL EXPNO"] == 1
+    assert captured["stack"][1]["frames"][0].header["ESO TPL EXPNO"] == 2
     extractArgs = captured["extract_cycle"][0]
     assert extractArgs["aFrame"] is captured["keywords"][0]["frame"]
     assert extractArgs["bFrame"] is captured["keywords"][1]["frame"]
@@ -664,18 +659,14 @@ def test_offset_success_returns_extraction_and_records_qc(
     assert captured["clean_up"] == [{"forceFail": False}]
 
 
-def test_offset_multiple_locations_extracts_each_pair_before_final_stack(
+def test_offset_two_cycles_extract_each_pair_before_final_stack(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With `stack_before_extraction` off, distinct offset locations retain one directional extraction per pair."""
-    headers = [
-        {"HIERARCH ESO SEQ FIXOFF RA": -3.0, "HIERARCH ESO SEQ FIXOFF DEC": 1.0},
-        {"HIERARCH ESO SEQ FIXOFF RA": -4.0, "HIERARCH ESO SEQ FIXOFF DEC": 2.0},
-        {"HIERARCH ESO SEQ FIXOFF RA": 0.0, "HIERARCH ESO SEQ FIXOFF DEC": 1.0},
-        {"HIERARCH ESO SEQ FIXOFF RA": 0.0, "HIERARCH ESO SEQ FIXOFF DEC": 2.0},
-    ]
+    """With `stack_before_extraction` off, each ON/OFF cycle gets its own extraction before the final stack."""
+    # TWO ON FRAMES, JITTERED BY 0.3 ARCSEC, THEN TWO OFF FRAMES: TWO ON/OFF PAIRS
+    headers = fixed_sky_run([(0.0, 0.0), (0.0, 0.3), (20.0, 19.7), (0.0, 0.1)])
     paths = [
         _write_prepared_frame(
             tmp_path / f"offset-{index}.fits",
@@ -722,28 +713,23 @@ def test_offset_multiple_locations_extracts_each_pair_before_final_stack(
 
 
 @pytest.mark.parametrize(
-    ("recipeClass", "technique", "offsets", "message"),
+    ("recipeClass", "technique", "offsets", "errorType", "message"),
     [
         (
             soxs_nod,
             "ECHELLE,SLIT,NODDING",
             [{"ESO SEQ CUMOFF Y": 3.0}, {"ESO SEQ CUMOFF Y": 2.0}],
+            Exception,
             "Found 2 A frames and 0 B frames. The number of A and B frames must be the same for nodding reductions.",
         ),
         (
             soxs_offset,
             "ECHELLE,SLIT,OFFSET",
-            [
-                {
-                    "HIERARCH ESO SEQ FIXOFF RA": -2.0,
-                    "HIERARCH ESO SEQ FIXOFF DEC": 0.0,
-                },
-                {
-                    "HIERARCH ESO SEQ FIXOFF RA": -1.0,
-                    "HIERARCH ESO SEQ FIXOFF DEC": 0.0,
-                },
-            ],
-            "Found 2 ON frames and 0 OFF frames. The number of ON and OFF frames must be the same for offset reductions.",
+            # TWO FRAMES AT THE OBJECT POSITION AND NONE AT THE SKY POSITION: 2 ON FRAMES AND 0 OFF FRAMES
+            fixed_sky_run([(0.0, 0.0), (0.0, 0.1)]),
+            OffsetClassificationError,
+            "The template run that started at 2025-05-14T04:00:00 has 2 ON frames and no OFF frame. "
+            "An offset reduction needs sky frames. Use soxs-stare for data taken without a sky position.",
         ),
     ],
 )
@@ -754,6 +740,7 @@ def test_unbalanced_observing_inventory_fails_with_counts(
     recipeClass: type[Any],
     technique: str,
     offsets: list[dict[str, object]],
+    errorType: type[Exception],
     message: str,
 ) -> None:
     """Unbalanced observing inventories fail before scientific processing."""
@@ -779,7 +766,7 @@ def test_unbalanced_observing_inventory_fails_with_counts(
     with pytest.raises(Exception) as error:
         recipe.produce_product()
 
-    assert type(error.value) is Exception
+    assert type(error.value) is errorType
     assert str(error.value) == message
 
 
