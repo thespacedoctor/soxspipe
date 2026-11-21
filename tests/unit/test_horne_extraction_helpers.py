@@ -3444,3 +3444,33 @@ def test_extract_hands_the_residual_clipping_sigma_setting_to_every_order_extrac
 
     # ASSERT
     assert received == [7.5, 7.5]
+
+
+@pytest.mark.parametrize("boxcarOnly", [False, True])
+def test_an_order_with_every_pixel_masked_is_extracted_as_no_spectrum(log: object, boxcarOnly: bool) -> None:
+    # ARRANGE: THE STARE TAIL FLAGS EVERY PIXEL OF AN ORDER THAT HAS NO SLIT RANGE COVERED BY EVERY FRAME (DY-2290)
+    slices = pd.DataFrame({"order": [10] * 5})
+    images = {
+        "bpMask": np.ones((2, 5), dtype=bool),
+        "fluxRaw": np.zeros((2, 5)),
+        "variance": np.ones((2, 5)),
+        "wavelength": np.array([[504.0, 503.0, 502.0, 501.0, 500.0], [504.0, 503.0, 502.0, 501.0, 500.0]]),
+    }
+
+    # ACT
+    result = extract_single_order(
+        (slices, images),
+        log,
+        slitHalfLength=1,
+        clippingSigma=3.0,
+        clippingIterationLimit=2,
+        axisA="y",
+        axisB="x",
+        hornePolyOrder=0,
+        boxcarOnly=boxcarOnly,
+    )
+
+    # ASSERT: AN EMPTY SPECTRUM WITH THE SCIENCE COLUMNS, WHICH THE CALLER CONCATENATES WITH THE OTHER ORDERS
+    assert result is not None
+    assert result.empty
+    assert "extractedFluxOptimal" in result.columns

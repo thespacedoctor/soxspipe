@@ -8,9 +8,16 @@ Date Created
 : November 16, 2026
 """
 
-from typing import NamedTuple
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from soxspipe.commonutils.toolkit import utcnow_string
+
+if TYPE_CHECKING:
+    import numpy as np
+
+    from soxspipe.commonutils.nod_shift_and_add import shift_and_add_plan
 
 
 class reduction_inputs(NamedTuple):
@@ -89,7 +96,14 @@ class nod_stare_stacking:
         check_ab_balance(self.log, offsetsA, offsetsB)
         return framesA, framesB, namesA, namesB
 
-    def _stack_nod_frames(self, framesA, framesB, namesA, namesB, inputs):
+    def _stack_nod_frames(
+        self,
+        framesA: list[Any],
+        framesB: list[Any],
+        namesA: list[str],
+        namesB: list[str],
+        inputs: reduction_inputs,
+    ) -> tuple[Any, Any, np.ndarray]:
         """*detrend, align and stack the A and B frames*
 
         Each frame is detrended with the master bias or dark and the scattered-light fit, but not flat-fielded. The A
@@ -122,10 +136,10 @@ class nod_stare_stacking:
             # EACH FRAME'S SCATTERED-LIGHT FIT ADDED A ROW FOR THE ONE PLOT FILE THE LAST FRAME LEFT
             self.products = self.products.drop_duplicates(subset=["product_label", "file_name"], keep="last")
 
-        framesA, framesB, plan = self._align_nod_frames(
+        framesA, framesB, plan, alignmentShifts = self._align_nod_frames(
             framesA, framesB, namesA, namesB, inputs.twoDMap, inputs.dispMap
         )
-        uncovered = self._uncovered_slit_mask(plan)
+        uncovered = self._uncovered_slit_mask(plan, *alignmentShifts)
         notFlattened = self._stack_shifted_nod_frames(framesA, framesB, plan)
         if inputs.masterFlat is False:
             return notFlattened, notFlattened, uncovered
@@ -134,10 +148,16 @@ class nod_stare_stacking:
         framesB = self._flat_field_nod_frames(framesB, inputs.masterFlat)
         return notFlattened, self._stack_shifted_nod_frames(framesA, framesB, plan), uncovered
 
-    def _uncovered_slit_mask(self, plan):
-        """*the pixels of the slit that the shifted B frames do not reach, which only the A frames cover (DY-2290)*
+    def _uncovered_slit_mask(
+        self,
+        plan: shift_and_add_plan,
+        alignmentShiftsA: list[dict[int, float]],
+        alignmentShiftsB: list[dict[int, float]],
+    ) -> np.ndarray:
+        """*the pixels of the slit that not every frame covers (DY-2290)*
 
-        The B frames are shifted onto the A frames, so the slit beyond the shift's reach holds A frames only. The sky
+        The B frames are shifted onto the A frames, and every frame is aligned to the others of its nod position, so
+        the slit beyond the total shift of a frame holds fewer frames than the rest. The sky
         changes between the A and the B exposures, so the sky residual of the stack steps where the B frames end, and
         the step reads as a second source. The stack keeps only the slit range every frame covers: the caller leaves
         the returned pixels out of the sky fit and the extraction and flags them in the products. Orders with no shift
@@ -146,21 +166,22 @@ class nod_stare_stacking:
         **Key Arguments:**
 
         - ``plan`` -- the ``shift_and_add_plan`` whose ``orderShifts`` move a B frame onto the A frames
+        - ``alignmentShiftsA`` -- for each A frame, its alignment shift in arcsec in each order
+        - ``alignmentShiftsB`` -- the same for the B frames
 
         **Return:**
 
-        - ``uncovered`` -- boolean image, True for a pixel a shifted B frame does not cover
+        - ``uncovered`` -- boolean image, True for a pixel that not every frame covers
 
         **Raises:**
 
         - ``ValueError`` -- when the shift leaves no slit range that every frame covers in any shifted order
         """
-        from soxspipe.commonutils.slit_alignment import shift_coverage_mask
+        from soxspipe.commonutils.slit_alignment import orders_without_coverage, shift_coverage_mask
 
-        uncovered = shift_coverage_mask(plan.orderShifts, plan.mapImages)
-        orderImage, orders = plan.mapImages.order, plan.mapImages.orders
-        emptyOrders = [order for order in orders if uncovered[orderImage == order].all()]
-        if emptyOrders and len(emptyOrders) == len(orders):
+        uncovered = shift_coverage_mask(plan, alignmentShiftsA, alignmentShiftsB)
+        emptyOrders = orders_without_coverage(uncovered, plan.mapImages)
+        if emptyOrders and len(emptyOrders) == len(plan.mapImages.orders):
             raise ValueError(
                 "The shifted B frames leave no slit range that every frame covers in any order, so the frames cannot "
                 "be stacked in stare mode."
@@ -172,7 +193,7 @@ class nod_stare_stacking:
                 "left out of the sky model and the extraction."
             )
         self.log.info(
-            f"{int(uncovered.sum())} pixels that only the A frames cover are left out of the sky model and the "
+            f"{int(uncovered.sum())} pixels that not every frame covers are left out of the sky model and the "
             "extraction."
         )
         return uncovered
@@ -215,7 +236,15 @@ class nod_stare_stacking:
             for frame in frames
         ]
 
-    def _align_nod_frames(self, framesA, framesB, namesA, namesB, twoDMap, dispMap):
+    def _align_nod_frames(
+        self,
+        framesA: list[Any],
+        framesB: list[Any],
+        namesA: list[str],
+        namesB: list[str],
+        twoDMap: str,
+        dispMap: str,
+    ) -> tuple[list[Any], list[Any], shift_and_add_plan, tuple[list[dict[int, float]], list[dict[int, float]]]]:
         """*align the A frames to each other and the B frames to each other, and plan the shift of B onto A*
 
         The slit alignment also replaces the items of the ``framesA`` and ``framesB`` lists, to release the original
@@ -237,6 +266,8 @@ class nod_stare_stacking:
         - ``framesA`` -- the aligned A frames
         - ``framesB`` -- the aligned B frames
         - ``plan`` -- the ``shift_and_add_plan`` whose ``orderShifts`` move a B frame onto the A frames
+        - ``alignmentShifts`` -- the alignment shift of each order of each A frame, and of each B frame, as two lists
+          of ``{order: shift in arcsec}`` dictionaries
 
         **Raises:**
 
@@ -244,7 +275,7 @@ class nod_stare_stacking:
         """
         from soxspipe.commonutils.nod_frames import aligns_each_order, nominal_throw_shift_plan
         from soxspipe.commonutils.nod_shift_and_add import build_shift_and_add_plan
-        from soxspipe.commonutils.slit_alignment import align_frame_groups_along_slit, frame_group
+        from soxspipe.commonutils.slit_alignment import align_frame_groups_along_slit, frame_group, frame_order_shifts
 
         results = align_frame_groups_along_slit(
             log=self.log,
@@ -267,7 +298,8 @@ class nod_stare_stacking:
                 raise ValueError("The slit alignment read no 2D map, so the nominal nod throw cannot be applied.")
             plan = nominal_throw_shift_plan(self.log, framesA, framesB, mapImages, self.kw)
         self._record_nod_shift_source(isNominal, framesA[0].header[self.kw("DATE_OBS")])
-        return framesA, framesB, plan
+        alignmentShifts = (frame_order_shifts(results[0], namesA), frame_order_shifts(results[1], namesB))
+        return framesA, framesB, plan, alignmentShifts
 
     def _record_nod_shift_source(self, isNominal, obsDateUtc):
         """*record in the QC table whether the B frames were shifted by the nominal nod throw*

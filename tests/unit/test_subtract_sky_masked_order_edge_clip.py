@@ -156,3 +156,43 @@ def test_an_all_false_exclude_mask_leaves_every_order_edge_clipped(log: Any) -> 
 
     assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
     assert _edge_clipped_slit_positions(fittedOrders[UNMASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
+
+
+# THE COVERAGE MASK TRIMS THE HIGH END ONLY (DY-2290): POSITIONS 4 AND 5. THE REST OF THE ORDER IS -5 TO 3, A RANGE OF
+# 8, SO A FRACTION OF 0.1 CLIPS THE ROWS BEYOND -4.2 AND 2.2
+UNCOVERED_SLIT_POSITIONS = {4.0, 5.0}
+UNCOVERED_ORDER_EDGE_CLIPPED = {-5.0, 3.0}
+
+
+def _uncovered_mask(row: int) -> np.ndarray:
+    """Return a mask over the high end of the slit of one order."""
+    uncoveredMask = np.zeros(FRAME_SHAPE, dtype=bool)
+    uncoveredMask[row, np.isin(SLIT_POSITIONS, list(UNCOVERED_SLIT_POSITIONS))] = True
+    return uncoveredMask
+
+
+def test_an_order_the_uncovered_mask_trims_keeps_its_edge_clip(log: Any) -> None:
+    # ARRANGE / ACT: THE COVERAGE MASK TRIMS ONE END ONLY, SO THE OTHER END STILL NEEDS ITS EDGE CLIP
+    fittedOrders = _fitted_orders(log, uncoveredMask=_uncovered_mask(0))
+
+    # ASSERT
+    assert set(fittedOrders[MASKED_ORDER]["slit_position"]) == set(SLIT_POSITIONS) - UNCOVERED_SLIT_POSITIONS
+    assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == UNCOVERED_ORDER_EDGE_CLIPPED
+    assert _edge_clipped_slit_positions(fittedOrders[UNMASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
+
+
+def test_the_exclude_mask_still_switches_off_the_edge_clip_of_an_order_the_uncovered_mask_also_trims(log: Any) -> None:
+    # ARRANGE / ACT: THE EXCLUDE MASK HAS TRIMMED BOTH ENDS OF THE ORDER, AS IT DID BEFORE THE COVERAGE MASK
+    fittedOrders = _fitted_orders(log, excludeMask=_exclude_mask(), uncoveredMask=_uncovered_mask(0))
+
+    # ASSERT
+    assert set(fittedOrders[MASKED_ORDER]["slit_position"]) == (
+        set(SLIT_POSITIONS) - EXCLUDED_SLIT_POSITIONS - UNCOVERED_SLIT_POSITIONS
+    )
+    assert not fittedOrders[MASKED_ORDER]["flagged_edge_clipped"].any()
+    assert _edge_clipped_slit_positions(fittedOrders[UNMASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
+
+
+def test_an_uncovered_mask_of_the_wrong_shape_raises(log: Any) -> None:
+    with pytest.raises(ValueError, match="shape"):
+        _fitted_orders(log, uncoveredMask=np.zeros((2, 3), dtype=bool))

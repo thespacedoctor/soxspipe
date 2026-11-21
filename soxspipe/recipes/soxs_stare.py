@@ -9,11 +9,14 @@ Date Created
 : February 28, 2022
 """
 
+from __future__ import annotations
+
 ################# GLOBAL IMPORTS ####################
 import os
 import re
 import sys
 from contextlib import closing
+from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
 from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
@@ -32,6 +35,9 @@ from soxspipe.commonutils.unusable_flat_pixels import (
 
 from .base_recipe import base_recipe
 from .nod_stare_stacking import nod_stare_stacking, reduction_inputs
+
+if TYPE_CHECKING:
+    import numpy as np
 
 os.environ["TERM"] = "vt100"
 
@@ -713,13 +719,13 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
     def _reduce_stacked_object(
         self,
-        combined_object_notflattened,
-        allObjectFrames,
-        rawFrames=False,
-        inputs=None,
-        detrended=None,
-        uncoveredMask=None,
-    ):
+        combined_object_notflattened: Any,
+        allObjectFrames: list[Any],
+        rawFrames: list[str] | bool = False,
+        inputs: reduction_inputs | None = None,
+        detrended: Any = None,
+        uncoveredMask: np.ndarray | None = None,
+    ) -> tuple[str, bool | str]:
         """*detrend, sky-subtract, extract and flux-calibrate the stack of the object frames*
 
         **Key Arguments:**
@@ -765,7 +771,6 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         self.update_fits_keywords(frame=combined_object, rawFrames=rawFrames)
 
         excludeMask = self._slit_illumination_exclude_mask(combined_object, master_flat, twoDMap, allObjectFrames)
-        excludeMask = self._join_exclude_masks(excludeMask, uncoveredMask)
 
         from soxspipe.commonutils.toolkit import quicklook_image
 
@@ -786,11 +791,14 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         # THE SKY FIT TAKES THE FLAT ONLY WHEN THE FRAME WAS FLAT-FIELDED (DY-1517)
         skyMasterFlat = master_flat if master_flat is not False else None
         skymodelCCDData, skySubtractedCCDData, productPath = self._subtract_sky(
-            combined_object, twoDMap, dispMap, orderTablePath, excludeMask, skyMasterFlat
+            combined_object, twoDMap, dispMap, orderTablePath, excludeMask, skyMasterFlat, uncoveredMask
         )
 
         unflattenedSkySubtractedCCDData = self._unflatten_sky_subtracted_frame(
-            skySubtractedCCDData, master_flat, combined_object_notflattened, excludeMask
+            skySubtractedCCDData,
+            master_flat,
+            combined_object_notflattened,
+            self._join_exclude_masks(excludeMask, uncoveredMask),
         )
 
         from soxspipe.commonutils.toolkit import quicklook_image
@@ -1123,7 +1131,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         return orderTablePath, dispMap, twoDMap, responseFunctionPath
 
     @staticmethod
-    def _join_exclude_masks(excludeMask, uncoveredMask):
+    def _join_exclude_masks(excludeMask: np.ndarray | None, uncoveredMask: np.ndarray | None) -> np.ndarray | None:
         """*the union of the slit-illumination exclude mask and the mask of the pixels not every frame covers*
 
         **Key Arguments:**
@@ -1305,7 +1313,16 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             label="QC",
         )
 
-    def _subtract_sky(self, combined_object, twoDMap, dispMap, orderTablePath, excludeMask=None, masterFlat=None):
+    def _subtract_sky(
+        self,
+        combined_object: Any,
+        twoDMap: str,
+        dispMap: str,
+        orderTablePath: str,
+        excludeMask: np.ndarray | None = None,
+        masterFlat: Any = None,
+        uncoveredMask: np.ndarray | None = None,
+    ) -> tuple[Any, Any, str | None]:
         """*subtract the sky from the detrended frame, when sky subtraction is on, and write the sky products*
 
         Updates ``self.qc`` and ``self.products``. A sky subtraction that returns no model sets ``self.subtractSky``
@@ -1320,6 +1337,8 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``excludeMask`` -- boolean image, True for a pixel to leave out of the sky model. Default *None*
         - ``masterFlat`` -- the master flat the object frame was divided by, so the sky fit can weight by the
           flat-fielded noise and leave out the low-flat pixels. Default *None*, for a frame that was not flat-fielded
+        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers. It is left out of
+          the sky model like ``excludeMask``, but does not switch off the slit-edge clip of its order. Default *None*
 
         **Return:**
 
@@ -1347,6 +1366,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                 startNightDate=self.startNightDate,
                 debug=self.debug,
                 excludeMask=excludeMask,
+                uncoveredMask=uncoveredMask,
                 masterFlat=masterFlat,
                 ron=None if self.readNoise is None else self.readNoise.skyFit,
                 flatFitRanges=self.slitIlluminationFitRanges,
@@ -1363,7 +1383,9 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                 self.subtractSky = False
                 self.recipeSettings["sky-subtraction"]["subtract_sky"] = False
                 skymodelCCDData = False
-                skySubtractedCCDData = self._flag_excluded_pixels(combined_object, excludeMask)
+                skySubtractedCCDData = self._flag_excluded_pixels(
+                    combined_object, self._join_exclude_masks(excludeMask, uncoveredMask)
+                )
                 self.recipeSettings["horne-extraction-slit-length"] = 30.0
             else:
                 productPath = self._write_sky_products(
@@ -1395,7 +1417,9 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                 )
         else:
             skymodelCCDData = False
-            skySubtractedCCDData = self._flag_excluded_pixels(combined_object, excludeMask)
+            skySubtractedCCDData = self._flag_excluded_pixels(
+                combined_object, self._join_exclude_masks(excludeMask, uncoveredMask)
+            )
 
         return skymodelCCDData, skySubtractedCCDData, productPath
 

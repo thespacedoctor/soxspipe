@@ -9,17 +9,24 @@ Date Created
 : April 14, 2022
 """
 
+from __future__ import annotations
+
 import contextlib
 import math
 import numbers
 import os
 import sys
 from datetime import datetime
+from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
 from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.toolkit import quicklook_image, twoD_disp_map_image_to_dataframe
+
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
 
 os.environ["TERM"] = "vt100"
 
@@ -378,6 +385,9 @@ class subtract_sky:
       value is not the noise left in the frame, e.g. the single-frame read noise scaled by ``sqrt(1 + 1/N)`` for the
       master bias subtracted from it. A value that is not a finite, positive number falls back to the detector default.
       Default *None*, which uses the frame's read-noise header value, else the detector default
+    - ``uncoveredMask`` -- boolean image, the shape of ``objectFrame``, True for a pixel that not every frame of the
+      stack covers (DY-2290). It is left out of the sky model and comes out flagged, like an ``excludeMask`` pixel,
+      but it does not switch off the slit-edge clip of its order, as it trims one end of the slit only. Default *None*
 
     **Usage:**
 
@@ -433,6 +443,7 @@ class subtract_sky:
         masterFlat=None,
         ron=None,
         flatFitRanges=None,
+        uncoveredMask: np.ndarray | None = None,
     ):
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
@@ -482,7 +493,9 @@ class subtract_sky:
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
 
         # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280, DY-1517); subtract FLAGS AND ZERO-FILLS THEM AS NO-MODEL PIXELS
-        self.mapDF, self.maskedOrders = self._leave_out_excluded_pixels(self.mapDF, excludeMask, masterFlat)
+        self.mapDF, self.maskedOrders = self._leave_out_excluded_pixels(
+            self.mapDF, excludeMask, masterFlat, uncoveredMask
+        )
 
         quicklook_image(
             log=self.log,
@@ -536,7 +549,13 @@ class subtract_sky:
         self.ron = self._read_noise(ronValue, dp["ron"], self.log)
         return
 
-    def _leave_out_excluded_pixels(self, mapDF, excludeMask, masterFlat):
+    def _leave_out_excluded_pixels(
+        self,
+        mapDF: pd.DataFrame,
+        excludeMask: np.ndarray | None,
+        masterFlat: Any,
+        uncoveredMask: np.ndarray | None = None,
+    ) -> tuple[pd.DataFrame, frozenset[int]]:
         """*the map without the pixels left out of the sky model, and with the master flat of each pixel*
 
         **Key Arguments:**
@@ -545,16 +564,23 @@ class subtract_sky:
         - ``excludeMask`` -- boolean image, True for a pixel to leave out of the sky model, or None
         - ``masterFlat`` -- CCDData object, the master flat, or None. The map then gets a ``flat`` column and the
           low-flat pixels are left out with those of ``excludeMask``
+        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers, or None. These
+          pixels are left out too, but they do not put their order in ``maskedOrders``, as they trim one end of the
+          slit only. Default *None*
 
         **Return:**
 
         - ``keptMapDF`` -- a new dataframe holding the rows of ``mapDF`` that stay in the sky model
+        - ``maskedOrders`` -- the orders ``excludeMask`` covers
         """
         maskedOrders = frozenset()
         if excludeMask is not None:
             isExcluded = self._exclude_image(excludeMask)
             isRowExcluded = isExcluded[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
             maskedOrders = frozenset(mapDF.loc[isRowExcluded, "order"].unique().tolist())
+        if uncoveredMask is not None:
+            uncoveredImage = self._exclude_image(uncoveredMask)
+            excludeMask = uncoveredImage if excludeMask is None else self._exclude_image(excludeMask) | uncoveredImage
         if masterFlat is not None:
             mapDF = self._add_flat_column(mapDF, masterFlat)
             lowFlatImage = self._low_flat_pixels(mapDF)

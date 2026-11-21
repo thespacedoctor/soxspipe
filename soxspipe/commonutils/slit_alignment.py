@@ -11,8 +11,12 @@ The work has three steps:
 3. Each frame is resampled through the 2D map to apply the shift in slit coordinates.
 """
 
+from __future__ import annotations
+
 import copy
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -25,6 +29,9 @@ from soxspipe.commonutils.slit_alignment_sources import (
     _map_coordinates,
     _order_sources,
 )
+
+if TYPE_CHECKING:
+    from soxspipe.commonutils.nod_shift_and_add import shift_and_add_plan
 
 # A TRACE NEEDS AT LEAST THIS MANY SAMPLES IN AN ORDER TO GIVE THE ORDER A SLIT POSITION
 MIN_TRACE_SAMPLES = 10
@@ -345,24 +352,88 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     return CCDData(newData, unit=frame.unit, meta=copy.deepcopy(frame.meta), mask=newIsBad, uncertainty=uncertainty)
 
 
-def shift_coverage_mask(orderShifts, mapImages):
-    """*the pixels of a frame shifted along the slit that take their value from no pixel of the same order*
+def shift_coverage_mask(
+    plan: shift_and_add_plan,
+    alignmentShiftsA: Sequence[Mapping[int, float]] = (),
+    alignmentShiftsB: Sequence[Mapping[int, float]] = (),
+) -> np.ndarray:
+    """*the pixels of the slit that not every frame of a nod stack covers*
 
-    A pixel of order ``o`` takes its value from where the slit coordinate is ``orderShifts[o]`` arcsec higher at the
-    same wavelength (see ``shift_frame_along_slit``). It is uncovered when that source lies off the detector or
-    outside the order. This is the slit range a shifted frame does not reach, not a flag for a bad pixel. Orders with
-    no shift, and pixels outside every order, are never uncovered. A shift longer than the slit leaves the whole
-    order uncovered.
+    A pixel of order ``o`` of a frame shifted by ``s`` arcsec takes its value from where the slit coordinate is ``s``
+    arcsec higher at the same wavelength (see ``shift_frame_along_slit``). It is uncovered when that source lies off
+    the detector or outside the order. A frame's total shift is its alignment shift within its nod position plus, for
+    a B frame, the shift of the plan onto the A frames. A pixel is covered by every frame when it is covered at the
+    lowest and at the highest total shift, so those two set the uncovered ends of an order. This is the slit range
+    that the stack does not reach in every frame, not a flag for a bad pixel. Pixels outside every order are never
+    uncovered, and a shift longer than the slit leaves the whole order uncovered.
 
     **Key Arguments:**
 
-    - ``orderShifts`` -- the slit shift in arcsec of each order, as a dictionary from order number
+    - ``plan`` -- the ``shift_and_add_plan`` whose ``orderShifts`` move a B frame onto the A frames
+    - ``alignmentShiftsA`` -- for each A frame, its ``{order: shift in arcsec}`` from the alignment to the other A
+      frames. Default *()*, which is one A frame that needs no alignment
+    - ``alignmentShiftsB`` -- the same for the B frames. Default *()*, one B frame that needs no alignment
+
+    **Return:**
+
+    - ``uncovered`` -- boolean image, True for a pixel that a frame does not cover
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_alignment import orders_without_coverage, shift_coverage_mask
+
+    uncovered = shift_coverage_mask(plan, alignmentShiftsA, alignmentShiftsB)
+    emptyOrders = orders_without_coverage(uncovered, plan.mapImages)
+    ```
+    """
+    framesA = list(alignmentShiftsA) or [{}]
+    framesB = list(alignmentShiftsB) or [{}]
+    lowest, highest = {}, {}
+    for order in plan.mapImages.orders:
+        planShift = plan.orderShifts.get(order, 0.0)
+        totals = [shifts.get(order, 0.0) for shifts in framesA]
+        totals += [shifts.get(order, 0.0) + planShift for shifts in framesB]
+        lowest[order], highest[order] = min(totals), max(totals)
+    return _uncovered_by_shifts(lowest, plan.mapImages) | _uncovered_by_shifts(highest, plan.mapImages)
+
+
+def orders_without_coverage(uncovered: np.ndarray, mapImages: two_d_map_images) -> list[int]:
+    """*the orders whose every pixel is uncovered, so they have no slit range that every frame covers*
+
+    **Key Arguments:**
+
+    - ``uncovered`` -- the boolean image of ``shift_coverage_mask``
     - ``mapImages`` -- the ``two_d_map_images`` of the frame's binning
 
     **Return:**
 
-    - ``uncovered`` -- boolean image, True for a pixel with no source
+    - ``orders`` -- the order numbers that have no covered pixel
     """
+    return [order for order in mapImages.orders if uncovered[mapImages.order == order].all()]
+
+
+def frame_order_shifts(
+    result: slit_alignment_result, frameNames: Sequence[str] | None = None
+) -> list[dict[int, float]]:
+    """*the alignment shift of each order of each frame of an aligned group*
+
+    **Key Arguments:**
+
+    - ``result`` -- the ``slit_alignment_result`` of the group
+    - ``frameNames`` -- the names the group was aligned with. Default *None*, for the names it was given by default
+
+    **Return:**
+
+    - ``shifts`` -- for each frame in the order of ``result.frames``, a ``{order: shift in arcsec}`` dictionary
+    """
+    orders = result.mapImages.orders if result.mapImages is not None else ()
+    names = _frame_names(result.frames, frameNames)
+    return [_order_shifts(result.shifts, name, orders) for name in names]
+
+
+def _uncovered_by_shifts(orderShifts: Mapping[int, float], mapImages: two_d_map_images) -> np.ndarray:
+    """*the pixels with no source on the order for one slit shift per order*"""
     uncovered = np.zeros(mapImages.order.shape, dtype=bool)
     for order, shift in orderShifts.items():
         if shift == 0:
@@ -372,7 +443,7 @@ def shift_coverage_mask(orderShifts, mapImages):
     return uncovered
 
 
-def _is_source_on_order(mapImages, order, sources):
+def _is_source_on_order(mapImages: two_d_map_images, order: int, sources: Sequence[np.ndarray]) -> np.ndarray:
     """*whether each (row, column) source lies on the detector and wholly inside the order*"""
     rows, columns = sources
     height, width = mapImages.order.shape

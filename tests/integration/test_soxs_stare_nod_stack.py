@@ -15,7 +15,8 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils.slit_alignment import build_two_d_map_images
+from soxspipe.commonutils.nod_shift_and_add import shift_and_add_plan
+from soxspipe.commonutils.slit_alignment import WHOLE_FRAME, build_two_d_map_images, slit_alignment_result
 from soxspipe.recipes import soxs_stare
 from soxspipe.recipes.nod_stare_stacking import reduction_inputs
 from tests.factories import pipeline_settings, qc_table
@@ -32,18 +33,36 @@ SLIT_A = -OFFSET_A
 SLIT_B = -OFFSET_B
 MIDDLE_ROWS = slice(200, 400)
 SOF_NAME = "20251212T045200_VIS_1X1_1_NOD_OBJ_SOXS"
+# THE NOD THROW OF A REAL STANDARD, A SHIFT LONGER THAN THE SYNTHETIC SLIT, AND THE DISTANCE FROM A COVERAGE EDGE AT
+# WHICH A PIXEL IS SAFELY ON ONE SIDE OF IT
+NOD_THROW = 4.6
+BEYOND_SLIT_LENGTH = 3 * FOOTPRINT_HALF
+EDGE_MARGIN_ARCSEC = 0.4
+# HOW FAR THE SECOND FRAME OF A NOD POSITION IS FROM THE FIRST, ALONG THE SLIT, AND THE SMALL MARGIN THAT KEEPS A
+# PIXEL INSIDE THE BAND THIS OPENS BETWEEN TWO COVERAGE EDGES
+JITTER_ARCSEC = 1.0
+BAND_MARGIN_ARCSEC = 0.1
 
 
-def _frames(scene: Any, *, countPerNod: int = 2, offsetsA: tuple[float, ...] | None = None) -> list[Any]:
-    """Return A and B frames in time order: A, B, A, B, ..."""
+def _frames(
+    scene: Any, *, countPerNod: int = 2, offsetsA: tuple[float, ...] | None = None, jitterB: float = 0.0
+) -> list[Any]:
+    """Return A and B frames in time order: A, B, A, B, ... The second B frame's object is ``jitterB`` arcsec higher."""
     frames = []
     for index in range(countPerNod):
         frames.append(synthetic_nod_frame(scene, objectSlit=SLIT_A, mjd=60000.0 + 0.02 * index, offset=OFFSET_A))
-        frames.append(synthetic_nod_frame(scene, objectSlit=SLIT_B, mjd=60000.01 + 0.02 * index, offset=OFFSET_B))
+        frames.append(
+            synthetic_nod_frame(
+                scene,
+                objectSlit=SLIT_B + (jitterB if index == 1 else 0.0),
+                mjd=60000.01 + 0.02 * index,
+                offset=OFFSET_B,
+            )
+        )
     return frames
 
 
-def _recipe(log: Any, tmpPath: Path, monkeypatch: pytest.MonkeyPatch, scene: Any):
+def _recipe(log: Any, tmpPath: Path, monkeypatch: pytest.MonkeyPatch, scene: Any) -> soxs_stare:
     """Return a stare recipe in nod mode, with its calibration inputs, detrending and stacking recorded."""
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
@@ -118,8 +137,6 @@ def _peak_slit(scene: Any, frame: Any, order: int) -> float:
 
 def _patch_plan(monkeypatch: pytest.MonkeyPatch, scene: Any, orderShifts: dict[int, float]) -> None:
     """Make the slit alignment return a plan that shifts the B frames by ``orderShifts``."""
-    from soxspipe.commonutils.nod_shift_and_add import shift_and_add_plan
-
     mapImages = build_two_d_map_images(scene.wavelength, scene.slit, scene.orderMap)
     monkeypatch.setattr(
         import_module("soxspipe.commonutils.nod_shift_and_add"),
@@ -129,7 +146,7 @@ def _patch_plan(monkeypatch: pytest.MonkeyPatch, scene: Any, orderShifts: dict[i
 
 
 @pytest.fixture
-def scene(tmp_path):
+def scene(tmp_path: Path) -> Any:
     return synthetic_alignment_map(tmp_path)
 
 
@@ -228,16 +245,42 @@ def test_the_stack_reports_the_slit_range_the_shifted_b_frames_do_not_cover(
     middle = np.zeros(scene.shape, dtype=bool)
     middle[MIDDLE_ROWS] = True
     assert uncovered.dtype == bool
-    assert uncovered[isInside & middle & (scene.slit > edge + 0.4)].all()
-    assert not uncovered[isInside & middle & (scene.slit < edge - 0.4)].any()
+    assert uncovered[isInside & middle & (scene.slit > edge + EDGE_MARGIN_ARCSEC)].all()
+    assert not uncovered[isInside & middle & (scene.slit < edge - EDGE_MARGIN_ARCSEC)].any()
     assert not uncovered[~isInside].any()
+
+
+def test_the_jitter_of_a_nod_position_widens_the_uncovered_range_of_the_stack(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE: THE SECOND B FRAME SITS 1 ARCSEC HIGHER ALONG THE SLIT, SO ITS TOTAL SHIFT IS THE NOD THROW PLUS 1
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    _record_detrend(recipe, monkeypatch)
+    nodThrow = OFFSET_A - OFFSET_B
+    plainEdge = FOOTPRINT_HALF - nodThrow
+    jitterEdge = plainEdge - JITTER_ARCSEC
+    isBand = (
+        (scene.orderMap == scene.orders[0])
+        & (scene.slit > jitterEdge + BAND_MARGIN_ARCSEC)
+        & (scene.slit < plainEdge - EDGE_MARGIN_ARCSEC)
+    )
+    isBand[:200] = isBand[400:] = False
+
+    # ACT
+    _, _, uncovered = recipe._stack_nod_frames(
+        *recipe._split_nod_frames(_frames(scene, jitterB=JITTER_ARCSEC)), _inputs(scene, masterFlat=False)
+    )
+
+    # ASSERT: WITHOUT THE JITTER THESE PIXELS ARE COVERED BY EVERY FRAME (SEE THE TEST ABOVE)
+    assert isBand.any()
+    assert uncovered[isBand].all()
 
 
 def test_an_order_with_no_common_slit_range_is_warned_about_and_left_out_whole(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
 ) -> None:
     # ARRANGE: THE B FRAMES ARE SHIFTED BY MORE THAN THE SLIT LENGTH IN ORDER 1 ONLY
-    _patch_plan(monkeypatch, scene, {1: 3 * FOOTPRINT_HALF, 2: 4.6, 3: 4.6, 4: 4.6})
+    _patch_plan(monkeypatch, scene, {1: BEYOND_SLIT_LENGTH, 2: NOD_THROW, 3: NOD_THROW, 4: NOD_THROW})
     recipe = _recipe(log, tmp_path, monkeypatch, scene)
     _record_detrend(recipe, monkeypatch)
 
@@ -258,7 +301,7 @@ def test_a_shift_that_leaves_no_common_slit_range_in_any_order_is_refused(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
 ) -> None:
     # ARRANGE
-    _patch_plan(monkeypatch, scene, dict.fromkeys(scene.orders, 3 * FOOTPRINT_HALF))
+    _patch_plan(monkeypatch, scene, dict.fromkeys(scene.orders, BEYOND_SLIT_LENGTH))
     recipe = _recipe(log, tmp_path, monkeypatch, scene)
     _record_detrend(recipe, monkeypatch)
 
@@ -475,13 +518,33 @@ def test_frames_and_names_of_different_numbers_are_refused(
         recipe._split_nod_frames(_frames(scene))
 
 
-def _stub_alignment(monkeypatch: pytest.MonkeyPatch, alignedA: list[Any], alignedB: list[Any], mapImages: Any) -> None:
-    """Replace the slit alignment with one that leaves the caller's lists alone and returns other frames."""
-    from soxspipe.commonutils.slit_alignment import slit_alignment_result
+def _shift_table(names: list[str], shifts: list[float]) -> pd.DataFrame:
+    """Return the whole-frame shift table of a group whose frames were aligned by ``shifts`` arcsec."""
+    return pd.DataFrame(
+        {
+            "frame": names,
+            "mjd": np.arange(len(names), dtype=float),
+            "order": WHOLE_FRAME,
+            "position_arcsec": np.nan,
+            "shift_arcsec": shifts,
+            "is_fallback": False,
+            "is_reference": [index == 0 for index in range(len(names))],
+        }
+    )
 
+
+def _stub_alignment(
+    monkeypatch: pytest.MonkeyPatch,
+    aligned: tuple[list[Any], list[Any]],
+    names: tuple[list[str], list[str]],
+    mapImages: Any,
+    shifts: tuple[list[float], list[float]] | None = None,
+) -> None:
+    """Replace the slit alignment with one that leaves the caller's lists alone and returns other frames."""
+    shifts = shifts or ([0.0] * len(names[0]), [0.0] * len(names[1]))
     results = [
-        slit_alignment_result(tuple(alignedA), pd.DataFrame(), 0, mapImages),
-        slit_alignment_result(tuple(alignedB), pd.DataFrame(), 0, mapImages),
+        slit_alignment_result(tuple(frames), _shift_table(frameNames, frameShifts), 0, mapImages)
+        for frames, frameNames, frameShifts in zip(aligned, names, shifts, strict=True)
     ]
     monkeypatch.setattr(
         import_module("soxspipe.commonutils.slit_alignment"), "align_frame_groups_along_slit", lambda **_: results
@@ -495,20 +558,25 @@ def test_the_aligned_frames_come_from_the_alignment_results_not_from_a_change_to
     recipe = _recipe(log, tmp_path, monkeypatch, scene)
     framesA, framesB, namesA, namesB = recipe._split_nod_frames(_frames(scene))
     alignedA, alignedB = list(reversed(framesA)), list(reversed(framesB))
-    _stub_alignment(
-        monkeypatch, alignedA, alignedB, build_two_d_map_images(scene.wavelength, scene.slit, scene.orderMap)
-    )
+    mapImages = build_two_d_map_images(scene.wavelength, scene.slit, scene.orderMap)
+    _stub_alignment(monkeypatch, (alignedA, alignedB), (namesA, namesB), mapImages, ([0.0, 0.7], [0.0, -0.4]))
     monkeypatch.setattr(
         import_module("soxspipe.commonutils.nod_shift_and_add"), "build_shift_and_add_plan", lambda *_: "PLAN"
     )
 
     # ACT
-    returnedA, returnedB, plan = recipe._align_nod_frames(framesA, framesB, namesA, namesB, "map.fits", "disp.fits")
+    returnedA, returnedB, plan, alignmentShifts = recipe._align_nod_frames(
+        framesA, framesB, namesA, namesB, "map.fits", "disp.fits"
+    )
 
-    # ASSERT
+    # ASSERT: THE ALIGNMENT SHIFT OF EVERY ORDER OF EACH FRAME COMES BACK FOR THE COVERAGE
     assert returnedA == alignedA
     assert returnedB == alignedB
     assert plan == "PLAN"
+    shiftsA, shiftsB = alignmentShifts
+    assert [set(frame.values()) for frame in shiftsA] == [{0.0}, {0.7}]
+    assert [set(frame.values()) for frame in shiftsB] == [{0.0}, {-0.4}]
+    assert set(shiftsA[0]) == set(scene.orders)
 
 
 def test_a_nominal_throw_with_no_2d_map_from_the_alignment_is_refused_with_a_clear_error(
@@ -517,7 +585,7 @@ def test_a_nominal_throw_with_no_2d_map_from_the_alignment_is_refused_with_a_cle
     # ARRANGE
     recipe = _recipe(log, tmp_path, monkeypatch, scene)
     framesA, framesB, namesA, namesB = recipe._split_nod_frames(_frames(scene))
-    _stub_alignment(monkeypatch, framesA, framesB, None)
+    _stub_alignment(monkeypatch, (framesA, framesB), (namesA, namesB), None)
     monkeypatch.setattr(
         import_module("soxspipe.commonutils.nod_shift_and_add"), "build_shift_and_add_plan", lambda *_: None
     )
