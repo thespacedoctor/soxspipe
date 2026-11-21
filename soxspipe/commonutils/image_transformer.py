@@ -66,11 +66,18 @@ class image_transformer(base_util):
     - ``dispersionMap`` -- the FITS binary table containing dispersion map polynomial
     - ``associatedFrame`` -- an example 2D frame to be rectified. This frame is used to determine detector binning, arm etc.
     - ``slitHalfLength`` -- half-length of the slit in detector pixels (sets extraction aperture). May end in .5.
-      The rectified grid has ``2 * slitHalfLength`` rows (rounded half up), centred on the trace
+      The rectified grid has ``2 * slitHalfLength`` rows (rounded half up), centred on the trace. Not used, and so
+      not needed, when ``fullSlit`` is set
     - ``edgeSamples`` -- number of boundary sample points per cell edge. Default *1*
     - ``fixedSlitCentreArcsec`` -- slit position (arcsec) on which every order is centred, ignoring the object trace
       and the 2D map lookup. Only the ``order`` column of ``orderPixelTable`` is then needed. Default *None* (centre
       each order on its own fitted object trace)
+    - ``fullSlit`` -- if True, the rectified grid covers the whole slit (the detector's ``slit_length``) on a fixed
+      arcsec grid: every order has the same slit-row edges, in steps of ``slitStepArcsec``, centred on
+      ``fixedSlitCentreArcsec``. The grid depends on neither the frame nor the order, so every frame rectified with
+      the same step shares it. Needs ``fixedSlitCentreArcsec``. Default *False*
+    - ``slitStepArcsec`` -- the width (arcsec) of one slit row of the full-slit grid. Default *None* takes the
+      median arcsec-per-pixel scale of the orders, measured from the dispersion map. Only valid with ``fullSlit``
 
     **Return:**
 
@@ -107,6 +114,10 @@ class image_transformer(base_util):
     # NO FIXED SLIT CENTRE BY DEFAULT: EACH ORDER'S CENTRE IS FITTED TO ITS OWN OBJECT-TRACE POINTS
     fixedSlitCentreArcsec = None
 
+    # THE APERTURE GRID (slitHalfLength DETECTOR-PIXEL ROWS) BY DEFAULT; fullSlit SWITCHES TO THE FIXED FULL-SLIT GRID
+    fullSlit = False
+    slitStepArcsec = None
+
     def __init__(
         self,
         log,
@@ -115,10 +126,13 @@ class image_transformer(base_util):
         twoDMapPath,
         dispersionMap,
         associatedFrame,
-        slitHalfLength,
+        slitHalfLength=None,
         edgeSamples=1,
         fixedSlitCentreArcsec=None,
+        fullSlit=False,
+        slitStepArcsec=None,
     ):
+        self._check_slit_grid_options(slitHalfLength, fixedSlitCentreArcsec, fullSlit, slitStepArcsec)
         super().__init__(
             log, settings, associatedFrame=associatedFrame, dispersionMap=dispersionMap, twoDMapPath=twoDMapPath
         )
@@ -128,6 +142,8 @@ class image_transformer(base_util):
         self.twoDMapPath = twoDMapPath
         self.slitHalfLength = slitHalfLength
         self.fixedSlitCentreArcsec = fixedSlitCentreArcsec
+        self.fullSlit = fullSlit
+        self.slitStepArcsec = slitStepArcsec
 
         # NUMBER OF BOUNDARY SAMPLE POINTS PER CELL EDGE — FIXED FOR THE LIFE OF THE INSTANCE SO THE
         # RESAMPLING GEOMETRY CAN BE PRECOMPUTED ONCE AND SHARED ACROSS ALL cache_image CALLS
@@ -159,6 +175,31 @@ class image_transformer(base_util):
         self._cache_true_wavelength_slit_images()
 
         return
+
+    @staticmethod
+    def _check_slit_grid_options(slitHalfLength, fixedSlitCentreArcsec, fullSlit, slitStepArcsec):
+        """*raise ``ValueError`` for a combination of slit-grid options that cannot give a grid*
+
+        **Key Arguments:**
+
+        - ``slitHalfLength`` -- the aperture half-length (pixels), or *None*
+        - ``fixedSlitCentreArcsec`` -- the fixed slit centre (arcsec), or *None*
+        - ``fullSlit`` -- whether the full-slit grid is wanted
+        - ``slitStepArcsec`` -- the full-slit row width (arcsec), or *None*
+
+        **Raises:**
+
+        - ``ValueError`` -- if the full slit has no fixed centre, the aperture has no half-length, a step is given
+          without the full slit, or the step is not positive
+        """
+        if fullSlit and fixedSlitCentreArcsec is None:
+            raise ValueError("fullSlit needs fixedSlitCentreArcsec: the full-slit grid is not centred on a trace")
+        if not fullSlit and slitHalfLength is None:
+            raise ValueError("slitHalfLength is needed unless fullSlit is set")
+        if slitStepArcsec is not None and not fullSlit:
+            raise ValueError("slitStepArcsec is only used with fullSlit")
+        if slitStepArcsec is not None and not slitStepArcsec > 0:
+            raise ValueError(f"slitStepArcsec must be positive, got {slitStepArcsec}")
 
     def _read_dispersion_bin_ratio(self):
         """*Frame binning divided by the dispersion solution's binning, per detector axis*
@@ -195,7 +236,9 @@ class image_transformer(base_util):
             fitY = fitY / ratioY
         return fitX, fitY
 
-    def cache_image(self, imageName, ndarray, associatedMask=None, returnCoverage=False, debug=False):
+    def cache_image(
+        self, imageName, ndarray, associatedMask=None, returnCoverage=False, debug=False, squaredWeights=False
+    ):
         """
         *Place an image in the transformer's cache. These images can be acted on later.*
 
@@ -208,6 +251,10 @@ class image_transformer(base_util):
               A cell whose flagged area exceeds 0.2 is masked in ``bpMask``. Default *None*
             - ``returnCoverage`` -- if True, the method will return a list (one per order) of coverage maps of the rectified image. Default *False*
             - ``debug`` -- if True, print and plot the rectified image for each order. Default *False*
+            - ``squaredWeights`` -- if True, each detector pixel enters a cell with the square of its weight, so a
+              variance image gives the variance of the cell's weighted sum, the sum of w^2 sigma^2 over its pixels.
+              With ``associatedMask`` the renormalisation of the weights is squared too. Flux images and the Horne
+              variance layer keep the linear weights. Default *False*
 
         **Return:**
 
@@ -229,7 +276,7 @@ class image_transformer(base_util):
 
             # FULLY VECTORIZED WEIGHTED SUM USING THE PRECOMPUTED (ALREADY REBINNED) PIXEL-OVERLAP WEIGHTS,
             # LEAVING OUT FLAGGED PIXELS AND RENORMALISING EACH CELL BY ITS GOOD-PIXEL AREA
-            flux = _apply_weights(ndarray, weights, badPixels=badPixels)
+            flux = _apply_weights(ndarray, weights, badPixels=badPixels, squareWeights=squaredWeights)
 
             orderTable[imageName] = list(flux.T)
             # SCALAR BROADCASTS ONCE THE TABLE'S ROW COUNT IS ESTABLISHED — READ BY get_order_rectified()
@@ -307,6 +354,8 @@ class image_transformer(base_util):
         import numpy as np
 
         cache_image_names = self._cache_image_names
+        # THE ANALYTIC WAVELENGTHS, KEPT SO apply_wavelength_shifts ALWAYS SHIFTS FROM THEM AND NEVER ACCUMULATES
+        self._analyticWavelength = {}
 
         for order, sp_edges, wl_edges, centreCoeffs, orderTable in zip(
             self.uniqueOrders,
@@ -331,6 +380,7 @@ class image_transformer(base_util):
             slitImage = self._unzoom(slitImage, operation="mean")
 
             orderTable["wavelength"] = [row for row in wavelengthImage.T]
+            self._analyticWavelength[order] = orderTable["wavelength"]
             orderTable["slit"] = [row for row in slitImage.T]
             orderTable["order"] = order
 
@@ -705,13 +755,7 @@ class image_transformer(base_util):
         # WAVELENGTH EDGES EVENLY SPACED IN DETECTOR PIXELS ALONG EACH TRACE, PLUS EACH ORDER'S ARCSEC/PIXEL
         orderGeometry = self._measure_order_trace_geometry(orderTraces)
 
-        # SLIT OFFSET EDGES, CENTRED ON ZERO — THE ABSOLUTE SLIT POSITION OF ANY POINT IS THIS OFFSET
-        # PLUS THE PER-ORDER, PER-WAVELENGTH TRACE CENTRE (SEE orderSlitCentreCoeffs)
-        # THE GRID HOLDS A WHOLE NUMBER OF DETECTOR-PIXEL ROWS (2 x HALF LENGTH, ROUNDED HALF UP), EDGES FROM -H TO +H
-        # INCLUSIVE, SO THE ROWS ARE CENTRED ON THE TRACE AND EACH ROW IS EXACTLY zoomFactorSlit CELLS WIDE
-        nSlitRows = int(np.floor(2 * self.slitHalfLength + 0.5))
-        slitPixelOffsets = np.linspace(-nSlitRows / 2, nSlitRows / 2, nSlitRows * self.zoomFactorSlit + 1)
-        orderSlitEdges = [slitPixelOffsets * arcsecPerPixel for _, arcsecPerPixel in orderGeometry]
+        orderSlitEdges = self._slit_edges(orderGeometry)
         orderWlEdges = [wlEdges for wlEdges, _ in orderGeometry]
 
         self.orderSlices = [pd.DataFrame() for _ in orderTraces]
@@ -722,6 +766,56 @@ class image_transformer(base_util):
 
         self.log.debug("completed the ``_determine_rectified_image_boundaries`` method")
         return orderSlitEdges, orderWlEdges
+
+    def _slit_pixel_offsets(self, nSlitRows):
+        """*slit-row edges, in rows, centred on zero: ``nSlitRows`` rows of ``zoomFactorSlit`` cells each*
+
+        **Key Arguments:**
+
+        - ``nSlitRows`` -- the number of rows
+
+        **Return:**
+
+        - ``slitPixelOffsets`` -- the ``nSlitRows * zoomFactorSlit + 1`` edges, from ``-nSlitRows / 2`` to
+          ``nSlitRows / 2``
+        """
+        return np.linspace(-nSlitRows / 2, nSlitRows / 2, nSlitRows * self.zoomFactorSlit + 1)
+
+    def _slit_edges(self, orderGeometry):
+        """*the slit offset edges (arcsec from the slit centre) of every order's rectified grid*
+
+        The grid holds a whole number of rows centred on zero, each exactly ``zoomFactorSlit`` cells wide. The absolute
+        slit position of a point is its offset plus the order's trace centre (``orderSlitCentreCoeffs``).
+
+        - Aperture grid (the default): ``2 * slitHalfLength`` detector-pixel rows (rounded half up), each as wide as
+          that order's own arcsec-per-pixel scale.
+        - Full-slit grid (``fullSlit``): enough rows of ``slitStepArcsec`` to cover the detector's ``slit_length``,
+          the same edges in every order. The resolved step and row count are kept as ``slitGridStepArcsec`` and
+          ``slitGridRows``.
+
+        **Key Arguments:**
+
+        - ``orderGeometry`` -- ``(wlEdges, arcsecPerPixel)`` of each order
+
+        **Return:**
+
+        - ``orderSlitEdges`` -- one array of slit offset edges per order
+        """
+        if not self.fullSlit:
+            # THE GRID HOLDS A WHOLE NUMBER OF DETECTOR-PIXEL ROWS (2 x HALF LENGTH, ROUNDED HALF UP), EDGES FROM -H TO
+            # +H INCLUSIVE, SO THE ROWS ARE CENTRED ON THE TRACE
+            slitPixelOffsets = self._slit_pixel_offsets(int(np.floor(2 * self.slitHalfLength + 0.5)))
+            return [slitPixelOffsets * arcsecPerPixel for _, arcsecPerPixel in orderGeometry]
+
+        stepArcsec = self.slitStepArcsec
+        if stepArcsec is None:
+            stepArcsec = float(np.median([arcsecPerPixel for _, arcsecPerPixel in orderGeometry]))
+        # THE TOLERANCE KEEPS A SLIT THAT IS A WHOLE NUMBER OF STEPS (12 / 0.2) FROM GAINING A ROW TO ROUNDING
+        nSlitRows = int(np.ceil(self.detectorParams["slit_length"] / stepArcsec - 1e-9))
+        self.slitGridStepArcsec = stepArcsec
+        self.slitGridRows = nSlitRows
+        slitEdges = self._slit_pixel_offsets(nSlitRows) * stepArcsec
+        return [slitEdges.copy() for _ in orderGeometry]
 
     def _measure_order_trace_geometry(self, orderTraces):
         """*Measure each order's pixel-uniform wavelength edges and arcsec-per-pixel scale from the dispersion map*
@@ -798,6 +892,59 @@ class image_transformer(base_util):
 
         self.log.debug("completed the ``_measure_order_trace_geometry`` method")
         return orderGeometry
+
+    def apply_wavelength_shifts(self, shiftsNm=None, corrections=None):
+        """*Add skyline wavelength shifts to the cached wavelength layer of each order*
+
+        The shifts are added to the analytic bin-centre wavelengths of each order, in every slit row, with the sign
+        the extraction's skyline tuning uses. Each call starts again from the analytic wavelengths, so calling it a
+        second time replaces the shifts of the first. No flux or variance layer is touched.
+
+        **Key Arguments:**
+
+        - ``shiftsNm`` -- ``{order: shift (nm)}``. The key ``"all"`` shifts every order, on top of the order's own
+          shift. Default *None* shifts nothing
+        - ``corrections`` -- ``{order: correction}`` of the NIR global sky fit (``nir_sky_refit.order_sky_correction``),
+          each adding ``correction_nm(wavelengths, pixelScales)`` to its order, with the pixel scale of each column
+          measured as the extraction does (a central difference of the column wavelengths, none at the two ends).
+          As in the extraction, when there are corrections ``shiftsNm`` is not used, and an order with no correction
+          keeps its analytic wavelengths. Default *None*
+
+        **Usage:**
+
+        ```python
+        transformer.apply_wavelength_shifts(shiftsNm=skyShiftsNm, corrections=skyCorrections)
+        ```
+        """
+        self.log.debug("starting the ``apply_wavelength_shifts`` method")
+
+        for order, orderTable in zip(self.uniqueOrders, self.orderSlices, strict=True):
+            analytic = np.vstack(self._analyticWavelength[order]).T
+            shift = self._wavelength_shift(order, analytic[0], shiftsNm or {}, corrections)
+            orderTable["wavelength"] = list((analytic + shift).T)
+
+        self.log.debug("completed the ``apply_wavelength_shifts`` method")
+
+    @staticmethod
+    def _wavelength_shift(order, wavelengths, shiftsNm, corrections):
+        """*the shift (nm) to add to one order's columns: a number, or one value per column*
+
+        **Key Arguments:**
+
+        - ``order`` -- the order
+        - ``wavelengths`` -- the analytic wavelength of each column of the order
+        - ``shiftsNm`` -- ``{order or "all": shift (nm)}``
+        - ``corrections`` -- ``{order: correction}`` or *None*; when it holds anything, only it is used
+
+        **Return:**
+
+        - ``shiftNm`` -- the shift to add, 0.0 for an order with no correction
+        """
+        if not corrections:
+            return shiftsNm.get("all", 0.0) + shiftsNm.get(order, 0.0)
+        if order not in corrections:
+            return 0.0
+        return corrections[order].correction_nm(wavelengths, _column_pixel_scale_nm(wavelengths))
 
     def get_order_slices(self):
         return self.orderSlices
@@ -1079,6 +1226,24 @@ def _pixel_uniform_wavelength_edges(wavelengths, pixelX, pixelY, samplesPerPixel
     return np.interp(targets, pathLength[keep], wavelengths[keep])
 
 
+def _column_pixel_scale_nm(wavelengths):
+    """*Pixel scale (nm) of each column as the extraction measures it: half the difference of its neighbours*
+
+    The first and last columns have no two neighbours, so they get NaN.
+
+    **Key Arguments:**
+
+    - ``wavelengths`` -- 1D wavelengths of consecutive columns
+
+    **Return:**
+
+    - ``pixelScaleNm`` -- the absolute central difference of the wavelengths, with NaN at both ends
+    """
+    pixelScaleNm = np.full(len(wavelengths), np.nan)
+    pixelScaleNm[1:-1] = np.abs(wavelengths[2:] - wavelengths[:-2]) / 2
+    return pixelScaleNm
+
+
 def _arcsec_per_pixel(slitProbeArcsec, centreX, centreY, offsetX, offsetY):
     """*Median slit scale (arcsec per detector pixel) from trace points and points offset along the slit*
 
@@ -1145,7 +1310,7 @@ def _rebin_resampling_weights(i, j, px, py, area, nSp, nWl, zoomSlit, zoomWavele
     }
 
 
-def _apply_weights(ndarray, weights, badPixels=None):
+def _apply_weights(ndarray, weights, badPixels=None, squareWeights=False):
     """*Weighted sum of detector pixels into the rebinned output grid, leaving out flagged pixels*
 
     Without ``badPixels`` every pixel is summed with its overlap area. With it, flagged pixels are left out of the
@@ -1153,11 +1318,17 @@ def _apply_weights(ndarray, weights, badPixels=None):
     cell and does not carry a flagged pixel's value. A cell with no good pixel keeps its all-pixel sum (it is
     masked by the caller). A cell with no flagged pixel is exactly the plain weighted sum.
 
+    With ``squareWeights`` the sum is of ``ndarray`` times the squared weight, so a variance image gives the variance
+    of the weighted sum: sigma^2 of each pixel times w^2, with w the overlap area (times the renormalisation scale of
+    a cell with flagged pixels). Which pixels are flagged, and the renormalisation scale itself, do not change.
+
     **Key Arguments:**
 
     - ``ndarray`` -- 2D detector-space image
     - ``weights`` -- rebinned weights dict from ``_rebin_resampling_weights``
     - ``badPixels`` -- optional 2D boolean detector-space array, True where a pixel is flagged. Default *None*
+    - ``squareWeights`` -- if True, weight each pixel by the square of its overlap area (and the cell's renormalisation
+      scale). Default *False*
 
     **Return:**
 
@@ -1168,7 +1339,8 @@ def _apply_weights(ndarray, weights, badPixels=None):
     nSpOut, nWlOut = weights["shape"]
     nCells = nSpOut * nWlOut
     flatIdx, area = weights["flatIdx"], weights["area"]
-    weighted = ndarray[weights["py"], weights["px"]] * area
+    pixelWeight = area * area if squareWeights else area
+    weighted = ndarray[weights["py"], weights["px"]] * pixelWeight
     total = np.bincount(flatIdx, weights=weighted, minlength=nCells)
     if badPixels is None:
         return total.reshape(nSpOut, nWlOut)
@@ -1185,4 +1357,5 @@ def _apply_weights(ndarray, weights, badPixels=None):
     # WHERE, NOT MULTIPLICATION, SO A NON-FINITE VALUE UNDER THE MASK CANNOT POISON THE CELL
     goodSum = np.bincount(flatIdx, weights=np.where(isBad, 0.0, weighted), minlength=nCells)
     scale = np.divide(allArea, goodArea, out=np.ones_like(allArea), where=canRenormalise)
-    return np.where(canRenormalise, goodSum * scale, total).reshape(nSpOut, nWlOut)
+    cellScale = scale * scale if squareWeights else scale
+    return np.where(canRenormalise, goodSum * cellScale, total).reshape(nSpOut, nWlOut)
