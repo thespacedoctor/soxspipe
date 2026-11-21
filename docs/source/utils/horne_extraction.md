@@ -94,7 +94,7 @@ $$
 \mathrm{SNR}_{line} = \frac{\max(F_{\pm 4}) - \mathrm{median}(F_{\pm 25})}{\sqrt{\mathrm{median}(F_{\pm 25}) + \sigma_{RON}^{2}}}
 $$
 
-$F_{\pm 4}$ is the sky flux within 4 samples of the line position, and $F_{\pm 25}$ is the sky flux within 25 samples. $\sigma_{RON}$ is the read noise of the detector. The SNR values of the lines add in quadrature to give the combined SNR of the order.
+$F_{\pm 4}$ is the sky flux within 4 samples of the line position, and $F_{\pm 25}$ is the sky flux within 25 samples. $\sigma_{RON}$ is the read noise of the frame. For SOXS NIR it comes from the sample-count table (see [prepare frames](prepare_frames.md)). The SNR values of the lines add in quadrature to give the combined SNR of the order.
 
 If the combined SNR is below `MIN_SKY_LINE_SNR` (5.4), the utility does not apply the shift of the order. The log has an info line like "order 4: sky-line SNR 4.7 (min 5.4); no shift applied". The same check decides whether the i shift can drive the r prediction, and whether the r and i shifts can drive the u and g model. Every SOXS VIS order measured from its own sky lines gets a `SKY LINE SNR O<N>` QC.
 

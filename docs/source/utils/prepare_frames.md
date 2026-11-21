@@ -30,6 +30,12 @@ A bias frame has the read noise only, so its error is $\rm{readnoise} / \sqrt{\r
 
 NDIT is the number of integrations in the file (`ESO DET NDIT`). A raw NIR file is the mean of its NDIT integrations, so its variance is the variance of one integration divided by NDIT. A frame with no NDIT card, such as a VIS or X-Shooter UVB frame, is one integration (NDIT is 1). The same is true for a card that is not a whole number from 1 to 10000, and the recipe writes a warning. X-Shooter NIR frames carry the same card, so those with an NDIT above 1 change in the same way. The read noise is the value for one integration. Stacking and flux calibration need no NDIT term, because the error of each prepared frame already includes it.
 
+**Read noise of SOXS NIR frames.** For a SOXS NIR frame, the read noise comes from the number of up-the-ramp samples in the frame (`ESO DET NDSAMPLES`). The table `read-noise-by-ndsamples` in `soxs_detector_parameters.yaml` gives the read noise in $e^{-}$ at 2, 4, 7, 10, 39, 77 and 128 samples, from 17.50 $e^{-}$ at 2 samples to 7.55 $e^{-}$ at 128 samples. The recipe interpolates linearly in log(NDSAMPLES) between these points. It does this for each frame, in nod and stare mode, with or without a master dark in the SOF. The `QC RAW RON` of a master dark does not set the read noise.
+
+The recipe uses the fallback `ron` of the NIR detector parameters (7.55 $e^{-}$, the 128-sample value) and writes a warning for a frame with no `ESO DET NDSAMPLES` card, or with a value that is not a whole number inside the range of the table (2 to 128). If the raw frames of a SOF have different sample counts, the recipe uses the largest read noise and writes a warning. The table is a single set of values and does not follow two effects that the yaml file lists: a night-to-night scatter of about ±15% at 128 samples, and a drift of about +20% at 2 to 10 samples between 2025-09 and 2026-10.
+
+UVB, VIS and X-Shooter frames do not use this table.
+
 <!-- **Bitmap Extension**
 
 The appropriate bitmap extension is selected and simply added as the 'FLAG' extension of the frame. -->

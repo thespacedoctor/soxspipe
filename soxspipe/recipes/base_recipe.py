@@ -116,8 +116,9 @@ class base_recipe:
     # THE ARM OF THE INPUT FRAMES, SET WHEN THEY ARE VERIFIED. A CLASS ATTRIBUTE, SO A RECIPE OBJECT BUILT WITHOUT
     # `__init__` READS AS NO ARM (DY-2322)
     arm = None
-    # WHETHER A NIR RECIPE TAKES ITS READ NOISE FROM THE MASTER DARK IN THE SOF. A NODDING RECIPE SETS IT False, AS A-B
-    # REMOVES THE DARK (DY-2335)
+    # WHETHER A NIR RECIPE SUBTRACTS THE MASTER DARK IN THE SOF. A SOXS RECIPE THEN ADDS THE DARK'S NOISE TO ITS SKY
+    # FIT (THE READ NOISE ITSELF COMES FROM THE FRAME'S NDSAMPLES, DY-2341); AN X-SHOOTER RECIPE TAKES ITS READ NOISE
+    # FROM THE DARK. A NODDING RECIPE SETS IT FALSE, AS A-B REMOVES THE DARK (DY-2335)
     usesMasterDarkReadNoise: bool = True
 
     def __init__(
@@ -1382,16 +1383,18 @@ class base_recipe:
         return
 
     def _apply_measured_read_noise(self):
-        """*replace the nominal read noise with the one measured on the master frame the SOF names*
+        """*set the read noise from the sample count of the SOXS NIR frames, or the master frame the SOF names*
 
-        UVB and VIS frames use the master bias (``MASTER_BIAS_<arm>``); NIR frames use the master dark
-        (``MASTER_DARK_NIR``). A UVB/VIS SOF never takes its read noise from a master dark, and neither does a NIR
-        recipe with ``usesMasterDarkReadNoise`` False (the nodding recipe, DY-2335). Without that master frame in the
-        SOF, or for any other arm, the nominal read noise stays. Otherwise ``self.detectorParams["ron"]`` is set
-        to the single-frame read noise, which the prepared uncertainty and the bias-pedestal correction use. The master
-        frame's noise reaches a detrended frame through ``ccdproc.subtract_bias`` or ``ccdproc.subtract_dark``, so it
-        is not added here. The sky-subtraction noise model has no such propagation; ``self.readNoise.skyFit`` holds
-        the value it needs (DY-1458, DY-1581).
+        A SOXS NIR recipe looks the read noise up from the ``ESO DET NDSAMPLES`` of its own raw frames, with or
+        without a master dark in the SOF, through ``_apply_ndsamples_read_noise`` (DY-2341). Every other case takes
+        it from a master frame: UVB and VIS frames from the master bias (``MASTER_BIAS_<arm>``), X-Shooter NIR
+        frames from the master dark (``MASTER_DARK_NIR``). A UVB/VIS SOF never takes its read noise from a master
+        dark, and neither does an X-Shooter NIR recipe with ``usesMasterDarkReadNoise`` False (the nodding recipe,
+        DY-2335). Without that master frame in the SOF, the nominal read noise stays. Otherwise
+        ``self.detectorParams["ron"]`` is set to the single-frame read noise, which the prepared uncertainty and the
+        bias-pedestal correction use. The master frame's noise reaches a detrended frame through
+        ``ccdproc.subtract_bias`` or ``ccdproc.subtract_dark``, so it is not added here. The sky-subtraction noise
+        model has no such propagation; ``self.readNoise.skyFit`` holds the value it needs (DY-1458, DY-1581).
         """
         from astropy import units as u
         from astropy.io import fits
@@ -1399,6 +1402,9 @@ class base_recipe:
         from soxspipe.commonutils.read_noise import SOURCE_MASTER_BIAS, SOURCE_MASTER_DARK, resolve_read_noise
 
         arm = self.arm.upper()
+        if arm == "NIR" and self.settings.get("instrument", "soxs") == "soxs":
+            self._apply_ndsamples_read_noise()
+            return
         if arm in ("UVB", "VIS"):
             masterCatg, masterLabel, masterPlural = f"MASTER_BIAS_{arm}", SOURCE_MASTER_BIAS, "master biases"
         elif arm == "NIR" and self.usesMasterDarkReadNoise:
@@ -1406,17 +1412,9 @@ class base_recipe:
         else:
             return
 
-        masterPaths = self.inputFrames.files_filtered(include_path=True, **{self.kw("PRO_CATG"): masterCatg})
-        if not len(masterPaths):
+        masterPath = self._select_master_frame(masterCatg, masterPlural)
+        if masterPath is None:
             return
-
-        # SORT SO THE CHOICE DOES NOT DEPEND ON DIRECTORY ORDER
-        masterPath = sorted(masterPaths)[-1]
-        if len(masterPaths) > 1:
-            self.log.warning(
-                f"The SOF names {len(masterPaths)} {masterPlural}; the read noise is taken from "
-                f"{os.path.basename(masterPath)}."
-            )
 
         try:
             masterHeader = fits.getheader(masterPath)
@@ -1431,6 +1429,72 @@ class base_recipe:
         # (X-SHOOTER NIR ONLY; EVERY SOXS DARK IS NDIT 1) WOULD NEED IT SCALED BY SQRT(NDIT) OF THE MASTER
         # (DY-2317, DY-2322)
         self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
+
+        return
+
+    def _select_master_frame(self, masterCatg, masterPlural):
+        """*pick the master frame of a product category from the SOF, warning when it names several*
+
+        **Key Arguments:**
+
+        - ``masterCatg`` -- the ``PRO_CATG`` of the master frame, e.g. ``MASTER_DARK_NIR``
+        - ``masterPlural`` -- what several of them are called in the warning
+
+        **Return:**
+
+        - ``masterPath`` -- the path of the last master frame by name, so the choice does not depend on directory
+          order, or *None* when the SOF names none
+        """
+        masterPaths = self.inputFrames.files_filtered(include_path=True, **{self.kw("PRO_CATG"): masterCatg})
+        if not len(masterPaths):
+            return None
+
+        masterPath = sorted(masterPaths)[-1]
+        if len(masterPaths) > 1:
+            self.log.warning(
+                f"The SOF names {len(masterPaths)} {masterPlural}; the read noise is taken from "
+                f"{os.path.basename(masterPath)}."
+            )
+        return masterPath
+
+    def _apply_ndsamples_read_noise(self):
+        """*set the SOXS NIR read noise from the up-the-ramp sample count of the raw frames (DY-2341)*
+
+        ``self.detectorParams["ron"]`` is the table value at the ``ESO DET NDSAMPLES`` of the raw frames, whether or
+        not the SOF names a master dark; the dark's ``QC RAW RON`` sets nothing. ``self.readNoise.skyFit`` adds the
+        noise of the master dark that the recipe subtracts. A nodding recipe (``usesMasterDarkReadNoise`` False)
+        subtracts none, as A-B removes it, so its sky fit is the frame's own read noise. A SOF with no raw frame
+        keeps the detector read noise.
+        """
+        import numpy as np
+        from astropy import units as u
+
+        from soxspipe.commonutils.read_noise import resolve_nir_read_noise
+
+        kw = self.kw
+        summary = self.inputFrames.summary
+        # A SETTINGS FILE WITH ITS OWN summary-keys HAS NO SAMPLE-COUNT COLUMN: EVERY FRAME THEN HAS NO CARD
+        counts = summary[kw("DET_NDSAMPLES")] if kw("DET_NDSAMPLES") in summary.colnames else [None] * len(summary)
+        rawFrames = [
+            (os.path.basename(str(name)), None if count is None or count is np.ma.masked else count)
+            for name, catg, count in zip(summary["file"], summary[kw("PRO_CATG")], counts, strict=True)
+            if catg is None or catg is np.ma.masked
+        ]
+        masterPath = None
+        if self.usesMasterDarkReadNoise:
+            masterPath = self._select_master_frame("MASTER_DARK_NIR", "master darks")
+
+        self.readNoise = resolve_nir_read_noise(
+            rawFrames,
+            masterPath,
+            self.detectorParams["read-noise-by-ndsamples"],
+            self.defaultRon,
+            self.workspaceRootPath,
+            kw,
+            self.log,
+        )
+        if self.readNoise is not None:
+            self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
 
         return
 
@@ -2564,6 +2628,46 @@ class base_recipe:
         # ONLY THE FIRST TWO RAW FRAMES ARE NEEDED, SO NO MORE ARE LOADED
         raw_one, raw_two = islice(ccds, 2)
         return self._first_pair_ron(raw_one, raw_two)
+
+    def _cross_check_nir_dark_ron(self, rawRon, header):
+        """*warn when a SOXS NIR master dark's measured read noise is far from the table value at its sample count*
+
+        The measured ``QC RAW RON`` is a QC value only; it never sets the read noise (DY-2341). It is compared with
+        the table value at the dark's own ``ESO DET NDSAMPLES``, and a warning is logged when they differ by more than
+        ``DARK_RON_TABLE_TOLERANCE`` (20%) of the table value. X-Shooter and the UVB and VIS arms are not checked, and
+        neither is a dark whose sample count the table cannot serve.
+
+        **Key Arguments:**
+
+        - ``rawRon`` -- the read noise (e-) measured from the raw darks
+        - ``header`` -- the header of the master dark
+
+        **Usage:**
+
+        ```python
+        self._cross_check_nir_dark_ron(rawRon, frame.header)
+        ```
+        """
+        from soxspipe.commonutils.read_noise import DARK_RON_TABLE_TOLERANCE, table_read_noise
+
+        if self.arm != "NIR" or self.settings.get("instrument", "soxs") != "soxs":
+            return
+
+        ndsamples = header.get(self.kw("DET_NDSAMPLES"))
+        tableRon = table_read_noise(ndsamples, self.detectorParams["read-noise-by-ndsamples"])
+        if tableRon is None:
+            self.log.info(
+                f"The master dark has no usable {self.kw('DET_NDSAMPLES')}; its QC RAW RON is not cross-checked."
+            )
+            return
+
+        deviation = abs(rawRon - tableRon) / tableRon
+        if deviation > DARK_RON_TABLE_TOLERANCE:
+            self.log.warning(
+                f"The master dark QC RAW RON of {rawRon:0.2f} e- is {deviation:.0%} from the table value of "
+                f"{tableRon:0.2f} e- at {int(ndsamples)} samples (limit {DARK_RON_TABLE_TOLERANCE:.0%}). "
+                "The read noise of the reduction does not use it; check the raw darks."
+            )
 
     def _first_pair_ron(self, raw_one, raw_two):
         """*measure the read-out noise and the bad-pixel mask from the difference of two raw frames*

@@ -79,6 +79,9 @@ SLIT_PIXELS = 96
 SLIT_HALF_LENGTH = 5.5
 SKY_LEVEL = 20.0
 READ_NOISE = 3.3
+# THE SOXS NIR DETECTOR READ NOISE (E-) THE GOLDEN FILE WAS RECORDED WITH. THE SKY FIT TAKES IT AS A GIVEN VALUE, SO THE
+# FILE DOES NOT MOVE WHEN THE DETECTOR-PARAMETER READ NOISE IS RE-MEASURED (DY-2341 CHANGED IT FROM 7.3 TO 7.55)
+NIR_GOLDEN_READ_NOISE = 7.3
 STAR_CENTRE = 0.4
 STAR_FWHM = 1.0
 STAR_FLUX_PER_COLUMN = 3000.0
@@ -201,6 +204,7 @@ def run_default_subtract(log: Any, arm: str, workDir: Path) -> dict[str, np.ndar
             twoDMap="two-d-map.fits",
             qcTable=pd.DataFrame(),
             productsTable=pd.DataFrame(),
+            ron=NIR_GOLDEN_READ_NOISE if arm == "NIR" else None,
         )
         model, subtracted, _, _, _ = subtractor.subtract()
     return {

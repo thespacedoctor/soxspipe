@@ -126,7 +126,7 @@ class soxs_nod(base_recipe):
     hostFeatures = None
 
     # A NODDING FRAME TAKES NO DARK, AS A-B REMOVES IT, SO A MASTER DARK IN A NIR NOD SOF DOES NOT SET THE READ NOISE
-    # (DY-2335). THE STARE RECIPE KEEPS IT
+    # OR ADD TO THE SKY-FIT NOISE (DY-2335, DY-2341). THE STARE RECIPE KEEPS IT
     usesMasterDarkReadNoise: bool = False
 
     def __init__(

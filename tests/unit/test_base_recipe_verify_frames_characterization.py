@@ -90,7 +90,12 @@ def _detector_lookup(
             return None
 
         def get(self, arm: str) -> dict[str, object]:
-            return {"dispersion-axis": dispersionAxis, "gain": gain, "ron": ron}
+            return {
+                "dispersion-axis": dispersionAxis,
+                "gain": gain,
+                "ron": ron,
+                "read-noise-by-ndsamples": {2: 17.5, 128: 7.55},
+            }
 
     return DetectorLookup
 
@@ -122,6 +127,7 @@ def _recipe(
     recipe.log = log
     recipe.kw = lambda name: name
     recipe.settings = {"instrument": instrument}
+    recipe.workspaceRootPath = "/nonexistent-workspace"
     recipe.recipeName = recipeName
     recipe.get_recipe_settings = lambda: {"frame-clipping-sigma": 3.0}
     recipe.inputFrames = FrameInventory(Table(summaryColumns), files=files)
@@ -261,6 +267,8 @@ def test_nir_frames_take_gain_and_readnoise_from_the_detector_parameters(
         "GAIN": [None],
         "RON": [None],
         "SLIT_NIR": ["SLIT1.0"],
+        "file": ["science.fits"],
+        "DET_NDSAMPLES": [None],
     }
     del summary["SLIT_VIS"]
     recipe = _recipe(log, summary, recipeName="soxs-nod")
@@ -308,6 +316,8 @@ def test_a_soxs_nir_nodding_recipe_accepts_the_five_and_one_point_five_slit_pair
     summary["PRO_CATG"] = ["SCIENCE_NIR", "SCIENCE_NIR"]
     summary["SLIT_NIR"] = ["SLIT5.0", "SLIT1.5"]
     summary["DPR_TYPE"] = ["OBJECT", "OBJECT"]
+    summary["file"] = ["a.fits", "b.fits"]
+    summary["DET_NDSAMPLES"] = [128, 128]
     del summary["SLIT_VIS"]
     recipe = _recipe(log, summary, recipeName="soxs-nod-std")
     monkeypatch.setattr(RECIPE_MODULE, "detector_lookup", _detector_lookup())

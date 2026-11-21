@@ -49,11 +49,12 @@ def _recipe(directory: Path, log: Any, arm: str) -> base_recipe:
     recipe.kw = kw
     recipe.arm = arm
     recipe.settings = SETTINGS
+    recipe.workspaceRootPath = str(directory)
     recipe.inputFrames = ImageFileCollection(
         location=str(directory),
-        keywords=[kw("SEQ_ARM"), kw("PRO_CATG"), kw("RON"), kw("CHIP_RON"), "file"],
+        keywords=[kw("SEQ_ARM"), kw("PRO_CATG"), kw("RON"), kw("CHIP_RON"), kw("DET_NDSAMPLES"), "file"],
     )
-    recipe.detectorParams = {"ron": DETECTOR_DEFAULT_RON}
+    recipe.detectorParams = {"ron": DETECTOR_DEFAULT_RON, "read-noise-by-ndsamples": {2: 17.5, 128: 7.55}}
     recipe._report_verification_error = lambda **_: None
     return recipe
 
@@ -107,9 +108,9 @@ def test_a_nir_recipe_never_looks_for_a_master_bias(tmp_path: Path, log: Any, mo
     # ACT
     _verify_read_noise(recipe)
 
-    # ASSERT
-    assert recipe.detectorParams["ron"].value == pytest.approx(NOMINAL_RON)
-    assert recipe.readNoise is None
+    # ASSERT: THE FRAMES CARRY NO NDSAMPLES CARD, SO THE READ NOISE IS THE DETECTOR FALLBACK, NOT THE STRAY BIAS'S
+    assert recipe.detectorParams["ron"].value == pytest.approx(DETECTOR_DEFAULT_RON)
+    assert recipe.readNoise.source == "detector default"
 
 
 def test_an_old_master_bias_falls_back_to_the_nominal_read_noise_with_a_warning(tmp_path: Path, log: Any) -> None:
