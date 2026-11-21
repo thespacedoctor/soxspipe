@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,6 +10,7 @@ import pandas as pd
 import pytest
 
 from soxspipe.commonutils.base_util import base_util
+from soxspipe.commonutils.detector_lookup import detector_lookup
 from soxspipe.commonutils.image_transformer import _column_pixel_scale_nm, image_transformer
 from soxspipe.commonutils.nir_sky_refit import order_geometry, order_sky_correction
 
@@ -23,14 +25,49 @@ ARCSEC_PER_PIXEL = {10: 0.5, 11: 0.6}
 TRACE_ROW = 18.0
 ZOOM = 5
 SLIT_LENGTH_ARCSEC = 12.0
+# THE ARM'S DETECTOR PARAMETERS THE TRANSFORMER READS; THE STEP IS NOT THE MEASURED PLATE SCALE ON PURPOSE
+DETECTOR_PARAMS = {"slit_length": SLIT_LENGTH_ARCSEC, "slit-step-arcsec": 0.4}
+# THE TRACE CENTRES, IN ARCSEC FROM THE SLIT CENTRE, OF A TRACE-CENTRED CALL: ONE DETECTOR ROW UP IN EACH ORDER
+TRACE_ARCSEC = {10: 0.5, 11: 0.6}
 
 
-def _frame_arrays() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _trace_map() -> pd.DataFrame:
+    """Return the 2D map rows under the trace points of orders 10 and 11 (detector rows 19 and 20)."""
+    columns = np.arange(ORDER_COLUMNS)
+    return pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "x": columns,
+                    "y": int(TRACE_ROW) + 1 + index,
+                    "slit_position": TRACE_ARCSEC[order],
+                    "wavelength": ORDER_START_NM[order] + NM_PER_PIXEL * columns,
+                }
+            )
+            for index, order in enumerate((10, 11))
+        ],
+        ignore_index=True,
+    )
+
+
+def _trace_pixel_table() -> pd.DataFrame:
+    """Return the object-trace points of both orders: the detector columns and rows that ``_trace_map`` describes."""
+    columns = np.arange(ORDER_COLUMNS)
+    return pd.concat(
+        [
+            pd.DataFrame({"order": order, "xcoord_centre": columns, "ycoord": int(TRACE_ROW) + 1 + index})
+            for index, order in enumerate((10, 11))
+        ],
+        ignore_index=True,
+    )
+
+
+def _frame_arrays(flaggedRow: int = 16) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return a deterministic flux image, variance image and bad-pixel mask on the synthetic detector."""
     flux = np.arange(DETECTOR_ROWS * DETECTOR_COLUMNS, dtype=float).reshape(DETECTOR_ROWS, DETECTOR_COLUMNS) * 0.5 + 3.0
     variance = 1.0 + (np.arange(DETECTOR_COLUMNS)[None, :] % 3) + 0.25 * np.arange(DETECTOR_ROWS)[:, None]
     mask = np.zeros((DETECTOR_ROWS, DETECTOR_COLUMNS), dtype=bool)
-    mask[16, 5] = True
+    mask[flaggedRow, 5] = True
     return flux, variance, mask
 
 
@@ -38,8 +75,9 @@ def _frame_arrays() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 def synthetic_transformer(log: object, monkeypatch: pytest.MonkeyPatch):
     """Return a builder of real ``image_transformer`` instances on a linear two-order synthetic dispersion map.
 
-    The map puts the wavelength axis along x at 0.1 nm per pixel and the slit axis along y, 12 rows being the
-    trace, at 0.5 arcsec per pixel in order 10 and 0.6 in order 11. Cell edges fall on whole pixel columns.
+    The map puts the wavelength axis along x at 0.1 nm per pixel and the slit axis along y, at 0.5 arcsec per pixel in
+    order 10 and 0.6 in order 11, with the slit centre on detector row 18. Cell edges fall on whole pixel columns.
+    The trace points of a trace-centred call sit one row above the slit centre, in rows 19 (order 10) and 20 (order 11).
     """
 
     def fake_base_init(transformer, suppliedLog, settings, *, associatedFrame, dispersionMap, twoDMapPath):
@@ -47,7 +85,10 @@ def synthetic_transformer(log: object, monkeypatch: pytest.MonkeyPatch):
         transformer.settings = settings
         transformer.dispersionMap = dispersionMap
         transformer.twoDMap = {"WAVELENGTH": SimpleNamespace(data=np.zeros((DETECTOR_ROWS, DETECTOR_COLUMNS)))}
-        transformer.detectorParams = {"slit_length": SLIT_LENGTH_ARCSEC}
+        transformer.arm = "NIR"
+        transformer.detectorParams = dict(DETECTOR_PARAMS)
+        transformer.axisA, transformer.axisB, transformer.dispersionAxis = "x", "y", "x"
+        transformer.mapDF = _trace_map()
         transformer.orderNums = np.array([10, 11])
         transformer.amins = np.array([0.0, 0.0])
         transformer.amaxs = np.array([float(ORDER_COLUMNS)] * 2)
@@ -76,48 +117,69 @@ def synthetic_transformer(log: object, monkeypatch: pytest.MonkeyPatch):
             "twoDMapPath": "map.fits",
             "dispersionMap": "coefficients.fits",
             "associatedFrame": object(),
-            "slitHalfLength": 3,
             "fixedSlitCentreArcsec": 0.0,
         }
+        if not options.get("fullSlit"):
+            arguments["slitHalfLength"] = 3
         arguments.update(options)
         return image_transformer(**arguments)
 
     return build
 
 
-def test_horne_configuration_rectifies_a_synthetic_scene_as_before(synthetic_transformer) -> None:
-    # ARRANGE: THE TODAY'S HORNE CALL, 6 ROWS ABOUT THE TRACE. EVERY CELL EDGE CUTS THROUGH PIXEL CENTRES ALONG THE
-    # SLIT, SO EACH CELL IS HALF OF TWO NEIGHBOURING DETECTOR PIXELS
-    flux, variance, mask = _frame_arrays()
-    transformer = synthetic_transformer()
+@pytest.fixture
+def full_slit_transformer(synthetic_transformer):
+    """Return a builder of full-slit transformers on 0.5 arcsec rows, which are one detector row in order 10."""
+
+    def build(**options: object) -> image_transformer:
+        return synthetic_transformer(**{"fullSlit": True, "slitStepArcsec": 0.5, **options})
+
+    return build
+
+
+@pytest.mark.parametrize("isTraceCentred", [False, True], ids=["trace-fallback", "trace-centred"])
+def test_horne_calls_rectify_a_synthetic_scene_as_before(synthetic_transformer, isTraceCentred: bool) -> None:
+    # ARRANGE: THE TWO CALLS HORNE MAKES, 6 ROWS ABOUT THE CENTRE OF A LINEAR TWO-ORDER MAP. THE TRACE-FALLBACK CALL
+    # CENTRES EVERY ORDER ON THE SLIT CENTRE (fixedSlitCentreArcsec=0.0). THE TRACE-CENTRED CALL (THE DEFAULT) CENTRES
+    # EACH ORDER ON A POLYNOMIAL FIT OF ITS TRACE POINTS, HERE ONE DETECTOR ROW ABOVE THE SLIT CENTRE. EVERY CELL EDGE
+    # CUTS THROUGH PIXEL CENTRES ALONG THE SLIT, SO EACH CELL IS HALF OF TWO NEIGHBOURING DETECTOR PIXELS
+    rowShift = 1 if isTraceCentred else 0
+    flux, variance, mask = _frame_arrays(flaggedRow=16 + rowShift)
+    options = {"orderPixelTable": _trace_pixel_table(), "fixedSlitCentreArcsec": None} if isTraceCentred else {}
+    transformer = synthetic_transformer(**options)
 
     # ACT
     transformer.cache_image("fluxRaw", flux, associatedMask=mask)
     transformer.cache_image("variance", variance, associatedMask=mask)
     rectified = transformer.get_order_rectified()
 
-    # ASSERT: THE GRID IS 6 PIXEL-SIZED ROWS OF 0.5 ARCSEC IN ORDER 10 AND 0.6 IN ORDER 11
+    # ASSERT: THE GRID IS 6 PIXEL-SIZED ROWS OF 0.5 ARCSEC IN ORDER 10 AND 0.6 IN ORDER 11, CENTRED ON THE TRACE
     assert rectified[0]["fluxRaw"].shape == (6, ORDER_COLUMNS)
     assert transformer.orderSlitEdges[0][0] == -1.5
     assert transformer.orderSlitEdges[1][-1] == pytest.approx(1.8)
-    # EACH CELL IS HALF OF TWO PIXELS: ROW r OF ORDER 10 HOLDS DETECTOR ROWS 15 + r AND 16 + r
-    expectedFlux = 0.5 * (flux[15:21, :ORDER_COLUMNS] + flux[16:22, :ORDER_COLUMNS])
-    expectedVariance = 0.5 * (variance[15:21, :ORDER_COLUMNS] + variance[16:22, :ORDER_COLUMNS])
-    # THE FLAGGED PIXEL (16, 5) LEAVES THE CELLS IT FALLS IN (ROWS 0 AND 1, COLUMN 5): THE OTHER PIXEL TAKES THE CELL
-    expectedFlux[0, 5] = flux[15, 5]
-    expectedFlux[1, 5] = flux[17, 5]
-    expectedVariance[0, 5] = variance[15, 5]
-    expectedVariance[1, 5] = variance[17, 5]
-    np.testing.assert_allclose(rectified[0]["fluxRaw"], expectedFlux, rtol=1e-12)
-    np.testing.assert_allclose(rectified[0]["variance"], expectedVariance, rtol=1e-12)
+    assert transformer.slitGridStepArcsec is None
+    assert transformer.slitGridRows is None
+    # EACH CELL IS HALF OF TWO PIXELS: ROW r OF ORDER 10 HOLDS DETECTOR ROWS 15 + r AND 16 + r, 1 MORE WITH THE TRACE
+    low, high = 15 + rowShift, 16 + rowShift
+    expectedFlux = 0.5 * (flux[low : low + 6, :ORDER_COLUMNS] + flux[high : high + 6, :ORDER_COLUMNS])
+    expectedVariance = 0.5 * (variance[low : low + 6, :ORDER_COLUMNS] + variance[high : high + 6, :ORDER_COLUMNS])
+    # THE FLAGGED PIXEL LEAVES THE CELLS IT FALLS IN (ROWS 0 AND 1, COLUMN 5): THE OTHER PIXEL TAKES THE CELL
+    expectedFlux[0, 5] = flux[low, 5]
+    expectedFlux[1, 5] = flux[high + 1, 5]
+    expectedVariance[0, 5] = variance[low, 5]
+    expectedVariance[1, 5] = variance[high + 1, 5]
+    # THE POLYNOMIAL FIT OF A TRACE LEAVES ROUNDING THAT A FIXED CENTRE DOES NOT
+    rtol = 1e-9 if isTraceCentred else 1e-12
+    np.testing.assert_allclose(rectified[0]["fluxRaw"], expectedFlux, rtol=rtol)
+    np.testing.assert_allclose(rectified[0]["variance"], expectedVariance, rtol=rtol)
     assert rectified[0]["bpMask"][:2, 5].all()
     assert rectified[0]["bpMask"].sum() == 2
     np.testing.assert_allclose(rectified[0]["wavelength"][0], 500.0 + NM_PER_PIXEL * np.arange(ORDER_COLUMNS))
 
 
-def test_full_slit_grid_spans_the_whole_slit_in_fixed_arcsec_steps_for_every_order(synthetic_transformer) -> None:
+def test_full_slit_grid_spans_the_whole_slit_in_fixed_arcsec_steps_for_every_order(full_slit_transformer) -> None:
     # ARRANGE / ACT: A 12 ARCSEC SLIT IN STEPS OF 0.5 ARCSEC, ALTHOUGH THE ORDERS SCALE AT 0.5 AND 0.6 ARCSEC PER PIXEL
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
 
     # ASSERT: 24 ROWS, EACH 1/ZOOM OF A ROW WIDE IN THE ZOOMED GRID, IDENTICAL IN EVERY ORDER
     for slitEdges in transformer.orderSlitEdges:
@@ -126,40 +188,89 @@ def test_full_slit_grid_spans_the_whole_slit_in_fixed_arcsec_steps_for_every_ord
     np.testing.assert_array_equal(transformer.orderSlitEdges[0], transformer.orderSlitEdges[1])
 
 
-def test_full_slit_step_defaults_to_the_median_arcsec_per_pixel_of_the_orders(synthetic_transformer) -> None:
-    # ARRANGE / ACT: THE ORDERS SCALE AT 0.5 AND 0.6 ARCSEC PER PIXEL, SO THE MEDIAN IS 0.55 AND 12 / 0.55 NEEDS 22 ROWS
+def test_full_slit_step_defaults_to_the_slit_step_of_the_arm(synthetic_transformer) -> None:
+    # ARRANGE / ACT: THE ARM'S DETECTOR PARAMETERS HOLD A STEP OF 0.4 ARCSEC, SO THE 12 ARCSEC SLIT NEEDS 30 ROWS
     transformer = synthetic_transformer(fullSlit=True)
 
     # ASSERT: THE GRID IS CENTRED AND COVERS THE SLIT, WITH THE STEP AND ROW COUNT RECORDED
-    assert transformer.slitGridStepArcsec == pytest.approx(0.55)
-    assert transformer.slitGridRows == 22
+    assert transformer.slitGridStepArcsec == 0.4
+    assert transformer.slitGridRows == 30
     for slitEdges in transformer.orderSlitEdges:
-        assert slitEdges[0] == pytest.approx(-6.05)
-        assert slitEdges[-1] == pytest.approx(6.05)
+        assert slitEdges[0] == pytest.approx(-6.0)
+        assert slitEdges[-1] == pytest.approx(6.0)
 
 
-def test_full_slit_grid_is_the_same_for_frames_reduced_with_different_measured_plate_scales(
+def test_an_explicit_slit_step_overrides_the_slit_step_of_the_arm(synthetic_transformer) -> None:
+    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5)
+
+    assert transformer.slitGridStepArcsec == 0.5
+    assert transformer.slitGridRows == 24
+
+
+def test_full_slit_grid_is_the_same_for_frames_with_different_measured_plate_scales(
     synthetic_transformer, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ARRANGE: TWO DISPERSION MAPS THAT MEASURE DIFFERENT PLATE SCALES, ONE GIVEN STEP
-    first = synthetic_transformer(fullSlit=True, slitStepArcsec=0.3)
+    # ARRANGE: TWO DISPERSION MAPS THAT MEASURE DIFFERENT PLATE SCALES, AND NO STEP GIVEN
+    first = synthetic_transformer(fullSlit=True)
     monkeypatch.setitem(ARCSEC_PER_PIXEL, 10, 0.52)
     monkeypatch.setitem(ARCSEC_PER_PIXEL, 11, 0.63)
 
     # ACT
+    second = synthetic_transformer(fullSlit=True)
+
+    # ASSERT: THE STEP COMES FROM THE ARM, NOT THE MAP, SO THE GRIDS MATCH TO THE LAST BIT
+    assert first.slitGridRows == second.slitGridRows == 30
+    for slitEdgesFirst, slitEdgesSecond in zip(first.orderSlitEdges, second.orderSlitEdges, strict=True):
+        np.testing.assert_array_equal(slitEdgesFirst, slitEdgesSecond)
+
+
+def test_full_slit_grid_with_an_explicit_step_is_the_same_for_different_measured_plate_scales(
+    synthetic_transformer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = synthetic_transformer(fullSlit=True, slitStepArcsec=0.3)
+    monkeypatch.setitem(ARCSEC_PER_PIXEL, 10, 0.52)
+
     second = synthetic_transformer(fullSlit=True, slitStepArcsec=0.3)
 
-    # ASSERT: 12 / 0.3 = 40 ROWS BOTH TIMES, TO THE LAST BIT
     assert first.slitGridRows == second.slitGridRows == 40
     for slitEdgesFirst, slitEdgesSecond in zip(first.orderSlitEdges, second.orderSlitEdges, strict=True):
         np.testing.assert_array_equal(slitEdgesFirst, slitEdgesSecond)
 
 
+def test_full_slit_without_a_step_for_the_arm_raises_naming_the_missing_key(
+    synthetic_transformer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delitem(DETECTOR_PARAMS, "slit-step-arcsec")
+
+    with pytest.raises(ValueError, match="slit-step-arcsec"):
+        synthetic_transformer(fullSlit=True)
+
+
+@pytest.mark.parametrize("arm", ["UVB", "VIS", "NIR"])
+def test_full_slit_raises_for_every_x_shooter_arm_until_its_yaml_has_a_step(
+    synthetic_transformer, monkeypatch: pytest.MonkeyPatch, log: object, arm: str
+) -> None:
+    monkeypatch.setattr(
+        sys.modules[__name__], "DETECTOR_PARAMS", detector_lookup(log=log, settings={"instrument": "xsh"}).get(arm)
+    )
+
+    with pytest.raises(ValueError, match="slit-step-arcsec"):
+        synthetic_transformer(fullSlit=True)
+
+
+@pytest.mark.parametrize(("arm", "low", "high"), [("VIS", 0.25, 0.30), ("NIR", 0.30, 0.35)])
+def test_soxs_arms_hold_a_slit_step_near_their_plate_scale(log: object, arm: str, low: float, high: float) -> None:
+    step = detector_lookup(log=log, settings={"instrument": "soxs"}).get(arm)["slit-step-arcsec"]
+
+    assert low < step < high
+
+
 @pytest.mark.parametrize(
     ("options", "message"),
     [
-        ({"fullSlit": True, "fixedSlitCentreArcsec": None}, "fixedSlitCentreArcsec"),
-        ({"slitHalfLength": None}, "slitHalfLength"),
+        ({"fullSlit": True, "fixedSlitCentreArcsec": None}, "fullSlit needs fixedSlitCentreArcsec"),
+        ({"slitHalfLength": None}, "slitHalfLength is needed"),
+        ({"fullSlit": True, "slitHalfLength": 3}, "slitHalfLength is not used with fullSlit"),
         ({"slitStepArcsec": 0.5}, "only used with fullSlit"),
         ({"fullSlit": True, "slitStepArcsec": 0.0}, "positive"),
     ],
@@ -171,10 +282,10 @@ def test_slit_grid_options_that_cannot_give_a_grid_raise_before_any_setup(
         synthetic_transformer(**options)
 
 
-def test_full_slit_grid_keeps_the_flux_of_every_covered_detector_pixel(synthetic_transformer) -> None:
+def test_full_slit_grid_keeps_the_flux_of_every_covered_detector_pixel(full_slit_transformer) -> None:
     # ARRANGE: 0.5 ARCSEC ROWS ARE ONE PIXEL IN ORDER 10 AND 5/6 OF A PIXEL IN ORDER 11, 24 ROWS FROM -6 TO +6 ARCSEC
     flux, _, _ = _frame_arrays()
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
 
     # ACT
     transformer.cache_image("fluxRaw", flux)
@@ -261,10 +372,10 @@ def test_squared_weights_give_a_lower_variance_than_linear_weights_for_independe
     assert transformer.get_order_rectified()[0]["variance"][0, 0] == pytest.approx(0.52)
 
 
-def test_full_slit_variance_is_the_squared_weight_sum_of_the_pixels_each_cell_covers(synthetic_transformer) -> None:
+def test_full_slit_variance_is_the_squared_weight_sum_of_the_pixels_each_cell_covers(full_slit_transformer) -> None:
     # ARRANGE: EVERY CELL OF ORDER 10 IS HALF OF TWO DETECTOR PIXELS, ROW r HOLDING DETECTOR ROWS 6 + r AND 7 + r
     _, variance, _ = _frame_arrays()
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
 
     # ACT
     transformer.cache_image("variance", variance, squaredWeights=True)
@@ -282,9 +393,9 @@ def _wavelength_layers(transformer: image_transformer) -> list[np.ndarray]:
     return [layers["wavelength"] for layers in transformer.get_order_rectified()]
 
 
-def test_a_skyline_shift_moves_the_wavelength_layer_of_its_order_only(synthetic_transformer) -> None:
+def test_a_skyline_shift_moves_the_wavelength_layer_of_its_order_only(full_slit_transformer) -> None:
     # ARRANGE
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
     flux, _, _ = _frame_arrays()
     transformer.cache_image("fluxRaw", flux)
     before = _wavelength_layers(transformer)
@@ -301,9 +412,9 @@ def test_a_skyline_shift_moves_the_wavelength_layer_of_its_order_only(synthetic_
     assert after[0].shape == (24, ORDER_COLUMNS)
 
 
-def test_a_shift_for_all_orders_moves_every_wavelength_layer(synthetic_transformer) -> None:
+def test_a_shift_for_all_orders_moves_every_wavelength_layer(full_slit_transformer) -> None:
     # ARRANGE
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
     before = _wavelength_layers(transformer)
 
     # ACT: THE EXTRACTION KEYS A SHIFT OF EVERY ORDER BY "all", WHICH ADDS TO AN ORDER'S OWN SHIFT
@@ -315,9 +426,9 @@ def test_a_shift_for_all_orders_moves_every_wavelength_layer(synthetic_transform
     np.testing.assert_allclose(after[1], before[1] + 0.25, rtol=0, atol=1e-12)
 
 
-def test_applying_wavelength_shifts_again_replaces_the_earlier_shifts(synthetic_transformer) -> None:
+def test_applying_wavelength_shifts_again_replaces_the_earlier_shifts(full_slit_transformer) -> None:
     # ARRANGE
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
     before = _wavelength_layers(transformer)
 
     # ACT
@@ -330,10 +441,10 @@ def test_applying_wavelength_shifts_again_replaces_the_earlier_shifts(synthetic_
     np.testing.assert_allclose(after[1], before[1] + 0.5, rtol=0, atol=1e-12)
 
 
-def test_a_row_by_row_sky_correction_uses_the_wavelengths_and_pixel_scale_of_the_layer(synthetic_transformer) -> None:
+def test_a_row_by_row_sky_correction_uses_the_wavelengths_and_pixel_scale_of_the_layer(full_slit_transformer) -> None:
     # ARRANGE: AN ORDER 10 CORRECTION OF 0.5 PX AT ITS CENTRE, PLUS 1 PX PER UNIT t ALONG IT. THE ORDER'S MEDIAN PIXEL
     # SCALE IS 0.05 NM, HALF THE 0.1 NM OF THE LAYER'S COLUMNS, SO THE LOCAL DISPERSION DOUBLES (0.1 TO 0.2 NM/PX)
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
     before = _wavelength_layers(transformer)
     geometry = order_geometry(centreNm=501.45, halfRangeNm=1.5, dispersionNmPerPx=0.1, medianPixelScaleNm=0.05)
     correction = order_sky_correction(
@@ -353,9 +464,9 @@ def test_a_row_by_row_sky_correction_uses_the_wavelengths_and_pixel_scale_of_the
     np.testing.assert_array_equal(after[1], before[1])
 
 
-def test_empty_sky_corrections_fall_back_to_the_order_shifts(synthetic_transformer) -> None:
+def test_empty_sky_corrections_fall_back_to_the_order_shifts(full_slit_transformer) -> None:
     # ARRANGE
-    transformer = synthetic_transformer(fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None)
+    transformer = full_slit_transformer()
     before = _wavelength_layers(transformer)
 
     # ACT
@@ -377,12 +488,10 @@ def test_column_pixel_scale_is_half_the_difference_of_the_neighbouring_columns()
     assert np.isnan(scale[[0, -1]]).all()
 
 
-def test_full_slit_grid_is_centred_on_the_fixed_slit_centre(synthetic_transformer) -> None:
+def test_full_slit_grid_is_centred_on_the_fixed_slit_centre(full_slit_transformer) -> None:
     # ARRANGE: A CENTRE 1 ARCSEC UP THE SLIT, 2 PIXELS IN ORDER 10, SO ITS 24 ROWS COVER DETECTOR ROWS 8 TO 32
     flux, _, _ = _frame_arrays()
-    transformer = synthetic_transformer(
-        fullSlit=True, slitStepArcsec=0.5, slitHalfLength=None, fixedSlitCentreArcsec=1.0
-    )
+    transformer = full_slit_transformer(fixedSlitCentreArcsec=1.0)
 
     # ACT
     transformer.cache_image("fluxRaw", flux)
