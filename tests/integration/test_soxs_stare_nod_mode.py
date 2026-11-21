@@ -293,7 +293,7 @@ def _tail_recipe(
     return recipe, captured, synthetic_ccd(seed=3, prepared=True)
 
 
-def _tail_inputs() -> tuple[Any, ...]:
+def _tail_inputs() -> reduction_inputs:
     return reduction_inputs(False, False, False, "order.fits", "disp.fits", "map.fits", False)
 
 

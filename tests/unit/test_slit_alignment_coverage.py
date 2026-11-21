@@ -176,17 +176,18 @@ def test_the_jitter_of_the_frames_within_a_nod_position_widens_the_uncovered_ban
         isOrder & (scene.slit > highEdge + MARGIN_ARCSEC) & (scene.slit < plainEdge - MARGIN_ARCSEC)
     )
     isInLowBand = _middle(isOrder & (scene.slit < lowEdge - MARGIN_ARCSEC))
+    # WITHOUT THE JITTER THESE PIXELS ARE COVERED BY EVERY FRAME
+    assert not withoutJitter[isInJitterBand].any()
+    assert not withoutJitter[isInLowBand].any()
 
     # ACT
     uncovered = shift_coverage_mask(plan, [{}, {1: -JITTER_ARCSEC}], [{}, {1: JITTER_ARCSEC}])
 
-    # ASSERT: THE WIDEST SHIFT OF ANY FRAME SETS EACH EDGE, AND WITHOUT THE JITTER THESE PIXELS ARE COVERED
-    assert not withoutJitter[isInJitterBand].any()
-    assert not withoutJitter[isInLowBand].any()
+    # ASSERT: THE WIDEST SHIFT OF ANY FRAME SETS EACH EDGE
     assert uncovered[isInJitterBand].all()
     assert uncovered[isInLowBand].all()
     assert not uncovered[
-        _middle(isOrder & (scene.slit < highEdge - MARGIN_ARCSEC) & (scene.slit > lowEdge + 0.5))
+        _middle(isOrder & (scene.slit < highEdge - MARGIN_ARCSEC) & (scene.slit > lowEdge + MARGIN_ARCSEC))
     ].any()
 
 

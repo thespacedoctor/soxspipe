@@ -16,7 +16,9 @@ import math
 import numbers
 import os
 import sys
+from collections.abc import Mapping
 from datetime import datetime
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
@@ -27,6 +29,7 @@ from soxspipe.commonutils.toolkit import quicklook_image, twoD_disp_map_image_to
 if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
+    from astropy.nddata import CCDData
 
 os.environ["TERM"] = "vt100"
 
@@ -416,6 +419,8 @@ class subtract_sky:
 
     # ORDERS THE EXCLUDE MASK COVERS; SET BY __init__ WHEN A MASK IS GIVEN
     maskedOrders = frozenset()
+    # THE FULL SLIT RANGE AND THE TRIMMED ENDS OF EACH ORDER THE UNCOVERED MASK TRIMS; SET BY __init__ (DY-2290)
+    coverageEdges = MappingProxyType({})
     # THE SLIT RANGE OF EACH ORDER TO FIT THE MASTER FLAT'S SLIT PROFILE OVER; SET BY __init__ WHEN RANGES ARE GIVEN
     flatFitRanges = None
     # THE MERGED WINDOWS OF THE HOST EMISSION LINES LEFT OUT OF THE SKY FIT; SET BY _fit_sky_to_orders (DY-2242)
@@ -426,25 +431,25 @@ class subtract_sky:
 
     def __init__(
         self,
-        log,
-        settings,
-        recipeSettings,
-        objectFrame,
-        twoDMap,
-        qcTable,
-        productsTable,
-        dispMap=False,
-        sofName=False,
-        recipeName="soxs-stare",
-        startNightDate="",
-        debug=False,
-        debugInfo=False,
-        excludeMask=None,
-        masterFlat=None,
-        ron=None,
-        flatFitRanges=None,
+        log: Any,
+        settings: dict[str, Any],
+        recipeSettings: dict[str, Any],
+        objectFrame: CCDData,
+        twoDMap: str,
+        qcTable: pd.DataFrame,
+        productsTable: pd.DataFrame,
+        dispMap: str | bool = False,
+        sofName: str | bool = False,
+        recipeName: str = "soxs-stare",
+        startNightDate: str = "",
+        debug: bool = False,
+        debugInfo: str | bool = False,
+        excludeMask: np.ndarray | None = None,
+        masterFlat: CCDData | None = None,
+        ron: float | None = None,
+        flatFitRanges: Mapping[int, tuple[float, float]] | None = None,
         uncoveredMask: np.ndarray | None = None,
-    ):
+    ) -> None:
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
         self.settings = settings
@@ -493,6 +498,7 @@ class subtract_sky:
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
 
         # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280, DY-1517); subtract FLAGS AND ZERO-FILLS THEM AS NO-MODEL PIXELS
+        self.coverageEdges = self._coverage_edges(self.mapDF, uncoveredMask)
         self.mapDF, self.maskedOrders = self._leave_out_excluded_pixels(
             self.mapDF, excludeMask, masterFlat, uncoveredMask
         )
@@ -549,6 +555,38 @@ class subtract_sky:
         self.ron = self._read_noise(ronValue, dp["ron"], self.log)
         return
 
+    def _coverage_edges(
+        self, mapDF: pd.DataFrame, uncoveredMask: np.ndarray | None
+    ) -> dict[int, tuple[float, float, bool, bool]]:
+        """*the full slit range of each order the uncovered mask trims, and which of its ends the mask trimmed*
+
+        The edge clip of such an order is sized from the full range and applies at the ends the mask did not trim,
+        the true slit ends. An end the mask trimmed is a coverage boundary, not a slit end.
+
+        **Key Arguments:**
+
+        - ``mapDF`` -- the dispersion map dataframe, before any pixel is left out, with integer ``x`` and ``y`` pixel
+          columns
+        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers, or None
+
+        **Return:**
+
+        - ``edges`` -- ``{order: (lowest slit position, highest slit position, is the low end trimmed, is the high end
+          trimmed)}`` for each order with an uncovered pixel. Empty when ``uncoveredMask`` is None
+        """
+        if uncoveredMask is None:
+            return {}
+        isUncovered = self._exclude_image(uncoveredMask)[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
+        edges = {}
+        for order in mapDF.loc[isUncovered, "order"].unique().tolist():
+            isOrder = mapDF["order"] == order
+            slit = mapDF.loc[isOrder, "slit_position"]
+            lowest, highest = float(slit.min()), float(slit.max())
+            middle = (lowest + highest) / 2
+            uncoveredSlit = mapDF.loc[isOrder & isUncovered, "slit_position"]
+            edges[order] = (lowest, highest, bool((uncoveredSlit < middle).any()), bool((uncoveredSlit > middle).any()))
+        return edges
+
     def _leave_out_excluded_pixels(
         self,
         mapDF: pd.DataFrame,
@@ -575,16 +613,16 @@ class subtract_sky:
         """
         maskedOrders = frozenset()
         if excludeMask is not None:
-            isExcluded = self._exclude_image(excludeMask)
-            isRowExcluded = isExcluded[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
+            excludeMask = self._exclude_image(excludeMask)
+            isRowExcluded = excludeMask[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
             maskedOrders = frozenset(mapDF.loc[isRowExcluded, "order"].unique().tolist())
         if uncoveredMask is not None:
             uncoveredImage = self._exclude_image(uncoveredMask)
-            excludeMask = uncoveredImage if excludeMask is None else self._exclude_image(excludeMask) | uncoveredImage
+            excludeMask = uncoveredImage if excludeMask is None else excludeMask | uncoveredImage
         if masterFlat is not None:
             mapDF = self._add_flat_column(mapDF, masterFlat)
             lowFlatImage = self._low_flat_pixels(mapDF)
-            excludeMask = lowFlatImage if excludeMask is None else lowFlatImage | self._exclude_image(excludeMask)
+            excludeMask = lowFlatImage if excludeMask is None else lowFlatImage | excludeMask
         if excludeMask is None:
             return mapDF, maskedOrders
         return self._drop_excluded_pixels(mapDF, excludeMask), maskedOrders
@@ -754,11 +792,15 @@ class subtract_sky:
             else:
                 clipSlitEdge = self.recipeSettings["sky-subtraction"]["clip-slit-edge-fraction"]
 
+            # AN ORDER THE UNCOVERED MASK TRIMS IS EDGE CLIPPED AT ITS TRUE SLIT ENDS ONLY (DY-2290)
+            coverageKwargs = {"coverageEdges": self.coverageEdges[o]} if o in self.coverageEdges else {}
+
             # MASK OUTLYING PIXELS (imageMapOrderWithObject) AND ALSO THEN THE OBJECT PIXELS (imageMapOrderSkyOnly)
             clippedOrder = self.get_over_sampled_sky_from_order(
                 imageMapOrder,
                 clipBPs=True,
                 clipSlitEdge=clipSlitEdge,
+                **coverageKwargs,
             )
             if clippedOrder is None:
                 skippedOrders.append(imageMapOrder)
@@ -1239,7 +1281,13 @@ class subtract_sky:
         self.log.print(_object_wing_log_line(order, estimate))
         return (refitOrder, *rest)
 
-    def get_over_sampled_sky_from_order(self, imageMapOrder, clipBPs=True, clipSlitEdge=False):
+    def get_over_sampled_sky_from_order(
+        self,
+        imageMapOrder: pd.DataFrame,
+        clipBPs: bool = True,
+        clipSlitEdge: float | bool = False,
+        coverageEdges: tuple[float, float, bool, bool] | None = None,
+    ) -> pd.DataFrame | None:
         """*unpack the over sampled sky from an order*
 
         **Key Arguments:**
@@ -1247,6 +1295,9 @@ class subtract_sky:
         - ``imageMapOrder`` -- single order dataframe from object image and 2D map
         - ``clipBPs`` -- clip bad-pixels? Default *True*
         - ``clipSlitEdge`` -- clip the slit edges. Percentage of slit width to clip. Default *False*
+        - ``coverageEdges`` -- for an order the uncovered mask trims, its full slit range and trimmed ends, from
+          `_coverage_edges`. The edge clip is then sized from the full range and applies at the ends not trimmed.
+          Default *None*, for the range of ``imageMapOrder`` and both ends
 
         **Return:**
 
@@ -1275,10 +1326,14 @@ class subtract_sky:
 
         # ASSIGN ORDER-EDGE PIXELS A 'clipped' FLAG
         if clipSlitEdge:
-            slitRange = imageMapOrder["slit_position"].max() - imageMapOrder["slit_position"].min()
-            clipSlitEdge *= slitRange
-            mask = (imageMapOrder["slit_position"] > imageMapOrder["slit_position"].max() - clipSlitEdge) | (
-                imageMapOrder["slit_position"] < imageMapOrder["slit_position"].min() + clipSlitEdge
+            lowest, highest = imageMapOrder["slit_position"].min(), imageMapOrder["slit_position"].max()
+            isLowTrimmed = isHighTrimmed = False
+            if coverageEdges is not None:
+                lowest, highest, isLowTrimmed, isHighTrimmed = coverageEdges
+            clipSlitEdge *= highest - lowest
+            slit = imageMapOrder["slit_position"]
+            mask = ((slit > highest - clipSlitEdge) & (not isHighTrimmed)) | (
+                (slit < lowest + clipSlitEdge) & (not isLowTrimmed)
             )
             imageMapOrder.loc[mask, "flagged_edge_clipped"] = True
             imageMapOrder.loc[mask, "flagged_all_clipped"] = True

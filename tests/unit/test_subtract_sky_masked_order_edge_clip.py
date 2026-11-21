@@ -82,7 +82,7 @@ def _exclude_mask() -> np.ndarray:
     return excludeMask
 
 
-def _fitted_orders(log: Any, **kwargs: Any) -> dict[int, pd.DataFrame]:
+def _fitted_orders(log: Any, edgeFraction: float = EDGE_FRACTION, **kwargs: Any) -> dict[int, pd.DataFrame]:
     """Run ``subtract`` with the clipping and fitting stages stubbed and return each order as the fit received it."""
     subtractor = subtract_sky(
         log=log,
@@ -90,7 +90,7 @@ def _fitted_orders(log: Any, **kwargs: Any) -> dict[int, pd.DataFrame]:
         recipeSettings={
             "sky-subtraction": {
                 "bspline_order": 3,
-                "clip-slit-edge-fraction": EDGE_FRACTION,
+                "clip-slit-edge-fraction": edgeFraction,
                 "aggressive_object_masking": False,
                 # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
                 "object_wing_correction": False,
@@ -158,27 +158,68 @@ def test_an_all_false_exclude_mask_leaves_every_order_edge_clipped(log: Any) -> 
     assert _edge_clipped_slit_positions(fittedOrders[UNMASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
 
 
-# THE COVERAGE MASK TRIMS THE HIGH END ONLY (DY-2290): POSITIONS 4 AND 5. THE REST OF THE ORDER IS -5 TO 3, A RANGE OF
-# 8, SO A FRACTION OF 0.1 CLIPS THE ROWS BEYOND -4.2 AND 2.2
+# THE COVERAGE MASK TRIMS THE HIGH END ONLY (DY-2290): POSITIONS 4 AND 5. THE EDGE CLIP IS SIZED FROM THE FULL SLIT
+# RANGE OF 10 AND APPLIES AT THE TRUE LOW END ONLY: A FRACTION OF 0.1 CLIPS THE ROWS BEYOND -4
 UNCOVERED_SLIT_POSITIONS = {4.0, 5.0}
-UNCOVERED_ORDER_EDGE_CLIPPED = {-5.0, 3.0}
+UNCOVERED_ORDER_EDGE_CLIPPED = {-5.0}
+# A FRACTION OF 0.25 CLIPS THE ROWS BEYOND -2.5 OF THE FULL RANGE. THE 8 THAT REMAIN WOULD CLIP ONLY THOSE BEYOND -3
+WIDE_EDGE_FRACTION = 0.25
+WIDE_EDGE_CLIPPED = {-5.0, -4.0, -3.0}
+# A FRACTION OF 0.4 CLIPS THE ROWS BEYOND -1, AND ITS HIGH END WOULD HAVE CLIPPED THE COVERAGE BOUNDARY AT 3
+VERY_WIDE_EDGE_FRACTION = 0.4
+VERY_WIDE_EDGE_CLIPPED = {-5.0, -4.0, -3.0, -2.0}
+BOUNDARY_SLIT_POSITION = 3.0
 
 
-def _uncovered_mask(row: int) -> np.ndarray:
-    """Return a mask over the high end of the slit of one order."""
+def _uncovered_mask(row: int, slitPositions: set[float] = UNCOVERED_SLIT_POSITIONS) -> np.ndarray:
+    """Return a mask over the given slit positions of one order."""
     uncoveredMask = np.zeros(FRAME_SHAPE, dtype=bool)
-    uncoveredMask[row, np.isin(SLIT_POSITIONS, list(UNCOVERED_SLIT_POSITIONS))] = True
+    uncoveredMask[row, np.isin(SLIT_POSITIONS, list(slitPositions))] = True
     return uncoveredMask
 
 
-def test_an_order_the_uncovered_mask_trims_keeps_its_edge_clip(log: Any) -> None:
-    # ARRANGE / ACT: THE COVERAGE MASK TRIMS ONE END ONLY, SO THE OTHER END STILL NEEDS ITS EDGE CLIP
+def test_an_order_the_uncovered_mask_trims_keeps_its_edge_clip_at_the_true_slit_end(log: Any) -> None:
+    # ARRANGE / ACT: THE COVERAGE MASK TRIMS THE HIGH END ONLY, SO ONLY THE LOW END IS A TRUE SLIT END
     fittedOrders = _fitted_orders(log, uncoveredMask=_uncovered_mask(0))
 
     # ASSERT
     assert set(fittedOrders[MASKED_ORDER]["slit_position"]) == set(SLIT_POSITIONS) - UNCOVERED_SLIT_POSITIONS
     assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == UNCOVERED_ORDER_EDGE_CLIPPED
     assert _edge_clipped_slit_positions(fittedOrders[UNMASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
+
+
+def test_the_edge_clip_of_a_trimmed_order_is_sized_from_the_full_slit_range(log: Any) -> None:
+    # ARRANGE / ACT
+    fittedOrders = _fitted_orders(log, edgeFraction=WIDE_EDGE_FRACTION, uncoveredMask=_uncovered_mask(0))
+
+    # ASSERT: THE REMAINING RANGE OF 8 WOULD CLIP ONLY THE ROWS BEYOND -3
+    assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == WIDE_EDGE_CLIPPED
+
+
+def test_the_edge_clip_of_a_trimmed_order_never_reaches_the_coverage_boundary(log: Any) -> None:
+    # ARRANGE / ACT
+    fittedOrders = _fitted_orders(log, edgeFraction=VERY_WIDE_EDGE_FRACTION, uncoveredMask=_uncovered_mask(0))
+
+    # ASSERT
+    clipped = _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER])
+    assert clipped == VERY_WIDE_EDGE_CLIPPED
+    assert BOUNDARY_SLIT_POSITION not in clipped
+
+
+def test_a_low_end_trim_leaves_the_edge_clip_at_the_high_slit_end(log: Any) -> None:
+    # ARRANGE / ACT: THE MIRROR IMAGE: THE LOW END IS TRIMMED, SO ONLY THE HIGH END IS CLIPPED
+    fittedOrders = _fitted_orders(log, uncoveredMask=_uncovered_mask(0, {-5.0, -4.0}))
+
+    # ASSERT
+    assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == {5.0}
+
+
+def test_an_order_trimmed_at_both_ends_by_the_uncovered_mask_is_not_edge_clipped(log: Any) -> None:
+    # ARRANGE / ACT: BOTH ENDS ARE COVERAGE BOUNDARIES, SO NEITHER IS A TRUE SLIT END
+    fittedOrders = _fitted_orders(log, uncoveredMask=_uncovered_mask(0, {-5.0, 5.0}))
+
+    # ASSERT
+    assert not fittedOrders[MASKED_ORDER]["flagged_edge_clipped"].any()
 
 
 def test_the_exclude_mask_still_switches_off_the_edge_clip_of_an_order_the_uncovered_mask_also_trims(log: Any) -> None:
@@ -194,5 +235,18 @@ def test_the_exclude_mask_still_switches_off_the_edge_clip_of_an_order_the_uncov
 
 
 def test_an_uncovered_mask_of_the_wrong_shape_raises(log: Any) -> None:
+    # ARRANGE
+    wrongShape = np.zeros((2, 3), dtype=bool)
+
+    # ACT / ASSERT
     with pytest.raises(ValueError, match="shape"):
-        _fitted_orders(log, uncoveredMask=np.zeros((2, 3), dtype=bool))
+        _fitted_orders(log, uncoveredMask=wrongShape)
+
+
+def test_an_uncovered_mask_with_no_pixel_set_leaves_every_order_edge_clipped_as_before(log: Any) -> None:
+    # ARRANGE / ACT
+    fittedOrders = _fitted_orders(log, uncoveredMask=np.zeros(FRAME_SHAPE, dtype=bool))
+
+    # ASSERT
+    assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
+    assert _edge_clipped_slit_positions(fittedOrders[UNMASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS

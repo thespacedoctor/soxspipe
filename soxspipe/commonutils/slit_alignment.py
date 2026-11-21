@@ -409,6 +409,14 @@ def orders_without_coverage(uncovered: np.ndarray, mapImages: two_d_map_images) 
     **Return:**
 
     - ``orders`` -- the order numbers that have no covered pixel
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_alignment import orders_without_coverage
+
+    emptyOrders = orders_without_coverage(uncovered, plan.mapImages)
+    ```
     """
     return [order for order in mapImages.orders if uncovered[mapImages.order == order].all()]
 
@@ -426,6 +434,14 @@ def frame_order_shifts(
     **Return:**
 
     - ``shifts`` -- for each frame in the order of ``result.frames``, a ``{order: shift in arcsec}`` dictionary
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_alignment import frame_order_shifts
+
+    shiftsOfEachFrame = frame_order_shifts(results[0], namesA)
+    ```
     """
     orders = result.mapImages.orders if result.mapImages is not None else ()
     names = _frame_names(result.frames, frameNames)

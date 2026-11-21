@@ -264,15 +264,18 @@ def test_the_jitter_of_a_nod_position_widens_the_uncovered_range_of_the_stack(
         & (scene.slit > jitterEdge + BAND_MARGIN_ARCSEC)
         & (scene.slit < plainEdge - EDGE_MARGIN_ARCSEC)
     )
-    isBand[:200] = isBand[400:] = False
+    isMiddle = np.zeros(scene.shape, dtype=bool)
+    isMiddle[MIDDLE_ROWS] = True
+    isBand &= isMiddle
+    # THE BAND HOLDS PIXELS, AND WITHOUT THE JITTER EVERY FRAME COVERS THEM (SEE THE TEST ABOVE)
+    assert isBand.any()
 
     # ACT
     _, _, uncovered = recipe._stack_nod_frames(
         *recipe._split_nod_frames(_frames(scene, jitterB=JITTER_ARCSEC)), _inputs(scene, masterFlat=False)
     )
 
-    # ASSERT: WITHOUT THE JITTER THESE PIXELS ARE COVERED BY EVERY FRAME (SEE THE TEST ABOVE)
-    assert isBand.any()
+    # ASSERT
     assert uncovered[isBand].all()
 
 

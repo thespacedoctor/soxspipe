@@ -123,12 +123,12 @@ class nod_stare_stacking:
         - ``notFlattened`` -- the stack of the detrended frames
         - ``flattened`` -- the stack of the flat-fielded frames. The same frame as ``notFlattened`` when no master flat
           is used
-        - ``uncovered`` -- boolean image, True for a pixel of the slit that only the A frames cover (see
+        - ``uncovered`` -- boolean image, True for a pixel of the slit that not every frame covers (see
           `_uncovered_slit_mask`)
 
         **Raises:**
 
-        - ``ValueError`` -- when the shift of the B frames leaves no slit range that every frame covers in any order
+        - ``ValueError`` -- when the frames' shifts leave no slit range that every frame covers in any order
         """
         framesA = self._detrend_nod_frames(framesA, inputs.masterBias, inputs.dark, inputs.orderTablePath)
         framesB = self._detrend_nod_frames(framesB, inputs.masterBias, inputs.dark, inputs.orderTablePath)
@@ -157,11 +157,10 @@ class nod_stare_stacking:
         """*the pixels of the slit that not every frame covers (DY-2290)*
 
         The B frames are shifted onto the A frames, and every frame is aligned to the others of its nod position, so
-        the slit beyond the total shift of a frame holds fewer frames than the rest. The sky
-        changes between the A and the B exposures, so the sky residual of the stack steps where the B frames end, and
-        the step reads as a second source. The stack keeps only the slit range every frame covers: the caller leaves
-        the returned pixels out of the sky fit and the extraction and flags them in the products. Orders with no shift
-        have none.
+        the shift of any frame, an A frame or a B frame, can leave slit pixels that it does not reach. The sky changes
+        between the A and the B exposures, so the sky residual of the stack steps where a frame ends, and the step
+        reads as a second source. The stack keeps only the slit range every frame covers: the caller leaves the
+        returned pixels out of the sky fit and the extraction and flags them in the products.
 
         **Key Arguments:**
 
@@ -175,7 +174,7 @@ class nod_stare_stacking:
 
         **Raises:**
 
-        - ``ValueError`` -- when the shift leaves no slit range that every frame covers in any shifted order
+        - ``ValueError`` -- when the frames' shifts leave no slit range that every frame covers in any order
         """
         from soxspipe.commonutils.slit_alignment import orders_without_coverage, shift_coverage_mask
 
@@ -183,13 +182,13 @@ class nod_stare_stacking:
         emptyOrders = orders_without_coverage(uncovered, plan.mapImages)
         if emptyOrders and len(emptyOrders) == len(plan.mapImages.orders):
             raise ValueError(
-                "The shifted B frames leave no slit range that every frame covers in any order, so the frames cannot "
+                "The frames' shifts leave no slit range that every frame covers in any order, so the frames cannot "
                 "be stacked in stare mode."
             )
         if emptyOrders:
             orderList = ", ".join(str(order) for order in emptyOrders)
             self.log.warning(
-                f"The shifted B frames leave no slit range that every frame covers in order {orderList}, so it is "
+                f"The frames' shifts leave no slit range that every frame covers in order {orderList}, so it is "
                 "left out of the sky model and the extraction."
             )
         self.log.info(
