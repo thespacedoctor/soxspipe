@@ -25,6 +25,7 @@ from astropy.table import Table
 from soxspipe.recipes import soxs_offset
 from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories import response_product_fits, synthetic_ccd
+from tests.factories.offset_frames import fixed_sky_run
 from tests.integration.test_observing_recipe_orchestration import (
     RouteCollection,
     _configure_nodding_recipe,
@@ -44,16 +45,20 @@ OFFSET_TECHNIQUE = "ECHELLE,SLIT,OFFSET"
 CALIBRATION_NAMES = ("ORDER_TAB_VIS", "DISP_TAB_VIS", "DISP_IMAGE_VIS")
 
 
-def _offset_header(ra: float, dec: float, mjd: float, **extra: object) -> dict[str, object]:
-    """Return the header overrides for one offset frame."""
-    return {
-        "HIERARCH ESO SEQ FIXOFF RA": ra,
-        "HIERARCH ESO SEQ FIXOFF DEC": dec,
-        "MJD-OBS": mjd,
-        # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BE FLUX CALIBRATED (DY-1714)
-        "EXPTIME": 300.0,
-        **extra,
-    }
+def _offset_headers(
+    steps: list[tuple[float, float]], firstMjd: float, mjdStep: float = 0.1, **extra: object
+) -> list[dict[str, object]]:
+    """Return the headers of one FixedSkyOffset template run, one per ``SEQ FIXOFF`` step."""
+    return [
+        {
+            **header,
+            "MJD-OBS": firstMjd + index * mjdStep,
+            # A STANDARD NEEDS A POSITIVE EXPOSURE TIME BEFORE IT CAN BE FLUX CALIBRATED (DY-1714)
+            "EXPTIME": 300.0,
+            **extra,
+        }
+        for index, header in enumerate(fixed_sky_run(steps, firstMjd=firstMjd))
+    ]
 
 
 def _calibration_routes(tmpPath: Path) -> dict[frozenset[tuple[str, object]], list[str]]:
@@ -115,16 +120,11 @@ def _extract_each_cycle(recipe: soxs_offset) -> soxs_offset:
     return recipe
 
 
-# A BALANCED SINGLE-LOCATION PAIR: ONE ON FRAME AND ONE OFF FRAME.
-SINGLE_PAIR = [_offset_header(-2.0, 0.0, 60000.0), _offset_header(0.0, 0.0, 60000.1)]
+# A BALANCED SINGLE-LOCATION PAIR: ONE ON FRAME AND ONE OFF FRAME 28 ARCSEC AWAY.
+SINGLE_PAIR = _offset_headers([(0.0, 0.0), (20.0, 20.0)], 60000.0)
 
-# TWO ON/OFF PAIRS AT TWO DISTINCT OFFSET LOCATIONS, WHICH TAKES THE PER-CYCLE PATH.
-TWO_LOCATIONS = [
-    _offset_header(-3.0, 1.0, 60000.0),
-    _offset_header(-4.0, 2.0, 60000.1),
-    _offset_header(0.0, 1.0, 60000.2),
-    _offset_header(0.0, 2.0, 60000.3),
-]
+# TWO ON FRAMES, JITTERED BY 0.3 ARCSEC, THEN TWO OFF FRAMES: TWO ON/OFF PAIRS, WHICH TAKES THE PER-CYCLE PATH.
+TWO_LOCATIONS = _offset_headers([(0.0, 0.0), (0.0, 0.3), (20.0, 19.7), (0.0, 0.1)], 60000.0)
 
 
 def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
@@ -138,9 +138,9 @@ def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
         _write_prepared_frame(
             tmp_path / f"telluric-{index}.fits",
             seed=300 + index,
-            headerOverrides=_offset_header(ra, 0.0, 60001.0 + index),
+            headerOverrides=header,
         )
-        for index, ra in enumerate((-9.0, 0.0))
+        for index, header in enumerate(_offset_headers([(0.0, 0.0), (20.0, 20.0)], 60001.0))
     ]
     recipe, standardPaths = _offset_recipe(
         log,
@@ -163,9 +163,9 @@ def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
     assert settingsReads == ["soxs-offset-std"]
     assert recipe.recipeSettings is stdSettings
     assert recipe.productDir == str(tmp_path / "products" / "soxs-offset-std")
-    assert recipe.masterHeaderFrame.header["HIERARCH ESO SEQ FIXOFF RA"] == -2.0
-    stackedRa = [entry["frames"][0].header["HIERARCH ESO SEQ FIXOFF RA"] for entry in captured["stack"]]
-    assert stackedRa == [-2.0, 0.0]
+    assert recipe.masterHeaderFrame.header["ESO TPL EXPNO"] == 1
+    stackedExposures = [entry["frames"][0].header["ESO TPL EXPNO"] for entry in captured["stack"]]
+    assert stackedExposures == [1, 2]
     assert [len(entry["frames"]) for entry in captured["stack"]] == [1, 1]
     assert len(standardPaths) == 2
 
@@ -463,7 +463,7 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     assert arguments["airmass"] == pytest.approx(1.2)
     assert arguments["exptime"] == 300.0
     assert arguments["extinctionPath"] == "/cal/extinction.dat"
-    assert arguments["header"]["HIERARCH ESO SEQ FIXOFF RA"] == -2.0
+    assert arguments["header"]["ESO TPL EXPNO"] == 1
     assert arguments["extractedSpectrum"] is captured["plot"][0]["merged_orders"]
     assert "FLUXCAL" in recipe.products["product_label"].tolist()
     firstPlot, secondPlot = captured["plot"]
@@ -634,12 +634,7 @@ def test_turning_stack_before_extraction_off_extracts_each_offset_cycle_even_wit
 ) -> None:
     """The setting alone chooses the path: two ON/OFF pairs at one offset are extracted cycle by cycle."""
     # ARRANGE
-    headers = [
-        _offset_header(-3.0, 1.0, 60000.0),
-        _offset_header(-3.0, 1.0, 60000.1),
-        _offset_header(0.0, 1.0, 60000.2),
-        _offset_header(0.0, 1.0, 60000.3),
-    ]
+    headers = _offset_headers([(0.0, 0.0), (0.0, 0.0), (20.0, 20.0), (0.0, 0.0)], 60000.0)
     recipe, _ = _offset_recipe(log, tmp_path, headers)
     _extract_each_cycle(recipe)
     calls, captured = _patch(recipe, monkeypatch, tmp_path)

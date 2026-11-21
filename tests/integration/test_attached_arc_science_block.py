@@ -17,10 +17,12 @@ from astropy.io import fits
 
 from soxspipe.recipes import soxs_nod, soxs_offset
 from tests.factories import synthetic_ccd
+from tests.factories.offset_frames import fixed_sky_run
 from tests.integration.test_observing_recipe_orchestration import (
     RouteCollection,
     _configure_nodding_recipe,
     _patch_nodding_collaborators,
+    _route,
     _write_prepared_frame,
 )
 from tests.integration.test_soxs_stare_reduction_characterization import (
@@ -43,8 +45,15 @@ DEGREES_PER_FRAME = 2.0
 ARC_START_MINUTES = (FRAME_COUNT - 1) * CADENCE_MINUTES + FRAME_EXPTIME / 60.0 + 2.0
 
 
+# THE OFFSET FRAMES OF THE BLOCK ALTERNATE BETWEEN THE OBJECT AND A SKY POSITION 28 ARCSEC AWAY
+OFFSET_RUN = fixed_sky_run(
+    [(0.0, 0.0) if index == 0 else ((20.0, 20.0) if index % 2 else (-20.0, -20.0)) for index in range(FRAME_COUNT)]
+)
+
+
 def _science_overrides(index: int, technique: str) -> dict[str, object]:
     return {
+        **OFFSET_RUN[index],
         "DPR_TYPE": "OBJECT",
         "DPR_TECH": technique,
         KEYWORDS["MJDOBS"]: FIRST_MJD + index * CADENCE_MINUTES / MINUTES_PER_DAY,
@@ -52,8 +61,6 @@ def _science_overrides(index: int, technique: str) -> dict[str, object]:
         KEYWORDS["ABSROT"]: FIRST_ABSROT + index * DEGREES_PER_FRAME,
         KEYWORDS["PAR_ANG_START"]: -85.867,
         "ESO SEQ CUMOFF Y": 3.0 if index % 2 == 0 else -3.0,
-        "HIERARCH ESO SEQ FIXOFF RA": -2.0 if index % 2 == 0 else 0.0,
-        "HIERARCH ESO SEQ FIXOFF DEC": 0.0,
     }
 
 
@@ -178,7 +185,7 @@ def test_stare_extractions_get_every_frame_of_the_block(
 ) -> None:
     # ARRANGE
     paths = [str(path) for path in _write_block(tmp_path, STARE_TECHNIQUE)]
-    routes = {frozenset({"DPR_TYPE": "OBJECT", "DPR_TECH": STARE_TECHNIQUE}.items()): paths}
+    routes = {_route(DPR_TYPE="OBJECT", DPR_TECH=STARE_TECHNIQUE): paths}
     recipe = _stare_recipe(
         log,
         tmp_path,
