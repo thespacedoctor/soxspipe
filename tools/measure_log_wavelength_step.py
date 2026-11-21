@@ -12,11 +12,13 @@ measures that value so it can replace the provisional 18 km/s (VIS) and 11 km/s 
 
 1. Read each `<stem>_EXTRACTED_ORDERS*.fits` table. Its `order` and `wavelengthMean` columns hold one row per native
    bin of an order, and `wavelengthMean` is the bin centre.
-2. Per order, take the median of `c ln(lambda_{i+1} / lambda_i)` over adjacent bins, in km/s. Rows of every input file
-   are pooled per order, so each order's median is over all frames.
+2. Per order and frame, take the steps `c ln(lambda_{i+1} / lambda_i)` between adjacent bins, in km/s. Pool the steps of
+   each order over all frames and take their median. The bins of two frames differ, so wavelengths are never pooled.
 3. Per arm, take the smallest per-order median and divide it by the spectral binning factor of the frames (the
-   `ESO DET BINX` card for VIS, `ESO DET BINY` for NIR). The printed value is per unbinned pixel, the way the yaml holds
-   it. Use unbinned (1x1) frames where you can, because every input of an arm must share one binning.
+   `ESO DET BINX` card for VIS, `ESO DET BINY` for NIR). Use unbinned (1x1) frames where you can, because every input
+   of an arm must share one binning.
+
+The printed value is per unbinned pixel; the reduction multiplies it by BINX (VIS) or BINY (NIR).
 
 **Usage**
 
@@ -40,12 +42,13 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import measurement_common as common
 import numpy as np
+import numpy.typing as npt
 from astropy.io import fits
 from measurement_common import ToolError, today_iso
 
@@ -53,12 +56,37 @@ LIGHT_SPEED_KMS = 299792.458
 MIN_ORDER_ROWS = 3
 STEP_DECIMALS = 2
 YAML_KEY = "log-wavelength-step-kms"
+BINNING_COMMENT = "# PER UNBINNED PIXEL; THE REDUCTION MULTIPLIES IT BY BINX (VIS) OR BINY (NIR)"
 ORDER_COLUMN = "order"
 WAVELENGTH_COLUMN = "wavelengthMean"
 EXTRACTED_ORDERS_HDU = 1
 
+FloatArray = npt.NDArray[np.float64]
 
-def native_steps_kms(wavelengths) -> np.ndarray:
+
+@dataclass(frozen=True)
+class Product:
+    """*the columns and header values of one extracted-orders table that the measurement reads*"""
+
+    path: Path
+    arm: str
+    binning: int
+    mjd: float
+    orders: npt.NDArray[np.integer]
+    wavelengths: FloatArray
+
+
+@dataclass(frozen=True)
+class ArmResult:
+    """*the measured step of one arm, with the per-order values and inputs it came from*"""
+
+    stepKms: float
+    perOrderKms: dict[int, float]
+    binning: int
+    mjds: list[float]
+
+
+def native_steps_kms(wavelengths: npt.ArrayLike) -> FloatArray:
     """*the velocity step between each pair of adjacent wavelength bins, in km/s*
 
     **Key Arguments:**
@@ -73,6 +101,12 @@ def native_steps_kms(wavelengths) -> np.ndarray:
     **Raises:**
 
     - ``ToolError`` -- if fewer than two distinct positive wavelengths remain
+
+    **Usage:**
+
+    ```python
+    steps = native_steps_kms(orderWavelengths)
+    ```
     """
     values = np.asarray(wavelengths, dtype=float)
     distinct = np.unique(values[np.isfinite(values) & (values > 0)])
@@ -81,12 +115,7 @@ def native_steps_kms(wavelengths) -> np.ndarray:
     return LIGHT_SPEED_KMS * np.log(distinct[1:] / distinct[:-1])
 
 
-def native_step_kms(wavelengths) -> float:
-    """*the median velocity step between adjacent wavelength bins of one order, in km/s*"""
-    return float(np.median(native_steps_kms(wavelengths)))
-
-
-def per_order_step_samples(orders, wavelengths) -> dict[int, np.ndarray]:
+def per_order_step_samples(orders: npt.ArrayLike, wavelengths: npt.ArrayLike) -> dict[int, FloatArray]:
     """*the bin-to-bin steps of each order of one frame, in km/s*
 
     **Key Arguments:**
@@ -97,6 +126,12 @@ def per_order_step_samples(orders, wavelengths) -> dict[int, np.ndarray]:
     **Return:**
 
     - ``samples`` -- ``{order: steps}``. An order with fewer than ``MIN_ORDER_ROWS`` usable rows is left out.
+
+    **Usage:**
+
+    ```python
+    samples = per_order_step_samples(product.orders, product.wavelengths)
+    ```
     """
     orderArray = np.asarray(orders)
     wavelengthArray = np.asarray(wavelengths, dtype=float)
@@ -107,56 +142,6 @@ def per_order_step_samples(orders, wavelengths) -> dict[int, np.ndarray]:
             continue
         samples[int(order)] = native_steps_kms(rows)
     return samples
-
-
-def per_order_steps_kms(orders, wavelengths) -> dict[int, float]:
-    """*the median native step of each order, in km/s*"""
-    return {order: float(np.median(steps)) for order, steps in per_order_step_samples(orders, wavelengths).items()}
-
-
-def unbinned_step_kms(perOrderSteps: Mapping[int, float], binning: int) -> float:
-    """*the log-wavelength step per unbinned pixel: the smallest order step over the binning factor*
-
-    The grid step of a reduction is this value times its binning factor, so the yaml holds the unbinned one.
-
-    **Key Arguments:**
-
-    - ``perOrderSteps`` -- ``{order: median native step in km/s}`` measured on frames with the given binning
-    - ``binning`` -- the spectral binning factor of those frames
-
-    **Return:**
-
-    - ``stepKms`` -- the smallest per-order step divided by ``binning``
-
-    **Raises:**
-
-    - ``ToolError`` -- if no order has a step
-    """
-    if not perOrderSteps:
-        raise ToolError("no order has a measured step")
-    return min(perOrderSteps.values()) / binning
-
-
-@dataclass(frozen=True)
-class Product:
-    """*the columns and header values of one extracted-orders table that the measurement reads*"""
-
-    path: Path
-    arm: str
-    binning: int
-    mjd: float
-    orders: np.ndarray
-    wavelengths: np.ndarray
-
-
-@dataclass(frozen=True)
-class ArmResult:
-    """*the measured step of one arm, with the per-order values and inputs it came from*"""
-
-    stepKms: float
-    perOrderKms: dict[int, float]
-    binning: int
-    mjds: list[float]
 
 
 def read_product(path: Path) -> Product:
@@ -173,6 +158,12 @@ def read_product(path: Path) -> Product:
     **Raises:**
 
     - ``ToolError`` -- if the file cannot be read, a card is missing or a column is missing
+
+    **Usage:**
+
+    ```python
+    product = read_product(Path("stare_EXTRACTED_ORDERS.fits"))
+    ```
     """
     try:
         with fits.open(path) as hdus:
@@ -181,17 +172,25 @@ def read_product(path: Path) -> Product:
             names = table.columns.names
             if ORDER_COLUMN not in names or WAVELENGTH_COLUMN not in names:
                 raise ToolError(f"{path} has no {ORDER_COLUMN} and {WAVELENGTH_COLUMN} columns")
-            arm = common.arm_of(header)
+            arm = common.arm_of(header, path)
             return Product(
                 path=Path(path),
                 arm=arm,
-                binning=common.spectral_binning(header, arm),
-                mjd=float(header["MJD-OBS"]),
+                binning=common.spectral_binning(header, arm, path),
+                mjd=common.read_mjd_obs(header, path),
                 orders=np.array(table[ORDER_COLUMN]),
                 wavelengths=np.array(table[WAVELENGTH_COLUMN], dtype=float),
             )
-    except (OSError, IndexError, KeyError) as error:
+    except (OSError, IndexError) as error:
         raise ToolError(f"cannot read an extracted-orders table from {path}: {error}") from error
+
+
+def _arm_binning(armProducts: Sequence[Product], arm: str) -> int:
+    """*the one spectral binning of an arm's frames, or a ``ToolError`` when they differ*"""
+    binnings = {product.binning for product in armProducts}
+    if len(binnings) > 1:
+        raise ToolError(f"the {arm} frames have different spectral binning {sorted(binnings)}; pass one binning")
+    return binnings.pop()
 
 
 def measure_arms(products: Sequence[Product]) -> dict[str, ArmResult]:
@@ -210,29 +209,29 @@ def measure_arms(products: Sequence[Product]) -> dict[str, ArmResult]:
     **Raises:**
 
     - ``ToolError`` -- if the frames of one arm have different binning, or no order of an arm has a step
+
+    **Usage:**
+
+    ```python
+    results = measure_arms([read_product(path) for path in paths])
+    ```
     """
     results = {}
     for arm in sorted({product.arm for product in products}):
         armProducts = [product for product in products if product.arm == arm]
-        binnings = {product.binning for product in armProducts}
-        if len(binnings) > 1:
-            raise ToolError(f"the {arm} frames have different spectral binning {sorted(binnings)}; pass one binning")
-        binning = binnings.pop()
-        pooled: dict[int, list[np.ndarray]] = {}
+        binning = _arm_binning(armProducts, arm)
+        pooled: dict[int, list[FloatArray]] = {}
         for product in armProducts:
             for order, steps in per_order_step_samples(product.orders, product.wavelengths).items():
                 pooled.setdefault(order, []).append(steps)
+        if not pooled:
+            raise ToolError(f"no order of the {arm} arm has a measured step")
         perOrder = {order: float(np.median(np.concatenate(steps))) / binning for order, steps in pooled.items()}
-        results[arm] = ArmResult(
-            stepKms=unbinned_step_kms(perOrder, 1),
-            perOrderKms=perOrder,
-            binning=binning,
-            mjds=[product.mjd for product in armProducts],
-        )
+        results[arm] = ArmResult(min(perOrder.values()), perOrder, binning, [product.mjd for product in armProducts])
     return results
 
 
-def format_yaml(results: Mapping[str, ArmResult], version: str, today: str) -> str:
+def format_yaml(results: dict[str, ArmResult], version: str, today: str) -> str:
     """*the yaml block to paste into ``soxs_detector_parameters.yaml``*
 
     **Key Arguments:**
@@ -244,19 +243,35 @@ def format_yaml(results: Mapping[str, ArmResult], version: str, today: str) -> s
     **Return:**
 
     - ``text`` -- one block per arm, with provenance comments and the ``log-wavelength-step-kms`` key
+
+    **Usage:**
+
+    ```python
+    text = format_yaml(results, "0.19.1", "2026-11-22")
+    ```
     """
-    lines = []
+    lines: list[str] = []
     for arm, result in results.items():
         perOrder = ", ".join(f"ORDER {order} {step:.2f}" for order, step in sorted(result.perOrderKms.items()))
-        lines.append(f"{arm}:")
-        lines.extend(f"  {line}" for line in common.provenance_comments("FRAMES", result.mjds, version, today))
-        lines.append(f"  # SMALLEST PER-ORDER MEDIAN STEP PER UNBINNED PIXEL; {perOrder} km/s")
-        lines.append(f"  {YAML_KEY}: {round(result.stepKms, STEP_DECIMALS)}")
-    return "\n".join(lines) + "\n"
+        comments = common.provenance_comments("FRAMES", result.mjds, version, today)
+        comments += [BINNING_COMMENT, f"# SMALLEST PER-ORDER MEDIAN STEP; {perOrder} km/s"]
+        lines += common.arm_block(arm, comments, [f"{YAML_KEY}: {round(result.stepKms, STEP_DECIMALS)}"])
+    return common.join_blocks(lines)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """*the command-line parser of the script*"""
+    """*the command-line parser of the script*
+
+    **Return:**
+
+    - ``parser`` -- the argument parser
+
+    **Usage:**
+
+    ```python
+    arguments = build_parser().parse_args(argv)
+    ```
+    """
     parser = argparse.ArgumentParser(
         description="Measure the log-wavelength step of each SOXS arm from extracted-order tables.",
     )
@@ -274,11 +289,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     **Return:**
 
     - ``status`` -- 0 when the block was printed
+
+    **Usage:**
+
+    ```python
+    status = main(["path/to/*_EXTRACTED_ORDERS.fits"])
+    ```
     """
     arguments = build_parser().parse_args(argv)
     products = [read_product(path) for path in common.expand_paths(arguments.tables)]
-    results = measure_arms(products)
-    print(format_yaml(results, common.soxspipe_version(), today_iso()), end="")
+    print(format_yaml(measure_arms(products), common.soxspipe_version(), today_iso()), end="")
     return 0
 
 

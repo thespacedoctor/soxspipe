@@ -16,25 +16,25 @@ The Phase 3 keyword `SPEC_SYE` is the largest, over orders, of the uncertainty o
 
 A sky shift is the wavelength correction that tuning applied to an order, so for a frame that was tuned it is also the
 error the order would have had without tuning. The script reads the `ESO QC SKY SHIFT O<n>` cards (nm) of reduced
-spectra and takes the root mean square about zero (not the scatter about the mean, because an untuned order keeps the
-mean shift as an error). It sorts each tuned frame by its arc: the frame's `DISP_TAB` is the one named by its
-`ESO PRO REC1 CAL<i> NAME` card, and the arc is attached when `attached_arc_offsets` of `ug_wavelength_transfer`
-says so. The shifts of frames with an unattached arc give `untuned`, and the shifts of frames with an attached arc give
-`attached-arc`.
+merged spectra (`_EXTRACTED_MERGED` today, `_SPECTRUM` after DY-2346) and takes the root mean square about zero, not
+the scatter about the mean, because an untuned order keeps the mean shift as an error. It sorts each tuned frame by its
+arc: the frame's `DISP_TAB` is the one named by its `ESO PRO REC1 CAL<i> NAME` card, and the arc is attached when
+`attached_arc_offsets` of `ug_wavelength_transfer` says so. The shifts of frames with an unattached arc give
+`untuned`, and the shifts of frames with an attached arc give `attached-arc`.
+
+The printed value is the largest over orders of the per-order RMS, because `SPEC_SYE` is a maximum over orders. The RMS
+pooled over all orders and frames is printed as a yaml comment, with the per-order values.
 
 The shifts include the noise of the sky-line measurement, so both values are upper limits. A frame that skipped tuning
 (`SKY TUNING = skipped: attached arc`) holds no shift. The `attached-arc` value needs frames that were tuned although
 their arc is attached, which means products from a build before DY-1665 (soxspipe 9d0d450c) or a run with the skip
 removed. The script names each product it leaves out.
 
-`--aggregate pooled` (default) takes one RMS over the shifts of all orders. `--aggregate worst-order` takes the largest
-per-order RMS, which is the safer choice for a keyword that is a maximum over orders.
-
 **Usage**
 
 ```bash
 python tools/measure_sky_shift_uncertainty.py --products "path/to/*_EXTRACTED_MERGED.fits" --arcs "path/to/*_SSOL.fits"
-python tools/measure_sky_shift_uncertainty.py --products a.fits b.fits --arcs "arcs/*.fits" --aggregate worst-order
+python tools/measure_sky_shift_uncertainty.py --products a.fits b.fits --arcs "arcs/*.fits"
 ```
 
 `--arcs` are the multi-pinhole `DISP_TAB` products. A product name in the header can be cut short, so a product matches
@@ -62,7 +62,6 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
 
 import measurement_common as common
 from astropy.io import fits
@@ -71,22 +70,17 @@ from measurement_common import ToolError, today_iso
 UNTUNED = "untuned"
 ATTACHED_ARC = "attached-arc"
 KINDS = (UNTUNED, ATTACHED_ARC)
-POOLED = "pooled"
-WORST_ORDER = "worst-order"
-AGGREGATES = (POOLED, WORST_ORDER)
 YAML_KEY = "sky-shift-uncertainty-nm"
 VALUE_DECIMALS = 4
 SKY_SHIFT_PATTERN = re.compile(r"^ESO QC SKY SHIFT O(\d+)$")
 TUNING_CARD = "ESO QC SKY TUNING"
 CALIBRATION_CATG_PATTERN = re.compile(r"^ESO PRO REC1 CAL(\d+) CATG$")
 DISP_TAB_CATG_PREFIX = "DISP_TAB"
-AGGREGATE_COMMENTS = {
-    POOLED: "RMS ABOUT ZERO OF THE SKY SHIFTS, POOLED OVER ORDERS AND FRAMES",
-    WORST_ORDER: "RMS ABOUT ZERO OF THE SKY SHIFTS, LARGEST OVER ORDERS OF THE PER-ORDER RMS",
-}
+VALUE_COMMENT = "# VALUE: LARGEST PER-ORDER RMS ABOUT ZERO OF THE SKY SHIFTS (SPEC_SYE IS A MAXIMUM OVER ORDERS)"
 
 
-class ShiftSample(NamedTuple):
+@dataclass(frozen=True)
+class ShiftSample:
     """*the sky shifts (nm) of one tuned frame, with its arm, MJD and arc kind*"""
 
     arm: str
@@ -97,17 +91,33 @@ class ShiftSample(NamedTuple):
 
 @dataclass(frozen=True)
 class Uncertainty:
-    """*the uncertainty value of one arm and kind, with the shifts it came from*"""
+    """*the uncertainty of one arm and kind: the worst-order value, the pooled RMS and the shifts they came from*"""
 
     valueNm: float
+    pooledNm: float
     shiftCount: int
     frameCount: int
     perOrderNm: dict[int, float]
     mjds: list[float]
 
 
-def read_sky_shifts(header) -> dict[int, float]:
-    """*the ``SKY SHIFT O<n>`` QCs of a product, in nm, by order; the ``PX`` and ``ERR`` cards are not read*"""
+def read_sky_shifts(header: fits.Header) -> dict[int, float]:
+    """*the ``SKY SHIFT O<n>`` QCs of a product, in nm, by order; the ``PX`` and ``ERR`` cards are not read*
+
+    **Key Arguments:**
+
+    - ``header`` -- the product's primary header
+
+    **Return:**
+
+    - ``shifts`` -- ``{order: shift in nm}``, finite values only
+
+    **Usage:**
+
+    ```python
+    shifts = read_sky_shifts(header)
+    ```
+    """
     shifts = {}
     for key in header:
         match = SKY_SHIFT_PATTERN.match(key)
@@ -119,16 +129,30 @@ def read_sky_shifts(header) -> dict[int, float]:
 def rms_about_zero(values: Sequence[float]) -> float:
     """*the root mean square of the values, about zero*
 
+    **Key Arguments:**
+
+    - ``values`` -- the shifts, at least one
+
+    **Return:**
+
+    - ``rms`` -- ``sqrt(mean(value^2))``
+
     **Raises:**
 
     - ``ToolError`` -- if there is no shift
+
+    **Usage:**
+
+    ```python
+    rms = rms_about_zero([0.1, -0.2])
+    ```
     """
     if not values:
         raise ToolError("there is no shift to take the RMS of")
     return math.sqrt(sum(value * value for value in values) / len(values))
 
 
-def find_arc(header, candidates: Sequence[Path]) -> Path | None:
+def find_arc(header: fits.Header, candidates: Sequence[Path]) -> Path | None:
     """*the ``DISP_TAB`` file that a product's header names, matched by the start of the file name*
 
     The header card is cut to fit the 80-column card, so the name can be a prefix of the file name.
@@ -145,6 +169,12 @@ def find_arc(header, candidates: Sequence[Path]) -> Path | None:
     **Raises:**
 
     - ``ToolError`` -- if the name matches more than one candidate
+
+    **Usage:**
+
+    ```python
+    arcPath = find_arc(header, arcPaths)
+    ```
     """
     for key in header:
         match = CALIBRATION_CATG_PATTERN.match(key)
@@ -158,7 +188,7 @@ def find_arc(header, candidates: Sequence[Path]) -> Path | None:
     return None
 
 
-def classify_frame(scienceHeader, arcHeader) -> str:
+def classify_frame(scienceHeader: fits.Header, arcHeader: fits.Header) -> str:
     """*whether the arc of a frame is attached, by the rule that skips tuning in the extraction*
 
     **Key Arguments:**
@@ -169,98 +199,150 @@ def classify_frame(scienceHeader, arcHeader) -> str:
     **Return:**
 
     - ``kind`` -- ``attached-arc`` when the arc is within the attached-arc limits, otherwise ``untuned``
+
+    **Usage:**
+
+    ```python
+    kind = classify_frame(productHeader, arcHeader)
+    ```
     """
     common.ensure_repo_on_path()
     from soxspipe.commonutils.ug_wavelength_transfer import attached_arc_offsets, within_attached_arc_limits
 
-    keywords = common.load_yaml(common.KEYWORDS_PATH)
-    offsets = attached_arc_offsets([scienceHeader], arcHeader, keywords.__getitem__)
+    offsets = attached_arc_offsets([scienceHeader], arcHeader, common.keyword_aliases().__getitem__)
     return ATTACHED_ARC if within_attached_arc_limits(offsets) else UNTUNED
 
 
-def uncertainty_by_arm(samples: Sequence[ShiftSample], aggregate: str) -> dict[str, dict[str, Uncertainty]]:
+def _kind_uncertainty(frames: Sequence[ShiftSample]) -> Uncertainty:
+    """*the worst-order and pooled uncertainty of the frames of one arm and kind*"""
+    byOrder: dict[int, list[float]] = defaultdict(list)
+    for frame in frames:
+        for order, shift in frame.shifts.items():
+            byOrder[order].append(shift)
+    perOrder = {order: rms_about_zero(values) for order, values in sorted(byOrder.items())}
+    everyShift = [shift for values in byOrder.values() for shift in values]
+    return Uncertainty(
+        valueNm=max(perOrder.values()),
+        pooledNm=rms_about_zero(everyShift),
+        shiftCount=len(everyShift),
+        frameCount=len(frames),
+        perOrderNm=perOrder,
+        mjds=[frame.mjd for frame in frames],
+    )
+
+
+def uncertainty_by_arm(samples: Sequence[ShiftSample]) -> dict[str, dict[str, Uncertainty]]:
     """*the uncertainty of each arm and kind from the sky shifts of the frames*
 
     **Key Arguments:**
 
     - ``samples`` -- the tuned frames
-    - ``aggregate`` -- ``pooled`` for one RMS over all shifts, or ``worst-order`` for the largest per-order RMS
 
     **Return:**
 
-    - ``result`` -- ``{arm: {kind: Uncertainty}}``. A kind with no frame is absent.
+    - ``result`` -- ``{arm: {kind: Uncertainty}}``. The value is the largest per-order RMS about zero, and the pooled
+      RMS over all orders and frames is kept beside it. A kind with no frame is absent.
 
-    **Raises:**
+    **Usage:**
 
-    - ``ToolError`` -- if ``aggregate`` is not one of the two
+    ```python
+    result = uncertainty_by_arm(samples)
+    ```
     """
-    if aggregate not in AGGREGATES:
-        raise ToolError(f"the aggregate must be one of {AGGREGATES}, not {aggregate!r}")
     groups: dict[tuple[str, str], list[ShiftSample]] = defaultdict(list)
     for sample in samples:
         groups[(sample.arm, sample.kind)].append(sample)
     result: dict[str, dict[str, Uncertainty]] = defaultdict(dict)
     for (arm, kind), frames in groups.items():
-        byOrder: dict[int, list[float]] = defaultdict(list)
-        for frame in frames:
-            for order, shift in frame.shifts.items():
-                byOrder[order].append(shift)
-        perOrder = {order: rms_about_zero(values) for order, values in sorted(byOrder.items())}
-        everyShift = [shift for values in byOrder.values() for shift in values]
-        value = rms_about_zero(everyShift) if aggregate == POOLED else max(perOrder.values())
-        result[arm][kind] = Uncertainty(value, len(everyShift), len(frames), perOrder, [frame.mjd for frame in frames])
+        result[arm][kind] = _kind_uncertainty(frames)
     return dict(result)
 
 
-def format_yaml(result: Mapping[str, Mapping[str, Uncertainty]], aggregate: str, version: str, today: str) -> str:
+def _describe(uncertainty: Uncertainty | None) -> str:
+    """*the comment text of one kind: the counts, the pooled RMS and the RMS of each order*"""
+    if uncertainty is None:
+        return "NO FRAME; NOT MEASURED"
+    perOrder = ", ".join(f"O{order} {rms:.{VALUE_DECIMALS}f}" for order, rms in uncertainty.perOrderNm.items())
+    return (
+        f"{uncertainty.shiftCount} SHIFTS FROM {uncertainty.frameCount} FRAMES; "
+        f"POOLED RMS {uncertainty.pooledNm:.{VALUE_DECIMALS}f}; PER ORDER {perOrder} nm"
+    )
+
+
+def format_yaml(result: Mapping[str, Mapping[str, Uncertainty]], version: str, today: str) -> str:
     """*the yaml block to paste into ``soxs_detector_parameters.yaml``*
 
     **Key Arguments:**
 
     - ``result`` -- the uncertainties by arm and kind
-    - ``aggregate`` -- the aggregate used, named in a comment
     - ``version`` -- the soxspipe version, for the provenance comment
     - ``today`` -- the measurement date, ISO format
 
     **Return:**
 
     - ``text`` -- one block per arm. A kind with no frame gets a comment and no key.
+
+    **Usage:**
+
+    ```python
+    text = format_yaml(result, "0.19.1", "2026-11-22")
+    ```
     """
-    lines = []
+    lines: list[str] = []
     for arm, kinds in result.items():
         mjds = [mjd for uncertainty in kinds.values() for mjd in uncertainty.mjds]
-        lines.append(f"{arm}:")
-        lines.extend(f"  {line}" for line in common.provenance_comments("FRAMES", mjds, version, today))
-        lines.append(f"  # {AGGREGATE_COMMENTS[aggregate]}")
-        for kind in KINDS:
-            lines.append(f"  # {kind.upper()}: {_describe(kinds.get(kind))}")
-        lines.append(f"  {YAML_KEY}:")
-        lines.extend(f"    {kind}: {round(kinds[kind].valueNm, VALUE_DECIMALS)}" for kind in KINDS if kind in kinds)
-    return "\n".join(lines) + "\n"
+        comments = [*common.provenance_comments("FRAMES", mjds, version, today), VALUE_COMMENT]
+        comments += [f"# {kind.upper()}: {_describe(kinds.get(kind))}" for kind in KINDS]
+        body = [f"{YAML_KEY}:"]
+        body += [
+            f"{common.YAML_INDENT}{kind}: {round(kinds[kind].valueNm, VALUE_DECIMALS)}"
+            for kind in KINDS
+            if kind in kinds
+        ]
+        lines += common.arm_block(arm, comments, body)
+    return common.join_blocks(lines)
 
 
-def _describe(uncertainty: Uncertainty | None) -> str:
-    """*the comment text of one kind: the shift and frame counts and the RMS of each order*"""
-    if uncertainty is None:
-        return "NO FRAME; NOT MEASURED"
-    perOrder = ", ".join(f"O{order} {rms:.{VALUE_DECIMALS}f}" for order, rms in uncertainty.perOrderNm.items())
-    return f"{uncertainty.shiftCount} SHIFTS FROM {uncertainty.frameCount} FRAMES; PER ORDER {perOrder} nm"
+def _read_or_skip(path: Path) -> fits.Header | None:
+    """*the header of a file, or None after naming the unreadable file on stderr*"""
+    try:
+        return common.read_header(path)
+    except ToolError as error:
+        print(f"skipped {path}: {error}", file=sys.stderr)
+        return None
 
 
 def build_samples(productPaths: Sequence[Path], arcPaths: Sequence[Path]) -> list[ShiftSample]:
     """*read the sky shifts of each product and sort the frame by its arc*
 
-    A product with no shift, a product with no named arc among ``arcPaths`` and a product that cannot be read are named
-    on stderr and left out.
+    A product that cannot be read, a product with no shift and a product whose named arc is not among ``arcPaths`` are
+    named on stderr and left out.
+
+    **Key Arguments:**
+
+    - ``productPaths`` -- the reduced spectra
+    - ``arcPaths`` -- the ``DISP_TAB`` files
+
+    **Return:**
+
+    - ``samples`` -- one per tuned frame
 
     **Raises:**
 
-    - ``ToolError`` -- if no product gives a sky shift
+    - ``ToolError`` -- if no product gives a sky shift, or a card a measured product needs is missing
+
+    **Usage:**
+
+    ```python
+    samples = build_samples(productPaths, arcPaths)
+    ```
     """
     samples = []
-    arcHeaders: dict[Path, fits.Header] = {}
+    arcHeaders: dict[Path, fits.Header | None] = {}
     for path in productPaths:
-        header = common.read_header(path)
+        header = _read_or_skip(path)
+        if header is None:
+            continue
         shifts = read_sky_shifts(header)
         if not shifts:
             print(f"skipped {path}: no sky shifts (SKY TUNING = {header.get(TUNING_CARD)!r})", file=sys.stderr)
@@ -270,25 +352,34 @@ def build_samples(productPaths: Sequence[Path], arcPaths: Sequence[Path]) -> lis
             print(f"skipped {path}: the DISP_TAB it names is not among the --arcs", file=sys.stderr)
             continue
         if arcPath not in arcHeaders:
-            arcHeaders[arcPath] = common.read_header(arcPath)
-        samples.append(
-            ShiftSample(
-                common.arm_of(header), classify_frame(header, arcHeaders[arcPath]), float(header["MJD-OBS"]), shifts
-            )
-        )
+            arcHeaders[arcPath] = _read_or_skip(arcPath)
+        if arcHeaders[arcPath] is None:
+            continue
+        kind = classify_frame(header, arcHeaders[arcPath])
+        samples.append(ShiftSample(common.arm_of(header, path), kind, common.read_mjd_obs(header, path), shifts))
     if not samples:
         raise ToolError("no sky shift was found in any product")
     return samples
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """*the command-line parser of the script*"""
+    """*the command-line parser of the script*
+
+    **Return:**
+
+    - ``parser`` -- the argument parser
+
+    **Usage:**
+
+    ```python
+    arguments = build_parser().parse_args(argv)
+    ```
+    """
     parser = argparse.ArgumentParser(
         description="Measure the per-arm sky-shift uncertainty of untuned and attached-arc orders."
     )
-    parser.add_argument("--products", nargs="+", required=True, help="reduced spectra with SKY SHIFT QCs, or patterns")
+    parser.add_argument("--products", nargs="+", required=True, help="merged spectra with SKY SHIFT QCs, or patterns")
     parser.add_argument("--arcs", nargs="+", required=True, help="multi-pinhole DISP_TAB files, or patterns")
-    parser.add_argument("--aggregate", choices=AGGREGATES, default=POOLED, help="how to combine the orders")
     return parser
 
 
@@ -302,11 +393,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     **Return:**
 
     - ``status`` -- 0 when the block was printed
+
+    **Usage:**
+
+    ```python
+    status = main(["--products", "merged/*.fits", "--arcs", "arcs/*.fits"])
+    ```
     """
     arguments = build_parser().parse_args(argv)
     samples = build_samples(common.expand_paths(arguments.products), common.expand_paths(arguments.arcs))
-    result = uncertainty_by_arm(samples, arguments.aggregate)
-    print(format_yaml(result, arguments.aggregate, common.soxspipe_version(), today_iso()), end="")
+    print(format_yaml(uncertainty_by_arm(samples), common.soxspipe_version(), today_iso()), end="")
     return 0
 
 
