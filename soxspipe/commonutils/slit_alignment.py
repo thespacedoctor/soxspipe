@@ -312,7 +312,6 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     newIsBad = np.zeros(data.shape, dtype=bool) if frame.mask is None else np.asarray(frame.mask) != 0
     badness = newIsBad.astype(np.float32)
 
-    height, width = data.shape
     pixelAreas = None
     for order, shift in orderShifts.items():
         if shift == 0:
@@ -321,8 +320,7 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
             pixelAreas = _pixel_areas(mapImages)
         targets, (rows, columns) = _order_sources(mapImages, order, shift)
         sources = [rows, columns]
-        isInBounds = (rows >= 0) & (rows <= height - 1) & (columns >= 0) & (columns <= width - 1)
-        coverage = _interpolate((mapImages.order == order).astype(np.float32), sources, mode="constant")
+        isOnOrder = _is_source_on_order(mapImages, order, sources)
         # A PIXEL HOLDS THE FLUX THAT FALLS ON ITS AREA OF THE (WAVELENGTH, SLIT) PLANE. THAT AREA CHANGES ALONG THE
         # SLIT, BY ABOUT 8% OVER A NOD THROW AT THE RED END OF THE SOXS NIR ORDER 10, SO THE VALUE IS RESCALED TO THE
         # TARGET'S AREA TO KEEP THE OBJECT FLUX (DY-1679)
@@ -334,8 +332,8 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
         hasArea = np.isfinite(areaRatio) & (areaRatio > 0)
         areaRatio = np.where(hasArea, areaRatio, np.float32(1.0))
         newData[targets] = _interpolate(data, sources) * areaRatio
-        isBad = (_interpolate(badness, sources) > INTERPOLATION_TOLERANCE) | (coverage < 1.0 - INTERPOLATION_TOLERANCE)
-        isBad |= ~isInBounds | ~np.isfinite(newData[targets]) | ~hasArea
+        isBad = (_interpolate(badness, sources) > INTERPOLATION_TOLERANCE) | ~isOnOrder
+        isBad |= ~np.isfinite(newData[targets]) | ~hasArea
         if variance is not None:
             newVariance[targets] = _interpolate(variance, sources) * areaRatio**2
             isBad |= ~np.isfinite(newVariance[targets])
@@ -345,6 +343,42 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     if hasUncertainty:
         uncertainty = StdDevUncertainty(np.sqrt(newVariance), unit=frame.uncertainty.unit)
     return CCDData(newData, unit=frame.unit, meta=copy.deepcopy(frame.meta), mask=newIsBad, uncertainty=uncertainty)
+
+
+def shift_coverage_mask(orderShifts, mapImages):
+    """*the pixels of a frame shifted along the slit that take their value from no pixel of the same order*
+
+    A pixel of order ``o`` takes its value from where the slit coordinate is ``orderShifts[o]`` arcsec higher at the
+    same wavelength (see ``shift_frame_along_slit``). It is uncovered when that source lies off the detector or
+    outside the order. This is the slit range a shifted frame does not reach, not a flag for a bad pixel. Orders with
+    no shift, and pixels outside every order, are never uncovered. A shift longer than the slit leaves the whole
+    order uncovered.
+
+    **Key Arguments:**
+
+    - ``orderShifts`` -- the slit shift in arcsec of each order, as a dictionary from order number
+    - ``mapImages`` -- the ``two_d_map_images`` of the frame's binning
+
+    **Return:**
+
+    - ``uncovered`` -- boolean image, True for a pixel with no source
+    """
+    uncovered = np.zeros(mapImages.order.shape, dtype=bool)
+    for order, shift in orderShifts.items():
+        if shift == 0:
+            continue
+        targets, sources = _order_sources(mapImages, order, shift)
+        uncovered[targets] = ~_is_source_on_order(mapImages, order, sources)
+    return uncovered
+
+
+def _is_source_on_order(mapImages, order, sources):
+    """*whether each (row, column) source lies on the detector and wholly inside the order*"""
+    rows, columns = sources
+    height, width = mapImages.order.shape
+    isInBounds = (rows >= 0) & (rows <= height - 1) & (columns >= 0) & (columns <= width - 1)
+    coverage = _interpolate((mapImages.order == order).astype(np.float32), sources, mode="constant")
+    return isInBounds & (coverage >= 1.0 - INTERPOLATION_TOLERANCE)
 
 
 def _pixel_areas(mapImages):

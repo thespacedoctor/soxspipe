@@ -712,7 +712,13 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         return reduction_inputs(master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath)
 
     def _reduce_stacked_object(
-        self, combined_object_notflattened, allObjectFrames, rawFrames=False, inputs=None, detrended=None
+        self,
+        combined_object_notflattened,
+        allObjectFrames,
+        rawFrames=False,
+        inputs=None,
+        detrended=None,
+        uncoveredMask=None,
     ):
         """*detrend, sky-subtract, extract and flux-calibrate the stack of the object frames*
 
@@ -725,6 +731,9 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`. Default *None* reads them
         - ``detrended`` -- the detrended (and flat-fielded) stack, when the frames were detrended before they were
           stacked. Default *None* detrends ``combined_object_notflattened`` here
+        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers. It is left out of
+          the sky fit and the extraction and flagged in the products, as the slit-illumination exclude mask is.
+          Default *None*, which leaves nothing out
 
         **Return:**
 
@@ -756,6 +765,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         self.update_fits_keywords(frame=combined_object, rawFrames=rawFrames)
 
         excludeMask = self._slit_illumination_exclude_mask(combined_object, master_flat, twoDMap, allObjectFrames)
+        excludeMask = self._join_exclude_masks(excludeMask, uncoveredMask)
 
         from soxspipe.commonutils.toolkit import quicklook_image
 
@@ -1111,6 +1121,28 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             require_response_product_basis(responseFunctionPath)
 
         return orderTablePath, dispMap, twoDMap, responseFunctionPath
+
+    @staticmethod
+    def _join_exclude_masks(excludeMask, uncoveredMask):
+        """*the union of the slit-illumination exclude mask and the mask of the pixels not every frame covers*
+
+        **Key Arguments:**
+
+        - ``excludeMask`` -- boolean image, or *None* when the slit offset is not measured
+        - ``uncoveredMask`` -- boolean image, or *None* when every pixel is covered by every stacked frame
+
+        **Return:**
+
+        - ``excludeMask`` -- the other mask when one is None, else a new image that is True where either is. *None*
+          when both are None
+        """
+        import numpy as np
+
+        if uncoveredMask is None:
+            return excludeMask
+        if excludeMask is None:
+            return uncoveredMask
+        return np.asarray(excludeMask, dtype=bool) | np.asarray(uncoveredMask, dtype=bool)
 
     def _slit_illumination_exclude_mask(self, combined_object, master_flat, twoDMap, allObjectFrames):
         """*measure the slit offset of each order and return the mask of the slit ends to leave out of the sky model*

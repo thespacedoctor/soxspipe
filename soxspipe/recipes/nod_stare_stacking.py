@@ -56,8 +56,8 @@ class nod_stare_stacking:
         """
         framesA, framesB, namesA, namesB = self._split_nod_frames(allObjectFrames)
         inputs = self._read_reduction_inputs(self.kw, self.arm)
-        notFlattened, flattened = self._stack_nod_frames(framesA, framesB, namesA, namesB, inputs)
-        return self._reduce_stacked_object(notFlattened, allObjectFrames, rawFrames, inputs, flattened)
+        notFlattened, flattened, uncovered = self._stack_nod_frames(framesA, framesB, namesA, namesB, inputs)
+        return self._reduce_stacked_object(notFlattened, allObjectFrames, rawFrames, inputs, flattened, uncovered)
 
     def _split_nod_frames(self, allObjectFrames):
         """*split the object frames into the A and B frames and refuse a set that is not balanced*
@@ -109,6 +109,12 @@ class nod_stare_stacking:
         - ``notFlattened`` -- the stack of the detrended frames
         - ``flattened`` -- the stack of the flat-fielded frames. The same frame as ``notFlattened`` when no master flat
           is used
+        - ``uncovered`` -- boolean image, True for a pixel of the slit that only the A frames cover (see
+          `_uncovered_slit_mask`)
+
+        **Raises:**
+
+        - ``ValueError`` -- when the shift of the B frames leaves no slit range that every frame covers in any order
         """
         framesA = self._detrend_nod_frames(framesA, inputs.masterBias, inputs.dark, inputs.orderTablePath)
         framesB = self._detrend_nod_frames(framesB, inputs.masterBias, inputs.dark, inputs.orderTablePath)
@@ -119,13 +125,57 @@ class nod_stare_stacking:
         framesA, framesB, plan = self._align_nod_frames(
             framesA, framesB, namesA, namesB, inputs.twoDMap, inputs.dispMap
         )
+        uncovered = self._uncovered_slit_mask(plan)
         notFlattened = self._stack_shifted_nod_frames(framesA, framesB, plan)
         if inputs.masterFlat is False:
-            return notFlattened, notFlattened
+            return notFlattened, notFlattened, uncovered
 
         framesA = self._flat_field_nod_frames(framesA, inputs.masterFlat)
         framesB = self._flat_field_nod_frames(framesB, inputs.masterFlat)
-        return notFlattened, self._stack_shifted_nod_frames(framesA, framesB, plan)
+        return notFlattened, self._stack_shifted_nod_frames(framesA, framesB, plan), uncovered
+
+    def _uncovered_slit_mask(self, plan):
+        """*the pixels of the slit that the shifted B frames do not reach, which only the A frames cover (DY-2290)*
+
+        The B frames are shifted onto the A frames, so the slit beyond the shift's reach holds A frames only. The sky
+        changes between the A and the B exposures, so the sky residual of the stack steps where the B frames end, and
+        the step reads as a second source. The stack keeps only the slit range every frame covers: the caller leaves
+        the returned pixels out of the sky fit and the extraction and flags them in the products. Orders with no shift
+        have none.
+
+        **Key Arguments:**
+
+        - ``plan`` -- the ``shift_and_add_plan`` whose ``orderShifts`` move a B frame onto the A frames
+
+        **Return:**
+
+        - ``uncovered`` -- boolean image, True for a pixel a shifted B frame does not cover
+
+        **Raises:**
+
+        - ``ValueError`` -- when the shift leaves no slit range that every frame covers in any shifted order
+        """
+        from soxspipe.commonutils.slit_alignment import shift_coverage_mask
+
+        uncovered = shift_coverage_mask(plan.orderShifts, plan.mapImages)
+        orderImage, orders = plan.mapImages.order, plan.mapImages.orders
+        emptyOrders = [order for order in orders if uncovered[orderImage == order].all()]
+        if emptyOrders and len(emptyOrders) == len(orders):
+            raise ValueError(
+                "The shifted B frames leave no slit range that every frame covers in any order, so the frames cannot "
+                "be stacked in stare mode."
+            )
+        if emptyOrders:
+            orderList = ", ".join(str(order) for order in emptyOrders)
+            self.log.warning(
+                f"The shifted B frames leave no slit range that every frame covers in order {orderList}, so it is "
+                "left out of the sky model and the extraction."
+            )
+        self.log.info(
+            f"{int(uncovered.sum())} pixels that only the A frames cover are left out of the sky model and the "
+            "extraction."
+        )
+        return uncovered
 
     def _detrend_nod_frames(self, frames, master_bias, dark, orderTablePath):
         """*detrend each frame with the master bias or dark and the scattered-light fit, but not the flat*

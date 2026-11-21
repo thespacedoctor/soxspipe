@@ -10,6 +10,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 from astropy.nddata import CCDData
@@ -276,3 +277,97 @@ def test_the_tail_uses_a_stack_that_was_detrended_before_stacking_without_detren
     assert captured["detrend"] == []
     assert captured["sky"][0]["objectFrame"] is flattened
     assert recipe.dateObs == notFlattened.header["DATE-OBS"]
+
+
+def _tail_recipe(log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[soxs_stare, dict[str, list], Any]:
+    """Return a nod-mode stare recipe ready to run the tail, with its collaborators recorded, and the stacked frame."""
+    recipe = _nod_stare_recipe(log, tmp_path)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, skyResult=_sky_result())
+    recipe.scienceHeaders = []
+    recipe.subtractSky = True
+    recipe.slitIlluminationOffsets = None
+    return recipe, captured, synthetic_ccd(seed=3, prepared=True)
+
+
+def _tail_inputs() -> tuple:
+    return reduction_inputs(False, False, False, "order.fits", "disp.fits", "map.fits", False)
+
+
+def test_the_pixels_not_every_frame_covers_are_left_out_of_the_sky_fit(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    uncovered = np.zeros(stack.data.shape, dtype=bool)
+    uncovered[:, -3:] = True
+
+    # ACT
+    recipe._reduce_stacked_object(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT
+    np.testing.assert_array_equal(captured["sky"][0]["excludeMask"], uncovered)
+
+
+def test_the_pixels_not_every_frame_covers_are_flagged_for_the_extraction_when_no_sky_is_subtracted(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: WITH A SKY MODEL THE SKY SUBTRACTION FLAGS THE EXCLUDED PIXELS; WITHOUT ONE THE RECIPE DOES
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    recipe.subtractSky = False
+    uncovered = np.zeros(stack.data.shape, dtype=bool)
+    uncovered[:, -3:] = True
+
+    # ACT
+    recipe._reduce_stacked_object(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT
+    assert captured["extractor"][0]["skySubtractedFrame"].mask[uncovered].all()
+    assert captured["extractor"][0]["unflattenedFrame"].mask[uncovered].all()
+
+
+def test_the_uncovered_pixels_join_the_slit_illumination_exclude_mask(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    illumination = np.zeros(stack.data.shape, dtype=bool)
+    illumination[:2, :] = True
+    uncovered = np.zeros(stack.data.shape, dtype=bool)
+    uncovered[:, -3:] = True
+    monkeypatch.setattr(recipe, "_slit_illumination_exclude_mask", lambda *args: illumination)
+
+    # ACT
+    recipe._reduce_stacked_object(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT
+    np.testing.assert_array_equal(captured["sky"][0]["excludeMask"], illumination | uncovered)
+    assert not illumination[:, -3:].all()
+
+
+def test_a_stack_with_no_uncovered_mask_leaves_the_exclude_mask_as_it_was(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: A GENUINE STARE FRAME NEVER GETS AN UNCOVERED MASK
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    illumination = np.zeros(stack.data.shape, dtype=bool)
+    illumination[:2, :] = True
+    monkeypatch.setattr(recipe, "_slit_illumination_exclude_mask", lambda *args: illumination)
+
+    # ACT
+    recipe._reduce_stacked_object(stack, [stack], False, _tail_inputs(), stack)
+
+    # ASSERT
+    assert captured["sky"][0]["excludeMask"] is illumination
+
+
+def test_a_stack_with_neither_mask_gives_the_sky_fit_no_exclude_mask(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe._reduce_stacked_object(stack, [stack], False, _tail_inputs(), stack)
+
+    # ASSERT
+    assert captured["sky"][0]["excludeMask"] is None

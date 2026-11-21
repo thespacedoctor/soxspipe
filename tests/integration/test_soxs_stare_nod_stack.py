@@ -116,6 +116,18 @@ def _peak_slit(scene: Any, frame: Any, order: int) -> float:
     return _peak(scene, frame, order)[0]
 
 
+def _patch_plan(monkeypatch: pytest.MonkeyPatch, scene: Any, orderShifts: dict[int, float]) -> None:
+    """Make the slit alignment return a plan that shifts the B frames by ``orderShifts``."""
+    from soxspipe.commonutils.nod_shift_and_add import shift_and_add_plan
+
+    mapImages = build_two_d_map_images(scene.wavelength, scene.slit, scene.orderMap)
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.nod_shift_and_add"),
+        "build_shift_and_add_plan",
+        lambda *_: shift_and_add_plan(orderShifts, mapImages),
+    )
+
+
 @pytest.fixture
 def scene(tmp_path):
     return synthetic_alignment_map(tmp_path)
@@ -176,7 +188,9 @@ def test_the_stack_puts_the_b_object_on_the_a_object_and_honours_the_masks(
     stacks = _record_stack(recipe, monkeypatch)
 
     # ACT
-    stacked, _ = recipe._stack_nod_frames(*recipe._split_nod_frames(_frames(scene)), _inputs(scene, masterFlat=False))
+    stacked, _, _ = recipe._stack_nod_frames(
+        *recipe._split_nod_frames(_frames(scene)), _inputs(scene, masterFlat=False)
+    )
 
     # ASSERT
     assert len(stacks) == 1
@@ -196,6 +210,63 @@ def test_the_stack_puts_the_b_object_on_the_a_object_and_honours_the_masks(
     assert not stacked.mask[isOffSlit].any()
 
 
+def test_the_stack_reports_the_slit_range_the_shifted_b_frames_do_not_cover(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    _record_detrend(recipe, monkeypatch)
+
+    # ACT
+    _, _, uncovered = recipe._stack_nod_frames(
+        *recipe._split_nod_frames(_frames(scene)), _inputs(scene, masterFlat=False)
+    )
+
+    # ASSERT: THE B FRAMES ARE SHIFTED BY 5.0 ARCSEC, SO THE SLIT BEYOND FOOTPRINT_HALF - 5.0 HOLDS ONLY A FRAMES
+    edge = FOOTPRINT_HALF - (OFFSET_A - OFFSET_B)
+    isInside = np.isfinite(scene.orderMap)
+    middle = np.zeros(scene.shape, dtype=bool)
+    middle[MIDDLE_ROWS] = True
+    assert uncovered.dtype == bool
+    assert uncovered[isInside & middle & (scene.slit > edge + 0.4)].all()
+    assert not uncovered[isInside & middle & (scene.slit < edge - 0.4)].any()
+    assert not uncovered[~isInside].any()
+
+
+def test_an_order_with_no_common_slit_range_is_warned_about_and_left_out_whole(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE: THE B FRAMES ARE SHIFTED BY MORE THAN THE SLIT LENGTH IN ORDER 1 ONLY
+    _patch_plan(monkeypatch, scene, {1: 3 * FOOTPRINT_HALF, 2: 4.6, 3: 4.6, 4: 4.6})
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    _record_detrend(recipe, monkeypatch)
+
+    # ACT
+    _, _, uncovered = recipe._stack_nod_frames(
+        *recipe._split_nod_frames(_frames(scene)), _inputs(scene, masterFlat=False)
+    )
+
+    # ASSERT
+    assert uncovered[scene.orderMap == 1].all()
+    assert not uncovered[scene.orderMap == 2].all()
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any("no slit range" in message and "order 1" in message for message in warnings)
+    assert not any("order 2" in message for message in warnings)
+
+
+def test_a_shift_that_leaves_no_common_slit_range_in_any_order_is_refused(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE
+    _patch_plan(monkeypatch, scene, dict.fromkeys(scene.orders, 3 * FOOTPRINT_HALF))
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    _record_detrend(recipe, monkeypatch)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="no slit range that every frame covers"):
+        recipe._stack_nod_frames(*recipe._split_nod_frames(_frames(scene)), _inputs(scene, masterFlat=False))
+
+
 def test_the_unflattened_stack_is_the_same_stack_when_no_flat_is_used(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
 ) -> None:
@@ -205,7 +276,7 @@ def test_the_unflattened_stack_is_the_same_stack_when_no_flat_is_used(
     stacks = _record_stack(recipe, monkeypatch)
 
     # ACT
-    notFlattened, flattened = recipe._stack_nod_frames(
+    notFlattened, flattened, _ = recipe._stack_nod_frames(
         *recipe._split_nod_frames(_frames(scene)), _inputs(scene, masterFlat=False)
     )
 
@@ -223,7 +294,7 @@ def test_with_a_flat_both_the_unflattened_and_the_flat_fielded_frames_are_stacke
     stacks = _record_stack(recipe, monkeypatch)
 
     # ACT
-    notFlattened, flattened = recipe._stack_nod_frames(*recipe._split_nod_frames(_frames(scene)), _inputs(scene))
+    notFlattened, flattened, _ = recipe._stack_nod_frames(*recipe._split_nod_frames(_frames(scene)), _inputs(scene))
 
     # ASSERT
     assert len(stacks) == 2
@@ -259,7 +330,7 @@ def test_without_a_measured_position_the_nominal_throw_shifts_the_b_frames_and_i
     frames = _frames(scene)
 
     # ACT
-    stacked, _ = recipe._stack_nod_frames(*recipe._split_nod_frames(frames), _inputs(scene, masterFlat=False))
+    stacked, _, _ = recipe._stack_nod_frames(*recipe._split_nod_frames(frames), _inputs(scene, masterFlat=False))
 
     # ASSERT: THE B OBJECT LANDS ON THE A OBJECT, SO THE STACK KEEPS THE FULL HEIGHT OF ONE FRAME (HALF IF IT DID NOT).
     # THE WARNING SAYS THE NOMINAL THROW WAS USED, AND THE QC SAYS SO
@@ -311,7 +382,7 @@ def test_the_stacked_frames_reach_the_stare_tail_without_a_second_detrend(
     recipe = _recipe(log, tmp_path, monkeypatch, scene)
     tailCalls: list[tuple[Any, ...]] = []
     monkeypatch.setattr(recipe, "_read_reduction_inputs", lambda kw, arm: _inputs(scene))
-    monkeypatch.setattr(recipe, "_stack_nod_frames", lambda *args: ("NOTFLAT", "FLAT"))
+    monkeypatch.setattr(recipe, "_stack_nod_frames", lambda *args: ("NOTFLAT", "FLAT", "UNCOVERED"))
     monkeypatch.setattr(
         recipe, "_reduce_stacked_object", lambda *args: tailCalls.append(args) or ("product.fits", False)
     )
@@ -322,7 +393,7 @@ def test_the_stacked_frames_reach_the_stare_tail_without_a_second_detrend(
 
     # ASSERT
     assert result == ("product.fits", False)
-    assert tailCalls == [("NOTFLAT", frames, ["raw.fits"], _inputs(scene), "FLAT")]
+    assert tailCalls == [("NOTFLAT", frames, ["raw.fits"], _inputs(scene), "FLAT", "UNCOVERED")]
 
 
 def test_a_single_frame_is_reduced_without_the_nod_stack(
