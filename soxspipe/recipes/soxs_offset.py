@@ -13,7 +13,12 @@ Date Created
 import os
 import sys
 
-from soxspipe.commonutils.offset_frames import FIXED_SKY_TECHNIQUE, GENERIC_TECHNIQUE, classify_offset_frames
+from soxspipe.commonutils.offset_frames import (
+    FIXED_SKY_TECHNIQUE,
+    GENERIC_TECHNIQUE,
+    SKY_TYPE,
+    classify_offset_frames,
+)
 from soxspipe.commonutils.toolkit import (
     get_calibrations_path,
 )
@@ -22,9 +27,8 @@ from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
 
-# THE TECHNIQUES OF THE OFFSET TEMPLATES THE RECIPE REDUCES, AND THE DPR TYPE OF THE SKY FRAMES OF EITHER ONE (DY-2354)
+# THE TECHNIQUES OF THE OFFSET TEMPLATES THE RECIPE REDUCES (DY-2354)
 OFFSET_TECHNIQUES = (FIXED_SKY_TECHNIQUE, GENERIC_TECHNIQUE)
-SKY_TYPE = "SKY"
 
 # THE locationSetIndex OF THE STACKED ON/OFF PAIR. IT GIVES THE STACK TRACE AND EXTRACTION PRODUCT NAMES OF ITS OWN.
 STACKED_LOCATION_SET = "STACK"
@@ -326,33 +330,31 @@ class soxs_offset(soxs_nod):
 
         from soxspipe.commonutils.fits_headers import read_ccd
 
-        # OBJECT/STANDARD FRAMES
+        # THE FIRST FRAME TYPE WITH ANY FRAMES SETS THE SCIENCE FRAMES. THE SKY FRAMES OF EITHER TEMPLATE FOLLOW THEM
         types = ["OBJECT", "STD,FLUX", "STD,TELLURIC"]
+        typesWithPaths = ((t, self._offset_frame_paths(kw, t)) for t in types)
+        chosenType, paths = next(((t, p) for t, p in typesWithPaths if p), (None, []))
+
         allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
-        for t in types:
-            paths = self._offset_frame_paths(kw, t)
-            if not paths:
-                continue
-            if t == "STD,FLUX" and "-std" not in self.recipeName:
-                self.recipeName += "-std"
-                self.recipeSettings = self.get_recipe_settings()
-                self.productDir = self.productDir.replace("soxs-offset", "soxs-offset-std")
-            for i in paths + self._offset_frame_paths(kw, SKY_TYPE):
-                singleFrame = read_ccd(
-                    i,
-                    hdu=0,
-                    unit=u.electron,
-                    hdu_uncertainty="ERRS",
-                    hdu_mask="QUAL",
-                    hdu_flags="FLAGS",
-                    key_uncertainty_type="UTYPE",
-                )
-                allObjectFrames.append(singleFrame)
-                allFilenames.append(os.path.basename(i).replace("_pre.", "."))
-                if not self.masterHeaderFrame:
-                    self.masterHeaderFrame = singleFrame.copy()
-            break
+        if chosenType == "STD,FLUX" and "-std" not in self.recipeName:
+            self.recipeName += "-std"
+            self.recipeSettings = self.get_recipe_settings()
+            self.productDir = self.productDir.replace("soxs-offset", "soxs-offset-std")
+        for i in paths + (self._offset_frame_paths(kw, SKY_TYPE) if chosenType else []):
+            singleFrame = read_ccd(
+                i,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
+            )
+            allObjectFrames.append(singleFrame)
+            allFilenames.append(os.path.basename(i).replace("_pre.", "."))
+            if not self.masterHeaderFrame:
+                self.masterHeaderFrame = singleFrame.copy()
 
         return allObjectFrames, allFilenames
 

@@ -11,13 +11,24 @@ own, by where the telescope pointed relative to the run's first exposure. The ru
 A frame that cannot be classified fails the SOF. Frames are never dropped silently.
 """
 
+from __future__ import annotations
+
 import math
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from enum import Enum
+from typing import Any
 
 ARCSEC_PER_DEGREE = 3600.0
 
 FIXED_SKY_TECHNIQUE = "ECHELLE,SLIT,OFFSET"
 GENERIC_TECHNIQUE = "ECHELLE,SLIT,GENOFFSET"
+
+# THE DPR TYPE OF A SKY FRAME OF EITHER TEMPLATE. A DPR TYPE WITH THIS WORD IS OFF
+SKY_TYPE = "SKY"
+
+# THE DPR TYPE WORDS OF A FRAME THAT IS ON THE TARGET
+ON_TYPE_WORDS = {"OBJECT", "STD"}
 
 # A FIXEDSKYOFFSET FRAME IS ON THE OBJECT WHEN IT IS WITHIN THE JITTER WIDTH OF THE RUN'S FIRST EXPOSURE, PLUS THIS
 # MARGIN
@@ -29,43 +40,45 @@ FIXOFF_CROSS_CHECK_ARCSEC = 1.0
 # A GENERICOFFSET OBJECT FRAME MUST BE THIS CLOSE TO THE RUN'S FIRST OBJECT FRAME. THE TEMPLATE HAS NO JITTER PARAMETER
 GENERIC_ON_TOLERANCE_ARCSEC = 1.0
 
-ON = "ON"
-OFF = "OFF"
-
-# THE DPR TYPE WORDS OF A FRAME THAT IS ON THE TARGET. A DPR TYPE WITH THE WORD SKY IS OFF
-ON_TYPE_WORDS = {"OBJECT", "STD"}
-SKY_TYPE_WORD = "SKY"
-
 
 class OffsetClassificationError(ValueError):
     """*the frames of an offset SOF cannot be classified as ON and OFF frames*"""
 
 
-@dataclass
+class frame_label(Enum):
+    """The label of a classified frame. A frame that could not be classified has no label (None)."""
+
+    ON = "ON"
+    OFF = "OFF"
+
+
+@dataclass(frozen=True)
 class _offset_exposure:
     """One frame of a template run, with the header cards that the classification reads."""
 
-    frame: object
+    frame: Any
     filename: str
-    start: str = None
-    expno: int = None
-    ra: float = None
-    dec: float = None
-    technique: str = None
-    dprType: str = None
-    jitter: float = None
-    fixoffRa: float = None
-    fixoffDec: float = None
+    start: str
+    expno: int
+    ra: float
+    dec: float
+    technique: str
+    dprType: str | None = None
+    jitter: float | None = None
+    fixoffRa: float | None = None
+    fixoffDec: float | None = None
 
 
-def _read_card(header, keyword, exposure, problems, cast=float):
+def _read_card(
+    header: Any, keyword: str, filename: str, problems: list[str], cast: Callable[[Any], Any] = float
+) -> Any:
     """*read a header card, recording a problem when it is missing or unreadable*
 
     **Key Arguments:**
 
     - ``header`` -- the frame's header
     - ``keyword`` -- the header keyword to read
-    - ``exposure`` -- the frame record, which names the frame in the problem
+    - ``filename`` -- the frame's file name, which names the frame in a problem
     - ``problems`` -- the list that a problem message is added to
     - ``cast`` -- the type to convert the value to. Default *float*
 
@@ -76,13 +89,13 @@ def _read_card(header, keyword, exposure, problems, cast=float):
     try:
         return cast(header[keyword])
     except KeyError:
-        problems.append(f"{exposure.filename} has no {keyword} card.")
+        problems.append(f"{filename} has no {keyword} card.")
     except (TypeError, ValueError):
-        problems.append(f"{exposure.filename} has an unreadable {keyword} card: {header[keyword]!r}.")
+        problems.append(f"{filename} has an unreadable {keyword} card: {header[keyword]!r}.")
     return None
 
 
-def _read_exposure(frame, filename, kw, problems):
+def _read_exposure(frame: Any, filename: str, kw: Callable[[str], str], problems: list[str]) -> _offset_exposure | None:
     """*read the cards that the classification of one frame needs*
 
     The cards depend on the template. FixedSkyOffset reads the jitter width and the ``SEQ FIXOFF`` steps, and
@@ -101,30 +114,43 @@ def _read_exposure(frame, filename, kw, problems):
       Each reason is added to ``problems``
     """
     header = frame.header
-    exposure = _offset_exposure(frame=frame, filename=filename)
     problemCount = len(problems)
-    exposure.start = _read_card(header, kw("TPL_START"), exposure, problems, str)
-    exposure.expno = _read_card(header, kw("TPL_EXPNO"), exposure, problems, int)
-    exposure.ra = _read_card(header, kw("RA"), exposure, problems)
-    exposure.dec = _read_card(header, kw("DEC"), exposure, problems)
-    exposure.technique = _read_card(header, kw("DPR_TECH"), exposure, problems, str)
+    start = _read_card(header, kw("TPL_START"), filename, problems, str)
+    expno = _read_card(header, kw("TPL_EXPNO"), filename, problems, int)
+    ra = _read_card(header, kw("RA"), filename, problems)
+    dec = _read_card(header, kw("DEC"), filename, problems)
+    technique = _read_card(header, kw("DPR_TECH"), filename, problems, str)
 
-    if exposure.technique == FIXED_SKY_TECHNIQUE:
-        exposure.jitter = _read_card(header, kw("NOD_JITTER_BOX"), exposure, problems)
-        exposure.fixoffRa = _read_card(header, kw("OFFSET_RA"), exposure, problems)
-        exposure.fixoffDec = _read_card(header, kw("OFFSET_DEC"), exposure, problems)
-    elif exposure.technique == GENERIC_TECHNIQUE:
-        exposure.dprType = _read_card(header, kw("DPR_TYPE"), exposure, problems, str)
-    elif exposure.technique is not None:
+    dprType = jitter = fixoffRa = fixoffDec = None
+    if technique == FIXED_SKY_TECHNIQUE:
+        jitter = _read_card(header, kw("NOD_JITTER_BOX"), filename, problems)
+        fixoffRa = _read_card(header, kw("OFFSET_RA"), filename, problems)
+        fixoffDec = _read_card(header, kw("OFFSET_DEC"), filename, problems)
+    elif technique == GENERIC_TECHNIQUE:
+        dprType = _read_card(header, kw("DPR_TYPE"), filename, problems, str)
+    elif technique is not None:
         problems.append(
-            f"{filename} has DPR TECH {exposure.technique}, which is neither {FIXED_SKY_TECHNIQUE} nor "
-            f"{GENERIC_TECHNIQUE}."
+            f"{filename} has DPR TECH {technique}, which is neither {FIXED_SKY_TECHNIQUE} nor {GENERIC_TECHNIQUE}."
         )
 
-    return exposure if len(problems) == problemCount else None
+    if len(problems) > problemCount:
+        return None
+    return _offset_exposure(
+        frame=frame,
+        filename=filename,
+        start=start,
+        expno=expno,
+        ra=ra,
+        dec=dec,
+        technique=technique,
+        dprType=dprType,
+        jitter=jitter,
+        fixoffRa=fixoffRa,
+        fixoffDec=fixoffDec,
+    )
 
 
-def _sky_offset_arcsec(exposure, reference):
+def _sky_offset_arcsec(exposure: _offset_exposure, reference: _offset_exposure) -> tuple[float, float]:
     """*the (east, north) offset in arcsec of a frame's pointing from the reference frame's pointing*
 
     **Key Arguments:**
@@ -142,7 +168,7 @@ def _sky_offset_arcsec(exposure, reference):
     return east, north
 
 
-def _describe(exposure, start):
+def _describe(exposure: _offset_exposure, start: str) -> str:
     """*name a frame, with its place in its template run, for an error message*
 
     **Key Arguments:**
@@ -157,7 +183,7 @@ def _describe(exposure, start):
     return f"{exposure.filename} (exposure {exposure.expno} of the template run that started at {start})"
 
 
-def _classify_fixed_sky(start, run, problems):
+def _classify_fixed_sky(start: str, run: list[_offset_exposure], problems: list[str]) -> list[frame_label | None]:
     """*the ON frames of a FixedSkyOffset run: those near the run's first exposure*
 
     The run is cross-checked against the running sum of its ``SEQ FIXOFF`` steps, which is the position of each frame
@@ -172,7 +198,7 @@ def _classify_fixed_sky(start, run, problems):
 
     **Return:**
 
-    - ``labels`` -- one ``ON`` or ``OFF`` per frame of ``run``
+    - ``labels`` -- one ``frame_label`` (ON or OFF) per frame of ``run``
     """
     reference = run[0]
     labels = []
@@ -189,11 +215,11 @@ def _classify_fixed_sky(start, run, problems):
                 "SEQ FIXOFF steps. The two must agree to within 1 arcsec."
             )
         isOn = math.hypot(east, north) <= exposure.jitter + ON_POSITION_MARGIN_ARCSEC
-        labels.append(ON if isOn else OFF)
+        labels.append(frame_label.ON if isOn else frame_label.OFF)
     return labels
 
 
-def _classify_generic(start, run, problems):
+def _classify_generic(start: str, run: list[_offset_exposure], problems: list[str]) -> list[frame_label | None]:
     """*label the frames of a GenericOffset run from ``DPR TYPE``, and check the ON frames stay put*
 
     A frame whose ``DPR TYPE`` has the word SKY is OFF, wherever the telescope pointed. An OBJECT frame is ON when it
@@ -208,14 +234,15 @@ def _classify_generic(start, run, problems):
 
     **Return:**
 
-    - ``labels`` -- one ``ON``, ``OFF`` or None (it could not be classified) per frame of ``run``
+    - ``labels`` -- one ``frame_label`` (ON or OFF) per frame of ``run``, or None for a frame that could not be
+      classified
     """
     labels = []
     reference = None
     for exposure in run:
         words = set(exposure.dprType.upper().split(","))
-        if SKY_TYPE_WORD in words:
-            labels.append(OFF)
+        if SKY_TYPE in words:
+            labels.append(frame_label.OFF)
         elif not ON_TYPE_WORDS & words:
             problems.append(
                 f"{_describe(exposure, start)} has DPR TYPE {exposure.dprType}, which is not OBJECT or SKY."
@@ -231,14 +258,21 @@ def _classify_generic(start, run, problems):
                     f"frame of its run, {reference.filename}. An OBJECT frame must be within "
                     f"{GENERIC_ON_TOLERANCE_ARCSEC:g} arcsec of it."
                 )
-            labels.append(ON if distance <= GENERIC_ON_TOLERANCE_ARCSEC else None)
+            labels.append(frame_label.ON if distance <= GENERIC_ON_TOLERANCE_ARCSEC else None)
     return labels
 
 
-def _check_balance(start, onFrames, offFrames, hasProblems, problems):
-    """*record a problem when a run has no OFF frame or unequal numbers of ON and OFF frames*
+def _check_balance(
+    start: str,
+    onFrames: list[_offset_exposure],
+    offFrames: list[_offset_exposure],
+    hasProblems: bool,
+    problems: list[str],
+) -> None:
+    """*record a problem when a run has no ON frame, no OFF frame or unequal numbers of ON and OFF frames*
 
-    A run that already has a problem can be unequal only because of it, so the unequal counts are then left unsaid.
+    A run that already has a problem can be unequal only because of it, so the unequal counts are then left unsaid. A
+    missing ON or OFF frame is always said.
 
     **Key Arguments:**
 
@@ -248,7 +282,12 @@ def _check_balance(start, onFrames, offFrames, hasProblems, problems):
     - ``hasProblems`` -- whether the run already has a classification problem
     - ``problems`` -- the list that a problem message is added to
     """
-    if not offFrames:
+    if not onFrames:
+        problems.append(
+            f"The template run that started at {start} has no ON frame and {len(offFrames)} OFF frames. "
+            "An offset reduction needs frames on the target."
+        )
+    elif not offFrames:
         problems.append(
             f"The template run that started at {start} has {len(onFrames)} ON frames and no OFF frame. "
             "An offset reduction needs sky frames. Use soxs-stare for data taken without a sky position."
@@ -260,7 +299,7 @@ def _check_balance(start, onFrames, offFrames, hasProblems, problems):
         )
 
 
-def _check_one_template(start, run, problems):
+def _check_one_template(start: str, run: list[_offset_exposure], problems: list[str]) -> bool:
     """*record a problem when the frames of one run were taken with more than one offset template*
 
     **Key Arguments:**
@@ -286,7 +325,9 @@ def _check_one_template(start, run, problems):
     return len(techniques) == 1
 
 
-def _split_run(start, run, problems):
+def _split_run(
+    start: str, run: list[_offset_exposure], problems: list[str]
+) -> tuple[list[_offset_exposure], list[_offset_exposure]]:
     """*split one template run into its ON and OFF frames, and record the run's classification problems*
 
     **Key Arguments:**
@@ -304,13 +345,15 @@ def _split_run(start, run, problems):
     problemCount = len(problems)
     classify = _classify_fixed_sky if run[0].technique == FIXED_SKY_TECHNIQUE else _classify_generic
     labels = classify(start, run, problems)
-    onFrames = [exposure for exposure, label in zip(run, labels, strict=True) if label == ON]
-    offFrames = [exposure for exposure, label in zip(run, labels, strict=True) if label == OFF]
+    onFrames = [exposure for exposure, label in zip(run, labels, strict=True) if label is frame_label.ON]
+    offFrames = [exposure for exposure, label in zip(run, labels, strict=True) if label is frame_label.OFF]
     _check_balance(start, onFrames, offFrames, len(problems) > problemCount, problems)
     return onFrames, offFrames
 
 
-def classify_offset_frames(log, allObjectFrames, allFilenames, kw):
+def classify_offset_frames(
+    log: Any, allObjectFrames: Sequence[Any], allFilenames: Sequence[str], kw: Callable[[str], str]
+) -> tuple[list[Any], list[Any], list[str], list[str]]:
     """*split the science frames of an offset SOF into ON and OFF frames, one template run at a time*
 
     **Key Arguments:**
@@ -329,6 +372,18 @@ def classify_offset_frames(log, allObjectFrames, allFilenames, kw):
     **Raises:**
 
     - ``OffsetClassificationError`` -- when a frame cannot be classified. The message names every such frame
+
+    **Usage**
+
+    ```python
+    from soxspipe.commonutils.offset_frames import classify_offset_frames
+    allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames = classify_offset_frames(
+        log=log,
+        allObjectFrames=frames,
+        allFilenames=filenames,
+        kw=kw,
+    )
+    ```
     """
     problems = []
     exposures = [

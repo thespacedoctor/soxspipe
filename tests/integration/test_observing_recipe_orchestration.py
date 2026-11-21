@@ -12,6 +12,7 @@ from typing import Any
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.offset_frames import OffsetClassificationError
 from soxspipe.recipes import soxs_nod, soxs_offset, soxs_stare
 from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories.offset_frames import fixed_sky_run
@@ -658,12 +659,12 @@ def test_offset_success_returns_extraction_and_records_qc(
     assert captured["clean_up"] == [{"forceFail": False}]
 
 
-def test_offset_multiple_locations_extracts_each_pair_before_final_stack(
+def test_offset_two_cycles_extract_each_pair_before_final_stack(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """With `stack_before_extraction` off, distinct offset locations retain one directional extraction per pair."""
+    """With `stack_before_extraction` off, each ON/OFF cycle gets its own extraction before the final stack."""
     # TWO ON FRAMES, JITTERED BY 0.3 ARCSEC, THEN TWO OFF FRAMES: TWO ON/OFF PAIRS
     headers = fixed_sky_run([(0.0, 0.0), (0.0, 0.3), (20.0, 19.7), (0.0, 0.1)])
     paths = [
@@ -712,13 +713,23 @@ def test_offset_multiple_locations_extracts_each_pair_before_final_stack(
 
 
 @pytest.mark.parametrize(
-    ("recipeClass", "technique", "offsets", "message"),
+    ("recipeClass", "technique", "offsets", "errorType", "message"),
     [
         (
             soxs_nod,
             "ECHELLE,SLIT,NODDING",
             [{"ESO SEQ CUMOFF Y": 3.0}, {"ESO SEQ CUMOFF Y": 2.0}],
+            Exception,
             "Found 2 A frames and 0 B frames. The number of A and B frames must be the same for nodding reductions.",
+        ),
+        (
+            soxs_offset,
+            "ECHELLE,SLIT,OFFSET",
+            # TWO FRAMES AT THE OBJECT POSITION AND NONE AT THE SKY POSITION: 2 ON FRAMES AND 0 OFF FRAMES
+            fixed_sky_run([(0.0, 0.0), (0.0, 0.1)]),
+            OffsetClassificationError,
+            "The template run that started at 2025-05-14T04:00:00 has 2 ON frames and no OFF frame. "
+            "An offset reduction needs sky frames. Use soxs-stare for data taken without a sky position.",
         ),
     ],
 )
@@ -729,6 +740,7 @@ def test_unbalanced_observing_inventory_fails_with_counts(
     recipeClass: type[Any],
     technique: str,
     offsets: list[dict[str, object]],
+    errorType: type[Exception],
     message: str,
 ) -> None:
     """Unbalanced observing inventories fail before scientific processing."""
@@ -754,7 +766,7 @@ def test_unbalanced_observing_inventory_fails_with_counts(
     with pytest.raises(Exception) as error:
         recipe.produce_product()
 
-    assert type(error.value) is Exception
+    assert type(error.value) is errorType
     assert str(error.value) == message
 
 

@@ -120,11 +120,11 @@ def _extract_each_cycle(recipe: soxs_offset) -> soxs_offset:
     return recipe
 
 
-# A BALANCED SINGLE-LOCATION PAIR: ONE ON FRAME AND ONE OFF FRAME 28 ARCSEC AWAY.
+# A BALANCED PAIR: ONE ON FRAME AND ONE OFF FRAME 28 ARCSEC AWAY.
 SINGLE_PAIR = _offset_headers([(0.0, 0.0), (20.0, 20.0)], 60000.0)
 
-# TWO ON FRAMES, JITTERED BY 0.3 ARCSEC, THEN TWO OFF FRAMES: TWO ON/OFF PAIRS, WHICH TAKES THE PER-CYCLE PATH.
-TWO_LOCATIONS = _offset_headers([(0.0, 0.0), (0.0, 0.3), (20.0, 19.7), (0.0, 0.1)], 60000.0)
+# TWO ON FRAMES, JITTERED BY 0.3 ARCSEC, THEN TWO OFF FRAMES: TWO ON/OFF CYCLES.
+TWO_CYCLES = _offset_headers([(0.0, 0.0), (0.0, 0.3), (20.0, 19.7), (0.0, 0.1)], 60000.0)
 
 
 def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
@@ -176,9 +176,9 @@ def test_flux_standard_frames_rename_the_recipe_once_and_skip_later_types(
         (SINGLE_PAIR, True, True, True, True),
         (SINGLE_PAIR, True, False, False, True),
         (SINGLE_PAIR, False, True, False, True),
-        (TWO_LOCATIONS, True, True, True, True),
-        (TWO_LOCATIONS, True, True, True, False),
-        (TWO_LOCATIONS, True, False, False, False),
+        (TWO_CYCLES, True, True, True, True),
+        (TWO_CYCLES, True, True, True, False),
+        (TWO_CYCLES, True, False, False, False),
     ],
 )
 def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
@@ -207,7 +207,7 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
 
     # ASSERT
     flats = [entry["masterFlat"] for entry in captured["extract_cycle"]]
-    assert len(flats) == (2 if headers is TWO_LOCATIONS and not stackFirst else 1)
+    assert len(flats) == (2 if headers is TWO_CYCLES and not stackFirst else 1)
     for flat in flats:
         if expectFlat:
             np.testing.assert_array_equal(flat.data, synthetic_ccd(seed=400, prepared=True).data)
@@ -245,7 +245,7 @@ def test_each_cycle_records_its_raw_frame_names_in_priority_order(
 ) -> None:
     """Per cycle, both frames are stamped with the ON and OFF `ARCFILE`, else `ORIGFILE`, else file name."""
     # ARRANGE
-    headers = [{**header, **extraHeader(index)} for index, header in enumerate(TWO_LOCATIONS)]
+    headers = [{**header, **extraHeader(index)} for index, header in enumerate(TWO_CYCLES)]
     recipe, _ = _offset_recipe(log, tmp_path, headers)
     _extract_each_cycle(recipe)
     _, captured = _patch(recipe, monkeypatch, tmp_path)
@@ -355,10 +355,10 @@ def test_the_response_of_a_standard_uses_the_mean_airmass_of_the_on_frames_only(
 
 # TWO ON FRAMES OF 300 S AND 60 S, THEN TWO OFF FRAMES: THE ON FRAMES ARE THE ONES THE COUNTS ARE DIVIDED BY.
 UNEQUAL_ON_EXPOSURES = [
-    {**TWO_LOCATIONS[0], "ARCFILE": "SOXS.ON1.fits", "EXPTIME": 300.0},
-    {**TWO_LOCATIONS[1], "ARCFILE": "SOXS.ON2.fits", "EXPTIME": 60.0},
-    {**TWO_LOCATIONS[2], "EXPTIME": 300.0},
-    {**TWO_LOCATIONS[3], "EXPTIME": 300.0},
+    {**TWO_CYCLES[0], "ARCFILE": "SOXS.ON1.fits", "EXPTIME": 300.0},
+    {**TWO_CYCLES[1], "ARCFILE": "SOXS.ON2.fits", "EXPTIME": 60.0},
+    {**TWO_CYCLES[2], "EXPTIME": 300.0},
+    {**TWO_CYCLES[3], "EXPTIME": 300.0},
 ]
 
 
@@ -542,7 +542,7 @@ def test_each_cycle_and_the_stacked_pair_extract_under_their_own_location_set(
 ) -> None:
     """Cycles are numbered from one, and the stacked pair takes the stack's own index so its products never collide."""
     # ARRANGE
-    cyclesRecipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS, stem="cycles")
+    cyclesRecipe, _ = _offset_recipe(log, tmp_path, TWO_CYCLES, stem="cycles")
     _extract_each_cycle(cyclesRecipe)
     _, cyclesCaptured = _patch(cyclesRecipe, monkeypatch, tmp_path)
     stackRecipe, _ = _offset_recipe(log, tmp_path, SINGLE_PAIR, stem="stack")
@@ -595,7 +595,7 @@ def test_a_jittered_set_aligns_the_on_frames_and_stacks_the_off_frames_unaligned
 ) -> None:
     """With `stack_before_extraction` on, only the ON frames are aligned, with the OFF frames as their partners."""
     # ARRANGE
-    recipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS)
+    recipe, _ = _offset_recipe(log, tmp_path, TWO_CYCLES)
     calls, captured = _patch(recipe, monkeypatch, tmp_path)
 
     # ACT
@@ -655,7 +655,7 @@ def test_a_multi_location_standard_is_aligned_stacked_and_builds_a_response_even
 ) -> None:
     """A standard always stacks, so the per-cycle path's forced failure no longer ends a jittered standard."""
     # ARRANGE
-    recipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS)
+    recipe, _ = _offset_recipe(log, tmp_path, TWO_CYCLES)
     _extract_each_cycle(recipe)
     recipe.generateReponseCurve = True
     calls, captured = _patch(recipe, monkeypatch, tmp_path)
@@ -688,7 +688,7 @@ def test_the_offset_fallback_count_is_a_header_qc_and_the_on_shifts_get_one_pdf_
 ) -> None:
     """The ON group's fallbacks become `SLIT ALIGN FALLBACK NUM`, and its shifts one QC plot product."""
     # ARRANGE
-    recipe, _ = _offset_recipe(log, tmp_path, TWO_LOCATIONS)
+    recipe, _ = _offset_recipe(log, tmp_path, TWO_CYCLES)
     recipe.dateObs = False
     _, captured = _patch(recipe, monkeypatch, tmp_path, alignFallbackCount=3)
 
@@ -726,7 +726,7 @@ def _no_stack_standard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    headers: list[dict[str, object]] = TWO_LOCATIONS,
+    headers: list[dict[str, object]] = TWO_CYCLES,
     failure: Any = False,
     noStack: bool = True,
     stackSetting: bool = False,

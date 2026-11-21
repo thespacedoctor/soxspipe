@@ -33,7 +33,7 @@ Each run must have the same number of ON and OFF frames. The recipe stops with a
 
 ### Combine the ON and OFF frames
 
-When `stack_before_extraction` is `True` (the default), the recipe pairs each ON frame with an OFF frame of the same template run, in time order. It measures the position of the object along the slit on each cycle difference ($ON - OFF$), with the continuum-trace method, against the first ON frame in time. For SOXS VIS each order has its own shift. For SOXS NIR and every X-Shooter arm each frame has one shift, the median over the orders. An order or frame with no reliable trace takes the median shift of the others, and the `SLIT ALIGN FALLBACK NUM` QC counts these.
+When `stack_before_extraction` is `True` (the default), the recipe pairs each ON frame with an OFF frame of the same template run, in time order. It measures the position of the object along the slit on each cycle difference ($ON - OFF$), with the continuum-trace method, against the first ON frame of the first template run (the one with the lowest `ESO TPL EXPNO`). For SOXS VIS each order has its own shift. For SOXS NIR and every X-Shooter arm each frame has one shift, the median over the orders. An order or frame with no reliable trace takes the median shift of the others, and the `SLIT ALIGN FALLBACK NUM` QC counts these.
 
 The recipe resamples the ON frames through the 2D map so the object lines up along the slit at fixed wavelength, and then stacks them. It stacks the OFF (sky) frames without alignment. It then computes the difference of the two stacks once and extracts it once. It writes a QC plot of the shifts.
 

@@ -100,16 +100,16 @@ def _steps_to_reach(positions: list[float]) -> list[tuple[float, float]]:
 
 
 @pytest.mark.parametrize(
-    ("jitter", "distance", "positions", "onIndices"),
+    ("jitter", "positions", "onIndices"),
     [
         # 2.9 ARCSEC IS WITHIN THE JITTER WIDTH (2.0) PLUS 1 ARCSEC
-        (2.0, 2.9, [0.0, 2.9, 20.0, 20.0, 20.0, 0.0], [0, 1, 5]),
+        (2.0, [0.0, 2.9, 20.0, 20.0, 20.0, 0.0], [0, 1, 5]),
         # 2.1 ARCSEC IS BEYOND THE JITTER WIDTH (1.0) PLUS 1 ARCSEC
-        (1.0, 2.1, [0.0, 2.1, 20.0, 20.0, 0.0, 0.0], [0, 4, 5]),
+        (1.0, [0.0, 2.1, 20.0, 20.0, 0.0, 0.0], [0, 4, 5]),
     ],
 )
 def test_a_frame_is_on_within_the_jitter_width_plus_one_arcsec_of_the_first_exposure(
-    log: Any, jitter: float, distance: float, positions: list[float], onIndices: list[int]
+    log: Any, jitter: float, positions: list[float], onIndices: list[int]
 ) -> None:
     # ARRANGE
     headers = fixed_sky_run(_steps_to_reach(positions), jitter=jitter)
@@ -118,7 +118,6 @@ def test_a_frame_is_on_within_the_jitter_width_plus_one_arcsec_of_the_first_expo
     frames, (frameOn, frameOff, _, _) = _classify(log, headers)
 
     # ASSERT
-    assert distance == positions[1]
     assert frameOn == [frames[index] for index in onIndices]
     assert frameOff == [frames[index] for index in range(len(frames)) if index not in onIndices]
 
@@ -180,11 +179,11 @@ def test_on_and_off_frames_are_paired_within_each_run_even_when_the_runs_overlap
     # ARRANGE
     runA = fixed_sky_run([(0.0, 0.0), (20.0, 20.0)], start="2025-05-14T04:00:00")
     runB = fixed_sky_run([(0.0, 0.0), (20.0, 20.0)], start="2025-05-14T05:00:00", acquisition=(50.0, 40.0))
-    for header, mjd in zip(runA + runB, [1.0, 10.0, 5.0, 6.0], strict=True):
-        header["MJD-OBS"] = mjd
+    mjds = [1.0, 10.0, 5.0, 6.0]
+    headers = [{**header, "MJD-OBS": mjd} for header, mjd in zip(runA + runB, mjds, strict=True)]
 
     # ACT
-    frames, (frameOn, frameOff, _, _) = _classify(log, runB + runA)
+    _, (frameOn, frameOff, _, _) = _classify(log, headers[2:] + headers[:2])
 
     # ASSERT
     pairedRuns = [
@@ -365,3 +364,12 @@ def test_a_frame_taken_with_a_technique_that_is_not_an_offset_template_fails_the
     # ACT / ASSERT
     with pytest.raises(OffsetClassificationError, match=r"stare\.fits.*ECHELLE,SLIT,STARE"):
         _classify(log, headers, names)
+
+
+def test_a_generic_run_with_only_sky_frames_fails_the_sof_and_says_it_has_no_on_frame(log: Any) -> None:
+    # ARRANGE
+    headers = generic_offset_run([(20.0, 20.0), (22.0, 20.0)], ["SKY", "SKY"], start="2025-12-01T02:43:49")
+
+    # ACT / ASSERT
+    with pytest.raises(OffsetClassificationError, match=r"2025-12-01T02:43:49 has no ON frame and 2 OFF frames"):
+        _classify(log, headers)

@@ -17,6 +17,7 @@ from contextlib import closing
 from types import MappingProxyType
 
 from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils.offset_frames import SKY_TYPE
 from soxspipe.commonutils.toolkit import (
     generic_quality_checks,
     get_calibrations_path,
@@ -235,7 +236,7 @@ class soxs_nod(base_recipe):
         # A NIR NOD SOF MAY CARRY A MASTER DARK, WHICH ONLY THE STARE MODE USES (DY-2194). AN OFFSET SOF CARRIES NONE,
         # BUT IT CARRIES THE SKY FRAMES OF THE OFFSET TEMPLATES (DY-2354)
         allowedTypes = ["OBJECT", "LAMP,FLAT", "STD,FLUX", "STD,TELLURIC"]
-        allowedTypes.extend(["SKY"] if isOffset else ["DARK"])
+        allowedTypes.extend([SKY_TYPE] if isOffset else ["DARK"])
 
         if not error:
             for i in imageTypes:

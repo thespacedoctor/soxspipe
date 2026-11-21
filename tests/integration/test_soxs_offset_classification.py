@@ -127,9 +127,9 @@ def test_the_cycles_of_a_sof_with_two_runs_pair_an_on_and_an_off_frame_of_the_sa
     # ARRANGE: THE SECOND RUN'S FRAMES ARE TAKEN BETWEEN THE FIRST RUN'S, SO A SORT BY TIME ALONE WOULD CROSS THE RUNS
     runA = fixed_sky_run([(0.0, 0.0), (20.0, 20.0)], start="2025-05-14T04:00:00")
     runB = fixed_sky_run([(0.0, 0.0), (20.0, 20.0)], start="2025-05-14T05:00:00", acquisition=(50.0, 40.0))
-    for header, mjd in zip(runA + runB, [60000.0, 60000.4, 60000.1, 60000.2], strict=True):
-        header["MJD-OBS"] = mjd
-    recipe, _ = _recipe(tmp_path, log, [("OBJECT", FIXED_SKY_TECHNIQUE, header) for header in runA + runB])
+    mjds = [60000.0, 60000.4, 60000.1, 60000.2]
+    headers = [{**header, "MJD-OBS": mjd} for header, mjd in zip(runA + runB, mjds, strict=True)]
+    recipe, _ = _recipe(tmp_path, log, [("OBJECT", FIXED_SKY_TECHNIQUE, header) for header in headers])
     _extract_each_cycle(recipe)
     _, captured = _patch(recipe, monkeypatch, tmp_path)
 
