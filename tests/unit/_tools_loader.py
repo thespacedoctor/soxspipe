@@ -69,6 +69,11 @@ def load_tool(name: str) -> ModuleType:
         raise AssertionError(f"{name} is not importable from {path}")
     module = importlib.util.module_from_spec(specification)
     sys.modules[key] = module
-    with _bare_names():
-        specification.loader.exec_module(module)
+    try:
+        with _bare_names():
+            specification.loader.exec_module(module)
+    except BaseException:
+        # LIKE IMPORTLIB, A MODULE THAT FAILED TO RUN IS NOT LEFT REGISTERED
+        sys.modules.pop(key, None)
+        raise
     return module

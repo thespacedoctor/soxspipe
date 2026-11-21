@@ -330,10 +330,15 @@ def binning_along(header: fits.Header, axis: str, path: Path | None = None) -> i
     """
     card = SPECTRAL_BINNING_CARDS[axis]
     value = required_card(header, card, path)
+    notWhole = ToolError(f"{_where(path)} has a {card} card that is not a whole number: {value!r}")
+    if isinstance(value, bool):
+        raise notWhole
     try:
         binning = int(value)
     except (TypeError, ValueError) as error:
-        raise ToolError(f"{_where(path)} has a {card} card that is not a whole number: {value!r}") from error
+        raise notWhole from error
+    if binning != value and not isinstance(value, str):
+        raise notWhole
     if binning < 1:
         raise ToolError(f"{_where(path)} has a {card} card below 1: {value!r}")
     return binning

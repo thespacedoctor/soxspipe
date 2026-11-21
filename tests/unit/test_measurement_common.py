@@ -328,8 +328,18 @@ def test_spectral_binning_raises_when_the_card_is_not_a_whole_number(tmp_path: P
         common.spectral_binning(header, "VIS", path)
 
 
-@pytest.mark.parametrize(("axis", "card"), [("x", "ESO_DET_BINX"), ("y", "ESO_DET_BINY")])
-def test_binning_along_reads_the_card_of_the_axis(axis: str, card: str) -> None:
+@pytest.mark.parametrize("value", [2.5, True])
+def test_binning_along_rejects_a_card_that_is_not_an_integer(value: object) -> None:
+    # ARRANGE
+    header = _header(ESO_DET_BINX=value)
+
+    # ACT / ASSERT
+    with pytest.raises(common.ToolError, match="not a whole number"):
+        common.binning_along(header, "x")
+
+
+@pytest.mark.parametrize(("axis", "expected"), [("x", 3), ("y", 5)])
+def test_binning_along_reads_the_card_of_the_axis(axis: str, expected: int) -> None:
     # ARRANGE
     header = _header(ESO_DET_BINX=3, ESO_DET_BINY=5)
 
@@ -337,7 +347,7 @@ def test_binning_along_reads_the_card_of_the_axis(axis: str, card: str) -> None:
     binning = common.binning_along(header, axis)
 
     # ASSERT
-    assert binning == (3 if card.endswith("X") else 5)
+    assert binning == expected
 
 
 def test_the_cached_yaml_reads_are_read_only_all_the_way_down() -> None:
