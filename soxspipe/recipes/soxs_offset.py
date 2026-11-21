@@ -13,6 +13,12 @@ Date Created
 import os
 import sys
 
+from soxspipe.commonutils.offset_frames import (
+    FIXED_SKY_TECHNIQUE,
+    GENERIC_TECHNIQUE,
+    SKY_TYPE,
+    classify_offset_frames,
+)
 from soxspipe.commonutils.toolkit import (
     get_calibrations_path,
 )
@@ -20,6 +26,9 @@ from soxspipe.commonutils.toolkit import (
 from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
+
+# THE TECHNIQUES OF THE OFFSET TEMPLATES THE RECIPE REDUCES (DY-2354)
+OFFSET_TECHNIQUES = (FIXED_SKY_TECHNIQUE, GENERIC_TECHNIQUE)
 
 # THE locationSetIndex OF THE STACKED ON/OFF PAIR. IT GIVES THE STACK TRACE AND EXTRACTION PRODUCT NAMES OF ITS OWN.
 STACKED_LOCATION_SET = "STACK"
@@ -185,17 +194,12 @@ class soxs_offset(soxs_nod):
             saveToPath=False,
         )
 
-        (
-            allFrameON,
-            allFrameOFF,
-            allFrameONOffsets,
-            allFrameOFFOffsets,
-            allFrameONNames,
-            allFrameOFFNames,
-        ) = self._split_on_off_frames(allObjectFrames, allFilenames, kw)
+        # EACH TEMPLATE RUN IS CLASSIFIED ON ITS OWN. A FRAME THAT CANNOT BE CLASSIFIED FAILS THE SOF (DY-2354)
+        allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames = classify_offset_frames(
+            self.log, allObjectFrames, allFilenames, kw
+        )
         # THE SPLIT HOLDS THE FRAMES NOW. DROPPING THIS LIST LETS THE ALIGNED FRAMES REPLACE THE ORIGINALS IN MEMORY
         del allObjectFrames
-        self._check_on_off_balance(allFrameONOffsets, allFrameOFFOffsets)
 
         forceFailure = False
         shouldStack = self._should_align_and_stack()
@@ -288,11 +292,30 @@ class soxs_offset(soxs_nod):
         )
         return allFrameON
 
-    def _read_offset_object_frames(self, kw):
-        """*read the offset science frames of the first frame type that has any*
+    def _offset_frame_paths(self, kw, dprType):
+        """*the paths of the input frames of one ``DPR TYPE`` taken with either offset template*
 
-        Sets ``self.masterHeaderFrame``. Flux-standard input also renames the recipe to its ``-std`` variant,
-        re-reads ``self.recipeSettings`` and moves ``self.productDir`` to match.
+        **Key Arguments:**
+
+        - ``kw`` -- the keyword lookup
+        - ``dprType`` -- the ``DPR TYPE`` to select
+
+        **Return:**
+
+        - ``paths`` -- the frame paths, FixedSkyOffset frames first
+        """
+        paths = []
+        for technique in OFFSET_TECHNIQUES:
+            filters = {kw("DPR_TYPE"): dprType, kw("DPR_TECH"): technique}
+            paths.extend(self.inputFrames.files_filtered(include_path=True, **filters))
+        return paths
+
+    def _read_offset_object_frames(self, kw):
+        """*read the offset science frames of the first frame type that has any, and the sky frames with them*
+
+        The frames are of either offset template. Sky frames (``DPR TYPE`` SKY) follow the science frames, so the first
+        frame is always a science frame. Sets ``self.masterHeaderFrame``. Flux-standard input also renames the recipe
+        to its ``-std`` variant, re-reads ``self.recipeSettings`` and moves ``self.productDir`` to match.
 
         **Key Arguments:**
 
@@ -300,39 +323,38 @@ class soxs_offset(soxs_nod):
 
         **Return:**
 
-        - ``allObjectFrames`` -- the science frames, as CCDData objects
+        - ``allObjectFrames`` -- the science and sky frames, as CCDData objects
         - ``allFilenames`` -- the frames' file names, with the ``_pre`` suffix removed
         """
         from astropy import units as u
 
         from soxspipe.commonutils.fits_headers import read_ccd
 
-        # OBJECT/STANDARD FRAMES
+        # THE FIRST FRAME TYPE WITH ANY FRAMES SETS THE SCIENCE FRAMES. THE SKY FRAMES OF EITHER TEMPLATE FOLLOW THEM
         types = ["OBJECT", "STD,FLUX", "STD,TELLURIC"]
+        typesWithPaths = ((t, self._offset_frame_paths(kw, t)) for t in types)
+        chosenType, paths = next(((t, p) for t, p in typesWithPaths if p), (None, []))
+
         allObjectFrames, allFilenames = [], []
         self.masterHeaderFrame = False
-        for t in types:
-            add_filters = {kw("DPR_TYPE"): t, kw("DPR_TECH"): "ECHELLE,SLIT,OFFSET"}
-            for i in self.inputFrames.files_filtered(include_path=True, **add_filters):
-                if t == "STD,FLUX" and "-std" not in self.recipeName:
-                    self.recipeName += "-std"
-                    self.recipeSettings = self.get_recipe_settings()
-                    self.productDir = self.productDir.replace("soxs-offset", "soxs-offset-std")
-                singleFrame = read_ccd(
-                    i,
-                    hdu=0,
-                    unit=u.electron,
-                    hdu_uncertainty="ERRS",
-                    hdu_mask="QUAL",
-                    hdu_flags="FLAGS",
-                    key_uncertainty_type="UTYPE",
-                )
-                allObjectFrames.append(singleFrame)
-                allFilenames.append(os.path.basename(i).replace("_pre.", "."))
-                if not self.masterHeaderFrame:
-                    self.masterHeaderFrame = singleFrame.copy()
-            if len(allObjectFrames):
-                break
+        if chosenType == "STD,FLUX" and "-std" not in self.recipeName:
+            self.recipeName += "-std"
+            self.recipeSettings = self.get_recipe_settings()
+            self.productDir = self.productDir.replace("soxs-offset", "soxs-offset-std")
+        for i in paths + (self._offset_frame_paths(kw, SKY_TYPE) if chosenType else []):
+            singleFrame = read_ccd(
+                i,
+                hdu=0,
+                unit=u.electron,
+                hdu_uncertainty="ERRS",
+                hdu_mask="QUAL",
+                hdu_flags="FLAGS",
+                key_uncertainty_type="UTYPE",
+            )
+            allObjectFrames.append(singleFrame)
+            allFilenames.append(os.path.basename(i).replace("_pre.", "."))
+            if not self.masterHeaderFrame:
+                self.masterHeaderFrame = singleFrame.copy()
 
         return allObjectFrames, allFilenames
 
@@ -402,104 +424,13 @@ class soxs_offset(soxs_nod):
 
         return master_flat, orderTablePath, responseFunctionPath
 
-    def _split_on_off_frames(self, allObjectFrames, allFilenames, kw):
-        """*split the science frames into ON and OFF frames by the sign of their net offset*
-
-        **Key Arguments:**
-
-        - ``allObjectFrames`` -- the science frames
-        - ``allFilenames`` -- the science frames' file names, in the same order
-        - ``kw`` -- the keyword lookup
-
-        **Return:**
-
-        - ``allFrameON``, ``allFrameOFF``, ``allFrameONOffsets``, ``allFrameOFFOffsets``, ``allFrameONNames``,
-          ``allFrameOFFNames`` -- the ON and OFF frames, their declination offsets and their file names
-        """
-        # DIVIDING IN A AND B SEQUENCES
-        (
-            allFrameON,
-            allFrameOFF,
-            allFrameONOffsets,
-            allFrameOFFOffsets,
-            allFrameONNames,
-            allFrameOFFNames,
-        ) = (
-            [],
-            [],
-            [],
-            [],
-            [],
-            [],
-        )
-
-        # SPLIT FRAMES INTO ON (NEGATIVE NET OFFSET: OFFSETRA + OFFSETDEC < 0) AND OFF (ZERO OR POSITIVE NET OFFSET)
-        for frame, filename in zip(allObjectFrames, allFilenames):
-            offsetRA = frame.header[kw("OFFSET_RA")]
-            offsetDec = frame.header[kw("OFFSET_DEC")]
-
-            if (offsetRA + offsetDec) < 0:
-                allFrameONOffsets.append(offsetDec)
-                allFrameON.append(frame)
-                allFrameONNames.append(filename)
-            else:
-                allFrameOFFOffsets.append(offsetDec)
-                allFrameOFF.append(frame)
-                allFrameOFFNames.append(filename)
-
-        return (
-            allFrameON,
-            allFrameOFF,
-            allFrameONOffsets,
-            allFrameOFFOffsets,
-            allFrameONNames,
-            allFrameOFFNames,
-        )
-
-    def _check_on_off_balance(self, allFrameONOffsets, allFrameOFFOffsets):
-        """*refuse an unbalanced or ON-less set of offset frames and announce the cycles to process*
-
-        **Key Arguments:**
-
-        - ``allFrameONOffsets`` -- the declination offsets of the ON frames
-        - ``allFrameOFFOffsets`` -- the declination offsets of the OFF frames
-
-        **Return:**
-
-        - ``uniqueOffsets`` -- the distinct ON-frame offsets
-        """
-        uniqueOffsets = list(set(allFrameONOffsets))
-
-        if len(allFrameONOffsets) != len(allFrameOFFOffsets):
-            error = f"Found {len(allFrameONOffsets)} ON frames and {len(allFrameOFFOffsets)} OFF frames. The number of ON and OFF frames must be the same for offset reductions."
-            self.log.error(
-                f"Found {len(allFrameONOffsets)} ON frames and {len(allFrameOFFOffsets)} OFF frames. The number of ON and OFF frames must be the same for offset reductions."
-            )
-            raise Exception(error)
-
-        if len(uniqueOffsets) == 0:
-            error = "Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
-            self.log.error(
-                "Did not find any ON frames (frames with a negative net offset, i.e. offsetRA + offsetDec < 0). Please check the `HIERARCH ESO SEQ FIXOFF` header keywords in the provided offset frames."
-            )
-            raise Exception(error)
-
-        if len(uniqueOffsets) > 1:
-            s = "S"
-        else:
-            s = ""
-        self.log.print(
-            f"# PROCESSING {len(allFrameONOffsets)} ON-OFF OFFSET CYCLES WITH {len(uniqueOffsets)} UNIQUE PAIR{s} OF OFFSET LOCATIONS"
-        )
-
-        return uniqueOffsets
-
     def _reduce_each_offset_cycle(
         self, allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, orderTablePath, master_flat
     ):
         """*extract each ON-OFF cycle on its own and stack the extractions*
 
-        Sorts ``allFrameON`` and ``allFrameOFF`` in place by observation date.
+        The nth ON frame and the nth OFF frame make one cycle. ``classify_offset_frames`` orders both lists so that
+        they are from the same template run.
 
         **Key Arguments:**
 
@@ -521,11 +452,6 @@ class soxs_offset(soxs_nod):
         allSpectrumA = []
         orderJoins = None
         sequenceCount = 1
-        # SORT FRAMEON AND FRAMEOFF LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
-        # FRAMES IN TIME
-        allFrameON.sort(key=lambda x: x.header["MJD-OBS"])
-        allFrameOFF.sort(key=lambda x: x.header["MJD-OBS"])
-
         for frameON, frameOFF, frameONName, frameOFFName in zip(
             allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, strict=False
         ):
