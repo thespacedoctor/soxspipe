@@ -250,3 +250,30 @@ def test_an_uncovered_mask_with_no_pixel_set_leaves_every_order_edge_clipped_as_
     # ASSERT
     assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
     assert _edge_clipped_slit_positions(fittedOrders[UNMASKED_ORDER]) == EDGE_CLIPPED_SLIT_POSITIONS
+
+
+# AN UNCOVERED BAND WIDER THAN HALF THE SLIT: -5 TO 1 OF THE RANGE -5 TO 5. ONLY THE HIGH END IS A TRUE SLIT END
+WIDE_UNCOVERED_SLIT_POSITIONS = {-5.0, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0}
+
+
+def test_an_uncovered_band_wider_than_half_the_slit_leaves_the_true_end_edge_clipped(log: Any) -> None:
+    # ARRANGE / ACT
+    fittedOrders = _fitted_orders(log, uncoveredMask=_uncovered_mask(0, WIDE_UNCOVERED_SLIT_POSITIONS))
+
+    # ASSERT: THE LOW END IS THE COVERAGE BOUNDARY AND THE HIGH END IS THE SLIT END
+    assert set(fittedOrders[MASKED_ORDER]["slit_position"]) == set(SLIT_POSITIONS) - WIDE_UNCOVERED_SLIT_POSITIONS
+    assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == {5.0}
+
+
+def test_the_edge_clip_range_of_a_trimmed_order_is_measured_after_the_low_flat_pixels_are_left_out(log: Any) -> None:
+    # ARRANGE: THE FLAT IS LOW AT THE LOW END (-5) OF THE TRIMMED ORDER, SO THE RANGE THE UNTRIMMED PATH WOULD MEASURE
+    # IS -4 TO 5, OF WIDTH 9, AND A FRACTION OF 0.1 CLIPS THE ROWS BELOW -3.1
+    flat = np.ones(FRAME_SHAPE)
+    flat[0, 0] = 0.0
+    masterFlat = CCDData(flat, unit=u.dimensionless_unscaled)
+
+    # ACT
+    fittedOrders = _fitted_orders(log, uncoveredMask=_uncovered_mask(0), masterFlat=masterFlat)
+
+    # ASSERT: THE RANGE BEFORE THE LOW-FLAT PIXELS WENT WOULD CLIP NOTHING THAT IS LEFT
+    assert _edge_clipped_slit_positions(fittedOrders[MASKED_ORDER]) == {-4.0}

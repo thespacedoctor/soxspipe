@@ -498,8 +498,7 @@ class subtract_sky:
             self.mapDF = self.mapDF.loc[(self.mapDF["order"] > 12)]
 
         # PIXELS LEFT OUT OF THE SKY MODEL (DY-1280, DY-1517); subtract FLAGS AND ZERO-FILLS THEM AS NO-MODEL PIXELS
-        self.coverageEdges = self._coverage_edges(self.mapDF, uncoveredMask)
-        self.mapDF, self.maskedOrders = self._leave_out_excluded_pixels(
+        self.mapDF, self.maskedOrders, self.coverageEdges = self._leave_out_excluded_pixels(
             self.mapDF, excludeMask, masterFlat, uncoveredMask
         )
 
@@ -556,36 +555,43 @@ class subtract_sky:
         return
 
     def _coverage_edges(
-        self, mapDF: pd.DataFrame, uncoveredMask: np.ndarray | None
-    ) -> dict[int, tuple[float, float, bool, bool]]:
-        """*the full slit range of each order the uncovered mask trims, and which of its ends the mask trimmed*
+        self, mapDF: pd.DataFrame, excludeImage: np.ndarray | None, uncoveredImage: np.ndarray
+    ) -> Mapping[int, tuple[float, float, bool, bool]]:
+        """*the slit range of each order the uncovered mask trims, and which of its ends the mask trimmed*
 
-        The edge clip of such an order is sized from the full range and applies at the ends the mask did not trim,
-        the true slit ends. An end the mask trimmed is a coverage boundary, not a slit end.
+        The edge clip of such an order is sized from this range and applies at the ends the mask did not trim, the true
+        slit ends. The range is that of the rows the other exclusions leave, as the edge clip of an untrimmed order
+        measures it. An end is trimmed when the row at that end of the range is uncovered.
 
         **Key Arguments:**
 
-        - ``mapDF`` -- the dispersion map dataframe, before any pixel is left out, with integer ``x`` and ``y`` pixel
-          columns
-        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers, or None
+        - ``mapDF`` -- the dispersion map dataframe, with integer ``x`` and ``y`` pixel columns
+        - ``excludeImage`` -- boolean image of the pixels the exclude mask and the low-flat test leave out, or None
+        - ``uncoveredImage`` -- boolean image, True for a pixel that not every stacked frame covers
 
         **Return:**
 
-        - ``edges`` -- ``{order: (lowest slit position, highest slit position, is the low end trimmed, is the high end
-          trimmed)}`` for each order with an uncovered pixel. Empty when ``uncoveredMask`` is None
+        - ``edges`` -- a read-only ``{order: (lowest slit position, highest slit position, is the low end trimmed, is
+          the high end trimmed)}`` for each order with an uncovered pixel among the rows that stay
         """
-        if uncoveredMask is None:
-            return {}
-        isUncovered = self._exclude_image(uncoveredMask)[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
+        import numpy as np
+
+        rows, columns = mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)
+        isKept = np.ones(len(mapDF), dtype=bool) if excludeImage is None else ~excludeImage[rows, columns]
+        isUncovered = uncoveredImage[rows, columns]
         edges = {}
-        for order in mapDF.loc[isUncovered, "order"].unique().tolist():
-            isOrder = mapDF["order"] == order
-            slit = mapDF.loc[isOrder, "slit_position"]
+        for order in mapDF.loc[isKept & isUncovered, "order"].unique().tolist():
+            isOrderRow = (mapDF["order"] == order).to_numpy() & isKept
+            slit = mapDF.loc[isOrderRow, "slit_position"].to_numpy(dtype=float)
             lowest, highest = float(slit.min()), float(slit.max())
-            middle = (lowest + highest) / 2
-            uncoveredSlit = mapDF.loc[isOrder & isUncovered, "slit_position"]
-            edges[order] = (lowest, highest, bool((uncoveredSlit < middle).any()), bool((uncoveredSlit > middle).any()))
-        return edges
+            isOrderUncovered = isUncovered[isOrderRow]
+            edges[order] = (
+                lowest,
+                highest,
+                bool(isOrderUncovered[slit == lowest].any()),
+                bool(isOrderUncovered[slit == highest].any()),
+            )
+        return MappingProxyType(edges)
 
     def _leave_out_excluded_pixels(
         self,
@@ -593,7 +599,7 @@ class subtract_sky:
         excludeMask: np.ndarray | None,
         masterFlat: Any,
         uncoveredMask: np.ndarray | None = None,
-    ) -> tuple[pd.DataFrame, frozenset[int]]:
+    ) -> tuple[pd.DataFrame, frozenset[int], Mapping[int, tuple[float, float, bool, bool]]]:
         """*the map without the pixels left out of the sky model, and with the master flat of each pixel*
 
         **Key Arguments:**
@@ -610,22 +616,26 @@ class subtract_sky:
 
         - ``keptMapDF`` -- a new dataframe holding the rows of ``mapDF`` that stay in the sky model
         - ``maskedOrders`` -- the orders ``excludeMask`` covers
+        - ``coverageEdges`` -- the orders ``uncoveredMask`` trims, with their slit range and trimmed ends (see
+          `_coverage_edges`). Empty when ``uncoveredMask`` is None
         """
         maskedOrders = frozenset()
         if excludeMask is not None:
             excludeMask = self._exclude_image(excludeMask)
             isRowExcluded = excludeMask[mapDF["y"].to_numpy(dtype=int), mapDF["x"].to_numpy(dtype=int)]
             maskedOrders = frozenset(mapDF.loc[isRowExcluded, "order"].unique().tolist())
-        if uncoveredMask is not None:
-            uncoveredImage = self._exclude_image(uncoveredMask)
-            excludeMask = uncoveredImage if excludeMask is None else excludeMask | uncoveredImage
         if masterFlat is not None:
             mapDF = self._add_flat_column(mapDF, masterFlat)
             lowFlatImage = self._low_flat_pixels(mapDF)
             excludeMask = lowFlatImage if excludeMask is None else lowFlatImage | excludeMask
+        coverageEdges = MappingProxyType({})
+        if uncoveredMask is not None:
+            uncoveredImage = self._exclude_image(uncoveredMask)
+            coverageEdges = self._coverage_edges(mapDF, excludeMask, uncoveredImage)
+            excludeMask = uncoveredImage if excludeMask is None else excludeMask | uncoveredImage
         if excludeMask is None:
-            return mapDF, maskedOrders
-        return self._drop_excluded_pixels(mapDF, excludeMask), maskedOrders
+            return mapDF, maskedOrders, coverageEdges
+        return self._drop_excluded_pixels(mapDF, excludeMask), maskedOrders, coverageEdges
 
     def _exclude_image(self, excludeMask):
         """*the exclude mask as a boolean image, checked against the shape of the object frame*

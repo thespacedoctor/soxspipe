@@ -29,7 +29,7 @@ from soxspipe.commonutils.horne_extraction import (
     profile_clip_cap_rows,
 )
 from tests.factories import instrument_header, product_table
-from tests.unit.test_flux_calibration_columns import _calibrate
+from tests.factories.flux_calibration import calibrate_spectrum
 from tests.unit._plot_spies import probe_on_savefig
 
 pytestmark = pytest.mark.unit
@@ -3526,5 +3526,5 @@ def test_extract_merges_an_order_with_no_pixel_left_beside_its_neighbours_withou
     assert len(merged) > 0
 
     # THE FLUX CALIBRATION OF THE MERGED SPECTRUM IS FINITE TOO
-    calibrated = _calibrate(tmp_path, log, monkeypatch, merged, responseWave=RESPONSE_WAVES)
+    calibrated = calibrate_spectrum(tmp_path, log, monkeypatch, merged, responseWave=RESPONSE_WAVES)
     assert np.isfinite(np.asarray(calibrated["FLUX_CALIBRATED"], dtype=float)).all()
