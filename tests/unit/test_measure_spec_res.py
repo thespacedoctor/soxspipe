@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import yaml
+from astropy.io import fits
 
 from tests.unit._arc_scene import (
     Scene,
@@ -270,11 +271,14 @@ def test_main_names_a_sky_frame_whose_model_is_missing(
     # ACT
     spec_tool.main(
         [
-            "--arcs", str(rawDir / "*.fits"),
-            "--disp-images", str(mapDir / "*_DISP_IMAGE.fits"),
-            "--sky-products", str(stareDir / "*_SKYSUB.fits"),
+            "--arcs",
+            str(rawDir / "*.fits"),
+            "--disp-images",
+            str(mapDir / "*_DISP_IMAGE.fits"),
+            "--sky-products",
+            str(stareDir / "*_SKYSUB.fits"),
         ]
-    )  # fmt: skip
+    )
 
     # ASSERT
     captured = capsys.readouterr()
@@ -310,3 +314,106 @@ def test_main_raises_when_no_arc_line_is_measured(tmp_path: Path, full_frame_tri
     # ACT / ASSERT
     with pytest.raises(spec_tool.ToolError, match="no arc line"):
         spec_tool.main(arguments)
+
+
+def test_the_records_hold_their_lines_mjds_and_night_medians_read_only() -> None:
+    # ARRANGE
+    measurement = spec_tool.FrameMeasurement("VIS", "SLIT1.0", 60000.4, _lines(5000))
+    slit = spec_tool.summarise([measurement])["VIS"]["SLIT1.0"]
+
+    # ACT / ASSERT
+    assert isinstance(measurement.lines, tuple)
+    assert isinstance(slit.mjds, tuple)
+    with pytest.raises(TypeError):
+        slit.nightMedians[60001] = 1
+
+
+def test_main_prints_the_arc_table_and_exits_zero_when_the_sky_path_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, full_frame_trim: None
+) -> None:
+    # ARRANGE: THE SKY PATTERN MATCHES A FILE THAT IS NOT A _SKYSUB.fits PRODUCT
+    rawDir, mapDir = _write_night(tmp_path)
+    monkeypatch.setattr(spec_tool, "today_iso", lambda: "2026-11-22")
+    stareDir = tmp_path / "stare"
+    stareDir.mkdir()
+    (stareDir / "obs1_FLUXCAL.fits").write_bytes(b"")
+    arcArguments = ["--arcs", str(rawDir / "*.fits"), "--disp-images", str(mapDir / "*_DISP_IMAGE.fits")]
+    spec_tool.main(arcArguments)
+    tableWithoutSky = yaml.safe_load(capsys.readouterr().out)
+
+    # ACT
+    status = spec_tool.main([*arcArguments, "--sky-products", str(stareDir / "*.fits")])
+
+    # ASSERT
+    captured = capsys.readouterr()
+    assert status == 0
+    assert yaml.safe_load(captured.out) == tableWithoutSky
+    assert "skipped the sky-line cross-check" in captured.err
+    assert "obs1_FLUXCAL.fits" in captured.err
+
+
+def test_main_prints_the_arc_table_when_a_sky_frame_does_not_match_its_maps(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, full_frame_trim: None
+) -> None:
+    # ARRANGE: A SKY FRAME ONE ROW SHORT OF THE MAPS
+    rawDir, mapDir = _write_night(tmp_path)
+    monkeypatch.setattr(spec_tool, "today_iso", lambda: "2026-11-22")
+    stareDir = tmp_path / "stare"
+    stareDir.mkdir()
+    skyPath = write_sky_pair(stareDir / "obs1_SKYSUB.fits", Scene(minSlit=1.9), sky_header())
+    for name in ("obs1_SKYSUB.fits", "obs1_SKYMODEL.fits"):
+        with fits.open(stareDir / name, mode="update") as hdus:
+            hdus[0].data = hdus[0].data[:-1]
+            if len(hdus) > 1:
+                hdus[1].data = hdus[1].data[:-1]
+
+    # ACT
+    status = spec_tool.main(
+        [
+            "--arcs",
+            str(rawDir / "*.fits"),
+            "--disp-images",
+            str(mapDir / "*_DISP_IMAGE.fits"),
+            "--sky-products",
+            str(skyPath),
+        ]
+    )
+
+    # ASSERT
+    captured = capsys.readouterr()
+    assert status == 0
+    assert "spec-res:" in captured.out
+    assert "SKY-LINE CROSS-CHECK" not in captured.out
+    assert "obs1_SKYSUB.fits" in captured.err
+
+
+def test_main_names_a_sky_arm_that_has_no_arc_arm_and_leaves_it_out_of_the_output(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, full_frame_trim: None
+) -> None:
+    # ARRANGE: VIS ARCS, BUT A NIR SKY FRAME WITH ITS OWN NIR DISP_IMAGE
+    rawDir, mapDir = _write_night(tmp_path)
+    monkeypatch.setattr(spec_tool, "today_iso", lambda: "2026-11-22")
+    nirScene = Scene(fwhmPx=3.0, minSlit=1.9).transposed()
+    write_disp_image(mapDir / "nir_DISP_IMAGE.fits", nirScene, mjd=60000.1, arm="NIR")
+    stareDir = tmp_path / "stare"
+    stareDir.mkdir()
+    write_sky_pair(stareDir / "obs1_SKYSUB.fits", nirScene, sky_header(arm="NIR"))
+
+    # ACT
+    status = spec_tool.main(
+        [
+            "--arcs",
+            str(rawDir / "*.fits"),
+            "--disp-images",
+            str(mapDir / "*_DISP_IMAGE.fits"),
+            "--sky-products",
+            str(stareDir / "*_SKYSUB.fits"),
+        ]
+    )
+
+    # ASSERT
+    captured = capsys.readouterr()
+    assert status == 0
+    assert "NIR arm not recorded" in captured.err
+    assert "NIR" not in yaml.safe_load(captured.out)
+    assert "SKY-LINE CROSS-CHECK" not in captured.out

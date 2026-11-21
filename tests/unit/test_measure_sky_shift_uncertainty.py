@@ -207,15 +207,6 @@ def test_uncertainty_by_arm_keeps_the_arms_apart() -> None:
     assert result["NIR"]["untuned"].valueNm == pytest.approx(0.5)
 
 
-def test_the_script_has_no_aggregate_option() -> None:
-    # ARRANGE
-    parser = shift_tool.build_parser()
-
-    # ACT / ASSERT
-    with pytest.raises(SystemExit):
-        parser.parse_args(["--products", "a", "--arcs", "b", "--aggregate", "pooled"])
-
-
 def test_format_yaml_prints_the_worst_order_value_and_the_pooled_rms_in_a_comment() -> None:
     # ARRANGE
     samples = [
@@ -360,3 +351,16 @@ def test_main_names_the_file_and_card_when_a_tuned_product_has_no_mjd(workspace:
     # ACT / ASSERT
     with pytest.raises(shift_tool.ToolError, match=re.escape(f"{path} has no MJD-OBS card")):
         shift_tool.main(["--products", str(path), "--arcs", str(arcs / "day_SSOL.fits")])
+
+
+def test_the_records_hold_their_shifts_and_mjds_read_only() -> None:
+    # ARRANGE
+    sample = _sample("untuned", {1: 0.3})
+    uncertainty = shift_tool.uncertainty_by_arm([sample])["VIS"]["untuned"]
+
+    # ACT / ASSERT
+    with pytest.raises(TypeError):
+        sample.shifts[2] = 0.1
+    with pytest.raises(TypeError):
+        uncertainty.perOrderNm[2] = 0.1
+    assert isinstance(uncertainty.mjds, tuple)

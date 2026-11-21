@@ -316,3 +316,53 @@ def test_run_main_reports_a_tool_error_on_stderr_and_returns_two(capsys: pytest.
     # ASSERT
     assert status == 2
     assert "no file matches x" in capsys.readouterr().err
+
+
+def test_spectral_binning_raises_when_the_card_is_not_a_whole_number(tmp_path: Path) -> None:
+    # ARRANGE
+    path = tmp_path / "a.fits"
+    header = _header(ESO_DET_BINX="two")
+
+    # ACT / ASSERT
+    with pytest.raises(common.ToolError, match=re.escape(f"{path} has a ESO DET BINX card that is not a whole number")):
+        common.spectral_binning(header, "VIS", path)
+
+
+@pytest.mark.parametrize(("axis", "card"), [("x", "ESO_DET_BINX"), ("y", "ESO_DET_BINY")])
+def test_binning_along_reads_the_card_of_the_axis(axis: str, card: str) -> None:
+    # ARRANGE
+    header = _header(ESO_DET_BINX=3, ESO_DET_BINY=5)
+
+    # ACT
+    binning = common.binning_along(header, axis)
+
+    # ASSERT
+    assert binning == (3 if card.endswith("X") else 5)
+
+
+def test_the_cached_yaml_reads_are_read_only_all_the_way_down() -> None:
+    # ARRANGE
+    parameters, aliases = common.detector_parameters(), common.keyword_aliases()
+
+    # ACT / ASSERT
+    with pytest.raises(TypeError):
+        parameters["VIS"] = {}
+    with pytest.raises(TypeError):
+        parameters["VIS"]["binning"] = [2, 2]
+    with pytest.raises(TypeError):
+        aliases["MJDOBS"] = "X"
+    assert parameters["VIS"]["binning"] == (1, 1)
+
+
+def test_frozen_mapping_is_a_read_only_copy() -> None:
+    # ARRANGE
+    original = {1: 0.3}
+
+    # ACT
+    copy = common.frozen_mapping(original)
+    original[2] = 0.4
+
+    # ASSERT
+    assert dict(copy) == {1: 0.3}
+    with pytest.raises(TypeError):
+        copy[3] = 1.0

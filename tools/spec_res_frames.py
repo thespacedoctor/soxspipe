@@ -16,11 +16,9 @@ import measurement_common as common
 import numpy as np
 import numpy.typing as npt
 from astropy.io import fits
-from line_fitting import LineFit, measure_lines
+from line_fitting import ARC_PROMINENCE, ARC_SLIT_RANGE_ARCSEC, LineFit, measure_lines
 from measurement_common import ToolError
 
-ARC_SLIT_RANGE_ARCSEC = (-3.0, 3.0)
-ARC_PROMINENCE = 30.0
 SKY_SLIT_RANGE_ARCSEC = (2.0, 5.0)
 SKY_PROMINENCE = 20.0
 SLIT_CARDS = {"VIS": "ESO INS VISE NAME", "NIR": "ESO INS NISE NAME"}
@@ -152,8 +150,7 @@ def read_arc_ref(path: Path) -> ArcRef | None:
     if not is_slit_arc(header):
         return None
     arm, slit, mjd = _identity(header, path)
-    binX = int(common.required_card(header, "ESO DET BINX", path))
-    binY = int(common.required_card(header, "ESO DET BINY", path))
+    binX, binY = common.binning_along(header, "x", path), common.binning_along(header, "y", path)
     return ArcRef(Path(path), arm, slit, mjd, binX, binY)
 
 
@@ -300,7 +297,8 @@ def measure_sky(sky: SkyRef, mapRef: MapRef) -> list[LineFit]:
     """*measure the night-sky lines of a reduced stare frame through the maps of its ``DISP_IMAGE``*
 
     The data is the sky-subtracted frame plus the sky model, so the sky lines are back in. Pixels that ``QUAL`` flags
-    are left out, and so are the pixels within 2 arcsec of the slit centre, where the target is.
+    are left out. Only the pixels with ``2 < slit < 5`` arcsec are used, on the positive side of the slit only, as the
+    DY-2297 prototype did, so the numbers stay comparable with it. The negative side is not used.
 
     **Key Arguments:**
 

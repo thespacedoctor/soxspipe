@@ -33,7 +33,8 @@ removed. The script names each product it leaves out.
 **Usage**
 
 ```bash
-python tools/measure_sky_shift_uncertainty.py --products "path/to/*_EXTRACTED_MERGED.fits" --arcs "path/to/*_SSOL.fits"
+# merged spectra: _EXTRACTED_MERGED today, _SPECTRUM after DY-2346
+python tools/measure_sky_shift_uncertainty.py --products "path/to/merged_spectra/*.fits" --arcs "path/to/*_SSOL.fits"
 python tools/measure_sky_shift_uncertainty.py --products a.fits b.fits --arcs "arcs/*.fits"
 ```
 
@@ -86,7 +87,10 @@ class ShiftSample:
     arm: str
     kind: str
     mjd: float
-    shifts: dict[int, float]
+    shifts: Mapping[int, float]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "shifts", common.frozen_mapping(self.shifts))
 
 
 @dataclass(frozen=True)
@@ -97,8 +101,12 @@ class Uncertainty:
     pooledNm: float
     shiftCount: int
     frameCount: int
-    perOrderNm: dict[int, float]
-    mjds: list[float]
+    perOrderNm: Mapping[int, float]
+    mjds: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "perOrderNm", common.frozen_mapping(self.perOrderNm))
+        object.__setattr__(self, "mjds", tuple(self.mjds))
 
 
 def read_sky_shifts(header: fits.Header) -> dict[int, float]:

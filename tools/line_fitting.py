@@ -23,7 +23,7 @@ from scipy.optimize import curve_fit
 from scipy.signal import find_peaks
 
 FWHM_PER_SIGMA = 2.3548
-SLIT_HALF_RANGE_ARCSEC = 3.0
+ARC_SLIT_RANGE_ARCSEC = (-3.0, 3.0)
 MIN_ORDER_PIXELS = 500
 PROFILE_BIN_FRACTION = 0.5
 MIN_PEAK_DISTANCE_BINS = 6
@@ -33,7 +33,7 @@ MIN_FIT_PIXELS = 20
 MIN_FWHM_PIXELS = 0.8
 MAX_FWHM_PIXELS = 8.0
 MAX_CENTRE_DRIFT_PIXELS = 2.0
-DEFAULT_PROMINENCE = 30.0
+ARC_PROMINENCE = 30.0
 MAD_TO_SIGMA = 1.4826
 DISPERSION_AXIS_INDEX = {"x": 1, "y": 0}
 
@@ -257,8 +257,8 @@ def measure_lines(
     slit: FloatArray,
     order: npt.NDArray[np.integer],
     dispersionAxis: str,
-    slitRange: tuple[float, float] = (-SLIT_HALF_RANGE_ARCSEC, SLIT_HALF_RANGE_ARCSEC),
-    prominence: float = DEFAULT_PROMINENCE,
+    slitRange: tuple[float, float] = ARC_SLIT_RANGE_ARCSEC,
+    prominence: float = ARC_PROMINENCE,
 ) -> list[LineFit]:
     """*the isolated, unsaturated emission lines of a frame, with their resolving power*
 
@@ -270,8 +270,9 @@ def measure_lines(
     - ``slit`` -- the ``SLIT`` map, in arcsec
     - ``order`` -- the ``ORDER`` map; 0 is no order
     - ``dispersionAxis`` -- ``x`` or ``y``, the detector axis the wavelength runs along
-    - ``slitRange`` -- the slit positions to use, in arcsec. Default within 3 arcsec of the centre
-    - ``prominence`` -- the peak prominence, in units of the profile's noise. Default 30
+    - ``slitRange`` -- the open interval of slit positions to use, in arcsec. Default ``ARC_SLIT_RANGE_ARCSEC``, within
+      3 arcsec of the centre
+    - ``prominence`` -- the peak prominence, in units of the profile's noise. Default ``ARC_PROMINENCE``, 30
 
     **Return:**
 

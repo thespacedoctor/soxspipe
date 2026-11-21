@@ -177,7 +177,7 @@ def test_measure_arms_pools_the_steps_of_every_file_of_an_arm(tmp_path: Path) ->
     # ASSERT
     assert set(results) == {"VIS"}
     assert results["VIS"].stepKms == pytest.approx(18.0, rel=1e-9)
-    assert results["VIS"].mjds == [60000.5, 60002.5]
+    assert results["VIS"].mjds == (60000.5, 60002.5)
     assert sorted(results["VIS"].perOrderKms) == [1, 2]
 
 
@@ -292,3 +292,13 @@ def test_main_raises_for_a_pattern_with_no_match(tmp_path: Path) -> None:
     # ACT / ASSERT
     with pytest.raises(step_tool.ToolError, match="no file matches"):
         step_tool.main([pattern])
+
+
+def test_arm_result_holds_its_per_order_steps_and_mjds_read_only() -> None:
+    # ARRANGE
+    result = step_tool.ArmResult(18.0, {1: 20.0, 2: 18.0}, 1, [60000.5])
+
+    # ACT / ASSERT
+    assert result.mjds == (60000.5,)
+    with pytest.raises(TypeError):
+        result.perOrderKms[3] = 1.0

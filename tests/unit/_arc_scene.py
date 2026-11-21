@@ -7,6 +7,7 @@ that map and their FWHM in pixels is known.
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +34,7 @@ class Scene:
     - ``lineColumns`` -- the columns of the line centres at the middle row. Default every 150 columns
     - ``minSlit`` -- the lines are present only where ``|slit|`` is at least this, in arcsec. Default 0
     - ``maxSlit`` -- the lines are present only where ``|slit|`` is at most this, in arcsec. Default 100
+    - ``side`` -- 1 to light the positive side of the slit only, -1 for the negative side only, 0 for both. Default 0
     - ``seed`` -- the seed of the noise. Default 0
     """
 
@@ -42,6 +44,7 @@ class Scene:
         lineColumns: list[int] | None = None,
         minSlit: float = 0.0,
         maxSlit: float = 100.0,
+        side: int = 0,
         seed: int = 0,
     ) -> None:
         lineColumns = LINE_COLUMNS if lineColumns is None else lineColumns
@@ -56,11 +59,18 @@ class Scene:
         rng = np.random.default_rng(seed)
         data = BACKGROUND + rng.normal(0.0, 1.0, (ROWS, COLUMNS))
         sigmaNm = fwhmPx * NM_PER_PIXEL / FWHM_PER_SIGMA
-        isLit = (np.abs(self.slit) >= minSlit) & (np.abs(self.slit) <= maxSlit)
+        isLit = (np.abs(self.slit) >= minSlit) & (np.abs(self.slit) <= maxSlit) & (self.slit * side >= 0)
         for centre in self.centres:
             data += AMPLITUDE * np.exp(-0.5 * ((self.wavelength - centre) / sigmaNm) ** 2) * isLit
         self.data = data
         self.good = np.ones((ROWS, COLUMNS), dtype=bool)
+
+    def transposed(self) -> Scene:
+        """*the same scene with the dispersion along y, as the NIR arm has it*"""
+        other = copy.copy(self)
+        for name in ("wavelength", "slit", "order", "data", "good"):
+            setattr(other, name, getattr(self, name).T.copy())
+        return other
 
     def pixel_at(self, centreNm: float, row: int) -> tuple[int, int]:
         """*the (row, column) of the pixel in a row whose wavelength is closest to a wavelength*"""
@@ -128,6 +138,6 @@ def raw_header(
     return header
 
 
-def sky_header(slit: str = "SLIT1.0", mjd: float = 60000.45) -> fits.Header:
+def sky_header(slit: str = "SLIT1.0", mjd: float = 60000.45, arm: str = "VIS") -> fits.Header:
     """*the header of a reduced stare frame: the arm, slit and MJD of the science frame*"""
-    return raw_header(slit=slit, mjd=mjd, tech="ECHELLE,SLIT,STARE", dprType="OBJECT")
+    return raw_header(arm=arm, slit=slit, mjd=mjd, tech="ECHELLE,SLIT,STARE", dprType="OBJECT")

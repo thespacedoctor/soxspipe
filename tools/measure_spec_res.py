@@ -22,9 +22,10 @@ the DY-2297 prototype `linewidth.py`, in `line_fitting.py`.
 **Sky-line cross-check (optional)**
 
 With `--sky-products`, the script also measures night-sky lines in reduced stare frames. The data is the `_SKYSUB.fits`
-frame plus its `_SKYMODEL.fits` frame, with the pixels that `QUAL` flags left out, and the pixels 2 to 5 arcsec from the
-slit centre, where the target does not contribute. The `DISP_IMAGE` pairing is the same. The median sky-line R per arm
-and slit is printed as a yaml comment beside the table, with its ratio to the arc value. It never changes the table.
+frame plus its `_SKYMODEL.fits` frame, with the pixels that `QUAL` flags left out. Only the pixels with `2 < slit < 5`
+arcsec are used, on the positive side of the slit only, as in the DY-2297 prototype, so the numbers stay comparable
+with it. The `DISP_IMAGE` pairing is the same. The median sky-line R per arm and slit is printed as a yaml comment
+beside the table, with its ratio to the arc value. It never changes the table.
 
 **Usage**
 
@@ -91,7 +92,10 @@ class FrameMeasurement:
     arm: str
     slit: str
     mjd: float
-    lines: list[LineFit]
+    lines: tuple[LineFit, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "lines", tuple(self.lines))
 
 
 @dataclass(frozen=True)
@@ -101,8 +105,12 @@ class SlitSummary:
     resolvingPower: int
     lineCount: int
     frameCount: int
-    mjds: list[float]
-    nightMedians: dict[int, int]
+    mjds: tuple[float, ...]
+    nightMedians: Mapping[int, int]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "mjds", tuple(self.mjds))
+        object.__setattr__(self, "nightMedians", common.frozen_mapping(self.nightMedians))
 
 
 Summary = dict[str, dict[str, SlitSummary]]
@@ -341,6 +349,27 @@ def _pair_and_report[Frame: ArcRef | SkyRef](
     return pairs
 
 
+def _sky_cross_check(arguments: argparse.Namespace, maps: Sequence[MapRef], arcArms: set[str]) -> Summary | None:
+    """*the sky-line summary, or None when no sky input was given or the cross-check failed*
+
+    The cross-check never stops the arc table. A ``ToolError`` on the sky path is named on stderr, and the table prints
+    without the cross-check. A sky arm with no arc arm has no table to sit beside, so it is named on stderr too.
+    """
+    if not arguments.sky_products:
+        return None
+    try:
+        skyPairs = _pair_and_report(collect_skies(arguments.sky_products), maps, arguments.max_gap_days)
+        skySummary = summarise(
+            [FrameMeasurement(sky.arm, sky.slit, sky.mjd, measure_sky(sky, mapRef)) for sky, mapRef in skyPairs]
+        )
+    except ToolError as error:
+        print(f"skipped the sky-line cross-check: {error}", file=sys.stderr)
+        return None
+    for arm in sorted(set(skySummary) - arcArms):
+        print(f"sky-line cross-check for the {arm} arm not recorded: no arc measurement for that arm", file=sys.stderr)
+    return skySummary
+
+
 def build_parser() -> argparse.ArgumentParser:
     """*the command-line parser of the script*
 
@@ -399,12 +428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     if not summary:
         raise ToolError("no arc line was measured on any frame")
-    skySummary = None
-    if arguments.sky_products:
-        skyPairs = _pair_and_report(collect_skies(arguments.sky_products), maps, arguments.max_gap_days)
-        skySummary = summarise(
-            [FrameMeasurement(sky.arm, sky.slit, sky.mjd, measure_sky(sky, mapRef)) for sky, mapRef in skyPairs]
-        )
+    skySummary = _sky_cross_check(arguments, maps, set(summary))
     print(format_yaml(summary, common.soxspipe_version(), today_iso(), skySummary), end="")
     return 0
 

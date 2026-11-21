@@ -266,3 +266,42 @@ def test_measure_sky_ignores_lines_that_sit_inside_2_arcsec_of_the_slit_centre(t
 
     # ASSERT
     assert lines == []
+
+
+def test_read_arc_ref_raises_naming_the_file_when_the_binning_card_is_not_a_number(tmp_path: Path) -> None:
+    # ARRANGE
+    header = raw_header()
+    header["ESO DET BINX"] = "two"
+    path = write_raw_arc(tmp_path / "arc.fits", Scene(), header)
+
+    # ACT / ASSERT
+    with pytest.raises(
+        frames_tool.ToolError, match=re.escape(f"{path} has a ESO DET BINX card that is not a whole number")
+    ):
+        frames_tool.read_arc_ref(path)
+
+
+def test_measure_sky_uses_the_positive_side_of_the_slit_only(tmp_path: Path) -> None:
+    # ARRANGE: THE PROTOTYPE USED 2 < SLIT < 5 ONLY, SO LINES ON THE NEGATIVE SIDE ONLY ARE NOT FOUND
+    scene = Scene(fwhmPx=3.0, minSlit=1.9, side=-1)
+    sky = frames_tool.read_sky_ref(write_sky_pair(tmp_path / "stare_SKYSUB.fits", scene, sky_header()))
+    mapRef = frames_tool.read_map_ref(write_disp_image(tmp_path / "map_DISP_IMAGE.fits", scene))
+
+    # ACT
+    lines = frames_tool.measure_sky(sky, mapRef)
+
+    # ASSERT
+    assert lines == []
+
+
+def test_measure_sky_finds_the_lines_of_the_positive_side_of_the_slit(tmp_path: Path) -> None:
+    # ARRANGE
+    scene = Scene(fwhmPx=3.0, minSlit=1.9, side=1)
+    sky = frames_tool.read_sky_ref(write_sky_pair(tmp_path / "stare_SKYSUB.fits", scene, sky_header()))
+    mapRef = frames_tool.read_map_ref(write_disp_image(tmp_path / "map_DISP_IMAGE.fits", scene))
+
+    # ACT
+    lines = frames_tool.measure_sky(sky, mapRef)
+
+    # ASSERT
+    assert len(lines) == len(LINE_COLUMNS)

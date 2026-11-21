@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -81,9 +81,13 @@ class ArmResult:
     """*the measured step of one arm, with the per-order values and inputs it came from*"""
 
     stepKms: float
-    perOrderKms: dict[int, float]
+    perOrderKms: Mapping[int, float]
     binning: int
-    mjds: list[float]
+    mjds: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "perOrderKms", common.frozen_mapping(self.perOrderKms))
+        object.__setattr__(self, "mjds", tuple(self.mjds))
 
 
 def native_steps_kms(wavelengths: npt.ArrayLike) -> FloatArray:
@@ -231,7 +235,7 @@ def measure_arms(products: Sequence[Product]) -> dict[str, ArmResult]:
     return results
 
 
-def format_yaml(results: dict[str, ArmResult], version: str, today: str) -> str:
+def format_yaml(results: Mapping[str, ArmResult], version: str, today: str) -> str:
     """*the yaml block to paste into ``soxs_detector_parameters.yaml``*
 
     **Key Arguments:**

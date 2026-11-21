@@ -14,9 +14,10 @@ import glob
 import math
 import re
 import sys
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import yaml
@@ -59,9 +60,53 @@ def load_yaml(path: Path) -> dict[str, Any]:
         return yaml.safe_load(stream)
 
 
+def freeze(value: Any) -> Any:
+    """*a read-only copy of a parsed yaml value: mappings become ``MappingProxyType``, lists become tuples*
+
+    **Key Arguments:**
+
+    - ``value`` -- a mapping, list or scalar
+
+    **Return:**
+
+    - ``frozen`` -- the read-only copy, frozen all the way down
+
+    **Usage:**
+
+    ```python
+    parameters = freeze({"VIS": {"binning": [1, 1]}})
+    ```
+    """
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: freeze(item) for key, item in value.items()})
+    if isinstance(value, list | tuple):
+        return tuple(freeze(item) for item in value)
+    return value
+
+
+def frozen_mapping[Key, Value](mapping: Mapping[Key, Value]) -> Mapping[Key, Value]:
+    """*a read-only copy of a mapping, for the fields of a frozen dataclass*
+
+    **Key Arguments:**
+
+    - ``mapping`` -- the mapping to copy
+
+    **Return:**
+
+    - ``copy`` -- a ``MappingProxyType`` over a copy of the mapping
+
+    **Usage:**
+
+    ```python
+    perOrder = frozen_mapping({1: 0.3})
+    ```
+    """
+    return MappingProxyType(dict(mapping))
+
+
 @functools.cache
-def detector_parameters() -> dict[str, Any]:
-    """*the packaged detector parameters, read once; treat the mapping as read-only*
+def detector_parameters() -> Mapping[str, Any]:
+    """*the packaged detector parameters, read once and read-only*
 
     **Return:**
 
@@ -73,12 +118,12 @@ def detector_parameters() -> dict[str, Any]:
     scienceRows = detector_parameters()["VIS"]["science-pixels"]["rows"]
     ```
     """
-    return load_yaml(DETECTOR_PARAMETERS_PATH)
+    return freeze(load_yaml(DETECTOR_PARAMETERS_PATH))
 
 
 @functools.cache
-def keyword_aliases() -> dict[str, str]:
-    """*the packaged SOXS keyword aliases, read once; treat the mapping as read-only*
+def keyword_aliases() -> Mapping[str, str]:
+    """*the packaged SOXS keyword aliases, read once and read-only*
 
     **Return:**
 
@@ -90,7 +135,7 @@ def keyword_aliases() -> dict[str, str]:
     keyword = keyword_aliases()["MJDOBS"]
     ```
     """
-    return load_yaml(KEYWORDS_PATH)
+    return freeze(load_yaml(KEYWORDS_PATH))
 
 
 def expand_paths(patterns: Iterable[str]) -> list[Path]:
@@ -150,6 +195,11 @@ def read_header(path: Path) -> fits.Header:
         raise ToolError(f"cannot read {path}: {error}") from error
 
 
+def _where(path: Path | None) -> str:
+    """*how an error names the source of a header: the file, or ``the header`` when there is no file*"""
+    return f"{path}" if path is not None else "the header"
+
+
 def required_card(header: fits.Header, card: str, path: Path | None = None) -> Any:
     """*the value of a header card that the measurement needs*
 
@@ -174,8 +224,7 @@ def required_card(header: fits.Header, card: str, path: Path | None = None) -> A
     ```
     """
     if card not in header:
-        where = f"{path}" if path is not None else "the header"
-        raise ToolError(f"{where} has no {card} card")
+        raise ToolError(f"{_where(path)} has no {card} card")
     return header[card]
 
 
@@ -205,7 +254,7 @@ def read_mjd_obs(header: fits.Header, path: Path | None = None) -> float:
     try:
         return float(value)
     except (TypeError, ValueError) as error:
-        raise ToolError(f"{path or 'the header'} has a {MJD_CARD} card that is not a number: {value!r}") from error
+        raise ToolError(f"{_where(path)} has a {MJD_CARD} card that is not a number: {value!r}") from error
 
 
 def arm_of(header: fits.Header, path: Path | None = None) -> str:
@@ -256,6 +305,40 @@ def dispersion_axis(arm: str) -> str:
     return detector_parameters()[arm]["dispersion-axis"]
 
 
+def binning_along(header: fits.Header, axis: str, path: Path | None = None) -> int:
+    """*the binning factor along a detector axis, from its ``ESO DET BIN<axis>`` card*
+
+    **Key Arguments:**
+
+    - ``header`` -- the FITS header of the frame
+    - ``axis`` -- ``x`` or ``y``
+    - ``path`` -- the file the header came from, named in the error. Default *None*
+
+    **Return:**
+
+    - ``binning`` -- the number of detector pixels in one binned pixel along the axis
+
+    **Raises:**
+
+    - ``ToolError`` -- if the card is missing, not a whole number, or below 1
+
+    **Usage:**
+
+    ```python
+    binX = binning_along(header, "x", path)
+    ```
+    """
+    card = SPECTRAL_BINNING_CARDS[axis]
+    value = required_card(header, card, path)
+    try:
+        binning = int(value)
+    except (TypeError, ValueError) as error:
+        raise ToolError(f"{_where(path)} has a {card} card that is not a whole number: {value!r}") from error
+    if binning < 1:
+        raise ToolError(f"{_where(path)} has a {card} card below 1: {value!r}")
+    return binning
+
+
 def spectral_binning(header: fits.Header, arm: str, path: Path | None = None) -> int:
     """*the binning factor along the dispersion axis of a product*
 
@@ -271,7 +354,7 @@ def spectral_binning(header: fits.Header, arm: str, path: Path | None = None) ->
 
     **Raises:**
 
-    - ``ToolError`` -- if the binning card is missing or below 1
+    - ``ToolError`` -- if the binning card is missing, not a whole number, or below 1
 
     **Usage:**
 
@@ -279,11 +362,7 @@ def spectral_binning(header: fits.Header, arm: str, path: Path | None = None) ->
     binning = spectral_binning(header, "VIS", path)
     ```
     """
-    card = SPECTRAL_BINNING_CARDS[dispersion_axis(arm)]
-    binning = required_card(header, card, path)
-    if binning < 1:
-        raise ToolError(f"{path or 'the header'} has a {card} card below 1: {binning!r}")
-    return int(binning)
+    return binning_along(header, dispersion_axis(arm), path)
 
 
 def soxspipe_version(path: Path = VERSION_PATH) -> str:
@@ -400,7 +479,15 @@ def join_blocks(lines: Iterable[str]) -> str:
 
 
 def ensure_repo_on_path() -> None:
-    """*put this checkout first on ``sys.path``, so that ``import soxspipe`` reads this code, not another install*"""
+    """*put this checkout first on ``sys.path``, so that ``import soxspipe`` reads this code, not another install*
+
+    **Usage:**
+
+    ```python
+    ensure_repo_on_path()
+    from soxspipe.commonutils.ug_wavelength_transfer import attached_arc_offsets
+    ```
+    """
     if str(REPO_ROOT) not in sys.path:
         sys.path.insert(0, str(REPO_ROOT))
 
