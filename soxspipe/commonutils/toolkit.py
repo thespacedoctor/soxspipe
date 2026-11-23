@@ -11,8 +11,10 @@ Date Created
 
 import logging
 import os
+import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from os.path import expanduser
 from typing import TYPE_CHECKING, Literal
@@ -51,6 +53,27 @@ QC_LEGEND_OFFSET_POINTS = 14
 
 # THE LOGGER THAT `logging.captureWarnings` SENDS PYTHON WARNINGS TO
 WARNINGS_LOGGER_NAME = "py.warnings"
+
+# LIBRARY WARNINGS THAT ARE EXPECTED AND CHANGE NOTHING IN THE PRODUCTS. EACH FILTER MATCHES THE FULL MESSAGE (ANCHORED
+# AT BOTH ENDS) AND THE CATEGORY. THE FIRST TWO HAVE TOO MANY CALL SITES TO WRAP (ABOUT 150 `sigma_clip` CALLS, EVERY
+# ESO HEADER CARD), SO THEY ARE ALSO TIED TO THE ASTROPY 7.2.2 MODULE THAT RAISES THEM
+CARD_TOO_LONG_MESSAGE = "Card is too long, comment will be truncated."
+CARD_TOO_LONG_MODULE = "astropy.io.fits.card"
+SIGMA_CLIP_INVALID_MESSAGE = "Input data contains invalid values (NaNs or infs), which were automatically clipped."
+SIGMA_CLIP_INVALID_MODULE = "astropy.stats.sigma_clipping"
+# ASTROPY'S NOTE THAT A LEVMAR FIT MAY NOT HAVE CONVERGED. THIS ONE IS A DELIBERATE PREFIX MATCH: THE TEXT AFTER
+# "; check" VARIES BETWEEN THE ASTROPY CODE PATHS. IT IS A REAL SIGNAL ELSEWHERE, SO IT IS HIDDEN AT THE FIT SITES ONLY
+FIT_UNSUCCESSFUL_PREFIX = "The fit may be unsuccessful"
+# THE NUMPY WARNINGS THAT SCIPY'S `leastsq` RAISES IN `scipy.optimize._minpack_py` WHEN IT INVERTS A SINGULAR JACOBIAN
+# FOR A COVARIANCE NO CALLER READS
+MINPACK_MODULE = "scipy.optimize._minpack_py"
+MINPACK_COVARIANCE_MESSAGES = ("invalid value encountered in matmul", "overflow encountered in matmul")
+# MATPLOTLIB 3.9'S NOTE THAT IT KEPT THE UNCONSTRAINED LAYOUT BECAUSE A PANEL COLLAPSED. IT IS RAISED WITH A STACK LEVEL
+# THAT POINTS AT THE CALLER, SO IT IS NOT TIED TO A MODULE
+CONSTRAINED_LAYOUT_MESSAGE = (
+    "constrained_layout not applied because axes sizes collapsed to zero.  "
+    "Try making figure larger or Axes decorations smaller."
+)
 
 # EXTRACTION NOTES PRINTED UNDER A QC PLOT
 # THE MOST NOTES DRAWN ON A PLOT. THE REST ARE SUMMARISED AS A COUNT
@@ -666,7 +689,6 @@ def _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst):
             ax2.plot(
                 gridLinePixelTable.loc[mask]["fit_x"],
                 gridLinePixelTable.loc[mask]["fit_y"],
-                "w-",
                 linewidth=0.5,
                 alpha=0.8,
                 color="black",
@@ -675,7 +697,6 @@ def _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst):
             ax2.plot(
                 gridLinePixelTable.loc[mask]["fit_y"],
                 gridLinePixelTable.loc[mask]["fit_x"],
-                "w-",
                 linewidth=0.5,
                 alpha=0.8,
                 color="black",
@@ -2316,7 +2337,6 @@ def create_dispersion_solution_grid_lines_for_plot(
         ax.plot(
             gridLinePixelTable.loc[mask]["fit_y"],
             gridLinePixelTable.loc[mask]["fit_x"],
-            "w-",
             linewidth=0.5,
             alpha=0.8,
             color="black",
@@ -2833,7 +2853,8 @@ def _lowest_axes_bottom_in_figure_fraction(fig: "Figure") -> float:
         return 0.0
 
     # NO RENDERER ARGUMENT: MATPLOTLIB PICKS THE FIGURE'S OWN, SO NON-AGG CANVASES (PDF, SVG, PS) WORK TOO
-    fig.draw_without_rendering()
+    with quiet_constrained_layout():
+        fig.draw_without_rendering()
     lowestPixel = min(ax.get_tightbbox().y0 for ax in visibleAxes)
     return float(lowestPixel / fig.bbox.height)
 
@@ -3969,6 +3990,118 @@ def append_product(
     return pd.concat([productsTable, pd.DataFrame([row])], ignore_index=True)
 
 
+def _anchored(message: str) -> str:
+    """*the regular expression that matches the whole of ``message`` and nothing else*
+
+    **Key Arguments:**
+
+    - ``message`` -- the literal warning text
+
+    **Return:**
+
+    - ``pattern`` -- the escaped text, anchored at both ends
+    """
+    return "^" + re.escape(message) + r"\Z"
+
+
+def ignore_expected_library_warnings() -> None:
+    """*hide the library warnings that are expected and change nothing in the products*
+
+    Two warnings have too many call sites to wrap: astropy's ``VerifyWarning`` for a header card whose comment is
+    cut to fit, and ``sigma_clip``'s note that NaN pixels, which are masked pixels by design, were clipped. Each
+    filter matches the full message, the category and the astropy module that raises it, so any other warning of the
+    same class, and the same message from another module, still reaches the log.
+
+    This changes the process-wide warning filters. The filters are appended after the ones that are already set, so
+    ``-W error`` and a user's own filters keep precedence. A filter that is already installed is not added again, so
+    calling this for every recipe leaves the filter list as it is.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import ignore_expected_library_warnings
+    ignore_expected_library_warnings()
+    ```
+    """
+    import warnings
+
+    from astropy.io.fits.verify import VerifyWarning
+    from astropy.utils.exceptions import AstropyUserWarning
+
+    expected = (
+        (CARD_TOO_LONG_MESSAGE, VerifyWarning, CARD_TOO_LONG_MODULE),
+        (SIGMA_CLIP_INVALID_MESSAGE, AstropyUserWarning, SIGMA_CLIP_INVALID_MODULE),
+    )
+    for message, category, module in expected:
+        messagePattern = _anchored(message)
+        modulePattern = re.escape(module) + r"\Z"
+        # THE ENTRY `warnings.filterwarnings` WOULD STORE (THE CPYTHON 3.12 TUPLE SHAPE). ADDING AN IDENTICAL ONE STILL
+        # INVALIDATES EVERY WARNING REGISTRY, SO IT IS SKIPPED
+        entry = ("ignore", re.compile(messagePattern, re.IGNORECASE), category, re.compile(modulePattern), 0)
+        if entry in warnings.filters:
+            continue
+        warnings.filterwarnings("ignore", message=messagePattern, category=category, module=modulePattern, append=True)
+
+
+@contextmanager
+def quiet_least_squares_fit() -> Iterator[None]:
+    """*hide the warnings of a least-squares fit that is allowed to fail, inside a ``with`` block*
+
+    A fit that does not converge is routine here: the callers test the fitted values and drop a bad fit. The block
+    hides astropy's "The fit may be unsuccessful" warning (a prefix match, because its tail varies) and the two numpy
+    ``RuntimeWarning`` messages that SciPy's ``leastsq`` raises in ``scipy.optimize._minpack_py`` while it inverts a
+    singular Jacobian for a covariance that no caller reads. Any other warning, including a numpy warning from the
+    model itself, still shows. The filters apply inside the block only, and the previous filters return on exit.
+    Put the block around a loop of fits, not around each fit: entering it invalidates the warning registries. Not
+    thread-safe: do not enter it from worker threads.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import quiet_least_squares_fit
+    with quiet_least_squares_fit():
+        g = fit_g(g_init, x, y)
+    ```
+    """
+    import warnings
+
+    from astropy.utils.exceptions import AstropyUserWarning
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=re.escape(FIT_UNSUCCESSFUL_PREFIX), category=AstropyUserWarning)
+        for message in MINPACK_COVARIANCE_MESSAGES:
+            warnings.filterwarnings(
+                "ignore",
+                message=_anchored(message),
+                category=RuntimeWarning,
+                module=re.escape(MINPACK_MODULE) + r"\Z",
+            )
+        yield
+
+
+@contextmanager
+def quiet_constrained_layout() -> Iterator[None]:
+    """*hide matplotlib's collapsed-axes layout notice, inside a ``with`` block*
+
+    Matplotlib keeps the unconstrained layout and still writes the figure, so the notice changes nothing in the
+    product. It repeats for every QC figure that has a collapsed panel. The filter matches the full message of
+    matplotlib 3.9 and applies inside the block only. Not thread-safe: do not enter it from worker threads.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import quiet_constrained_layout
+    with quiet_constrained_layout():
+        fig.draw_without_rendering()
+    ```
+    """
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=_anchored(CONSTRAINED_LAYOUT_MESSAGE), category=UserWarning)
+        yield
+
+
 def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
     """*save the current matplotlib figure as a QC PDF plot*
 
@@ -3995,17 +4128,12 @@ def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
     save_qc_plot(filePath)
     ```
     """
-    import warnings
-
     import matplotlib.pyplot as plt
 
     kwargs = {"dpi": dpi, "format": "pdf"}
     if bboxInches is not None:
         kwargs["bbox_inches"] = bboxInches
-    with warnings.catch_warnings():
-        # MATPLOTLIB KEEPS THE UNCONSTRAINED LAYOUT AND STILL WRITES THE FIGURE, SO THE NOTICE CHANGES NOTHING IN THE
-        # PRODUCT; IT REPEATS FOR EVERY QC FIGURE THAT HAS A COLLAPSED PANEL
-        warnings.filterwarnings("ignore", message="constrained_layout not applied", category=UserWarning)
+    with quiet_constrained_layout():
         plt.savefig(filePath, **kwargs)
     return filePath
 

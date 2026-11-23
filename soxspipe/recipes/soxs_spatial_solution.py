@@ -13,7 +13,7 @@ Date Created
 import os
 import sys
 
-from soxspipe.commonutils.toolkit import append_product, utcnow_string
+from soxspipe.commonutils.toolkit import append_product, concat_tables, utcnow_string
 
 from .base_recipe import base_recipe
 
@@ -712,8 +712,8 @@ class soxs_spatial_solution(base_recipe):
 
         utcnow = utcnow_string()
 
-        self.products = pd.concat([self.products, productsTable])
-        self.qc = pd.concat([self.qc, qcTable])
+        self.products = concat_tables([self.products, productsTable])
+        self.qc = concat_tables([self.qc, qcTable])
 
         self.products = append_product(
             self.products,

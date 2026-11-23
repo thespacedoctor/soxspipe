@@ -14,7 +14,12 @@ import os
 import sys
 
 from soxspipe.commonutils import detect_continuum
-from soxspipe.commonutils.toolkit import append_product, require_unbinned_order_centres, utcnow_string
+from soxspipe.commonutils.toolkit import (
+    append_product,
+    concat_tables,
+    require_unbinned_order_centres,
+    utcnow_string,
+)
 
 from .base_recipe import base_recipe
 
@@ -611,8 +616,8 @@ class soxs_order_centres(base_recipe):
             orderMetaTable,
         ) = detector.get()
 
-        self.products = pd.concat([self.products, productsTable])
-        self.qc = pd.concat([self.qc, qcTable])
+        self.products = concat_tables([self.products, productsTable])
+        self.qc = concat_tables([self.qc, qcTable])
 
         # THE DETECTOR REPORTS A FAILED FIT AS A MISSING PRODUCT PATH. THE QUALITY-CONTROL
         # ROWS MERGE FIRST, SO THE EVIDENCE OF THE FAILED ATTEMPT SURVIVES THE FAILURE.

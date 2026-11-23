@@ -17,6 +17,7 @@ from types import MappingProxyType
 
 from soxspipe.commonutils.offset_frames import SKY_TYPE
 from soxspipe.commonutils.toolkit import (
+    concat_tables,
     generic_quality_checks,
     get_calibrations_path,
     spectroscopic_image_quality_checks,
@@ -1271,7 +1272,6 @@ class soxs_nod(extraction_stacking, base_recipe):
 
         - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum
         """
-        import pandas as pd
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
@@ -1296,7 +1296,7 @@ class soxs_nod(extraction_stacking, base_recipe):
             debug=self.debug,
         )
         filePathFluxcal, products = fluxCalibrator.calibrate()
-        self.products = pd.concat([self.products, products], ignore_index=True)
+        self.products = concat_tables([self.products, products], ignore_index=True)
         self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
         return filePathFluxcal
