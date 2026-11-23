@@ -13,7 +13,12 @@ from astropy.io.fits.verify import VerifyWarning
 from astropy.table import Table
 
 from soxspipe.commonutils.horne_extraction import EXTRACT_METHOD_QC_COMMENT
-from soxspipe.commonutils.phase3 import add_qc_to_header, fit_card_comment, write_fits_table_to_disk
+from soxspipe.commonutils.phase3 import (
+    TRAILING_SEPARATORS,
+    add_qc_to_header,
+    fit_card_comment,
+    write_fits_table_to_disk,
+)
 from soxspipe.commonutils.toolkit import append_qc
 from tests.factories import pipeline_settings
 
@@ -117,7 +122,9 @@ def _is_mid_word_cut(written: str, full: str) -> bool:
     """True when ``written`` is a shortened ``full`` that does not end at a word boundary."""
     if written in ("", full):
         return False
-    return not (full.startswith(written) and full[len(written)] == " ")
+    # THE FITTER DROPS A SEPARATOR LEFT AT THE CUT, SO "AXIS" IS A WORD-BOUNDARY CUT OF "AXIS, IN"
+    rest = full[len(written) :]
+    return not (full.startswith(written) and rest[:1] in tuple(TRAILING_SEPARATORS))
 
 
 def test_add_qc_to_header_fits_each_comment_into_the_80_character_card() -> None:
@@ -207,12 +214,40 @@ def test_fit_card_comment_drops_a_separator_left_at_the_cut() -> None:
     assert fitted == "Sky shift measured along the axis"
 
 
-def test_fit_card_comment_returns_none_when_the_value_fills_the_card() -> None:
-    # ARRANGE
-    value = "x" * 60
-
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        # A STRING TOO LONG FOR ONE CARD IS WRITTEN AS CONTINUE CARDS
+        ("EXTRACT METHOD", "x" * 60),
+        # "HIERARCH ESO QC <NAME> = 12345678 / X" IS 81 CHARACTERS, SO EVEN THE PLACEHOLDER IS CUT
+        ("A LONG NAME OF A QC THAT IS LONG ENOUGH TO FILL IT", 12345678),
+    ],
+)
+def test_fit_card_comment_returns_none_when_the_value_fills_the_card(name: str, value: object) -> None:
     # ACT
-    fitted = fit_card_comment("ESO QC EXTRACT METHOD", value, "method")
+    fitted = fit_card_comment(f"ESO QC {name}", value, "method")
 
     # ASSERT
     assert fitted is None
+
+
+def test_a_short_string_qc_card_raises_no_card_too_long_warning(tmp_path: Path) -> None:
+    """Astropy pads a short string value under a short keyword, so the comment room is smaller than it looks."""
+    # ARRANGE
+    header = fits.Header()
+    comment = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda"
+    qc = _commented_qc((("S", "boxcar", comment),))
+    filePath = tmp_path / "string_qc.fits"
+
+    # ACT
+    with warnings.catch_warnings(record=True) as raised:
+        warnings.simplefilter("always")
+        add_qc_to_header(header, qc)
+        fits.PrimaryHDU(header=header).writeto(filePath)
+
+    # ASSERT
+    tooLong = [w for w in raised if issubclass(w.category, VerifyWarning) and CARD_TOO_LONG in str(w.message)]
+    assert tooLong == []
+    cards = fits.getheader(filePath)
+    assert cards["ESO QC S"] == "boxcar"
+    assert not _is_mid_word_cut(cards.comments["ESO QC S"], comment)

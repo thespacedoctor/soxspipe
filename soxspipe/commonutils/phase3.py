@@ -15,6 +15,7 @@ HEADER_MODES = (PER_ARM_MODE, JOINED_MODE)
 
 # ASTROPY WRITES A CARD COMMENT AFTER " / "; A COMMENT CUT TO FIT LOSES THESE CHARACTERS AT ITS END
 COMMENT_SEPARATOR = " / "
+COMMENT_PLACEHOLDER = "x"
 TRAILING_SEPARATORS = " ,;:/"
 
 # CARDS OF THE UV-VIS ARM THAT A JOINED PRODUCT DROPS, AS ASTROPY NAMES THEM (WITHOUT THE HIERARCH PREFIX)
@@ -200,7 +201,7 @@ def add_qc_to_header(header, qc):
     return header
 
 
-def fit_card_comment(keyword, value, comment):
+def fit_card_comment(keyword: str, value: object, comment: str | None) -> str | None:
     """*return the comment cut to the room an 80-character card leaves it, at the last word boundary that fits*
 
     Astropy cuts a comment that does not fit mid-word when the file is written. This cuts it at a word boundary
@@ -234,15 +235,18 @@ def fit_card_comment(keyword, value, comment):
     if not isinstance(comment, str) or not comment:
         return comment
 
+    # MEASURE WITH A ONE-CHARACTER COMMENT: ASTROPY PADS A SHORT STRING VALUE ONLY WHEN A COMMENT FOLLOWS IT
     with warnings.catch_warnings():
-        # A VALUE TOO LONG FOR ONE CARD IS NOT THIS FUNCTION'S CONCERN; IT ONLY LEAVES NO ROOM FOR A COMMENT
+        # A CARD WITH NO ROOM FOR THE PLACEHOLDER IS CUT AND WARNS HERE; THAT ONLY MEANS NO COMMENT FITS
         warnings.simplefilter("ignore", VerifyWarning)
-        keywordAndValue = fits.Card(hierarch(keyword), value).image.rstrip()
-    room = fits.Card.length - len(keywordAndValue) - len(COMMENT_SEPARATOR)
+        image = fits.Card(hierarch(keyword), value, COMMENT_PLACEHOLDER).image.rstrip()
+    # A CUT PLACEHOLDER, OR A STRING VALUE SPREAD OVER CONTINUE CARDS, LEAVES NO ROOM FOR A COMMENT
+    isOneCard = len(image) <= fits.Card.length
+    if not isOneCard or not image.endswith(COMMENT_SEPARATOR + COMMENT_PLACEHOLDER):
+        return None
+    room = fits.Card.length - len(image) + len(COMMENT_PLACEHOLDER)
     if len(comment) <= room:
         return comment
-    if room <= 0:
-        return None
 
     # CUT AT THE LAST SPACE THAT LEAVES A WHOLE WORD, THEN DROP ANY SEPARATOR LEFT AT THE END
     cut = comment[: room + 1].rfind(" ")
