@@ -214,7 +214,8 @@ soxs-mflat:
             detector-temp: [0,50]
             inner-order-pix-mean: [0.9,1.1]
             x-res-sd: [0,0.2]
-            ordexp90: [30000,60000]
+            # A LAMP-LEVEL BAND, NOT A LINEARITY LIMIT. UPPER LIMIT RAISED FROM 60000 (DY-2318): OCTOBER 2026 LAMPS ARE ABOUT 12% BRIGHTER THAN JANUARY 2026 AT THE SAME EXPOSURE TIME, AND THE VALUE MOVES BY ABOUT 13% BETWEEN PIPELINE VERSIONS
+            ordexp90: [30000,70000]
             inner-order-pix-sum: [1000000,1200000]
             coldpix-frac: [-0.001,0.01]
 

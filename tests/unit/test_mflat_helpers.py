@@ -284,6 +284,35 @@ def test_ordexp_qc_reaches_the_fits_header_as_numeric_cards(
         assert isinstance(header[f"ESO QC {name}"], float)
 
 
+def test_ordexp_qc_header_comments_describe_the_in_order_flux_in_full(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """ORDEXP cards say they measure the in-order flux (DY-2318), and the comment is not truncated."""
+    # ARRANGE
+    recipe = _recipe(log)
+    orderTable = tmp_path / "orders.fits"
+    fits.PrimaryHDU().writeto(orderTable)
+    monkeypatch.setattr(
+        mflatModule,
+        "unpack_order_table",
+        lambda **kwargs: (None, _centre_pixels(), None),
+    )
+    monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
+    recipe.normalise_flats([_frame(np.full((5, 5), 61234.5)), _frame(np.full((5, 5), 65432.1))], str(orderTable))
+    writer = _write_recipe(tmp_path, log)
+    writer.qc = recipe.qc
+
+    # ACT
+    filepath = writer._write(_output_frame(np.full((4, 4), 7.0)), str(tmp_path))
+
+    # ASSERT
+    header = CCDData.read(filepath, hdu_uncertainty="ERRS", hdu_mask="QUAL").header
+    for name, percentile in (("ORDEXP10", "P10"), ("ORDEXP50", "P50"), ("ORDEXP90", "P90")):
+        assert header.comments[f"ESO QC {name}"] == f"[e-] in-order flux {percentile}, median of frames"
+
+
 def test_mask_low_sensitivity_pixels_returns_order_medians(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
