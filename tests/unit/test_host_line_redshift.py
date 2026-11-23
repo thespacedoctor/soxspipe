@@ -83,14 +83,32 @@ def test_a_missing_line_list_raises_a_value_error_naming_the_file(monkeypatch: p
         "lines:\n  - {name: Halpha}\n",
         "lines:\n  - {name: Halpha, wavelength-nm: red}\n",
         "lines: [unclosed\n",
+        # A YAML INTEGER TOO LARGE FOR A FLOAT; A FLOAT LITERAL SUCH AS 1E400 BECOMES INF AND DOES NOT OVERFLOW
+        "lines:\n  - {name: Halpha, wavelength-nm: 1" + "0" * 400 + "}\n",
+        "lines:\n  - {name: Halpha, wavelength-nm: 1e400}\n",
+        "lines:\n  - {name: Halpha, wavelength-nm: .nan}\n",
+        b"lines:\n  - {name: H\xe9alpha, wavelength-nm: 656.28}\n",
     ],
-    ids=["not-a-list", "no-lines-key", "no-wavelength", "wavelength-not-a-number", "invalid-yaml"],
+    ids=[
+        "not-a-list",
+        "no-lines-key",
+        "no-wavelength",
+        "wavelength-not-a-number",
+        "invalid-yaml",
+        "wavelength-overflows-a-float",
+        "wavelength-infinite",
+        "wavelength-nan",
+        "not-utf-8",
+    ],
 )
 def test_a_malformed_line_list_raises_a_value_error_naming_the_file(
-    monkeypatch: pytest.MonkeyPatch, tmp_path, text: str
+    monkeypatch: pytest.MonkeyPatch, tmp_path, text: str | bytes
 ) -> None:
     path = tmp_path / "host_emission_lines.yaml"
-    path.write_text(text)
+    if isinstance(text, bytes):
+        path.write_bytes(text)
+    else:
+        path.write_text(text)
     monkeypatch.setattr(host_line_mask, "HOST_LINES_FILE", path)
 
     with pytest.raises(ValueError, match="host_emission_lines.yaml"):
