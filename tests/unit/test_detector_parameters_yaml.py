@@ -67,6 +67,10 @@ AR_I_AIR_VACUUM_NM = [
 ]
 LINE_MATCH_TOLERANCE_NM = 0.005
 
+# THE WAVELENGTH SPAN (nm) OF THE X-SHOOTER UVB AND VIS ThAr ATLAS IN AIR (DY-2255 ACCEPTANCE CRITERIA)
+XSH_THAR_ATLAS_MIN_NM = 290.0
+XSH_THAR_ATLAS_MAX_NM = 1100.0
+
 # THE ion LABELS OF NEUTRAL ARGON ROWS. A LIST WITH AN ion COLUMN IS COMPARED ON THESE ROWS ONLY, BECAUSE A DENSE
 # ThAr LIST HOLDS OTHER LINES NEAR A VACUUM VALUE BY CHANCE (IN xsh/ThAr.fits A ThI LINE SITS AT 811.7557 nm, AIR)
 AR_I_ION_LABELS = {"ArI", "Ar"}
@@ -238,20 +242,28 @@ def _line_list_id(lineList: tuple[str, str, str, str]) -> str:
     return "-".join(lineList)
 
 
+def _line_list_path(instrument: str, name: str) -> Path:
+    return RESOURCES_DIR / "static_calibrations" / instrument / name
+
+
+def _wavelength_column_of(table: fits.BinTableHDU, name: str) -> tuple[int, np.ndarray]:
+    columns = table.columns
+    matches = [i for i, columnName in enumerate(columns.names) if columnName.lower() in WAVELENGTH_COLUMN_NAMES]
+    assert len(matches) == 1, f"{name} has no single wavelength column: {columns.names}"
+    index = matches[0]
+    return index + 1, np.asarray(table.data[columns.names[index]], dtype=float)
+
+
 def _wavelength_column(instrument: str, name: str) -> tuple[int, np.ndarray]:
     """Return the 1-based column number and the values of a line list's wavelength column."""
-    with fits.open(RESOURCES_DIR / "static_calibrations" / instrument / name) as hdus:
-        columns = hdus[1].columns
-        matches = [i for i, columnName in enumerate(columns.names) if columnName.lower() in WAVELENGTH_COLUMN_NAMES]
-        assert len(matches) == 1, f"{name} has no single wavelength column: {columns.names}"
-        index = matches[0]
-        return index + 1, np.asarray(hdus[1].data[columns.names[index]], dtype=float)
+    with fits.open(_line_list_path(instrument, name)) as hdus:
+        return _wavelength_column_of(hdus[1], name)
 
 
 def _ar_i_wavelengths(instrument: str, name: str) -> np.ndarray:
     """Return the wavelengths of the Ar I rows of a line list, or of every row when the list has no ion column."""
-    _, waves = _wavelength_column(instrument, name)
-    with fits.open(RESOURCES_DIR / "static_calibrations" / instrument / name) as hdus:
+    with fits.open(_line_list_path(instrument, name)) as hdus:
+        _, waves = _wavelength_column_of(hdus[1], name)
         if "ion" not in hdus[1].columns.names:
             return waves
         ions = np.char.strip(np.asarray(hdus[1].data["ion"], dtype=str))
@@ -269,7 +281,7 @@ def test_every_configured_line_list_marks_its_wavelength_column_as_air(lineList:
     columnNumber, _ = _wavelength_column(instrument, name)
 
     # ACT
-    header = fits.getheader(RESOURCES_DIR / "static_calibrations" / instrument / name, 1)
+    header = fits.getheader(_line_list_path(instrument, name), 1)
 
     # ASSERT
     assert header.get(f"TUCD{columnNumber}") == AIR_WAVELENGTH_UCD
@@ -322,7 +334,7 @@ def test_xsh_uvb_and_vis_line_atlas_holds_air_wavelengths_in_nm(arm: str) -> Non
     argonWaves = _ar_i_wavelengths("xsh", atlas)
 
     # ASSERT
-    assert waves.min() >= 290.0
-    assert waves.max() <= 1100.0
+    assert waves.min() >= XSH_THAR_ATLAS_MIN_NM
+    assert waves.max() <= XSH_THAR_ATLAS_MAX_NM
     assert [air for air, _ in AR_I_AIR_VACUUM_NM if not _has_line_near(argonWaves, air)] == []
     assert [vacuum for _, vacuum in AR_I_AIR_VACUUM_NM if _has_line_near(argonWaves, vacuum)] == []

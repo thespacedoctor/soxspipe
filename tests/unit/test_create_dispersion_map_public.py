@@ -20,6 +20,8 @@ from soxspipe.commonutils.create_dispersion_map import (
     measure_line_position,
     plot_xy_residual_histogram,
 )
+from soxspipe.commonutils.detector_lookup import detector_lookup
+from soxspipe.commonutils.toolkit import read_spectral_format
 from tests.factories import qc_table
 from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
 
@@ -84,9 +86,6 @@ def test_create_new_static_line_list_keeps_an_xsh_atlas_line_in_every_order(
 ) -> None:
     """The packaged X-Shooter atlas and spectral format leave no UVB or VIS order without a line (DY-2255)."""
     # ARRANGE
-    from soxspipe.commonutils.detector_lookup import detector_lookup
-    from soxspipe.commonutils.toolkit import read_spectral_format
-
     settings = {"instrument": "xsh"}
     mapper = object.__new__(create_dispersion_map)
     mapper.log = log
