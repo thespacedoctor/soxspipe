@@ -7,7 +7,6 @@ all orders share one ``find_centre_points`` call, and stub the slice fitter.
 
 from __future__ import annotations
 
-import importlib
 import warnings
 
 import numpy as np
@@ -19,7 +18,6 @@ from astropy.nddata import CCDData
 from soxspipe.commonutils.detect_continuum import detect_continuum
 
 pytestmark = pytest.mark.unit
-continuumModule = importlib.import_module("soxspipe.commonutils.detect_continuum")
 
 ROWS_PER_ORDER = 60
 SOLUTION_CENTRE = 16.0
@@ -78,10 +76,15 @@ def _found(orderPixelTable: pd.DataFrame) -> pd.DataFrame:
 
 
 def _lose(table: pd.DataFrame, rows: np.ndarray, width: float = np.nan) -> pd.DataFrame:
-    """Give ``rows`` the result of a failed slice fit: no position, and ``width`` as the Gaussian width."""
+    """Give ``rows`` the Gaussian width ``width``, as a failed slice fit does.
+
+    A NaN width comes with no position, as ``fit_1d_gaussian_to_slices`` leaves it. An infinite width passes the
+    fitter's range check, so its row keeps the position the fit found.
+    """
+    noPosition = rows & np.isnan(width)
     return table.assign(
-        cont_x=table["cont_x"].where(~rows),
-        cont_y=table["cont_y"].where(~rows),
+        cont_x=table["cont_x"].where(~noPosition),
+        cont_y=table["cont_y"].where(~noPosition),
         gauss_stddev=table["gauss_stddev"].where(~rows, width),
     )
 
@@ -104,14 +107,14 @@ def test_an_order_with_no_finite_widths_triggers_the_longer_slice_retry(
     monkeypatch.setattr(detector, "fit_1d_gaussian_to_slices", fit_slices)
 
     # ACT
-    result, detectionPercentage = detector.sample_trace()
+    detector.sample_trace()
 
     # ASSERT: THE FIRST PROBE RETURNS A NaN SHIFT, SO THE SECOND PROBE USES THE 1.2 TIMES LONGER SLICE
     assert sliceLengths[0] == SLICE_LENGTH
     assert sliceLengths[1] == pytest.approx(SLICE_LENGTH * 1.2)
 
 
-LOST_ROWS = {20: np.nan, 75: np.nan, 80: np.inf, 33: -np.inf}
+LOST_ROWS = {20: np.nan, 75: np.nan, 80: np.inf, 33: np.inf}
 
 
 def test_rows_with_non_finite_widths_come_back_pre_clipped_and_reach_no_sigma_clip(
@@ -133,7 +136,7 @@ def test_rows_with_non_finite_widths_come_back_pre_clipped_and_reach_no_sigma_cl
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         warnings.filterwarnings("ignore", category=DeprecationWarning, message=r"datetime\.datetime\.utcnow")
-        result, detectionPercentage = detector.sample_trace()
+        result, _ = detector.sample_trace()
 
     # ASSERT
     lost = result["fit_y"].isin(list(LOST_ROWS)).to_numpy()
@@ -159,7 +162,7 @@ def test_a_table_with_only_finite_widths_keeps_its_mask_shift_and_width(
     monkeypatch.setattr(detector, "fit_1d_gaussian_to_slices", fit_slices)
 
     # ACT
-    result, detectionPercentage = detector.sample_trace()
+    result, _ = detector.sample_trace()
 
     # ASSERT: THE VALUES DEVELOP 2c169e33 GIVES FOR THIS TABLE
     fullFitX, fullFitWidth = calls[-1]
