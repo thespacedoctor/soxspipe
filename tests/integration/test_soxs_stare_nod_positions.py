@@ -17,6 +17,7 @@ from astropy import units as u
 from astropy.table import Table
 
 from soxspipe.recipes import soxs_stare
+from soxspipe.commonutils.toolkit import append_qc
 from soxspipe.recipes.nod_stare_stacking import position_stack, reduction_inputs, stack_extraction
 from tests.factories import synthetic_ccd
 from tests.integration.test_soxs_stare_nod_mode import MARKER, SOF_NAME, _tail_inputs, _tail_recipe
@@ -56,26 +57,47 @@ def _stacks() -> list[position_stack]:
 
 
 def _recipe(
-    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, notes: list[tuple[str, str]] | None = None
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    notes: list[tuple[str, str]] | None = None,
+    fallbacks: tuple[str, ...] = (),
 ) -> tuple[soxs_stare, list[Any]]:
-    """Return a tail recipe whose extraction reports one spectrum for each position, and the extraction calls."""
+    """Return a tail recipe whose extraction reports one spectrum for each position, and the extraction calls.
+
+    A position in ``fallbacks`` finds no object trace, so its flat-fielded extraction is a boxcar and records so in the
+    ``EXTRACT METHOD`` QC, as the Horne extraction does.
+    """
     recipe, captured, _ = _tail_recipe(log, tmp_path, monkeypatch)
     recipe.productDir = str(tmp_path)
     extractions: list[Any] = []
 
     class Extractor:
         slitEdgeOrders: list = []
-        traceFallback = False
 
         def __init__(self, **kwargs: object) -> None:
             captured["extractor"].append(kwargs)
             self.position = str(kwargs["sofName"]).split("_")[-2]
+            self.traceFallback = self.position in fallbacks
             self.isNotFlat = bool(kwargs.get("notFlattened"))
             self.extractionNotes = list(notes or [])
             self.flatPassHandoff = f"handoff-{self.position}"
 
         def extract(self) -> tuple[Any, Any, pd.DataFrame, dict[str, int], str]:
             extractions.append(f"{self.position}-notflat" if self.isNotFlat else self.position)
+            if not self.isNotFlat:
+                recipe.qc = append_qc(
+                    recipe.qc,
+                    recipeName=recipe.recipeName,
+                    qcName="EXTRACT METHOD",
+                    qcValue="boxcar" if self.traceFallback else "optimal",
+                    qcComment="Optimal, or boxcar if no trace",
+                    obsDateUtc=recipe.dateObs,
+                    reductionDateUtc="2024-01-02T03:04:05",
+                    qcUnit=None,
+                    toHeader=True,
+                )
             flux = FLUX[self.position] * (NOT_FLAT_SCALE if self.isNotFlat else 1.0)
             name = f"notflat_{self.position}.fits" if self.isNotFlat else f"extracted_{self.position}.fits"
             return recipe.qc, recipe.products, _spectrum(flux), JOINS[self.position], name
@@ -353,3 +375,128 @@ def test_a_standard_that_spills_over_the_slit_edge_in_one_position_fails_the_rec
 
     # ASSERT
     assert failure is True
+
+
+def _extract_methods(recipe: soxs_stare) -> list[Any]:
+    """Return the values of the ``EXTRACT METHOD`` QC rows in the order they were recorded."""
+    return recipe.qc.loc[recipe.qc["qc_name"] == "EXTRACT METHOD", "qc_value"].tolist()
+
+
+def _record_combination(recipe: soxs_stare, monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
+    """Replace `stack_extractions` with a recorder of the spectra, order joins and header frame it gets."""
+    calls: list[tuple[Any, ...]] = []
+
+    def stack_extractions(dataFrameList: list[Any], notFlattened: bool = False, orderJoins: Any = None) -> Any:
+        spectra = [None if spectrum is None else list(spectrum["FLUX_COUNTS"]) for spectrum in dataFrameList]
+        calls.append((spectra, notFlattened, orderJoins, recipe.masterHeaderFrame))
+        return Table({"WAVE": [500.0]}), "notflat.fits" if notFlattened else "flat.fits"
+
+    monkeypatch.setattr(recipe, "stack_extractions", stack_extractions)
+    monkeypatch.setattr(recipe, "_write_ascii_spectrum", lambda *args: None)
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *args: None)
+    return calls
+
+
+def test_a_position_with_no_object_trace_is_left_out_and_the_other_position_is_used_alone(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch, fallbacks=("B",))
+    combined = _record_combination(recipe, monkeypatch)
+    plots: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *args: plots.append(args))
+    stackA = _stacks()[0]
+    stacks = [stackA, _stacks()[1]]
+
+    # ACT
+    recipe._reduce_nod_positions(stacks, [], False, _tail_inputs())
+
+    # ASSERT: B CONTRIBUTES NOTHING, AND THE HEADER AND THE ORDER JOINS COME FROM THE POSITION THAT WAS KEPT
+    [(spectra, _, orderJoins, headerFrame)] = combined
+    assert spectra == [[FLUX["A"]], None]
+    assert orderJoins == JOINS["A"]
+    assert headerFrame is stackA.flattened
+    message = (
+        "No object trace was found in the B frames, so the stare-mode spectrum is the A position's extraction alone"
+    )
+    assert any(level == "warning" and message in text for level, text in log.messages)
+    assert ("WARNING", message) in plots[0][3]
+
+
+def test_the_header_and_order_joins_come_from_the_b_position_when_the_a_position_has_no_trace(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch, fallbacks=("A",))
+    combined = _record_combination(recipe, monkeypatch)
+    stacks = _stacks()
+    stackB = stacks[1]
+
+    # ACT
+    recipe._reduce_nod_positions(stacks, [], False, _tail_inputs())
+
+    # ASSERT
+    [(spectra, _, orderJoins, headerFrame)] = combined
+    assert spectra == [None, [FLUX["B"]]]
+    assert orderJoins == JOINS["B"]
+    assert headerFrame is stackB.flattened
+
+
+def test_neither_position_having_a_trace_fails_as_nod_mode_does(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch, fallbacks=("A", "B"))
+
+    # ACT / ASSERT
+    with pytest.raises(Exception, match="No object trace was found"):
+        recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+    assert any(level == "error" and "No object trace was found" in message for level, message in log.messages)
+
+
+def test_the_extract_method_qc_says_optimal_when_one_position_fell_back_to_a_boxcar(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE B EXTRACTION RECORDS ITS ROW LAST, AND THE QC REPORT KEEPS THE LAST ROW OF A NAME
+    recipe, _ = _recipe(log, tmp_path, monkeypatch, fallbacks=("B",))
+    _record_combination(recipe, monkeypatch)
+
+    # ACT
+    recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+
+    # ASSERT
+    assert _extract_methods(recipe) == ["optimal", "boxcar", "optimal"]
+
+
+def test_the_extract_method_qc_is_left_as_the_extractions_recorded_it_when_both_positions_have_a_trace(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch)
+    _record_combination(recipe, monkeypatch)
+
+    # ACT
+    recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+
+    # ASSERT
+    assert _extract_methods(recipe) == ["optimal", "optimal"]
+
+
+def test_a_standard_position_with_no_trace_makes_no_not_flattened_extraction_and_the_other_is_used(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, extractions = _recipe(log, tmp_path, monkeypatch, fallbacks=("B",))
+    _standard(recipe)
+    combined = _record_combination(recipe, monkeypatch)
+    monkeypatch.setattr(recipe, "_compute_response", lambda *args: False)
+
+    # ACT
+    recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+
+    # ASSERT: B'S FLAT PASS RAN, ITS NOT-FLATTENED PASS DID NOT, AND THE NOT-FLATTENED COMBINATION HOLDS A ALONE
+    assert extractions == ["A", "A-notflat", "B"]
+    assert [call[:2] for call in combined] == [
+        ([[FLUX["A"]], None], False),
+        ([[FLUX["A"] * NOT_FLAT_SCALE], None], True),
+    ]

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from soxspipe.commonutils.toolkit import utcnow_string
+
 if TYPE_CHECKING:
     import numpy as np
 
@@ -418,7 +420,10 @@ class nod_stare_stacking:
     def _combine_extractions(self, extractions: dict[str, stack_extraction]) -> stack_extraction:
         """*combine the extractions of the nod positions into one spectrum, as the nod recipe combines its cycles*
 
-        The header of the combined product comes from the first position. Updates ``self.qc`` and ``self.products``.
+        A position that found no object trace gave a boxcar extraction, which is left out: the spectrum is the other
+        position's alone, and a warning says so. When neither position found a trace the combination fails, as the nod
+        recipe does. The header of the combined product comes from the first position that is kept. Updates
+        ``self.qc`` and ``self.products``.
 
         **Key Arguments:**
 
@@ -428,17 +433,21 @@ class nod_stare_stacking:
 
         - ``combined`` -- the ``stack_extraction`` of the combined spectrum. Its notes carry the position of each note
         """
-        first, last = extractions[next(iter(extractions))], extractions[next(reversed(extractions))]
+        kept = {position: extraction for position, extraction in extractions.items() if not extraction.traceFallback}
+        notes = self._combined_notes(extractions, kept)
+        reference = kept or extractions
+        first, last = reference[next(iter(reference))], reference[next(reversed(reference))]
         self.masterHeaderFrame = first.combinedObject
+        if kept and len(kept) < len(extractions):
+            self._record_optimal_extract_method()
         stackedSpectrum, extractionPath = self.stack_extractions(
-            [extraction.mergedSpectrum for extraction in extractions.values()], orderJoins=last.orderJoins
+            [
+                None if position not in kept else extraction.mergedSpectrum
+                for position, extraction in extractions.items()
+            ],
+            orderJoins=last.orderJoins,
         )
         notFlatPath = self._combine_not_flattened(extractions, last.orderJoins)
-        notes = [
-            (level, f"[{position}] {message}")
-            for position, extraction in extractions.items()
-            for level, message in extraction.extractionNotes
-        ]
         return stack_extraction(
             productPath=extractionPath,
             combinedObject=first.combinedObject,
@@ -451,6 +460,56 @@ class nod_stare_stacking:
             traceFallback=False,
             slitEdgeSpill=any(extraction.slitEdgeSpill for extraction in extractions.values()),
             extractionNotes=notes,
+        )
+
+    def _combined_notes(
+        self, extractions: dict[str, stack_extraction], kept: dict[str, stack_extraction]
+    ) -> list[tuple[str, str]]:
+        """*the notes of the combined spectrum's plots: those of each position, tagged, and a warning for a dropped one*
+
+        **Key Arguments:**
+
+        - ``extractions`` -- the ``stack_extraction`` of each nod position, by position
+        - ``kept`` -- the positions of ``extractions`` that found an object trace
+
+        **Return:**
+
+        - ``notes`` -- the ``(level, message)`` pairs, in position order
+        """
+        notes = [
+            (level, f"[{position}] {message}")
+            for position, extraction in extractions.items()
+            for level, message in extraction.extractionNotes
+        ]
+        if not kept:
+            return notes
+        for position in extractions:
+            if position in kept:
+                continue
+            other = next(iter(kept))
+            warning = (
+                f"No object trace was found in the {position} frames, so the stare-mode spectrum is the {other} "
+                "position's extraction alone"
+            )
+            self.log.warning(warning)
+            notes.append(("WARNING", warning))
+        return notes
+
+    def _record_optimal_extract_method(self) -> None:
+        """*record that the combined spectrum is an optimal extraction, after a position fell back to a boxcar*
+
+        Each position's extraction records its own ``EXTRACT METHOD`` QC, and the QC report keeps the last row of a
+        name, so the row of a boxcar position would say the combined spectrum is a boxcar. Updates ``self.qc``.
+        """
+        from soxspipe.commonutils.horne_extraction import EXTRACT_METHOD_QC_COMMENT
+
+        self.add_qc(
+            qcName="EXTRACT METHOD",
+            qcValue="optimal",
+            qcComment=EXTRACT_METHOD_QC_COMMENT,
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
         )
 
     def _detrend_nod_frames(self, frames, master_bias, dark, orderTablePath):
