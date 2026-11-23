@@ -137,6 +137,27 @@ def test_nod_recipe_reads_the_standard_block_for_a_standard_sof(monkeypatch: pyt
 
 
 @pytest.mark.parametrize(
+    ("settings", "isStandard", "isRequested", "recipeName", "marker"),
+    [
+        ({}, False, False, "soxs-nod", ""),
+        ({}, True, False, "soxs-nod-std", ""),
+        ({"soxs-nod": {KEY: True}}, False, False, "soxs-stare", "_STAREMODE"),
+        ({"soxs-nod": {KEY: True}}, True, False, "soxs-nod-std", ""),
+        ({"soxs-nod-std": {KEY: True}}, True, False, "soxs-stare-std", "_STAREMODE"),
+        ({}, False, True, "soxs-stare", "_STAREMODE"),
+    ],
+)
+def test_nod_recipe_name_and_marker_follow_the_mode_the_recipe_will_run_in(
+    settings: dict, isStandard: bool, isRequested: bool, recipeName: str, marker: str
+) -> None:
+    # ACT
+    result = _stare_mode().nod_recipe_name_and_marker(settings, isStandard, isRequested)
+
+    # ASSERT
+    assert result == (recipeName, marker)
+
+
+@pytest.mark.parametrize(
     ("settings", "inputFrames", "isRequested", "recipeName", "marker"),
     [
         ({}, SCIENCE_SOF, False, "soxs-nod", ""),

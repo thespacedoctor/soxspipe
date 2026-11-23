@@ -3147,8 +3147,8 @@ class base_recipe:
         """
         self.log.debug("starting the ``update_fits_keywords`` method")
 
-        import soxspipe.__version__ as version
         from soxspipe.commonutils.fits_headers import set_header_card
+        from soxspipe.commonutils.phase3 import pipe_id
 
         arm = self.arm
         kw = self.kw
@@ -3178,7 +3178,7 @@ class base_recipe:
         self._stamp_recipe_parameter_records(frame)
 
         # SOXSPIPE VERSION
-        set_header_card(frame.header, "ESO PRO REC1 PIPE ID", f"soxspipe/v{version}")
+        set_header_card(frame.header, "ESO PRO REC1 PIPE ID", pipe_id())
 
         # RECIPE
         if self.recipeName:

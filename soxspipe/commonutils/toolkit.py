@@ -2653,6 +2653,31 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     return
 
 
+def recipe_directory_name(recipeName: str) -> str:
+    """*return the name of the folder a recipe writes its QC and products to*
+
+    A science recipe is named ``soxs-<mode>-obj`` in the data organiser, and writes to the folder of the mode, so the
+    ``-obj`` ending is dropped. The recipe directories (``utility_setup``) and the product paths the data organiser
+    predicts both take their folder name from here.
+
+    **Key Arguments:**
+
+    - ``recipeName`` -- the name of the recipe, as given in the settings dictionary
+
+    **Return:**
+
+    - ``directoryName`` -- the recipe name without ``-obj``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import recipe_directory_name
+    directoryName = recipe_directory_name("soxs-stare-obj")  # soxs-stare
+    ```
+    """
+    return recipeName.replace("-obj", "")
+
+
 def utility_setup(log, settings, recipeName, startNightDate):
     """*setup some tools needed by most soxspipe utils*
 
@@ -2679,7 +2704,7 @@ def utility_setup(log, settings, recipeName, startNightDate):
     """
     log.debug("starting the ``utility_setup`` function")
 
-    recipeName = recipeName.replace("-obj", "")
+    recipeName = recipe_directory_name(recipeName)
     # QC DIR
     qcDir = expand_workspace_root(settings["workspace-root-dir"]) + f"/qc/{startNightDate}/{recipeName}/"
     qcDir = qcDir.replace("//", "/")

@@ -530,7 +530,7 @@ class horne_extraction(base_util):
         from astropy.table import Table
 
         from soxspipe.commonutils.fits_headers import set_header_card
-        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+        from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
         )
@@ -748,6 +748,8 @@ class horne_extraction(base_util):
                 tables=[mergedTable],
                 filePath=filePath,
                 qc=self.qc,
+                phase3=PER_ARM_MODE,
+                extname="SPECTRUM",
             )
 
             # THE ASCII SPECTRUM IS WRITTEN BY THE RECIPE AFTER FLUX CALIBRATION (SEE spectrum_ascii). THE MERGED-TABLE
