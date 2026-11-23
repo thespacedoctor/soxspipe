@@ -682,6 +682,21 @@ def test_carries_the_overlap_margin_for_the_mask_that_follows(tmp_path, log, mon
     assert custom.overlapMarginArcsec == pytest.approx(0.5)
 
 
+def test_carries_the_largest_offset_error_for_the_fallback_flat_fit_range(tmp_path, log, monkeypatch):
+    scene = synthetic_illumination_scene(tmp_path, orders=(11,), offsets={11: 1.0})
+
+    default = _measure(scene, tmp_path, log, monkeypatch)
+    custom = _measure(scene, tmp_path, log, monkeypatch, illuminationSettings={"max-order-scatter-arcsec": 0.2})
+    notApplied = _measure(scene, tmp_path, log, monkeypatch, illuminationSettings={"max-order-scatter-arcsec": 1e-9})
+    unusable = _measure(scene, tmp_path, log, monkeypatch, illuminationSettings={"max-order-scatter-arcsec": -1.0})
+
+    assert default.maxOffsetErrArcsec == slit_illumination.MAX_OFFSET_ERR_ARCSEC
+    assert custom.maxOffsetErrArcsec == pytest.approx(0.2)
+    assert not notApplied.isApplied
+    assert notApplied.maxOffsetErrArcsec == pytest.approx(1e-9)
+    assert unusable.maxOffsetErrArcsec == slit_illumination.MAX_OFFSET_ERR_ARCSEC
+
+
 @pytest.mark.parametrize("badValue", [-1.0, 0.0, "wide", None, float("nan")])
 def test_falls_back_to_the_default_for_an_unusable_setting_and_logs_it(tmp_path, log, monkeypatch, badValue):
     scene = synthetic_illumination_scene(tmp_path, orders=(11,), offsets={11: 3.5})
