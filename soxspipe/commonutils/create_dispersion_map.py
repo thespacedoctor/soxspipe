@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
     import pandas as pd
+    from astropy.table import Row, Table
     from matplotlib.axes import Axes
 
 from soxspipe.commonutils import detector_lookup, keyword_lookup
@@ -5166,11 +5167,14 @@ def measure_line_position(
             # SELECT BEST SINGLE SOURCE (NEAREST THE FIRST GUESS OR BRIGHTEST)
             if brightest:
                 selectedSource = _brightest_source(sources, std)
+                if selectedSource is None:
+                    log.debug("completed the ``measure_line_position`` function")
+                    return []
             else:
                 selectedSource = _nearest_unambiguous_source(sources, guessX, guessY)
-            if selectedSource is None:
-                log.debug("completed the ``measure_line_position`` function")
-                return [_ambiguous_stamp_entry(keepValues)]
+                if selectedSource is None:
+                    log.debug("completed the ``measure_line_position`` function")
+                    return [_ambiguous_stamp_entry(keepValues)]
 
             stamp_x = selectedSource["xcentroid"]
             stamp_y = selectedSource["ycentroid"]
@@ -5243,8 +5247,8 @@ def measure_line_position(
     return predictedLines
 
 
-def _brightest_source(sources, std):
-    """*return the first source with the highest detection sigma*"""
+def _brightest_source(sources: "Table", std: float) -> "Row | None":
+    """*return the first source with the highest detection sigma, or None when no source has a positive one*"""
     if len(sources) == 1:
         return sources[0]
     selectedSource = None
@@ -5257,7 +5261,7 @@ def _brightest_source(sources, std):
     return selectedSource
 
 
-def _nearest_unambiguous_source(sources, guessX, guessY):
+def _nearest_unambiguous_source(sources: "Table", guessX: float, guessY: float) -> "Row | None":
     """*return the source nearest the first guess, or None when the stamp is ambiguous*
 
     The stamp is ambiguous when the second-nearest source lies closer than `AMBIGUITY_DISTANCE_RATIO` times the
@@ -5276,7 +5280,7 @@ def _nearest_unambiguous_source(sources, guessX, guessY):
     return sources[int(ranked[0])]
 
 
-def _ambiguous_stamp_entry(keepValues):
+def _ambiguous_stamp_entry(keepValues: list[str]) -> dict[str, object]:
     """*return the non-detection entry of an ambiguous stamp*"""
     import numpy as np
 

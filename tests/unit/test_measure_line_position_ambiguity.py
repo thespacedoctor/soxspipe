@@ -201,3 +201,42 @@ def test_detect_pinhole_arc_lines_rejects_ambiguous_stamps_as_non_detections_and
     assert np.isnan(result["observed_x"][0][0])
     assert result["observed_x"][1][0] == pytest.approx(26.98, abs=0.2)
     assert ("debug", "1 of 2 arc-line stamps rejected as ambiguous (iteration 2)") in log.messages
+
+
+def test_brightest_mode_gives_no_detection_when_no_source_has_a_positive_peak(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The brightest path reports a plain non-detection, never an ambiguous stamp."""
+    # ARRANGE
+    photutilsModule = importlib.import_module("photutils")
+    sources = Table(
+        {
+            "xcentroid": [1.0, 3.0],
+            "ycentroid": [1.0, 3.0],
+            "sharpness": [0.1, 0.2],
+            "roundness1": [0.1, 0.2],
+            "roundness2": [0.1, 0.2],
+            "npix": [4, 5],
+            "sky": [0.0, 0.0],
+            "peak": [-1.0, -2.0],
+            "flux": [10.0, 100.0],
+        }
+    )
+    monkeypatch.setattr(photutilsModule, "DAOStarFinder", lambda **_: lambda *args, **kwargs: sources)
+    stamp = CCDData(np.arange(36.0).reshape(6, 6), unit=u.adu)
+
+    # ACT
+    result = measure_line_position(
+        (stamp, 4, 10, 8, 14, 6.0, 10.0),
+        log,
+        windowHalf=2,
+        iraf=False,
+        sigmaLimit=3,
+        iteration=2,
+        brightest=True,
+        returnAll=False,
+    )
+
+    # ASSERT
+    assert result == []
