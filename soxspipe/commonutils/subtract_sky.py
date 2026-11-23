@@ -454,6 +454,8 @@ class subtract_sky:
         flatFitRanges: Mapping[int, tuple[float, float]] | None = None,
         uncoveredMask: np.ndarray | None = None,
     ) -> None:
+        from soxspipe.commonutils.ndit import read_ndit
+
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
         self.settings = settings
@@ -558,8 +560,6 @@ class subtract_sky:
         self.ron = self._read_noise(ronValue, dp["ron"], self.log)
 
         # THE FRAME IS THE MEAN OF NDIT INTEGRATIONS, SO THE NOISE MODEL OF THE FIT DIVIDES BY NDIT (DY-2323)
-        from soxspipe.commonutils.ndit import read_ndit
-
         self.ndit = read_ndit(self.objectFrame.header, kw, self.log)
         return
 
@@ -2196,7 +2196,7 @@ class subtract_sky:
         return float(getattr(defaultRon, "value", defaultRon))
 
     @staticmethod
-    def _inverse_noise_weights(skyModel, ron, flat=None, ndit=1):
+    def _inverse_noise_weights(skyModel, ron, flat=None, ndit: int = 1):
         """*return the B-spline sky-fit weights, 1/σ, from a noise model of the sky (DY-1282)*
 
         σ² = (max(skyModel, 0) + ron²) / NDIT, because the frame is the mean of NDIT integrations of ``ron``
@@ -2213,7 +2213,7 @@ class subtract_sky:
         - ``ron`` -- the detector read noise (e-), finite and positive
         - ``flat`` -- array of master flat values, one per pixel. A flat that is not finite and positive gives a
           weight of 0. Default *None*, which applies no flat
-        - ``ndit`` -- the number of integrations the frame averages, a whole number of 1 or more. NDIT 1 gives the
+        - ``ndit`` -- the number of integrations the frame averages (``ndit.read_ndit``). NDIT 1 gives the
           weights of the model without NDIT, bit for bit. Default *1*
 
         **Return:**
@@ -2222,8 +2222,8 @@ class subtract_sky:
         """
         import numpy as np
 
-        if ndit < 1:
-            raise ValueError(f"NDIT must be 1 or more, not {ndit!r}")
+        from soxspipe.commonutils.ndit import scale_by_sqrt_ndit
+
         skyModel = np.nan_to_num(np.asarray(skyModel, dtype=float), nan=0.0, posinf=np.inf, neginf=0.0)
         positiveSky = np.clip(skyModel, 0.0, None)
         if flat is None:
@@ -2233,8 +2233,7 @@ class subtract_sky:
             isUsable = np.isfinite(flat) & (flat > 0)
             usableFlat = np.where(isUsable, flat, 1.0)
             weights = np.where(isUsable, usableFlat / np.sqrt(positiveSky * usableFlat + ron**2), 0.0)
-        # THE FRAME IS THE MEAN OF NDIT INTEGRATIONS; NDIT 1 IS RETURNED UNTOUCHED
-        return weights if ndit == 1 else weights * np.sqrt(ndit)
+        return scale_by_sqrt_ndit(weights, ndit)
 
     @staticmethod
     def _raw_flux_sky(imageMapOrder, tck):

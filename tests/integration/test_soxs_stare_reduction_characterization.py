@@ -558,6 +558,7 @@ def _illumination_result(
         isApplied=isApplied,
         reason="" if isApplied else "no order has a usable offset",
         overlapMarginArcsec=0.45,
+        maxOffsetErrArcsec=0.3,
     )
 
 

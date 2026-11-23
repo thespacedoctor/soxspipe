@@ -40,6 +40,8 @@ from .nod_stare_stacking import nod_stare_stacking, reduction_inputs, response_i
 if TYPE_CHECKING:
     import numpy as np
 
+    from soxspipe.commonutils.slit_illumination import slit_illumination_result
+
 os.environ["TERM"] = "vt100"
 
 # THE SLIT OFFSETS FOLLOW THE ROTATOR ANGLE, SO INPUT FRAMES MORE THAN THIS FAR APART IN ABSROT (DEGREES) ARE FLAGGED
@@ -1291,7 +1293,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         self._write_slit_illumination_qc_plot(result)
         return exclude_mask_from_result(self.log, result, twoDMap, binx, biny, self.kw)
 
-    def _warn_flat_fit_fallbacks(self, result):
+    def _warn_flat_fit_fallbacks(self, result: slit_illumination_result) -> None:
         """*log one warning for each order whose flat-slit-gradient fit range uses a fallback offset (DY-1977)*
 
         An order with no usable slit-illumination offset takes the median offset of the frame's usable orders, or an
@@ -1303,13 +1305,16 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         - ``result`` -- the ``slit_illumination_result`` from ``measure_slit_illumination``
         """
         from soxspipe.commonutils.slit_illumination_mask import flat_fit_offsets
+        from soxspipe.commonutils.subtract_sky import FLAT_SLIT_GRADIENT_KEY
 
-        if self.recipeSettings.get("sky-subtraction", {}).get("flat-slit-gradient") is not True:
+        # A VALUE THAT IS NOT A BOOLEAN IS REFUSED BY subtract_sky, SO IT NEVER REACHES A FIT THAT USES THE RANGES
+        if self.recipeSettings.get("sky-subtraction", {}).get(FLAT_SLIT_GRADIENT_KEY) is not True:
             return
-        for order, (offset, extraInset, source) in flat_fit_offsets(result).items():
-            if source == "measured" or order not in self.slitIlluminationFitRanges:
+        for order, fitOffset in flat_fit_offsets(result).items():
+            if fitOffset.source == "measured" or order not in self.slitIlluminationFitRanges:
                 continue
-            if source == "median":
+            offset = fitOffset.offset
+            if fitOffset.source == "median":
                 self.log.warning(
                     f"order {order}: no usable slit-illumination offset; the flat-slit-gradient fit range uses the "
                     f"median offset of the frame's usable orders, {offset:+.3f} arcsec"
@@ -1318,7 +1323,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
                 self.log.warning(
                     f"order {order}: no order of the frame has a usable slit-illumination offset; the "
                     f"flat-slit-gradient fit range uses an offset of {offset:+.3f} arcsec, inset by a further "
-                    f"{extraInset:.2f} arcsec (max-order-scatter-arcsec)"
+                    f"{fitOffset.extraInset:.2f} arcsec (max-order-scatter-arcsec)"
                 )
 
     def _slit_illumination_settings(self):

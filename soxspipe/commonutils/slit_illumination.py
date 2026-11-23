@@ -524,7 +524,7 @@ class slit_illumination_result:
     isApplied: bool
     reason: str
     overlapMarginArcsec: float
-    maxOffsetErrArcsec: float = MAX_OFFSET_ERR_ARCSEC
+    maxOffsetErrArcsec: float
 
     def __post_init__(self):
         """*replace the three dataframes with copies, so the result does not alias the caller's frames*"""

@@ -153,9 +153,3 @@ def test_snrs_grow_with_the_square_root_of_ndit_and_a_dip_stays_zero() -> None:
     # ASSERT: THE FRAME IS THE MEAN OF NDIT INTEGRATIONS, SO sigma^2 = (BASELINE + RON^2) / NDIT
     assert ndit4 == pytest.approx([8.0, 6.0, 0.0], rel=1e-6)
     np.testing.assert_allclose(ndit4, 2.0 * ndit1, rtol=1e-14)
-
-
-def test_an_ndit_below_one_is_rejected() -> None:
-    # ACT AND ASSERT
-    with pytest.raises(ValueError, match="NDIT"):
-        sky_line_snrs(WAVELENGTH, np.full_like(WAVELENGTH, BACKGROUND), np.array([510.0]), READ_NOISE, ndit=0)

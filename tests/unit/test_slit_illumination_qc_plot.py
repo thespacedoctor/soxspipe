@@ -62,6 +62,7 @@ def _result(offsetRows, edgeRows, profiles):
         isApplied=True,
         reason="",
         overlapMarginArcsec=0.3,
+        maxOffsetErrArcsec=0.3,
     )
 
 

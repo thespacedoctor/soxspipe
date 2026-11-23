@@ -1432,7 +1432,7 @@ class base_recipe:
 
         return
 
-    def _extraction_read_noise(self):
+    def _extraction_read_noise(self) -> float:
         """*the read noise of one integration (e-) that the Horne extraction uses for its sky-line signal-to-noise*
 
         **Return:**

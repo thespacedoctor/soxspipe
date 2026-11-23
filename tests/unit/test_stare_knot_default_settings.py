@@ -27,7 +27,9 @@ CASES = [
 
 
 @pytest.mark.parametrize(("fileName", "recipe", "arm", "starting", "minimum"), CASES)
-def test_each_stare_arm_ships_its_knot_spacing(fileName, recipe, arm, starting, minimum):
+def test_each_stare_arm_ships_its_knot_spacing(
+    fileName: str, recipe: str, arm: str, starting: int, minimum: int
+) -> None:
     settings = yaml.safe_load((PACKAGE_DIR / fileName).read_text())
 
     skySettings = settings[recipe][arm]["sky-subtraction"]

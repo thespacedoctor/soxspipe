@@ -9,14 +9,21 @@ lit edges and m is a margin. This module is pure numpy and returns new objects w
 
 import math
 from numbers import Real
+from typing import NamedTuple
 
 import numpy as np
 
-from soxspipe.commonutils.slit_illumination import STATUS_BORROWED, STATUS_FITTED, _read_disp_map
+from soxspipe.commonutils.slit_illumination import (
+    STATUS_BORROWED,
+    STATUS_FITTED,
+    _read_disp_map,
+    slit_illumination_result,
+)
 from soxspipe.commonutils.slit_illumination_profiles import in_order_pixels
 
 __all__ = [
     "FLAT_FIT_CLEARANCE_ARCSEC",
+    "fit_offset",
     "flat_fit_offsets",
     "flat_fit_ranges_from_result",
     "exclude_mask_from_result",
@@ -75,7 +82,15 @@ def kept_slit_range(lower, upper, offset, marginArcsec):
     return max(lower, lower + offset) + marginArcsec, min(upper, upper + offset) - marginArcsec
 
 
-def flat_fit_offsets(result):
+class fit_offset(NamedTuple):
+    """The slit offset (arcsec) of one order's flat fit range, the extra inset (arcsec) at each end, and the source."""
+
+    offset: float
+    extraInset: float
+    source: str
+
+
+def flat_fit_offsets(result: slit_illumination_result) -> dict[int, fit_offset]:
     """*the slit offset, the extra inset and where they came from, for every order with finite flat edges*
 
     An order with a usable offset (fitted or borrowed, and finite) has its own. Any other order takes the median offset
@@ -88,8 +103,14 @@ def flat_fit_offsets(result):
 
     **Return:**
 
-    - ``fitOffsets`` -- ``{order: (offset, extraInsetArcsec, source)}``, where ``source`` is ``"measured"``,
+    - ``fitOffsets`` -- ``{order: fit_offset(offset, extraInset, source)}``, where ``source`` is ``"measured"``,
       ``"median"`` or ``"zero"``. Empty when the result holds no flat edges
+
+    **Caveat:**
+
+    The median over the usable orders assumes that every order shifts along the slit by the same sign and size. That
+    holds for the SOXS NIR orders, where the rule is used. It does not hold for the VIS r and i orders, which move with
+    opposite signs, so do not use the median for VIS without reworking it (DY-1977).
 
     **Usage:**
 
@@ -100,11 +121,11 @@ def flat_fit_offsets(result):
     """
     usable = usable_offsets(result.offsets)
     if usable:
-        fallback = (float(np.median(list(usable.values()))), 0.0, "median")
+        fallback = fit_offset(float(np.median(list(usable.values()))), 0.0, "median")
     else:
-        fallback = (0.0, float(result.maxOffsetErrArcsec), "zero")
+        fallback = fit_offset(0.0, float(result.maxOffsetErrArcsec), "zero")
     return {
-        order: (usable[order], 0.0, "measured") if order in usable else fallback
+        order: fit_offset(usable[order], 0.0, "measured") if order in usable else fallback
         for order in usable_flat_edges(result.flatEdges)
     }
 
@@ -136,11 +157,10 @@ def flat_fit_ranges_from_result(result):
     inset = max(0.0, FLAT_FIT_CLEARANCE_ARCSEC - result.overlapMarginArcsec)
     edges = usable_flat_edges(result.flatEdges)
     fitRanges = {}
-    for order, (offset, extraInset, source) in flat_fit_offsets(result).items():
-        keepLower, keepUpper = kept_slit_range(*edges[order], offset, result.overlapMarginArcsec)
+    for order, fitOffset in flat_fit_offsets(result).items():
+        keepLower, keepUpper = kept_slit_range(*edges[order], fitOffset.offset, result.overlapMarginArcsec)
         fitLower, fitUpper = keepLower + inset, keepUpper - inset
-        if source == "zero":
-            fitLower, fitUpper = fitLower + extraInset, fitUpper - extraInset
+        fitLower, fitUpper = fitLower + fitOffset.extraInset, fitUpper - fitOffset.extraInset
         if fitLower < fitUpper:
             fitRanges[order] = (fitLower, fitUpper)
     return fitRanges

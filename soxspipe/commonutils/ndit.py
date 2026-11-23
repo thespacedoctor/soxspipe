@@ -7,6 +7,8 @@ integration divided by NDIT. VIS and UVB frames carry no NDIT card and are one i
 import math
 from numbers import Real
 
+import numpy as np
+
 # THE LARGEST NDIT A CARD MAY HOLD. THE ARCHIVE MAXIMUM IS 600 (AN ABORTED TEST DARK), SO 10000 IS FAR ABOVE ANY REAL
 # VALUE AND FAR BELOW THE POINT WHERE int(value) STOPS FITTING A NUMPY INTEGER
 MAX_NDIT = 10000
@@ -53,3 +55,22 @@ def read_ndit(header, kw, log):
         return 1
 
     return int(value)
+
+
+def scale_by_sqrt_ndit(values, ndit):
+    """*scale a noise weight or a signal-to-noise by the square root of NDIT*
+
+    A frame is the mean of NDIT integrations, so its variance is that of one integration divided by NDIT. Every
+    1/sigma or signal-to-noise is then sqrt(NDIT) times the NDIT 1 value (DY-2323).
+
+    **Key Arguments:**
+
+    - ``values`` -- numpy array of weights or signal-to-noise values
+    - ``ndit`` -- the number of integrations the frame averages (``read_ndit``)
+
+    **Return:**
+
+    - ``scaled`` -- ``values`` itself for NDIT 1, so the NDIT 1 result is bit-identical to the unscaled one, else
+      ``values`` times sqrt(NDIT) as a new array
+    """
+    return values if ndit == 1 else values * np.sqrt(ndit)

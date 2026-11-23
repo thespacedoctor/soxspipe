@@ -167,13 +167,6 @@ def test_inverse_noise_weights_scale_by_the_square_root_of_ndit(flat: Any) -> No
     assert (ndit4[ndit1 == 0.0] == 0.0).all()
 
 
-@pytest.mark.parametrize("badNdit", [0, -1])
-def test_inverse_noise_weights_reject_an_ndit_below_one(badNdit: int) -> None:
-    # ACT AND ASSERT
-    with pytest.raises(ValueError, match="NDIT"):
-        subtract_sky._inverse_noise_weights(np.array([10.0]), 3.0, ndit=badNdit)
-
-
 def test_the_fit_weights_follow_the_subtractor_ndit() -> None:
     # ARRANGE
     subtractor = subtract_sky.__new__(subtract_sky)

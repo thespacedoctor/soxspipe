@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, replace
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -682,7 +684,9 @@ def test_carries_the_overlap_margin_for_the_mask_that_follows(tmp_path, log, mon
     assert custom.overlapMarginArcsec == pytest.approx(0.5)
 
 
-def test_carries_the_largest_offset_error_for_the_fallback_flat_fit_range(tmp_path, log, monkeypatch):
+def test_carries_the_largest_offset_error_for_the_fallback_flat_fit_range(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     scene = synthetic_illumination_scene(tmp_path, orders=(11,), offsets={11: 1.0})
 
     default = _measure(scene, tmp_path, log, monkeypatch)
