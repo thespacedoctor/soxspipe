@@ -2708,7 +2708,6 @@ class create_dispersion_map:
     def _calculate_resolution_on_slit(self, row):
         import math
 
-        import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
         from astropy.modeling import fitting, models
@@ -2744,40 +2743,16 @@ class create_dispersion_map:
         try:
             with quiet_least_squares_fit():
                 g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
-
-            if g.stddev.value < guessStd / 2.0:
-                # 1.0 SLIT CANNOT BE LESS THAN 1.0 px
-                raise Exception
-
-            # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
-            stddev_corrected = float(g.stddev.value)
-            fwhm = stddev_corrected * stdToFwhm
-
-            import random
-
-            random_number = random.randint(1, 5)
-            print("COME BACK HERE AND TRASH SOME LINES")
-            if False and random_number == 2:
-                gaussx = np.arange(0, len(detector_row), 0.05)
-                plt.plot(np.arange(0, len(detector_row)), detector_row)
-                stddev_corrected * stdToFwhm
-                plt.plot(
-                    gaussx,
-                    g(gaussx),
-                    label=f"STD = {g.stddev.value:0.2f}, FWHM = {fwhm:0.2f}",
-                )
-                plt.legend()
-                plt.show()
         except Exception:
             return pd.Series([None, None])
 
-        # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
         stddev_corrected = float(g.stddev.value)
 
-        # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS
+        # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS. A 1.0 SLIT CANNOT BE LESS THAN 1.0 px
         if stddev_corrected < guessStd / 2.0 or stddev_corrected > guessStd * 2.0:
             return pd.Series([None, None])
 
+        fwhm = stddev_corrected * stdToFwhm
         delta_wavelength = row["pixelScaleNm"] * fwhm
         resolution_line = row["wavelength"] / delta_wavelength
 
