@@ -166,7 +166,7 @@ def _input_error(mapTable: pd.DataFrame) -> np.ndarray:
     return error
 
 
-def _object_frame(mapTable: pd.DataFrame, arm: str) -> CCDData:
+def _object_frame(mapTable: pd.DataFrame, arm: str, headerOverrides: dict[str, Any] | None = None) -> CCDData:
     data = np.zeros(FRAME_SHAPE)
     data[mapTable["y"], mapTable["x"]] = mapTable["flux"]
     error = _input_error(mapTable)
@@ -176,12 +176,24 @@ def _object_frame(mapTable: pd.DataFrame, arm: str) -> CCDData:
         unit=u.electron,
         mask=np.zeros(FRAME_SHAPE, dtype=bool),
         uncertainty=StdDevUncertainty(error),
-        meta=instrument_header(arm=arm, overrides={slitKeyword: "SLIT1.0"}),
+        meta=instrument_header(arm=arm, overrides={slitKeyword: "SLIT1.0", **(headerOverrides or {})}),
     )
 
 
-def run_default_subtract(log: Any, arm: str, workDir: Path) -> dict[str, np.ndarray]:
+def run_default_subtract(
+    log: Any, arm: str, workDir: Path, headerOverrides: dict[str, Any] | None = None
+) -> dict[str, np.ndarray]:
     """Run ``subtract`` on the synthetic frame with the shipped settings of the arm; return its products."""
+    return run_default_subtractor(log, arm, workDir, headerOverrides)[1]
+
+
+def run_default_subtractor(
+    log: Any, arm: str, workDir: Path, headerOverrides: dict[str, Any] | None = None
+) -> tuple[subtract_sky, dict[str, np.ndarray]]:
+    """Run ``subtract`` as ``run_default_subtract`` does; return the subtractor and the products.
+
+    ``headerOverrides`` are added to the header of the object frame, for example ``{"DET_NDIT": 4}``.
+    """
     mapTable = _map_table()
     with ExitStack() as stack:
         stack.enter_context(
@@ -200,14 +212,14 @@ def run_default_subtract(log: Any, arm: str, workDir: Path) -> dict[str, np.ndar
             log=log,
             settings={"instrument": "soxs"},
             recipeSettings={"sky-subtraction": _sky_settings(arm)},
-            objectFrame=_object_frame(mapTable, arm),
+            objectFrame=_object_frame(mapTable, arm, headerOverrides),
             twoDMap="two-d-map.fits",
             qcTable=pd.DataFrame(),
             productsTable=pd.DataFrame(),
             ron=NIR_GOLDEN_READ_NOISE if arm == "NIR" else None,
         )
         model, subtracted, _, _, _ = subtractor.subtract()
-    return {
+    return subtractor, {
         "model": np.asarray(model.data, dtype=float),
         "subtracted": np.asarray(subtracted.data, dtype=float),
         "errs": np.asarray(subtracted.uncertainty.array, dtype=float),

@@ -206,6 +206,10 @@ class horne_extraction(base_util):
 
     """
 
+    # THE NUMBER OF INTEGRATIONS THE SKY-SUBTRACTED FRAME AVERAGES; SET BY __init__ (DY-2323). A DOUBLE BUILT WITHOUT
+    # __init__ THEREFORE GETS THE NDIT 1 SKY-LINE SNR
+    ndit = 1
+
     # SET TRUE IN __init__ WHEN NO OBJECT TRACE WAS FOUND AND noTraceFallback ASKED FOR A BOXCAR EXTRACTION INSTEAD
     noTraceFallback = False
     traceFallback = False
@@ -263,6 +267,7 @@ class horne_extraction(base_util):
         from astropy import units as u
         from astropy.nddata import CCDData
 
+        from soxspipe.commonutils.ndit import read_ndit
         from soxspipe.commonutils.toolkit import nodding_sequence_suffix
 
         # COLLECT THE WARNINGS AND ERRORS OF THE EXTRACTION AND THE HELPERS IT BUILDS, TO PRINT ON THE QC PLOTS
@@ -323,6 +328,9 @@ class horne_extraction(base_util):
 
         # THE RAW SCIENCE FRAMES OF THE OBSERVATION BLOCK, WHOSE FIRST START AND LAST END THE ATTACHED-ARC TEST USES
         self.scienceHeaders = list(scienceHeaders) if scienceHeaders else [self.skySubtractedFrame.header]
+
+        # THE NUMBER OF INTEGRATIONS THE FRAME AVERAGES, FOR THE SKY-LINE SNR (DY-2323)
+        self.ndit = read_ndit(self.skySubtractedFrame.header, self.kw, self.log)
 
         # THE INSTRUMENT, READ BEFORE THE TRACE BRANCH SO THE NO-TRACE FALLBACK HAS IT TOO
         self.inst = self.skySubtractedFrame.header.get(self.kw("INSTRUME"), "")
@@ -1666,7 +1674,7 @@ class horne_extraction(base_util):
         if not wave.notna().any():
             return np.array([])
         _, calibrationSkylines = self._get_local_skylines_for_order(wave.min(), wave.max(), o, "wavelength")
-        return sky_line_snrs(wave, sky, calibrationSkylines, self.detectorParams["ron"])
+        return sky_line_snrs(wave, sky, calibrationSkylines, self.detectorParams["ron"], ndit=self.ndit)
 
     @staticmethod
     def _unusable_shift_reason(o, stats):

@@ -481,6 +481,54 @@ def test_constructor_prepares_vis_extraction_after_trace_detection(
     assert captured["locationSetIndex"] == 2
 
 
+def test_constructor_reads_the_ndit_card_of_the_sky_subtracted_frame(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sky-line S/N gate needs the frame's NDIT (DY-2323)."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={"DET_NDIT": 4},
+        recipeName="soxs-stare",
+        locationSetIndex=None,
+    )
+
+    assert extractor.ndit == 4
+
+
+def test_constructor_takes_ndit_as_one_when_the_frame_has_no_ndit_card(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=None,
+    )
+
+    assert extractor.ndit == 1
+
+
+@pytest.mark.parametrize("ndit", [1, 4])
+def test_order_sky_line_snrs_follow_the_extractor_ndit(log: object, monkeypatch: pytest.MonkeyPatch, ndit: int) -> None:
+    """The gate's sky-line S/N is the NDIT 1 value times sqrt(NDIT) (DY-2323)."""
+    wavelength = np.arange(500.0, 520.0, 0.05)
+    sky = np.full_like(wavelength, 16.0)
+    sky += 20.0 * np.exp(-0.5 * ((wavelength - 510.0) / 0.08) ** 2)
+    orderDF = pd.DataFrame({"wavelengthMean": wavelength, "skyFlux": sky})
+    extractor = _extractor(log)
+    extractor.detectorParams = {"ron": 3.0}
+    extractor.ndit = ndit
+    monkeypatch.setattr(extractor, "_get_local_skylines_for_order", lambda *_: (None, np.array([510.0])), raising=False)
+
+    snrs = extractor._order_sky_line_snrs(orderDF, 10)
+
+    assert snrs == pytest.approx([4.0 * np.sqrt(ndit)], rel=1e-6)
+
+
 def test_constructor_hands_the_slit_offsets_to_trace_detection(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

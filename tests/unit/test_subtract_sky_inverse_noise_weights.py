@@ -139,6 +139,84 @@ def test_inverse_noise_weights_without_a_flat_are_unchanged() -> None:
     np.testing.assert_array_equal(withNoneFlat, withoutFlat)
 
 
+NDIT_SKY_MODEL = np.array([-5.0, 0.0, 16.0, 400.0, np.nan, np.inf, -np.inf])
+
+
+@pytest.mark.parametrize("flat", [None, np.array([1.0, 0.5, 2.0, 0.001, 1.0, 1.0, 1.0])])
+def test_inverse_noise_weights_with_ndit_1_are_bit_identical_to_the_default(flat: Any) -> None:
+    # ARRANGE
+    withoutNdit = subtract_sky._inverse_noise_weights(NDIT_SKY_MODEL, 3.0, flat=flat)
+
+    # ACT
+    withNdit1 = subtract_sky._inverse_noise_weights(NDIT_SKY_MODEL, 3.0, flat=flat, ndit=1)
+
+    # ASSERT
+    np.testing.assert_array_equal(withNdit1, withoutNdit)
+
+
+@pytest.mark.parametrize("flat", [None, np.array([1.0, 0.5, 2.0, 0.001, 0.0, np.nan, 1.0])])
+def test_inverse_noise_weights_scale_by_the_square_root_of_ndit(flat: Any) -> None:
+    # ARRANGE
+    ndit1 = subtract_sky._inverse_noise_weights(NDIT_SKY_MODEL, 3.0, flat=flat)
+
+    # ACT
+    ndit4 = subtract_sky._inverse_noise_weights(NDIT_SKY_MODEL, 3.0, flat=flat, ndit=4)
+
+    # ASSERT: SIGMA^2 = (SKY + RON^2) / NDIT, SO THE WEIGHT IS SQRT(NDIT) TIMES THE NDIT 1 WEIGHT
+    np.testing.assert_allclose(ndit4, 2.0 * ndit1, rtol=1e-14)
+    assert (ndit4[ndit1 == 0.0] == 0.0).all()
+
+
+@pytest.mark.parametrize("badNdit", [0, -1])
+def test_inverse_noise_weights_reject_an_ndit_below_one(badNdit: int) -> None:
+    # ACT AND ASSERT
+    with pytest.raises(ValueError, match="NDIT"):
+        subtract_sky._inverse_noise_weights(np.array([10.0]), 3.0, ndit=badNdit)
+
+
+def test_the_fit_weights_follow_the_subtractor_ndit() -> None:
+    # ARRANGE
+    subtractor = subtract_sky.__new__(subtract_sky)
+    subtractor.ron = 3.0
+    order = pd.DataFrame({"slit_normalisation_ratio": [1.0, 2.0, 1.5], "flat": [1.0, 0.5, 2.0]})
+    rawSky = np.array([10.0, 100.0, 1000.0])
+    ndit1Weights = subtractor._fit_weights(order, rawSky)
+
+    # ACT
+    subtractor.ndit = 4
+    ndit4Weights = subtractor._fit_weights(order, rawSky)
+
+    # ASSERT
+    np.testing.assert_allclose(ndit4Weights, 2.0 * ndit1Weights, rtol=1e-14)
+
+
+def test_the_subtractor_ndit_defaults_to_one() -> None:
+    # ASSERT: THE TEST DOUBLES THAT SKIP __init__ MUST STILL GET THE NDIT 1 MODEL
+    assert subtract_sky.__new__(subtract_sky).ndit == 1
+
+
+def test_the_object_clip_noise_follows_the_subtractor_ndit(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    pixels, _ = _poisson_sky_order(0)
+    ndits = []
+    realWeights = subtract_sky._inverse_noise_weights
+
+    def spy(*args: Any, **kwargs: Any) -> np.ndarray:
+        ndits.append(kwargs.get("ndit"))
+        return realWeights(*args, **kwargs)
+
+    monkeypatch.setattr(subtract_sky, "_inverse_noise_weights", staticmethod(spy))
+    subtractor = _production_like_subtractor(log)
+    subtractor.ndit = 4
+    pixels = subtractor.rolling_window_clipping(pixels, windowSize=35, sigma_clip_limit=3, max_iterations=15)
+
+    # ACT
+    subtractor.clip_object_slit_positions([pixels], aggressive=False)
+
+    # ASSERT
+    assert ndits == [4]
+
+
 def test_a_flat_of_one_gives_the_weights_of_no_flat() -> None:
     # ARRANGE
     skyModel = np.array([-5.0, 0.0, 16.0, 400.0])

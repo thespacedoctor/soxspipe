@@ -7,6 +7,9 @@ arc-solution position, minus the median of the surrounding ``SKY_SNR_BASELINE_HA
 the photon noise of that baseline plus the read noise, ``sqrt(baseline + ron^2)``, in electrons per pixel. The lines
 add in quadrature, as the precision of a shift measured from all of them does.
 
+A frame is the mean of NDIT integrations, so its variance is that of one integration divided by NDIT and every
+signal-to-noise is the NDIT 1 value times ``sqrt(NDIT)`` (DY-2323).
+
 ``skyFlux`` is a smooth sky model, so the scatter of its own samples says nothing about its noise (DY-1663 probe:
 the line-free residual is about 0.01 e-). The photon noise of the pixels it was fitted to is used instead.
 
@@ -25,7 +28,7 @@ SKY_SNR_PEAK_HALF_WINDOW = 4
 SKY_SNR_BASELINE_HALF_WINDOW = 25
 
 
-def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise):
+def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise, ndit=1):
     """*return the photon-noise signal-to-noise of each catalogue line in the order, brightest first*
 
     **Key Arguments:**
@@ -34,11 +37,14 @@ def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise):
     - ``skyFlux`` -- the sky flux at each wavelength (e- per pixel); NaN samples are ignored
     - ``lineWavelengths`` -- the catalogue sky-line wavelengths (nm); lines outside the order are ignored
     - ``readNoise`` -- the detector read noise (e-)
+    - ``ndit`` -- the number of integrations the frame averages, a whole number of 1 or more. Default *1*
 
     **Return:**
 
     - ``snrs`` -- one value per catalogue line in the order, sorted descending; a line below its baseline has 0
     """
+    if ndit < 1:
+        raise ValueError(f"NDIT must be 1 or more, not {ndit!r}")
     wavelength = np.asarray(wavelength, dtype=float)
     skyFlux = np.asarray(skyFlux, dtype=float)
     finite = np.isfinite(wavelength) & np.isfinite(skyFlux)
@@ -57,7 +63,9 @@ def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise):
             skyFlux[max(centre - SKY_SNR_BASELINE_HALF_WINDOW, 0) : centre + SKY_SNR_BASELINE_HALF_WINDOW + 1]
         )
         snrs.append(max((peak - baseline) / np.sqrt(max(baseline, 0.0) + readNoise**2), 0.0))
-    return np.sort(np.asarray(snrs, dtype=float))[::-1]
+    snrs = np.sort(np.asarray(snrs, dtype=float))[::-1]
+    # THE FRAME IS THE MEAN OF NDIT INTEGRATIONS; NDIT 1 IS RETURNED UNTOUCHED
+    return snrs if ndit == 1 else snrs * np.sqrt(ndit)
 
 
 def combine_line_snrs(lineSnrs):
