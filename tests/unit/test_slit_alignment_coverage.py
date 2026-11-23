@@ -9,6 +9,7 @@ import pytest
 
 from soxspipe.commonutils.nod_shift_and_add import shift_and_add_plan
 from soxspipe.commonutils.slit_alignment import (
+    alignment_coverage_mask,
     build_two_d_map_images,
     orders_without_coverage,
     shift_coverage_mask,
@@ -202,3 +203,126 @@ def test_a_frame_that_jitters_back_toward_the_reference_adds_nothing(
 
     # ASSERT
     np.testing.assert_array_equal(uncovered, shift_coverage_mask(plan))
+
+
+def test_frames_with_no_alignment_shift_leave_nothing_uncovered(
+    scene: alignment_map, two_d_map: two_d_map_images
+) -> None:
+    # ACT
+    uncovered = alignment_coverage_mask([{}, {}], two_d_map)
+
+    # ASSERT
+    assert uncovered.dtype == bool
+    assert uncovered.shape == scene.shape
+    assert not uncovered.any()
+
+
+def test_a_position_with_no_frame_shifts_leaves_nothing_uncovered(two_d_map: two_d_map_images) -> None:
+    # ACT / ASSERT
+    assert not alignment_coverage_mask([], two_d_map).any()
+
+
+def test_a_frame_aligned_upward_leaves_the_high_end_of_the_slit_uncovered(
+    scene: alignment_map, two_d_map: two_d_map_images
+) -> None:
+    # ARRANGE: THE REFERENCE FRAME IS UNSHIFTED AND THE SECOND IS ALIGNED BY +SHORT_THROW IN ORDER 1
+    isOrder = scene.orderMap == 1
+    edge = FOOTPRINT_HALF - SHORT_THROW
+
+    # ACT
+    uncovered = alignment_coverage_mask([{}, {1: SHORT_THROW}], two_d_map)
+
+    # ASSERT: ABOVE THE EDGE THE PIXELS ARE UNCOVERED, BELOW IT COVERED, AND NO OTHER ORDER IS TOUCHED
+    assert uncovered[_middle(isOrder & (scene.slit > edge + MARGIN_ARCSEC))].all()
+    assert not uncovered[_middle(isOrder & (scene.slit < edge - MARGIN_ARCSEC))].any()
+    assert not uncovered[scene.orderMap != 1].any()
+
+
+def test_a_frame_aligned_downward_leaves_the_low_end_of_the_slit_uncovered(
+    scene: alignment_map, two_d_map: two_d_map_images
+) -> None:
+    # ARRANGE
+    isOrder = scene.orderMap == 1
+    edge = -FOOTPRINT_HALF + SHORT_THROW
+
+    # ACT
+    uncovered = alignment_coverage_mask([{}, {1: -SHORT_THROW}], two_d_map)
+
+    # ASSERT
+    assert uncovered[_middle(isOrder & (scene.slit < edge - MARGIN_ARCSEC))].all()
+    assert not uncovered[_middle(isOrder & (scene.slit > edge + MARGIN_ARCSEC))].any()
+
+
+def test_the_widest_shift_of_any_frame_sets_each_edge(scene: alignment_map, two_d_map: two_d_map_images) -> None:
+    # ARRANGE: THREE FRAMES OF ONE NOD POSITION, ALIGNED BY -2.0, 0 AND +2.0 ARCSEC
+    isOrder = scene.orderMap == 1
+    highEdge = FOOTPRINT_HALF - JITTER_ARCSEC
+    lowEdge = -FOOTPRINT_HALF + JITTER_ARCSEC
+
+    # ACT
+    uncovered = alignment_coverage_mask([{1: -JITTER_ARCSEC}, {}, {1: JITTER_ARCSEC}], two_d_map)
+
+    # ASSERT
+    assert uncovered[_middle(isOrder & (scene.slit > highEdge + MARGIN_ARCSEC))].all()
+    assert uncovered[_middle(isOrder & (scene.slit < lowEdge - MARGIN_ARCSEC))].all()
+    assert not uncovered[
+        _middle(isOrder & (scene.slit < highEdge - MARGIN_ARCSEC) & (scene.slit > lowEdge + MARGIN_ARCSEC))
+    ].any()
+
+
+def test_a_frame_between_the_widest_shifts_adds_nothing(scene: alignment_map, two_d_map: two_d_map_images) -> None:
+    # ARRANGE
+    widest = alignment_coverage_mask([{1: -JITTER_ARCSEC}, {}, {1: JITTER_ARCSEC}], two_d_map)
+
+    # ACT
+    withMiddleFrame = alignment_coverage_mask(
+        [{1: -JITTER_ARCSEC}, {1: 0.5}, {}, {1: -0.5}, {1: JITTER_ARCSEC}], two_d_map
+    )
+
+    # ASSERT
+    np.testing.assert_array_equal(withMiddleFrame, widest)
+
+
+def test_each_order_is_uncovered_by_its_own_alignment_shift(scene: alignment_map, two_d_map: two_d_map_images) -> None:
+    # ACT
+    uncovered = alignment_coverage_mask([{}, {1: 1.0, 2: 4.0, 3: 0.0, 4: -2.0}], two_d_map)
+
+    # ASSERT: THE UNCOVERED SLIT RANGE GROWS WITH THE SIZE OF THE SHIFT, AND AN UNSHIFTED ORDER HAS NONE
+    counts = {order: np.count_nonzero(uncovered & (scene.orderMap == order)) for order in scene.orders}
+    assert counts[3] == 0
+    assert 0 < counts[1] < counts[4] < counts[2]
+
+
+def test_an_alignment_shift_longer_than_the_slit_leaves_the_whole_order_uncovered(
+    scene: alignment_map, two_d_map: two_d_map_images
+) -> None:
+    # ACT
+    uncovered = alignment_coverage_mask([{}, {1: BEYOND_SLIT_LENGTH}], two_d_map)
+
+    # ASSERT
+    assert uncovered[scene.orderMap == 1].all()
+    assert not uncovered[scene.orderMap != 1].any()
+    assert orders_without_coverage(uncovered, two_d_map) == [1]
+
+
+def test_pixels_outside_every_order_are_never_uncovered_by_an_alignment_shift(
+    scene: alignment_map, two_d_map: two_d_map_images
+) -> None:
+    # ACT
+    uncovered = alignment_coverage_mask([{}, dict.fromkeys(scene.orders, BEYOND_SLIT_LENGTH)], two_d_map)
+
+    # ASSERT
+    assert not uncovered[np.isnan(scene.orderMap)].any()
+
+
+def test_an_alignment_source_beyond_the_detector_edge_is_uncovered() -> None:
+    # ARRANGE: ONE ORDER FILLS THE WHOLE DETECTOR, SO ONLY THE DETECTOR EDGE LIMITS THE COVERAGE
+    rows, columns = np.mgrid[0:40, 0:30]
+    edgeMap = build_two_d_map_images(500.0 + 0.02 * rows, PIXEL_ARCSEC * (columns - 14.5), np.ones(rows.shape))
+
+    # ACT: A SHIFT OF 5 PIXELS, SO THE LAST 5 COLUMNS TAKE THEIR VALUE FROM BEYOND THE EDGE
+    uncovered = alignment_coverage_mask([{}, {1: 5 * PIXEL_ARCSEC}], edgeMap)
+
+    # ASSERT
+    assert uncovered[:, -5:].all()
+    assert not uncovered[:, :-6].any()

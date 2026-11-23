@@ -398,6 +398,44 @@ def shift_coverage_mask(
     return _uncovered_by_shifts(lowest, plan.mapImages) | _uncovered_by_shifts(highest, plan.mapImages)
 
 
+def alignment_coverage_mask(frameShifts: Sequence[Mapping[int, float]], mapImages: two_d_map_images) -> np.ndarray:
+    """*the pixels of the slit that not every frame of one nod position covers*
+
+    The frames of one nod position are aligned to each other along the slit, so a frame shifted by ``s`` arcsec takes
+    its value in order ``o`` from where the slit coordinate is ``s`` arcsec higher at the same wavelength (see
+    ``shift_frame_along_slit``). A pixel is uncovered when that source lies off the detector or outside the order. A
+    pixel is covered by every frame when it is covered at the lowest and at the highest shift, so those two set the
+    uncovered ends of an order. This is the slit range that the stack does not reach in every frame, not a flag for a
+    bad pixel. Pixels outside every order are never uncovered, and a shift longer than the slit leaves the whole order
+    uncovered.
+
+    **Key Arguments:**
+
+    - ``frameShifts`` -- for each frame of the position, its ``{order: shift in arcsec}`` from the alignment to the
+      other frames. The reference frame has no shift. An empty sequence is one frame that needs no alignment
+    - ``mapImages`` -- the ``two_d_map_images`` of the frame's binning
+
+    **Return:**
+
+    - ``uncovered`` -- boolean image, True for a pixel that a frame does not cover
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.slit_alignment import alignment_coverage_mask, orders_without_coverage
+
+    uncovered = alignment_coverage_mask(frame_order_shifts(result, names), result.mapImages)
+    emptyOrders = orders_without_coverage(uncovered, result.mapImages)
+    ```
+    """
+    frames = list(frameShifts) or [{}]
+    lowest, highest = {}, {}
+    for order in mapImages.orders:
+        totals = [shifts.get(order, 0.0) for shifts in frames]
+        lowest[order], highest[order] = min(totals), max(totals)
+    return _uncovered_by_shifts(lowest, mapImages) | _uncovered_by_shifts(highest, mapImages)
+
+
 def orders_without_coverage(uncovered: np.ndarray, mapImages: two_d_map_images) -> list[int]:
     """*the orders whose every pixel is uncovered, so they have no slit range that every frame covers*
 
