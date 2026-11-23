@@ -4032,6 +4032,30 @@ class data_organiser:
             rawGroups = rawGroups.drop(columns=[KNOWN_SET_COLUMN])
         return rawGroups
 
+    def _product_naming(self, recipe):
+        """
+        Name the folder a recipe writes its products to, and the marker it adds to their file names.
+
+        The folder name comes from the same function as the recipe's own output folder. A nodding SOF that the
+        settings reduce as stare is written by the stare recipe, to the stare folder, with the stare-mode marker.
+
+        **Key Arguments:**
+        - `recipe` -- Recipe name, as in the SOF map.
+
+        **Return:**
+        - `recipeDirectory` -- Name of the folder under `reduced/<night>/`.
+        - `productMarker` -- Marker between the SOF name and the product suffix ("" for none).
+        """
+        from soxspipe.commonutils.stare_mode import NOD_STARE_MARKER, reduces_nod_as_stare
+        from soxspipe.commonutils.toolkit import recipe_directory_name
+
+        recipeName = "soxs-" + recipe.replace("_", "-")
+        productMarker = ""
+        settings = getattr(self, "settings", None) or {}
+        if recipe == "nod_obj" and reduces_nod_as_stare(settings, isStandard=False):
+            recipeName, productMarker = "soxs-stare", NOD_STARE_MARKER
+        return recipe_directory_name(recipeName), productMarker
+
     def predict_product_frames(self, productTypes, rawGroups, recipe):
         """
         Process product frames for a given set of product types and raw groups.
@@ -4052,6 +4076,8 @@ class data_organiser:
             incompleteProducts = c.fetchall()[0][0]
             c.close()
             return incompleteProducts
+
+        recipeDirectory, productMarker = self._product_naming(recipe)
 
         for product in productTypes:
             proKeys = list(product.values())[0]
@@ -4078,7 +4104,7 @@ class data_organiser:
                 productFrames["eso pro catg"].astype(str) + "_" + productFrames["eso seq arm"].astype(str).str.upper()
             )
             if product in ["fits image", "fits table"]:
-                productFrames["file"] = productFrames["sof"].str.replace(".sof", ".fits")
+                productFrames["file"] = productFrames["sof"].str.replace(".sof", productMarker + ".fits")
                 if "replace" in proKeys:
                     for item in proKeys["replace"]:
                         productFrames["file"] = productFrames["file"].str.replace(item["from"], item["to"])
@@ -4088,8 +4114,8 @@ class data_organiser:
             productFrames["filepath"] = (
                 "./reduced/"
                 + productFrames["night start date"].astype(str)
-                + "/soxs-"
-                + recipe.replace("_", "-")
+                + "/"
+                + recipeDirectory
                 + "/"
                 + productFrames["file"].astype(str)
             )
