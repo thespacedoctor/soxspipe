@@ -30,6 +30,28 @@ OFFSET_TECHNIQUES = (FIXED_SKY_TECHNIQUE, GENERIC_TECHNIQUE)
 # THE DPR TYPE OF A SKY FRAME OF EITHER TEMPLATE. A DPR TYPE WITH THIS WORD IS OFF
 SKY_TYPE = "SKY"
 
+# THE COLUMNS OF `raw_frames` THAT TIE A SKY FRAME TO THE FRAMES OF ITS TEMPLATE RUN (DY-2355)
+OFFSET_RUN_COLUMNS = ("eso dpr tech", "eso seq arm", "eso tpl start")
+
+
+def offset_run_match_sql(outer: str, run: str) -> str:
+    """*build the SQL condition that ties a SKY frame to the frames of its offset run*
+
+    The data organiser uses this one rule to group a SKY frame with the frames of its run and to find the SOF a late
+    SKY frame rejoins. Both frames must share the technique, the arm and the template start.
+
+    **Key Arguments:**
+
+    - ``outer`` -- the table or alias of the SKY frame
+    - ``run`` -- the table or alias of the frame of the run
+
+    **Return:**
+
+    - ``sqlCondition`` -- the `AND`-joined equalities, with no bound parameters
+    """
+    return " AND ".join(f"{run}.`{column}` = {outer}.`{column}`" for column in OFFSET_RUN_COLUMNS)
+
+
 # THE DPR TYPE WORDS OF A FRAME THAT IS ON THE TARGET
 ON_TYPE_WORDS = {"OBJECT", "STD"}
 

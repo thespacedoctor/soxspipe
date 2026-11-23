@@ -45,7 +45,7 @@ from soxspipe.commonutils.missing_calibrations import (
     find_missing_calibrations,
     missing_reasons,
 )
-from soxspipe.commonutils.offset_frames import OFFSET_TECHNIQUES, SKY_TYPE
+from soxspipe.commonutils.offset_frames import OFFSET_TECHNIQUES, SKY_TYPE, offset_run_match_sql
 from soxspipe.commonutils.session_status_restore import (
     classify_session_sofs,
     format_session_summary,
@@ -59,6 +59,7 @@ from soxspipe.commonutils.workspace_paths import path_under_root
 
 if TYPE_CHECKING:
     import logging
+    from collections.abc import Sequence
 
     import pandas as pd
     from astropy.table import Table
@@ -3171,11 +3172,17 @@ class data_organiser:
         sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ({placeholders})"  # noqa: S608
         sqlParams = list(self.reductionOrder)
 
-        # THE SKY FRAMES OF THE SOXS OFFSET TEMPLATES ARE THE OFF FRAMES OF THE OFFSET SOFS, SO THEY ARE KEPT (DY-2355)
+        # THE SKY FRAMES OF THE SOXS OFFSET TEMPLATES ARE THE OFF FRAMES OF THE OFFSET SOFS, SO THEY ARE KEPT (DY-2355).
+        # A WORKSPACE PREPARED BEFORE THAT FLAGGED THEM, SO THEIR FLAG IS CLEARED FIRST AND THE RULES BELOW FLAG THEM
+        # AGAIN WHEN ANOTHER RULE APPLIES. NOTHING ELSE SETS `ignore`: EVERY RULE USES ONLY THE ROW AND THE SETTINGS
         if self.instrument.upper() == "SOXS":
             techPlaceholders = ", ".join("?" for _ in OFFSET_TECHNIQUES)
-            sqlQuery += f" AND NOT (`eso dpr type` = ? AND IFNULL(`eso dpr tech`, '') IN ({techPlaceholders}))"
-            sqlParams += [SKY_TYPE, *OFFSET_TECHNIQUES]
+            offsetSky = f"`eso dpr type` = ? AND IFNULL(`eso dpr tech`, '') IN ({techPlaceholders})"
+            offsetSkyParams = [SKY_TYPE, *OFFSET_TECHNIQUES]
+            # ONLY LITERAL ? PLACEHOLDERS ARE INTERPOLATED; ALL VALUES ARE BOUND
+            c.execute(f"update raw_frames set ignore = 0 WHERE ignore = 1 AND {offsetSky}", offsetSkyParams)  # noqa: S608
+            sqlQuery += f" AND NOT ({offsetSky})"
+            sqlParams += offsetSkyParams
         c.execute(sqlQuery, sqlParams)
         self.conn.commit()
 
@@ -3788,12 +3795,12 @@ class data_organiser:
         return rejoined, consumers
 
     @staticmethod
-    def _offset_type_clause(ttype, offsetTechs):
+    def _offset_type_clause(ttype: str, offsetTechs: "Sequence[str]") -> tuple[str, list[str]]:
         """*build the `(sql, params)` pair that selects one `eso dpr type` and the SKY frames of its offset runs*
 
         A SKY frame is selected when a frame of `ttype` shares its arm, offset technique and template start
         (`eso tpl start`), so a SKY frame joins the SOF of the frames it was taken with, and a SKY frame with no such
-        frame joins none.
+        frame joins none. `offset_run_match_sql` holds the matching rule.
 
         **Key Arguments:**
 
@@ -3806,13 +3813,13 @@ class data_organiser:
         - ``sqlParams`` -- the parameters to bind against ``sqlClause``
         """
         techPlaceholders = ", ".join("?" for _ in offsetTechs)
+        runMatch = offset_run_match_sql("raw_frames_valid", "run")
         sqlClause = (
+            # ONLY LITERAL ? PLACEHOLDERS ARE INTERPOLATED; ALL VALUES ARE BOUND
             "(`eso dpr type` = ? OR (`eso dpr type` = ? "  # noqa: S608
-            f"AND `eso dpr tech` IN ({techPlaceholders}) "
+            f"AND IFNULL(`eso dpr tech`, '') IN ({techPlaceholders}) "
             "AND EXISTS (SELECT 1 FROM raw_frames_valid AS run WHERE run.`eso dpr type` = ? "
-            "AND run.`eso dpr tech` = raw_frames_valid.`eso dpr tech` "
-            "AND run.`eso seq arm` = raw_frames_valid.`eso seq arm` "
-            "AND run.`eso tpl start` = raw_frames_valid.`eso tpl start`)))"
+            f"AND {runMatch})))"
         )
         return sqlClause, [ttype, SKY_TYPE, *offsetTechs, ttype]
 
@@ -3841,7 +3848,9 @@ class data_organiser:
               different known sets are not grouped together, even when every grouping key is the same
 
         **Return:**
-            - `rawFrames` -- processed raw frames dataframe
+            - `rawFrames` -- processed raw frames dataframe. For SOXS, when `tech` lists an offset technique and
+              `ttype` is set, it also holds the `SKY` frames of the runs that have a frame of `ttype`, with
+              `eso dpr type` set to `ttype`
             - `rawGroups` -- grouped raw frames with calculated MJD values
 
         **Usage:**
@@ -3890,7 +3899,8 @@ class data_organiser:
 
         # THE SKY FRAMES OF AN OFFSET RUN GROUP WITH THE FRAMES OF THE RUN, SO THEY TAKE THE RUN'S FRAME TYPE (DY-2355)
         if takesOffsetSky:
-            rawFrames.loc[rawFrames["eso dpr type"] == SKY_TYPE, "eso dpr type"] = ttype
+            relabelled = rawFrames["eso dpr type"].mask(rawFrames["eso dpr type"] == SKY_TYPE, ttype)
+            rawFrames = rawFrames.assign(**{"eso dpr type": relabelled})
 
         rawFrames = rawFrames.astype(
             {
