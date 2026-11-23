@@ -257,6 +257,9 @@ def test_ignoring_the_expected_warnings_twice_adds_each_filter_once() -> None:
 
 def test_ignoring_the_expected_warnings_again_does_not_touch_the_filter_list() -> None:
     # ARRANGE
+    # CPYTHON 3.12 DETAIL: `filterwarnings` CALLS THE MODULE-LEVEL `_filters_mutated`. IF A LATER PYTHON RENAMES IT,
+    # THE PATCH BELOW WOULD DO NOTHING AND THE TEST WOULD PASS VACUOUSLY, SO FAIL LOUDLY INSTEAD
+    assert callable(getattr(warnings, "_filters_mutated", None))
     mutations: list[str] = []
     realMutated = warnings._filters_mutated
     with warnings.catch_warnings():

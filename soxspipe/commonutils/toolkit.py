@@ -3965,7 +3965,7 @@ def append_product(
     return pd.concat([productsTable, pd.DataFrame([row])], ignore_index=True)
 
 
-def _anchored(message):
+def _anchored(message: str) -> str:
     """*the regular expression that matches the whole of ``message`` and nothing else*
 
     **Key Arguments:**
@@ -4010,8 +4010,8 @@ def ignore_expected_library_warnings() -> None:
     for message, category, module in expected:
         messagePattern = _anchored(message)
         modulePattern = re.escape(module) + r"\Z"
-        # THE ENTRY `warnings.filterwarnings` WOULD STORE. ADDING AN IDENTICAL ONE STILL INVALIDATES EVERY WARNING
-        # REGISTRY, SO IT IS SKIPPED
+        # THE ENTRY `warnings.filterwarnings` WOULD STORE (THE CPYTHON 3.12 TUPLE SHAPE). ADDING AN IDENTICAL ONE STILL
+        # INVALIDATES EVERY WARNING REGISTRY, SO IT IS SKIPPED
         entry = ("ignore", re.compile(messagePattern, re.IGNORECASE), category, re.compile(modulePattern), 0)
         if entry in warnings.filters:
             continue
@@ -4027,7 +4027,8 @@ def quiet_least_squares_fit() -> Iterator[None]:
     ``RuntimeWarning`` messages that SciPy's ``leastsq`` raises in ``scipy.optimize._minpack_py`` while it inverts a
     singular Jacobian for a covariance that no caller reads. Any other warning, including a numpy warning from the
     model itself, still shows. The filters apply inside the block only, and the previous filters return on exit.
-    Put the block around a loop of fits, not around each fit: entering it invalidates the warning registries.
+    Put the block around a loop of fits, not around each fit: entering it invalidates the warning registries. Not
+    thread-safe: do not enter it from worker threads.
 
     **Usage:**
 
@@ -4059,7 +4060,7 @@ def quiet_constrained_layout() -> Iterator[None]:
 
     Matplotlib keeps the unconstrained layout and still writes the figure, so the notice changes nothing in the
     product. It repeats for every QC figure that has a collapsed panel. The filter matches the full message of
-    matplotlib 3.9 and applies inside the block only.
+    matplotlib 3.9 and applies inside the block only. Not thread-safe: do not enter it from worker threads.
 
     **Usage:**
 
