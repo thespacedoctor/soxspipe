@@ -230,7 +230,7 @@ def test_the_stacked_spectrum_is_written_with_the_phase_3_hygiene_but_not_the_st
 
 
 def test_the_stacked_spectrum_of_a_long_named_sof_is_written(recipe: soxs_nod, tmp_path: Path) -> None:
-    """A real SOF stem makes a file name of 84 to 100 characters, which must not stop the write."""
+    """A real SOF stem makes a file name longer than 68 characters, which must not stop the write."""
     # ARRANGE
     recipe.sofName = "S" * 70
 
