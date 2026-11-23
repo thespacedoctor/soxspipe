@@ -770,7 +770,7 @@ def test_stack_extractions_reads_the_clock_exactly_once(
     test written against the old source.
     """
     toolkit = import_module("soxspipe.commonutils.toolkit")
-    nodModule = import_module("soxspipe.recipes.soxs_nod")
+    stackingModule = import_module("soxspipe.recipes.extraction_stacking")
     monkeypatch.setattr(toolkit, "add_snr_efficiency_qcs", lambda **kwargs: kwargs["qcTable"])
     reads: list[str] = []
 
@@ -778,7 +778,7 @@ def test_stack_extractions_reads_the_clock_exactly_once(
         reads.append("read")
         return f"2024-01-02T03:04:0{len(reads)}"
 
-    monkeypatch.setattr(nodModule, "utcnow_string", counting_clock)
+    monkeypatch.setattr(stackingModule, "utcnow_string", counting_clock)
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 

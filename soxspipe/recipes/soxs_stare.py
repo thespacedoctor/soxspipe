@@ -9,11 +9,14 @@ Date Created
 : February 28, 2022
 """
 
+from __future__ import annotations
+
 ################# GLOBAL IMPORTS ####################
 import os
 import re
 import sys
 from contextlib import closing
+from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
 from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
@@ -31,7 +34,11 @@ from soxspipe.commonutils.unusable_flat_pixels import (
 )
 
 from .base_recipe import base_recipe
-from .nod_stare_stacking import nod_stare_stacking, reduction_inputs
+from .extraction_stacking import extraction_stacking
+from .nod_stare_stacking import nod_stare_stacking, reduction_inputs, response_inputs, stack_extraction
+
+if TYPE_CHECKING:
+    import numpy as np
 
 os.environ["TERM"] = "vt100"
 
@@ -56,7 +63,7 @@ NIR_NOD_STARE_DARK_MESSAGE = (
 )
 
 
-class soxs_stare(nod_stare_stacking, base_recipe):
+class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
     """
     *Reduce SOXS/Xshooter data taken in stare mode*
 
@@ -712,8 +719,11 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         return reduction_inputs(master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath)
 
     def _reduce_stacked_object(
-        self, combined_object_notflattened, allObjectFrames, rawFrames=False, inputs=None, detrended=None
-    ):
+        self,
+        combined_object_notflattened: Any,
+        allObjectFrames: list[Any],
+        rawFrames: list[str] | bool = False,
+    ) -> tuple[str, bool | str]:
         """*detrend, sky-subtract, extract and flux-calibrate the stack of the object frames*
 
         **Key Arguments:**
@@ -722,9 +732,6 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``allObjectFrames`` -- the object frames in the stack
         - ``rawFrames`` -- the raw file names the product header lists. Default *False* lists every raw frame of
           the SOF
-        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`. Default *None* reads them
-        - ``detrended`` -- the detrended (and flat-fielded) stack, when the frames were detrended before they were
-          stacked. Default *None* detrends ``combined_object_notflattened`` here
 
         **Return:**
 
@@ -732,14 +739,41 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe, or the failure message
           when a standard star has no object trace
         """
-        arm = self.arm
+        inputs = self._read_reduction_inputs(self.kw, self.arm)
+        extraction = self._extract_stack(combined_object_notflattened, allObjectFrames, rawFrames, inputs)
+        forceFailure = self._finish_extraction(extraction, allObjectFrames, inputs.responseFunctionPath)
+        return extraction.productPath, forceFailure
+
+    def _extract_stack(
+        self,
+        combined_object_notflattened: Any,
+        allObjectFrames: list[Any],
+        rawFrames: list[str] | bool,
+        inputs: reduction_inputs,
+        detrended: Any = None,
+        uncoveredMask: np.ndarray | None = None,
+    ) -> stack_extraction:
+        """*detrend, sky-subtract and extract one stack, leaving flux calibration and the response curve undone*
+
+        **Key Arguments:**
+
+        - ``combined_object_notflattened`` -- the stack of the object frames, not flat-fielded
+        - ``allObjectFrames`` -- the object frames in the stack
+        - ``rawFrames`` -- the raw file names the product header lists, or *False* to list every raw frame of the SOF
+        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`
+        - ``detrended`` -- the detrended (and flat-fielded) stack, when the frames were detrended before they were
+          stacked. Default *None* detrends ``combined_object_notflattened`` here
+        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers. Default *None*
+
+        **Return:**
+
+        - ``extraction`` -- the ``stack_extraction``. A standard star that still needs a response curve carries the
+          ``response_inputs`` of its not-flattened extraction
+        """
         kw = self.kw
+        master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath = inputs
 
         self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
-
-        if inputs is None:
-            inputs = self._read_reduction_inputs(kw, arm)
-        master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath = inputs
 
         if detrended is None:
             combined_object = self.detrend(
@@ -776,11 +810,14 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         # THE SKY FIT TAKES THE FLAT ONLY WHEN THE FRAME WAS FLAT-FIELDED (DY-1517)
         skyMasterFlat = master_flat if master_flat is not False else None
         skymodelCCDData, skySubtractedCCDData, productPath = self._subtract_sky(
-            combined_object, twoDMap, dispMap, orderTablePath, excludeMask, skyMasterFlat
+            combined_object, twoDMap, dispMap, orderTablePath, excludeMask, skyMasterFlat, uncoveredMask
         )
 
         unflattenedSkySubtractedCCDData = self._unflatten_sky_subtracted_frame(
-            skySubtractedCCDData, master_flat, combined_object_notflattened, excludeMask
+            skySubtractedCCDData,
+            master_flat,
+            combined_object_notflattened,
+            self._join_exclude_masks(excludeMask, uncoveredMask),
         )
 
         from soxspipe.commonutils.toolkit import quicklook_image
@@ -818,50 +855,112 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             slitOffsetsArcsec=self.slitIlluminationOffsets,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
-        slitEdgeSpill = bool(optimalExtractor.slitEdgeOrders)
-        extractionNotes = list(optimalExtractor.extractionNotes)
 
-        # CHECK IF FLUX CALIBRATION IS NEEDED
+        needsResponse = self.generateReponseCurve and not responseFunctionPath and not optimalExtractor.traceFallback
+        responseInputs = None
+        if needsResponse:
+            responseInputs = response_inputs(
+                unflattenedSkySubtractedCCDData, skymodelCCDData, twoDMap, dispMap, optimalExtractor.flatPassHandoff
+            )
+        return stack_extraction(
+            productPath=productPath,
+            combinedObject=combined_object,
+            mergedSpectrum=mergedSpectumDF,
+            orderJoins=orderJoins,
+            extractionPath=extractionPath,
+            responseInputs=responseInputs,
+            notFlatPath=None,
+            notFlatSpectrum=None,
+            traceFallback=optimalExtractor.traceFallback,
+            slitEdgeSpill=bool(optimalExtractor.slitEdgeOrders),
+            extractionNotes=list(optimalExtractor.extractionNotes),
+        )
+
+    def _finish_extraction(
+        self,
+        extraction: stack_extraction,
+        objectFrames: list[Any],
+        responseFunctionPath: str | bool,
+    ) -> bool | str:
+        """*flux-calibrate the extraction, or build the response curve of a standard, then write the ASCII and plots*
+
+        A response table flux-calibrates the spectrum. A standard star with no response table builds one from the
+        flat and not-flattened extractions, and a standard with no object trace fails instead. Updates ``self.qc`` and
+        ``self.products``.
+
+        **Key Arguments:**
+
+        - ``extraction`` -- the ``stack_extraction`` of `_extract_stack`, or of the combined positions of a nodding SOF
+        - ``objectFrames`` -- the raw object frames in the extraction; they must share one exposure time (DY-1714)
+        - ``responseFunctionPath`` -- the path to the response table, or False when there is none
+
+        **Return:**
+
+        - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe, or the failure message
+          when a standard star has no object trace
+        """
         filePathFluxcal = None
-
         forceFailure = False
+        extractionNotes = list(extraction.extractionNotes)
+
         if responseFunctionPath:
             filePathFluxcal = self._flux_calibrate_spectrum(
-                responseFunctionPath, mergedSpectumDF, combined_object, allObjectFrames
+                responseFunctionPath, extraction.mergedSpectrum, extraction.combinedObject, objectFrames
             )
 
-        elif self.generateReponseCurve and optimalExtractor.traceFallback:
+        elif self.generateReponseCurve and extraction.traceFallback:
             # A BOXCAR AT THE SLIT CENTRE IS NOT A STANDARD-STAR SPECTRUM TO FIT A RESPONSE CURVE TO
             self.log.error(NO_TRACE_STANDARD_MESSAGE)
             forceFailure = NO_TRACE_STANDARD_MESSAGE
             extractionNotes.append(("ERROR", NO_TRACE_STANDARD_MESSAGE))
 
         elif self.generateReponseCurve:
-            forceFailure = (
-                self._generate_response_curve(
-                    unflattenedSkySubtractedCCDData,
-                    skymodelCCDData,
-                    twoDMap,
-                    dispMap,
-                    extractionPath,
-                    orderJoins,
-                    optimalExtractor.flatPassHandoff,
-                    objectFrames=allObjectFrames,
-                )
-                or slitEdgeSpill
-            )
-            if slitEdgeSpill:
+            forceFailure = self._build_response(extraction, objectFrames) or extraction.slitEdgeSpill
+            if extraction.slitEdgeSpill:
                 self.log.error(
                     "The standard star spills over the slit edge, so this recipe and its response curve are flagged "
                     "as failed and will not be used to flux-calibrate other frames."
                 )
 
-        self._write_ascii_spectrum(extractionPath, filePathFluxcal)
+        self._write_ascii_spectrum(extraction.extractionPath, filePathFluxcal)
         self._plot_merged_spectrum_qcs(
-            mergedSpectumDF, orderJoins, filePathFluxcal, extractionNotes, optimalExtractor.traceFallback
+            extraction.mergedSpectrum,
+            extraction.orderJoins,
+            filePathFluxcal,
+            extractionNotes,
+            extraction.traceFallback,
         )
 
-        return productPath, forceFailure
+        return forceFailure
+
+    def _build_response(self, extraction: stack_extraction, objectFrames: list[Any]) -> bool | str:
+        """*build the response curve of a standard from its flat and not-flattened extractions*
+
+        **Key Arguments:**
+
+        - ``extraction`` -- the ``stack_extraction``. Its ``responseInputs`` have the not-flattened extraction still to
+          run. Without them its ``notFlatPath`` is the not-flattened extraction already made
+        - ``objectFrames`` -- the raw standard-star frames in the extraction
+
+        **Return:**
+
+        - ``forceFailure`` -- the failure the response function reports
+        """
+        inputsOfResponse = extraction.responseInputs
+        if inputsOfResponse is None:
+            return self._compute_response(
+                extraction.extractionPath, extraction.notFlatPath, extraction.orderJoins, objectFrames
+            )
+        return self._generate_response_curve(
+            inputsOfResponse.unflattened,
+            inputsOfResponse.skyModel,
+            inputsOfResponse.twoDMap,
+            inputsOfResponse.dispMap,
+            extraction.extractionPath,
+            extraction.orderJoins,
+            inputsOfResponse.flatPass,
+            objectFrames=objectFrames,
+        )
 
     def _write_ascii_spectrum(self, extractionPath, filePathFluxcal):
         """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
@@ -1112,6 +1211,28 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
         return orderTablePath, dispMap, twoDMap, responseFunctionPath
 
+    @staticmethod
+    def _join_exclude_masks(excludeMask: np.ndarray | None, uncoveredMask: np.ndarray | None) -> np.ndarray | None:
+        """*the union of the slit-illumination exclude mask and the mask of the pixels not every frame covers*
+
+        **Key Arguments:**
+
+        - ``excludeMask`` -- boolean image, or *None* when the slit offset is not measured
+        - ``uncoveredMask`` -- boolean image, or *None* when every pixel is covered by every stacked frame
+
+        **Return:**
+
+        - ``excludeMask`` -- the other mask when one is None, else a new image that is True where either is. *None*
+          when both are None
+        """
+        import numpy as np
+
+        if uncoveredMask is None:
+            return excludeMask
+        if excludeMask is None:
+            return uncoveredMask
+        return np.asarray(excludeMask, dtype=bool) | np.asarray(uncoveredMask, dtype=bool)
+
     def _slit_illumination_exclude_mask(self, combined_object, master_flat, twoDMap, allObjectFrames):
         """*measure the slit offset of each order and return the mask of the slit ends to leave out of the sky model*
 
@@ -1273,7 +1394,16 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             label="QC",
         )
 
-    def _subtract_sky(self, combined_object, twoDMap, dispMap, orderTablePath, excludeMask=None, masterFlat=None):
+    def _subtract_sky(
+        self,
+        combined_object: Any,
+        twoDMap: str,
+        dispMap: str,
+        orderTablePath: str,
+        excludeMask: np.ndarray | None = None,
+        masterFlat: Any = None,
+        uncoveredMask: np.ndarray | None = None,
+    ) -> tuple[Any, Any, str | None]:
         """*subtract the sky from the detrended frame, when sky subtraction is on, and write the sky products*
 
         Updates ``self.qc`` and ``self.products``. A sky subtraction that returns no model sets ``self.subtractSky``
@@ -1288,6 +1418,8 @@ class soxs_stare(nod_stare_stacking, base_recipe):
         - ``excludeMask`` -- boolean image, True for a pixel to leave out of the sky model. Default *None*
         - ``masterFlat`` -- the master flat the object frame was divided by, so the sky fit can weight by the
           flat-fielded noise and leave out the low-flat pixels. Default *None*, for a frame that was not flat-fielded
+        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers. It is left out of
+          the sky model like ``excludeMask``, but does not switch off the slit-edge clip of its order. Default *None*
 
         **Return:**
 
@@ -1315,6 +1447,7 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                 startNightDate=self.startNightDate,
                 debug=self.debug,
                 excludeMask=excludeMask,
+                uncoveredMask=uncoveredMask,
                 masterFlat=masterFlat,
                 ron=None if self.readNoise is None else self.readNoise.skyFit,
                 flatFitRanges=self.slitIlluminationFitRanges,
@@ -1331,7 +1464,9 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                 self.subtractSky = False
                 self.recipeSettings["sky-subtraction"]["subtract_sky"] = False
                 skymodelCCDData = False
-                skySubtractedCCDData = self._flag_excluded_pixels(combined_object, excludeMask)
+                skySubtractedCCDData = self._flag_excluded_pixels(
+                    combined_object, self._join_exclude_masks(excludeMask, uncoveredMask)
+                )
                 self.recipeSettings["horne-extraction-slit-length"] = 30.0
             else:
                 productPath = self._write_sky_products(
@@ -1363,7 +1498,9 @@ class soxs_stare(nod_stare_stacking, base_recipe):
                 )
         else:
             skymodelCCDData = False
-            skySubtractedCCDData = self._flag_excluded_pixels(combined_object, excludeMask)
+            skySubtractedCCDData = self._flag_excluded_pixels(
+                combined_object, self._join_exclude_masks(excludeMask, uncoveredMask)
+            )
 
         return skymodelCCDData, skySubtractedCCDData, productPath
 
@@ -1599,6 +1736,30 @@ class soxs_stare(nod_stare_stacking, base_recipe):
 
         - ``forceFailure`` -- the failure the response function reports, which forces the recipe to fail
         """
+        extractionPath_notflat, _ = self._extract_not_flattened(
+            unflattenedSkySubtractedCCDData, skymodelCCDData, twoDMap, dispMap, flatPass
+        )
+        return self._compute_response(extractionPath, extractionPath_notflat, orderJoins, objectFrames)
+
+    def _extract_not_flattened(self, unflattenedSkySubtractedCCDData, skymodelCCDData, twoDMap, dispMap, flatPass=None):
+        """*extract the unflattened standard-star spectrum*
+
+        Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``unflattenedSkySubtractedCCDData`` -- the unflattened frame to extract
+        - ``skymodelCCDData`` -- the sky model, or False when no sky was subtracted
+        - ``twoDMap`` -- the path to the dispersion map image
+        - ``dispMap`` -- the path to the dispersion map table
+        - ``flatPass`` -- the flat-fielded extraction's ``FlatPassHandoff``, whose sky shifts this extraction applies
+          instead of tuning its own (DY-1680). Default *None*
+
+        **Return:**
+
+        - ``extractionPath_notflat`` -- the path to the not-flattened extraction
+        - ``mergedSpectrumDF`` -- the order-merged spectrum of the not-flattened extraction
+        """
         from soxspipe.commonutils import horne_extraction
 
         optimalExtractor = horne_extraction(
@@ -1621,8 +1782,26 @@ class soxs_stare(nod_stare_stacking, base_recipe):
             scienceHeaders=self.scienceHeaders,
             flatPass=flatPass,
         )
-        self.qc, self.products, _, _, extractionPath_notflat = optimalExtractor.extract()
+        self.qc, self.products, mergedSpectrumDF, _, extractionPath_notflat = optimalExtractor.extract()
+        return extractionPath_notflat, mergedSpectrumDF
 
+    def _compute_response(self, extractionPath, extractionPath_notflat, orderJoins, objectFrames):
+        """*compute the response function from the flat-fielded and not-flattened extractions of a standard*
+
+        Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``extractionPath`` -- the path to the flat-fielded extraction of the standard
+        - ``extractionPath_notflat`` -- the path to the not-flattened extraction of the standard
+        - ``orderJoins`` -- the order joins of the flat-fielded extraction
+        - ``objectFrames`` -- the raw standard-star frames in the extraction; they must share one exposure time
+          (DY-1714), and the response uses their mean airmass, as flux calibration does (DY-1713)
+
+        **Return:**
+
+        - ``forceFailure`` -- the failure the response function reports, which forces the recipe to fail
+        """
         # GETTING THE RESPONSE
         from soxspipe.commonutils import response_function
         from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
