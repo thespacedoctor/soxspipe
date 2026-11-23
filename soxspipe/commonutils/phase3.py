@@ -277,16 +277,16 @@ def _tables_to_hdus(tables, dropCards=()):
     return hdus
 
 
-def write_fits_table_to_disk(
-    log, settings, header, tables, filePath, qc=None, phase3=False, mode=PER_ARM_MODE, extname=None
-):
+def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None, phase3=None, extname=None, strict=False):
     """
-    *Write a fits table to disk, with an ESO Phase 3 compliant header when asked*
+    *Write a fits table to disk, with ESO Phase 3 header hygiene when asked*
 
-    A plain call scrubs and sorts the header and writes the table as it always has. With ``phase3=True`` the primary
-    header gets ``ORIGFILE`` (the file's own name), ``ORIGIN``, ``PROCSOFT`` and ``REFERENC``, and no ``EXTNAME``. Every
-    HDU loses ``BUNIT``, ``SXSPRE`` and the ccdproc cards, and the write raises a ``ValueError``, with no file written,
-    when a header holds a value over 68 characters or a ``CONTINUE`` card.
+    A plain call scrubs and sorts the header and writes the table as it always has. With ``phase3`` set, the primary
+    header gets ``ORIGFILE`` (the file's own name), ``ORIGIN``, ``PROCSOFT`` and ``REFERENC``, and no ``EXTNAME``, and
+    every HDU loses ``BUNIT``, ``SXSPRE`` and the ccdproc cards. With ``strict`` set as well, the write raises a
+    ``ValueError``, and writes no file, when a header holds a string value over 68 characters or a ``CONTINUE`` card.
+    Only a product sent to ESO needs ``strict``: a merged spectrum has a file name, and so an ``ORIGFILE``, of 84 to
+    100 characters.
 
     **Key Arguments:**
 
@@ -296,11 +296,11 @@ def write_fits_table_to_disk(
     - ``tables`` -- the tables to be written to disk, one extension each
     - ``filePath`` -- the path to the output file
     - ``qc`` -- a dataframe containing QC metrics to be added to the header (default: None)
-    - ``phase3`` -- write a Phase 3 product (default: False)
-    - ``mode`` -- ``PER_ARM_MODE`` or ``JOINED_MODE``, the header carry-over rules; needs ``phase3``
-      (default: PER_ARM_MODE)
+    - ``phase3`` -- ``PER_ARM_MODE`` or ``JOINED_MODE``, the Phase 3 header carry-over rules; ``None`` writes a plain
+      table (default: None)
     - ``extname`` -- the ``EXTNAME`` of the first table, e.g. ``SPECTRUM``; needs ``phase3``
       (default: None, no ``EXTNAME``)
+    - ``strict`` -- refuse a value over 68 characters or a ``CONTINUE`` card; needs ``phase3`` (default: False)
 
     **Usage:**
 
@@ -314,11 +314,11 @@ def write_fits_table_to_disk(
 
     from soxspipe.commonutils.atomic_fits import write_hdulist_atomically
 
-    if not phase3 and (extname or mode != PER_ARM_MODE):
-        raise ValueError("write_fits_table_to_disk: extname and mode need phase3=True")
+    if phase3 is None and (extname or strict):
+        raise ValueError("write_fits_table_to_disk: extname and strict need phase3")
 
-    if phase3:
-        tableExensions, header = _phase3_parts(log, settings, header, tables, filePath, qc, mode, extname)
+    if phase3 is not None:
+        tableExensions, header = _phase3_parts(log, settings, header, tables, filePath, qc, phase3, extname, strict)
     else:
         if qc is not None:
             # ADD QC METRICS TO HEADER
@@ -335,8 +335,8 @@ def write_fits_table_to_disk(
     log.debug("completed the ``write_fits_table_to_disk`` method")
 
 
-def _phase3_parts(log, settings, header, tables, filePath, qc, mode, extname):
-    """*build the validated table HDUs and primary header of a Phase 3 product*
+def _phase3_parts(log, settings, header, tables, filePath, qc, mode, extname, strict):
+    """*build the table HDUs and primary header of a Phase 3 product, validated when ``strict``*
 
     The caller's QC rows are added after the scrub, so a joined product keeps them while it drops the QC cards that
     came from the arm header.
@@ -351,7 +351,8 @@ def _phase3_parts(log, settings, header, tables, filePath, qc, mode, extname):
     _set_identification_cards(header, filePath)
     header = sort_keywords(log, header)
 
-    validate_header_cards(header, "primary")
-    for index, hdu in enumerate(tableExensions, start=1):
-        validate_header_cards(hdu.header, f"extension {index}")
+    if strict:
+        validate_header_cards(header, "primary")
+        for index, hdu in enumerate(tableExensions, start=1):
+            validate_header_cards(hdu.header, f"extension {index}")
     return tableExensions, header

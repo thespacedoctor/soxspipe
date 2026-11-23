@@ -22,6 +22,7 @@ import pandas as pd
 import pytest
 from astropy import units as u
 
+from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from soxspipe.recipes import soxs_nod
 from tests.factories import pipeline_settings, qc_table, synthetic_ccd
 
@@ -206,3 +207,36 @@ def test_spectra_built_like_the_extraction_output_stack(recipe: soxs_nod) -> Non
     assert _row(stacked, 500.0)["VARIANCE"] == pytest.approx(6.25)
     assert _row(stacked, 510.0)["VARIANCE"] == pytest.approx(4.0)
     assert _row(stacked, 510.0)["FLUX_COUNTS"] == pytest.approx(40.0)
+
+
+def test_the_stacked_spectrum_is_written_with_the_phase_3_hygiene_but_not_the_strict_refusal(
+    recipe: soxs_nod, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`soxs_offset` inherits this write, so one test covers the nod stack and the offset stack."""
+    # ARRANGE
+    calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.phase3"), "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs)
+    )
+
+    # ACT
+    recipe.stack_extractions([_spectrum([500.0], [10.0], [4.0])])
+
+    # ASSERT
+    assert len(calls) == 1
+    assert calls[0]["phase3"] == PER_ARM_MODE
+    assert calls[0]["extname"] == "SPECTRUM"
+    assert not calls[0].get("strict")
+
+
+def test_the_stacked_spectrum_of_a_long_named_sof_is_written(recipe: soxs_nod, tmp_path: Path) -> None:
+    """A real SOF stem makes a file name of 84 to 100 characters, which must not stop the write."""
+    # ARRANGE
+    recipe.sofName = "S" * 70
+
+    # ACT
+    _, filePath = recipe.stack_extractions([_spectrum([500.0], [10.0], [4.0])])
+
+    # ASSERT
+    assert Path(filePath).name == f"{'S' * 70}_EXTRACTED_MERGED.fits"
+    assert Path(filePath).exists()

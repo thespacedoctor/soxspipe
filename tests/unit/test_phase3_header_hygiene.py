@@ -35,6 +35,7 @@ CCDPROC_CARDS = (
 )
 LONG_VALUE_LENGTH = 69
 MAX_VALUE_LENGTH = 68
+PRODUCT_NAME_LENGTH = 90
 COMMENT_LENGTH = 70
 JOINED_ARM_PREFIXES = ("ESO DET ", "ESO INS ", "ESO SEQ ")
 
@@ -69,7 +70,7 @@ def _write(
     header: fits.Header,
     *,
     tables: list | None = None,
-    phase3: bool = True,
+    phase3: str | None = PER_ARM_MODE,
     **kwargs: object,
 ) -> Path:
     outputPath = tmp_path / "SOXS_product.fits"
@@ -200,7 +201,7 @@ def test_written_table_keeps_eso_and_qc_cards_in_per_arm_mode(tmp_path: Path, lo
     header = _science_header()
 
     # ACT
-    outputPath = _write(tmp_path, log, header, mode=PER_ARM_MODE)
+    outputPath = _write(tmp_path, log, header, phase3=PER_ARM_MODE)
 
     # ASSERT
     with fits.open(outputPath) as hdus:
@@ -214,7 +215,7 @@ def test_written_table_drops_det_ins_seq_and_qc_cards_in_joined_mode(tmp_path: P
     header = _science_header()
 
     # ACT
-    outputPath = _write(tmp_path, log, header, mode=JOINED_MODE)
+    outputPath = _write(tmp_path, log, header, phase3=JOINED_MODE)
 
     # ASSERT
     with fits.open(outputPath) as hdus:
@@ -228,7 +229,7 @@ def test_joined_mode_keeps_the_qc_rows_the_caller_adds_and_drops_the_arm_qc_card
     qc = pd.DataFrame([{"qc_name": "NIR SCALE", "qc_value": 1.02, "qc_comment": "NIR scale", "to_header": True}])
 
     # ACT
-    outputPath = _write(tmp_path, log, _science_header(), mode=JOINED_MODE, qc=qc)
+    outputPath = _write(tmp_path, log, _science_header(), phase3=JOINED_MODE, qc=qc)
 
     # ASSERT
     with fits.open(outputPath) as hdus:
@@ -311,7 +312,7 @@ def test_value_of_68_characters_is_written(tmp_path: Path, log: object) -> None:
     header["OBJECT"] = "A" * MAX_VALUE_LENGTH
 
     # ACT
-    outputPath = _write(tmp_path, log, header)
+    outputPath = _write(tmp_path, log, header, strict=True)
 
     # ASSERT
     with fits.open(outputPath) as hdus:
@@ -325,7 +326,7 @@ def test_value_over_68_characters_raises_and_writes_no_file(tmp_path: Path, log:
 
     # ACT
     with pytest.raises(ValueError, match="OBJECT"):
-        _write(tmp_path, log, header)
+        _write(tmp_path, log, header, strict=True)
 
     # ASSERT
     assert list(tmp_path.glob("*.fits")) == []
@@ -338,7 +339,7 @@ def test_long_value_on_a_table_extension_raises(tmp_path: Path, log: object) -> 
 
     # ACT AND ASSERT
     with pytest.raises(ValueError, match="LONG"):
-        _write(tmp_path, log, _science_header(), tables=[table])
+        _write(tmp_path, log, _science_header(), tables=[table], strict=True)
 
 
 def test_header_with_a_continue_card_raises(tmp_path: Path, log: object) -> None:
@@ -348,7 +349,7 @@ def test_header_with_a_continue_card_raises(tmp_path: Path, log: object) -> None
 
     # ACT AND ASSERT
     with pytest.raises(ValueError, match="CONTINUE"):
-        _write(tmp_path, log, header)
+        _write(tmp_path, log, header, strict=True)
 
 
 def test_hierarch_card_that_astropy_would_write_as_continue_raises(tmp_path: Path, log: object) -> None:
@@ -358,7 +359,7 @@ def test_hierarch_card_that_astropy_would_write_as_continue_raises(tmp_path: Pat
 
     # ACT AND ASSERT
     with pytest.raises(ValueError, match="CONTINUE"):
-        _write(tmp_path, log, header)
+        _write(tmp_path, log, header, strict=True)
 
 
 def test_long_comment_card_does_not_raise(tmp_path: Path, log: object) -> None:
@@ -367,7 +368,7 @@ def test_long_comment_card_does_not_raise(tmp_path: Path, log: object) -> None:
     header["COMMENT"] = "D" * COMMENT_LENGTH
 
     # ACT
-    outputPath = _write(tmp_path, log, header)
+    outputPath = _write(tmp_path, log, header, strict=True)
 
     # ASSERT
     assert outputPath.exists()
@@ -393,7 +394,7 @@ def test_plain_writer_leaves_the_header_as_the_scrubber_and_sorter_make_it(tmp_p
     table.meta["BUNIT"] = "nm"
 
     # ACT
-    outputPath = _write(tmp_path, log, header, tables=[table], phase3=False)
+    outputPath = _write(tmp_path, log, header, tables=[table], phase3=None)
 
     # ASSERT
     with fits.open(outputPath) as hdus:
@@ -411,17 +412,69 @@ def test_plain_writer_accepts_a_long_value_as_it_always_has(tmp_path: Path, log:
     header["OBJECT"] = "A" * LONG_VALUE_LENGTH
 
     # ACT
-    outputPath = _write(tmp_path, log, header, phase3=False)
+    outputPath = _write(tmp_path, log, header, phase3=None)
 
     # ASSERT
     assert outputPath.exists()
 
 
-@pytest.mark.parametrize("option", [{"extname": "SPECTRUM"}, {"mode": JOINED_MODE}])
+@pytest.mark.parametrize("option", [{"extname": "SPECTRUM"}, {"strict": True}])
 def test_plain_writer_refuses_a_phase3_option(tmp_path: Path, log: object, option: dict) -> None:
     # ARRANGE
     header = _science_header()
 
     # ACT AND ASSERT
     with pytest.raises(ValueError, match="phase3"):
-        _write(tmp_path, log, header, phase3=False, **option)
+        _write(tmp_path, log, header, phase3=None, **option)
+
+
+def test_hygiene_without_strict_writes_a_value_over_68_characters(tmp_path: Path, log: object) -> None:
+    """The merged spectrum keeps the hygiene cards but is not refused for a long value."""
+    # ARRANGE
+    header = _science_header()
+    header["OBJECT"] = "A" * LONG_VALUE_LENGTH
+
+    # ACT
+    outputPath = _write(tmp_path, log, header)
+
+    # ASSERT
+    with fits.open(outputPath) as hdus:
+        assert hdus[0].header["OBJECT"] == "A" * LONG_VALUE_LENGTH
+        assert hdus[0].header["ORIGIN"] == "ESO"
+
+
+def _write_with_product_name(tmp_path: Path, log: object, **kwargs: object) -> Path:
+    """Write through the real writer to a file named like a real `<SOF stem>_EXTRACTED_MERGED.fits`."""
+    stem = "A" * (PRODUCT_NAME_LENGTH - len("_EXTRACTED_MERGED.fits"))
+    outputPath = tmp_path / f"{stem}_EXTRACTED_MERGED.fits"
+    write_fits_table_to_disk(
+        log=log,
+        settings=pipeline_settings(tmp_path),
+        header=_science_header(),
+        tables=[Table({"WAVE": [500.0, 500.1]})],
+        filePath=outputPath,
+        phase3=PER_ARM_MODE,
+        extname="SPECTRUM",
+        **kwargs,
+    )
+    return outputPath
+
+
+def test_merged_spectrum_path_writes_a_file_with_a_product_length_name(tmp_path: Path, log: object) -> None:
+    # ARRANGE AND ACT
+    outputPath = _write_with_product_name(tmp_path, log)
+
+    # ASSERT
+    assert len(outputPath.name) == PRODUCT_NAME_LENGTH
+    with fits.open(outputPath) as hdus:
+        assert hdus[0].header["ORIGFILE"] == outputPath.name
+        assert hdus[1].header["EXTNAME"] == "SPECTRUM"
+
+
+def test_strict_path_refuses_a_file_with_a_product_length_name(tmp_path: Path, log: object) -> None:
+    # ARRANGE AND ACT
+    with pytest.raises(ValueError, match="ORIGFILE"):
+        _write_with_product_name(tmp_path, log, strict=True)
+
+    # ASSERT
+    assert list(tmp_path.glob("*.fits")) == []

@@ -12,6 +12,7 @@ from astropy.io import fits
 from astropy.table import Table
 
 from soxspipe.commonutils.flux_calibration import flux_calibration
+from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from tests.factories import merged_spectrum, pipeline_settings
 
 pytestmark = pytest.mark.integration
@@ -104,7 +105,7 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
 
     assert outputPath == str(tmp_path / "synthetic_FLUXCAL.fits")
     outputTable = captured["tables"][0]
-    assert captured["phase3"] is True
+    assert captured["phase3"] == PER_ARM_MODE
     assert captured["extname"] == "SPECTRUM"
     expected = calibration.extractedSpectrum["FLUX_COUNTS"] / calibration.exptime * np.array([7.0, 8.0]) * 1e-17
     np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], expected, rtol=1e-14, atol=0)
