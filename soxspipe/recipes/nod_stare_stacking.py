@@ -18,6 +18,10 @@ if TYPE_CHECKING:
     from soxspipe.commonutils.slit_alignment import two_d_map_images
 
 
+# THE LABEL OF THE PRODUCT ROW OF A MERGED SPECTRUM TABLE
+MERGED_TABLE_LABEL = "EXTRACTED_MERGED_TABLE"
+
+
 class reduction_inputs(NamedTuple):
     """The calibration inputs of a stare reduction: the calibration frames and the paths of the calibration tables.
 
@@ -281,6 +285,58 @@ class nod_stare_stacking:
             "the extraction."
         )
         return uncovered
+
+    def _extract_position(
+        self, stack: position_stack, inputs: reduction_inputs, rawFrames: list[str] | bool
+    ) -> stack_extraction:
+        """*sky-subtract and extract the stack of one nod position, under the names of that position*
+
+        The SOF name carries the position (``<SOF>_A``) while the position is reduced, so the sky products, the sky QC
+        plots and the extraction products of the A and B stacks do not overwrite each other. The sky fallback edits the
+        recipe settings in place, so the position runs on a copy. The SOF name, filename template, recipe settings and
+        sky flag are restored afterwards, whatever happens. The Horne extraction registers a merged-table product row
+        that the combined spectrum registers again, so the position's own row is labelled with the position.
+
+        **Key Arguments:**
+
+        - ``stack`` -- the ``position_stack`` of the position
+        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`
+        - ``rawFrames`` -- the raw file names the product header lists, or *False* to list every raw frame of the SOF
+
+        **Return:**
+
+        - ``extraction`` -- the ``stack_extraction`` of the position
+        """
+        import copy
+
+        sofName, filenameTemplate = self.sofName, self.filenameTemplate
+        recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
+        firstNewRow = len(self.products)
+        try:
+            self.sofName = f"{sofName}_{stack.position}"
+            self.filenameTemplate = f"{self.productStem}.fits"
+            self.recipeSettings = copy.deepcopy(recipeSettings)
+            extraction = self._extract_stack(
+                stack.notFlattened, stack.objectFrames, rawFrames, inputs, stack.flattened, stack.uncovered
+            )
+        finally:
+            self.sofName, self.filenameTemplate = sofName, filenameTemplate
+            self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
+        self._label_merged_table_row(firstNewRow, stack.position)
+        return extraction
+
+    def _label_merged_table_row(self, firstRow: int, position: str) -> None:
+        """*label the merged-table product rows from ``firstRow`` on with a nod position*
+
+        Updates ``self.products``.
+
+        **Key Arguments:**
+
+        - ``firstRow`` -- the position in ``self.products`` of the first row the extraction added
+        - ``position`` -- ``A`` or ``B``
+        """
+        isMerged = (self.products["product_label"] == MERGED_TABLE_LABEL) & (self.products.index >= firstRow)
+        self.products.loc[isMerged, "product_label"] = f"{MERGED_TABLE_LABEL}_{position}"
 
     def _reduce_nod_positions(self, stacks, allObjectFrames, rawFrames, inputs):
         """*extract the A and B stacks, combine the extractions and finish the product*
