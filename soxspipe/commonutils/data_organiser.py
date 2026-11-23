@@ -4032,28 +4032,42 @@ class data_organiser:
             rawGroups = rawGroups.drop(columns=[KNOWN_SET_COLUMN])
         return rawGroups
 
-    def _product_naming(self, recipe):
-        """
-        Name the folder a recipe writes its products to, and the marker it adds to their file names.
+    def _product_folder_and_marker(self, recipe: str) -> tuple[str, str]:
+        """*name the folder a recipe writes its products to, and the marker it adds to their file names*
 
         The folder name comes from the same function as the recipe's own output folder. A nodding SOF that the
-        settings reduce as stare is written by the stare recipe, to the stare folder, with the stare-mode marker.
+        settings reduce as stare is written by the stare recipe, to the stare folder, with the stare-mode marker. A
+        nodding standard-star SOF is not covered, and keeps the nod names.
 
         **Key Arguments:**
-        - `recipe` -- Recipe name, as in the SOF map.
+
+        - ``recipe`` -- the recipe name, as in the SOF map
 
         **Return:**
-        - `recipeDirectory` -- Name of the folder under `reduced/<night>/`.
-        - `productMarker` -- Marker between the SOF name and the product suffix ("" for none).
+
+        - ``recipeDirectory`` -- the name of the folder under ``reduced/<night>/``
+        - ``productMarker`` -- the marker between the SOF name and the product suffix (an empty string for none)
+
+        **Usage:**
+
+        ```python
+        recipeDirectory, productMarker = self._product_folder_and_marker("nod_obj")
+        ```
         """
-        from soxspipe.commonutils.stare_mode import NOD_STARE_MARKER, reduces_nod_as_stare
+        from soxspipe.commonutils.stare_mode import nod_recipe_name_and_marker
         from soxspipe.commonutils.toolkit import recipe_directory_name
 
-        recipeName = "soxs-" + recipe.replace("_", "-")
-        productMarker = ""
-        settings = getattr(self, "settings", None) or {}
-        if recipe == "nod_obj" and reduces_nod_as_stare(settings, isStandard=False):
-            recipeName, productMarker = "soxs-stare", NOD_STARE_MARKER
+        recipeName, productMarker = "soxs-" + recipe.replace("_", "-"), ""
+        if recipe == "nod_obj":
+            settings = getattr(self, "settings", None)
+            if settings is None:
+                # `prepare` LOADS THE SETTINGS AND GROUPS THE FRAMES AGAIN, SO THE NEXT `prepare` CORRECTS THIS
+                self.log.warning(
+                    "the session settings are not loaded yet, so the nod SOF products are named for nod mode "
+                    "whatever `reduce-as-stare` says; `soxspipe prep` names them from the settings"
+                )
+                settings = {}
+            recipeName, productMarker = nod_recipe_name_and_marker(settings, isStandard=False)
         return recipe_directory_name(recipeName), productMarker
 
     def predict_product_frames(self, productTypes, rawGroups, recipe):
@@ -4077,7 +4091,7 @@ class data_organiser:
             c.close()
             return incompleteProducts
 
-        recipeDirectory, productMarker = self._product_naming(recipe)
+        recipeDirectory, productMarker = self._product_folder_and_marker(recipe)
 
         for product in productTypes:
             proKeys = list(product.values())[0]

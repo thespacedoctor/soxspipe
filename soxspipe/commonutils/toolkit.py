@@ -2633,11 +2633,11 @@ def qc_settings_plot_tables(log, qc, qcAx, settings, settingsAx):
     return
 
 
-def recipe_directory_name(recipeName):
+def recipe_directory_name(recipeName: str) -> str:
     """*return the name of the folder a recipe writes its QC and products to*
 
     A science recipe is named ``soxs-<mode>-obj`` in the data organiser, and writes to the folder of the mode, so the
-    ``-obj`` ending is dropped. The recipe directories (`utility_setup`) and the product paths the data organiser
+    ``-obj`` ending is dropped. The recipe directories (``utility_setup``) and the product paths the data organiser
     predicts both take their folder name from here.
 
     **Key Arguments:**

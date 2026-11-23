@@ -81,6 +81,35 @@ def nod_recipe(log, settings, inputFrames, isRequested=False, **recipeKwargs):
     return soxs_nod(log=log, settings=settings, inputFrames=inputFrames, **recipeKwargs)
 
 
+def nod_recipe_name_and_marker(settings, isStandard, isRequested=False):
+    """*name the recipe that writes the products of a nodding SOF, and the marker its product file names carry*
+
+    The nod mode and the stare mode write their products to different directories, and the stare mode names them with
+    ``NOD_STARE_MARKER``.
+
+    **Key Arguments:**
+
+    - ``settings`` -- the settings dictionary
+    - ``isStandard`` -- True for a standard-star SOF
+    - ``isRequested`` -- True when the command line asked for stare mode. Default *False*
+
+    **Return:**
+
+    - ``recipeName`` -- ``soxs-nod`` or ``soxs-stare``, with ``-std`` added for a standard
+    - ``marker`` -- ``NOD_STARE_MARKER`` in stare mode, else an empty string
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.stare_mode import nod_recipe_name_and_marker
+    recipeName, marker = nod_recipe_name_and_marker(settings, isStandard=False)
+    ```
+    """
+    isStare = reduces_nod_as_stare(settings, isStandard, isRequested)
+    recipeName = ("soxs-stare" if isStare else "soxs-nod") + ("-std" if isStandard else "")
+    return recipeName, NOD_STARE_MARKER if isStare else ""
+
+
 def predicted_nod_product_path(settings, inputFrames, isRequested=False):
     """*predict the product path of a nodding SOF in the mode the recipe will run in*
 
@@ -100,10 +129,7 @@ def predicted_nod_product_path(settings, inputFrames, isRequested=False):
     """
     from soxspipe.commonutils import toolkit
 
-    isStandard = is_standard_input(inputFrames)
-    isStare = reduces_nod_as_stare(settings, isStandard, isRequested)
-    recipeName = ("soxs-stare" if isStare else "soxs-nod") + ("-std" if isStandard else "")
-    marker = NOD_STARE_MARKER if isStare else ""
+    recipeName, marker = nod_recipe_name_and_marker(settings, is_standard_input(inputFrames), isRequested)
     productPath, _ = toolkit.predict_product_path(
         inputFrames, recipeName, marker, outputDir=settings.get("workspace-root-dir")
     )

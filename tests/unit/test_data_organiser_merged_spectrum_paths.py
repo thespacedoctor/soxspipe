@@ -64,13 +64,25 @@ def test_merged_spectrum_filepath_is_in_the_directory_the_recipe_writes_to(
     assert rows["file"].tolist() == [f"{stem}{MERGED_SUFFIX}"]
 
 
+def test_the_stare_mode_path_of_a_nod_sof_is_the_one_the_skip_check_predicts(tmp_path) -> None:
+    # GUARD: THE ORGANISER TEST BELOW TAKES THE WRITTEN NAME FROM `predicted_nod_product_path`, SO PIN THAT IT IS THE
+    # STARE RECIPE'S OWN PATH
+    settings = {"workspace-root-dir": str(tmp_path / "out"), "soxs-nod": {"reduce-as-stare": True}}
+
+    # ACT
+    predictedPath = predicted_nod_product_path(settings, f"{NOD_STEM}.sof")
+
+    # ASSERT
+    stareRecipePath, _ = toolkit.predict_product_path(
+        f"{NOD_STEM}.sof", "soxs-stare", "_STAREMODE", outputDir=settings["workspace-root-dir"]
+    )
+    assert predictedPath == stareRecipePath
+
+
 def test_nod_sof_reduced_as_stare_records_the_stare_mode_file_that_is_written(tmp_path, log) -> None:
     # ARRANGE
     settings = {"workspace-root-dir": str(tmp_path / "out"), "soxs-nod": {"reduce-as-stare": True}}
-    writtenPath, _ = toolkit.predict_product_path(
-        f"{NOD_STEM}.sof", "soxs-stare", "_STAREMODE", outputDir=settings["workspace-root-dir"]
-    )
-    assert predicted_nod_product_path(settings, f"{NOD_STEM}.sof") == writtenPath
+    writtenPath = predicted_nod_product_path(settings, f"{NOD_STEM}.sof")
 
     # ACT
     rows = _predicted_rows(tmp_path, log, "science_nodding", "nod_obj", settings=settings)
@@ -80,6 +92,23 @@ def test_nod_sof_reduced_as_stare_records_the_stare_mode_file_that_is_written(tm
     assert writtenFile == f"{NOD_STEM}_STAREMODE{MERGED_SUFFIX}"
     assert rows["file"].tolist() == [writtenFile]
     assert rows["filepath"].tolist() == [f"./reduced/{NIGHT}/soxs-stare/{writtenFile}"]
+
+
+def test_nod_sof_warns_and_keeps_nod_names_when_the_session_settings_are_not_loaded(tmp_path, log) -> None:
+    # ACT
+    rows = _predicted_rows(tmp_path, log, "science_nodding", "nod_obj")
+
+    # ASSERT
+    assert rows["filepath"].tolist() == [f"./reduced/{NIGHT}/soxs-nod/{NOD_STEM}{MERGED_SUFFIX}"]
+    assert [level for level, message in log.messages if "settings are not loaded" in message] == ["warning"]
+
+
+def test_stare_sof_does_not_warn_when_the_session_settings_are_not_loaded(tmp_path, log) -> None:
+    # ACT
+    _predicted_rows(tmp_path, log, "science_stare", "stare_obj")
+
+    # ASSERT
+    assert not [level for level, message in log.messages if level == "warning"]
 
 
 def test_nod_sof_reduced_as_stare_keeps_its_other_product_columns(tmp_path, log) -> None:
