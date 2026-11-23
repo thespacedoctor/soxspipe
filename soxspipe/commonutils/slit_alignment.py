@@ -16,7 +16,6 @@ from __future__ import annotations
 import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -29,9 +28,6 @@ from soxspipe.commonutils.slit_alignment_sources import (
     _map_coordinates,
     _order_sources,
 )
-
-if TYPE_CHECKING:
-    from soxspipe.commonutils.nod_shift_and_add import shift_and_add_plan
 
 # A TRACE NEEDS AT LEAST THIS MANY SAMPLES IN AN ORDER TO GIVE THE ORDER A SLIT POSITION
 MIN_TRACE_SAMPLES = 10
@@ -352,52 +348,6 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     return CCDData(newData, unit=frame.unit, meta=copy.deepcopy(frame.meta), mask=newIsBad, uncertainty=uncertainty)
 
 
-def shift_coverage_mask(
-    plan: shift_and_add_plan,
-    alignmentShiftsA: Sequence[Mapping[int, float]] = (),
-    alignmentShiftsB: Sequence[Mapping[int, float]] = (),
-) -> np.ndarray:
-    """*the pixels of the slit that not every frame of a nod stack covers*
-
-    A pixel of order ``o`` of a frame shifted by ``s`` arcsec takes its value from where the slit coordinate is ``s``
-    arcsec higher at the same wavelength (see ``shift_frame_along_slit``). It is uncovered when that source lies off
-    the detector or outside the order. A frame's total shift is its alignment shift within its nod position plus, for
-    a B frame, the shift of the plan onto the A frames. A pixel is covered by every frame when it is covered at the
-    lowest and at the highest total shift, so those two set the uncovered ends of an order. This is the slit range
-    that the stack does not reach in every frame, not a flag for a bad pixel. Pixels outside every order are never
-    uncovered, and a shift longer than the slit leaves the whole order uncovered.
-
-    **Key Arguments:**
-
-    - ``plan`` -- the ``shift_and_add_plan`` whose ``orderShifts`` move a B frame onto the A frames
-    - ``alignmentShiftsA`` -- for each A frame, its ``{order: shift in arcsec}`` from the alignment to the other A
-      frames. Default *()*, which is one A frame that needs no alignment
-    - ``alignmentShiftsB`` -- the same for the B frames. Default *()*, one B frame that needs no alignment
-
-    **Return:**
-
-    - ``uncovered`` -- boolean image, True for a pixel that a frame does not cover
-
-    **Usage:**
-
-    ```python
-    from soxspipe.commonutils.slit_alignment import orders_without_coverage, shift_coverage_mask
-
-    uncovered = shift_coverage_mask(plan, alignmentShiftsA, alignmentShiftsB)
-    emptyOrders = orders_without_coverage(uncovered, plan.mapImages)
-    ```
-    """
-    framesA = list(alignmentShiftsA) or [{}]
-    framesB = list(alignmentShiftsB) or [{}]
-    lowest, highest = {}, {}
-    for order in plan.mapImages.orders:
-        planShift = plan.orderShifts.get(order, 0.0)
-        totals = [shifts.get(order, 0.0) for shifts in framesA]
-        totals += [shifts.get(order, 0.0) + planShift for shifts in framesB]
-        lowest[order], highest[order] = min(totals), max(totals)
-    return _uncovered_by_shifts(lowest, plan.mapImages) | _uncovered_by_shifts(highest, plan.mapImages)
-
-
 def alignment_coverage_mask(frameShifts: Sequence[Mapping[int, float]], mapImages: two_d_map_images) -> np.ndarray:
     """*the pixels of the slit that not every frame of one nod position covers*
 
@@ -441,7 +391,7 @@ def orders_without_coverage(uncovered: np.ndarray, mapImages: two_d_map_images) 
 
     **Key Arguments:**
 
-    - ``uncovered`` -- the boolean image of ``shift_coverage_mask``
+    - ``uncovered`` -- the boolean image of ``alignment_coverage_mask``
     - ``mapImages`` -- the ``two_d_map_images`` of the frame's binning
 
     **Return:**
@@ -453,7 +403,7 @@ def orders_without_coverage(uncovered: np.ndarray, mapImages: two_d_map_images) 
     ```python
     from soxspipe.commonutils.slit_alignment import orders_without_coverage
 
-    emptyOrders = orders_without_coverage(uncovered, plan.mapImages)
+    emptyOrders = orders_without_coverage(uncovered, mapImages)
     ```
     """
     return [order for order in mapImages.orders if uncovered[mapImages.order == order].all()]
