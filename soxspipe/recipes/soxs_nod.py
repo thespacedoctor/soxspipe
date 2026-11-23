@@ -1887,6 +1887,7 @@ class soxs_nod(extraction_stacking, base_recipe):
             flatPass=self.flatPassHandoffs.get(extractionKey) if notFlattened else None,
             # THE "SKY" OF A NOD OR OFFSET DIFFERENCE IS THE OTHER NOD FRAME, SO THERE IS NO SKY MODEL TO CARRY
             carrySkyCounts=False,
+            readNoise=self._extraction_read_noise(),
         )
         self.qc, theseProducts, mergedSpectrumDF, orderJoins, _ = optimalExtractor.extract()
         if not notFlattened:

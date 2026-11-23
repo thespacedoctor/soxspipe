@@ -345,6 +345,7 @@ def _construct_extractor(
     slitOffsetsArcsec: object = None,
     unflattenedLevel: float | None = None,
     extraRecipeSettings: dict[str, object] | None = None,
+    constructorArguments: dict[str, object] | None = None,
 ) -> tuple[horne_extraction, dict[str, object]]:
     """Build an extractor through its real constructor, with synthetic trace detection.
 
@@ -454,6 +455,7 @@ def _construct_extractor(
         notFlattened=notFlattened,
         scienceHeaders=scienceHeaders,
         slitOffsetsArcsec=slitOffsetsArcsec,
+        **(constructorArguments or {}),
     )
 
     return extractor, captured
@@ -510,6 +512,70 @@ def test_constructor_takes_ndit_as_one_when_the_frame_has_no_ndit_card(
     )
 
     assert extractor.ndit == 1
+
+
+def test_constructor_keeps_the_read_noise_the_recipe_passes(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sky-line S/N gate uses the recipe's resolved read noise (DY-2323)."""
+    extractor, _ = _construct_extractor(
+        log,
+        monkeypatch,
+        headerOverrides={},
+        recipeName="soxs-stare",
+        locationSetIndex=None,
+        constructorArguments={"readNoise": 5.5},
+    )
+
+    assert extractor.readNoise == 5.5
+
+
+def test_constructor_has_no_recipe_read_noise_by_default(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor, _ = _construct_extractor(
+        log, monkeypatch, headerOverrides={}, recipeName="soxs-stare", locationSetIndex=None
+    )
+
+    assert extractor.readNoise is None
+
+
+def _sky_line_order(wavelength: np.ndarray) -> pd.DataFrame:
+    """An order with a flat sky of 16 e- and one 20 e- sky line at 510 nm."""
+    sky = np.full_like(wavelength, 16.0) + 20.0 * np.exp(-0.5 * ((wavelength - 510.0) / 0.08) ** 2)
+    return pd.DataFrame({"wavelengthMean": wavelength, "skyFlux": sky})
+
+
+def test_order_sky_line_snrs_use_the_recipe_read_noise_when_it_is_given(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The gate reads the resolved read noise, not the detector default of the extractor's own lookup."""
+    orderDF = _sky_line_order(np.arange(500.0, 520.0, 0.05))
+    extractor = _extractor(log)
+    extractor.detectorParams = {"ron": 3.0}
+    extractor.readNoise = 6.0
+    monkeypatch.setattr(extractor, "_get_local_skylines_for_order", lambda *_: (None, np.array([510.0])), raising=False)
+
+    snrs = extractor._order_sky_line_snrs(orderDF, 10)
+
+    # 20 / SQRT(16 + 6^2)
+    assert snrs == pytest.approx([20.0 / np.sqrt(52.0)], rel=1e-6)
+
+
+def test_order_sky_line_snrs_use_the_detector_default_read_noise_when_the_recipe_gives_none(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    orderDF = _sky_line_order(np.arange(500.0, 520.0, 0.05))
+    extractor = _extractor(log)
+    extractor.detectorParams = {"ron": 3.0}
+    monkeypatch.setattr(extractor, "_get_local_skylines_for_order", lambda *_: (None, np.array([510.0])), raising=False)
+
+    snrs = extractor._order_sky_line_snrs(orderDF, 10)
+
+    # 20 / SQRT(16 + 3^2)
+    assert snrs == pytest.approx([4.0], rel=1e-6)
 
 
 @pytest.mark.parametrize("ndit", [1, 4])

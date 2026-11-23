@@ -853,6 +853,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             noTraceFallback=True,
             scienceHeaders=self.scienceHeaders,
             slitOffsetsArcsec=self.slitIlluminationOffsets,
+            readNoise=self._extraction_read_noise(),
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
@@ -1781,6 +1782,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             turnOffMP=self.turnOffMP,
             scienceHeaders=self.scienceHeaders,
             flatPass=flatPass,
+            readNoise=self._extraction_read_noise(),
         )
         self.qc, self.products, mergedSpectrumDF, _, extractionPath_notflat = optimalExtractor.extract()
         return extractionPath_notflat, mergedSpectrumDF

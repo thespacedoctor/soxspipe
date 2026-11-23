@@ -48,6 +48,8 @@ pytestmark = pytest.mark.integration
 
 # THE TECHNIQUE EVERY STARE SCIENCE FRAME IS TAKEN WITH.
 STARE_TECHNIQUE = "ECHELLE,SLIT,STARE"
+# THE READ NOISE (E-) THE RECIPE HOLDS IN ITS DETECTOR PARAMETERS, AS THE NDSAMPLES LOOKUP LEAVES IT
+RECIPE_READ_NOISE = 5.5
 
 # SEEDS OF THE CALIBRATION FRAMES, SO A TEST CAN TELL WHICH FILE WAS READ.
 BIAS_SEED = 501
@@ -88,7 +90,7 @@ def _stare_recipe(
     recipe.log = log
     recipe.arm = arm
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": RECIPE_READ_NOISE * u.electron}
     recipe.inputFrames = RouteCollection(routes)
     recipe.recipeName = "soxs-stare"
     recipe.recipeSettings = (
@@ -1348,6 +1350,25 @@ def test_the_kept_slit_ranges_of_the_slit_illumination_measurement_reach_the_sky
     # ASSERT
     assert flat_fit_ranges_from_result(result)
     assert captured["sky"][0]["flatFitRanges"] == flat_fit_ranges_from_result(result)
+
+
+def test_the_extraction_is_handed_the_read_noise_the_recipe_resolved(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Horne sky-line S/N gate uses the resolved read noise, not the detector default (DY-2323)."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    captured = _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=540 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["extractor"][0]["readNoise"] == RECIPE_READ_NOISE
 
 
 def test_a_frame_whose_slit_illumination_is_not_measured_hands_the_sky_fit_no_ranges_from_an_earlier_frame(

@@ -1069,6 +1069,7 @@ def _produce_product_recipe(
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
     recipe.arm = "VIS"
+    recipe.detectorParams = {"ron": 3.0}
     recipe.kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
     recipe.settings = {}
     recipe.recipeSettings = {"sky-subtraction": {"subtract_sky": True}, "use_flat": True}
@@ -1196,6 +1197,7 @@ def test_the_not_flattened_response_extraction_is_handed_the_flat_pass(
     monkeypatch.setattr(commonutils, "response_function", StubResponse)
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
+    recipe.detectorParams = {"ron": 3.0}
     recipe.settings = {}
     recipe.recipeSettings = {}
     recipe.recipeName = "soxs-stare"
