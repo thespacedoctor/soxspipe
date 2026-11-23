@@ -644,20 +644,7 @@ class data_organiser:
         self._select_session()
 
         # GET SETTINGS
-        settingsPath = self.sessionPath + "/soxspipe.yaml"
-        su = tools(
-            arguments={
-                "<workspaceDirectory>": self.sessionPath,
-                "settingsFile": settingsPath,
-            },
-            docString=False,
-            logLevel="WARNING",
-            options_first=False,
-            projectName="soxspipe",
-            createLogger=False,
-            quitIfRunning=False,
-        )
-        arguments, self.settings, replacedLog, dbConn = su.setup()
+        self._load_session_settings()
 
         # A REBUILD DEFERS THE RANGES UNTIL THE STATUSES ARE RESTORED (SEE `_restore_session_statuses`). THE QC ROWS ARE
         # RESTORED BY NOW BUT THE STATUSES ARE NOT, AND `product_frames` IS STILL EMPTY, SO THIS CALL COULD ONLY
@@ -675,6 +662,41 @@ class data_organiser:
             self._print_prepare_report(basename)
 
         self.log.debug("completed the ``prepare`` method")
+        return
+
+    def _load_session_settings(self):
+        """*load the settings file of the active session into `self.settings`*
+
+        The settings decide how the SOF builds name some products (a nodding SOF that `reduce-as-stare` reduces as
+        stare), so `prepare` and the session regroup load them before they group the frames.
+
+        **Return:**
+
+        - None
+
+        **Usage:**
+
+        ```python
+        self._load_session_settings()
+        ```
+        """
+        self.log.debug("starting the ``_load_session_settings`` method")
+
+        su = tools(
+            arguments={
+                "<workspaceDirectory>": self.sessionPath,
+                "settingsFile": self.sessionPath + "/soxspipe.yaml",
+            },
+            docString=False,
+            logLevel="WARNING",
+            options_first=False,
+            projectName="soxspipe",
+            createLogger=False,
+            quitIfRunning=False,
+        )
+        arguments, self.settings, replacedLog, dbConn = su.setup()
+
+        self.log.debug("completed the ``_load_session_settings`` method")
         return
 
     def _select_session(self):
@@ -1992,6 +2014,9 @@ class data_organiser:
         self._select_instrument()
         if not hasattr(self, "sofMapLookup"):
             return
+        # THE SESSION SETTINGS DECIDE HOW SOME PRODUCTS ARE NAMED (`reduce-as-stare`), AND A SESSION COMMAND RUNS ON A
+        # NEW INSTANCE THAT HAS NOT READ THEM
+        self._load_session_settings()
         self._group_every_raw_frame()
 
     def _ensure_session_database_objects(self, sessionId):
@@ -4032,6 +4057,44 @@ class data_organiser:
             rawGroups = rawGroups.drop(columns=[KNOWN_SET_COLUMN])
         return rawGroups
 
+    def _product_folder_and_marker(self, recipe: str) -> tuple[str, str]:
+        """*name the folder a recipe writes its products to, and the marker it adds to their file names*
+
+        The folder name comes from the same function as the recipe's own output folder. A nodding SOF that the
+        settings reduce as stare is written by the stare recipe, to the stare folder, with the stare-mode marker. A
+        nodding standard-star SOF is not covered, and keeps the nod names.
+
+        **Key Arguments:**
+
+        - ``recipe`` -- the recipe name, as in the SOF map
+
+        **Return:**
+
+        - ``recipeDirectory`` -- the name of the folder under ``reduced/<night>/``
+        - ``productMarker`` -- the marker between the SOF name and the product suffix (an empty string for none)
+
+        **Usage:**
+
+        ```python
+        recipeDirectory, productMarker = self._product_folder_and_marker("nod_obj")
+        ```
+        """
+        from soxspipe.commonutils.stare_mode import nod_recipe_name_and_marker
+        from soxspipe.commonutils.toolkit import recipe_directory_name
+
+        recipeName, productMarker = "soxs-" + recipe.replace("_", "-"), ""
+        if recipe == "nod_obj":
+            settings = getattr(self, "settings", None)
+            if settings is None:
+                # `prepare` AND THE SESSION REGROUP LOAD THE SETTINGS BEFORE THEY GROUP THE FRAMES
+                self.log.warning(
+                    "the session settings are not loaded, so the nod SOF products are named for nod mode "
+                    "whatever `reduce-as-stare` says"
+                )
+                settings = {}
+            recipeName, productMarker = nod_recipe_name_and_marker(settings, isStandard=False)
+        return recipe_directory_name(recipeName), productMarker
+
     def predict_product_frames(self, productTypes, rawGroups, recipe):
         """
         Process product frames for a given set of product types and raw groups.
@@ -4052,6 +4115,8 @@ class data_organiser:
             incompleteProducts = c.fetchall()[0][0]
             c.close()
             return incompleteProducts
+
+        recipeDirectory, productMarker = self._product_folder_and_marker(recipe)
 
         for product in productTypes:
             proKeys = list(product.values())[0]
@@ -4078,7 +4143,7 @@ class data_organiser:
                 productFrames["eso pro catg"].astype(str) + "_" + productFrames["eso seq arm"].astype(str).str.upper()
             )
             if product in ["fits image", "fits table"]:
-                productFrames["file"] = productFrames["sof"].str.replace(".sof", ".fits")
+                productFrames["file"] = productFrames["sof"].str.replace(".sof", productMarker + ".fits")
                 if "replace" in proKeys:
                     for item in proKeys["replace"]:
                         productFrames["file"] = productFrames["file"].str.replace(item["from"], item["to"])
@@ -4088,8 +4153,8 @@ class data_organiser:
             productFrames["filepath"] = (
                 "./reduced/"
                 + productFrames["night start date"].astype(str)
-                + "/soxs-"
-                + recipe.replace("_", "-")
+                + "/"
+                + recipeDirectory
                 + "/"
                 + productFrames["file"].astype(str)
             )
