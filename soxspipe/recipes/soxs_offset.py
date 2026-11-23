@@ -14,8 +14,7 @@ import os
 import sys
 
 from soxspipe.commonutils.offset_frames import (
-    FIXED_SKY_TECHNIQUE,
-    GENERIC_TECHNIQUE,
+    OFFSET_TECHNIQUES,
     SKY_TYPE,
     classify_offset_frames,
 )
@@ -26,9 +25,6 @@ from soxspipe.commonutils.toolkit import (
 from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
-
-# THE TECHNIQUES OF THE OFFSET TEMPLATES THE RECIPE REDUCES (DY-2354)
-OFFSET_TECHNIQUES = (FIXED_SKY_TECHNIQUE, GENERIC_TECHNIQUE)
 
 # THE locationSetIndex OF THE STACKED ON/OFF PAIR. IT GIVES THE STACK TRACE AND EXTRACTION PRODUCT NAMES OF ITS OWN.
 STACKED_LOCATION_SET = "STACK"

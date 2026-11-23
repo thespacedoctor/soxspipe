@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -220,3 +222,57 @@ def test_the_predicted_product_of_a_nir_nod_sof_is_unchanged(tmp_path, log, monk
 
     # ASSERT: ONE NOD-MODE PRODUCT, NAMED AFTER THE SOF, WITH NO MARKER AND NO STARE TECHNIQUE
     assert products == [("OBJECT_TAB_NIR", NOD_TECH, sof.replace(".sof", "_EXTRACTED_MERGED.fits"))]
+
+
+def _set_reduce_as_stare(sessionsDir, sessionId):
+    """Turn `reduce-as-stare` on in the `soxs-nod` block of one session's settings file."""
+    settingsPath = sessionsDir / sessionId / "soxspipe.yaml"
+    text = settingsPath.read_text()
+    blockStart = text.index("\nsoxs-nod:\n")
+    flagStart = text.index("reduce-as-stare: False", blockStart)
+    settingsPath.write_text(
+        text[:flagStart] + "reduce-as-stare: True" + text[flagStart + len("reduce-as-stare: False") :]
+    )
+
+
+def _fresh_organiser(tmp_path, log):
+    """Return a new organiser on the workspace of ``tmp_path``, as the command line builds one for a session command."""
+    organiser = workspace_organiser(tmp_path, log=log)
+    organiser.conn, _ = organiser._get_or_create_db_connection()
+    return organiser
+
+
+def _nod_obj_rows(organiser):
+    return organiser.conn.execute(
+        "SELECT file, filepath FROM product_frames WHERE recipe = 'nod_obj' AND \"eso seq arm\" = 'NIR'"
+    ).fetchall()
+
+
+def _unloaded_settings_warnings(log):
+    return [message for level, message in log.messages if level == "warning" and "settings are not loaded" in message]
+
+
+@pytest.mark.parametrize("command", ["session_create", "session_switch"])
+def test_a_session_command_on_a_fresh_organiser_records_the_stare_mode_row_when_reduce_as_stare_is_on(
+    tmp_path, log, monkeypatch, organisers, command
+) -> None:
+    # ARRANGE
+    organiser = _prepared(tmp_path, log, monkeypatch, withDark=True)
+    organisers.append(organiser)
+    sessionsDir = Path(organiser.sessionsDir)
+    organiser.session_create("beta")
+    organiser.session_switch("science")
+    _set_reduce_as_stare(sessionsDir, "beta")
+    fresh = _fresh_organiser(tmp_path, log)
+    organisers.append(fresh)
+    log.messages.clear()
+
+    # ACT
+    getattr(fresh, command)("beta")
+
+    # ASSERT
+    stemFile = _nod_sof(organiser).replace(".sof", "_STAREMODE_EXTRACTED_MERGED.fits")
+    stareRows = [row for row in _nod_obj_rows(fresh) if row[0] == stemFile]
+    assert stareRows
+    assert {row[1].split("/")[3] for row in stareRows} == {"soxs-stare"}
+    assert _unloaded_settings_warnings(log) == []

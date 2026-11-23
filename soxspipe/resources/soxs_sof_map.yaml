@@ -227,7 +227,7 @@ telluric_standard_nodding:
             to: _EXTRACTED_MERGED.fits
 flux_standard_offset:
   recipe: offset_std
-  eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+  eso dpr tech: ["ECHELLE,SLIT,OFFSET", "ECHELLE,SLIT,GENOFFSET"]
   eso dpr type: 
     STD,FLUX:
     STD:
@@ -256,7 +256,7 @@ flux_standard_offset:
             to: _RESP.fits
 telluric_standard_offset:
   recipe: offset_std
-  eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+  eso dpr tech: ["ECHELLE,SLIT,OFFSET", "ECHELLE,SLIT,GENOFFSET"]
   eso dpr type: 
     STD,TELLURIC:
     STD,SKY:
@@ -333,7 +333,7 @@ science_nodding:
             to: _EXTRACTED_MERGED.fits
 science_offset:
   recipe: offset_obj
-  eso dpr tech: ["ECHELLE,SLIT,OFFSET"]
+  eso dpr tech: ["ECHELLE,SLIT,OFFSET", "ECHELLE,SLIT,GENOFFSET"]
   eso dpr type: 
     OBJECT:
     OBJECT,ASYNC:

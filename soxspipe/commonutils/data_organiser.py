@@ -45,6 +45,7 @@ from soxspipe.commonutils.missing_calibrations import (
     find_missing_calibrations,
     missing_reasons,
 )
+from soxspipe.commonutils.offset_frames import OFFSET_TECHNIQUES, SKY_TYPE, offset_run_match_sql
 from soxspipe.commonutils.session_status_restore import (
     classify_session_sofs,
     format_session_summary,
@@ -58,6 +59,7 @@ from soxspipe.commonutils.workspace_paths import path_under_root
 
 if TYPE_CHECKING:
     import logging
+    from collections.abc import Sequence
 
     import pandas as pd
     from astropy.table import Table
@@ -644,20 +646,7 @@ class data_organiser:
         self._select_session()
 
         # GET SETTINGS
-        settingsPath = self.sessionPath + "/soxspipe.yaml"
-        su = tools(
-            arguments={
-                "<workspaceDirectory>": self.sessionPath,
-                "settingsFile": settingsPath,
-            },
-            docString=False,
-            logLevel="WARNING",
-            options_first=False,
-            projectName="soxspipe",
-            createLogger=False,
-            quitIfRunning=False,
-        )
-        arguments, self.settings, replacedLog, dbConn = su.setup()
+        self._load_session_settings()
 
         # A REBUILD DEFERS THE RANGES UNTIL THE STATUSES ARE RESTORED (SEE `_restore_session_statuses`). THE QC ROWS ARE
         # RESTORED BY NOW BUT THE STATUSES ARE NOT, AND `product_frames` IS STILL EMPTY, SO THIS CALL COULD ONLY
@@ -675,6 +664,41 @@ class data_organiser:
             self._print_prepare_report(basename)
 
         self.log.debug("completed the ``prepare`` method")
+        return
+
+    def _load_session_settings(self):
+        """*load the settings file of the active session into `self.settings`*
+
+        The settings decide how the SOF builds name some products (a nodding SOF that `reduce-as-stare` reduces as
+        stare), so `prepare` and the session regroup load them before they group the frames.
+
+        **Return:**
+
+        - None
+
+        **Usage:**
+
+        ```python
+        self._load_session_settings()
+        ```
+        """
+        self.log.debug("starting the ``_load_session_settings`` method")
+
+        su = tools(
+            arguments={
+                "<workspaceDirectory>": self.sessionPath,
+                "settingsFile": self.sessionPath + "/soxspipe.yaml",
+            },
+            docString=False,
+            logLevel="WARNING",
+            options_first=False,
+            projectName="soxspipe",
+            createLogger=False,
+            quitIfRunning=False,
+        )
+        arguments, self.settings, replacedLog, dbConn = su.setup()
+
+        self.log.debug("completed the ``_load_session_settings`` method")
         return
 
     def _select_session(self):
@@ -1992,6 +2016,9 @@ class data_organiser:
         self._select_instrument()
         if not hasattr(self, "sofMapLookup"):
             return
+        # THE SESSION SETTINGS DECIDE HOW SOME PRODUCTS ARE NAMED (`reduce-as-stare`), AND A SESSION COMMAND RUNS ON A
+        # NEW INSTANCE THAT HAS NOT READ THEM
+        self._load_session_settings()
         self._group_every_raw_frame()
 
     def _ensure_session_database_objects(self, sessionId):
@@ -3168,7 +3195,20 @@ class data_organiser:
         c = self.conn.cursor()
         placeholders = ", ".join("?" for _ in self.reductionOrder)
         sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ({placeholders})"  # noqa: S608
-        c.execute(sqlQuery, self.reductionOrder)
+        sqlParams = list(self.reductionOrder)
+
+        # THE SKY FRAMES OF THE SOXS OFFSET TEMPLATES ARE THE OFF FRAMES OF THE OFFSET SOFS, SO THEY ARE KEPT (DY-2355).
+        # A WORKSPACE PREPARED BEFORE THAT FLAGGED THEM, SO THEIR FLAG IS CLEARED FIRST AND THE RULES BELOW FLAG THEM
+        # AGAIN WHEN ANOTHER RULE APPLIES. NOTHING ELSE SETS `ignore`: EVERY RULE USES ONLY THE ROW AND THE SETTINGS
+        if self.instrument.upper() == "SOXS":
+            techPlaceholders = ", ".join("?" for _ in OFFSET_TECHNIQUES)
+            offsetSky = f"`eso dpr type` = ? AND IFNULL(`eso dpr tech`, '') IN ({techPlaceholders})"
+            offsetSkyParams = [SKY_TYPE, *OFFSET_TECHNIQUES]
+            # ONLY LITERAL ? PLACEHOLDERS ARE INTERPOLATED; ALL VALUES ARE BOUND
+            c.execute(f"update raw_frames set ignore = 0 WHERE ignore = 1 AND {offsetSky}", offsetSkyParams)  # noqa: S608
+            sqlQuery += f" AND NOT ({offsetSky})"
+            sqlParams += offsetSkyParams
+        c.execute(sqlQuery, sqlParams)
         self.conn.commit()
 
         # FLAG STANDARDS NOT IN STATIC LIBRARY TO IGNORE
@@ -3779,6 +3819,35 @@ class data_organiser:
             print(format_requeue_summary(consumers))
         return rejoined, consumers
 
+    @staticmethod
+    def _offset_type_clause(ttype: str, offsetTechs: "Sequence[str]") -> tuple[str, list[str]]:
+        """*build the `(sql, params)` pair that selects one `eso dpr type` and the SKY frames of its offset runs*
+
+        A SKY frame is selected when a frame of `ttype` shares its arm, offset technique and template start
+        (`eso tpl start`), so a SKY frame joins the SOF of the frames it was taken with, and a SKY frame with no such
+        frame joins none. `offset_run_match_sql` holds the matching rule.
+
+        **Key Arguments:**
+
+        - ``ttype`` -- the `eso dpr type` of the SOF map entry
+        - ``offsetTechs`` -- the offset techniques of the SOF map entry
+
+        **Return:**
+
+        - ``sqlClause`` -- the parenthesised `where` condition, to be applied to `raw_frames_valid`
+        - ``sqlParams`` -- the parameters to bind against ``sqlClause``
+        """
+        techPlaceholders = ", ".join("?" for _ in offsetTechs)
+        runMatch = offset_run_match_sql("raw_frames_valid", "run")
+        sqlClause = (
+            # ONLY LITERAL ? PLACEHOLDERS ARE INTERPOLATED; ALL VALUES ARE BOUND
+            "(`eso dpr type` = ? OR (`eso dpr type` = ? "  # noqa: S608
+            f"AND IFNULL(`eso dpr tech`, '') IN ({techPlaceholders}) "
+            "AND EXISTS (SELECT 1 FROM raw_frames_valid AS run WHERE run.`eso dpr type` = ? "
+            f"AND {runMatch})))"
+        )
+        return sqlClause, [ttype, SKY_TYPE, *offsetTechs, ttype]
+
     def get_raw_frames_and_groups(
         self,
         ttype=None,
@@ -3804,7 +3873,9 @@ class data_organiser:
               different known sets are not grouped together, even when every grouping key is the same
 
         **Return:**
-            - `rawFrames` -- processed raw frames dataframe
+            - `rawFrames` -- processed raw frames dataframe. For SOXS, when `tech` lists an offset technique and
+              `ttype` is set, it also holds the `SKY` frames of the runs that have a frame of `ttype`, with
+              `eso dpr type` set to `ttype`
             - `rawGroups` -- grouped raw frames with calculated MJD values
 
         **Usage:**
@@ -3820,7 +3891,13 @@ class data_organiser:
 
         whereClauses = []
         params: list = []
-        if ttype:
+        offsetTechs = [t for t in tech if t in OFFSET_TECHNIQUES] if ttype and tech else []
+        takesOffsetSky = bool(offsetTechs) and self.instrument.upper() == "SOXS"
+        if takesOffsetSky:
+            typeClause, typeParams = self._offset_type_clause(ttype, offsetTechs)
+            whereClauses.append(typeClause)
+            params.extend(typeParams)
+        elif ttype:
             whereClauses.append("`eso dpr type` = ?")
             params.append(ttype)
         if arm:
@@ -3844,6 +3921,11 @@ class data_organiser:
             con=conn,
             params=params,
         )
+
+        # THE SKY FRAMES OF AN OFFSET RUN GROUP WITH THE FRAMES OF THE RUN, SO THEY TAKE THE RUN'S FRAME TYPE (DY-2355)
+        if takesOffsetSky:
+            relabelled = rawFrames["eso dpr type"].mask(rawFrames["eso dpr type"] == SKY_TYPE, ttype)
+            rawFrames = rawFrames.assign(**{"eso dpr type": relabelled})
 
         rawFrames = rawFrames.astype(
             {
@@ -4032,6 +4114,44 @@ class data_organiser:
             rawGroups = rawGroups.drop(columns=[KNOWN_SET_COLUMN])
         return rawGroups
 
+    def _product_folder_and_marker(self, recipe: str) -> tuple[str, str]:
+        """*name the folder a recipe writes its products to, and the marker it adds to their file names*
+
+        The folder name comes from the same function as the recipe's own output folder. A nodding SOF that the
+        settings reduce as stare is written by the stare recipe, to the stare folder, with the stare-mode marker. A
+        nodding standard-star SOF is not covered, and keeps the nod names.
+
+        **Key Arguments:**
+
+        - ``recipe`` -- the recipe name, as in the SOF map
+
+        **Return:**
+
+        - ``recipeDirectory`` -- the name of the folder under ``reduced/<night>/``
+        - ``productMarker`` -- the marker between the SOF name and the product suffix (an empty string for none)
+
+        **Usage:**
+
+        ```python
+        recipeDirectory, productMarker = self._product_folder_and_marker("nod_obj")
+        ```
+        """
+        from soxspipe.commonutils.stare_mode import nod_recipe_name_and_marker
+        from soxspipe.commonutils.toolkit import recipe_directory_name
+
+        recipeName, productMarker = "soxs-" + recipe.replace("_", "-"), ""
+        if recipe == "nod_obj":
+            settings = getattr(self, "settings", None)
+            if settings is None:
+                # `prepare` AND THE SESSION REGROUP LOAD THE SETTINGS BEFORE THEY GROUP THE FRAMES
+                self.log.warning(
+                    "the session settings are not loaded, so the nod SOF products are named for nod mode "
+                    "whatever `reduce-as-stare` says"
+                )
+                settings = {}
+            recipeName, productMarker = nod_recipe_name_and_marker(settings, isStandard=False)
+        return recipe_directory_name(recipeName), productMarker
+
     def predict_product_frames(self, productTypes, rawGroups, recipe):
         """
         Process product frames for a given set of product types and raw groups.
@@ -4052,6 +4172,8 @@ class data_organiser:
             incompleteProducts = c.fetchall()[0][0]
             c.close()
             return incompleteProducts
+
+        recipeDirectory, productMarker = self._product_folder_and_marker(recipe)
 
         for product in productTypes:
             proKeys = list(product.values())[0]
@@ -4078,7 +4200,7 @@ class data_organiser:
                 productFrames["eso pro catg"].astype(str) + "_" + productFrames["eso seq arm"].astype(str).str.upper()
             )
             if product in ["fits image", "fits table"]:
-                productFrames["file"] = productFrames["sof"].str.replace(".sof", ".fits")
+                productFrames["file"] = productFrames["sof"].str.replace(".sof", productMarker + ".fits")
                 if "replace" in proKeys:
                     for item in proKeys["replace"]:
                         productFrames["file"] = productFrames["file"].str.replace(item["from"], item["to"])
@@ -4088,8 +4210,8 @@ class data_organiser:
             productFrames["filepath"] = (
                 "./reduced/"
                 + productFrames["night start date"].astype(str)
-                + "/soxs-"
-                + recipe.replace("_", "-")
+                + "/"
+                + recipeDirectory
                 + "/"
                 + productFrames["file"].astype(str)
             )
