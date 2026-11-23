@@ -35,6 +35,35 @@ class reduction_inputs(NamedTuple):
     responseFunctionPath: object
 
 
+class response_inputs(NamedTuple):
+    """What the not-flattened extraction of a standard star needs, kept until the response curve is built."""
+
+    unflattened: Any
+    skyModel: Any
+    twoDMap: str
+    dispMap: str
+    flatPass: Any
+
+
+class stack_extraction(NamedTuple):
+    """The flat-fielded extraction of one stack, before flux calibration or the response curve.
+
+    ``responseInputs`` is set when the standard's not-flattened extraction is still to run, and ``notFlatPath`` when it
+    already ran. Both are None for a science stack.
+    """
+
+    productPath: str | None
+    combinedObject: Any
+    mergedSpectrum: Any
+    orderJoins: Any
+    extractionPath: str | bool
+    responseInputs: response_inputs | None
+    notFlatPath: str | None
+    traceFallback: bool
+    slitEdgeSpill: bool
+    extractionNotes: list[tuple[str, str]]
+
+
 class nod_stare_stacking:
     """
     Mixin of the methods of `soxs_stare` that align and stack the A and B frames of a nodding SOF before extraction.
