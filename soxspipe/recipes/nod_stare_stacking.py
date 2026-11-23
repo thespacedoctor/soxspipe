@@ -266,7 +266,7 @@ class nod_stare_stacking:
         """
         import numpy as np
 
-        from soxspipe.commonutils.slit_alignment import alignment_coverage_mask, orders_without_coverage
+        from soxspipe.commonutils.slit_coverage import alignment_coverage_mask, orders_without_coverage
 
         if mapImages is None:
             return np.zeros(frames[0].data.shape, dtype=bool)
@@ -582,7 +582,8 @@ class nod_stare_stacking:
         - ``mapImages`` -- the ``two_d_map_images`` the alignment read, or *None* when no position needed aligning
         """
         from soxspipe.commonutils.nod_frames import aligns_each_order
-        from soxspipe.commonutils.slit_alignment import align_frame_groups_along_slit, frame_group, frame_order_shifts
+        from soxspipe.commonutils.slit_alignment import align_frame_groups_along_slit, frame_group
+        from soxspipe.commonutils.slit_coverage import frame_order_shifts
 
         results = align_frame_groups_along_slit(
             log=self.log,

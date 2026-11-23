@@ -7,12 +7,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from soxspipe.commonutils.slit_alignment import (
-    alignment_coverage_mask,
-    build_two_d_map_images,
-    orders_without_coverage,
-    two_d_map_images,
-)
+from soxspipe.commonutils.slit_alignment import build_two_d_map_images, two_d_map_images
+from soxspipe.commonutils.slit_coverage import alignment_coverage_mask, orders_without_coverage
 from tests.factories.slit_alignment import FOOTPRINT_HALF, PIXEL_ARCSEC, alignment_map, synthetic_alignment_map
 
 pytestmark = pytest.mark.unit
