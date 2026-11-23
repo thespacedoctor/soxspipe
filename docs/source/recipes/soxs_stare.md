@@ -42,7 +42,7 @@ A stare SOF holds all the frames of one observation block (OB) and arm that shar
 
 ### Nodding frames reduced in stare mode
 
-The recipe also reduces the frames of a nodding SOF, when you use the `--stare` option of `soxspipe nod` and `nod_std` or the `reduce-as-stare` setting. The recipe then reads the frames with the technique `ECHELLE,SLIT,NODDING`, aligns the A and B frames along the slit before it stacks them, needs a master dark on the NIR arm, and marks its products with `_STAREMODE`. See [Reduce the frames in stare mode](soxs_nod.md#reduce-the-frames-in-stare-mode---stare) in the `soxs_nod` page.
+The recipe also reduces the frames of a nodding SOF, when you use the `--stare` option of `soxspipe nod` and `nod_std` or the `reduce-as-stare` setting. The recipe then reads the frames with the technique `ECHELLE,SLIT,NODDING`, aligns the A frames to each other and the B frames to each other along the slit, stacks the A frames and the B frames apart, extracts each stack, combines the two extractions, needs a master dark on the NIR arm, and marks its products with `_STAREMODE`. See [Reduce the frames in stare mode](soxs_nod.md#reduce-the-frames-in-stare-mode---stare) in the `soxs_nod` page.
 
 ### Extract each frame with `--no-stack`
 
