@@ -11,7 +11,10 @@ The work has three steps:
 3. Each frame is resampled through the 2D map to apply the shift in slit coordinates.
 """
 
+from __future__ import annotations
+
 import copy
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -312,7 +315,6 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     newIsBad = np.zeros(data.shape, dtype=bool) if frame.mask is None else np.asarray(frame.mask) != 0
     badness = newIsBad.astype(np.float32)
 
-    height, width = data.shape
     pixelAreas = None
     for order, shift in orderShifts.items():
         if shift == 0:
@@ -321,8 +323,7 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
             pixelAreas = _pixel_areas(mapImages)
         targets, (rows, columns) = _order_sources(mapImages, order, shift)
         sources = [rows, columns]
-        isInBounds = (rows >= 0) & (rows <= height - 1) & (columns >= 0) & (columns <= width - 1)
-        coverage = _interpolate((mapImages.order == order).astype(np.float32), sources, mode="constant")
+        isOnOrder = _is_source_on_order(mapImages, order, sources)
         # A PIXEL HOLDS THE FLUX THAT FALLS ON ITS AREA OF THE (WAVELENGTH, SLIT) PLANE. THAT AREA CHANGES ALONG THE
         # SLIT, BY ABOUT 8% OVER A NOD THROW AT THE RED END OF THE SOXS NIR ORDER 10, SO THE VALUE IS RESCALED TO THE
         # TARGET'S AREA TO KEEP THE OBJECT FLUX (DY-1679)
@@ -334,8 +335,8 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
         hasArea = np.isfinite(areaRatio) & (areaRatio > 0)
         areaRatio = np.where(hasArea, areaRatio, np.float32(1.0))
         newData[targets] = _interpolate(data, sources) * areaRatio
-        isBad = (_interpolate(badness, sources) > INTERPOLATION_TOLERANCE) | (coverage < 1.0 - INTERPOLATION_TOLERANCE)
-        isBad |= ~isInBounds | ~np.isfinite(newData[targets]) | ~hasArea
+        isBad = (_interpolate(badness, sources) > INTERPOLATION_TOLERANCE) | ~isOnOrder
+        isBad |= ~np.isfinite(newData[targets]) | ~hasArea
         if variance is not None:
             newVariance[targets] = _interpolate(variance, sources) * areaRatio**2
             isBad |= ~np.isfinite(newVariance[targets])
@@ -345,6 +346,15 @@ def shift_frame_along_slit(frame, orderShifts, mapImages):
     if hasUncertainty:
         uncertainty = StdDevUncertainty(np.sqrt(newVariance), unit=frame.uncertainty.unit)
     return CCDData(newData, unit=frame.unit, meta=copy.deepcopy(frame.meta), mask=newIsBad, uncertainty=uncertainty)
+
+
+def _is_source_on_order(mapImages: two_d_map_images, order: int, sources: Sequence[np.ndarray]) -> np.ndarray:
+    """*whether each (row, column) source lies on the detector and wholly inside the order*"""
+    rows, columns = sources
+    height, width = mapImages.order.shape
+    isInBounds = (rows >= 0) & (rows <= height - 1) & (columns >= 0) & (columns <= width - 1)
+    coverage = _interpolate((mapImages.order == order).astype(np.float32), sources, mode="constant")
+    return isInBounds & (coverage >= 1.0 - INTERPOLATION_TOLERANCE)
 
 
 def _pixel_areas(mapImages):
