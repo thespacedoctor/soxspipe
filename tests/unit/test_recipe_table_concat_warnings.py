@@ -184,3 +184,72 @@ def test_the_master_flat_recipe_merges_the_edge_detection_qc_without_a_concat_wa
     assert recipe.qc["qc_name"].tolist() == ["RON"]
     assert recipe.qc["qc_value"].dtype == qcTable["qc_value"].dtype
     assert list(recipe.qc.columns) == list(_empty_qc().columns)
+
+
+FLUX_CALIBRATION_SITES = [
+    ("soxs_nod", "soxs_nod", "_flux_calibrate_nod_stack", ("resp.fits", None, [], [])),
+    ("soxs_offset", "soxs_offset", "_flux_calibrate_stack", ("resp.fits", None, [])),
+    ("soxs_stare", "soxs_stare", "_flux_calibrate_spectrum", ("resp.fits", None, None, [])),
+]
+
+
+@pytest.mark.parametrize(("moduleName", "className", "method", "arguments"), FLUX_CALIBRATION_SITES)
+def test_the_flux_calibrating_recipes_merge_the_flux_calibration_products_without_a_concat_warning(
+    moduleName: str,
+    className: str,
+    method: str,
+    arguments: tuple[Any, ...],
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    module = import_module(f"soxspipe.recipes.{moduleName}")
+    sequenceModule = import_module("soxspipe.commonutils.sequence_airmass")
+    productsTable = _product_row()
+    # A FLOAT COLUMN JOINING AN EMPTY OBJECT COLUMN IS WHAT MAKES pd.concat WARN
+    productsTable["product_rank"] = [1.0]
+
+    class FluxCalibrator:
+        def __init__(self, **_: object) -> None:
+            return None
+
+        def calibrate(self) -> tuple[str, pd.DataFrame]:
+            return "fluxcal.fits", productsTable
+
+    monkeypatch.setattr(commonutils, "flux_calibration", FluxCalibrator)
+    monkeypatch.setattr(import_module("soxspipe.commonutils.flux_calibration"), "flux_calibration", FluxCalibrator)
+    monkeypatch.setattr(sequenceModule, "mean_airmass", lambda *_: 1.2)
+    monkeypatch.setattr(sequenceModule, "require_equal_exposure_times", lambda *_: None)
+    monkeypatch.setattr(module, "get_calibrations_path", lambda **_: "/cal")
+    monkeypatch.setattr(
+        module,
+        "detector_lookup",
+        lambda **_: SimpleNamespace(get=lambda arm: {"extinction": "extinction.dat"}),
+        raising=False,
+    )
+    recipe = getattr(module, className).__new__(getattr(module, className))
+    recipe.log = log
+    recipe.arm = "VIS"
+    recipe.kw = lambda keyword: keyword
+    recipe.settings = {}
+    recipe.detectorParams = {"extinction": "extinction.dat"}
+    recipe.recipeName = "soxs-test"
+    recipe.startNightDate = "2024-01-02"
+    recipe.sofName = "SYNTHETIC"
+    recipe.debug = False
+    recipe.products = _empty_products().assign(product_rank=pd.Series([], dtype="object"))
+    frame = SimpleNamespace(header={"EXPTIME": 30.0})
+    callArguments = tuple([frame] if argument == [] else argument for argument in arguments)
+    combined = SimpleNamespace(header={"EXPTIME": 30.0})
+    callArguments = tuple(
+        combined if argument is None and index == 2 else argument for index, argument in enumerate(callArguments)
+    )
+
+    # ACT
+    getattr(recipe, method)(*callArguments)
+
+    # ASSERT
+    assert recipe.products["product_label"].tolist() == ["MAP"]
+    assert recipe.products.index.tolist() == [0]
+    assert recipe.products["product_rank"].tolist() == [1.0]
+    assert recipe.products["product_rank"].dtype == "float64"

@@ -2482,9 +2482,7 @@ class create_dispersion_map:
 
         if self.arcFrame:
             self.slitWidth = self.arcFrame.header[self.kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
-            orderPixelTable[["R_slit", "fwhm_slit_px"]] = orderPixelTable.apply(
-                self._calculate_resolution_on_slit, axis=1
-            )
+            orderPixelTable[["R_slit", "fwhm_slit_px"]] = self._measure_slit_resolutions(orderPixelTable)
 
         else:
             orderPixelTable["R_slit"] = 0.0
@@ -2705,6 +2703,23 @@ class create_dispersion_map:
         self.log.debug("completed the ``calculate_residuals`` method")
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
 
+    def _measure_slit_resolutions(self, orderPixelTable):
+        """*measure the slit resolution and FWHM of every arc line*
+
+        The whole table is measured inside one ``quiet_least_squares_fit`` block: entering the block once per line
+        would invalidate the warning registries once per line.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, with the observed position and the pixel scale of each line
+
+        **Return:**
+
+        - ``resolutions`` -- a two-column table, ``R_slit`` then ``fwhm_slit_px``, one row per line
+        """
+        with quiet_least_squares_fit():
+            return orderPixelTable.apply(self._calculate_resolution_on_slit, axis=1)
+
     def _calculate_resolution_on_slit(self, row):
         import math
 
@@ -2741,15 +2756,13 @@ class create_dispersion_map:
         fit_g = fitting.LevMarLSQFitter()
 
         try:
-            with quiet_least_squares_fit():
-                g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
+            g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
+            stddev_corrected = float(g.stddev.value)
+
+            # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS. A 1.0 SLIT CANNOT BE LESS THAN 1.0 px
+            if stddev_corrected < guessStd / 2.0 or stddev_corrected > guessStd * 2.0:
+                return pd.Series([None, None])
         except Exception:
-            return pd.Series([None, None])
-
-        stddev_corrected = float(g.stddev.value)
-
-        # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS. A 1.0 SLIT CANNOT BE LESS THAN 1.0 px
-        if stddev_corrected < guessStd / 2.0 or stddev_corrected > guessStd * 2.0:
             return pd.Series([None, None])
 
         fwhm = stddev_corrected * stdToFwhm

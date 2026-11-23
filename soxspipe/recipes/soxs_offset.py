@@ -20,6 +20,7 @@ from soxspipe.commonutils.offset_frames import (
     classify_offset_frames,
 )
 from soxspipe.commonutils.toolkit import (
+    concat_tables,
     get_calibrations_path,
 )
 
@@ -639,7 +640,6 @@ class soxs_offset(soxs_nod):
 
         - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum
         """
-        import pandas as pd
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
@@ -664,7 +664,7 @@ class soxs_offset(soxs_nod):
             debug=self.debug,
         )
         filePathFluxcal, products = fluxCalibrator.calibrate()
-        self.products = pd.concat([self.products, products], ignore_index=True)
+        self.products = concat_tables([self.products, products], ignore_index=True)
         self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
         return filePathFluxcal

@@ -71,3 +71,18 @@ def test_two_arc_lines_in_one_cut_return_no_resolution_because_the_fit_is_too_wi
 
     # ASSERT
     assert result.tolist() == [None, None]
+
+
+def test_a_fit_whose_width_cannot_be_read_returns_no_resolution(log: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    from astropy.modeling import fitting
+
+    mapper, row = _resolution_mapper(log, _gaussian_cut(1.5))
+    brokenModel = SimpleNamespace(stddev=SimpleNamespace(value="not a number"))
+    monkeypatch.setattr(fitting, "LevMarLSQFitter", lambda: lambda *args: brokenModel)
+
+    # ACT
+    result = mapper._calculate_resolution_on_slit(row)
+
+    # ASSERT
+    assert result.tolist() == [None, None]
