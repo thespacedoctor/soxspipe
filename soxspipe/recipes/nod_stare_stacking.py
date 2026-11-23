@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from soxspipe.commonutils.toolkit import utcnow_string
-
 if TYPE_CHECKING:
     import numpy as np
 
@@ -392,8 +390,9 @@ class nod_stare_stacking:
         extractions = {}
         while stacks:
             stack = stacks.pop(0)
-            extractions[stack.position] = self._extract_position(stack, inputs, rawFrames)
-            del stack
+            extractions[stack.position] = self._extract_position_keeping_its_qc_only_with_a_trace(
+                stack, inputs, rawFrames
+            )
         combined = self._combine_extractions(extractions)
         forceFailure = self._finish_extraction(combined, allObjectFrames, inputs.responseFunctionPath)
         return combined.productPath, forceFailure
@@ -417,6 +416,30 @@ class nod_stare_stacking:
         _, notFlatPath = self.stack_extractions(spectra, notFlattened=True, orderJoins=orderJoins)
         return notFlatPath
 
+    def _extract_position_keeping_its_qc_only_with_a_trace(
+        self, stack: position_stack, inputs: reduction_inputs, rawFrames: list[str] | bool
+    ) -> stack_extraction:
+        """*extract a nod position, and drop the QC rows it added when it found no object trace*
+
+        A position with no trace is left out of the combined spectrum, so its QC rows (the boxcar ``EXTRACT METHOD``,
+        the sky and slit QCs of a frame with no object) must not describe that spectrum. Updates ``self.qc``.
+
+        **Key Arguments:**
+
+        - ``stack`` -- the ``position_stack`` of the position
+        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`
+        - ``rawFrames`` -- the raw file names the product header lists, or *False* to list every raw frame of the SOF
+
+        **Return:**
+
+        - ``extraction`` -- the ``stack_extraction`` of the position
+        """
+        qcBefore = self.qc.copy()
+        extraction = self._extract_position(stack, inputs, rawFrames)
+        if extraction.traceFallback:
+            self.qc = qcBefore
+        return extraction
+
     def _combine_extractions(self, extractions: dict[str, stack_extraction]) -> stack_extraction:
         """*combine the extractions of the nod positions into one spectrum, as the nod recipe combines its cycles*
 
@@ -438,8 +461,6 @@ class nod_stare_stacking:
         reference = kept or extractions
         first, last = reference[next(iter(reference))], reference[next(reversed(reference))]
         self.masterHeaderFrame = first.combinedObject
-        if kept and len(kept) < len(extractions):
-            self._record_optimal_extract_method()
         stackedSpectrum, extractionPath = self.stack_extractions(
             [
                 None if position not in kept else extraction.mergedSpectrum
@@ -458,7 +479,7 @@ class nod_stare_stacking:
             notFlatPath=notFlatPath,
             notFlatSpectrum=None,
             traceFallback=False,
-            slitEdgeSpill=any(extraction.slitEdgeSpill for extraction in extractions.values()),
+            slitEdgeSpill=any(extraction.slitEdgeSpill for extraction in reference.values()),
             extractionNotes=notes,
         )
 
@@ -494,23 +515,6 @@ class nod_stare_stacking:
             self.log.warning(warning)
             notes.append(("WARNING", warning))
         return notes
-
-    def _record_optimal_extract_method(self) -> None:
-        """*record that the combined spectrum is an optimal extraction, after a position fell back to a boxcar*
-
-        Each position's extraction records its own ``EXTRACT METHOD`` QC, and the QC report keeps the last row of a
-        name, so the row of a boxcar position would say the combined spectrum is a boxcar. Updates ``self.qc``.
-        """
-        from soxspipe.commonutils.horne_extraction import EXTRACT_METHOD_QC_COMMENT
-
-        self.add_qc(
-            qcName="EXTRACT METHOD",
-            qcValue="optimal",
-            qcComment=EXTRACT_METHOD_QC_COMMENT,
-            reductionDateUtc=utcnow_string(),
-            qcUnit=None,
-            toHeader=True,
-        )
 
     def _detrend_nod_frames(self, frames, master_bias, dark, orderTablePath):
         """*detrend each frame with the master bias or dark and the scattered-light fit, but not the flat*

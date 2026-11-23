@@ -27,6 +27,9 @@ pytestmark = pytest.mark.integration
 FLUX = {"A": 10.0, "B": 20.0}
 # THE NOT-FLATTENED SPECTRUM OF A POSITION IS THIS MANY TIMES ITS FLAT-FIELDED SPECTRUM
 NOT_FLAT_SCALE = 3.0
+# A QC THE EXTRACTION OF EACH POSITION ADDS, AND ITS VALUE FOR EACH POSITION
+POSITION_QC = "N ORDERS SLIT EDGE"
+QC_VALUE = {"A": 1, "B": 2}
 JOINS = {"A": {"10-11": 11}, "B": {"10-11": 12}}
 
 
@@ -93,6 +96,17 @@ def _recipe(
                     qcName="EXTRACT METHOD",
                     qcValue="boxcar" if self.traceFallback else "optimal",
                     qcComment="Optimal, or boxcar if no trace",
+                    obsDateUtc=recipe.dateObs,
+                    reductionDateUtc="2024-01-02T03:04:05",
+                    qcUnit=None,
+                    toHeader=True,
+                )
+                recipe.qc = append_qc(
+                    recipe.qc,
+                    recipeName=recipe.recipeName,
+                    qcName=POSITION_QC,
+                    qcValue=QC_VALUE[self.position],
+                    qcComment="A QC the extraction of a position adds",
                     obsDateUtc=recipe.dateObs,
                     reductionDateUtc="2024-01-02T03:04:05",
                     qcUnit=None,
@@ -457,7 +471,7 @@ def test_neither_position_having_a_trace_fails_as_nod_mode_does(
 def test_the_extract_method_qc_says_optimal_when_one_position_fell_back_to_a_boxcar(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ARRANGE: THE B EXTRACTION RECORDS ITS ROW LAST, AND THE QC REPORT KEEPS THE LAST ROW OF A NAME
+    # ARRANGE: THE B EXTRACTION RECORDS A BOXCAR ROW, BUT B IS LEFT OUT OF THE COMBINATION
     recipe, _ = _recipe(log, tmp_path, monkeypatch, fallbacks=("B",))
     _record_combination(recipe, monkeypatch)
 
@@ -465,7 +479,7 @@ def test_the_extract_method_qc_says_optimal_when_one_position_fell_back_to_a_box
     recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
 
     # ASSERT
-    assert _extract_methods(recipe) == ["optimal", "boxcar", "optimal"]
+    assert _extract_methods(recipe) == ["optimal"]
 
 
 def test_the_extract_method_qc_is_left_as_the_extractions_recorded_it_when_both_positions_have_a_trace(
@@ -500,3 +514,74 @@ def test_a_standard_position_with_no_trace_makes_no_not_flattened_extraction_and
         ([[FLUX["A"]], None], False),
         ([[FLUX["A"] * NOT_FLAT_SCALE], None], True),
     ]
+
+
+def _qc_values(recipe: soxs_stare, name: str) -> list[Any]:
+    return recipe.qc.loc[recipe.qc["qc_name"] == name, "qc_value"].tolist()
+
+
+def _header_values(path: str, name: str) -> list[Any]:
+    """Return the value of the ``ESO QC <name>`` card in each HDU of a FITS file that has one."""
+    from astropy.io import fits
+
+    key = f"ESO QC {name}".upper()
+    with fits.open(path) as hdus:
+        return [hdu.header[key] for hdu in hdus if key in hdu.header]
+
+
+@pytest.mark.parametrize(("dropped", "kept"), [("B", "A"), ("A", "B")])
+def test_the_qc_rows_of_a_position_with_no_trace_reach_neither_the_report_nor_the_product_header(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dropped: str, kept: str
+) -> None:
+    # ARRANGE: THE REAL COMBINATION WRITES THE PRODUCT, WITH THE QC TABLE IN ITS HEADER
+    recipe, _ = _recipe(log, tmp_path, monkeypatch, fallbacks=(dropped,))
+    monkeypatch.setattr(recipe, "_write_ascii_spectrum", lambda *args: None)
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *args: None)
+
+    # ACT
+    productPath, _ = recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+
+    # ASSERT: ONLY THE KEPT POSITION'S ROWS SURVIVE, INCLUDING ITS OPTIMAL EXTRACT METHOD
+    assert _qc_values(recipe, POSITION_QC) == [QC_VALUE[kept]]
+    assert _extract_methods(recipe) == ["optimal"]
+    assert _header_values(productPath, POSITION_QC) == [QC_VALUE[kept]]
+    assert _header_values(productPath, "EXTRACT METHOD") == ["optimal"]
+
+
+def test_the_qc_rows_of_both_positions_stay_when_both_have_a_trace(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch)
+    _record_combination(recipe, monkeypatch)
+
+    # ACT
+    recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+
+    # ASSERT
+    assert _qc_values(recipe, POSITION_QC) == [QC_VALUE["A"], QC_VALUE["B"]]
+
+
+def test_a_slit_edge_spill_in_a_position_left_out_does_not_count(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: B SPILLS OVER THE SLIT EDGE, BUT B HAS NO TRACE AND IS LEFT OUT
+    recipe, _ = _recipe(log, tmp_path, monkeypatch)
+    spilled: list[bool] = []
+    monkeypatch.setattr(recipe, "stack_extractions", lambda *_, **__: (Table({"WAVE": [500.0]}), "combined.fits"))
+    monkeypatch.setattr(
+        recipe, "_finish_extraction", lambda extraction, *_: spilled.append(extraction.slitEdgeSpill) or False
+    )
+    realExtract = recipe._extract_position
+
+    def extract_position(stack: position_stack, inputs: Any, rawFrames: Any) -> stack_extraction:
+        extraction = realExtract(stack, inputs, rawFrames)
+        return extraction._replace(slitEdgeSpill=stack.position == "B", traceFallback=stack.position == "B")
+
+    monkeypatch.setattr(recipe, "_extract_position", extract_position)
+
+    # ACT
+    recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+
+    # ASSERT
+    assert spilled == [False]
