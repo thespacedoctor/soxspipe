@@ -132,14 +132,19 @@ def test_base_util_imports_the_toolkit_helpers_before_it_branches(monkeypatch: p
         base_util(log, {}, associatedFrame=frame)
 
 
-def _write_two_d_map(mapPath: Path, shape: tuple[int, int], binning: tuple[int, int] | None) -> None:
-    """Write a 2D dispersion map file, optionally without its binning keywords."""
+def _write_two_d_map(
+    mapPath: Path,
+    shape: tuple[int, int],
+    binning: tuple[int, int] | None,
+    planes: tuple[tuple[str, float], ...] = (("WAVELENGTH", 500.0), ("SLIT", 0.5), ("ORDER", 10.0)),
+) -> None:
+    """Write a 2D dispersion map file, optionally without its binning keywords or some of its planes."""
     primary = fits.PrimaryHDU(np.ones(shape))
     if binning is not None:
         primary.header["WIN_BINX"] = binning[0]
         primary.header["WIN_BINY"] = binning[1]
     hdus = [primary]
-    for name, value in (("WAVELENGTH", 500.0), ("SLIT", 0.5), ("ORDER", 10.0)):
+    for name, value in planes:
         hdus.append(fits.ImageHDU(np.full(shape, value), name=name))
     fits.HDUList(hdus).writeto(mapPath)
 
@@ -297,6 +302,7 @@ def _resource_warnings_naming(path: Path, caught: list[warnings.WarningMessage])
 
 
 def _binned_frame(binning: int) -> CCDData:
+    """Build a 2x2 VIS frame with the same binning on both axes."""
     return CCDData(
         np.ones((2, 2)),
         unit="adu",
@@ -318,13 +324,13 @@ def test_base_util_closes_the_two_d_map_file_before_the_constructor_returns(
         warnings.simplefilter("always", ResourceWarning)
         result = base_util(log, {}, associatedFrame=_binned_frame(1), twoDMapPath=str(mapPath))
         wavelength = result.twoDMap["WAVELENGTH"].data.tolist()
-        mjdHeader = result.twoDMap["WAVELENGTH"].header
+        wavelengthHeader = result.twoDMap["WAVELENGTH"].header
         del result
         gc.collect()
 
     # ASSERT: THE MAP PLANES AND HEADERS STAY READABLE AFTER CONSTRUCTION
     assert wavelength == [[500.0, 500.0], [500.0, 500.0]]
-    assert mjdHeader["EXTNAME"] == "WAVELENGTH"
+    assert wavelengthHeader["EXTNAME"] == "WAVELENGTH"
 
     # ASSERT: NO FILE HANDLE WAS LEFT FOR THE GARBAGE COLLECTOR TO CLOSE
     assert _resource_warnings_naming(mapPath, caught) == []
@@ -363,13 +369,7 @@ def test_base_util_closes_the_two_d_map_file_when_construction_raises(
     _patch_lookups(monkeypatch, "x")
     _patch_two_d_map_helpers(monkeypatch, np.zeros((2, 2), dtype=bool))
     mapPath = tmp_path / "map_without_order.fits"
-    primary = fits.PrimaryHDU(np.ones((2, 2)))
-    primary.header["WIN_BINX"] = 1
-    primary.header["WIN_BINY"] = 1
-    hdus = [primary]
-    for name, value in (("WAVELENGTH", 500.0), ("SLIT", 0.5)):
-        hdus.append(fits.ImageHDU(np.full((2, 2), value), name=name))
-    fits.HDUList(hdus).writeto(mapPath)
+    _write_two_d_map(mapPath, (2, 2), binning=(1, 1), planes=(("WAVELENGTH", 500.0), ("SLIT", 0.5)))
 
     # ACT
     with warnings.catch_warnings(record=True) as caught:

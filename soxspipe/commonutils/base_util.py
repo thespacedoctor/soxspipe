@@ -236,11 +236,8 @@ class base_util:
         **Return:**
             - ``twoDMap`` -- an in-memory HDUList holding a copy of each HDU of the map
         """
-        hdul = fits.open(twoDMapPath)
-        try:
+        with fits.open(twoDMapPath) as hdul:
             return fits.HDUList([hdu.copy() for hdu in hdul])
-        finally:
-            hdul.close()
 
     def _read_map_binning(self):
         """*read the window binning from the 2D map's primary header, defaulting to 1x1*
