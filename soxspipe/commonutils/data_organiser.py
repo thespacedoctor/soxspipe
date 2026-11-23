@@ -45,6 +45,7 @@ from soxspipe.commonutils.missing_calibrations import (
     find_missing_calibrations,
     missing_reasons,
 )
+from soxspipe.commonutils.offset_frames import OFFSET_TECHNIQUES, SKY_TYPE
 from soxspipe.commonutils.session_status_restore import (
     classify_session_sofs,
     format_session_summary,
@@ -3168,7 +3169,14 @@ class data_organiser:
         c = self.conn.cursor()
         placeholders = ", ".join("?" for _ in self.reductionOrder)
         sqlQuery = f"update raw_frames set ignore = 1 WHERE `eso dpr type` not in ({placeholders})"  # noqa: S608
-        c.execute(sqlQuery, self.reductionOrder)
+        sqlParams = list(self.reductionOrder)
+
+        # THE SKY FRAMES OF THE SOXS OFFSET TEMPLATES ARE THE OFF FRAMES OF THE OFFSET SOFS, SO THEY ARE KEPT (DY-2355)
+        if self.instrument.upper() == "SOXS":
+            techPlaceholders = ", ".join("?" for _ in OFFSET_TECHNIQUES)
+            sqlQuery += f" AND NOT (`eso dpr type` = ? AND IFNULL(`eso dpr tech`, '') IN ({techPlaceholders}))"
+            sqlParams += [SKY_TYPE, *OFFSET_TECHNIQUES]
+        c.execute(sqlQuery, sqlParams)
         self.conn.commit()
 
         # FLAG STANDARDS NOT IN STATIC LIBRARY TO IGNORE
@@ -3779,6 +3787,35 @@ class data_organiser:
             print(format_requeue_summary(consumers))
         return rejoined, consumers
 
+    @staticmethod
+    def _offset_type_clause(ttype, offsetTechs):
+        """*build the `(sql, params)` pair that selects one `eso dpr type` and the SKY frames of its offset runs*
+
+        A SKY frame is selected when a frame of `ttype` shares its arm, offset technique and template start
+        (`eso tpl start`), so a SKY frame joins the SOF of the frames it was taken with, and a SKY frame with no such
+        frame joins none.
+
+        **Key Arguments:**
+
+        - ``ttype`` -- the `eso dpr type` of the SOF map entry
+        - ``offsetTechs`` -- the offset techniques of the SOF map entry
+
+        **Return:**
+
+        - ``sqlClause`` -- the parenthesised `where` condition, to be applied to `raw_frames_valid`
+        - ``sqlParams`` -- the parameters to bind against ``sqlClause``
+        """
+        techPlaceholders = ", ".join("?" for _ in offsetTechs)
+        sqlClause = (
+            "(`eso dpr type` = ? OR (`eso dpr type` = ? "  # noqa: S608
+            f"AND `eso dpr tech` IN ({techPlaceholders}) "
+            "AND EXISTS (SELECT 1 FROM raw_frames_valid AS run WHERE run.`eso dpr type` = ? "
+            "AND run.`eso dpr tech` = raw_frames_valid.`eso dpr tech` "
+            "AND run.`eso seq arm` = raw_frames_valid.`eso seq arm` "
+            "AND run.`eso tpl start` = raw_frames_valid.`eso tpl start`)))"
+        )
+        return sqlClause, [ttype, SKY_TYPE, *offsetTechs, ttype]
+
     def get_raw_frames_and_groups(
         self,
         ttype=None,
@@ -3820,7 +3857,13 @@ class data_organiser:
 
         whereClauses = []
         params: list = []
-        if ttype:
+        offsetTechs = [t for t in tech if t in OFFSET_TECHNIQUES] if ttype and tech else []
+        takesOffsetSky = bool(offsetTechs) and self.instrument.upper() == "SOXS"
+        if takesOffsetSky:
+            typeClause, typeParams = self._offset_type_clause(ttype, offsetTechs)
+            whereClauses.append(typeClause)
+            params.extend(typeParams)
+        elif ttype:
             whereClauses.append("`eso dpr type` = ?")
             params.append(ttype)
         if arm:
@@ -3844,6 +3887,10 @@ class data_organiser:
             con=conn,
             params=params,
         )
+
+        # THE SKY FRAMES OF AN OFFSET RUN GROUP WITH THE FRAMES OF THE RUN, SO THEY TAKE THE RUN'S FRAME TYPE (DY-2355)
+        if takesOffsetSky:
+            rawFrames.loc[rawFrames["eso dpr type"] == SKY_TYPE, "eso dpr type"] = ttype
 
         rawFrames = rawFrames.astype(
             {
