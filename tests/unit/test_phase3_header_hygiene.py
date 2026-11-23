@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pandas as pd
 import pytest
 from astropy.io import fits
 from astropy.table import Table
@@ -13,6 +14,8 @@ from soxspipe.commonutils.phase3 import (
     JOINED_MODE,
     PER_ARM_MODE,
     basic_header_scrubbing,
+    pipe_id,
+    sort_keywords,
     write_fits_table_to_disk,
 )
 from tests.factories import instrument_header, pipeline_settings
@@ -32,6 +35,8 @@ CCDPROC_CARDS = (
 )
 LONG_VALUE_LENGTH = 69
 MAX_VALUE_LENGTH = 68
+COMMENT_LENGTH = 70
+JOINED_ARM_PREFIXES = ("ESO DET ", "ESO INS ", "ESO SEQ ")
 
 
 def _science_header() -> fits.Header:
@@ -58,14 +63,23 @@ def _scrub(tmp_path: Path, log: object, header: fits.Header, **kwargs: object) -
     return basic_header_scrubbing(log=log, settings=pipeline_settings(tmp_path), header=header, **kwargs)
 
 
-def _write(tmp_path: Path, log: object, header: fits.Header, **kwargs: object) -> Path:
+def _write(
+    tmp_path: Path,
+    log: object,
+    header: fits.Header,
+    *,
+    tables: list | None = None,
+    phase3: bool = True,
+    **kwargs: object,
+) -> Path:
     outputPath = tmp_path / "SOXS_product.fits"
     write_fits_table_to_disk(
         log=log,
         settings=pipeline_settings(tmp_path),
         header=header,
-        tables=kwargs.pop("tables", [Table({"WAVE": [500.0, 500.1]})]),
+        tables=[Table({"WAVE": [500.0, 500.1]})] if tables is None else tables,
         filePath=outputPath,
+        phase3=phase3,
         **kwargs,
     )
     return outputPath
@@ -113,7 +127,7 @@ def test_joined_mode_drops_det_ins_seq_and_qc_cards(tmp_path: Path, log: object)
     scrubbed = _scrub(tmp_path, log, header, mode=JOINED_MODE)
 
     # ASSERT
-    droppedPrefixes = ("ESO DET ", "ESO INS ", "ESO SEQ ", "ESO QC ")
+    droppedPrefixes = (*JOINED_ARM_PREFIXES, "ESO QC ")
     assert not [card for card in scrubbed if card.startswith(droppedPrefixes)]
 
 
@@ -206,20 +220,19 @@ def test_written_table_drops_det_ins_seq_and_qc_cards_in_joined_mode(tmp_path: P
     with fits.open(outputPath) as hdus:
         assert hdus[0].header["ESO OBS ID"] == 42
         assert hdus[0].header["ESO TEL TARG ALPHA"] == pytest.approx(123456.789)
-        assert not [card for card in hdus[0].header if card.startswith(("ESO DET ", "ESO INS ", "ESO SEQ "))]
+        assert not [card for card in hdus[0].header if card.startswith(JOINED_ARM_PREFIXES)]
 
 
-def test_joined_mode_drops_the_qc_rows_the_writer_is_asked_to_add(tmp_path: Path, log: object) -> None:
+def test_joined_mode_keeps_the_qc_rows_the_caller_adds_and_drops_the_arm_qc_cards(tmp_path: Path, log: object) -> None:
     # ARRANGE
-    import pandas as pd
-
-    qc = pd.DataFrame([{"qc_name": "RON", "qc_value": 3.2, "qc_comment": "Read noise", "to_header": True}])
+    qc = pd.DataFrame([{"qc_name": "NIR SCALE", "qc_value": 1.02, "qc_comment": "NIR scale", "to_header": True}])
 
     # ACT
-    outputPath = _write(tmp_path, log, instrument_header(), mode=JOINED_MODE, qc=qc)
+    outputPath = _write(tmp_path, log, _science_header(), mode=JOINED_MODE, qc=qc)
 
     # ASSERT
     with fits.open(outputPath) as hdus:
+        assert hdus[0].header["ESO QC NIR SCALE"] == pytest.approx(1.02)
         assert "ESO QC RON" not in hdus[0].header
 
 
@@ -351,10 +364,64 @@ def test_hierarch_card_that_astropy_would_write_as_continue_raises(tmp_path: Pat
 def test_long_comment_card_does_not_raise(tmp_path: Path, log: object) -> None:
     # ARRANGE
     header = _science_header()
-    header["COMMENT"] = "D" * 70
+    header["COMMENT"] = "D" * COMMENT_LENGTH
 
     # ACT
     outputPath = _write(tmp_path, log, header)
 
     # ASSERT
     assert outputPath.exists()
+
+
+def test_pipe_id_is_the_soxspipe_version_string() -> None:
+    # ARRANGE AND ACT
+    value = pipe_id()
+
+    # ASSERT
+    assert value == f"soxspipe/v{__version__}"
+
+
+def test_plain_writer_leaves_the_header_as_the_scrubber_and_sorter_make_it(tmp_path: Path, log: object) -> None:
+    """A table that is not a Phase 3 product keeps its raw cards: the writer adds no Phase 3 card and drops none."""
+    # ARRANGE
+    header = _science_header()
+    header["HIERARCH ESO PRO REC1 RAW1 NAME"] = "C" * MAX_VALUE_LENGTH
+    expected = sort_keywords(
+        log, basic_header_scrubbing(log=log, settings=pipeline_settings(tmp_path), header=header.copy())
+    )
+    table = Table({"WAVE": [500.0]})
+    table.meta["BUNIT"] = "nm"
+
+    # ACT
+    outputPath = _write(tmp_path, log, header, tables=[table], phase3=False)
+
+    # ASSERT
+    with fits.open(outputPath) as hdus:
+        written = hdus[0].header
+        assert {k: written[k] for k in expected} == {k: expected[k] for k in expected}
+        assert not {"ORIGIN", "PROCSOFT", "REFERENC"} & set(written)
+        assert written["ORIGFILE"] == "SOXS.2026-01-02T03:04:05.678.fits"
+        assert hdus[1].header["BUNIT"] == "nm"
+        assert "EXTNAME" not in hdus[1].header
+
+
+def test_plain_writer_accepts_a_long_value_as_it_always_has(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    header = _science_header()
+    header["OBJECT"] = "A" * LONG_VALUE_LENGTH
+
+    # ACT
+    outputPath = _write(tmp_path, log, header, phase3=False)
+
+    # ASSERT
+    assert outputPath.exists()
+
+
+@pytest.mark.parametrize("option", [{"extname": "SPECTRUM"}, {"mode": JOINED_MODE}])
+def test_plain_writer_refuses_a_phase3_option(tmp_path: Path, log: object, option: dict) -> None:
+    # ARRANGE
+    header = _science_header()
+
+    # ACT AND ASSERT
+    with pytest.raises(ValueError, match="phase3"):
+        _write(tmp_path, log, header, phase3=False, **option)

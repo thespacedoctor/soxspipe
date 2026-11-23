@@ -2104,6 +2104,8 @@ class soxs_nod(base_recipe):
             tables=[stackedSpectrum],
             filePath=filePath,
             qc=self.qc,
+            phase3=True,
+            extname="SPECTRUM",
         )
 
         self.add_product(

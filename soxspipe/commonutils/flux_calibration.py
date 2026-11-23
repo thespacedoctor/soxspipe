@@ -341,7 +341,14 @@ class flux_calibration:
         filePath = f"{self.productDir}/{filename}"
 
         write_fits_table_to_disk(
-            log=self.log, settings=self.settings, header=header, tables=[fluxCalSpectrum], filePath=filePath, qc=None
+            log=self.log,
+            settings=self.settings,
+            header=header,
+            tables=[fluxCalSpectrum],
+            filePath=filePath,
+            qc=None,
+            phase3=True,
+            extname="SPECTRUM",
         )
 
         from datetime import datetime

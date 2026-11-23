@@ -54,9 +54,9 @@ def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=Fal
     """
     *Clean up header keywords/values/comments to make the header ESO Phase 3 compliant*
 
-    The per-arm mode keeps every ``HIERARCH ESO`` card except ``DPR``, and the ``ESO QC`` cards. The joined mode is for
-    a header taken from the UV-VIS arm of a joined product: it also drops the ``DET``, ``INS``, ``SEQ`` and ``QC``
-    cards and keeps the ``OBS``, ``TPL`` and ``TEL`` cards.
+    The per-arm mode keeps the ``ESO QC`` cards and every other ``HIERARCH ESO`` card except ``DPR``. The joined mode
+    is for a header taken from the UV-VIS arm of a joined product: it also drops the ``DET``, ``INS``, ``SEQ`` and
+    ``QC`` cards and keeps the ``OBS``, ``TPL`` and ``TEL`` cards.
 
     **Key Arguments:**
 
@@ -196,7 +196,19 @@ def add_qc_to_header(header, qc):
 
 
 def pipe_id():
-    """*return the pipeline identification string, as the ``ESO PRO REC1 PIPE ID`` card holds it*"""
+    """*return the pipeline identification string, as the ``ESO PRO REC1 PIPE ID`` card holds it*
+
+    **Return:**
+
+    - ``pipeId`` -- the string ``soxspipe/v<version>``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.phase3 import pipe_id
+    set_header_card(header, "PROCSOFT", pipe_id())
+    ```
+    """
     from soxspipe.__version__ import __version__
 
     return f"soxspipe/v{__version__}"
@@ -250,13 +262,31 @@ def _set_identification_cards(header, filePath):
     set_header_card(header, "REFERENC", "", "Reference publication")
 
 
-def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None, mode=PER_ARM_MODE, extname=None):
-    """
-    *Write a fits table to disk with a header that is ESO Phase 3 compliant*
+def _tables_to_hdus(tables, dropCards=()):
+    """*convert tables to FITS binary table HDUs, each without the cards in ``dropCards``*"""
+    from astropy.io import fits
+    from astropy.table import Table
 
-    The primary header gets ``ORIGFILE`` (the file's own name), ``ORIGIN``, ``PROCSOFT`` and ``REFERENC``, and no
-    ``EXTNAME``. Every HDU loses ``BUNIT``, ``SXSPRE`` and the ccdproc cards. The write raises a ``ValueError``, and no
-    file is written, when a header holds a value over 68 characters or a ``CONTINUE`` card.
+    hdus = []
+    for table in tables:
+        if not isinstance(table, Table):
+            table = Table.from_pandas(table)
+        hdu = fits.table_to_hdu(table)
+        _drop_cards(hdu.header, dropCards)
+        hdus.append(hdu)
+    return hdus
+
+
+def write_fits_table_to_disk(
+    log, settings, header, tables, filePath, qc=None, phase3=False, mode=PER_ARM_MODE, extname=None
+):
+    """
+    *Write a fits table to disk, with an ESO Phase 3 compliant header when asked*
+
+    A plain call scrubs and sorts the header and writes the table as it always has. With ``phase3=True`` the primary
+    header gets ``ORIGFILE`` (the file's own name), ``ORIGIN``, ``PROCSOFT`` and ``REFERENC``, and no ``EXTNAME``. Every
+    HDU loses ``BUNIT``, ``SXSPRE`` and the ccdproc cards, and the write raises a ``ValueError``, with no file written,
+    when a header holds a value over 68 characters or a ``CONTINUE`` card.
 
     **Key Arguments:**
 
@@ -266,8 +296,11 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None, m
     - ``tables`` -- the tables to be written to disk, one extension each
     - ``filePath`` -- the path to the output file
     - ``qc`` -- a dataframe containing QC metrics to be added to the header (default: None)
-    - ``mode`` -- ``PER_ARM_MODE`` or ``JOINED_MODE``, the header carry-over rules (default: PER_ARM_MODE)
-    - ``extname`` -- the ``EXTNAME`` of the first table, e.g. ``SPECTRUM`` (default: None, no ``EXTNAME``)
+    - ``phase3`` -- write a Phase 3 product (default: False)
+    - ``mode`` -- ``PER_ARM_MODE`` or ``JOINED_MODE``, the header carry-over rules; needs ``phase3``
+      (default: PER_ARM_MODE)
+    - ``extname`` -- the ``EXTNAME`` of the first table, e.g. ``SPECTRUM``; needs ``phase3``
+      (default: None, no ``EXTNAME``)
 
     **Usage:**
 
@@ -278,32 +311,21 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None, m
     """
     log.debug("starting the ``write_fits_table_to_disk`` method")
     from astropy.io import fits
-    from astropy.table import Table
 
     from soxspipe.commonutils.atomic_fits import write_hdulist_atomically
 
-    if qc is not None:
-        # ADD QC METRICS TO HEADER
-        add_qc_to_header(header, qc)
+    if not phase3 and (extname or mode != PER_ARM_MODE):
+        raise ValueError("write_fits_table_to_disk: extname and mode need phase3=True")
 
-    # CONVERT TO FITS BINARY TABLE HDU
-    tableExensions = []
-    for table in tables:
-        if not isinstance(table, Table):
-            table = Table.from_pandas(table)
-        hdu = fits.table_to_hdu(table)
-        _drop_cards(hdu.header, TABLE_DROPPED_CARDS)
-        tableExensions.append(hdu)
-    if extname and tableExensions:
-        tableExensions[0].name = extname
-
-    header = basic_header_scrubbing(log, settings, header, mode=mode, isTable=True)
-    _set_identification_cards(header, filePath)
-    header = sort_keywords(log, header)
-
-    validate_header_cards(header, "primary")
-    for index, hdu in enumerate(tableExensions, start=1):
-        validate_header_cards(hdu.header, f"extension {index}")
+    if phase3:
+        tableExensions, header = _phase3_parts(log, settings, header, tables, filePath, qc, mode, extname)
+    else:
+        if qc is not None:
+            # ADD QC METRICS TO HEADER
+            add_qc_to_header(header, qc)
+        tableExensions = _tables_to_hdus(tables)
+        header = basic_header_scrubbing(log, settings, header)
+        header = sort_keywords(log, header)
 
     priHDU = fits.PrimaryHDU(header=header)
     hduList = fits.HDUList([priHDU] + tableExensions)
@@ -311,3 +333,25 @@ def write_fits_table_to_disk(log, settings, header, tables, filePath, qc=None, m
     write_hdulist_atomically(hduList, filePath, checksum=True, overwrite=True)
 
     log.debug("completed the ``write_fits_table_to_disk`` method")
+
+
+def _phase3_parts(log, settings, header, tables, filePath, qc, mode, extname):
+    """*build the validated table HDUs and primary header of a Phase 3 product*
+
+    The caller's QC rows are added after the scrub, so a joined product keeps them while it drops the QC cards that
+    came from the arm header.
+    """
+    tableExensions = _tables_to_hdus(tables, dropCards=TABLE_DROPPED_CARDS)
+    if extname and tableExensions:
+        tableExensions[0].name = extname
+
+    header = basic_header_scrubbing(log, settings, header, mode=mode, isTable=True)
+    if qc is not None:
+        add_qc_to_header(header, qc)
+    _set_identification_cards(header, filePath)
+    header = sort_keywords(log, header)
+
+    validate_header_cards(header, "primary")
+    for index, hdu in enumerate(tableExensions, start=1):
+        validate_header_cards(hdu.header, f"extension {index}")
+    return tableExensions, header

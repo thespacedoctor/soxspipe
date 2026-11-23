@@ -748,6 +748,8 @@ class horne_extraction(base_util):
                 tables=[mergedTable],
                 filePath=filePath,
                 qc=self.qc,
+                phase3=True,
+                extname="SPECTRUM",
             )
 
             # THE ASCII SPECTRUM IS WRITTEN BY THE RECIPE AFTER FLUX CALIBRATION (SEE spectrum_ascii). THE MERGED-TABLE
