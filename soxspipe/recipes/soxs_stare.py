@@ -875,16 +875,17 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
                 unflattenedSkySubtractedCCDData, skymodelCCDData, twoDMap, dispMap, optimalExtractor.flatPassHandoff
             )
         return stack_extraction(
-            productPath,
-            combined_object,
-            mergedSpectumDF,
-            orderJoins,
-            extractionPath,
-            responseInputs,
-            None,
-            optimalExtractor.traceFallback,
-            bool(optimalExtractor.slitEdgeOrders),
-            list(optimalExtractor.extractionNotes),
+            productPath=productPath,
+            combinedObject=combined_object,
+            mergedSpectrum=mergedSpectumDF,
+            orderJoins=orderJoins,
+            extractionPath=extractionPath,
+            responseInputs=responseInputs,
+            notFlatPath=None,
+            notFlatSpectrum=None,
+            traceFallback=optimalExtractor.traceFallback,
+            slitEdgeSpill=bool(optimalExtractor.slitEdgeOrders),
+            extractionNotes=list(optimalExtractor.extractionNotes),
         )
 
     def _finish_extraction(
@@ -1744,7 +1745,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
 
         - ``forceFailure`` -- the failure the response function reports, which forces the recipe to fail
         """
-        extractionPath_notflat = self._extract_not_flattened(
+        extractionPath_notflat, _ = self._extract_not_flattened(
             unflattenedSkySubtractedCCDData, skymodelCCDData, twoDMap, dispMap, flatPass
         )
         return self._compute_response(extractionPath, extractionPath_notflat, orderJoins, objectFrames)
@@ -1766,6 +1767,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         **Return:**
 
         - ``extractionPath_notflat`` -- the path to the not-flattened extraction
+        - ``mergedSpectrumDF`` -- the order-merged spectrum of the not-flattened extraction
         """
         from soxspipe.commonutils import horne_extraction
 
@@ -1789,8 +1791,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             scienceHeaders=self.scienceHeaders,
             flatPass=flatPass,
         )
-        self.qc, self.products, _, _, extractionPath_notflat = optimalExtractor.extract()
-        return extractionPath_notflat
+        self.qc, self.products, mergedSpectrumDF, _, extractionPath_notflat = optimalExtractor.extract()
+        return extractionPath_notflat, mergedSpectrumDF
 
     def _compute_response(self, extractionPath, extractionPath_notflat, orderJoins, objectFrames):
         """*compute the response function from the flat-fielded and not-flattened extractions of a standard*

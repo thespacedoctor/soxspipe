@@ -89,6 +89,7 @@ def _extraction(**overrides: Any) -> stack_extraction:
         "extractionPath": "extracted.fits",
         "responseInputs": None,
         "notFlatPath": None,
+        "notFlatSpectrum": None,
         "traceFallback": False,
         "slitEdgeSpill": False,
         "extractionNotes": [],
@@ -284,17 +285,18 @@ def test_a_standard_that_spills_over_the_slit_edge_fails_even_when_the_response_
     assert any(level == "error" and "spills over the slit edge" in message for level, message in log.messages)
 
 
-def test_the_not_flattened_extraction_is_handed_the_flat_pass_and_returns_its_path(
+def test_the_not_flattened_extraction_is_handed_the_flat_pass_and_returns_its_path_and_spectrum(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # ARRANGE
     recipe, _, extractor = _recipe(log, tmp_path, monkeypatch, isStandard=True)
 
     # ACT
-    path = recipe._extract_not_flattened("UNFLAT", "SKY", "map.fits", "disp.fits", HANDOFF)
+    path, spectrum = recipe._extract_not_flattened("UNFLAT", "SKY", "map.fits", "disp.fits", HANDOFF)
 
     # ASSERT
     assert path == "notflat.fits"
+    assert spectrum["WAVE"].tolist() == [500.0]
     built = extractor.built[0]
     assert built["notFlattened"] is True
     assert built["flatPass"] is HANDOFF

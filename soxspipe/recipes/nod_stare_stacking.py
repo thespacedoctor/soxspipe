@@ -50,8 +50,8 @@ class response_inputs(NamedTuple):
 class stack_extraction(NamedTuple):
     """The flat-fielded extraction of one stack, before flux calibration or the response curve.
 
-    ``responseInputs`` is set when the standard's not-flattened extraction is still to run, and ``notFlatPath`` when it
-    already ran. Both are None for a science stack.
+    ``responseInputs`` is set when the standard's not-flattened extraction is still to run, and ``notFlatPath`` and
+    ``notFlatSpectrum`` when it already ran. All three are None for a science stack.
     """
 
     productPath: str | None
@@ -61,6 +61,7 @@ class stack_extraction(NamedTuple):
     extractionPath: str | bool
     responseInputs: response_inputs | None
     notFlatPath: str | None
+    notFlatSpectrum: Any
     traceFallback: bool
     slitEdgeSpill: bool
     extractionNotes: list[tuple[str, str]]
@@ -319,11 +320,32 @@ class nod_stare_stacking:
             extraction = self._extract_stack(
                 stack.notFlattened, stack.objectFrames, rawFrames, inputs, stack.flattened, stack.uncovered
             )
+            extraction = self._extract_not_flattened_of_standard(extraction)
         finally:
             self.sofName, self.filenameTemplate = sofName, filenameTemplate
             self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
         self._label_merged_table_row(firstNewRow, stack.position)
         return extraction
+
+    def _extract_not_flattened_of_standard(self, extraction: stack_extraction) -> stack_extraction:
+        """*run the not-flattened extraction of a standard star, with the flat pass of the same position*
+
+        Updates ``self.qc`` and ``self.products``. The extraction's inputs are released once it has run.
+
+        **Key Arguments:**
+
+        - ``extraction`` -- the ``stack_extraction`` of the flat-fielded pass
+
+        **Return:**
+
+        - ``extraction`` -- the same extraction with the path and spectrum of the not-flattened pass, or the extraction
+          as it was when it has no ``responseInputs`` (a science frame, a standard with a response table, or one with
+          no object trace)
+        """
+        if extraction.responseInputs is None:
+            return extraction
+        notFlatPath, notFlatSpectrum = self._extract_not_flattened(*extraction.responseInputs)
+        return extraction._replace(responseInputs=None, notFlatPath=notFlatPath, notFlatSpectrum=notFlatSpectrum)
 
     def _label_merged_table_row(self, firstRow: int, position: str) -> None:
         """*label the merged-table product rows from ``firstRow`` on with a nod position*
@@ -374,6 +396,25 @@ class nod_stare_stacking:
         forceFailure = self._finish_extraction(combined, allObjectFrames, inputs.responseFunctionPath)
         return combined.productPath, forceFailure
 
+    def _combine_not_flattened(self, extractions: dict[str, stack_extraction], orderJoins: Any) -> str | None:
+        """*combine the not-flattened extractions of the nod positions of a standard star*
+
+        **Key Arguments:**
+
+        - ``extractions`` -- the ``stack_extraction`` of each nod position, by position
+        - ``orderJoins`` -- the order joins of the combined spectrum
+
+        **Return:**
+
+        - ``notFlatPath`` -- the path to the combined not-flattened spectrum, or None when the positions made no
+          not-flattened extraction
+        """
+        spectra = [extraction.notFlatSpectrum for extraction in extractions.values()]
+        if all(spectrum is None for spectrum in spectra):
+            return None
+        _, notFlatPath = self.stack_extractions(spectra, notFlattened=True, orderJoins=orderJoins)
+        return notFlatPath
+
     def _combine_extractions(self, extractions: dict[str, stack_extraction]) -> stack_extraction:
         """*combine the extractions of the nod positions into one spectrum, as the nod recipe combines its cycles*
 
@@ -392,6 +433,7 @@ class nod_stare_stacking:
         stackedSpectrum, extractionPath = self.stack_extractions(
             [extraction.mergedSpectrum for extraction in extractions.values()], orderJoins=last.orderJoins
         )
+        notFlatPath = self._combine_not_flattened(extractions, last.orderJoins)
         notes = [
             (level, f"[{position}] {message}")
             for position, extraction in extractions.items()
@@ -404,7 +446,8 @@ class nod_stare_stacking:
             orderJoins=last.orderJoins,
             extractionPath=extractionPath,
             responseInputs=None,
-            notFlatPath=None,
+            notFlatPath=notFlatPath,
+            notFlatSpectrum=None,
             traceFallback=False,
             slitEdgeSpill=any(extraction.slitEdgeSpill for extraction in extractions.values()),
             extractionNotes=notes,

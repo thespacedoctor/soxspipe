@@ -24,6 +24,8 @@ from tests.integration.test_soxs_stare_nod_mode import MARKER, SOF_NAME, _tail_i
 pytestmark = pytest.mark.integration
 
 FLUX = {"A": 10.0, "B": 20.0}
+# THE NOT-FLATTENED SPECTRUM OF A POSITION IS THIS MANY TIMES ITS FLAT-FIELDED SPECTRUM
+NOT_FLAT_SCALE = 3.0
 JOINS = {"A": {"10-11": 11}, "B": {"10-11": 12}}
 
 
@@ -63,23 +65,20 @@ def _recipe(
 
     class Extractor:
         slitEdgeOrders: list = []
-        flatPassHandoff = None
         traceFallback = False
 
         def __init__(self, **kwargs: object) -> None:
             captured["extractor"].append(kwargs)
             self.position = str(kwargs["sofName"]).split("_")[-2]
+            self.isNotFlat = bool(kwargs.get("notFlattened"))
             self.extractionNotes = list(notes or [])
+            self.flatPassHandoff = f"handoff-{self.position}"
 
         def extract(self) -> tuple[Any, Any, pd.DataFrame, dict[str, int], str]:
-            extractions.append(self.position)
-            return (
-                recipe.qc,
-                recipe.products,
-                _spectrum(FLUX[self.position]),
-                JOINS[self.position],
-                f"extracted_{self.position}.fits",
-            )
+            extractions.append(f"{self.position}-notflat" if self.isNotFlat else self.position)
+            flux = FLUX[self.position] * (NOT_FLAT_SCALE if self.isNotFlat else 1.0)
+            name = f"notflat_{self.position}.fits" if self.isNotFlat else f"extracted_{self.position}.fits"
+            return recipe.qc, recipe.products, _spectrum(flux), JOINS[self.position], name
 
     monkeypatch.setattr(import_module("soxspipe.commonutils"), "horne_extraction", Extractor)
     monkeypatch.setattr(
@@ -222,3 +221,135 @@ def test_a_slit_edge_spill_in_either_position_is_reported_for_the_combined_spect
 
     # ASSERT
     assert spilled == [True]
+
+
+def _standard(recipe: soxs_stare) -> None:
+    recipe.generateReponseCurve = True
+
+
+def test_a_standard_position_extracts_its_not_flattened_frame_with_its_own_flat_pass(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, extractions = _recipe(log, tmp_path, monkeypatch)
+    _standard(recipe)
+    stack = _stacks()[1]
+
+    # ACT
+    extraction = recipe._extract_position(stack, _tail_inputs(), False)
+
+    # ASSERT: THE FLAT PASS RUNS FIRST, THEN THE NOT-FLATTENED PASS WITH THE HANDOFF OF THAT FLAT PASS
+    assert extractions == ["B", "B-notflat"]
+    assert extraction.responseInputs is None
+    assert extraction.notFlatPath == "notflat_B.fits"
+    assert list(extraction.notFlatSpectrum["FLUX_COUNTS"]) == [FLUX["B"] * NOT_FLAT_SCALE]
+    assert recipe.sofName == SOF_NAME
+
+
+def test_the_not_flattened_pass_of_a_position_is_named_under_that_position(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch)
+    _standard(recipe)
+    built: list[dict[str, Any]] = []
+    horne = import_module("soxspipe.commonutils").horne_extraction
+
+    def record(**kwargs: Any) -> Any:
+        built.append(kwargs)
+        return horne(**kwargs)
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "horne_extraction", record)
+
+    # ACT
+    recipe._extract_position(_stacks()[0], _tail_inputs(), False)
+
+    # ASSERT
+    assert [call["sofName"] for call in built] == [f"{SOF_NAME}_A{MARKER}"] * 2
+    assert [bool(call.get("notFlattened")) for call in built] == [False, True]
+    assert built[1]["flatPass"] == "handoff-A"
+
+
+def test_a_science_position_makes_no_not_flattened_extraction(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, extractions = _recipe(log, tmp_path, monkeypatch)
+
+    # ACT
+    extraction = recipe._extract_position(_stacks()[0], _tail_inputs(), False)
+
+    # ASSERT
+    assert extractions == ["A"]
+    assert extraction.notFlatPath is None
+    assert extraction.notFlatSpectrum is None
+
+
+def test_a_standard_with_a_response_table_makes_no_not_flattened_extraction(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, extractions = _recipe(log, tmp_path, monkeypatch)
+    _standard(recipe)
+    inputs = reduction_inputs(False, False, False, "order.fits", "disp.fits", "map.fits", "resp.fits")
+
+    # ACT
+    recipe._extract_position(_stacks()[0], inputs, False)
+
+    # ASSERT
+    assert extractions == ["A"]
+
+
+def test_the_not_flattened_extractions_are_combined_and_give_one_response_curve(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch)
+    _standard(recipe)
+    combined: list[tuple[Any, ...]] = []
+    responses: list[tuple[Any, ...]] = []
+
+    def stack_extractions(dataFrameList: list[Any], notFlattened: bool = False, orderJoins: Any = None) -> Any:
+        combined.append(([list(spectrum["FLUX_COUNTS"]) for spectrum in dataFrameList], notFlattened, orderJoins))
+        return Table({"WAVE": [500.0]}), "notflat.fits" if notFlattened else "flat.fits"
+
+    monkeypatch.setattr(recipe, "stack_extractions", stack_extractions)
+    monkeypatch.setattr(recipe, "_compute_response", lambda *args: responses.append(args) or "response failed")
+    monkeypatch.setattr(recipe, "_write_ascii_spectrum", lambda *args: None)
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *args: None)
+    allFrames = [synthetic_ccd(seed=1, prepared=True)]
+
+    # ACT
+    productPath, failure = recipe._reduce_nod_positions(_stacks(), allFrames, False, _tail_inputs())
+
+    # ASSERT: THE FLAT-FIELDED POSITIONS ARE COMBINED, THEN THE NOT-FLATTENED ONES, AND ONE RESPONSE IS BUILT FROM BOTH
+    assert combined == [
+        ([[FLUX["A"]], [FLUX["B"]]], False, JOINS["B"]),
+        ([[FLUX["A"] * NOT_FLAT_SCALE], [FLUX["B"] * NOT_FLAT_SCALE]], True, JOINS["B"]),
+    ]
+    assert responses == [("flat.fits", "notflat.fits", JOINS["B"], allFrames)]
+    assert (productPath, failure) == ("flat.fits", "response failed")
+
+
+def test_a_standard_that_spills_over_the_slit_edge_in_one_position_fails_the_recipe(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, _ = _recipe(log, tmp_path, monkeypatch)
+    _standard(recipe)
+    monkeypatch.setattr(recipe, "stack_extractions", lambda *_, **__: (Table({"WAVE": [500.0]}), "combined.fits"))
+    monkeypatch.setattr(recipe, "_compute_response", lambda *args: False)
+    monkeypatch.setattr(recipe, "_write_ascii_spectrum", lambda *args: None)
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *args: None)
+    realExtract = recipe._extract_position
+
+    def extract_position(stack: position_stack, inputs: Any, rawFrames: Any) -> stack_extraction:
+        return realExtract(stack, inputs, rawFrames)._replace(slitEdgeSpill=stack.position == "A")
+
+    monkeypatch.setattr(recipe, "_extract_position", extract_position)
+
+    # ACT
+    _, failure = recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
+
+    # ASSERT
+    assert failure is True
