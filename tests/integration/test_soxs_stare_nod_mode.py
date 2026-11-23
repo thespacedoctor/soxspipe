@@ -10,6 +10,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 from astropy.nddata import CCDData
@@ -27,6 +28,8 @@ NOD_TECHNIQUE = "ECHELLE,SLIT,NODDING"
 SOF_NAME = "20251212T045200_VIS_1X1_1_NOD_OBJ_SOXS"
 MARKER = "_STAREMODE"
 SKY_SEEDS = (530, 531, 532)
+# THE COLUMNS AT THE HIGH END OF THE SLIT THAT THE TAIL TESTS TREAT AS UNCOVERED
+UNCOVERED_COLUMNS = 3
 
 
 def _nod_stare_recipe(
@@ -270,9 +273,146 @@ def test_the_tail_uses_a_stack_that_was_detrended_before_stacking_without_detren
     recipe.subtractSky = True
 
     # ACT
-    recipe._reduce_stacked_object(notFlattened, [notFlattened], False, inputs, flattened)
+    recipe._extract_stack(notFlattened, [notFlattened], False, inputs, flattened)
 
     # ASSERT
     assert captured["detrend"] == []
     assert captured["sky"][0]["objectFrame"] is flattened
     assert recipe.dateObs == notFlattened.header["DATE-OBS"]
+
+
+def _tail_recipe(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, skyResult: tuple[Any, ...] | None = None
+) -> tuple[soxs_stare, dict[str, list[dict[str, object]]], CCDData]:
+    """Return a nod-mode stare recipe ready to run the tail, with its collaborators recorded, and the stacked frame."""
+    recipe = _nod_stare_recipe(log, tmp_path)
+    captured = _patch_stare(recipe, monkeypatch, tmp_path, skyResult=skyResult or _sky_result())
+    recipe.scienceHeaders = []
+    recipe.subtractSky = True
+    recipe.slitIlluminationOffsets = None
+    return recipe, captured, synthetic_ccd(seed=3, prepared=True)
+
+
+def _tail_inputs() -> reduction_inputs:
+    return reduction_inputs(False, False, False, "order.fits", "disp.fits", "map.fits", False)
+
+
+def _uncovered_columns(shape: tuple[int, ...]) -> np.ndarray:
+    """Return a mask over the last three columns, which the stack does not cover in every frame."""
+    uncovered = np.zeros(shape, dtype=bool)
+    uncovered[:, -UNCOVERED_COLUMNS:] = True
+    return uncovered
+
+
+def test_the_pixels_not_every_frame_covers_are_left_out_of_the_sky_fit_without_joining_the_exclude_mask(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    uncovered = _uncovered_columns(stack.data.shape)
+
+    # ACT
+    recipe._extract_stack(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT: THE SKY FIT GETS THE TWO MASKS APART, AS ONLY THE EXCLUDE MASK SWITCHES OFF THE SLIT-EDGE CLIP
+    np.testing.assert_array_equal(captured["sky"][0]["uncoveredMask"], uncovered)
+    assert captured["sky"][0]["excludeMask"] is None
+
+
+def test_the_pixels_not_every_frame_covers_are_flagged_for_the_extraction_when_no_sky_is_subtracted(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: WITH A SKY MODEL THE SKY SUBTRACTION FLAGS THE EXCLUDED PIXELS; WITHOUT ONE THE RECIPE DOES
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    recipe.subtractSky = False
+    uncovered = _uncovered_columns(stack.data.shape)
+
+    # ACT
+    recipe._extract_stack(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT
+    assert captured["extractor"][0]["skySubtractedFrame"].mask[uncovered].all()
+    assert captured["extractor"][0]["unflattenedFrame"].mask[uncovered].all()
+
+
+def test_the_pixels_not_every_frame_covers_are_flagged_for_the_extraction_when_the_sky_fit_gives_no_model(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE SKY SUBTRACTION RETURNS NO MODEL, SO THE RECIPE FLAGS THE FRAME ITSELF
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch, skyResult=(None, None, None))
+    uncovered = _uncovered_columns(stack.data.shape)
+
+    # ACT
+    recipe._extract_stack(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT
+    assert captured["extractor"][0]["skySubtractedFrame"].mask[uncovered].all()
+
+
+def test_the_slit_illumination_exclude_mask_reaches_the_sky_fit_beside_the_uncovered_mask(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    illumination = np.zeros(stack.data.shape, dtype=bool)
+    illumination[:2, :] = True
+    uncovered = _uncovered_columns(stack.data.shape)
+    assert not illumination[:, -UNCOVERED_COLUMNS:].all()
+    monkeypatch.setattr(recipe, "_slit_illumination_exclude_mask", lambda *args: illumination)
+
+    # ACT
+    recipe._extract_stack(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT
+    np.testing.assert_array_equal(captured["sky"][0]["excludeMask"], illumination)
+    np.testing.assert_array_equal(captured["sky"][0]["uncoveredMask"], uncovered)
+
+
+def test_the_no_sky_extraction_is_flagged_with_both_masks(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    recipe.subtractSky = False
+    illumination = np.zeros(stack.data.shape, dtype=bool)
+    illumination[:2, :] = True
+    uncovered = _uncovered_columns(stack.data.shape)
+    monkeypatch.setattr(recipe, "_slit_illumination_exclude_mask", lambda *args: illumination)
+    expected = np.asarray(stack.mask, dtype=bool) | illumination | uncovered
+
+    # ACT
+    recipe._extract_stack(stack, [stack], False, _tail_inputs(), stack, uncovered)
+
+    # ASSERT
+    np.testing.assert_array_equal(captured["extractor"][0]["skySubtractedFrame"].mask, expected)
+
+
+def test_a_stack_with_no_uncovered_mask_gives_the_sky_fit_the_exclude_mask_as_it_was(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: A GENUINE STARE FRAME NEVER GETS AN UNCOVERED MASK
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+    illumination = np.zeros(stack.data.shape, dtype=bool)
+    illumination[:2, :] = True
+    monkeypatch.setattr(recipe, "_slit_illumination_exclude_mask", lambda *args: illumination)
+
+    # ACT
+    recipe._extract_stack(stack, [stack], False, _tail_inputs(), stack)
+
+    # ASSERT
+    assert captured["sky"][0]["excludeMask"] is illumination
+    assert captured["sky"][0]["uncoveredMask"] is None
+
+
+def test_a_stack_with_neither_mask_gives_the_sky_fit_no_mask(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, captured, stack = _tail_recipe(log, tmp_path, monkeypatch)
+
+    # ACT
+    recipe._extract_stack(stack, [stack], False, _tail_inputs(), stack)
+
+    # ASSERT
+    assert captured["sky"][0]["excludeMask"] is None
+    assert captured["sky"][0]["uncoveredMask"] is None

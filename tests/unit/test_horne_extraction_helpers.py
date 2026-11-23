@@ -29,9 +29,13 @@ from soxspipe.commonutils.horne_extraction import (
     profile_clip_cap_rows,
 )
 from tests.factories import instrument_header, product_table
+from tests.factories.flux_calibration import calibrate_spectrum
 from tests.unit._plot_spies import probe_on_savefig
 
 pytestmark = pytest.mark.unit
+
+# A FLAT RESPONSE THAT COVERS THE SYNTHETIC NIR ORDERS OF THE EMPTY-ORDER TEST
+RESPONSE_WAVES = [900.0, 1100.0]
 
 
 def _extractor(log: object) -> horne_extraction:
@@ -3444,3 +3448,83 @@ def test_extract_hands_the_residual_clipping_sigma_setting_to_every_order_extrac
 
     # ASSERT
     assert received == [7.5, 7.5]
+
+
+@pytest.mark.parametrize("boxcarOnly", [False, True])
+def test_an_order_with_every_pixel_masked_is_extracted_as_no_spectrum(log: object, boxcarOnly: bool) -> None:
+    # ARRANGE: THE STARE TAIL FLAGS EVERY PIXEL OF AN ORDER THAT HAS NO SLIT RANGE COVERED BY EVERY FRAME (DY-2290)
+    slices = pd.DataFrame({"order": [10] * 5})
+    images = {
+        "bpMask": np.ones((2, 5), dtype=bool),
+        "fluxRaw": np.zeros((2, 5)),
+        "variance": np.ones((2, 5)),
+        "wavelength": np.array([[504.0, 503.0, 502.0, 501.0, 500.0], [504.0, 503.0, 502.0, 501.0, 500.0]]),
+    }
+
+    # ACT
+    result = extract_single_order(
+        (slices, images),
+        log,
+        slitHalfLength=1,
+        clippingSigma=3.0,
+        clippingIterationLimit=2,
+        axisA="y",
+        axisB="x",
+        hornePolyOrder=0,
+        boxcarOnly=boxcarOnly,
+    )
+
+    # ASSERT: AN EMPTY SPECTRUM WITH THE SCIENCE COLUMNS, WHICH THE CALLER CONCATENATES WITH THE OTHER ORDERS
+    assert result is not None
+    assert result.empty
+    assert "extractedFluxOptimal" in result.columns
+
+
+def _spectrum_rows(order: int, wavelengths: list[float], fluxes: list[float]) -> pd.DataFrame:
+    """Return the extraction of one order as ``extract_single_order`` returns it, with the slit-edge flag."""
+    return _merge_rows([(order, wavelengths, fluxes)], pixelScale=0.06).assign(slitEdgeTruncated=False)
+
+
+def test_extract_merges_an_order_with_no_pixel_left_beside_its_neighbours_without_nan(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE: THE MIDDLE ORDER HAS EVERY PIXEL MASKED, SO ITS EXTRACTION IS EMPTY (DY-2290). THE EXTRACTOR RUNS ITS
+    # REAL CONCATENATION, WAVELENGTH CORRECTION AND ORDER MERGE
+    import fundamentals
+
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    del extractor.merge_extracted_orders
+    extractor.arm = "NIR"
+    lowOrder = _spectrum_rows(10, [1000.00, 1000.06, 1000.12, 1000.18], [10.0, 12.0, 14.0, 16.0])
+    emptyOrder = lowOrder.iloc[0:0].assign(order=11)
+    highOrder = _spectrum_rows(12, [1000.24, 1000.30, 1000.36, 1000.42], [18.0, 20.0, 22.0, 24.0])
+    transformerModule = importlib.import_module("soxspipe.commonutils.image_transformer")
+    fakeTransformer = transformerModule.image_transformer
+
+    class ThreeOrderTransformer(fakeTransformer):
+        def get_order_slices(self) -> list[pd.DataFrame]:
+            return [pd.DataFrame({"order": [order]}) for order in (10, 11, 12)]
+
+        def get_order_wavelength_ranges(self) -> list[tuple[float, float]]:
+            return [(999.0, 1001.0)] * 3
+
+        def get_order_rectified(self) -> list[dict[str, np.ndarray]]:
+            return [{}, {}, {}]
+
+    monkeypatch.setattr(transformerModule, "image_transformer", ThreeOrderTransformer)
+    monkeypatch.setattr(fundamentals, "fmultiprocess", lambda **kwargs: [lowOrder, emptyOrder, highOrder])
+    withoutEmptyOrder = extractor.merge_extracted_orders(pd.concat([lowOrder, highOrder], ignore_index=True))[0]
+
+    # ACT
+    _, _, merged, _, _ = extractor.extract()
+
+    # ASSERT: EVERY MERGED VALUE IS FINITE AND THE EMPTY ORDER CHANGED NOTHING IN THE ORDERS NEXT TO IT
+    for column in ("WAVE", "FLUX_COUNTS", "VARIANCE", "SNR"):
+        assert np.isfinite(merged[column].values.value).all()
+    np.testing.assert_allclose(merged["WAVE"].values.value, withoutEmptyOrder["WAVE"].values.value)
+    np.testing.assert_allclose(merged["FLUX_COUNTS"].values.value, withoutEmptyOrder["FLUX_COUNTS"].values.value)
+    assert len(merged) > 0
+
+    # THE FLUX CALIBRATION OF THE MERGED SPECTRUM IS FINITE TOO
+    calibrated = calibrate_spectrum(tmp_path, log, monkeypatch, merged, responseWave=RESPONSE_WAVES)
+    assert np.isfinite(np.asarray(calibrated["FLUX_CALIBRATED"], dtype=float)).all()
