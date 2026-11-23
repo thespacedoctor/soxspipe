@@ -57,7 +57,7 @@ def read_ndit(header, kw, log):
     return int(value)
 
 
-def scale_by_sqrt_ndit(values, ndit):
+def scale_by_sqrt_ndit(values: np.ndarray, ndit: int) -> np.ndarray:
     """*scale a noise weight or a signal-to-noise by the square root of NDIT*
 
     A frame is the mean of NDIT integrations, so its variance is that of one integration divided by NDIT. Every
