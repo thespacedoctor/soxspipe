@@ -105,7 +105,7 @@ class nod_stare_stacking:
         """
         framesA, framesB, namesA, namesB = self._split_nod_frames(allObjectFrames)
         inputs = self._read_reduction_inputs(self.kw, self.arm)
-        stacks = self._stack_nod_positions(framesA, framesB, namesA, namesB, inputs)
+        stacks = list(self._stack_nod_positions(framesA, framesB, namesA, namesB, inputs))
         return self._reduce_nod_positions(stacks, allObjectFrames, rawFrames, inputs)
 
     def _split_nod_frames(self, allObjectFrames):
@@ -338,17 +338,77 @@ class nod_stare_stacking:
         isMerged = (self.products["product_label"] == MERGED_TABLE_LABEL) & (self.products.index >= firstRow)
         self.products.loc[isMerged, "product_label"] = f"{MERGED_TABLE_LABEL}_{position}"
 
-    def _reduce_nod_positions(self, stacks, allObjectFrames, rawFrames, inputs):
-        """*extract the A and B stacks, combine the extractions and finish the product*
+    def _reduce_nod_positions(
+        self,
+        stacks: list[position_stack],
+        allObjectFrames: list[Any],
+        rawFrames: list[str] | bool,
+        inputs: reduction_inputs,
+    ) -> tuple[str, bool | str]:
+        """*extract the A and B stacks, combine the two extractions, then flux-calibrate and write the product*
+
+        The A stack is extracted first, then the B stack. Each stack leaves ``stacks`` as it is extracted, so its data
+        are released once its position is done. The two extractions are combined as the nod recipe combines its
+        cycles, and flux calibration, the response curve of a standard, the ASCII spectrum and the plots take the
+        combined spectrum.
 
         **Key Arguments:**
 
-        - ``stacks`` -- the ``position_stack`` of the A frames and of the B frames
+        - ``stacks`` -- the ``position_stack`` list of the A frames and of the B frames. It is emptied
         - ``allObjectFrames`` -- the A and B object frames, in observation order
         - ``rawFrames`` -- the raw file names the product header lists, or *False* to list every raw frame of the SOF
         - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`
+
+        **Return:**
+
+        - ``productPath`` -- the path to the combined spectrum
+        - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe, or the failure message
+          when a standard star has no object trace
         """
-        raise NotImplementedError("the extraction of the two nod positions is not built yet")
+        extractions = {}
+        while stacks:
+            stack = stacks.pop(0)
+            extractions[stack.position] = self._extract_position(stack, inputs, rawFrames)
+            del stack
+        combined = self._combine_extractions(extractions)
+        forceFailure = self._finish_extraction(combined, allObjectFrames, inputs.responseFunctionPath)
+        return combined.productPath, forceFailure
+
+    def _combine_extractions(self, extractions: dict[str, stack_extraction]) -> stack_extraction:
+        """*combine the extractions of the nod positions into one spectrum, as the nod recipe combines its cycles*
+
+        The header of the combined product comes from the first position. Updates ``self.qc`` and ``self.products``.
+
+        **Key Arguments:**
+
+        - ``extractions`` -- the ``stack_extraction`` of each nod position, by position, in extraction order
+
+        **Return:**
+
+        - ``combined`` -- the ``stack_extraction`` of the combined spectrum. Its notes carry the position of each note
+        """
+        first, last = extractions[next(iter(extractions))], extractions[next(reversed(extractions))]
+        self.masterHeaderFrame = first.combinedObject
+        stackedSpectrum, extractionPath = self.stack_extractions(
+            [extraction.mergedSpectrum for extraction in extractions.values()], orderJoins=last.orderJoins
+        )
+        notes = [
+            (level, f"[{position}] {message}")
+            for position, extraction in extractions.items()
+            for level, message in extraction.extractionNotes
+        ]
+        return stack_extraction(
+            productPath=extractionPath,
+            combinedObject=first.combinedObject,
+            mergedSpectrum=stackedSpectrum,
+            orderJoins=last.orderJoins,
+            extractionPath=extractionPath,
+            responseInputs=None,
+            notFlatPath=None,
+            traceFallback=False,
+            slitEdgeSpill=any(extraction.slitEdgeSpill for extraction in extractions.values()),
+            extractionNotes=notes,
+        )
 
     def _detrend_nod_frames(self, frames, master_bias, dark, orderTablePath):
         """*detrend each frame with the master bias or dark and the scattered-light fit, but not the flat*

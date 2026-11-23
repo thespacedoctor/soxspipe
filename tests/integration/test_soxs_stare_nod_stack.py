@@ -564,7 +564,7 @@ def test_the_stacked_positions_reach_the_stare_tail_without_a_second_detrend(
 
     # ASSERT
     assert result == ("product.fits", False)
-    assert tailCalls == [(("STACK A", "STACK B"), frames, ["raw.fits"], _inputs(scene))]
+    assert tailCalls == [(["STACK A", "STACK B"], frames, ["raw.fits"], _inputs(scene))]
 
 
 def test_a_single_frame_is_reduced_without_the_nod_stack(
