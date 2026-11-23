@@ -18,10 +18,11 @@ import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 
+from soxspipe.commonutils.offset_frames import OFFSET_TECHNIQUES, SKY_TYPE, offset_run_match_sql
 from soxspipe.commonutils.sql_identifiers import validate_sql_identifier
 
-# NO IMPORTS FROM OTHER SOXSPIPE MODULES EXCEPT sql_identifiers: THE PACKAGE `__init__` IMPORT ORDER IS
-# LOAD-BEARING, AND THIS MODULE MUST STAY SAFE TO IMPORT FROM ANYWHERE.
+# NO IMPORTS FROM OTHER SOXSPIPE MODULES EXCEPT sql_identifiers AND offset_frames (WHICH IMPORTS NONE): THE PACKAGE
+# `__init__` IMPORT ORDER IS LOAD-BEARING, AND THIS MODULE MUST STAY SAFE TO IMPORT FROM ANYWHERE.
 
 # THESE TECHNIQUES ARE GROUPED ONE EXPOSURE AT A TIME, SO A LATE FRAME NEVER JOINS AN EXISTING SET. STARE FRAMES
 # ARE GROUPED BY OB SINCE DY-1611, SO A LATE STARE FRAME REJOINS ITS OB'S SET
@@ -101,8 +102,16 @@ def find_rejoined_sofs(
 
     techPlaceholders = _placeholders(len(PER_EXPOSURE_TECHS))
     obTechPlaceholders = _placeholders(len(OB_GROUPED_TECHS))
+    offsetTechPlaceholders = _placeholders(len(OFFSET_TECHNIQUES))
+    # AN OFFSET SKY FRAME IS GROUPED WITH THE FRAMES OF ITS RUN, SO IT TAKES THE RUN'S DPR TYPE (SEE
+    # `get_raw_frames_and_groups`); `offset_run_match_sql` HOLDS THE RULE THAT TIES IT TO THAT RUN
+    runMatch = offset_run_match_sql("r", "run")
     # TABLE NAME CANNOT BE BOUND; CHECKED BY validate_sql_identifier ABOVE
-    sqlQuery = f"""SELECT r.*, s.sof AS member_sof
+    sqlQuery = f"""SELECT r.*, s.sof AS member_sof,
+        CASE WHEN r.`eso dpr type` = ? AND COALESCE(r.`eso dpr tech`, '') IN ({offsetTechPlaceholders})
+            THEN (SELECT run.`eso dpr type` FROM raw_frames_valid AS run
+                  WHERE run.`eso dpr type` != ? AND {runMatch} LIMIT 1)
+        END AS offset_run_type
         FROM raw_frames_valid r
         LEFT JOIN (SELECT DISTINCT sof, filepath FROM {sofMapTable}) s ON s.filepath = r.filepath
         WHERE COALESCE(r.`eso dpr tech`, '--') NOT IN ({techPlaceholders})
@@ -114,7 +123,12 @@ def find_rejoined_sofs(
                 WHERE processed = 0 AND `eso tpl start` IS NOT NULL
             )
         );"""  # noqa: S608
-    frames = pd.read_sql(sqlQuery, con=connection, params=PER_EXPOSURE_TECHS + OB_GROUPED_TECHS)
+    frames = pd.read_sql(
+        sqlQuery,
+        con=connection,
+        params=(SKY_TYPE, *OFFSET_TECHNIQUES, SKY_TYPE, *PER_EXPOSURE_TECHS, *OB_GROUPED_TECHS),
+    )
+    frames = frames.assign(**{"eso dpr type": frames["offset_run_type"].fillna(frames["eso dpr type"])})
     # OB-GROUPED FRAMES SHARE ONE TEMPLATE KEY, SO ANY TEMPLATE RUN OF THE OB MATCHES
     frames = frames.assign(
         rejoin_template=frames["eso tpl start"].where(~frames["eso dpr tech"].isin(OB_GROUPED_TECHS), "")

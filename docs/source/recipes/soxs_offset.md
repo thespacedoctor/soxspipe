@@ -31,6 +31,8 @@ The recipe sorts the frames into ON and OFF frames before it does anything else.
 
 Each run must have the same number of ON and OFF frames. The recipe stops with an error when it cannot classify a frame, when a card it needs is missing, or when a run has no ON frame or no OFF frame. The error names each frame that caused it. The recipe does not drop frames, and it does not fall back to `soxs_stare`. Use `soxs_stare` for data that were taken without a sky position.
 
+The data organiser puts the frames of both templates into the offset SOF. It keeps the frames with `ESO DPR TYPE` `SKY` of an offset template, and it puts each one in the SOF of the `OBJECT` frames of the same arm and template run (`ESO TPL START`). It does not keep `SKY` frames of stare or nodding templates.
+
 ### Combine the ON and OFF frames
 
 When `stack_before_extraction` is `True` (the default), the recipe pairs each ON frame with an OFF frame of the same template run, in `ESO TPL EXPNO` order. It measures the position of the object along the slit on each cycle difference ($ON - OFF$), with the continuum-trace method, against the ON frame with the lowest `ESO TPL EXPNO` in the template run with the earliest `ESO TPL START`. For SOXS VIS each order has its own shift. For SOXS NIR and every X-Shooter arm each frame has one shift, the median over the orders. An order or frame with no reliable trace takes the median shift of the others, and the `SLIT ALIGN FALLBACK NUM` QC counts these.
