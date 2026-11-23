@@ -16,8 +16,8 @@ import pytest
 from astropy import units as u
 from astropy.table import Table
 
-from soxspipe.recipes import soxs_stare
 from soxspipe.commonutils.toolkit import append_qc
+from soxspipe.recipes import soxs_stare
 from soxspipe.recipes.nod_stare_stacking import position_stack, reduction_inputs, stack_extraction
 from tests.factories import synthetic_ccd
 from tests.integration.test_soxs_stare_nod_mode import MARKER, SOF_NAME, _tail_inputs, _tail_recipe
