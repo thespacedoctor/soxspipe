@@ -53,6 +53,7 @@ from soxspipe.commonutils.toolkit import (
     order_traces_table,
     qc_image_panel_height,
     qc_table_heights,
+    quiet_least_squares_fit,
     read_spectral_format,
 )
 
@@ -1367,56 +1368,60 @@ class detect_continuum(_base_detect):
         fit_g = fitting.LevMarLSQFitter()
 
         # Process each slice
-        for i, s in enumerate(slices):
-            slice_data, slice_length_offset, slice_width_centre = s[0], s[1], s[2]
+        # THE WHOLE LOOP IS ONE QUIET BLOCK: ENTERING IT PER FIT WOULD INVALIDATE THE WARNING REGISTRIES FOR EVERY SLICE
+        with quiet_least_squares_fit():
+            for i, s in enumerate(slices):
+                slice_data, slice_length_offset, slice_width_centre = s[0], s[1], s[2]
 
-            if slice_data is None:
-                continue
+                if slice_data is None:
+                    continue
 
-            # Replace values < -500 with NaN
-            slice_data = np.where(slice_data < -50, np.nan, slice_data)
+                # Replace values < -500 with NaN
+                slice_data = np.where(slice_data < -50, np.nan, slice_data)
 
-            # Calculate baseline and std using vectorized operations
-            baseline = np.nanpercentile(slice_data, 20)
-            std_r = mad_std(slice_data, ignore_nan=True)
+                # Calculate baseline and std using vectorized operations
+                baseline = np.nanpercentile(slice_data, 20)
+                std_r = mad_std(slice_data, ignore_nan=True)
 
-            if baseline < 0:
-                baseline = 0
+                if baseline < 0:
+                    baseline = 0
 
-            if baseline is None:
-                continue
+                if baseline is None:
+                    continue
 
-            # Find peaks using vectorized operations
-            peaks, _ = find_peaks(slice_data, height=baseline + self.peakSigmaLimit * std_r, width=1)
+                # Find peaks using vectorized operations
+                peaks, _ = find_peaks(slice_data, height=baseline + self.peakSigmaLimit * std_r, width=1)
 
-            if len(peaks) == 0:
-                continue
+                if len(peaks) == 0:
+                    continue
 
-            if len(peaks) > 1:
-                # Vectorized closest peak finding
-                peak_diffs = np.abs(peaks - sliceLength / 2.0)
-                peaks = [peaks[np.argmin(peak_diffs)]]
+                if len(peaks) > 1:
+                    # Vectorized closest peak finding
+                    peak_diffs = np.abs(peaks - sliceLength / 2.0)
+                    peaks = [peaks[np.argmin(peak_diffs)]]
 
-            # Initialize and fit Gaussian
-            # OPTIMISE: 1s
-            g_init = models.Gaussian1D(amplitude=slice_data[peaks[0]], mean=peaks[0], stddev=medianStddev)
+                # Initialize and fit Gaussian
+                # OPTIMISE: 1s
+                g_init = models.Gaussian1D(amplitude=slice_data[peaks[0]], mean=peaks[0], stddev=medianStddev)
 
-            try:
-                mask = np.isfinite(slice_data)
-                x_range = np.arange(len(slice_data))
-                # OPTIMISE: 7s - 3185 hits
-                g = fit_g(g_init, x_range[mask], slice_data[mask])
+                try:
+                    mask = np.isfinite(slice_data)
+                    x_range = np.arange(len(slice_data))
+                    # OPTIMISE: 7s - 3185 hits
+                    g = fit_g(g_init, x_range[mask], slice_data[mask])
 
-                if 0 <= g.mean.value <= sliceLength and g.stddev.value > 0.5:
-                    contSliceAxis[i] = g.mean.value + max(0, slice_length_offset)
-                    contSliceAntiAxis[i] = slice_width_centre
-                    gauss_amplitude[i] = g.amplitude.value
-                    gauss_stddev[i] = g.stddev.value
-                    gauss_mean[i] = g.mean.value
+                    if 0 <= g.mean.value <= sliceLength and g.stddev.value > 0.5:
+                        contSliceAxis[i] = g.mean.value + max(0, slice_length_offset)
+                        contSliceAntiAxis[i] = slice_width_centre
+                        gauss_amplitude[i] = g.amplitude.value
+                        gauss_stddev[i] = g.stddev.value
+                        gauss_mean[i] = g.mean.value
 
-            except (ValueError, TypeError, RuntimeError, IndexError) as e:
-                self.log.debug(f"fit_1d_gaussian_to_slices: `mask = np.isfinite(slice_data)` failed, continuing: {e}")
-                continue
+                except (ValueError, TypeError, RuntimeError, IndexError) as e:
+                    self.log.debug(
+                        f"fit_1d_gaussian_to_slices: `mask = np.isfinite(slice_data)` failed, continuing: {e}"
+                    )
+                    continue
 
         # Assign results back to DataFrame using vectorized operations
         orderPixelTable[f"cont_{self.sliceAxis}"] = contSliceAxis

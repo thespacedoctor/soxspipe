@@ -22,6 +22,7 @@ from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
 from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
 from soxspipe.commonutils.stare_mode import NOD_STARE_MARKER
 from soxspipe.commonutils.toolkit import (
+    concat_tables,
     generic_quality_checks,
     get_calibrations_path,
     spectroscopic_image_quality_checks,
@@ -1707,7 +1708,6 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
 
         - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum
         """
-        import pandas as pd
 
         from soxspipe.commonutils import flux_calibration
         from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
@@ -1734,7 +1734,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             debug=self.debug,
         )
         filePathFluxcal, prod = fluxCalibrator.calibrate()
-        self.products = pd.concat([self.products, prod], ignore_index=True)
+        self.products = concat_tables([self.products, prod], ignore_index=True)
         # self.qc, self.products, calibratedSpectrumDF, calibrationPath = fluxCalibrator.calibrate()
         self.log.print("# FLUX CALIBRATION COMPLETED\n")
 

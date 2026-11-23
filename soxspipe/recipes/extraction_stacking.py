@@ -99,7 +99,7 @@ class extraction_stacking:
         from astropy.table import Table
 
         from soxspipe.commonutils.fits_headers import set_header_card
-        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+        from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
         from soxspipe.commonutils.specutils_calls import spectrum1d_quietly
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
@@ -197,6 +197,8 @@ class extraction_stacking:
             tables=[stackedSpectrum],
             filePath=filePath,
             qc=self.qc,
+            phase3=PER_ARM_MODE,
+            extname="SPECTRUM",
         )
 
         self.add_product(

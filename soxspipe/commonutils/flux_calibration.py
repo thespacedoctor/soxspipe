@@ -257,7 +257,7 @@ class flux_calibration:
         import pandas as pd
 
         from soxspipe.commonutils.fits_headers import set_header_card
-        from soxspipe.commonutils.phase3 import write_fits_table_to_disk
+        from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
         from soxspipe.commonutils.response_basis import counts_per_unbinned_pixel, dispersion_binning
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
@@ -341,7 +341,14 @@ class flux_calibration:
         filePath = f"{self.productDir}/{filename}"
 
         write_fits_table_to_disk(
-            log=self.log, settings=self.settings, header=header, tables=[fluxCalSpectrum], filePath=filePath, qc=None
+            log=self.log,
+            settings=self.settings,
+            header=header,
+            tables=[fluxCalSpectrum],
+            filePath=filePath,
+            qc=None,
+            phase3=PER_ARM_MODE,
+            extname="SPECTRUM",
         )
 
         from datetime import datetime

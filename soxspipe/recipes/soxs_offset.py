@@ -14,21 +14,18 @@ import os
 import sys
 
 from soxspipe.commonutils.offset_frames import (
-    FIXED_SKY_TECHNIQUE,
-    GENERIC_TECHNIQUE,
+    OFFSET_TECHNIQUES,
     SKY_TYPE,
     classify_offset_frames,
 )
 from soxspipe.commonutils.toolkit import (
+    concat_tables,
     get_calibrations_path,
 )
 
 from .soxs_nod import soxs_nod
 
 os.environ["TERM"] = "vt100"
-
-# THE TECHNIQUES OF THE OFFSET TEMPLATES THE RECIPE REDUCES (DY-2354)
-OFFSET_TECHNIQUES = (FIXED_SKY_TECHNIQUE, GENERIC_TECHNIQUE)
 
 # THE locationSetIndex OF THE STACKED ON/OFF PAIR. IT GIVES THE STACK TRACE AND EXTRACTION PRODUCT NAMES OF ITS OWN.
 STACKED_LOCATION_SET = "STACK"
@@ -639,7 +636,6 @@ class soxs_offset(soxs_nod):
 
         - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum
         """
-        import pandas as pd
 
         calibrationRootPath = get_calibrations_path(log=self.log, settings=self.settings)
         from soxspipe.commonutils.flux_calibration import flux_calibration
@@ -664,7 +660,7 @@ class soxs_offset(soxs_nod):
             debug=self.debug,
         )
         filePathFluxcal, products = fluxCalibrator.calibrate()
-        self.products = pd.concat([self.products, products], ignore_index=True)
+        self.products = concat_tables([self.products, products], ignore_index=True)
         self.log.print("# FLUX CALIBRATION COMPLETED\n")
 
         return filePathFluxcal

@@ -139,6 +139,8 @@ class base_recipe:
         import matplotlib
         import pandas as pd
 
+        from soxspipe.commonutils.toolkit import ignore_expected_library_warnings
+
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
         self.productNameMarker = productNameMarker
@@ -156,6 +158,9 @@ class base_recipe:
             matplotlib.use("Agg")
 
         self.darkDetrendWarningIssued2 = False
+
+        # EVERY REDUCTION PATH BUILDS A RECIPE, INCLUDING SPAWNED WORKERS, WHICH DO NOT INHERIT THE PARENT'S FILTERS
+        ignore_expected_library_warnings()
 
         if is_standard_input(inputFrames):
             self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")
@@ -3153,8 +3158,8 @@ class base_recipe:
         """
         self.log.debug("starting the ``update_fits_keywords`` method")
 
-        import soxspipe.__version__ as version
         from soxspipe.commonutils.fits_headers import set_header_card
+        from soxspipe.commonutils.phase3 import pipe_id
 
         arm = self.arm
         kw = self.kw
@@ -3184,7 +3189,7 @@ class base_recipe:
         self._stamp_recipe_parameter_records(frame)
 
         # SOXSPIPE VERSION
-        set_header_card(frame.header, "ESO PRO REC1 PIPE ID", f"soxspipe/v{version}")
+        set_header_card(frame.header, "ESO PRO REC1 PIPE ID", pipe_id())
 
         # RECIPE
         if self.recipeName:

@@ -16,6 +16,7 @@ from astropy.nddata import CCDData, StdDevUncertainty
 
 from soxspipe.commonutils.extraction_notes import extraction_note_logger
 from soxspipe.commonutils.horne_extraction import (
+    FlatPassHandoff,
     _slit_edge_truncated_columns,
     _sort_and_clean_extractions,
     _unsupported_pixel_mask,
@@ -24,10 +25,10 @@ from soxspipe.commonutils.horne_extraction import (
     extract_single_order,
     fit_object_profile,
     generate_masks,
-    FlatPassHandoff,
     horne_extraction,
     profile_clip_cap_rows,
 )
+from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from tests.factories import instrument_header, product_table
 from tests.factories.flux_calibration import calibrate_spectrum
 from tests.unit._plot_spies import probe_on_savefig
@@ -1015,6 +1016,9 @@ def test_extract_writes_order_and_merged_product_contracts(
     assert calls[1]["filePath"].endswith("SYNTHETIC_EXTRACTED_MERGED.fits")
     assert calls[1]["header"]["PRO_TYPE"] == "REDUCED"
     assert calls[1]["header"]["PRO_CATG"] == "SCI_SLIT_FLUX_VIS"
+    assert calls[1]["phase3"] == PER_ARM_MODE
+    assert calls[1]["extname"] == "SPECTRUM"
+    assert not calls[0].get("phase3")
     assert products["product_label"].tolist() == ["EXTRACTED_ORDERS_TABLE", "EXTRACTED_MERGED_TABLE"]
     assert not list(tmp_path.glob("*.txt"))
     assert filePath == str(tmp_path / "SYNTHETIC_EXTRACTED_MERGED.fits")

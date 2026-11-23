@@ -66,6 +66,7 @@ from soxspipe.commonutils.toolkit import (
     order_label,
     qc_image_panel_height,
     qc_table_heights,
+    quiet_least_squares_fit,
     read_spectral_format,
     twoD_disp_map_image_to_dataframe,
     unpack_order_table,
@@ -2481,9 +2482,7 @@ class create_dispersion_map:
 
         if self.arcFrame:
             self.slitWidth = self.arcFrame.header[self.kw(f"SLIT_{arm}")].replace("SLIT", "").split("x")[0]
-            orderPixelTable[["R_slit", "fwhm_slit_px"]] = orderPixelTable.apply(
-                self._calculate_resolution_on_slit, axis=1
-            )
+            orderPixelTable[["R_slit", "fwhm_slit_px"]] = self._measure_slit_resolutions(orderPixelTable)
 
         else:
             orderPixelTable["R_slit"] = 0.0
@@ -2704,10 +2703,26 @@ class create_dispersion_map:
         self.log.debug("completed the ``calculate_residuals`` method")
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
 
+    def _measure_slit_resolutions(self, orderPixelTable):
+        """*measure the slit resolution and FWHM of every arc line*
+
+        The whole table is measured inside one ``quiet_least_squares_fit`` block: entering the block once per line
+        would invalidate the warning registries once per line.
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the line table, with the observed position and the pixel scale of each line
+
+        **Return:**
+
+        - ``resolutions`` -- a two-column table, ``R_slit`` then ``fwhm_slit_px``, one row per line
+        """
+        with quiet_least_squares_fit():
+            return orderPixelTable.apply(self._calculate_resolution_on_slit, axis=1)
+
     def _calculate_resolution_on_slit(self, row):
         import math
 
-        import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
         from astropy.modeling import fitting, models
@@ -2742,40 +2757,15 @@ class create_dispersion_map:
 
         try:
             g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
-
-            if g.stddev.value < guessStd / 2.0:
-                # 1.0 SLIT CANNOT BE LESS THAN 1.0 px
-                raise Exception
-
-            # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
             stddev_corrected = float(g.stddev.value)
-            fwhm = stddev_corrected * stdToFwhm
 
-            import random
-
-            random_number = random.randint(1, 5)
-            print("COME BACK HERE AND TRASH SOME LINES")
-            if False and random_number == 2:
-                gaussx = np.arange(0, len(detector_row), 0.05)
-                plt.plot(np.arange(0, len(detector_row)), detector_row)
-                stddev_corrected * stdToFwhm
-                plt.plot(
-                    gaussx,
-                    g(gaussx),
-                    label=f"STD = {g.stddev.value:0.2f}, FWHM = {fwhm:0.2f}",
-                )
-                plt.legend()
-                plt.show()
+            # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS. A 1.0 SLIT CANNOT BE LESS THAN 1.0 px
+            if stddev_corrected < guessStd / 2.0 or stddev_corrected > guessStd * 2.0:
+                return pd.Series([None, None])
         except Exception:
             return pd.Series([None, None])
 
-        # stddev_corrected = np.sqrt(g.stddev.value*g.stddev.value - np.abs(13*np.sin(row['tilt'])*np.sin(row['tilt'])))
-        stddev_corrected = float(g.stddev.value)
-
-        # ENFORCING RESONABLE VALUES EXCLUDING OUTLIERS
-        if stddev_corrected < guessStd / 2.0 or stddev_corrected > guessStd * 2.0:
-            return pd.Series([None, None])
-
+        fwhm = stddev_corrected * stdToFwhm
         delta_wavelength = row["pixelScaleNm"] * fwhm
         resolution_line = row["wavelength"] / delta_wavelength
 
@@ -4116,7 +4106,6 @@ class create_dispersion_map:
                     midrow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
@@ -4125,7 +4114,6 @@ class create_dispersion_map:
                     toprow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
@@ -4135,7 +4123,6 @@ class create_dispersion_map:
                     midrow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
@@ -4143,7 +4130,6 @@ class create_dispersion_map:
                     toprow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
