@@ -121,6 +121,11 @@ END_OFFSET_TOLERANCE_SPACINGS = 0.5
 # AN END DETECTION THIS FAR OUT, MIDWAY BETWEEN ONE SPACING AND TWO, MEANS AN OFFSET OF TWO OR MORE SPACINGS
 TWO_SPACING_JUMP = 1.5
 
+# A SINGLE-SOURCE STAMP IS AMBIGUOUS, AND GIVES NO DETECTION, WHEN ITS SECOND-NEAREST SOURCE LIES CLOSER TO THE FIRST
+# GUESS THAN THIS MULTIPLE OF THE NEAREST SOURCE'S DISTANCE. WITH TWO LINES IN ONE STAMP AND THE GUESS BETWEEN THEM, A
+# SUB-PIXEL DRIFT OF THE GUESS WOULD OTHERWISE DECIDE WHICH LINE IS KEPT (DY-2207)
+AMBIGUITY_DISTANCE_RATIO = 2.0
+
 
 class WholeSpacingShift(NamedTuple):
     """*the whole-pinhole-spacing part of a first-iteration multi-pinhole shift*
@@ -2146,10 +2151,11 @@ class create_dispersion_map:
         ylows = np.clip(np.round(yArray - windowHalf).astype(int), 0, None)
         yups = np.clip(np.round(yArray + windowHalf).astype(int), None, pinholeFrame.shape[0])
 
-        # CREATE IMAGE STAMPS (CUTOUTS) FOR EACH PREDICTED LINE POSITION
+        # CREATE IMAGE STAMPS (CUTOUTS) FOR EACH PREDICTED LINE POSITION, CARRYING THE FIRST GUESS ITSELF SO THE
+        # STAMP-ORIGIN ROUNDING CANNOT MOVE THE POINT THE DETECTIONS ARE MEASURED FROM
         stamps = [
-            (pinholeFrame[ylow:yup, xlow:xup], xlow, xup, ylow, yup)
-            for xlow, xup, ylow, yup in zip(xlows, xups, ylows, yups)
+            (pinholeFrame[ylow:yup, xlow:xup], xlow, xup, ylow, yup, guessX, guessY)
+            for xlow, xup, ylow, yup, guessX, guessY in zip(xlows, xups, ylows, yups, xArray, yArray, strict=True)
         ]
 
         # INITIALIZE OUTPUT DICTIONARY FOR LINE MEASUREMENTS
@@ -2186,6 +2192,12 @@ class create_dispersion_map:
             returnAll=returnAll,
             debug=self.debug,
         )
+
+        if not returnAll:
+            ambiguousStamps = sum(1 for rr in results for r in rr if r.get("ambiguous", False))
+            self.log.debug(
+                f"{ambiguousStamps} of {len(stamps)} arc-line stamps rejected as ambiguous (iteration {iteration})"
+            )
 
         # AGGREGATE RESULTS FROM ALL STAMP MEASUREMENTS
         for rr in results:
@@ -5054,7 +5066,10 @@ def measure_line_position(
 
     **Key Arguments:**
 
-    - `stampInfo` -- stamp pixels, xlow, xup, ylow, yup
+    - `stampInfo` -- stamp pixels, xlow, xup, ylow, yup, and optionally the first-guess detector x and y. In
+      single-source mode (`returnAll=False`) the source nearest the first guess is kept, unless the second-nearest
+      lies within `AMBIGUITY_DISTANCE_RATIO` times that distance: the stamp is then ambiguous and gives one entry with
+      NaN values and `ambiguous` set to True. Without a first guess, distances are measured from the stamp centre
     - `log` -- logger
     - `windowHalf` -- half of the stamp side
     - `iraf` -- run IRAF source detection to get FWHM?
@@ -5080,13 +5095,11 @@ def measure_line_position(
     logging.getLogger().setLevel(logging.INFO + 5)
 
     # EXTRACT STAMP INFORMATION
-    stamp, xlow, xup, ylow, yup = (
-        stampInfo[0],
-        stampInfo[1],
-        stampInfo[2],
-        stampInfo[3],
-        stampInfo[4],
-    )
+    stamp, xlow, xup, ylow, yup = stampInfo[:5]
+    if len(stampInfo) > 5:
+        guessX, guessY = stampInfo[5] - xlow, stampInfo[6] - ylow
+    else:
+        guessX, guessY = windowHalf, windowHalf
 
     # CONVERT CCDDATA TO MASKED NUMPY ARRAY
     stamp = np.ma.array(stamp.data, mask=stamp.mask)
@@ -5118,12 +5131,8 @@ def measure_line_position(
         sources = None
 
     # INITIALIZE DETECTION VARIABLES
-    old_resid = windowHalf * 4
-    selectedSource = None
     observed_x = np.nan
     observed_y = np.nan
-    fwhm = np.nan
-    old_detectionSigma = 0.0
 
     predictedLines = []
     keepValues = [
@@ -5154,31 +5163,20 @@ def measure_line_position(
                     predictedLine[k] = source[k]
                 predictedLines.append(predictedLine)
         else:
-            # SELECT BEST SINGLE SOURCE (CLOSEST TO CENTER OR BRIGHTEST)
-            if len(sources) > 1:
-                for source in sources:
-                    tmp_x = source["xcentroid"]
-                    tmp_y = source["ycentroid"]
-                    new_resid = np.sqrt((windowHalf - tmp_x) ** 2 + (windowHalf - tmp_y) ** 2)
-                    detectionSigma = source["peak"] / std
-
-                    # SELECT BY BRIGHTNESS OR PROXIMITY TO CENTER
-                    if (brightest and detectionSigma > old_detectionSigma) or (not brightest and new_resid < old_resid):
-                        observed_x = tmp_x + xlow
-                        observed_y = tmp_y + ylow
-                        stamp_x = tmp_x
-                        stamp_y = tmp_y
-                        old_resid = new_resid
-                        selectedSource = source
-                        old_detectionSigma = detectionSigma
+            # SELECT BEST SINGLE SOURCE (NEAREST THE FIRST GUESS OR BRIGHTEST)
+            if brightest:
+                selectedSource = _brightest_source(sources, std)
             else:
-                # ONLY ONE SOURCE DETECTED
-                observed_x = sources[0]["xcentroid"] + xlow
-                observed_y = sources[0]["ycentroid"] + ylow
-                stamp_x = sources[0]["xcentroid"]
-                stamp_y = sources[0]["ycentroid"]
-                selectedSource = sources[0]
-                detectionSigma = sources[0]["peak"] / std
+                selectedSource = _nearest_unambiguous_source(sources, guessX, guessY)
+            if selectedSource is None:
+                log.debug("completed the ``measure_line_position`` function")
+                return [_ambiguous_stamp_entry(keepValues)]
+
+            stamp_x = selectedSource["xcentroid"]
+            stamp_y = selectedSource["ycentroid"]
+            observed_x = stamp_x + xlow
+            observed_y = stamp_y + ylow
+            detectionSigma = selectedSource["peak"] / std
 
             # BUILD PREDICTED LINE DICTIONARY
             predictedLine = {
@@ -5187,6 +5185,7 @@ def measure_line_position(
                 "stamp_x": stamp_x,
                 "stamp_y": stamp_y,
                 "detectionSigma": detectionSigma,
+                "ambiguous": False,
             }
 
             # ADD PHOTOMETRIC PROPERTIES
@@ -5242,6 +5241,50 @@ def measure_line_position(
 
     log.debug("completed the ``measure_line_position`` function")
     return predictedLines
+
+
+def _brightest_source(sources, std):
+    """*return the first source with the highest detection sigma*"""
+    if len(sources) == 1:
+        return sources[0]
+    selectedSource = None
+    bestSigma = 0.0
+    for source in sources:
+        detectionSigma = source["peak"] / std
+        if detectionSigma > bestSigma:
+            selectedSource = source
+            bestSigma = detectionSigma
+    return selectedSource
+
+
+def _nearest_unambiguous_source(sources, guessX, guessY):
+    """*return the source nearest the first guess, or None when the stamp is ambiguous*
+
+    The stamp is ambiguous when the second-nearest source lies closer than `AMBIGUITY_DISTANCE_RATIO` times the
+    nearest source's distance. A source exactly at the first guess is never ambiguous.
+    """
+    import numpy as np
+
+    distances = np.hypot(
+        np.asarray(sources["xcentroid"], dtype=float) - guessX,
+        np.asarray(sources["ycentroid"], dtype=float) - guessY,
+    )
+    ranked = np.argsort(distances, kind="stable")
+    nearest = distances[ranked[0]]
+    if len(ranked) > 1 and nearest > 0 and distances[ranked[1]] < AMBIGUITY_DISTANCE_RATIO * nearest:
+        return None
+    return sources[int(ranked[0])]
+
+
+def _ambiguous_stamp_entry(keepValues):
+    """*return the non-detection entry of an ambiguous stamp*"""
+    import numpy as np
+
+    entry = dict.fromkeys(
+        ["observed_x", "observed_y", "stamp_x", "stamp_y", "detectionSigma", "fwhm_pin_px", *keepValues], np.nan
+    )
+    entry["ambiguous"] = True
+    return entry
 
 
 def straighten_mph_sets(group):
