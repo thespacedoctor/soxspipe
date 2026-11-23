@@ -60,7 +60,7 @@ def _subtractor(
 
 
 def _default_like_subtractor(log: Any) -> subtract_sky:
-    # THE VIS DEFAULTS FROM soxs_default_settings.yaml FOR THE SETTINGS THAT DRIVE KNOT PLACEMENT
+    # THE PRE-DY-1977 VIS DEFAULTS OF soxs_default_settings.yaml FOR THE SETTINGS THAT DRIVE KNOT PLACEMENT
     subtractor = _subtractor(log, iterationLimit=25, pointsPerKnot=1000, noiseSigma=5)
     subtractor.recipeSettings["sky-subtraction"].update({"min_points_per_knot": 155, "residual_floor_percentile": 90})
     return subtractor

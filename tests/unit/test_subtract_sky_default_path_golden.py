@@ -1,6 +1,6 @@
-"""With the shipped stare settings, ``subtract_sky.subtract`` gives the products recorded for DY-2079 on f33c0e7b.
+"""With the shipped stare settings, ``subtract_sky.subtract`` gives the products recorded for DY-1977 on 4edec12b.
 
-The golden file ``data/subtract_sky_default_golden_f33c0e7b_dy2079.npz`` holds the sky model, the sky-subtracted frame,
+The golden file ``data/subtract_sky_default_golden_4edec12b_dy1977.npz`` holds the sky model, the sky-subtracted frame,
 its ``ERRS`` and its mask for each arm, for the synthetic frame built here. It was recorded from develop cff556ae and
 re-recorded for DY-2081 (the VIS arrays: the pre-fit clip no longer retries once it clips about half the pixels
 Gaussian sky noise would; the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS mask) and for DY-2079
@@ -39,10 +39,19 @@ file (pixels counted where the change exceeds 1e-3, both medians signed as new m
   median signed change is -0.003 e- in the model and +0.003 e- in the subtracted frame.
 - The VIS ``ERRS`` and both masks do not change. The model still holds every sky line in both orders.
 
+DY-1977 re-recorded the file on 4edec12b (develop with DY-2290) because the shipped VIS knot settings changed:
+``starting_points_per_knot`` 1000 to 500 in ``soxs-stare`` and ``soxs-stare-std``, ``min_points_per_knot`` 15 to 20 in
+``soxs-stare`` and 155 to 77 in ``soxs-stare-std``. The NIR arrays, the VIS ``ERRS`` and both masks are identical to the
+DY-2079 file, bit for bit, so the NDIT weights (this frame has no NDIT card) and the NIR settings did not move them.
+Only the VIS sky model and sky-subtracted frame change, in 76145 and 76144 of 76800 pixels where the change exceeds
+1e-3, by at most 4.4 e- (+4.0 up, -4.4 down). The median signed change over those pixels is +0.019 e- in the model and
+-0.019 e- in the subtracted frame, and no pixel moves by more than 10 e-. The model still holds every sky line in both
+orders.
+
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. ``log`` is
-the ``log`` fixture of ``tests/conftest.py`` or any object with ``print``, ``debug`` and ``warning``. Recording from the
-DY-2079 commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
+the ``log`` fixture of ``tests/conftest.py`` or any object with ``print``, ``debug`` and ``warning``. Recording from
+the DY-1977 commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
 sky subtraction changed.
 """
 
@@ -69,7 +78,7 @@ from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
 
-GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_f33c0e7b_dy2079.npz"
+GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_4edec12b_dy1977.npz"
 ARMS = ("NIR", "VIS")
 PRODUCTS = ("model", "subtracted", "errs", "mask")
 STAR_ORDER = 12

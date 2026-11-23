@@ -32,7 +32,7 @@ SLIT_AVERAGE_SAMPLES = 41
 
 
 def _production_like_subtractor(log: Any) -> subtract_sky:
-    """The soxs-stare VIS defaults for every setting the clipping and the fit read."""
+    """The pre-DY-1977 soxs-stare VIS defaults for every setting the clipping and the fit read."""
     subtractor = _subtractor(log, arm="VIS", iterationLimit=25, pointsPerKnot=1000, noiseSigma=5)
     subtractor.ron = RON
     subtractor.recipeSettings["sky-subtraction"].update(
