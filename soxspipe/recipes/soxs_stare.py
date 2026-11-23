@@ -34,6 +34,7 @@ from soxspipe.commonutils.unusable_flat_pixels import (
 )
 
 from .base_recipe import base_recipe
+from .extraction_stacking import extraction_stacking
 from .nod_stare_stacking import nod_stare_stacking, reduction_inputs
 
 if TYPE_CHECKING:
@@ -62,7 +63,7 @@ NIR_NOD_STARE_DARK_MESSAGE = (
 )
 
 
-class soxs_stare(nod_stare_stacking, base_recipe):
+class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
     """
     *Reduce SOXS/Xshooter data taken in stare mode*
 
