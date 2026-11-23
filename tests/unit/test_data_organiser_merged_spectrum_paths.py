@@ -67,15 +67,16 @@ def test_merged_spectrum_filepath_is_in_the_directory_the_recipe_writes_to(
 def test_the_stare_mode_path_of_a_nod_sof_is_the_one_the_skip_check_predicts(tmp_path) -> None:
     # GUARD: THE ORGANISER TEST BELOW TAKES THE WRITTEN NAME FROM `predicted_nod_product_path`, SO PIN THAT IT IS THE
     # STARE RECIPE'S OWN PATH
+    # ARRANGE
     settings = {"workspace-root-dir": str(tmp_path / "out"), "soxs-nod": {"reduce-as-stare": True}}
+    stareRecipePath, _ = toolkit.predict_product_path(
+        f"{NOD_STEM}.sof", "soxs-stare", "_STAREMODE", outputDir=settings["workspace-root-dir"]
+    )
 
     # ACT
     predictedPath = predicted_nod_product_path(settings, f"{NOD_STEM}.sof")
 
     # ASSERT
-    stareRecipePath, _ = toolkit.predict_product_path(
-        f"{NOD_STEM}.sof", "soxs-stare", "_STAREMODE", outputDir=settings["workspace-root-dir"]
-    )
     assert predictedPath == stareRecipePath
 
 

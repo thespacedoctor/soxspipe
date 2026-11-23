@@ -644,20 +644,7 @@ class data_organiser:
         self._select_session()
 
         # GET SETTINGS
-        settingsPath = self.sessionPath + "/soxspipe.yaml"
-        su = tools(
-            arguments={
-                "<workspaceDirectory>": self.sessionPath,
-                "settingsFile": settingsPath,
-            },
-            docString=False,
-            logLevel="WARNING",
-            options_first=False,
-            projectName="soxspipe",
-            createLogger=False,
-            quitIfRunning=False,
-        )
-        arguments, self.settings, replacedLog, dbConn = su.setup()
+        self._load_session_settings()
 
         # A REBUILD DEFERS THE RANGES UNTIL THE STATUSES ARE RESTORED (SEE `_restore_session_statuses`). THE QC ROWS ARE
         # RESTORED BY NOW BUT THE STATUSES ARE NOT, AND `product_frames` IS STILL EMPTY, SO THIS CALL COULD ONLY
@@ -675,6 +662,41 @@ class data_organiser:
             self._print_prepare_report(basename)
 
         self.log.debug("completed the ``prepare`` method")
+        return
+
+    def _load_session_settings(self):
+        """*load the settings file of the active session into `self.settings`*
+
+        The settings decide how the SOF builds name some products (a nodding SOF that `reduce-as-stare` reduces as
+        stare), so `prepare` and the session regroup load them before they group the frames.
+
+        **Return:**
+
+        - None
+
+        **Usage:**
+
+        ```python
+        self._load_session_settings()
+        ```
+        """
+        self.log.debug("starting the ``_load_session_settings`` method")
+
+        su = tools(
+            arguments={
+                "<workspaceDirectory>": self.sessionPath,
+                "settingsFile": self.sessionPath + "/soxspipe.yaml",
+            },
+            docString=False,
+            logLevel="WARNING",
+            options_first=False,
+            projectName="soxspipe",
+            createLogger=False,
+            quitIfRunning=False,
+        )
+        arguments, self.settings, replacedLog, dbConn = su.setup()
+
+        self.log.debug("completed the ``_load_session_settings`` method")
         return
 
     def _select_session(self):
@@ -1992,6 +2014,9 @@ class data_organiser:
         self._select_instrument()
         if not hasattr(self, "sofMapLookup"):
             return
+        # THE SESSION SETTINGS DECIDE HOW SOME PRODUCTS ARE NAMED (`reduce-as-stare`), AND A SESSION COMMAND RUNS ON A
+        # NEW INSTANCE THAT HAS NOT READ THEM
+        self._load_session_settings()
         self._group_every_raw_frame()
 
     def _ensure_session_database_objects(self, sessionId):
@@ -4061,10 +4086,10 @@ class data_organiser:
         if recipe == "nod_obj":
             settings = getattr(self, "settings", None)
             if settings is None:
-                # `prepare` LOADS THE SETTINGS AND GROUPS THE FRAMES AGAIN, SO THE NEXT `prepare` CORRECTS THIS
+                # `prepare` AND THE SESSION REGROUP LOAD THE SETTINGS BEFORE THEY GROUP THE FRAMES
                 self.log.warning(
-                    "the session settings are not loaded yet, so the nod SOF products are named for nod mode "
-                    "whatever `reduce-as-stare` says; `soxspipe prep` names them from the settings"
+                    "the session settings are not loaded, so the nod SOF products are named for nod mode "
+                    "whatever `reduce-as-stare` says"
                 )
                 settings = {}
             recipeName, productMarker = nod_recipe_name_and_marker(settings, isStandard=False)

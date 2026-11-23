@@ -51,7 +51,7 @@ def test_session_create_initialises_sqlite_view_assets_and_workspace_links(tmp_p
     _insert_complete_raw_frame(connection)
     sessionPath = Path(organiser.sessionsDir) / "science"
     sessionPath.mkdir()
-    (sessionPath / "soxspipe.yaml").write_text("# synthetic settings\n")
+    (sessionPath / "soxspipe.yaml").write_text("# synthetic settings\n{}\n")
 
     sessionId = organiser.session_create("science")
 
@@ -155,7 +155,7 @@ def test_session_build_sof_files_creates_complete_bias_inventory(tmp_path, log) 
     )
     sessionPath = Path(organiser.sessionsDir) / "science"
     sessionPath.mkdir()
-    (sessionPath / "soxspipe.yaml").write_text("# synthetic settings\n")
+    (sessionPath / "soxspipe.yaml").write_text("# synthetic settings\n{}\n")
     organiser.session_create("science")
     organiser._select_instrument()
 

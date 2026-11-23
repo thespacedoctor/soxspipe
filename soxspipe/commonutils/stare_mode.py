@@ -81,7 +81,7 @@ def nod_recipe(log, settings, inputFrames, isRequested=False, **recipeKwargs):
     return soxs_nod(log=log, settings=settings, inputFrames=inputFrames, **recipeKwargs)
 
 
-def nod_recipe_name_and_marker(settings, isStandard, isRequested=False):
+def nod_recipe_name_and_marker(settings: dict, isStandard: bool, isRequested: bool = False) -> tuple[str, str]:
     """*name the recipe that writes the products of a nodding SOF, and the marker its product file names carry*
 
     The nod mode and the stare mode write their products to different directories, and the stare mode names them with
