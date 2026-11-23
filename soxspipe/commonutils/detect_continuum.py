@@ -2057,6 +2057,11 @@ class detect_continuum(_base_detect):
             orderPixelTable.loc[mask, "pre-clipped"] = True
             mask = orderPixelTable["gauss_stddev"] < 0.3
             orderPixelTable.loc[mask, "pre-clipped"] = True
+            # A SLICE WITH NO DATA, NO PEAK OR A REJECTED FIT KEEPS A NaN WIDTH AND IS NOT A USABLE FIT (DY-2281)
+            if "centre" not in self.recipeName:
+                mask = ~np.isfinite(orderPixelTable["gauss_stddev"])
+                orderPixelTable.loc[mask, "pre-clipped"] = True
+                self.log.debug(f"find_centre_points: {mask.sum()} slices have no finite Gaussian width")
 
             increaseSlitLength = False
             for o in orderPixelTable["order"].unique():
