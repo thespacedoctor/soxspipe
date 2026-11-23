@@ -68,7 +68,9 @@ class extraction_stacking:
     """
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
-        """*merge individual AB cycles into a master extraction*
+        """*merge the extractions of the nodding cycles, or of the nod positions of a stare-mode nodding SOF*
+
+        The spectra are grouped by wavelength and combined by their median, which is the mean for two spectra.
 
         **Key Arguments:**
 

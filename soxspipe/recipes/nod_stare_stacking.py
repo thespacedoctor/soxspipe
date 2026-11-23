@@ -215,12 +215,13 @@ class nod_stare_stacking:
         """
         uncovered = self._position_uncovered_mask(position, alignedFrames, alignmentShifts, mapImages)
         notFlattened = self._stack_aligned_frames(alignedFrames)
-        flattened = notFlattened
-        if masterFlat is not False:
+        if masterFlat is False:
+            flattened = notFlattened
+            alignedFrames.clear()
+        else:
             flatFielded = self._flat_field_nod_frames(alignedFrames, masterFlat)
             alignedFrames.clear()
             flattened = self._stack_aligned_frames(flatFielded)
-        alignedFrames.clear()
         return position_stack(position, objectFrames, notFlattened, flattened, uncovered)
 
     def _stack_aligned_frames(self, frames: list[Any]) -> Any:
@@ -324,7 +325,7 @@ class nod_stare_stacking:
         finally:
             self.sofName, self.filenameTemplate = sofName, filenameTemplate
             self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
-        self._label_merged_table_row(firstNewRow, stack.position)
+        self._relabel_merged_table_rows_from(firstNewRow, stack.position)
         return extraction
 
     def _extract_not_flattened_of_standard(self, extraction: stack_extraction) -> stack_extraction:
@@ -347,8 +348,8 @@ class nod_stare_stacking:
         notFlatPath, notFlatSpectrum = self._extract_not_flattened(*extraction.responseInputs)
         return extraction._replace(responseInputs=None, notFlatPath=notFlatPath, notFlatSpectrum=notFlatSpectrum)
 
-    def _label_merged_table_row(self, firstRow: int, position: str) -> None:
-        """*label the merged-table product rows from ``firstRow`` on with a nod position*
+    def _relabel_merged_table_rows_from(self, firstRow: int, position: str) -> None:
+        """*relabel every merged-table product row from ``firstRow`` on with a nod position*
 
         Updates ``self.products``.
 

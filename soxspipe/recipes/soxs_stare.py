@@ -723,9 +723,6 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         combined_object_notflattened: Any,
         allObjectFrames: list[Any],
         rawFrames: list[str] | bool = False,
-        inputs: reduction_inputs | None = None,
-        detrended: Any = None,
-        uncoveredMask: np.ndarray | None = None,
     ) -> tuple[str, bool | str]:
         """*detrend, sky-subtract, extract and flux-calibrate the stack of the object frames*
 
@@ -735,12 +732,6 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         - ``allObjectFrames`` -- the object frames in the stack
         - ``rawFrames`` -- the raw file names the product header lists. Default *False* lists every raw frame of
           the SOF
-        - ``inputs`` -- the ``reduction_inputs`` of `_read_reduction_inputs`. Default *None* reads them
-        - ``detrended`` -- the detrended (and flat-fielded) stack, when the frames were detrended before they were
-          stacked. Default *None* detrends ``combined_object_notflattened`` here
-        - ``uncoveredMask`` -- boolean image, True for a pixel that not every stacked frame covers. It is left out of
-          the sky fit and the extraction and flagged in the products, as the slit-illumination exclude mask is.
-          Default *None*, which leaves nothing out
 
         **Return:**
 
@@ -748,11 +739,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         - ``forceFailure`` -- True when the response curve or a slit-edge spill fails the recipe, or the failure message
           when a standard star has no object trace
         """
-        if inputs is None:
-            inputs = self._read_reduction_inputs(self.kw, self.arm)
-        extraction = self._extract_stack(
-            combined_object_notflattened, allObjectFrames, rawFrames, inputs, detrended, uncoveredMask
-        )
+        inputs = self._read_reduction_inputs(self.kw, self.arm)
+        extraction = self._extract_stack(combined_object_notflattened, allObjectFrames, rawFrames, inputs)
         forceFailure = self._finish_extraction(extraction, allObjectFrames, inputs.responseFunctionPath)
         return extraction.productPath, forceFailure
 
@@ -964,7 +952,10 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
                 extraction.extractionPath, extraction.notFlatPath, extraction.orderJoins, objectFrames
             )
         return self._generate_response_curve(
-            *inputsOfResponse[:4],
+            inputsOfResponse.unflattened,
+            inputsOfResponse.skyModel,
+            inputsOfResponse.twoDMap,
+            inputsOfResponse.dispMap,
             extraction.extractionPath,
             extraction.orderJoins,
             inputsOfResponse.flatPass,
