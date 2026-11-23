@@ -68,11 +68,13 @@ def _add_stuck_frames(root: Path, names: list[str]) -> None:
             _add_held_frame(root, name)
 
 
-def _sync(organiser: data_organiser) -> None:
+def _sync(organiser: data_organiser) -> list[str]:
+    """Run the raw-frame sync and return the `filepath` of every `raw_frames` row it leaves."""
     organiser.conn, _ = organiser._get_or_create_db_connection()
     organiser._select_instrument()
     try:
         organiser._sync_raw_frames(skipSqlSync=True)
+        return [row[0] for row in organiser.conn.execute("SELECT filepath FROM raw_frames").fetchall()]
     finally:
         organiser.close()
 
@@ -156,7 +158,7 @@ def test_sync_of_one_window_holding_a_held_frame_warns_only_about_the_hold(
     # ASSERT
     assert remainingCounts == [0]
     assert _left_in_root_warnings(log) == []
-    holdWarnings = [m for level, m in log.messages if level == "warning" and "already exists" in m]
+    holdWarnings = [message for level, message in log.messages if level == "warning" and "already exists" in message]
     assert len(holdWarnings) == 1
     assert _root_fits_names(root) == ["b_held.fits"]
 
@@ -173,10 +175,28 @@ def test_sync_creates_no_dated_folder_for_a_dated_archive_frame_it_does_not_move
     workspaceRawBefore = sorted(path.name for path in (layout.root / "raw").iterdir())
 
     # ACT
-    _sync(organiser)
+    rowPaths = _sync(organiser)
 
     # ASSERT
+    assert rowPaths == []
     assert sorted(path.name for path in (layout.root / "raw").iterdir()) == workspaceRawBefore
     assert not (layout.root / "raw" / NIGHT).exists()
     assert sorted(path.name for path in archive.iterdir()) == [NIGHT]
     assert frame.is_file()
+
+
+def test_sync_creates_the_dated_folder_of_a_root_frame_it_moves(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: NO `raw/<date>/` FOLDER EXISTS BEFORE THE SYNC
+    organiser, root = _windowed_organiser(tmp_path, log, monkeypatch)
+    harvestable_raw_fits(root / "a_fileable.fits")
+    assert not (root / "raw" / NIGHT).exists()
+
+    # ACT
+    rowPaths = _sync(organiser)
+
+    # ASSERT
+    assert (root / "raw" / NIGHT / "a_fileable.fits").is_file()
+    assert _root_fits_names(root) == []
+    assert rowPaths == [f"./raw/{NIGHT}/a_fileable.fits"]

@@ -76,7 +76,7 @@ MAP_SNAPSHOT_TABLE = "late_frame_map_snapshot"
 ROOT_SCAN_WINDOW = 10000
 
 
-def _fits_entries(pathToDirectory, skipNames=frozenset()):
+def _fits_entries(pathToDirectory: str, skipNames: frozenset[str] = frozenset()) -> list[os.DirEntry]:
     """*list the FITS entries of a directory in sorted name order*
 
     **Key Arguments:**
@@ -100,7 +100,7 @@ def _fits_entries(pathToDirectory, skipNames=frozenset()):
     ]
 
 
-def _fits_entry_path(entry, pathToDirectory):
+def _fits_entry_path(entry: os.DirEntry, pathToDirectory: str) -> str:
     """*return the path a directory entry is indexed under: a link by its resolved target, a file by its name*
 
     **Key Arguments:**
@@ -979,11 +979,16 @@ class data_organiser:
 
         # A FRAME THAT A PASS CANNOT FILE STAYS IN THE ROOT, SO EACH LATER WINDOW LEAVES OUT THE ENTRIES ALREADY
         # EXAMINED; OTHERWISE MORE STUCK FRAMES THAN ONE WINDOW WOULD FILL EVERY WINDOW FOR EVER (DY-2270)
+        # THE WINDOW IS READ AT RUN TIME, SO A TEST CAN PATCH IT
+        limit = ROOT_SCAN_WINDOW
         examinedNames = frozenset()
         passCount = 0
         while True:
-            limit = ROOT_SCAN_WINDOW
+            # THIS LISTING AND THE ONE IN `_create_directory_table` SHARE `_fits_entries`, THE SKIP SET AND THE LIMIT,
+            # SO THEY NAME THE SAME WINDOW; ONE PROCESS RUNS PER WORKSPACE, SO THE ROOT DOES NOT CHANGE BETWEEN THEM
             windowNames = [entry.name for entry in _fits_entries(self.rootDir, examinedNames)][:limit]
+            if not windowNames:
+                break
             # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
             rawFrames, fitsPaths, remainingFiles = self._create_directory_table(
                 pathToDirectory=self.rootDir,
@@ -1015,71 +1020,93 @@ class data_organiser:
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return
 
-    def _file_root_window(self, rawFrames):
+    def _file_root_window(self, rawFrames: "pd.DataFrame") -> None:
         """*index the new frames of one window of the workspace root and file them into their dated folders*
 
         **Key Arguments:**
 
         - ``rawFrames`` -- the table `_create_directory_table` built for the window
         """
-        import pandas as pd
-
-        conn = self.conn
-        knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
-
         # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
         rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
 
-        # FIND AND REMOVE DUPLICATE FILES
         if len(rawFrames.index):
             mask = rawFrames["filepath"].isnull()
             rawFrames.loc[mask, "filepath"] = (
                 "./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
             )
-
-            # FIND AND REMOVE DUPLICATE FILES
-            matchedFiles = pd.merge(
-                rawFrames,
-                knownRawFrames,
-                on=["file", "eso dpr tech"],
-                how="inner",
-            )
-            if len(matchedFiles.index):
-                for file in matchedFiles["file"]:
-                    self._remove_workspace_entry(file)
-                # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
-                rawFrames = rawFrames[
-                    ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
-                        knownRawFrames.set_index(["file", "eso dpr tech"]).index
-                    )
-                ]
+            rawFrames = self._without_known_frames(rawFrames)
 
         # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
         rawFrames = self._without_overwriting_frames(self._without_unsafe_frames(rawFrames))
-        databaseDeletes = []
         if len(rawFrames.index):
-            # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
-            rawFrames.replace(["--", -99.99], None).to_sql("raw_frames", con=self.conn, index=False, if_exists="append")
+            self._index_and_move_frames(rawFrames)
 
-            # MOVE THE FILES TO THE CORRECT LOCATION
-            filepaths = rawFrames["filepath"]
-            filenames = rawFrames["file"]
-            dprTechs = rawFrames["eso dpr tech"]
-            for filepath, filename, dprTech in zip(filepaths, filenames, dprTechs, strict=True):
-                # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
-                destination = path_under_root(filepath, self.rootDir)
-                source = path_under_root(filename, self.rootDir)
-                if os.path.exists(source):
-                    realSource = os.path.realpath(source)
-                    realDest = os.path.realpath(destination)
+    def _without_known_frames(self, rawFrames: "pd.DataFrame") -> "pd.DataFrame":
+        """*delete the root entries of frames ``raw_frames`` already holds, and drop them from the table*
 
-                    if self._is_dated_raw_frame(realSource) and realSource != realDest:
-                        # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
-                        databaseDeletes.append((filepath, filename, dprTech))
-                    elif self._would_move(source, destination):
-                        self._move_root_frame_unless_taken(destination, realSource, realDest, filename, filepath)
-                    if os.path.islink(source):
-                        self._remove_workspace_entry(filename)
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the new frames of one window, with ``file`` and ``eso dpr tech`` columns
+
+        **Return:**
+
+        - ``rawFrames`` -- the frames not yet in ``raw_frames``
+        """
+        import pandas as pd
+
+        knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=self.conn)
+        # FIND AND REMOVE DUPLICATE FILES
+        matchedFiles = pd.merge(
+            rawFrames,
+            knownRawFrames,
+            on=["file", "eso dpr tech"],
+            how="inner",
+        )
+        if not len(matchedFiles.index):
+            return rawFrames
+        for file in matchedFiles["file"]:
+            self._remove_workspace_entry(file)
+        # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
+        return rawFrames[
+            ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
+                knownRawFrames.set_index(["file", "eso dpr tech"]).index
+            )
+        ]
+
+    def _index_and_move_frames(self, rawFrames: "pd.DataFrame") -> None:
+        """*add the frames to ``raw_frames`` and move each root frame into its dated folder*
+
+        A root link to a dated raw-archive frame that is not where its ``filepath`` files it has its new row deleted,
+        and every root link is unlinked.
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the frames that passed the safety and overwrite filters
+        """
+        # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
+        rawFrames.replace(["--", -99.99], None).to_sql("raw_frames", con=self.conn, index=False, if_exists="append")
+
+        # MOVE THE FILES TO THE CORRECT LOCATION
+        databaseDeletes = []
+        filepaths = rawFrames["filepath"]
+        filenames = rawFrames["file"]
+        dprTechs = rawFrames["eso dpr tech"]
+        for filepath, filename, dprTech in zip(filepaths, filenames, dprTechs, strict=True):
+            # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
+            destination = path_under_root(filepath, self.rootDir)
+            source = path_under_root(filename, self.rootDir)
+            if not os.path.exists(source):
+                continue
+            realSource = os.path.realpath(source)
+            realDest = os.path.realpath(destination)
+            if self._is_dated_raw_frame(realSource) and realSource != realDest:
+                # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
+                databaseDeletes.append((filepath, filename, dprTech))
+            elif self._would_move(source, destination):
+                self._move_root_frame_unless_taken(destination, realSource, realDest, filename, filepath)
+            if os.path.islink(source):
+                self._remove_workspace_entry(filename)
 
         if len(databaseDeletes):
             # THE STORED FILEPATH, WITH THE KEY OF THE ROW JUST INSERTED, SO NO OTHER FRAME'S ROW IS DELETED
@@ -1091,7 +1118,7 @@ class data_organiser:
             )
             c.close()
 
-    def _warn_of_frames_left_in_root(self):
+    def _warn_of_frames_left_in_root(self) -> None:
         """*warn once, after a sync of more than one window, about the FITS frames it left in the workspace root*"""
         leftCount = len(_fits_entries(self.rootDir))
         if leftCount:
@@ -1375,7 +1402,9 @@ class data_organiser:
             self.log.warning(f"could not delete `{filepath}`, its twin may also be indexed: {error}")
         return
 
-    def _create_directory_table(self, pathToDirectory, filterKeys, limit=10000, skipNames=frozenset()):
+    def _create_directory_table(
+        self, pathToDirectory, filterKeys, limit=ROOT_SCAN_WINDOW, skipNames: frozenset[str] = frozenset()
+    ):
         """*create an astropy table based on the contents of a directory*
 
         **Key Arguments:**
