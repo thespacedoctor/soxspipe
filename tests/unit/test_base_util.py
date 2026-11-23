@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import gc
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -115,7 +117,6 @@ def test_base_util_reads_format_and_rebins_two_d_map(
     assert result.twoDMap["WAVELENGTH"].data.tolist() == [[500.0, 500.0], [500.0, 500.0]]
     assert result.imageMap["wavelength"].tolist() == [500.0] * 4
     assert result.imageMap["slit_position"].tolist() == [0.5] * 4
-    result.twoDMap.close()
 
 
 def test_base_util_imports_the_toolkit_helpers_before_it_branches(monkeypatch: pytest.MonkeyPatch, log: object) -> None:
@@ -195,7 +196,6 @@ def test_base_util_defaults_binning_when_the_map_has_no_binning_keywords(
     assert result.imageMap.shape == (4, 6)
     assert result.twoDMap["WAVELENGTH"].data.shape == (2, 2)
     assert any("dpBinx = self.twoDMap[0].header" in message for level, message in log.messages if level == "debug")
-    result.twoDMap.close()
 
 
 def test_base_util_builds_the_image_map_without_rebinning_when_the_ratios_are_one(
@@ -240,7 +240,6 @@ def test_base_util_builds_the_image_map_without_rebinning_when_the_ratios_are_on
         "float32",
     ]
     assert result.twoDMap["WAVELENGTH"].data.shape == (2, 2)
-    result.twoDMap.close()
 
 
 def test_base_util_drops_image_map_rows_masked_out_of_every_map_plane(
@@ -268,7 +267,6 @@ def test_base_util_drops_image_map_rows_masked_out_of_every_map_plane(
 
     assert result.imageMap.shape == (3, 6)
     assert result.imageMap.index.tolist() == [0, 1, 2]
-    result.twoDMap.close()
 
 
 def test_base_util_raises_type_error_when_associated_frame_is_omitted(
@@ -291,3 +289,94 @@ def test_base_util_emits_only_its_instantiation_debug_message(monkeypatch: pytes
     base_util(log, {}, associatedFrame=frame)
 
     assert log.messages == [("debug", "instansiating a new 'base_util' object")]
+
+
+def _resource_warnings_naming(path: Path, caught: list[warnings.WarningMessage]) -> list[str]:
+    """Return the messages of the caught ResourceWarnings that name ``path``."""
+    return [str(item.message) for item in caught if item.category is ResourceWarning and str(path) in str(item.message)]
+
+
+def _binned_frame(binning: int) -> CCDData:
+    return CCDData(
+        np.ones((2, 2)),
+        unit="adu",
+        meta={"SEQ_ARM": "VIS", "DATE_OBS": "2024-01-02", "WIN_BINX": binning, "WIN_BINY": binning},
+    )
+
+
+def test_base_util_closes_the_two_d_map_file_before_the_constructor_returns(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: object
+) -> None:
+    # ARRANGE
+    _patch_lookups(monkeypatch, "x")
+    _patch_two_d_map_helpers(monkeypatch, np.zeros((2, 2), dtype=bool))
+    mapPath = tmp_path / "map_closed.fits"
+    _write_two_d_map(mapPath, (2, 2), binning=(1, 1))
+
+    # ACT
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        result = base_util(log, {}, associatedFrame=_binned_frame(1), twoDMapPath=str(mapPath))
+        wavelength = result.twoDMap["WAVELENGTH"].data.tolist()
+        mjdHeader = result.twoDMap["WAVELENGTH"].header
+        del result
+        gc.collect()
+
+    # ASSERT: THE MAP PLANES AND HEADERS STAY READABLE AFTER CONSTRUCTION
+    assert wavelength == [[500.0, 500.0], [500.0, 500.0]]
+    assert mjdHeader["EXTNAME"] == "WAVELENGTH"
+
+    # ASSERT: NO FILE HANDLE WAS LEFT FOR THE GARBAGE COLLECTOR TO CLOSE
+    assert _resource_warnings_naming(mapPath, caught) == []
+
+
+def test_base_util_closes_the_two_d_map_file_when_it_block_reduces_the_map(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: object
+) -> None:
+    # ARRANGE
+    _patch_lookups(monkeypatch, "x")
+    _patch_two_d_map_helpers(monkeypatch, np.zeros((2, 2), dtype=bool))
+    mapPath = tmp_path / "map_block_reduced.fits"
+    _write_two_d_map(mapPath, (4, 4), binning=(1, 1))
+
+    # ACT
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        result = base_util(log, {}, associatedFrame=_binned_frame(2), twoDMapPath=str(mapPath))
+        planeShapes = [result.twoDMap[name].data.shape for name in ("WAVELENGTH", "SLIT", "ORDER")]
+        slitValues = result.twoDMap["SLIT"].data.tolist()
+        del result
+        gc.collect()
+
+    # ASSERT: THE PLANES KEEP THEIR BLOCK-REDUCED SHAPE AND VALUES
+    assert planeShapes == [(2, 2), (2, 2), (2, 2)]
+    assert slitValues == [[0.5, 0.5], [0.5, 0.5]]
+
+    # ASSERT: NO FILE HANDLE WAS LEFT FOR THE GARBAGE COLLECTOR TO CLOSE
+    assert _resource_warnings_naming(mapPath, caught) == []
+
+
+def test_base_util_closes_the_two_d_map_file_when_construction_raises(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, log: object
+) -> None:
+    # ARRANGE: A MAP WITH NO ORDER EXTENSION, SO THE CONSTRUCTOR RAISES AFTER IT OPENS THE FILE
+    _patch_lookups(monkeypatch, "x")
+    _patch_two_d_map_helpers(monkeypatch, np.zeros((2, 2), dtype=bool))
+    mapPath = tmp_path / "map_without_order.fits"
+    primary = fits.PrimaryHDU(np.ones((2, 2)))
+    primary.header["WIN_BINX"] = 1
+    primary.header["WIN_BINY"] = 1
+    hdus = [primary]
+    for name, value in (("WAVELENGTH", 500.0), ("SLIT", 0.5)):
+        hdus.append(fits.ImageHDU(np.full((2, 2), value), name=name))
+    fits.HDUList(hdus).writeto(mapPath)
+
+    # ACT
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        with pytest.raises(KeyError, match="ORDER"):
+            base_util(log, {}, associatedFrame=_binned_frame(1), twoDMapPath=str(mapPath))
+        gc.collect()
+
+    # ASSERT
+    assert _resource_warnings_naming(mapPath, caught) == []

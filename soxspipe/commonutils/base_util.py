@@ -111,7 +111,7 @@ class base_util:
 
         # OPEN AND UNPACK THE 2D IMAGE MAP
         if twoDMapPath:
-            self.twoDMap = fits.open(twoDMapPath)
+            self.twoDMap = self._read_two_d_map_into_memory(twoDMapPath, fits)
 
             dpBinx, dpBiny = self._read_map_binning()
 
@@ -221,6 +221,26 @@ class base_util:
         associatedFrame.data[interOrderMaskNDArray == 1] = np.nan
 
         return
+
+    @staticmethod
+    def _read_two_d_map_into_memory(twoDMapPath, fits):
+        """*read every HDU of the 2D dispersion map into memory and close the file*
+
+        The planes and headers stay readable through the usual ``name -> .data / .header`` access, and the file
+        is closed even when a read fails, so no file handle is left for the garbage collector.
+
+        **Key Arguments:**
+            - ``twoDMapPath`` -- path to the 2D dispersion map
+            - ``fits`` -- the astropy.io.fits module, imported by the caller
+
+        **Return:**
+            - ``twoDMap`` -- an in-memory HDUList holding a copy of each HDU of the map
+        """
+        hdul = fits.open(twoDMapPath)
+        try:
+            return fits.HDUList([hdu.copy() for hdu in hdul])
+        finally:
+            hdul.close()
 
     def _read_map_binning(self):
         """*read the window binning from the 2D map's primary header, defaulting to 1x1*
