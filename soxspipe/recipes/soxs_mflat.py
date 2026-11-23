@@ -20,6 +20,7 @@ from soxspipe.commonutils import detect_order_edges, subtract_background
 from soxspipe.commonutils.toolkit import (
     append_product,
     append_qc,
+    concat_tables,
     generic_quality_checks,
     quicklook_image,
     require_unbinned_order_centres,
@@ -467,7 +468,7 @@ class soxs_mflat(base_recipe):
         if canStitchUvFlats:
             mflat = self.stitch_uv_mflats(medianOrderFluxDF, orderTablePath=thisPath)
         else:
-            self.qc = pd.concat([self.qc, qcTable], ignore_index=True)
+            self.qc = concat_tables([self.qc, qcTable], ignore_index=True)
 
         quicklook_image(
             log=self.log,

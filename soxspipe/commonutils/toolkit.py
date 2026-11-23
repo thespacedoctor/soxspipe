@@ -11,8 +11,10 @@ Date Created
 
 import logging
 import os
+import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from os.path import expanduser
 from typing import TYPE_CHECKING, Literal
@@ -51,6 +53,16 @@ QC_LEGEND_OFFSET_POINTS = 14
 
 # THE LOGGER THAT `logging.captureWarnings` SENDS PYTHON WARNINGS TO
 WARNINGS_LOGGER_NAME = "py.warnings"
+
+# LIBRARY WARNINGS THAT ARE EXPECTED AND CHANGE NOTHING IN THE PRODUCTS, MATCHED BY EXACT MESSAGE AND CATEGORY. THE
+# FIRST TWO HAVE TOO MANY CALL SITES TO WRAP (ABOUT 150 `sigma_clip` CALLS, EVERY ESO HEADER CARD)
+CARD_TOO_LONG_MESSAGE = "Card is too long, comment will be truncated"
+SIGMA_CLIP_INVALID_MESSAGE = "Input data contains invalid values (NaNs or infs), which were automatically clipped"
+# ASTROPY'S NOTE THAT A LEVMAR FIT MAY NOT HAVE CONVERGED. A REAL SIGNAL ELSEWHERE, SO IT IS HIDDEN AT THE FIT SITES
+# ONLY
+FIT_UNSUCCESSFUL_MESSAGE = "The fit may be unsuccessful"
+# MATPLOTLIB'S NOTE THAT IT KEPT THE UNCONSTRAINED LAYOUT BECAUSE A PANEL COLLAPSED
+CONSTRAINED_LAYOUT_MESSAGE = "constrained_layout not applied"
 
 # EXTRACTION NOTES PRINTED UNDER A QC PLOT
 # THE MOST NOTES DRAWN ON A PLOT. THE REST ARE SUMMARISED AS A COUNT
@@ -666,7 +678,6 @@ def _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst):
             ax2.plot(
                 gridLinePixelTable.loc[mask]["fit_x"],
                 gridLinePixelTable.loc[mask]["fit_y"],
-                "w-",
                 linewidth=0.5,
                 alpha=0.8,
                 color="black",
@@ -675,7 +686,6 @@ def _draw_dispersion_grid_lines(ax2, gridLinePixelTable, inst):
             ax2.plot(
                 gridLinePixelTable.loc[mask]["fit_y"],
                 gridLinePixelTable.loc[mask]["fit_x"],
-                "w-",
                 linewidth=0.5,
                 alpha=0.8,
                 color="black",
@@ -2316,7 +2326,6 @@ def create_dispersion_solution_grid_lines_for_plot(
         ax.plot(
             gridLinePixelTable.loc[mask]["fit_y"],
             gridLinePixelTable.loc[mask]["fit_x"],
-            "w-",
             linewidth=0.5,
             alpha=0.8,
             color="black",
@@ -2808,7 +2817,8 @@ def _lowest_axes_bottom_in_figure_fraction(fig: "Figure") -> float:
         return 0.0
 
     # NO RENDERER ARGUMENT: MATPLOTLIB PICKS THE FIGURE'S OWN, SO NON-AGG CANVASES (PDF, SVG, PS) WORK TOO
-    fig.draw_without_rendering()
+    with quiet_constrained_layout():
+        fig.draw_without_rendering()
     lowestPixel = min(ax.get_tightbbox().y0 for ax in visibleAxes)
     return float(lowestPixel / fig.bbox.height)
 
@@ -3944,6 +3954,80 @@ def append_product(
     return pd.concat([productsTable, pd.DataFrame([row])], ignore_index=True)
 
 
+def ignore_expected_library_warnings():
+    """*hide the library warnings that are expected and change nothing in the products*
+
+    Two warnings have too many call sites to wrap: astropy's ``VerifyWarning`` for a header card whose comment is
+    cut to fit, and ``sigma_clip``'s note that NaN pixels, which are masked pixels by design, were clipped. Each
+    filter matches the exact message and category, so any other warning of the same class still reaches the log.
+    The filters are process-wide. ``warnings.filterwarnings`` drops a duplicate entry before it inserts, so calling
+    this again adds nothing.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import ignore_expected_library_warnings
+    ignore_expected_library_warnings()
+    ```
+    """
+    import warnings
+
+    from astropy.io.fits.verify import VerifyWarning
+    from astropy.utils.exceptions import AstropyUserWarning
+
+    warnings.filterwarnings("ignore", message=re.escape(CARD_TOO_LONG_MESSAGE), category=VerifyWarning)
+    warnings.filterwarnings("ignore", message=re.escape(SIGMA_CLIP_INVALID_MESSAGE), category=AstropyUserWarning)
+
+
+@contextmanager
+def quiet_least_squares_fit() -> Iterator[None]:
+    """*hide the warnings of a least-squares fit that is allowed to fail, inside a ``with`` block*
+
+    A fit that does not converge is routine here: the callers test the fitted values and drop a bad fit. The block
+    hides astropy's "The fit may be unsuccessful" warning and the numpy ``invalid value`` and ``overflow`` warnings
+    that SciPy raises while it inverts a singular Jacobian for a covariance that no caller reads. The filters
+    apply inside the block only, and the previous warning filters and numpy error state return on exit.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import quiet_least_squares_fit
+    with quiet_least_squares_fit():
+        g = fit_g(g_init, x, y)
+    ```
+    """
+    import warnings
+
+    import numpy as np
+    from astropy.utils.exceptions import AstropyUserWarning
+
+    with warnings.catch_warnings(), np.errstate(invalid="ignore", over="ignore"):
+        warnings.filterwarnings("ignore", message=re.escape(FIT_UNSUCCESSFUL_MESSAGE), category=AstropyUserWarning)
+        yield
+
+
+@contextmanager
+def quiet_constrained_layout() -> Iterator[None]:
+    """*hide matplotlib's collapsed-axes layout notice, inside a ``with`` block*
+
+    Matplotlib keeps the unconstrained layout and still writes the figure, so the notice changes nothing in the
+    product. It repeats for every QC figure that has a collapsed panel. The filter applies inside the block only.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import quiet_constrained_layout
+    with quiet_constrained_layout():
+        fig.draw_without_rendering()
+    ```
+    """
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=re.escape(CONSTRAINED_LAYOUT_MESSAGE), category=UserWarning)
+        yield
+
+
 def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
     """*save the current matplotlib figure as a QC PDF plot*
 
@@ -3970,17 +4054,12 @@ def save_qc_plot(filePath, dpi=120, bboxInches="tight"):
     save_qc_plot(filePath)
     ```
     """
-    import warnings
-
     import matplotlib.pyplot as plt
 
     kwargs = {"dpi": dpi, "format": "pdf"}
     if bboxInches is not None:
         kwargs["bbox_inches"] = bboxInches
-    with warnings.catch_warnings():
-        # MATPLOTLIB KEEPS THE UNCONSTRAINED LAYOUT AND STILL WRITES THE FIGURE, SO THE NOTICE CHANGES NOTHING IN THE
-        # PRODUCT; IT REPEATS FOR EVERY QC FIGURE THAT HAS A COLLAPSED PANEL
-        warnings.filterwarnings("ignore", message="constrained_layout not applied", category=UserWarning)
+    with quiet_constrained_layout():
         plt.savefig(filePath, **kwargs)
     return filePath
 

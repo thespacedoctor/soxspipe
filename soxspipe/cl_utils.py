@@ -309,6 +309,7 @@ def main(arguments=None):
     )
     arguments, settings, log, dbConn = su.setup()
     toolkit.route_warnings_to_console(log)
+    toolkit.ignore_expected_library_warnings()
 
     arguments["workspaceDirectory"] = "."
     arguments["--settings"] = "./soxspipe.yaml"

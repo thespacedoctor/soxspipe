@@ -139,6 +139,8 @@ class base_recipe:
         import matplotlib
         import pandas as pd
 
+        from soxspipe.commonutils.toolkit import ignore_expected_library_warnings
+
         log.debug("instantiating a new '__init__' object")
         self.recipeName = recipeName
         self.productNameMarker = productNameMarker
@@ -156,6 +158,9 @@ class base_recipe:
             matplotlib.use("Agg")
 
         self.darkDetrendWarningIssued2 = False
+
+        # EVERY REDUCTION PATH BUILDS A RECIPE, INCLUDING SPAWNED WORKERS, WHICH DO NOT INHERIT THE PARENT'S FILTERS
+        ignore_expected_library_warnings()
 
         if is_standard_input(inputFrames):
             self.recipeName = self.recipeName.replace("soxs-nod", "soxs-nod-std")

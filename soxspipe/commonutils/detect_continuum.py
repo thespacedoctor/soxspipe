@@ -53,6 +53,7 @@ from soxspipe.commonutils.toolkit import (
     order_traces_table,
     qc_image_panel_height,
     qc_table_heights,
+    quiet_least_squares_fit,
     read_spectral_format,
 )
 
@@ -186,13 +187,14 @@ class _base_detect:
             # NOTE X AND Y COLUMN ARE CORRECLY IN xdata AND ydata - WANT TO
             # FIND X (UNKNOWN) WRT Y (KNOWNN)
             try:
-                coeff, pcov_x = curve_fit(
-                    poly,
-                    xdata=pixelListFiltered,
-                    ydata=pixelListFiltered[axisACol].values,
-                    p0=coeff,
-                    maxfev=30000,
-                )
+                with quiet_least_squares_fit():
+                    coeff, pcov_x = curve_fit(
+                        poly,
+                        xdata=pixelListFiltered,
+                        ydata=pixelListFiltered[axisACol].values,
+                        p0=coeff,
+                        maxfev=30000,
+                    )
             except TypeError:
                 # REMOVE THIS ORDER FROM PIXEL LIST
                 pixelList = pixelList.loc[~mask]
@@ -1405,7 +1407,8 @@ class detect_continuum(_base_detect):
                 mask = np.isfinite(slice_data)
                 x_range = np.arange(len(slice_data))
                 # OPTIMISE: 7s - 3185 hits
-                g = fit_g(g_init, x_range[mask], slice_data[mask])
+                with quiet_least_squares_fit():
+                    g = fit_g(g_init, x_range[mask], slice_data[mask])
 
                 if 0 <= g.mean.value <= sliceLength and g.stddev.value > 0.5:
                     contSliceAxis[i] = g.mean.value + max(0, slice_length_offset)

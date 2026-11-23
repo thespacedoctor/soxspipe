@@ -66,6 +66,7 @@ from soxspipe.commonutils.toolkit import (
     order_label,
     qc_image_panel_height,
     qc_table_heights,
+    quiet_least_squares_fit,
     read_spectral_format,
     twoD_disp_map_image_to_dataframe,
     unpack_order_table,
@@ -2741,7 +2742,8 @@ class create_dispersion_map:
         fit_g = fitting.LevMarLSQFitter()
 
         try:
-            g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
+            with quiet_least_squares_fit():
+                g = fit_g(g_init, np.arange(0, len(detector_row)), detector_row)
 
             if g.stddev.value < guessStd / 2.0:
                 # 1.0 SLIT CANNOT BE LESS THAN 1.0 px
@@ -4116,7 +4118,6 @@ class create_dispersion_map:
                     midrow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
@@ -4125,7 +4126,6 @@ class create_dispersion_map:
                     toprow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
@@ -4135,7 +4135,6 @@ class create_dispersion_map:
                     midrow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
@@ -4143,7 +4142,6 @@ class create_dispersion_map:
                     toprow.plot(
                         gridLinePixelTable.loc[mask][f"fit_{self.axisB}"],
                         gridLinePixelTable.loc[mask][f"fit_{self.axisA}"],
-                        "w-",
                         linewidth=0.2,
                         alpha=0.5 * alphaBoost,
                         color="blue",
