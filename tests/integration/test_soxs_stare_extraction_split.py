@@ -17,7 +17,11 @@ import pytest
 from soxspipe.recipes import soxs_stare
 from soxspipe.recipes.nod_stare_stacking import reduction_inputs, response_inputs, stack_extraction
 from tests.factories import synthetic_ccd
-from tests.integration.test_soxs_stare_reduction_characterization import _patch_stare, _stare_recipe
+from tests.integration.test_soxs_stare_reduction_characterization import (
+    RECIPE_READ_NOISE,
+    _patch_stare,
+    _stare_recipe,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -133,6 +137,7 @@ def test_the_extraction_half_returns_the_extraction_and_does_not_finish_it(
     assert extraction.traceFallback is False
     assert extraction.extractionNotes == [("WARNING", "an order was skipped")]
     assert len(extractor.built) == 1
+    assert extractor.built[0]["readNoise"] == RECIPE_READ_NOISE
     assert calls == {"fluxCal": [], "response": [], "compute": [], "ascii": [], "plot": []}
     assert recipe.dateObs == stack.header["DATE-OBS"]
 
@@ -299,6 +304,7 @@ def test_the_not_flattened_extraction_is_handed_the_flat_pass_and_returns_its_pa
     assert spectrum["WAVE"].tolist() == [500.0]
     built = extractor.built[0]
     assert built["notFlattened"] is True
+    assert built["readNoise"] == RECIPE_READ_NOISE
     assert built["flatPass"] is HANDOFF
     assert built["skySubtractedFrame"] == "UNFLAT"
     assert built["subtractedFrame"] == "SKY"

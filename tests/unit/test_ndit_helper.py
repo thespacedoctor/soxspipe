@@ -13,7 +13,7 @@ import pytest
 from astropy.io import fits
 
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-from soxspipe.commonutils.ndit import MAX_NDIT, read_ndit
+from soxspipe.commonutils.ndit import MAX_NDIT, read_ndit, scale_by_sqrt_ndit
 
 pytestmark = pytest.mark.unit
 
@@ -99,3 +99,25 @@ def test_accepts_a_whole_number_float_and_a_numpy_integer(log: Any) -> None:
     assert fromNumpy == 4
     assert isinstance(fromFloat, int)
     assert isinstance(fromNumpy, int)
+
+
+def test_scaling_by_the_square_root_of_ndit_leaves_an_ndit_1_array_untouched() -> None:
+    # ARRANGE
+    values = np.array([-0.0, 0.5, np.inf, np.nan])
+
+    # ACT
+    scaled = scale_by_sqrt_ndit(values, 1)
+
+    # ASSERT
+    assert scaled is values
+
+
+def test_scaling_by_the_square_root_of_ndit_multiplies_an_ndit_above_1_array() -> None:
+    # ARRANGE
+    values = np.array([0.0, 0.5, 2.0])
+
+    # ACT
+    scaled = scale_by_sqrt_ndit(values, 4)
+
+    # ASSERT
+    np.testing.assert_array_equal(scaled, [0.0, 1.0, 4.0])

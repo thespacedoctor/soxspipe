@@ -7,6 +7,9 @@ arc-solution position, minus the median of the surrounding ``SKY_SNR_BASELINE_HA
 the photon noise of that baseline plus the read noise, ``sqrt(baseline + ron^2)``, in electrons per pixel. The lines
 add in quadrature, as the precision of a shift measured from all of them does.
 
+A frame is the mean of NDIT integrations, so its variance is that of one integration divided by NDIT and every
+signal-to-noise is the NDIT 1 value times ``sqrt(NDIT)`` (DY-2323).
+
 ``skyFlux`` is a smooth sky model, so the scatter of its own samples says nothing about its noise (DY-1663 probe:
 the line-free residual is about 0.01 e-). The photon noise of the pixels it was fitted to is used instead.
 
@@ -19,13 +22,15 @@ Date Created
 
 import numpy as np
 
+from soxspipe.commonutils.ndit import scale_by_sqrt_ndit
+
 # HALF-WIDTH IN SAMPLES OF THE WINDOW SEARCHED FOR A LINE'S PEAK; COVERS SOXS VIS NIGHT-TO-ARC FLEXURE (<= 3.3 px)
 SKY_SNR_PEAK_HALF_WINDOW = 4
 # HALF-WIDTH IN SAMPLES OF THE WINDOW WHOSE MEDIAN IS A LINE'S BASELINE
 SKY_SNR_BASELINE_HALF_WINDOW = 25
 
 
-def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise):
+def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise, ndit: int = 1):
     """*return the photon-noise signal-to-noise of each catalogue line in the order, brightest first*
 
     **Key Arguments:**
@@ -34,6 +39,7 @@ def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise):
     - ``skyFlux`` -- the sky flux at each wavelength (e- per pixel); NaN samples are ignored
     - ``lineWavelengths`` -- the catalogue sky-line wavelengths (nm); lines outside the order are ignored
     - ``readNoise`` -- the detector read noise (e-)
+    - ``ndit`` -- the number of integrations the frame averages (``ndit.read_ndit``). Default *1*
 
     **Return:**
 
@@ -57,7 +63,7 @@ def sky_line_snrs(wavelength, skyFlux, lineWavelengths, readNoise):
             skyFlux[max(centre - SKY_SNR_BASELINE_HALF_WINDOW, 0) : centre + SKY_SNR_BASELINE_HALF_WINDOW + 1]
         )
         snrs.append(max((peak - baseline) / np.sqrt(max(baseline, 0.0) + readNoise**2), 0.0))
-    return np.sort(np.asarray(snrs, dtype=float))[::-1]
+    return scale_by_sqrt_ndit(np.sort(np.asarray(snrs, dtype=float))[::-1], ndit)
 
 
 def combine_line_snrs(lineSnrs):

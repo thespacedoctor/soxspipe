@@ -40,7 +40,7 @@ END_MARGIN_PIXELS = 100
 
 
 def _production_like_subtractor(log: Any) -> subtract_sky:
-    """The soxs-stare VIS defaults for every setting the fit reads."""
+    """The pre-DY-1977 soxs-stare VIS defaults for every setting the fit reads."""
     subtractor = _subtractor(log, arm="VIS", iterationLimit=25, pointsPerKnot=1000, noiseSigma=5)
     subtractor.ron = RON
     subtractor.recipeSettings["sky-subtraction"].update(
