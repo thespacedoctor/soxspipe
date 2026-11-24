@@ -13,6 +13,11 @@ PER_ARM_MODE = "per-arm"
 JOINED_MODE = "joined"
 HEADER_MODES = (PER_ARM_MODE, JOINED_MODE)
 
+# ASTROPY WRITES A CARD COMMENT AFTER " / "; A COMMENT CUT TO FIT LOSES THESE CHARACTERS AT ITS END
+COMMENT_SEPARATOR = " / "
+COMMENT_PLACEHOLDER = "x"
+TRAILING_SEPARATORS = " ,;:/"
+
 # CARDS OF THE UV-VIS ARM THAT A JOINED PRODUCT DROPS, AS ASTROPY NAMES THEM (WITHOUT THE HIERARCH PREFIX)
 JOINED_DROPPED_PREFIXES = ("ESO DET ", "ESO INS ", "ESO SEQ ", "ESO QC ")
 
@@ -191,8 +196,62 @@ def add_qc_to_header(header, qc):
     ):
         isMissing = isinstance(v, (float, np.floating)) and not np.isfinite(v)
         if h and not isMissing:
-            set_header_card(header, f"ESO QC {n}".upper(), v, c)
+            keyword = f"ESO QC {n}".upper()
+            set_header_card(header, keyword, v, fit_card_comment(keyword, v, c))
     return header
+
+
+def fit_card_comment(keyword: str, value: object, comment: str | None) -> str | None:
+    """*return the comment cut to the room an 80-character card leaves it, at the last word boundary that fits*
+
+    Astropy cuts a comment that does not fit mid-word when the file is written. This cuts it at a word boundary
+    instead, with no trailing separator. A comment that fits is returned unchanged, and ``None`` when no whole word
+    fits.
+
+    **Key Arguments:**
+
+    - ``keyword`` -- the header keyword, with or without the ``HIERARCH`` prefix
+    - ``value`` -- the card value
+    - ``comment`` -- the card comment
+
+    **Return:**
+
+    - ``comment`` -- the comment that fits the card, or ``None``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.phase3 import fit_card_comment
+    comment = fit_card_comment("ESO QC SKY SHIFT O15 PX", -0.034, "Same shift as detector motion along dispersion")
+    ```
+    """
+    import warnings
+
+    from astropy.io import fits
+    from astropy.io.fits.verify import VerifyWarning
+
+    from soxspipe.commonutils.fits_headers import hierarch
+
+    if not isinstance(comment, str) or not comment:
+        return comment
+
+    # MEASURE WITH A ONE-CHARACTER COMMENT: ASTROPY PADS A SHORT STRING VALUE ONLY WHEN A COMMENT FOLLOWS IT
+    with warnings.catch_warnings():
+        # A CARD WITH NO ROOM FOR THE PLACEHOLDER IS CUT AND WARNS HERE; THAT ONLY MEANS NO COMMENT FITS
+        warnings.simplefilter("ignore", VerifyWarning)
+        image = fits.Card(hierarch(keyword), value, COMMENT_PLACEHOLDER).image.rstrip()
+    # A CUT PLACEHOLDER, OR A STRING VALUE SPREAD OVER CONTINUE CARDS, LEAVES NO ROOM FOR A COMMENT
+    isOneCard = len(image) <= fits.Card.length
+    if not isOneCard or not image.endswith(COMMENT_SEPARATOR + COMMENT_PLACEHOLDER):
+        return None
+    room = fits.Card.length - len(image) + len(COMMENT_PLACEHOLDER)
+    if len(comment) <= room:
+        return comment
+
+    # CUT AT THE LAST SPACE THAT LEAVES A WHOLE WORD, THEN DROP ANY SEPARATOR LEFT AT THE END
+    cut = comment[: room + 1].rfind(" ")
+    fitted = comment[:cut].rstrip(TRAILING_SEPARATORS) if cut > 0 else ""
+    return fitted or None
 
 
 def pipe_id():

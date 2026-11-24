@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 from astropy.io import fits
 
 import soxspipe
+from soxspipe.commonutils.toolkit import read_spectral_format
 
 pytestmark = pytest.mark.unit
 
@@ -35,6 +38,42 @@ KNOWN_MISSING = {("soxs", "VIS", "bad-pixel map", "BP_MAP_RP_VIS_1x2.fits")}
 
 # THE COLUMNS create_new_static_line_list READS FROM THE LINE ATLAS
 LINE_ATLAS_COLUMNS = {"wave", "ion", "source", "amplitude"}
+
+# THE KEYS WHOSE FILES ARE LINE LISTS: THE ATLAS, THE ARC LINE TABLES AND THE SKY-LINE LIST
+LINE_LIST_KEYS = ["line-atlas", "predicted pinhole lines", "skylines"]
+
+# THE LINE LISTS THAT HOLD LAMP LINES, SO EVERY ORDER OF THEIR ARM HAS AT LEAST ONE LINE
+LAMP_LINE_LIST_KEYS = ["line-atlas", "predicted pinhole lines"]
+
+# THE NAMES THE LINE LISTS GIVE THEIR WAVELENGTH COLUMN (COMPARED IN LOWER CASE)
+WAVELENGTH_COLUMN_NAMES = {"wave", "wavelength"}
+
+# THE IVOA UCD OF AN AIR WAVELENGTH (THE ESO SDP CONVENTION, DY-2255)
+AIR_WAVELENGTH_UCD = "em.wl;obs.atmos"
+
+# STRONG Ar I LINES AS (AIR, VACUUM) PAIRS IN nm (DY-2255 AGENT NOTES)
+AR_I_AIR_VACUUM_NM = [
+    (696.5431, 696.7352),
+    (706.7218, 706.9167),
+    (750.3869, 750.5935),
+    (763.5106, 763.7208),
+    (772.3761, 772.5887),
+    (794.8176, 795.0362),
+    (801.4786, 801.6990),
+    (811.5311, 811.7542),
+    (826.4522, 826.6794),
+    (842.4648, 842.6963),
+    (912.2967, 912.5471),
+]
+LINE_MATCH_TOLERANCE_NM = 0.005
+
+# THE WAVELENGTH SPAN (nm) OF THE X-SHOOTER UVB AND VIS ThAr ATLAS IN AIR (DY-2255 ACCEPTANCE CRITERIA)
+XSH_THAR_ATLAS_MIN_NM = 290.0
+XSH_THAR_ATLAS_MAX_NM = 1100.0
+
+# THE ion LABELS OF NEUTRAL ARGON ROWS. A LIST WITH AN ion COLUMN IS COMPARED ON THESE ROWS ONLY, BECAUSE A DENSE
+# ThAr LIST HOLDS OTHER LINES NEAR A VACUUM VALUE BY CHANCE (IN xsh/ThAr.fits A ThI LINE SITS AT 811.7557 nm, AIR)
+AR_I_ION_LABELS = {"ArI", "Ar"}
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
@@ -181,3 +220,121 @@ def test_line_atlas_of_each_arm_has_the_columns_the_static_line_list_reads(
     # ASSERT
     assert namedAtlas == atlas
     assert sorted(LINE_ATLAS_COLUMNS - columns) == []
+
+
+def _configured_line_lists(keys: list[str]) -> list[tuple[str, str, str, str]]:
+    """Return (instrument, arm, key, file name) for every line list the yaml files name under ``keys``."""
+    lineLists = []
+    for instrument in INSTRUMENTS:
+        parameters = yaml.safe_load(_yaml_path(instrument).read_text())
+        for arm, armParameters in parameters.items():
+            if not isinstance(armParameters, dict):
+                continue
+            for key in keys:
+                if key in armParameters:
+                    lineLists.extend(
+                        (instrument, arm, key, name) for name in sorted(set(_file_names(armParameters[key])))
+                    )
+    return lineLists
+
+
+def _line_list_id(lineList: tuple[str, str, str, str]) -> str:
+    return "-".join(lineList)
+
+
+def _line_list_path(instrument: str, name: str) -> Path:
+    return RESOURCES_DIR / "static_calibrations" / instrument / name
+
+
+def _wavelength_column_of(table: fits.BinTableHDU, name: str) -> tuple[int, np.ndarray]:
+    columns = table.columns
+    matches = [i for i, columnName in enumerate(columns.names) if columnName.lower() in WAVELENGTH_COLUMN_NAMES]
+    assert len(matches) == 1, f"{name} has no single wavelength column: {columns.names}"
+    index = matches[0]
+    return index + 1, np.asarray(table.data[columns.names[index]], dtype=float)
+
+
+def _wavelength_column(instrument: str, name: str) -> tuple[int, np.ndarray]:
+    """Return the 1-based column number and the values of a line list's wavelength column."""
+    with fits.open(_line_list_path(instrument, name)) as hdus:
+        return _wavelength_column_of(hdus[1], name)
+
+
+def _ar_i_wavelengths(instrument: str, name: str) -> np.ndarray:
+    """Return the wavelengths of the Ar I rows of a line list, or of every row when the list has no ion column."""
+    with fits.open(_line_list_path(instrument, name)) as hdus:
+        _, waves = _wavelength_column_of(hdus[1], name)
+        if "ion" not in hdus[1].columns.names:
+            return waves
+        ions = np.char.strip(np.asarray(hdus[1].data["ion"], dtype=str))
+    return waves[np.isin(ions, list(AR_I_ION_LABELS))]
+
+
+def _has_line_near(waves: np.ndarray, wavelength: float) -> bool:
+    return bool(np.any(np.abs(waves - wavelength) < LINE_MATCH_TOLERANCE_NM))
+
+
+@pytest.mark.parametrize("lineList", _configured_line_lists(LINE_LIST_KEYS), ids=_line_list_id)
+def test_every_configured_line_list_marks_its_wavelength_column_as_air(lineList: tuple[str, str, str, str]) -> None:
+    # ARRANGE
+    instrument, _, _, name = lineList
+    columnNumber, _ = _wavelength_column(instrument, name)
+
+    # ACT
+    header = fits.getheader(_line_list_path(instrument, name), 1)
+
+    # ASSERT
+    assert header.get(f"TUCD{columnNumber}") == AIR_WAVELENGTH_UCD
+
+
+@pytest.mark.parametrize("lineList", _configured_line_lists(LINE_LIST_KEYS), ids=_line_list_id)
+def test_no_configured_line_list_holds_vacuum_ar_i_wavelengths(lineList: tuple[str, str, str, str]) -> None:
+    # ARRANGE
+    instrument, _, _, name = lineList
+    _, waves = _wavelength_column(instrument, name)
+    argonWaves = _ar_i_wavelengths(instrument, name)
+    inRange = [vacuum for _, vacuum in AR_I_AIR_VACUUM_NM if waves.min() <= vacuum <= waves.max()]
+
+    # ACT
+    vacuumMatches = [vacuum for vacuum in inRange if _has_line_near(argonWaves, vacuum)]
+
+    # ASSERT
+    assert vacuumMatches == []
+
+
+@pytest.mark.parametrize("lineList", _configured_line_lists(LAMP_LINE_LIST_KEYS), ids=_line_list_id)
+def test_every_order_of_the_arm_holds_a_line_of_each_lamp_line_list(lineList: tuple[str, str, str, str]) -> None:
+    """A list in the wrong unit (for example Angstrom) puts no line in any order, which are in nm."""
+    # ARRANGE
+    instrument, arm, _, name = lineList
+    _, waves = _wavelength_column(instrument, name)
+    orderNums, waveLengthMin, waveLengthMax = read_spectral_format(
+        log=logging.getLogger(__name__), settings={"instrument": instrument}, arm=arm
+    )
+
+    # ACT
+    emptyOrders = [
+        int(order)
+        for order, wmin, wmax in zip(orderNums, waveLengthMin, waveLengthMax, strict=True)
+        if not np.any((waves >= wmin) & (waves <= wmax))
+    ]
+
+    # ASSERT
+    assert emptyOrders == []
+
+
+@pytest.mark.parametrize("arm", ["UVB", "VIS"])
+def test_xsh_uvb_and_vis_line_atlas_holds_air_wavelengths_in_nm(arm: str) -> None:
+    # ARRANGE
+    parameters = yaml.safe_load(_yaml_path("xsh").read_text())
+    atlas = parameters[arm]["line-atlas"]
+
+    # ACT
+    _, waves = _wavelength_column("xsh", atlas)
+    argonWaves = _ar_i_wavelengths("xsh", atlas)
+
+    # ASSERT
+    assert waves.min() >= XSH_THAR_ATLAS_MIN_NM
+    assert waves.max() <= XSH_THAR_ATLAS_MAX_NM
+    assert [air for air, _ in AR_I_AIR_VACUUM_NM if not _has_line_near(argonWaves, air)] == []
+    assert [vacuum for _, vacuum in AR_I_AIR_VACUUM_NM if _has_line_near(argonWaves, vacuum)] == []
