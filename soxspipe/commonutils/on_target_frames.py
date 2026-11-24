@@ -304,9 +304,9 @@ def _time_cards(entries: Sequence[on_target_frame]) -> list[tuple[str, Any, str]
         (EXPTIME_CARD, total, "[s] Total integration time on target"),
         (TEXPTIME_CARD, total, "[s] Total integration time on target"),
     ]
-    last = max(started, key=lambda entry: entry.mjdObs, default=None)
-    if last is not None:
-        cards.append((MJD_END_CARD, last.mjdEnd, "[d] End of the last frame"))
+    ends = [entry.mjdEnd for entry in started]
+    if ends:
+        cards.append((MJD_END_CARD, max(ends), "[d] End of the last frame to end"))
     return cards
 
 

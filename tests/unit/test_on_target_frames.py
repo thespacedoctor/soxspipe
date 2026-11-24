@@ -302,6 +302,20 @@ def test_the_observation_starts_with_the_first_frame_and_ends_when_the_last_fram
     assert cards["MJD-END"] == pytest.approx(61000.5 + 900.0 / SECONDS_PER_DAY, abs=1e-9)
 
 
+def test_the_observation_ends_when_the_frame_that_ends_last_ends_even_if_it_did_not_start_last(log: Any) -> None:
+    # ARRANGE: THE FIRST FRAME STARTS EARLIER AND LASTS LONGER, SO IT ENDS AFTER THE SECOND
+    entries = (
+        _entry(log, "a", mjd=61000.0, exptime=3600.0),
+        _entry(log, "b", mjd=61000.01, exptime=300.0),
+    )
+
+    # ACT
+    cards = _cards(entries)
+
+    # ASSERT
+    assert cards["MJD-END"] == pytest.approx(61000.0 + 3600.0 / SECONDS_PER_DAY, abs=1e-9)
+
+
 def test_the_total_exposure_is_not_longer_than_the_time_between_the_start_and_the_end(log: Any) -> None:
     # ARRANGE: THREE BACK-TO-BACK EXPOSURES WITH A GAP BETWEEN THEM
     entries = tuple(
