@@ -1,4 +1,4 @@
-"""Contracts for the robust set-level offset test on multi-pinhole arc-line sets (DY-1526)."""
+"""Contracts for the robust set-level offset test on multi-pinhole arc-line sets (DY-1526, DY-2170)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import pytest
 from soxspipe.commonutils.pinhole_set_offsets import (
     MIN_SETS_PER_ORDER,
     OFFSET_SET_CLIP_SIGMA,
+    OFFSET_SET_MIN_SIGMA,
     flag_offset_pinhole_sets,
 )
 from tests.unit._pinhole_sets import NOISE_OFFSETS, PINHOLES
@@ -181,3 +182,107 @@ def test_an_empty_table_flags_nothing() -> None:
 
     # ASSERT
     assert flagged.shape == (0,)
+
+
+# DY-2170: A MAD-SIGMA FLOOR MAKES A SET'S DECISION INDEPENDENT OF HOW TIGHTLY THE OTHER SETS IN ITS ORDER SCATTER
+MIN_SIGMA = 0.1
+# THE OTHER SETS SCATTER WITH A MAD-SIGMA OF ABOUT 0.08 PX, BELOW THE FLOOR
+TIGHT_OFFSETS = NOISE_OFFSETS * 0.3
+
+
+@pytest.mark.parametrize(("candidateOffset", "isClipped"), [(0.3, False), (0.8, True)])
+@pytest.mark.parametrize("axis", ["x", "y"])
+def test_a_set_decision_does_not_change_when_the_other_sets_scatter_halves(
+    candidateOffset: float, isClipped: bool, axis: str
+) -> None:
+    # ARRANGE
+    def lines_for(scatter: np.ndarray) -> pd.DataFrame:
+        offsets = [*scatter, candidateOffset]
+        zeros = [0.0] * len(offsets)
+        if axis == "x":
+            return _sets(order=1, offsetsY=zeros, offsetsX=offsets)
+        return _sets(order=1, offsetsY=offsets)
+
+    wide = lines_for(TIGHT_OFFSETS)
+    halved = lines_for(TIGHT_OFFSETS / 2)
+
+    # ACT
+    flaggedWide = flag_offset_pinhole_sets(wide, minSigma=MIN_SIGMA)
+    flaggedHalved = flag_offset_pinhole_sets(halved, minSigma=MIN_SIGMA)
+
+    # ASSERT
+    assert (511.0 in _flagged_wavelengths(wide, flaggedWide)) is isClipped
+    assert (511.0 in _flagged_wavelengths(halved, flaggedHalved)) is isClipped
+
+
+def test_without_a_floor_the_decision_follows_the_other_sets_scatter() -> None:
+    # ARRANGE: THE DY-2170 SYMPTOM. +0.3 PX IS INSIDE 5 MAD-SIGMA OF THE WIDE ORDER, OUTSIDE IT ONCE THE SCATTER HALVES
+    wide = _sets(order=1, offsetsY=[*TIGHT_OFFSETS, 0.3])
+    halved = _sets(order=1, offsetsY=[*(TIGHT_OFFSETS / 2), 0.3])
+
+    # ACT
+    flaggedWide = flag_offset_pinhole_sets(wide)
+    flaggedHalved = flag_offset_pinhole_sets(halved)
+
+    # ASSERT
+    assert not flaggedWide.any()
+    assert _flagged_wavelengths(halved, flaggedHalved) == [511.0]
+
+
+def test_a_set_offset_in_every_pinhole_is_still_clipped_with_a_floor() -> None:
+    # ARRANGE: THE DY-1526 CASE, A SET OFF BY +1 PX IN EVERY PINHOLE OF A TIGHT ORDER
+    lines = _sets(order=1, offsetsY=[*TIGHT_OFFSETS, 1.0])
+
+    # ACT
+    flagged = flag_offset_pinhole_sets(lines, minSigma=MIN_SIGMA)
+
+    # ASSERT
+    assert _flagged_wavelengths(lines, flagged) == [511.0]
+    assert flagged.sum() == PINHOLES
+
+
+def test_an_order_broader_than_the_floor_keeps_its_own_spread() -> None:
+    # ARRANGE: THE MAD-SIGMA (ABOUT 0.27 PX) IS ABOVE THE FLOOR, SO THE CUT STAYS AT 5 MAD-SIGMA
+    keptSet = _sets(order=1, offsetsY=[*NOISE_OFFSETS, 1.0])
+    clippedSet = _sets(order=2, offsetsY=[*NOISE_OFFSETS, 2.0], firstWavelength=600.0)
+    lines = pd.concat([keptSet, clippedSet], ignore_index=True)
+
+    # ACT
+    flagged = flag_offset_pinhole_sets(lines, minSigma=MIN_SIGMA)
+
+    # ASSERT
+    assert _flagged_wavelengths(lines, flagged) == [611.0]
+
+
+def test_a_floor_gives_an_order_with_no_spread_a_scale() -> None:
+    # ARRANGE
+    lines = _sets(order=1, offsetsY=[0.0] * 11 + [2.0])
+
+    # ACT
+    flagged = flag_offset_pinhole_sets(lines, minSigma=MIN_SIGMA)
+
+    # ASSERT
+    assert _flagged_wavelengths(lines, flagged) == [511.0]
+
+
+def test_the_default_floor_keeps_the_mad_only_rule() -> None:
+    # ARRANGE
+    lines = _sets(order=1, offsetsY=[*(TIGHT_OFFSETS / 2), 0.3])
+
+    # ACT
+    flaggedDefault = flag_offset_pinhole_sets(lines)
+    flaggedExplicit = flag_offset_pinhole_sets(lines, minSigma=OFFSET_SET_MIN_SIGMA)
+
+    # ASSERT
+    assert OFFSET_SET_MIN_SIGMA == 0.0
+    assert np.array_equal(flaggedDefault, flaggedExplicit)
+
+
+@pytest.mark.parametrize("badFloor", [-0.1, float("inf"), float("nan")])
+def test_an_invalid_floor_is_rejected(badFloor: float) -> None:
+    # ARRANGE
+    lines = _sets(order=1, offsetsY=[*NOISE_OFFSETS, 2.0])
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="minSigma"):
+        flag_offset_pinhole_sets(lines, minSigma=badFloor)

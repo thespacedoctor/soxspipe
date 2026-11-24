@@ -43,6 +43,8 @@ $$Y = \sum\limits_{ijk} c_{ijk} \times n^i \times \lambda^j \times s^k$$
 
 Upon each iteration, the residuals between the fits and the measured pixel positions are calculated, and sigma-clipping is employed to eliminate measurements that stray too far from the fit. Once the maximum number of iterations is reached or all outlying lines have been clipped, the coefficients of the polynomials are written to a Dispersion map file.
 
+For a multi-pinhole frame, the first iteration also drops every pinhole of an arc line whose median offset from the fit (in x or y) is an outlier among the arc lines of its echelle order. A misidentified line sits off the fit by the same amount in every pinhole, so the per-pinhole clip keeps it. The cut is `poly-clipping-set-offset-sigma` times the MAD-sigma of the line offsets in the order, and the MAD-sigma is never taken below `poly-clipping-set-offset-min-sigma` pixels. With this floor, a line in an order whose other lines agree closely with the fit is judged against a fixed cut in pixels, and does not start to be dropped only because the other lines got better.
+
 :::{figure-md} spat_solu_qc
 ![image-20260414113720744](../_images/image-20260414113720744.png)	
 

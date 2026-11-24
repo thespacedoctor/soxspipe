@@ -1,4 +1,4 @@
-"""The dispersion-map fit drops multi-pinhole sets that sit off the model in every pinhole (DY-1526)."""
+"""The dispersion-map fit drops multi-pinhole sets that sit off the model in every pinhole (DY-1526, DY-2170)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import yaml
 
 import soxspipe
 from soxspipe.commonutils.create_dispersion_map import FITTED_LINE_COLUMNS, _set_offset_flag, create_dispersion_map
-from soxspipe.commonutils.pinhole_set_offsets import OFFSET_SET_CLIP_SIGMA, SET_OFFSET_COLUMN
+from soxspipe.commonutils.pinhole_set_offsets import OFFSET_SET_CLIP_SIGMA, OFFSET_SET_MIN_SIGMA, SET_OFFSET_COLUMN
 from tests.unit._pinhole_sets import NOISE_OFFSETS, PINHOLES
 
 pytestmark = pytest.mark.unit
@@ -21,6 +21,8 @@ OFFSET_WAVELENGTH = 511.0
 # THE SOXS DEFAULTS: A 7-SIGMA PER-PINHOLE CLIP THAT A CONSISTENT +2 PX SET SURVIVES
 SOXS_CLIPPING_SIGMA = 7.0
 WELL_FITTING_LIMIT = 0.5
+# THE SOXS NIR FLOOR ON THE SET-OFFSET MAD-SIGMA, IN PX, CHOSEN FROM BOTH NIR SSOL ARCS (DY-2170)
+NIR_MIN_SIGMA = 0.08
 
 
 def _mapper(log: object, **settings: object) -> create_dispersion_map:
@@ -151,6 +153,27 @@ def test_the_setting_moves_the_cut(
     assert OFFSET_WAVELENGTH not in set(retainedTight["wavelength"])
 
 
+def test_the_min_sigma_setting_reaches_the_guard(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE: THE OTHER SETS SCATTER WITH A MAD-SIGMA OF ABOUT 0.08 PX, SO A +0.6 PX SET IS ABOUT 7 MAD-SIGMA OUT, BUT
+    # ONLY 3 SIGMA OF A 0.2 PX FLOOR
+    lines = _multi_pinhole_lines([*(NOISE_OFFSETS * 0.3), 0.6])
+    noFloorMapper = _mapper(log)
+    floorMapper = _mapper(log, **{"poly-clipping-set-offset-min-sigma": 0.2})
+    _stub_fit(noFloorMapper, monkeypatch)
+    _stub_fit(floorMapper, monkeypatch)
+
+    # ACT
+    _, _, retainedNoFloor, _ = noFloorMapper.fit_polynomials(lines, wavelengthDeg=0, orderDeg=0, slitDeg=0)
+    _, _, retainedFloor, _ = floorMapper.fit_polynomials(lines, wavelengthDeg=0, orderDeg=0, slitDeg=0)
+
+    # ASSERT
+    assert OFFSET_WAVELENGTH not in set(retainedNoFloor["wavelength"])
+    assert OFFSET_WAVELENGTH in set(retainedFloor["wavelength"])
+
+
 def test_a_set_that_only_crosses_the_cut_after_a_refit_is_kept(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -251,3 +274,26 @@ def test_default_settings_set_the_cut_to_the_code_fallback(
 
     # ASSERT
     assert cuts == dict.fromkeys(arms, OFFSET_SET_CLIP_SIGMA)
+
+
+@pytest.mark.parametrize(
+    ("settingsFile", "recipeBlock", "floors"),
+    [
+        ("soxs_default_settings.yaml", "soxs-spat-solution", {"vis": OFFSET_SET_MIN_SIGMA, "nir": NIR_MIN_SIGMA}),
+        # THE DISPERSION SOLUTION FITS SINGLE-PINHOLE LINES, WHICH THE GUARD NEVER FLAGS
+        ("soxs_default_settings.yaml", "soxs-disp-solution", dict.fromkeys(["vis", "nir"], OFFSET_SET_MIN_SIGMA)),
+        ("xsh_default_settings.yaml", "soxs-spat-solution", dict.fromkeys(["uvb", "vis", "nir"], OFFSET_SET_MIN_SIGMA)),
+        ("xsh_default_settings.yaml", "soxs-disp-solution", dict.fromkeys(["uvb", "vis", "nir"], OFFSET_SET_MIN_SIGMA)),
+    ],
+)
+def test_default_settings_set_the_floor_for_the_soxs_nir_spatial_solution_only(
+    settingsFile: str, floors: dict[str, float], recipeBlock: str
+) -> None:
+    # ARRANGE
+    settings = yaml.safe_load((Path(soxspipe.__file__).parent / settingsFile).read_text())
+
+    # ACT
+    found = {arm: settings[recipeBlock][arm]["poly-clipping-set-offset-min-sigma"] for arm in floors}
+
+    # ASSERT
+    assert found == floors
