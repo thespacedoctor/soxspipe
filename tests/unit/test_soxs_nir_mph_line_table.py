@@ -152,7 +152,7 @@ NIST_AR_NM = {
 }
 # DY-2171: NIST ASD LISTS NO Ar I LINE BETWEEN 1842.8 AND 2031.7 nm, SO THE TWO O10 Ar I SETS CARRY THE RITZ AIR
 # WAVELENGTH OF THEIR NIST Ar I ENERGY LEVELS (PECK AND REEDER AIR, WHICH REPRODUCES THE NIST RITZ 2031.701 nm)
-NIST_LEVEL_RITZ_AR_NM = {"ArI": [1981.7507, 1996.5729], "ArII": []}
+NIST_LEVEL_RITZ_AR_NM = {"ArI": [1981.7507, 1996.5729]}
 # A CATALOGUE Ar WAVELENGTH MOVES AT MOST THIS FAR TO ITS NIST VALUE (THE LARGEST MOVE IS 1158.03 -> 1158.0389)
 MAX_AR_SHIFT_NM = 0.009
 
@@ -210,7 +210,7 @@ O10_ADDED_SETS = [
 # DY-2171: (ION, nm, [(X, Y) BY SLIT INDEX 0 TO 8]) OF THE STRONG O10 ARC LINES ADDED AS FULL SETS. THE NeI WAVELENGTHS
 # ARE NIST ASD RITZ VALUES; 1862.5158 IS THE PEAK THE CLEAN LIST CALLS NeII 1862.734. POSITIONS COME FROM THE DY-2084
 # METHOD (DEVELOP 095625 SSOL MAP PLUS THE MEDIAN TABLE-MINUS-MAP OFFSET OF THE O10 SETS)
-O10_DY2171_SETS = [
+O10_STRONG_ARC_LINE_SETS = [
     (
         "NeI",
         1859.1540,
@@ -275,7 +275,7 @@ O10_DY2171_SETS = [
 # DY-2171: THE PEAK AT 1862.5 nm IS NeI 1862.5158, NOT THE NeII 1862.734 OF THE CLEAN LIST
 O10_MISIDENTIFIED_NEII_NM = 1862.734
 # THE ORDER 10 ROWS THAT ARE NOT IN AN ADDED SET WERE NOT TOUCHED
-TOUCHED_SETS = [(ion, wavelength) for ion, wavelength, _ in O10_ADDED_SETS + O10_DY2171_SETS]
+TOUCHED_SETS = [(ion, wavelength) for ion, wavelength, _ in O10_ADDED_SETS + O10_STRONG_ARC_LINE_SETS]
 # SHA-256 OF THE UNTOUCHED ORDER 10 ROWS (EVERY ROW BUT THE ADDED SETS), IN FILE ORDER, RE-RECORDED IN DY-2173
 # REGENERATE WITH untouched_rows_checksum(read_table(MPH_TABLE), EDITED_ORDER, TOUCHED_SETS);
 # A LATER LEGITIMATE EDIT TO ORDER 10 MUST RE-RECORD IT
@@ -462,7 +462,7 @@ def test_every_ar_wavelength_is_a_nist_value(ion: str) -> None:
     # ASSERT
     # THE TABLE STORES FLOAT64 PARSED FROM THE NIST TEXT, SO EACH VALUE MATCHES EXACTLY;
     # A SORTED LIST NAMES THE LINE THAT DIFFERS
-    assert wavelengths == sorted(NIST_AR_NM[ion] + NIST_LEVEL_RITZ_AR_NM[ion])
+    assert wavelengths == sorted(NIST_AR_NM[ion] + NIST_LEVEL_RITZ_AR_NM.get(ion, []))
 
 
 @pytest.mark.parametrize(("order", "catalogue", "ion", "ritz"), RELABELLED_AR_SETS)
@@ -567,7 +567,7 @@ def test_mislabelled_arii_set_is_absent_from_order_10(wavelength: float) -> None
     assert len(rows) == 0
 
 
-@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_SETS)
+@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_SETS + O10_STRONG_ARC_LINE_SETS)
 def test_added_order_10_line_is_a_full_set_with_its_measured_centre(
     ion: str, wavelength: float, positions: list[tuple[float, float]]
 ) -> None:
@@ -587,7 +587,7 @@ def test_added_order_10_line_is_a_full_set_with_its_measured_centre(
     )
 
 
-@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_SETS)
+@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_SETS + O10_STRONG_ARC_LINE_SETS)
 def test_added_order_10_line_has_every_pinhole_at_its_recorded_position(
     ion: str, wavelength: float, positions: list[tuple[float, float]]
 ) -> None:
@@ -595,9 +595,11 @@ def test_added_order_10_line_has_every_pinhole_at_its_recorded_position(
     table = read_table(MPH_TABLE)
 
     # ACT
-    actual = positions_by_slit(set_rows(table, EDITED_ORDER, ion, wavelength))
+    rows = set_rows(table, EDITED_ORDER, ion, wavelength)
+    actual = positions_by_slit(rows)
 
     # ASSERT
+    assert len(rows) == PINHOLES_PER_LINE
     assert actual.keys() == set(range(PINHOLES_PER_LINE))
     for slit, position in enumerate(positions):
         assert actual[slit] == pytest.approx(position, rel=0, abs=POSITION_ATOL_PX)
@@ -607,7 +609,7 @@ def test_order_10_row_count_changes_only_by_the_removed_and_added_sets() -> None
     # ARRANGE
     table = read_table(MPH_TABLE)
     # DY-1970 SWAPPED THREE SETS OUT AND THREE IN; DY-2173 REMOVED TWO Ar I SETS; DY-2171 ADDED FOUR SETS
-    expected = MPH_O10_ROWS_BEFORE + (len(O10_DY2171_SETS) - NO_NIST_AR_ORDER_10_SET_COUNT) * PINHOLES_PER_LINE
+    expected = MPH_O10_ROWS_BEFORE + (len(O10_STRONG_ARC_LINE_SETS) - NO_NIST_AR_ORDER_10_SET_COUNT) * PINHOLES_PER_LINE
 
     # ACT
     rowCount = int(np.sum(np.asarray(table["order"]) == EDITED_ORDER))
@@ -639,25 +641,8 @@ def test_orders_other_than_10_match_develop_row_for_row(order: int) -> None:
     assert checksums[order] == UNEDITED_ORDER_CHECKSUMS[order]
 
 
-@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_DY2171_SETS)
-def test_dy2171_order_10_line_is_a_full_set_at_its_recorded_positions(
-    ion: str, wavelength: float, positions: list[tuple[float, float]]
-) -> None:
-    # ARRANGE
-    table = read_table(MPH_TABLE)
-
-    # ACT
-    rows = set_rows(table, EDITED_ORDER, ion, wavelength, atol=0)
-    actual = positions_by_slit(rows)
-
-    # ASSERT
-    assert len(rows) == PINHOLES_PER_LINE
-    assert actual.keys() == set(range(PINHOLES_PER_LINE))
-    for slit, position in enumerate(positions):
-        assert actual[slit] == pytest.approx(position, rel=0, abs=POSITION_ATOL_PX)
-
-
-def test_order_10_peak_at_1862_5_nm_is_nei_not_neii() -> None:
+def test_order_10_does_not_carry_the_misidentified_neii_1862_734_line() -> None:
+    # GUARDS A REBUILD FROM THE CLEAN LIST, WHICH LABELS THE NeI 1862.5158 PEAK AS NeII 1862.734
     # ARRANGE
     table = read_table(MPH_TABLE)
     order10 = table[np.asarray(table["order"]) == EDITED_ORDER]
@@ -666,8 +651,6 @@ def test_order_10_peak_at_1862_5_nm_is_nei_not_neii() -> None:
     neii = np.isclose(
         np.asarray(order10["wavelength"], dtype=float), O10_MISIDENTIFIED_NEII_NM, rtol=0, atol=WAVELENGTH_ATOL_NM
     )
-    nei = set_rows(table, EDITED_ORDER, "NeI", 1862.5158, atol=0)
 
     # ASSERT
     assert not neii.any()
-    assert len(nei) == PINHOLES_PER_LINE
