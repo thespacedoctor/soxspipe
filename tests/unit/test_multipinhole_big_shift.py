@@ -1,4 +1,4 @@
-"""DY-1618: the first-iteration multi-pinhole shift picks the slit-centred pinhole identification (SOXS VIS).
+"""DY-1618, DY-1717: the first-iteration multi-pinhole shift picks the slit-centred pinhole identification (SOXS).
 
 When the pinhole at one end of the slit is missing from the multi-pinhole frame, its detection window latches onto
 the neighbouring pinhole. The end-to-end shift test then sees a one-pinhole jump at that end only. That is also what
@@ -64,7 +64,7 @@ def _order_table(
 
 
 def _mapper(log: object, orderTable: str, pinholeFrame: np.ma.MaskedArray | None = None) -> create_dispersion_map:
-    """Return a SOXS VIS multi-pinhole mapper that reads only what the shift step needs.
+    """Return a SOXS multi-pinhole mapper (VIS unless a test sets the arm) that reads only what the shift step needs.
 
     With a ``pinholeFrame`` the mapper can also look for pinholes in the image, as the detection loop leaves it.
     """
@@ -469,6 +469,130 @@ def test_order_missing_from_the_order_table_is_not_shifted(log: object, tmp_path
     # ASSERT
     np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"])
     assert any(level == "warning" and "No slit edges match" in message for level, message in log.messages)
+
+
+# DY-1717: SOXS NIR GROUPS THE LINES ON A 3x3 GRID OF THE DETECTOR, SO ONE SHIFT GROUP HOLDS SETS FROM SEVERAL ORDERS.
+# THE SLIT-CENTRED STEP STILL READS THE SLIT EDGES PER SET: EACH (WAVELENGTH, ORDER) SET IS COMPARED WITH THE SLIT
+# MID-POINT OF ITS OWN ORDER AT ITS OWN ROW, AND THE GROUP TAKES THE MEDIAN OVER ITS SETS.
+NIR_GRID_GROUP = 5
+NIR_GRADIENT_PER_PINHOLE = 0.1
+
+
+def _nir_mapper(log: object, orderTable: str) -> create_dispersion_map:
+    """Return a SOXS NIR multi-pinhole mapper that reads only what the shift step needs."""
+    mapper = _mapper(log, orderTable)
+    mapper.arm = "NIR"
+    return mapper
+
+
+def _two_order_grid_group(predictedCentre: float, observedSlitIndex: dict[int, int], **kwargs: object) -> pd.DataFrame:
+    """Return the sets of orders 2 and 3 in a single NIR grid shift group."""
+    table = pd.concat(
+        [
+            _line_table(predictedCentre, observedSlitIndex, order=2, **kwargs),
+            _line_table(predictedCentre, observedSlitIndex, order=3, **kwargs),
+        ],
+        ignore_index=True,
+    )
+    return table.assign(shift_group=NIR_GRID_GROUP)
+
+
+def _run_grid_group(mapper: create_dispersion_map, table: pd.DataFrame) -> pd.DataFrame:
+    """Run the first-iteration shift step on the single grid shift group, as the detection loop does for NIR."""
+    return mapper._handle_multipin_hole_big_shift(
+        table.copy(), NIR_GRID_GROUP, table["shift_group"] == NIR_GRID_GROUP, 1
+    )
+
+
+def test_nir_latched_top_pinhole_does_not_shift_the_grid_group_a_whole_spacing(log: object, tmp_path: Path) -> None:
+    """The top window of every set latched onto pinhole 7, as on the 24 Jan 2026 night arcs.
+
+    The legacy rule applied the top end shift, one spacing plus the offset, and so misnumbered every pinhole of the
+    group. Only the 0.8 px offset of the other 8 pinholes is removed.
+    """
+    # ARRANGE
+    mapper = _nir_mapper(log, _order_table(tmp_path))
+    observed = {slitIndex: slitIndex for slitIndex in range(8)} | {8: 7}
+    table = _two_order_grid_group(SLIT_CENTRE, observed, observedOffset=-REMAINDER)
+
+    # ACT
+    result = _run_grid_group(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] - REMAINDER)
+
+
+def test_nir_grid_group_judges_each_set_against_the_slit_edges_of_its_own_order(log: object) -> None:
+    """Order 3's slit lies 40 px above order 2's, and each order's pinholes are centred on their own slit.
+
+    Judged against order 2's edges alone, the order 3 sets would sit 10 spacings off centre and pull the group's
+    median offset to 20 px, so a whole spacing would be applied. Judged per order, no whole spacing is applied.
+    """
+    # ARRANGE
+    mapper = _nir_mapper(log, orderTable="unused: the order geometry is given")
+    orderThreeOffset = 40.0
+    rows = np.arange(0.0, 101.0, 10.0)
+    mapper.orderGeometryCache = pd.concat(
+        [
+            pd.DataFrame(
+                {
+                    "order": order,
+                    "ycoord": rows,
+                    "xcoord_edgelow": SLIT_LOW_EDGE + offset,
+                    "xcoord_edgeup": SLIT_HIGH_EDGE + offset,
+                    "slitMid": SLIT_CENTRE + offset,
+                }
+            )
+            for order, offset in ((2, 0.0), (3, orderThreeOffset))
+        ],
+        ignore_index=True,
+    )
+    observed = {slitIndex: slitIndex for slitIndex in range(8)} | {8: 7}
+    table = pd.concat(
+        [
+            _line_table(SLIT_CENTRE, observed, order=2, observedOffset=-REMAINDER),
+            _line_table(SLIT_CENTRE + orderThreeOffset, observed, order=3, observedOffset=orderThreeOffset - REMAINDER),
+        ],
+        ignore_index=True,
+    ).assign(shift_group=NIR_GRID_GROUP)
+
+    # ACT
+    result = _run_grid_group(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] - REMAINDER)
+
+
+def test_nir_gradient_across_the_slit_is_corrected_by_the_median_offset_not_the_larger_end(
+    log: object, tmp_path: Path
+) -> None:
+    """The offset grows by 0.1 px per pinhole, from 0 to 0.8 px: the group moves by the 0.4 px median, not 0.8 px."""
+    # ARRANGE
+    mapper = _nir_mapper(log, _order_table(tmp_path))
+    table = _two_order_grid_group(SLIT_CENTRE, ALL_PINHOLES)
+    gradient = NIR_GRADIENT_PER_PINHOLE * table["slit_index"]
+    table = table.assign(observed_x=table["observed_x"] - gradient, x_diff=table["x_diff"] + gradient)
+
+    # ACT
+    result = _run_grid_group(mapper, table)
+
+    # ASSERT
+    medianOffset = NIR_GRADIENT_PER_PINHOLE * 4
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] - medianOffset)
+
+
+def test_nir_real_one_pinhole_offset_of_a_grid_group_is_still_corrected(log: object, tmp_path: Path) -> None:
+    """The first guess sits one pinhole low in both orders of the group; the group moves up one spacing."""
+    # ARRANGE
+    mapper = _nir_mapper(log, _order_table(tmp_path))
+    observed = {0: 0} | {slitIndex: slitIndex - 1 for slitIndex in range(1, 9)}
+    table = _two_order_grid_group(SLIT_CENTRE - PINHOLE_SPACING, observed)
+
+    # ACT
+    result = _run_grid_group(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] + PINHOLE_SPACING)
 
 
 def _bootstrapping_mapper(log: object, pinholeCount: int, pinholeCountRange: list[float]) -> create_dispersion_map:

@@ -472,8 +472,12 @@ def test_multipinhole_shift_corrects_the_axis_with_the_larger_end_shift(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Outside SOXS VIS, a material slit-end displacement is removed from every selected line."""
+    """For X-Shooter, a material slit-end displacement is removed from every selected line.
+
+    SOXS NIR used this rule too until DY-1717; it now takes the slit-centred rule (test_multipinhole_big_shift.py).
+    """
     mapper = _mapper(log)
+    mapper.inst = "XSH"
     mapper.arm = "NIR"
     mapper.axisA = "x"
     mapper.axisB = "y"
@@ -789,8 +793,9 @@ def test_output_filenames_derive_line_list_names_from_frame(
 def test_multipinhole_shift_corrects_larger_first_iteration_offset(
     log: object,
 ) -> None:
-    """Outside SOXS VIS, the larger end shift is applied (SOXS VIS is covered by test_multipinhole_big_shift.py)."""
+    """For X-Shooter, the larger end shift is applied (SOXS is covered by test_multipinhole_big_shift.py, DY-1717)."""
     mapper = _mapper(log)
+    mapper.inst = "XSH"
     mapper.arm = "NIR"
     mapper.axisA = "x"
     mapper.axisB = "y"
