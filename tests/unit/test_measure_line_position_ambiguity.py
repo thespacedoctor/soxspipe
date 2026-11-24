@@ -64,7 +64,7 @@ def _measure(stampInfo: tuple, log: object, windowHalf: int) -> list[dict]:
 def test_first_guesses_either_side_of_a_rounding_boundary_get_the_same_answer(log: object, guessX: float) -> None:
     """Two lines 3.9 px apart with the guess between them are ambiguous whatever the stamp origin rounds to."""
     # ARRANGE
-    frame = _arc_frame([26.98, 30.88])
+    frame = _arc_frame([26.55, 30.45])
 
     # ACT
     result = _measure(_stamp_at(frame, guessX, LINE_Y, windowHalf=5), log, windowHalf=5)
@@ -96,8 +96,10 @@ def test_a_stamp_clipped_at_the_frame_edge_measures_from_the_real_first_guess(lo
     [
         # D1 = 1.2, D2 = 2.7: RATIO 2.25 IS ABOVE THE CONSTANT
         (28.18, False),
-        # D1 = 1.5, D2 = 2.4: RATIO 1.6 IS BELOW THE CONSTANT
-        (28.48, True),
+        # D1 = 1.5, D2 = 2.4: RATIO 1.6 IS ABOVE THE CONSTANT, SO THE NEAREST LINE IS KEPT
+        (28.48, False),
+        # D1 = 1.64, D2 = 2.26: RATIO 1.38 IS BELOW THE CONSTANT
+        (28.62, True),
     ],
 )
 def test_two_sources_are_ambiguous_only_below_the_distance_ratio(
@@ -106,6 +108,7 @@ def test_two_sources_are_ambiguous_only_below_the_distance_ratio(
     isAmbiguous: bool,
 ) -> None:
     """The nearest source is kept unless the second-nearest is within the ratio of its distance."""
+    assert AMBIGUITY_DISTANCE_RATIO == 1.5
     # ARRANGE
     frame = _arc_frame([26.98, 30.88])
     nearest = abs(guessX - 26.98)
