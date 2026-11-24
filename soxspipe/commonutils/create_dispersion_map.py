@@ -5248,7 +5248,11 @@ def measure_line_position(
 
 
 def _brightest_source(sources: "Table", std: float) -> "Row | None":
-    """*return the first source with the highest detection sigma, or None when no source has a positive one*"""
+    """*return the source with the highest detection sigma*
+
+    A lone source is returned whatever its peak. Of several, the first with the highest positive sigma is returned, or
+    None when none has a positive one.
+    """
     if len(sources) == 1:
         return sources[0]
     selectedSource = None

@@ -91,41 +91,48 @@ def test_a_stamp_clipped_at_the_frame_edge_measures_from_the_real_first_guess(lo
     assert result[0]["observed_y"] == pytest.approx(LINE_Y, abs=0.2)
 
 
+def test_ambiguity_distance_ratio_is_1_5() -> None:
+    """Dave ruled 1.5 on DY-2207 after the real-data A/B (2.0 dropped too many good lines)."""
+    # ASSERT
+    assert AMBIGUITY_DISTANCE_RATIO == 1.5
+
+
 @pytest.mark.parametrize(
-    ("guessX", "isAmbiguous"),
+    "guessX",
     [
-        # D1 = 1.2, D2 = 2.7: RATIO 2.25 IS ABOVE THE CONSTANT
-        (28.18, False),
-        # D1 = 1.5, D2 = 2.4: RATIO 1.6 IS ABOVE THE CONSTANT, SO THE NEAREST LINE IS KEPT
-        (28.48, False),
-        # D1 = 1.64, D2 = 2.26: RATIO 1.38 IS BELOW THE CONSTANT
-        (28.62, True),
+        # D1 = 1.2, D2 = 2.7: RATIO 2.25
+        28.18,
+        # D1 = 1.5, D2 = 2.4: RATIO 1.6, ABOVE 1.5 BUT BELOW THE EARLIER 2.0
+        28.48,
     ],
 )
-def test_two_sources_are_ambiguous_only_below_the_distance_ratio(
-    log: object,
-    guessX: float,
-    isAmbiguous: bool,
-) -> None:
-    """The nearest source is kept unless the second-nearest is within the ratio of its distance."""
-    assert AMBIGUITY_DISTANCE_RATIO == 1.5
+def test_the_nearest_source_is_kept_when_the_second_is_at_least_the_ratio_farther(log: object, guessX: float) -> None:
+    """The nearest source is kept when the second-nearest lies at least the ratio times farther from the guess."""
     # ARRANGE
     frame = _arc_frame([26.98, 30.88])
-    nearest = abs(guessX - 26.98)
-    secondNearest = abs(guessX - 30.88)
-    assert (secondNearest / nearest < AMBIGUITY_DISTANCE_RATIO) is isAmbiguous
 
     # ACT
     result = _measure(_stamp_at(frame, guessX, LINE_Y, windowHalf=5), log, windowHalf=5)
 
     # ASSERT
     assert len(result) == 1
-    assert result[0]["ambiguous"] is isAmbiguous
-    if isAmbiguous:
-        assert np.isnan(result[0]["observed_x"])
-        assert np.isnan(result[0]["observed_y"])
-    else:
-        assert result[0]["observed_x"] == pytest.approx(26.98, abs=0.2)
+    assert result[0]["ambiguous"] is False
+    assert result[0]["observed_x"] == pytest.approx(26.98, abs=0.2)
+
+
+def test_two_sources_below_the_distance_ratio_give_no_detection(log: object) -> None:
+    """With D1 = 1.64 and D2 = 2.26 (ratio 1.38, below 1.5) the stamp is ambiguous and gives NaN."""
+    # ARRANGE
+    frame = _arc_frame([26.98, 30.88])
+
+    # ACT
+    result = _measure(_stamp_at(frame, 28.62, LINE_Y, windowHalf=5), log, windowHalf=5)
+
+    # ASSERT
+    assert len(result) == 1
+    assert result[0]["ambiguous"] is True
+    assert np.isnan(result[0]["observed_x"])
+    assert np.isnan(result[0]["observed_y"])
 
 
 def test_one_source_is_kept_wherever_the_first_guess_lies_in_the_stamp(log: object) -> None:
