@@ -20,6 +20,8 @@ from soxspipe.commonutils.create_dispersion_map import (
     measure_line_position,
     plot_xy_residual_histogram,
 )
+from soxspipe.commonutils.detector_lookup import detector_lookup
+from soxspipe.commonutils.toolkit import read_spectral_format
 from tests.factories import qc_table
 from tests.unit._plot_spies import image_interpolations, probe_on_savefig, table_extents
 
@@ -74,6 +76,37 @@ def test_create_new_static_line_list_expands_ranked_atlas_lines_to_detector_posi
     np.testing.assert_allclose(result["detector_x"], [10.12346, 11.0])
     np.testing.assert_allclose(result["detector_y"], [14.0, 14.0])
     assert (tmp_path / "Hg.fits").exists()
+
+
+@pytest.mark.parametrize("arm", ["UVB", "VIS"])
+def test_create_new_static_line_list_keeps_an_xsh_atlas_line_in_every_order(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    arm: str,
+) -> None:
+    """The packaged X-Shooter atlas and spectral format leave no UVB or VIS order without a line (DY-2255)."""
+    # ARRANGE
+    settings = {"instrument": "xsh"}
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    mapper.arm = arm
+    mapper.settings = settings
+    mapper.detectorParams = detector_lookup(log=log, settings=settings).get(arm)
+    mapper.firstGuessMap = False
+    orderNums, _, _ = read_spectral_format(log=log, settings=settings, arm=arm)
+    commonutilsModule = importlib.import_module("soxspipe.commonutils")
+
+    def project_lines(*, orderPixelTable: pd.DataFrame, **_: object) -> pd.DataFrame:
+        return orderPixelTable.assign(fit_x=0.0, fit_y=0.0)
+
+    monkeypatch.setattr(commonutilsModule, "dispersion_map_to_pixel_arrays", project_lines)
+
+    # ACT
+    result = mapper.create_new_static_line_list("first-pass-map.fits")
+
+    # ASSERT
+    linesPerOrder = result.groupby("order").size()
+    assert sorted(set(orderNums.tolist()) - set(linesPerOrder.index.tolist())) == []
 
 
 def test_map_to_image_combines_orders_and_writes_three_extension_fits_product(
