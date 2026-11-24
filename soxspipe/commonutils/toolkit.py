@@ -27,6 +27,7 @@ from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.polynomials import (
     chebyshev_order_xy_polynomials,
 )
+from soxspipe.commonutils.spectrum_names import SPECTRUM_SUFFIX
 from soxspipe.commonutils.workspace_paths import CURRENT_DIRECTORY_ROOTS, expand_workspace_root, path_under_root
 
 if TYPE_CHECKING:
@@ -2123,7 +2124,7 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
     if "_STARE_STD" in sofName or "_NOD_STD" in sofName or "_OFFSET_STD" in sofName:
         sofName += productMarker + "_RESP"
     elif "_STARE" in sofName or "_NOD" in sofName or "_OFFSET" in sofName:
-        sofName += productMarker + "_SPECTRUM"
+        sofName += productMarker + SPECTRUM_SUFFIX
     # WITH NO NIGHT THE FILE PART MUST NOT START WITH `/`, OR `os.path.join` WOULD DROP THE ROOT
     productFile = os.path.join(startNightDate, recipeName.replace("_", "-"), f"{sofName}.fits")
 

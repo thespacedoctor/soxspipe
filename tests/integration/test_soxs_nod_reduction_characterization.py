@@ -738,10 +738,8 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     )
     recipe.detectorParams = {"extinction": "extinction.dat"}
     calls, captured = _patch(recipe, monkeypatch, tmp_path)
-    fluxPath = tmp_path / "OBJECT_VIS_FLUXCAL.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5], "SNR": [9.0]}).write(fluxPath)
-    fluxProducts = _empty_products()
-    fluxProducts.loc[0] = ["soxs-nod", "FLUXCAL", "f.fits", "FITS", "o", "r", "d", "p", "PROD"]
+    # THE CALIBRATOR OVERWRITES THE SPECTRUM TABLE OF THE STACK, AND ADDS NO PRODUCT ROW (DY-2346)
+    calibratedPaths: list[str] = []
     calibratorArguments: list[dict[str, object]] = []
 
     class FakeFluxCalibrator:
@@ -751,7 +749,11 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
 
         def calibrate(self) -> tuple[str, pd.DataFrame]:
             calls.append("calibrate")
-            return str(fluxPath), fluxProducts
+            fluxPath = Path(recipe.productDir) / recipe.filenameTemplate.replace(".fits", "_SPECTRUM.fits")
+            fluxPath.parent.mkdir(parents=True, exist_ok=True)
+            Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5], "SNR": [9.0]}).write(fluxPath, overwrite=True)
+            calibratedPaths.append(str(fluxPath))
+            return str(fluxPath), _empty_products()
 
     monkeypatch.setattr(import_module("soxspipe.commonutils.flux_calibration"), "flux_calibration", FakeFluxCalibrator)
     monkeypatch.setattr(import_module("soxspipe.recipes.soxs_nod"), "get_calibrations_path", lambda **_: "/cal")
@@ -774,7 +776,7 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     assert arguments["extractedSpectrum"] is captured["plot"][0]["merged_orders"]
     assert ("print", "# PERFORMING FLUX CALIBRATION\n") in log.messages
     assert ("print", "# FLUX CALIBRATION COMPLETED\n") in log.messages
-    assert "FLUXCAL" in recipe.products["product_label"].tolist()
+    assert "FLUXCAL" not in recipe.products["product_label"].tolist()
     firstPlot, secondPlot = captured["plot"]
     assert firstPlot["fluxCalibrated"] is False
     assert secondPlot["fluxCalibrated"] is True
@@ -787,6 +789,7 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     # THE ASCII SPECTRUM COMES FROM THE FLUX-CALIBRATED TABLE, ONCE
     spectrumPath = f"{recipe.productDir}/{recipe.filenameTemplate.replace('.fits', '_SPECTRUM.fits')}"
     assert [(entry["spectrum"], entry["isFluxCalibrated"]) for entry in captured["ascii"]] == [(spectrumPath, True)]
+    assert calibratedPaths == [spectrumPath]
     assert captured["ascii"][0]["callsBefore"][-2:] == ["flux_calibrator", "calibrate"]
 
 

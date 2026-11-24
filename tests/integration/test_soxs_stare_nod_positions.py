@@ -195,7 +195,7 @@ def test_the_combined_spectrum_is_what_flux_calibration_ascii_and_the_plots_get(
     # ASSERT: THE RESPONSE USES THE COMBINED SPECTRUM, THE A HEADER AND THE FRAMES OF BOTH POSITIONS
     assert (productPath, failure) == ("combined.fits", False)
     assert calls["fluxCal"] == [("resp.fits", stackedSpectrum, stackA.flattened, allFrames)]
-    assert calls["ascii"] == [("combined.fits", "fluxcal.fits")]
+    assert calls["ascii"] == [("combined.fits", True)]
     assert calls["plot"] == [(stackedSpectrum, JOINS["B"], "fluxcal.fits", [], False)]
 
 

@@ -11,10 +11,10 @@ import pytest
 from astropy.io import fits
 from astropy.table import Table
 
-from soxspipe.commonutils.flux_calibration import flux_calibration
 from soxspipe.commonutils.horne_extraction import extract_single_order, horne_extraction
 from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
 from tests.factories import pipeline_settings, product_table, response_product_fits
+from tests.factories.flux_calibration import bare_flux_calibration
 
 pytestmark = pytest.mark.integration
 
@@ -71,22 +71,21 @@ def _merge(log: object, orders: pd.DataFrame) -> pd.DataFrame:
 
 def _calibrate(tmp_path: Path, log: object, merged: pd.DataFrame) -> str:
     """Flux calibrate ``merged`` for real, writing ``<stem>_SPECTRUM.fits``, and return its path."""
-    calibration = object.__new__(flux_calibration)
-    calibration.log = log
-    calibration.settings = pipeline_settings(tmp_path)
-    calibration.responseFunction = str(response_product_fits(tmp_path / "RESP.fits"))
-    calibration.extractedSpectrum = merged
-    calibration.exptime = 10.0
-    calibration.airmass = 1.0
-    calibration.extinctionPath = ""
-    calibration.arm = "NIR"
-    calibration.debug = False
-    calibration.header = fits.Header({"DATE-OBS": "2024-01-02T03:04:05"})
-    calibration.recipeName = "soxs-stare"
-    calibration.sofName = "SYNTHETIC"
-    calibration.productDir = str(tmp_path)
-    calibration.products = pd.DataFrame()
-    calibration.kw = KEYWORDS.__getitem__
+    calibration = bare_flux_calibration(
+        log=log,
+        settings=pipeline_settings(tmp_path),
+        responseFunction=str(response_product_fits(tmp_path / "RESP.fits")),
+        extractedSpectrum=merged,
+        exptime=10.0,
+        airmass=1.0,
+        extinctionPath="",
+        arm="NIR",
+        header=fits.Header({"DATE-OBS": "2024-01-02T03:04:05"}),
+        recipeName="soxs-stare",
+        sofName="SYNTHETIC",
+        productDir=str(tmp_path),
+        kw=KEYWORDS.__getitem__,
+    )
     filePath, _ = calibration.calibrate()
     return filePath
 

@@ -16,6 +16,7 @@ from contextlib import closing
 from types import MappingProxyType
 
 from soxspipe.commonutils.offset_frames import SKY_TYPE
+from soxspipe.commonutils.spectrum_names import SPECTRUM_SUFFIX
 from soxspipe.commonutils.toolkit import (
     concat_tables,
     generic_quality_checks,
@@ -396,7 +397,7 @@ class soxs_nod(extraction_stacking, base_recipe):
                 responseFunctionPath, stackedSpectrum, allFrameA, allFrameB
             )
 
-        self._write_ascii_spectrum(filePathFluxcal)
+        self._write_ascii_spectrum(bool(filePathFluxcal))
         self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePathFluxcal)
 
         qcTable = self.report_output()
@@ -541,11 +542,11 @@ class soxs_nod(extraction_stacking, base_recipe):
         stackedSpectrum, orderJoins = self._reduce_each_nodding_cycle(
             *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
         )
-        self._write_ascii_spectrum(None)
+        self._write_ascii_spectrum(False)
         self._plot_nod_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
         return self.report_output()
 
-    def _write_ascii_spectrum(self, filePathFluxcal):
+    def _write_ascii_spectrum(self, isFluxCalibrated):
         """*write the ASCII spectrum of this pass from its* ``_SPECTRUM`` *table*
 
         Updates ``self.products``. The table is the one `stack_extractions` wrote under the current filename
@@ -555,13 +556,13 @@ class soxs_nod(extraction_stacking, base_recipe):
 
         **Key Arguments:**
 
-        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum table, or None
+        - ``isFluxCalibrated`` -- is the stacked table the flux-calibrated spectrum? It sets the product description
         """
         from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
 
-        spectrumPath = f"{self.productDir}/{self.filenameTemplate.replace('.fits', '_SPECTRUM.fits')}"
+        spectrumPath = f"{self.productDir}/{self.filenameTemplate.replace('.fits', SPECTRUM_SUFFIX + '.fits')}"
         self.products = write_ascii_spectrum_product(
-            spectrumPath, bool(filePathFluxcal), self.products, self.recipeName, self.dateObs
+            spectrumPath, isFluxCalibrated, self.products, self.recipeName, self.dateObs
         )
 
     def _aligns_each_order(self):

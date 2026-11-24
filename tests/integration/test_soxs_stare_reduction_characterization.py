@@ -1237,7 +1237,7 @@ def test_no_ascii_spectrum_is_written_when_the_extraction_wrote_no_merged_table(
     recipe.dateObs = "2024-01-02T03:04:05"
 
     # ACT
-    recipe._write_ascii_spectrum(False, None)
+    recipe._write_ascii_spectrum(False, False)
 
     # ASSERT: NOTHING TO READ, SO NO PRODUCT ROW
     assert recipe.products.empty

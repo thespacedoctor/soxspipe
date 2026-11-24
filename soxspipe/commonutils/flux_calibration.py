@@ -9,8 +9,15 @@ Date Created
 : July 28, 2023
 """
 
+from __future__ import annotations
+
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from soxspipe.commonutils.spectrum_names import SPECTRUM_SUFFIX
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 os.environ["TERM"] = "vt100"
 
@@ -176,9 +183,6 @@ class flux_calibration:
 
     """
 
-    # THE CALIBRATED TABLE REPLACES THE ``_SPECTRUM`` FILE THE EXTRACTION WROTE WITH THE QC CARDS, SO IT KEEPS THEM
-    qc = None
-
     # Initialisation
     # 1. @flagged: what are the unique Attributes for each object? Add them
     # to __init__
@@ -198,9 +202,10 @@ class flux_calibration:
         startNightDate="",
         sofName="",
         debug=False,
-        qc=None,
+        qc: pd.DataFrame | None = None,
     ):
         self.log = log
+        # THE CALIBRATED TABLE REPLACES THE ``_SPECTRUM`` FILE THE EXTRACTION WROTE WITH THE QC CARDS, SO IT KEEPS THEM
         self.qc = qc
         log.debug("instantiating a new 'flux_calibration' object")
         self.settings = settings
@@ -347,7 +352,7 @@ class flux_calibration:
                 "mean airmass of the frames in the product",
             )
 
-        filename = f"{self.sofName}_SPECTRUM.fits"
+        filename = f"{self.sofName}{SPECTRUM_SUFFIX}.fits"
         filePath = f"{self.productDir}/{filename}"
 
         write_fits_table_to_disk(

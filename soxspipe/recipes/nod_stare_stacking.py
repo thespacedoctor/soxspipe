@@ -12,14 +12,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from soxspipe.commonutils.spectrum_names import SPECTRUM_TABLE_LABEL
+
 if TYPE_CHECKING:
     import numpy as np
 
     from soxspipe.commonutils.slit_alignment import two_d_map_images
-
-
-# THE LABEL OF THE PRODUCT ROW OF A MERGED SPECTRUM TABLE
-MERGED_TABLE_LABEL = "SPECTRUM_TABLE"
 
 
 class reduction_inputs(NamedTuple):
@@ -358,8 +356,8 @@ class nod_stare_stacking:
         - ``firstRow`` -- the position in ``self.products`` of the first row the extraction added
         - ``position`` -- ``A`` or ``B``
         """
-        isMerged = (self.products["product_label"] == MERGED_TABLE_LABEL) & (self.products.index >= firstRow)
-        self.products.loc[isMerged, "product_label"] = f"{MERGED_TABLE_LABEL}_{position}"
+        isMerged = (self.products["product_label"] == SPECTRUM_TABLE_LABEL) & (self.products.index >= firstRow)
+        self.products.loc[isMerged, "product_label"] = f"{SPECTRUM_TABLE_LABEL}_{position}"
 
     def _reduce_nod_positions(
         self,

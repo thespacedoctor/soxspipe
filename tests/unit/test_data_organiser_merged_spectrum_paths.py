@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -169,7 +170,9 @@ def test_standard_star_product_rows_are_unchanged(tmp_path, log, filterName, rec
         ("telluric_standard_offset", "offset_std"),
     ],
 )
-def test_the_merged_spectrum_row_is_tagged_sci_slit_flux_with_the_arm(tmp_path, log, filterName, recipe) -> None:
+def test_the_merged_spectrum_row_is_tagged_sci_slit_flux_with_the_arm(
+    tmp_path: Path, log: Any, filterName: str, recipe: str
+) -> None:
     # ACT
     rows = _predicted_rows(tmp_path, log, filterName, recipe, sofName=f"{NOD_STEM}.sof")
 
@@ -188,7 +191,7 @@ def test_the_merged_spectrum_row_is_tagged_sci_slit_flux_with_the_arm(tmp_path, 
     ],
 )
 def test_the_predicted_merged_spectrum_file_is_the_one_the_skip_check_looks_for(
-    tmp_path, log, monkeypatch, filterName, recipe, recipeName, sofStem
+    tmp_path: Path, log: Any, filterName: str, recipe: str, recipeName: str, sofStem: str
 ) -> None:
     # ARRANGE
     outputDir = str(tmp_path / "out")

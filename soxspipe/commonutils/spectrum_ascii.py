@@ -17,9 +17,10 @@ import os
 
 import pandas as pd
 
+from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL
+
 FLUXCAL_DESCRIPTION = "ASCII version of the flux-calibrated extracted spectrum"
 COUNTS_DESCRIPTION = "ASCII version of the extracted spectrum (not flux calibrated)"
-ASCII_PRODUCT_LABEL = "SPECTRUM_ASCII"
 NM_TO_ANGSTROM = 10
 
 
@@ -88,7 +89,7 @@ def write_ascii_spectrum_product(
     return append_product(
         productsTable,
         recipeName=recipeName,
-        productLabel=ASCII_PRODUCT_LABEL,
+        productLabel=SPECTRUM_ASCII_LABEL,
         fileName=os.path.basename(asciiPath),
         filePath=asciiPath,
         productDesc=FLUXCAL_DESCRIPTION if isFluxCalibrated else COUNTS_DESCRIPTION,

@@ -212,7 +212,7 @@ def test_the_finishing_half_flux_calibrates_with_a_response_table_then_writes_an
     # ASSERT
     assert failure is False
     assert calls["fluxCal"] == [("resp.fits", extraction.mergedSpectrum, extraction.combinedObject, frames)]
-    assert calls["ascii"] == [("extracted.fits", "fluxcal.fits")]
+    assert calls["ascii"] == [("extracted.fits", True)]
     assert calls["plot"] == [(extraction.mergedSpectrum, {"10-11": 11}, "fluxcal.fits", [("WARNING", "note")], False)]
 
 

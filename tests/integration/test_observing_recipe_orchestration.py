@@ -1478,8 +1478,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         },
     )
     responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
-    fluxPath = tmp_path / "OBJECT_VIS_FLUXCAL.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    # THE CALIBRATOR OVERWRITES THE SPECTRUM TABLE THE EXTRACTOR WROTE, AND ADDS NO PRODUCT ROW (DY-2346)
+    spectrumPath = tmp_path / "extracted.fits"
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
     recipe.arm = "VIS"
@@ -1544,7 +1544,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
 
         def calibrate(self) -> tuple[str, pd.DataFrame]:
             calls.append("calibrate")
-            return str(fluxPath), _empty_products()
+            Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(spectrumPath, overwrite=True)
+            return str(spectrumPath), _empty_products()
 
     commonutils = import_module("soxspipe.commonutils")
     stareModule = import_module("soxspipe.recipes.soxs_stare")
@@ -1584,6 +1585,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         "clean_up:False",
     ]
     assert plotNotes == [["WARNING: Order skipped: 7"]] * 2
+    assert "FLUX_CALIBRATED" in Table.read(spectrumPath).colnames
+    assert "EXTRACTED_FLUXCAL_SPECTRUM" not in recipe.products["product_label"].tolist()
 
 
 def _cycle_recipe(
