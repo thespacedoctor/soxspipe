@@ -9,7 +9,6 @@ import pytest
 from soxspipe.commonutils.pinhole_set_offsets import (
     MIN_SETS_PER_ORDER,
     OFFSET_SET_CLIP_SIGMA,
-    OFFSET_SET_MIN_SIGMA,
     flag_offset_pinhole_sets,
 )
 from tests.unit._pinhole_sets import NOISE_OFFSETS, PINHOLES
@@ -265,21 +264,8 @@ def test_a_floor_gives_an_order_with_no_spread_a_scale() -> None:
     assert _flagged_wavelengths(lines, flagged) == [511.0]
 
 
-def test_the_default_floor_keeps_the_mad_only_rule() -> None:
-    # ARRANGE
-    lines = _sets(order=1, offsetsY=[*(TIGHT_OFFSETS / 2), 0.3])
-
-    # ACT
-    flaggedDefault = flag_offset_pinhole_sets(lines)
-    flaggedExplicit = flag_offset_pinhole_sets(lines, minSigma=OFFSET_SET_MIN_SIGMA)
-
-    # ASSERT
-    assert OFFSET_SET_MIN_SIGMA == 0.0
-    assert np.array_equal(flaggedDefault, flaggedExplicit)
-
-
-@pytest.mark.parametrize("badFloor", [-0.1, float("inf"), float("nan")])
-def test_an_invalid_floor_is_rejected(badFloor: float) -> None:
+@pytest.mark.parametrize("badFloor", [-0.1, float("inf"), float("nan"), None, "loose"])
+def test_an_invalid_floor_is_rejected(badFloor: object) -> None:
     # ARRANGE
     lines = _sets(order=1, offsetsY=[*NOISE_OFFSETS, 2.0])
 

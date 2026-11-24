@@ -73,8 +73,12 @@ def flag_offset_pinhole_sets(
     """
     import numpy as np
 
+    try:
+        minSigma = float(minSigma)
+    except (TypeError, ValueError):
+        raise ValueError(f"minSigma must be a finite number, zero or positive, not {minSigma!r}") from None
     if not (np.isfinite(minSigma) and minSigma >= 0):
-        raise ValueError(f"minSigma must be a finite number, zero or positive, not {minSigma}")
+        raise ValueError(f"minSigma must be a finite number, zero or positive, not {minSigma!r}")
 
     if lines.empty:
         return np.zeros(0, dtype=bool)
