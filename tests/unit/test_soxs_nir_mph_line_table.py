@@ -1,6 +1,6 @@
 """Contracts for the packaged SOXS NIR multi-pinhole predicted-line table.
 
-DY-1989, DY-2084, DY-1970, DY-2173 and DY-2171.
+DY-1989, DY-2084, DY-1970, DY-2173, DY-2171 and DY-2424.
 """
 
 from __future__ import annotations
@@ -100,11 +100,11 @@ NO_NIST_AR_SETS = [
     (11, "ArI", 1740.193),
     (11, "ArI", 1744.491),
     (11, "ArI", 1791.473),
-    (10, "ArI", 1863.229),
-    (10, "ArI", 1874.501),
     (9, "Ar", 2073.36),
 ]
-NO_NIST_AR_ORDER_10_SET_COUNT = sum(1 for order, _, _ in NO_NIST_AR_SETS if order == EDITED_ORDER)
+# DY-2173 ALSO REMOVED THE O10 Ar I SETS 1863.229 AND 1874.501; DY-2424 RESTORES THEM AT THEIR LEVEL-RITZ WAVELENGTHS
+# (O10_RESTORED_AR_SETS), SO THEY ARE NO LONGER IN NO_NIST_AR_SETS
+DY2173_REMOVED_O10_AR_SET_COUNT = 2
 AR_IONS = ["ArI", "ArII"]
 # (ORDER, CATALOGUE nm, NIST ION, NIST RITZ nm) OF THE BARE 'Ar' SETS THAT STAY, RELABELLED
 RELABELLED_AR_SETS = [
@@ -140,8 +140,9 @@ NIST_AR_NM = {
     }.items()
 }
 # DY-2171: NIST ASD LISTS NO Ar I LINE BETWEEN 1842.8 AND 2031.7 nm, SO THE TWO O10 Ar I SETS CARRY THE RITZ AIR
-# WAVELENGTH OF THEIR NIST Ar I ENERGY LEVELS (PECK AND REEDER AIR, WHICH REPRODUCES THE NIST RITZ 2031.701 nm)
-NIST_LEVEL_RITZ_AR_NM = {"ArI": [1981.7507, 1996.5729]}
+# WAVELENGTH OF THEIR NIST Ar I ENERGY LEVELS (PECK AND REEDER AIR, WHICH REPRODUCES THE NIST RITZ 2031.701 nm).
+# DY-2424 RESTORES 1863.2289 AND 1874.5005 ON THE SAME BASIS
+NIST_LEVEL_RITZ_AR_NM = {"ArI": [1863.2289, 1874.5005, 1981.7507, 1996.5729]}
 # A CATALOGUE Ar WAVELENGTH MOVES AT MOST THIS FAR TO ITS NIST VALUE (THE LARGEST MOVE IS 1158.03 -> 1158.0389)
 MAX_AR_SHIFT_NM = 0.009
 
@@ -261,10 +262,46 @@ O10_STRONG_ARC_LINE_SETS = [
         ],
     ),
 ]
+# DY-2424: (ION, nm, [(X, Y) BY SLIT INDEX 0 TO 8]) OF THE TWO O10 Ar I SETS DY-2173 REMOVED, RESTORED AS FULL SETS AT
+# THEIR NIST LEVEL-RITZ AIR WAVELENGTHS. POSITIONS COME FROM THE DY-2171 METHOD (SAME MAP, SAME OFFSET)
+O10_RESTORED_AR_SETS = [
+    (
+        "ArI",
+        1863.2289,
+        [
+            (68.95543479919434, 403.1687927246094),
+            (68.10175132751465, 407.309326171875),
+            (67.24807548522949, 411.4521789550781),
+            (66.3943920135498, 415.5973205566406),
+            (65.54070854187012, 419.7447814941406),
+            (64.68703269958496, 423.89453125),
+            (63.83334922790527, 428.0466003417969),
+            (62.979665756225586, 432.2009582519531),
+            (62.12598991394043, 436.35760498046875),
+        ],
+    ),
+    (
+        "ArI",
+        1874.5005,
+        [
+            (191.3262996673584, 388.8438720703125),
+            (190.43456077575684, 392.9593200683594),
+            (189.54282188415527, 397.078125),
+            (188.6510829925537, 401.20037841796875),
+            (187.7593593597412, 405.3260192871094),
+            (186.86762046813965, 409.45501708984375),
+            (185.9758815765381, 413.58746337890625),
+            (185.08414268493652, 417.7232666015625),
+            (184.19240379333496, 421.86248779296875),
+        ],
+    ),
+]
+# EVERY O10 SET ADDED OR RESTORED SINCE DY-1970, WITH ITS RECORDED PINHOLE POSITIONS
+O10_ADDED_OR_RESTORED_SETS = O10_ADDED_SETS + O10_STRONG_ARC_LINE_SETS + O10_RESTORED_AR_SETS
 # DY-2171: THE PEAK AT 1862.5 nm IS NeI 1862.5158, NOT THE NeII 1862.734 OF THE CLEAN LIST
 O10_MISIDENTIFIED_NEII_NM = 1862.734
 # THE ORDER 10 ROWS THAT ARE NOT IN AN ADDED SET WERE NOT TOUCHED
-TOUCHED_SETS = [(ion, wavelength) for ion, wavelength, _ in O10_ADDED_SETS + O10_STRONG_ARC_LINE_SETS]
+TOUCHED_SETS = [(ion, wavelength) for ion, wavelength, _ in O10_ADDED_OR_RESTORED_SETS]
 # SHA-256 OF THE UNTOUCHED ORDER 10 ROWS (EVERY ROW BUT THE ADDED SETS), IN FILE ORDER, RE-RECORDED IN DY-2173
 # REGENERATE WITH untouched_rows_checksum(read_table(MPH_TABLE), EDITED_ORDER, TOUCHED_SETS);
 # A LATER LEGITIMATE EDIT TO ORDER 10 MUST RE-RECORD IT
@@ -569,7 +606,7 @@ def test_mislabelled_arii_set_is_absent_from_order_10(wavelength: float) -> None
     assert len(rows) == 0
 
 
-@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_SETS + O10_STRONG_ARC_LINE_SETS)
+@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_OR_RESTORED_SETS)
 def test_added_order_10_line_is_a_full_set_with_its_measured_centre(
     ion: str, wavelength: float, positions: list[tuple[float, float]]
 ) -> None:
@@ -589,7 +626,7 @@ def test_added_order_10_line_is_a_full_set_with_its_measured_centre(
     )
 
 
-@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_SETS + O10_STRONG_ARC_LINE_SETS)
+@pytest.mark.parametrize(("ion", "wavelength", "positions"), O10_ADDED_OR_RESTORED_SETS)
 def test_added_order_10_line_has_every_pinhole_at_its_recorded_position(
     ion: str, wavelength: float, positions: list[tuple[float, float]]
 ) -> None:
@@ -610,8 +647,10 @@ def test_added_order_10_line_has_every_pinhole_at_its_recorded_position(
 def test_order_10_row_count_changes_only_by_the_removed_and_added_sets() -> None:
     # ARRANGE
     table = read_table(MPH_TABLE)
-    # DY-1970 SWAPPED THREE SETS OUT AND THREE IN; DY-2173 REMOVED TWO Ar I SETS; DY-2171 ADDED FOUR SETS
-    expected = MPH_O10_ROWS_BEFORE + (len(O10_STRONG_ARC_LINE_SETS) - NO_NIST_AR_ORDER_10_SET_COUNT) * PINHOLES_PER_LINE
+    # DY-1970 SWAPPED THREE SETS OUT AND THREE IN; DY-2173 REMOVED TWO Ar I SETS; DY-2171 ADDED FOUR SETS;
+    # DY-2424 RESTORED THE TWO Ar I SETS
+    addedSets = len(O10_STRONG_ARC_LINE_SETS) + len(O10_RESTORED_AR_SETS)
+    expected = MPH_O10_ROWS_BEFORE + (addedSets - DY2173_REMOVED_O10_AR_SET_COUNT) * PINHOLES_PER_LINE
 
     # ACT
     rowCount = int(np.sum(np.asarray(table["order"]) == EDITED_ORDER))
