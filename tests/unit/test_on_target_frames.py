@@ -20,6 +20,7 @@ from soxspipe.commonutils.on_target_frames import (
     read_on_target_frame,
     with_frame_accounting,
     without_frames,
+    without_untraced_positions,
 )
 from tests.factories.on_target_frames import raw_science_header
 
@@ -30,6 +31,10 @@ SECONDS_PER_DAY = 86400.0
 
 def _kw(log: Any, instrument: str = "soxs") -> Any:
     return keyword_lookup(log=log, settings={"instrument": instrument}).get
+
+
+def _names(entries: Any) -> list[str]:
+    return [entry.name for entry in entries]
 
 
 def _warnings(log: Any) -> list[str]:
@@ -269,6 +274,35 @@ def test_leaving_no_frames_out_gives_the_same_list_and_no_warning(log: Any) -> N
 
     # ASSERT
     assert kept == entries
+    assert not _warnings(log)
+
+
+def test_only_the_positions_with_no_trace_leave_the_list_each_with_its_own_warning(log: Any) -> None:
+    # ARRANGE
+    entries = tuple(_entry(log, name, mjd=61000.0 + index) for index, name in enumerate("abcd"))
+    positions = [
+        (True, ["a_raw.fits"], "A frame"),
+        (False, ["b_raw.fits"], "B frame"),
+        (False, ["c_raw.fits"], "C frame"),
+    ]
+
+    # ACT
+    kept = without_untraced_positions(entries, positions, log)
+
+    # ASSERT
+    assert _names(kept) == ["a.fits", "d.fits"]
+    warnings = _warnings(log)
+    assert len(warnings) == 2
+    assert "no object trace was found in the B frame" in warnings[0] and "b.fits" in warnings[0]
+    assert "no object trace was found in the C frame" in warnings[1] and "c.fits" in warnings[1]
+
+
+def test_positions_that_all_have_a_trace_leave_the_list_alone(log: Any) -> None:
+    # ARRANGE
+    entries = (_entry(log, "a"),)
+
+    # ACT / ASSERT
+    assert without_untraced_positions(entries, [(True, ["a_raw.fits"], "A frame")], log) == entries
     assert not _warnings(log)
 
 

@@ -9,14 +9,18 @@ Date Created
 : February 27, 2024
 """
 
+from __future__ import annotations
+
 ################# GLOBAL IMPORTS ####################
 import os
 import sys
+from collections.abc import Sequence
 from contextlib import closing
 from types import MappingProxyType
+from typing import Any
 
 from soxspipe.commonutils.offset_frames import SKY_TYPE
-from soxspipe.commonutils.on_target_frames import build_on_target_frames, frames_named, without_frames
+from soxspipe.commonutils.on_target_frames import build_on_target_frames, frames_named, without_untraced_positions
 from soxspipe.commonutils.spectrum_names import SPECTRUM_SUFFIX
 from soxspipe.commonutils.toolkit import (
     concat_tables,
@@ -417,7 +421,7 @@ class soxs_nod(extraction_stacking, base_recipe):
 
         return productPath, qcTable
 
-    def _build_on_target_frames(self, allFilenames):
+    def _build_on_target_frames(self, allFilenames: Sequence[str]) -> None:
         """*list the frames the recipe read, and take every one of them as on target*
 
         Sets ``self.onTargetCandidates`` and ``self.onTargetFrames``. A recipe with frames that are not on target
@@ -430,7 +434,9 @@ class soxs_nod(extraction_stacking, base_recipe):
         self.onTargetCandidates = build_on_target_frames(self.scienceHeaders, allFilenames, self.kw, self.arm, self.log)
         self.onTargetFrames = self.onTargetCandidates
 
-    def _leave_untraced_frames_out(self, spectra, frameNames, labels):
+    def _leave_untraced_frames_out(
+        self, spectra: Sequence[Any], frameNames: Sequence[Sequence[str]], labels: Sequence[str]
+    ) -> None:
         """*take the frames of a position that found no object trace out of the on-target list*
 
         A position with no trace is not in the merged spectrum. Only its frames leave, with a warning that names
@@ -446,11 +452,11 @@ class soxs_nod(extraction_stacking, base_recipe):
         """
         if self.onTargetFrames is None:
             return
-        for spectrum, names, label in zip(spectra, frameNames, labels, strict=True):
-            if spectrum is None:
-                self.onTargetFrames = without_frames(
-                    self.onTargetFrames, names, f"no object trace was found in the {label}", self.log
-                )
+        positions = [
+            (spectrum is not None, names, label)
+            for spectrum, names, label in zip(spectra, frameNames, labels, strict=True)
+        ]
+        self.onTargetFrames = without_untraced_positions(self.onTargetFrames, positions, self.log)
 
     def _should_align_and_stack(self):
         """*decide whether to align and stack the frames before extraction, or to extract each cycle on its own*
@@ -574,7 +580,7 @@ class soxs_nod(extraction_stacking, base_recipe):
         return self.qc
 
     @staticmethod
-    def _on_target_names(cycleFrames):
+    def _on_target_names(cycleFrames: tuple[Any, ...]) -> list[str]:
         """*the file names of the frames of the cycle pass that are on target: every A and B frame*
 
         **Key Arguments:**
@@ -585,7 +591,8 @@ class soxs_nod(extraction_stacking, base_recipe):
 
         - ``names`` -- the file names of the A and B frames
         """
-        return [*cycleFrames[2], *cycleFrames[3]]
+        _, _, namesA, namesB = cycleFrames
+        return [*namesA, *namesB]
 
     def _inspect_each_cycle(self, cycleFrames, orderTablePath, master_flat):
         """*extract, plot and report each cycle on its own, without flux calibration or a response curve*
@@ -1085,7 +1092,7 @@ class soxs_nod(extraction_stacking, base_recipe):
     ):
         """*extract each AB cycle on its own and stack the extractions*
 
-        Sorts ``allFrameA`` and ``allFrameB`` in place by observation date, each with its file names.
+        Pairs the A frames and the B frames in order of observation date, each with its file name.
 
         **Key Arguments:**
 
@@ -1109,8 +1116,8 @@ class soxs_nod(extraction_stacking, base_recipe):
         sequenceCount = 1
         # SORT FRAMEA AND FRAMEB LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
         # FRAMES IN TIME
-        self._sort_frames_with_their_names(allFrameA, allFrameANames)
-        self._sort_frames_with_their_names(allFrameB, allFrameBNames)
+        allFrameA, allFrameANames = self._sorted_with_their_names(allFrameA, allFrameANames)
+        allFrameB, allFrameBNames = self._sorted_with_their_names(allFrameB, allFrameBNames)
 
         for frameA, frameB, frameAName, frameBName in zip(
             allFrameA, allFrameB, allFrameANames, allFrameBNames, strict=False
@@ -1187,17 +1194,21 @@ class soxs_nod(extraction_stacking, base_recipe):
         return stackedSpectrum, orderJoins
 
     @staticmethod
-    def _sort_frames_with_their_names(frames, names):
-        """*sort frames in place by observation time, and their file names with them*
+    def _sorted_with_their_names(frames: Sequence[Any], names: Sequence[str]) -> tuple[list[Any], list[str]]:
+        """*sort frames by observation time, and their file names with them*
 
         **Key Arguments:**
 
-        - ``frames`` -- the frames. The list is changed in place
-        - ``names`` -- the frames' file names, in the same order. The list is changed in place
+        - ``frames`` -- the frames
+        - ``names`` -- the frames' file names, in the same order
+
+        **Return:**
+
+        - ``frames`` -- the frames, earliest first, as a new list
+        - ``names`` -- their file names, in the same order, as a new list
         """
         order = sorted(range(len(frames)), key=lambda index: frames[index].header["MJD-OBS"])
-        frames[:] = [frames[index] for index in order]
-        names[:] = [names[index] for index in order]
+        return [frames[index] for index in order], [names[index] for index in order]
 
     @staticmethod
     def _append_spectrum(spectra, newSpectrum):
@@ -1218,7 +1229,13 @@ class soxs_nod(extraction_stacking, base_recipe):
         return pd.concat(found) if found else None
 
     def _reduce_stacked_ab_pair(
-        self, allFrameA, allFrameB, orderTablePath, master_flat, shiftAndAdd=None, frameNames=((), ())
+        self,
+        allFrameA: Sequence[Any],
+        allFrameB: Sequence[Any],
+        orderTablePath: str,
+        master_flat: Any,
+        shiftAndAdd: Any = None,
+        frameNames: tuple[Sequence[str], Sequence[str]] = ((), ()),
     ):
         """*stack the A and B frames, extract the pair, and build a response curve when requested*
 
@@ -1283,7 +1300,11 @@ class soxs_nod(extraction_stacking, base_recipe):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
-            from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
+            from soxspipe.commonutils.sequence_airmass import (
+                mean_airmass,
+                one_frame_exposure_time,
+                require_equal_exposure_times,
+            )
 
             require_equal_exposure_times([frame.header for frame in allFrameA + allFrameB], self.kw)
             mergedSpectrumDF_A, mergedSpectrumDF_B, orderJoins = self.process_single_ab_nodding_cycle(
@@ -1315,7 +1336,7 @@ class soxs_nod(extraction_stacking, base_recipe):
                 orderJoins=orderJoins,
                 airmass=mean_airmass([frame.header for frame in allFrameA + allFrameB], self.kw, self.log),
                 # THE MERGED SPECTRUM HOLDS THE SUMMED EXPOSURE TIME OF THE FRAMES, THE COUNTS ARE FOR ONE OF THEM
-                exptime=float(allFrameA[0].header[self.kw("EXPTIME")]),
+                exptime=one_frame_exposure_time([frame.header for frame in (*allFrameA, *allFrameB)], self.kw),
             )
             self.qc, self.products, forceFailure = response.get()
 

@@ -12,6 +12,7 @@ Date Created
 ################# GLOBAL IMPORTS ####################
 import os
 import sys
+from typing import Any
 
 from soxspipe.commonutils.offset_frames import (
     OFFSET_TECHNIQUES,
@@ -249,7 +250,7 @@ class soxs_offset(soxs_nod):
         return productPath, qcTable
 
     @staticmethod
-    def _on_target_names(cycleFrames):
+    def _on_target_names(cycleFrames: tuple[Any, ...]) -> list[str]:
         """*the file names of the frames of the cycle pass that are on target: the ON frames*
 
         **Key Arguments:**
@@ -260,7 +261,8 @@ class soxs_offset(soxs_nod):
 
         - ``names`` -- the file names of the ON frames
         """
-        return list(cycleFrames[2])
+        _, _, namesON, _ = cycleFrames
+        return list(namesON)
 
     def _inspect_each_cycle(self, cycleFrames, orderTablePath, master_flat):
         """*extract, plot and report each ON-OFF cycle on its own, without flux calibration or a response curve*
@@ -599,7 +601,11 @@ class soxs_offset(soxs_nod):
 
         if self.generateReponseCurve:
             from soxspipe.commonutils import response_function
-            from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
+            from soxspipe.commonutils.sequence_airmass import (
+                mean_airmass,
+                one_frame_exposure_time,
+                require_equal_exposure_times,
+            )
 
             require_equal_exposure_times([frame.header for frame in allFrameON], self.kw)
             mergedSpectrumDF_A, _, orderJoins = self.process_single_ab_nodding_cycle(
@@ -632,7 +638,7 @@ class soxs_offset(soxs_nod):
                 orderJoins=orderJoins,
                 airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
                 # THE MERGED SPECTRUM HOLDS THE SUMMED EXPOSURE TIME OF THE FRAMES, THE COUNTS ARE FOR ONE OF THEM
-                exptime=float(allFrameON[0].header[self.kw("EXPTIME")]),
+                exptime=one_frame_exposure_time([frame.header for frame in allFrameON], self.kw),
             )
             self.qc, self.products, forceFailure = response.get()
 

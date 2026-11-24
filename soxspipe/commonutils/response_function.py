@@ -114,11 +114,11 @@ class response_function:
 
     ```python
     from soxspipe.commonutils import response_function
-    from soxspipe.commonutils.sequence_airmass import mean_airmass
+    from soxspipe.commonutils.sequence_airmass import mean_airmass, one_frame_exposure_time
     # THE RAW FRAMES THAT CONTRIBUTED TO THE STANDARD'S EXTRACTION
     airmass = mean_airmass([frame.header for frame in standardFrames], kw, log)
-    # THE FRAMES SHARE ONE EXPOSURE TIME (require_equal_exposure_times)
-    exptime = float(standardFrames[0].header[kw("EXPTIME")])
+    # THE FRAMES SHARE ONE EXPOSURE TIME
+    exptime = one_frame_exposure_time([frame.header for frame in standardFrames], kw)
     response = response_function(
         log=log,
         settings=settings,
@@ -151,7 +151,7 @@ class response_function:
         orderJoins=None,
         airmass=None,
         *,
-        exptime,
+        exptime: float,
     ):
         self.log = log
         log.debug("instansiating a new 'response_function' object")

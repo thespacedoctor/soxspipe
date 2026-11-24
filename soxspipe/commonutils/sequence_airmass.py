@@ -165,3 +165,35 @@ def require_equal_exposure_times(headers, kw):
         "Flux calibration divides the counts by one exposure time, so every frame of the sequence must have the "
         f"same exposure time, but they differ: {frames}"
     )
+
+
+def one_frame_exposure_time(headers, kw):
+    """*the exposure time in seconds of one frame of a sequence of frames that share one exposure time*
+
+    A product made from several frames holds the summed exposure time in its header, but its counts are for one frame.
+    Flux calibration and the response divide by this value (DY-2356).
+
+    **Key Arguments:**
+
+    - ``headers`` -- the FITS headers of the frames that contribute to the product
+    - ``kw`` -- the keyword lookup, mapping an alias such as ``EXPTIME`` to the header keyword
+
+    **Return:**
+
+    - ``exptime`` -- the ``EXPTIME`` of the frames, in seconds
+
+    **Raises:**
+
+    - ``ValueError`` -- when there is no frame, or the frames have no readable ``EXPTIME`` or differ in it
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.sequence_airmass import one_frame_exposure_time
+    exptime = one_frame_exposure_time([frame.header for frame in allObjectFrames], self.kw)
+    ```
+    """
+    if not headers:
+        raise ValueError("The exposure time of one frame is needed, but the sequence has no frame")
+    require_equal_exposure_times(headers, kw)
+    return float(headers[0][kw("EXPTIME")])

@@ -10,10 +10,10 @@ Date Created
 """
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from .base_util import base_util
 from .extraction_notes import extraction_note_logger, format_extraction_notes
@@ -276,7 +276,7 @@ class horne_extraction(base_util):
         slitOffsetsArcsec=None,
         carrySkyCounts=True,
         readNoise=None,
-        onTargetFrames=None,
+        onTargetFrames: Sequence[Any] | None = None,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData

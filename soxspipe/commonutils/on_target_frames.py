@@ -285,6 +285,38 @@ def without_frames(
     return tuple(entry for entry in entries if entry not in dropped)
 
 
+def without_untraced_positions(
+    entries: Sequence[on_target_frame], positions: Sequence[tuple[bool, Sequence[str], str]], log: Any
+) -> tuple[on_target_frame, ...]:
+    """*leave the frames of the positions that found no object trace out of the on-target list*
+
+    A position with no trace is not in the merged spectrum. Only its frames leave, one warning for each position
+    (Dave, 2026-11-24).
+
+    **Key Arguments:**
+
+    - ``entries`` -- the on-target list
+    - ``positions`` -- ``(hasTrace, sourceNames, label)`` for each position: whether it found a trace, the file names of
+      its frames, and what the warning calls them, for example ``A frame of cycle 2``
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``kept`` -- the entries that remain
+
+    **Usage:**
+
+    ```python
+    entries = without_untraced_positions(entries, [(spectrumA is not None, namesA, "A frames")], self.log)
+    ```
+    """
+    kept = tuple(entries)
+    for hasTrace, sourceNames, label in positions:
+        if not hasTrace:
+            kept = without_frames(kept, sourceNames, f"no object trace was found in the {label}", log)
+    return kept
+
+
 def _distinct(values: Sequence[Any]) -> list[Any]:
     """*the values that are not None, once each, in order of first appearance*"""
     return list(dict.fromkeys(value for value in values if value is not None))

@@ -1857,7 +1857,11 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         """
         # GETTING THE RESPONSE
         from soxspipe.commonutils import response_function
-        from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
+        from soxspipe.commonutils.sequence_airmass import (
+            mean_airmass,
+            one_frame_exposure_time,
+            require_equal_exposure_times,
+        )
 
         require_equal_exposure_times([frame.header for frame in objectFrames], self.kw)
         self.log.print("# CALCULATING RESPONSE FUNCTION\n")
@@ -1874,7 +1878,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             orderJoins=orderJoins,
             airmass=mean_airmass([frame.header for frame in objectFrames], self.kw, self.log),
             # THE MERGED SPECTRUM HOLDS THE SUMMED EXPOSURE TIME OF THE FRAMES, THE COUNTS ARE FOR ONE OF THEM
-            exptime=float(objectFrames[0].header[self.kw("EXPTIME")]),
+            exptime=one_frame_exposure_time([frame.header for frame in objectFrames], self.kw),
         )
         self.qc, self.products, forceFailure = response.get()
 

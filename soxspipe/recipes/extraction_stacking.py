@@ -8,7 +8,10 @@ Date Created
 : November 23, 2026
 """
 
+from __future__ import annotations
+
 import math
+from typing import Any
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.on_target_frames import with_frame_accounting
@@ -75,7 +78,7 @@ class extraction_stacking:
     # IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) AS FRAMES LEAVE THE LIST
     onTargetFrames = None
 
-    def _merged_spectrum_header(self):
+    def _merged_spectrum_header(self) -> Any:
         """*the header of the merged spectrum: the master header with the frame-accounting cards of the on-target list*
 
         ``stack_extractions`` stamps ``masterHeaderFrame`` with every raw frame of the recipe, so the calibrated

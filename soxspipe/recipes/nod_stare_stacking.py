@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from soxspipe.commonutils.on_target_frames import without_frames
+from soxspipe.commonutils.on_target_frames import without_untraced_positions
 from soxspipe.commonutils.spectrum_names import SPECTRUM_TABLE_LABEL
 
 if TYPE_CHECKING:
@@ -425,14 +425,11 @@ class nod_stare_stacking:
         """
         if self.onTargetFrames is None or all(extraction.traceFallback for extraction in extractions.values()):
             return
-        for position, extraction in extractions.items():
-            if extraction.traceFallback:
-                self.onTargetFrames = without_frames(
-                    self.onTargetFrames,
-                    frameNames[position],
-                    f"no object trace was found in the {position} frames",
-                    self.log,
-                )
+        positions = [
+            (not extraction.traceFallback, frameNames[position], f"{position} frames")
+            for position, extraction in extractions.items()
+        ]
+        self.onTargetFrames = without_untraced_positions(self.onTargetFrames, positions, self.log)
 
     def _combine_not_flattened(self, extractions: dict[str, stack_extraction], orderJoins: Any) -> str | None:
         """*combine the not-flattened extractions of the nod positions of a standard star*
