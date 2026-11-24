@@ -328,6 +328,7 @@ def _write_response_product(tmp_path: Path, log: object, wave: np.ndarray, respo
     writer.kw = lambda key: key
     writer.sofName = "SYNTHETIC"
     writer.header = fits.Header({"OBJECT": "Synthetic standard"})
+    writer.texp = 10.0
     writer.productDir = str(tmp_path)
     writer.qc = qc_table().iloc[0:0]
     writer.products = product_table().iloc[0:0]

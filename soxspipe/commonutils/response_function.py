@@ -10,7 +10,7 @@
 """
 
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils.response_basis import (
     RESPONSE_BASIS,
@@ -25,6 +25,9 @@ from soxspipe.commonutils.response_fit import (
     resolve_response_settings,
 )
 from soxspipe.commonutils.toolkit import extinction_correction_factor
+
+if TYPE_CHECKING:
+    from astropy.io import fits
 
 os.environ["TERM"] = "vt100"
 
@@ -406,15 +409,13 @@ class response_function:
             # CREATE A DATAFRAME FOR EFFICIENCY ESTIMATE
             stdEfficiencyEstimateDF = pd.DataFrame({"WAVE": stdExtWaveNotFlat, "EFFICIENCY": stdEfficiencyEstimate})
             # WRITE THE EFFICIENCY ESTIMATE TO FITS BINARY TABLE
-            import copy
-
             from soxspipe.commonutils.phase3 import write_fits_table_to_disk
             from soxspipe.commonutils.toolkit import add_snr_efficiency_qcs
 
             filename = f"{self.sofName}_EFFICIENCY.fits"
             filepath = f"{self.productDir}/{filename}"
 
-            header = copy.deepcopy(self.header)
+            header = self._per_frame_header()
             set_header_card(header, self.kw("SEQ_ARM").upper(), self.arm)
             set_header_card(header, self.kw("PRO_TYPE").upper(), "REDUCED")
             set_header_card(header, self.kw("PRO_CATG").upper(), f"EFFICIENCY_TAB_{self.arm}".upper())
@@ -585,6 +586,20 @@ class response_function:
         self.log.debug("completed the ``plot_response_curve`` method")
         return plotFilePath
 
+    def _per_frame_header(self) -> "fits.Header":
+        """*a copy of the standard's header whose EXPTIME is the exposure time of one frame*
+
+        The response and efficiency values are per frame, so their products state one frame's time, not the summed
+        time of the stack (DY-2356).
+        """
+        import copy
+
+        from soxspipe.commonutils.fits_headers import set_header_card
+
+        header = copy.deepcopy(self.header)
+        set_header_card(header, self.kw("EXPTIME"), self.texp, "[s] Exposure time of one frame of the standard")
+        return header
+
     def write_response_function_to_file(self, wavelength: Any, response: Any) -> str:
         """*write out the response curve*
 
@@ -602,8 +617,6 @@ class response_function:
         """
         self.log.debug("starting the ``write_response_function_to_file`` method")
 
-        import copy
-
         from astropy.io import fits
 
         from soxspipe.commonutils.atomic_fits import write_hdulist_atomically
@@ -615,7 +628,7 @@ class response_function:
 
         filename = self.sofName + "_RESP.fits"
 
-        header = copy.deepcopy(self.header)
+        header = self._per_frame_header()
 
         filePath = f"{self.productDir}/{filename}"
 

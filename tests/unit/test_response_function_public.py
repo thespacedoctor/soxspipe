@@ -138,6 +138,7 @@ def _response_writer(tmp_path: Path, log: object) -> response_function:
     response.kw = lambda key: key
     response.sofName = "SYNTHETIC"
     response.header = fits.Header({"OBJECT": "Synthetic standard"})
+    response.texp = 30.0
     response.productDir = str(tmp_path)
     response.qc = qc_table()
     response.products = product_table().iloc[0:0]
@@ -466,3 +467,31 @@ def test_plot_response_curve_closes_only_its_own_figure(tmp_path: Path, log: obj
     # ASSERT
     assert plt.get_fignums() == [callerFigure.number]
     plt.close(callerFigure)
+
+
+def test_resp_and_efficiency_carry_the_exposure_time_of_one_frame(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RESP and EFFICIENCY values are per frame, so their EXPTIME is one frame's, not the summed stack (DY-2356)."""
+    # ARRANGE: THE MERGED SPECTRUM HEADER CARRIES THE SUM OF 4 FRAMES OF 10 s
+    import soxspipe.commonutils.phase3 as phase3
+
+    written: dict[str, fits.Header] = {}
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: written.update(header=kwargs["header"]))
+    response = _build_real_nir_response(tmp_path, log, monkeypatch)
+    response.header["EXPTIME"] = 40.0
+    response.header["TEXPTIME"] = 40.0
+
+    # ACT
+    _, products, recipeError = response.get()
+
+    # ASSERT
+    assert recipeError is False
+    respPath = products.loc[products["product_label"] == "RESPONSE_FUNC", "file_path"].iloc[0]
+    with fits.open(respPath) as hdul:
+        assert hdul[0].header["EXPTIME"] == pytest.approx(10.0)
+        assert hdul[0].header["TEXPTIME"] == pytest.approx(40.0)
+    assert written["header"]["EXPTIME"] == pytest.approx(10.0)
+    assert response.header["EXPTIME"] == pytest.approx(40.0)
