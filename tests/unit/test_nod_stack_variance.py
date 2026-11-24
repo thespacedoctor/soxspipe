@@ -238,5 +238,5 @@ def test_the_stacked_spectrum_of_a_long_named_sof_is_written(recipe: soxs_nod, t
     _, filePath = recipe.stack_extractions([_spectrum([500.0], [10.0], [4.0])])
 
     # ASSERT
-    assert Path(filePath).name == f"{'S' * 70}_EXTRACTED_MERGED.fits"
+    assert Path(filePath).name == f"{'S' * 70}_SPECTRUM.fits"
     assert Path(filePath).exists()

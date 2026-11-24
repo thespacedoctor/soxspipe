@@ -11,6 +11,7 @@ Date Created
 import math
 
 from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from soxspipe.commonutils.toolkit import utcnow_string
 
 # UP TO THIS MANY SPECTRA, THE MEDIAN IS THE MEAN, SO ITS VARIANCE IS SUM(VAR) / N**2
@@ -187,7 +188,7 @@ class extraction_stacking:
         )
 
         # WRITE PRODUCT TO DISK
-        filename = self.filenameTemplate.replace(".fits", "_EXTRACTED_MERGED" + postfix + ".fits")
+        filename = self.filenameTemplate.replace(".fits", SPECTRUM_SUFFIX + postfix + ".fits")
         filePath = f"{self.productDir}/{filename}"
 
         write_fits_table_to_disk(
@@ -202,10 +203,10 @@ class extraction_stacking:
         )
 
         self.add_product(
-            productLabel="EXTRACTED_MERGED_TABLE",
+            productLabel=SPECTRUM_TABLE_LABEL,
             fileName=filename,
             filePath=filePath,
-            productDesc="Table of the extracted source in each order. All nodding cycles combined.",
+            productDesc="Table of the extracted, order-merged spectrum. All nodding cycles combined.",
             reductionDateUtc=self.utcnow,
             fileType="FITS",
             label="PROD",
@@ -221,7 +222,7 @@ class extraction_stacking:
             stackedSpectrum2["WAVE"].format = "{:.2f}"  # CONVERTING TO ANGSTROMS
             stackedSpectrum2.write(asciiFilePath, format="ascii", overwrite=True)
             self.add_product(
-                productLabel="EXTRACTED_MERGED_ASCII",
+                productLabel=SPECTRUM_ASCII_LABEL,
                 fileName=asciiFilename,
                 filePath=asciiFilePath,
                 productDesc="Ascii version of extracted source spectrum",

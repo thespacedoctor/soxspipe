@@ -187,7 +187,7 @@ BASELINES = [
 
 
 def _stare_product_directory(workspace_path: Path, stem: str) -> Path:
-    product_paths = list(workspace_path.rglob(f"{stem}_EXTRACTED_MERGED.fits"))
+    product_paths = list(workspace_path.rglob(f"{stem}_SPECTRUM.fits"))
     assert len(product_paths) == 1, f"expected one merged product for {stem}, found {product_paths}"
     return product_paths[0].parent
 
@@ -208,33 +208,15 @@ def _measure_stare_reduction(
 ) -> dict[str, float]:
     """Read every baselined value of one stare reduction, checking product structure on the way."""
     stem = baseline.stem
-    with fits.open(product_directory / f"{stem}_EXTRACTED_MERGED.fits") as merged_hdus:
-        assert len(merged_hdus) == 2
-        assert merged_hdus[0].header["INSTRUME"] == "SOXS"
-        assert merged_hdus[0].header["ESO PRO REC1 ID"] == "soxs-stare"
-        assert merged_hdus[0].header["DATE-OBS"] == baseline.obsDate
-        merged_table = merged_hdus[1].data
-        assert set(merged_table.names) == {
-            "WAVE",
-            "FLUX_COUNTS",
-            "VARIANCE",
-            "SKY_COUNTS",
-            "SNR",
-        }
-        merged_wave = np.asarray(merged_table["WAVE"], dtype=float)
-        measured = {
-            "merged rows": len(merged_table),
-            "snr median": float(np.nanmedian(merged_table["SNR"])),
-            "sky counts median": float(np.nanmedian(merged_table["SKY_COUNTS"])),
-        }
-    measured["wave min"] = float(np.nanmin(merged_wave))
-    measured["wave max"] = float(np.nanmax(merged_wave))
-    measured["wave step median"] = float(np.nanmedian(np.diff(merged_wave)))
-
-    with fits.open(product_directory / f"{stem}_FLUXCAL.fits") as fluxcal_hdus:
-        fluxcal_table = fluxcal_hdus[1].data
-        # THE FLUX-CALIBRATED TABLE CARRIES THE MERGED COLUMNS, THE SKY AMONG THEM (DY-1361)
-        assert fluxcal_table.names == [
+    # ONE FILE HOLDS THE MERGED COUNTS AND THE FLUX-CALIBRATED COLUMNS, THE SKY AMONG THEM (DY-1361, DY-2346)
+    with fits.open(product_directory / f"{stem}_SPECTRUM.fits") as spectrum_hdus:
+        assert len(spectrum_hdus) == 2
+        assert spectrum_hdus[0].header["INSTRUME"] == "SOXS"
+        assert spectrum_hdus[0].header["ESO PRO REC1 ID"] == "soxs-stare"
+        assert spectrum_hdus[0].header["DATE-OBS"] == baseline.obsDate
+        assert spectrum_hdus[0].header["ESO PRO CATG"] in {"SCI_SLIT_FLUX_VIS", "SCI_SLIT_FLUX_NIR"}
+        spectrum_table = spectrum_hdus[1].data
+        assert spectrum_table.names == [
             "WAVE",
             "FLUX_CALIBRATED",
             "ERR_CALIBRATED",
@@ -243,10 +225,17 @@ def _measure_stare_reduction(
             "SKY_COUNTS",
             "SNR",
         ]
-        measured["fluxcal rows"] = len(fluxcal_table)
-        measured["fluxcal median"] = float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"]))
-        measured["fluxcal sky counts median"] = float(np.nanmedian(fluxcal_table["SKY_COUNTS"]))
-        assert measured["fluxcal sky counts median"] == measured["sky counts median"]
+        merged_wave = np.asarray(spectrum_table["WAVE"], dtype=float)
+        measured = {
+            "merged rows": len(spectrum_table),
+            "snr median": float(np.nanmedian(spectrum_table["SNR"])),
+            "sky counts median": float(np.nanmedian(spectrum_table["SKY_COUNTS"])),
+            "fluxcal rows": len(spectrum_table),
+            "fluxcal median": float(np.nanmedian(spectrum_table["FLUX_CALIBRATED"])),
+        }
+    measured["wave min"] = float(np.nanmin(merged_wave))
+    measured["wave max"] = float(np.nanmax(merged_wave))
+    measured["wave step median"] = float(np.nanmedian(np.diff(merged_wave)))
 
     measured["sky model median"], measured["sky model p90"] = _sky_model_levels(
         product_directory / f"{stem}_SKYMODEL.fits"
@@ -272,11 +261,10 @@ def test_stare_reduction_matches_approved_baseline(reduced_workspace: Path, base
     stem = baseline.stem
     product_directory = _stare_product_directory(reduced_workspace, stem)
     expected_products = {
-        f"{stem}_EXTRACTED_MERGED.fits",
-        f"{stem}_EXTRACTED_MERGED.log",
+        f"{stem}_SPECTRUM.fits",
+        f"{stem}_SPECTRUM.log",
+        f"{stem}_SPECTRUM.txt",
         f"{stem}_EXTRACTED_ORDERS.fits",
-        f"{stem}_FLUXCAL.fits",
-        f"{stem}_FLUXCAL.txt",
         f"{stem}_SKYMODEL.fits",
         f"{stem}_SKYSUB.fits",
         f"{stem}_SKYSUB_RESIDUALS.fits",

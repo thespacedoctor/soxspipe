@@ -229,7 +229,7 @@ class soxs_offset(soxs_nod):
         if responseFunctionPath:
             filePathFluxcal = self._flux_calibrate_stack(responseFunctionPath, stackedSpectrum, allFrameON)
 
-        self._write_ascii_spectrum(filePathFluxcal)
+        self._write_ascii_spectrum(bool(filePathFluxcal))
         self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, filePathFluxcal)
         if filePathFluxcal:
             productPath = filePathFluxcal
@@ -259,7 +259,7 @@ class soxs_offset(soxs_nod):
         stackedSpectrum, _, orderJoins = self._reduce_each_offset_cycle(
             *cycleFrames, orderTablePath=orderTablePath, master_flat=master_flat
         )
-        self._write_ascii_spectrum(None)
+        self._write_ascii_spectrum(False)
         self._plot_stacked_spectrum_qcs(stackedSpectrum, orderJoins, None)
         return self.report_output()
 
@@ -658,6 +658,7 @@ class soxs_offset(soxs_nod):
             startNightDate=self.startNightDate,
             sofName=self.sofName,
             debug=self.debug,
+            qc=self.qc,
         )
         filePathFluxcal, products = fluxCalibrator.calibrate()
         self.products = concat_tables([self.products, products], ignore_index=True)

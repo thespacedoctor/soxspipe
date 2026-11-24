@@ -128,10 +128,10 @@ flux_standard_stare:
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,STARE
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,STARE
@@ -158,10 +158,10 @@ telluric_standard_stare:
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,STARE
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
 flux_standard_nodding:
   recipe: nod_std
   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
@@ -186,10 +186,10 @@ flux_standard_nodding:
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,NODDING
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,NODDING
@@ -221,10 +221,10 @@ telluric_standard_nodding:
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,NODDING
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
 flux_standard_offset:
   recipe: offset_std
   eso dpr tech: ["ECHELLE,SLIT,OFFSET", "ECHELLE,SLIT,GENOFFSET"]
@@ -243,10 +243,10 @@ flux_standard_offset:
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,OFFSET
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,OFFSET
@@ -272,10 +272,10 @@ telluric_standard_offset:
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,OFFSET
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
 science_stare:
   recipe: stare_obj
   eso dpr tech: ["ECHELLE,SLIT,STARE"]
@@ -297,10 +297,10 @@ science_stare:
     - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,STARE
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
 science_nodding:
   recipe: nod_obj
   eso dpr tech: ["ECHELLE,SLIT,NODDING"]
@@ -327,10 +327,10 @@ science_nodding:
   - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,NODDING
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits
 science_offset:
   recipe: offset_obj
   eso dpr tech: ["ECHELLE,SLIT,OFFSET", "ECHELLE,SLIT,GENOFFSET"]
@@ -351,7 +351,7 @@ science_offset:
   - fits table:
         eso pro type: REDUCED
         eso pro tech: ECHELLE,SLIT,OFFSET
-        eso pro catg: OBJECT_TAB
+        eso pro catg: SCI_SLIT_FLUX
         replace:
           - from: .fits
-            to: _EXTRACTED_MERGED.fits
+            to: _SPECTRUM.fits

@@ -1,6 +1,6 @@
 """`reduce all` must not reduce a per-frame stare SOF again once it has passed (DY-1705).
 
-A SOF reduced one frame at a time writes `<sof>_F<N>_...` products and never the `<sof>_EXTRACTED_MERGED.fits` that
+A SOF reduced one frame at a time writes `<sof>_F<N>_...` products and never the `<sof>_SPECTRUM.fits` that
 `toolkit.predict_product_path` predicts, so the product-exists guard in `base_recipe` cannot see it. The session
 status in `product_frames` is what marks the SOF as done.
 """

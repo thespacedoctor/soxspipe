@@ -240,7 +240,7 @@ def test_predict_product_path_reads_the_session_and_builds_the_path_from_root_di
     # ASSERT
     assert night == "2024-01-01"
     assert productPath == (
-        f"{root}/sessions/mysession/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+        f"{root}/sessions/mysession/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_SPECTRUM.fits"
     )
     assert not (elsewhere / "sessions").exists()
 
@@ -261,7 +261,7 @@ def test_predict_product_path_builds_the_path_under_the_output_directory_where_t
 
     # ASSERT
     assert night == "2024-01-01"
-    assert productPath == (f"{outputDir}/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits")
+    assert productPath == (f"{outputDir}/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_SPECTRUM.fits")
     assert not (elsewhere / "sessions").exists()
     assert not outputDir.exists()
 
@@ -291,7 +291,7 @@ def test_predict_product_path_expands_the_home_directory_of_the_output_directory
     productPath, _ = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir="~/out")
 
     # ASSERT
-    assert productPath == f"{tmp_path}/out/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
+    assert productPath == f"{tmp_path}/out/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_SPECTRUM.fits"
 
 
 @pytest.mark.parametrize("workspaceRoot", ["{tmp}/out", "~/out", "relative/out", "{tmp}/out/"])
@@ -356,9 +356,7 @@ def test_predict_product_path_keeps_the_session_layout_for_a_workspace_root_in_t
     productPath, _ = toolkit.predict_product_path("20240102T030405_STARE.sof", "soxs-stare", outputDir=workspaceRoot)
 
     # ASSERT
-    assert productPath == (
-        "./sessions/session_01/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_EXTRACTED_MERGED.fits"
-    )
+    assert productPath == ("./sessions/session_01/reduced/2024-01-01/soxs-stare/20240102T030405_STARE_SPECTRUM.fits")
 
 
 @pytest.mark.parametrize(
@@ -366,9 +364,10 @@ def test_predict_product_path_keeps_the_session_layout_for_a_workspace_root_in_t
     [
         ("20240102T030405_STARE_STD.sof", "20240102T030405_STARE_STD_RESP.fits"),
         ("20240102T030405_NOD_STD.sof", "20240102T030405_NOD_STD_RESP.fits"),
+        ("20240102T030405_OFFSET_STD.sof", "20240102T030405_OFFSET_STD_RESP.fits"),
     ],
 )
-def test_predict_product_path_appends_resp_for_std_stare_and_nod(
+def test_predict_product_path_appends_resp_for_std_stare_nod_and_offset(
     monkeypatch: pytest.MonkeyPatch,
     sofName: str,
     expectedProductName: str,
@@ -395,11 +394,12 @@ def test_predict_product_path_appends_resp_for_std_stare_and_nod(
 @pytest.mark.parametrize(
     ("sofName", "expectedProductName"),
     [
-        ("20240102T030405_STARE.sof", "20240102T030405_STARE_EXTRACTED_MERGED.fits"),
-        ("20240102T030405_NOD.sof", "20240102T030405_NOD_EXTRACTED_MERGED.fits"),
+        ("20240102T030405_STARE.sof", "20240102T030405_STARE_SPECTRUM.fits"),
+        ("20240102T030405_NOD.sof", "20240102T030405_NOD_SPECTRUM.fits"),
+        ("20240102T030405_OFFSET_OBJ.sof", "20240102T030405_OFFSET_OBJ_SPECTRUM.fits"),
     ],
 )
-def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod(
+def test_predict_product_path_appends_spectrum_for_non_std_stare_nod_and_offset(
     monkeypatch: pytest.MonkeyPatch,
     sofName: str,
     expectedProductName: str,
@@ -427,7 +427,7 @@ def test_predict_product_path_appends_extracted_merged_for_non_std_stare_and_nod
     ("sofName", "expectedProductName"),
     [
         ("20240102T030405_NOD_STD.sof", "20240102T030405_NOD_STD_STAREMODE_RESP.fits"),
-        ("20240102T030405_NOD_OBJ.sof", "20240102T030405_NOD_OBJ_STAREMODE_EXTRACTED_MERGED.fits"),
+        ("20240102T030405_NOD_OBJ.sof", "20240102T030405_NOD_OBJ_STAREMODE_SPECTRUM.fits"),
     ],
 )
 def test_predict_product_path_puts_the_marker_before_the_product_suffix(
@@ -468,7 +468,7 @@ def test_predict_product_path_adds_no_marker_by_default(monkeypatch: pytest.Monk
 
     productPath, _ = toolkit.predict_product_path("20240102T030405_NOD_OBJ.sof", "soxs-nod")
 
-    assert productPath.endswith("/soxs-nod/20240102T030405_NOD_OBJ_EXTRACTED_MERGED.fits")
+    assert productPath.endswith("/soxs-nod/20240102T030405_NOD_OBJ_SPECTRUM.fits")
 
 
 def test_add_recipe_logger_replaces_handlers_and_separates_messages(

@@ -29,7 +29,7 @@ from soxspipe.commonutils.horne_extraction import (
     profile_clip_cap_rows,
 )
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
-from tests.factories import instrument_header, product_table
+from tests.factories import instrument_header, product_table, qc_table
 from tests.factories.flux_calibration import calibrate_spectrum
 from tests.unit._plot_spies import probe_on_savefig
 
@@ -1013,17 +1013,49 @@ def test_extract_writes_order_and_merged_product_contracts(
 
     assert len(calls) == 2
     assert calls[0]["filePath"].endswith("SYNTHETIC_EXTRACTED_ORDERS.fits")
-    assert calls[1]["filePath"].endswith("SYNTHETIC_EXTRACTED_MERGED.fits")
+    assert calls[1]["filePath"].endswith("SYNTHETIC_SPECTRUM.fits")
     assert calls[1]["header"]["PRO_TYPE"] == "REDUCED"
     assert calls[1]["header"]["PRO_CATG"] == "SCI_SLIT_FLUX_VIS"
     assert calls[1]["phase3"] == PER_ARM_MODE
     assert calls[1]["extname"] == "SPECTRUM"
     assert not calls[0].get("phase3")
-    assert products["product_label"].tolist() == ["EXTRACTED_ORDERS_TABLE", "EXTRACTED_MERGED_TABLE"]
+    assert products["product_label"].tolist() == ["EXTRACTED_ORDERS_TABLE", "SPECTRUM_TABLE"]
     assert not list(tmp_path.glob("*.txt"))
-    assert filePath == str(tmp_path / "SYNTHETIC_EXTRACTED_MERGED.fits")
+    assert filePath == str(tmp_path / "SYNTHETIC_SPECTRUM.fits")
     assert mergedSpectrum["WAVE"].tolist() == [500.0, 502.0]
     assert joins == {"10-11": 501.0}
+
+
+@pytest.mark.parametrize(
+    ("notFlattened", "expectedName"),
+    [("", "SYNTHETIC_SPECTRUM.fits"), ("_NOTFLAT", "SYNTHETIC_SPECTRUM_NOTFLAT.fits")],
+)
+def test_extract_writes_a_real_spectrum_file_tagged_sci_slit_flux(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    notFlattened: str,
+    expectedName: str,
+) -> None:
+    """Write the merged spectrum through the real writer, so a crash in a real reduction cannot hide behind a mock."""
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    extractor.notFlattened = notFlattened
+    extractor.qc = qc_table()
+
+    # ACT
+    _, _, _, _, filePath = extractor.extract()
+
+    # ASSERT
+    assert filePath == str(tmp_path / expectedName)
+    with fits.open(filePath) as hdus:
+        assert hdus[0].header["PRO_CATG"] == "SCI_SLIT_FLUX_VIS"
+        assert hdus[1].name == "SPECTRUM"
+        assert hdus[1].data["WAVE"].tolist() == [500.0, 502.0]
+    assert not list(tmp_path.glob("*EXTRACTED_MERGED*"))
 
 
 def _extract_labels_for_sequence(
@@ -1064,7 +1096,7 @@ def test_a_stare_pass_over_nodding_frames_registers_the_merged_table_like_a_norm
     labels = _extract_labels_for_sequence(log, monkeypatch, tmp_path, recipeName, cumulativeOffset)
 
     # ASSERT: THE ORDERS TABLE KEEPS ITS SEQUENCE SUFFIX; THE MERGED TABLE HAS THE LABEL OF A NORMAL STARE RUN
-    assert labels == [f"EXTRACTED_ORDERS_TABLE{suffix}", "EXTRACTED_MERGED_TABLE"]
+    assert labels == [f"EXTRACTED_ORDERS_TABLE{suffix}", "SPECTRUM_TABLE"]
 
 
 @pytest.mark.parametrize("recipeName", ["soxs-nod", "soxs-nod-std", "soxs-offset", "soxs-offset-std"])
@@ -1119,7 +1151,7 @@ def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged
 
     _, _, mergedSpectrum, _, _ = extractor.extract()
 
-    mergedTable = writtenTables[str(tmp_path / "SYNTHETIC_EXTRACTED_MERGED.fits")]
+    mergedTable = writtenTables[str(tmp_path / "SYNTHETIC_SPECTRUM.fits")]
     assert mergedTable["WAVE"].tolist() == [500.12, 502.99]
     assert mergedTable["FLUX_COUNTS"].tolist() == [1.235, 3.654]
     assert mergedTable["FLUX_DENSITY_COUNTS"].tolist() == [0.123, 0.346]
@@ -1152,7 +1184,7 @@ def test_extract_labels_every_product_row_with_the_running_recipe(
 
     _, products, _, _, _ = extractor.extract()
 
-    assert products["product_label"].tolist() == ["EXTRACTED_ORDERS_TABLE", "EXTRACTED_MERGED_TABLE"]
+    assert products["product_label"].tolist() == ["EXTRACTED_ORDERS_TABLE", "SPECTRUM_TABLE"]
     assert products["soxspipe_recipe"].tolist() == [recipeName] * 2
 
 

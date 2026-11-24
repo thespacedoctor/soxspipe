@@ -183,8 +183,8 @@ def _patch_stare(
     commonutils = import_module("soxspipe.commonutils")
     monkeypatch.setattr(commonutils, "horne_extraction", FakeExtractor)
 
-    def fake_write_ascii(mergedPath: str, fluxcalPath: str | None, products: pd.DataFrame, *_: object) -> pd.DataFrame:
-        captured["ascii"].append({"merged": mergedPath, "fluxcal": fluxcalPath})
+    def fake_write_ascii(spectrumPath: str, isFluxCalibrated: bool, products: pd.DataFrame, *_: object) -> pd.DataFrame:
+        captured["ascii"].append({"spectrum": spectrumPath, "isFluxCalibrated": isFluxCalibrated})
         return products
 
     monkeypatch.setattr(
@@ -1170,7 +1170,7 @@ def test_the_ascii_spectrum_is_written_once_from_the_fluxcal_table_when_a_respon
     recipe.produce_product()
 
     # ASSERT
-    assert captured["ascii"] == [{"merged": str(tmp_path / "extracted.fits"), "fluxcal": "fluxcal.fits"}]
+    assert captured["ascii"] == [{"spectrum": str(tmp_path / "extracted.fits"), "isFluxCalibrated": True}]
 
 
 def test_the_ascii_spectrum_falls_back_to_the_merged_table_without_a_response(
@@ -1187,7 +1187,7 @@ def test_the_ascii_spectrum_falls_back_to_the_merged_table_without_a_response(
     recipe.produce_product()
 
     # ASSERT
-    assert captured["ascii"] == [{"merged": str(tmp_path / "extracted.fits"), "fluxcal": None}]
+    assert captured["ascii"] == [{"spectrum": str(tmp_path / "extracted.fits"), "isFluxCalibrated": False}]
 
 
 def test_a_standard_star_writes_its_ascii_spectrum_from_the_merged_table(
@@ -1205,7 +1205,7 @@ def test_a_standard_star_writes_its_ascii_spectrum_from_the_merged_table(
     recipe.produce_product()
 
     # ASSERT
-    assert captured["ascii"] == [{"merged": str(tmp_path / "extracted.fits"), "fluxcal": None}]
+    assert captured["ascii"] == [{"spectrum": str(tmp_path / "extracted.fits"), "isFluxCalibrated": False}]
 
 
 def test_the_ascii_spectrum_is_written_before_the_merged_spectrum_plots(
@@ -1237,7 +1237,7 @@ def test_no_ascii_spectrum_is_written_when_the_extraction_wrote_no_merged_table(
     recipe.dateObs = "2024-01-02T03:04:05"
 
     # ACT
-    recipe._write_ascii_spectrum(False, None)
+    recipe._write_ascii_spectrum(False, False)
 
     # ASSERT: NOTHING TO READ, SO NO PRODUCT ROW
     assert recipe.products.empty

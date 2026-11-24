@@ -19,6 +19,7 @@ from .base_util import base_util
 from .extraction_notes import extraction_note_logger, format_extraction_notes
 from .figure_guard import closes_its_figures
 from .filenamer import filenamer
+from .spectrum_names import SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 
 if TYPE_CHECKING:
     import numpy as np
@@ -736,7 +737,7 @@ class horne_extraction(base_util):
             # NOW MERGED SPECTRUM
             filename = self.filenameTemplate.replace(
                 ".fits",
-                f"_EXTRACTED_MERGED{self.noddingSequence}{self.notFlattened}.fits",
+                f"{SPECTRUM_SUFFIX}{self.noddingSequence}{self.notFlattened}.fits",
             )
             filePath = f"{self.productDir}/{filename}"
 
@@ -780,12 +781,12 @@ class horne_extraction(base_util):
                             [
                                 {
                                     "soxspipe_recipe": self.recipeName,
-                                    "product_label": "EXTRACTED_MERGED_TABLE",
+                                    "product_label": SPECTRUM_TABLE_LABEL,
                                     "file_name": filename,
                                     "file_type": "FITS",
                                     "obs_date_utc": self.dateObs,
                                     "reduction_date_utc": utcnow,
-                                    "product_desc": "Table of the extracted, order-merged",
+                                    "product_desc": "Table of the extracted, order-merged spectrum",
                                     "file_path": filePath,
                                     "label": "PROD",
                                 }

@@ -41,6 +41,19 @@ def write_response(tmp_path: Path, wave: list[float], response: list[float]) -> 
     return path
 
 
+def bare_flux_calibration(**attributes: object) -> flux_calibration:
+    """Return a ``flux_calibration`` built without its constructor, with ``attributes`` set on it.
+
+    The constructor needs a workspace, so tests set the attributes ``calibrate`` reads. The defaults are the ones
+    most tests share: no settings, no QC table, an empty products table and debug off.
+    """
+    calibration = object.__new__(flux_calibration)
+    defaults = {"settings": {}, "debug": False, "qc": None, "products": pd.DataFrame()}
+    for name, value in {**defaults, **attributes}.items():
+        setattr(calibration, name, value)
+    return calibration
+
+
 def calibrate_spectrum(
     tmp_path: Path,
     log: object,
@@ -61,22 +74,20 @@ def calibrate_spectrum(
         if responseWave is None
         else write_response(tmp_path, responseWave, [7.0, 7.0])
     )
-    calibration = object.__new__(flux_calibration)
-    calibration.log = log
-    calibration.settings = {}
-    calibration.responseFunction = str(responsePath)
-    calibration.extractedSpectrum = spectrum
-    calibration.exptime = EXPOSURE_TIME
-    calibration.airmass = 1.4
-    calibration.extinctionPath = "extinction.fits"
-    calibration.arm = arm
-    calibration.debug = False
-    calibration.header = fits.Header({"DATE-OBS": "2024-01-02T03:04:05", "ESO DET BINY": binning})
-    calibration.recipeName = "soxs-stare"
-    calibration.sofName = "synthetic"
-    calibration.productDir = str(tmp_path)
-    calibration.products = pd.DataFrame()
-    calibration.kw = KEYWORDS.__getitem__
+    calibration = bare_flux_calibration(
+        log=log,
+        responseFunction=str(responsePath),
+        extractedSpectrum=spectrum,
+        exptime=EXPOSURE_TIME,
+        airmass=1.4,
+        extinctionPath="extinction.fits",
+        arm=arm,
+        header=fits.Header({"DATE-OBS": "2024-01-02T03:04:05", "ESO DET BINY": binning}),
+        recipeName="soxs-stare",
+        sofName="synthetic",
+        productDir=str(tmp_path),
+        kw=KEYWORDS.__getitem__,
+    )
     captured: list[object] = []
     monkeypatch.setattr(
         "soxspipe.commonutils.phase3.write_fits_table_to_disk",

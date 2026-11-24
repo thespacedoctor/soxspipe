@@ -217,7 +217,7 @@ def test_read_sky_ref_returns_none_when_the_sky_model_is_missing(tmp_path: Path)
 
 def test_read_sky_ref_raises_for_a_file_that_is_not_a_skysub_product(tmp_path: Path) -> None:
     # ARRANGE
-    path = tmp_path / "stare_FLUXCAL.fits"
+    path = tmp_path / "stare_SPECTRUM.fits"
 
     # ACT / ASSERT
     with pytest.raises(frames_tool.ToolError, match="_SKYSUB.fits"):

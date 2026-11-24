@@ -81,10 +81,10 @@ def test_a_stare_recipe_writes_the_combined_spectrum_under_its_marked_name(stare
     _, filePath = stare.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
 
     # ASSERT
-    assert Path(filePath).name == f"{SOF_NAME}{MARKER}_EXTRACTED_MERGED.fits"
+    assert Path(filePath).name == f"{SOF_NAME}{MARKER}_SPECTRUM.fits"
     assert Path(filePath).exists()
     assert stare.filenameTemplate == f"{SOF_NAME}{MARKER}.fits"
-    assert f"{SOF_NAME}{MARKER}_EXTRACTED_MERGED.fits" in set(stare.products["file_name"])
+    assert f"{SOF_NAME}{MARKER}_SPECTRUM.fits" in set(stare.products["file_name"])
 
 
 def test_a_nod_recipe_writes_the_combined_spectrum_under_the_sof_name(nod: soxs_nod) -> None:
@@ -92,7 +92,7 @@ def test_a_nod_recipe_writes_the_combined_spectrum_under_the_sof_name(nod: soxs_
     _, filePath = nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
 
     # ASSERT
-    assert Path(filePath).name == f"{SOF_NAME}_EXTRACTED_MERGED.fits"
+    assert Path(filePath).name == f"{SOF_NAME}_SPECTRUM.fits"
 
 
 def test_two_extractions_combine_to_their_mean(stare: soxs_stare) -> None:

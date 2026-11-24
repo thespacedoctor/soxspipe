@@ -58,10 +58,10 @@ You can reduce the frames of a nodding SOF in stare mode (the `--stare` option, 
 
 | Product | Nod-mode name | Stare-mode name |
 | ------- | ------------- | --------------- |
-| Merged spectrum | `<SOF>_EXTRACTED_MERGED.fits` | `<SOF>_STAREMODE_EXTRACTED_MERGED.fits` |
+| Merged spectrum | `<SOF>_SPECTRUM.fits` | `<SOF>_STAREMODE_SPECTRUM.fits` |
 | Response curve of a standard star | `<SOF>_RESP.fits` | `<SOF>_STAREMODE_RESP.fits` |
-| Product of one frame (`--no-stack`) | - | `<SOF>_F<N>_STAREMODE_EXTRACTED_MERGED.fits` |
+| Product of one frame (`--no-stack`) | - | `<SOF>_F<N>_STAREMODE_SPECTRUM.fits` |
 | Sky-subtracted frame of one nod position | - | `<SOF>_A_STAREMODE_SKYSUB.fits` and `<SOF>_B_STAREMODE_SKYSUB.fits` |
-| Extraction of one nod position | - | `<SOF>_A_STAREMODE_EXTRACTED_MERGED_A.fits` and `<SOF>_B_STAREMODE_EXTRACTED_MERGED_B.fits` |
+| Extraction of one nod position | - | `<SOF>_A_STAREMODE_SPECTRUM_A.fits` and `<SOF>_B_STAREMODE_SPECTRUM_B.fits` |
 
 The recipe stacks the A frames and the B frames apart, so the sky products and the extraction of each nod position carry the position before the marker. The combined spectrum has no position in its name. In `--no-stack` mode, the frame number comes before the marker. The names of the SOF in the database, in the QC metrics and in the status of the SOF do not carry the marker. The data organiser does not predict the stare-mode products, so a later SOF never uses them.

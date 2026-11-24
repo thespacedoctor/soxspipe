@@ -16,10 +16,10 @@ import pytest
 from astropy.io import fits
 from astropy.table import Table
 
-from soxspipe.commonutils.flux_calibration import flux_calibration
 from soxspipe.commonutils.response_basis import counts_per_unbinned_pixel, dispersion_binning
 from soxspipe.commonutils.response_function import response_function
 from tests.factories import merged_spectrum
+from tests.factories.flux_calibration import bare_flux_calibration
 
 pytestmark = pytest.mark.integration
 responseModule = importlib.import_module("soxspipe.commonutils.response_function")
@@ -115,22 +115,20 @@ def _build_response_product(tmp_path: Path, log: object, monkeypatch: pytest.Mon
 
 def _calibrate(tmp_path: Path, log: object, responsePath: Path, dispersionBinning: int) -> np.ndarray:
     """Flux calibrate the star observed with ``dispersionBinning`` and return the calibrated flux."""
-    calibration = object.__new__(flux_calibration)
-    calibration.log = log
-    calibration.settings = {}
-    calibration.responseFunction = str(responsePath)
-    calibration.extractedSpectrum = _merged_spectrum(dispersionBinning)
-    calibration.exptime = EXPOSURE_TIME
-    calibration.airmass = 1.0
-    calibration.extinctionPath = "ext.fits"
-    calibration.arm = "VIS"
-    calibration.debug = False
-    calibration.header = _header(dispersionBinning)
-    calibration.recipeName = "soxs-stare"
-    calibration.sofName = f"synthetic_bin{dispersionBinning}"
-    calibration.productDir = str(tmp_path)
-    calibration.products = pd.DataFrame()
-    calibration.kw = _keyword
+    calibration = bare_flux_calibration(
+        log=log,
+        responseFunction=str(responsePath),
+        extractedSpectrum=_merged_spectrum(dispersionBinning),
+        exptime=EXPOSURE_TIME,
+        airmass=1.0,
+        extinctionPath="ext.fits",
+        arm="VIS",
+        header=_header(dispersionBinning),
+        recipeName="soxs-stare",
+        sofName=f"synthetic_bin{dispersionBinning}",
+        productDir=str(tmp_path),
+        kw=_keyword,
+    )
     outputPath, _ = calibration.calibrate()
     return Table.read(outputPath)["FLUX_CALIBRATED"].data
 
