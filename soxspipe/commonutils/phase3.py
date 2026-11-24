@@ -54,6 +54,11 @@ TABLE_DROPPED_CARDS = ("BUNIT", "SXSPRE", *CCDPROC_CARDS)
 MAX_VALUE_LENGTH = 68
 CARD_LENGTH = 80
 
+# THE FIXED IDENTIFICATION VALUES OF A PHASE 3 TABLE PRODUCT, AS THE WRITER SETS THEM AND THE CHECKER LOOKS FOR THEM
+ORIGIN_VALUE = "ESO"
+PIPE_ID_PREFIX = "soxspipe/v"
+SPECTRUM_EXTNAME = "SPECTRUM"
+
 
 def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=False):
     """
@@ -270,11 +275,11 @@ def pipe_id():
     """
     from soxspipe.__version__ import __version__
 
-    return f"soxspipe/v{__version__}"
+    return f"{PIPE_ID_PREFIX}{__version__}"
 
 
-def validate_header_cards(header, hduName):
-    """*raise an error when a header holds a card that ESO rejects*
+def header_card_faults(header, hduName):
+    """*return a message for each card of a header that ESO rejects*
 
     ESO rejects a string value over 68 characters, and any ``CONTINUE`` card. A card that astropy would write as
     ``CONTINUE`` cards is the same fault. Commentary cards are not values and are not checked.
@@ -282,7 +287,47 @@ def validate_header_cards(header, hduName):
     **Key Arguments:**
 
     - ``header`` -- the header to check
+    - ``hduName`` -- the name of the HDU, for the messages
+
+    **Return:**
+
+    - ``faults`` -- a list of messages, empty when the header is fine
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.phase3 import header_card_faults
+    faults = header_card_faults(header, "primary")
+    ```
+    """
+    faults = []
+    for card in header.cards:
+        keyword = card.keyword
+        if keyword in ("COMMENT", "HISTORY", ""):
+            continue
+        if keyword == "CONTINUE":
+            faults.append(f"The {hduName} header holds a CONTINUE card, which ESO rejects")
+        elif isinstance(card.value, str) and len(card.value) > MAX_VALUE_LENGTH:
+            faults.append(
+                f"The {hduName} header value of {keyword} is {len(card.value)} characters, over the "
+                f"{MAX_VALUE_LENGTH} that ESO accepts"
+            )
+        elif len(card.image) > CARD_LENGTH:
+            faults.append(f"The {hduName} header card {keyword} is too long for one card and would need CONTINUE cards")
+    return faults
+
+
+def validate_header_cards(header, hduName):
+    """*raise an error when a header holds a card that ESO rejects*
+
+    **Key Arguments:**
+
+    - ``header`` -- the header to check
     - ``hduName`` -- the name of the HDU, for the error message
+
+    **Raises:**
+
+    - `ValueError` for the first card that ``header_card_faults`` finds
 
     **Usage:**
 
@@ -291,21 +336,9 @@ def validate_header_cards(header, hduName):
     validate_header_cards(header, "primary")
     ```
     """
-    for card in header.cards:
-        keyword = card.keyword
-        if keyword in ("COMMENT", "HISTORY", ""):
-            continue
-        if keyword == "CONTINUE":
-            raise ValueError(f"The {hduName} header holds a CONTINUE card, which ESO rejects")
-        if isinstance(card.value, str) and len(card.value) > MAX_VALUE_LENGTH:
-            raise ValueError(
-                f"The {hduName} header value of {keyword} is {len(card.value)} characters, over the "
-                f"{MAX_VALUE_LENGTH} that ESO accepts"
-            )
-        if len(card.image) > CARD_LENGTH:
-            raise ValueError(
-                f"The {hduName} header card {keyword} is too long for one card and would need CONTINUE cards"
-            )
+    faults = header_card_faults(header, hduName)
+    if faults:
+        raise ValueError(faults[0])
 
 
 def _set_identification_cards(header, filePath):
@@ -316,7 +349,7 @@ def _set_identification_cards(header, filePath):
 
     header.remove("EXTNAME", ignore_missing=True, remove_all=True)
     set_header_card(header, "ORIGFILE", os.path.basename(str(filePath)), "File name of this product")
-    set_header_card(header, "ORIGIN", "ESO", "Processing system")
+    set_header_card(header, "ORIGIN", ORIGIN_VALUE, "Processing system")
     set_header_card(header, "PROCSOFT", pipe_id(), "Data reduction software")
     set_header_card(header, "REFERENC", "", "Reference publication")
 

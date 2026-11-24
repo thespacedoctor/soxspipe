@@ -12,6 +12,7 @@
         soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
         soxspipe list (ob|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
         soxspipe raw sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
+        soxspipe check-phase3 <file>...
         soxspipe [-Vxd] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vxd] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
         soxspipe [-Vxd] disp_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
@@ -33,6 +34,7 @@
         reduce all                             reduce all of the data in a workspace.
         reduce sof                             reduce a single science object SOF file.
         raw sof                                export all the raw frames needed to reduce a science object SOF file to a directory called `exported` in the current working directory.
+        check-phase3                           check ESO Phase 3 products against the standard; exits 1 if any file fails
     
         mbias                                  the master bias recipe
         mdark                                  the master dark recipe
