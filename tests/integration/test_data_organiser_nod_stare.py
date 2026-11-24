@@ -221,7 +221,7 @@ def test_the_predicted_product_of_a_nir_nod_sof_is_unchanged(tmp_path, log, monk
     ).fetchall()
 
     # ASSERT: ONE NOD-MODE PRODUCT, NAMED AFTER THE SOF, WITH NO MARKER AND NO STARE TECHNIQUE
-    assert products == [("OBJECT_TAB_NIR", NOD_TECH, sof.replace(".sof", "_EXTRACTED_MERGED.fits"))]
+    assert products == [("SCI_SLIT_FLUX_NIR", NOD_TECH, sof.replace(".sof", "_SPECTRUM.fits"))]
 
 
 def _set_reduce_as_stare(sessionsDir, sessionId):
@@ -271,7 +271,7 @@ def test_a_session_command_on_a_fresh_organiser_records_the_stare_mode_row_when_
     getattr(fresh, command)("beta")
 
     # ASSERT
-    stemFile = _nod_sof(organiser).replace(".sof", "_STAREMODE_EXTRACTED_MERGED.fits")
+    stemFile = _nod_sof(organiser).replace(".sof", "_STAREMODE_SPECTRUM.fits")
     stareRows = [row for row in _nod_obj_rows(fresh) if row[0] == stemFile]
     assert stareRows
     assert {row[1].split("/")[3] for row in stareRows} == {"soxs-stare"}

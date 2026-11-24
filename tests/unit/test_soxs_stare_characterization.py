@@ -50,7 +50,7 @@ def stubbed_ascii_spectrum(monkeypatch: pytest.MonkeyPatch) -> None:
     import soxspipe.commonutils.spectrum_ascii as spectrum_ascii
 
     monkeypatch.setattr(
-        spectrum_ascii, "write_ascii_spectrum_product", lambda mergedPath, fluxcalPath, products, *_: products
+        spectrum_ascii, "write_ascii_spectrum_product", lambda spectrumPath, isFluxCalibrated, products, *_: products
     )
 
 

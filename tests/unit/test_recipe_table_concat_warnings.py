@@ -193,25 +193,28 @@ FLUX_CALIBRATION_SITES = [
 ]
 
 
-@pytest.mark.parametrize(("moduleName", "className", "method", "arguments"), FLUX_CALIBRATION_SITES)
-def test_the_flux_calibrating_recipes_merge_the_flux_calibration_products_without_a_concat_warning(
+def _flux_calibrating_recipe(
     moduleName: str,
     className: str,
-    method: str,
     arguments: tuple[Any, ...],
     log: Any,
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # ARRANGE
+) -> tuple[Any, tuple[Any, ...], list[dict[str, Any]], pd.DataFrame]:
+    """Build a recipe whose flux calibrator is a double.
+
+    Return the recipe, the arguments for its flux-calibration method, the keyword arguments the double was built
+    with, and the product table the double returns.
+    """
     module = import_module(f"soxspipe.recipes.{moduleName}")
     sequenceModule = import_module("soxspipe.commonutils.sequence_airmass")
     productsTable = _product_row()
+    constructorArguments: list[dict[str, Any]] = []
     # A FLOAT COLUMN JOINING AN EMPTY OBJECT COLUMN IS WHAT MAKES pd.concat WARN
     productsTable["product_rank"] = [1.0]
 
     class FluxCalibrator:
-        def __init__(self, **_: object) -> None:
-            return None
+        def __init__(self, **kwargs: object) -> None:
+            constructorArguments.append(kwargs)
 
         def calibrate(self) -> tuple[str, pd.DataFrame]:
             return "fluxcal.fits", productsTable
@@ -237,6 +240,7 @@ def test_the_flux_calibrating_recipes_merge_the_flux_calibration_products_withou
     recipe.startNightDate = "2024-01-02"
     recipe.sofName = "SYNTHETIC"
     recipe.debug = False
+    recipe.qc = _empty_qc()
     recipe.products = _empty_products().assign(product_rank=pd.Series([], dtype="object"))
     frame = SimpleNamespace(header={"EXPTIME": 30.0})
     callArguments = tuple([frame] if argument == [] else argument for argument in arguments)
@@ -244,6 +248,20 @@ def test_the_flux_calibrating_recipes_merge_the_flux_calibration_products_withou
     callArguments = tuple(
         combined if argument is None and index == 2 else argument for index, argument in enumerate(callArguments)
     )
+    return recipe, callArguments, constructorArguments, productsTable
+
+
+@pytest.mark.parametrize(("moduleName", "className", "method", "arguments"), FLUX_CALIBRATION_SITES)
+def test_the_flux_calibrating_recipes_merge_the_flux_calibration_products_without_a_concat_warning(
+    moduleName: str,
+    className: str,
+    method: str,
+    arguments: tuple[Any, ...],
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe, callArguments, _, _ = _flux_calibrating_recipe(moduleName, className, arguments, log, monkeypatch)
 
     # ACT
     getattr(recipe, method)(*callArguments)
@@ -253,3 +271,24 @@ def test_the_flux_calibrating_recipes_merge_the_flux_calibration_products_withou
     assert recipe.products.index.tolist() == [0]
     assert recipe.products["product_rank"].tolist() == [1.0]
     assert recipe.products["product_rank"].dtype == "float64"
+
+
+@pytest.mark.parametrize(("moduleName", "className", "method", "arguments"), FLUX_CALIBRATION_SITES)
+def test_the_flux_calibrating_recipes_hand_their_qc_table_to_the_calibrator_for_the_spectrum_header(
+    moduleName: str,
+    className: str,
+    method: str,
+    arguments: tuple[Any, ...],
+    log: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    recipe, callArguments, constructorArguments, _ = _flux_calibrating_recipe(
+        moduleName, className, arguments, log, monkeypatch
+    )
+
+    # ACT
+    getattr(recipe, method)(*callArguments)
+
+    # ASSERT
+    assert constructorArguments[0]["qc"] is recipe.qc

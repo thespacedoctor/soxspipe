@@ -154,6 +154,7 @@ class flux_calibration:
     - ``responseFunction`` -- the instrument response function.
     - ``extractedSpectrum`` -- the extracted science spectrum
     - ``settings`` -- the settings dictionary
+    - ``qc`` -- the QC table whose ``to_header`` rows are written to the header of the spectrum table. Default *None*
 
     **Usage:**
 
@@ -175,6 +176,9 @@ class flux_calibration:
 
     """
 
+    # THE CALIBRATED TABLE REPLACES THE ``_SPECTRUM`` FILE THE EXTRACTION WROTE WITH THE QC CARDS, SO IT KEEPS THEM
+    qc = None
+
     # Initialisation
     # 1. @flagged: what are the unique Attributes for each object? Add them
     # to __init__
@@ -194,8 +198,10 @@ class flux_calibration:
         startNightDate="",
         sofName="",
         debug=False,
+        qc=None,
     ):
         self.log = log
+        self.qc = qc
         log.debug("instantiating a new 'flux_calibration' object")
         self.settings = settings
         self.responseFunction = responseFunction
@@ -231,9 +237,13 @@ class flux_calibration:
         """
         *flux calibrate the science spectrum*
 
+        The calibrated spectrum is written to ``<SOF stem>_SPECTRUM.fits``. That file already holds the counts the
+        extraction wrote, so the calibrated table replaces it and carries the same columns plus the calibrated ones.
+
         **Return:**
 
-        - ``flux_calibration``
+        - ``filePath`` -- the path to the spectrum table
+        - ``products`` -- the products this step adds. It adds none, because the extraction registered the file
 
         **Usage:**
 
@@ -337,7 +347,7 @@ class flux_calibration:
                 "mean airmass of the frames in the product",
             )
 
-        filename = f"{self.sofName}_FLUXCAL.fits"
+        filename = f"{self.sofName}_SPECTRUM.fits"
         filePath = f"{self.productDir}/{filename}"
 
         write_fits_table_to_disk(
@@ -346,35 +356,9 @@ class flux_calibration:
             header=header,
             tables=[fluxCalSpectrum],
             filePath=filePath,
-            qc=None,
+            qc=self.qc,
             phase3=PER_ARM_MODE,
             extname="SPECTRUM",
-        )
-
-        from datetime import datetime
-
-        utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-
-        self.products = pd.concat(
-            [
-                self.products,
-                pd.DataFrame(
-                    [
-                        {
-                            "soxspipe_recipe": self.recipeName,
-                            "product_label": "EXTRACTED_FLUXCAL_SPECTRUM",
-                            "file_name": filename,
-                            "file_type": "FITS",
-                            "reduction_date_utc": utcnow,
-                            "product_desc": "Flux calibrated extracted spectrum",
-                            "file_path": filePath,
-                            "obs_date_utc": header["DATE-OBS"],
-                            "label": "PROD",
-                        }
-                    ]
-                ),
-            ],
-            ignore_index=True,
         )
 
         return filePath, self.products

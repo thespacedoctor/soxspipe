@@ -1460,7 +1460,7 @@ OUTPUT_DIR_CASES = [
         "soxs_nod",
         "soxs-nod",
         "20251211T123456_NOD_OBJ",
-        "20251211T123456_NOD_OBJ_EXTRACTED_MERGED.fits",
+        "20251211T123456_NOD_OBJ_SPECTRUM.fits",
         id="nod",
     ),
     pytest.param(
@@ -1656,7 +1656,7 @@ def test_main_skips_a_nod_command_whose_product_exists_under_the_settings_worksp
     workspace.mkdir()
     monkeypatch.chdir(workspace)
     workspaceRoot = tmp_path / "root"
-    _touch_product(workspaceRoot, "reduced", "soxs-nod", "20251211T123456_NOD_OBJ_EXTRACTED_MERGED.fits")
+    _touch_product(workspaceRoot, "reduced", "soxs-nod", "20251211T123456_NOD_OBJ_SPECTRUM.fits")
 
     # ACT
     calls = _run_with_recorded_recipe(

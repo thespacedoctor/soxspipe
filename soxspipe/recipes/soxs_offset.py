@@ -658,6 +658,7 @@ class soxs_offset(soxs_nod):
             startNightDate=self.startNightDate,
             sofName=self.sofName,
             debug=self.debug,
+            qc=self.qc,
         )
         filePathFluxcal, products = fluxCalibrator.calibrate()
         self.products = concat_tables([self.products, products], ignore_index=True)

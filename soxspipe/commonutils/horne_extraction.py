@@ -736,7 +736,7 @@ class horne_extraction(base_util):
             # NOW MERGED SPECTRUM
             filename = self.filenameTemplate.replace(
                 ".fits",
-                f"_EXTRACTED_MERGED{self.noddingSequence}{self.notFlattened}.fits",
+                f"_SPECTRUM{self.noddingSequence}{self.notFlattened}.fits",
             )
             filePath = f"{self.productDir}/{filename}"
 
@@ -780,12 +780,12 @@ class horne_extraction(base_util):
                             [
                                 {
                                     "soxspipe_recipe": self.recipeName,
-                                    "product_label": "EXTRACTED_MERGED_TABLE",
+                                    "product_label": "SPECTRUM_TABLE",
                                     "file_name": filename,
                                     "file_type": "FITS",
                                     "obs_date_utc": self.dateObs,
                                     "reduction_date_utc": utcnow,
-                                    "product_desc": "Table of the extracted, order-merged",
+                                    "product_desc": "Table of the extracted, order-merged spectrum",
                                     "file_path": filePath,
                                     "label": "PROD",
                                 }

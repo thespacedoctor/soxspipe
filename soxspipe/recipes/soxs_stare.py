@@ -967,22 +967,22 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         )
 
     def _write_ascii_spectrum(self, extractionPath, filePathFluxcal):
-        """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
+        """*write the ASCII spectrum of this pass from its* ``_SPECTRUM`` *table*
 
-        Updates ``self.products``. A pass with no flux-calibrated table (no response product, a standard star, or a
-        failed flux calibration) writes the ASCII spectrum from the order-merged table, in counts.
+        Updates ``self.products``. A pass with no flux calibration (no response product, a standard star, or a
+        failed flux calibration) writes the ASCII spectrum in counts.
 
         **Key Arguments:**
 
-        - ``extractionPath`` -- the path to the order-merged spectrum table, or False when none was written
-        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum table, or None
+        - ``extractionPath`` -- the path to the spectrum table, or False when none was written
+        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum table, which is ``extractionPath``, or None
         """
         from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
 
         if not extractionPath:
             return
         self.products = write_ascii_spectrum_product(
-            extractionPath, filePathFluxcal, self.products, self.recipeName, self.dateObs
+            extractionPath, bool(filePathFluxcal), self.products, self.recipeName, self.dateObs
         )
 
     def _read_stare_object_frames(self, kw):
@@ -1732,6 +1732,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             startNightDate=self.startNightDate,
             sofName=self.productStem,
             debug=self.debug,
+            qc=self.qc,
         )
         filePathFluxcal, prod = fluxCalibrator.calibrate()
         self.products = concat_tables([self.products, prod], ignore_index=True)

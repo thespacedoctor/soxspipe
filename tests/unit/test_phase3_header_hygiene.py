@@ -444,9 +444,9 @@ def test_hygiene_without_strict_writes_a_value_over_68_characters(tmp_path: Path
 
 
 def _write_with_product_name(tmp_path: Path, log: object, **kwargs: object) -> Path:
-    """Write through the real writer to a file named like a real `<SOF stem>_EXTRACTED_MERGED.fits`."""
-    stem = "A" * (PRODUCT_NAME_LENGTH - len("_EXTRACTED_MERGED.fits"))
-    outputPath = tmp_path / f"{stem}_EXTRACTED_MERGED.fits"
+    """Write through the real writer to a file named like a real `<SOF stem>_SPECTRUM.fits`."""
+    stem = "A" * (PRODUCT_NAME_LENGTH - len("_SPECTRUM.fits"))
+    outputPath = tmp_path / f"{stem}_SPECTRUM.fits"
     write_fits_table_to_disk(
         log=log,
         settings=pipeline_settings(tmp_path),

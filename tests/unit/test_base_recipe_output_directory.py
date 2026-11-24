@@ -17,7 +17,7 @@ from soxspipe.recipes.base_recipe import RecipeProductExistsError
 pytestmark = pytest.mark.unit
 
 SOF_STEM = "20251211T123456_NOD_OBJ"
-PRODUCT_NAME = f"{SOF_STEM}_EXTRACTED_MERGED.fits"
+PRODUCT_NAME = f"{SOF_STEM}_SPECTRUM.fits"
 NIGHT = "2025-12-10"
 SESSION = "S1"
 
@@ -94,7 +94,7 @@ def test_an_error_log_under_the_output_directory_refuses_the_run(
 ) -> None:
     # ARRANGE
     outputDir = tmp_path / "output"
-    errorLog = _product_under(outputDir, "reduced").with_name(f"{SOF_STEM}_EXTRACTED_MERGED_ERROR.log")
+    errorLog = _product_under(outputDir, "reduced").with_name(f"{SOF_STEM}_SPECTRUM_ERROR.log")
     errorLog.parent.mkdir(parents=True)
     errorLog.write_text("previous failure\n")
 
@@ -162,3 +162,41 @@ def test_overwrite_runs_over_a_product_under_the_output_directory(
 
     # ASSERT
     assert recipe.productPath == str(_product_under(outputDir, "reduced"))
+
+
+OFFSET_SOF_STEM = "20251211T123456_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736"
+
+
+def _offset_recipe(log: Any, outputDir: Path) -> base_recipe:
+    return base_recipe(
+        log=log,
+        settings={"instrument": "soxs", "workspace-root-dir": str(outputDir)},
+        inputFrames=f"{OFFSET_SOF_STEM}.sof",
+        recipeName="soxs-offset",
+        turnOffMP=True,
+    )
+
+
+def test_a_complete_offset_spectrum_refuses_the_run(log: Any, loggerPaths: list[str], tmp_path: Path) -> None:
+    # ARRANGE: THE SPECTRUM THE OFFSET RECIPE WRITES, NOT `<SOF STEM>.fits`
+    outputDir = tmp_path / "output"
+    _write_fits(outputDir / "reduced" / NIGHT / "soxs-offset" / f"{OFFSET_SOF_STEM}_SPECTRUM.fits")
+
+    # ACT / ASSERT
+    with pytest.raises(RecipeProductExistsError):
+        _offset_recipe(log, outputDir)
+
+
+def test_an_offset_run_predicts_the_spectrum_file_for_its_product_and_log(
+    log: Any, loggerPaths: list[str], tmp_path: Path
+) -> None:
+    # ARRANGE
+    outputDir = tmp_path / "output"
+
+    # ACT
+    recipe = _offset_recipe(log, outputDir)
+
+    # ASSERT
+    expected = outputDir / "reduced" / NIGHT / "soxs-offset" / f"{OFFSET_SOF_STEM}_SPECTRUM.fits"
+    assert recipe.productPath == str(expected)
+    assert loggerPaths == [str(expected)]

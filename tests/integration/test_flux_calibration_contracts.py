@@ -13,7 +13,8 @@ from astropy.table import Table
 
 from soxspipe.commonutils.flux_calibration import flux_calibration
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
-from tests.factories import merged_spectrum, pipeline_settings
+from soxspipe.commonutils.keyword_lookup import keyword_lookup
+from tests.factories import instrument_header, merged_spectrum, pipeline_settings, qc_table
 
 pytestmark = pytest.mark.integration
 
@@ -103,7 +104,7 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
 
     outputPath, products = calibration.calibrate()
 
-    assert outputPath == str(tmp_path / "synthetic_FLUXCAL.fits")
+    assert outputPath == str(tmp_path / "synthetic_SPECTRUM.fits")
     outputTable = captured["tables"][0]
     assert captured["phase3"] == PER_ARM_MODE
     assert captured["extname"] == "SPECTRUM"
@@ -111,8 +112,47 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
     np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], expected, rtol=1e-14, atol=0)
     np.testing.assert_array_equal(outputTable["WAVE"], [500.0, 600.0])
     assert originalHeader == fits.Header({"DATE-OBS": "2024-01-02T03:04:05.678"})
-    assert products.loc[0, "product_label"] == "EXTRACTED_FLUXCAL_SPECTRUM"
-    assert products.loc[0, "file_path"] == outputPath
+    assert products.empty
+
+
+def test_calibrate_writes_a_real_spectrum_file_with_the_calibrated_and_counts_columns(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    """Write the calibrated spectrum through the real writer, as the one ``_SPECTRUM`` file of the pass."""
+    # ARRANGE
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([7.0, 8.0]))
+    calibration = object.__new__(flux_calibration)
+    calibration.log = log
+    calibration.settings = {}
+    calibration.responseFunction = str(responsePath)
+    calibration.extractedSpectrum = merged_spectrum([500.0, 600.0], [20.0, 40.0], [16.0, 64.0], [3.0, 5.0])
+    calibration.exptime = 10.0
+    calibration.airmass = 1.0
+    calibration.extinctionPath = ""
+    calibration.arm = "NIR"
+    calibration.debug = False
+    calibration.header = instrument_header()
+    calibration.recipeName = "soxs-stare"
+    calibration.sofName = "synthetic"
+    calibration.productDir = str(tmp_path)
+    calibration.products = pd.DataFrame()
+    calibration.kw = keyword_lookup(log=log, settings=pipeline_settings(tmp_path)).get
+    calibration.qc = qc_table()
+
+    # ACT
+    outputPath, _ = calibration.calibrate()
+
+    # ASSERT
+    assert outputPath == str(tmp_path / "synthetic_SPECTRUM.fits")
+    with fits.open(outputPath) as hdus:
+        assert hdus[0].header["HIERARCH ESO PRO CATG"] == "SCI_SLIT_FLUX_NIR"
+        assert hdus[0].header["HIERARCH ESO QC RON"] == 3.2
+        assert hdus[1].name == "SPECTRUM"
+        assert {"WAVE", "FLUX_CALIBRATED", "ERR_CALIBRATED", "FLUX_COUNTS", "VARIANCE", "SNR"} <= set(
+            hdus[1].columns.names
+        )
+    assert not list(tmp_path.glob("*FLUXCAL*"))
 
 
 def test_calibrate_applies_vis_extinction_factor(
@@ -167,7 +207,7 @@ def test_calibrate_applies_vis_extinction_factor(
 
     outputTable = captured["tables"][0]
     np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], [6.0e-17, 16.0e-17], rtol=1e-14, atol=0)
-    assert outputPath == str(tmp_path / "synthetic_FLUXCAL.fits")
+    assert outputPath == str(tmp_path / "synthetic_SPECTRUM.fits")
 
 
 def test_calibrate_records_the_airmass_it_used_in_the_product_header(

@@ -49,7 +49,7 @@ _PRODUCT_STEM = "20250514T040311_NIR_3_OFFSET_OBJ_SLIT1_0_300_0S_SOXS_CD-4412736
 
 
 def _offset_product_directory(workspace_path: Path) -> Path:
-    product_paths = list(workspace_path.rglob(f"{_PRODUCT_STEM}_EXTRACTED_MERGED.fits"))
+    product_paths = list(workspace_path.rglob(f"{_PRODUCT_STEM}_SPECTRUM.fits"))
     assert len(product_paths) == 1
     return product_paths[0].parent
 
@@ -58,42 +58,32 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
     product_directory = _offset_product_directory(reduced_workspace)
     expected_products = {
         f"{_PRODUCT_STEM}.log",
-        f"{_PRODUCT_STEM}_EXTRACTED_MERGED.fits",
-        f"{_PRODUCT_STEM}_FLUXCAL.fits",
-        f"{_PRODUCT_STEM}_FLUXCAL.txt",
+        f"{_PRODUCT_STEM}_SPECTRUM.fits",
+        f"{_PRODUCT_STEM}_SPECTRUM.txt",
         f"{_PRODUCT_STEM}_OBJTRACE_STACK.fits",
         f"{_PRODUCT_STEM}_ONOFF_STACK.fits",
     }
     productNames = {path.name for path in product_directory.iterdir()}
 
-    merged_path = product_directory / f"{_PRODUCT_STEM}_EXTRACTED_MERGED.fits"
-    fluxcal_path = product_directory / f"{_PRODUCT_STEM}_FLUXCAL.fits"
-    with fits.open(merged_path) as merged_hdus:
-        assert len(merged_hdus) == 2
-        assert merged_hdus[0].header["INSTRUME"] == "SOXS"
-        assert merged_hdus[0].header["ESO PRO REC1 ID"] == "soxs-offset"
-        dateObs = merged_hdus[0].header["DATE-OBS"]
-        merged_table = merged_hdus[1].data
-        # AN OFFSET SPECTRUM CARRIES NO SKY COLUMN: ITS "SKY" FRAME IS THE OFF FRAME, NOT A SKY MODEL (DY-1361)
-        assert set(merged_table.names) == {
-            "WAVE",
-            "FLUX_COUNTS",
-            "VARIANCE",
-            "SNR",
-        }
-        mergedRows = len(merged_table)
-        mergedWave = np.asarray(merged_table["WAVE"], dtype=float)
-        snrMedian = float(np.nanmedian(merged_table["SNR"]))
+    spectrum_path = product_directory / f"{_PRODUCT_STEM}_SPECTRUM.fits"
+    # ONE FILE HOLDS THE MERGED COUNTS AND THE FLUX-CALIBRATED COLUMNS (DY-2346). AN OFFSET SPECTRUM CARRIES NO SKY
+    # COLUMN: ITS "SKY" FRAME IS THE OFF FRAME, NOT A SKY MODEL (DY-1361)
+    with fits.open(spectrum_path) as spectrum_hdus:
+        assert len(spectrum_hdus) == 2
+        assert spectrum_hdus[0].header["INSTRUME"] == "SOXS"
+        assert spectrum_hdus[0].header["ESO PRO REC1 ID"] == "soxs-offset"
+        assert spectrum_hdus[0].header["ESO PRO CATG"] == "SCI_SLIT_FLUX_NIR"
+        dateObs = spectrum_hdus[0].header["DATE-OBS"]
+        spectrum_table = spectrum_hdus[1].data
+        assert spectrum_table.names == ["WAVE", "FLUX_CALIBRATED", "ERR_CALIBRATED", "FLUX_COUNTS", "VARIANCE", "SNR"]
+        mergedRows = len(spectrum_table)
+        mergedWave = np.asarray(spectrum_table["WAVE"], dtype=float)
+        snrMedian = float(np.nanmedian(spectrum_table["SNR"]))
+        fluxcalRows = len(spectrum_table)
+        fluxcalMedian = float(np.nanmedian(spectrum_table["FLUX_CALIBRATED"]))
     waveMin = float(np.nanmin(mergedWave))
     waveMax = float(np.nanmax(mergedWave))
     waveStep = float(np.nanmedian(np.diff(mergedWave)))
-
-    with fits.open(fluxcal_path) as fluxcal_hdus:
-        assert len(fluxcal_hdus) == 2
-        fluxcal_table = fluxcal_hdus[1].data
-        assert fluxcal_table.names == ["WAVE", "FLUX_CALIBRATED", "ERR_CALIBRATED", "FLUX_COUNTS", "VARIANCE", "SNR"]
-        fluxcalRows = len(fluxcal_table)
-        fluxcalMedian = float(np.nanmedian(fluxcal_table["FLUX_CALIBRATED"]))
 
     with sqlite3.connect(reduced_workspace / "soxspipe.db") as connection:
         qc_values = dict(

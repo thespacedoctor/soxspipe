@@ -70,7 +70,7 @@ def _merge(log: object, orders: pd.DataFrame) -> pd.DataFrame:
 
 
 def _calibrate(tmp_path: Path, log: object, merged: pd.DataFrame) -> str:
-    """Flux calibrate ``merged`` for real, writing ``<stem>_FLUXCAL.fits``, and return its path."""
+    """Flux calibrate ``merged`` for real, writing ``<stem>_SPECTRUM.fits``, and return its path."""
     calibration = object.__new__(flux_calibration)
     calibration.log = log
     calibration.settings = pipeline_settings(tmp_path)
@@ -91,7 +91,7 @@ def _calibrate(tmp_path: Path, log: object, merged: pd.DataFrame) -> str:
     return filePath
 
 
-def test_a_stare_extraction_with_no_sky_model_keeps_nan_sky_counts_in_the_fluxcal_table_and_the_ascii_file(
+def test_a_stare_extraction_with_no_sky_model_keeps_nan_sky_counts_in_the_spectrum_table_and_the_ascii_file(
     tmp_path: Path, log: object
 ) -> None:
     # ARRANGE: A REAL EXTRACTION AND MERGE OF AN ORDER WITH NO SKY FRAME
@@ -99,9 +99,7 @@ def test_a_stare_extraction_with_no_sky_model_keeps_nan_sky_counts_in_the_fluxca
 
     # ACT
     fluxcalPath = _calibrate(tmp_path, log, merged)
-    products = write_ascii_spectrum_product(
-        str(tmp_path / "SYNTHETIC_EXTRACTED_MERGED.fits"), fluxcalPath, product_table().iloc[0:0], "soxs-stare", "2024"
-    )
+    products = write_ascii_spectrum_product(fluxcalPath, True, product_table().iloc[0:0], "soxs-stare", "2024")
 
     # ASSERT: THE SKY IS NAN, NOT 0, IN THE FLUX-CALIBRATED TABLE AND IN THE ASCII FILE, AND THE FLUX IS NOT AFFECTED
     fluxcal = Table.read(fluxcalPath, hdu=1)

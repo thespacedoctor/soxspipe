@@ -476,8 +476,8 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     assert list(calibrated["SNR"]) == [9.0]
     assert "SKY_COUNTS" not in calibrated.colnames
     # THE ASCII SPECTRUM COMES FROM THE FLUX-CALIBRATED TABLE, ONCE
-    mergedPath = f"{recipe.productDir}/{recipe.filenameTemplate.replace('.fits', '_EXTRACTED_MERGED.fits')}"
-    assert [(entry["merged"], entry["fluxcal"]) for entry in captured["ascii"]] == [(mergedPath, str(fluxPath))]
+    spectrumPath = f"{recipe.productDir}/{recipe.filenameTemplate.replace('.fits', '_SPECTRUM.fits')}"
+    assert [(entry["spectrum"], entry["isFluxCalibrated"]) for entry in captured["ascii"]] == [(spectrumPath, True)]
     assert captured["ascii"][0]["callsBefore"][-2:] == ["flux_calibrator", "calibrate"]
 
 
@@ -512,8 +512,8 @@ def test_the_offset_ascii_spectrum_falls_back_to_the_stacked_table_without_a_res
     recipe.produce_product()
 
     # ASSERT: ONCE, IN COUNTS, BEFORE THE PLOT
-    mergedPath = f"{recipe.productDir}/2024-01-02_offset_EXTRACTED_MERGED.fits"
-    assert [(entry["merged"], entry["fluxcal"]) for entry in captured["ascii"]] == [(mergedPath, None)]
+    spectrumPath = f"{recipe.productDir}/2024-01-02_offset_SPECTRUM.fits"
+    assert [(entry["spectrum"], entry["isFluxCalibrated"]) for entry in captured["ascii"]] == [(spectrumPath, False)]
     assert "plot" not in captured["ascii"][0]["callsBefore"]
     assert calls.count("plot") == 1
 
@@ -528,11 +528,11 @@ def test_with_no_stack_the_offset_cycle_pass_writes_its_own_ascii_spectrum(
     recipe.produce_product()
 
     # ASSERT: THE STACKED PASS AND THE _CYCLES PASS WRITE ONE EACH, NEITHER FLUX CALIBRATED
-    assert [Path(entry["merged"]).name for entry in captured["ascii"]] == [
-        "OBJECT_VIS_EXTRACTED_MERGED.fits",
-        "OBJECT_VIS_CYCLES_EXTRACTED_MERGED.fits",
+    assert [Path(entry["spectrum"]).name for entry in captured["ascii"]] == [
+        "OBJECT_VIS_SPECTRUM.fits",
+        "OBJECT_VIS_CYCLES_SPECTRUM.fits",
     ]
-    assert [entry["fluxcal"] for entry in captured["ascii"]] == [None, None]
+    assert [entry["isFluxCalibrated"] for entry in captured["ascii"]] == [False, False]
 
 
 def test_each_cycle_and_the_stacked_pair_extract_under_their_own_location_set(
@@ -946,7 +946,7 @@ def test_with_no_stack_an_offset_standard_returns_the_stacked_product_path(
     productPath, _ = recipe.produce_product()
 
     # ASSERT
-    assert productPath == str(tmp_path / "OBJECT_VIS_EXTRACTED_MERGED.fits")
+    assert productPath == str(tmp_path / "OBJECT_VIS_SPECTRUM.fits")
 
 
 def _qc_database(sofNames: list[str]) -> Any:

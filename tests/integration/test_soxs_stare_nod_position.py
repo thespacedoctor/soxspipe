@@ -21,7 +21,7 @@ from tests.integration.test_soxs_stare_nod_mode import MARKER, SOF_NAME, _sky_re
 
 pytestmark = pytest.mark.integration
 
-MERGED_LABEL = "EXTRACTED_MERGED_TABLE"
+MERGED_LABEL = "SPECTRUM_TABLE"
 
 
 def _stack(position: str, seed: int = 3) -> position_stack:
@@ -168,7 +168,7 @@ def _recipe_with_merged_row(
         def extract(self) -> tuple[Any, pd.DataFrame, pd.DataFrame, dict[str, int], str]:
             row = dict.fromkeys(recipe.products.columns, "x")
             row["product_label"] = MERGED_LABEL
-            row["file_name"] = f"{captured['extractor'][-1]['sofName']}_EXTRACTED_MERGED_A.fits"
+            row["file_name"] = f"{captured['extractor'][-1]['sofName']}_SPECTRUM_A.fits"
             products = pd.concat([recipe.products, pd.DataFrame([row])], ignore_index=True)
             return recipe.qc, products, pd.DataFrame({"WAVE": [500.0]}), {"10-11": 11}, "extracted.fits"
 

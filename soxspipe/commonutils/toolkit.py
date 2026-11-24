@@ -2120,10 +2120,10 @@ def predict_product_path(sofName, recipeName=False, productMarker="", rootDir=".
             print("Could not determine OBSDATE from sof filename")
             pass
 
-    if "_STARE_STD" in sofName or "_NOD_STD" in sofName:
+    if "_STARE_STD" in sofName or "_NOD_STD" in sofName or "_OFFSET_STD" in sofName:
         sofName += productMarker + "_RESP"
-    elif "_STARE" in sofName or "_NOD" in sofName:
-        sofName += productMarker + "_EXTRACTED_MERGED"
+    elif "_STARE" in sofName or "_NOD" in sofName or "_OFFSET" in sofName:
+        sofName += productMarker + "_SPECTRUM"
     # WITH NO NIGHT THE FILE PART MUST NOT START WITH `/`, OR `os.path.join` WOULD DROP THE ROOT
     productFile = os.path.join(startNightDate, recipeName.replace("_", "-"), f"{sofName}.fits")
 

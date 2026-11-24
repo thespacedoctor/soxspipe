@@ -43,9 +43,9 @@ SEEDED_SOF_COUNT = 400
 PRODUCT_TAGS = {
     "mflat": ["MASTER_FLAT", "ORDER_TAB"],
     "spat_solution": ["DISP_TAB", "DISP_IMAGE"],
-    "stare_std": ["OBJECT_TAB", "RESP_TAB"],
-    "nod_std": ["OBJECT_TAB", "RESP_TAB"],
-    "offset_std": ["OBJECT_TAB", "RESP_TAB"],
+    "stare_std": ["SCI_SLIT_FLUX", "RESP_TAB"],
+    "nod_std": ["SCI_SLIT_FLUX", "RESP_TAB"],
+    "offset_std": ["SCI_SLIT_FLUX", "RESP_TAB"],
 }
 
 PRODUCT_COLUMNS = [

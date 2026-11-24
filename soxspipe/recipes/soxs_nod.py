@@ -546,11 +546,12 @@ class soxs_nod(extraction_stacking, base_recipe):
         return self.report_output()
 
     def _write_ascii_spectrum(self, filePathFluxcal):
-        """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
+        """*write the ASCII spectrum of this pass from its* ``_SPECTRUM`` *table*
 
-        Updates ``self.products``. The stacked table is the one `stack_extractions` wrote under the current filename
-        template, so the ``_CYCLES`` inspection pass finds its own. A pass with no flux-calibrated table (no response
-        product, a standard star, or the ``_CYCLES`` pass) writes the ASCII spectrum from the stacked table, in counts.
+        Updates ``self.products``. The table is the one `stack_extractions` wrote under the current filename
+        template, so the ``_CYCLES`` inspection pass finds its own. A flux calibration replaces it with the calibrated
+        table. A pass with no flux calibration (no response product, a standard star, or the ``_CYCLES`` pass) writes
+        the ASCII spectrum in counts.
 
         **Key Arguments:**
 
@@ -558,9 +559,9 @@ class soxs_nod(extraction_stacking, base_recipe):
         """
         from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
 
-        mergedPath = f"{self.productDir}/{self.filenameTemplate.replace('.fits', '_EXTRACTED_MERGED.fits')}"
+        spectrumPath = f"{self.productDir}/{self.filenameTemplate.replace('.fits', '_SPECTRUM.fits')}"
         self.products = write_ascii_spectrum_product(
-            mergedPath, filePathFluxcal, self.products, self.recipeName, self.dateObs
+            spectrumPath, bool(filePathFluxcal), self.products, self.recipeName, self.dateObs
         )
 
     def _aligns_each_order(self):
@@ -1294,6 +1295,7 @@ class soxs_nod(extraction_stacking, base_recipe):
             startNightDate=self.startNightDate,
             sofName=self.sofName,
             debug=self.debug,
+            qc=self.qc,
         )
         filePathFluxcal, products = fluxCalibrator.calibrate()
         self.products = concat_tables([self.products, products], ignore_index=True)

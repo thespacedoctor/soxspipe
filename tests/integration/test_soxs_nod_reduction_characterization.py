@@ -785,8 +785,8 @@ def test_a_response_table_flux_calibrates_the_stack_and_draws_a_second_plot(
     assert list(calibrated["SNR"]) == [9.0]
     assert "SKY_COUNTS" not in calibrated.colnames
     # THE ASCII SPECTRUM COMES FROM THE FLUX-CALIBRATED TABLE, ONCE
-    mergedPath = f"{recipe.productDir}/{recipe.filenameTemplate.replace('.fits', '_EXTRACTED_MERGED.fits')}"
-    assert [(entry["merged"], entry["fluxcal"]) for entry in captured["ascii"]] == [(mergedPath, str(fluxPath))]
+    spectrumPath = f"{recipe.productDir}/{recipe.filenameTemplate.replace('.fits', '_SPECTRUM.fits')}"
+    assert [(entry["spectrum"], entry["isFluxCalibrated"]) for entry in captured["ascii"]] == [(spectrumPath, True)]
     assert captured["ascii"][0]["callsBefore"][-2:] == ["flux_calibrator", "calibrate"]
 
 
@@ -804,8 +804,8 @@ def test_the_nod_ascii_spectrum_falls_back_to_the_stacked_table_without_a_respon
     recipe.produce_product()
 
     # ASSERT: ONCE, IN COUNTS, BEFORE THE PLOT
-    mergedPath = f"{recipe.productDir}/2024-01-02_nod_EXTRACTED_MERGED.fits"
-    assert [(entry["merged"], entry["fluxcal"]) for entry in captured["ascii"]] == [(mergedPath, None)]
+    spectrumPath = f"{recipe.productDir}/2024-01-02_nod_SPECTRUM.fits"
+    assert [(entry["spectrum"], entry["isFluxCalibrated"]) for entry in captured["ascii"]] == [(spectrumPath, False)]
     assert "plot" not in captured["ascii"][0]["callsBefore"]
     assert calls.count("plot") == 1
 
@@ -820,11 +820,11 @@ def test_with_no_stack_the_cycle_pass_writes_its_own_ascii_spectrum_from_its_sta
     recipe.produce_product()
 
     # ASSERT: THE STACKED PASS AND THE _CYCLES PASS WRITE ONE EACH, NEITHER FLUX CALIBRATED
-    assert [Path(entry["merged"]).name for entry in captured["ascii"]] == [
-        "OBJECT_VIS_EXTRACTED_MERGED.fits",
-        "OBJECT_VIS_CYCLES_EXTRACTED_MERGED.fits",
+    assert [Path(entry["spectrum"]).name for entry in captured["ascii"]] == [
+        "OBJECT_VIS_SPECTRUM.fits",
+        "OBJECT_VIS_CYCLES_SPECTRUM.fits",
     ]
-    assert [entry["fluxcal"] for entry in captured["ascii"]] == [None, None]
+    assert [entry["isFluxCalibrated"] for entry in captured["ascii"]] == [False, False]
 
 
 def test_the_merged_spectrum_plot_reads_the_template_and_date_stack_extractions_set(

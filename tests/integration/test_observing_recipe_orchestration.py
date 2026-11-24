@@ -34,7 +34,7 @@ def stubbed_ascii_spectrum(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         import_module("soxspipe.commonutils.spectrum_ascii"),
         "write_ascii_spectrum_product",
-        lambda mergedPath, fluxcalPath, products, *_: products,
+        lambda spectrumPath, isFluxCalibrated, products, *_: products,
     )
 
 
@@ -189,7 +189,7 @@ def _record_nodding_passes(recipe: Any, monkeypatch: pytest.MonkeyPatch, tmpPath
     def recording_stack(*args: object, **kwargs: object) -> tuple[Any, str]:
         seen["stack"].append(recipe.sofName)
         stacked, _ = stack(*args, **kwargs)
-        return stacked, str(tmpPath / f"{recipe.sofName}_EXTRACTED_MERGED.fits")
+        return stacked, str(tmpPath / f"{recipe.sofName}_SPECTRUM.fits")
 
     def recording_report() -> pd.DataFrame:
         seen["report"].append(recipe.sofName)
@@ -287,9 +287,11 @@ def _patch_nodding_collaborators(
         fake_stack_extractions,
     )
 
-    def fake_write_ascii(mergedPath: str, fluxcalPath: str | None, products: pd.DataFrame, *_: object) -> pd.DataFrame:
+    def fake_write_ascii(spectrumPath: str, isFluxCalibrated: bool, products: pd.DataFrame, *_: object) -> pd.DataFrame:
         # THE CALLS SO FAR ARE KEPT APART, SO THE SEQUENCE OTHER TESTS PIN DOES NOT GAIN AN ENTRY
-        captured["ascii"].append({"merged": mergedPath, "fluxcal": fluxcalPath, "callsBefore": list(calls)})
+        captured["ascii"].append(
+            {"spectrum": spectrumPath, "isFluxCalibrated": isFluxCalibrated, "callsBefore": list(calls)}
+        )
         return products
 
     monkeypatch.setattr(
@@ -508,7 +510,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
     assert stacked["FLUX_COUNTS"].tolist() == [12.0, 18.0]
     # TWO SPECTRA: THE VARIANCE IS SUM(VAR) / 4, SO SNR IS 12 / SQRT(4.5) AND 18 / SQRT(2) (DY-1675)
     assert stacked["SNR"].tolist() == [5.66, 12.73]
-    assert recipe.products["product_label"].tolist() == ["EXTRACTED_MERGED_TABLE"]
+    assert recipe.products["product_label"].tolist() == ["SPECTRUM_TABLE"]
     with fits.open(fitsPath) as hdus:
         assert hdus[0].header["ESO PRO CATG"] == "SCI_SLIT_FLUX_VIS"
 

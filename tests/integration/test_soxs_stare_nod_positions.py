@@ -225,12 +225,12 @@ def test_the_final_product_is_the_mean_of_the_two_positions_under_the_unmarked_p
     productPath, _ = recipe._reduce_nod_positions(_stacks(), [], False, _tail_inputs())
 
     # ASSERT: THE SOF NAME IS THE ONE THE RUN STARTED WITH, SO THE PRODUCT HAS NO POSITION IN ITS NAME
-    assert Path(productPath).name == f"{SOF_NAME}{MARKER}_EXTRACTED_MERGED.fits"
+    assert Path(productPath).name == f"{SOF_NAME}{MARKER}_SPECTRUM.fits"
     assert list(Table.read(productPath)["FLUX_COUNTS"]) == pytest.approx([15.0])
     assert recipe.sofName == SOF_NAME
     labels = recipe.products["product_label"]
-    assert labels[labels.str.startswith("EXTRACTED_MERGED_TABLE")].tolist() == [
-        "EXTRACTED_MERGED_TABLE",
+    assert labels[labels.str.startswith("SPECTRUM_TABLE")].tolist() == [
+        "SPECTRUM_TABLE",
     ]
 
 
