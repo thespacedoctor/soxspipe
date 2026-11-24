@@ -54,6 +54,10 @@ LEVEL_WORDS = {MANDATORY: "mandatory", RECOMMENDED: "recommended", OPTIONAL: "op
 TABLE_8 = "Table 8"
 HOUSE_RULE = "house rule, DY-2393"
 
+# WHERE A RANGE COMES FROM, FOR THE MESSAGE OF A RANGE FAILURE
+STANDARD_SECTION_5 = "standard section 5"
+HOUSE_RANGE = "house rule"
+
 # HEADER TIMES ARE ROUNDED, SO TEXPTIME MAY EXCEED TELAPSE BY THIS MANY SECONDS WITHOUT BEING A FAULT
 TIME_TOLERANCE_S = 1e-3
 
@@ -255,17 +259,19 @@ class RangeRule:
     - ``hdu`` -- ``PRIMARY`` or ``EXTENSION``
     - ``isValid`` -- returns True for a value in the range
     - ``text`` -- the range in words, for the message
+    - ``source`` -- where the range comes from, named in the message: ``STANDARD_SECTION_5`` or ``HOUSE_RANGE``
     """
 
     keyword: str
     hdu: str
     isValid: Callable[[float], bool]
     text: str
+    source: str = HOUSE_RANGE
 
 
-# A SHORT LIST: THE RANGES SECTION 5 OF THE STANDARD STATES FOR THE SPECTRUM KEYWORDS
+# A SHORT LIST. SECTION 5 OF THE STANDARD STATES ONLY THE RANGE OF EXPTIME; THE OTHERS ARE OUR OWN RULES
 RANGE_RULES = (
-    RangeRule("EXPTIME", PRIMARY, lambda value: value > 0, "greater than 0"),
+    RangeRule("EXPTIME", PRIMARY, lambda value: value > 0, "greater than 0", STANDARD_SECTION_5),
     RangeRule("TEXPTIME", PRIMARY, lambda value: value > 0, "greater than 0"),
     RangeRule("TELAPSE", EXTENSION, lambda value: value > 0, "greater than 0"),
     RangeRule("NCOMBINE", PRIMARY, lambda value: value >= 1, "at least 1"),
@@ -300,11 +306,16 @@ def check_value_ranges(product: Phase3Product) -> list[Finding]:
         header = product.header(rule.hdu)
         value = header.get(rule.keyword) if header is not None else None
         if _has_kind(value, float) and not rule.isValid(value):
-            findings.append(fail(f"{rule.keyword} is {value}, outside its allowed range: it must be {rule.text}"))
+            findings.append(
+                fail(f"{rule.keyword} is {value}, outside its allowed range ({rule.source}): it must be {rule.text}")
+            )
     wavelmin, wavelmax = product.primary.get("WAVELMIN"), product.primary.get("WAVELMAX")
     if _has_kind(wavelmin, float) and _has_kind(wavelmax, float) and wavelmin >= wavelmax:
         findings.append(
-            fail(f"WAVELMIN ({wavelmin}) is outside its allowed range: it must be below WAVELMAX ({wavelmax})")
+            fail(
+                f"WAVELMIN ({wavelmin}) is outside its allowed range ({HOUSE_RANGE}): "
+                f"it must be below WAVELMAX ({wavelmax})"
+            )
         )
     return findings
 

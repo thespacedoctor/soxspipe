@@ -362,6 +362,29 @@ def test_a_value_outside_its_allowed_range_is_a_failure(
     assert any(keyword in message and "range" in message for message in failures)
 
 
+@pytest.mark.parametrize(
+    ("hdu", "keyword", "value", "source"),
+    [
+        ("primary", "EXPTIME", 0.0, "(standard section 5)"),
+        ("primary", "TEXPTIME", 0.0, "(house rule)"),
+        ("extension", "TELAPSE", 0.0, "(house rule)"),
+        ("primary", "NCOMBINE", 0, "(house rule)"),
+        ("primary", "SNR", -1.0, "(house rule)"),
+        ("primary", "WAVELMIN", 0.0, "(house rule)"),
+        ("primary", "WAVELMIN", 650.0, "(house rule)"),
+        ("primary", "SPEC_RES", 0.0, "(house rule)"),
+    ],
+)
+def test_the_range_failure_names_where_the_rule_comes_from(
+    tmp_path: Path, log: object, hdu: str, keyword: str, value: float, source: str
+) -> None:
+    # ARRANGE, ACT
+    failures = failure_messages(tmp_path, log, **{hdu: {keyword: value}})
+
+    # ASSERT
+    assert any(keyword in message and f"allowed range {source}" in message for message in failures)
+
+
 @pytest.mark.parametrize(("keyword", "value"), [("SNR", 0.0), ("NCOMBINE", 1)])
 def test_a_value_at_the_edge_of_its_allowed_range_is_accepted(
     tmp_path: Path, log: object, keyword: str, value: float

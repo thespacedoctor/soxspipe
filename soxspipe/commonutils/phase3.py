@@ -97,22 +97,16 @@ def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=Fal
     ```
     """
     log.debug("starting the ``basic_header_scrubbing`` method")
-    from soxspipe.commonutils import keyword_lookup
     from soxspipe.commonutils.fits_headers import set_header_card
 
     if mode not in HEADER_MODES:
         raise ValueError(f"basic_header_scrubbing: mode must be one of {HEADER_MODES}, not {mode!r}")
 
-    # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-    # FOLDER
-    kw = keyword_lookup(log=log, settings=settings).get
-
-    removeKw = ["DPR_TECH", "DPR_CATG", "DPR_TYPE"]
-    for k in removeKw:
+    for k in SCRUBBED_ESO_CARDS:
         try:
-            header.pop(kw(k))
+            header.pop(k)
         except KeyError as e:
-            log.debug(f"basic_header_scrubbing: `header.pop(kw(k))` failed, continuing: {e}")
+            log.debug(f"basic_header_scrubbing: `header.pop(k)` failed, continuing: {e}")
 
     if "NAXIS" in header and header["NAXIS"] != 0 and "INHERIT" in header:
         del header["INHERIT"]
@@ -126,10 +120,7 @@ def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=Fal
             log.debug(f"basic_header_scrubbing: `header.pop(k)` failed, continuing: {e}")
 
     # KEYWORDS TO RENAME
-    renameKw = {
-        "RADECSYS": "RADESYS",
-        "HIERARCH ESO TEL TARG EQUINOX": "EQUINOX",
-    }
+    renameKw = {"RADECSYS": "RADESYS", **RENAMED_ESO_CARDS}
     for oldKw, newKw in renameKw.items():
         if oldKw in header:
             comment = header.comments[oldKw]
