@@ -245,6 +245,8 @@ def _flux_calibrating_recipe(
     frame = SimpleNamespace(header={"EXPTIME": 30.0})
     callArguments = tuple([frame] if argument == [] else argument for argument in arguments)
     combined = SimpleNamespace(header={"EXPTIME": 30.0})
+    # THE NOD AND OFFSET RECIPES CALIBRATE WITH THE HEADER OF THE MERGED SPECTRUM, WHICH EVERY RECIPE HAS SET (DY-2356)
+    recipe.masterHeaderFrame = combined
     callArguments = tuple(
         combined if argument is None and index == 2 else argument for index, argument in enumerate(callArguments)
     )

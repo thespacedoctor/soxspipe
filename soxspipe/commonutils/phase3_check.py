@@ -67,6 +67,7 @@ from soxspipe.commonutils.phase3_check_framework import (
 # THE MODULES THAT HOLD THE CHECKS, IN THE ORDER THEIR CHECKS RUN. A MODULE REGISTERS ITS CHECKS WHEN IT IS IMPORTED
 CHECK_MODULES = (
     "soxspipe.commonutils.phase3_check_headers",
+    "soxspipe.commonutils.phase3_check_provenance",
     "soxspipe.commonutils.phase3_check_file",
     "soxspipe.commonutils.phase3_check_table",
 )

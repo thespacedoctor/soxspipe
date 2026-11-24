@@ -8,9 +8,13 @@ Date Created
 : November 23, 2026
 """
 
+from __future__ import annotations
+
 import math
+from typing import Any
 
 from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils.on_target_frames import with_frame_accounting
 from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from soxspipe.commonutils.toolkit import utcnow_string
 
@@ -66,7 +70,28 @@ class extraction_stacking:
     The nod recipe combines its cycles with it. The stare recipe, reducing a nodding SOF in stare mode, combines the
     extractions of the A and B stacks with it. The recipe supplies ``log``, ``recipeName``, ``productStem``,
     ``settings``, ``arm``, ``qc``, ``productDir``, ``masterHeaderFrame``, ``add_product`` and ``update_fits_keywords``.
+    It may also set ``onTargetFrames``, the on-target frames of the product, which give the merged spectrum its
+    frame-accounting cards (DY-2356).
     """
+
+    # THE ON-TARGET FRAMES THAT REACH THE PRODUCT BEING WRITTEN, OR None WHEN THE RECIPE HAS NOT BUILT THE LIST. AN
+    # IMMUTABLE DEFAULT, REBOUND (NEVER MUTATED) AS FRAMES LEAVE THE LIST
+    onTargetFrames = None
+
+    def _merged_spectrum_header(self) -> Any:
+        """*the header of the merged spectrum: the master header with the frame-accounting cards of the on-target list*
+
+        ``stack_extractions`` stamps ``masterHeaderFrame`` with every raw frame of the recipe, so the calibrated
+        spectrum lists them all. The header of one input frame lists the raw frames of its own cycle only, or none. The
+        cards go on a copy, because flux calibration and the response divide the counts by the exposure time of one
+        frame, which is the ``EXPTIME`` of the master header. With no on-target list the master header itself comes
+        back.
+
+        **Return:**
+
+        - ``header`` -- the header of ``masterHeaderFrame`` with the frame-accounting cards, as a copy
+        """
+        return with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames)
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
         """*merge the extractions of the nodding cycles, or of the nod positions of a stare-mode nodding SOF*
@@ -143,7 +168,8 @@ class extraction_stacking:
 
         # SELECTING HEADER A_MINUS_B (IS THIS THE SAME?)
         self.update_fits_keywords(frame=self.masterHeaderFrame)
-        header = self.masterHeaderFrame.header
+        # THE NOT-FLATTENED SPECTRUM FEEDS THE RESPONSE ONLY, SO IT CARRIES NO FRAME ACCOUNTING
+        header = self.masterHeaderFrame.header if notFlattened else self._merged_spectrum_header()
 
         set_header_card(header, kw("PRO_TYPE"), "REDUCED")
         set_header_card(header, kw("PRO_CATG"), f"SCI_SLIT_FLUX_{self.arm}".upper())

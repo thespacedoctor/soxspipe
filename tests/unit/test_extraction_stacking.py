@@ -13,11 +13,14 @@ from typing import Any
 import pandas as pd
 import pytest
 from astropy import units as u
+from astropy.io import fits
 from astropy.table import Table
 
+from soxspipe.commonutils.on_target_frames import build_on_target_frames
 from soxspipe.recipes import soxs_nod, soxs_stare
 from soxspipe.recipes.extraction_stacking import extraction_stacking
 from tests.factories import pipeline_settings, qc_table, synthetic_ccd
+from tests.factories.on_target_frames import raw_science_header
 
 pytestmark = pytest.mark.unit
 
@@ -127,3 +130,100 @@ def test_no_spectrum_at_either_position_is_an_error(stare: soxs_stare, log: Any)
     with pytest.raises(Exception, match="No object trace was found"):
         stare.stack_extractions([None, None])
     assert any(level == "error" for level, _ in log.messages)
+
+
+def _on_target_frames(recipe: Any, count: int = 2) -> tuple[Any, ...]:
+    """Return the on-target list of ``count`` VIS frames of 600 s, named ``SOXS.<n>.fits``."""
+    headers = [
+        raw_science_header("VIS", mjd=61000.0 + index / 10, arcfile=f"SOXS.{index}.fits", exptime=600.0)
+        for index in range(count)
+    ]
+    names = [f"raw-{index}.fits" for index in range(count)]
+    return build_on_target_frames(headers, names, recipe.kw, "VIS", recipe.log)
+
+
+@pytest.fixture
+def listed_nod(nod: soxs_nod) -> soxs_nod:
+    """A nod recipe whose master header is a raw frame of 600 s and that has an on-target list of two frames."""
+    from soxspipe.commonutils.keyword_lookup import keyword_lookup
+
+    nod.kw = keyword_lookup(log=nod.log, settings=nod.settings).get
+    nod.masterHeaderFrame.header["EXPTIME"] = 600.0
+    nod.onTargetFrames = _on_target_frames(nod)
+    return nod
+
+
+def test_the_combined_spectrum_carries_the_frame_accounting_cards_of_the_on_target_list(
+    listed_nod: soxs_nod,
+) -> None:
+    # ACT
+    _, filePath = listed_nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
+
+    # ASSERT
+    header = fits.getheader(filePath)
+    assert header["EXPTIME"] == header["TEXPTIME"] == 1200.0
+    assert header["NCOMBINE"] == 2
+    assert (header["PROV1"], header["PROV2"]) == ("SOXS.0", "SOXS.1")
+    assert header["OBID1"] == 42
+    assert header["PROG_ID"] == "115.ABCD.001"
+    assert header["MJD-OBS"] == 61000.0
+    assert header["MJD-END"] == pytest.approx(61000.1 + 600.0 / 86400.0, abs=1e-9)
+
+
+def test_stamping_the_combined_spectrum_leaves_the_exposure_time_of_the_master_header_alone(
+    listed_nod: soxs_nod,
+) -> None:
+    # ACT
+    listed_nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
+
+    # ASSERT: FLUX CALIBRATION DIVIDES BY THIS EXPOSURE TIME, WHICH IS THAT OF ONE FRAME
+    assert listed_nod.masterHeaderFrame.header["EXPTIME"] == 600.0
+    assert "NCOMBINE" not in listed_nod.masterHeaderFrame.header
+
+
+def test_a_recipe_with_no_on_target_list_writes_no_frame_accounting_cards(nod: soxs_nod) -> None:
+    # ACT
+    _, filePath = nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
+
+    # ASSERT
+    header = fits.getheader(filePath)
+    assert not {"NCOMBINE", "TEXPTIME", "MJD-END", "PROV1", "OBID1"} & set(header)
+
+
+def test_the_not_flattened_stack_carries_no_frame_accounting_cards(listed_nod: soxs_nod) -> None:
+    # ACT
+    _, filePath = listed_nod.stack_extractions([_spectrum(10.0)], notFlattened=True)
+
+    # ASSERT
+    assert "NCOMBINE" not in fits.getheader(filePath)
+
+
+def test_the_merged_spectrum_header_is_the_stamped_header_the_flux_calibration_rewrites(listed_nod: soxs_nod) -> None:
+    # ARRANGE
+    listed_nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
+
+    # ACT
+    header = listed_nod._merged_spectrum_header()
+
+    # ASSERT
+    assert header["EXPTIME"] == 1200.0
+    assert header is not listed_nod.masterHeaderFrame.header
+
+
+ACCOUNTING_KEYWORDS = ("NCOMBINE", "PROV", "OBID", "MJD-END", "MJD-OBS", "EXPTIME", "TEXPTIME", "PROG_ID", "PROGID")
+
+
+def test_the_combined_spectrum_has_no_frame_accounting_finding_from_the_phase_3_checker(listed_nod: soxs_nod) -> None:
+    from soxspipe.commonutils.phase3_check import check_phase3
+
+    # ARRANGE
+    _, filePath = listed_nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
+
+    # ACT
+    findings = check_phase3(filePath)
+
+    # ASSERT: THE OTHER KEYWORDS OF THE STANDARD ARE THE BUSINESS OF OTHER ISSUES
+    accounting = [
+        finding.message for finding in findings if any(keyword in finding.message for keyword in ACCOUNTING_KEYWORDS)
+    ]
+    assert accounting == []

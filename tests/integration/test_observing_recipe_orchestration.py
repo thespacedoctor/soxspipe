@@ -106,6 +106,11 @@ def _keyword(keyword: str) -> str:
         "AIRMASS_START": "ESO TEL AIRM START",
         "AIRMASS_END": "ESO TEL AIRM END",
         "SEQ_EXPTIME": "ESO DET SEQ1 EXPTIME",
+        "MJDOBS": "MJD-OBS",
+        "OBS_ID": "ESO OBS ID",
+        "OBS_PROG_ID": "ESO OBS PROG ID",
+        "DET_DIT": "ESO DET SEQ1 DIT",
+        "DET_NDIT": "ESO DET NDIT",
     }.get(keyword, keyword)
 
 

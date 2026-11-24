@@ -73,7 +73,7 @@ def _build_vis_response(
         startNightDate="2024-01-02",
         stdNotFlatExtractionPath=str(unflattenedPath),
         orderJoins=["12"],
-        **kwargs,
+        **{"exptime": 30.0, **kwargs},
     )
 
 
@@ -91,6 +91,19 @@ def test_response_constructor_reads_and_normalizes_synthetic_standard(
     assert response.stdExtractionNotFlatDF["WAVE"].to_list() == [500.0, 600.0]
     assert response.qcDir == str(tmp_path / "qc")
     assert response.productDir == str(tmp_path / "products")
+
+
+def test_response_divides_by_the_exposure_time_it_is_given_not_the_spectrum_header(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The merged spectrum carries the summed exposure time of its frames, so the caller gives one frame's (DY-2356)."""
+    # ACT: THE EXTRACTION HEADER HOLDS AN EXPTIME OF 30 s
+    response = _build_vis_response(tmp_path, log, monkeypatch, airmass=1.2, exptime=10.0)
+
+    # ASSERT
+    assert response.texp == pytest.approx(10.0)
 
 
 def test_response_uses_the_airmass_its_caller_passes_not_the_extraction_header(
@@ -392,6 +405,7 @@ def _build_real_nir_response(tmp_path: Path, log: object, monkeypatch: pytest.Mo
         startNightDate="2024-01-02",
         stdNotFlatExtractionPath=str(unflattenedPath),
         orderJoins={"1-2": 1500.0},
+        exptime=10.0,
         **tables,
     )
 

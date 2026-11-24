@@ -8,7 +8,11 @@ import pytest
 from astropy.io import fits
 
 from soxspipe.commonutils.keyword_lookup import keyword_lookup
-from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
+from soxspipe.commonutils.sequence_airmass import (
+    mean_airmass,
+    one_frame_exposure_time,
+    require_equal_exposure_times,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -261,3 +265,26 @@ def test_the_exposure_time_is_read_through_the_keyword_map(log: Any) -> None:
     with pytest.raises(ValueError, match="they differ"):
         require_equal_exposure_times([{"MAPPED_EXPTIME": 1.0}, {"MAPPED_EXPTIME": 2.0}], spy_kw)
     assert seen and set(seen) == {"EXPTIME"}
+
+
+def test_one_frame_exposure_time_is_the_exptime_every_frame_shares(soxs_kw: Any) -> None:
+    # ARRANGE
+    headers = [_header(exptime=120.0), _header(exptime=120.0)]
+
+    # ACT / ASSERT
+    assert one_frame_exposure_time(headers, soxs_kw) == 120.0
+
+
+def test_one_frame_exposure_time_refuses_frames_of_different_lengths(soxs_kw: Any) -> None:
+    # ARRANGE
+    headers = [_header(exptime=120.0), _header(exptime=60.0)]
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="same exposure time"):
+        one_frame_exposure_time(headers, soxs_kw)
+
+
+def test_one_frame_exposure_time_refuses_a_sequence_with_no_frame(soxs_kw: Any) -> None:
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="no frame"):
+        one_frame_exposure_time([], soxs_kw)

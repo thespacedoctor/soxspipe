@@ -19,6 +19,11 @@ from contextlib import closing
 from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
+from soxspipe.commonutils.on_target_frames import (
+    build_on_target_frames,
+    frames_named,
+    with_frame_accounting,
+)
 from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
 from soxspipe.commonutils.stare_mode import NOD_STARE_MARKER
 from soxspipe.commonutils.toolkit import (
@@ -437,6 +442,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         self.objectFrameNames = allObjectNames
         # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
         self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
+        # EVERY FRAME OF THE STACK IS ON TARGET. THE LIST IS BUILT NOW, BECAUSE THE PRODUCT WRITES SCRUB THE HEADERS
+        self.onTargetFrames = build_on_target_frames(self.scienceHeaders, allObjectNames, kw, self.arm, self.log)
 
         extractEach = self._should_extract_each_frame(allObjectFrames)
         alsoExtractEachStandard = self._also_extract_each_standard_frame(allObjectFrames)
@@ -583,13 +590,15 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
 
         # THE SKY-MODEL FALLBACK EDITS THE RECIPE SETTINGS IN PLACE, SO THE STACKED PASS RUNS ON A COPY AND THE
         # ORIGINAL IS RESTORED, UNTOUCHED, FOR THE PER-FRAME PASSES
-        recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
+        recipeSettings, subtractSky, onTargetFrames = self.recipeSettings, self.subtractSky, self.onTargetFrames
         try:
             self.recipeSettings = copy.deepcopy(recipeSettings)
             productPath, stackedFailure = self._reduce_object_frames(allObjectFrames)
             stackedQc = self.report_output()
         finally:
             self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
+            # THE STACKED PASS MAY HAVE LEFT FRAMES OUT, AND EACH FRAME PASS COUNTS ITS OWN
+            self.onTargetFrames = onTargetFrames
         self.qc, self.products = self._empty_qc_and_product_tables(pd)
 
         _, frameQc, frameFailure = self._extract_frames_on_their_own(allObjectFrames, allObjectNames)
@@ -618,7 +627,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
 
         import pandas as pd
 
-        sofName, filenameTemplate = self.sofName, self.filenameTemplate
+        sofName, filenameTemplate, onTargetFrames = self.sofName, self.filenameTemplate, self.onTargetFrames
         # THE SKY-MODEL FALLBACK EDITS THE RECIPE SETTINGS IN PLACE, SO EACH FRAME RUNS ON A COPY OF THE ORIGINAL,
         # WHICH IS RESTORED UNTOUCHED
         recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
@@ -632,12 +641,14 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
                 self.sofName = f"{sofName}_F{index}"
                 self.filenameTemplate = f"{self.productStem}.fits"
                 self.recipeSettings, self.subtractSky = copy.deepcopy(recipeSettings), subtractSky
+                # THE SPECTRUM OF THIS FRAME COUNTS THIS FRAME ONLY
+                self.onTargetFrames = None if onTargetFrames is None else frames_named(onTargetFrames, [name])
                 productPath, frameFailure = self._reduce_object_frames([frame], rawFrames=[name])
                 forceFailure = self._combine_failures(forceFailure, frameFailure)
                 qcTables.append(self.report_output())
                 self.qc, self.products = self._empty_qc_and_product_tables(pd)
         finally:
-            self.sofName, self.filenameTemplate = sofName, filenameTemplate
+            self.sofName, self.filenameTemplate, self.onTargetFrames = sofName, filenameTemplate, onTargetFrames
             self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
 
         return productPath, self._concat_qc_tables(qcTables), forceFailure
@@ -857,6 +868,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             scienceHeaders=self.scienceHeaders,
             slitOffsetsArcsec=self.slitIlluminationOffsets,
             readNoise=self._extraction_read_noise(),
+            onTargetFrames=self.onTargetFrames,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
@@ -1728,7 +1740,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             exptime=combined_object.header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
             arm=self.arm,
-            header=combined_object.header,
+            # THE HEADER OF THE SPECTRUM CARRIES THE SUMMED EXPOSURE TIME. THE EXPTIME ABOVE IS THAT OF ONE FRAME
+            header=with_frame_accounting(combined_object.header, self.onTargetFrames),
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
             sofName=self.productStem,
@@ -1844,7 +1857,11 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         """
         # GETTING THE RESPONSE
         from soxspipe.commonutils import response_function
-        from soxspipe.commonutils.sequence_airmass import mean_airmass, require_equal_exposure_times
+        from soxspipe.commonutils.sequence_airmass import (
+            mean_airmass,
+            one_frame_exposure_time,
+            require_equal_exposure_times,
+        )
 
         require_equal_exposure_times([frame.header for frame in objectFrames], self.kw)
         self.log.print("# CALCULATING RESPONSE FUNCTION\n")
@@ -1860,6 +1877,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             stdNotFlatExtractionPath=extractionPath_notflat,
             orderJoins=orderJoins,
             airmass=mean_airmass([frame.header for frame in objectFrames], self.kw, self.log),
+            # THE MERGED SPECTRUM HOLDS THE SUMMED EXPOSURE TIME OF THE FRAMES, THE COUNTS ARE FOR ONE OF THEM
+            exptime=one_frame_exposure_time([frame.header for frame in objectFrames], self.kw),
         )
         self.qc, self.products, forceFailure = response.get()
 

@@ -10,8 +10,10 @@ Date Created
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, NamedTuple
 
+from soxspipe.commonutils.on_target_frames import without_untraced_positions
 from soxspipe.commonutils.spectrum_names import SPECTRUM_TABLE_LABEL
 
 if TYPE_CHECKING:
@@ -66,13 +68,17 @@ class stack_extraction(NamedTuple):
 
 
 class position_stack(NamedTuple):
-    """The stacks of the frames of one nod position, with the pixels of the slit that not every frame covers."""
+    """The stacks of the frames of one nod position, with the pixels of the slit that not every frame covers.
+
+    ``frameNames`` are the file names of the position's frames, which identify them in the on-target list (DY-2356).
+    """
 
     position: str
     objectFrames: list[Any]
     notFlattened: Any
     flattened: Any
     uncovered: np.ndarray
+    frameNames: tuple[str, ...] = ()
 
 
 class nod_stare_stacking:
@@ -179,8 +185,8 @@ class nod_stare_stacking:
             detrendedA, detrendedB, namesA, namesB, inputs.twoDMap, inputs.dispMap
         )
         return (
-            self._stack_position("A", framesA, alignedA, shiftsA, mapImages, inputs.masterFlat),
-            self._stack_position("B", framesB, alignedB, shiftsB, mapImages, inputs.masterFlat),
+            self._stack_position("A", framesA, alignedA, shiftsA, mapImages, inputs.masterFlat, namesA),
+            self._stack_position("B", framesB, alignedB, shiftsB, mapImages, inputs.masterFlat, namesB),
         )
 
     def _stack_position(
@@ -191,6 +197,7 @@ class nod_stare_stacking:
         alignmentShifts: list[dict[int, float]],
         mapImages: two_d_map_images | None,
         masterFlat: Any,
+        frameNames: Sequence[str] = (),
     ) -> position_stack:
         """*stack the aligned frames of one nod position, not flat-fielded and flat-fielded*
 
@@ -205,6 +212,7 @@ class nod_stare_stacking:
         - ``alignmentShifts`` -- for each frame, its ``{order: shift in arcsec}`` from the alignment
         - ``mapImages`` -- the ``two_d_map_images`` the alignment read, or *None* when it read none
         - ``masterFlat`` -- the master flat, or False when no flat is used
+        - ``frameNames`` -- the file names of the position's frames. Default *()*
 
         **Return:**
 
@@ -220,7 +228,7 @@ class nod_stare_stacking:
             flatFielded = self._flat_field_nod_frames(alignedFrames, masterFlat)
             alignedFrames.clear()
             flattened = self._stack_aligned_frames(flatFielded)
-        return position_stack(position, objectFrames, notFlattened, flattened, uncovered)
+        return position_stack(position, objectFrames, notFlattened, flattened, uncovered, tuple(frameNames))
 
     def _stack_aligned_frames(self, frames: list[Any]) -> Any:
         """*clip and stack the frames of a nod position, leaving each frame's masked pixels out*"""
@@ -309,19 +317,21 @@ class nod_stare_stacking:
         """
         import copy
 
-        sofName, filenameTemplate = self.sofName, self.filenameTemplate
+        sofName, filenameTemplate, onTargetFrames = self.sofName, self.filenameTemplate, self.onTargetFrames
         recipeSettings, subtractSky = self.recipeSettings, self.subtractSky
         firstNewRow = len(self.products)
         try:
             self.sofName = f"{sofName}_{stack.position}"
             self.filenameTemplate = f"{self.productStem}.fits"
             self.recipeSettings = copy.deepcopy(recipeSettings)
+            # THE FRAME ACCOUNTING BELONGS TO THE COMBINED SPECTRUM. THE EXTRACTION OF ONE POSITION WRITES NONE
+            self.onTargetFrames = None
             extraction = self._extract_stack(
                 stack.notFlattened, stack.objectFrames, rawFrames, inputs, stack.flattened, stack.uncovered
             )
             extraction = self._extract_not_flattened_of_standard(extraction)
         finally:
-            self.sofName, self.filenameTemplate = sofName, filenameTemplate
+            self.sofName, self.filenameTemplate, self.onTargetFrames = sofName, filenameTemplate, onTargetFrames
             self.recipeSettings, self.subtractSky = recipeSettings, subtractSky
         self._relabel_merged_table_rows_from(firstNewRow, stack.position)
         return extraction
@@ -387,14 +397,39 @@ class nod_stare_stacking:
           when a standard star has no object trace
         """
         extractions = {}
+        frameNames = {}
         while stacks:
             stack = stacks.pop(0)
+            frameNames[stack.position] = stack.frameNames
             extractions[stack.position] = self._extract_position_keeping_its_qc_only_with_a_trace(
                 stack, inputs, rawFrames
             )
+        self._leave_untraced_positions_out_of_the_list(extractions, frameNames)
         combined = self._combine_extractions(extractions)
         forceFailure = self._finish_extraction(combined, allObjectFrames, inputs.responseFunctionPath)
         return combined.productPath, forceFailure
+
+    def _leave_untraced_positions_out_of_the_list(
+        self, extractions: dict[str, stack_extraction], frameNames: dict[str, Sequence[str]]
+    ) -> None:
+        """*take the frames of a nod position that found no object trace out of the on-target list*
+
+        The combined spectrum is the other position's alone, so only the frames of the position with no trace leave,
+        with a warning that names them. When neither position found a trace the combination fails, and the list stays
+        as it is. Updates ``self.onTargetFrames``.
+
+        **Key Arguments:**
+
+        - ``extractions`` -- the ``stack_extraction`` of each nod position, by position
+        - ``frameNames`` -- the file names of the frames of each nod position, by position
+        """
+        if self.onTargetFrames is None or all(extraction.traceFallback for extraction in extractions.values()):
+            return
+        positions = [
+            (not extraction.traceFallback, frameNames[position], f"{position} frames")
+            for position, extraction in extractions.items()
+        ]
+        self.onTargetFrames = without_untraced_positions(self.onTargetFrames, positions, self.log)
 
     def _combine_not_flattened(self, extractions: dict[str, stack_extraction], orderJoins: Any) -> str | None:
         """*combine the not-flattened extractions of the nod positions of a standard star*

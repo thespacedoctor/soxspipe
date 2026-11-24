@@ -190,19 +190,18 @@ def test_each_cycle_pairs_the_a_and_b_frames_in_observation_time_order(
     assert [entry["aFrame"].header[CUMULATIVE_OFFSET] for entry in cycles] == [3.0, 5.0]
 
 
-def test_the_frame_name_lists_are_not_sorted_with_their_frames(
+def test_the_frame_names_are_sorted_with_their_frames(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A frame whose file order differs from its time order is stamped with another frame's name.
+    """A frame whose file order differs from its time order is stamped with its own file name (DY-2356).
 
-    The frames are sorted by `MJD-OBS`; the parallel name lists are not, so
-    the name recorded for a cycle belongs to whichever frame was read in that
-    position. Pinned as found, not corrected.
+    The frames are sorted by `MJD-OBS` and each name travels with its frame, so the name recorded for a cycle is
+    the name of the frame that cycle processes. It was a defect: the name lists were not sorted, so a cycle recorded
+    another frame's file.
     """
-    # ARRANGE: THE FIRST A FRAME READ IS THE LAST IN TIME, AND NO FRAME CARRIES
-    # `ARCFILE` OR `ORIGFILE`, SO THE RECORDED NAMES COME FROM THE FILE NAMES.
+    # ARRANGE: THE FIRST A FRAME READ IS THE LAST IN TIME
     headers = [
         _nod_header(5.0, 60000.4),
         _nod_header(3.0, 60000.0),
@@ -216,42 +215,36 @@ def test_the_frame_name_lists_are_not_sorted_with_their_frames(
     # ACT
     recipe.produce_product()
 
-    # ASSERT: CYCLE 1 PROCESSES THE MJD 60000.0 FRAME BUT RECORDS `nod-0.fits`,
-    # WHICH IS THE MJD 60000.4 FRAME'S FILE.
+    # ASSERT: CYCLE 1 PROCESSES THE MJD 60000.0 FRAME (nod-1) AND ITS B PARTNER (nod-2)
     assert [entry["rawFrames"] for entry in captured["keywords"]] == [
-        ["nod-0.fits", "nod-2.fits"],
-        ["nod-0.fits", "nod-2.fits"],
-        ["nod-1.fits", "nod-3.fits"],
-        ["nod-1.fits", "nod-3.fits"],
+        ["nod-1.fits", "nod-2.fits"],
+        ["nod-1.fits", "nod-2.fits"],
+        ["nod-0.fits", "nod-3.fits"],
+        ["nod-0.fits", "nod-3.fits"],
     ]
     assert captured["keywords"][0]["frame"].header["MJD-OBS"] == 60000.0
 
 
 @pytest.mark.parametrize(
-    ("extraHeader", "expectedRawFrames"),
+    "extraHeader",
     [
-        (
-            lambda index: {"ARCFILE": f"ARC-{index}.fits", "ORIGFILE": f"ORIG-{index}.fits"},
-            [["ARC-0.fits", "ARC-2.fits"], ["ARC-1.fits", "ARC-3.fits"]],
-        ),
-        (
-            lambda index: {"ORIGFILE": f"ORIG-{index}.fits"},
-            [["ORIG-0.fits", "ORIG-2.fits"], ["ORIG-1.fits", "ORIG-3.fits"]],
-        ),
-        (
-            lambda index: {},
-            [["nod-0.fits", "nod-2.fits"], ["nod-1.fits", "nod-3.fits"]],
-        ),
+        lambda index: {"ARCFILE": f"ARC-{index}.fits", "ORIGFILE": f"ORIG-{index}.fits"},
+        lambda index: {"ORIGFILE": f"ORIG-{index}.fits"},
+        lambda index: {},
     ],
 )
-def test_each_cycle_records_its_raw_frame_names_in_priority_order(
+def test_each_cycle_records_the_sof_file_names_of_its_frames_whatever_the_headers_carry(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     extraHeader: Any,
-    expectedRawFrames: list[list[str]],
 ) -> None:
-    """Per cycle, both frames are stamped with the A and B `ARCFILE`, else `ORIGFILE`, else file name."""
+    """Per cycle, both frames are stamped with the SOF file names of the A and B frames (DY-2356).
+
+    The filter of `ESO PRO REC1 RAWi` matches the SOF file names. It was a defect: the recipe passed the `ARCFILE`
+    (else `ORIGFILE`) of the frames, which match no file when a file is named otherwise, so the header listed no raw
+    frame.
+    """
     # ARRANGE
     headers = [{**header, **extraHeader(index)} for index, header in enumerate(TWO_LOCATIONS)]
     recipe, _ = _nod_recipe(log, tmp_path, headers)
@@ -264,10 +257,10 @@ def test_each_cycle_records_its_raw_frame_names_in_priority_order(
     # ASSERT
     stamped = [entry["rawFrames"] for entry in captured["keywords"]]
     assert stamped == [
-        expectedRawFrames[0],
-        expectedRawFrames[0],
-        expectedRawFrames[1],
-        expectedRawFrames[1],
+        ["nod-0.fits", "nod-2.fits"],
+        ["nod-0.fits", "nod-2.fits"],
+        ["nod-1.fits", "nod-3.fits"],
+        ["nod-1.fits", "nod-3.fits"],
     ]
     assert all(stamped[index] is stamped[index + 1] for index in (0, 2))
 
