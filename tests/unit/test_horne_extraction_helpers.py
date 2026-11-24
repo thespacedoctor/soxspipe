@@ -1026,6 +1026,82 @@ def test_extract_writes_order_and_merged_product_contracts(
     assert joins == {"10-11": 501.0}
 
 
+def _two_on_target_frames(log: object) -> tuple[object, ...]:
+    """Return the on-target list of two VIS frames of 600 s."""
+    from soxspipe.commonutils.on_target_frames import build_on_target_frames
+    from tests.factories.on_target_frames import raw_science_header
+
+    headers = [
+        raw_science_header("VIS", mjd=61000.0 + index, exptime=600.0, arcfile=f"SOXS.{index}.fits")
+        for index in range(2)
+    ]
+    return build_on_target_frames(
+        headers,
+        ["a.fits", "b.fits"],
+        lambda alias: {
+            "MJDOBS": "MJD-OBS",
+            "OBS_ID": "ESO OBS ID",
+            "OBS_PROG_ID": "ESO OBS PROG ID",
+            "TPL_START": "ESO TPL START",
+        }.get(alias, alias),
+        "VIS",
+        log,
+    )
+
+
+def test_extract_gives_the_merged_spectrum_alone_the_frame_accounting_cards_of_its_on_target_list(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The cards go on the merged spectrum, not on the order table or on the header of the frame (DY-2356)."""
+    import soxspipe.commonutils.phase3 as phase3
+
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    extractor.skySubtractedFrame.header["EXPTIME"] = 600.0
+    extractor.onTargetFrames = _two_on_target_frames(log)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    ordersHeader, mergedHeader = calls[0]["header"], calls[1]["header"]
+    assert "NCOMBINE" not in ordersHeader
+    assert ordersHeader["EXPTIME"] == 600.0
+    assert mergedHeader["EXPTIME"] == mergedHeader["TEXPTIME"] == 1200.0
+    assert mergedHeader["NCOMBINE"] == 2
+    assert (mergedHeader["PROV1"], mergedHeader["PROV2"]) == ("SOXS.0", "SOXS.1")
+    assert extractor.skySubtractedFrame.header["EXPTIME"] == 600.0
+
+
+def test_extract_without_an_on_target_list_writes_the_header_it_always_wrote(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import soxspipe.commonutils.phase3 as phase3
+
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    assert "NCOMBINE" not in calls[1]["header"]
+
+
 @pytest.mark.parametrize(
     ("notFlattened", "expectedName"),
     [("", "SYNTHETIC_SPECTRUM.fits"), ("_NOTFLAT", "SYNTHETIC_SPECTRUM_NOTFLAT.fits")],

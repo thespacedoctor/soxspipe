@@ -408,10 +408,11 @@ def test_response_function_closes_the_standard_extraction_file(
             startNightDate="2024-01-02",
             orderJoins=["12"],
             airmass=1.2,
+            exptime=30.0,
         )
         gc.collect()
 
-    # ASSERT: THE CONSTRUCTOR REALLY READ THE EXTRACTION HEADER
+    # ASSERT: THE CONSTRUCTOR REALLY READ THE EXTRACTION HEADER, AND TOOK THE EXPOSURE TIME THE CALLER GAVE
     assert response.arm == "VIS"
     assert np.isclose(response.texp, 30.0)
 

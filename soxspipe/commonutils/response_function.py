@@ -102,6 +102,9 @@ class response_function:
         - ``airmass`` -- the airmass of the standard for the UVB/VIS extinction correction: the ``mean_airmass`` of the
           raw frames that contributed to its extraction, as flux calibration uses (DY-1713). Required for UVB and VIS.
           Default None.
+        - ``exptime`` -- the exposure time in seconds of one frame of the standard, which the counts are divided by. The
+          recipe passes it, because the merged spectrum holds the summed exposure time of all its frames (DY-2356).
+          Required.
 
     **Usage:**
 
@@ -114,6 +117,8 @@ class response_function:
     from soxspipe.commonutils.sequence_airmass import mean_airmass
     # THE RAW FRAMES THAT CONTRIBUTED TO THE STANDARD'S EXTRACTION
     airmass = mean_airmass([frame.header for frame in standardFrames], kw, log)
+    # THE FRAMES SHARE ONE EXPOSURE TIME (require_equal_exposure_times)
+    exptime = float(standardFrames[0].header[kw("EXPTIME")])
     response = response_function(
         log=log,
         settings=settings,
@@ -126,6 +131,7 @@ class response_function:
         stdNotFlatExtractionPath=stdNotFlatExtractionPath,
         orderJoins=orderJoins,
         airmass=airmass,
+        exptime=exptime,
     )
     qcTable, productsTable = response.get()
     ```
@@ -144,6 +150,8 @@ class response_function:
         stdNotFlatExtractionPath="",
         orderJoins=None,
         airmass=None,
+        *,
+        exptime,
     ):
         self.log = log
         log.debug("instansiating a new 'response_function' object")
@@ -172,7 +180,7 @@ class response_function:
         self.arm = self.header[kw("SEQ_ARM")].strip().upper()  # KW lookup
         self.detectorParams = detector_lookup(log=log, settings=settings).get(self.arm)
         self.dateObs = self.header[kw("DATE_OBS")]
-        self.texp = float(self.header[kw("EXPTIME")])
+        self.texp = float(exptime)
         self.dispersionBinning = dispersion_binning(self.header, self.arm, kw)
 
         # CONVERTING EXTRACTION (BACK) TO DATAFRAME

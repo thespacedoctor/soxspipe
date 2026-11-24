@@ -18,6 +18,7 @@ from soxspipe.commonutils.offset_frames import (
     SKY_TYPE,
     classify_offset_frames,
 )
+from soxspipe.commonutils.on_target_frames import frames_named
 from soxspipe.commonutils.toolkit import (
     concat_tables,
     get_calibrations_path,
@@ -178,6 +179,8 @@ class soxs_offset(soxs_nod):
         allObjectFrames, allFilenames = self._read_offset_object_frames(kw)
         # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
         self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
+        # THE LIST HOLDS EVERY FRAME NOW, BECAUSE THE PRODUCT WRITES SCRUB THE HEADERS. ONLY THE ON FRAMES STAY IN IT
+        self._build_on_target_frames(allFilenames)
         master_flat, orderTablePath, responseFunctionPath = self._read_calibration_inputs(kw, arm)
 
         quicklook_image(
@@ -197,6 +200,8 @@ class soxs_offset(soxs_nod):
         )
         # THE SPLIT HOLDS THE FRAMES NOW. DROPPING THIS LIST LETS THE ALIGNED FRAMES REPLACE THE ORIGINALS IN MEMORY
         del allObjectFrames
+        # AN OFF FRAME IS AN INPUT OF THE PRODUCT, BUT ITS LIGHT IS SKY ONLY
+        self.onTargetFrames = frames_named(self.onTargetCandidates, allFrameONNames)
 
         forceFailure = False
         shouldStack = self._should_align_and_stack()
@@ -242,6 +247,20 @@ class soxs_offset(soxs_nod):
         self.log.debug("completed the ``produce_product`` method")
 
         return productPath, qcTable
+
+    @staticmethod
+    def _on_target_names(cycleFrames):
+        """*the file names of the frames of the cycle pass that are on target: the ON frames*
+
+        **Key Arguments:**
+
+        - ``cycleFrames`` -- the ON frames, OFF frames and their file names
+
+        **Return:**
+
+        - ``names`` -- the file names of the ON frames
+        """
+        return list(cycleFrames[2])
 
     def _inspect_each_cycle(self, cycleFrames, orderTablePath, master_flat):
         """*extract, plot and report each ON-OFF cycle on its own, without flux calibration or a response curve*
@@ -505,6 +524,9 @@ class soxs_offset(soxs_nod):
             # A CYCLE WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO KEEP THE LATEST ONES AN EARLIER CYCLE FOUND
             if cycleJoins is not None:
                 orderJoins = cycleJoins
+            self._leave_untraced_frames_out(
+                (mergedSpectrumDF_A,), ([frameONName],), (f"ON frame of cycle {sequenceCount}",)
+            )
             allSpectrumA = (
                 mergedSpectrumDF_A if sequenceCount == 1 else self._append_spectrum(allSpectrumA, mergedSpectrumDF_A)
             )
@@ -609,6 +631,8 @@ class soxs_offset(soxs_nod):
                 stdNotFlatExtractionPath=extractionPath_notflat,
                 orderJoins=orderJoins,
                 airmass=mean_airmass([frame.header for frame in allFrameON], self.kw, self.log),
+                # THE MERGED SPECTRUM HOLDS THE SUMMED EXPOSURE TIME OF THE FRAMES, THE COUNTS ARE FOR ONE OF THEM
+                exptime=float(allFrameON[0].header[self.kw("EXPTIME")]),
             )
             self.qc, self.products, forceFailure = response.get()
 

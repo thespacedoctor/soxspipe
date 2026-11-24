@@ -108,6 +108,7 @@ def _build_response_product(tmp_path: Path, log: object, monkeypatch: pytest.Mon
         stdNotFlatExtractionPath=str(unflattenedPath),
         orderJoins={"1-3": 600.0},
         airmass=1.0,
+        exptime=EXPOSURE_TIME,
     )
     response.get()
     return tmp_path / "products" / "SYNTHETIC_RESP.fits"

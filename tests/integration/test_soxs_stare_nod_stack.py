@@ -213,6 +213,21 @@ def test_the_dark_is_what_the_nir_frames_are_detrended_with(
     assert [(call["master_bias"], call["dark"]) for call in detrends] == [(False, "DARK")] * 4
 
 
+def test_each_nod_position_stack_records_the_file_names_of_its_frames(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
+) -> None:
+    # ARRANGE
+    recipe = _recipe(log, tmp_path, monkeypatch, scene)
+    _record_detrend(recipe, monkeypatch)
+
+    # ACT: THE FRAMES ARE READ A, B, A, B
+    stackA, stackB = _stack_positions(recipe, scene, _frames(scene))
+
+    # ASSERT
+    assert stackA.frameNames == ("frame-0.fits", "frame-2.fits")
+    assert stackB.frameNames == ("frame-1.fits", "frame-3.fits")
+
+
 def test_each_nod_position_is_stacked_on_its_own_and_the_b_object_stays_where_it_is(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scene: Any
 ) -> None:

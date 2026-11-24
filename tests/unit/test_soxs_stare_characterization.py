@@ -1211,8 +1211,17 @@ def test_the_not_flattened_response_extraction_is_handed_the_flat_pass(
     recipe.kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
     handoff = object()
 
-    # ACT
-    recipe._generate_response_curve("frame", "sky", "map.fits", "disp.fits", "flat.fits", {}, handoff, objectFrames=[])
+    # ACT: THE RESPONSE TAKES THE EXPOSURE TIME OF A FRAME OF THE STANDARD (DY-2356)
+    recipe._generate_response_curve(
+        "frame",
+        "sky",
+        "map.fits",
+        "disp.fits",
+        "flat.fits",
+        {},
+        handoff,
+        objectFrames=[CCDData([[1.0]], unit="electron", meta={"EXPTIME": 30.0})],
+    )
 
     # ASSERT
     assert len(built) == 1

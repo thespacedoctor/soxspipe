@@ -50,6 +50,7 @@ PRIMARY_CARDS: dict[str, object] = {
     "OBSTECH": "ECHELLE,SLIT,STARE",
     "FLUXCAL": "ABSOLUTE",
     "PROV1": "SOXS.2026-01-02T03:04:05.678",
+    "PROV2": "SOXS.2026-01-02T03:14:05.678",
     "SPECSYS": "BARYCENT",
     "CONTNORM": False,
     "TOT_FLUX": False,

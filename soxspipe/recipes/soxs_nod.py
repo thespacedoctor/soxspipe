@@ -16,6 +16,7 @@ from contextlib import closing
 from types import MappingProxyType
 
 from soxspipe.commonutils.offset_frames import SKY_TYPE
+from soxspipe.commonutils.on_target_frames import build_on_target_frames, frames_named, without_frames
 from soxspipe.commonutils.spectrum_names import SPECTRUM_SUFFIX
 from soxspipe.commonutils.toolkit import (
     concat_tables,
@@ -85,6 +86,10 @@ class soxs_nod(extraction_stacking, base_recipe):
     # A NODDING FRAME TAKES NO DARK, AS A-B REMOVES IT, SO A MASTER DARK IN A NIR NOD SOF DOES NOT SET THE READ NOISE
     # OR ADD TO THE SKY-FIT NOISE (DY-2335, DY-2341). THE STARE RECIPE KEEPS IT
     usesMasterDarkReadNoise: bool = False
+
+    # EVERY FRAME OF THE SOF AS AN ENTRY, OFF FRAMES INCLUDED, OR None WHEN THE RECIPE HAS NOT BUILT THE LIST. THE
+    # ON-TARGET LIST OF A PASS IS A SELECTION OF IT (DY-2356)
+    onTargetCandidates = None
 
     def __init__(
         self,
@@ -336,6 +341,8 @@ class soxs_nod(extraction_stacking, base_recipe):
         allObjectFrames, allFilenames = self._read_nod_object_frames(kw)
         # THE ATTACHED-ARC TEST MEASURES THE ARC FROM THE FIRST START AND LAST END OF THE BLOCK (DY-1666)
         self.scienceHeaders = [frame.header.copy() for frame in allObjectFrames]
+        # EVERY A AND B FRAME IS ON TARGET. THE LIST IS BUILT NOW, BECAUSE THE PRODUCT WRITES SCRUB THE HEADERS
+        self._build_on_target_frames(allFilenames)
         master_flat, orderTablePath, responseFunctionPath = self._read_nod_calibration_inputs(kw, arm)
 
         quicklook_image(
@@ -379,6 +386,7 @@ class soxs_nod(extraction_stacking, base_recipe):
                 orderTablePath=orderTablePath,
                 master_flat=master_flat,
                 shiftAndAdd=shiftAndAdd,
+                frameNames=(allFrameANames, allFrameBNames),
             )
         else:
             stackedSpectrum, orderJoins = self._reduce_each_nodding_cycle(
@@ -408,6 +416,41 @@ class soxs_nod(extraction_stacking, base_recipe):
         self.log.debug("completed the ``produce_product`` method")
 
         return productPath, qcTable
+
+    def _build_on_target_frames(self, allFilenames):
+        """*list the frames the recipe read, and take every one of them as on target*
+
+        Sets ``self.onTargetCandidates`` and ``self.onTargetFrames``. A recipe with frames that are not on target
+        narrows ``onTargetFrames`` afterwards.
+
+        **Key Arguments:**
+
+        - ``allFilenames`` -- the file names of the frames, in the order of ``self.scienceHeaders``
+        """
+        self.onTargetCandidates = build_on_target_frames(self.scienceHeaders, allFilenames, self.kw, self.arm, self.log)
+        self.onTargetFrames = self.onTargetCandidates
+
+    def _leave_untraced_frames_out(self, spectra, frameNames, labels):
+        """*take the frames of a position that found no object trace out of the on-target list*
+
+        A position with no trace is not in the merged spectrum. Only its frames leave, with a warning that names
+        them (Dave, 2026-11-24). A spectrum of ``False`` means the pass made one extraction of the combined frame, so
+        no position is left out. Updates ``self.onTargetFrames``.
+
+        **Key Arguments:**
+
+        - ``spectra`` -- the order-merged spectrum of each position, *None* for a position with no trace
+        - ``frameNames`` -- the file names of the frames of each position, in the order of ``spectra``
+        - ``labels`` -- what each position's frames are called in the warning, in the order of ``spectra``: for
+          example ``A frame of cycle 2``
+        """
+        if self.onTargetFrames is None:
+            return
+        for spectrum, names, label in zip(spectra, frameNames, labels, strict=True):
+            if spectrum is None:
+                self.onTargetFrames = without_frames(
+                    self.onTargetFrames, names, f"no object trace was found in the {label}", self.log
+                )
 
     def _should_align_and_stack(self):
         """*decide whether to align and stack the frames before extraction, or to extract each cycle on its own*
@@ -507,7 +550,10 @@ class soxs_nod(extraction_stacking, base_recipe):
         import pandas as pd
 
         sofName, filenameTemplate, extractionNotes = self.sofName, self.filenameTemplate, self.extractionNotes
-        stackedTables = (self.qc, self.products)
+        stackedTables, stackedList = (self.qc, self.products), self.onTargetFrames
+        # THE STACKED PASS MAY HAVE LEFT FRAMES OUT. THIS PASS COUNTS ITS OWN CYCLES FROM THE FULL LIST
+        if self.onTargetCandidates is not None:
+            self.onTargetFrames = frames_named(self.onTargetCandidates, self._on_target_names(cycleFrames))
         templateStem, templateExtension = os.path.splitext(filenameTemplate)
         self.qc, self.products = self._empty_qc_and_product_tables(pd)
         self.extractionNotes = ()
@@ -520,11 +566,26 @@ class soxs_nod(extraction_stacking, base_recipe):
             isDone = True
         finally:
             self.sofName, self.filenameTemplate, self.extractionNotes = sofName, filenameTemplate, extractionNotes
+            self.onTargetFrames = stackedList
             # A PASS THAT FAILED MUST NOT TAKE THE QCS AND PRODUCTS OF THE STACKED PASS WITH IT
             if not isDone:
                 self.qc, self.products = stackedTables
         self.qc = self._concat_qc_tables([stackedQc, cycleQc])
         return self.qc
+
+    @staticmethod
+    def _on_target_names(cycleFrames):
+        """*the file names of the frames of the cycle pass that are on target: every A and B frame*
+
+        **Key Arguments:**
+
+        - ``cycleFrames`` -- the A frames, B frames and their file names, from `_copy_frames_for_cycle_pass`
+
+        **Return:**
+
+        - ``names`` -- the file names of the A and B frames
+        """
+        return [*cycleFrames[2], *cycleFrames[3]]
 
     def _inspect_each_cycle(self, cycleFrames, orderTablePath, master_flat):
         """*extract, plot and report each cycle on its own, without flux calibration or a response curve*
@@ -1107,6 +1168,11 @@ class soxs_nod(extraction_stacking, base_recipe):
             # A CYCLE WITH NO OBJECT TRACE REPORTS NO ORDER JOINS, SO KEEP THE LATEST ONES AN EARLIER CYCLE FOUND
             if cycleJoins is not None:
                 orderJoins = cycleJoins
+            self._leave_untraced_frames_out(
+                (mergedSpectrumDF_A, mergedSpectrumDF_B),
+                ([frameAName], [frameBName]),
+                (f"A frame of cycle {sequenceCount}", f"B frame of cycle {sequenceCount}"),
+            )
             if sequenceCount == 1:
                 allSpectrumA = mergedSpectrumDF_A
                 allSpectrumB = mergedSpectrumDF_B
@@ -1151,7 +1217,9 @@ class soxs_nod(extraction_stacking, base_recipe):
         found = [spectrum for spectrum in (spectra, newSpectrum) if spectrum is not None]
         return pd.concat(found) if found else None
 
-    def _reduce_stacked_ab_pair(self, allFrameA, allFrameB, orderTablePath, master_flat, shiftAndAdd=None):
+    def _reduce_stacked_ab_pair(
+        self, allFrameA, allFrameB, orderTablePath, master_flat, shiftAndAdd=None, frameNames=((), ())
+    ):
         """*stack the A and B frames, extract the pair, and build a response curve when requested*
 
         With a ``shiftAndAdd`` plan, the B-A difference is shifted onto the A-B difference and the two are averaged,
@@ -1164,6 +1232,8 @@ class soxs_nod(extraction_stacking, base_recipe):
         - ``orderTablePath`` -- the path to the order table
         - ``master_flat`` -- the master flat, or False
         - ``shiftAndAdd`` -- the ``shift_and_add_plan`` that combines the two differences, or *None*. Default *None*
+        - ``frameNames`` -- the file names of the A frames and of the B frames, which identify them in the on-target
+          list. Default ``((), ())`` leaves no frame out of it
 
         **Return:**
 
@@ -1204,6 +1274,9 @@ class soxs_nod(extraction_stacking, base_recipe):
             shiftAndAdd=shiftAndAdd,
         )
         self._record_host_contamination(aFrame)
+        self._leave_untraced_frames_out(
+            (mergedSpectrumDF_A, mergedSpectrumDF_B), frameNames, ("stacked A frames", "stacked B frames")
+        )
         stackedSpectrum, extractionPath = self.stack_extractions(
             self._spectra_to_stack(mergedSpectrumDF_A, mergedSpectrumDF_B), orderJoins=orderJoins
         )
@@ -1241,6 +1314,8 @@ class soxs_nod(extraction_stacking, base_recipe):
                 stdNotFlatExtractionPath=extractionPath_notflat,
                 orderJoins=orderJoins,
                 airmass=mean_airmass([frame.header for frame in allFrameA + allFrameB], self.kw, self.log),
+                # THE MERGED SPECTRUM HOLDS THE SUMMED EXPOSURE TIME OF THE FRAMES, THE COUNTS ARE FOR ONE OF THEM
+                exptime=float(allFrameA[0].header[self.kw("EXPTIME")]),
             )
             self.qc, self.products, forceFailure = response.get()
 

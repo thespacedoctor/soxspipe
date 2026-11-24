@@ -19,6 +19,7 @@ from .base_util import base_util
 from .extraction_notes import extraction_note_logger, format_extraction_notes
 from .figure_guard import closes_its_figures
 from .filenamer import filenamer
+from .on_target_frames import with_frame_accounting
 from .spectrum_names import SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 
 if TYPE_CHECKING:
@@ -178,6 +179,8 @@ class horne_extraction(base_util):
     - ``readNoise`` -- the read noise (e-) of one integration that the recipe resolved for the frame (the
       ``ESO DET NDSAMPLES`` table for SOXS NIR), for the signal-to-noise of the sky lines. Default *None* uses the
       detector default of the extractor's own detector lookup (DY-2323)
+    - ``onTargetFrames`` -- the on-target frames that reach this extraction (``on_target_frame`` tuple). The merged
+      spectrum gets their frame-accounting cards, on a copy of its header. Default *None* adds none (DY-2356)
 
     **Usage:**
 
@@ -245,6 +248,8 @@ class horne_extraction(base_util):
     objectTracePath = None
     # THE TRACE'S PIXEL TABLE, OR None WHEN THERE IS NOTHING TO EXTRACT
     orderPixelTable = None
+    # THE ON-TARGET FRAMES THAT GIVE THE MERGED SPECTRUM ITS FRAME-ACCOUNTING CARDS, OR None WHEN IT GETS NONE
+    onTargetFrames = None
 
     def __init__(
         self,
@@ -271,6 +276,7 @@ class horne_extraction(base_util):
         slitOffsetsArcsec=None,
         carrySkyCounts=True,
         readNoise=None,
+        onTargetFrames=None,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData
@@ -304,6 +310,7 @@ class horne_extraction(base_util):
         self.slitOffsetsArcsec = slitOffsetsArcsec
         self.carrySkyCounts = carrySkyCounts
         self.readNoise = readNoise
+        self.onTargetFrames = onTargetFrames
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -761,7 +768,7 @@ class horne_extraction(base_util):
             write_fits_table_to_disk(
                 log=self.log,
                 settings=self.settings,
-                header=header,
+                header=with_frame_accounting(header, self.onTargetFrames),
                 tables=[mergedTable],
                 filePath=filePath,
                 qc=self.qc,
