@@ -4196,8 +4196,9 @@ class data_organiser:
         """*name the folder a recipe writes its products to, and the marker it adds to their file names*
 
         The folder name comes from the same function as the recipe's own output folder. A nodding SOF that the
-        settings reduce as stare is written by the stare recipe, to the stare folder, with the stare-mode marker. A
-        nodding standard-star SOF is not covered, and keeps the nod names.
+        settings reduce as stare is written by the stare recipe, to the stare folder, with the stare-mode marker. The
+        ``reduce-as-stare`` key of the ``soxs-nod`` block decides for a science SOF (``nod_obj``) and the key of the
+        ``soxs-nod-std`` block for a standard-star SOF (``nod_std``).
 
         **Key Arguments:**
 
@@ -4218,7 +4219,7 @@ class data_organiser:
         from soxspipe.commonutils.toolkit import recipe_directory_name
 
         recipeName, productMarker = "soxs-" + recipe.replace("_", "-"), ""
-        if recipe == "nod_obj":
+        if recipe in ("nod_obj", "nod_std"):
             settings = getattr(self, "settings", None)
             if settings is None:
                 # `prepare` AND THE SESSION REGROUP LOAD THE SETTINGS BEFORE THEY GROUP THE FRAMES
@@ -4227,7 +4228,7 @@ class data_organiser:
                     "whatever `reduce-as-stare` says"
                 )
                 settings = {}
-            recipeName, productMarker = nod_recipe_name_and_marker(settings, isStandard=False)
+            recipeName, productMarker = nod_recipe_name_and_marker(settings, isStandard=recipe == "nod_std")
         return recipe_directory_name(recipeName), productMarker
 
     def predict_product_frames(self, productTypes, rawGroups, recipe):
