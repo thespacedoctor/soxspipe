@@ -9,6 +9,13 @@ Date Created
 : June 9, 2026
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from astropy.io.fits import Header
+
 PER_ARM_MODE = "per-arm"
 JOINED_MODE = "joined"
 HEADER_MODES = (PER_ARM_MODE, JOINED_MODE)
@@ -54,6 +61,16 @@ TABLE_DROPPED_CARDS = ("BUNIT", "SXSPRE", *CCDPROC_CARDS)
 MAX_VALUE_LENGTH = 68
 CARD_LENGTH = 80
 
+# THE ESO CARDS THAT `basic_header_scrubbing` REMOVES FROM EVERY PRODUCT (THE DPR CARDS) AND THE ONE IT RENAMES
+# (TEL TARG EQUINOX BECOMES EQUINOX), AS ASTROPY NAMES THEM. EVERY OTHER `HIERARCH ESO` CARD STAYS IN A PER-ARM PRODUCT
+SCRUBBED_ESO_CARDS = ("ESO DPR TECH", "ESO DPR CATG", "ESO DPR TYPE")
+RENAMED_ESO_CARDS = {"ESO TEL TARG EQUINOX": "EQUINOX"}
+
+# THE FIXED IDENTIFICATION VALUES OF A PHASE 3 TABLE PRODUCT, AS THE WRITER SETS THEM AND THE CHECKER LOOKS FOR THEM
+ORIGIN_VALUE = "ESO"
+PIPE_ID_PREFIX = "soxspipe/v"
+SPECTRUM_EXTNAME = "SPECTRUM"
+
 
 def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=False):
     """
@@ -80,22 +97,16 @@ def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=Fal
     ```
     """
     log.debug("starting the ``basic_header_scrubbing`` method")
-    from soxspipe.commonutils import keyword_lookup
     from soxspipe.commonutils.fits_headers import set_header_card
 
     if mode not in HEADER_MODES:
         raise ValueError(f"basic_header_scrubbing: mode must be one of {HEADER_MODES}, not {mode!r}")
 
-    # KEYWORD LOOKUP OBJECT - LOOKUP KEYWORD FROM DICTIONARY IN RESOURCES
-    # FOLDER
-    kw = keyword_lookup(log=log, settings=settings).get
-
-    removeKw = ["DPR_TECH", "DPR_CATG", "DPR_TYPE"]
-    for k in removeKw:
+    for k in SCRUBBED_ESO_CARDS:
         try:
-            header.pop(kw(k))
+            header.pop(k)
         except KeyError as e:
-            log.debug(f"basic_header_scrubbing: `header.pop(kw(k))` failed, continuing: {e}")
+            log.debug(f"basic_header_scrubbing: `header.pop(k)` failed, continuing: {e}")
 
     if "NAXIS" in header and header["NAXIS"] != 0 and "INHERIT" in header:
         del header["INHERIT"]
@@ -109,10 +120,7 @@ def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=Fal
             log.debug(f"basic_header_scrubbing: `header.pop(k)` failed, continuing: {e}")
 
     # KEYWORDS TO RENAME
-    renameKw = {
-        "RADECSYS": "RADESYS",
-        "HIERARCH ESO TEL TARG EQUINOX": "EQUINOX",
-    }
+    renameKw = {"RADECSYS": "RADESYS", **RENAMED_ESO_CARDS}
     for oldKw, newKw in renameKw.items():
         if oldKw in header:
             comment = header.comments[oldKw]
@@ -270,11 +278,11 @@ def pipe_id():
     """
     from soxspipe.__version__ import __version__
 
-    return f"soxspipe/v{__version__}"
+    return f"{PIPE_ID_PREFIX}{__version__}"
 
 
-def validate_header_cards(header, hduName):
-    """*raise an error when a header holds a card that ESO rejects*
+def header_card_faults(header: Header, hduName: str) -> list[str]:
+    """*return a message for each card of a header that ESO rejects*
 
     ESO rejects a string value over 68 characters, and any ``CONTINUE`` card. A card that astropy would write as
     ``CONTINUE`` cards is the same fault. Commentary cards are not values and are not checked.
@@ -282,7 +290,47 @@ def validate_header_cards(header, hduName):
     **Key Arguments:**
 
     - ``header`` -- the header to check
+    - ``hduName`` -- the name of the HDU, for the messages
+
+    **Return:**
+
+    - ``faults`` -- a list of messages, empty when the header is fine
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.phase3 import header_card_faults
+    faults = header_card_faults(header, "primary")
+    ```
+    """
+    faults = []
+    for card in header.cards:
+        keyword = card.keyword
+        if keyword in ("COMMENT", "HISTORY", ""):
+            continue
+        if keyword == "CONTINUE":
+            faults.append(f"The {hduName} header holds a CONTINUE card, which ESO rejects")
+        elif isinstance(card.value, str) and len(card.value) > MAX_VALUE_LENGTH:
+            faults.append(
+                f"The {hduName} header value of {keyword} is {len(card.value)} characters, over the "
+                f"{MAX_VALUE_LENGTH} that ESO accepts"
+            )
+        elif len(card.image) > CARD_LENGTH:
+            faults.append(f"The {hduName} header card {keyword} is too long for one card and would need CONTINUE cards")
+    return faults
+
+
+def validate_header_cards(header: Header, hduName: str) -> None:
+    """*raise an error when a header holds a card that ESO rejects*
+
+    **Key Arguments:**
+
+    - ``header`` -- the header to check
     - ``hduName`` -- the name of the HDU, for the error message
+
+    **Raises:**
+
+    - `ValueError` for the first card that ``header_card_faults`` finds
 
     **Usage:**
 
@@ -291,21 +339,9 @@ def validate_header_cards(header, hduName):
     validate_header_cards(header, "primary")
     ```
     """
-    for card in header.cards:
-        keyword = card.keyword
-        if keyword in ("COMMENT", "HISTORY", ""):
-            continue
-        if keyword == "CONTINUE":
-            raise ValueError(f"The {hduName} header holds a CONTINUE card, which ESO rejects")
-        if isinstance(card.value, str) and len(card.value) > MAX_VALUE_LENGTH:
-            raise ValueError(
-                f"The {hduName} header value of {keyword} is {len(card.value)} characters, over the "
-                f"{MAX_VALUE_LENGTH} that ESO accepts"
-            )
-        if len(card.image) > CARD_LENGTH:
-            raise ValueError(
-                f"The {hduName} header card {keyword} is too long for one card and would need CONTINUE cards"
-            )
+    faults = header_card_faults(header, hduName)
+    if faults:
+        raise ValueError(faults[0])
 
 
 def _set_identification_cards(header, filePath):
@@ -316,7 +352,7 @@ def _set_identification_cards(header, filePath):
 
     header.remove("EXTNAME", ignore_missing=True, remove_all=True)
     set_header_card(header, "ORIGFILE", os.path.basename(str(filePath)), "File name of this product")
-    set_header_card(header, "ORIGIN", "ESO", "Processing system")
+    set_header_card(header, "ORIGIN", ORIGIN_VALUE, "Processing system")
     set_header_card(header, "PROCSOFT", pipe_id(), "Data reduction software")
     set_header_card(header, "REFERENC", "", "Reference publication")
 

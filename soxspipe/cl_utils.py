@@ -10,6 +10,7 @@ Usage:
     soxspipe session ((ls|new|<sessionId>)|new <sessionId>)
     soxspipe list (ob|sof) [<workspaceDirectory> -s <pathToSettingsFile>]
     soxspipe raw sof <sofFile> [<workspaceDirectory> -s <pathToSettingsFile>]
+    soxspipe check-phase3 <file>...
     soxspipe [-Vxd] mdark <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] mbias <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile>]
     soxspipe [-Vxd] disp_solution <inputFrames> [-o <outputDirectory> -s <pathToSettingsFile> --poly=<ooww>]
@@ -31,6 +32,7 @@ Options:
     reduce all                             reduce all of the data in a workspace.
     reduce sof                             reduce a single science object SOF file.
     raw sof                                export all the raw frames needed to reduce a science object SOF file to a directory called `exported` in the current working directory.
+    check-phase3                           check ESO Phase 3 products against the standard; exits 1 if any file fails
 
     mbias                                  the master bias recipe
     mdark                                  the master dark recipe
@@ -82,6 +84,10 @@ from docopt import docopt
 from fundamentals import times, tools
 
 os.environ["TERM"] = "vt100"
+
+# `fundamentals.tools` EXECS EACH DOCOPT KEY AS A PYTHON VARIABLE NAME, AND `check-phase3` IS NOT A VALID ONE.
+# THE COMMAND RUNS BEFORE `tools`, SO ITS LINES ARE LEFT OUT OF THE USAGE TEXT THAT `tools` READS.
+TOOLS_DOC = "\n".join(line for line in __doc__.split("\n") if "check-phase3" not in line)
 
 # THE SINGLE-RECIPE COMMANDS WHOSE PRODUCT IS CHECKED BEFORE THE SETTINGS LOAD. THE NOD COMMANDS WAIT FOR
 # THEIR SETTINGS, WHICH CHOOSE THE NOD OR THE STARE MODE
@@ -263,6 +269,11 @@ def main(arguments=None):
     from soxspipe.commonutils.scratch import removing_new_scratch
 
     arguments = docopt(__doc__)
+    if arguments["check-phase3"]:
+        # THE CHECKER READS THE FILES NAMED ON THE COMMAND LINE ONLY: NO WORKSPACE, SESSION OR SETTINGS
+        from soxspipe.commonutils.phase3_check import check_phase3_command
+
+        sys.exit(check_phase3_command(arguments["<file>"]))
     if arguments["<workspaceDirectory>"]:
         # CHANGE INTO WORKSPACE DIRECTORY
         os.chdir(arguments["<workspaceDirectory>"])
@@ -295,13 +306,13 @@ def main(arguments=None):
             sys.argv.append(settingsFile)
 
         if "prep" in sys.argv or "watch" in sys.argv or ("reduce" in sys.argv and "-s" not in sys.argv):
-            arguments = docopt(__doc__)
+            arguments = docopt(TOOLS_DOC)
             if "--settings" in arguments.keys():
                 del arguments["--settings"]
 
     su = tools(
         arguments=arguments,
-        docString=__doc__,
+        docString=TOOLS_DOC,
         logLevel="WARNING",
         options_first=False,
         projectName="soxspipe",
@@ -733,7 +744,7 @@ def main(arguments=None):
                         arguments["--settings"] = settingsFile
                         su = tools(
                             arguments=arguments,
-                            docString=__doc__,
+                            docString=TOOLS_DOC,
                             logLevel="WARNING",
                             options_first=False,
                             projectName="soxspipe",
@@ -768,7 +779,7 @@ def main(arguments=None):
 
     su = tools(
         arguments=arguments,
-        docString=__doc__,
+        docString=TOOLS_DOC,
         logLevel="WARNING",
         options_first=False,
         projectName="soxspipe",
