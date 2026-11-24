@@ -258,12 +258,13 @@ def test_normalise_flats_scales_each_frame_to_its_order_centre_mean(
     assert pd.api.types.is_numeric_dtype(recipe.qc["qc_value"])
 
 
-def test_ordexp_qc_reaches_the_fits_header_as_numeric_cards(
+def _ordexp_product_header(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     log: Any,
-) -> None:
-    """Header-flagged ORDEXP QCs are written as numbers, not quoted strings."""
+    flatLevels: tuple[float, float],
+) -> fits.Header:
+    """Normalise two flat frames of the given levels and return the header of a product carrying their ORDEXP QCs."""
     recipe = _recipe(log)
     orderTable = tmp_path / "orders.fits"
     fits.PrimaryHDU().writeto(orderTable)
@@ -273,15 +274,37 @@ def test_ordexp_qc_reaches_the_fits_header_as_numeric_cards(
         lambda **kwargs: (None, _centre_pixels(), None),
     )
     monkeypatch.setattr(mflatModule, "quicklook_image", lambda **kwargs: None)
-    recipe.normalise_flats([_frame(np.full((5, 5), 10.123456)), _frame(np.full((5, 5), 20.0))], str(orderTable))
+    recipe.normalise_flats([_frame(np.full((5, 5), level)) for level in flatLevels], str(orderTable))
     writer = _write_recipe(tmp_path, log)
     writer.qc = recipe.qc
-
     filepath = writer._write(_output_frame(np.full((4, 4), 7.0)), str(tmp_path))
+    return CCDData.read(filepath, hdu_uncertainty="ERRS", hdu_mask="QUAL").header
 
-    header = CCDData.read(filepath, hdu_uncertainty="ERRS", hdu_mask="QUAL").header
+
+def test_ordexp_qc_reaches_the_fits_header_as_numeric_cards(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """Header-flagged ORDEXP QCs are written as numbers, not quoted strings."""
+    header = _ordexp_product_header(monkeypatch, tmp_path, log, (10.123456, 20.0))
+
     for name in ("ORDEXP10", "ORDEXP50", "ORDEXP90"):
         assert isinstance(header[f"ESO QC {name}"], float)
+
+
+def test_ordexp_qc_header_comments_describe_the_in_order_flux_in_full(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    log: Any,
+) -> None:
+    """ORDEXP cards say they measure the in-order flux (DY-2318), and the written comment equals the full qcComment."""
+    # ACT
+    header = _ordexp_product_header(monkeypatch, tmp_path, log, (61234.5, 65432.1))
+
+    # ASSERT
+    for name, percentile in (("ORDEXP10", "P10"), ("ORDEXP50", "P50"), ("ORDEXP90", "P90")):
+        assert header.comments[f"ESO QC {name}"] == f"[e-] in-order flux {percentile}, median of frames"
 
 
 def test_mask_low_sensitivity_pixels_returns_order_medians(

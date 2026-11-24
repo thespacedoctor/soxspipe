@@ -619,7 +619,7 @@ def test_the_settings_are_read_and_checked_once_for_the_search(log: Any, no_cata
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("failure", ["missing", "malformed", "invalid-yaml"])
+@pytest.mark.parametrize("failure", ["missing", "malformed", "invalid-yaml", "wavelength-overflows-a-float"])
 def test_a_line_list_that_cannot_be_read_keeps_the_detected_windows_and_logs_the_traceback(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, no_catalogue_skylines: None, failure: str
 ) -> None:
@@ -630,14 +630,23 @@ def test_a_line_list_that_cannot_be_read_keeps_the_detected_windows_and_logs_the
         path.write_text("lines: 5\n")
     elif failure == "invalid-yaml":
         path.write_text("lines: [unclosed\n")
+    elif failure == "wavelength-overflows-a-float":
+        path.write_text("lines:\n  - {name: Halpha, wavelength-nm: 1" + "0" * 400 + "}\n")
     monkeypatch.setattr(host_line_mask, "HOST_LINES_FILE", path)
     log = _TracebackLogger()
     subtractor = _subtractor(log)
     orders = _clipped_orders(subtractor, [_hosted_order(TWO_STRONG_LINES)])
+    flaggedBefore = orders[0]["flagged_all_clipped"].copy()
 
     subtractor._mask_host_lines(orders)
 
     assert len(subtractor.hostLineWindows) == 2
+    for restNm in TWO_STRONG_LINES:
+        isInLine = (orders[0]["wavelength"] - restNm * (1 + HOST_Z)).abs() < 0.1
+        assert orders[0].loc[isInLine, "flagged_all_clipped"].all(), restNm
+    for restNm in (NII_6548_REST_NM, *SII_REST_NM):
+        isInLine = (orders[0]["wavelength"] - restNm * (1 + HOST_Z)).abs() < 0.1
+        assert orders[0].loc[isInLine, "flagged_all_clipped"].equals(flaggedBefore[isInLine]), restNm
     assert subtractor.hostRedshift is None
     assert subtractor.hostInferredWindows == ()
     assert [kwargs.get("exc_info") for message, kwargs in log.warnings if "line list" in message] == [True]
