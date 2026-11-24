@@ -856,10 +856,12 @@ class create_dispersion_map:
 
         # CHECK IF SHIFT IS SIGNIFICANT (> 0.4 PIXELS)
         if abs(centreATop - centreABottom) > 0.4:
-            if self.inst.upper() == "SOXS" and self.arm.upper() == "VIS":
-                shift = self._vis_pinhole_shift(orderPixelTable, mask, order_num, centreABottom, centreATop)
+            if self.inst.upper() == "SOXS":
+                # BOTH SOXS ARMS: VIS GROUPS BY ORDER (DY-1618), NIR ON A 3x3 DETECTOR GRID (DY-1717)
+                shift = self._soxs_pinhole_shift(orderPixelTable, mask, order_num, centreABottom, centreATop)
             else:
-                # USE LARGER SHIFT
+                # X-SHOOTER KEEPS THE LARGER END SHIFT: ON THE UNIT-TEST ARCS NO END PINHOLE LATCHES, AND THE
+                # SLIT-CENTRED STEP WOULD PICK A WHOLE SPACING FOR 3 UVB AND VIS GROUPS THAT NEED NONE (DY-1717)
                 shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
 
             # APPLY CORRECTION
@@ -876,13 +878,17 @@ class create_dispersion_map:
 
         return orderPixelTable
 
-    def _vis_pinhole_shift(self, orderPixelTable, mask, order_num, centreABottom, centreATop):
-        """*return the first-iteration multi-pinhole shift for SOXS VIS: whole pinhole spacings plus a remainder*
+    def _soxs_pinhole_shift(self, orderPixelTable, mask, order_num, centreABottom, centreATop):
+        """*return the first-iteration multi-pinhole shift for SOXS: whole pinhole spacings plus a remainder*
 
         A jump at one slit end is a real offset of one pinhole spacing or a missing end pinhole. The image decides the
         whole-spacing part when it can: a real pinhole beyond the opposite end of the predicted pattern means the
         pattern is one spacing off. Otherwise the slit edges decide (DY-1618). The remainder, the median over all
-        pinholes, measures the sub-spacing part, because a lost end pinhole is a minority (DY-1735).
+        pinholes, measures the sub-spacing part, because a lost end pinhole is a minority (DY-1735). A gradient across
+        the slit therefore moves the group by its median offset, not by the larger end shift.
+
+        VIS shift groups are orders. NIR shift groups are cells of a 3x3 grid on the detector and hold sets from
+        several orders, so each set is judged against the slit edges of its own order (DY-1717).
 
         **Key Arguments:**
 
