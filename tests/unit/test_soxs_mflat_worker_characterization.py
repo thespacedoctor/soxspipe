@@ -217,9 +217,9 @@ def test_first_pass_appends_ordexp_rows_onto_the_declared_qc_table(
     assert recipe.qc["qc_value"].map(type).eq(float).all()
     assert list(recipe.qc["qc_unit"]) == ["electrons"] * 3
     assert list(recipe.qc["qc_comment"]) == [
-        "[e-] 10th percentile inter-order flux",
-        "[e-] 50th percentile inter-order flux",
-        "[e-] 90th percentile inter-order flux",
+        "[e-] in-order flux P10, median of frames",
+        "[e-] in-order flux P50, median of frames",
+        "[e-] in-order flux P90, median of frames",
     ]
     assert list(recipe.qc["soxspipe_recipe"]) == ["soxs-mflat"] * 3
     assert list(recipe.qc["obs_date_utc"]) == [recipe.dateObs] * 3
