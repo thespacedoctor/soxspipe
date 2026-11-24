@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 import numpy as np
@@ -10,9 +10,11 @@ from astropy.io import fits
 from astropy.table import Column, Table
 
 from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
+from soxspipe.commonutils.phase3_check import FAILURE, check_phase3
 
 from .settings import pipeline_settings
 
+PRODUCT_NAME = "SOXS_20260102T030405_STARE_ph3.fits"
 SPECTRUM_LENGTH = 6
 WAVE_START_NM = 600.0
 WAVE_STEP_NM = 0.5
@@ -165,3 +167,34 @@ def phase3_spectrum_file(
         extname="SPECTRUM",
     )
     return destination
+
+
+def finding_messages(findings: list, severity: str) -> list[str]:
+    """Return the messages of the findings that have the given severity."""
+    return [finding.message for finding in findings if finding.severity == severity]
+
+
+def failure_messages(tmp_path: Path, log: object, **factoryArguments: object) -> list[str]:
+    """Write a product with ``phase3_spectrum_file(**factoryArguments)`` and return the failure messages."""
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log, **factoryArguments)
+    return finding_messages(check_phase3(product), FAILURE)
+
+
+def rewrite_product(path: Path, change: Callable[[fits.HDUList], fits.HDUList | None]) -> Path:
+    """Read a written product, let ``change`` break it, and write it back with fresh checksums."""
+    with fits.open(path) as hdus:
+        broken = change(hdus) or hdus
+        broken.writeto(path, checksum=True, overwrite=True)
+    return path
+
+
+def add_cards(
+    path: Path, primary: Mapping[str, object] | None = None, extension: Mapping[str, object] | None = None
+) -> Path:
+    """Add cards to the primary and extension headers of a written product."""
+
+    def add(hdus: fits.HDUList) -> None:
+        hdus[0].header.update(primary or {})
+        hdus[1].header.update(extension or {})
+
+    return rewrite_product(path, add)
