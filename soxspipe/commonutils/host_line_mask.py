@@ -345,8 +345,9 @@ def load_host_lines() -> tuple[tuple[str, float], ...]:
 
     **Raises:**
 
-    - ``ValueError`` -- naming the file, if it cannot be read (missing, no permission), is not valid YAML, or is not a
-      ``lines`` list of entries with a ``name`` and a numeric ``wavelength-nm``
+    - ``ValueError`` -- naming the file, if it cannot be read (missing, no permission, not UTF-8), is not valid YAML,
+      or is not a ``lines`` list of entries with a ``name`` and a numeric ``wavelength-nm`` that converts to a finite
+      float (a YAML integer too large for a float, an infinity or a NaN is rejected)
 
     **Usage:**
 
@@ -358,16 +359,20 @@ def load_host_lines() -> tuple[tuple[str, float], ...]:
     import yaml
 
     try:
-        with HOST_LINES_FILE.open() as stream:
+        with HOST_LINES_FILE.open(encoding="utf-8") as stream:
             content = yaml.safe_load(stream)
-    except (OSError, yaml.YAMLError) as e:
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as e:
         raise ValueError(f"{HOST_LINES_FILE.name} could not be read: {e!r}") from e
     try:
-        return tuple((str(entry["name"]), float(entry["wavelength-nm"])) for entry in content["lines"])
-    except (KeyError, TypeError, ValueError) as e:
+        lines = tuple((str(entry["name"]), float(entry["wavelength-nm"])) for entry in content["lines"])
+    except (KeyError, TypeError, ValueError, OverflowError) as e:
         raise ValueError(
             f"{HOST_LINES_FILE.name} must hold a list `lines` of entries with a name and wavelength-nm: {e!r}"
         ) from e
+    notFinite = [name for name, wavelength in lines if not math.isfinite(wavelength)]
+    if notFinite:
+        raise ValueError(f"{HOST_LINES_FILE.name} has a wavelength-nm that is not finite for: {', '.join(notFinite)}")
+    return lines
 
 
 def infer_host_redshift(
