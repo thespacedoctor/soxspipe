@@ -306,7 +306,7 @@ def _object_and_standard_rows(tmp_path, log, monkeypatch, organisers, stareBlock
             exptime=60.0,
             firstSecond=20,
             obsId="102",
-            # A STANDARD OUTSIDE THE STATIC LIBRARY IS FLAGGED TO IGNORE BY `prepare`
+            # GD71 IS IN THE STATIC STANDARDS LIBRARY, SO `prepare` DOES NOT FLAG THE FRAMES TO IGNORE
             obsName="GD71",
             tplStart="2024-01-02T04:00:00",
         ),
