@@ -319,8 +319,10 @@ def test_measure_line_position_selects_nearest_or_brightest_source_and_handles_i
     )
     stamp = CCDData(np.arange(36.0).reshape(6, 6), unit=u.adu)
 
+    # THE FIRST GUESS SITS AT STAMP (1.2, 1.2). THE STAMP CENTRE (2, 2) IS EQUIDISTANT FROM BOTH SOURCES, SO
+    # MEASURING FROM IT WOULD MAKE THE NEAREST CASE AMBIGUOUS (DY-2207)
     result = measure_line_position(
-        (stamp, 4, 10, 8, 14),
+        (stamp, 4, 10, 8, 14, 5.2, 9.2),
         log,
         windowHalf=2,
         iraf=True,
