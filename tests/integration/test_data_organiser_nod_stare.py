@@ -29,7 +29,9 @@ def _insert_frames(connection, frames):
     frames.loc[:, frames.columns.isin(columns)].to_sql("raw_frames", con=connection, index=False, if_exists="append")
 
 
-def _nir_frames(kind, count, *, dprType, tech, tplName, exptime, firstSecond=0):
+def _nir_frames(
+    kind, count, *, dprType, tech, tplName, exptime, firstSecond=0, obsId="101", obsName=None, tplStart=None
+):
     """Return ``count`` NIR exposures of one template run."""
     template = raw_frame_table().iloc[0].to_dict()
     rows = []
@@ -43,8 +45,8 @@ def _nir_frames(kind, count, *, dprType, tech, tplName, exptime, firstSecond=0):
                 "eso dpr catg": "SCIENCE" if kind == "nod" else "CALIB",
                 "eso dpr tech": tech,
                 "eso dpr type": dprType,
-                "eso obs id": "101",
-                "eso obs name": "OB 101",
+                "eso obs id": obsId,
+                "eso obs name": obsName or f"OB {obsId}",
                 "exptime": exptime,
                 "slit": "SLIT5.0" if kind == "nod" else "--",
                 "object": "SN2024abc" if kind == "nod" else "DARK",
@@ -52,7 +54,7 @@ def _nir_frames(kind, count, *, dprType, tech, tplName, exptime, firstSecond=0):
                 "eso tpl name": tplName,
                 "eso tpl nexp": count,
                 "eso tpl expno": index + 1,
-                "eso tpl start": "2024-01-02T03:00:00" if kind == "nod" else "2024-01-02T02:00:00",
+                "eso tpl start": tplStart or ("2024-01-02T03:00:00" if kind == "nod" else "2024-01-02T02:00:00"),
                 "file": name,
                 "filepath": f"./raw/2024-01-01/{name}",
                 "date-obs": f"2024-01-02T03:05:{second:02d}.000"
@@ -224,11 +226,11 @@ def test_the_predicted_product_of_a_nir_nod_sof_is_unchanged(tmp_path, log, monk
     assert products == [("OBJECT_TAB_NIR", NOD_TECH, sof.replace(".sof", "_EXTRACTED_MERGED.fits"))]
 
 
-def _set_reduce_as_stare(sessionsDir, sessionId):
-    """Turn `reduce-as-stare` on in the `soxs-nod` block of one session's settings file."""
+def _set_reduce_as_stare(sessionsDir, sessionId, block="soxs-nod"):
+    """Turn `reduce-as-stare` on in one block (`soxs-nod` or `soxs-nod-std`) of one session's settings file."""
     settingsPath = sessionsDir / sessionId / "soxspipe.yaml"
     text = settingsPath.read_text()
-    blockStart = text.index("\nsoxs-nod:\n")
+    blockStart = text.index(f"\n{block}:\n")
     flagStart = text.index("reduce-as-stare: False", blockStart)
     settingsPath.write_text(
         text[:flagStart] + "reduce-as-stare: True" + text[flagStart + len("reduce-as-stare: False") :]
@@ -276,3 +278,89 @@ def test_a_session_command_on_a_fresh_organiser_records_the_stare_mode_row_when_
     assert stareRows
     assert {row[1].split("/")[3] for row in stareRows} == {"soxs-stare"}
     assert _unloaded_settings_warnings(log) == []
+
+
+def _nod_product_rows(organiser):
+    """Return the NIR product rows of the nod object and nod standard SOFs, by recipe."""
+    return {
+        recipe: organiser.conn.execute(
+            'SELECT "eso pro catg", file, filepath FROM product_frames WHERE recipe = ? AND "eso seq arm" = \'NIR\' '
+            "AND sof NOT LIKE '%-upstream.sof' ORDER BY \"eso pro catg\"",
+            (recipe,),
+        ).fetchall()
+        for recipe in ("nod_obj", "nod_std")
+    }
+
+
+def _object_and_standard_rows(tmp_path, log, monkeypatch, organisers, stareBlocks):
+    """Return the NIR nod rows before and after a regroup with `reduce-as-stare` on in the ``stareBlocks``."""
+    frames = [
+        _nir_frames("dark", 3, dprType="DARK", tech="IMAGE", tplName="SOXS_cal_dark", exptime=300.0),
+        _nir_frames("nod", 4, dprType="OBJECT", tech=NOD_TECH, tplName="SOXS_slt_obs_Nod", exptime=300.0),
+        _nir_frames(
+            "nod",
+            4,
+            dprType="STD,FLUX",
+            tech=NOD_TECH,
+            tplName="SOXS_slt_cal_Nod",
+            exptime=60.0,
+            firstSecond=20,
+            obsId="102",
+            # A STANDARD OUTSIDE THE STATIC LIBRARY IS FLAGGED TO IGNORE BY `prepare`
+            obsName="GD71",
+            tplStart="2024-01-02T04:00:00",
+        ),
+    ]
+    organiser = _workspace(tmp_path, log, monkeypatch, pd.concat(frames, ignore_index=True))
+    organisers.append(organiser)
+    organiser.prepare(report=False)
+    _seed_upstream(organiser, UPSTREAM)
+    organiser.prepare(report=False)
+    before = _nod_product_rows(organiser)
+
+    sessionsDir = Path(organiser.sessionsDir)
+    organiser.session_create("beta")
+    organiser.session_switch("science")
+    for block in stareBlocks:
+        _set_reduce_as_stare(sessionsDir, "beta", block)
+    fresh = _fresh_organiser(tmp_path, log)
+    organisers.append(fresh)
+    fresh.session_switch("beta")
+    return before, _nod_product_rows(fresh)
+
+
+def _as_stare_rows(rows, folder):
+    """Return the nod-mode ``rows`` as the stare recipe writes them: in ``folder``, with `_STAREMODE` in the name."""
+    stareRows = []
+    for catg, file, filepath in rows:
+        stareFile = file.replace("_EXTRACTED_MERGED.fits", "_STAREMODE_EXTRACTED_MERGED.fits").replace(
+            "_RESP.fits", "_STAREMODE_RESP.fits"
+        )
+        stareRows.append((catg, stareFile, f"{filepath.rsplit('/', 2)[0]}/{folder}/{stareFile}"))
+    return stareRows
+
+
+@pytest.mark.parametrize(
+    ("stareBlocks", "isObjectStare", "isStandardStare"),
+    [
+        ((), False, False),
+        (("soxs-nod-std",), False, True),
+        (("soxs-nod",), True, False),
+        (("soxs-nod", "soxs-nod-std"), True, True),
+    ],
+    ids=["neither", "standard-only", "object-only", "both"],
+)
+def test_each_nod_sof_records_the_stare_rows_only_when_its_own_reduce_as_stare_key_is_on(
+    tmp_path, log, monkeypatch, organisers, stareBlocks, isObjectStare, isStandardStare
+) -> None:
+    # ACT
+    before, after = _object_and_standard_rows(tmp_path, log, monkeypatch, organisers, stareBlocks)
+
+    # ASSERT: A REGROUP KEEPS THE OLD NOD-MODE ROWS, SO A SOF REDUCED AS STARE HAS BOTH, AND ANY OTHER HAS ONLY THOSE
+    assert {row[0] for row in before["nod_std"]} == {"OBJECT_TAB_NIR", "RESP_TAB_NIR"}
+    assert {row[2].split("/")[3] for row in before["nod_obj"]} == {"soxs-nod"}
+    assert {row[2].split("/")[3] for row in before["nod_std"]} == {"soxs-nod-std"}
+    objectStare = _as_stare_rows(before["nod_obj"], "soxs-stare") if isObjectStare else []
+    standardStare = _as_stare_rows(before["nod_std"], "soxs-stare-std") if isStandardStare else []
+    assert sorted(after["nod_obj"]) == sorted(before["nod_obj"] + objectStare)
+    assert sorted(after["nod_std"]) == sorted(before["nod_std"] + standardStare)
