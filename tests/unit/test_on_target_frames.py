@@ -455,6 +455,55 @@ def test_an_empty_list_gives_no_cards() -> None:
     assert frame_accounting_cards(()) == []
 
 
+# READING THE TARGET POSITION
+
+
+def test_a_frame_reads_its_target_position_from_the_telescope_target_cards(log: Any) -> None:
+    # ARRANGE: THE POINTING CARDS DIFFER FROM THE TARGET AND MUST NOT BE USED
+    header = raw_science_header(
+        "VIS",
+        RA=7.58343,
+        DEC=-33.25143,
+        **{"HIERARCH ESO TEL TARG ALPHA": 3019.8, "HIERARCH ESO TEL TARG DELTA": -331501.08},
+    )
+
+    # ACT
+    entry = read_on_target_frame(header, _kw(log), "frame.fits", "VIS", log)
+
+    # ASSERT
+    assert entry.targetRa == pytest.approx(7.5825, abs=1e-9)
+    assert entry.targetDec == pytest.approx(-33.2503, abs=1e-9)
+    assert not _warnings(log)
+
+
+def test_a_frame_with_no_target_cards_has_no_target_position_and_no_warning(log: Any) -> None:
+    # ARRANGE: A CALIBRATION FRAME HAS NO TEL TARG CARDS, AND THE PRODUCT WARNS ONCE WHEN NO FRAME HAS THEM
+    header = raw_science_header("VIS", RA=7.58343, DEC=-33.25143)
+
+    # ACT
+    entry = read_on_target_frame(header, _kw(log), "frame.fits", "VIS", log)
+
+    # ASSERT
+    assert (entry.targetRa, entry.targetDec) == (None, None)
+    assert not _warnings(log)
+
+
+def test_a_target_card_that_does_not_decode_warns_with_the_frame_and_the_card(log: Any) -> None:
+    # ARRANGE
+    header = raw_science_header(
+        "VIS", **{"HIERARCH ESO TEL TARG ALPHA": 3099.8, "HIERARCH ESO TEL TARG DELTA": -331501.08}
+    )
+
+    # ACT
+    entry = read_on_target_frame(header, _kw(log), "frame.fits", "VIS", log)
+
+    # ASSERT
+    assert (entry.targetRa, entry.targetDec) == (None, pytest.approx(-33.2503, abs=1e-9))
+    warnings = _warnings(log)
+    assert len(warnings) == 1
+    assert "frame.fits" in warnings[0] and "ESO TEL TARG ALPHA" in warnings[0]
+
+
 # STAMPING A HEADER
 
 
@@ -508,10 +557,68 @@ def test_stamping_a_list_of_unknown_time_removes_the_raw_exptime_so_it_cannot_pa
     assert "EXPTIME" not in stamped and "TEXPTIME" not in stamped
 
 
-@pytest.mark.parametrize("entries", [None, ()])
-def test_stamping_with_no_list_returns_the_header_itself(entries: Any) -> None:
-    # ARRANGE
-    header = raw_science_header("VIS")
+def test_stamping_replaces_the_pointing_with_the_target_position_and_sets_the_reference_frame(log: Any) -> None:
+    # ARRANGE: A RAW HEADER WITH THE POINTING AND AN OLD REFERENCE FRAME
+    header = raw_science_header("VIS", RA=7.58343, DEC=-33.25143, RADECSYS="FK4", EQUINOX=1950.0, OBJECT="SN2026ob")
+    entries = (
+        _entry(
+            log, "a", mjd=61000.0, **{"HIERARCH ESO TEL TARG ALPHA": 3019.8, "HIERARCH ESO TEL TARG DELTA": -331501.08}
+        ),
+    )
 
-    # ACT / ASSERT
-    assert with_frame_accounting(header, entries) is header
+    # ACT
+    stamped = with_frame_accounting(header, entries, log)
+
+    # ASSERT
+    assert stamped["RA"] == pytest.approx(7.5825, abs=1e-9)
+    assert stamped["DEC"] == pytest.approx(-33.2503, abs=1e-9)
+    assert stamped.comments["RA"] == "[deg] Spectroscopic target position (J2000)"
+    assert (stamped["RADESYS"], stamped["EQUINOX"], stamped["OBJECT"]) == ("FK5", 2000.0, "SN2026ob")
+    assert "RADECSYS" not in stamped
+    assert header["RA"] == 7.58343
+
+
+def test_stamping_with_no_target_position_removes_the_pointing_and_warns_once(log: Any) -> None:
+    # ARRANGE
+    header = raw_science_header("VIS", RA=7.58343, DEC=-33.25143, RADECSYS="FK5", EQUINOX=2000.0)
+    entries = (_entry(log, "a", mjd=61000.0), _entry(log, "b", mjd=61000.1))
+
+    # ACT
+    stamped = with_frame_accounting(header, entries, log)
+
+    # ASSERT
+    assert not {"RA", "DEC", "RADESYS", "RADECSYS", "EQUINOX"} & set(stamped)
+    assert len([message for message in _warnings(log) if "ESO TEL TARG" in message]) == 1
+
+
+def test_stamping_without_a_logger_does_not_lose_the_warning(log: Any, caplog: pytest.LogCaptureFixture) -> None:
+    # ARRANGE
+    header = raw_science_header("VIS", RA=7.58343, DEC=-33.25143)
+    entry = read_on_target_frame(header, _kw(log), "a_raw.fits", "VIS", log)
+
+    # ACT
+    with caplog.at_level("WARNING"):
+        stamped = with_frame_accounting(header, (entry,))
+
+    # ASSERT
+    assert "RA" not in stamped
+    assert any("ESO TEL TARG" in record.getMessage() for record in caplog.records)
+
+
+@pytest.mark.parametrize("entries", [None, ()])
+def test_stamping_with_no_list_removes_only_the_pointing_on_a_copy(entries: Any) -> None:
+    # ARRANGE
+    header = raw_science_header("VIS", RA=7.58343, DEC=-33.25143, RADECSYS="FK5", EQUINOX=2000.0, OBJECT="SN2026ob")
+    header["NCOMBINE"] = 3
+    header["PROV1"] = "SOXS.old"
+    header["EXPTIME"] = 600.0
+
+    # ACT
+    stamped = with_frame_accounting(header, entries)
+
+    # ASSERT
+    assert stamped is not header
+    assert not {"RA", "DEC", "RADESYS", "RADECSYS", "EQUINOX"} & set(stamped)
+    assert (stamped["OBJECT"], stamped["NCOMBINE"], stamped["PROV1"]) == ("SN2026ob", 3, "SOXS.old")
+    assert stamped["EXPTIME"] == 600.0
+    assert header["RA"] == 7.58343

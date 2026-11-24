@@ -54,7 +54,7 @@ def bare_flux_calibration(**attributes: object) -> flux_calibration:
     return calibration
 
 
-def calibrate_spectrum(
+def calibrate_and_capture_write(
     tmp_path: Path,
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -64,8 +64,9 @@ def calibrate_spectrum(
     binning: int = 1,
     responseWave: list[float] | None = None,
     extinction: np.ndarray | None = None,
-) -> Table:
-    """Run ``calibrate`` on ``spectrum`` and return the table it hands to the writer."""
+    header: fits.Header | None = None,
+) -> dict[str, object]:
+    """Run ``calibrate`` on ``spectrum`` and return the keyword arguments it hands to the writer."""
     import soxspipe.commonutils.toolkit as toolkit
 
     # A RESPONSE COVERING OTHER WAVELENGTHS IS FLAT, SO ONLY ITS RANGE MATTERS
@@ -82,18 +83,28 @@ def calibrate_spectrum(
         airmass=1.4,
         extinctionPath="extinction.fits",
         arm=arm,
-        header=fits.Header({"DATE-OBS": "2024-01-02T03:04:05", "ESO DET BINY": binning}),
+        header=header or fits.Header({"DATE-OBS": "2024-01-02T03:04:05", "ESO DET BINY": binning}),
         recipeName="soxs-stare",
         sofName="synthetic",
         productDir=str(tmp_path),
         kw=KEYWORDS.__getitem__,
     )
-    captured: list[object] = []
+    captured: list[dict[str, object]] = []
     monkeypatch.setattr(
-        "soxspipe.commonutils.phase3.write_fits_table_to_disk",
-        lambda **kwargs: captured.append(kwargs["tables"][0]),
+        "soxspipe.commonutils.phase3.write_fits_table_to_disk", lambda **kwargs: captured.append(kwargs)
     )
     if extinction is not None:
         monkeypatch.setattr(toolkit, "extinction_correction_factor", lambda wavelengths, path, airmass: extinction)
     calibration.calibrate()
     return captured[0]
+
+
+def calibrate_spectrum(
+    tmp_path: Path,
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    spectrum: object,
+    **options: object,
+) -> Table:
+    """Run ``calibrate`` on ``spectrum`` and return the table it hands to the writer."""
+    return calibrate_and_capture_write(tmp_path, log, monkeypatch, spectrum, **options)["tables"][0]

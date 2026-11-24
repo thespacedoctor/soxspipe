@@ -174,6 +174,55 @@ def test_calibrate_writes_a_real_spectrum_file_with_the_calibrated_and_counts_co
     assert not list(tmp_path.glob("*FLUXCAL*"))
 
 
+def test_the_calibrated_spectrum_file_has_the_target_position_and_absolute_flux_cards_the_checker_accepts(
+    tmp_path: Path,
+    log: object,
+) -> None:
+    """The file the real writer makes from a stamped header passes the target and flux checks (DY-2357)."""
+    from soxspipe.commonutils.on_target_frames import build_on_target_frames, with_frame_accounting
+    from soxspipe.commonutils.phase3_check import check_phase3
+    from tests.factories.on_target_frames import raw_science_header
+
+    # ARRANGE: A RAW HEADER WITH THE POINTING, AND AN ON-TARGET LIST WITH THE TARGET
+    target = {"HIERARCH ESO TEL TARG ALPHA": 3019.8, "HIERARCH ESO TEL TARG DELTA": -331501.08}
+    rawHeader = raw_science_header("NIR", RA=7.58343, DEC=-33.25143, OBJECT="SN2026ob", **target)
+    kw = keyword_lookup(log=log, settings=pipeline_settings(tmp_path)).get
+    entries = build_on_target_frames([rawHeader], ["raw.fits"], kw, "NIR", log)
+    header = with_frame_accounting(instrument_header(), entries, log)
+    header["OBJECT"] = "SN2026ob"
+    responsePath = _write_response_product(tmp_path, log, np.array([500.0, 600.0]), np.array([7.0, 8.0]))
+    calibration = bare_flux_calibration(
+        log=log,
+        responseFunction=str(responsePath),
+        extractedSpectrum=merged_spectrum([500.0, 600.0], [20.0, 40.0], [16.0, 64.0], [3.0, 5.0]),
+        exptime=10.0,
+        airmass=1.0,
+        extinctionPath="",
+        arm="NIR",
+        header=header,
+        recipeName="soxs-stare",
+        sofName="synthetic",
+        productDir=str(tmp_path),
+        kw=kw,
+        qc=qc_table(),
+    )
+
+    # ACT
+    outputPath, _ = calibration.calibrate()
+    findings = check_phase3(outputPath)
+
+    # ASSERT
+    written = fits.getheader(outputPath, 0)
+    assert written["RA"] == pytest.approx(7.5825, abs=1e-9)
+    assert written["DEC"] == pytest.approx(-33.2503, abs=1e-9)
+    assert (written["RADESYS"], written["EQUINOX"], written["OBJECT"]) == ("FK5", 2000.0, "SN2026ob")
+    assert (written["FLUXCAL"], written["TOT_FLUX"], written["FLUXERR"]) == ("ABSOLUTE", False, -2.0)
+    keywords = ("FLUXCAL", "FLUXERR", "TOT_FLUX", "RADESYS", "EQUINOX", "RA ", "DEC ", "RA is", "DEC is")
+    # THE EXTENSION HEADER CARDS ARE THE BUSINESS OF ANOTHER ISSUE
+    failures = [f.message for f in findings if f.severity == "failure" and "extension" not in f.message]
+    assert [message for message in failures if any(keyword in message for keyword in keywords)] == []
+
+
 def test_calibrate_applies_vis_extinction_factor(
     tmp_path: Path,
     log: object,

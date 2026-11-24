@@ -175,3 +175,81 @@ def test_the_offset_spectrum_has_no_frame_accounting_finding_from_the_phase_3_ch
     assert (header["NCOMBINE"], header["PROV1"], header["ESO SEQ ARM"]) == (2, "SOXS.2026-01-02T03:04:01", "VIS")
     keywords = ("NCOMBINE", "PROV", "OBID", "MJD-END", "MJD-OBS", "EXPTIME", "PROG_ID", "PROGID")
     assert [f.message for f in findings if any(keyword in f.message for keyword in keywords)] == []
+
+
+TARGET_CARDS = {"HIERARCH ESO TEL TARG ALPHA": 3019.8, "HIERARCH ESO TEL TARG DELTA": -331501.08}
+TARGET_KEYWORDS = ("FLUXCAL", "FLUXERR", "TOT_FLUX", "RADESYS", "EQUINOX", "RA ", "DEC ", "RA is", "DEC is", "OBJECT")
+
+
+def _target_frame(index: int) -> Any:
+    """Return a prepared frame with the pointing, the target cards and an object name."""
+    header = raw_science_header(
+        "VIS",
+        mjd=61000.0 + index / 10,
+        arcfile=f"SOXS.2026-01-02T03:04:0{index}.fits",
+        RA=7.9,
+        DEC=-33.0,
+        OBJECT="SN2026ob",
+        **(TARGET_CARDS if index == 1 else {}),
+    )
+    return synthetic_ccd(prepared=True, headerOverrides={key: header[key] for key in header})
+
+
+def _with_target_list(recipe: Any, log: Any, names: list[str]) -> Any:
+    """Give the recipe the on-target list of two frames, the first of which has the target cards."""
+    from soxspipe.commonutils.on_target_frames import build_on_target_frames
+
+    frames = [_target_frame(1), _target_frame(3)]
+    recipe.masterHeaderFrame = _target_frame(0)
+    recipe.onTargetFrames = build_on_target_frames([f.header for f in frames], names, recipe.kw, "VIS", log)
+    return recipe
+
+
+@pytest.mark.parametrize(
+    ("recipeClass", "names", "onNames"),
+    [
+        (soxs_nod, NOD_NAMES, ["nod-A1.fits", "nod-A2.fits"]),
+        (soxs_offset, OFFSET_NAMES, ["off-ON1.fits", "off-ON2.fits"]),
+    ],
+)
+def test_the_merged_nod_and_offset_spectrum_has_the_target_position_and_the_uncalibrated_flux_cards(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch, recipeClass: type, names: list[str], onNames: list[str]
+) -> None:
+    from soxspipe.commonutils.phase3_check import check_phase3
+
+    # ARRANGE
+    recipe = _with_target_list(_recipe(recipeClass, tmp_path, log, monkeypatch, names), log, onNames)
+
+    # ACT
+    _, filePath = recipe.stack_extractions([_spectrum()])
+    findings = check_phase3(filePath)
+
+    # ASSERT: THE POINTING IS GONE, AND THE OBJECT NAME IS THE RAW ONE
+    header = fits.getheader(filePath)
+    assert header["RA"] == pytest.approx(7.5825, abs=1e-9)
+    assert header["DEC"] == pytest.approx(-33.2503, abs=1e-9)
+    assert (header["RADESYS"], header["EQUINOX"], header["OBJECT"]) == ("FK5", 2000.0, "SN2026ob")
+    assert (header["FLUXCAL"], header["TOT_FLUX"], header["FLUXERR"]) == ("UNCALIBRATED", False, -1.0)
+    failures = [f.message for f in findings if f.severity == "failure"]
+    # THE EXTENSION HEADER CARDS ARE THE BUSINESS OF ANOTHER ISSUE
+    assert [m for m in failures if "extension" not in m and any(keyword in m for keyword in TARGET_KEYWORDS)] == []
+
+
+def test_the_header_given_to_the_nod_flux_calibration_has_the_target_position(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe = _with_target_list(
+        _recipe(soxs_nod, tmp_path, log, monkeypatch, NOD_NAMES), log, ["nod-A1.fits", "nod-A2.fits"]
+    )
+    captured = _capture_flux_calibration(monkeypatch, "soxspipe.recipes.soxs_nod")
+    stacked, _ = recipe.stack_extractions([_spectrum(), _spectrum()])
+    responsePath = str(response_product_fits(tmp_path / "RESP_TAB_VIS.fits"))
+
+    # ACT
+    recipe._flux_calibrate_nod_stack(responsePath, stacked, [_frame(1), _frame(3)], [_frame(2), _frame(4)])
+
+    # ASSERT
+    header = captured[0]["header"]
+    assert header["RA"] == pytest.approx(7.5825, abs=1e-9)
+    assert header["OBJECT"] == "SN2026ob"

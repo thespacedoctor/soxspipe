@@ -14,7 +14,7 @@ import math
 from typing import Any
 
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils.on_target_frames import with_frame_accounting
+from soxspipe.commonutils.on_target_frames import with_frame_accounting, without_pointing
 from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from soxspipe.commonutils.toolkit import utcnow_string
 
@@ -84,14 +84,15 @@ class extraction_stacking:
         ``stack_extractions`` stamps ``masterHeaderFrame`` with every raw frame of the recipe, so the calibrated
         spectrum lists them all. The header of one input frame lists the raw frames of its own cycle only, or none. The
         cards go on a copy, because flux calibration and the response divide the counts by the exposure time of one
-        frame, which is the ``EXPTIME`` of the master header. With no on-target list the master header itself comes
-        back.
+        frame, which is the ``EXPTIME`` of the master header. With no on-target list a copy of the master header comes
+        back with only its pointing ``RA`` and ``DEC`` removed.
 
         **Return:**
 
-        - ``header`` -- the header of ``masterHeaderFrame`` with the frame-accounting cards, as a copy
+        - ``header`` -- a copy of the header of ``masterHeaderFrame``, with the frame-accounting and target position
+          cards when there is an on-target list
         """
-        return with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames)
+        return with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames, self.log)
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
         """*merge the extractions of the nodding cycles, or of the nod positions of a stare-mode nodding SOF*
@@ -125,7 +126,7 @@ class extraction_stacking:
         from astropy.table import Table
 
         from soxspipe.commonutils.fits_headers import set_header_card
-        from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
+        from soxspipe.commonutils.phase3 import PER_ARM_MODE, with_flux_calibration_cards, write_fits_table_to_disk
         from soxspipe.commonutils.specutils_calls import spectrum1d_quietly
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
@@ -169,10 +170,13 @@ class extraction_stacking:
         # SELECTING HEADER A_MINUS_B (IS THIS THE SAME?)
         self.update_fits_keywords(frame=self.masterHeaderFrame)
         # THE NOT-FLATTENED SPECTRUM FEEDS THE RESPONSE ONLY, SO IT CARRIES NO FRAME ACCOUNTING
-        header = self.masterHeaderFrame.header if notFlattened else self._merged_spectrum_header()
+        # ITS HEADER IS THE MASTER HEADER WITHOUT THE POINTING RA AND DEC (DY-2357)
+        header = without_pointing(self.masterHeaderFrame.header) if notFlattened else self._merged_spectrum_header()
 
         set_header_card(header, kw("PRO_TYPE"), "REDUCED")
         set_header_card(header, kw("PRO_CATG"), f"SCI_SLIT_FLUX_{self.arm}".upper())
+        # THE STACK IS IN COUNTS. FLUX CALIBRATION REWRITES THE FILE WITH THE ABSOLUTE CARDS (DY-2357)
+        header = with_flux_calibration_cards(header, isCalibrated=False)
 
         flux_orig = groupedDataframe["FLUX_COUNTS"].values * u.electron
         # THE RESULT IS UNUSED, BUT BUILDING IT VALIDATES THE GROUPED FLUX AND WAVELENGTH ARRAYS AGAINST EACH

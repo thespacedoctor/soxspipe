@@ -19,6 +19,7 @@ Date Created
 from __future__ import annotations
 
 import copy
+import logging
 import math
 import re
 from collections.abc import Callable, Sequence
@@ -27,6 +28,15 @@ from typing import Any
 
 from soxspipe.commonutils.fits_headers import set_header_card
 from soxspipe.commonutils.ndit import read_ndit
+from soxspipe.commonutils.target_position import (
+    DEC_CARD,
+    EQUINOX_CARD,
+    RA_CARD,
+    RADESYS_CARD,
+    decode_packed_dec,
+    decode_packed_ra,
+    target_position_cards,
+)
 
 SECONDS_PER_DAY = 86400.0
 FITS_SUFFIX = ".fits"
@@ -45,7 +55,12 @@ PROG_ID_CARD = "PROG_ID"
 STALE_CARD_PATTERN = re.compile(r"PROV\d+|OBID\d+|PROGID\d+")
 STALE_CARDS = (PROG_ID_CARD, NCOMBINE_CARD, TEXPTIME_CARD, MJD_END_CARD)
 
+# THE POINTING AND REFERENCE-FRAME CARDS OF A RAW FRAME, WHICH THE TARGET POSITION CARDS REPLACE. RADECSYS IS THE OLD
+# NAME OF RADESYS
+POINTING_CARDS = (RA_CARD, DEC_CARD, RADESYS_CARD, "RADECSYS", EQUINOX_CARD)
+
 KeywordLookup = Callable[..., str]
+MODULE_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -62,6 +77,10 @@ class on_target_frame:
     - ``obsId`` -- the observation block ID, or *None*
     - ``progId`` -- the programme ID, or *None*
     - ``tplStart`` -- the start time of the template the frame belongs to, or *None*
+    - ``targetRa`` -- the right ascension of the target in degrees (J2000), decoded from ``ESO TEL TARG ALPHA``, or
+      *None* when the card is missing or does not decode
+    - ``targetDec`` -- the declination of the target in degrees (J2000), decoded from ``ESO TEL TARG DELTA``, or
+      *None* when the card is missing or does not decode
     """
 
     sourceName: str
@@ -72,6 +91,8 @@ class on_target_frame:
     obsId: int | None
     progId: str | None
     tplStart: str | None
+    targetRa: float | None = None
+    targetDec: float | None = None
 
     @property
     def provenance(self) -> str:
@@ -125,6 +146,22 @@ def _time_on_target(header: Any, kw: KeywordLookup, arm: str, sourceName: str, l
     return seconds
 
 
+def _target_coordinate(
+    header: Any, card: str, decode: Callable[[Any], float | None], sourceName: str, log: Any
+) -> float | None:
+    """*a target coordinate in degrees, or None when the card is missing or does not decode*
+
+    A card that is there but does not decode gives a warning that names the frame and the card. A missing card gives no
+    warning: a calibration frame has none, and the product warns once when no frame has the position.
+    """
+    if card not in header:
+        return None
+    degrees = decode(header[card])
+    if degrees is None:
+        log.warning(f"{sourceName} has an unreadable {card} card ({header[card]!r}), so it gives no target position.")
+    return degrees
+
+
 def read_on_target_frame(header: Any, kw: KeywordLookup, sourceName: str, arm: str, log: Any) -> on_target_frame:
     """*read the on-target entry of one raw frame from its header*
 
@@ -175,6 +212,8 @@ def read_on_target_frame(header: Any, kw: KeywordLookup, sourceName: str, arm: s
         obsId=obsId,
         progId=progId,
         tplStart=tplStart,
+        targetRa=_target_coordinate(header, kw("TEL_TARG_ALPHA"), decode_packed_ra, sourceName, log),
+        targetDec=_target_coordinate(header, kw("TEL_TARG_DELTA"), decode_packed_dec, sourceName, log),
     )
 
 
@@ -383,21 +422,53 @@ def frame_accounting_cards(entries: Sequence[on_target_frame]) -> list[tuple[str
     return cards
 
 
-def with_frame_accounting(header: Any, entries: Sequence[on_target_frame] | None) -> Any:
-    """*give a header the frame-accounting cards of an on-target list, on a copy*
+def without_pointing(header: Any) -> Any:
+    """*return a copy of a header without the pointing position of the raw frame*
+
+    A raw frame's ``RA`` and ``DEC`` are where the telescope pointed, not the target, so no merged spectrum may carry
+    them (DY-2357). ``RADESYS``, ``RADECSYS`` and ``EQUINOX`` go with them.
+
+    **Key Arguments:**
+
+    - ``header`` -- the header. It is not changed
+
+    **Return:**
+
+    - ``copied`` -- a copy of ``header`` without those cards
+
+    **Usage:**
+
+    ```python
+    header = without_pointing(self.masterHeaderFrame.header)
+    ```
+    """
+    copied = copy.deepcopy(header)
+    for keyword in POINTING_CARDS:
+        copied.pop(keyword, None)
+    return copied
+
+
+def with_frame_accounting(header: Any, entries: Sequence[on_target_frame] | None, log: Any = None) -> Any:
+    """*give a header the frame-accounting and target position cards of an on-target list, on a copy*
 
     The cards an earlier stamp left (``PROV<i>``, ``OBID<i>``, ``PROGID<i>``, ``PROG_ID``, ``NCOMBINE``, ``TEXPTIME``
     and ``MJD-END``) go first. The raw ``EXPTIME`` goes too when the list has no total, so a single frame's time cannot
     pass for one.
 
+    The pointing ``RA`` and ``DEC`` cards of the raw frame go too, with any ``RADESYS``, ``RADECSYS`` and ``EQUINOX``,
+    whether or not there is a list (see ``without_pointing``). The target position of the earliest frame that has one
+    takes their place (DY-2357). With no such frame the product has no ``RA`` and ``DEC``, and one warning says so.
+
     **Key Arguments:**
 
     - ``header`` -- the header to stamp. It is not changed
     - ``entries`` -- the on-target list
+    - ``log`` -- logger for the missing-position warning. Default *None*, which uses the module logger
 
     **Return:**
 
-    - ``stamped`` -- a stamped copy of ``header``, or ``header`` itself when ``entries`` is None or empty
+    - ``stamped`` -- a stamped copy of ``header``. With ``entries`` None or empty, a copy with only the pointing cards
+      removed
 
     **Usage:**
 
@@ -405,12 +476,12 @@ def with_frame_accounting(header: Any, entries: Sequence[on_target_frame] | None
     header = with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames)
     ```
     """
+    stamped = without_pointing(header)
     if not entries:
-        return header
-    stamped = copy.deepcopy(header)
+        return stamped
     for keyword in [key for key in stamped if STALE_CARD_PATTERN.fullmatch(key) or key in STALE_CARDS]:
         stamped.pop(keyword, None)
-    cards = frame_accounting_cards(entries)
+    cards = frame_accounting_cards(entries) + target_position_cards(entries, log or MODULE_LOGGER)
     if EXPTIME_CARD not in {keyword for keyword, _, _ in cards}:
         stamped.pop(EXPTIME_CARD, None)
     for keyword, value, comment in cards:

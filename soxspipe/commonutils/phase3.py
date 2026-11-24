@@ -11,7 +11,8 @@ Date Created
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import copy
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from astropy.io.fits import Header
@@ -71,6 +72,68 @@ ORIGIN_VALUE = "ESO"
 PIPE_ID_PREFIX = "soxspipe/v"
 SPECTRUM_EXTNAME = "SPECTRUM"
 
+# THE FLUX-CALIBRATION CARDS. NO SLIT-LOSS CORRECTION IS APPLIED, SO TOT_FLUX IS ALWAYS FALSE. FLUXERR IS -1 FOR A
+# SPECTRUM IN COUNTS (THE STANDARD) AND -2 FOR AN ABSOLUTE ONE, WHOSE ERROR IS NOT A SINGLE NUMBER (DY-2393)
+FLUXCAL_ABSOLUTE = "ABSOLUTE"
+FLUXCAL_UNCALIBRATED = "UNCALIBRATED"
+FLUXERR_ABSOLUTE = -2.0
+FLUXERR_UNCALIBRATED = -1.0
+
+
+def flux_calibration_cards(isCalibrated: bool) -> list[tuple[str, Any, str]]:
+    """*the* ``FLUXCAL``, ``TOT_FLUX`` *and* ``FLUXERR`` *cards of a merged spectrum*
+
+    **Key Arguments:**
+
+    - ``isCalibrated`` -- True when a response was applied to the spectrum, False for a spectrum in counts
+
+    **Return:**
+
+    - ``cards`` -- ``(keyword, value, comment)`` tuples
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.phase3 import flux_calibration_cards
+    for keyword, value, comment in flux_calibration_cards(isCalibrated=True):
+        set_header_card(header, keyword, value, comment)
+    ```
+    """
+    fluxCal = FLUXCAL_ABSOLUTE if isCalibrated else FLUXCAL_UNCALIBRATED
+    fluxErr = FLUXERR_ABSOLUTE if isCalibrated else FLUXERR_UNCALIBRATED
+    return [
+        ("FLUXCAL", fluxCal, "Flux calibration status"),
+        ("TOT_FLUX", False, "No slit-loss correction applied"),
+        ("FLUXERR", fluxErr, "Flux error is not a single value" if isCalibrated else "Spectrum is not calibrated"),
+    ]
+
+
+def with_flux_calibration_cards(header: Header, isCalibrated: bool) -> Header:
+    """*give a header the flux-calibration cards, on a copy*
+
+    **Key Arguments:**
+
+    - ``header`` -- the header to stamp. It is not changed
+    - ``isCalibrated`` -- True when a response was applied to the spectrum, False for a spectrum in counts
+
+    **Return:**
+
+    - ``stamped`` -- a copy of ``header`` with ``FLUXCAL``, ``TOT_FLUX`` and ``FLUXERR``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.phase3 import with_flux_calibration_cards
+    header = with_flux_calibration_cards(header, isCalibrated=False)
+    ```
+    """
+    from soxspipe.commonutils.fits_headers import set_header_card
+
+    stamped = copy.deepcopy(header)
+    for keyword, value, comment in flux_calibration_cards(isCalibrated):
+        set_header_card(stamped, keyword, value, comment)
+    return stamped
+
 
 def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=False):
     """
@@ -122,9 +185,14 @@ def basic_header_scrubbing(log, settings, header, mode=PER_ARM_MODE, isTable=Fal
     # KEYWORDS TO RENAME
     renameKw = {"RADECSYS": "RADESYS", **RENAMED_ESO_CARDS}
     for oldKw, newKw in renameKw.items():
-        if oldKw in header:
-            comment = header.comments[oldKw]
-            set_header_card(header, newKw, header.pop(oldKw), comment)
+        if oldKw not in header:
+            continue
+        # A CARD THAT IS ALREADY THERE (THE TARGET POSITION SETS EQUINOX AND RADESYS) WINS OVER THE OLD ONE
+        if newKw in header:
+            header.pop(oldKw)
+            continue
+        comment = header.comments[oldKw]
+        set_header_card(header, newKw, header.pop(oldKw), comment)
 
     if mode == JOINED_MODE:
         _drop_cards(header, [k for k in header if k.startswith(JOINED_DROPPED_PREFIXES)])
