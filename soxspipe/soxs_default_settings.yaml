@@ -85,7 +85,8 @@ soxs-disp-solution:
         # DROP A WHOLE MULTI-PINHOLE SET WHOSE MEDIAN SIGNED OFFSET (X OR Y) LIES MORE THAN THIS MANY MAD-SIGMA FROM THE ORDER'S MEDIAN SET OFFSET, TESTED ON THE FIRST FIT ONLY
         poly-clipping-set-offset-sigma: 5
         qc-acceptable-ranges:
-            detlines-frac: [0.9,1.01]
+            # 0.85 (WAS 0.9): THE DY-2207 AMBIGUITY RULE DROPS MOSTLY POOR-FIT LINES; THE RATIO 1.5 REAL-DATA A/B GAVE 0.885
+            detlines-frac: [0.85,1.01]
             fwhm-pin-sd: [0,0.211]
             fwhm-pin-median: [1.75,1.89]
             x-diff-sd: [0,1.3]

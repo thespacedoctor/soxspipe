@@ -7,7 +7,7 @@
 |:----|:-------------------------------------------------------------------|:-----|:-----|
 | `DETLINES CLIP NUM` | Total number of detected lines clipped during solution fitting       | lines | - |
 | `DETLINES NUM` | Number of lines detected in single pinhole frame                     | lines | - |
-| `DETLINES FRAC` | Proportion of input line-list lines detected on single pinhole frame |       | VIS: [0.9,1.0], NIR: [0.9,1.0] |
+| `DETLINES FRAC` | Proportion of input line-list lines detected on single pinhole frame |       | VIS: [0.9,1.0], NIR: [0.85,1.0] |
 | `DETLINES TOT` | Total number of line in single line-list                             | lines | - |
 | `GOODLINES FRAC` | Proportion of good, unclipped lines in single pinhole frame | lines | - |
 | `X RES MAX`              | Maximum residual in fitting of pinholes along x-axis (global)  | pixels    | - |
