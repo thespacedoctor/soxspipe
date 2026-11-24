@@ -21,6 +21,7 @@ SOF_MAP_PATH = Path(soxspipe.__file__).parent / "resources" / "soxs_sof_map.yaml
 NIGHT = "2024-01-01"
 NOD_STEM = "20240102T030405_VIS_1_NOD_OBJ_SLIT1_0_5_5_0S_SOXS_SN2024abc"
 MERGED_SUFFIX = "_SPECTRUM.fits"
+STD_STEM = "20240102T030405_VIS_1_NOD_STD_FLUX_SLIT1_0_5_5_0S_SOXS"
 
 
 def _products(filterName):
@@ -102,6 +103,72 @@ def test_nod_sof_warns_and_keeps_nod_names_when_the_session_settings_are_not_loa
 
     # ASSERT
     assert rows["filepath"].tolist() == [f"./reduced/{NIGHT}/soxs-nod/{NOD_STEM}{MERGED_SUFFIX}"]
+    assert [level for level, message in log.messages if "settings are not loaded" in message] == ["warning"]
+
+
+def test_nod_standard_sof_reduced_as_stare_records_the_stare_mode_files_that_are_written(tmp_path, log) -> None:
+    # ARRANGE: THE RECIPE'S OWN PREDICTION OF A STANDARD'S PRODUCT IS ITS RESPONSE TABLE
+    settings = {"workspace-root-dir": str(tmp_path / "out"), "soxs-nod-std": {"reduce-as-stare": True}}
+    writtenPath = Path(predicted_nod_product_path(settings, f"{STD_STEM}.sof"))
+
+    # ACT
+    rows = _predicted_rows(
+        tmp_path, log, "flux_standard_nodding", "nod_std", sofName=f"{STD_STEM}.sof", settings=settings
+    )
+
+    # ASSERT
+    assert writtenPath.name == f"{STD_STEM}_STAREMODE_RESP.fits"
+    assert rows["file"].tolist() == [f"{STD_STEM}_STAREMODE{MERGED_SUFFIX}", writtenPath.name]
+    assert rows["filepath"].tolist() == [
+        f"./reduced/{NIGHT}/{writtenPath.parent.name}/{STD_STEM}_STAREMODE{MERGED_SUFFIX}",
+        f"./reduced/{NIGHT}/{writtenPath.parent.name}/{writtenPath.name}",
+    ]
+    assert writtenPath.parent.name == "soxs-stare-std"
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {"soxs-nod-std": {"reduce-as-stare": False}},
+        {"soxs-nod-std": {}},
+        {"soxs-nod": {"reduce-as-stare": True}},
+    ],
+    ids=["false", "missing-key", "only-the-science-key"],
+)
+def test_nod_standard_sof_stays_in_nod_directory_unless_its_own_key_asks_for_stare_mode(
+    tmp_path, log, settings
+) -> None:
+    # ACT
+    rows = _predicted_rows(
+        tmp_path, log, "flux_standard_nodding", "nod_std", sofName=f"{STD_STEM}.sof", settings=settings
+    )
+
+    # ASSERT
+    assert rows["filepath"].tolist() == [
+        f"./reduced/{NIGHT}/soxs-nod-std/{STD_STEM}{MERGED_SUFFIX}",
+        f"./reduced/{NIGHT}/soxs-nod-std/{STD_STEM}_RESP.fits",
+    ]
+
+
+def test_nod_science_sof_ignores_the_standard_star_key(tmp_path, log) -> None:
+    # ACT
+    rows = _predicted_rows(
+        tmp_path, log, "science_nodding", "nod_obj", settings={"soxs-nod-std": {"reduce-as-stare": True}}
+    )
+
+    # ASSERT
+    assert rows["filepath"].tolist() == [f"./reduced/{NIGHT}/soxs-nod/{NOD_STEM}{MERGED_SUFFIX}"]
+
+
+def test_nod_standard_sof_warns_and_keeps_nod_names_when_the_session_settings_are_not_loaded(tmp_path, log) -> None:
+    # ACT
+    rows = _predicted_rows(tmp_path, log, "flux_standard_nodding", "nod_std", sofName=f"{STD_STEM}.sof")
+
+    # ASSERT
+    assert rows["filepath"].tolist() == [
+        f"./reduced/{NIGHT}/soxs-nod-std/{STD_STEM}{MERGED_SUFFIX}",
+        f"./reduced/{NIGHT}/soxs-nod-std/{STD_STEM}_RESP.fits",
+    ]
     assert [level for level, message in log.messages if "settings are not loaded" in message] == ["warning"]
 
 
