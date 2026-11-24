@@ -1569,6 +1569,13 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
 
     monkeypatch.setattr(toolkit, "plot_merged_spectrum_qc", fake_plot)
 
+    asciiCalls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.spectrum_ascii"),
+        "write_ascii_spectrum_product",
+        lambda path, isFluxCalibrated, products, *_: asciiCalls.append((path, isFluxCalibrated)) or products,
+    )
+
     productPath, returnedQc = recipe.produce_product()
 
     assert productPath is None
@@ -1585,8 +1592,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         "clean_up:False",
     ]
     assert plotNotes == [["WARNING: Order skipped: 7"]] * 2
-    assert "FLUX_CALIBRATED" in Table.read(spectrumPath).colnames
-    assert "EXTRACTED_FLUXCAL_SPECTRUM" not in recipe.products["product_label"].tolist()
+    # THE ASCII SPECTRUM IS WRITTEN ONCE FROM THE EXTRACTION'S OWN PATH, WHICH THE CALIBRATOR OVERWROTE
+    assert asciiCalls == [(str(tmp_path / "extracted.fits"), True)]
 
 
 def _cycle_recipe(

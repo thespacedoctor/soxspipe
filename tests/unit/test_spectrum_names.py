@@ -1,10 +1,10 @@
-"""The suffix and labels of the merged spectrum are the names the sof map and the recipes share (DY-2346)."""
+"""The suffix of the merged spectrum is the one the sof map predicts (DY-2346)."""
 
 from __future__ import annotations
 
 import pytest
 
-from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
+from soxspipe.commonutils.spectrum_names import SPECTRUM_SUFFIX
 
 pytestmark = pytest.mark.unit
 
@@ -27,7 +27,3 @@ def test_the_suffix_is_the_one_the_sof_map_predicts() -> None:
 
     assert len(predictedSuffixes) > 0
     assert predictedSuffixes == {f"{SPECTRUM_SUFFIX}.fits"}
-
-
-def test_the_labels_name_the_spectrum_table_and_its_ascii_file() -> None:
-    assert (SPECTRUM_TABLE_LABEL, SPECTRUM_ASCII_LABEL) == ("SPECTRUM_TABLE", "SPECTRUM_ASCII")

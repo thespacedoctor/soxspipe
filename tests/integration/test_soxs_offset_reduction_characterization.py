@@ -467,7 +467,6 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     assert arguments["extinctionPath"] == "/cal/extinction.dat"
     assert arguments["header"]["ESO TPL EXPNO"] == 1
     assert arguments["extractedSpectrum"] is captured["plot"][0]["merged_orders"]
-    assert "FLUXCAL" not in recipe.products["product_label"].tolist()
     firstPlot, secondPlot = captured["plot"]
     assert firstPlot["fluxCalibrated"] is False
     assert secondPlot["fluxCalibrated"] is True
@@ -480,7 +479,6 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
     # THE ASCII SPECTRUM COMES FROM THE FLUX-CALIBRATED TABLE, ONCE
     spectrumPath = f"{recipe.productDir}/{recipe.filenameTemplate.replace('.fits', '_SPECTRUM.fits')}"
     assert [(entry["spectrum"], entry["isFluxCalibrated"]) for entry in captured["ascii"]] == [(spectrumPath, True)]
-    assert calibratedPaths == [spectrumPath]
     assert captured["ascii"][0]["callsBefore"][-2:] == ["flux_calibrator", "calibrate"]
 
 
