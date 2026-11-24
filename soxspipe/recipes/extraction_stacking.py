@@ -14,7 +14,7 @@ import math
 from typing import Any
 
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils.on_target_frames import with_frame_accounting
+from soxspipe.commonutils.on_target_frames import with_frame_accounting, without_pointing
 from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from soxspipe.commonutils.toolkit import utcnow_string
 
@@ -169,7 +169,8 @@ class extraction_stacking:
         # SELECTING HEADER A_MINUS_B (IS THIS THE SAME?)
         self.update_fits_keywords(frame=self.masterHeaderFrame)
         # THE NOT-FLATTENED SPECTRUM FEEDS THE RESPONSE ONLY, SO IT CARRIES NO FRAME ACCOUNTING
-        header = self.masterHeaderFrame.header if notFlattened else self._merged_spectrum_header()
+        # ITS HEADER IS THE MASTER HEADER WITHOUT THE POINTING RA AND DEC (DY-2357)
+        header = without_pointing(self.masterHeaderFrame.header) if notFlattened else self._merged_spectrum_header()
 
         set_header_card(header, kw("PRO_TYPE"), "REDUCED")
         set_header_card(header, kw("PRO_CATG"), f"SCI_SLIT_FLUX_{self.arm}".upper())

@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from soxspipe.commonutils.phase3 import (
+    FLUXCAL_ABSOLUTE,
+    FLUXCAL_UNCALIBRATED,
+    FLUXERR_UNCALIBRATED,
     ORIGIN_VALUE,
     PIPE_ID_PREFIX,
     RENAMED_ESO_CARDS,
@@ -433,7 +436,7 @@ def check_header_hygiene(product: Phase3Product) -> list[Finding]:
 SPECTRUM_CATEGORY = "SCIENCE.SPECTRUM"
 RADESYS_VALUES = ("ICRS", "FK5")
 TIMESYS_VALUES = ("UTC", "TAI")
-FLUXCAL_VALUES = ("ABSOLUTE", "UNCALIBRATED")
+FLUXCAL_VALUES = (FLUXCAL_ABSOLUTE, FLUXCAL_UNCALIBRATED)
 SPECSYS_VALUES = (
     "TOPOCENT",
     "GEOCENTR",
@@ -447,7 +450,7 @@ SPECSYS_VALUES = (
     "SOURCE",
 )
 EQUINOX_J2000 = 2000.0
-UNCALIBRATED_FLUXERR = -1
+UNCALIBRATED_FLUXERR = FLUXERR_UNCALIBRATED
 
 
 def _not_allowed(header: Header, keyword: str, allowed: tuple[str, ...]) -> list[Finding]:

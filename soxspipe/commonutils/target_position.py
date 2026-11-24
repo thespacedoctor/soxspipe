@@ -63,6 +63,7 @@ def _split_packed(number: float) -> tuple[int, int, int]:
 
 
 def _is_valid_sexagesimal(minutes: int, milliseconds: int) -> bool:
+    """*return True when the minutes and the seconds (in thousandths) of a packed value are each under 60*"""
     return minutes < MINUTES_PER_HOUR and milliseconds < SECONDS_PER_MINUTE * MILLI
 
 

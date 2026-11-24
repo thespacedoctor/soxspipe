@@ -422,6 +422,32 @@ def frame_accounting_cards(entries: Sequence[on_target_frame]) -> list[tuple[str
     return cards
 
 
+def without_pointing(header: Any) -> Any:
+    """*return a copy of a header without the pointing position of the raw frame*
+
+    A raw frame's ``RA`` and ``DEC`` are where the telescope pointed, not the target, so no merged spectrum may carry
+    them (DY-2357). ``RADESYS``, ``RADECSYS`` and ``EQUINOX`` go with them.
+
+    **Key Arguments:**
+
+    - ``header`` -- the header. It is not changed
+
+    **Return:**
+
+    - ``copied`` -- a copy of ``header`` without those cards
+
+    **Usage:**
+
+    ```python
+    header = without_pointing(self.masterHeaderFrame.header)
+    ```
+    """
+    copied = copy.deepcopy(header)
+    for keyword in POINTING_CARDS:
+        copied.pop(keyword, None)
+    return copied
+
+
 def with_frame_accounting(header: Any, entries: Sequence[on_target_frame] | None, log: Any = None) -> Any:
     """*give a header the frame-accounting and target position cards of an on-target list, on a copy*
 
@@ -429,9 +455,9 @@ def with_frame_accounting(header: Any, entries: Sequence[on_target_frame] | None
     and ``MJD-END``) go first. The raw ``EXPTIME`` goes too when the list has no total, so a single frame's time cannot
     pass for one.
 
-    The pointing ``RA`` and ``DEC`` cards of the raw frame go too, with any ``RADESYS``, ``RADECSYS`` and ``EQUINOX``.
-    The target position of the earliest frame that has one takes their place (DY-2357). With no such frame the
-    product has no ``RA`` and ``DEC``, and one warning says so.
+    The pointing ``RA`` and ``DEC`` cards of the raw frame go too, with any ``RADESYS``, ``RADECSYS`` and ``EQUINOX``,
+    whether or not there is a list (see ``without_pointing``). The target position of the earliest frame that has one
+    takes their place (DY-2357). With no such frame the product has no ``RA`` and ``DEC``, and one warning says so.
 
     **Key Arguments:**
 
@@ -441,7 +467,8 @@ def with_frame_accounting(header: Any, entries: Sequence[on_target_frame] | None
 
     **Return:**
 
-    - ``stamped`` -- a stamped copy of ``header``, or ``header`` itself when ``entries`` is None or empty
+    - ``stamped`` -- a stamped copy of ``header``. With ``entries`` None or empty, a copy with only the pointing cards
+      removed
 
     **Usage:**
 
@@ -449,12 +476,10 @@ def with_frame_accounting(header: Any, entries: Sequence[on_target_frame] | None
     header = with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames)
     ```
     """
+    stamped = without_pointing(header)
     if not entries:
-        return header
-    stamped = copy.deepcopy(header)
+        return stamped
     for keyword in [key for key in stamped if STALE_CARD_PATTERN.fullmatch(key) or key in STALE_CARDS]:
-        stamped.pop(keyword, None)
-    for keyword in POINTING_CARDS:
         stamped.pop(keyword, None)
     cards = frame_accounting_cards(entries) + target_position_cards(entries, log or MODULE_LOGGER)
     if EXPTIME_CARD not in {keyword for keyword, _, _ in cards}:

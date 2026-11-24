@@ -606,9 +606,16 @@ def test_stamping_without_a_logger_does_not_lose_the_warning(log: Any, caplog: p
 
 
 @pytest.mark.parametrize("entries", [None, ()])
-def test_stamping_with_no_list_returns_the_header_itself(entries: Any) -> None:
+def test_stamping_with_no_list_removes_only_the_pointing_on_a_copy(entries: Any) -> None:
     # ARRANGE
-    header = raw_science_header("VIS")
+    header = raw_science_header("VIS", RA=7.58343, DEC=-33.25143, RADECSYS="FK5", EQUINOX=2000.0, OBJECT="SN2026ob")
 
-    # ACT / ASSERT
-    assert with_frame_accounting(header, entries) is header
+    # ACT
+    stamped = with_frame_accounting(header, entries)
+
+    # ASSERT
+    assert stamped is not header
+    assert not {"RA", "DEC", "RADESYS", "RADECSYS", "EQUINOX"} & set(stamped)
+    assert stamped["OBJECT"] == "SN2026ob"
+    assert "NCOMBINE" not in stamped and "PROV1" not in stamped
+    assert header["RA"] == 7.58343

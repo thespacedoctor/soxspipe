@@ -214,6 +214,19 @@ def test_the_not_flattened_stack_is_uncalibrated_too(listed_nod: soxs_nod) -> No
     assert (header["FLUXCAL"], header["TOT_FLUX"], header["FLUXERR"]) == ("UNCALIBRATED", False, -1.0)
 
 
+@pytest.mark.parametrize("notFlattened", [False, True])
+def test_no_stack_carries_the_pointing_of_the_master_header(nod: soxs_nod, notFlattened: bool) -> None:
+    # ARRANGE: NO ON-TARGET LIST, AND A MASTER HEADER WITH THE POINTING
+    nod.masterHeaderFrame.header["RA"] = 7.9
+    nod.masterHeaderFrame.header["DEC"] = -33.0
+
+    # ACT
+    _, filePath = nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)], notFlattened=notFlattened)
+
+    # ASSERT
+    assert not {"RA", "DEC"} & set(fits.getheader(filePath))
+
+
 def test_a_recipe_with_no_on_target_list_writes_no_frame_accounting_cards(nod: soxs_nod) -> None:
     # ACT
     _, filePath = nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])

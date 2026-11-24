@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import math
 
+from soxspipe.commonutils.phase3 import FLUXCAL_ABSOLUTE, FLUXERR_ABSOLUTE
 from soxspipe.commonutils.phase3_check_framework import EXTENSION, PRIMARY, Finding, Phase3Product, fail, register_check
 from soxspipe.commonutils.phase3_check_headers import HOUSE_RULE
 
-ABSOLUTE_FLUXERR = -2
 RA_RANGE = (0.0, 360.0)
 DEC_RANGE = (-90.0, 90.0)
 
@@ -50,17 +50,24 @@ def check_absolute_spectrum_has_the_absolute_flux_error(product: Phase3Product) 
     ```
     """
     primary = product.primary
-    if primary.get("FLUXCAL") != "ABSOLUTE" or "FLUXERR" not in primary:
+    if primary.get("FLUXCAL") != FLUXCAL_ABSOLUTE or "FLUXERR" not in primary:
         return []
     fluxerr = primary["FLUXERR"]
-    if _is_number(fluxerr) and fluxerr == ABSOLUTE_FLUXERR:
+    if _is_number(fluxerr) and fluxerr == FLUXERR_ABSOLUTE:
         return []
-    return [fail(f"FLUXERR is {fluxerr}, it must be {ABSOLUTE_FLUXERR} when FLUXCAL is 'ABSOLUTE' ({HOUSE_RULE})")]
+    return [
+        fail(
+            f"FLUXERR is {fluxerr}, it must be {FLUXERR_ABSOLUTE:g} when FLUXCAL is '{FLUXCAL_ABSOLUTE}' ({HOUSE_RULE})"
+        )
+    ]
 
 
 @register_check
 def check_total_flux_is_false(product: Phase3Product) -> list[Finding]:
-    """*report a TOT_FLUX that is true, because no slit-loss correction is applied*
+    """*report a TOT_FLUX that is true on an absolute spectrum, because no slit-loss correction is applied*
+
+    On any other spectrum a true ``TOT_FLUX`` already fails ``check_standard_value_domains``, so it is not reported
+    twice.
 
     **Key Arguments:**
 
@@ -76,7 +83,7 @@ def check_total_flux_is_false(product: Phase3Product) -> list[Finding]:
     findings = check_total_flux_is_false(product)
     ```
     """
-    if product.primary.get("TOT_FLUX") is True:
+    if product.primary.get("TOT_FLUX") is True and product.primary.get("FLUXCAL") == FLUXCAL_ABSOLUTE:
         return [fail(f"TOT_FLUX is True, it must be False: the spectrum has no slit-loss correction ({HOUSE_RULE})")]
     return []
 

@@ -55,10 +55,20 @@ def test_an_absolute_spectrum_with_a_positive_flux_error_fails(tmp_path: Path, l
 
 def test_tot_flux_must_be_false(tmp_path: Path, log: object) -> None:
     # ACT
-    messages = _failures_mentioning(tmp_path, log, "TOT_FLUX", primary={"TOT_FLUX": True})
+    messages = _failures_mentioning(tmp_path, log, "TOT_FLUX", primary={"FLUXCAL": "ABSOLUTE", "TOT_FLUX": True})
 
     # ASSERT
     assert any("False" in message and "house rule, DY-2393" in message for message in messages)
+
+
+def test_a_true_tot_flux_on_an_uncalibrated_spectrum_is_one_failure(tmp_path: Path, log: object) -> None:
+    # ACT: THE STANDARD'S OWN RULE ALREADY FAILS THIS ONE, SO THE HOUSE RULE ADDS NOTHING
+    messages = _failures_mentioning(
+        tmp_path, log, "TOT_FLUX", primary={"FLUXCAL": "UNCALIBRATED", "FLUXERR": -1.0, "TOT_FLUX": True}
+    )
+
+    # ASSERT
+    assert len(messages) == 1
 
 
 @pytest.mark.parametrize("ra", [360.0, 400.0, -0.5])
