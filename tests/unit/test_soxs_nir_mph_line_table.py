@@ -1,4 +1,4 @@
-"""Contracts for the packaged SOXS NIR multi-pinhole predicted-line table (DY-1989, DY-2084, DY-1970)."""
+"""Contracts for the packaged SOXS NIR multi-pinhole predicted-line table (DY-1989, DY-2084, DY-1970, DY-2173)."""
 
 from __future__ import annotations
 
@@ -48,7 +48,8 @@ MIN_O11_RED_HALF_LINES = 8
 NIR_X_ORDER_DEG = 5
 NIR_X_WAVELENGTH_DEG = 6
 # DY-2084: XeI AND HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES; NO LINE MOVES MORE THAN 0.13 nm
-RITZ_IONS = ["XeI", "HgI"]
+# DY-2173: SO ARE THE Ar I AND Ar II WAVELENGTHS
+RITZ_IONS = ["XeI", "HgI", "ArI", "ArII"]
 MAX_RITZ_SHIFT_NM = 0.13
 # (ORDER, ION, NIST OBSERVED nm, NIST RITZ nm). THE ARC MEASURES THE RITZ VALUE FOR THE FIRST SIX
 RITZ_LINES = [
@@ -75,6 +76,79 @@ DROPPED_SETS = [
     (16, "ArII", 1202.71),
 ]
 DROPPED_SET_ATOL_NM = 0.006
+# DY-2173: (ORDER, ION, nm) SETS REMOVED BECAUSE NO NIST Ar I OR Ar II LINE MATCHES THEM. EACH WAS EITHER MEASURED ON
+# BOTH NIR ARCS WITH NO NIST LINE WITHIN 0.25 A OF ITS ARC POSITION, OR MEASURED ON NEITHER ARC WITH NO NIST LINE NEAR
+# ITS CATALOGUE WAVELENGTH. THE TABLE BUILDER RECORDS THE REASON FOR EACH SET
+NO_NIST_AR_SETS = [
+    (22, "ArI", 912.29839),
+    (20, "ArII", 965.59884),
+    (19, "ArII", 1016.38798),
+    (18, "ArI", 1070.098),
+    (19, "ArI", 1070.098),
+    (18, "ArI", 1088.097),
+    (17, "Ar", 1188.45),
+    (16, "Ar", 1189.67),
+    (17, "Ar", 1189.67),
+    (16, "Ar", 1215.14),
+    (15, "ArI", 1259.623),
+    (16, "ArI", 1259.623),
+    (15, "ArI", 1263.849),
+    (16, "ArI", 1263.849),
+    (15, "ArI", 1302.844),
+    (15, "ArI", 1327.265),
+    (14, "Ar", 1330.23),
+    (15, "Ar", 1330.23),
+    (14, "Ar", 1382.83),
+    (14, "ArI", 1391.061),
+    (14, "Ar", 1425.69),
+    (13, "Ar", 1465.03),
+    (13, "Ar", 1469.34),
+    (13, "ArI", 1544.674),
+    (12, "ArI", 1579.316),
+    (11, "ArI", 1740.193),
+    (11, "ArI", 1744.491),
+    (11, "ArI", 1791.473),
+    (10, "ArI", 1863.229),
+    (10, "ArI", 1874.501),
+    (9, "Ar", 2073.36),
+]
+NO_NIST_AR_ORDER_10_SETS = sum(1 for order, _, _ in NO_NIST_AR_SETS if order == EDITED_ORDER)
+AR_IONS = ["ArI", "ArII"]
+# (ORDER, CATALOGUE nm, NIST ION, NIST RITZ nm) OF THE BARE 'Ar' SETS THAT STAY, RELABELLED
+RELABELLED_AR_SETS = [
+    (17, 1139.37, "ArI", 1139.3703),
+    (17, 1158.03, "ArI", 1158.0389),
+    (16, 1173.32, "ArI", 1173.3236),
+    (17, 1173.32, "ArI", 1173.3236),
+    (13, 1463.44, "ArI", 1463.4414),
+    (13, 1535.31, "ArI", 1535.3128),
+    (12, 1654.93, "ArI", 1654.9307),
+]
+# EVERY Ar WAVELENGTH IN THE TABLE (nm), BY ION: THE NIST ASD AIR RITZ VALUE AS NIST PRINTS IT, OR THE OBSERVED VALUE
+# FOR THE EIGHT Ar I LINES NIST LISTS WITHOUT A RITZ VALUE (1005.206, 1068.1773, 1073.387, 1075.916, 1110.646,
+# 1322.8107, 1336.7111 AND 1390.7478)
+NIST_AR_NM = {
+    ion: [float(text) for text in values.split()]
+    for ion, values in {
+        "ArI": (
+            "794.81759 800.61562 805.33084 810.36921 811.53109 826.45215 838.473 840.82085 842.46473 849.03066 "
+            "852.14411 862.04603 866.7943 876.16864 879.90874 896.21468 907.5395 919.4638 922.4498 935.42179 "
+            "965.77858 978.4502 1005.206 1047.00528 1047.8034 1050.65 1067.3566 1068.1773 1073.387 1075.916 1095.0726 "
+            "1107.8868 1110.646 1139.3703 1144.1832 1148.81076 1158.0389 1166.8709 1173.3236 1211.2324 1213.9737 "
+            "1234.3392 1235.6297 1240.2828 1243.9321 1245.6114 1248.7663 1255.4324 1270.228 1280.2737 1293.3196 "
+            "1295.6658 1300.8264 1321.3991 1322.8107 1331.3209 1336.7111 1340.6587 1349.9406 1354.4205 1357.3618 "
+            "1359.9333 1362.2659 1367.8549 1382.5716 1390.7478 1409.364 1463.4414 1473.9139 1487.6537 1504.6503 "
+            "1530.1881 1532.9345 1535.3128 1540.264 1573.4909 1581.6777 1589.9687 1598.9491 1612.2656 1618.0023 "
+            "1643.6575 1651.9867 1654.9307 1674.0078 1782.399"
+        ),
+        "ArII": (
+            "801.752791 841.18823 885.07024 906.80229 919.25927 922.2264 933.59814 948.08797 965.59715 978.3081 "
+            "1046.71793 1068.30352 1095.42866 1240.70844 1254.5326 1273.86035 1336.47865 1372.41907 1615.23873"
+        ),
+    }.items()
+}
+# A CATALOGUE Ar WAVELENGTH MOVES AT MOST THIS FAR TO ITS NIST VALUE (THE LARGEST MOVE IS 1158.03 -> 1158.0389)
+MAX_AR_SHIFT_NM = 0.009
 
 # DY-1970: THREE O10 ArII SETS ARE OTHER LINES, 7 TO 9 A BLUER; THE TABLE SWAPS THEM FOR NeI, HgI AND XeI SETS THAT
 # CARRY THE NIST WAVELENGTH OF THE LINE SEEN ON THE ARC
@@ -129,29 +203,28 @@ O10_ADDED_SETS = [
 ]
 # THE ORDER 10 ROWS THAT ARE NOT IN AN ADDED SET WERE NOT TOUCHED
 TOUCHED_SETS = [(ion, wavelength) for ion, wavelength, _ in O10_ADDED_SETS]
-# SHA-256 OF THE UNTOUCHED ORDER 10 ROWS (EVERY ROW BUT THE ADDED SETS), IN FILE ORDER
+# SHA-256 OF THE UNTOUCHED ORDER 10 ROWS (EVERY ROW BUT THE ADDED SETS), IN FILE ORDER, RE-RECORDED IN DY-2173
 # REGENERATE WITH untouched_rows_checksum(read_table(MPH_TABLE), EDITED_ORDER, TOUCHED_SETS);
 # A LATER LEGITIMATE EDIT TO ORDER 10 MUST RE-RECORD IT
-UNTOUCHED_O10_CHECKSUM = "ebc444705e14876023920060464918eb387c7c00843186f27700d43f832f0cf2"
-# SHA-256 OF EVERY ROW OF EACH UNEDITED ORDER ON DEVELOP b9ab9446, IN FILE ORDER
-# REGENERATE WITH order_checksums(read_table(MPH_TABLE));
+UNTOUCHED_O10_CHECKSUM = "d45813e7c8681c928001a6c97b436547ab43ab38561116ef4cf60b0cc742d462"
+# SHA-256 OF EVERY ROW OF EACH ORDER OTHER THAN 10, IN FILE ORDER, RE-RECORDED IN DY-2173 (ORDER 9 HELD ONLY THE BARE
+# 'Ar' 2073.36 SET, SO IT IS GONE). REGENERATE WITH order_checksums(read_table(MPH_TABLE));
 # A LATER LEGITIMATE EDIT TO ANY OF THESE ORDERS MUST RE-RECORD IT
 UNEDITED_ORDER_CHECKSUMS = {
-    9: "5145cb61322757b7173fc23a2c9cec44f5f74e53cf6ee617926841fc4fd82f09",
-    11: "aa56f3527760a2d88299240d517f3a98de10bfeec9fa9c7a431f36dfab1f1fbd",
-    12: "3bf55257e87b67c53720590575c1cd341ac9cead0177f4965ddbfb662420695e",
-    13: "9e8f07f8b388191084b55750d6c17ab8f1e91cb6044387a98a5f951701902ed0",
-    14: "7d23b5adfc85c58fce36586d0fafb71c7949f4c065f9639681158a6dff2f3b3d",
-    15: "3aaef09975e18769be823c5020185c07e8112b81505ecc8cb87e4c702a7f0108",
-    16: "3bef626deaf1cd600aa0971b59f31692ec583f2ae165895f98626d562fa47ab3",
-    17: "d3da003cd0a07c443fd38578f18e39650f7823d3bcb9ad18ae669a88f8de2776",
-    18: "2bdd32cf4e8eabf96e3b61f89906a978d70a18fc39b0960be5efcda5930065cd",
-    19: "8f372c54790a7367bcd5eb5e4510e430f2e25e416b9334bf3faa786a7161e707",
-    20: "f6e1368155a6253460751c97cf4ab2ccd10987fac658c0612949243065ab77d6",
-    21: "a693398eea40ba6d151d8e50373265b29a4d55f349cf9ff370df55bcbb22d8c7",
-    22: "a650f53acabff5cb84faf0b4fdf4d13961a8e6ef59d9c8bf8f67ee01bd20c714",
-    23: "5e8089ed3e6af14587778d190e51830d4996ec647f02eb914b3ad08e798d36de",
-    24: "620216674bf04fdb6053ac473a4ec5eab3c2791470e8a16562b4a3ed30e26c82",
+    11: "448f47fce8b45d467d500d9633311fcedcf7394191cd594b565b71bd1ecd5eca",
+    12: "03ecde37d579c0f24d44cc0f099cd90114742bd9f238d3b056adb9361728bf8f",
+    13: "ce3eb3217399b0aed9684425d99cd665730c7d0a08c56b0749b028fc00316ed8",
+    14: "f6d049bc5f51ec1ef12fe854692b02d8da64726464255c7743bea10314849860",
+    15: "17e8ace2b92e0e001cbbf1adf7827d56eda60059f788928bbb31ad9d6f332aa1",
+    16: "394565decf9c6d809d9c0fde303845246ac58a22552f3a4fbcc38118809a61e9",
+    17: "4344e57b9167fcb663d7977ec1acf47db537ae0490f4693509e96fb288b74d70",
+    18: "3d507871812335184a9c0a1983e30647b2c9bf913c4ba9f9cc2b44d95c770d2e",
+    19: "6e49e2dc0077810d789424d8e15a18e270eeb0e130abbac162fcb45877ccdd94",
+    20: "8f46580808eae99f302d938d9380f67b398ed1ed9c3ee78d617af1be7914fe8d",
+    21: "54402b0661dbe732e5394c5321ccc56f15baf1d7d4e0fb048659a47c3cca2071",
+    22: "6497b2ebcc38080a51db3127ea1b41031c3b430b3babcb810d2d89dffe5247db",
+    23: "ed364e57809d2596408af2ea1d7afd1f31ad6ac19f1996b963a2d90273d3edeb",
+    24: "866fe14d5f2bf67fcc0bcee0c37a8d3f408c55170d4524996bccb1dde572a2fb",
 }
 
 
@@ -169,9 +242,13 @@ def _stable_sorted(table: Table) -> Table:
 
 def _dropped_set_rows(table: Table) -> np.ndarray:
     rows = np.zeros(len(table), dtype=bool)
-    for order, ion, wavelength in DROPPED_SETS:
+    for order, ion, wavelength in DROPPED_SETS + NO_NIST_AR_SETS:
         rows |= set_mask(table, order, ion, wavelength, DROPPED_SET_ATOL_NM)
     return rows
+
+
+def _ar_rows(table: Table) -> np.ndarray:
+    return np.char.startswith(ions(table), "Ar")
 
 
 def _clean_list_rows_kept() -> Table:
@@ -272,9 +349,98 @@ def test_misidentified_set_is_removed(order: int, ion: str, wavelength: float) -
     assert inCurated == 0
 
 
+@pytest.mark.parametrize(("order", "ion", "wavelength"), NO_NIST_AR_SETS)
+def test_ar_set_with_no_nist_line_is_removed(order: int, ion: str, wavelength: float) -> None:
+    # ARRANGE
+    clean = read_table(SPH_TABLE)
+    curated = read_table(MPH_TABLE)
+    nearby = (np.asarray(curated["order"]) == order) & np.isclose(
+        np.asarray(curated["wavelength"], dtype=float), wavelength, rtol=0, atol=DROPPED_SET_ATOL_NM
+    )
+
+    # ACT
+    inClean = set_mask(clean, order, ion, wavelength, DROPPED_SET_ATOL_NM).sum()
+    arInCurated = int(np.sum(nearby & _ar_rows(curated)))
+
+    # ASSERT
+    assert inClean > 0
+    assert arInCurated == 0
+
+
+def test_no_set_keeps_the_bare_ar_label() -> None:
+    # ARRANGE
+    table = read_table(MPH_TABLE)
+
+    # ACT
+    labels = set(ions(table[_ar_rows(table)]))
+
+    # ASSERT
+    assert labels == set(AR_IONS)
+
+
+@pytest.mark.parametrize("ion", AR_IONS)
+def test_every_ar_wavelength_is_a_nist_value(ion: str) -> None:
+    # ARRANGE
+    table = read_table(MPH_TABLE)
+
+    # ACT
+    wavelengths = sorted(set(np.asarray(table["wavelength"], dtype=float)[ions(table) == ion].tolist()))
+
+    # ASSERT
+    # THE TABLE STORES FLOAT64 PARSED FROM THE NIST TEXT, SO EACH VALUE MATCHES EXACTLY;
+    # A SORTED LIST NAMES THE LINE THAT DIFFERS
+    assert wavelengths == sorted(NIST_AR_NM[ion])
+
+
+@pytest.mark.parametrize(("order", "catalogue", "ion", "ritz"), RELABELLED_AR_SETS)
+def test_bare_ar_set_takes_its_nist_ion_and_ritz_wavelength(
+    order: int, catalogue: float, ion: str, ritz: float
+) -> None:
+    # ARRANGE
+    clean = read_table(SPH_TABLE)
+    curated = read_table(MPH_TABLE)
+
+    # ACT
+    before = set_rows(clean, order, "Ar", catalogue)
+    after = set_rows(curated, order, ion, ritz, atol=0)
+
+    # ASSERT
+    assert len(before) > 0
+    assert len(after) == len(before)
+    assert len(set_rows(curated, order, "Ar", catalogue)) == 0
+
+
+def test_ar_wavelengths_move_less_than_the_nist_rounding() -> None:
+    # ARRANGE
+    curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
+    shipped = _stable_sorted(_clean_list_rows_kept())
+    ar = _ar_rows(curated)
+
+    # ACT
+    shift = np.asarray(curated["wavelength"], dtype=float) - np.asarray(shipped["wavelength"], dtype=float)
+
+    # ASSERT
+    assert np.any(shift[ar] != 0)
+    assert np.max(np.abs(shift[ar])) <= MAX_AR_SHIFT_NM
+
+
+def test_only_bare_ar_labels_differ_from_the_clean_list() -> None:
+    # ARRANGE
+    curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
+    shipped = _stable_sorted(_clean_list_rows_kept())
+
+    # ACT
+    relabelled = ions(curated) != ions(shipped)
+
+    # ASSERT
+    assert relabelled.any()
+    assert set(ions(shipped[relabelled])) == {"Ar"}
+    assert set(ions(curated[relabelled])) <= set(AR_IONS)
+
+
 def test_orders_outside_the_curation_keep_the_clean_list_geometry() -> None:
     # ARRANGE
-    columns = [name for name in read_table(MPH_TABLE).colnames if name != "wavelength"]
+    columns = [name for name in read_table(MPH_TABLE).colnames if name not in ("wavelength", "ion")]
 
     # ACT
     curatedRest = _stable_sorted(_uncurated_rows(MPH_TABLE))
@@ -364,15 +530,17 @@ def test_added_order_10_line_has_every_pinhole_at_its_recorded_position(
         assert actual[slit] == pytest.approx(position, rel=0, abs=POSITION_ATOL_PX)
 
 
-def test_order_10_row_count_is_unchanged_with_three_sets_out_and_three_in() -> None:
+def test_order_10_row_count_drops_only_by_the_sets_with_no_nist_line() -> None:
     # ARRANGE
     table = read_table(MPH_TABLE)
+    # DY-1970 SWAPPED THREE SETS OUT AND THREE IN; DY-2173 REMOVED TWO Ar I SETS
+    expected = MPH_O10_ROWS_BEFORE - NO_NIST_AR_ORDER_10_SETS * PINHOLES_PER_LINE
 
     # ACT
     rowCount = int(np.sum(np.asarray(table["order"]) == EDITED_ORDER))
 
     # ASSERT
-    assert rowCount == MPH_O10_ROWS_BEFORE
+    assert rowCount == expected
 
 
 def test_order_10_rows_the_edit_did_not_touch_match_the_recorded_checksum() -> None:
