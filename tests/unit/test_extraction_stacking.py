@@ -181,6 +181,39 @@ def test_stamping_the_combined_spectrum_leaves_the_exposure_time_of_the_master_h
     assert "NCOMBINE" not in listed_nod.masterHeaderFrame.header
 
 
+def test_the_combined_spectrum_has_the_target_position_and_the_uncalibrated_flux_cards(listed_nod: soxs_nod) -> None:
+    # ARRANGE: THE MASTER HEADER HAS THE POINTING, AND THE EARLIEST FRAME HAS THE TARGET
+    target = {"HIERARCH ESO TEL TARG ALPHA": 3019.8, "HIERARCH ESO TEL TARG DELTA": -331501.08}
+    headers = [
+        raw_science_header("VIS", mjd=61000.0, arcfile="SOXS.0.fits", exptime=600.0, **target),
+        raw_science_header("VIS", mjd=61000.1, arcfile="SOXS.1.fits", exptime=600.0),
+    ]
+    listed_nod.onTargetFrames = build_on_target_frames(
+        headers, ["raw-0.fits", "raw-1.fits"], listed_nod.kw, "VIS", listed_nod.log
+    )
+    listed_nod.masterHeaderFrame.header["RA"] = 7.9
+    listed_nod.masterHeaderFrame.header["DEC"] = -33.0
+
+    # ACT
+    _, filePath = listed_nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])
+
+    # ASSERT
+    header = fits.getheader(filePath)
+    assert header["RA"] == pytest.approx(7.5825, abs=1e-9)
+    assert header["DEC"] == pytest.approx(-33.2503, abs=1e-9)
+    assert (header["RADESYS"], header["EQUINOX"]) == ("FK5", 2000.0)
+    assert (header["FLUXCAL"], header["TOT_FLUX"], header["FLUXERR"]) == ("UNCALIBRATED", False, -1.0)
+
+
+def test_the_not_flattened_stack_is_uncalibrated_too(listed_nod: soxs_nod) -> None:
+    # ACT
+    _, filePath = listed_nod.stack_extractions([_spectrum(10.0)], notFlattened=True)
+
+    # ASSERT
+    header = fits.getheader(filePath)
+    assert (header["FLUXCAL"], header["TOT_FLUX"], header["FLUXERR"]) == ("UNCALIBRATED", False, -1.0)
+
+
 def test_a_recipe_with_no_on_target_list_writes_no_frame_accounting_cards(nod: soxs_nod) -> None:
     # ACT
     _, filePath = nod.stack_extractions([_spectrum(10.0), _spectrum(20.0)])

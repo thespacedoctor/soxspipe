@@ -91,7 +91,7 @@ class extraction_stacking:
 
         - ``header`` -- the header of ``masterHeaderFrame`` with the frame-accounting cards, as a copy
         """
-        return with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames)
+        return with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames, self.log)
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
         """*merge the extractions of the nodding cycles, or of the nod positions of a stare-mode nodding SOF*
@@ -125,7 +125,7 @@ class extraction_stacking:
         from astropy.table import Table
 
         from soxspipe.commonutils.fits_headers import set_header_card
-        from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
+        from soxspipe.commonutils.phase3 import PER_ARM_MODE, with_flux_calibration_cards, write_fits_table_to_disk
         from soxspipe.commonutils.specutils_calls import spectrum1d_quietly
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
@@ -173,6 +173,8 @@ class extraction_stacking:
 
         set_header_card(header, kw("PRO_TYPE"), "REDUCED")
         set_header_card(header, kw("PRO_CATG"), f"SCI_SLIT_FLUX_{self.arm}".upper())
+        # THE STACK IS IN COUNTS. FLUX CALIBRATION REWRITES THE FILE WITH THE ABSOLUTE CARDS (DY-2357)
+        header = with_flux_calibration_cards(header, isCalibrated=False)
 
         flux_orig = groupedDataframe["FLUX_COUNTS"].values * u.electron
         # THE RESULT IS UNUSED, BUT BUILDING IT VALIDATES THE GROUPED FLUX AND WAVELENGTH ARRAYS AGAINST EACH

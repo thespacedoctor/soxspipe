@@ -111,6 +111,8 @@ def _keyword(keyword: str) -> str:
         "OBS_PROG_ID": "ESO OBS PROG ID",
         "DET_DIT": "ESO DET SEQ1 DIT",
         "DET_NDIT": "ESO DET NDIT",
+        "TEL_TARG_ALPHA": "ESO TEL TARG ALPHA",
+        "TEL_TARG_DELTA": "ESO TEL TARG DELTA",
     }.get(keyword, keyword)
 
 

@@ -29,12 +29,22 @@ pytestmark = pytest.mark.integration
 EXPOSURE_SECONDS = 600.0
 
 
+TARGET_CARDS = {"HIERARCH ESO TEL TARG ALPHA": 3019.8, "HIERARCH ESO TEL TARG DELTA": -331501.08}
+
+
 def _frame_paths(tmpPath: Path, count: int, dprType: str = "OBJECT") -> list[str]:
     """Write ``count`` prepared stare frames whose ARCFILE differs from the file name, and return their paths."""
     paths = []
     for index in range(count):
         header = raw_science_header(
-            "VIS", mjd=61000.0 + index / 10, arcfile=f"SOXS.{index}.fits", exptime=EXPOSURE_SECONDS
+            "VIS",
+            mjd=61000.0 + index / 10,
+            arcfile=f"SOXS.{index}.fits",
+            exptime=EXPOSURE_SECONDS,
+            RA=7.9,
+            DEC=-33.0,
+            OBJECT="SN2026ob",
+            **(TARGET_CARDS if index == 0 else {}),
         )
         overrides = {key: header[key] for key in header}
         overrides.update({"DPR_TYPE": dprType, "DPR_TECH": STARE_TECHNIQUE})
@@ -181,3 +191,41 @@ def test_flux_calibration_divides_by_one_frame_while_its_header_carries_the_summ
     assert arguments["header"]["EXPTIME"] == 2 * EXPOSURE_SECONDS
     assert arguments["header"]["NCOMBINE"] == 2
     assert (arguments["header"]["PROV1"], arguments["header"]["PROV2"]) == ("SOXS.0", "SOXS.1")
+
+
+def test_the_header_given_to_flux_calibration_has_the_target_position_and_the_raw_object_name(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE RAW FRAMES CARRY THE POINTING, AND THE FIRST CARRIES THE TARGET
+    routes = {_route(PRO_CATG="RESP_TAB_VIS"): [str(response_product_fits(tmp_path / "RESP_TAB_VIS.fits"))]}
+    recipe = _listed_stare(log, tmp_path, count=2, extraRoutes=routes)
+    detrended = synthetic_ccd(
+        seed=511, prepared=True, headerOverrides={"EXPTIME": EXPOSURE_SECONDS, "RA": 7.9, "DEC": -33.0}
+    )
+    _patch_stare(recipe, monkeypatch, tmp_path, detrended=detrended)
+    calibratorArguments: list[dict[str, Any]] = []
+
+    class FakeFluxCalibrator:
+        def __init__(self, **kwargs: Any) -> None:
+            calibratorArguments.append(kwargs)
+
+        def calibrate(self) -> tuple[str, pd.DataFrame]:
+            return "fluxcal.fits", pd.DataFrame()
+
+    monkeypatch.setattr(import_module("soxspipe.commonutils"), "flux_calibration", FakeFluxCalibrator)
+    monkeypatch.setattr(import_module("soxspipe.recipes.soxs_stare"), "get_calibrations_path", lambda **_: "/cal")
+    monkeypatch.setattr(
+        import_module("soxspipe.recipes.soxs_stare"),
+        "detector_lookup",
+        lambda **_: type("Lookup", (), {"get": staticmethod(lambda arm: {"extinction": "extinction.dat"})})(),
+    )
+    monkeypatch.setattr(recipe, "_plot_merged_spectrum_qcs", lambda *_, **__: None)
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    header = calibratorArguments[0]["header"]
+    assert header["RA"] == pytest.approx(7.5825, abs=1e-9)
+    assert header["DEC"] == pytest.approx(-33.2503, abs=1e-9)
+    assert (header["RADESYS"], header["EQUINOX"]) == ("FK5", 2000.0)

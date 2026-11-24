@@ -272,7 +272,7 @@ class flux_calibration:
         import pandas as pd
 
         from soxspipe.commonutils.fits_headers import set_header_card
-        from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
+        from soxspipe.commonutils.phase3 import PER_ARM_MODE, with_flux_calibration_cards, write_fits_table_to_disk
         from soxspipe.commonutils.response_basis import counts_per_unbinned_pixel, dispersion_binning
         from soxspipe.commonutils.toolkit import extinction_correction_factor
 
@@ -351,6 +351,8 @@ class flux_calibration:
                 float(self.airmass),
                 "mean airmass of the frames in the product",
             )
+        # A RESPONSE WAS APPLIED, SO THE SPECTRUM IS ABSOLUTE (DY-2357)
+        header = with_flux_calibration_cards(header, isCalibrated=True)
 
         filename = f"{self.sofName}{SPECTRUM_SUFFIX}.fits"
         filePath = f"{self.productDir}/{filename}"

@@ -554,7 +554,7 @@ class horne_extraction(base_util):
         from astropy.table import Table
 
         from soxspipe.commonutils.fits_headers import set_header_card
-        from soxspipe.commonutils.phase3 import PER_ARM_MODE, write_fits_table_to_disk
+        from soxspipe.commonutils.phase3 import PER_ARM_MODE, with_flux_calibration_cards, write_fits_table_to_disk
         from soxspipe.commonutils.toolkit import (
             add_snr_efficiency_qcs,
         )
@@ -768,7 +768,9 @@ class horne_extraction(base_util):
             write_fits_table_to_disk(
                 log=self.log,
                 settings=self.settings,
-                header=with_frame_accounting(header, self.onTargetFrames),
+                header=with_flux_calibration_cards(
+                    with_frame_accounting(header, self.onTargetFrames, self.log), isCalibrated=False
+                ),
                 tables=[mergedTable],
                 filePath=filePath,
                 qc=self.qc,

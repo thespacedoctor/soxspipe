@@ -1741,7 +1741,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
             arm=self.arm,
             # THE HEADER OF THE SPECTRUM CARRIES THE SUMMED EXPOSURE TIME. THE EXPTIME ABOVE IS THAT OF ONE FRAME
-            header=with_frame_accounting(combined_object.header, self.onTargetFrames),
+            header=with_frame_accounting(combined_object.header, self.onTargetFrames, self.log),
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
             sofName=self.productStem,

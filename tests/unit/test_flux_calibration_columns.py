@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from astropy.io import fits
 from astropy.table import MaskedColumn, Table
 
 from soxspipe.commonutils.flux_calibration import (
@@ -12,7 +13,13 @@ from soxspipe.commonutils.flux_calibration import (
     _response_factors_from_table,
 )
 from tests.factories import merged_spectrum
-from tests.factories.flux_calibration import EXPOSURE_TIME, RESPONSE, WAVES, calibrate_spectrum
+from tests.factories.flux_calibration import (
+    EXPOSURE_TIME,
+    RESPONSE,
+    WAVES,
+    calibrate_and_capture_write,
+    calibrate_spectrum,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -224,3 +231,21 @@ def test_fluxcal_error_column_is_float64_and_does_not_underflow(tmp_path, log, m
     assert error.dtype == np.float64
     np.testing.assert_allclose(error, [1.0e-30 / 10 * 7e-17, 2.0e-30 / 10 * 8e-17], rtol=1e-12)
     assert (error > 0).all()
+
+
+def test_the_calibrated_spectrum_header_says_absolute_and_keeps_the_target_position(tmp_path, log, monkeypatch):
+    # ARRANGE: THE HEADER IS THE ONE THE RECIPE STAMPED, WITH AN UNCALIBRATED STATUS FROM THE COUNTS FILE
+    spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY)
+    header = fits.Header(
+        {"DATE-OBS": "2024-01-02T03:04:05", "ESO DET BINY": 1, "RA": 7.5825, "DEC": -33.2503, "FLUXCAL": "UNCALIBRATED"}
+    )
+    header["FLUXERR"] = -1.0
+
+    # ACT
+    written = calibrate_and_capture_write(tmp_path, log, monkeypatch, spectrum, header=header)
+
+    # ASSERT
+    stamped = written["header"]
+    assert (stamped["FLUXCAL"], stamped["TOT_FLUX"], stamped["FLUXERR"]) == ("ABSOLUTE", False, -2.0)
+    assert (stamped["RA"], stamped["DEC"]) == (7.5825, -33.2503)
+    assert header["FLUXCAL"] == "UNCALIBRATED"

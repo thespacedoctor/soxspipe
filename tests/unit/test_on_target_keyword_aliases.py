@@ -20,6 +20,8 @@ ALIASES = {
         "DET_DIT": "ESO DET SEQ1 DIT",
         "DET_NDIT": "ESO DET NDIT",
         "MJDOBS": "MJD-OBS",
+        "TEL_TARG_ALPHA": "ESO TEL TARG ALPHA",
+        "TEL_TARG_DELTA": "ESO TEL TARG DELTA",
     },
     "xsh": {
         "ARCFILE": "ARCFILE",
@@ -30,6 +32,8 @@ ALIASES = {
         "DET_DIT": "ESO DET DIT",
         "DET_NDIT": "ESO DET NDIT",
         "MJDOBS": "MJD-OBS",
+        "TEL_TARG_ALPHA": "ESO TEL TARG ALPHA",
+        "TEL_TARG_DELTA": "ESO TEL TARG DELTA",
     },
 }
 

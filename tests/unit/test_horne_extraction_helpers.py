@@ -1080,6 +1080,53 @@ def test_extract_gives_the_merged_spectrum_alone_the_frame_accounting_cards_of_i
     assert extractor.skySubtractedFrame.header["EXPTIME"] == 600.0
 
 
+def _target_on_target_frames(log: object) -> tuple[object, ...]:
+    """Return the on-target list of two VIS frames, the second of which is the earliest and has a target position."""
+    from soxspipe.commonutils.keyword_lookup import keyword_lookup
+    from soxspipe.commonutils.on_target_frames import build_on_target_frames
+    from tests.factories.on_target_frames import raw_science_header
+
+    target = {"HIERARCH ESO TEL TARG ALPHA": 3019.8, "HIERARCH ESO TEL TARG DELTA": -331501.08}
+    headers = [
+        raw_science_header("VIS", mjd=61000.0, exptime=600.0, arcfile="SOXS.0.fits", RA=7.58343, DEC=-33.25143),
+        raw_science_header("VIS", mjd=61000.1, exptime=600.0, arcfile="SOXS.1.fits", RA=7.9, DEC=-33.0, **target),
+    ]
+    kw = keyword_lookup(log=log, settings={"instrument": "soxs"}).get
+    return build_on_target_frames(headers, ["a.fits", "b.fits"], kw, "VIS", log)
+
+
+def test_extract_gives_the_merged_spectrum_the_target_position_and_the_uncalibrated_flux_cards(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The merged spectrum has the decoded target position, not the pointing, and says it is in counts (DY-2357)."""
+    import soxspipe.commonutils.phase3 as phase3
+
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    extractor.skySubtractedFrame.header["RA"] = 7.9
+    extractor.skySubtractedFrame.header["DEC"] = -33.0
+    extractor.skySubtractedFrame.header["OBJECT"] = "SN2026ob"
+    extractor.onTargetFrames = _target_on_target_frames(log)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    ordersHeader, mergedHeader = calls[0]["header"], calls[1]["header"]
+    assert mergedHeader["RA"] == pytest.approx(7.5825, abs=1e-9)
+    assert mergedHeader["DEC"] == pytest.approx(-33.2503, abs=1e-9)
+    assert (mergedHeader["RADESYS"], mergedHeader["EQUINOX"], mergedHeader["OBJECT"]) == ("FK5", 2000.0, "SN2026ob")
+    assert (mergedHeader["FLUXCAL"], mergedHeader["TOT_FLUX"], mergedHeader["FLUXERR"]) == ("UNCALIBRATED", False, -1.0)
+    assert "FLUXCAL" not in ordersHeader and ordersHeader["RA"] == 7.9
+
+
 def test_the_merged_spectrum_extract_writes_passes_the_frame_accounting_checks_of_the_phase_3_checker(
     log: object,
     monkeypatch: pytest.MonkeyPatch,

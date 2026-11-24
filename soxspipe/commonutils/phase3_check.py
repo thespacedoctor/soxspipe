@@ -68,6 +68,7 @@ from soxspipe.commonutils.phase3_check_framework import (
 CHECK_MODULES = (
     "soxspipe.commonutils.phase3_check_headers",
     "soxspipe.commonutils.phase3_check_provenance",
+    "soxspipe.commonutils.phase3_check_target_flux",
     "soxspipe.commonutils.phase3_check_file",
     "soxspipe.commonutils.phase3_check_table",
 )
