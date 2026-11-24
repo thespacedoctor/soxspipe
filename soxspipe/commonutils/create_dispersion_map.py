@@ -860,8 +860,9 @@ class create_dispersion_map:
                 # BOTH SOXS ARMS: VIS GROUPS BY ORDER (DY-1618), NIR ON A 3x3 DETECTOR GRID (DY-1717)
                 shift = self._soxs_pinhole_shift(orderPixelTable, mask, order_num, centreABottom, centreATop)
             else:
-                # X-SHOOTER KEEPS THE LARGER END SHIFT: ON THE UNIT-TEST ARCS NO END PINHOLE LATCHES, AND THE
-                # SLIT-CENTRED STEP WOULD PICK A WHOLE SPACING FOR 3 UVB AND VIS GROUPS THAT NEED NONE (DY-1717)
+                # X-SHOOTER KEEPS THE LARGER END SHIFT: ON THE UNIT-TEST ARCS NO END PINHOLE LATCHES, AND THE OLD
+                # ORDER TABLES DO NOT CENTRE THE PATTERN ON THE SLIT, SO THE SLIT-CENTRED STEP PICKS A WHOLE SPACING
+                # FOR 4 UVB AND VIS GROUPS THAT NEED NONE (DY-1717)
                 shift = centreATop if abs(centreATop) > abs(centreABottom) else centreABottom
 
             # APPLY CORRECTION
