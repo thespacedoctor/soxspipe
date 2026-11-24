@@ -84,12 +84,13 @@ class extraction_stacking:
         ``stack_extractions`` stamps ``masterHeaderFrame`` with every raw frame of the recipe, so the calibrated
         spectrum lists them all. The header of one input frame lists the raw frames of its own cycle only, or none. The
         cards go on a copy, because flux calibration and the response divide the counts by the exposure time of one
-        frame, which is the ``EXPTIME`` of the master header. With no on-target list the master header itself comes
-        back.
+        frame, which is the ``EXPTIME`` of the master header. With no on-target list a copy of the master header comes
+        back with only its pointing ``RA`` and ``DEC`` removed.
 
         **Return:**
 
-        - ``header`` -- the header of ``masterHeaderFrame`` with the frame-accounting cards, as a copy
+        - ``header`` -- a copy of the header of ``masterHeaderFrame``, with the frame-accounting and target position
+          cards when there is an on-target list
         """
         return with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames, self.log)
 
