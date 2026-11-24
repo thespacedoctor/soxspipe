@@ -53,6 +53,7 @@ from soxspipe.commonutils.figure_guard import closes_its_figures
 from soxspipe.commonutils.filenamer import filenamer
 from soxspipe.commonutils.pinhole_set_offsets import (
     OFFSET_SET_CLIP_SIGMA,
+    OFFSET_SET_MIN_SIGMA,
     SET_OFFSET_COLUMN,
     flag_offset_pinhole_sets,
 )
@@ -2989,6 +2990,8 @@ class create_dispersion_map:
             clipOnMphSets = False
         # OLDER WORKSPACE SETTINGS FILES PREDATE THIS KEY (DY-1526)
         setOffsetSigma = self.recipeSettings.get("poly-clipping-set-offset-sigma", OFFSET_SET_CLIP_SIGMA)
+        # OLDER WORKSPACE SETTINGS FILES PREDATE THIS KEY TOO; WITHOUT IT THE GUARD HAS NO FLOOR (DY-2170)
+        setOffsetMinSigma = self.recipeSettings.get("poly-clipping-set-offset-min-sigma", OFFSET_SET_MIN_SIGMA)
 
         self.log.print("\n# FINDING DISPERSION SOLUTION")
 
@@ -3194,7 +3197,9 @@ class create_dispersion_map:
             # THE TEST RUNS ON THE FIRST FIT ONLY: EACH REFIT WITHOUT OUTLIERS TIGHTENS THE SPREAD, SO REPEATING IT
             # WOULD DROP SETS THAT ARE NOT OUTLIERS OF THE FIRST FIT (DY-1526)
             if iteration == 1:
-                offsetSets = flag_offset_pinhole_sets(orderPixelTable, sigmaLimit=setOffsetSigma)
+                offsetSets = flag_offset_pinhole_sets(
+                    orderPixelTable, sigmaLimit=setOffsetSigma, minSigma=setOffsetMinSigma
+                )
                 if offsetSets.any():
                     orderPixelTable.loc[offsetSets, ["sigma_clipped", SET_OFFSET_COLUMN]] = True
                     self._log_offset_pinhole_sets(orderPixelTable.loc[offsetSets])
