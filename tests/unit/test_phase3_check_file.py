@@ -258,3 +258,104 @@ def test_an_assom_without_an_asson_is_a_failure(tmp_path: Path, log: object) -> 
 
     # ASSERT
     assert any("ASSOM3" in message and "ASSON3" in message for message in failures)
+
+
+def _links_to(name: str, folder: Path) -> dict[str, object]:
+    """Return the primary cards that link one non-FITS file by the given ``ASSON1`` value."""
+    return {"ASSON1": name, "ASSOC1": "ANCILLARY.PREVIEW", "ASSOM1": "0" * 32}
+
+
+@pytest.mark.parametrize("name", ["../outside.png", "sub/outside.png", ".", "..", "/etc/hosts"])
+def test_an_asson_that_is_not_a_bare_file_name_is_a_failure_that_names_the_value(
+    tmp_path: Path, log: object, name: str
+) -> None:
+    # ARRANGE
+    folder = tmp_path / "batch"
+    folder.mkdir()
+    (tmp_path / "outside.png").write_bytes(PREVIEW_BYTES)
+    product = phase3_spectrum_file(folder / PRODUCT_NAME, log, primary=_links_to(name, folder))
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any("ASSON1" in message and repr(name) in message and "bare file name" in message for message in failures)
+
+
+def test_an_asson_that_is_a_symlink_to_a_file_outside_the_folder_is_a_failure(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    folder = tmp_path / "batch"
+    folder.mkdir()
+    outside = tmp_path / "secret.png"
+    outside.write_bytes(PREVIEW_BYTES)
+    (folder / PREVIEW_NAME).symlink_to(outside)
+    links = {
+        "ASSON1": PREVIEW_NAME,
+        "ASSOC1": "ANCILLARY.PREVIEW",
+        "ASSOM1": hashlib.md5(PREVIEW_BYTES, usedforsecurity=False).hexdigest(),
+    }
+    product = phase3_spectrum_file(folder / PRODUCT_NAME, log, primary=links)
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any("ASSON1" in message and repr(PREVIEW_NAME) in message and "outside" in message for message in failures)
+
+
+def test_an_asson_that_is_a_symlink_to_a_file_in_the_same_folder_is_accepted(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    links = _ancillary_files(tmp_path)
+    real = tmp_path / "real_preview.png"
+    (tmp_path / PREVIEW_NAME).rename(real)
+    (tmp_path / PREVIEW_NAME).symlink_to(real)
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log, primary=links)
+
+    # ACT
+    findings = check_phase3(product)
+
+    # ASSERT
+    assert findings == []
+
+
+def test_the_md5_of_a_linked_file_is_read_in_chunks_not_all_at_once(
+    tmp_path: Path, log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    links = _ancillary_files(tmp_path)
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log, primary=links)
+
+    def refuse(self: Path) -> bytes:
+        raise AssertionError("the whole file was read into memory")
+
+    monkeypatch.setattr(Path, "read_bytes", refuse)
+
+    # ACT
+    findings = check_phase3(product)
+
+    # ASSERT
+    assert findings == []
+
+
+def test_a_linked_fits_file_that_cannot_be_read_is_a_failure(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    links = _ancillary_files(tmp_path)
+    (tmp_path / TWO_D_NAME).write_text("this is not FITS")
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log, primary=links)
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any("ASSON2" in message and "cannot be opened" in message for message in failures)
+
+
+def test_a_failed_phase3_file_name_over_68_characters_is_a_failure(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    product = phase3_spectrum_file(tmp_path / ("SOXS_" + "X" * 55 + "_ph3_FAILED.fits"), log)
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any("68" in message and "file name" in message for message in failures)

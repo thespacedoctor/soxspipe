@@ -36,6 +36,23 @@ def test_the_command_prints_each_file_and_returns_0_when_there_is_no_failure(
     assert "warning [check_mandatory_and_recommended_keywords] optional keyword LAMRMS is missing" in output
 
 
+def test_the_command_says_when_a_file_is_not_a_phase3_product(
+    tmp_path: Path, log: object, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # ARRANGE
+    internal = phase3_spectrum_file(tmp_path / "soxs_stare_SPECTRUM.fits", log)
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log)
+
+    # ACT
+    phase3_check.check_phase3_command([str(internal), str(product)])
+
+    # ASSERT
+    lines = capsys.readouterr().out.splitlines()
+    notes = [line for line in lines if line.startswith("  note:")]
+    assert notes == ["  note: not a `_ph3` product; length rules skipped"]
+    assert lines.index(notes[0]) == 1
+
+
 def test_the_command_returns_1_when_any_file_has_a_failure(
     tmp_path: Path, log: object, capsys: pytest.CaptureFixture[str]
 ) -> None:

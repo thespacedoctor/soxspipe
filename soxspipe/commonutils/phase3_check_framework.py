@@ -13,7 +13,17 @@ Date Created
 : November 24, 2026
 """
 
+from __future__ import annotations
+
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from soxspipe.commonutils.phase3 import MAX_VALUE_LENGTH
+
+if TYPE_CHECKING:
+    from astropy.io.fits import FITS_rec, HDUList, Header
 
 FAILURE = "failure"
 WARNING = "warning"
@@ -38,7 +48,7 @@ class Finding:
     check: str = ""
 
 
-def fail(message):
+def fail(message: str) -> Finding:
     """*return a failure finding*
 
     **Key Arguments:**
@@ -48,11 +58,17 @@ def fail(message):
     **Return:**
 
     - ``finding`` -- a ``Finding`` with the ``FAILURE`` severity
+
+    **Usage:**
+
+    ```python
+    findings = [fail("EXPTIME is 0, it must be greater than 0")]
+    ```
     """
     return Finding(FAILURE, message)
 
 
-def warn(message):
+def warn(message: str) -> Finding:
     """*return a warning finding*
 
     **Key Arguments:**
@@ -62,6 +78,12 @@ def warn(message):
     **Return:**
 
     - ``finding`` -- a ``Finding`` with the ``WARNING`` severity
+
+    **Usage:**
+
+    ```python
+    findings = [warn("recommended keyword SPEC_ERR is missing from the primary header")]
+    ```
     """
     return Finding(WARNING, message)
 
@@ -81,15 +103,15 @@ class Phase3Product:
     - ``isBinTable`` -- the first extension is a binary table, whether or not its data can be read
     """
 
-    path: object
-    hdus: object
-    primary: object
-    extension: object
-    table: object
-    tableError: object = None
+    path: Path
+    hdus: HDUList
+    primary: Header
+    extension: Header | None
+    table: FITS_rec | None
+    tableError: str | None = None
     isBinTable: bool = False
 
-    def header(self, hdu):
+    def header(self, hdu: str) -> Header | None:
         """*return the primary or the extension header, or None when the file has no extension*
 
         **Key Arguments:**
@@ -99,6 +121,12 @@ class Phase3Product:
         **Return:**
 
         - ``header`` -- the header, or *None* when the file has no extension
+
+        **Usage:**
+
+        ```python
+        extensionHeader = product.header(EXTENSION)
+        ```
         """
         return self.primary if hdu == PRIMARY else self.extension
 
@@ -108,16 +136,21 @@ class Check:
     """*one registered check*"""
 
     name: str
-    function: object
+    function: Callable[[Phase3Product], list[Finding]]
     needsTable: bool
     needsTableHeader: bool
 
 
 # EVERY REGISTERED CHECK, IN THE ORDER THEY RUN
-CHECKS = {}
+CHECKS: dict[str, Check] = {}
 
 
-def register_check(function=None, *, needsTable=False, needsTableHeader=False):
+def register_check(
+    function: Callable[[Phase3Product], list[Finding]] | None = None,
+    *,
+    needsTable: bool = False,
+    needsTableHeader: bool = False,
+) -> Callable:
     """*register a function as a Phase 3 check, as a plain or a called decorator*
 
     The check is named after the function. It takes a ``Phase3Product`` and returns a list of ``Finding`` records.
@@ -147,7 +180,7 @@ def register_check(function=None, *, needsTable=False, needsTableHeader=False):
     ```
     """
 
-    def decorator(checkFunction):
+    def decorator(checkFunction: Callable[[Phase3Product], list[Finding]]) -> Callable:
         if checkFunction.__name__ in CHECKS:
             raise ValueError(f"A Phase 3 check named {checkFunction.__name__} is already registered")
         CHECKS[checkFunction.__name__] = Check(checkFunction.__name__, checkFunction, needsTable, needsTableHeader)
@@ -160,11 +193,34 @@ def register_check(function=None, *, needsTable=False, needsTableHeader=False):
 # ESO'S 68-CHARACTER LIMITS: THE INTERNAL MERGED SPECTRUM HAS A LONGER FILE NAME
 FITS_SUFFIX = ".fits"
 PHASE3_STEM_SUFFIX = "_ph3"
-MAX_FILE_NAME_LENGTH = 68
+FAILED_SUFFIX = "_FAILED"
+# THE FILE NAME IS THE VALUE OF ORIGFILE, SO THE LIMIT ON A FILE NAME (SECTION 3.4.1) IS THE LIMIT ON A VALUE
+MAX_FILE_NAME_LENGTH = MAX_VALUE_LENGTH
 
 
-def is_phase3_product(product):
-    """*return True when the file is named as a Phase 3 product, ending in ``_ph3.fits``*
+def is_phase3_name(name: str) -> bool:
+    """*return True when a file name is that of a Phase 3 product, ``<stem>_ph3.fits`` or ``<stem>_ph3_FAILED.fits``*
+
+    **Key Arguments:**
+
+    - ``name`` -- the file name, without its folder
+
+    **Return:**
+
+    - ``isPhase3`` -- True when the name ends in ``_ph3.fits`` or ``_ph3_FAILED.fits``
+
+    **Usage:**
+
+    ```python
+    isPhase3 = is_phase3_name("SOXS_20260102T030405_STARE_ph3.fits")
+    ```
+    """
+    stem = name[: -len(FITS_SUFFIX)] if name.endswith(FITS_SUFFIX) else None
+    return stem is not None and stem.removesuffix(FAILED_SUFFIX).endswith(PHASE3_STEM_SUFFIX)
+
+
+def is_phase3_product(product: Phase3Product) -> bool:
+    """*return True when the file is named as a Phase 3 product, see ``is_phase3_name``*
 
     **Key Arguments:**
 
@@ -172,12 +228,42 @@ def is_phase3_product(product):
 
     **Return:**
 
-    - ``isPhase3`` -- True when the file name ends in ``_ph3.fits``
+    - ``isPhase3`` -- True when the file name is that of a Phase 3 product
+
+    **Usage:**
+
+    ```python
+    if is_phase3_product(product):
+        findings += header_card_faults(product.primary, "primary")
+    ```
     """
-    return product.path.name.endswith(PHASE3_STEM_SUFFIX + FITS_SUFFIX)
+    return is_phase3_name(product.path.name)
 
 
-def open_product(filePath):
+def table_columns(header: Header) -> list[tuple[int, str, str]]:
+    """*return the columns of a table header as ``(index, TTYPE, TFORM)``, the index counting from 1*
+
+    **Key Arguments:**
+
+    - ``header`` -- the header of a binary table extension
+
+    **Return:**
+
+    - ``columns`` -- one tuple per column, in file order, with an empty string for a missing card
+
+    **Usage:**
+
+    ```python
+    names = [name for _, name, _ in table_columns(product.extension)]
+    ```
+    """
+    return [
+        (index, str(header.get(f"TTYPE{index}", "")), str(header.get(f"TFORM{index}", "")))
+        for index in range(1, header.get("TFIELDS", 0) + 1)
+    ]
+
+
+def open_product(filePath: str | Path) -> Phase3Product:
     """*open a file for checking*
 
     **Key Arguments:**
@@ -191,9 +277,13 @@ def open_product(filePath):
     **Raises:**
 
     - `OSError` when the file does not exist or is not a FITS file, `ValueError` when the path is empty
-    """
-    from pathlib import Path
 
+    **Usage:**
+
+    ```python
+    product = open_product("SOXS_20260102T030405_STARE_ph3.fits")
+    ```
+    """
     from astropy.io import fits
 
     hdus = fits.open(filePath, checksum=False)

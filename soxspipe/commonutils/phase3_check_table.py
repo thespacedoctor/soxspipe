@@ -9,7 +9,20 @@ Date Created
 : November 24, 2026
 """
 
-from soxspipe.commonutils.phase3_check_framework import fail, register_check
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from soxspipe.commonutils.phase3_check_framework import (
+    Finding,
+    Phase3Product,
+    fail,
+    register_check,
+    table_columns,
+)
+
+if TYPE_CHECKING:
+    from astropy.io.fits import Header
 
 # THE FIRST THREE COLUMNS OF A SPECTRUM, IN ORDER, AND THE TOKEN THAT MARKS THE MAIN FLUX AND ERROR IN THEIR UCDS
 REQUIRED_COLUMNS = ("WAVE", "FLUX", "ERR")
@@ -26,16 +39,16 @@ MAIN_UTYPES = {
 }
 
 
-def _column_indexes(header):
+def _column_indexes(header: Header) -> dict[str, int]:
     """*return the 1-based index of each column name in a table header, the first one when a name repeats*"""
-    indexes = {}
-    for index in range(1, header.get("TFIELDS", 0) + 1):
-        indexes.setdefault(header.get(f"TTYPE{index}"), index)
+    indexes: dict[str, int] = {}
+    for index, name, _ in table_columns(header):
+        indexes.setdefault(name, index)
     return indexes
 
 
 @register_check(needsTableHeader=True)
-def check_column_names(product):
+def check_column_names(product: Phase3Product) -> list[Finding]:
     """*report a table that does not start with WAVE, FLUX, ERR, or that repeats a column name*
 
     **Key Arguments:**
@@ -45,9 +58,15 @@ def check_column_names(product):
     **Return:**
 
     - ``findings`` -- a list of ``Finding`` records, empty when the product is fine
+
+    **Usage:**
+
+    ```python
+    findings = check_column_names(product)
+    ```
     """
     header = product.extension
-    names = [header.get(f"TTYPE{index}") for index in range(1, header.get("TFIELDS", 0) + 1)]
+    names = [name for _, name, _ in table_columns(header)]
     findings = []
     if tuple(names[:3]) != REQUIRED_COLUMNS:
         findings.append(fail(f"the first three columns must be WAVE, FLUX, ERR in that order, not {names[:3]}"))
@@ -57,7 +76,7 @@ def check_column_names(product):
     return findings
 
 
-def _column_descriptor_findings(header, name, index):
+def _column_descriptor_findings(header: Header, name: str, index: int) -> list[Finding]:
     """*return the findings for the unit, UCD and UType cards of one column*"""
     findings = []
     for prefix in ("TUNIT", "TUCD", "TUTYP"):
@@ -79,7 +98,7 @@ def _column_descriptor_findings(header, name, index):
     return findings
 
 
-def _same_as_flux_findings(header, indexes):
+def _same_as_flux_findings(header: Header, indexes: dict[str, int]) -> list[Finding]:
     """*return the findings for an ERR or BGFLUX column that does not share the unit (and UCD) of FLUX*"""
     findings = []
     if "FLUX" not in indexes:
@@ -100,7 +119,7 @@ def _same_as_flux_findings(header, indexes):
 
 
 @register_check(needsTableHeader=True)
-def check_column_descriptors(product):
+def check_column_descriptors(product: Phase3Product) -> list[Finding]:
     """*report a column without TUNIT, TUCD or TUTYP, with a wrong UCD or UType, or a wrong VOCLASS*
 
     **Key Arguments:**
@@ -110,6 +129,12 @@ def check_column_descriptors(product):
     **Return:**
 
     - ``findings`` -- a list of ``Finding`` records, empty when the product is fine
+
+    **Usage:**
+
+    ```python
+    findings = check_column_descriptors(product)
+    ```
     """
     header = product.extension
     indexes = _column_indexes(header)
@@ -129,7 +154,7 @@ def check_column_descriptors(product):
 
 
 @register_check(needsTable=True)
-def check_table_arrays(product):
+def check_table_arrays(product: Phase3Product) -> list[Finding]:
     """*report arrays of unequal length, a NELEM that is not their length, a non-integer QUAL or a non-finite value*
 
     **Key Arguments:**
@@ -139,6 +164,12 @@ def check_table_arrays(product):
     **Return:**
 
     - ``findings`` -- a list of ``Finding`` records, empty when the product is fine
+
+    **Usage:**
+
+    ```python
+    findings = check_table_arrays(product)
+    ```
     """
     import numpy as np
 
@@ -165,7 +196,7 @@ def check_table_arrays(product):
 
 
 @register_check(needsTable=True)
-def check_wavelength_axis(product):
+def check_wavelength_axis(product: Phase3Product) -> list[Finding]:
     """*report a WAVE array that does not strictly increase, or that lies outside TDMIN and TDMAX*
 
     **Key Arguments:**
@@ -175,6 +206,12 @@ def check_wavelength_axis(product):
     **Return:**
 
     - ``findings`` -- a list of ``Finding`` records, empty when the product is fine
+
+    **Usage:**
+
+    ```python
+    findings = check_wavelength_axis(product)
+    ```
     """
     import numpy as np
 

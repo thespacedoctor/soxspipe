@@ -19,11 +19,11 @@ cards only needs ``needsTableHeader=True``: the runner then skips it when the fi
 structure check reports that fault once. A check that raises is reported as a failure and does not stop the others.
 
 ```python
-from soxspipe.commonutils.phase3_check_framework import fail, register_check, warn
+from soxspipe.commonutils.phase3_check_framework import Finding, Phase3Product, fail, register_check, warn
 
 
 @register_check
-def check_exptime_is_positive(product):
+def check_exptime_is_positive(product: Phase3Product) -> list[Finding]:
     exptime = product.primary.get("EXPTIME")
     if exptime is not None and exptime <= 0:
         return [fail(f"EXPTIME is {exptime}, it must be greater than 0")]
@@ -31,7 +31,7 @@ def check_exptime_is_positive(product):
 
 
 @register_check(needsTable=True)
-def check_flux_is_not_all_zero(product):
+def check_flux_is_not_all_zero(product: Phase3Product) -> list[Finding]:
     if not product.table["FLUX"][0].any():
         return [warn("every FLUX value is 0")]
     return []
@@ -48,19 +48,20 @@ Date Created
 : November 24, 2026
 """
 
+from __future__ import annotations
+
 from dataclasses import replace
 from importlib import import_module
+from pathlib import Path
 
 from soxspipe.commonutils import phase3_check_framework
-from soxspipe.commonutils.phase3_check_framework import (  # noqa: F401
+from soxspipe.commonutils.phase3_check_framework import (
     FAILURE,
     WARNING,
     Finding,
-    Phase3Product,
     fail,
+    is_phase3_name,
     open_product,
-    register_check,
-    warn,
 )
 
 # THE MODULES THAT HOLD THE CHECKS, IN THE ORDER THEIR CHECKS RUN. A MODULE REGISTERS ITS CHECKS WHEN IT IS IMPORTED
@@ -70,11 +71,14 @@ CHECK_MODULES = (
     "soxspipe.commonutils.phase3_check_table",
 )
 
+# SAID ONCE FOR A FILE THAT IS NOT NAMED AS A PHASE 3 PRODUCT, SO ITS OUTPUT DOES NOT READ AS A BROKEN FILE
+NOT_PHASE3_NOTE = "note: not a `_ph3` product; length rules skipped"
+
 for moduleName in CHECK_MODULES:
     import_module(moduleName)
 
 
-def check_phase3(filePath):
+def check_phase3(filePath: str | Path) -> list[Finding]:
     """*run every registered check on one product*
 
     **Key Arguments:**
@@ -113,11 +117,11 @@ def check_phase3(filePath):
     return findings
 
 
-def _count(number, noun):
+def _count(number: int, noun: str) -> str:
     return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
 
 
-def check_phase3_command(filePaths):
+def check_phase3_command(filePaths: list[str]) -> int:
     """*check each file, print the result of each and return the exit status for the command line*
 
     **Key Arguments:**
@@ -142,6 +146,8 @@ def check_phase3_command(filePaths):
         warnings = [finding for finding in findings if finding.severity == WARNING]
         verdict = "FAIL" if failures else "PASS"
         print(f"{filePath}: {verdict} ({_count(len(failures), 'failure')}, {_count(len(warnings), 'warning')})")
+        if not is_phase3_name(Path(filePath).name):
+            print(f"  {NOT_PHASE3_NOTE}")
         for finding in failures + warnings:
             print(f"  {finding.severity} [{finding.check}] {finding.message}")
         if failures:

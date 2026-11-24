@@ -81,9 +81,9 @@ def test_a_registered_check_runs_and_its_finding_carries_the_check_name(
     tmp_path: Path, log: object, isolated_registry: dict
 ) -> None:
     # ARRANGE
-    @phase3_check.register_check
-    def check_object_is_not_a_test_target(product: phase3_check.Phase3Product) -> list:
-        return [phase3_check.fail(f"{product.primary['OBJECT']} is a test target")]
+    @phase3_check_framework.register_check
+    def check_object_is_not_a_test_target(product: phase3_check_framework.Phase3Product) -> list:
+        return [phase3_check_framework.fail(f"{product.primary['OBJECT']} is a test target")]
 
     product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log)
 
@@ -92,15 +92,17 @@ def test_a_registered_check_runs_and_its_finding_carries_the_check_name(
 
     # ASSERT
     assert findings == [
-        phase3_check.Finding(FAILURE, "SYNTHETIC TARGET is a test target", "check_object_is_not_a_test_target")
+        phase3_check_framework.Finding(
+            FAILURE, "SYNTHETIC TARGET is a test target", "check_object_is_not_a_test_target"
+        )
     ]
 
 
 def test_a_registered_check_may_return_a_warning(tmp_path: Path, log: object, isolated_registry: dict) -> None:
     # ARRANGE
-    @phase3_check.register_check
-    def check_for_a_doubt(product: phase3_check.Phase3Product) -> list:
-        return [phase3_check.warn("doubtful")]
+    @phase3_check_framework.register_check
+    def check_for_a_doubt(product: phase3_check_framework.Phase3Product) -> list:
+        return [phase3_check_framework.warn("doubtful")]
 
     product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log)
 
@@ -113,22 +115,22 @@ def test_a_registered_check_may_return_a_warning(tmp_path: Path, log: object, is
 
 def test_registering_two_checks_with_one_name_is_an_error(isolated_registry: dict) -> None:
     # ARRANGE
-    def check_something(product: phase3_check.Phase3Product) -> list:
+    def check_something(product: phase3_check_framework.Phase3Product) -> list:
         return []
 
-    phase3_check.register_check(check_something)
+    phase3_check_framework.register_check(check_something)
 
     # ACT, ASSERT
     with pytest.raises(ValueError, match="check_something"):
-        phase3_check.register_check(check_something)
+        phase3_check_framework.register_check(check_something)
 
 
 def test_a_check_that_raises_is_a_failure_and_the_other_checks_still_run(
     tmp_path: Path, log: object, isolated_registry: dict
 ) -> None:
     # ARRANGE
-    @phase3_check.register_check
-    def check_that_crashes(product: phase3_check.Phase3Product) -> list:
+    @phase3_check_framework.register_check
+    def check_that_crashes(product: phase3_check_framework.Phase3Product) -> list:
         raise KeyError("EXPTIME")
 
     product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log, primary={"PRODCATG": None})
@@ -148,8 +150,8 @@ def test_a_table_check_is_skipped_when_the_file_has_no_table(tmp_path: Path, iso
     # ARRANGE
     calls: list[str] = []
 
-    @phase3_check.register_check(needsTable=True)
-    def check_that_reads_the_table(product: phase3_check.Phase3Product) -> list:
+    @phase3_check_framework.register_check(needsTable=True)
+    def check_that_reads_the_table(product: phase3_check_framework.Phase3Product) -> list:
         calls.append("ran")
         return []
 

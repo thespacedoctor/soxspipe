@@ -126,6 +126,7 @@ def _spectrum_table(
     for index, (name, unit, ucd, utype) in enumerate(kept, start=1):
         unit, ucd, utype = (columnCards or {}).get(name, (unit, ucd, utype))
         table[name] = Column(arrays[name] if arrays[name].ndim == 2 else [arrays[name]], unit=unit)
+        tableCards[f"TCOMM{index}"] = f"{name} column"
         tableCards[f"TUCD{index}"] = ucd
         tableCards[f"TUTYP{index}"] = utype
         if name == "WAVE":

@@ -9,6 +9,13 @@ Date Created
 : June 9, 2026
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from astropy.io.fits import Header
+
 PER_ARM_MODE = "per-arm"
 JOINED_MODE = "joined"
 HEADER_MODES = (PER_ARM_MODE, JOINED_MODE)
@@ -53,6 +60,11 @@ TABLE_DROPPED_CARDS = ("BUNIT", "SXSPRE", *CCDPROC_CARDS)
 # ESO'S LIMIT ON A STRING VALUE, AND THE LENGTH OF ONE FITS CARD. A LONGER CARD IS WRITTEN AS CONTINUE CARDS
 MAX_VALUE_LENGTH = 68
 CARD_LENGTH = 80
+
+# THE ESO CARDS THAT `basic_header_scrubbing` REMOVES FROM EVERY PRODUCT (THE DPR CARDS) AND THE ONE IT RENAMES
+# (TEL TARG EQUINOX BECOMES EQUINOX), AS ASTROPY NAMES THEM. EVERY OTHER `HIERARCH ESO` CARD STAYS IN A PER-ARM PRODUCT
+SCRUBBED_ESO_CARDS = ("ESO DPR TECH", "ESO DPR CATG", "ESO DPR TYPE")
+RENAMED_ESO_CARDS = {"ESO TEL TARG EQUINOX": "EQUINOX"}
 
 # THE FIXED IDENTIFICATION VALUES OF A PHASE 3 TABLE PRODUCT, AS THE WRITER SETS THEM AND THE CHECKER LOOKS FOR THEM
 ORIGIN_VALUE = "ESO"
@@ -278,7 +290,7 @@ def pipe_id():
     return f"{PIPE_ID_PREFIX}{__version__}"
 
 
-def header_card_faults(header, hduName):
+def header_card_faults(header: Header, hduName: str) -> list[str]:
     """*return a message for each card of a header that ESO rejects*
 
     ESO rejects a string value over 68 characters, and any ``CONTINUE`` card. A card that astropy would write as
@@ -317,7 +329,7 @@ def header_card_faults(header, hduName):
     return faults
 
 
-def validate_header_cards(header, hduName):
+def validate_header_cards(header: Header, hduName: str) -> None:
     """*raise an error when a header holds a card that ESO rejects*
 
     **Key Arguments:**

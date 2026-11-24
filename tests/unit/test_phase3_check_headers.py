@@ -8,7 +8,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from astropy.io import fits
 
+from soxspipe.commonutils.phase3 import RENAMED_ESO_CARDS, SCRUBBED_ESO_CARDS
 from soxspipe.commonutils.phase3_check import FAILURE, WARNING, check_phase3
 from tests.factories.phase3_products import (
     PRODUCT_NAME,
@@ -16,6 +18,7 @@ from tests.factories.phase3_products import (
     failure_messages,
     finding_messages,
     phase3_spectrum_file,
+    rewrite_product,
 )
 
 pytestmark = pytest.mark.unit
@@ -302,3 +305,161 @@ def test_texptime_equal_to_telapse_is_not_a_failure(tmp_path: Path, log: object)
 
     # ASSERT
     assert failures == []
+
+
+def test_a_missing_tcomm_is_a_warning_for_each_column(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log)
+    rewrite_product(product, lambda hdus: hdus[1].header.remove("TCOMM2") or hdus[1].header.remove("TCOMM4"))
+
+    # ACT
+    findings = check_phase3(product)
+
+    # ASSERT
+    warnings = finding_messages(findings, WARNING)
+    assert sorted(message.split()[2] for message in warnings) == ["TCOMM2", "TCOMM4"]
+    assert all("optional" in message and "extension" in message for message in warnings)
+    assert finding_messages(findings, FAILURE) == []
+
+
+def test_a_multi_prog_id_needs_progid1(tmp_path: Path, log: object) -> None:
+    # ARRANGE, ACT
+    failures = failure_messages(tmp_path, log, primary={"PROG_ID": "MULTI"})
+
+    # ASSERT
+    assert any("PROGID1" in message and "MULTI" in message for message in failures)
+
+
+def test_a_multi_prog_id_with_progid1_is_accepted(tmp_path: Path, log: object) -> None:
+    # ARRANGE, ACT
+    failures = failure_messages(tmp_path, log, primary={"PROG_ID": "MULTI", "PROGID1": "115.ABCD.001"})
+
+    # ASSERT
+    assert failures == []
+
+
+@pytest.mark.parametrize(
+    ("hdu", "keyword", "value"),
+    [
+        ("primary", "EXPTIME", 0.0),
+        ("primary", "EXPTIME", -5.0),
+        ("primary", "TEXPTIME", 0.0),
+        ("extension", "TELAPSE", 0.0),
+        ("primary", "NCOMBINE", 0),
+        ("primary", "SNR", -1.0),
+        ("primary", "WAVELMIN", 0.0),
+        ("primary", "WAVELMIN", 650.0),
+        ("primary", "SPEC_RES", 0.0),
+    ],
+)
+def test_a_value_outside_its_allowed_range_is_a_failure(
+    tmp_path: Path, log: object, hdu: str, keyword: str, value: float
+) -> None:
+    # ARRANGE, ACT
+    failures = failure_messages(tmp_path, log, **{hdu: {keyword: value}})
+
+    # ASSERT
+    assert any(keyword in message and "range" in message for message in failures)
+
+
+@pytest.mark.parametrize(("keyword", "value"), [("SNR", 0.0), ("NCOMBINE", 1)])
+def test_a_value_at_the_edge_of_its_allowed_range_is_accepted(
+    tmp_path: Path, log: object, keyword: str, value: float
+) -> None:
+    # ARRANGE, ACT
+    failures = failure_messages(tmp_path, log, primary={keyword: value})
+
+    # ASSERT
+    assert all("range" not in message for message in failures)
+
+
+def test_a_missing_extname_is_labelled_as_a_house_rule(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log)
+    rewrite_product(product, lambda hdus: hdus[1].header.remove("EXTNAME"))
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any("EXTNAME" in message and "house rule" in message and "DY-2393" in message for message in failures)
+
+
+def test_a_wrong_extname_is_labelled_as_a_house_rule(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    product = add_cards(phase3_spectrum_file(tmp_path / PRODUCT_NAME, log), extension={"EXTNAME": "TABLE"})
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any("EXTNAME" in message and "house rule" in message for message in failures)
+
+
+@pytest.mark.parametrize("keyword", ["HIERARCH ESO DPR TYPE", "HIERARCH ESO DPR TECH", "HIERARCH ESO DPR CATG"])
+def test_a_dpr_card_in_a_phase3_product_is_a_failure(tmp_path: Path, log: object, keyword: str) -> None:
+    # ARRANGE
+    product = add_cards(phase3_spectrum_file(tmp_path / PRODUCT_NAME, log), primary={keyword: "OBJECT"})
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any(keyword.replace("HIERARCH ", "") in message and "writer removes" in message for message in failures)
+
+
+def test_the_equinox_card_that_the_writer_renames_is_a_failure(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    product = add_cards(
+        phase3_spectrum_file(tmp_path / PRODUCT_NAME, log), primary={"HIERARCH ESO TEL TARG EQUINOX": 2000.0}
+    )
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert any("ESO TEL TARG EQUINOX" in message and "writer" in message for message in failures)
+
+
+def test_other_eso_cards_are_kept_in_a_per_arm_product(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    cards = {
+        "HIERARCH ESO OBS ID": 42,
+        "HIERARCH ESO QC RON": 3.2,
+        "HIERARCH ESO DET NDIT": 2,
+        "HIERARCH ESO TEL TARG ALPHA": 123456.789,
+    }
+    product = add_cards(phase3_spectrum_file(tmp_path / PRODUCT_NAME, log), primary=cards)
+
+    # ACT
+    findings = check_phase3(product)
+
+    # ASSERT
+    assert findings == []
+
+
+def test_a_dpr_card_in_an_internal_spectrum_is_not_checked(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    product = add_cards(
+        phase3_spectrum_file(tmp_path / "soxs_stare_SPECTRUM.fits", log), primary={"HIERARCH ESO DPR TYPE": "OBJECT"}
+    )
+
+    # ACT
+    failures = finding_messages(check_phase3(product), FAILURE)
+
+    # ASSERT
+    assert all("DPR" not in message for message in failures)
+
+
+def test_the_writer_removes_and_renames_the_cards_the_checker_looks_for(tmp_path: Path, log: object) -> None:
+    # ARRANGE
+    cards = {f"HIERARCH {keyword}": "x" for keyword in SCRUBBED_ESO_CARDS}
+    cards.update({f"HIERARCH {keyword}": 2000.0 for keyword in RENAMED_ESO_CARDS})
+
+    # ACT
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log, primary=cards)
+
+    # ASSERT
+    header = fits.getheader(product, 0)
+    assert not [keyword for keyword in (*SCRUBBED_ESO_CARDS, *RENAMED_ESO_CARDS) if keyword in header]
+    assert header["EQUINOX"] == 2000.0
