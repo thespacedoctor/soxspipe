@@ -127,3 +127,29 @@ def test_unsorted_samples_give_the_same_snrs_as_sorted_ones() -> None:
 
     # ASSERT
     assert snrs == pytest.approx([4.0, 3.0], rel=1e-6)
+
+
+def test_ndit_1_snrs_are_bit_identical_to_the_default() -> None:
+    # ARRANGE
+    centres = np.array([505.0, 510.0, 515.0])
+    sky = _sky(centres, np.array([15.0, 20.0, -10.0]))
+
+    # ACT
+    withNdit1 = sky_line_snrs(WAVELENGTH, sky, centres, READ_NOISE, ndit=1)
+
+    # ASSERT
+    np.testing.assert_array_equal(withNdit1, sky_line_snrs(WAVELENGTH, sky, centres, READ_NOISE))
+
+
+def test_snrs_grow_with_the_square_root_of_ndit_and_a_dip_stays_zero() -> None:
+    # ARRANGE
+    centres = np.array([505.0, 510.0, 515.0])
+    sky = _sky(centres, np.array([15.0, 20.0, -10.0]))
+    ndit1 = sky_line_snrs(WAVELENGTH, sky, centres, READ_NOISE)
+
+    # ACT
+    ndit4 = sky_line_snrs(WAVELENGTH, sky, centres, READ_NOISE, ndit=4)
+
+    # ASSERT: THE FRAME IS THE MEAN OF NDIT INTEGRATIONS, SO sigma^2 = (BASELINE + RON^2) / NDIT
+    assert ndit4 == pytest.approx([8.0, 6.0, 0.0], rel=1e-6)
+    np.testing.assert_allclose(ndit4, 2.0 * ndit1, rtol=1e-14)

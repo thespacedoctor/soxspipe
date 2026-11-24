@@ -48,6 +48,8 @@ pytestmark = pytest.mark.integration
 
 # THE TECHNIQUE EVERY STARE SCIENCE FRAME IS TAKEN WITH.
 STARE_TECHNIQUE = "ECHELLE,SLIT,STARE"
+# THE READ NOISE (E-) THE RECIPE HOLDS IN ITS DETECTOR PARAMETERS, AS THE NDSAMPLES LOOKUP LEAVES IT
+RECIPE_READ_NOISE = 5.5
 
 # SEEDS OF THE CALIBRATION FRAMES, SO A TEST CAN TELL WHICH FILE WAS READ.
 BIAS_SEED = 501
@@ -88,7 +90,7 @@ def _stare_recipe(
     recipe.log = log
     recipe.arm = arm
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": RECIPE_READ_NOISE * u.electron}
     recipe.inputFrames = RouteCollection(routes)
     recipe.recipeName = "soxs-stare"
     recipe.recipeSettings = (
@@ -500,8 +502,13 @@ MAP_SHAPE = (32, 32)
 OFFSET_ARCSEC = {11: 0.8, 12: -0.4}
 
 
-def _illumination_recipe_settings(block: dict[str, object] | None, *, useFlat: bool = True) -> dict[str, object]:
-    recipeSettings: dict[str, object] = {"use_flat": useFlat, "sky-subtraction": {"subtract_sky": True}}
+def _illumination_recipe_settings(
+    block: dict[str, object] | None, *, useFlat: bool = True, flatSlitGradient: bool | None = None
+) -> dict[str, object]:
+    skySettings: dict[str, object] = {"subtract_sky": True}
+    if flatSlitGradient is not None:
+        skySettings["flat-slit-gradient"] = flatSlitGradient
+    recipeSettings: dict[str, object] = {"use_flat": useFlat, "sky-subtraction": skySettings}
     if block is not None:
         recipeSettings["slit-illumination"] = block
     return recipeSettings
@@ -515,18 +522,21 @@ def _write_illumination_map(tmpPath: Path, arm: str = "VIS") -> Path:
     return write_map_images(tmpPath / f"DISP_IMAGE_{arm}.fits", wavelength, slit, orderMap)
 
 
-def _illumination_result(*, isApplied: bool = True, hasProfiles: bool = True) -> slit_illumination_result:
-    status = STATUS_FITTED if isApplied else STATUS_FAILED
+def _illumination_result(
+    *, isApplied: bool = True, hasProfiles: bool = True, failedOrders: tuple[int, ...] = ()
+) -> slit_illumination_result:
+    """A measurement of orders 11 and 12; none of them fails when applied, all fail when not, else ``failedOrders``."""
+    failed = tuple(OFFSET_ARCSEC) if not isApplied else failedOrders
     offsets = pd.DataFrame(
         [
             {
                 "order": order,
-                "offset": OFFSET_ARCSEC[order] if isApplied else np.nan,
+                "offset": np.nan if order in failed else OFFSET_ARCSEC[order],
                 "offsetErr": 0.02,
                 "scienceWidth": 0.15,
                 "nBins": 100,
-                "status": status,
-                "reason": "" if isApplied else "too few skyline bins",
+                "status": STATUS_FAILED if order in failed else STATUS_FITTED,
+                "reason": "too few skyline bins" if order in failed else "",
                 "borrowedFrom": np.nan,
             }
             for order in OFFSET_ARCSEC
@@ -548,6 +558,7 @@ def _illumination_result(*, isApplied: bool = True, hasProfiles: bool = True) ->
         isApplied=isApplied,
         reason="" if isApplied else "no order has a usable offset",
         overlapMarginArcsec=0.45,
+        maxOffsetErrArcsec=0.3,
     )
 
 
@@ -1348,6 +1359,119 @@ def test_the_kept_slit_ranges_of_the_slit_illumination_measurement_reach_the_sky
     # ASSERT
     assert flat_fit_ranges_from_result(result)
     assert captured["sky"][0]["flatFitRanges"] == flat_fit_ranges_from_result(result)
+
+
+def test_the_extraction_is_handed_the_read_noise_the_recipe_resolved(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Horne sky-line S/N gate uses the resolved read noise, not the detector default (DY-2323)."""
+    # ARRANGE
+    recipe = _stare_recipe(log, tmp_path)
+    captured = _patch_stare(
+        recipe, monkeypatch, tmp_path, skyResult=tuple(synthetic_ccd(seed=540 + n, prepared=True) for n in range(3))
+    )
+
+    # ACT
+    recipe.produce_product()
+
+    # ASSERT
+    assert captured["extractor"][0]["readNoise"] == RECIPE_READ_NOISE
+
+
+def _fallback_warnings(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    result: slit_illumination_result,
+    *,
+    flatSlitGradient: bool,
+) -> tuple[list[str], dict[int, tuple[float, float]]]:
+    """Run the recipe on a stubbed measurement; return its flat-fit-range fallback warnings and the ranges it used."""
+    routes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(_calibration_path(tmp_path, "MASTER_FLAT_VIS", FLAT_SEED))]}
+    recipe = _stare_recipe(
+        log,
+        tmp_path,
+        extraRoutes=routes,
+        recipeSettings=_illumination_recipe_settings(ILLUMINATION_BLOCK, flatSlitGradient=flatSlitGradient),
+    )
+    _write_illumination_map(tmp_path)
+    Path(recipe.qcDir).mkdir()
+    _stub_measurement(monkeypatch, result)
+    captured = _patch_stare(
+        recipe,
+        monkeypatch,
+        tmp_path,
+        detrended=synthetic_ccd(seed=550, prepared=True, headerOverrides={"WIN_BINX": 1, "WIN_BINY": 1}),
+        skyResult=tuple(synthetic_ccd(seed=560 + n, prepared=True) for n in range(3)),
+    )
+
+    recipe.produce_product()
+
+    warnings = [text for level, text in log.messages if level == "warning" and "flat-slit-gradient fit range" in text]
+    return warnings, captured["sky"][0]["flatFitRanges"]
+
+
+def test_an_order_with_no_usable_offset_logs_a_warning_with_the_median_offset_it_took(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    result = _illumination_result(failedOrders=(12,))
+
+    # ACT
+    warnings, ranges = _fallback_warnings(log, tmp_path, monkeypatch, result, flatSlitGradient=True)
+
+    # ASSERT: ORDER 11 IS THE ONLY USABLE ORDER, SO ITS OFFSET IS THE MEDIAN
+    assert set(ranges) == {11, 12}
+    assert len(warnings) == 1
+    assert "order 12" in warnings[0]
+    assert "median" in warnings[0]
+    assert f"{OFFSET_ARCSEC[11]:+.3f} arcsec" in warnings[0]
+
+
+def test_a_frame_with_no_usable_offset_logs_one_warning_per_order_with_the_zero_offset_and_the_inset(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    result = _illumination_result(isApplied=False)
+
+    # ACT
+    warnings, ranges = _fallback_warnings(log, tmp_path, monkeypatch, result, flatSlitGradient=True)
+
+    # ASSERT
+    assert set(ranges) == {11, 12}
+    assert len(warnings) == 2
+    for order, warning in zip((11, 12), warnings, strict=True):
+        assert f"order {order}" in warning
+        assert "+0.000 arcsec" in warning
+        assert "0.30 arcsec" in warning
+        assert "max-order-scatter-arcsec" in warning
+
+
+def test_no_fallback_warning_is_logged_when_every_order_has_a_usable_offset(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ACT
+    warnings, ranges = _fallback_warnings(log, tmp_path, monkeypatch, _illumination_result(), flatSlitGradient=True)
+
+    # ASSERT
+    assert set(ranges) == {11, 12}
+    assert warnings == []
+
+
+@pytest.mark.parametrize("failedOrders", [(), (12,), (11, 12)])
+def test_no_fallback_warning_is_logged_when_the_flat_slit_gradient_is_off(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failedOrders: tuple[int, ...]
+) -> None:
+    # ARRANGE
+    result = _illumination_result(isApplied=bool(failedOrders != (11, 12)), failedOrders=failedOrders)
+
+    # ACT
+    warnings, _ = _fallback_warnings(log, tmp_path, monkeypatch, result, flatSlitGradient=False)
+
+    # ASSERT
+    assert warnings == []
 
 
 def test_a_frame_whose_slit_illumination_is_not_measured_hands_the_sky_fit_no_ranges_from_an_earlier_frame(

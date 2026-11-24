@@ -1,6 +1,6 @@
-"""With the shipped stare settings, ``subtract_sky.subtract`` gives the products recorded for DY-2079 on f33c0e7b.
+"""With the shipped stare settings, ``subtract_sky.subtract`` gives the products recorded for DY-1977 on 4edec12b.
 
-The golden file ``data/subtract_sky_default_golden_f33c0e7b_dy2079.npz`` holds the sky model, the sky-subtracted frame,
+The golden file ``data/subtract_sky_default_golden_4edec12b_dy1977.npz`` holds the sky model, the sky-subtracted frame,
 its ``ERRS`` and its mask for each arm, for the synthetic frame built here. It was recorded from develop cff556ae and
 re-recorded for DY-2081 (the VIS arrays: the pre-fit clip no longer retries once it clips about half the pixels
 Gaussian sky noise would; the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS mask) and for DY-2079
@@ -39,10 +39,19 @@ file (pixels counted where the change exceeds 1e-3, both medians signed as new m
   median signed change is -0.003 e- in the model and +0.003 e- in the subtracted frame.
 - The VIS ``ERRS`` and both masks do not change. The model still holds every sky line in both orders.
 
+DY-1977 re-recorded the file on 4edec12b (develop with DY-2290) because the shipped VIS knot settings changed:
+``starting_points_per_knot`` 1000 to 500 in ``soxs-stare`` and ``soxs-stare-std``, ``min_points_per_knot`` 15 to 20 in
+``soxs-stare`` and 155 to 77 in ``soxs-stare-std``. The NIR arrays, the VIS ``ERRS`` and both masks are identical to the
+DY-2079 file, bit for bit, so the NDIT weights (this frame has no NDIT card) and the NIR settings did not move them.
+Only the VIS sky model and sky-subtracted frame change, in 76145 and 76144 of 76800 pixels where the change exceeds
+1e-3, by at most 4.4 e- (+4.0 up, -4.4 down). The median signed change over those pixels is +0.019 e- in the model and
+-0.019 e- in the subtracted frame, and no pixel moves by more than 10 e-. The model still holds every sky line in both
+orders.
+
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. ``log`` is
-the ``log`` fixture of ``tests/conftest.py`` or any object with ``print``, ``debug`` and ``warning``. Recording from the
-DY-2079 commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
+the ``log`` fixture of ``tests/conftest.py`` or any object with ``print``, ``debug`` and ``warning``. Recording from
+the DY-1977 commit reproduces every array of the file. Re-record it only on purpose: a failure here means the default
 sky subtraction changed.
 """
 
@@ -69,7 +78,7 @@ from tests.factories import instrument_header
 
 pytestmark = pytest.mark.unit
 
-GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_f33c0e7b_dy2079.npz"
+GOLDEN_FILE = Path(__file__).parent / "data" / "subtract_sky_default_golden_4edec12b_dy1977.npz"
 ARMS = ("NIR", "VIS")
 PRODUCTS = ("model", "subtracted", "errs", "mask")
 STAR_ORDER = 12
@@ -166,7 +175,7 @@ def _input_error(mapTable: pd.DataFrame) -> np.ndarray:
     return error
 
 
-def _object_frame(mapTable: pd.DataFrame, arm: str) -> CCDData:
+def _object_frame(mapTable: pd.DataFrame, arm: str, headerOverrides: dict[str, Any] | None = None) -> CCDData:
     data = np.zeros(FRAME_SHAPE)
     data[mapTable["y"], mapTable["x"]] = mapTable["flux"]
     error = _input_error(mapTable)
@@ -176,12 +185,24 @@ def _object_frame(mapTable: pd.DataFrame, arm: str) -> CCDData:
         unit=u.electron,
         mask=np.zeros(FRAME_SHAPE, dtype=bool),
         uncertainty=StdDevUncertainty(error),
-        meta=instrument_header(arm=arm, overrides={slitKeyword: "SLIT1.0"}),
+        meta=instrument_header(arm=arm, overrides={slitKeyword: "SLIT1.0", **(headerOverrides or {})}),
     )
 
 
-def run_default_subtract(log: Any, arm: str, workDir: Path) -> dict[str, np.ndarray]:
+def run_default_subtract(
+    log: Any, arm: str, workDir: Path, headerOverrides: dict[str, Any] | None = None
+) -> dict[str, np.ndarray]:
     """Run ``subtract`` on the synthetic frame with the shipped settings of the arm; return its products."""
+    return run_default_subtractor(log, arm, workDir, headerOverrides)[1]
+
+
+def run_default_subtractor(
+    log: Any, arm: str, workDir: Path, headerOverrides: dict[str, Any] | None = None
+) -> tuple[subtract_sky, dict[str, np.ndarray]]:
+    """Run ``subtract`` as ``run_default_subtract`` does; return the subtractor and the products.
+
+    ``headerOverrides`` are added to the header of the object frame, for example ``{"DET_NDIT": 4}``.
+    """
     mapTable = _map_table()
     with ExitStack() as stack:
         stack.enter_context(
@@ -200,14 +221,14 @@ def run_default_subtract(log: Any, arm: str, workDir: Path) -> dict[str, np.ndar
             log=log,
             settings={"instrument": "soxs"},
             recipeSettings={"sky-subtraction": _sky_settings(arm)},
-            objectFrame=_object_frame(mapTable, arm),
+            objectFrame=_object_frame(mapTable, arm, headerOverrides),
             twoDMap="two-d-map.fits",
             qcTable=pd.DataFrame(),
             productsTable=pd.DataFrame(),
             ron=NIR_GOLDEN_READ_NOISE if arm == "NIR" else None,
         )
         model, subtracted, _, _, _ = subtractor.subtract()
-    return {
+    return subtractor, {
         "model": np.asarray(model.data, dtype=float),
         "subtracted": np.asarray(subtracted.data, dtype=float),
         "errs": np.asarray(subtracted.uncertainty.array, dtype=float),

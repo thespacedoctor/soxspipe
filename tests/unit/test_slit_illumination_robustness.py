@@ -222,7 +222,7 @@ def replace_flat(scene, data):
 
 def _result(offsets, flatEdges, profiles):
     """A result holding the given frames."""
-    return slit_illumination_result(offsets, flatEdges, profiles, True, "", 0.3)
+    return slit_illumination_result(offsets, flatEdges, profiles, True, "", 0.3, 0.3)
 
 
 def test_the_result_holds_copies_of_its_frames_so_a_later_edit_does_not_reach_it():

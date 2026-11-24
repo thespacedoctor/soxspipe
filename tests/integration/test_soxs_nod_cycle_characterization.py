@@ -28,6 +28,9 @@ from tests.factories import pipeline_settings, qc_row, qc_table, synthetic_ccd
 
 pytestmark = pytest.mark.integration
 
+# THE READ NOISE (E-) THE RECIPE HOLDS IN ITS DETECTOR PARAMETERS, AS THE NDSAMPLES LOOKUP LEAVES IT
+NOD_RECIPE_READ_NOISE = 5.5
+
 
 def _cycle_recipe(
     log: Any,
@@ -51,6 +54,7 @@ def _cycle_recipe(
     recipe.startNightDate = "2024-01-02"
     recipe.turnOffMP = True
     recipe.arm = "VIS"
+    recipe.detectorParams = {"ron": NOD_RECIPE_READ_NOISE * u.electron}
     # produce_product SETS THIS FROM THE RAW FRAMES; FALSE LETS THE EXTRACTOR USE ITS OWN FRAME HEADER
     recipe.scienceHeaders = False
     productDir = tmp_path / "products"
@@ -149,6 +153,25 @@ def test_nod_cycle_writes_ab_and_ba_difference_frames_with_expected_data_and_hea
     with fits.open(productDir / "SYNTHETIC_BA_1.fits") as hdus:
         assert hdus[0].header["OBJECT"] == "FRAME-B"
         assert hdus[0].data == pytest.approx(bFrame.data - aFrame.data, rel=1e-12)
+
+
+@pytest.mark.parametrize("recipeName", ["soxs-nod", "soxs-offset"])
+def test_the_cycle_extraction_is_handed_the_read_noise_the_recipe_resolved(
+    log: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recipeName: str,
+) -> None:
+    """The Horne sky-line S/N gate uses the resolved read noise, not the detector default (DY-2323)."""
+    recipe = _cycle_recipe(log, tmp_path, recipeName=recipeName)
+    extractCalls, _ = _patch_extraction_collaborators(monkeypatch, recipe)
+    aFrame, bFrame = _ab_frames()
+
+    recipe.process_single_ab_nodding_cycle(
+        aFrame=aFrame, bFrame=bFrame, locationSetIndex=1, orderTablePath="orders.fits"
+    )
+
+    assert extractCalls[0]["readNoise"] == NOD_RECIPE_READ_NOISE
 
 
 def test_nod_cycle_prints_the_flattened_cycle_banner(
@@ -564,6 +587,7 @@ def _stack_recipe(log: Any, tmp_path: Path, *, recipeName: str = "soxs-nod") -> 
     recipe = soxs_nod.__new__(soxs_nod)
     recipe.log = log
     recipe.arm = "VIS"
+    recipe.detectorParams = {"ron": NOD_RECIPE_READ_NOISE * u.electron}
     recipe.recipeName = recipeName
     recipe.sofName = "SYNTHETIC"
     recipe.settings = pipeline_settings(tmp_path)

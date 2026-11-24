@@ -9,17 +9,24 @@ lit edges and m is a margin. This module is pure numpy and returns new objects w
 
 import math
 from numbers import Real
+from typing import NamedTuple
 
 import numpy as np
 
-from soxspipe.commonutils.slit_illumination import STATUS_BORROWED, STATUS_FITTED, _read_disp_map
+from soxspipe.commonutils.slit_illumination import (
+    STATUS_BORROWED,
+    STATUS_FITTED,
+    _read_disp_map,
+    slit_illumination_result,
+)
 from soxspipe.commonutils.slit_illumination_profiles import in_order_pixels
 
 __all__ = [
     "FLAT_FIT_CLEARANCE_ARCSEC",
+    "fit_offset",
+    "flat_fit_offsets",
     "flat_fit_ranges_from_result",
     "exclude_mask_from_result",
-    "kept_ranges_from_result",
     "kept_slit_range",
     "overlap_exclude_mask",
     "usable_flat_edges",
@@ -75,11 +82,20 @@ def kept_slit_range(lower, upper, offset, marginArcsec):
     return max(lower, lower + offset) + marginArcsec, min(upper, upper + offset) - marginArcsec
 
 
-def kept_ranges_from_result(result):
-    """*the both-lit slit range of every order with finite flat edges, from a slit-illumination measurement*
+class fit_offset(NamedTuple):
+    """The slit offset (arcsec) of one order's flat fit range, the extra inset (arcsec) at each end, and the source."""
 
-    An order whose offset is not usable (it failed, or it has none) takes an offset of 0, so the range is the flat's
-    lit range less the margin. An order whose range is empty is left out.
+    offset: float
+    extraInset: float
+    source: str
+
+
+def flat_fit_offsets(result: slit_illumination_result) -> dict[int, fit_offset]:
+    """*the slit offset, the extra inset and where they came from, for every order with finite flat edges*
+
+    An order with a usable offset (fitted or borrowed, and finite) has its own. Any other order takes the median offset
+    of the frame's usable orders. A frame with no usable order takes an offset of 0 and an extra inset of
+    ``result.maxOffsetErrArcsec`` at each end, because the offset is then unknown to that much (DY-1977).
 
     **Key Arguments:**
 
@@ -87,33 +103,41 @@ def kept_ranges_from_result(result):
 
     **Return:**
 
-    - ``keptRanges`` -- ``{order: (keepLower, keepUpper)}`` in arcsec. Empty if the measurement was not applied
+    - ``fitOffsets`` -- ``{order: fit_offset(offset, extraInset, source)}``, where ``source`` is ``"measured"``,
+      ``"median"`` or ``"zero"``. Empty when the result holds no flat edges
+
+    **Caveat:**
+
+    The median over the usable orders assumes that every order shifts along the slit by the same sign and size. That
+    holds for the SOXS NIR orders, where the rule is used. It does not hold for the VIS r and i orders, which move with
+    opposite signs, so do not use the median for VIS without reworking it (DY-1977).
 
     **Usage:**
 
     ```python
-    from soxspipe.commonutils.slit_illumination_mask import kept_ranges_from_result
-    keptRanges = kept_ranges_from_result(result)
+    from soxspipe.commonutils.slit_illumination_mask import flat_fit_offsets
+    fitOffsets = flat_fit_offsets(result)
     ```
     """
-    if not result.isApplied:
-        return {}
-    offsets = usable_offsets(result.offsets)
-    keptRanges = {}
-    for order, (lower, upper) in usable_flat_edges(result.flatEdges).items():
-        keepLower, keepUpper = kept_slit_range(lower, upper, offsets.get(order, 0.0), result.overlapMarginArcsec)
-        if keepLower < keepUpper:
-            keptRanges[order] = (keepLower, keepUpper)
-    return keptRanges
+    usable = usable_offsets(result.offsets)
+    if usable:
+        fallback = fit_offset(float(np.median(list(usable.values()))), 0.0, "median")
+    else:
+        fallback = fit_offset(0.0, float(result.maxOffsetErrArcsec), "zero")
+    return {
+        order: fit_offset(usable[order], 0.0, "measured") if order in usable else fallback
+        for order in usable_flat_edges(result.flatEdges)
+    }
 
 
 def flat_fit_ranges_from_result(result):
     """*the slit range of every order over which to fit the master flat's slit profile, from a measurement*
 
-    The both-lit range (``kept_ranges_from_result``), inset at each end by what the overlap margin leaves short of
-    ``FLAT_FIT_CLEARANCE_ARCSEC``, so the fit stays that far from the flat's lit edge whatever overlap margin the
-    workspace settings hold. A workspace that kept the older 0.3 arcsec margin is inset by 0.15 arcsec, and one with the
-    shipped 0.45 arcsec is not inset. An order whose inset range is empty is left out.
+    The both-lit range of the order (``kept_slit_range``) for its offset (``flat_fit_offsets``), inset at each end by
+    what the overlap margin leaves short of ``FLAT_FIT_CLEARANCE_ARCSEC``, so the fit stays that far from the flat's lit
+    edge whatever overlap margin the workspace settings hold. A workspace that kept the older 0.3 arcsec margin is inset
+    by 0.15 arcsec, and one with the shipped 0.45 arcsec is not inset. A frame with no usable offset is inset by a
+    further ``max-order-scatter-arcsec`` at each end. An order whose range is empty is left out.
 
     **Key Arguments:**
 
@@ -121,7 +145,7 @@ def flat_fit_ranges_from_result(result):
 
     **Return:**
 
-    - ``fitRanges`` -- ``{order: (lower, upper)}`` in arcsec. Empty if the measurement was not applied
+    - ``fitRanges`` -- ``{order: (lower, upper)}`` in arcsec. Empty if the result holds no flat edges
 
     **Usage:**
 
@@ -131,11 +155,15 @@ def flat_fit_ranges_from_result(result):
     ```
     """
     inset = max(0.0, FLAT_FIT_CLEARANCE_ARCSEC - result.overlapMarginArcsec)
-    return {
-        order: (lower + inset, upper - inset)
-        for order, (lower, upper) in kept_ranges_from_result(result).items()
-        if lower + inset < upper - inset
-    }
+    edges = usable_flat_edges(result.flatEdges)
+    fitRanges = {}
+    for order, fitOffset in flat_fit_offsets(result).items():
+        keepLower, keepUpper = kept_slit_range(*edges[order], fitOffset.offset, result.overlapMarginArcsec)
+        fitLower, fitUpper = keepLower + inset, keepUpper - inset
+        fitLower, fitUpper = fitLower + fitOffset.extraInset, fitUpper - fitOffset.extraInset
+        if fitLower < fitUpper:
+            fitRanges[order] = (fitLower, fitUpper)
+    return fitRanges
 
 
 def overlap_exclude_mask(log, slit, orderMap, flatEdges, offsets, marginArcsec):

@@ -55,6 +55,7 @@ def _result(orders, isApplied=True):
         isApplied=isApplied,
         reason="" if isApplied else "no order has a usable offset",
         overlapMarginArcsec=MARGIN_ARCSEC,
+        maxOffsetErrArcsec=0.3,
     )
 
 

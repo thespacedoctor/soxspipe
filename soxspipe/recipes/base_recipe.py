@@ -1437,6 +1437,17 @@ class base_recipe:
 
         return
 
+    def _extraction_read_noise(self) -> float:
+        """*the read noise of one integration (e-) that the Horne extraction uses for its sky-line signal-to-noise*
+
+        **Return:**
+
+        - ``readNoise`` -- the ``ron`` of the recipe's detector parameters, which the read-noise lookup (the
+          ``ESO DET NDSAMPLES`` table for SOXS NIR) has set, as a plain float (DY-2323)
+        """
+        ron = self.detectorParams["ron"]
+        return float(getattr(ron, "value", ron))
+
     def _select_master_frame(self, masterCatg, masterPlural):
         """*pick the master frame of a product category from the SOF, warning when it names several*
 

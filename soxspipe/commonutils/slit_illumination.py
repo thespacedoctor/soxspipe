@@ -510,6 +510,8 @@ class slit_illumination_result:
     - ``isApplied`` -- True only if at least one order has a usable offset (fitted or borrowed)
     - ``reason`` -- why ``isApplied`` is False, or an empty string
     - ``overlapMarginArcsec`` -- the margin, from the settings, for the overlap mask that uses these offsets
+    - ``maxOffsetErrArcsec`` -- the ``max-order-scatter-arcsec`` setting, as resolved (an unusable value gives the
+      default). The flat fit range of a frame with no usable offset is inset by it (DY-1977)
 
     The dataclass is frozen, so its fields cannot be rebound. The three dataframes are copies made when the result is
     built, so an in-place edit of the dataframes that were passed in does not reach the result. The dataframes held by
@@ -522,6 +524,7 @@ class slit_illumination_result:
     isApplied: bool
     reason: str
     overlapMarginArcsec: float
+    maxOffsetErrArcsec: float
 
     def __post_init__(self):
         """*replace the three dataframes with copies, so the result does not alias the caller's frames*"""
@@ -646,6 +649,7 @@ def _not_applied(log, reason, config, flatEdges=None, profiles=None, offsets=Non
         isApplied=False,
         reason=reason,
         overlapMarginArcsec=config["overlapMarginArcsec"],
+        maxOffsetErrArcsec=config["maxOffsetErrArcsec"],
     )
 
 
@@ -872,4 +876,6 @@ def measure_slit_illumination(
     if not isApplied:
         return _not_applied(log, _unusable_reason(offsets), config, flatEdges, profiles, offsets)
     log.debug("completed the ``measure_slit_illumination`` function")
-    return slit_illumination_result(offsets, flatEdges, profiles, True, "", config["overlapMarginArcsec"])
+    return slit_illumination_result(
+        offsets, flatEdges, profiles, True, "", config["overlapMarginArcsec"], config["maxOffsetErrArcsec"]
+    )

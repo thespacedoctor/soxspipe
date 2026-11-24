@@ -79,7 +79,7 @@ def _install_alignment(monkeypatch: pytest.MonkeyPatch, positionA: float, positi
 def _set_aperture(recipe: Any, slitLength: float = 10) -> None:
     """Give the recipe the settings the throw guard reads: the Horne aperture length and the dispersion axis."""
     recipe.recipeSettings = {**recipe.recipeSettings, "horne-extraction-slit-length": slitLength}
-    recipe.detectorParams = {"dispersion-axis": "y"}
+    recipe.detectorParams = {"dispersion-axis": "y", "ron": 3.0}
 
 
 def _real_cycle(recipe: Any, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
@@ -392,7 +392,7 @@ def test_the_aperture_uses_the_binning_in_the_header_and_one_by_one_without_it(
     # ARRANGE
     recipe, _ = _nod_recipe(log, tmp_path, SINGLE_PAIR)
     recipe.recipeSettings = {**recipe.recipeSettings, "horne-extraction-slit-length": slitLength}
-    recipe.detectorParams = {"dispersion-axis": dispersionAxis}
+    recipe.detectorParams = {"dispersion-axis": dispersionAxis, "ron": 3.0}
     frame = SimpleNamespace(header=header)
 
     # ACT

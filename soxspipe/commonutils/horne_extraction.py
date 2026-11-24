@@ -174,6 +174,9 @@ class horne_extraction(base_util):
       ``notFlattened`` is set. The not-flattened extraction applies its sky shifts and runs no skyline peak matching
       (DY-1680), and it reuses its object trace instead of detecting the trace again (DY-1650). Default *None* leaves
       the not-flattened wavelengths untuned and detects the trace again
+    - ``readNoise`` -- the read noise (e-) of one integration that the recipe resolved for the frame (the
+      ``ESO DET NDSAMPLES`` table for SOXS NIR), for the signal-to-noise of the sky lines. Default *None* uses the
+      detector default of the extractor's own detector lookup (DY-2323)
 
     **Usage:**
 
@@ -205,6 +208,13 @@ class horne_extraction(base_util):
     ```
 
     """
+
+    # THE NUMBER OF INTEGRATIONS THE SKY-SUBTRACTED FRAME AVERAGES; SET BY __init__ (DY-2323). A DOUBLE BUILT WITHOUT
+    # __init__ THEREFORE GETS THE NDIT 1 SKY-LINE SNR
+    ndit = 1
+
+    # THE READ NOISE (E-) THE RECIPE RESOLVED FOR THE SKY-LINE SNR, OR NONE FOR THE DETECTOR DEFAULT (DY-2323)
+    readNoise = None
 
     # SET TRUE IN __init__ WHEN NO OBJECT TRACE WAS FOUND AND noTraceFallback ASKED FOR A BOXCAR EXTRACTION INSTEAD
     noTraceFallback = False
@@ -259,10 +269,12 @@ class horne_extraction(base_util):
         flatPass=None,
         slitOffsetsArcsec=None,
         carrySkyCounts=True,
+        readNoise=None,
     ):
         from astropy import units as u
         from astropy.nddata import CCDData
 
+        from soxspipe.commonutils.ndit import read_ndit
         from soxspipe.commonutils.toolkit import nodding_sequence_suffix
 
         # COLLECT THE WARNINGS AND ERRORS OF THE EXTRACTION AND THE HELPERS IT BUILDS, TO PRINT ON THE QC PLOTS
@@ -290,6 +302,7 @@ class horne_extraction(base_util):
         self.flatPass = flatPass
         self.slitOffsetsArcsec = slitOffsetsArcsec
         self.carrySkyCounts = carrySkyCounts
+        self.readNoise = readNoise
 
         if notFlattened:
             self.notFlattened = "_NOTFLAT"
@@ -323,6 +336,9 @@ class horne_extraction(base_util):
 
         # THE RAW SCIENCE FRAMES OF THE OBSERVATION BLOCK, WHOSE FIRST START AND LAST END THE ATTACHED-ARC TEST USES
         self.scienceHeaders = list(scienceHeaders) if scienceHeaders else [self.skySubtractedFrame.header]
+
+        # THE NUMBER OF INTEGRATIONS THE FRAME AVERAGES, FOR THE SKY-LINE SNR (DY-2323)
+        self.ndit = read_ndit(self.skySubtractedFrame.header, self.kw, self.log)
 
         # THE INSTRUMENT, READ BEFORE THE TRACE BRANCH SO THE NO-TRACE FALLBACK HAS IT TOO
         self.inst = self.skySubtractedFrame.header.get(self.kw("INSTRUME"), "")
@@ -1668,7 +1684,8 @@ class horne_extraction(base_util):
         if not wave.notna().any():
             return np.array([])
         _, calibrationSkylines = self._get_local_skylines_for_order(wave.min(), wave.max(), o, "wavelength")
-        return sky_line_snrs(wave, sky, calibrationSkylines, self.detectorParams["ron"])
+        readNoise = self.detectorParams["ron"] if self.readNoise is None else self.readNoise
+        return sky_line_snrs(wave, sky, calibrationSkylines, readNoise, ndit=self.ndit)
 
     @staticmethod
     def _unusable_shift_reason(o, stats):

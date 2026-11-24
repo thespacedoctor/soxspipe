@@ -388,6 +388,8 @@ class subtract_sky:
       value is not the noise left in the frame, e.g. the single-frame read noise scaled by ``sqrt(1 + 1/N)`` for the
       master bias subtracted from it. A value that is not a finite, positive number falls back to the detector default.
       Default *None*, which uses the frame's read-noise header value, else the detector default
+      The noise model also divides by the NDIT of the frame (``ESO DET NDIT``, 1 when the card is missing), because
+      the frame is the mean of NDIT integrations (DY-2323)
     - ``uncoveredMask`` -- boolean image, the shape of ``objectFrame``, True for a pixel that not every frame of the
       stack covers (DY-2290). It is left out of the sky model and comes out flagged, like an ``excludeMask`` pixel,
       but it does not switch off the slit-edge clip of its order, as it trims one end of the slit only. Default *None*
@@ -423,6 +425,8 @@ class subtract_sky:
     coverageEdges = MappingProxyType({})
     # THE SLIT RANGE OF EACH ORDER TO FIT THE MASTER FLAT'S SLIT PROFILE OVER; SET BY __init__ WHEN RANGES ARE GIVEN
     flatFitRanges = None
+    # THE NUMBER OF INTEGRATIONS THE OBJECT FRAME AVERAGES; SET BY __init__ (DY-2323)
+    ndit = 1
     # THE MERGED WINDOWS OF THE HOST EMISSION LINES LEFT OUT OF THE SKY FIT; SET BY _fit_sky_to_orders (DY-2242)
     hostLineWindows = ()
     # THE REDSHIFT INFERRED FROM THE DETECTED WINDOWS, AND THE COMPANION WINDOWS IT ADDED, SET WITH hostLineWindows
@@ -450,6 +454,8 @@ class subtract_sky:
         flatFitRanges: Mapping[int, tuple[float, float]] | None = None,
         uncoveredMask: np.ndarray | None = None,
     ) -> None:
+        from soxspipe.commonutils.ndit import read_ndit
+
         self.log = log
         log.debug("instantiating a new 'subtract_sky' object")
         self.settings = settings
@@ -552,6 +558,9 @@ class subtract_sky:
         # (DY-1282, DY-1458)
         ronValue = ron if ron is not None else self.objectFrame.header.get(kw("RON"))
         self.ron = self._read_noise(ronValue, dp["ron"], self.log)
+
+        # THE FRAME IS THE MEAN OF NDIT INTEGRATIONS, SO THE NOISE MODEL OF THE FIT DIVIDES BY NDIT (DY-2323)
+        self.ndit = read_ndit(self.objectFrame.header, kw, self.log)
         return
 
     def _coverage_edges(
@@ -2187,15 +2196,16 @@ class subtract_sky:
         return float(getattr(defaultRon, "value", defaultRon))
 
     @staticmethod
-    def _inverse_noise_weights(skyModel, ron, flat=None):
+    def _inverse_noise_weights(skyModel, ron, flat=None, ndit: int = 1):
         """*return the B-spline sky-fit weights, 1/σ, from a noise model of the sky (DY-1282)*
 
-        σ² = max(skyModel, 0) + ron². The weights come from a model of the sky, never from the
-        measured flux, so they do not correlate with the noise in each pixel and cannot bias the fit.
+        σ² = (max(skyModel, 0) + ron²) / NDIT, because the frame is the mean of NDIT integrations of ``ron``
+        each (DY-2323). The weights come from a model of the sky, never from the measured flux, so they do not
+        correlate with the noise in each pixel and cannot bias the fit.
 
         The fit runs on flat-fielded flux. A pixel with master flat ``f`` collected ``f`` times the sky in
-        electrons, so its σ² = (max(skyModel, 0) · f + ron²) / f² and its weight is
-        f / sqrt(max(skyModel, 0) · f + ron²). A low flat therefore gives a low weight (DY-1517).
+        electrons, so its σ² = (max(skyModel, 0) · f + ron²) / (f² · NDIT) and its weight is
+        sqrt(NDIT) · f / sqrt(max(skyModel, 0) · f + ron²). A low flat therefore gives a low weight (DY-1517).
 
         **Key Arguments:**
 
@@ -2203,6 +2213,8 @@ class subtract_sky:
         - ``ron`` -- the detector read noise (e-), finite and positive
         - ``flat`` -- array of master flat values, one per pixel. A flat that is not finite and positive gives a
           weight of 0. Default *None*, which applies no flat
+        - ``ndit`` -- the number of integrations the frame averages (``ndit.read_ndit``). NDIT 1 gives the
+          weights of the model without NDIT, bit for bit. Default *1*
 
         **Return:**
 
@@ -2210,14 +2222,18 @@ class subtract_sky:
         """
         import numpy as np
 
+        from soxspipe.commonutils.ndit import scale_by_sqrt_ndit
+
         skyModel = np.nan_to_num(np.asarray(skyModel, dtype=float), nan=0.0, posinf=np.inf, neginf=0.0)
         positiveSky = np.clip(skyModel, 0.0, None)
         if flat is None:
-            return 1.0 / np.sqrt(positiveSky + ron**2)
-        flat = np.asarray(flat, dtype=float)
-        isUsable = np.isfinite(flat) & (flat > 0)
-        usableFlat = np.where(isUsable, flat, 1.0)
-        return np.where(isUsable, usableFlat / np.sqrt(positiveSky * usableFlat + ron**2), 0.0)
+            weights = 1.0 / np.sqrt(positiveSky + ron**2)
+        else:
+            flat = np.asarray(flat, dtype=float)
+            isUsable = np.isfinite(flat) & (flat > 0)
+            usableFlat = np.where(isUsable, flat, 1.0)
+            weights = np.where(isUsable, usableFlat / np.sqrt(positiveSky * usableFlat + ron**2), 0.0)
+        return scale_by_sqrt_ndit(weights, ndit)
 
     @staticmethod
     def _raw_flux_sky(imageMapOrder, tck):
@@ -2252,7 +2268,7 @@ class subtract_sky:
 
         - ``weights`` -- numpy array of finite, non-negative weights, one per pixel
         """
-        noiseWeights = self._inverse_noise_weights(rawSky, self.ron, self._flat_values(imageMapOrder))
+        noiseWeights = self._inverse_noise_weights(rawSky, self.ron, self._flat_values(imageMapOrder), ndit=self.ndit)
         return noiseWeights * imageMapOrder["slit_normalisation_ratio"].to_numpy(dtype=float)
 
     @staticmethod
@@ -3508,6 +3524,7 @@ class subtract_sky:
                     df.loc[notClippedOrObjectMask, "flux_percentile_smoothed"].to_numpy(dtype=float),
                     self.ron,
                     self._flat_values(df.loc[notClippedOrObjectMask]),
+                    ndit=self.ndit,
                 )
             )
 

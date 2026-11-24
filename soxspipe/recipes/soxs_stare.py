@@ -41,6 +41,8 @@ from .nod_stare_stacking import nod_stare_stacking, reduction_inputs, response_i
 if TYPE_CHECKING:
     import numpy as np
 
+    from soxspipe.commonutils.slit_illumination import slit_illumination_result
+
 os.environ["TERM"] = "vt100"
 
 # THE SLIT OFFSETS FOLLOW THE ROTATOR ANGLE, SO INPUT FRAMES MORE THAN THIS FAR APART IN ABSROT (DEGREES) ARE FLAGGED
@@ -854,6 +856,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             noTraceFallback=True,
             scienceHeaders=self.scienceHeaders,
             slitOffsetsArcsec=self.slitIlluminationOffsets,
+            readNoise=self._extraction_read_noise(),
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
 
@@ -1286,9 +1289,43 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         )
         self.slitIlluminationOffsets = usable_offsets(result.offsets)
         self.slitIlluminationFitRanges = flat_fit_ranges_from_result(result)
+        self._warn_flat_fit_fallbacks(result)
         self._record_slit_illumination_qcs(result)
         self._write_slit_illumination_qc_plot(result)
         return exclude_mask_from_result(self.log, result, twoDMap, binx, biny, self.kw)
+
+    def _warn_flat_fit_fallbacks(self, result: slit_illumination_result) -> None:
+        """*log one warning for each order whose flat-slit-gradient fit range uses a fallback offset (DY-1977)*
+
+        An order with no usable slit-illumination offset takes the median offset of the frame's usable orders, or an
+        offset of 0 and an extra inset when no order of the frame has one. Nothing is logged when the
+        ``flat-slit-gradient`` sky-subtraction setting is not ``True``, because the fit ranges are then not used.
+
+        **Key Arguments:**
+
+        - ``result`` -- the ``slit_illumination_result`` from ``measure_slit_illumination``
+        """
+        from soxspipe.commonutils.slit_illumination_mask import flat_fit_offsets
+        from soxspipe.commonutils.subtract_sky import FLAT_SLIT_GRADIENT_KEY
+
+        # A VALUE THAT IS NOT A BOOLEAN IS REFUSED BY subtract_sky, SO IT NEVER REACHES A FIT THAT USES THE RANGES
+        if self.recipeSettings.get("sky-subtraction", {}).get(FLAT_SLIT_GRADIENT_KEY) is not True:
+            return
+        for order, fitOffset in flat_fit_offsets(result).items():
+            if fitOffset.source == "measured" or order not in self.slitIlluminationFitRanges:
+                continue
+            offset = fitOffset.offset
+            if fitOffset.source == "median":
+                self.log.warning(
+                    f"order {order}: no usable slit-illumination offset; the flat-slit-gradient fit range uses the "
+                    f"median offset of the frame's usable orders, {offset:+.3f} arcsec"
+                )
+            else:
+                self.log.warning(
+                    f"order {order}: no order of the frame has a usable slit-illumination offset; the "
+                    f"flat-slit-gradient fit range uses an offset of {offset:+.3f} arcsec, inset by a further "
+                    f"{fitOffset.extraInset:.2f} arcsec (max-order-scatter-arcsec)"
+                )
 
     def _slit_illumination_settings(self):
         """*the ``slit-illumination`` settings block, or None when the offset is not to be measured*
@@ -1781,6 +1818,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             turnOffMP=self.turnOffMP,
             scienceHeaders=self.scienceHeaders,
             flatPass=flatPass,
+            readNoise=self._extraction_read_noise(),
         )
         self.qc, self.products, mergedSpectrumDF, _, extractionPath_notflat = optimalExtractor.extract()
         return extractionPath_notflat, mergedSpectrumDF

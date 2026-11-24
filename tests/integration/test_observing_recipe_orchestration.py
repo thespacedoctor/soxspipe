@@ -142,7 +142,7 @@ def _configure_nodding_recipe(
     recipe.arm = "VIS"
     recipe.inst = "SOXS"
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": 3.0}
     recipe.inputFrames = RouteCollection(routes)
     recipe.recipeName = "soxs-offset" if "OFFSET" in technique else "soxs-nod"
     recipe.recipeSettings = {"use_flat": False}
@@ -395,6 +395,7 @@ def test_nod_cycle_extracts_both_difference_frames_without_flattening(
 
     recipe = soxs_nod.__new__(soxs_nod)
     recipe.log = log
+    recipe.detectorParams = {"ron": 3.0}
     recipe.recipeName = "soxs-nod"
     recipe.sofName = "SYNTHETIC"
     recipe.debug = False
@@ -469,6 +470,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
     recipe = soxs_nod.__new__(soxs_nod)
     recipe.log = log
     recipe.arm = "VIS"
+    recipe.detectorParams = {"ron": 3.0}
     recipe.recipeName = "soxs-nod"
     recipe.sofName = "SYNTHETIC"
     recipe.settings = pipeline_settings(tmp_path)
@@ -788,7 +790,7 @@ def test_stare_success_returns_last_sky_path_and_records_products(
     recipe.log = log
     recipe.arm = "VIS"
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": 3.0}
     recipe.inputFrames = RouteCollection(
         {
             _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [str(objectPath)],
@@ -1128,7 +1130,7 @@ def test_stare_uses_flux_standard_frames_when_object_frames_are_absent(
     recipe.log = log
     recipe.arm = "VIS"
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": 3.0}
     recipe.inputFrames = RouteCollection(
         {
             _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [],
@@ -1182,7 +1184,7 @@ def test_stare_selects_supported_non_object_fallbacks(
     recipe.log = log
     recipe.arm = "VIS"
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": 3.0}
     routes = {
         _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [],
         _route(DPR_TYPE="OBJECT,ASYNC", DPR_TECH="ECHELLE,SLIT,STARE"): [],
@@ -1226,7 +1228,7 @@ def _stare_standard_recipe(
     recipe.log = log
     recipe.arm = "VIS"
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": 3.0}
     recipe.inputFrames = RouteCollection(
         {
             _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [],
@@ -1480,7 +1482,7 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
     recipe.log = log
     recipe.arm = "VIS"
     recipe.kw = _keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": 3.0}
     recipe.inputFrames = RouteCollection(
         {
             _route(DPR_TYPE="OBJECT", DPR_TECH="ECHELLE,SLIT,STARE"): [str(objectPath)],
@@ -1596,6 +1598,7 @@ def _cycle_recipe(
     nodModule = import_module("soxspipe.recipes.soxs_nod")
     recipe = recipeClass.__new__(recipeClass)
     recipe.log = log
+    recipe.detectorParams = {"ron": 3.0}
     recipe.recipeName = recipeName
     recipe.sofName = "SYNTHETIC"
     recipe.debug = False
