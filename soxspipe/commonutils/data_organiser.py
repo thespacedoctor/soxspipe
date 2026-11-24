@@ -72,6 +72,50 @@ KNOWN_SET_COLUMN = "known set"
 # THE TEMPORARY COPY OF A SESSION'S SOF MAP THAT THE SEARCH FOR THE SETS BUILT FROM A REJOINED SET READS
 MAP_SNAPSHOT_TABLE = "late_frame_map_snapshot"
 
+# THE MOST WORKSPACE-ROOT FITS ENTRIES ONE PASS OF THE RAW-FRAME SYNC READS, TO BOUND MEMORY USE
+ROOT_SCAN_WINDOW = 10000
+
+
+def _fits_entries(pathToDirectory: str, skipNames: frozenset[str] = frozenset()) -> list[os.DirEntry]:
+    """*list the FITS entries of a directory in sorted name order*
+
+    **Key Arguments:**
+
+    - ``pathToDirectory`` -- the directory to list
+    - ``skipNames`` -- entry names to leave out
+
+    **Return:**
+
+    - ``entries`` -- the ``os.DirEntry`` of each visible FITS file or link to one, sorted by name
+    """
+    # SORTED, BECAUSE THE FIRST FRAMES DECIDE THE INSTRUMENT CHECK AND THE `limit`
+    # CUT, AND RAW LISTING ORDER VARIES BETWEEN FILESYSTEMS (DY-48)
+    return [
+        entry
+        for entry in sorted(os.scandir(pathToDirectory), key=lambda entry: entry.name)
+        if not entry.name.startswith(".")
+        and entry.name not in skipNames
+        and entry.is_file()
+        and is_fits_frame(entry.name)
+    ]
+
+
+def _fits_entry_path(entry: os.DirEntry, pathToDirectory: str) -> str:
+    """*return the path a directory entry is indexed under: a link by its resolved target, a file by its name*
+
+    **Key Arguments:**
+
+    - ``entry`` -- the ``os.DirEntry`` of a FITS file or link
+    - ``pathToDirectory`` -- the directory that holds the entry
+
+    **Return:**
+
+    - ``path`` -- the path relative to ``pathToDirectory``, starting with ``./`` for a link
+    """
+    if os.path.islink(entry.path):
+        return "./" + os.path.relpath(os.path.realpath(entry.path), pathToDirectory)
+    return os.path.relpath(entry.path, pathToDirectory)
+
 
 def print_incomplete_sets_report(incompleteSets, blockingSets=None):
     """*print the "cannot be reduced" report shared by `data_organiser.prepare` and `reducer.reduce`*
@@ -931,112 +975,156 @@ class data_organiser:
         """
         self.log.debug("starting the ``_sync_raw_frames`` method")
 
-        import shutil
-
-        import pandas as pd
-
         self._delete_superseded_frames()
 
-        remainingFiles = 1
-        firstPass = True
-
-        while remainingFiles > 0:
+        # A FRAME THAT A PASS CANNOT FILE STAYS IN THE ROOT, SO EACH LATER WINDOW LEAVES OUT THE ENTRIES ALREADY
+        # EXAMINED; OTHERWISE MORE STUCK FRAMES THAN ONE WINDOW WOULD FILL EVERY WINDOW FOR EVER (DY-2270)
+        # THE WINDOW IS READ AT RUN TIME, SO A TEST CAN PATCH IT
+        limit = ROOT_SCAN_WINDOW
+        examinedNames = frozenset()
+        passCount = 0
+        while True:
+            # THIS LISTING AND THE ONE IN `_create_directory_table` SHARE `_fits_entries`, THE SKIP SET AND THE LIMIT,
+            # SO THEY NAME THE SAME WINDOW; ONE PROCESS RUNS PER WORKSPACE, SO THE ROOT DOES NOT CHANGE BETWEEN THEM
+            windowNames = [entry.name for entry in _fits_entries(self.rootDir, examinedNames)][:limit]
+            if not windowNames:
+                break
             # GENERATE AN ASTROPY TABLE OF FITS FRAMES WITH ALL INDEXES NEEDED
             rawFrames, fitsPaths, remainingFiles = self._create_directory_table(
-                pathToDirectory=self.rootDir, filterKeys=self.filterKeywords
+                pathToDirectory=self.rootDir,
+                filterKeys=self.filterKeywords,
+                limit=limit,
+                skipNames=examinedNames,
             )
+            if not fitsPaths:
+                break
+            examinedNames = examinedNames | frozenset(windowNames)
+            passCount += 1
 
-            if not remainingFiles:
-                remainingFiles = 0
-            elif remainingFiles > 0:
-                if firstPass:
-                    firstPass = False
-                else:
+            if remainingFiles:
+                if passCount > 1:
                     sys.stdout.flush()
                     sys.stdout.write("\x1b[1A\x1b[2K")
                 print(remainingFiles, "FITS files remaining to be indexed")
 
-            if fitsPaths:
-                conn = self.conn
-                knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=conn)
+            self._file_root_window(rawFrames)
+            if not remainingFiles:
+                break
 
-                # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
-                rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
-
-                # FIND AND REMOVE DUPLICATE FILES
-                if len(rawFrames.index):
-                    mask = rawFrames["filepath"].isnull()
-                    rawFrames.loc[mask, "filepath"] = (
-                        "./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
-                    )
-
-                    # FIND AND REMOVE DUPLICATE FILES
-                    matchedFiles = pd.merge(
-                        rawFrames,
-                        knownRawFrames,
-                        on=["file", "eso dpr tech"],
-                        how="inner",
-                    )
-                    if len(matchedFiles.index):
-                        for file in matchedFiles["file"]:
-                            self._remove_workspace_entry(file)
-                        # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
-                        rawFrames = rawFrames[
-                            ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
-                                knownRawFrames.set_index(["file", "eso dpr tech"]).index
-                            )
-                        ]
-
-                # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
-                rawFrames = self._without_overwriting_frames(self._without_unsafe_frames(rawFrames))
-                databaseDeletes = []
-                if len(rawFrames.index):
-                    # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
-                    rawFrames.replace(["--", -99.99], None).to_sql(
-                        "raw_frames", con=self.conn, index=False, if_exists="append"
-                    )
-
-                    # MOVE THE FILES TO THE CORRECT LOCATION
-                    filepaths = rawFrames["filepath"]
-                    filenames = rawFrames["file"]
-                    dprTechs = rawFrames["eso dpr tech"]
-                    for filepath, filename, dprTech in zip(filepaths, filenames, dprTechs, strict=True):
-                        # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
-                        destination = path_under_root(filepath, self.rootDir)
-                        parentDirectory = os.path.dirname(destination)
-                        if not os.path.exists(parentDirectory):
-                            # Recursively create missing directories
-                            os.makedirs(parentDirectory)
-                        source = path_under_root(filename, self.rootDir)
-                        if os.path.exists(source):
-                            realSource = os.path.realpath(source)
-                            realDest = os.path.realpath(destination)
-
-                            if self._is_dated_raw_frame(realSource) and realSource != realDest:
-                                # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
-                                databaseDeletes.append((filepath, filename, dprTech))
-                            elif self._would_move(source, destination):
-                                self._move_root_frame_unless_taken(
-                                    destination, realSource, realDest, filename, filepath
-                                )
-                            if os.path.islink(source):
-                                self._remove_workspace_entry(filename)
-
-                if len(databaseDeletes):
-                    # THE STORED FILEPATH, WITH THE KEY OF THE ROW JUST INSERTED, SO NO OTHER FRAME'S ROW IS DELETED
-                    # `IS ?` ALSO MATCHES A NULL TECH, WHICH `= ?` NEVER DOES
-                    c = self.conn.cursor()
-                    c.executemany(
-                        'delete from raw_frames where filepath = ? and file = ? and "eso dpr tech" is ?;',
-                        databaseDeletes,
-                    )
-                    c.close()
+        if passCount > 1:
+            self._warn_of_frames_left_in_root()
 
         if not skipSqlSync:
             self._sync_sql_table_to_directory(self.rawDir, "raw_frames", recursive=False)
 
         self.log.debug("completed the ``_sync_raw_frames`` method")
         return
+
+    def _file_root_window(self, rawFrames: "pd.DataFrame") -> None:
+        """*index the new frames of one window of the workspace root and file them into their dated folders*
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the table `_create_directory_table` built for the window
+        """
+        # SPLIT INTO RAW, REDUCED PIXELS, REDUCED TABLES
+        rawFrames = self._populate_raw_frames_extra_columns(rawFrames)
+
+        if len(rawFrames.index):
+            mask = rawFrames["filepath"].isnull()
+            rawFrames.loc[mask, "filepath"] = (
+                "./raw/" + rawFrames.loc[mask, "mjd-date"] + "/" + rawFrames.loc[mask, "file"]
+            )
+            rawFrames = self._without_known_frames(rawFrames)
+
+        # ADD THE NEWLY FOUND FRAMES TO THE DATABASE
+        rawFrames = self._without_overwriting_frames(self._without_unsafe_frames(rawFrames))
+        if len(rawFrames.index):
+            self._index_and_move_frames(rawFrames)
+
+    def _without_known_frames(self, rawFrames: "pd.DataFrame") -> "pd.DataFrame":
+        """*delete the root entries of frames ``raw_frames`` already holds, and drop them from the table*
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the new frames of one window, with ``file`` and ``eso dpr tech`` columns
+
+        **Return:**
+
+        - ``rawFrames`` -- the frames not yet in ``raw_frames``
+        """
+        import pandas as pd
+
+        knownRawFrames = pd.read_sql("SELECT * FROM raw_frames", con=self.conn)
+        # FIND AND REMOVE DUPLICATE FILES
+        matchedFiles = pd.merge(
+            rawFrames,
+            knownRawFrames,
+            on=["file", "eso dpr tech"],
+            how="inner",
+        )
+        if not len(matchedFiles.index):
+            return rawFrames
+        for file in matchedFiles["file"]:
+            self._remove_workspace_entry(file)
+        # FIND RECORDS IN THE FILE SYSTEM NOT YET IN THE DATABASE
+        return rawFrames[
+            ~rawFrames.set_index(["file", "eso dpr tech"]).index.isin(
+                knownRawFrames.set_index(["file", "eso dpr tech"]).index
+            )
+        ]
+
+    def _index_and_move_frames(self, rawFrames: "pd.DataFrame") -> None:
+        """*add the frames to ``raw_frames`` and move each root frame into its dated folder*
+
+        A root link to a dated raw-archive frame that is not where its ``filepath`` files it has its new row deleted,
+        and every root link is unlinked.
+
+        **Key Arguments:**
+
+        - ``rawFrames`` -- the frames that passed the safety and overwrite filters
+        """
+        # NOW MAKE FILEPATHS RELATIVE TO THE rawDir
+        rawFrames.replace(["--", -99.99], None).to_sql("raw_frames", con=self.conn, index=False, if_exists="append")
+
+        # MOVE THE FILES TO THE CORRECT LOCATION
+        databaseDeletes = []
+        filepaths = rawFrames["filepath"]
+        filenames = rawFrames["file"]
+        dprTechs = rawFrames["eso dpr tech"]
+        for filepath, filename, dprTech in zip(filepaths, filenames, dprTechs, strict=True):
+            # `filepath` IS STORED RELATIVE TO THE WORKSPACE, SO FILE-SYSTEM CALLS BUILD IT FROM rootDir
+            destination = path_under_root(filepath, self.rootDir)
+            source = path_under_root(filename, self.rootDir)
+            if not os.path.exists(source):
+                continue
+            realSource = os.path.realpath(source)
+            realDest = os.path.realpath(destination)
+            if self._is_dated_raw_frame(realSource) and realSource != realDest:
+                # FILE NOT WHERE THEY SHOULD BE - DELETE FROM DATABASE
+                databaseDeletes.append((filepath, filename, dprTech))
+            elif self._would_move(source, destination):
+                self._move_root_frame_unless_taken(destination, realSource, realDest, filename, filepath)
+            if os.path.islink(source):
+                self._remove_workspace_entry(filename)
+
+        if len(databaseDeletes):
+            # THE STORED FILEPATH, WITH THE KEY OF THE ROW JUST INSERTED, SO NO OTHER FRAME'S ROW IS DELETED
+            # `IS ?` ALSO MATCHES A NULL TECH, WHICH `= ?` NEVER DOES
+            c = self.conn.cursor()
+            c.executemany(
+                'delete from raw_frames where filepath = ? and file = ? and "eso dpr tech" is ?;',
+                databaseDeletes,
+            )
+            c.close()
+
+    def _warn_of_frames_left_in_root(self) -> None:
+        """*warn once, after a sync of more than one window, about the FITS frames it left in the workspace root*"""
+        leftCount = len(_fits_entries(self.rootDir))
+        if leftCount:
+            self.log.warning(
+                f"{leftCount} FITS frames could not be filed and are left in the workspace root `{self.rootDir}`"
+            )
 
     def _without_unsafe_frames(self, rawFrames):
         """*drop the frames that filing would move or write outside the workspace*
@@ -1127,6 +1215,8 @@ class data_organiser:
         # A FILE CAN STILL APPEAR BETWEEN THE CHECK ABOVE AND THE MOVE, AND THE MOVE THEN REPLACES IT. THIS WINDOW IS
         # ACCEPTED: THE ARCHIVE IS OFTEN ON ANOTHER VOLUME, SO `os.link` IS NOT AN OPTION, AND SOXSPIPE SUPPORTS ONE
         # PROCESS PER WORKSPACE (DY-1129)
+        # THE DATED FOLDER IS MADE ONLY NOW, SO A FRAME THAT IS NOT MOVED LEAVES NO EMPTY FOLDER BEHIND (DY-2278)
+        os.makedirs(os.path.dirname(destination), exist_ok=True)
         shutil.move(realSource, realDest)
 
     def _hold_root_frame(self, name: str, takenPath: str) -> None:
@@ -1312,7 +1402,9 @@ class data_organiser:
             self.log.warning(f"could not delete `{filepath}`, its twin may also be indexed: {error}")
         return
 
-    def _create_directory_table(self, pathToDirectory, filterKeys, limit=10000):
+    def _create_directory_table(
+        self, pathToDirectory, filterKeys, limit=ROOT_SCAN_WINDOW, skipNames: frozenset[str] = frozenset()
+    ):
         """*create an astropy table based on the contents of a directory*
 
         **Key Arguments:**
@@ -1321,12 +1413,13 @@ class data_organiser:
         - `pathToDirectory` -- path to the directory containing the FITS frames
         - `filterKeys` -- these are the keywords we want to filter on later
         - `limit` -- maximum number of files to process in one go (to avoid memory issues)
+        - `skipNames` -- names of directory entries to leave out, such as those an earlier window already examined
 
         **Return**
 
         - `rawFrames` -- the primary dataframe table listing all FITS files in the directory (including indexes on `filterKeys` columns)
         - `fitsPaths` -- a simple list of all FITS file paths
-        - `remainingFiles` -- number of remaining files not included in the table due to the limit
+        - `remainingFiles` -- number of files outside `skipNames` that the limit left out of the table
 
         **Usage:**
 
@@ -1348,25 +1441,10 @@ class data_organiser:
         from soxspipe.commonutils.fits_headers import HeaderImageFileCollection as ImageFileCollection
 
         # GENERATE A LIST OF FITS FILE PATHS
-        fitsPaths = []
-        fitsPathsRel = []
-        fitsNames = []
-        # SORTED, BECAUSE THE FIRST FRAMES DECIDE THE INSTRUMENT CHECK AND THE `limit`
-        # CUT, AND RAW LISTING ORDER VARIES BETWEEN FILESYSTEMS (DY-48)
-        for entry in sorted(os.scandir(pathToDirectory), key=lambda entry: entry.name):
-            if not entry.name.startswith(".") and entry.is_file() and is_fits_frame(entry.name):
-                # fitsPaths.append(entry.path)
-                if os.path.islink(entry.path):
-                    fp = "./" + os.path.relpath(os.path.realpath(entry.path), pathToDirectory)
-
-                else:
-                    fp = os.path.relpath(entry.path, pathToDirectory)
-                fitsPaths.append(fp)
-                fitsNames.append(entry.name)
-
-        remainingFiles = max(0, len(fitsPaths) - limit)
-        fitsPaths = fitsPaths[:limit]
-        fitsNames = fitsNames[:limit]
+        entries = _fits_entries(pathToDirectory, skipNames)
+        remainingFiles = max(0, len(entries) - limit)
+        fitsPaths = [_fits_entry_path(entry, pathToDirectory) for entry in entries[:limit]]
+        fitsNames = [entry.name for entry in entries[:limit]]
 
         recursive = False
 
