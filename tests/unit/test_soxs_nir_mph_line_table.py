@@ -112,7 +112,7 @@ NO_NIST_AR_SETS = [
     (10, "ArI", 1874.501),
     (9, "Ar", 2073.36),
 ]
-NO_NIST_AR_ORDER_10_SETS = sum(1 for order, _, _ in NO_NIST_AR_SETS if order == EDITED_ORDER)
+NO_NIST_AR_ORDER_10_SET_COUNT = sum(1 for order, _, _ in NO_NIST_AR_SETS if order == EDITED_ORDER)
 AR_IONS = ["ArI", "ArII"]
 # (ORDER, CATALOGUE nm, NIST ION, NIST RITZ nm) OF THE BARE 'Ar' SETS THAT STAY, RELABELLED
 RELABELLED_AR_SETS = [
@@ -410,7 +410,7 @@ def test_bare_ar_set_takes_its_nist_ion_and_ritz_wavelength(
     assert len(set_rows(curated, order, "Ar", catalogue)) == 0
 
 
-def test_ar_wavelengths_move_less_than_the_nist_rounding() -> None:
+def test_ar_wavelengths_move_no_more_than_the_catalogue_rounding() -> None:
     # ARRANGE
     curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
     shipped = _stable_sorted(_clean_list_rows_kept())
@@ -534,7 +534,7 @@ def test_order_10_row_count_drops_only_by_the_sets_with_no_nist_line() -> None:
     # ARRANGE
     table = read_table(MPH_TABLE)
     # DY-1970 SWAPPED THREE SETS OUT AND THREE IN; DY-2173 REMOVED TWO Ar I SETS
-    expected = MPH_O10_ROWS_BEFORE - NO_NIST_AR_ORDER_10_SETS * PINHOLES_PER_LINE
+    expected = MPH_O10_ROWS_BEFORE - NO_NIST_AR_ORDER_10_SET_COUNT * PINHOLES_PER_LINE
 
     # ACT
     rowCount = int(np.sum(np.asarray(table["order"]) == EDITED_ORDER))
