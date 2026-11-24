@@ -482,16 +482,8 @@ class soxs_offset(soxs_nod):
                 frameON.write(filePathON, overwrite=True, checksum=True)
                 frameOFF.write(filePathOFF, overwrite=True, checksum=True)
 
-            rawFrames = []
-            if "ARCFILE" in frameON.header:
-                rawFrames.append(frameON.header["ARCFILE"])
-                rawFrames.append(frameOFF.header["ARCFILE"])
-            elif "ORIGFILE" in frameON.header:
-                rawFrames.append(frameON.header["ORIGFILE"])
-                rawFrames.append(frameOFF.header["ORIGFILE"])
-            else:
-                rawFrames.append(frameONName)
-                rawFrames.append(frameOFFName)
+            # THE RAW-FRAME FILTER MATCHES THE SOF FILE NAMES, NOT THE ARCFILE OF THE FRAME HEADERS
+            rawFrames = [frameONName, frameOFFName]
 
             # INJECT KEYWORDS INTO HEADER
             self.update_fits_keywords(frame=frameON, rawFrames=rawFrames)
@@ -653,7 +645,7 @@ class soxs_offset(soxs_nod):
             exptime=allFrameON[0].header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,
-            header=allFrameON[0].header,
+            header=self._merged_spectrum_header(),
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
             sofName=self.sofName,

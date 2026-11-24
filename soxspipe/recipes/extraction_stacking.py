@@ -8,6 +8,7 @@ Date Created
 : November 23, 2026
 """
 
+import copy
 import math
 
 from soxspipe.commonutils import keyword_lookup
@@ -67,6 +68,18 @@ class extraction_stacking:
     extractions of the A and B stacks with it. The recipe supplies ``log``, ``recipeName``, ``productStem``,
     ``settings``, ``arm``, ``qc``, ``productDir``, ``masterHeaderFrame``, ``add_product`` and ``update_fits_keywords``.
     """
+
+    def _merged_spectrum_header(self):
+        """*the header of the merged spectrum, as a copy, for the flux calibration that rewrites the spectrum*
+
+        ``stack_extractions`` stamps ``masterHeaderFrame`` with every raw frame of the recipe, so the calibrated
+        spectrum lists them all. The header of one input frame lists the raw frames of its own cycle only, or none.
+
+        **Return:**
+
+        - ``header`` -- a copy of the header of ``masterHeaderFrame``
+        """
+        return copy.deepcopy(self.masterHeaderFrame.header)
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
         """*merge the extractions of the nodding cycles, or of the nod positions of a stare-mode nodding SOF*

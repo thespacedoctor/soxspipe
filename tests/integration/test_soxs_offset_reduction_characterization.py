@@ -220,30 +220,25 @@ def test_the_master_flat_reaches_extraction_only_when_present_and_enabled(
 
 
 @pytest.mark.parametrize(
-    ("extraHeader", "expectedRawFrames"),
+    "extraHeader",
     [
-        (
-            lambda index: {"ARCFILE": f"ARC-{index}.fits", "ORIGFILE": f"ORIG-{index}.fits"},
-            [["ARC-0.fits", "ARC-2.fits"], ["ARC-1.fits", "ARC-3.fits"]],
-        ),
-        (
-            lambda index: {"ORIGFILE": f"ORIG-{index}.fits"},
-            [["ORIG-0.fits", "ORIG-2.fits"], ["ORIG-1.fits", "ORIG-3.fits"]],
-        ),
-        (
-            lambda index: {},
-            [["offset-0.fits", "offset-2.fits"], ["offset-1.fits", "offset-3.fits"]],
-        ),
+        lambda index: {"ARCFILE": f"ARC-{index}.fits", "ORIGFILE": f"ORIG-{index}.fits"},
+        lambda index: {"ORIGFILE": f"ORIG-{index}.fits"},
+        lambda index: {},
     ],
 )
-def test_each_cycle_records_its_raw_frame_names_in_priority_order(
+def test_each_cycle_records_the_sof_file_names_of_its_frames_whatever_the_headers_carry(
     log: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     extraHeader: Any,
-    expectedRawFrames: list[list[str]],
 ) -> None:
-    """Per cycle, both frames are stamped with the ON and OFF `ARCFILE`, else `ORIGFILE`, else file name."""
+    """Per cycle, both frames are stamped with the SOF file names of the ON and OFF frames (DY-2356).
+
+    The filter of `ESO PRO REC1 RAWi` matches the SOF file names. It was a defect: the recipe passed the `ARCFILE`
+    (else `ORIGFILE`) of the frames, which match no file when a file is named otherwise, so the header listed no raw
+    frame.
+    """
     # ARRANGE
     headers = [{**header, **extraHeader(index)} for index, header in enumerate(TWO_CYCLES)]
     recipe, _ = _offset_recipe(log, tmp_path, headers)
@@ -256,10 +251,10 @@ def test_each_cycle_records_its_raw_frame_names_in_priority_order(
     # ASSERT
     stamped = [entry["rawFrames"] for entry in captured["keywords"]]
     assert stamped == [
-        expectedRawFrames[0],
-        expectedRawFrames[0],
-        expectedRawFrames[1],
-        expectedRawFrames[1],
+        ["offset-0.fits", "offset-2.fits"],
+        ["offset-0.fits", "offset-2.fits"],
+        ["offset-1.fits", "offset-3.fits"],
+        ["offset-1.fits", "offset-3.fits"],
     ]
     assert all(stamped[index] is stamped[index + 1] for index in (0, 2))
 

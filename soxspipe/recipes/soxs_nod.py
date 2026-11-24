@@ -1024,7 +1024,7 @@ class soxs_nod(extraction_stacking, base_recipe):
     ):
         """*extract each AB cycle on its own and stack the extractions*
 
-        Sorts ``allFrameA`` and ``allFrameB`` in place by observation date.
+        Sorts ``allFrameA`` and ``allFrameB`` in place by observation date, each with its file names.
 
         **Key Arguments:**
 
@@ -1048,8 +1048,8 @@ class soxs_nod(extraction_stacking, base_recipe):
         sequenceCount = 1
         # SORT FRAMEA AND FRAMEB LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
         # FRAMES IN TIME
-        allFrameA.sort(key=lambda x: x.header["MJD-OBS"])
-        allFrameB.sort(key=lambda x: x.header["MJD-OBS"])
+        self._sort_frames_with_their_names(allFrameA, allFrameANames)
+        self._sort_frames_with_their_names(allFrameB, allFrameBNames)
 
         for frameA, frameB, frameAName, frameBName in zip(
             allFrameA, allFrameB, allFrameANames, allFrameBNames, strict=False
@@ -1087,16 +1087,8 @@ class soxs_nod(extraction_stacking, base_recipe):
                 frameA.write(filePathA, overwrite=True, checksum=True)
                 frameB.write(filePathB, overwrite=True, checksum=True)
 
-            rawFrames = []
-            if "ARCFILE" in frameA.header:
-                rawFrames.append(frameA.header["ARCFILE"])
-                rawFrames.append(frameB.header["ARCFILE"])
-            elif "ORIGFILE" in frameA.header:
-                rawFrames.append(frameA.header["ORIGFILE"])
-                rawFrames.append(frameB.header["ORIGFILE"])
-            else:
-                rawFrames.append(frameAName)
-                rawFrames.append(frameBName)
+            # THE RAW-FRAME FILTER MATCHES THE SOF FILE NAMES, NOT THE ARCFILE OF THE FRAME HEADERS
+            rawFrames = [frameAName, frameBName]
 
             # INJECT KEYWORDS INTO HEADER
             self.update_fits_keywords(frame=frameA, rawFrames=rawFrames)
@@ -1127,6 +1119,19 @@ class soxs_nod(extraction_stacking, base_recipe):
         stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB], orderJoins=orderJoins)
 
         return stackedSpectrum, orderJoins
+
+    @staticmethod
+    def _sort_frames_with_their_names(frames, names):
+        """*sort frames in place by observation time, and their file names with them*
+
+        **Key Arguments:**
+
+        - ``frames`` -- the frames. The list is changed in place
+        - ``names`` -- the frames' file names, in the same order. The list is changed in place
+        """
+        order = sorted(range(len(frames)), key=lambda index: frames[index].header["MJD-OBS"])
+        frames[:] = [frames[index] for index in order]
+        names[:] = [names[index] for index in order]
 
     @staticmethod
     def _append_spectrum(spectra, newSpectrum):
@@ -1291,7 +1296,7 @@ class soxs_nod(extraction_stacking, base_recipe):
             exptime=allFrameA[0].header.get(self.kw("EXPTIME")),
             extinctionPath=calibrationRootPath + "/" + self.detectorParams["extinction"],
             arm=self.arm,
-            header=allFrameA[0].header,
+            header=self._merged_spectrum_header(),
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
             sofName=self.sofName,

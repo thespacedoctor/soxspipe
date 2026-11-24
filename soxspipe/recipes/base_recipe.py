@@ -3033,10 +3033,23 @@ class base_recipe:
         ```
         """
         import math
+        import re
 
         from soxspipe.commonutils.fits_headers import set_header_card
 
         kw = self.kw
+
+        # A HEADER STAMPED BEFORE KEEPS ITS RECORDS, AND A SHORTER LIST WOULD LEAVE THE LAST ONES OF THE OLD LIST
+        for keyword in [key for key in frame.header if re.fullmatch(r"ESO PRO REC1 RAW\d+ (NAME|CATG)", key)]:
+            del frame.header[keyword]
+
+        if rawFrames:
+            unmatched = [name for name in rawFrames if name not in set(tableData["filename"].values)]
+            if unmatched:
+                self.log.warning(
+                    f"No raw frame of this recipe has the name {', '.join(unmatched)}, so the product header does "
+                    "not list it in ESO PRO REC1 RAWi."
+                )
 
         iterator = 1
         for f, t, z in zip(
