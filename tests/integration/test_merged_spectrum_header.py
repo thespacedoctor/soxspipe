@@ -149,3 +149,29 @@ def test_the_merged_nod_spectrum_lists_every_raw_frame(
 
     # ASSERT
     assert _raw_names(fits.getheader(filePath)) == NOD_NAMES
+
+
+def test_the_offset_spectrum_has_no_frame_accounting_finding_from_the_phase_3_checker(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from soxspipe.commonutils.on_target_frames import build_on_target_frames
+    from soxspipe.commonutils.phase3_check import check_phase3
+
+    # ARRANGE: TWO ON FRAMES, EACH WITH A DIFFERENT FILE NAME AND ARCFILE
+    productDir = tmp_path / "offset"
+    productDir.mkdir()
+    recipe = _recipe(soxs_offset, productDir, log, monkeypatch, OFFSET_NAMES)
+    frames = [_frame(1), _frame(3)]
+    recipe.onTargetFrames = build_on_target_frames(
+        [frame.header for frame in frames], ["off-ON1.fits", "off-ON2.fits"], recipe.kw, "VIS", log
+    )
+
+    # ACT
+    _, filePath = recipe.stack_extractions([_spectrum()])
+    findings = check_phase3(filePath)
+
+    # ASSERT: THE OTHER KEYWORDS OF THE STANDARD ARE THE BUSINESS OF OTHER ISSUES
+    header = fits.getheader(filePath)
+    assert (header["NCOMBINE"], header["PROV1"], header["ESO SEQ ARM"]) == (2, "SOXS.2026-01-02T03:04:01", "VIS")
+    keywords = ("NCOMBINE", "PROV", "OBID", "MJD-END", "MJD-OBS", "EXPTIME", "PROG_ID", "PROGID")
+    assert [f.message for f in findings if any(keyword in f.message for keyword in keywords)] == []

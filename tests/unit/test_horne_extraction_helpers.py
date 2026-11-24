@@ -1080,6 +1080,36 @@ def test_extract_gives_the_merged_spectrum_alone_the_frame_accounting_cards_of_i
     assert extractor.skySubtractedFrame.header["EXPTIME"] == 600.0
 
 
+def test_the_merged_spectrum_extract_writes_passes_the_frame_accounting_checks_of_the_phase_3_checker(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The stare spectrum of a run with no response, as the extraction writes it, has no frame-accounting finding."""
+    from soxspipe.commonutils.phase3_check import check_phase3
+
+    # ARRANGE
+    productDir = tmp_path / "stare"
+    productDir.mkdir()
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(productDir)
+    extractor.noddingSequence = ""
+    extractor.qc = qc_table()
+    extractor.skySubtractedFrame.header["EXPTIME"] = 600.0
+    extractor.skySubtractedFrame.header["ESO SEQ ARM"] = "VIS"
+    extractor.onTargetFrames = _two_on_target_frames(log)
+
+    # ACT
+    _, _, _, _, filePath = extractor.extract()
+    findings = check_phase3(filePath)
+
+    # ASSERT: THE OTHER KEYWORDS OF THE STANDARD ARE THE BUSINESS OF OTHER ISSUES
+    assert fits.getheader(filePath)["NCOMBINE"] == 2
+    keywords = ("NCOMBINE", "PROV", "OBID", "MJD-END", "MJD-OBS", "EXPTIME", "PROG_ID", "PROGID")
+    assert [f.message for f in findings if any(keyword in f.message for keyword in keywords)] == []
+
+
 def test_extract_without_an_on_target_list_writes_the_header_it_always_wrote(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
