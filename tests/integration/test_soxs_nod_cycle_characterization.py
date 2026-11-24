@@ -659,8 +659,8 @@ def test_stack_extractions_writes_notflat_suffixed_files_when_requested(
 
     _, fitsPath = recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
-    assert Path(fitsPath).name == "SYNTHETIC_EXTRACTED_MERGED_NOTFLAT.fits"
-    assert (tmp_path / "SYNTHETIC_EXTRACTED_MERGED_NOTFLAT.txt").is_file()
+    assert Path(fitsPath).name == "SYNTHETIC_SPECTRUM_NOTFLAT.fits"
+    assert (tmp_path / "SYNTHETIC_SPECTRUM_NOTFLAT.txt").is_file()
     assert recipe.filenameTemplate == "SYNTHETIC.fits"
 
 
@@ -697,7 +697,7 @@ def test_stack_extractions_writes_no_ascii_for_the_flattened_stack(
     _, fitsPath = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert not list(tmp_path.glob("*.txt"))
-    assert recipe.products["product_label"].tolist() == ["EXTRACTED_MERGED_TABLE"]
+    assert recipe.products["product_label"].tolist() == ["SPECTRUM_TABLE"]
 
 
 def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_for_the_notflat_ascii(
@@ -747,14 +747,14 @@ def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_colum
         "product_desc",
     ]
     tableRow, asciiRow = recipe.products.to_dict("records")
-    assert tableRow["product_label"] == "EXTRACTED_MERGED_TABLE"
+    assert tableRow["product_label"] == "SPECTRUM_TABLE"
     assert tableRow["file_type"] == "FITS"
-    assert tableRow["product_desc"] == "Table of the extracted source in each order. All nodding cycles combined."
+    assert tableRow["product_desc"] == "Table of the extracted, order-merged spectrum. All nodding cycles combined."
     assert tableRow["file_path"] == fitsPath
     assert tableRow["label"] == "PROD"
     assert tableRow["obs_date_utc"] == recipe.dateObs
     assert asciiRow["obs_date_utc"] == recipe.dateObs
-    assert asciiRow["product_label"] == "EXTRACTED_MERGED_ASCII"
+    assert asciiRow["product_label"] == "SPECTRUM_ASCII"
     assert asciiRow["file_type"] == "TXT"
     assert asciiRow["product_desc"] == "Ascii version of extracted source spectrum"
     assert asciiRow["file_path"] == fitsPath.replace(".fits", ".txt")

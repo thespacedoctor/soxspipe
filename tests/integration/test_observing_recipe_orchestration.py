@@ -34,7 +34,7 @@ def stubbed_ascii_spectrum(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         import_module("soxspipe.commonutils.spectrum_ascii"),
         "write_ascii_spectrum_product",
-        lambda mergedPath, fluxcalPath, products, *_: products,
+        lambda spectrumPath, isFluxCalibrated, products, *_: products,
     )
 
 
@@ -189,7 +189,7 @@ def _record_nodding_passes(recipe: Any, monkeypatch: pytest.MonkeyPatch, tmpPath
     def recording_stack(*args: object, **kwargs: object) -> tuple[Any, str]:
         seen["stack"].append(recipe.sofName)
         stacked, _ = stack(*args, **kwargs)
-        return stacked, str(tmpPath / f"{recipe.sofName}_EXTRACTED_MERGED.fits")
+        return stacked, str(tmpPath / f"{recipe.sofName}_SPECTRUM.fits")
 
     def recording_report() -> pd.DataFrame:
         seen["report"].append(recipe.sofName)
@@ -287,9 +287,11 @@ def _patch_nodding_collaborators(
         fake_stack_extractions,
     )
 
-    def fake_write_ascii(mergedPath: str, fluxcalPath: str | None, products: pd.DataFrame, *_: object) -> pd.DataFrame:
+    def fake_write_ascii(spectrumPath: str, isFluxCalibrated: bool, products: pd.DataFrame, *_: object) -> pd.DataFrame:
         # THE CALLS SO FAR ARE KEPT APART, SO THE SEQUENCE OTHER TESTS PIN DOES NOT GAIN AN ENTRY
-        captured["ascii"].append({"merged": mergedPath, "fluxcal": fluxcalPath, "callsBefore": list(calls)})
+        captured["ascii"].append(
+            {"spectrum": spectrumPath, "isFluxCalibrated": isFluxCalibrated, "callsBefore": list(calls)}
+        )
         return products
 
     monkeypatch.setattr(
@@ -508,7 +510,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
     assert stacked["FLUX_COUNTS"].tolist() == [12.0, 18.0]
     # TWO SPECTRA: THE VARIANCE IS SUM(VAR) / 4, SO SNR IS 12 / SQRT(4.5) AND 18 / SQRT(2) (DY-1675)
     assert stacked["SNR"].tolist() == [5.66, 12.73]
-    assert recipe.products["product_label"].tolist() == ["EXTRACTED_MERGED_TABLE"]
+    assert recipe.products["product_label"].tolist() == ["SPECTRUM_TABLE"]
     with fits.open(fitsPath) as hdus:
         assert hdus[0].header["ESO PRO CATG"] == "SCI_SLIT_FLUX_VIS"
 
@@ -1476,8 +1478,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         },
     )
     responsePath = response_product_fits(tmp_path / "RESP_TAB_VIS.fits")
-    fluxPath = tmp_path / "OBJECT_VIS_FLUXCAL.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    # THE CALIBRATOR OVERWRITES THE SPECTRUM TABLE THE EXTRACTOR WROTE, AND ADDS NO PRODUCT ROW (DY-2346)
+    spectrumPath = tmp_path / "extracted.fits"
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
     recipe.arm = "VIS"
@@ -1542,7 +1544,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
 
         def calibrate(self) -> tuple[str, pd.DataFrame]:
             calls.append("calibrate")
-            return str(fluxPath), _empty_products()
+            Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(spectrumPath, overwrite=True)
+            return str(spectrumPath), _empty_products()
 
     commonutils = import_module("soxspipe.commonutils")
     stareModule = import_module("soxspipe.recipes.soxs_stare")
@@ -1566,6 +1569,13 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
 
     monkeypatch.setattr(toolkit, "plot_merged_spectrum_qc", fake_plot)
 
+    asciiCalls: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        import_module("soxspipe.commonutils.spectrum_ascii"),
+        "write_ascii_spectrum_product",
+        lambda path, isFluxCalibrated, products, *_: asciiCalls.append((path, isFluxCalibrated)) or products,
+    )
+
     productPath, returnedQc = recipe.produce_product()
 
     assert productPath is None
@@ -1582,6 +1592,8 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
         "clean_up:False",
     ]
     assert plotNotes == [["WARNING: Order skipped: 7"]] * 2
+    # THE ASCII SPECTRUM IS WRITTEN ONCE FROM THE EXTRACTION'S OWN PATH, WHICH THE CALIBRATOR OVERWROTE
+    assert asciiCalls == [(str(tmp_path / "extracted.fits"), True)]
 
 
 def _cycle_recipe(

@@ -2,8 +2,9 @@
 """
 *Write the ASCII version of an extracted spectrum from its FITS binary table*
 
-The ASCII file comes from the flux-calibrated table when the spectrum was flux calibrated. Otherwise it comes from the
-order-merged (or stacked) table, so a run with no response product still gets an ASCII spectrum, in counts.
+The ASCII file comes from the ``<SOF stem>_SPECTRUM.fits`` table of the pass. The table holds the flux-calibrated
+columns when the spectrum was flux calibrated. Otherwise it holds counts, so a run with no response product still gets
+an ASCII spectrum, in counts.
 
 Author
 : David Young
@@ -16,27 +17,25 @@ import os
 
 import pandas as pd
 
+from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL
+
 FLUXCAL_DESCRIPTION = "ASCII version of the flux-calibrated extracted spectrum"
 COUNTS_DESCRIPTION = "ASCII version of the extracted spectrum (not flux calibrated)"
-ASCII_PRODUCT_LABEL = "EXTRACTED_MERGED_ASCII"
 NM_TO_ANGSTROM = 10
 
 
-def ascii_spectrum_path(mergedFitsPath: str, fluxcalFitsPath: str | None = None) -> str:
+def ascii_spectrum_path(spectrumFitsPath: str) -> str:
     """*return the path of the ASCII spectrum*
 
     **Key Arguments:**
 
-    - ``mergedFitsPath`` -- the path to the order-merged (or stacked) spectrum table
-    - ``fluxcalFitsPath`` -- the path to the flux-calibrated table, or None when the spectrum was not flux calibrated
+    - ``spectrumFitsPath`` -- the path to the spectrum table, ``<SOF stem>_SPECTRUM.fits``
 
     **Return:**
 
-    - ``asciiPath`` -- the source table's path with a ``.txt`` extension, so ``<stem>_FLUXCAL.txt`` for a
-      flux-calibrated spectrum and ``<stem>_EXTRACTED_MERGED.txt`` for the fallback
+    - ``asciiPath`` -- the table's path with a ``.txt`` extension, so ``<SOF stem>_SPECTRUM.txt``
     """
-    sourcePath = mergedFitsPath if fluxcalFitsPath is None else fluxcalFitsPath
-    return os.path.splitext(sourcePath)[0] + ".txt"
+    return os.path.splitext(spectrumFitsPath)[0] + ".txt"
 
 
 def write_ascii_spectrum(sourceFitsPath: str, asciiPath: str) -> None:
@@ -63,8 +62,8 @@ def write_ascii_spectrum(sourceFitsPath: str, asciiPath: str) -> None:
 
 
 def write_ascii_spectrum_product(
-    mergedFitsPath: str,
-    fluxcalFitsPath: str | None,
+    spectrumFitsPath: str,
+    isFluxCalibrated: bool,
     productsTable: pd.DataFrame,
     recipeName: str,
     obsDateUtc: str,
@@ -73,28 +72,27 @@ def write_ascii_spectrum_product(
 
     **Key Arguments:**
 
-    - ``mergedFitsPath`` -- the path to the order-merged (or stacked) spectrum table
-    - ``fluxcalFitsPath`` -- the path to the flux-calibrated table, or None when the pass has none. The ASCII file is
-      written from it when it is given
+    - ``spectrumFitsPath`` -- the path to the spectrum table, ``<SOF stem>_SPECTRUM.fits``
+    - ``isFluxCalibrated`` -- does the table hold the flux-calibrated columns? It sets the product description
     - ``productsTable`` -- the products table to add the ASCII file to. It is not changed
     - ``recipeName`` -- the recipe name to record against the product
     - ``obsDateUtc`` -- the observation date (UTC) to record against the product
 
     **Return:**
 
-    - ``productsTable`` -- a new products table with the ``EXTRACTED_MERGED_ASCII`` row added
+    - ``productsTable`` -- a new products table with the ``SPECTRUM_ASCII`` row added
     """
     from soxspipe.commonutils.toolkit import append_product, utcnow_string
 
-    asciiPath = ascii_spectrum_path(mergedFitsPath, fluxcalFitsPath)
-    write_ascii_spectrum(mergedFitsPath if fluxcalFitsPath is None else fluxcalFitsPath, asciiPath)
+    asciiPath = ascii_spectrum_path(spectrumFitsPath)
+    write_ascii_spectrum(spectrumFitsPath, asciiPath)
     return append_product(
         productsTable,
         recipeName=recipeName,
-        productLabel=ASCII_PRODUCT_LABEL,
+        productLabel=SPECTRUM_ASCII_LABEL,
         fileName=os.path.basename(asciiPath),
         filePath=asciiPath,
-        productDesc=COUNTS_DESCRIPTION if fluxcalFitsPath is None else FLUXCAL_DESCRIPTION,
+        productDesc=FLUXCAL_DESCRIPTION if isFluxCalibrated else COUNTS_DESCRIPTION,
         obsDateUtc=obsDateUtc,
         reductionDateUtc=utcnow_string(),
         fileType="TXT",

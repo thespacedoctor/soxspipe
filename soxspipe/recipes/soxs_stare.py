@@ -926,7 +926,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
                     "as failed and will not be used to flux-calibrate other frames."
                 )
 
-        self._write_ascii_spectrum(extraction.extractionPath, filePathFluxcal)
+        self._write_ascii_spectrum(extraction.extractionPath, bool(filePathFluxcal))
         self._plot_merged_spectrum_qcs(
             extraction.mergedSpectrum,
             extraction.orderJoins,
@@ -966,23 +966,24 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             objectFrames=objectFrames,
         )
 
-    def _write_ascii_spectrum(self, extractionPath, filePathFluxcal):
-        """*write the ASCII spectrum of this pass, from the flux-calibrated table when there is one*
+    def _write_ascii_spectrum(self, extractionPath, isFluxCalibrated):
+        """*write the ASCII spectrum of this pass from its* ``_SPECTRUM`` *table*
 
-        Updates ``self.products``. A pass with no flux-calibrated table (no response product, a standard star, or a
-        failed flux calibration) writes the ASCII spectrum from the order-merged table, in counts.
+        Updates ``self.products``. A pass with no flux calibration (no response product, a standard star, or a
+        failed flux calibration) writes the ASCII spectrum in counts.
 
         **Key Arguments:**
 
-        - ``extractionPath`` -- the path to the order-merged spectrum table, or False when none was written
-        - ``filePathFluxcal`` -- the path to the flux-calibrated spectrum table, or None
+        - ``extractionPath`` -- the path to the spectrum table, or False when none was written
+        - ``isFluxCalibrated`` -- is the table at ``extractionPath`` the flux-calibrated spectrum? It sets the product
+          description
         """
         from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
 
         if not extractionPath:
             return
         self.products = write_ascii_spectrum_product(
-            extractionPath, filePathFluxcal, self.products, self.recipeName, self.dateObs
+            extractionPath, isFluxCalibrated, self.products, self.recipeName, self.dateObs
         )
 
     def _read_stare_object_frames(self, kw):
@@ -1732,6 +1733,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             startNightDate=self.startNightDate,
             sofName=self.productStem,
             debug=self.debug,
+            qc=self.qc,
         )
         filePathFluxcal, prod = fluxCalibrator.calibrate()
         self.products = concat_tables([self.products, prod], ignore_index=True)

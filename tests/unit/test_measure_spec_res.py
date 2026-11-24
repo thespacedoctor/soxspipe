@@ -336,7 +336,7 @@ def test_main_prints_the_arc_table_and_exits_zero_when_the_sky_path_fails(
     monkeypatch.setattr(spec_tool, "today_iso", lambda: "2026-11-22")
     stareDir = tmp_path / "stare"
     stareDir.mkdir()
-    (stareDir / "obs1_FLUXCAL.fits").write_bytes(b"")
+    (stareDir / "obs1_SPECTRUM.fits").write_bytes(b"")
     arcArguments = ["--arcs", str(rawDir / "*.fits"), "--disp-images", str(mapDir / "*_DISP_IMAGE.fits")]
     spec_tool.main(arcArguments)
     tableWithoutSky = yaml.safe_load(capsys.readouterr().out)
@@ -349,7 +349,7 @@ def test_main_prints_the_arc_table_and_exits_zero_when_the_sky_path_fails(
     assert status == 0
     assert yaml.safe_load(captured.out) == tableWithoutSky
     assert "skipped the sky-line cross-check" in captured.err
-    assert "obs1_FLUXCAL.fits" in captured.err
+    assert "obs1_SPECTRUM.fits" in captured.err
 
 
 def test_main_prints_the_arc_table_when_a_sky_frame_does_not_match_its_maps(

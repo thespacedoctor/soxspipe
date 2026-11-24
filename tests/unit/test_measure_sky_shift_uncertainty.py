@@ -259,11 +259,11 @@ def workspace(tmp_path: Path) -> tuple[Path, Path]:
     _write_product(arcs / "near_SSOL.fits", _arc_header(minutesAfterScience=3.0, rotator=41.0))
     _write_product(arcs / "day_SSOL.fits", _arc_header(minutesAfterScience=600.0, rotator=None))
     day = {"arcName": "day_SSOL.fits"}
-    _write_product(products / "a_EXTRACTED_MERGED.fits", _science_header(shifts={1: 0.3, 4: 0.4}, **day))
-    _write_product(products / "b_EXTRACTED_MERGED.fits", _science_header(shifts={1: -0.3, 4: -0.4}, **day))
+    _write_product(products / "a_SPECTRUM.fits", _science_header(shifts={1: 0.3, 4: 0.4}, **day))
+    _write_product(products / "b_SPECTRUM.fits", _science_header(shifts={1: -0.3, 4: -0.4}, **day))
     near = {"arcName": "near_SSOL.fits"}
-    _write_product(products / "c_EXTRACTED_MERGED.fits", _science_header(shifts={1: 0.01, 4: -0.01}, **near))
-    _write_product(products / "d_EXTRACTED_MERGED.fits", _science_header(tuning="skipped: attached arc", **near))
+    _write_product(products / "c_SPECTRUM.fits", _science_header(shifts={1: 0.01, 4: -0.01}, **near))
+    _write_product(products / "d_SPECTRUM.fits", _science_header(tuning="skipped: attached arc", **near))
     return products, arcs
 
 
@@ -282,7 +282,7 @@ def test_main_prints_the_untuned_and_attached_arc_values(
     values = yaml.safe_load(captured.out)["VIS"]["sky-shift-uncertainty-nm"]
     assert status == 0
     assert values == {"untuned": pytest.approx(0.4), "attached-arc": 0.01}
-    assert "d_EXTRACTED_MERGED.fits" in captured.err
+    assert "d_SPECTRUM.fits" in captured.err
 
 
 def test_main_raises_when_no_product_holds_a_sky_shift(tmp_path: Path) -> None:
@@ -307,7 +307,7 @@ def test_main_skips_a_product_whose_arc_is_not_among_the_given_arcs(
     shift_tool.main(["--products", str(products / "*.fits"), "--arcs", str(arcs / "*.fits")])
 
     # ASSERT
-    assert "a_EXTRACTED_MERGED.fits" in capsys.readouterr().err
+    assert "a_SPECTRUM.fits" in capsys.readouterr().err
 
 
 def test_main_skips_and_names_a_product_that_cannot_be_read(
@@ -315,7 +315,7 @@ def test_main_skips_and_names_a_product_that_cannot_be_read(
 ) -> None:
     # ARRANGE
     products, arcs = workspace
-    (products / "e_EXTRACTED_MERGED.fits").write_text("not a FITS file")
+    (products / "e_SPECTRUM.fits").write_text("not a FITS file")
 
     # ACT
     status = shift_tool.main(["--products", str(products / "*.fits"), "--arcs", str(arcs / "*.fits")])
@@ -324,7 +324,7 @@ def test_main_skips_and_names_a_product_that_cannot_be_read(
     captured = capsys.readouterr()
     assert status == 0
     assert "skipped" in captured.err
-    assert "e_EXTRACTED_MERGED.fits" in captured.err
+    assert "e_SPECTRUM.fits" in captured.err
 
 
 def test_main_skips_and_names_a_product_whose_arc_cannot_be_read(
@@ -344,7 +344,7 @@ def test_main_skips_and_names_a_product_whose_arc_cannot_be_read(
 def test_main_names_the_file_and_card_when_a_tuned_product_has_no_mjd(workspace: tuple[Path, Path]) -> None:
     # ARRANGE
     products, arcs = workspace
-    path = products / "a_EXTRACTED_MERGED.fits"
+    path = products / "a_SPECTRUM.fits"
     with fits.open(path, mode="update") as hdus:
         del hdus[0].header["MJD-OBS"]
 

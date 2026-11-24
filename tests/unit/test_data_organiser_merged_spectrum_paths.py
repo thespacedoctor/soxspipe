@@ -1,9 +1,10 @@
-"""The `filepath` of a predicted merged spectrum is the path the recipe writes it to (DY-2343)."""
+"""The `filepath` of a predicted merged spectrum is the path the recipe writes it to (DY-2343, DY-2346)."""
 
 from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -19,7 +20,7 @@ pytestmark = pytest.mark.unit
 SOF_MAP_PATH = Path(soxspipe.__file__).parent / "resources" / "soxs_sof_map.yaml"
 NIGHT = "2024-01-01"
 NOD_STEM = "20240102T030405_VIS_1_NOD_OBJ_SLIT1_0_5_5_0S_SOXS_SN2024abc"
-MERGED_SUFFIX = "_EXTRACTED_MERGED.fits"
+MERGED_SUFFIX = "_SPECTRUM.fits"
 STD_STEM = "20240102T030405_VIS_1_NOD_STD_FLUX_SLIT1_0_5_5_0S_SOXS"
 
 
@@ -220,3 +221,51 @@ def test_standard_star_product_rows_are_unchanged(tmp_path, log, filterName, rec
         f"./reduced/{NIGHT}/{directory}/{NOD_STEM}{MERGED_SUFFIX}",
         f"./reduced/{NIGHT}/{directory}/{NOD_STEM}_RESP.fits",
     }
+
+
+@pytest.mark.parametrize(
+    ("filterName", "recipe"),
+    [
+        ("science_stare", "stare_obj"),
+        ("science_nodding", "nod_obj"),
+        ("science_offset", "offset_obj"),
+        ("flux_standard_stare", "stare_std"),
+        ("flux_standard_nodding", "nod_std"),
+        ("flux_standard_offset", "offset_std"),
+        ("telluric_standard_stare", "stare_std"),
+        ("telluric_standard_nodding", "nod_std"),
+        ("telluric_standard_offset", "offset_std"),
+    ],
+)
+def test_the_merged_spectrum_row_is_tagged_sci_slit_flux_with_the_arm(
+    tmp_path: Path, log: Any, filterName: str, recipe: str
+) -> None:
+    # ACT
+    rows = _predicted_rows(tmp_path, log, filterName, recipe, sofName=f"{NOD_STEM}.sof")
+
+    # ASSERT: THE OBJECT TRACE TABLE KEEPS THE OBJECT_TAB TAG, SO NO SPECTRUM ROW MAY CARRY IT
+    spectrumRows = rows[rows["file"].str.endswith(MERGED_SUFFIX)]
+    assert spectrumRows["eso pro catg"].tolist() == ["SCI_SLIT_FLUX_VIS"]
+    assert not rows["eso pro catg"].str.startswith("OBJECT_TAB").any()
+
+
+@pytest.mark.parametrize(
+    ("filterName", "recipe", "recipeName", "sofStem"),
+    [
+        ("science_stare", "stare_obj", "soxs-stare", "20240102T030405_VIS_1_STARE_OBJ_SLIT1_0_SOXS_SN2024abc"),
+        ("science_nodding", "nod_obj", "soxs-nod", NOD_STEM),
+        ("science_offset", "offset_obj", "soxs-offset", "20240102T030405_VIS_1_OFFSET_OBJ_SLIT1_0_SOXS_SN2024abc"),
+    ],
+)
+def test_the_predicted_merged_spectrum_file_is_the_one_the_skip_check_looks_for(
+    tmp_path: Path, log: Any, filterName: str, recipe: str, recipeName: str, sofStem: str
+) -> None:
+    # ARRANGE
+    outputDir = str(tmp_path / "out")
+    skipCheckPath, _ = toolkit.predict_product_path(f"{sofStem}.sof", recipeName, outputDir=outputDir)
+
+    # ACT
+    rows = _predicted_rows(tmp_path, log, filterName, recipe, sofName=f"{sofStem}.sof")
+
+    # ASSERT
+    assert Path(skipCheckPath).name == rows["file"].tolist()[0]

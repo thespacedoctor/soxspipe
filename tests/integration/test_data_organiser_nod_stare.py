@@ -223,7 +223,7 @@ def test_the_predicted_product_of_a_nir_nod_sof_is_unchanged(tmp_path, log, monk
     ).fetchall()
 
     # ASSERT: ONE NOD-MODE PRODUCT, NAMED AFTER THE SOF, WITH NO MARKER AND NO STARE TECHNIQUE
-    assert products == [("OBJECT_TAB_NIR", NOD_TECH, sof.replace(".sof", "_EXTRACTED_MERGED.fits"))]
+    assert products == [("SCI_SLIT_FLUX_NIR", NOD_TECH, sof.replace(".sof", "_SPECTRUM.fits"))]
 
 
 def _set_reduce_as_stare(sessionsDir, sessionId, block="soxs-nod"):
@@ -273,7 +273,7 @@ def test_a_session_command_on_a_fresh_organiser_records_the_stare_mode_row_when_
     getattr(fresh, command)("beta")
 
     # ASSERT
-    stemFile = _nod_sof(organiser).replace(".sof", "_STAREMODE_EXTRACTED_MERGED.fits")
+    stemFile = _nod_sof(organiser).replace(".sof", "_STAREMODE_SPECTRUM.fits")
     stareRows = [row for row in _nod_obj_rows(fresh) if row[0] == stemFile]
     assert stareRows
     assert {row[1].split("/")[3] for row in stareRows} == {"soxs-stare"}
@@ -333,7 +333,7 @@ def _as_stare_rows(rows, folder):
     """Return the nod-mode ``rows`` as the stare recipe writes them: in ``folder``, with `_STAREMODE` in the name."""
     stareRows = []
     for catg, file, filepath in rows:
-        stareFile = file.replace("_EXTRACTED_MERGED.fits", "_STAREMODE_EXTRACTED_MERGED.fits").replace(
+        stareFile = file.replace("_SPECTRUM.fits", "_STAREMODE_SPECTRUM.fits").replace(
             "_RESP.fits", "_STAREMODE_RESP.fits"
         )
         stareRows.append((catg, stareFile, f"{filepath.rsplit('/', 2)[0]}/{folder}/{stareFile}"))
@@ -357,7 +357,7 @@ def test_each_nod_sof_records_the_stare_rows_only_when_its_own_reduce_as_stare_k
     before, after = _object_and_standard_rows(tmp_path, log, monkeypatch, organisers, stareBlocks)
 
     # ASSERT: A REGROUP KEEPS THE OLD NOD-MODE ROWS, SO A SOF REDUCED AS STARE HAS BOTH, AND ANY OTHER HAS ONLY THOSE
-    assert {row[0] for row in before["nod_std"]} == {"OBJECT_TAB_NIR", "RESP_TAB_NIR"}
+    assert {row[0] for row in before["nod_std"]} == {"SCI_SLIT_FLUX_NIR", "RESP_TAB_NIR"}
     assert {row[2].split("/")[3] for row in before["nod_obj"]} == {"soxs-nod"}
     assert {row[2].split("/")[3] for row in before["nod_std"]} == {"soxs-nod-std"}
     objectStare = _as_stare_rows(before["nod_obj"], "soxs-stare") if isObjectStare else []

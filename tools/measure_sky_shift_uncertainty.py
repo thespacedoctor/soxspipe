@@ -16,7 +16,7 @@ The Phase 3 keyword `SPEC_SYE` is the largest, over orders, of the uncertainty o
 
 A sky shift is the wavelength correction that tuning applied to an order, so for a frame that was tuned it is also the
 error the order would have had without tuning. The script reads the `ESO QC SKY SHIFT O<n>` cards (nm) of reduced
-merged spectra (`_EXTRACTED_MERGED` today, `_SPECTRUM` after DY-2346) and takes the root mean square about zero, not
+merged spectra (`_SPECTRUM.fits`) and takes the root mean square about zero, not
 the scatter about the mean, because an untuned order keeps the mean shift as an error. It sorts each tuned frame by its
 arc: the frame's `DISP_TAB` is the one named by its `ESO PRO REC1 CAL<i> NAME` card, and the arc is attached when
 `attached_arc_offsets` of `ug_wavelength_transfer` says so. The shifts of frames with an unattached arc give
@@ -33,7 +33,7 @@ removed. The script names each product it leaves out.
 **Usage**
 
 ```bash
-# merged spectra: _EXTRACTED_MERGED today, _SPECTRUM after DY-2346
+# merged spectra: <SOF stem>_SPECTRUM.fits
 python tools/measure_sky_shift_uncertainty.py --products "path/to/merged_spectra/*.fits" --arcs "path/to/*_SSOL.fits"
 python tools/measure_sky_shift_uncertainty.py --products a.fits b.fits --arcs "arcs/*.fits"
 ```
