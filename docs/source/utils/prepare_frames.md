@@ -36,11 +36,17 @@ The recipe uses the fallback `ron` of the NIR detector parameters (7.55 $e^{-}$,
 
 UVB, VIS and X-Shooter frames do not use this table.
 
-**Read noise of SOXS VIS science frames.** A science recipe (`soxs_stare`, `soxs_nod`, `soxs_offset` and their standard-star versions) measures the read noise of each raw VIS frame from its own prescan. The prescan is the strip of unexposed columns 8 to 45 of the raw frame (rows 50 to 4045; the `prescan-pixels` key in `soxs_detector_parameters.yaml`). The recipe measures it before it trims the frame. The read noise is the standard deviation of the prescan pixels, in ADU, times the gain. The recipe first removes pixels more than 4 standard deviations from the median, so cosmic rays in the prescan do not bias the value.
+**Read noise of SOXS VIS science frames.** A science recipe (`soxs_stare`, `soxs_nod`, `soxs_offset` and their standard-star versions) measures the read noise of each raw VIS science frame from its own prescan. The prescan is the strip of unexposed columns 8 to 45 of the raw frame (rows 50 to 4045; the `prescan-pixels` key in `soxs_detector_parameters.yaml`). The recipe measures it before it trims the frame. The read noise is the standard deviation of the prescan pixels, in ADU, times the gain. The recipe first removes pixels more than 4 standard deviations from the median, so cosmic rays in the prescan do not bias the value. Bias, dark and lamp frames in the SOF of a science recipe are not science frames. They keep the read noise of the master bias.
 
-The recipe uses this value, in place of the `QC RAW RON` of the master bias, in the uncertainty map of that frame. A night frame can have more read noise than the morning master bias (for example 5.1 $e^{-}$ against 3.8 $e^{-}$), and the old uncertainty was then too small. If a SOF has more than one science frame, each frame keeps its own value. The rest of the reduction (the bias-pedestal correction of the photon noise, the sky fit and the sky-line signal-to-noise of the extraction) uses the root mean square of the frame values. The recipe writes it to the product headers as the `QC SCI RON` keyword, in $e^{-}$.
+The recipe uses this value, in place of the `QC RAW RON` of the master bias, in the uncertainty map of that frame. A night frame can have more read noise than the morning master bias (for example 5.1 $e^{-}$ against 3.8 $e^{-}$), and the old uncertainty was then too small. The frame keeps the value in its header as `ESO QC SCI RON`. When the recipe stacks frames, the stack carries the root mean square of the values of its frames. Each later step reads the value from the frame it works on:
 
-The recipe writes a warning, and uses the read noise of the master bias for that frame, if the prescan is missing from the frame or if its scatter is not a positive number. The `QC SCI RON` keyword is written only when at least one frame was measured.
+- The bias-pedestal correction of the photon noise uses it.
+- The sky fit uses $\sqrt{r_{\rm science}^2 + r_{\rm bias}^2 / N}$, where $r_{\rm bias}$ is the single-frame read noise of the master bias and $N$ is the number of frames the master bias combined.
+- The sky-line signal-to-noise of the extraction uses it.
+
+The recipe writes the value to the product headers as the `QC SCI RON` keyword, in $e^{-}$, and to the QC table. A reduction that extracts each frame on its own writes the value of that frame to each product. A nodding recipe writes the value of the last stack it records.
+
+The recipe writes a warning, and uses the read noise of the master bias for that frame, if the prescan is missing from the frame or if its scatter is not a positive number. The frame then has no `QC SCI RON` keyword.
 
 The calibration recipes, the NIR arm and X-Shooter do not use the prescan. They keep the read noise that the master bias or the sample-count table gives.
 

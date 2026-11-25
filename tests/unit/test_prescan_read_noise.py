@@ -15,7 +15,7 @@ from soxspipe.commonutils.prescan_read_noise import (
     measure_prescan_read_noise,
     uses_prescan_read_noise,
 )
-from soxspipe.commonutils.read_noise import SOURCE_SCIENCE_PRESCAN, ReadNoise, science_read_noise
+from soxspipe.commonutils.read_noise import ReadNoise, rms_read_noise, science_sky_fit_ron
 
 pytestmark = pytest.mark.unit
 
@@ -145,34 +145,87 @@ def test_only_the_uvb_and_vis_science_recipes_use_the_prescan(arm: str, recipeNa
     detectorParams = {"prescan-pixels": PRESCAN}
 
     # ACT / ASSERT
-    assert uses_prescan_read_noise(arm, recipeName, detectorParams) is isExpected
+    assert uses_prescan_read_noise(arm, recipeName, detectorParams, "OBJECT") is isExpected
+
+
+@pytest.mark.parametrize(
+    ("dprType", "isExpected"),
+    [
+        ("OBJECT", True),
+        ("SKY", True),
+        ("STD,FLUX", True),
+        ("STD,TELLURIC", True),
+        ("BIAS", False),
+        ("DARK", False),
+        ("LAMP,FLAT", False),
+        ("LAMP,DFLAT", False),
+        ("LAMP,WAVE", False),
+        (None, False),
+    ],
+)
+def test_a_calibration_frame_in_a_science_sof_does_not_use_the_prescan(dprType: str | None, isExpected: bool) -> None:
+    # ARRANGE
+    detectorParams = {"prescan-pixels": PRESCAN}
+
+    # ACT / ASSERT
+    assert uses_prescan_read_noise("VIS", "soxs-stare", detectorParams, dprType) is isExpected
 
 
 def test_a_detector_with_no_prescan_window_does_not_use_the_prescan() -> None:
     # ACT / ASSERT
-    assert uses_prescan_read_noise("VIS", "soxs-stare", {}) is False
+    assert uses_prescan_read_noise("VIS", "soxs-stare", {}, "OBJECT") is False
 
 
-def test_the_science_read_noise_is_the_root_mean_square_of_the_frames() -> None:
+def test_a_gain_in_a_scaled_unit_is_converted_to_electrons_per_adu() -> None:
+    # ARRANGE: 1100 MILLI-ELECTRONS PER ADU IS 1.1 ELECTRONS PER ADU
+    gain = 1100.0 * u.Unit(0.001 * u.electron) / u.adu
+
+    # ACT
+    ron = measure_prescan_read_noise(_raw_frame(), PRESCAN, [1, 1], gain)
+
+    # ASSERT
+    assert ron == pytest.approx(PRESCAN_SIGMA_ADU * 1.1, rel=TOLERANCE)
+
+
+def test_a_gain_in_a_unit_that_is_not_electrons_per_adu_is_refused() -> None:
     # ARRANGE
+    gain = 1.1 * u.second
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="gain"):
+        measure_prescan_read_noise(_raw_frame(), PRESCAN, [1, 1], gain)
+
+
+def test_the_root_mean_square_of_the_frame_read_noises_is_the_noise_of_their_mean() -> None:
+    # ACT
+    result = rms_read_noise([4.0, 6.0])
+
+    # ASSERT
+    assert result == pytest.approx(float(np.sqrt((16.0 + 36.0) / 2.0)))
+
+
+def test_the_sky_fit_noise_adds_the_master_bias_noise_to_the_science_noise_in_quadrature() -> None:
+    # ARRANGE: THE MASTER BIAS COMBINED 4 FRAMES AND HAS A SINGLE-FRAME NOISE OF 3.83 e-
     master = ReadNoise(singleFrame=3.83, nCombined=4, skyFit=3.83 * np.sqrt(1.25), source="master bias")
 
     # ACT
-    result = science_read_noise([4.0, 6.0], master)
+    result = science_sky_fit_ron(5.1, master)
 
-    # ASSERT
-    expected = float(np.sqrt((16.0 + 36.0) / 2.0))
-    assert result.singleFrame == pytest.approx(expected)
-    assert result.source == SOURCE_SCIENCE_PRESCAN
-    assert result.nCombined == 4
-    assert result.skyFit == pytest.approx(expected * np.sqrt(1.25))
+    # ASSERT: NOT 5.1 * sqrt(1 + 1/4), WHICH ASSUMES THE SCIENCE FRAME HAS THE MASTER BIAS NOISE
+    assert result == pytest.approx(float(np.sqrt(5.1**2 + 3.83**2 / 4)))
+    assert result != pytest.approx(5.1 * np.sqrt(1.25))
 
 
-def test_the_science_read_noise_without_a_master_bias_is_also_the_sky_fit_noise() -> None:
-    # ACT
-    result = science_read_noise([5.1], None)
+def test_the_sky_fit_noise_without_a_master_bias_is_the_science_noise() -> None:
+    # ACT / ASSERT
+    assert science_sky_fit_ron(5.1, None) == pytest.approx(5.1)
 
-    # ASSERT
-    assert result.singleFrame == pytest.approx(5.1)
-    assert result.nCombined is None
-    assert result.skyFit == pytest.approx(5.1)
+
+def test_the_sky_fit_noise_of_a_master_bias_that_does_not_say_how_many_frames_it_combined_is_the_science_noise() -> (
+    None
+):
+    # ARRANGE
+    master = ReadNoise(singleFrame=3.83, nCombined=None, skyFit=3.83, source="master bias")
+
+    # ACT / ASSERT
+    assert science_sky_fit_ron(5.1, master) == pytest.approx(5.1)

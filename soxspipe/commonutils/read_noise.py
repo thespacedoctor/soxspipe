@@ -10,10 +10,13 @@ in a table of the detector parameters. The master dark's ``ESO QC RAW RON`` is a
 """
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 # THE HEADER CARD OF THE READ NOISE MEASURED FROM A RAW-FRAME PAIR
 MEASURED_RON_CARD = "ESO QC RAW RON"
+# THE HEADER CARD OF THE READ NOISE OF A SCIENCE FRAME (OR OF A STACK OF THEM) MEASURED FROM ITS PRESCAN (DY-2437)
+SCIENCE_RON_CARD = "ESO QC SCI RON"
 # THE CARD OF THE FIRST RAW FRAME A PRODUCT WAS BUILT FROM; THE OTHERS COUNT UP FROM 1
 RAW_FRAME_CARD_TEMPLATE = "ESO PRO REC1 RAW{index} NAME"
 # THE WORKSPACE DIRECTORY HOLDING THE RAW FRAMES, IN ONE DATED FOLDER EACH
@@ -34,7 +37,6 @@ SOURCE_MASTER_DARK = "master dark"
 SOURCE_RAW_HEADER = "raw-frame header"
 SOURCE_DETECTOR_DEFAULT = "detector default"
 SOURCE_NDSAMPLES_TABLE = "NDSAMPLES table"
-SOURCE_SCIENCE_PRESCAN = "science-frame prescan"
 
 
 @dataclass(frozen=True)
@@ -410,29 +412,55 @@ def _ndsamples_problem(ndsamples, table):
     return None
 
 
-def science_read_noise(frameRons, masterReadNoise):
-    """*the read noise of a science reduction from the prescan read noise of its frames (DY-2437)*
+def rms_read_noise(frameRons: Sequence[float]) -> float:
+    """*the read noise (e-) of the mean of several frames, as the root mean square of their read noises (DY-2437)*
 
-    Several frames are combined by their variance, so the single-frame read noise is the root mean square of the
-    frame values. The number of frames the master bias combined, and so the sky-fit noise, is kept.
+    The variance of a mean of frames carries the mean of their read-noise variances, so this is the single read noise
+    that stands for the stack.
 
     **Key Arguments:**
 
-    - ``frameRons`` -- the read noise (e-) of each science frame
-    - ``masterReadNoise`` -- the ``ReadNoise`` resolved from the master bias, or *None* when the SOF names none
+    - ``frameRons`` -- the read noise (e-) of each frame
 
     **Return:**
 
-    - ``readNoise`` -- a ``ReadNoise`` whose source is the science-frame prescan
+    - ``ron`` -- the root mean square of the values
 
     **Usage:**
 
     ```python
-    from soxspipe.commonutils.read_noise import science_read_noise
-    readNoise = science_read_noise([5.09, 5.17], masterReadNoise)
+    from soxspipe.commonutils.read_noise import rms_read_noise
+    ron = rms_read_noise([5.09, 5.17])
     ```
     """
-    singleFrame = math.sqrt(sum(ron**2 for ron in frameRons) / len(frameRons))
-    nCombined = None if masterReadNoise is None else masterReadNoise.nCombined
-    skyFit = singleFrame if nCombined is None else _sky_fit_ron(singleFrame, nCombined)
-    return ReadNoise(singleFrame, nCombined, skyFit, SOURCE_SCIENCE_PRESCAN)
+    return math.sqrt(sum(ron**2 for ron in frameRons) / len(frameRons))
+
+
+def science_sky_fit_ron(scienceRon: float, masterReadNoise: ReadNoise | None) -> float:
+    """*the read noise (e-) of a science frame with the master bias subtracted, for the sky-fit noise model (DY-2437)*
+
+    The master bias adds its own noise to the frame: ``sqrt(scienceRon**2 + masterRon**2 / N)``, where ``masterRon`` is
+    the single-frame read noise of the master bias and ``N`` the number of frames it combined. This is the form the NIR
+    sky fit uses for its master dark (DY-2341). It does not assume the science frame has the read noise of the master
+    bias, as ``ReadNoise.skyFit`` does.
+
+    **Key Arguments:**
+
+    - ``scienceRon`` -- the read noise (e-) of the science frame, from its prescan
+    - ``masterReadNoise`` -- the ``ReadNoise`` resolved from the master bias, or *None* when the SOF names none
+
+    **Return:**
+
+    - ``ron`` -- the read noise (e-); ``scienceRon`` when there is no master bias or it does not say how many frames
+      it combined
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.read_noise import science_sky_fit_ron
+    ron = science_sky_fit_ron(5.1, masterReadNoise)
+    ```
+    """
+    if masterReadNoise is None or masterReadNoise.nCombined is None:
+        return scienceRon
+    return math.sqrt(scienceRon**2 + masterReadNoise.singleFrame**2 / masterReadNoise.nCombined)

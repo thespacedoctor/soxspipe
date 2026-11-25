@@ -9,11 +9,13 @@ Date Created
 : January 22, 2020
 """
 
-################# GLOBAL IMPORTS ####################
+from __future__ import annotations
 
+################# GLOBAL IMPORTS ####################
 import os
 import sqlite3
 import sys
+from typing import Any
 
 from soxspipe.commonutils import detector_lookup, filenamer, keyword_lookup, subtract_background
 from soxspipe.commonutils.scratch import (
@@ -104,9 +106,6 @@ class base_recipe:
 
     # THE READ NOISE RESOLVED FROM THE MASTER BIAS IN THE SOF (A ``ReadNoise``); NONE WITHOUT A MASTER BIAS (DY-1458)
     readNoise = None
-    # THE READ NOISE (E-) EACH SCIENCE FRAME WAS GIVEN, WITH WHETHER IT WAS MEASURED FROM THE FRAME'S OWN PRESCAN
-    # (DY-2437). A TUPLE, SO A RECIPE OBJECT BUILT WITHOUT `__init__` SHARES NO LIST
-    frameReadNoises = ()
     # THE NOMINAL READ NOISE (E-) IN THE RAW-FRAME HEADERS (NONE IF THEY CARRY NONE) AND THE DETECTOR DEFAULT (E-)
     rawHeaderRon = None
     defaultRon = None
@@ -518,7 +517,8 @@ class base_recipe:
         from astropy import units as u
 
         from soxspipe.commonutils import toolkit
-        from soxspipe.commonutils.fits_headers import read_ccd
+        from soxspipe.commonutils.fits_headers import read_ccd, set_header_card
+        from soxspipe.commonutils.read_noise import SCIENCE_RON_CARD
 
         logging.captureWarnings(True)
 
@@ -568,6 +568,10 @@ class base_recipe:
         toolkit.frame_to_32(frame)
 
         frame = self._add_uncertainty_map(frame, readNoise=prescanRon)
+        if prescanRon is not None:
+            set_header_card(
+                frame.header, SCIENCE_RON_CARD, prescanRon, "[e-] RON of the science frame, from its prescan"
+            )
 
         frame.mask = self._bad_pixel_mask(frame)
 
@@ -993,10 +997,8 @@ class base_recipe:
             f"\n# PREPARING {frameCount} RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS{laC} AND APPENDING DEFAULT BAD-PIXEL MASK"
         )
         preframes = []
-        self.frameReadNoises = ()
         preframes[:] = [self._prepare_single_frame(frame=frame, save=save) for frame in filepaths]
         preframes = [f for f in preframes if f is not None]
-        self._apply_science_read_noise()
         self._write_cosmic_ray_mask_product()
 
         sof = set_of_files(
@@ -1448,14 +1450,21 @@ class base_recipe:
 
         return
 
-    def _extraction_read_noise(self) -> float:
+    def _extraction_read_noise(self, frame: Any = None) -> float:
         """*the read noise of one integration (e-) that the Horne extraction uses for its sky-line signal-to-noise*
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame the extraction works on. Default *None*
 
         **Return:**
 
-        - ``readNoise`` -- the ``ron`` of the recipe's detector parameters, which the read-noise lookup (the
-          ``ESO DET NDSAMPLES`` table for SOXS NIR) has set, as a plain float (DY-2323)
+        - ``readNoise`` -- the prescan read noise of the frame when it has one (DY-2437). Otherwise the ``ron`` of
+          the recipe's detector parameters, which the read-noise lookup (the ``ESO DET NDSAMPLES`` table for SOXS NIR)
+          has set, as a plain float (DY-2323)
         """
+        if frame is not None:
+            return self._frame_read_noise(frame)
         ron = self.detectorParams["ron"]
         return float(getattr(ron, "value", ron))
 
@@ -1677,12 +1686,12 @@ class base_recipe:
         self.log.debug("completed the ``xsh2soxs`` method")
         return frame
 
-    def _measure_prescan_read_noise(self, frame, filepath):
+    def _measure_prescan_read_noise(self, frame: Any, filepath: Any) -> float | None:
         """*measure the read noise of a raw science frame from its prescan (DY-2437)*
 
-        Only a UVB or VIS science recipe measures it (see ``uses_prescan_read_noise``). The frame must still be
-        untrimmed. The read noise the frame is given is recorded in ``self.frameReadNoises``; a frame whose prescan
-        cannot be measured is given the read noise of the reduction, with a warning.
+        Only a UVB or VIS science frame of a science recipe is measured (see ``uses_prescan_read_noise``). Calibration
+        frames in the SOF keep the read noise of the reduction. The frame must still be untrimmed. A frame whose prescan
+        cannot be measured keeps the read noise of the reduction too, with a warning.
 
         **Key Arguments:**
 
@@ -1691,8 +1700,7 @@ class base_recipe:
 
         **Return:**
 
-        - ``ron`` -- the read noise (e-) of the frame, or *None* when the recipe does not measure it or it cannot
-          be measured
+        - ``ron`` -- the read noise (e-) of the frame, or *None* when the frame is not measured or cannot be
         """
         from soxspipe.commonutils.prescan_read_noise import (
             PRESCAN_KEY,
@@ -1701,61 +1709,95 @@ class base_recipe:
         )
 
         dp = self.detectorParams
-        if not uses_prescan_read_noise(self.arm, self.recipeName, dp):
+        dprType = frame.header.get(self.kw("DPR_TYPE"))
+        if not uses_prescan_read_noise(self.arm, self.recipeName, dp, dprType):
             return None
 
         name = os.path.basename(filepath) if isinstance(filepath, str) else "a frame"
-        fallbackRon = float(getattr(dp["ron"], "value", dp["ron"]))
+        baselineRon = float(getattr(dp["ron"], "value", dp["ron"]))
         try:
             ron = measure_prescan_read_noise(frame.data, dp[PRESCAN_KEY], dp["binning"], dp["gain"])
         except ValueError as e:
             self.log.warning(
                 f"The read noise of {name} cannot be measured from its prescan: {e}. "
-                f"The frame takes the read noise of the reduction, {fallbackRon:0.2f} e-."
+                f"The frame takes the read noise of the reduction, {baselineRon:0.2f} e-."
             )
-            self.frameReadNoises = (*self.frameReadNoises, (fallbackRon, False))
             return None
 
-        self.log.info(f"The prescan read noise of {name} is {ron:0.2f} e- (the reduction's is {fallbackRon:0.2f} e-).")
-        self.frameReadNoises = (*self.frameReadNoises, (ron, True))
+        self.log.info(f"The prescan read noise of {name} is {ron:0.2f} e- (the reduction's is {baselineRon:0.2f} e-).")
         return ron
 
-    def _apply_science_read_noise(self):
-        """*give the reduction the read noise measured from the prescans of its science frames (DY-2437)*
+    @staticmethod
+    def _prescan_read_noise_of(frame: Any) -> float | None:
+        """*the prescan read noise (e-) in the header of a frame or stack, or None without a usable one*"""
+        import math
 
-        The frames' error planes already carry their own read noise. This sets the single value the rest of the
-        reduction uses: the photon-noise correction for the bias pedestal, the sky fit and the sky-line signal to
-        noise of the extraction. It is the root mean square of the frame values, and it is recorded as ``SCI RON``.
-        Nothing changes when no frame was measured.
+        from soxspipe.commonutils.read_noise import SCIENCE_RON_CARD
+
+        header = getattr(frame, "header", None)
+        ron = None if header is None else header.get(SCIENCE_RON_CARD)
+        if isinstance(ron, (int, float)) and not isinstance(ron, bool) and math.isfinite(ron) and ron > 0:
+            return float(ron)
+        return None
+
+    def _frame_read_noise(self, frame: Any) -> float:
+        """*the read noise (e-) of a frame: its prescan value in the header, else the read noise of the reduction*
+
+        **Key Arguments:**
+
+        - ``frame`` -- a prepared frame, or a stack of them (CCDData object)
+
+        **Return:**
+
+        - ``ron`` -- the ``QC SCI RON`` of the frame header, or ``self.detectorParams["ron"]`` without one
         """
-        from astropy import units as u
+        ron = self._prescan_read_noise_of(frame)
+        if ron is not None:
+            return ron
+        return float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
 
-        from soxspipe.commonutils.read_noise import science_read_noise
+    def _sky_fit_read_noise(self, frame: Any) -> float | None:
+        """*the read noise (e-) the sky-fit noise model uses for a frame with the master bias subtracted*
 
-        if not any(isMeasured for _, isMeasured in self.frameReadNoises):
-            return
+        A frame with a prescan read noise adds the noise of the master bias in quadrature (``science_sky_fit_ron``).
+        Any other frame uses what the master bias gave the reduction (``self.readNoise.skyFit``).
 
-        self.readNoise = science_read_noise([ron for ron, _ in self.frameReadNoises], self.readNoise)
-        self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
-        self.log.info(f"The science read noise of the reduction is {self.readNoise.singleFrame:0.2f} e-.")
-        self._add_science_read_noise_qc()
+        **Key Arguments:**
 
-    def _add_science_read_noise_qc(self):
-        """*record the read noise measured from the prescans as the ``SCI RON`` QC, written to the product headers*
+        - ``frame`` -- the detrended frame (CCDData object)
 
-        Nothing is recorded unless the reduction's read noise came from the prescans. Call it again after the QC table
-        is emptied for another pass.
+        **Return:**
+
+        - ``ron`` -- the read noise (e-), or *None* when the reduction has none, so that the frame header gives it
+        """
+        from soxspipe.commonutils.read_noise import science_sky_fit_ron
+
+        ron = self._prescan_read_noise_of(frame)
+        if ron is not None:
+            return science_sky_fit_ron(ron, self.readNoise)
+        return None if self.readNoise is None else self.readNoise.skyFit
+
+    def _record_science_read_noise_qc(self, frame: Any) -> None:
+        """*record the prescan read noise of a frame as the ``SCI RON`` QC, written to the product headers*
+
+        Each pass of a reduction records the value of the frame (or stack) it reduces, and replaces the row of an
+        earlier pass. A frame with no prescan read noise records nothing.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the frame the pass reduces (CCDData object)
         """
         from soxspipe.commonutils import toolkit
-        from soxspipe.commonutils.read_noise import SOURCE_SCIENCE_PRESCAN
 
-        if self.readNoise is None or self.readNoise.source != SOURCE_SCIENCE_PRESCAN:
+        ron = self._prescan_read_noise_of(frame)
+        if ron is None:
             return
 
+        self.qc = self.qc[self.qc["qc_name"] != "SCI RON"]
         self.add_qc(
             qcName="SCI RON",
-            qcValue=self.readNoise.singleFrame,
-            qcComment="[e-] RON of the science frames, from their prescan",
+            qcValue=ron,
+            qcComment="[e-] RON of the science frame, from its prescan",
             qcUnit="electrons",
             reductionDateUtc=toolkit.utcnow_string(),
             toHeader=True,
@@ -2020,6 +2062,36 @@ class base_recipe:
         # DATA IN THE FRAMES STILL GIVES A NAN MEAN THERE
         combiner.data_arr.mask = np.ma.getmaskarray(combiner.data_arr) & ~combinedMask
 
+    def _stacked_header(self, ccds: list[Any]) -> Any:
+        """*the header of a stack: that of the first frame, with the read noise of the whole stack (DY-2437)*
+
+        A stack of science frames carries the root mean square of their prescan read noises (``QC SCI RON``), the
+        read noise of the mean. A frame with no prescan value counts at the read noise of the reduction. Without a
+        prescan value in any frame the first header is returned as it is, as before.
+
+        **Key Arguments:**
+
+        - ``ccds`` -- the frames that were stacked (CCDData objects)
+
+        **Return:**
+
+        - ``header`` -- the header of the stack. A copy when it carries a new read noise, so frame 1 keeps its own
+        """
+        from soxspipe.commonutils.fits_headers import set_header_card
+        from soxspipe.commonutils.read_noise import SCIENCE_RON_CARD, rms_read_noise
+
+        header = ccds[0].header
+        if all(self._prescan_read_noise_of(ccd) is None for ccd in ccds):
+            return header
+        header = header.copy()
+        set_header_card(
+            header,
+            SCIENCE_RON_CARD,
+            rms_read_noise([self._frame_read_noise(ccd) for ccd in ccds]),
+            "[e-] RON of the science frame, from its prescan",
+        )
+        return header
+
     def _mean_combine_frames(self, combiner, ccds, combinedMask):
         """*mean combine the clipped frames, and combine their error maps the same way*
 
@@ -2032,6 +2104,11 @@ class base_recipe:
         **Return:**
 
         - ``combined_frame`` -- the combined frame, with its uncertainty map attached
+
+        The error map is the mean of the frames' errors over the square root of the number of frames that contributed
+        at the pixel. For frames with different errors this is a little below the quadrature sum (by 5 % for errors
+        of 4 and 8), which would be ``sqrt(sum(errors**2)) / N``. The mean is kept: it is what every stacked
+        calibration product has used, and a quadrature sum would move them all.
 
         **Usage:**
 
@@ -2163,7 +2240,7 @@ class base_recipe:
 
         # MASSIVE FUDGE - NEED TO CORRECTLY WRITE THE HEADER FOR COMBINED
         # IMAGES
-        combined_frame.header = ccds[0].header
+        combined_frame.header = self._stacked_header(ccds)
         try:
             combined_frame.wcs = ccds[0].wcs
         except (AttributeError, IndexError) as e:
@@ -2355,7 +2432,7 @@ class base_recipe:
         if frame.uncertainty is None:
             return frame
 
-        ronValue = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+        ronValue = self._frame_read_noise(frame)
         rawCounts = np.asarray(frame.data, dtype=np.float64)
         biasCounts = np.asarray(master_bias.data, dtype=np.float64)
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -3260,6 +3337,7 @@ class base_recipe:
         # UNUSED, AND ONE OF THE MODULE'S ELEVEN `F841` FINDINGS. DELETING IT IS DY-88'S.
         dp = self.detectorParams  # noqa: F841
         imageType = self.imageType
+        self._record_science_read_noise_qc(frame)
         if "FLAT" in imageType:
             imageType = "FLAT"
 
