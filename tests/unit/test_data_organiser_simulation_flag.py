@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils.data_organiser import data_organiser
 from tests.factories import workspace_organiser
 
 pytestmark = pytest.mark.unit
@@ -26,14 +30,14 @@ def _frames(*rows: dict) -> pd.DataFrame:
     return pd.DataFrame([{**defaults, **row} for row in rows])
 
 
-def _soxs_organiser(tmp_path, log):
+def _soxs_organiser(tmp_path: Path, log: Any) -> data_organiser:
     """Return a SOXS organiser whose keyword lookup is set up."""
     organiser = workspace_organiser(tmp_path, log=log)
     organiser._select_instrument(inst="SOXS")
     return organiser
 
 
-def _simulation(tmp_path, log, **row) -> int:
+def _simulation(tmp_path: Path, log: Any, **row: Any) -> int:
     """Return the simulation flag the organiser gives one frame."""
     organiser = _soxs_organiser(tmp_path, log)
     return int(organiser._add_simulation_flag(_frames(row)).loc[0, "simulation"])

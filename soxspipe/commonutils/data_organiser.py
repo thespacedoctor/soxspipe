@@ -9,6 +9,8 @@ Date Created
 : March  9, 2023
 """
 
+import json
+import math
 import os
 import shutil
 import sqlite3
@@ -78,10 +80,12 @@ ROOT_SCAN_WINDOW = 10000
 SLIT_FREE_DPR_TYPES = ("BIAS", "DARK")
 # SETTING THAT HOLDS THE WARMEST NIR DETECTOR TEMPERATURE (K) AT WHICH A NIR FRAME IS USED, AND ITS DEFAULT (DY-2394)
 NIR_MAX_DETECTOR_TEMP_SETTING = "nir-max-detector-temp-k"
-NIR_MAX_DETECTOR_TEMP_DEFAULT_K = 60.0
-# VALUES OF `ESO DET SOFW MODE` (UPPERCASE) THAT MEAN THE DETECTOR IS NOT SIMULATED
-# "--" AND "-99.99" ARE THE HARVEST FILLS FOR A MISSING CARD
-NORMAL_DETECTOR_MODES = ("NORMAL", "--", "-99.99")
+NIR_MAX_DETECTOR_TEMP_DEFAULT_K = 80.0
+# THE VALUES THE HEADER HARVEST FILLS A MISSING CARD WITH (TEXT AND NUMERIC COLUMNS)
+HARVEST_FILL_TEXT = "--"
+HARVEST_FILL_NUMBER = -99.99
+# VALUES OF `ESO DET SOFW MODE` (UPPERCASE) THAT MEAN THE DETECTOR IS NOT SIMULATED, A MISSING CARD INCLUDED
+NORMAL_DETECTOR_MODES = ("NORMAL", HARVEST_FILL_TEXT, str(HARVEST_FILL_NUMBER))
 
 
 def _fits_entries(pathToDirectory: str, skipNames: frozenset[str] = frozenset()) -> list[os.DirEntry]:
@@ -1684,7 +1688,7 @@ class data_organiser:
         except _UnsafePathError:
             return _validate_owned_path(path, self.rawDir, "database filepath")
 
-    def _add_simulation_flag(self, filteredFrames):
+    def _add_simulation_flag(self, filteredFrames: "pd.DataFrame") -> "pd.DataFrame":
         """*return the frames with their `simulation` flag set (SOXS)*
 
         VIS and UVB frames are simulated when the slit-wheel software simulation keyword of their arm reads `T`. A NIR
@@ -1704,8 +1708,8 @@ class data_organiser:
         for arm in ("NIR", "VIS", "UVB"):
             isArm = frames["eso seq arm"] == arm
             frames.loc[isArm, "simulation"] = frames.loc[isArm, self.kw(f"SWSIM_{arm}").lower()]
-        frames.loc[(frames["simulation"] == "--"), "simulation"] = 0
-        frames.loc[(frames["simulation"] == -99.99), "simulation"] = 0
+        frames.loc[(frames["simulation"] == HARVEST_FILL_TEXT), "simulation"] = 0
+        frames.loc[(frames["simulation"] == HARVEST_FILL_NUMBER), "simulation"] = 0
         frames.loc[(frames["simulation"] == "T"), "simulation"] = 1
 
         isNir = frames["eso seq arm"] == "NIR"
@@ -3369,16 +3373,18 @@ class data_organiser:
             c.execute(sqlQuery)
             self.conn.commit()
 
-        # A BIAS OR DARK NEVER USES THE SLIT, SO AN UNDEFINED NIR SLIT WHEEL DOES NOT SPOIL IT (DY-2394)
-        slitFreeTypes = ", ".join(f"'{dprType}'" for dprType in SLIT_FREE_DPR_TYPES)
+        # A BIAS OR DARK NEVER USES THE SLIT, SO AN UNDEFINED SLIT WHEEL DOES NOT SPOIL IT, IN ANY ARM (DY-2394)
         sqlQueries = [
-            "update raw_frames set ignore = 1 WHERE `slit` = 'UNDEFINED' "  # noqa: S608
-            f"AND NOT (`eso seq arm` = 'NIR' AND `eso dpr type` IN ({slitFreeTypes}))"
+            (
+                "update raw_frames set ignore = 1 WHERE `slit` = 'UNDEFINED' "
+                "AND `eso dpr type` NOT IN (SELECT value FROM json_each(?))",
+                (json.dumps(SLIT_FREE_DPR_TYPES),),
+            ),
+            ("update raw_frames set ignore = 1 WHERE `eso dpr type` like '%FLAT%' and `slit` = 'BLANK'", ()),
+            ("update raw_frames set ignore = 1 WHERE `eso seq arm` = 'ACQ'", ()),
         ]
-        sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso dpr type` like '%FLAT%' and `slit` = 'BLANK'")
-        sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso seq arm` = 'ACQ'")
-        for sqlQuery in sqlQueries:
-            c.execute(sqlQuery)
+        for sqlQuery, sqlParams in sqlQueries:
+            c.execute(sqlQuery, sqlParams)
             self.conn.commit()
         c.close()
 
@@ -3388,13 +3394,14 @@ class data_organiser:
         """*flag SOXS NIR frames taken with a warm detector to ignore, and log each night's rejection*
 
         A NIR frame whose detector temperature (`ESO INS TEMP217 VAL`, the `nir temp k` column) is above the
-        `nir-max-detector-temp-k` setting (60 K by default) was taken while the detector was warming, and its read
-        noise and dark level are wrong. The good frames read 48 K or less. A frame with no temperature is kept. The
-        flag lives in the `raw_frames` table. X-Shooter frames are not touched.
+        `nir-max-detector-temp-k` setting (80 K by default) was taken while the detector was warming, and its read
+        noise and dark level are wrong. The good frames read 48 K or less. A frame with no temperature, or with a
+        temperature that is not a number, is kept. The flag lives in the `raw_frames` table. X-Shooter frames are not
+        touched.
 
         **Raises:**
 
-        - ``ValueError`` -- when the `nir-max-detector-temp-k` setting is not a number
+        - ``ValueError`` -- when the `nir-max-detector-temp-k` setting is not a finite, non-negative number
         """
         self.log.debug("starting the ``_reject_warm_nir_frames`` method")
 
@@ -3404,15 +3411,19 @@ class data_organiser:
         rawLimit = self.settings.get(NIR_MAX_DETECTOR_TEMP_SETTING, NIR_MAX_DETECTOR_TEMP_DEFAULT_K)
         try:
             limitK = float(rawLimit)
-        except (TypeError, ValueError) as e:
+        except (TypeError, ValueError):
+            limitK = math.nan
+        if not math.isfinite(limitK) or limitK < 0:
             raise ValueError(
-                f"the `{NIR_MAX_DETECTOR_TEMP_SETTING}` setting must be a number of kelvin, not `{rawLimit}`"
-            ) from e
+                f"the `{NIR_MAX_DETECTOR_TEMP_SETTING}` setting must be a finite, non-negative number of kelvin, "
+                f"not `{rawLimit}`"
+            )
 
         c = self.conn.cursor()
         c.execute(
             "SELECT uuid, `night start date`, `nir temp k` FROM raw_frames "
-            "WHERE `eso seq arm` = 'NIR' AND `nir temp k` > ? AND ignore = 0 ORDER BY file",
+            "WHERE `eso seq arm` = 'NIR' AND typeof(`nir temp k`) IN ('integer', 'real') AND `nir temp k` > ? "
+            "AND ignore = 0 ORDER BY file",
             (limitK,),
         )
         rejected = c.fetchall()
