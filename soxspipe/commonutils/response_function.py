@@ -397,7 +397,9 @@ class response_function:
                 plt.show()
             stdExtFlux = stdExtFlux * extCorrectionFactor
 
-        self.response_function_raw = self.std_wavelength_to_abs_flux(stdExtWave) / stdExtFlux
+        # A SAMPLE WITH ZERO EXTRACTED FLUX GIVES A NON-FINITE RATIO; `mask_response_samples` DROPS AND REPORTS IT
+        with np.errstate(divide="ignore", invalid="ignore"):
+            self.response_function_raw = self.std_wavelength_to_abs_flux(stdExtWave) / stdExtFlux
         fit, fitSettings = self._fit_response(stdExtWave, self.response_function_raw)
         self.response_function_raw = fit.ratio
         qcWarnings = self._add_response_qcs(fit, fitSettings)

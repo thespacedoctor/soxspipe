@@ -47,7 +47,7 @@ def spectrum1d_quietly(**kwargs: Any) -> Any:
 
 
 def fit_generic_continuum_quietly(spectrum: Any) -> Any:
-    """*fit the generic continuum of a spectrum without astropy's note about the fitter specutils chose*
+    """*fit the generic continuum of a spectrum without astropy's notes about the fitter specutils chose*
 
     **Key Arguments:**
 
@@ -69,7 +69,11 @@ def fit_generic_continuum_quietly(spectrum: Any) -> Any:
     from astropy.utils.exceptions import AstropyUserWarning
     from specutils.fitting import fit_generic_continuum
 
+    from soxspipe.commonutils.toolkit import ignore_astropy_covariance_scaling_overflow
+
     with warnings.catch_warnings():
-        # THE CONTINUUM IS A POLYNOMIAL, WHICH IS LINEAR IN ITS PARAMETERS, AND SPECUTILS PICKS THE NON-LINEAR FITTER
+        # THE CONTINUUM IS A POLYNOMIAL, WHICH IS LINEAR IN ITS PARAMETERS, AND SPECUTILS PICKS THE NON-LINEAR FITTER.
+        # THAT FITTER IS UNWEIGHTED, SO IT ALSO SCALES THE UNREAD COVARIANCE, WHICH CAN OVERFLOW
         warnings.filterwarnings("ignore", message="Model is linear in parameters", category=AstropyUserWarning)
+        ignore_astropy_covariance_scaling_overflow()
         return fit_generic_continuum(spectrum)

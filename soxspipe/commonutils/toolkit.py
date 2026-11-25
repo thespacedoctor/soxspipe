@@ -69,6 +69,9 @@ FIT_UNSUCCESSFUL_PREFIX = "The fit may be unsuccessful"
 # FOR A COVARIANCE NO CALLER READS
 MINPACK_MODULE = "scipy.optimize._minpack_py"
 MINPACK_COVARIANCE_MESSAGES = ("invalid value encountered in matmul", "overflow encountered in matmul")
+# THE NUMPY WARNING ASTROPY'S NON-LINEAR FITTERS RAISE WHEN THEY SCALE THAT SAME UNREAD COVARIANCE BY THE RESIDUAL SUM
+ASTROPY_FITTING_MODULE = "astropy.modeling.fitting"
+ASTROPY_COVARIANCE_SCALING_MESSAGE = "overflow encountered in multiply"
 # MATPLOTLIB 3.9'S NOTE THAT IT KEPT THE UNCONSTRAINED LAYOUT BECAUSE A PANEL COLLAPSED. IT IS RAISED WITH A STACK LEVEL
 # THAT POINTS AT THE CALLER, SO IT IS NOT TIED TO A MODULE
 CONSTRAINED_LAYOUT_MESSAGE = (
@@ -3114,7 +3117,12 @@ def _draw_merged_flux_panels(fig, gs, merged_orders, arm, filenameTemplate, flux
 
     top_panel.set_ylim(minFlux, maxFlux)
 
-    middle_panel.set_ylim(max(arrayMask.min() * 0.5, 0), arrayMask.max() * 2)
+    # A LOG AXIS NEEDS A POSITIVE LOWER LIMIT: USE HALF THE SMALLEST POSITIVE FLUX THE SIGMA CLIP KEPT, AND LEAVE THE
+    # AXIS TO AUTOSCALE WHEN THERE IS NONE
+    positiveFlux = arrayMask.compressed()
+    positiveFlux = positiveFlux[positiveFlux > 0]
+    if positiveFlux.size:
+        middle_panel.set_ylim(positiveFlux.min() * 0.5, arrayMask.max() * 2)
     _set_wavelength_xlim(middle_panel, merged_orders)
 
     return top_panel, middle_panel
@@ -4051,8 +4059,9 @@ def quiet_least_squares_fit() -> Iterator[None]:
     A fit that does not converge is routine here: the callers test the fitted values and drop a bad fit. The block
     hides astropy's "The fit may be unsuccessful" warning (a prefix match, because its tail varies) and the two numpy
     ``RuntimeWarning`` messages that SciPy's ``leastsq`` raises in ``scipy.optimize._minpack_py`` while it inverts a
-    singular Jacobian for a covariance that no caller reads. Any other warning, including a numpy warning from the
-    model itself, still shows. The filters apply inside the block only, and the previous filters return on exit.
+    singular Jacobian for a covariance that no caller reads, plus the overflow that ``astropy.modeling.fitting`` raises
+    when it scales that covariance by the residual sum. Any other warning, including a numpy warning from the model
+    itself, still shows. The filters apply inside the block only, and the previous filters return on exit.
     Put the block around a loop of fits, not around each fit: entering it invalidates the warning registries. Not
     thread-safe: do not enter it from worker threads.
 
@@ -4077,7 +4086,35 @@ def quiet_least_squares_fit() -> Iterator[None]:
                 category=RuntimeWarning,
                 module=re.escape(MINPACK_MODULE) + r"\Z",
             )
+        ignore_astropy_covariance_scaling_overflow()
         yield
+
+
+def ignore_astropy_covariance_scaling_overflow() -> None:
+    """*add a filter for the overflow astropy's non-linear fitters raise while they scale a covariance no caller reads*
+
+    The filter matches the full message, ``RuntimeWarning`` and the ``astropy.modeling.fitting`` module only, so an
+    overflow anywhere else still shows. Call it inside a ``warnings.catch_warnings()`` block: it changes the current
+    filters and does not restore them.
+
+    **Usage:**
+
+    ```python
+    import warnings
+    from soxspipe.commonutils.toolkit import ignore_astropy_covariance_scaling_overflow
+    with warnings.catch_warnings():
+        ignore_astropy_covariance_scaling_overflow()
+        model = fitter(model, x, y)
+    ```
+    """
+    import warnings
+
+    warnings.filterwarnings(
+        "ignore",
+        message=_anchored(ASTROPY_COVARIANCE_SCALING_MESSAGE),
+        category=RuntimeWarning,
+        module=re.escape(ASTROPY_FITTING_MODULE) + r"\Z",
+    )
 
 
 @contextmanager

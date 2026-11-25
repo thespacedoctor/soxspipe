@@ -243,7 +243,7 @@ def test_bins_below_the_minimum_sample_count_are_dropped_and_errors_have_a_floor
     [(1500.0, np.inf), (1500.0, np.nan), (np.nan, 2.0)],
     ids=["infinite-response", "nan-response", "nan-wavelength"],
 )
-def test_non_finite_samples_are_dropped_with_one_warning(badWavelength: float, badResponse: float) -> None:
+def test_non_finite_samples_are_dropped_with_one_info_message(badWavelength: float, badResponse: float) -> None:
     # ARRANGE: ONE NON-FINITE SAMPLE IN AN OTHERWISE FLAT RESPONSE
     wave = np.linspace(1000.0, 2000.0, 400)
     ratio = np.full(400, 2.0)
@@ -257,8 +257,9 @@ def test_non_finite_samples_are_dropped_with_one_warning(badWavelength: float, b
     # ASSERT
     assert int(mask.sum()) == 399
     assert not mask[200]
-    assert len(recordingLog.warnings) == 1
-    assert "Dropped 1 raw response samples" in recordingLog.warnings[0]
+    assert recordingLog.warnings == []
+    assert len(recordingLog.infos) == 1
+    assert "Dropped 1 raw response samples" in recordingLog.infos[0]
 
 
 def test_noisy_bins_at_a_low_signal_end_are_judged_against_their_own_noise() -> None:

@@ -495,3 +495,44 @@ def test_resp_and_efficiency_carry_the_exposure_time_of_one_frame(
         assert hdul[0].header["TEXPTIME"] == pytest.approx(40.0)
     assert written["header"]["EXPTIME"] == pytest.approx(10.0)
     assert response.header["EXPTIME"] == pytest.approx(40.0)
+
+
+def test_get_raises_no_divide_warning_for_a_sample_with_zero_extracted_flux(log: object) -> None:
+    """A zero-flux sample gives a non-finite raw response that is dropped and reported, with no numpy warning."""
+    # ARRANGE
+    import warnings
+
+    wavelengths = np.linspace(1000.0, 2400.0, 3000)
+    flux = np.full(3000, 10.0)
+    flux[1200] = 0.0
+    response = object.__new__(response_function)
+    response.log = log
+    response.dispersionBinning = 1
+    response.stdExtractionDF = pd.DataFrame({"WAVE": wavelengths, "FLUX_COUNTS": flux})
+    response.stdExtractionNotFlatDF = pd.DataFrame(
+        {"WAVE": wavelengths[[0, 1500, 2999]], "FLUX_DENSITY_COUNTS": np.full(3, 10.0)}
+    )
+    response.stdAbsFluxDF = pd.DataFrame({"WAVE": wavelengths, "SYNTHETIC_STAR": np.full(3000, 2.0)})
+    response.std_objName = "SYNTHETIC_STAR"
+    response.arm = "NIR"
+    response.instrument = "soxs"
+    response.texp = 10.0
+    response.recipeSettings = {"nir": {"max_iteration": 5, "poly_order": 2}}
+    response.calibrationRootPath = "/calibration"
+    response.detectorParams = {"extinction": "extinction.fits"}
+    response.airmass = 1.0
+    response.qc = pd.DataFrame()
+    response.products = pd.DataFrame()
+    response.recipeName = "soxs-response"
+    response.dateObs = "2024-01-02T03:04:05"
+    response.orderJoins = []
+    response.write_response_function_to_file = lambda **kwargs: None
+    response.plot_response_curve = lambda **kwargs: None
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        _, _, recipeError = response.get()
+
+    # ASSERT
+    assert recipeError is False

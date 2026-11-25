@@ -79,7 +79,7 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradien
 
     P(s) is a quadratic fitted to the flat's slit profile (see ``chunk_normalised_flat_profile``) inside ``fitRange``
     only, so the roll-off at the slit ends does not reach the fit. A pixel outside ``fitRange`` takes the ratio of the
-    nearest limit. The ratio is 1 for every pixel, with the reason logged as a warning, when there is no flat, when the
+    nearest limit. The ratio is 1 for every pixel, with the reason logged at INFO, when there is no flat, when the
     order has no fit range or no sky pixels, when too few slit bins hold flat pixels, when the fitted profile is not
     positive anywhere in the fit range, or when its gradient is too steep (``MAX_SLOPE_PER_ARCSEC`` for the mean
     gradient across the fit range, ``MAX_LOCAL_GRADIENT_PER_ARCSEC`` anywhere in it). Those tests judge the flat as it
@@ -118,7 +118,7 @@ def flat_slit_ratio(log, order, flat, slit, wavelength, fitRange, isSky, gradien
     isSky = np.asarray(isSky, dtype=bool) & np.isfinite(slit)
     ratio, slope, reason = _ratio_from_flat(flat, slit, wavelength, fitRange, isSky, gradientScale)
     if reason:
-        log.warning(f"order {order}: the slit ratio from the master flat is 1, because {reason}")
+        log.info(f"order {order}: the slit ratio from the master flat is 1, because {reason}")
         return np.ones(slit.shape)
     log.info(
         f"order {order}: the master flat gives a gradient of {slope * 100:+.2f} %/arcsec along the slit, "

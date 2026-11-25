@@ -102,3 +102,26 @@ def test_read_minimum_profile_fraction_returns_the_setting() -> None:
 def test_read_minimum_profile_fraction_rejects_a_value_outside_zero_to_one(value: object) -> None:
     with pytest.raises(ValueError, match="horne-extraction-minimum-profile-fraction"):
         read_minimum_profile_fraction({"horne-extraction-minimum-profile-fraction": value})
+
+
+def test_compute_extractions_raises_no_runtime_warning_for_masked_pixels_with_zero_or_nan_variance() -> None:
+    """Masked off-slit pixels carry zero or NaN variance; dividing by it is expected and must not warn."""
+    # ARRANGE
+    import warnings
+
+    slices, images = _three_slices()
+    expected = compute_extractions(slices, images, order=24, minimumProfileFraction=THRESHOLD)
+    images["fluxRaw"][0, 0] = np.nan
+    images["variance"][0, 0] = np.nan
+    images["variance"][0, 2] = 0.0
+    images["mask"][0, 0] = True
+    images["mask"][0, 2] = True
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        result = compute_extractions(slices, images, order=24, minimumProfileFraction=THRESHOLD)
+
+    # ASSERT
+    np.testing.assert_array_equal(result["wavelengthMean"], expected["wavelengthMean"])
+    assert np.all(np.isfinite(result["extractedFluxOptimal"]))
