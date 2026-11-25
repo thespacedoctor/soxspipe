@@ -89,7 +89,7 @@ Bases: {py:obj}`object`
 
 ````
 
-````{py:method} detect_pinhole_arc_lines(orderPixelTable, iraf=True, sigmaLimit=3, iteration=False, brightest=False, exclude_border=False, returnAll=False)
+````{py:method} detect_pinhole_arc_lines(orderPixelTable, iraf=True, sigmaLimit=3, iteration=False, brightest=False, exclude_border=False, returnAll=False, skipAmbiguityTest=False)
 :canonical: soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_lines
 
 ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.create_dispersion_map.detect_pinhole_arc_lines
@@ -162,7 +162,7 @@ Bases: {py:obj}`object`
 ```
 ````
 
-````{py:function} measure_line_position(stampInfo, log, windowHalf, iraf, sigmaLimit, iteration, brightest=False, exclude_border=False, multipinhole=False, returnAll=True, debug=False)
+````{py:function} measure_line_position(stampInfo, log, windowHalf, iraf, sigmaLimit, iteration, brightest=False, exclude_border=False, multipinhole=False, returnAll=True, debug=False, skipAmbiguityTest=False)
 :canonical: soxspipe.commonutils.create_dispersion_map.measure_line_position
 
 ```{autodoc2-docstring} soxspipe.commonutils.create_dispersion_map.measure_line_position
