@@ -174,7 +174,7 @@ def raw_frame_table() -> pd.DataFrame:
         "eso obs ntpl": 1,
         "eso tpl start": "2024-01-02T03:04:00",
         "eso obs start": "2024-01-02T03:04:00",
-        "nir temp k": 150.0,
+        "nir temp k": 45.0,
         "vis temp c": 10.0,
         "cp temp c": 11.0,
         "afc1 pos1": 0.0,

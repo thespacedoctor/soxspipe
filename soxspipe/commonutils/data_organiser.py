@@ -74,6 +74,14 @@ MAP_SNAPSHOT_TABLE = "late_frame_map_snapshot"
 
 # THE MOST WORKSPACE-ROOT FITS ENTRIES ONE PASS OF THE RAW-FRAME SYNC READS, TO BOUND MEMORY USE
 ROOT_SCAN_WINDOW = 10000
+# FRAME TYPES THAT DO NOT NEED THE SLIT, SO THE SLIT WHEEL CANNOT MAKE THEM SIMULATED OR UNUSABLE (DY-2394)
+SLIT_FREE_DPR_TYPES = ("BIAS", "DARK")
+# SETTING THAT HOLDS THE WARMEST NIR DETECTOR TEMPERATURE (K) AT WHICH A NIR FRAME IS USED, AND ITS DEFAULT (DY-2394)
+NIR_MAX_DETECTOR_TEMP_SETTING = "nir-max-detector-temp-k"
+NIR_MAX_DETECTOR_TEMP_DEFAULT_K = 60.0
+# VALUES OF `ESO DET SOFW MODE` (UPPERCASE) THAT MEAN THE DETECTOR IS NOT SIMULATED
+# "--" AND "-99.99" ARE THE HARVEST FILLS FOR A MISSING CARD
+NORMAL_DETECTOR_MODES = ("NORMAL", "--", "-99.99")
 
 
 def _fits_entries(pathToDirectory: str, skipNames: frozenset[str] = frozenset()) -> list[os.DirEntry]:
@@ -434,6 +442,7 @@ class data_organiser:
             "SWSIM_NIR",
             "SWSIM_VIS",
             "SWSIM_UVB",
+            "DET_SOFW_MODE",
             "PAR_ANG_END",
             "PAR_ANG_START",
             "AZ_ANG",
@@ -1675,6 +1684,38 @@ class data_organiser:
         except _UnsafePathError:
             return _validate_owned_path(path, self.rawDir, "database filepath")
 
+    def _add_simulation_flag(self, filteredFrames):
+        """*return the frames with their `simulation` flag set (SOXS)*
+
+        VIS and UVB frames are simulated when the slit-wheel software simulation keyword of their arm reads `T`. A NIR
+        frame is simulated when the detector software mode (`ESO DET SOFW MODE`) is not `NORMAL`, or when the NIR
+        slit-wheel software simulation (`ESO INS NISE SWSIM`) reads `T` and the frame needs the slit. A bias or dark
+        never needs the slit, so the slit wheel cannot make one simulated (DY-2394).
+
+        **Key Arguments:**
+
+        - ``filteredFrames`` -- the frames, with the SWSIM and software-mode columns as the header harvest fills them
+
+        **Return:**
+
+        - ``frames`` -- a copy of the frames with the `simulation` column set to 0 or 1
+        """
+        frames = filteredFrames.copy()
+        for arm in ("NIR", "VIS", "UVB"):
+            isArm = frames["eso seq arm"] == arm
+            frames.loc[isArm, "simulation"] = frames.loc[isArm, self.kw(f"SWSIM_{arm}").lower()]
+        frames.loc[(frames["simulation"] == "--"), "simulation"] = 0
+        frames.loc[(frames["simulation"] == -99.99), "simulation"] = 0
+        frames.loc[(frames["simulation"] == "T"), "simulation"] = 1
+
+        isNir = frames["eso seq arm"] == "NIR"
+        isSlitWheelSimulated = frames["simulation"] == 1
+        needsSlit = ~frames["eso dpr type"].isin(SLIT_FREE_DPR_TYPES)
+        detectorMode = frames[self.kw("DET_SOFW_MODE").lower()].astype(str).str.strip().str.upper()
+        isDetectorSimulated = ~detectorMode.isin(NORMAL_DETECTOR_MODES)
+        frames.loc[isNir, "simulation"] = ((isSlitWheelSimulated & needsSlit) | isDetectorSimulated)[isNir].astype(int)
+        return frames
+
     def _populate_raw_frames_extra_columns(self, filteredFrames, verbose=False):
         """*populate extra columns for raw frames to later filter on*
 
@@ -1726,18 +1767,7 @@ class data_organiser:
 
         # ADD SIMULATION FLAG FOR SPECTROSCOPIC DATA (AND MORE)
         if self.instrument.lower() == "soxs":
-            filteredFrames.loc[(filteredFrames["eso seq arm"] == "NIR"), "simulation"] = filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "NIR"), self.kw("SWSIM_NIR").lower()
-            ]
-            filteredFrames.loc[(filteredFrames["eso seq arm"] == "VIS"), "simulation"] = filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "VIS"), self.kw("SWSIM_VIS").lower()
-            ]
-            filteredFrames.loc[(filteredFrames["eso seq arm"] == "UVB"), "simulation"] = filteredFrames.loc[
-                (filteredFrames["eso seq arm"] == "UVB"), self.kw("SWSIM_UVB").lower()
-            ]
-            filteredFrames.loc[(filteredFrames["simulation"] == "--"), "simulation"] = 0
-            filteredFrames.loc[(filteredFrames["simulation"] == -99.99), "simulation"] = 0
-            filteredFrames.loc[(filteredFrames["simulation"] == "T"), "simulation"] = 1
+            filteredFrames = self._add_simulation_flag(filteredFrames)
             filteredFrames = filteredFrames.rename(
                 columns={
                     "eso ins temp217 val": "nir temp k",
@@ -3289,6 +3319,8 @@ class data_organiser:
         c.execute(sqlQuery, sqlParams)
         self.conn.commit()
 
+        self._reject_warm_nir_frames()
+
         # FLAG STANDARDS NOT IN STATIC LIBRARY TO IGNORE
         sqlQuery = """UPDATE raw_frames
         SET IGNORE = 1
@@ -3337,7 +3369,12 @@ class data_organiser:
             c.execute(sqlQuery)
             self.conn.commit()
 
-        sqlQueries = ["update raw_frames set ignore = 1 WHERE `slit` = 'UNDEFINED'"]
+        # A BIAS OR DARK NEVER USES THE SLIT, SO AN UNDEFINED NIR SLIT WHEEL DOES NOT SPOIL IT (DY-2394)
+        slitFreeTypes = ", ".join(f"'{dprType}'" for dprType in SLIT_FREE_DPR_TYPES)
+        sqlQueries = [
+            "update raw_frames set ignore = 1 WHERE `slit` = 'UNDEFINED' "  # noqa: S608
+            f"AND NOT (`eso seq arm` = 'NIR' AND `eso dpr type` IN ({slitFreeTypes}))"
+        ]
         sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso dpr type` like '%FLAT%' and `slit` = 'BLANK'")
         sqlQueries.append("update raw_frames set ignore = 1 WHERE `eso seq arm` = 'ACQ'")
         for sqlQuery in sqlQueries:
@@ -3346,6 +3383,54 @@ class data_organiser:
         c.close()
 
         self._reject_blank_slit_pinhole_arcs()
+
+    def _reject_warm_nir_frames(self) -> None:
+        """*flag SOXS NIR frames taken with a warm detector to ignore, and log each night's rejection*
+
+        A NIR frame whose detector temperature (`ESO INS TEMP217 VAL`, the `nir temp k` column) is above the
+        `nir-max-detector-temp-k` setting (60 K by default) was taken while the detector was warming, and its read
+        noise and dark level are wrong. The good frames read 48 K or less. A frame with no temperature is kept. The
+        flag lives in the `raw_frames` table. X-Shooter frames are not touched.
+
+        **Raises:**
+
+        - ``ValueError`` -- when the `nir-max-detector-temp-k` setting is not a number
+        """
+        self.log.debug("starting the ``_reject_warm_nir_frames`` method")
+
+        if self.instrument.lower() != "soxs":
+            return
+
+        rawLimit = self.settings.get(NIR_MAX_DETECTOR_TEMP_SETTING, NIR_MAX_DETECTOR_TEMP_DEFAULT_K)
+        try:
+            limitK = float(rawLimit)
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                f"the `{NIR_MAX_DETECTOR_TEMP_SETTING}` setting must be a number of kelvin, not `{rawLimit}`"
+            ) from e
+
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT uuid, `night start date`, `nir temp k` FROM raw_frames "
+            "WHERE `eso seq arm` = 'NIR' AND `nir temp k` > ? AND ignore = 0 ORDER BY file",
+            (limitK,),
+        )
+        rejected = c.fetchall()
+        c.executemany("UPDATE raw_frames SET ignore = 1 WHERE uuid = ?", [(row[0],) for row in rejected])
+        self.conn.commit()
+        c.close()
+
+        temperaturesByNight = {}
+        for _, night, temperature in rejected:
+            temperaturesByNight.setdefault(night, []).append(temperature)
+        for night, temperatures in sorted(temperaturesByNight.items()):
+            self.log.info(
+                f"ignored {len(temperatures)} NIR frames of the night starting {night}: the detector temperature "
+                f"(`ESO INS TEMP217 VAL`) reads {min(temperatures):.1f} to {max(temperatures):.1f} K, above the "
+                f"limit of {limitK:g} K (`{NIR_MAX_DETECTOR_TEMP_SETTING}` setting)"
+            )
+
+        self.log.debug("completed the ``_reject_warm_nir_frames`` method")
 
     def _reject_blank_slit_pinhole_arcs(self) -> None:
         """*flag SOXS pinhole and multi-pinhole arcs taken with a blank slit to ignore, and log each one*
