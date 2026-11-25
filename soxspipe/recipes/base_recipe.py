@@ -2944,12 +2944,9 @@ class base_recipe:
             maskedDataArray = np.ma.array(frame.data, mask=frame.mask)
             medianFlux = np.ma.median(maskedDataArray)
 
-        # THE VALUE IS UNREAD, BUT THE EXPTIME LOOKUP RAISES KeyError FOR A FRAME
-        # WITHOUT THAT KEYWORD. DELETING THE ASSIGNMENT WOULD REMOVE THAT FAILURE,
-        # WHICH IS PINNED BY test_base_recipe_lint_characterization.py.
-        fluxRange = (np.nanpercentile(frame.data, 95) - np.nanpercentile(frame.data, 5)) / frame.header[  # noqa: F841
-            self.kw("EXPTIME")
-        ]
+        # THE EXPTIME LOOKUP RAISES KeyError FOR A FRAME WITHOUT THAT KEYWORD.
+        # THE LINT CHARACTERIZATION TEST PINS THAT FAILURE.
+        _ = frame.header[self.kw("EXPTIME")]
 
         utcnow = toolkit.utcnow_string()
 
