@@ -1308,11 +1308,12 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         return exclude_mask_from_result(self.log, result, twoDMap, binx, biny, self.kw)
 
     def _warn_flat_fit_fallbacks(self, result: slit_illumination_result) -> None:
-        """*log one warning for each order whose flat-slit-gradient fit range uses a fallback offset (DY-1977)*
+        """*log one message for each order whose flat-slit-gradient fit range uses a fallback offset (DY-1977)*
 
         An order with no usable slit-illumination offset takes the median offset of the frame's usable orders, or an
-        offset of 0 and an extra inset when no order of the frame has one. Nothing is logged when the
-        ``flat-slit-gradient`` sky-subtraction setting is not ``True``, because the fit ranges are then not used.
+        offset of 0 and an extra inset when no order of the frame has one. The median fallback is routine and is logged
+        at INFO; the zero-offset fallback is logged as a warning. Nothing is logged when the ``flat-slit-gradient``
+        sky-subtraction setting is not ``True``, because the fit ranges are then not used.
 
         **Key Arguments:**
 
@@ -1329,7 +1330,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
                 continue
             offset = fitOffset.offset
             if fitOffset.source == "median":
-                self.log.warning(
+                self.log.info(
                     f"order {order}: no usable slit-illumination offset; the flat-slit-gradient fit range uses the "
                     f"median offset of the frame's usable orders, {offset:+.3f} arcsec"
                 )

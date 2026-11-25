@@ -69,7 +69,7 @@ def mask_response_samples(
     isFinite = np.isfinite(wave) & np.isfinite(ratio)
     nonFiniteCount = int(np.count_nonzero(~isFinite))
     if nonFiniteCount > 0 and log is not None:
-        log.warning(
+        log.info(
             f"Dropped {nonFiniteCount} raw response samples with a non-finite wavelength or response "
             "(for example from zero extracted flux) before fitting the response function."
         )

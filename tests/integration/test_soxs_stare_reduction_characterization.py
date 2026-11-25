@@ -1387,8 +1387,9 @@ def _fallback_warnings(
     result: slit_illumination_result,
     *,
     flatSlitGradient: bool,
+    level: str = "warning",
 ) -> tuple[list[str], dict[int, tuple[float, float]]]:
-    """Run the recipe on a stubbed measurement; return its flat-fit-range fallback warnings and the ranges it used."""
+    """Run the recipe on a stubbed measurement; return its flat-fit fallback messages at ``level`` and the ranges."""
     routes = {_route(PRO_CATG="MASTER_FLAT_VIS"): [str(_calibration_path(tmp_path, "MASTER_FLAT_VIS", FLAT_SEED))]}
     recipe = _stare_recipe(
         log,
@@ -1409,25 +1410,26 @@ def _fallback_warnings(
 
     recipe.produce_product()
 
-    warnings = [text for level, text in log.messages if level == "warning" and "flat-slit-gradient fit range" in text]
-    return warnings, captured["sky"][0]["flatFitRanges"]
+    messages = [text for logged, text in log.messages if logged == level and "flat-slit-gradient fit range" in text]
+    return messages, captured["sky"][0]["flatFitRanges"]
 
 
-def test_an_order_with_no_usable_offset_logs_a_warning_with_the_median_offset_it_took(
+def test_an_order_with_no_usable_offset_logs_the_median_offset_it_took_at_info(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # ARRANGE
     result = _illumination_result(failedOrders=(12,))
 
     # ACT
-    warnings, ranges = _fallback_warnings(log, tmp_path, monkeypatch, result, flatSlitGradient=True)
+    infos, ranges = _fallback_warnings(log, tmp_path, monkeypatch, result, flatSlitGradient=True, level="info")
 
-    # ASSERT: ORDER 11 IS THE ONLY USABLE ORDER, SO ITS OFFSET IS THE MEDIAN
+    # ASSERT: ORDER 11 IS THE ONLY USABLE ORDER, SO ITS OFFSET IS THE MEDIAN. THE FALLBACK IS ROUTINE, SO NOT A WARNING
     assert set(ranges) == {11, 12}
-    assert len(warnings) == 1
-    assert "order 12" in warnings[0]
-    assert "median" in warnings[0]
-    assert f"{OFFSET_ARCSEC[11]:+.3f} arcsec" in warnings[0]
+    assert len(infos) == 1
+    assert "order 12" in infos[0]
+    assert "median" in infos[0]
+    assert f"{OFFSET_ARCSEC[11]:+.3f} arcsec" in infos[0]
+    assert [text for level, text in log.messages if level == "warning" and "flat-slit-gradient fit range" in text] == []
 
 
 def test_a_frame_with_no_usable_offset_logs_one_warning_per_order_with_the_zero_offset_and_the_inset(
