@@ -16,6 +16,7 @@ two tests below pin that bound-parameter behaviour.
 from __future__ import annotations
 
 import sqlite3
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +33,10 @@ pytestmark = pytest.mark.unit
 
 
 # ---------------------------------------------------------------------------
-# 1. `qc_median_flux_level` -- THE F841 `fluxRange` ASSIGNMENT IS A DISGUISED
-# HEADER-LOOKUP GUARD, NOT DEAD CODE. DELETING IT WOULD SILENCE THE KeyError
-# BELOW WHEN A FRAME'S HEADER HAS NO EXPTIME KEYWORD.
+# 1. `qc_median_flux_level` -- THE BARE EXPTIME HEADER LOOKUP IS A GUARD, NOT
+# DEAD CODE. DELETING IT WOULD SILENCE THE KeyError BELOW WHEN A FRAME'S
+# HEADER HAS NO EXPTIME KEYWORD. IT USED TO DIVIDE AN UNREAD FLUX RANGE BY
+# EXPTIME, WHICH WARNED ON EVERY MASTER BIAS (EXPTIME = 0).
 # ---------------------------------------------------------------------------
 
 
@@ -52,7 +54,7 @@ def _qc_recipe(log: Any) -> base_recipe:
 def test_qc_median_flux_level_raises_keyerror_when_exptime_header_missing(
     log: Any,
 ) -> None:
-    """The unread `fluxRange` line still runs the EXPTIME header lookup, which raises."""
+    """The EXPTIME header lookup guard raises."""
     # ARRANGE
     recipe = _qc_recipe(log)
     frame = synthetic_ccd(shape=(2, 2), prepared=True)
@@ -90,6 +92,33 @@ def test_qc_median_flux_level_returns_the_unmasked_median_when_exptime_is_presen
     assert metric["qc_name"] == "MDARK MEDIAN"
     assert metric["qc_value"] == pytest.approx(5.0)
     assert metric["qc_comment"] == "[e-] Median flux level of synthetic dark"
+
+
+def test_qc_median_flux_level_emits_no_runtime_warning_when_exptime_is_zero(
+    log: Any,
+) -> None:
+    """A master bias has EXPTIME = 0, which must not raise a divide-by-zero warning into the log."""
+    # ARRANGE
+    recipe = _qc_recipe(log)
+    frame = synthetic_ccd(
+        shape=(2, 2),
+        prepared=True,
+        headerOverrides={"EXPTIME": 0.0},
+    )
+    frame.data = np.array([[2.0, 4.0], [6.0, 8.0]])
+    frame.mask = np.zeros((2, 2), dtype=bool)
+
+    # ACT
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        medianFlux = recipe.qc_median_flux_level(
+            frame,
+            frameType="MBIAS",
+            frameName="master bias",
+        )
+
+    # ASSERT
+    assert medianFlux == pytest.approx(5.0)
 
 
 # ---------------------------------------------------------------------------

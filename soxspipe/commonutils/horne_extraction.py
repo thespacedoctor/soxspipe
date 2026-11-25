@@ -3327,18 +3327,18 @@ def compute_extractions(
         clippingSigma=residualClippingSigma,
     )
 
-    # CALCULATE HORNE 86 NUMERATOR (EQU 8)
-    horneNumerator = np.ma.masked_array(
-        orderRectifiedImages["fluxRaw"] * orderRectifiedImages["objectProfile"] / orderRectifiedImages["variance"],
-        mask=optimalMask,
-    )
+    # CALCULATE HORNE 86 NUMERATOR AND DENOMINATOR (EQU 8). MASKED OFF-SLIT PIXELS CAN HAVE ZERO OR NaN VARIANCE; THE
+    # MASKED SUMS LEAVE THOSE PIXELS OUT, SO NUMPY'S DIVIDE WARNINGS ARE SILENCED AS IN `_clip_residual_outliers`
+    with np.errstate(divide="ignore", invalid="ignore"):
+        horneNumerator = np.ma.masked_array(
+            orderRectifiedImages["fluxRaw"] * orderRectifiedImages["objectProfile"] / orderRectifiedImages["variance"],
+            mask=optimalMask,
+        )
+        horneDenominator = np.ma.masked_array(
+            np.power(orderRectifiedImages["objectProfile"], 2) / orderRectifiedImages["variance"],
+            mask=optimalMask,
+        )
     horneNumeratorSum = horneNumerator.T.sum(axis=1)
-
-    # CALCULATE HORNE 86 DENOMINATOR (EQU 8)
-    horneDenominator = np.ma.masked_array(
-        np.power(orderRectifiedImages["objectProfile"], 2) / orderRectifiedImages["variance"],
-        mask=optimalMask,
-    )
     horneDenominatorSum = horneDenominator.T.sum(axis=1)
 
     wavelengthMasked = np.ma.masked_array(orderRectifiedImages["wavelength"], mask=orderRectifiedImages["mask"])

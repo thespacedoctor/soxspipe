@@ -418,3 +418,45 @@ def test_get_tests_ambiguity_on_every_pass_only_without_a_first_guess_map(
     # ASSERT
     assert [kwargs["iteration"] for kwargs in seenKwargs] == [0, 1, 2]
     assert [kwargs["shouldTestAmbiguity"] for kwargs in seenKwargs] == [expectedShouldTest] * DETECTION_PASSES
+
+
+def test_an_iraf_fwhm_with_no_detection_raises_no_photutils_warning(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IRAFStarFinder finding nothing at the line is routine: the FWHM is NaN and no NoDetectionsWarning is raised."""
+    # ARRANGE
+    import warnings
+
+    from photutils.utils import NoDetectionsWarning
+
+    photutilsModule = importlib.import_module("photutils")
+
+    class _FinderThatFindsNothing:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def __call__(self, *args: object, **kwargs: object) -> None:
+            warnings.warn("No sources were found.", NoDetectionsWarning, stacklevel=2)
+
+    monkeypatch.setattr(photutilsModule, "IRAFStarFinder", _FinderThatFindsNothing)
+    frame = _arc_frame([30.0])
+    stampInfo = _stamp_at(frame, 30.0, LINE_Y, windowHalf=5)
+
+    # ACT
+    with warnings.catch_warnings(record=True) as raised:
+        warnings.simplefilter("always")
+        result = measure_line_position(
+            stampInfo,
+            log,
+            windowHalf=5,
+            iraf=True,
+            sigmaLimit=3,
+            iteration=2,
+            exclude_border=False,
+            returnAll=False,
+        )
+
+    # ASSERT
+    assert len(result) == 1
+    assert np.isnan(result[0]["fwhm_pin_px"])
+    assert [warning for warning in raised if issubclass(warning.category, NoDetectionsWarning)] == []

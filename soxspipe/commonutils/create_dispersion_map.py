@@ -5232,7 +5232,10 @@ def measure_line_position(
                         exclude_border=True,
                         xycoords=[(stamp_x, stamp_y)],
                     )
-                    iraf_sources = iraf_find(stamp)
+                    with warnings.catch_warnings():
+                        # NO SOURCE AT THE LINE IS ROUTINE: `iraf_sources` IS THEN None AND THE FWHM BECOMES NaN BELOW
+                        warnings.simplefilter("ignore", NoDetectionsWarning)
+                        iraf_sources = iraf_find(stamp)
                     predictedLine["fwhm_pin_px"] = iraf_sources["fwhm"][0]
                 except Exception:
                     predictedLine["fwhm_pin_px"] = np.nan

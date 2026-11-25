@@ -199,9 +199,12 @@ def test_ratio_is_one_and_the_reason_logged_when_the_frame_has_no_master_flat(lo
 
     # ASSERT
     assert (modelled["slit_normalisation_ratio"] == 1).all()
-    assert [message for _, message in log.messages].count(
-        "order 11: the slit ratio from the master flat is 1, because there is no master flat"
-    ) == 1
+    assert (
+        log.messages.count(
+            ("info", "order 11: the slit ratio from the master flat is 1, because there is no master flat")
+        )
+        == 1
+    )
 
 
 def test_ratio_is_one_and_the_reason_logged_when_the_flat_slope_is_beyond_the_guard(log: Any) -> None:

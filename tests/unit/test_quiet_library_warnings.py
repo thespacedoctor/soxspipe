@@ -377,6 +377,24 @@ def test_each_listed_matmul_message_from_scipy_is_hidden_inside_the_quiet_fit(me
     assert raised == []
 
 
+def test_the_astropy_covariance_scaling_overflow_is_hidden_inside_the_quiet_fit_only() -> None:
+    """astropy scales the unread fit covariance by the residual sum; an overflow there changes no fitted value."""
+    # ARRANGE
+    message = "overflow encountered in multiply"
+
+    def quiet_warn() -> None:
+        with toolkit.quiet_least_squares_fit():
+            _warn_from(message, RuntimeWarning, "astropy.modeling.fitting")
+
+    # ACT
+    quiet = _raised_by(quiet_warn, RuntimeWarning, message)
+    loud = _raised_by(lambda: _warn_from(message, RuntimeWarning, "astropy.modeling.fitting"), RuntimeWarning, message)
+
+    # ASSERT
+    assert quiet == []
+    assert len(loud) == 1
+
+
 @pytest.mark.parametrize(
     ("message", "module"),
     [
@@ -485,6 +503,35 @@ def test_the_continuum_slice_fit_raises_no_unsuccessful_fit_warning_for_a_slice_
         lambda: detector.fit_1d_gaussian_to_slices(pixels, sliceLength=21),
         AstropyUserWarning,
         "The fit may be unsuccessful",
+    )
+
+    # ASSERT
+    assert raised == []
+
+
+def test_the_continuum_slice_fit_skips_an_all_nan_slice_without_an_all_nan_warning(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A slice that lies wholly off the detector or on masked pixels is all NaN: it is skipped with no numpy warning."""
+    # ARRANGE
+    detector = _detector(log)
+    detector.traceFrame = object()
+    detector.sliceWidth = 3
+    detector.detectorParams = {"dispersion-axis": "x"}
+    detector.debug = False
+    detector.peakSigmaLimit = 3.0
+    detector.sliceAxis = "x"
+    detector.sliceAntiAxis = "y"
+    allNan = np.full(21, np.nan)
+    monkeypatch.setattr(continuumModule, "cut_image_slice", lambda **kwargs: (allNan, 5, 7.0))
+    pixels = pd.DataFrame({"fit_x": [15.0], "fit_y": [7.0]})
+
+    # ACT
+    raised = _raised_by(
+        lambda: detector.fit_1d_gaussian_to_slices(pixels, sliceLength=21),
+        RuntimeWarning,
+        "All-NaN slice encountered",
     )
 
     # ASSERT
@@ -731,6 +778,28 @@ def test_the_dispersion_map_qc_plot_draws_its_grid_lines_without_a_colour_clash(
         )
     finally:
         plt.close("all")
+
+    # ASSERT
+    assert raised == []
+
+
+def test_the_generic_continuum_fit_hides_astropy_covariance_scaling_overflow(monkeypatch: pytest.MonkeyPatch) -> None:
+    """specutils fits the continuum with an unweighted LevMar fitter, whose unread covariance scaling can overflow."""
+    # ARRANGE
+    import specutils.fitting
+
+    from soxspipe.commonutils.specutils_calls import fit_generic_continuum_quietly
+
+    message = "overflow encountered in multiply"
+
+    def overflowing_fit(spectrum: object) -> str:
+        _warn_from(message, RuntimeWarning, "astropy.modeling.fitting")
+        return "continuum"
+
+    monkeypatch.setattr(specutils.fitting, "fit_generic_continuum", overflowing_fit)
+
+    # ACT
+    raised = _raised_by(lambda: fit_generic_continuum_quietly(object()), RuntimeWarning, message)
 
     # ASSERT
     assert raised == []

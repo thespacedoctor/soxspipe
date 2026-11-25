@@ -1379,6 +1379,11 @@ class detect_continuum(_base_detect):
                 # Replace values < -500 with NaN
                 slice_data = np.where(slice_data < -50, np.nan, slice_data)
 
+                # AN ALL-NaN SLICE (OFF THE DETECTOR OR WHOLLY MASKED) HAS NO PEAK TO FIND; SKIP IT BEFORE THE NaN-AWARE
+                # STATISTICS, WHICH WOULD ONLY WARN AND RETURN NaN
+                if not np.isfinite(slice_data).any():
+                    continue
+
                 # Calculate baseline and std using vectorized operations
                 baseline = np.nanpercentile(slice_data, 20)
                 std_r = mad_std(slice_data, ignore_nan=True)
