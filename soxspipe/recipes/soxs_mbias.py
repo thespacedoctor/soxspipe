@@ -39,6 +39,28 @@ STATS_TABLE_COLUMNS = ("", "mean (e-)", "median (e-)", "RON (e-)")
 STATS_TABLE_NOT_APPLICABLE = "\u2014"
 
 
+def _is_usable_ron(ron):
+    """*return True if a read noise is a positive finite number*
+
+    **Key Arguments:**
+
+    - ``ron`` -- the read noise (e-), or *None* if it was not measured
+
+    **Return:**
+
+    - ``isUsable`` -- *True* for a positive finite number, *False* for *None*, NaN, infinity, zero or a negative number
+
+    **Usage:**
+
+    ```python
+    isUsable = _is_usable_ron(rawRon)
+    ```
+    """
+    import numpy as np
+
+    return ron is not None and bool(np.isfinite(ron)) and ron > 0
+
+
 def _finite_unmasked_pixels(data, *masks):
     """*return the finite pixel values that no mask flags*
 
@@ -418,8 +440,8 @@ class soxs_mbias(base_recipe):
         # THE STACKED UNCERTAINTY WAS BUILT FROM THE HEADER RON, SO SCALE IT TO THE MEASURED RAW RON (DY-2438)
         self._scale_uncertainty_to_raw_ron(combined_bias_mean, rawRon)
 
-        # FILL THE MASKED UNCERTAINTY WITH THE MEASURED RAW RON, OR THE MEAN FRAME RON IF THERE WAS NO RAW PAIR
-        self._fill_masked_uncertainty(combined_bias_mean, meanFrameRon if rawRon is None else rawRon)
+        # FILL THE MASKED UNCERTAINTY WITH THE MEASURED RAW RON, OR THE MEAN FRAME RON IF IT IS MISSING OR UNUSABLE
+        self._fill_masked_uncertainty(combined_bias_mean, rawRon if _is_usable_ron(rawRon) else meanFrameRon)
 
         self.qc_bias_structure(combined_bias_mean)
 
@@ -559,7 +581,8 @@ class soxs_mbias(base_recipe):
         Multiplying it by the ratio of the measured raw read noise (the ``RAW RON`` QC) to the header read noise
         gives the measured read noise over the same square root, and keeps the per-pixel frame count. If the raw
         read noise was not measured (fewer than two raw frames) or is not a positive finite number, the header-based
-        uncertainty stays and a warning says so.
+        uncertainty stays and a warning says so. The same happens if the header read noise is not a positive finite
+        number, as it could not be a divisor.
 
         **Key Arguments:**
 
@@ -576,10 +599,17 @@ class soxs_mbias(base_recipe):
 
         headerRon = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
 
-        if rawRon is None or not np.isfinite(rawRon) or rawRon <= 0:
+        if not _is_usable_ron(headerRon):
             self.log.warning(
-                f"The read noise of the raw bias frames could not be measured, so the master bias uncertainty keeps "
-                f"the header read noise of {headerRon:0.2f} e-."
+                f"The header read noise ({headerRon}) is not a positive finite number, so the master bias "
+                f"uncertainty is not scaled to the measured raw read noise (RAW RON = {rawRon})."
+            )
+            return
+
+        if not _is_usable_ron(rawRon):
+            self.log.warning(
+                f"The read noise of the raw bias frames could not be measured (RAW RON = {rawRon}), so the "
+                f"unmasked pixels of the master bias uncertainty keep the header read noise of {headerRon:0.2f} e-."
             )
             return
 

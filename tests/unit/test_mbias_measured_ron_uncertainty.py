@@ -89,5 +89,26 @@ def test_uncertainty_keeps_header_ron_and_warns_when_the_measurement_failed(log:
     np.testing.assert_array_equal(frame.uncertainty.array, original)
     warnings = _warnings(log)
     assert len(warnings) == 1
+    assert "unmasked pixels" in warnings[0]
     assert "header read noise" in warnings[0]
     assert f"{HEADER_RON:0.2f}" in warnings[0]
+    assert f"RAW RON = {rawRon}" in warnings[0]
+
+
+@pytest.mark.parametrize("headerRon", [0.0, float("nan"), float("inf")])
+def test_uncertainty_is_not_scaled_when_the_header_ron_is_unusable(log: Any, headerRon: float) -> None:
+    """A header read noise that cannot be a divisor leaves the uncertainty alone and warns once."""
+    # ARRANGE
+    recipe = _recipe(log)
+    recipe.detectorParams = {"ron": headerRon * u.electron}
+    frame = _stacked_bias()
+    original = frame.uncertainty.array.copy()
+
+    # ACT
+    recipe._scale_uncertainty_to_raw_ron(frame, MEASURED_RON)
+
+    # ASSERT
+    np.testing.assert_array_equal(frame.uncertainty.array, original)
+    warnings = _warnings(log)
+    assert len(warnings) == 1
+    assert "header read noise" in warnings[0]

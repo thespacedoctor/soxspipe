@@ -118,8 +118,22 @@ HEADER_RON = 4.0
 
 @pytest.mark.parametrize(
     ("measuredRawRon", "expectedFill"),
-    [(2.0, 2.0), (None, MEAN_FRAME_RON)],
-    ids=["raw-ron-measured", "no-raw-pair-falls-back-to-mean-frame-ron"],
+    [
+        (2.0, 2.0),
+        (None, MEAN_FRAME_RON),
+        (float("nan"), MEAN_FRAME_RON),
+        (float("inf"), MEAN_FRAME_RON),
+        (0.0, MEAN_FRAME_RON),
+        (-1.0, MEAN_FRAME_RON),
+    ],
+    ids=[
+        "raw-ron-measured",
+        "no-raw-pair-falls-back-to-mean-frame-ron",
+        "nan-raw-ron-falls-back-to-mean-frame-ron",
+        "inf-raw-ron-falls-back-to-mean-frame-ron",
+        "zero-raw-ron-falls-back-to-mean-frame-ron",
+        "negative-raw-ron-falls-back-to-mean-frame-ron",
+    ],
 )
 def test_master_bias_produce_product_runs_collaborators_and_records_product(
     measuredRawRon: float | None,
@@ -320,7 +334,8 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     # THE MASKED PIXEL OF THE STACK TAKES THE MEASURED RAW RON, OR THE MEAN FRAME RON IF NONE WAS MEASURED
     assert stackedFrame.uncertainty.array[0, 0] == pytest.approx(expectedFill)
     # THE UNMASKED PIXELS FOLLOW THE MEASURED RAW RON, OR KEEP THE HEADER-BASED VALUE IF NONE WAS MEASURED (DY-2438)
-    ronScale = 1.0 if measuredRawRon is None else measuredRawRon / HEADER_RON
+    isRawRonUsable = measuredRawRon is not None and np.isfinite(measuredRawRon) and measuredRawRon > 0
+    ronScale = measuredRawRon / HEADER_RON if isRawRonUsable else 1.0
     assert stackedFrame.uncertainty.array[~stackedFrame.mask] == pytest.approx(unmaskedBefore * ronScale)
     assert stackedFrame.header["DATANCOM"] == len(rawFrames)
     assert qcArguments["qc_bias_structure"] == {
