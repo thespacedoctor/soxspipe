@@ -200,14 +200,17 @@ def test_first_pass_y_offset_ignores_a_minority_of_noise_detections(log: object,
     mapper = _mapper(log, _order_table(tmp_path))
     yOffset = 4.3
     table = _line_table(SLIT_CENTRE, ALL_PINHOLES, yDiff=yOffset)
-    noiseRows = table.index[::25]
+    # A 0.1 PX ALTERNATING SCATTER ABOUT THE PINHOLE OFFSET: THE MEASURED OFFSET MUST LIE WITHIN IT
+    # (A MEAN WOULD NOT)
+    table["y_diff"] = yOffset + np.where(table.index % 2 == 0, 0.1, -0.1)
+    noiseRows = table.index[1::25]
     table.loc[noiseRows, "y_diff"] = 20.0
 
     # ACT
     result = _run(mapper, table)
 
     # ASSERT
-    np.testing.assert_allclose(result["detector_y_shifted"], table["detector_y_shifted"] - yOffset)
+    np.testing.assert_allclose(result["detector_y_shifted"], table["detector_y_shifted"] - yOffset, atol=0.11)
 
 
 def test_first_pass_leaves_a_later_iteration_unshifted_in_y(log: object, tmp_path: Path) -> None:

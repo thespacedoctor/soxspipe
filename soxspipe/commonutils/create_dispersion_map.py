@@ -813,7 +813,11 @@ class create_dispersion_map:
         return orderPixelTable, centrex, centrey
 
     def _handle_multipin_hole_big_shift(self, orderPixelTable, order_num, mask, iteration):
-        """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*"""
+        """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*
+
+        On the first iteration only, the order's line sets move along the slit when the end shifts show a pinhole
+        offset (above 0.4 px), and always move along the other axis by the group's sigma-clipped median offset.
+        """
         from astropy.stats import sigma_clipped_stats
 
         # ONLY CHECK ON FIRST ITERATION
