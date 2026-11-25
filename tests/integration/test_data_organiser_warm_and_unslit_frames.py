@@ -235,3 +235,26 @@ def test_the_packaged_soxs_settings_set_the_limit_to_the_code_fallback() -> None
 
     # ASSERT
     assert settings[MAX_DETECTOR_TEMP_SETTING] == NIR_MAX_DETECTOR_TEMP_DEFAULT_K == 80
+
+
+@pytest.mark.parametrize("arm", ["VIS", "UVB"])
+def test_x_shooter_bias_with_an_undefined_slit_is_still_ignored(organiser, arm) -> None:
+    # ARRANGE
+    organiser.instrument = "XSH"
+    _insert_frame(organiser.conn, "xsh-bias.fits", arm=arm, dprType="BIAS", slit="UNDEFINED")
+
+    # ACT
+    organiser._flag_files_to_ignore()
+
+    # ASSERT
+    assert _ignored(organiser) == {"xsh-bias.fits"}
+
+
+@pytest.mark.parametrize("limit", [True, False])
+def test_a_boolean_temperature_limit_stops_with_a_clear_error(organiser, limit) -> None:
+    # ARRANGE
+    organiser.settings = {MAX_DETECTOR_TEMP_SETTING: limit}
+
+    # ACT, ASSERT
+    with pytest.raises(ValueError, match="nir-max-detector-temp-k.*finite, non-negative number of kelvin"):
+        organiser._flag_files_to_ignore()

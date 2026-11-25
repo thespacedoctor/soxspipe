@@ -3373,12 +3373,14 @@ class data_organiser:
             c.execute(sqlQuery)
             self.conn.commit()
 
-        # A BIAS OR DARK NEVER USES THE SLIT, SO AN UNDEFINED SLIT WHEEL DOES NOT SPOIL IT, IN ANY ARM (DY-2394)
+        # A SOXS BIAS OR DARK NEVER USES THE SLIT, SO AN UNDEFINED SLIT WHEEL DOES NOT SPOIL IT, IN ANY ARM (DY-2394).
+        # X-SHOOTER KEEPS THE OLD RULE: EVERY FRAME WITH AN UNDEFINED SLIT IS IGNORED
+        slitFreeTypes = SLIT_FREE_DPR_TYPES if self.instrument.upper() == "SOXS" else ()
         sqlQueries = [
             (
                 "update raw_frames set ignore = 1 WHERE `slit` = 'UNDEFINED' "
-                "AND `eso dpr type` NOT IN (SELECT value FROM json_each(?))",
-                (json.dumps(SLIT_FREE_DPR_TYPES),),
+                "AND IFNULL(`eso dpr type`, '') NOT IN (SELECT value FROM json_each(?))",
+                (json.dumps(slitFreeTypes),),
             ),
             ("update raw_frames set ignore = 1 WHERE `eso dpr type` like '%FLAT%' and `slit` = 'BLANK'", ()),
             ("update raw_frames set ignore = 1 WHERE `eso seq arm` = 'ACQ'", ()),
@@ -3410,7 +3412,7 @@ class data_organiser:
 
         rawLimit = self.settings.get(NIR_MAX_DETECTOR_TEMP_SETTING, NIR_MAX_DETECTOR_TEMP_DEFAULT_K)
         try:
-            limitK = float(rawLimit)
+            limitK = math.nan if isinstance(rawLimit, bool) else float(rawLimit)
         except (TypeError, ValueError):
             limitK = math.nan
         if not math.isfinite(limitK) or limitK < 0:
