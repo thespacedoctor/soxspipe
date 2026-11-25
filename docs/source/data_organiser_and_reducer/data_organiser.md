@@ -30,6 +30,17 @@ Finally, all SOF files from the `sof_map` table are written to a sof directory i
 
 During the running of each pipeline recipe, Quality Control (QC) metrics are generated, and within the pipeline settings file, there are `qc-acceptable-ranges` for each recipe. These acceptable ranges act as guardrails for the pipeline, so that if a QC metric falls outside an acceptable range, the pipeline forces a 'fail' on this data, preventing it from cascading into further data-reduction stages.
 
+### Frames that the DO ignores
+
+The DO sets the `ignore` flag of a raw frame in the `raw_frames` table when the frame must not go into a SOF. These rules apply to SOXS frames.
+
+- Simulated detector: a NIR frame is simulated when `ESO DET SOFW MODE` is not `NORMAL`. The values `HW-SIM` and `LCU-SIM` mean that the detector software wrote a fixed test image, not the sky or a dark. The DO ignores a simulated bias, dark, flat, or arc. It keeps a simulated science frame or standard star.
+- Simulated slit wheel: `ESO INS NISE SWSIM` set to `T` makes a NIR frame simulated only when the frame needs the slit: a flat, arc, pinhole frame, or science frame. A bias or dark never uses the slit, so this keyword does not affect it. The UVB and VIS arms use their own slit-wheel keywords, as before.
+- Warm detector: the DO ignores every NIR frame, calibration or science, when `ESO INS TEMP217 VAL` is above the `nir-max-detector-temp-k` setting. The default is 80 K. A good NIR frame reads 48 K or less. The `prep` log lists the number of frames, the temperature range, and the limit for each night. A frame with no temperature, or with a temperature that is not a number, is kept. The setting must be a finite number that is not negative.
+- Undefined slit: the DO ignores a frame when its slit-wheel keyword reads `UNDEFINED` (`ESO INS NISE NAME` on the NIR arm). It does not ignore a bias or dark in any arm for this reason.
+
+To change the temperature limit, set `nir-max-detector-temp-k` in the settings file, then run `soxspipe prep --refresh` to apply it to frames that are already in the database.
+
 ### Stare-mode frames
 
 The DO puts all stare science frames (`ECHELLE,SLIT,STARE`) of one observation block (`eso obs id`) and arm into one SOF, if they have the same slit, binning, readout speed, exposure time and other grouping keywords. Frames that differ in any of these keys go into separate SOFs. The SOF is named after the earliest frame. The `soxs_stare` recipe stacks the frames of the SOF by default. See the `stack_before_extraction` setting in [`soxs_stare`](../recipes/soxs_stare.md). To extract each frame on its own for one run, use the `--no-stack` option of `soxspipe reduce`.
