@@ -61,6 +61,15 @@ def _measure(stampInfo: tuple, log: object, windowHalf: int, **kwargs: object) -
     )
 
 
+def _bare_mapper(log: object, **attributes: object) -> create_dispersion_map:
+    """Return a `create_dispersion_map` with no constructor run and only the given attributes set."""
+    mapper = object.__new__(create_dispersion_map)
+    mapper.log = log
+    for name, value in attributes.items():
+        setattr(mapper, name, value)
+    return mapper
+
+
 @pytest.mark.parametrize("guessX", [28.40, 28.60, 28.80])
 def test_first_guesses_either_side_of_a_rounding_boundary_get_the_same_answer(log: object, guessX: float) -> None:
     """Two lines 3.9 px apart with the guess between them are ambiguous whatever the stamp origin rounds to."""
@@ -183,11 +192,12 @@ def test_a_source_exactly_at_the_first_guess_is_never_ambiguous(log: object, mon
 def test_detect_pinhole_arc_lines_rejects_ambiguous_stamps_as_non_detections_and_counts_them(log: object) -> None:
     """The line table gets NaN for an ambiguous stamp, a position for a clear one, and the pass logs the count."""
     # ARRANGE
-    mapper = object.__new__(create_dispersion_map)
-    mapper.log = log
-    mapper.pinholeFrameMasked = np.ma.array(_arc_frame([26.98, 30.88]), mask=np.zeros(FRAME_SHAPE, dtype=bool))
-    mapper.windowHalf = 5
-    mapper.debug = False
+    mapper = _bare_mapper(
+        log,
+        pinholeFrameMasked=np.ma.array(_arc_frame([26.98, 30.88]), mask=np.zeros(FRAME_SHAPE, dtype=bool)),
+        windowHalf=5,
+        debug=False,
+    )
     inputLines = pd.DataFrame(
         {
             "detector_x": [0.0, 0.0],
@@ -253,8 +263,8 @@ def test_brightest_mode_gives_no_detection_when_no_source_has_a_positive_peak(
     assert result == []
 
 
-MULTIPIN_SPACING_PX = 5.0
 MULTIPIN_LINE_XS = [21.0, 26.0, 31.0, 36.0]
+# THE GUESS IS 2.4 PX FROM THE PINHOLE AT 26 AND 2.6 PX FROM THE ONE AT 31: RATIO 1.08, INSIDE THE 1.5 LIMIT
 MULTIPIN_GUESS_X = 28.4
 
 
@@ -272,7 +282,7 @@ def test_multipinhole_stamp_is_ambiguous_by_default(log: object) -> None:
     assert np.isnan(result[0]["observed_x"])
 
 
-def test_multipinhole_stamp_keeps_the_nearest_source_when_the_ambiguity_test_is_skipped(log: object) -> None:
+def test_multipinhole_stamp_keeps_the_nearest_source_when_the_ambiguity_test_is_off(log: object) -> None:
     """With a first-guess map the nearest pinhole to the true first guess is kept, however close the next one is."""
     # ARRANGE
     frame = _arc_frame(MULTIPIN_LINE_XS)
@@ -282,7 +292,7 @@ def test_multipinhole_stamp_keeps_the_nearest_source_when_the_ambiguity_test_is_
         _stamp_at(frame, MULTIPIN_GUESS_X, LINE_Y, windowHalf=10),
         log,
         windowHalf=10,
-        skipAmbiguityTest=True,
+        shouldTestAmbiguity=False,
     )
 
     # ASSERT
@@ -292,28 +302,29 @@ def test_multipinhole_stamp_keeps_the_nearest_source_when_the_ambiguity_test_is_
     assert result[0]["observed_y"] == pytest.approx(LINE_Y, abs=0.2)
 
 
-def test_skipping_the_ambiguity_test_still_measures_from_the_true_first_guess(log: object) -> None:
+def test_switching_the_ambiguity_test_off_still_measures_from_the_true_first_guess(log: object) -> None:
     """A stamp clipped at the frame edge keeps the source at the guess, not the one at the stamp centre."""
     # ARRANGE
     frame = _arc_frame([3.0, 10.5])
     stampInfo = _stamp_at(frame, 3.5, LINE_Y, windowHalf=8)
 
     # ACT
-    result = _measure(stampInfo, log, windowHalf=8, skipAmbiguityTest=True)
+    result = _measure(stampInfo, log, windowHalf=8, shouldTestAmbiguity=False)
 
     # ASSERT
     assert stampInfo[1] == 0
     assert result[0]["observed_x"] == pytest.approx(3.0, abs=0.2)
 
 
-def test_detect_pinhole_arc_lines_counts_no_ambiguous_stamps_when_the_test_is_skipped(log: object) -> None:
+def test_detect_pinhole_arc_lines_counts_no_ambiguous_stamps_when_the_test_is_off(log: object) -> None:
     """The spatial-solution pass keeps the nearest pinhole of an otherwise ambiguous stamp and logs zero rejections."""
     # ARRANGE
-    mapper = object.__new__(create_dispersion_map)
-    mapper.log = log
-    mapper.pinholeFrameMasked = np.ma.array(_arc_frame(MULTIPIN_LINE_XS), mask=np.zeros(FRAME_SHAPE, dtype=bool))
-    mapper.windowHalf = 10
-    mapper.debug = False
+    mapper = _bare_mapper(
+        log,
+        pinholeFrameMasked=np.ma.array(_arc_frame(MULTIPIN_LINE_XS), mask=np.zeros(FRAME_SHAPE, dtype=bool)),
+        windowHalf=10,
+        debug=False,
+    )
     inputLines = pd.DataFrame(
         {
             "detector_x": [0.0],
@@ -332,7 +343,7 @@ def test_detect_pinhole_arc_lines_counts_no_ambiguous_stamps_when_the_test_is_sk
         brightest=False,
         exclude_border=False,
         returnAll=False,
-        skipAmbiguityTest=True,
+        shouldTestAmbiguity=False,
     )
 
     # ASSERT
@@ -341,50 +352,69 @@ def test_detect_pinhole_arc_lines_counts_no_ambiguous_stamps_when_the_test_is_sk
 
 
 class _StopAfterDetectionError(Exception):
-    """Raised by the fake detector to end `get()` once the first detection call is seen."""
+    """Raised by the fake detector to end `get()` once every detection pass has been seen."""
 
 
+DETECTION_PASSES = 3
+
+
+@pytest.mark.parametrize("tightFit", [False, True])
 @pytest.mark.parametrize(
-    ("firstGuessMap", "expectedSkip"),
-    [("first-guess.fits", True), (False, False)],
+    ("firstGuessMap", "expectedShouldTest"),
+    [("first-guess.fits", False), (False, True)],
 )
-def test_get_skips_the_ambiguity_test_only_when_a_first_guess_map_is_set(
+def test_get_tests_ambiguity_on_every_pass_only_without_a_first_guess_map(
     log: object,
     firstGuessMap: object,
-    expectedSkip: bool,
+    expectedShouldTest: bool,
+    tightFit: bool,
 ) -> None:
-    """The spatial solution (first-guess map set) turns the ambiguity test off; the dispersion solution keeps it."""
+    """A first-guess map (spatial solution) turns the ambiguity test off on every pass; without one it stays on."""
     # ARRANGE
-    mapper = object.__new__(create_dispersion_map)
-    mapper.log = log
-    mapper.lineDetectionTable = False
-    mapper.firstGuessMap = firstGuessMap
     lines = pd.DataFrame(
         {
             "wavelength": [500.0],
             "order": [10],
             "slit_position": [0.0],
-            "slit_index": [0],
             "detector_x": [100.0],
             "detector_y": [20.0],
+            "observed_x": [100.2],
+            "observed_y": [20.1],
         }
+    )
+    mapper = _bare_mapper(
+        log,
+        lineDetectionTable=False,
+        firstGuessMap=firstGuessMap,
+        recipeSettings={"pinhole-detection-thres-sigma": 3},
+        windowSize=10,
+        arm="VIS",
+        inst="SOXS",
+        debug=False,
     )
     seenKwargs: list[dict[str, object]] = []
 
     def detect(*args: object, **kwargs: object) -> pd.DataFrame:
         seenKwargs.append(kwargs)
-        raise _StopAfterDetectionError
+        if len(seenKwargs) == DETECTION_PASSES:
+            raise _StopAfterDetectionError
+        return lines.copy()
 
-    mapper._initialize_recipe_settings = lambda: (False, False, 1, 1, 0)
+    mapper._initialize_recipe_settings = lambda: (False, tightFit, 1, 1, 0)
     mapper.get_predicted_line_list = lambda: lines.copy()
     mapper._prepare_pinhole_frame = lambda: "prepared-frame"
     mapper._generate_quicklook_and_debug_plots = lambda *args: None
-    mapper._get_detection_parameters = lambda iteration, tight: (3, 5, False, False, False)
     mapper.detect_pinhole_arc_lines = detect
+    mapper._explode_multiple_detections = lambda table: table
+    mapper._calculate_position_differences = lambda table: table
+    mapper._handle_multipin_hole_big_shift = lambda table, *args: table
+    mapper._find_and_apply_cluster_shift = lambda table, mask: (table, 0.2, 0.1)
+    mapper._calculate_order_shift_statistics = lambda table, mask: (0.2, 0.1, 0.01, 0.01, 0.3, 0.02)
 
     # ACT
     with pytest.raises(_StopAfterDetectionError):
         mapper.get()
 
     # ASSERT
-    assert seenKwargs[0]["skipAmbiguityTest"] is expectedSkip
+    assert [kwargs["iteration"] for kwargs in seenKwargs] == [0, 1, 2]
+    assert [kwargs["shouldTestAmbiguity"] for kwargs in seenKwargs] == [expectedShouldTest] * DETECTION_PASSES

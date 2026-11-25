@@ -1391,7 +1391,7 @@ class create_dispersion_map:
                         exclude_border=exclude_border,
                         returnAll=returnAll,
                         # A MULTI-PINHOLE STAMP HOLDS SEVERAL PINHOLES OF ONE LINE, SO TWO ARE OFTEN ALMOST EQUALLY NEAR
-                        skipAmbiguityTest=bool(self.firstGuessMap),
+                        shouldTestAmbiguity=not self.firstGuessMap,
                     )
 
                     iteration += 1
@@ -2117,7 +2117,7 @@ class create_dispersion_map:
         brightest=False,
         exclude_border=False,
         returnAll=False,
-        skipAmbiguityTest=False,
+        shouldTestAmbiguity=True,
     ):
         """*detect the observed position of an arc-line given the predicted pixel positions*
 
@@ -2130,7 +2130,7 @@ class create_dispersion_map:
         - ``brightest`` -- find the brightest source?
         - ``exclude_border`` -- exclude border pixels from detection?
         - ``returnAll`` -- return every source on each stamp, not just one?
-        - ``skipAmbiguityTest`` -- keep the nearest source even when a second is almost as near. Default *False*.
+        - ``shouldTestAmbiguity`` -- reject a stamp when two sources are almost equally near the guess? Default *True*.
 
         **Return:**
 
@@ -2204,7 +2204,7 @@ class create_dispersion_map:
             exclude_border=exclude_border,
             iteration=iteration,
             returnAll=returnAll,
-            skipAmbiguityTest=skipAmbiguityTest,
+            shouldTestAmbiguity=shouldTestAmbiguity,
             debug=self.debug,
         )
 
@@ -5080,7 +5080,7 @@ def measure_line_position(
     multipinhole=False,
     returnAll=True,
     debug=False,
-    skipAmbiguityTest=False,
+    shouldTestAmbiguity=True,
 ):
     """*measure the line position on a given stamp*
 
@@ -5096,8 +5096,7 @@ def measure_line_position(
     - `sigmaLimit` -- stamp source detection minimum sigma
     - `brightest` -- find the brightest source?
     - `multipinhole` -- is this a multipinhole frame?
-    - `skipAmbiguityTest` -- in single-source mode, keep the source nearest the first guess with no ambiguity test
-      (set for the spatial solution, whose stamps hold several pinholes of one line)
+    - `shouldTestAmbiguity` -- reject an ambiguous stamp in single-source mode? Default *True*.
 
     **Returns:**
 
@@ -5192,10 +5191,10 @@ def measure_line_position(
                     log.debug("completed the ``measure_line_position`` function")
                     return []
             else:
-                if skipAmbiguityTest:
-                    selectedSource = _nearest_source(sources, guessX, guessY)
-                else:
+                if shouldTestAmbiguity:
                     selectedSource = _nearest_unambiguous_source(sources, guessX, guessY)
+                else:
+                    selectedSource = _nearest_source(sources, guessX, guessY)
                 if selectedSource is None:
                     log.debug("completed the ``measure_line_position`` function")
                     return [_ambiguous_stamp_entry(keepValues)]
