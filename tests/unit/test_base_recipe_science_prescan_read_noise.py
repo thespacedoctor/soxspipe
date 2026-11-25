@@ -51,9 +51,9 @@ CARD_KEY = f"HIERARCH {SCIENCE_RON_CARD}"
 
 
 def _raw_science_frame(
-    tmpPath: Path, *, prescanSigma: float = PRESCAN_SIGMA_ADU, name: str = "raw.fits", dprType: str = "OBJECT"
+    tmpPath: Path, *, prescanSigma: float = PRESCAN_SIGMA_ADU, name: str = "raw.fits", dprType: str = "OBJECT,ASYNC"
 ) -> str:
-    """A raw VIS frame in ADU: a flat science region beside a noisy prescan."""
+    """A raw VIS frame in ADU: a flat science region beside a noisy prescan. The default DPR type is a real one."""
     rng = np.random.default_rng(7)
     data = np.full((ROWS, PRESCAN_COLUMNS + SCIENCE_COLUMNS), SKY_ADU, dtype=np.float32)
     data[:, 4:28] = rng.normal(590.0, prescanSigma, (ROWS, 24)) if prescanSigma else 590.0

@@ -152,7 +152,9 @@ def test_only_the_uvb_and_vis_science_recipes_use_the_prescan(arm: str, recipeNa
     ("dprType", "isExpected"),
     [
         ("OBJECT", True),
+        ("OBJECT,ASYNC", True),
         ("SKY", True),
+        ("SKY,OFFSET", True),
         ("STD,FLUX", True),
         ("STD,TELLURIC", True),
         ("BIAS", False),

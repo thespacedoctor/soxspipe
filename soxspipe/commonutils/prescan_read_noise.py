@@ -12,10 +12,9 @@ from typing import Any
 
 # THE RECIPES WHOSE FRAMES ARE SCIENCE FRAMES. THE NAME MAY END IN ``-std``
 SCIENCE_RECIPE_PREFIXES = ("soxs-stare", "soxs-nod", "soxs-offset")
-# THE DPR TYPES OF THE RAW SCIENCE FRAMES OF THOSE RECIPES: OBJECT, SKY AND THE STANDARDS (STD,FLUX AND STD,TELLURIC).
+# THE FIRST WORD OF THE DPR TYPE OF A RAW SCIENCE FRAME: ``OBJECT,ASYNC``, ``SKY,...``, ``STD,FLUX``, ``STD,TELLURIC``.
 # A BIAS, DARK OR LAMP FRAME IN THE SOF IS A CALIBRATION FRAME
-SCIENCE_DPR_TYPES = ("OBJECT", "SKY")
-SCIENCE_DPR_PREFIX = "STD,"
+SCIENCE_DPR_TYPES = ("OBJECT", "SKY", "STD")
 # THE ARMS WITH A PRESCAN. THE NIR ARM HAS NONE AND TAKES ITS READ NOISE FROM ITS SAMPLE COUNT. UVB IS KEPT FOR
 # X-SHOOTER, WHICH HAS NO PRESCAN WINDOW YET
 PRESCAN_ARMS = ("UVB", "VIS")
@@ -33,11 +32,11 @@ def is_science_dpr_type(dprType: str | None) -> bool:
 
     **Key Arguments:**
 
-    - ``dprType`` -- the ``ESO DPR TYPE`` of the frame, or *None* when it has none
+    - ``dprType`` -- the ``ESO DPR TYPE`` of the frame, for example ``OBJECT,ASYNC``, or *None* when it has none
 
     **Return:**
 
-    - ``isScience`` -- True for an object, sky or standard-star frame
+    - ``isScience`` -- True when its first word is OBJECT, SKY or STD
 
     **Usage:**
 
@@ -48,7 +47,7 @@ def is_science_dpr_type(dprType: str | None) -> bool:
     """
     if not isinstance(dprType, str):
         return False
-    return dprType in SCIENCE_DPR_TYPES or dprType.startswith(SCIENCE_DPR_PREFIX)
+    return dprType.split(",")[0].strip() in SCIENCE_DPR_TYPES
 
 
 def uses_prescan_read_noise(
