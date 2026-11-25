@@ -878,6 +878,15 @@ class create_dispersion_map:
         elif self.debug:
             _plot_slit_index_comparisons(orderPixelTable.loc[mask])
 
+        # THE FIRST PASS ALSO MOVES THE GROUP ALONG THE OTHER AXIS BY ITS MEDIAN OFFSET, SO THE NARROW LATER WINDOWS
+        # START ON THE LINES RATHER THAN ON NOISE A FEW PIXELS AWAY (DY-1928)
+        _, offsetB, _ = sigma_clipped_stats(
+            orderPixelTable.loc[mask][f"{self.axisB}_diff"], sigma=3.0, cenfunc="median", stdfunc="mad_std", maxiters=5
+        )
+        orderPixelTable.loc[mask, f"detector_{self.axisB}_shifted"] = (
+            orderPixelTable.loc[mask][f"detector_{self.axisB}_shifted"] - offsetB
+        )
+
         return orderPixelTable
 
     def _soxs_pinhole_shift(self, orderPixelTable, mask, order_num, centreABottom, centreATop):
