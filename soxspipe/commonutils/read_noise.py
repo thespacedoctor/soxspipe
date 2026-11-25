@@ -34,6 +34,7 @@ SOURCE_MASTER_DARK = "master dark"
 SOURCE_RAW_HEADER = "raw-frame header"
 SOURCE_DETECTOR_DEFAULT = "detector default"
 SOURCE_NDSAMPLES_TABLE = "NDSAMPLES table"
+SOURCE_SCIENCE_PRESCAN = "science-frame prescan"
 
 
 @dataclass(frozen=True)
@@ -407,3 +408,31 @@ def _ndsamples_problem(ndsamples, table):
     if not lowest <= ndsamples <= highest:
         return f"an ESO DET NDSAMPLES of {int(ndsamples)}, outside the measured range of {lowest} to {highest}"
     return None
+
+
+def science_read_noise(frameRons, masterReadNoise):
+    """*the read noise of a science reduction from the prescan read noise of its frames (DY-2437)*
+
+    Several frames are combined by their variance, so the single-frame read noise is the root mean square of the
+    frame values. The number of frames the master bias combined, and so the sky-fit noise, is kept.
+
+    **Key Arguments:**
+
+    - ``frameRons`` -- the read noise (e-) of each science frame
+    - ``masterReadNoise`` -- the ``ReadNoise`` resolved from the master bias, or *None* when the SOF names none
+
+    **Return:**
+
+    - ``readNoise`` -- a ``ReadNoise`` whose source is the science-frame prescan
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.read_noise import science_read_noise
+    readNoise = science_read_noise([5.09, 5.17], masterReadNoise)
+    ```
+    """
+    singleFrame = math.sqrt(sum(ron**2 for ron in frameRons) / len(frameRons))
+    nCombined = None if masterReadNoise is None else masterReadNoise.nCombined
+    skyFit = singleFrame if nCombined is None else _sky_fit_ron(singleFrame, nCombined)
+    return ReadNoise(singleFrame, nCombined, skyFit, SOURCE_SCIENCE_PRESCAN)

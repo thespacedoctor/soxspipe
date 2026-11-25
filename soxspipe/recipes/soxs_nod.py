@@ -562,6 +562,7 @@ class soxs_nod(extraction_stacking, base_recipe):
             self.onTargetFrames = frames_named(self.onTargetCandidates, self._on_target_names(cycleFrames))
         templateStem, templateExtension = os.path.splitext(filenameTemplate)
         self.qc, self.products = self._empty_qc_and_product_tables(pd)
+        self._add_science_read_noise_qc()
         self.extractionNotes = ()
         isDone = False
         try:

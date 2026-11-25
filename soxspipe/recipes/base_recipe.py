@@ -104,6 +104,9 @@ class base_recipe:
 
     # THE READ NOISE RESOLVED FROM THE MASTER BIAS IN THE SOF (A ``ReadNoise``); NONE WITHOUT A MASTER BIAS (DY-1458)
     readNoise = None
+    # THE READ NOISE (E-) EACH SCIENCE FRAME WAS GIVEN, WITH WHETHER IT WAS MEASURED FROM THE FRAME'S OWN PRESCAN
+    # (DY-2437). A TUPLE, SO A RECIPE OBJECT BUILT WITHOUT `__init__` SHARES NO LIST
+    frameReadNoises = ()
     # THE NOMINAL READ NOISE (E-) IN THE RAW-FRAME HEADERS (NONE IF THEY CARRY NONE) AND THE DETECTOR DEFAULT (E-)
     rawHeaderRon = None
     defaultRon = None
@@ -556,13 +559,15 @@ class base_recipe:
 
         # MANIPULATE XSH DATA
         frame = self.xsh2soxs(frame)
+        # THE PRESCAN IS TRIMMED AWAY, SO ITS NOISE IS MEASURED FIRST
+        prescanRon = self._measure_prescan_read_noise(frame, filepath)
         frame = self._trim_frame(frame)
 
         # CORRECT FOR GAIN - CONVERT DATA FROM ADU TO ELECTRONS
         frame = ccdproc.gain_correct(frame, dp["gain"], add_keyword=None)
         toolkit.frame_to_32(frame)
 
-        frame = self._add_uncertainty_map(frame)
+        frame = self._add_uncertainty_map(frame, readNoise=prescanRon)
 
         frame.mask = self._bad_pixel_mask(frame)
 
@@ -592,12 +597,14 @@ class base_recipe:
         self.log.debug("completed the ``_prepare_single_frame`` method")
         return filePath
 
-    def _add_uncertainty_map(self, frame):
+    def _add_uncertainty_map(self, frame, readNoise=None):
         """*add the uncertainty extension to a gain-corrected frame*
 
         **Key Arguments:**
 
         - ``frame`` -- the gain-corrected frame (CCDData object)
+        - ``readNoise`` -- the read noise (e-) of this frame, measured from its prescan. Default *None*, for the
+          read noise of the reduction (``self.detectorParams["ron"]``)
 
         **Return:**
 
@@ -609,22 +616,24 @@ class base_recipe:
         """
         import ccdproc
         import numpy as np
+        from astropy import units as u
 
         from soxspipe.commonutils import toolkit
         from soxspipe.commonutils.ndit import read_ndit
 
         kw = self.kw
         dp = self.detectorParams
+        ron = dp["ron"] if readNoise is None else readNoise * u.electron
 
         # GENERATE UNCERTAINTY MAP AS EXTENSION
         if frame.header[kw("DPR_TYPE")] == "BIAS":
             # ERROR IS ONLY FROM READNOISE FOR BIAS FRAMES
-            errorMap = np.ones_like(frame.data).astype(np.float32) * dp["ron"].astype(np.float32)
+            errorMap = np.ones_like(frame.data).astype(np.float32) * ron.astype(np.float32)
             # errorMap = StdDevUncertainty(errorMap)
             frame.uncertainty = errorMap.astype(np.float32)
         else:
             # GENERATE UNCERTAINTY MAP AS EXTENSION
-            frame = ccdproc.create_deviation(frame, readnoise=dp["ron"], disregard_nan=True, add_keyword=None)
+            frame = ccdproc.create_deviation(frame, readnoise=ron, disregard_nan=True, add_keyword=None)
 
         # A RAW NIR FILE IS THE MEAN OF ITS NDIT INTEGRATIONS, SO BOTH THE POISSON AND THE READ-NOISE TERMS SCALE
         ndit = read_ndit(frame.header, kw, self.log)
@@ -984,8 +993,10 @@ class base_recipe:
             f"\n# PREPARING {frameCount} RAW FRAMES - TRIMMING OVERSCAN, CONVERTING TO ELECTRON COUNTS, GENERATING UNCERTAINTY MAPS{laC} AND APPENDING DEFAULT BAD-PIXEL MASK"
         )
         preframes = []
+        self.frameReadNoises = ()
         preframes[:] = [self._prepare_single_frame(frame=frame, save=save) for frame in filepaths]
         preframes = [f for f in preframes if f is not None]
+        self._apply_science_read_noise()
         self._write_cosmic_ray_mask_product()
 
         sof = set_of_files(
@@ -1666,6 +1677,90 @@ class base_recipe:
         self.log.debug("completed the ``xsh2soxs`` method")
         return frame
 
+    def _measure_prescan_read_noise(self, frame, filepath):
+        """*measure the read noise of a raw science frame from its prescan (DY-2437)*
+
+        Only a UVB or VIS science recipe measures it (see ``uses_prescan_read_noise``). The frame must still be
+        untrimmed. The read noise the frame is given is recorded in ``self.frameReadNoises``; a frame whose prescan
+        cannot be measured is given the read noise of the reduction, with a warning.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the raw, untrimmed frame in ADU (CCDData object)
+        - ``filepath`` -- the path of the raw frame, or the frame itself, for the log
+
+        **Return:**
+
+        - ``ron`` -- the read noise (e-) of the frame, or *None* when the recipe does not measure it or it cannot
+          be measured
+        """
+        from soxspipe.commonutils.prescan_read_noise import (
+            PRESCAN_KEY,
+            measure_prescan_read_noise,
+            uses_prescan_read_noise,
+        )
+
+        dp = self.detectorParams
+        if not uses_prescan_read_noise(self.arm, self.recipeName, dp):
+            return None
+
+        name = os.path.basename(filepath) if isinstance(filepath, str) else "a frame"
+        fallbackRon = float(getattr(dp["ron"], "value", dp["ron"]))
+        try:
+            ron = measure_prescan_read_noise(frame.data, dp[PRESCAN_KEY], dp["binning"], dp["gain"])
+        except ValueError as e:
+            self.log.warning(
+                f"The read noise of {name} cannot be measured from its prescan: {e}. "
+                f"The frame takes the read noise of the reduction, {fallbackRon:0.2f} e-."
+            )
+            self.frameReadNoises = (*self.frameReadNoises, (fallbackRon, False))
+            return None
+
+        self.log.info(f"The prescan read noise of {name} is {ron:0.2f} e- (the reduction's is {fallbackRon:0.2f} e-).")
+        self.frameReadNoises = (*self.frameReadNoises, (ron, True))
+        return ron
+
+    def _apply_science_read_noise(self):
+        """*give the reduction the read noise measured from the prescans of its science frames (DY-2437)*
+
+        The frames' error planes already carry their own read noise. This sets the single value the rest of the
+        reduction uses: the photon-noise correction for the bias pedestal, the sky fit and the sky-line signal to
+        noise of the extraction. It is the root mean square of the frame values, and it is recorded as ``SCI RON``.
+        Nothing changes when no frame was measured.
+        """
+        from astropy import units as u
+
+        from soxspipe.commonutils.read_noise import science_read_noise
+
+        if not any(isMeasured for _, isMeasured in self.frameReadNoises):
+            return
+
+        self.readNoise = science_read_noise([ron for ron, _ in self.frameReadNoises], self.readNoise)
+        self.detectorParams["ron"] = self.readNoise.singleFrame * u.electron
+        self.log.info(f"The science read noise of the reduction is {self.readNoise.singleFrame:0.2f} e-.")
+        self._add_science_read_noise_qc()
+
+    def _add_science_read_noise_qc(self):
+        """*record the read noise measured from the prescans as the ``SCI RON`` QC, written to the product headers*
+
+        Nothing is recorded unless the reduction's read noise came from the prescans. Call it again after the QC table
+        is emptied for another pass.
+        """
+        from soxspipe.commonutils import toolkit
+        from soxspipe.commonutils.read_noise import SOURCE_SCIENCE_PRESCAN
+
+        if self.readNoise is None or self.readNoise.source != SOURCE_SCIENCE_PRESCAN:
+            return
+
+        self.add_qc(
+            qcName="SCI RON",
+            qcValue=self.readNoise.singleFrame,
+            qcComment="[e-] RON of the science frames, from their prescan",
+            qcUnit="electrons",
+            reductionDateUtc=toolkit.utcnow_string(),
+            toHeader=True,
+        )
+
     def _trim_frame(self, frame):
         """*return frame with pre-scan and overscan regions removed*
 
@@ -1681,22 +1776,11 @@ class base_recipe:
 
         import ccdproc
 
+        from soxspipe.commonutils.prescan_read_noise import binned_window
+
         dp = self.detectorParams
 
-        rs, re, cs, ce = (
-            dp["science-pixels"]["rows"]["start"],
-            dp["science-pixels"]["rows"]["end"],
-            dp["science-pixels"]["columns"]["start"],
-            dp["science-pixels"]["columns"]["end"],
-        )
-
-        binning = dp["binning"]
-        if binning[0] > 1:
-            rs = int(rs / binning[0])
-            re = int(re / binning[0])
-        if binning[1] > 1:
-            cs = int(cs / binning[1])
-            ce = int(ce / binning[1])
+        rs, re, cs, ce = binned_window(dp["science-pixels"], dp["binning"])
 
         trimmed_frame = ccdproc.trim_image(frame[rs:re, cs:ce], add_keyword=None)
 
