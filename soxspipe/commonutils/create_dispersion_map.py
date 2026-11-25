@@ -1390,6 +1390,8 @@ class create_dispersion_map:
                         brightest=brightest,
                         exclude_border=exclude_border,
                         returnAll=returnAll,
+                        # A MULTI-PINHOLE STAMP HOLDS SEVERAL PINHOLES OF ONE LINE, SO TWO ARE OFTEN ALMOST EQUALLY NEAR
+                        shouldTestAmbiguity=not self.firstGuessMap,
                     )
 
                     iteration += 1
@@ -2115,6 +2117,7 @@ class create_dispersion_map:
         brightest=False,
         exclude_border=False,
         returnAll=False,
+        shouldTestAmbiguity=True,
     ):
         """*detect the observed position of an arc-line given the predicted pixel positions*
 
@@ -2126,6 +2129,8 @@ class create_dispersion_map:
         - ``iteration`` -- which detect and shift iteration are we on?
         - ``brightest`` -- find the brightest source?
         - ``exclude_border`` -- exclude border pixels from detection?
+        - ``returnAll`` -- return every source on each stamp, not just one?
+        - ``shouldTestAmbiguity`` -- reject a stamp when two sources are almost equally near the guess? Default *True*.
 
         **Return:**
 
@@ -2199,6 +2204,7 @@ class create_dispersion_map:
             exclude_border=exclude_border,
             iteration=iteration,
             returnAll=returnAll,
+            shouldTestAmbiguity=shouldTestAmbiguity,
             debug=self.debug,
         )
 
@@ -5074,6 +5080,7 @@ def measure_line_position(
     multipinhole=False,
     returnAll=True,
     debug=False,
+    shouldTestAmbiguity=True,
 ):
     """*measure the line position on a given stamp*
 
@@ -5089,6 +5096,7 @@ def measure_line_position(
     - `sigmaLimit` -- stamp source detection minimum sigma
     - `brightest` -- find the brightest source?
     - `multipinhole` -- is this a multipinhole frame?
+    - `shouldTestAmbiguity` -- reject an ambiguous stamp in single-source mode? Default *True*.
 
     **Returns:**
 
@@ -5183,7 +5191,10 @@ def measure_line_position(
                     log.debug("completed the ``measure_line_position`` function")
                     return []
             else:
-                selectedSource = _nearest_unambiguous_source(sources, guessX, guessY)
+                if shouldTestAmbiguity:
+                    selectedSource = _nearest_unambiguous_source(sources, guessX, guessY)
+                else:
+                    selectedSource = _nearest_source(sources, guessX, guessY)
                 if selectedSource is None:
                     log.debug("completed the ``measure_line_position`` function")
                     return [_ambiguous_stamp_entry(keepValues)]
@@ -5280,19 +5291,30 @@ def _brightest_source(sources: "Table", std: float) -> "Row | None":
     return selectedSource
 
 
-def _nearest_unambiguous_source(sources: "Table", guessX: float, guessY: float) -> "Row | None":
-    """*return the source nearest the first guess, or None when the stamp is ambiguous*
-
-    The stamp is ambiguous when the second-nearest source lies closer than `AMBIGUITY_DISTANCE_RATIO` times the
-    nearest source's distance. A source exactly at the first guess is never ambiguous.
-    """
+def _distances_from_guess(sources: "Table", guessX: float, guessY: float) -> "tuple[np.ndarray, np.ndarray]":
+    """*return each source's distance from the first guess and the source indices ranked nearest first*"""
     import numpy as np
 
     distances = np.hypot(
         np.asarray(sources["xcentroid"], dtype=float) - guessX,
         np.asarray(sources["ycentroid"], dtype=float) - guessY,
     )
-    ranked = np.argsort(distances, kind="stable")
+    return distances, np.argsort(distances, kind="stable")
+
+
+def _nearest_source(sources: "Table", guessX: float, guessY: float) -> "Row":
+    """*return the source nearest the first guess, with no ambiguity test*"""
+    _, ranked = _distances_from_guess(sources, guessX, guessY)
+    return sources[int(ranked[0])]
+
+
+def _nearest_unambiguous_source(sources: "Table", guessX: float, guessY: float) -> "Row | None":
+    """*return the source nearest the first guess, or None when the stamp is ambiguous*
+
+    The stamp is ambiguous when the second-nearest source lies closer than `AMBIGUITY_DISTANCE_RATIO` times the
+    nearest source's distance. A source exactly at the first guess is never ambiguous.
+    """
+    distances, ranked = _distances_from_guess(sources, guessX, guessY)
     nearest = distances[ranked[0]]
     if len(ranked) > 1 and nearest > 0 and distances[ranked[1]] < AMBIGUITY_DISTANCE_RATIO * nearest:
         return None
