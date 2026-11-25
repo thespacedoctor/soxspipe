@@ -415,6 +415,9 @@ class soxs_mbias(base_recipe):
             masterRon=masterRon,
         )
 
+        # THE STACKED UNCERTAINTY WAS BUILT FROM THE HEADER RON, SO SCALE IT TO THE MEASURED RAW RON (DY-2438)
+        self._scale_uncertainty_to_raw_ron(combined_bias_mean, rawRon)
+
         # FILL THE MASKED UNCERTAINTY WITH THE MEASURED RAW RON, OR THE MEAN FRAME RON IF THERE WAS NO RAW PAIR
         self._fill_masked_uncertainty(combined_bias_mean, meanFrameRon if rawRon is None else rawRon)
 
@@ -547,6 +550,40 @@ class soxs_mbias(base_recipe):
         combined_bias_mean.mask = combined_noise.mask
 
         return combined_bias_mean, masterMedianBiasLevel, meanFrameRon, masterRon, rawFrameSample
+
+    def _scale_uncertainty_to_raw_ron(self, frame, rawRon):
+        """*scale the uncertainty of the stacked master bias from the header read noise to the measured raw read noise*
+
+        The prepared raw bias frames carry a constant uncertainty equal to the header read noise, so the stacked
+        uncertainty is that value over the square root of the number of frames that contributed at each pixel.
+        Multiplying it by the ratio of the measured raw read noise (the ``RAW RON`` QC) to the header read noise
+        gives the measured read noise over the same square root, and keeps the per-pixel frame count. If the raw
+        read noise was not measured (fewer than two raw frames) or is not a positive finite number, the header-based
+        uncertainty stays and a warning says so.
+
+        **Key Arguments:**
+
+        - ``frame`` -- the stacked master bias (CCDData object), whose uncertainty is updated in place
+        - ``rawRon`` -- the RAW RON QC value (e-), or *None* if it could not be measured
+
+        **Usage:**
+
+        ```python
+        self._scale_uncertainty_to_raw_ron(combined_bias_mean, rawRon)
+        ```
+        """
+        import numpy as np
+
+        headerRon = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+
+        if rawRon is None or not np.isfinite(rawRon) or rawRon <= 0:
+            self.log.warning(
+                f"The read noise of the raw bias frames could not be measured, so the master bias uncertainty keeps "
+                f"the header read noise of {headerRon:0.2f} e-."
+            )
+            return
+
+        frame.uncertainty = (frame.uncertainty.array * (rawRon / headerRon)).astype(np.float32)
 
     def plot_bias_distribution_qc(self, rawFrameSample, masterFrame, rawRon, masterRon, productPath):
         """*plot the raw and master bias pixel-flux distributions and register the plot as a QC product*
