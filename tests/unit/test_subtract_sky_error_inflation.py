@@ -238,9 +238,10 @@ def _subtracted_errors(log: Any, arm: str, inflationSetting: Any) -> np.ndarray:
     return subtracted.uncertainty.array[0]
 
 
-def test_nir_inflates_the_errors_where_the_sky_residuals_scatter_by_default(log: Any) -> None:
+@pytest.mark.parametrize("arm", ["NIR", "VIS"])
+def test_nir_and_vis_inflate_the_errors_where_the_sky_residuals_scatter_by_default(log: Any, arm: str) -> None:
     # ACT
-    errors = _subtracted_errors(log, "NIR", _MISSING)
+    errors = _subtracted_errors(log, arm, _MISSING)
 
     # ASSERT
     quietEnd = errors[: FRAME_COLUMNS // 4]
@@ -250,7 +251,7 @@ def test_nir_inflates_the_errors_where_the_sky_residuals_scatter_by_default(log:
     assert lineEnd.mean() == pytest.approx(STATED_ERROR * LINE_SCATTER, rel=SCATTER_TOLERANCE)
 
 
-@pytest.mark.parametrize(("arm", "inflationSetting"), [("NIR", False), ("VIS", _MISSING), ("UVB", _MISSING)])
+@pytest.mark.parametrize(("arm", "inflationSetting"), [("NIR", False), ("VIS", False), ("UVB", _MISSING)])
 def test_errors_are_untouched_when_the_inflation_is_off(log: Any, arm: str, inflationSetting: Any) -> None:
     # ACT
     errors = _subtracted_errors(log, arm, inflationSetting)
