@@ -261,6 +261,7 @@ def test_hapi_fetches_only_the_spans_that_the_cache_lacks(monkeypatch: pytest.Mo
     cached = {"H2O_VIS"}
     columns = {"nu": [10000.0], "sw": [1e-24], "gamma_air": [0.08], "n_air": [0.7], "elower": [1.0], "delta_air": [0.0]}
     fakeHapi = types.SimpleNamespace(
+        VARIABLES={"GLOBAL_HOST": "http://hitran.org"},
         db_begin=lambda cache: None,
         tableList=lambda: list(cached),
         fetch=lambda name, *args: fetched.append(name),
@@ -306,6 +307,7 @@ def _fake_hapi(fetch: object, columns: dict | None = None, cached: set | None = 
     """A stand-in for ``hapi`` that records the tables it is told to drop."""
     dropped: list[str] = []
     return types.SimpleNamespace(
+        VARIABLES={"GLOBAL_HOST": "http://hitran.org"},
         db_begin=lambda path: None,
         tableList=lambda: list(cached or ()),
         fetch=fetch,
@@ -313,6 +315,21 @@ def _fake_hapi(fetch: object, columns: dict | None = None, cached: set | None = 
         dropTable=dropped.append,
         dropped=dropped,
     )
+
+
+def test_every_hitran_fetch_goes_over_https(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # ARRANGE
+    hostsAtFetch: list[str] = []
+    fakeHapi = _fake_hapi(lambda *args: hostsAtFetch.append(fakeHapi.VARIABLES["GLOBAL_HOST"]))
+    monkeypatch.setitem(sys.modules, "hapi", fakeHapi)
+
+    # ACT
+    build_tool.fetch_tables(str(tmp_path / "cache"))
+
+    # ASSERT
+    assert hostsAtFetch
+    assert set(hostsAtFetch) == {build_tool.HITRAN_HOST}
+    assert build_tool.HITRAN_HOST.startswith("https://")
 
 
 def test_a_failed_fetch_deletes_the_partial_table_and_names_the_molecule_and_the_range(

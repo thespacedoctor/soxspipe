@@ -23,9 +23,9 @@ PYTHONPATH=/path/to/worktree:/path/to/dir/with/hapi \\
 A run prints the number of lines per band and names every band that it dropped. Rerun with the same arguments to
 reproduce the shipped file. Its header records the model settings and the selection limits.
 
-HAPI fetches from HITRAN with the host that `hapi.VARIABLES["GLOBAL_HOST"]` names. The copy of `hapi` used for the
-shipped file names `http://hitran.org`, plain HTTP and not HTTPS. The script does not change it, so the transfer is
-not protected against tampering. Check the cached tables if that matters.
+HAPI fetches from HITRAN with the host that `hapi.VARIABLES["GLOBAL_HOST"]` names, and its default is plain HTTP
+(`http://hitran.org`). The script sets the host to `https://hitran.org` before every fetch. On 2026-11-26 a rebuild
+from a fresh cache fetched over HTTPS gave a file byte-identical to the shipped one.
 
 **How the lines are chosen**
 
@@ -123,8 +123,8 @@ BANDS = [
 ]
 
 # THE HITRAN MOLECULE IDS. THE TABLE NAME OF A FETCH IS THE KEY OF THE HAPI CACHE. "VIS" IS 10000 TO 14700 CM-1
-# (680 TO 1000 nm) AND "NIR" IS 4780 TO 9120 CM-1 (1096 TO 2092 nm). THE SLANT COLUMNS ARE AT THE AIRMASS BELOW, AND THE
-# H2O COLUMN IS ABOUT 3 mm OF PRECIPITABLE WATER. A NEW MOLECULE IS ONE MORE ENTRY HERE
+# (680 TO 1000 NM) AND "NIR" IS 4780 TO 9120 CM-1 (1096 TO 2092 NM). THE SLANT COLUMNS ARE AT THE AIRMASS BELOW, AND THE
+# H2O COLUMN IS ABOUT 3 MM OF PRECIPITABLE WATER. A NEW MOLECULE IS ONE MORE ENTRY HERE
 WATER_ID = 1
 OXYGEN_ID = 7
 MOLECULES = {
@@ -134,15 +134,17 @@ MOLECULES = {
     OXYGEN_ID: Molecule("O2", 31.9898, 4.5e24, 1, (Fetch("O2_VIS", 10000.0, 14700.0),)),
 }
 HITRAN_FETCH_DATE = "2026-11-26"
+# HAPI DEFAULTS TO PLAIN HTTP; EVERY FETCH GOES TO THIS HTTPS HOST INSTEAD
+HITRAN_HOST = "https://hitran.org"
 HAPI_COLUMNS = ("nu", "sw", "gamma_air", "n_air", "elower", "delta_air")
 
-# SINGLE-LAYER ATMOSPHERE: TEMPERATURE (K), PRESSURE (atm) AND AIRMASS
+# SINGLE-LAYER ATMOSPHERE: TEMPERATURE (K), PRESSURE (ATM) AND AIRMASS
 TEMPERATURE = 270.0
 PRESSURE = 0.75
 AIRMASS = 1.3
 WATER_COLUMN_FACTORS = (0.6, 1.0, 1.6)
 
-# HITRAN LINES WEAKER THAN THIS (cm-1/(molecule cm-2) AT 296 K) NEVER GIVE A DETECTABLE LINE
+# HITRAN LINES WEAKER THAN THIS (CM-1/(MOLECULE CM-2) AT 296 K) NEVER GIVE A DETECTABLE LINE
 MIN_LINE_STRENGTH = 1e-27
 # SECOND RADIATION CONSTANT, CM K
 SECOND_RADIATION_CONSTANT = 1.4387769
@@ -153,9 +155,9 @@ DOPPLER_COEFFICIENT = 3.58e-7
 GRID_STEP = 0.01
 # A LINE REACHES THIS FAR EITHER SIDE OF ITS CENTRE, CM-1
 LINE_WING = 3.0
-# WAVELENGTH (nm) TIMES WAVENUMBER (CM-1): nm = NM_CM / CM-1
+# WAVELENGTH (NM) TIMES WAVENUMBER (CM-1): NM = NM_CM / CM-1
 NM_CM = 1e7
-# nm IN ONE MICRON, FOR THE CIDDOR AIR FORMULA
+# NM IN ONE MICRON, FOR THE CIDDOR AIR FORMULA
 NM_PER_MICRON = 1e3
 # THE FIXED-POINT STEPS THAT TURN AN AIR WAVELENGTH BACK INTO A VACUUM WAVELENGTH
 AIR_INVERSE_ITERATIONS = 3
@@ -292,8 +294,8 @@ def read_table(hapi: Any, cache: str, molecule: Molecule, fetch: Fetch) -> dict[
 def fetch_tables(cache: str) -> dict[str, dict[str, Any]]:
     """*fetch every span with HAPI, cached in ``cache``, and return its line columns*
 
-    HAPI queries the host in ``hapi.VARIABLES["GLOBAL_HOST"]``. The copy of HAPI used for the shipped list names
-    ``http://hitran.org``, which is plain HTTP, not HTTPS. This function does not change it.
+    HAPI queries the host in ``hapi.VARIABLES["GLOBAL_HOST"]``, which defaults to plain HTTP. This function sets it to
+    ``HITRAN_HOST`` (HTTPS) before any fetch, so the line data cannot be changed in transit.
 
     **Key Arguments:**
 
@@ -310,6 +312,7 @@ def fetch_tables(cache: str) -> dict[str, dict[str, Any]]:
     """
     import hapi
 
+    hapi.VARIABLES["GLOBAL_HOST"] = HITRAN_HOST
     os.makedirs(cache, exist_ok=True)
     hapi.db_begin(cache)
     tables = {}
