@@ -48,6 +48,8 @@ exactly zero has none of them, and counts):
 - VIS i is missed when r fails its guards first and i kept fewer than 2 lines with an SNR above the limit. The comment
   of `UG SHIFT SOURCE` then names order 1, not order 4.
 - A VIS arm with no r coefficients writes no `R SHIFT SOURCE` card, so an unmeasured r there is not marked either.
+- The opposite case: a measured i shift below 0.0005 nm, with a true SNR from 5.40 to 5.449, reads as 0.000 with an
+  SNR card of 5.4, so the script leaves it out. Leaving out a near-zero shift only raises the RMS.
 
 The shifts include the noise of the sky-line measurement, so both values are upper limits. A frame that skipped tuning
 (`SKY TUNING = skipped: attached arc`) holds no shift. The `attached-arc` value needs frames that were tuned although
@@ -109,6 +111,7 @@ SOURCE_NONE = "none"
 # THE REASON THE PIPELINE GIVES IN THE COMMENT OF THE UG SHIFT SOURCE CARD, E.G. "order 4: 0 sky lines (min 10)"
 # (``_order_guard_reason`` IN ug_wavelength_transfer.py)
 SKY_LINES_REASON_PATTERN = re.compile(r"^order (\d+): (\d+) sky lines")
+VALUE_COMMENT = "# VALUE: LARGEST PER-ORDER RMS ABOUT ZERO OF THE SKY SHIFTS (SPEC_SYE IS A MAXIMUM OVER ORDERS)"
 
 
 def shift_card(order: int) -> str:
@@ -124,9 +127,6 @@ def shift_px_card(order: int) -> str:
 def line_snr_card(order: int) -> str:
     """*the keyword of the ``SKY LINE SNR`` QC of an order*"""
     return f"ESO QC SKY LINE SNR O{order}"
-
-
-VALUE_COMMENT = "# VALUE: LARGEST PER-ORDER RMS ABOUT ZERO OF THE SKY SHIFTS (SPEC_SYE IS A MAXIMUM OVER ORDERS)"
 
 
 @dataclass(frozen=True)
