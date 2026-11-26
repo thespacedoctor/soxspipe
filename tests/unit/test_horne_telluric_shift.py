@@ -12,6 +12,7 @@ import yaml
 import soxspipe
 from soxspipe.commonutils.telluric_shift import load_telluric_lines
 from tests.unit._horne_nir_scene import build_extractor
+from tests.unit.test_horne_extraction_helpers import _configure_synthetic_orchestration
 
 pytestmark = pytest.mark.unit
 
@@ -178,3 +179,20 @@ def test_each_soxs_extraction_recipe_block_measures_the_telluric_shift_by_defaul
 
     # ASSERT
     assert settings[recipe][SETTING] is True
+
+
+def test_extract_measures_the_orders_after_the_sky_tuning_and_before_the_merge(
+    log: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
+    seen: list[tuple[list[float], str]] = []
+    extractor._correct_wavelengths = lambda orders, arm: orders.assign(wavelengthMean=orders["wavelengthMean"] + 100.0)
+    extractor._measure_telluric_shift = lambda orders, arm: seen.append((orders["wavelengthMean"].tolist(), arm))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    # THE PIXEL WITH AN UNREALISTIC PIXEL SCALE IS FILTERED OUT BEFORE THE TUNING
+    assert seen == [([600.0, 602.0], "VIS")]
