@@ -1114,6 +1114,7 @@ class soxs_nod(extraction_stacking, base_recipe):
         allSpectrumB = []
         orderJoins = None
         sequenceCount = 1
+        cycleRons = ()
         # SORT FRAMEA AND FRAMEB LOOPING AT THEIR MJDOBS KEYWORD IN THE HEADER IN ORDER TO THE CLOSEST A AND B
         # FRAMES IN TIME
         allFrameA, allFrameANames = self._sorted_with_their_names(allFrameA, allFrameANames)
@@ -1161,6 +1162,7 @@ class soxs_nod(extraction_stacking, base_recipe):
             # INJECT KEYWORDS INTO HEADER
             self.update_fits_keywords(frame=frameA, rawFrames=rawFrames)
             self.update_fits_keywords(frame=frameB, rawFrames=rawFrames)
+            cycleRons = (*cycleRons, self._difference_read_noise(frameA, frameB))
 
             masterFlat = master_flat if self.recipeSettings["use_flat"] and master_flat else False
 
@@ -1189,6 +1191,8 @@ class soxs_nod(extraction_stacking, base_recipe):
 
             sequenceCount += 1
         self._record_host_contamination(allFrameA[0])
+        # THE STACKED SPECTRUM IS BUILT FROM ALL THE CYCLES, SO IT CARRIES THEIR ROOT MEAN SQUARE READ NOISE
+        self._record_cycle_read_noise(cycleRons)
         stackedSpectrum, extractionPath = self.stack_extractions([allSpectrumA, allSpectrumB], orderJoins=orderJoins)
 
         return stackedSpectrum, orderJoins
@@ -1509,6 +1513,8 @@ class soxs_nod(extraction_stacking, base_recipe):
         self.log.debug("starting the ``process_single_ab_nodding_cycle`` method")
 
         A_minus_B_notflattened, B_minus_A_notflattened = self._difference_cycle_frames(aFrame, bFrame)
+        # THE PRODUCTS OF THIS CYCLE ARE BUILT FROM THE DIFFERENCE, SO THEY CARRY ITS READ NOISE
+        self._record_science_read_noise_qc(A_minus_B_notflattened)
 
         self._write_cycle_difference_frames(
             A_minus_B_notflattened, B_minus_A_notflattened, locationSetIndex, notFlattened
@@ -1600,6 +1606,9 @@ class soxs_nod(extraction_stacking, base_recipe):
         - ``A_minus_B_notflattened`` -- the A-B difference, carrying the A header
         - ``B_minus_A_notflattened`` -- the B-A difference carrying the B header, or False outside nodding mode
         """
+        from soxspipe.commonutils.fits_headers import set_header_card
+        from soxspipe.commonutils.read_noise import SCIENCE_RON_CARD
+
         aOperand, bOperand = aFrame, bFrame
         if self.masterBias is not False:
             aOperand = self._remove_bias_pedestal_from_uncertainty(aFrame, self.masterBias)
@@ -1611,14 +1620,53 @@ class soxs_nod(extraction_stacking, base_recipe):
         if "nod" in self.recipeName:
             B_minus_A_notflattened = bOperand.subtract(aOperand)
 
-        # REAPPLYING HEADERS
+        # REAPPLYING HEADERS. THE DIFFERENCE HAS THE READ NOISE OF BOTH FRAMES, ON A COPY SO THE FRAMES KEEP THEIR OWN
         hdr_A = aFrame.header
         hdr_B = bFrame.header
+        differenceRon = self._difference_read_noise(aFrame, bFrame)
+        if differenceRon is not None:
+            hdr_A, hdr_B = hdr_A.copy(), hdr_B.copy()
+            for header in (hdr_A, hdr_B):
+                set_header_card(
+                    header, SCIENCE_RON_CARD, differenceRon, "[e-] RON of the science frame, from its prescan"
+                )
         A_minus_B_notflattened.header = hdr_A
         if "nod" in self.recipeName:
             B_minus_A_notflattened.header = hdr_B
 
         return A_minus_B_notflattened, B_minus_A_notflattened
+
+    def _record_cycle_read_noise(self, cycleRons: Sequence[float | None]) -> None:
+        """*record the root mean square of the read noises of the cycle differences as the ``SCI RON`` QC*
+
+        **Key Arguments:**
+
+        - ``cycleRons`` -- the read noise (e-) of the difference of each cycle, *None* for a cycle with no prescan value
+        """
+        from soxspipe.commonutils.read_noise import rms_read_noise
+
+        measured = [ron for ron in cycleRons if ron is not None]
+        if measured:
+            self._set_science_read_noise_qc(rms_read_noise(measured))
+
+    def _difference_read_noise(self, aFrame: Any, bFrame: Any) -> float | None:
+        """*the read noise (e-) of the difference of two frames: the quadrature sum of their read noises*
+
+        **Key Arguments:**
+
+        - ``aFrame`` -- the frame taken at the A location (or the ON frame)
+        - ``bFrame`` -- the frame taken at the B location (or the OFF frame)
+
+        **Return:**
+
+        - ``ron`` -- ``sqrt(rA**2 + rB**2)``. A frame with no prescan value counts at the read noise of the reduction.
+          *None* when neither frame has one
+        """
+        import math
+
+        if self._prescan_read_noise_of(aFrame) is None and self._prescan_read_noise_of(bFrame) is None:
+            return None
+        return math.hypot(self._frame_read_noise(aFrame), self._frame_read_noise(bFrame))
 
     def _combine_cycle_differences(self, abDifference, baDifference, shiftAndAdd):
         """*average the A-B difference with the B-A difference shifted onto it along the slit*

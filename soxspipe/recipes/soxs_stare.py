@@ -788,6 +788,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath = inputs
 
         self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
+        # THE PRODUCTS OF THIS PASS ARE BUILT FROM THIS STACK (OR SINGLE FRAME), SO THEY CARRY ITS READ NOISE
+        self._record_science_read_noise_qc(combined_object_notflattened)
 
         if detrended is None:
             combined_object = self.detrend(

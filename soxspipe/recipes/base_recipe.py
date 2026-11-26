@@ -1366,6 +1366,8 @@ class base_recipe:
         import numpy as np
         from astropy import units as u
 
+        from soxspipe.commonutils.read_noise import in_electrons
+
         kw = self.kw
 
         def is_missing(value: object) -> bool:
@@ -1380,7 +1382,7 @@ class base_recipe:
         ]
         # UNIQUE VALUES IN ORDER OF FIRST APPEARANCE
         ron = list(dict.fromkeys(rawRon))
-        self.defaultRon = float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+        self.defaultRon = in_electrons(self.detectorParams["ron"])
         self.rawHeaderRon = float(ron[0]) if len(ron) and ron[0] else None
 
         # MIXED NOISE
@@ -1463,10 +1465,11 @@ class base_recipe:
           the recipe's detector parameters, which the read-noise lookup (the ``ESO DET NDSAMPLES`` table for SOXS NIR)
           has set, as a plain float (DY-2323)
         """
+        from soxspipe.commonutils.read_noise import in_electrons
+
         if frame is not None:
             return self._frame_read_noise(frame)
-        ron = self.detectorParams["ron"]
-        return float(getattr(ron, "value", ron))
+        return in_electrons(self.detectorParams["ron"])
 
     def _select_master_frame(self, masterCatg, masterPlural):
         """*pick the master frame of a product category from the SOF, warning when it names several*
@@ -1707,6 +1710,7 @@ class base_recipe:
             measure_prescan_read_noise,
             uses_prescan_read_noise,
         )
+        from soxspipe.commonutils.read_noise import in_electrons
 
         dp = self.detectorParams
         dprType = frame.header.get(self.kw("DPR_TYPE"))
@@ -1714,7 +1718,7 @@ class base_recipe:
             return None
 
         name = os.path.basename(filepath) if isinstance(filepath, str) else "a frame"
-        baselineRon = float(getattr(dp["ron"], "value", dp["ron"]))
+        baselineRon = in_electrons(dp["ron"])
         try:
             ron = measure_prescan_read_noise(frame.data, dp[PRESCAN_KEY], dp["binning"], dp["gain"])
         except ValueError as e:
@@ -1729,16 +1733,25 @@ class base_recipe:
 
     @staticmethod
     def _prescan_read_noise_of(frame: Any) -> float | None:
-        """*the prescan read noise (e-) in the header of a frame or stack, or None without a usable one*"""
+        """*the prescan read noise (e-) in the header of a frame or stack, or None without a usable one*
+
+        The card holds any real number that converts to a finite float above zero (a boolean is not a number here).
+        The card is only ever written for a frame the science gate passed, so it needs no second check. The gate
+        reads the DPR type, which the first product write scrubs from the frame header.
+        """
         import math
 
         from soxspipe.commonutils.read_noise import SCIENCE_RON_CARD
 
         header = getattr(frame, "header", None)
-        ron = None if header is None else header.get(SCIENCE_RON_CARD)
-        if isinstance(ron, (int, float)) and not isinstance(ron, bool) and math.isfinite(ron) and ron > 0:
-            return float(ron)
-        return None
+        value = None if header is None else header.get(SCIENCE_RON_CARD)
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            ron = float(value)
+        except (TypeError, ValueError):
+            return None
+        return ron if math.isfinite(ron) and ron > 0 else None
 
     def _frame_read_noise(self, frame: Any) -> float:
         """*the read noise (e-) of a frame: its prescan value in the header, else the read noise of the reduction*
@@ -1751,10 +1764,12 @@ class base_recipe:
 
         - ``ron`` -- the ``QC SCI RON`` of the frame header, or ``self.detectorParams["ron"]`` without one
         """
+        from soxspipe.commonutils.read_noise import in_electrons
+
         ron = self._prescan_read_noise_of(frame)
         if ron is not None:
             return ron
-        return float(getattr(self.detectorParams["ron"], "value", self.detectorParams["ron"]))
+        return in_electrons(self.detectorParams["ron"])
 
     def _sky_fit_read_noise(self, frame: Any) -> float | None:
         """*the read noise (e-) the sky-fit noise model uses for a frame with the master bias subtracted*
@@ -1780,18 +1795,25 @@ class base_recipe:
     def _record_science_read_noise_qc(self, frame: Any) -> None:
         """*record the prescan read noise of a frame as the ``SCI RON`` QC, written to the product headers*
 
-        Each pass of a reduction records the value of the frame (or stack) it reduces, and replaces the row of an
-        earlier pass. A frame with no prescan read noise records nothing.
+        A pass records the value of the frame (or stack, or difference) its products are built from, before it writes
+        them, and replaces the row of an earlier pass. A frame with no prescan read noise records nothing.
 
         **Key Arguments:**
 
         - ``frame`` -- the frame the pass reduces (CCDData object)
         """
-        from soxspipe.commonutils import toolkit
-
         ron = self._prescan_read_noise_of(frame)
-        if ron is None:
-            return
+        if ron is not None:
+            self._set_science_read_noise_qc(ron)
+
+    def _set_science_read_noise_qc(self, ron: float) -> None:
+        """*record a read noise (e-) as the ``SCI RON`` QC, replacing the row of an earlier pass*
+
+        **Key Arguments:**
+
+        - ``ron`` -- the read noise (e-)
+        """
+        from soxspipe.commonutils import toolkit
 
         self.qc = self.qc[self.qc["qc_name"] != "SCI RON"]
         self.add_qc(
@@ -3337,7 +3359,6 @@ class base_recipe:
         # UNUSED, AND ONE OF THE MODULE'S ELEVEN `F841` FINDINGS. DELETING IT IS DY-88'S.
         dp = self.detectorParams  # noqa: F841
         imageType = self.imageType
-        self._record_science_read_noise_qc(frame)
         if "FLAT" in imageType:
             imageType = "FLAT"
 

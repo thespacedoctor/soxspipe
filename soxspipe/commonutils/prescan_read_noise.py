@@ -36,7 +36,7 @@ def is_science_dpr_type(dprType: str | None) -> bool:
 
     **Return:**
 
-    - ``isScience`` -- True when its first word is OBJECT, SKY or STD
+    - ``isScience`` -- True when its first word is OBJECT, SKY or STD, in any case
 
     **Usage:**
 
@@ -47,7 +47,7 @@ def is_science_dpr_type(dprType: str | None) -> bool:
     """
     if not isinstance(dprType, str):
         return False
-    return dprType.split(",")[0].strip() in SCIENCE_DPR_TYPES
+    return dprType.split(",")[0].strip().upper() in SCIENCE_DPR_TYPES
 
 
 def uses_prescan_read_noise(

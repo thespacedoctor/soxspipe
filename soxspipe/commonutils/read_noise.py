@@ -9,9 +9,12 @@ A SOXS NIR frame takes its read noise from its own up-the-ramp sample count inst
 in a table of the detector parameters. The master dark's ``ESO QC RAW RON`` is a QC value there and sets nothing.
 """
 
+from __future__ import annotations
+
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any
 
 # THE HEADER CARD OF THE READ NOISE MEASURED FROM A RAW-FRAME PAIR
 MEASURED_RON_CARD = "ESO QC RAW RON"
@@ -464,3 +467,24 @@ def science_sky_fit_ron(scienceRon: float, masterReadNoise: ReadNoise | None) ->
     if masterReadNoise is None or masterReadNoise.nCombined is None:
         return scienceRon
     return math.sqrt(scienceRon**2 + masterReadNoise.singleFrame**2 / masterReadNoise.nCombined)
+
+
+def in_electrons(value: Any) -> float:
+    """*a read noise as a number of electrons: a quantity gives its value, a number is returned as a float*
+
+    **Key Arguments:**
+
+    - ``value`` -- a read noise in e-, as a quantity or a number
+
+    **Return:**
+
+    - ``ron`` -- the read noise (e-)
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.read_noise import in_electrons
+    ron = in_electrons(detectorParams["ron"])
+    ```
+    """
+    return float(getattr(value, "value", value))

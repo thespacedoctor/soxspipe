@@ -15,7 +15,7 @@ from soxspipe.commonutils.prescan_read_noise import (
     measure_prescan_read_noise,
     uses_prescan_read_noise,
 )
-from soxspipe.commonutils.read_noise import ReadNoise, rms_read_noise, science_sky_fit_ron
+from soxspipe.commonutils.read_noise import ReadNoise, in_electrons, rms_read_noise, science_sky_fit_ron
 
 pytestmark = pytest.mark.unit
 
@@ -152,6 +152,11 @@ def test_only_the_uvb_and_vis_science_recipes_use_the_prescan(arm: str, recipeNa
     ("dprType", "isExpected"),
     [
         ("OBJECT", True),
+        ("object,async", True),
+        ("  Std,Flux", True),
+        ("Sky,Offset", True),
+        ("Lamp,Flat", False),
+        ("bias", False),
         ("OBJECT,ASYNC", True),
         ("SKY", True),
         ("SKY,OFFSET", True),
@@ -231,3 +236,9 @@ def test_the_sky_fit_noise_of_a_master_bias_that_does_not_say_how_many_frames_it
 
     # ACT / ASSERT
     assert science_sky_fit_ron(5.1, master) == pytest.approx(5.1)
+
+
+@pytest.mark.parametrize(("value", "expected"), [(3.8 * u.electron, 3.8), (3.8, 3.8), (4, 4.0)])
+def test_a_read_noise_quantity_or_number_is_given_as_a_number_of_electrons(value: object, expected: float) -> None:
+    # ACT / ASSERT
+    assert in_electrons(value) == pytest.approx(expected)

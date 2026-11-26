@@ -510,10 +510,11 @@ def test_a_frame_with_no_prescan_read_noise_records_no_qc(log: Any, tmp_path: Pa
     assert len(recipe.qc) == 0
 
 
-def test_updating_the_keywords_of_a_frame_records_its_science_read_noise_qc(
+def test_updating_the_keywords_of_a_frame_records_no_science_read_noise_qc(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ARRANGE
+    # ARRANGE: THE NODDING RECIPES CALL IT FOR THE A FRAME, THE B FRAME AND THE FIRST RAW FRAME IN TURN, SO IT MUST NOT
+    # RECORD THE QC: THE LAST CALL WOULD OVERWRITE THE VALUE OF THE FRAME THE PRODUCT IS BUILT FROM
     recipe = _prescan_recipe(log, tmp_path)
     recipe.kw = lambda keyword: keyword
     recipe.qc = recipe._empty_qc_and_product_tables(pd)[0]
@@ -523,10 +524,261 @@ def test_updating_the_keywords_of_a_frame_records_its_science_read_noise_qc(
     )
     for name in ("_stamp_raw_frame_records", "_stamp_calibration_frame_records", "_stamp_recipe_parameter_records"):
         monkeypatch.setattr(recipe, name, lambda *args, **kwargs: None)
-    frame = SimpleNamespace(header=_header_with_ron(5.1))
 
     # ACT
-    recipe.update_fits_keywords(frame=frame)
+    recipe.update_fits_keywords(frame=SimpleNamespace(header=_header_with_ron(5.1)))
+
+    # ASSERT
+    assert len(recipe.qc) == 0
+
+
+def test_a_stare_pass_records_the_science_read_noise_of_the_stack_it_extracts(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    from soxspipe.recipes.soxs_stare import soxs_stare
+
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.kw = lambda keyword: keyword
+    recipe.recipeName = "soxs-stare"
+    recipe.dateObs = None
+    recipe.qc = recipe._empty_qc_and_product_tables(pd)[0]
+    stack = SimpleNamespace(header={**_header_with_ron(5.1), "DATE_OBS": "2026-01-15T03:14:22"})
+
+    class StopError(Exception):
+        pass
+
+    def stop(*args: object, **kwargs: object) -> None:
+        raise StopError
+
+    monkeypatch.setattr(recipe, "detrend", stop)
+
+    # ACT
+    with pytest.raises(StopError):
+        recipe._extract_stack(stack, [stack], False, (None,) * 7)
 
     # ASSERT
     assert list(recipe.qc["qc_value"]) == [5.1]
+
+
+def _nod_recipe(log: Any, recipeName: str = "soxs-nod") -> Any:
+    from soxspipe.recipes.soxs_nod import soxs_nod
+
+    recipe = soxs_nod.__new__(soxs_nod)
+    recipe.log = log
+    recipe.kw = lambda keyword: keyword
+    recipe.arm = "VIS"
+    recipe.recipeName = recipeName
+    recipe.masterBias = False
+    recipe.detectorParams = {"ron": 3.8 * u.electron}
+    recipe.dateObs = None
+    recipe.qc = recipe._empty_qc_and_product_tables(pd)[0]
+    return recipe
+
+
+def _nod_frame(counts: float, ron: float | None) -> CCDData:
+    shape = (4, 4)
+    return CCDData(
+        np.full(shape, counts, dtype=np.float32),
+        unit=u.electron,
+        meta=_header_with_ron(ron),
+        mask=np.zeros(shape, dtype=bool),
+        uncertainty=StdDevUncertainty(np.full(shape, 2.0), unit=u.electron),
+    )
+
+
+@pytest.mark.parametrize("recipeName", ["soxs-nod", "soxs-offset"])
+def test_a_difference_frame_carries_the_quadrature_sum_of_the_read_noise_of_its_two_frames(
+    log: Any, recipeName: str
+) -> None:
+    # ARRANGE
+    recipe = _nod_recipe(log, recipeName)
+    aFrame, bFrame = _nod_frame(100.0, 3.0), _nod_frame(90.0, 4.0)
+
+    # ACT
+    difference, reverse = recipe._difference_cycle_frames(aFrame, bFrame)
+
+    # ASSERT: THE FRAMES KEEP THEIR OWN VALUES
+    assert difference.header[CARD_KEY] == pytest.approx(5.0)
+    assert aFrame.header[CARD_KEY] == 3.0
+    assert bFrame.header[CARD_KEY] == 4.0
+    if recipeName == "soxs-nod":
+        assert reverse.header[CARD_KEY] == pytest.approx(5.0)
+
+
+def test_a_difference_counts_a_frame_with_no_prescan_read_noise_at_the_detector_value(log: Any) -> None:
+    # ARRANGE
+    recipe = _nod_recipe(log)
+
+    # ACT
+    difference, _ = recipe._difference_cycle_frames(_nod_frame(100.0, 3.0), _nod_frame(90.0, None))
+
+    # ASSERT
+    assert difference.header[CARD_KEY] == pytest.approx(float(np.sqrt(3.0**2 + 3.8**2)))
+
+
+def test_a_difference_of_frames_with_no_prescan_read_noise_carries_none(log: Any) -> None:
+    # ARRANGE
+    recipe = _nod_recipe(log)
+
+    # ACT
+    difference, _ = recipe._difference_cycle_frames(_nod_frame(100.0, None), _nod_frame(90.0, None))
+
+    # ASSERT
+    assert CARD_KEY not in difference.header
+
+
+def test_a_nodding_cycle_records_the_read_noise_of_its_difference(log: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    recipe = _nod_recipe(log)
+    recipe.recipeSettings = {"save_single_frame_extractions": False}
+    seen: list[list[float]] = []
+
+    def extract(*args: object, **kwargs: object) -> tuple[None, None, None, bool]:
+        seen.append(list(recipe.qc["qc_value"]))
+        return None, None, None, False
+
+    for name in ("_write_cycle_difference_frames", "_run_cycle_quality_checks", "_check_host_contamination"):
+        monkeypatch.setattr(recipe, name, lambda *args, **kwargs: None)
+    monkeypatch.setattr(recipe, "_combine_unflattened_differences", lambda *args: None)
+    monkeypatch.setattr(recipe, "_detrend_cycle_frames", lambda ab, ba, a, b, **kwargs: (ab, ba, a, b), raising=True)
+    monkeypatch.setattr(recipe, "_combined_cycle_frames", lambda *args: None)
+    monkeypatch.setattr(recipe, "_extract_cycle_spectra", extract)
+
+    # ACT: TWO CYCLES. THE PRODUCTS OF EACH ARE WRITTEN WITH THE VALUE OF ITS OWN DIFFERENCE
+    recipe.process_single_ab_nodding_cycle(_nod_frame(100.0, 3.0), _nod_frame(90.0, 4.0), 1, "order.fits")
+    recipe.process_single_ab_nodding_cycle(_nod_frame(100.0, 6.0), _nod_frame(90.0, 8.0), 2, "order.fits")
+
+    # ASSERT
+    assert seen == [[pytest.approx(5.0)], [pytest.approx(10.0)]]
+    assert list(recipe.qc["qc_name"]) == ["SCI RON"]
+
+
+def test_the_stacked_spectrum_of_the_cycles_carries_the_root_mean_square_of_the_cycle_values(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: TWO CYCLES. THE FIRST RAW FRAME, WHICH THE SPECTRUM HEADER IS BUILT FROM, HAS 3 e-
+    recipe = _nod_recipe(log)
+    seenAtStack: list[list[float]] = []
+
+    def process(aFrame: Any, bFrame: Any, **kwargs: Any) -> tuple[None, None, None]:
+        recipe._record_science_read_noise_qc(recipe._difference_cycle_frames(aFrame, bFrame)[0])
+        return None, None, None
+
+    def stack(spectra: Any, orderJoins: Any = None) -> tuple[None, None]:
+        seenAtStack.append(list(recipe.qc["qc_value"]))
+        return None, None
+
+    recipe.recipeSettings = {"use_flat": False}
+    monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", process)
+    monkeypatch.setattr(recipe, "update_fits_keywords", lambda *args, **kwargs: None)
+    monkeypatch.setattr(recipe, "_leave_untraced_frames_out", lambda *args, **kwargs: None)
+    monkeypatch.setattr(recipe, "_record_host_contamination", lambda *args, **kwargs: None)
+    monkeypatch.setattr(recipe, "stack_extractions", stack)
+    framesA = [_nod_frame(100.0, 3.0), _nod_frame(100.0, 6.0)]
+    framesB = [_nod_frame(90.0, 4.0), _nod_frame(90.0, 8.0)]
+    for index, frame in enumerate(framesA + framesB):
+        frame.header["MJD-OBS"] = 60000.0 + index
+
+    # ACT
+    recipe._reduce_each_nodding_cycle(framesA, framesB, ["a1", "a2"], ["b1", "b2"], "order.fits", False)
+
+    # ASSERT: sqrt((5^2 + 10^2) / 2), NOT THE LAST CYCLE'S 10
+    assert seenAtStack == [[pytest.approx(float(np.sqrt((25.0 + 100.0) / 2.0)))]]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (5.1, 5.1),
+        (np.float32(5.0), 5.0),
+        (4, 4.0),
+        ("5.1", 5.1),
+        ("abc", None),
+        (None, None),
+        (float("nan"), None),
+        (float("inf"), None),
+    ],
+)
+def test_the_read_noise_card_takes_any_real_number_and_nothing_else(value: object, expected: float | None) -> None:
+    # ARRANGE
+    # A PLAIN MAPPING, SINCE A FITS HEADER REFUSES NaN AND INFINITY
+    frame = SimpleNamespace(header={} if value is None else {SCIENCE_RON_CARD: value})
+
+    # ACT
+    result = base_recipe._prescan_read_noise_of(frame)
+
+    # ASSERT
+    assert result == pytest.approx(expected) if expected is not None else result is None
+
+
+@pytest.mark.parametrize("value", [float("inf"), -1.0, 0.0, True, False])
+def test_the_read_noise_card_ignores_infinity_zero_negative_and_boolean_values(value: object) -> None:
+    # ARRANGE
+    header = {SCIENCE_RON_CARD: value}
+
+    # ACT / ASSERT
+    assert base_recipe._prescan_read_noise_of(SimpleNamespace(header=header)) is None
+
+
+def test_the_prescan_read_noise_card_survives_detrending(log: Any) -> None:
+    # ARRANGE: THE CARD IS READ FROM THE HEADER OF A DETRENDED FRAME, SO THE HEADER MUST STAY AN astropy FITS HEADER
+    recipe = _detrend_recipe(log)
+    bias = CCDData(
+        np.full((4, 4), 60.0, dtype=np.float32),
+        unit=u.electron,
+        uncertainty=StdDevUncertainty(np.zeros((4, 4)), unit=u.electron),
+    )
+
+    # ACT
+    detrended = recipe.detrend(_prepared_science_frame(100.0, 5.1), master_bias=bias)
+
+    # ASSERT
+    assert isinstance(detrended.header, fits.Header)
+    assert detrended.header[CARD_KEY] == pytest.approx(5.1)
+
+
+def test_the_stacked_spectrum_of_the_offset_cycles_carries_the_root_mean_square_of_the_cycle_values(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    from soxspipe.recipes.soxs_offset import soxs_offset
+
+    recipe = soxs_offset.__new__(soxs_offset)
+    recipe.log = log
+    recipe.kw = lambda keyword: keyword
+    recipe.arm = "VIS"
+    recipe.recipeName = "soxs-offset"
+    recipe.masterBias = False
+    recipe.detectorParams = {"ron": 3.8 * u.electron}
+    recipe.dateObs = None
+    recipe.qc = recipe._empty_qc_and_product_tables(pd)[0]
+    recipe.recipeSettings = {"use_flat": False}
+    seenAtStack: list[list[float]] = []
+
+    def process(aFrame: Any, bFrame: Any, **kwargs: Any) -> tuple[None, None, None]:
+        recipe._record_science_read_noise_qc(recipe._difference_cycle_frames(aFrame, bFrame)[0])
+        return None, None, None
+
+    def stack(spectra: Any, orderJoins: Any = None) -> tuple[None, None]:
+        seenAtStack.append(list(recipe.qc["qc_value"]))
+        return None, None
+
+    monkeypatch.setattr(recipe, "process_single_ab_nodding_cycle", process)
+    monkeypatch.setattr(recipe, "update_fits_keywords", lambda *args, **kwargs: None)
+    monkeypatch.setattr(recipe, "_leave_untraced_frames_out", lambda *args, **kwargs: None)
+    monkeypatch.setattr(recipe, "stack_extractions", stack)
+
+    # ACT
+    recipe._reduce_each_offset_cycle(
+        [_nod_frame(100.0, 3.0), _nod_frame(100.0, 6.0)],
+        [_nod_frame(90.0, 4.0), _nod_frame(90.0, 8.0)],
+        ["on1", "on2"],
+        ["off1", "off2"],
+        "order.fits",
+        False,
+    )
+
+    # ASSERT
+    assert seenAtStack == [[pytest.approx(float(np.sqrt((25.0 + 100.0) / 2.0)))]]
