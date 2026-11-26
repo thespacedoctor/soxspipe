@@ -112,12 +112,28 @@ def _assert_product_row(
 
 # THE MEAN OF THE PER-FRAME CLIPPED STANDARD DEVIATIONS THE FAKE SUBTRACTION REPORTS
 MEAN_FRAME_RON = 3.0
+# THE HEADER READ NOISE THE PREPARED RAW BIAS UNCERTAINTY WAS BUILT FROM
+HEADER_RON = 4.0
 
 
 @pytest.mark.parametrize(
     ("measuredRawRon", "expectedFill"),
-    [(2.0, 2.0), (None, MEAN_FRAME_RON)],
-    ids=["raw-ron-measured", "no-raw-pair-falls-back-to-mean-frame-ron"],
+    [
+        (2.0, 2.0),
+        (None, MEAN_FRAME_RON),
+        (float("nan"), MEAN_FRAME_RON),
+        (float("inf"), MEAN_FRAME_RON),
+        (0.0, MEAN_FRAME_RON),
+        (-1.0, MEAN_FRAME_RON),
+    ],
+    ids=[
+        "raw-ron-measured",
+        "no-raw-pair-falls-back-to-mean-frame-ron",
+        "nan-raw-ron-falls-back-to-mean-frame-ron",
+        "inf-raw-ron-falls-back-to-mean-frame-ron",
+        "zero-raw-ron-falls-back-to-mean-frame-ron",
+        "negative-raw-ron-falls-back-to-mean-frame-ron",
+    ],
 )
 def test_master_bias_produce_product_runs_collaborators_and_records_product(
     measuredRawRon: float | None,
@@ -132,11 +148,12 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     stackedFrame = noiseFrame.copy()
     # THE MASTER RON IS THE SPREAD OF THE PIXELS THE STACK DID NOT MASK (DY-1249)
     expectedMasterRon = float(np.ma.std(np.ma.array(stackedFrame.data, mask=stackedFrame.mask)))
+    unmaskedBefore = stackedFrame.uncertainty.array[~stackedFrame.mask].copy()
     recipe = soxs_mbias.__new__(soxs_mbias)
     recipe.log = log
     recipe.arm = "VIS"
     recipe.kw = lambda keyword: "DATE-OBS" if keyword == "DATE_OBS" else keyword
-    recipe.detectorParams = {}
+    recipe.detectorParams = {"ron": HEADER_RON}
     recipe.inputFrames = FakeFrameCollection(ccdFrames=rawFrames)
     recipe.recipeName = "soxs-mbias"
     recipe.settings = pipeline_settings(tmp_path)
@@ -316,6 +333,10 @@ def test_master_bias_produce_product_runs_collaborators_and_records_product(
     assert ronArgs["masterRon"] == pytest.approx(expectedMasterRon)
     # THE MASKED PIXEL OF THE STACK TAKES THE MEASURED RAW RON, OR THE MEAN FRAME RON IF NONE WAS MEASURED
     assert stackedFrame.uncertainty.array[0, 0] == pytest.approx(expectedFill)
+    # THE UNMASKED PIXELS FOLLOW THE MEASURED RAW RON, OR KEEP THE HEADER-BASED VALUE IF NONE WAS MEASURED (DY-2438)
+    isRawRonUsable = measuredRawRon is not None and np.isfinite(measuredRawRon) and measuredRawRon > 0
+    ronScale = measuredRawRon / HEADER_RON if isRawRonUsable else 1.0
+    assert stackedFrame.uncertainty.array[~stackedFrame.mask] == pytest.approx(unmaskedBefore * ronScale)
     assert stackedFrame.header["DATANCOM"] == len(rawFrames)
     assert qcArguments["qc_bias_structure"] == {
         "args": (stackedFrame,),

@@ -470,6 +470,7 @@ class soxs_offset(soxs_nod):
         allSpectrumA = []
         orderJoins = None
         sequenceCount = 1
+        cycleRons = ()
         for frameON, frameOFF, frameONName, frameOFFName in zip(
             allFrameON, allFrameOFF, allFrameONNames, allFrameOFFNames, strict=False
         ):
@@ -509,6 +510,7 @@ class soxs_offset(soxs_nod):
             # INJECT KEYWORDS INTO HEADER
             self.update_fits_keywords(frame=frameON, rawFrames=rawFrames)
             self.update_fits_keywords(frame=frameOFF, rawFrames=rawFrames)
+            cycleRons = (*cycleRons, self._difference_read_noise(frameON, frameOFF))
 
             if self.recipeSettings["use_flat"] and master_flat:
                 masterFlat = master_flat
@@ -534,6 +536,8 @@ class soxs_offset(soxs_nod):
             )
 
             sequenceCount += 1
+        # THE STACKED SPECTRUM IS BUILT FROM ALL THE CYCLES, SO IT CARRIES THEIR ROOT MEAN SQUARE READ NOISE
+        self._record_cycle_read_noise(cycleRons)
         stackedSpectrum, extractionPath = self.stack_extractions(
             [
                 allSpectrumA,

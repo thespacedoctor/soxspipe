@@ -788,6 +788,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         master_bias, dark, master_flat, orderTablePath, dispMap, twoDMap, responseFunctionPath = inputs
 
         self.dateObs = combined_object_notflattened.header[kw("DATE_OBS")]
+        # THE PRODUCTS OF THIS PASS ARE BUILT FROM THIS STACK (OR SINGLE FRAME), SO THEY CARRY ITS READ NOISE
+        self._record_science_read_noise_qc(combined_object_notflattened)
 
         if detrended is None:
             combined_object = self.detrend(
@@ -867,7 +869,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             noTraceFallback=True,
             scienceHeaders=self.scienceHeaders,
             slitOffsetsArcsec=self.slitIlluminationOffsets,
-            readNoise=self._extraction_read_noise(),
+            readNoise=self._extraction_read_noise(skySubtractedCCDData),
             onTargetFrames=self.onTargetFrames,
         )
         self.qc, self.products, mergedSpectumDF, orderJoins, extractionPath = optimalExtractor.extract()
@@ -1501,7 +1503,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
                 excludeMask=excludeMask,
                 uncoveredMask=uncoveredMask,
                 masterFlat=masterFlat,
-                ron=None if self.readNoise is None else self.readNoise.skyFit,
+                ron=self._sky_fit_read_noise(combined_object),
                 flatFitRanges=self.slitIlluminationFitRanges,
             )
             (
@@ -1834,7 +1836,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             turnOffMP=self.turnOffMP,
             scienceHeaders=self.scienceHeaders,
             flatPass=flatPass,
-            readNoise=self._extraction_read_noise(),
+            readNoise=self._extraction_read_noise(unflattenedSkySubtractedCCDData),
         )
         self.qc, self.products, mergedSpectrumDF, _, extractionPath_notflat = optimalExtractor.extract()
         return extractionPath_notflat, mergedSpectrumDF
