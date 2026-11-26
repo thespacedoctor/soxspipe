@@ -54,7 +54,6 @@ the input could not be used.
 from __future__ import annotations
 
 import argparse
-import math
 import re
 import sys
 from collections import defaultdict
@@ -106,7 +105,7 @@ class SlitSummary:
     lineCount: int
     frameCount: int
     mjds: tuple[float, ...]
-    nightMedians: Mapping[int, int]
+    nightMedians: Mapping[str, int]
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "mjds", tuple(self.mjds))
@@ -178,7 +177,7 @@ def summarise(measurements: Sequence[FrameMeasurement]) -> Summary:
     **Return:**
 
     - ``summary`` -- ``{arm: {slit: SlitSummary}}``, empty when no frame found a line. ``nightMedians`` is the median R
-      of each UTC date, for the comment.
+      of each observing night (its night-start date, ``common.night_start_dates``), for the comment.
 
     **Usage:**
 
@@ -193,9 +192,9 @@ def summarise(measurements: Sequence[FrameMeasurement]) -> Summary:
     summary: Summary = defaultdict(dict)
     for (arm, slit), frames in groups.items():
         allLines = [line for frame in frames for line in frame.lines]
-        nights: dict[int, list[LineFit]] = defaultdict(list)
-        for frame in frames:
-            nights[math.floor(frame.mjd)].extend(frame.lines)
+        nights: dict[str, list[LineFit]] = defaultdict(list)
+        for frame, night in zip(frames, common.night_start_dates(frame.mjd for frame in frames), strict=True):
+            nights[night].extend(frame.lines)
         summary[arm][slit] = SlitSummary(
             resolvingPower=round(median_resolving_power(allLines)),
             lineCount=len(allLines),
@@ -208,7 +207,7 @@ def summarise(measurements: Sequence[FrameMeasurement]) -> Summary:
 
 def _describe(slitSummary: SlitSummary) -> str:
     """*the comment text of one slit: line and frame counts and the median R of each night*"""
-    nights = ", ".join(f"{power} (MJD {night})" for night, power in slitSummary.nightMedians.items())
+    nights = ", ".join(f"{power} (NIGHT {night})" for night, power in slitSummary.nightMedians.items())
     return f"{slitSummary.lineCount} LINES FROM {slitSummary.frameCount} FRAMES; MEDIAN R PER NIGHT {nights}"
 
 

@@ -231,15 +231,37 @@ def test_read_mjd_obs_raises_when_the_card_is_not_a_number() -> None:
         common.read_mjd_obs(header)
 
 
-def test_night_count_counts_distinct_utc_dates() -> None:
-    # ARRANGE
-    mjds = [60000.1, 60000.9, 60001.5, 60003.0]
+def test_night_count_counts_distinct_observing_nights() -> None:
+    # ARRANGE: THE NIGHT STARTS AT 15:00 UT (MJD .625), SO 60000.1 AND 60000.5 BELONG TO THE NIGHT BEFORE 60000.7
+    mjds = [60000.1, 60000.5, 60000.7, 60003.0]
 
     # ACT
     nights = common.night_count(mjds)
 
     # ASSERT
     assert nights == 3
+
+
+def test_night_count_counts_one_night_that_crosses_ut_midnight_once() -> None:
+    # ARRANGE: 21:36 UT ON MJD 60000 AND 02:24 UT ON MJD 60001 ARE ONE NIGHT ON TWO INTEGER MJDS
+    mjds = [60000.9, 60001.1]
+
+    # ACT
+    nights = common.night_count(mjds)
+
+    # ASSERT
+    assert nights == 1
+
+
+def test_night_count_splits_two_nights_that_share_one_ut_date() -> None:
+    # ARRANGE: 14:24 UT AND 15:36 UT ON MJD 60000 FALL EITHER SIDE OF THE 15:00 UT NIGHT START
+    mjds = [60000.6, 60000.65]
+
+    # ACT
+    nights = common.night_count(mjds)
+
+    # ASSERT
+    assert nights == 2
 
 
 def test_provenance_comments_name_the_subject_the_nights_and_the_version() -> None:
@@ -251,6 +273,17 @@ def test_provenance_comments_name_the_subject_the_nights_and_the_version() -> No
 
     # ASSERT
     assert lines == ["# MEASURED 2026-11-22 WITH soxspipe 0.20.0 FROM 3 FRAMES ON 2 NIGHTS (MJD 60000 TO 60001)"]
+
+
+def test_provenance_comments_count_a_night_that_crosses_ut_midnight_once() -> None:
+    # ARRANGE
+    mjds = [60000.9, 60001.1]
+
+    # ACT
+    lines = common.provenance_comments("FRAMES", mjds, "0.20.0", "2026-11-22")
+
+    # ASSERT
+    assert lines == ["# MEASURED 2026-11-22 WITH soxspipe 0.20.0 FROM 2 FRAMES ON 1 NIGHTS (MJD 60000 TO 60001)"]
 
 
 def test_arm_block_indents_the_comments_and_the_body_under_the_arm() -> None:

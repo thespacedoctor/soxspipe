@@ -94,7 +94,21 @@ def test_summarise_takes_the_median_over_all_lines_of_a_slit_and_counts_them() -
     assert slit.resolvingPower == 5100
     assert slit.lineCount == 7
     assert slit.frameCount == 2
-    assert slit.nightMedians == {60000: 5000, 60001: 5200}
+    assert slit.nightMedians == {"2023-02-24": 5000, "2023-02-25": 5200}
+
+
+def test_summarise_pools_the_frames_of_one_night_that_crosses_ut_midnight() -> None:
+    # ARRANGE: 21:36 UT ON MJD 60000 AND 02:24 UT ON MJD 60001 ARE ONE OBSERVING NIGHT
+    measurements = [
+        spec_tool.FrameMeasurement("VIS", "SLIT1.0", 60000.9, _lines(4800, 5000)),
+        spec_tool.FrameMeasurement("VIS", "SLIT1.0", 60001.1, _lines(5200, 5400)),
+    ]
+
+    # ACT
+    slit = spec_tool.summarise(measurements)["VIS"]["SLIT1.0"]
+
+    # ASSERT
+    assert slit.nightMedians == {"2023-02-25": 5100}
 
 
 def test_summarise_leaves_out_a_frame_that_found_no_lines() -> None:
@@ -130,8 +144,8 @@ def test_format_yaml_prints_the_table_in_slit_order_with_the_derived_wide_slit()
     assert text == (
         "VIS:\n"
         "  # MEASURED 2026-11-22 WITH soxspipe 0.19.1 FROM 3 SLIT ARCS ON 2 NIGHTS (MJD 60000 TO 60001)\n"
-        "  # SLIT0.5: 2 LINES FROM 1 FRAMES; MEDIAN R PER NIGHT 9200 (MJD 60000)\n"
-        "  # SLIT1.0: 7 LINES FROM 2 FRAMES; MEDIAN R PER NIGHT 5000 (MJD 60000), 5200 (MJD 60001)\n"
+        "  # SLIT0.5: 2 LINES FROM 1 FRAMES; MEDIAN R PER NIGHT 9200 (NIGHT 2023-02-24)\n"
+        "  # SLIT1.0: 7 LINES FROM 2 FRAMES; MEDIAN R PER NIGHT 5000 (NIGHT 2023-02-24), 5200 (NIGHT 2023-02-25)\n"
         "  # SLIT5.0 IS DERIVED, NOT MEASURED: THE SLIT1.0 VALUE TIMES 1.0 / 5.0\n"
         "  spec-res:\n"
         "    SLIT0.5: 9200\n"
