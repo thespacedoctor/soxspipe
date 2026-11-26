@@ -97,8 +97,8 @@ def science_slices(arm: str, binX: int, binY: int) -> tuple[slice, slice]:
     **Key Arguments:**
 
     - ``arm`` -- ``VIS`` or ``NIR``
-    - ``binX`` -- the binning along x
-    - ``binY`` -- the binning along y
+    - ``binX`` -- the ``ESO DET BINX`` binning, which bins the columns (FITS NAXIS1)
+    - ``binY`` -- the ``ESO DET BINY`` binning, which bins the rows (FITS NAXIS2)
 
     **Return:**
 
@@ -150,7 +150,8 @@ def read_arc_ref(path: Path) -> ArcRef | None:
     if not is_slit_arc(header):
         return None
     arm, slit, mjd = _identity(header, path)
-    binX, binY = common.binning_along(header, "x", path), common.binning_along(header, "y", path)
+    binX = common.binning_along(header, common.COLUMN_AXIS, arm, path)
+    binY = common.binning_along(header, common.ROW_AXIS, arm, path)
     return ArcRef(Path(path), arm, slit, mjd, binX, binY)
 
 
@@ -259,7 +260,7 @@ def _measure_through_maps(
             f"but the maps of {mapRef.path} have shape {wavelength.shape}"
         )
     return measure_lines(
-        data, isGood, wavelength, slit, order, common.dispersion_axis(arm), slitRange=slitRange, prominence=prominence
+        data, isGood, wavelength, slit, order, common.disp_image_axis(arm), slitRange=slitRange, prominence=prominence
     )
 
 

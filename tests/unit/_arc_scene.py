@@ -1,8 +1,13 @@
 """*synthetic arc and sky frames, with the maps of a DISP_IMAGE, for the line-measurement tests of tools/*
 
-The wavelength map is linear along the dispersion axis (x) and tilted by `ROW_TILT` pixels per row, so the pixels of one
-wavelength bin come from many columns, as they do on a real frame. The lines are Gaussian in wavelength, so they follow
-that map and their FWHM in pixels is known.
+The wavelength map is linear along the dispersion and tilted by `SLIT_TILT` pixels per slit sample, so the pixels of one
+wavelength bin come from many dispersion pixels, as they do on a real frame. The lines are Gaussian in wavelength, so
+they follow that map and their FWHM in pixels is known.
+
+The arrays have the layout of the real `DISP_IMAGE` maps (DY-2455): the wavelength runs along numpy axis 0 for VIS and
+along numpy axis 1 for NIR, as `measurement_common.disp_image_axis` says. On the 2026-01-12 maps the median step between
+neighbouring pixels is 0.0335 nm along axis 0 and 0.0051 nm along axis 1 for VIS, and 0.0088 nm along axis 0 and
+0.0498 nm along axis 1 for NIR.
 """
 
 from __future__ import annotations
@@ -14,67 +19,87 @@ import numpy as np
 import numpy.typing as npt
 from astropy.io import fits
 
-ROWS = 60
-COLUMNS = 2000
+from tests.unit._tools_loader import load_tool
+
+common = load_tool("measurement_common")
+
+SLIT_SAMPLES = 60
+DISPERSION_PIXELS = 2000
 NM_PER_PIXEL = 0.03
 START_NM = 500.0
 BACKGROUND = 100.0
 AMPLITUDE = 5000.0
 FWHM_PER_SIGMA = 2.3548
-LINE_COLUMNS = list(range(150, 1900, 150))
-ROW_TILT = 0.37
+LINE_INDICES = list(range(150, 1900, 150))
+SLIT_TILT = 0.37
 
 
 class Scene:
-    """*a synthetic frame with the maps that a DISP_IMAGE carries; dispersion along x*
+    """*a synthetic frame with the maps that a DISP_IMAGE carries, in the real layout of the arm*
 
     **Key Arguments:**
 
+    - ``arm`` -- ``VIS`` (wavelength along numpy axis 0) or ``NIR`` (along axis 1). Default ``VIS``
     - ``fwhmPx`` -- the FWHM of every line, in pixels. Default 3
-    - ``lineColumns`` -- the columns of the line centres at the middle row. Default every 150 columns
+    - ``lineIndices`` -- the dispersion pixel indices of the line centres at the middle slit sample. Default every 150
     - ``minSlit`` -- the lines are present only where ``|slit|`` is at least this, in arcsec. Default 0
     - ``maxSlit`` -- the lines are present only where ``|slit|`` is at most this, in arcsec. Default 100
     - ``side`` -- 1 to light the positive side of the slit only, -1 for the negative side only, 0 for both. Default 0
     - ``seed`` -- the seed of the noise. Default 0
     """
 
+    MAP_NAMES = ("wavelength", "slit", "order", "data", "good")
+
     def __init__(
         self,
+        arm: str = "VIS",
         fwhmPx: float = 3.0,
-        lineColumns: list[int] | None = None,
+        lineIndices: list[int] | None = None,
         minSlit: float = 0.0,
         maxSlit: float = 100.0,
         side: int = 0,
         seed: int = 0,
     ) -> None:
-        lineColumns = LINE_COLUMNS if lineColumns is None else lineColumns
-        columns = np.arange(COLUMNS)
-        rows = np.arange(ROWS)
-        self.wavelength = START_NM + NM_PER_PIXEL * (columns[None, :] + ROW_TILT * rows[:, None])
-        slitAxis = np.linspace(-6.0, 6.0, ROWS)
-        self.slit = np.tile(slitAxis[:, None], (1, COLUMNS))
-        self.order = np.ones((ROWS, COLUMNS), dtype=int)
+        lineIndices = LINE_INDICES if lineIndices is None else lineIndices
+        # BUILT WITH THE DISPERSION ALONG AXIS 1 AND THEN TRANSPOSED IF THE ARM DISPERSES ALONG AXIS 0
+        dispersion = np.arange(DISPERSION_PIXELS)
+        slitSamples = np.arange(SLIT_SAMPLES)
+        shape = (SLIT_SAMPLES, DISPERSION_PIXELS)
+        self.wavelength = START_NM + NM_PER_PIXEL * (dispersion[None, :] + SLIT_TILT * slitSamples[:, None])
+        self.slit = np.tile(np.linspace(-6.0, 6.0, SLIT_SAMPLES)[:, None], (1, DISPERSION_PIXELS))
+        self.order = np.ones(shape, dtype=int)
         self.fwhmPx = fwhmPx
-        self.centres = [START_NM + NM_PER_PIXEL * (column + ROW_TILT * ROWS / 2) for column in lineColumns]
+        self.centres = [START_NM + NM_PER_PIXEL * (index + SLIT_TILT * SLIT_SAMPLES / 2) for index in lineIndices]
         rng = np.random.default_rng(seed)
-        data = BACKGROUND + rng.normal(0.0, 1.0, (ROWS, COLUMNS))
+        data = BACKGROUND + rng.normal(0.0, 1.0, shape)
         sigmaNm = fwhmPx * NM_PER_PIXEL / FWHM_PER_SIGMA
         isLit = (np.abs(self.slit) >= minSlit) & (np.abs(self.slit) <= maxSlit) & (self.slit * side >= 0)
         for centre in self.centres:
             data += AMPLITUDE * np.exp(-0.5 * ((self.wavelength - centre) / sigmaNm) ** 2) * isLit
         self.data = data
-        self.good = np.ones((ROWS, COLUMNS), dtype=bool)
+        self.good = np.ones(shape, dtype=bool)
+        self.arm = arm
+        self.isTransposed = common.disp_image_axis(arm) == 0
+        if self.isTransposed:
+            for name in self.MAP_NAMES:
+                setattr(self, name, getattr(self, name).T.copy())
 
-    def transposed(self) -> Scene:
-        """*the same scene with the dispersion along y, as the NIR arm has it*"""
+    def with_axis_0_one_short(self) -> Scene:
+        """*a copy whose maps have one index fewer along numpy axis 0, for a frame that does not match its maps*"""
         other = copy.copy(self)
-        for name in ("wavelength", "slit", "order", "data", "good"):
-            setattr(other, name, getattr(self, name).T.copy())
+        for name in self.MAP_NAMES:
+            setattr(other, name, getattr(self, name)[:-1])
         return other
 
-    def pixel_at(self, centreNm: float, row: int) -> tuple[int, int]:
-        """*the (row, column) of the pixel in a row whose wavelength is closest to a wavelength*"""
-        return row, int(round((centreNm - START_NM) / NM_PER_PIXEL - ROW_TILT * row))
+    def slit_index(self, slitArcsec: float) -> int:
+        """*the slit sample index (the ``slitIndex`` of ``pixel_at``) nearest to a slit position in arcsec*"""
+        slitAxis = self.slit[0, :] if self.isTransposed else self.slit[:, 0]
+        return int(np.argmin(np.abs(slitAxis - slitArcsec)))
+
+    def pixel_at(self, centreNm: float, slitIndex: int) -> tuple[int, int]:
+        """*the array index of the pixel at a slit sample whose wavelength is closest to a wavelength*"""
+        dispersionIndex = int(round((centreNm - START_NM) / NM_PER_PIXEL - SLIT_TILT * slitIndex))
+        return (dispersionIndex, slitIndex) if self.isTransposed else (slitIndex, dispersionIndex)
 
     def expected_resolving_power(self, centreNm: float) -> float:
         """*the resolving power of a line at a wavelength: centre over FWHM in nm*"""
@@ -87,10 +112,10 @@ def write_raw_arc(path: Path, scene: Scene, header: fits.Header) -> Path:
     return path
 
 
-def write_disp_image(path: Path, scene: Scene, mjd: float = 60000.1, arm: str = "VIS") -> Path:
-    """*write a scene's maps as a DISP_IMAGE: ``WAVELENGTH`` primary, then ``SLIT`` and ``ORDER``*"""
+def write_disp_image(path: Path, scene: Scene, mjd: float = 60000.1) -> Path:
+    """*write a scene's maps as a DISP_IMAGE of the scene's arm: ``WAVELENGTH`` primary, then ``SLIT`` and ``ORDER``*"""
     header = fits.Header()
-    header["ESO SEQ ARM"] = arm
+    header["ESO SEQ ARM"] = scene.arm
     header["MJD-OBS"] = mjd
     primary = fits.PrimaryHDU(scene.wavelength.astype(np.float32), header=header)
     primary.header["EXTNAME"] = "WAVELENGTH"
@@ -125,15 +150,16 @@ def raw_header(
     mjd: float = 60000.4,
     tech: str = "ECHELLE,SLIT",
     dprType: str = "LAMP,WAVE",
-    binning: tuple[int, int] = (1, 1),
+    binning: tuple[int, int] | None = (1, 1),
 ) -> fits.Header:
-    """*the header of a raw frame with the cards the SPEC_RES script reads*"""
+    """*the header of a raw frame with the cards the SPEC_RES script reads; no binning cards if ``binning`` is None*"""
     header = fits.Header()
     header["ESO SEQ ARM"] = arm
     header["ESO INS VISE NAME" if arm == "VIS" else "ESO INS NISE NAME"] = slit
     header["ESO DPR TECH"] = tech
     header["ESO DPR TYPE"] = dprType
-    header["ESO DET BINX"], header["ESO DET BINY"] = binning
+    if binning is not None:
+        header["ESO DET BINX"], header["ESO DET BINY"] = binning
     header["MJD-OBS"] = mjd
     return header
 

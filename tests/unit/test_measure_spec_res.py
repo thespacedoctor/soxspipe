@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 import yaml
-from astropy.io import fits
 
 from tests.unit._arc_scene import (
     Scene,
@@ -360,12 +359,8 @@ def test_main_prints_the_arc_table_when_a_sky_frame_does_not_match_its_maps(
     monkeypatch.setattr(spec_tool, "today_iso", lambda: "2026-11-22")
     stareDir = tmp_path / "stare"
     stareDir.mkdir()
-    skyPath = write_sky_pair(stareDir / "obs1_SKYSUB.fits", Scene(minSlit=1.9), sky_header())
-    for name in ("obs1_SKYSUB.fits", "obs1_SKYMODEL.fits"):
-        with fits.open(stareDir / name, mode="update") as hdus:
-            hdus[0].data = hdus[0].data[:-1]
-            if len(hdus) > 1:
-                hdus[1].data = hdus[1].data[:-1]
+    shortScene = Scene(minSlit=1.9).with_axis_0_one_short()
+    skyPath = write_sky_pair(stareDir / "obs1_SKYSUB.fits", shortScene, sky_header())
 
     # ACT
     status = spec_tool.main(
@@ -393,8 +388,8 @@ def test_main_names_a_sky_arm_that_has_no_arc_arm_and_leaves_it_out_of_the_outpu
     # ARRANGE: VIS ARCS, BUT A NIR SKY FRAME WITH ITS OWN NIR DISP_IMAGE
     rawDir, mapDir = _write_night(tmp_path)
     monkeypatch.setattr(spec_tool, "today_iso", lambda: "2026-11-22")
-    nirScene = Scene(fwhmPx=3.0, minSlit=1.9).transposed()
-    write_disp_image(mapDir / "nir_DISP_IMAGE.fits", nirScene, mjd=60000.1, arm="NIR")
+    nirScene = Scene(arm="NIR", fwhmPx=3.0, minSlit=1.9)
+    write_disp_image(mapDir / "nir_DISP_IMAGE.fits", nirScene, mjd=60000.1)
     stareDir = tmp_path / "stare"
     stareDir.mkdir()
     write_sky_pair(stareDir / "obs1_SKYSUB.fits", nirScene, sky_header(arm="NIR"))

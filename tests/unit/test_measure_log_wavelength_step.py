@@ -33,13 +33,21 @@ def _log_grid(startNm: float, stepKms: float, size: int) -> np.ndarray:
 
 
 def _write_extracted_orders(
-    path: Path, arm: str, binning: int, mjd: float, orders: np.ndarray, wavelengths: np.ndarray
+    path: Path,
+    arm: str,
+    binning: int,
+    mjd: float,
+    orders: np.ndarray,
+    wavelengths: np.ndarray,
+    hasBinningCards: bool = True,
 ) -> Path:
     """*write a table like a `_EXTRACTED_ORDERS` product: cards in the primary header, the rows in extension 1*"""
     primary = fits.PrimaryHDU()
     primary.header["ESO SEQ ARM"] = arm
-    primary.header["ESO DET BINX"] = binning if arm == "VIS" else 1
-    primary.header["ESO DET BINY"] = binning if arm == "NIR" else 1
+    if hasBinningCards:
+        # THE VIS WAVELENGTH RUNS ALONG NAXIS2, WHICH BINY BINS, AND THE NIR WAVELENGTH ALONG NAXIS1, WHICH BINX BINS
+        primary.header["ESO DET BINX"] = binning if arm == "NIR" else 1
+        primary.header["ESO DET BINY"] = binning if arm == "VIS" else 1
     primary.header["MJD-OBS"] = mjd
     table = fits.BinTableHDU.from_columns(
         [
@@ -152,7 +160,21 @@ def test_read_product_raises_when_the_table_lacks_the_columns(tmp_path: Path) ->
         step_tool.read_product(path)
 
 
-@pytest.mark.parametrize("missingCard", ["ESO DET BINX", "MJD-OBS"])
+def test_read_product_treats_a_nir_table_with_no_binning_cards_as_unbinned(tmp_path: Path) -> None:
+    # ARRANGE: THE NIR DETECTOR DOES NOT BIN, SO ITS PRODUCTS CARRY NO ESO DET BINX OR BINY CARD (DY-2456)
+    orders, wavelengths = np.repeat([1, 2], 5), np.concatenate([_log_grid(500.0, 10.0, 5), _log_grid(600.0, 10.0, 5)])
+    path = _write_extracted_orders(
+        tmp_path / "a_EXTRACTED_ORDERS.fits", "NIR", 1, 60001.25, orders, wavelengths, hasBinningCards=False
+    )
+
+    # ACT
+    product = step_tool.read_product(path)
+
+    # ASSERT
+    assert (product.arm, product.binning) == ("NIR", 1)
+
+
+@pytest.mark.parametrize("missingCard", ["ESO DET BINY", "MJD-OBS"])
 def test_read_product_names_the_file_and_the_card_when_a_header_card_is_missing(
     tmp_path: Path, missingCard: str
 ) -> None:
@@ -252,7 +274,7 @@ def test_format_yaml_prints_the_provenance_the_binning_note_and_the_step(tmp_pat
     assert text == (
         "VIS:\n"
         "  # MEASURED 2026-11-22 WITH soxspipe 0.19.1 FROM 2 FRAMES ON 2 NIGHTS (MJD 60000 TO 60002)\n"
-        "  # PER UNBINNED PIXEL; THE REDUCTION MULTIPLIES IT BY BINX (VIS) OR BINY (NIR)\n"
+        "  # PER UNBINNED PIXEL; THE REDUCTION MULTIPLIES IT BY BINY (VIS) OR BINX (NIR)\n"
         "  # SMALLEST PER-ORDER MEDIAN STEP; ORDER 1 20.00, ORDER 2 18.00 km/s\n"
         "  log-wavelength-step-kms: 18.0\n"
     )

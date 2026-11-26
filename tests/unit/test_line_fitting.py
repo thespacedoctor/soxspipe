@@ -3,6 +3,10 @@
 The measurement runs on synthetic frames: a wavelength map that is linear along the dispersion axis, a slit map in
 arcsec across it, and Gaussian emission lines of a known FWHM that fill the slit. The resolving power it returns
 must match `centre / FWHM` of the lines that were put in.
+
+The maps have the layout of the real `DISP_IMAGE` files of each arm (DY-2455): the wavelength runs along numpy axis 0
+for VIS and numpy axis 1 for NIR, as `measurement_common.disp_image_axis` says. That lookup is pinned to the real
+layout in `test_measurement_common.py`.
 """
 
 from __future__ import annotations
@@ -12,9 +16,10 @@ from typing import Any
 import numpy as np
 import pytest
 
-from tests.unit._arc_scene import LINE_COLUMNS, ROWS, Scene
+from tests.unit._arc_scene import LINE_INDICES, SLIT_SAMPLES, Scene
 from tests.unit._tools_loader import load_tool
 
+common = load_tool("measurement_common")
 line_fitting = load_tool("line_fitting")
 
 pytestmark = pytest.mark.unit
@@ -28,21 +33,22 @@ def _measure(scene: Scene, **overrides: Any) -> list:
         "wavelength": scene.wavelength,
         "slit": scene.slit,
         "order": scene.order,
-        "dispersionAxis": "x",
+        "axis": common.disp_image_axis(scene.arm),
     }
     arguments.update(overrides)
     return line_fitting.measure_lines(**arguments)
 
 
-def test_measure_lines_recovers_the_resolving_power_of_isolated_lines() -> None:
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_measure_lines_recovers_the_resolving_power_of_isolated_lines(arm: str) -> None:
     # ARRANGE
-    scene = Scene(fwhmPx=3.0)
+    scene = Scene(arm=arm, fwhmPx=3.0)
 
     # ACT
     lines = _measure(scene)
 
     # ASSERT
-    assert len(lines) == len(LINE_COLUMNS)
+    assert len(lines) == len(LINE_INDICES)
     for line in lines:
         assert line.order == 1
         assert line.fwhmPx == pytest.approx(3.0, rel=0.03)
@@ -61,42 +67,22 @@ def test_measure_lines_reports_a_wider_line_as_a_lower_resolving_power() -> None
     assert narrow == pytest.approx(2 * wide, rel=0.06)
 
 
-def test_measure_lines_works_when_the_dispersion_axis_is_y() -> None:
-    # ARRANGE
-    scene = Scene(fwhmPx=3.0)
-
-    # ACT
-    lines = _measure(
-        scene,
-        data=scene.data.T,
-        good=scene.good.T,
-        wavelength=scene.wavelength.T,
-        slit=scene.slit.T,
-        order=scene.order.T,
-        dispersionAxis="y",
-    )
-
-    # ASSERT
-    assert len(lines) == len(LINE_COLUMNS)
-    assert lines[0].fwhmPx == pytest.approx(3.0, rel=0.03)
-
-
 def test_measure_lines_leaves_out_a_line_with_a_bad_pixel_in_its_fit_window() -> None:
     # ARRANGE
     scene = Scene()
-    scene.good[scene.pixel_at(scene.centres[3] + 0.02, row=ROWS // 2)] = False
+    scene.good[scene.pixel_at(scene.centres[3] + 0.02, slitIndex=SLIT_SAMPLES // 2)] = False
 
     # ACT
     lines = _measure(scene)
 
     # ASSERT
-    assert len(lines) == len(LINE_COLUMNS) - 1
+    assert len(lines) == len(LINE_INDICES) - 1
     assert all(abs(line.centreNm - scene.centres[3]) > 0.05 for line in lines)
 
 
 def test_measure_lines_leaves_out_two_lines_that_blend() -> None:
     # ARRANGE
-    scene = Scene(lineColumns=[300, 306, 900, 1500])
+    scene = Scene(lineIndices=[300, 306, 900, 1500])
 
     # ACT
     lines = _measure(scene)
@@ -126,7 +112,7 @@ def test_measure_lines_uses_the_slit_range_it_is_given() -> None:
     lines = _measure(scene, slitRange=(2.0, 5.0))
 
     # ASSERT
-    assert len(lines) == len(LINE_COLUMNS)
+    assert len(lines) == len(LINE_INDICES)
 
 
 def test_measure_lines_returns_nothing_when_no_pixel_belongs_to_an_order() -> None:
