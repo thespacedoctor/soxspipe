@@ -44,7 +44,7 @@ The recipe uses this value, in place of the `QC RAW RON` of the master bias, in 
 - The sky fit uses $\sqrt{r_{\rm science}^2 + r_{\rm bias}^2 / N}$, where $r_{\rm bias}$ is the single-frame read noise of the master bias and $N$ is the number of frames the master bias combined.
 - The sky-line signal-to-noise of the extraction uses it.
 
-The recipe writes the value to the product headers as the `QC SCI RON` keyword, in $e^{-}$, and to the QC table. A reduction that extracts each frame on its own writes the value of that frame to each product. A nodding recipe writes the value of the last stack it records.
+The recipe writes the value to the product headers as the `QC SCI RON` keyword, in $e^{-}$, and to the QC table. A reduction that extracts each frame on its own writes the value of that frame to each product. A nod or offset cycle writes the value of its A−B difference, $\sqrt{r_A^2 + r_B^2}$. The stacked spectrum of several cycles, and the combined spectrum of a nod reduced as stare, write the root mean square of the values that went into them.
 
 The recipe writes a warning, and uses the read noise of the master bias for that frame, if the prescan is missing from the frame or if its scatter is not a positive number. The frame then has no `QC SCI RON` keyword.
 
