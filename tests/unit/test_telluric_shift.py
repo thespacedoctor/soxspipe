@@ -13,6 +13,7 @@ from soxspipe.commonutils.telluric_shift import (
     MIN_BAND_LINES,
     fit_line_centroid,
     load_telluric_lines,
+    measure_telluric_shift,
     measure_line_shifts,
     plot_telluric_shift_qc,
     record_telluric_qcs,
@@ -88,6 +89,50 @@ def test_fit_returns_none_when_the_window_holds_too_few_samples() -> None:
 
     # ACT
     fit = fit_line_centroid(wavelength, np.ones(3), 1500.0, HALF_WINDOW_NM)
+
+    # ASSERT
+    assert fit is None
+
+
+def test_fit_returns_none_when_the_window_has_no_positive_continuum() -> None:
+    # ARRANGE
+    wavelength, flux = _spectrum(1500.0, depth=0.4, noise=0.005, seed=10)
+
+    # ACT
+    fit = fit_line_centroid(wavelength, -flux, 1500.0, HALF_WINDOW_NM)
+
+    # ASSERT
+    assert fit is None
+
+
+def test_fit_returns_none_when_the_optimiser_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    wavelength, flux = _spectrum(1500.0, depth=0.4, noise=0.005, seed=11)
+
+    def failing(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("Optimal parameters not found")
+
+    monkeypatch.setattr("scipy.optimize.curve_fit", failing)
+
+    # ACT
+    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
+
+    # ASSERT
+    assert fit is None
+
+
+def test_fit_returns_none_when_the_centre_has_no_finite_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    # ARRANGE
+    wavelength, flux = _spectrum(1500.0, depth=0.4, noise=0.005, seed=13)
+    params = np.array([1500.0, 0.1, 0.4, 1.0, 0.0])
+
+    def unconstrained(*args: object, **kwargs: object) -> tuple:
+        return params, np.full((5, 5), np.inf)
+
+    monkeypatch.setattr("scipy.optimize.curve_fit", unconstrained)
+
+    # ACT
+    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
 
     # ASSERT
     assert fit is None
@@ -223,6 +268,42 @@ def test_measure_line_shifts_recovers_the_shift_of_every_line_in_the_spectrum() 
     assert shifts["band"].eq("H2O_1130").all()
     assert shifts["shiftNm"].to_numpy() == pytest.approx(-0.08, abs=0.01)
     assert (shifts["errorNm"] < 0.01).all()
+
+
+def test_a_line_too_close_to_the_edge_of_an_order_for_its_window_is_not_fitted() -> None:
+    # ARRANGE
+    spectrum = _order_frame(10, 1110.0, 1145.0, shiftNm=0.0, noise=0.004, seed=14)
+    lines = _line_table().iloc[[0]].assign(WAVELENGTH=1110.3)
+
+    # ACT
+    shifts = measure_line_shifts(spectrum, lines)
+
+    # ASSERT
+    assert shifts.empty
+
+
+def test_measure_telluric_shift_reports_every_band_of_the_line_list() -> None:
+    # ARRANGE
+    spectrum = _order_frame(10, 1110.0, 1145.0, shiftNm=-0.08, noise=0.004, seed=15)
+    lines = pd.concat([_line_table(), _line_table().assign(BAND="H2O_1450", WAVELENGTH=1450.0)], ignore_index=True)
+
+    # ACT
+    result = measure_telluric_shift(spectrum, lines)
+
+    # ASSERT
+    assert result.bands.set_index("band")["isMeasured"].to_dict() == {"H2O_1130": True, "H2O_1450": False}
+    assert result.shiftNm == pytest.approx(-0.08, abs=0.01)
+
+
+def test_an_order_with_too_few_samples_is_skipped() -> None:
+    # ARRANGE
+    tiny = _order_frame(10, 1110.0, 1145.0, shiftNm=0.0, noise=0.004, seed=12).iloc[:4]
+
+    # ACT
+    shifts = measure_line_shifts(tiny, _line_table())
+
+    # ASSERT
+    assert shifts.empty
 
 
 def test_a_line_in_two_overlapping_orders_is_reported_once_from_the_better_fit() -> None:

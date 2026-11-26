@@ -49,13 +49,39 @@ class line_fit:
 
 
 def _absorption_line(wavelength, centre, sigma, depth, level, slope, reference):
-    """A straight continuum, anchored at ``reference``, times one Gaussian absorption line."""
+    """*a straight continuum, anchored at ``reference``, times one Gaussian absorption line*
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the wavelengths (nm)
+    - ``centre`` -- the line centre (nm)
+    - ``sigma`` -- the Gaussian width (nm)
+    - ``depth`` -- the fractional depth of the line
+    - ``level`` -- the continuum level at ``reference``
+    - ``slope`` -- the continuum slope per nm
+    - ``reference`` -- the wavelength at which the continuum equals ``level`` (nm)
+
+    **Return:**
+
+    - ``flux`` -- the model flux at ``wavelength``
+    """
     line = 1.0 - depth * np.exp(-0.5 * ((wavelength - centre) / sigma) ** 2)
     return (level + slope * (wavelength - reference)) * line
 
 
 def _hits_a_bound(params, lower, upper):
-    """Whether the fitted centre or width sits on the edge of its allowed range, so the fit found no line there."""
+    """*whether the fitted centre or width sits on the edge of its allowed range, so the fit found no line there*
+
+    **Key Arguments:**
+
+    - ``params`` -- the fitted parameters, centre first and width second
+    - ``lower`` -- the lower bound of each parameter
+    - ``upper`` -- the upper bound of each parameter
+
+    **Return:**
+
+    - ``hitsBound`` -- True if the centre or the width is within ``BOUND_MARGIN`` of its range edge
+    """
     for index in (0, 1):
         margin = BOUND_MARGIN * (upper[index] - lower[index])
         if params[index] - lower[index] < margin or upper[index] - params[index] < margin:
@@ -107,7 +133,8 @@ def fit_line_centroid(wavelength, flux, lineNm, halfWindowNm, sigmaGuessNm=0.1, 
         return None
     if _hits_a_bound(params, lower, upper):
         return None
-    errorNm = float(np.sqrt(covariance[0, 0])) if np.isfinite(covariance[0, 0]) else np.nan
+    with np.errstate(invalid="ignore"):
+        errorNm = float(np.sqrt(covariance[0, 0]))
     if not np.isfinite(errorNm):
         return None
     return line_fit(centroidNm=float(params[0]), errorNm=errorNm, depth=float(params[2]), sigmaNm=float(params[1]))
@@ -232,13 +259,34 @@ def summarise_telluric_shift(lineShifts, bandNames=()):
 
 
 def _line_window(lineNm):
-    """The fit half-window and the starting line width (nm) of a line, from the reference resolving power."""
+    """*the fit half-window and the starting line width of a line, from the reference resolving power*
+
+    **Key Arguments:**
+
+    - ``lineNm`` -- the catalogue wavelength of the line (nm)
+
+    **Return:**
+
+    - ``halfWindowNm`` -- the half-width of the fit window (nm)
+    - ``sigmaNm`` -- the starting Gaussian width (nm)
+    """
     fwhmNm = lineNm / REFERENCE_RESOLVING_POWER
     return HALF_WINDOW_FWHM * fwhmNm, fwhmNm / FWHM_PER_SIGMA
 
 
 def _fit_lines_in_order(wavelength, flux, lines):
-    """Fit every line whose whole window lies inside one order; return the rows."""
+    """*fit every line whose whole window lies inside one order*
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the wavelengths of the order, ascending (nm)
+    - ``flux`` -- the flux of the order
+    - ``lines`` -- the line list rows that fall in the order (``BAND``, ``WAVELENGTH``)
+
+    **Return:**
+
+    - ``rows`` -- one dictionary per fitted line
+    """
     rows = []
     for band, lineNm in zip(lines["BAND"], lines["WAVELENGTH"], strict=True):
         halfWindowNm, sigmaNm = _line_window(lineNm)
