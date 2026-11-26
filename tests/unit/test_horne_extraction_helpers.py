@@ -128,7 +128,8 @@ def _configure_synthetic_orchestration(
     extractor.clippingIterationLimit = 2
     extractor.axisA = "x"
     extractor.axisB = "y"
-    extractor.recipeSettings = {"horne-extraction-profile-poly-order": 2}
+    # THE TELLURIC-LINE SHIFT QC HAS ITS OWN TESTS (test_horne_telluric_shift.py); THIS SCENE PINS THE ORCHESTRATION
+    extractor.recipeSettings = {"horne-extraction-profile-poly-order": 2, "measure-telluric-shift": False}
     extractor.recipeName = "soxs-stare"
     extractor.dateObs = "2024-01-02T03:04:05"
     extractor.notFlattened = ""

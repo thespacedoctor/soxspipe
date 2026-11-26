@@ -66,6 +66,10 @@ SKY_TUNING_SWITCHED_OFF_QC_VALUE = "skipped: switched off"
 SKY_TUNING_GLOBAL_QC_VALUE = "skylines-global"
 SKY_TUNING_PER_ORDER_QC_VALUE = "skylines-per-order"
 
+# THE RECIPE SETTING THAT SWITCHES THE TELLURIC-LINE SHIFT QC OFF WHEN IT IS False (DY-1969). THE QC IS
+# INFORMATIONAL: IT NEVER CHANGES A WAVELENGTH AND NEVER FAILS A RECIPE
+TELLURIC_SHIFT_SETTING = "measure-telluric-shift"
+
 # A NIR SKY LINE MUST STAND OUT FROM ITS SURROUNDINGS BY THIS MANY TIMES THE SAMPLE-TO-SAMPLE NOISE (DY-1968)
 NIR_SKY_PEAK_PROMINENCE_SIGMA = 5
 # TWO PEAKS CLOSER THAN THIS (IN SAMPLES) ARE ONE BLENDED LINE, SO ONLY THE HIGHER IS KEPT
@@ -665,6 +669,7 @@ class horne_extraction(base_util):
             extractedOrdersDF["pixelScaleNm"] < 3
         ]  # FILTER OUT ANY REMAINING BAD PIXELS WITH UNREALISTICALLY LARGE PIXEL SCALE (I.E. WAVELENGTH JUMPS BETWEEN ADJACENT PIXELS)
         extractedOrdersDF = self._correct_wavelengths(extractedOrdersDF, arm)
+        self._measure_telluric_shift(extractedOrdersDF, arm)
 
         mergedSpectumDF, orderJoins = self.merge_extracted_orders(extractedOrdersDF)
 
@@ -967,6 +972,79 @@ class horne_extraction(base_util):
             skyShiftsNm=self.skyShiftsNm, objectTracePath=self.objectTracePath, skyCorrections=self.skyCorrections
         )
         return tuned
+
+    def _measure_telluric_shift(self, extractedOrdersDF: "pd.DataFrame", arm: str) -> None:
+        """*record the wavelength shift of the star's telluric lines as QCs and a QC plot (DY-1969)*
+
+        The flattened extraction measures the sky-tuned orders, before the merge, flux calibration and any barycentric
+        correction. The not-flattened extraction measures nothing. The measurement is informational: it changes no
+        wavelength and never stops the recipe. An error inside it is logged as a warning, and a defect of the shipped
+        line list as an error. The recipe setting ``measure-telluric-shift`` switches it off when it is ``False``. A
+        settings file without the key, or with a value that is not ``True`` or ``False``, measures (the second case
+        also logs a warning).
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted, sky-tuned orders (not changed)
+        - ``arm`` -- the arm of the instrument
+        """
+        from soxspipe.commonutils.telluric_shift import TelluricLineListError
+
+        switchedOn = self.recipeSettings.get(TELLURIC_SHIFT_SETTING, True)
+        if not isinstance(switchedOn, bool):
+            self.log.warning(
+                f"The `{TELLURIC_SHIFT_SETTING}` setting must be True or False, not {switchedOn!r}; "
+                "the telluric-line shift is measured as if it were True"
+            )
+            switchedOn = True
+        if self.notFlattened or not switchedOn:
+            return
+        if isinstance(self.qc, bool):
+            self.log.debug("The telluric-line shift is not measured: there is no QC table to record it in")
+            return
+        try:
+            self._record_telluric_shift(extractedOrdersDF, arm)
+        except TelluricLineListError as error:
+            self.log.error(f"The telluric-line shift is not measured, the shipped line list is faulty: {error}")
+        except Exception as error:  # noqa: BLE001 - AN INFORMATIONAL QC MUST NEVER STOP A RECIPE
+            self.log.warning(f"The telluric-line shift could not be measured: {error!r}")
+
+    def _record_telluric_shift(self, extractedOrdersDF: "pd.DataFrame", arm: str) -> None:
+        """*measure the telluric-line shift, append its QCs and write and register its QC plot*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted, sky-tuned orders
+        - ``arm`` -- the arm of the instrument
+        """
+        from soxspipe.commonutils import telluric_shift
+        from soxspipe.commonutils.toolkit import append_product, utcnow_string
+
+        lines = telluric_shift.load_telluric_lines(self.log, self.settings, arm)
+        if lines is None:
+            self.log.print("\tNo telluric line list for this instrument, so no telluric-line shift is measured")
+            return
+        result = telluric_shift.measure_telluric_shift(extractedOrdersDF, lines)
+        utcnow = utcnow_string()
+        self.qc = telluric_shift.record_telluric_qcs(self.qc, result, self.recipeName, self.dateObs, utcnow)
+        self.log.print(telluric_shift.telluric_shift_summary(result))
+
+        filename = self.filenameTemplate.replace(".fits", f"_TELLURIC_SHIFT_QC_PLOT{self.noddingSequence}.pdf")
+        filePath = f"{self.qcDir}/{filename}"
+        telluric_shift.plot_telluric_shift_qc(result, filePath, f"Telluric-line shift of the star ({arm.upper()})")
+        if not isinstance(self.products, bool):
+            self.products = append_product(
+                self.products,
+                recipeName=self.recipeName,
+                productLabel=f"TELLURIC_SHIFT_QC_PLOT{self.noddingSequence}",
+                fileName=filename,
+                filePath=filePath,
+                productDesc="Telluric-line shift of the star against wavelength",
+                obsDateUtc=self.dateObs,
+                reductionDateUtc=utcnow,
+                fileType="PDF",
+                label="QC",
+            )
 
     def _apply_flat_pass_shifts(self, extractedOrdersDF, arm):
         """*shift each order by the sky shift the flattened extraction of the same frame applied (DY-1680)*
