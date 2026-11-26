@@ -1,13 +1,16 @@
 """*synthetic arc and sky frames, with the maps of a DISP_IMAGE, for the line-measurement tests of tools/*
 
-The wavelength map is linear along the dispersion axis (x) and tilted by `ROW_TILT` pixels per row, so the pixels of one
+The wavelength map is linear along the dispersion and tilted by `ROW_TILT` pixels per row, so the pixels of one
 wavelength bin come from many columns, as they do on a real frame. The lines are Gaussian in wavelength, so they follow
 that map and their FWHM in pixels is known.
+
+The arrays have the layout of the real `DISP_IMAGE` maps (DY-2455): the wavelength runs along numpy axis 0 for VIS and
+along numpy axis 1 for NIR. On the 2026-01-12 maps the median step between neighbouring pixels is 0.0335 nm along axis 0
+and 0.0051 nm along axis 1 for VIS, and 0.0088 nm along axis 0 and 0.0498 nm along axis 1 for NIR.
 """
 
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 
 import numpy as np
@@ -23,13 +26,15 @@ AMPLITUDE = 5000.0
 FWHM_PER_SIGMA = 2.3548
 LINE_COLUMNS = list(range(150, 1900, 150))
 ROW_TILT = 0.37
+DISPERSION_NUMPY_AXIS = {"VIS": 0, "NIR": 1}
 
 
 class Scene:
-    """*a synthetic frame with the maps that a DISP_IMAGE carries; dispersion along x*
+    """*a synthetic frame with the maps that a DISP_IMAGE carries, in the real layout of the arm*
 
     **Key Arguments:**
 
+    - ``arm`` -- ``VIS`` (wavelength along numpy axis 0) or ``NIR`` (along axis 1). Default ``VIS``
     - ``fwhmPx`` -- the FWHM of every line, in pixels. Default 3
     - ``lineColumns`` -- the columns of the line centres at the middle row. Default every 150 columns
     - ``minSlit`` -- the lines are present only where ``|slit|`` is at least this, in arcsec. Default 0
@@ -40,6 +45,7 @@ class Scene:
 
     def __init__(
         self,
+        arm: str = "VIS",
         fwhmPx: float = 3.0,
         lineColumns: list[int] | None = None,
         minSlit: float = 0.0,
@@ -64,17 +70,21 @@ class Scene:
             data += AMPLITUDE * np.exp(-0.5 * ((self.wavelength - centre) / sigmaNm) ** 2) * isLit
         self.data = data
         self.good = np.ones((ROWS, COLUMNS), dtype=bool)
+        self.arm = arm
+        self.isTransposed = DISPERSION_NUMPY_AXIS[arm] == 0
+        if self.isTransposed:
+            for name in ("wavelength", "slit", "order", "data", "good"):
+                setattr(self, name, getattr(self, name).T.copy())
 
-    def transposed(self) -> Scene:
-        """*the same scene with the dispersion along y, as the NIR arm has it*"""
-        other = copy.copy(self)
-        for name in ("wavelength", "slit", "order", "data", "good"):
-            setattr(other, name, getattr(self, name).T.copy())
-        return other
+    def slit_row(self, slitArcsec: float) -> int:
+        """*the slit-position index (the ``row`` of ``pixel_at``) nearest to a slit position in arcsec*"""
+        slitAxis = self.slit[0, :] if self.isTransposed else self.slit[:, 0]
+        return int(np.argmin(np.abs(slitAxis - slitArcsec)))
 
     def pixel_at(self, centreNm: float, row: int) -> tuple[int, int]:
-        """*the (row, column) of the pixel in a row whose wavelength is closest to a wavelength*"""
-        return row, int(round((centreNm - START_NM) / NM_PER_PIXEL - ROW_TILT * row))
+        """*the array index of the pixel, along a slit position ``row``, whose wavelength is closest to a wavelength*"""
+        column = int(round((centreNm - START_NM) / NM_PER_PIXEL - ROW_TILT * row))
+        return (column, row) if self.isTransposed else (row, column)
 
     def expected_resolving_power(self, centreNm: float) -> float:
         """*the resolving power of a line at a wavelength: centre over FWHM in nm*"""
@@ -87,10 +97,10 @@ def write_raw_arc(path: Path, scene: Scene, header: fits.Header) -> Path:
     return path
 
 
-def write_disp_image(path: Path, scene: Scene, mjd: float = 60000.1, arm: str = "VIS") -> Path:
-    """*write a scene's maps as a DISP_IMAGE: ``WAVELENGTH`` primary, then ``SLIT`` and ``ORDER``*"""
+def write_disp_image(path: Path, scene: Scene, mjd: float = 60000.1) -> Path:
+    """*write a scene's maps as a DISP_IMAGE of the scene's arm: ``WAVELENGTH`` primary, then ``SLIT`` and ``ORDER``*"""
     header = fits.Header()
-    header["ESO SEQ ARM"] = arm
+    header["ESO SEQ ARM"] = scene.arm
     header["MJD-OBS"] = mjd
     primary = fits.PrimaryHDU(scene.wavelength.astype(np.float32), header=header)
     primary.header["EXTNAME"] = "WAVELENGTH"

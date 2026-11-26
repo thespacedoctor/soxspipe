@@ -154,10 +154,13 @@ def test_pair_frames_with_maps_leaves_a_frame_with_no_map_in_range_unpaired() ->
     assert [arc.path for arc in unpaired] == [Path("a")]
 
 
-def test_measure_arc_reads_the_frame_and_the_maps_and_returns_the_lines(tmp_path: Path, full_frame_trim: None) -> None:
-    # ARRANGE
-    scene = Scene(fwhmPx=3.0)
-    arc = frames_tool.read_arc_ref(write_raw_arc(tmp_path / "arc.fits", scene, raw_header()))
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_measure_arc_fits_the_lines_along_the_dispersion_of_the_arm_in_the_real_map_layout(
+    tmp_path: Path, full_frame_trim: None, arm: str
+) -> None:
+    # ARRANGE: THE WAVELENGTH RUNS ALONG NUMPY AXIS 0 FOR VIS AND AXIS 1 FOR NIR IN THE REAL DISP_IMAGE FILES (DY-2455)
+    scene = Scene(arm=arm, fwhmPx=3.0)
+    arc = frames_tool.read_arc_ref(write_raw_arc(tmp_path / "arc.fits", scene, raw_header(arm=arm)))
     mapRef = frames_tool.read_map_ref(write_disp_image(tmp_path / "map_DISP_IMAGE.fits", scene))
 
     # ACT
@@ -165,6 +168,9 @@ def test_measure_arc_reads_the_frame_and_the_maps_and_returns_the_lines(tmp_path
 
     # ASSERT
     assert len(lines) == len(LINE_COLUMNS)
+    assert np.median([line.resolvingPower for line in lines]) == pytest.approx(
+        scene.expected_resolving_power(np.median(scene.centres)), rel=0.03
+    )
 
 
 def test_measure_arc_leaves_out_lines_that_reach_the_saturation_level(tmp_path: Path, full_frame_trim: None) -> None:
@@ -224,10 +230,13 @@ def test_read_sky_ref_raises_for_a_file_that_is_not_a_skysub_product(tmp_path: P
         frames_tool.read_sky_ref(path)
 
 
-def test_measure_sky_adds_the_sky_model_back_and_measures_lines_2_to_5_arcsec_from_the_centre(tmp_path: Path) -> None:
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_measure_sky_adds_the_sky_model_back_and_measures_lines_2_to_5_arcsec_from_the_centre(
+    tmp_path: Path, arm: str
+) -> None:
     # ARRANGE: SKY LINES ONLY MORE THAN 1.9 ARCSEC FROM THE CENTRE, ON A FRAME THE SIZE OF THE MAPS
-    scene = Scene(fwhmPx=3.0, minSlit=1.9)
-    sky = frames_tool.read_sky_ref(write_sky_pair(tmp_path / "stare_SKYSUB.fits", scene, sky_header()))
+    scene = Scene(arm=arm, fwhmPx=3.0, minSlit=1.9)
+    sky = frames_tool.read_sky_ref(write_sky_pair(tmp_path / "stare_SKYSUB.fits", scene, sky_header(arm=arm)))
     mapRef = frames_tool.read_map_ref(write_disp_image(tmp_path / "map_DISP_IMAGE.fits", scene))
 
     # ACT
@@ -243,7 +252,7 @@ def test_measure_sky_adds_the_sky_model_back_and_measures_lines_2_to_5_arcsec_fr
 def test_measure_sky_leaves_out_a_line_that_the_quality_extension_flags(tmp_path: Path) -> None:
     # ARRANGE: ONE FLAGGED PIXEL AT +3 ARCSEC, INSIDE THE FIT WINDOW OF THE FOURTH LINE
     scene = Scene(fwhmPx=3.0, minSlit=1.9)
-    row = int(np.argmin(np.abs(scene.slit[:, 0] - 3.0)))
+    row = scene.slit_row(3.0)
     badPixel = scene.pixel_at(scene.centres[3] + 0.02, row)
     sky = frames_tool.read_sky_ref(write_sky_pair(tmp_path / "stare_SKYSUB.fits", scene, sky_header(), badPixel))
     mapRef = frames_tool.read_map_ref(write_disp_image(tmp_path / "map_DISP_IMAGE.fits", scene))
