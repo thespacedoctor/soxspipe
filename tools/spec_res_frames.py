@@ -97,8 +97,8 @@ def science_slices(arm: str, binX: int, binY: int) -> tuple[slice, slice]:
     **Key Arguments:**
 
     - ``arm`` -- ``VIS`` or ``NIR``
-    - ``binX`` -- the binning along x
-    - ``binY`` -- the binning along y
+    - ``binX`` -- the ``ESO DET BINX`` binning, which bins the columns (FITS NAXIS1)
+    - ``binY`` -- the ``ESO DET BINY`` binning, which bins the rows (FITS NAXIS2)
 
     **Return:**
 
@@ -150,7 +150,8 @@ def read_arc_ref(path: Path) -> ArcRef | None:
     if not is_slit_arc(header):
         return None
     arm, slit, mjd = _identity(header, path)
-    binX, binY = common.binning_along(header, 1, arm, path), common.binning_along(header, 0, arm, path)
+    binX = common.binning_along(header, common.COLUMN_AXIS, arm, path)
+    binY = common.binning_along(header, common.ROW_AXIS, arm, path)
     return ArcRef(Path(path), arm, slit, mjd, binX, binY)
 
 
