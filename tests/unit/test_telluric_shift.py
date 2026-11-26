@@ -11,6 +11,7 @@ import pytest
 from astropy.io import fits
 
 from soxspipe.commonutils.telluric_shift import (
+    MAX_LINE_ERROR_NM,
     MIN_BAND_LINES,
     fit_line_centroid,
     load_telluric_lines,
@@ -147,7 +148,7 @@ def test_a_noise_only_window_gives_no_usable_centroid() -> None:
     fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
 
     # ASSERT
-    assert fit is None or fit.errorNm > 0.02 or fit.depth < 0.05
+    assert fit is None or fit.errorNm > MAX_LINE_ERROR_NM or fit.depth < 0.05
 
 
 def _line_rows(band: str, shiftsNm: list[float], errorNm: float = 0.005) -> pd.DataFrame:
@@ -203,6 +204,17 @@ def test_lines_with_a_centroid_error_above_the_limit_do_not_count_towards_the_ga
     row = bands.set_index("band").loc["CO2_2000"]
     assert bool(row["isMeasured"]) is False
     assert row["nLines"] == MIN_BAND_LINES - 1
+
+
+def test_a_line_just_under_the_error_limit_counts_towards_the_gate() -> None:
+    # ARRANGE
+    lines = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=MAX_LINE_ERROR_NM * 0.99)
+
+    # ACT
+    bands = summarise_bands(lines)
+
+    # ASSERT
+    assert bool(bands.set_index("band").loc["CO2_2000", "isMeasured"]) is True
 
 
 def test_overall_shift_is_the_median_of_the_lines_in_measured_bands_only() -> None:
