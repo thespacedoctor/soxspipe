@@ -28,6 +28,7 @@ REMOVED_ARII_NM = [1902.3024, 1948.1178, 1963.88837, 1982.6433, 1995.2419, 2000.
 # DY-2448: THE ArII 2002.881 SET SAT 8.9 px FROM THE NEAREST PEAK (x = 1677.7, 2002.97 nm, 0.87 A FROM THE LABEL, NO
 # OTHER NIST LINE NEAR IT) AND 3.3 px FROM A BRIGHTER UNIDENTIFIED PEAK (x = 1672.1, 2002.52 nm), SO IT IS REMOVED
 ARII_2002_881_NM = 2002.88075
+ARII_2002_881_ATOL_NM = 1e-3
 # 7 ArII SETS OUT, 1 HgI SET IN (DY-1970), THEN THE ArII 2002.881 SET OUT (DY-2448)
 SPH_O10_ROWS_AFTER = SPH_O10_ROWS_BEFORE - (len(REMOVED_ARII_NM) + 1) * PINHOLES_PER_LINE + PINHOLES_PER_LINE
 NEI_SHIFT_X_PX = 3.86
@@ -57,7 +58,8 @@ HGI_POSITIONS = [
     (1270.6418629320804, 418.8197060197414),
     (1269.6192418571436, 422.7063762219037),
 ]
-# THE ORDER 10 LINES THE EDIT ADDED (HgI) OR MOVED (NeI); THE OTHER ORDER 10 ROWS ARE UNTOUCHED
+# THE ORDER 10 LINES THE DY-1970 EDIT ADDED (HgI) OR MOVED (NeI); THE OTHER ORDER 10 ROWS ARE UNTOUCHED, EXCEPT THAT
+# DY-2448 ALSO REMOVED THE ArII 2002.881 SET FROM ORDER 10 (SO NO ROW OF IT IS HASHED)
 TOUCHED_SETS = [("NeI", NEI_NM), ("HgI", HGI_NM)]
 # SHA-256 OF THE UNTOUCHED ORDER 10 ROWS (EVERY ROW BUT THE TOUCHED SETS), IN FILE ORDER
 # REGENERATE WITH untouched_rows_checksum(read_table(SPH_TABLE), EDITED_ORDER, TOUCHED_SETS);
@@ -97,24 +99,14 @@ def test_mislabelled_arii_set_is_absent_from_order_10(wavelength: float) -> None
     assert len(rows) == 0
 
 
-def test_arii_2002_881_is_absent_from_order_10() -> None:
-    # ARRANGE
-    table = read_table(SPH_TABLE)
-
-    # ACT
-    rows = set_rows(table, EDITED_ORDER, "ArII", ARII_2002_881_NM)
-
-    # ASSERT
-    assert len(rows) == 0
-
-
 def test_arii_2002_881_is_absent_from_every_order() -> None:
     # ARRANGE
     table = read_table(SPH_TABLE)
-    atol = 1e-3
 
     # ACT
-    nearby = np.isclose(np.asarray(table["wavelength"], dtype=float), ARII_2002_881_NM, rtol=0, atol=atol)
+    nearby = np.isclose(
+        np.asarray(table["wavelength"], dtype=float), ARII_2002_881_NM, rtol=0, atol=ARII_2002_881_ATOL_NM
+    )
 
     # ASSERT
     assert not nearby.any()
