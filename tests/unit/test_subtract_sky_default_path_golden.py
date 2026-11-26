@@ -6,7 +6,7 @@ re-recorded for DY-2081 (the VIS arrays: the pre-fit clip no longer retries once
 Gaussian sky noise would; the fix does not change the NIR arrays, the VIS ``ERRS`` or the VIS mask) and for DY-2079
 (below). The frame has two orders. Order 12 holds a star, sky lines and cosmic rays, and order 13 holds sky lines and
 cosmic rays, so the rolling clip, the object masking, the DY-1972 skyline restore, the object-wing correction and
-(NIR) the DY-1973 error inflation all act on it.
+the DY-1973 error inflation (NIR, and VIS since DY-2436) all act on it.
 
 The frame has 96 slit pixels per column and 100 cosmic rays per order. It had 24 slit pixels and 25 cosmic rays when the
 file was recorded from a151d6c5. At 24 pixels the pre-fit clip can flag every pixel of a sky-line core in the VIS arm,
@@ -47,6 +47,13 @@ Only the VIS sky model and sky-subtracted frame change, in 76145 and 76144 of 76
 1e-3, by at most 4.4 e- (+4.0 up, -4.4 down). The median signed change over those pixels is +0.019 e- in the model and
 -0.019 e- in the subtracted frame, and no pixel moves by more than 10 e-. The model still holds every sky line in both
 orders.
+
+DY-2436 turned the DY-1973 error inflation on for the shipped VIS stare settings (and for a SOXS VIS arm whose
+settings lack the key), so only the VIS ``ERRS`` array was re-recorded, on the DY-2436 branch. The VIS model,
+sky-subtracted and mask arrays and all the NIR arrays are bit-identical to the stored file, and only ``VIS_errs``
+changed. (Re-running the synthetic frame gives the VIS model and subtracted frame to within 6.1e-05 e- and 3.0e-05 e-,
+which is float32 rounding.) The VIS ``ERRS`` are now at most 1.43 times the input error, 48% of the pixels are above
+1.01 times it (as NIR), and the median ratio is 1.007.
 
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. ``log`` is
@@ -299,9 +306,9 @@ def test_the_golden_model_holds_every_sky_line_in_both_orders(golden: dict[str, 
                 )
 
 
-def test_the_nir_errs_are_inflated_at_the_sky_lines_and_the_vis_errs_are_not(golden: dict[str, np.ndarray]) -> None:
-    # THE FRAME REACHES THE DY-1973 INFLATION: NIR ERRS RISE ABOVE THE INPUT ERROR SOMEWHERE, VIS ERRS DO NOT
+def test_the_errs_of_both_arms_are_inflated_at_the_sky_lines(golden: dict[str, np.ndarray]) -> None:
+    # THE FRAME REACHES THE DY-1973 INFLATION: THE ERRS OF BOTH ARMS RISE ABOVE THE INPUT ERROR (VIS SINCE DY-2436)
     mapTable = _map_table()
     inputError = _input_error(mapTable)
-    assert (golden["NIR_errs"] > inputError * 1.01).any()
-    assert not (golden["VIS_errs"] > inputError * 1.01).any()
+    for arm in ARMS:
+        assert (golden[f"{arm}_errs"] > inputError * 1.01).any()

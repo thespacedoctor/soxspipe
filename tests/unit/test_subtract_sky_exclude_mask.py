@@ -81,6 +81,8 @@ def _construct(log: Any, frame: CCDData, **kwargs: Any) -> subtract_sky:
                 # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
                 "object_wing_correction": False,
                 "sky_model_qc_plot": False,
+                # THE FIT STAGES ARE STUBBED, SO THE ERROR INFLATION (DY-1973) HAS NO CLIPPING COLUMNS TO READ
+                "sky_error_inflation": False,
             }
         },
         objectFrame=frame,

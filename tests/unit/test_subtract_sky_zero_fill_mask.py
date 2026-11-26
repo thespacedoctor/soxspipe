@@ -58,6 +58,8 @@ def _subtractor(log: Any, *, uncertainty: np.ndarray) -> subtract_sky:
             # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
             "object_wing_correction": False,
             "sky_model_qc_plot": False,
+            # THE STUBBED FIT STAGES LEAVE NO CLIPPING COLUMNS FOR THE ERROR INFLATION (DY-1973) TO READ
+            "sky_error_inflation": False,
         }
     }
     subtractor.get_over_sampled_sky_from_order = lambda frame, **_: frame.copy()
