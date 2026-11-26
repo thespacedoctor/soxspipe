@@ -11,6 +11,7 @@ import pytest
 from astropy.io import fits
 from astropy.table import Table
 
+import soxspipe
 from soxspipe.commonutils.telluric_shift import (
     MAX_LINE_ERROR_NM,
     MIN_BAND_LINES,
@@ -258,7 +259,7 @@ def test_overall_shift_is_the_median_of_the_lines_in_measured_bands_only() -> No
 
 def test_overall_shift_is_missing_when_no_band_is_measured() -> None:
     # ARRANGE
-    lines = _line_rows("O2_A", [0.1, 0.1])
+    lines = _line_rows("O2_B", [0.1, 0.1])
 
     # ACT
     result = summarise_telluric_shift(lines)
@@ -468,8 +469,8 @@ def test_the_header_gets_all_three_cards_when_no_band_is_measured() -> None:
     assert not [key for key in header if "O2_B" in key]
 
 
-NIR_BANDS = {"H2O_1130", "H2O_1450", "H2O_1800", "CO2_2000"}
-VIS_BANDS = {"O2_B", "H2O_720", "O2_A", "H2O_940"}
+NIR_BANDS = {"H2O_940", "H2O_1130", "H2O_1450", "H2O_1800"}
+VIS_BANDS = {"O2_B", "H2O_720"}
 
 
 @pytest.mark.parametrize(("arm", "bands"), [("NIR", NIR_BANDS), ("VIS", VIS_BANDS)])
@@ -487,6 +488,62 @@ def test_the_shipped_line_list_holds_only_the_bands_of_the_requested_arm(
     assert set(lines["BAND"]) <= bands
     assert lines["WAVELENGTH"].is_monotonic_increasing
     assert lines["WAVELENGTH"].dtype == float
+
+
+def _shipped_line_list() -> pd.DataFrame:
+    path = Path(soxspipe.__file__).parent / "resources" / "static_calibrations" / "soxs" / "telluric_lines.fits"
+    lines = Table.read(path, format="fits").to_pandas()
+    for column in ("BAND", "ARM"):
+        lines[column] = (
+            lines[column].map(lambda value: value.decode() if isinstance(value, bytes) else value).str.strip()
+        )
+    return lines
+
+
+def test_the_shipped_line_list_has_the_ruled_bands_each_with_enough_lines() -> None:
+    # ACT
+    lines = _shipped_line_list()
+    perBand = lines.groupby("BAND").size()
+
+    # ASSERT
+    assert set(perBand.index) <= NIR_BANDS | VIS_BANDS
+    assert perBand.min() >= MIN_BAND_LINES
+
+
+def test_the_h2o_940_band_belongs_to_the_nir_arm() -> None:
+    # ACT
+    lines = _shipped_line_list()
+    arms = lines.groupby("BAND")["ARM"].unique()
+
+    # ASSERT
+    assert list(arms["H2O_940"]) == ["NIR"]
+
+
+def test_the_shipped_line_list_header_records_the_model_settings_and_the_selection_limits() -> None:
+    # ARRANGE
+    path = Path(soxspipe.__file__).parent / "resources" / "static_calibrations" / "soxs" / "telluric_lines.fits"
+
+    # ACT
+    with fits.open(path) as hdus:
+        header = hdus["TELLURIC_LINES"].header
+
+    # ASSERT
+    for keyword in (
+        "MODEL TEMPERATURE",
+        "MODEL PRESSURE",
+        "MODEL AIRMASS",
+        "MODEL H2O COLUMN",
+        "MODEL H2O COLUMN FACTORS",
+        "MODEL RESOLVING POWERS VIS",
+        "MODEL RESOLVING POWERS NIR",
+        "SELECT MIN DEPTH",
+        "SELECT MAX DEPTH",
+        "SELECT MAX SPREAD",
+        "SELECT MAX OFFSET",
+        "SELECT MERGE DISTANCE",
+        "SELECT DROPPED BANDS",
+    ):
+        assert keyword in header
 
 
 def test_an_instrument_without_a_line_list_has_no_telluric_lines(log: object) -> None:
