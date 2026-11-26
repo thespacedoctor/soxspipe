@@ -8,13 +8,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+from astropy.io import fits
 
 from soxspipe.commonutils.telluric_shift import (
     MIN_BAND_LINES,
     fit_line_centroid,
     load_telluric_lines,
-    measure_telluric_shift,
     measure_line_shifts,
+    measure_telluric_shift,
     plot_telluric_shift_qc,
     record_telluric_qcs,
     summarise_bands,
@@ -364,6 +365,25 @@ def test_the_per_band_values_go_to_the_qc_table_and_not_to_the_header() -> None:
     assert qc.loc["TELL NLINES H2O_1450", "qc_value"] == 2
     perBand = [name for name in qc.index if name.endswith(("H2O_1130", "H2O_1450"))]
     assert not qc.loc[perBand, "to_header"].any()
+
+
+def test_the_header_gets_the_three_cards_and_no_band_card() -> None:
+    # ARRANGE
+    from soxspipe.commonutils.phase3 import add_qc_to_header
+
+    lines = pd.concat(
+        [_line_rows("H2O_1130", [0.08, 0.09, 0.10, 0.11, 0.12]), _line_rows("H2O_1450", [0.9, 0.95])], ignore_index=True
+    )
+    qc = _recorded(summarise_telluric_shift(lines)).reset_index()
+
+    # ACT
+    header = add_qc_to_header(fits.Header(), qc)
+
+    # ASSERT
+    assert header["ESO QC TELL SHIFT"] == pytest.approx(0.10)
+    assert header["ESO QC TELL SHIFT ERR"] == pytest.approx(1.4826 * 0.01 / np.sqrt(5), abs=1e-5)
+    assert header["ESO QC TELL NLINES"] == 5
+    assert not [key for key in header if "H2O_" in key]
 
 
 def test_a_run_with_no_measured_band_writes_a_zero_line_count_and_no_header_shift() -> None:
