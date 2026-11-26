@@ -782,3 +782,97 @@ def test_the_stacked_spectrum_of_the_offset_cycles_carries_the_root_mean_square_
 
     # ASSERT
     assert seenAtStack == [[pytest.approx(float(np.sqrt((25.0 + 100.0) / 2.0)))]]
+
+
+def _stare_mode_nod_recipe(log: Any, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, list[list[float]]]:
+    """A stare recipe that combines nod positions, and the SCI RON QC it holds when the spectra are stacked."""
+    from soxspipe.recipes.soxs_stare import soxs_stare
+
+    recipe = soxs_stare.__new__(soxs_stare)
+    recipe.log = log
+    recipe.kw = lambda keyword: keyword
+    recipe.recipeName = "soxs-stare"
+    recipe.dateObs = None
+    recipe.qc = recipe._empty_qc_and_product_tables(pd)[0]
+    seenAtStack: list[list[float]] = []
+
+    def stack(spectra: Any, orderJoins: Any = None, notFlattened: bool = False) -> tuple[None, None]:
+        seenAtStack.append(list(recipe.qc["qc_value"]))
+        return None, None
+
+    monkeypatch.setattr(recipe, "stack_extractions", stack)
+    monkeypatch.setattr(recipe, "_combined_notes", lambda *args: [])
+    monkeypatch.setattr(recipe, "_combine_not_flattened", lambda *args: None)
+    return recipe, seenAtStack
+
+
+def _position_extraction(ron: float | None, *, traceFallback: bool = False) -> Any:
+    from soxspipe.recipes.nod_stare_stacking import stack_extraction
+
+    return stack_extraction(
+        productPath=None,
+        combinedObject=SimpleNamespace(header=_header_with_ron(ron)),
+        mergedSpectrum="spectrum",
+        orderJoins=None,
+        extractionPath=False,
+        responseInputs=None,
+        notFlatPath=None,
+        notFlatSpectrum=None,
+        traceFallback=traceFallback,
+        slitEdgeSpill=False,
+        extractionNotes=[],
+    )
+
+
+def test_the_combined_nod_spectrum_in_stare_mode_carries_the_root_mean_square_of_its_positions(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE: THE LAST POSITION (B) HAS 8 e- AND THE FIRST (A) HAS 4 e-
+    recipe, seenAtStack = _stare_mode_nod_recipe(log, monkeypatch)
+    recipe._record_science_read_noise_qc(SimpleNamespace(header=_header_with_ron(8.0)))
+
+    # ACT
+    recipe._combine_extractions({"A": _position_extraction(4.0), "B": _position_extraction(8.0)})
+
+    # ASSERT
+    assert seenAtStack == [[pytest.approx(float(np.sqrt((16.0 + 64.0) / 2.0)))]]
+
+
+def test_the_combined_nod_spectrum_leaves_out_a_position_with_no_object_trace(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seenAtStack = _stare_mode_nod_recipe(log, monkeypatch)
+
+    # ACT
+    recipe._combine_extractions({"A": _position_extraction(4.0), "B": _position_extraction(8.0, traceFallback=True)})
+
+    # ASSERT
+    assert seenAtStack == [[pytest.approx(4.0)]]
+
+
+def test_the_combined_nod_spectrum_skips_a_position_with_no_prescan_read_noise(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seenAtStack = _stare_mode_nod_recipe(log, monkeypatch)
+
+    # ACT
+    recipe._combine_extractions({"A": _position_extraction(None), "B": _position_extraction(8.0)})
+
+    # ASSERT
+    assert seenAtStack == [[pytest.approx(8.0)]]
+
+
+def test_the_combined_nod_spectrum_keeps_the_qc_when_no_position_has_a_prescan_read_noise(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe, seenAtStack = _stare_mode_nod_recipe(log, monkeypatch)
+    recipe._record_science_read_noise_qc(SimpleNamespace(header=_header_with_ron(5.1)))
+
+    # ACT
+    recipe._combine_extractions({"A": _position_extraction(None), "B": _position_extraction(None)})
+
+    # ASSERT
+    assert seenAtStack == [[pytest.approx(5.1)]]

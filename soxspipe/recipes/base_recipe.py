@@ -1735,7 +1735,7 @@ class base_recipe:
     def _prescan_read_noise_of(frame: Any) -> float | None:
         """*the prescan read noise (e-) in the header of a frame or stack, or None without a usable one*
 
-        The card holds any real number that converts to a finite float above zero (a boolean is not a number here).
+        The card holds anything ``float()`` accepts, except a boolean, that is a finite number above zero.
         The card is only ever written for a frame the science gate passed, so it needs no second check. The gate
         reads the DPR type, which the first product write scrubs from the frame header.
         """
