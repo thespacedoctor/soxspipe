@@ -20,6 +20,7 @@ from tests.unit._nir_line_tables import (
     order_checksums,
     positions_by_slit,
     read_table,
+    set_mask,
     set_rows,
     untouched_rows_checksum,
 )
@@ -35,10 +36,10 @@ ARII_2002_881_ATOL_NM = 1e-3
 # 7 ArII SETS OUT, 1 HgI SET IN (DY-1970), THEN THE ArII 2002.881 SET OUT (DY-2448)
 SPH_O10_ROWS_AFTER = SPH_O10_ROWS_BEFORE - (len(REMOVED_ARII_NM) + 1) * PINHOLES_PER_LINE + PINHOLES_PER_LINE
 # DY-2172: THE O10 HgI 1970.018 SET TAKES ITS NIST RITZ WAVELENGTH
-HGI_NM = 1970.02
+SPH_HGI_RITZ_NM = 1970.02
 # DY-2172: (ORDER, ION, NIST OBSERVED nm, NIST RITZ nm) OF THE O10 XeI AND HgI SETS THAT TAKE THEIR RITZ WAVELENGTH
 O10_RITZ_LINES = [
-    (EDITED_ORDER, "HgI", 1970.018, HGI_NM),
+    (EDITED_ORDER, "HgI", 1970.018, SPH_HGI_RITZ_NM),
     (EDITED_ORDER, "XeI", 1878.8154, 1878.814),
     (EDITED_ORDER, "XeI", 1879.166, 1879.02),
 ]
@@ -71,7 +72,7 @@ HGI_POSITIONS = [
 ]
 # THE ORDER 10 LINES THE DY-1970 EDIT ADDED (HgI) OR MOVED (NeI); THE OTHER ORDER 10 ROWS ARE UNTOUCHED, EXCEPT THAT
 # DY-2448 ALSO REMOVED THE ArII 2002.881 SET FROM ORDER 10 (SO NO ROW OF IT IS HASHED)
-TOUCHED_SETS = [("NeI", NEI_NM), ("HgI", HGI_NM)]
+TOUCHED_SETS = [("NeI", NEI_NM), ("HgI", SPH_HGI_RITZ_NM)]
 # SHA-256 OF THE UNTOUCHED ORDER 10 ROWS (EVERY ROW BUT THE TOUCHED SETS), IN FILE ORDER
 # REGENERATE WITH untouched_rows_checksum(read_table(SPH_TABLE), EDITED_ORDER, TOUCHED_SETS);
 # A LATER LEGITIMATE EDIT TO ORDER 10 MUST RE-RECORD IT; RE-RECORDED IN DY-2448 FOR THE REMOVED ArII 2002.881 SET AND IN
@@ -81,7 +82,7 @@ UNTOUCHED_O10_CHECKSUM = "82d2057d1a0e82d77b172874601354847a4780ab83c452fc8bbfe2
 # ORDERS 11 TO 21 FOR THE RITZ WAVELENGTHS AND THE REMOVED SETS), IN FILE ORDER
 # REGENERATE WITH order_checksums(read_table(SPH_TABLE));
 # A LATER LEGITIMATE EDIT TO ANY OF THESE ORDERS MUST RE-RECORD IT
-UNEDITED_ORDER_CHECKSUMS = {
+OTHER_ORDER_CHECKSUMS = {
     9: "53e1d3777799a1df3500cae5d2f7100e3bfc418d0441eedb23e772dc957b6cd9",
     11: "12c276d2b05fedd54c4101b613faca493fe6b1be5cc817df6985e68e6ff28ec7",
     12: "4dd5aff44121b74c4b815a0853e242ab3902ba0c8bb6fa8cc0a4dbabf71f3d26",
@@ -155,7 +156,7 @@ def test_hgi_1970_has_a_full_set_with_the_validated_slit_4_position() -> None:
     table = read_table(SPH_TABLE)
 
     # ACT
-    rows = set_rows(table, EDITED_ORDER, "HgI", HGI_NM)
+    rows = set_rows(table, EDITED_ORDER, "HgI", SPH_HGI_RITZ_NM)
     positions = positions_by_slit(rows)
 
     # ASSERT
@@ -170,7 +171,7 @@ def test_hgi_1970_pinholes_sit_at_their_validated_positions() -> None:
     table = read_table(SPH_TABLE)
 
     # ACT
-    actual = positions_by_slit(set_rows(table, EDITED_ORDER, "HgI", HGI_NM))
+    actual = positions_by_slit(set_rows(table, EDITED_ORDER, "HgI", SPH_HGI_RITZ_NM))
 
     # ASSERT
     assert actual.keys() == set(range(PINHOLES_PER_LINE))
@@ -189,8 +190,8 @@ def test_order_10_rows_the_edit_did_not_touch_match_the_recorded_checksum() -> N
     assert checksum == UNTOUCHED_O10_CHECKSUM
 
 
-@pytest.mark.parametrize("order", sorted(UNEDITED_ORDER_CHECKSUMS))
-def test_orders_other_than_10_match_develop_row_for_row(order: int) -> None:
+@pytest.mark.parametrize("order", sorted(OTHER_ORDER_CHECKSUMS))
+def test_orders_other_than_10_match_their_recorded_checksum(order: int) -> None:
     # ARRANGE
     table = read_table(SPH_TABLE)
 
@@ -198,7 +199,7 @@ def test_orders_other_than_10_match_develop_row_for_row(order: int) -> None:
     checksums = order_checksums(table)
 
     # ASSERT
-    assert checksums[order] == UNEDITED_ORDER_CHECKSUMS[order]
+    assert checksums[order] == OTHER_ORDER_CHECKSUMS[order]
 
 
 @pytest.mark.parametrize(("order", "ion", "observed", "ritz"), O10_RITZ_LINES)
@@ -219,14 +220,9 @@ def test_order_10_line_carries_its_nist_ritz_wavelength(order: int, ion: str, ob
 def test_misidentified_set_is_absent(order: int, ion: str, wavelength: float) -> None:
     # ARRANGE
     table = read_table(SPH_TABLE)
-    nearby = (
-        (np.asarray(table["order"]) == order)
-        & (ions(table) == ion)
-        & np.isclose(np.asarray(table["wavelength"], dtype=float), wavelength, rtol=0, atol=DROPPED_SET_ATOL_NM)
-    )
 
     # ACT
-    rowCount = int(nearby.sum())
+    rowCount = int(set_mask(table, order, ion, wavelength, DROPPED_SET_ATOL_NM).sum())
 
     # ASSERT
     assert rowCount == 0

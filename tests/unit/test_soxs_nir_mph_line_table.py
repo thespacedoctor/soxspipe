@@ -17,7 +17,7 @@ from tests.unit._nir_line_tables import (
     DROPPED_SET_ATOL_NM,
     DROPPED_SETS,
     EDITED_ORDER,
-    HGI_NM,
+    MPH_HGI_NM,
     MPH_O10_ROWS_BEFORE,
     MPH_TABLE,
     NEI_NM,
@@ -52,10 +52,8 @@ MIN_O11_RED_HALF_LINES = 8
 # WITH THE O11 RED HALF NOW CONSTRAINED, THE X FIT NEEDS ONE MORE ORDER AND WAVELENGTH DEGREE
 NIR_X_ORDER_DEG = 5
 NIR_X_WAVELENGTH_DEG = 6
-# DY-2084: XeI AND HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES; NO LINE MOVES MORE THAN 0.13 nm
-# DY-2173: SO ARE THE Ar I AND Ar II WAVELENGTHS
-RITZ_IONS = ["XeI", "HgI", "ArI", "ArII"]
-MAX_RITZ_SHIFT_NM = 0.13
+# DY-2084: XeI AND HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES; DY-2173: SO ARE THE Ar I AND Ar II
+# WAVELENGTHS. DY-2172: THE SINGLE-PINHOLE TABLE CARRIES THE SAME XeI AND HgI VALUES OUTSIDE ORDERS 10 AND 11
 # (ORDER, ION, NIST OBSERVED nm, NIST RITZ nm). THE ARC MEASURES THE RITZ VALUE FOR THE FIRST SIX
 RITZ_LINES = [
     (12, "XeI", 1605.203, 1605.329),
@@ -184,7 +182,7 @@ O10_ADDED_SETS = [
     ),
     (
         "HgI",
-        HGI_NM,
+        MPH_HGI_NM,
         [
             (1278.8037203547938, 391.1359111152702),
             (1277.6575418458676, 394.996090481074),
@@ -304,9 +302,10 @@ def _stable_sorted(table: Table) -> Table:
     return rows
 
 
-def _dropped_set_rows(table: Table) -> np.ndarray:
+def _no_nist_ar_set_rows(table: Table) -> np.ndarray:
+    # THE SINGLE-PINHOLE TABLE STILL HOLDS THESE SETS; ITS DY-2084 SETS (DROPPED_SETS) ARE ALREADY GONE
     rows = np.zeros(len(table), dtype=bool)
-    for order, ion, wavelength in DROPPED_SETS + NO_NIST_AR_SETS:
+    for order, ion, wavelength in NO_NIST_AR_SETS:
         rows |= set_mask(table, order, ion, wavelength, DROPPED_SET_ATOL_NM)
     return rows
 
@@ -317,7 +316,7 @@ def _ar_rows(table: Table) -> np.ndarray:
 
 def _clean_list_rows_kept() -> Table:
     table = _uncurated_rows(SPH_TABLE)
-    return table[~_dropped_set_rows(table)]
+    return table[~_no_nist_ar_set_rows(table)]
 
 
 def _nir_spatial_solution_settings() -> dict:
@@ -399,17 +398,14 @@ def test_o11_red_half_has_enough_lines() -> None:
 
 
 @pytest.mark.parametrize(("order", "ion", "wavelength"), DROPPED_SETS)
-def test_misidentified_set_is_removed_from_both_tables(order: int, ion: str, wavelength: float) -> None:
+def test_misidentified_set_is_removed(order: int, ion: str, wavelength: float) -> None:
     # ARRANGE
-    single = _uncurated_rows(SPH_TABLE)
     curated = read_table(MPH_TABLE)
 
     # ACT
-    inSingle = set_mask(single, order, ion, wavelength, DROPPED_SET_ATOL_NM).sum()
     inCurated = set_mask(curated, order, ion, wavelength, DROPPED_SET_ATOL_NM).sum()
 
     # ASSERT
-    assert inSingle == 0
     assert inCurated == 0
 
 
@@ -533,7 +529,7 @@ def test_single_pinhole_table_carries_the_same_xei_and_hgi_wavelengths_outside_t
     assert np.max(np.abs(shift)) == 0
 
 
-def test_only_ritz_ion_wavelengths_differ_from_the_clean_list() -> None:
+def test_only_ar_wavelengths_differ_between_the_tables_outside_the_curated_orders() -> None:
     # ARRANGE
     curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
     shipped = _stable_sorted(_clean_list_rows_kept())
@@ -544,8 +540,7 @@ def test_only_ritz_ion_wavelengths_differ_from_the_clean_list() -> None:
 
     # ASSERT
     assert moved.any()
-    assert set(ions(curated[moved])) <= set(RITZ_IONS)
-    assert np.max(np.abs(shift)) <= MAX_RITZ_SHIFT_NM
+    assert set(ions(curated[moved])) <= set(AR_IONS)
 
 
 @pytest.mark.parametrize(("order", "ion", "observed", "ritz"), RITZ_LINES)
