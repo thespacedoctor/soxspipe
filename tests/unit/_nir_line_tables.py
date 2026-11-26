@@ -27,6 +27,17 @@ XEI_NM = 1878.8146
 SPH_O10_ROWS_BEFORE = 184
 MPH_O10_ROWS_BEFORE = 72
 INTEGER_COLUMNS = ("order", "slit_index")
+# DY-2084 AND DY-2172: THE SETS BOTH PINHOLE TABLES LACK
+DROPPED_SETS = [
+    (13, "NeI", 1534.82),
+    (13, "Ar", 1534.88),
+    (16, "ArII", 1167.79),
+    (17, "ArII", 1167.79),
+    (16, "ArII", 1172.05),
+    (17, "ArII", 1172.05),
+    (16, "ArII", 1202.71),
+]
+DROPPED_SET_ATOL_NM = 0.006
 COLUMNS = ["ion", "wavelength", "order", "slit_index", "slit_position", "detector_x", "detector_y"]
 
 

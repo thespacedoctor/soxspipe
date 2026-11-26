@@ -14,6 +14,8 @@ from astropy.table import Table
 
 import soxspipe
 from tests.unit._nir_line_tables import (
+    DROPPED_SET_ATOL_NM,
+    DROPPED_SETS,
     EDITED_ORDER,
     HGI_NM,
     MPH_O10_ROWS_BEFORE,
@@ -68,17 +70,6 @@ RITZ_LINES = [
     (11, "HgI", 1719.868, 1719.828),
     (11, "HgI", 1732.942, 1732.896),
 ]
-# (ORDER, ION, nm) SETS REMOVED IN DY-2084: THE ARC FEATURE IS NOT THE LISTED LINE, WHOSE NIST WAVELENGTH IS RIGHT
-DROPPED_SETS = [
-    (13, "NeI", 1534.82),
-    (13, "Ar", 1534.88),
-    (16, "ArII", 1167.79),
-    (17, "ArII", 1167.79),
-    (16, "ArII", 1172.05),
-    (17, "ArII", 1172.05),
-    (16, "ArII", 1202.71),
-]
-DROPPED_SET_ATOL_NM = 0.006
 # DY-2173: (ORDER, ION, nm) SETS REMOVED BECAUSE NO NIST Ar I OR Ar II LINE MATCHES THEM. EACH WAS EITHER MEASURED ON
 # BOTH NIR ARCS WITH NO NIST LINE WITHIN 0.25 A OF ITS ARC POSITION, OR MEASURED ON NEITHER ARC WITH NO NIST LINE NEAR
 # ITS CATALOGUE WAVELENGTH. THE TABLE BUILDER RECORDS THE REASON FOR EACH SET
@@ -408,17 +399,17 @@ def test_o11_red_half_has_enough_lines() -> None:
 
 
 @pytest.mark.parametrize(("order", "ion", "wavelength"), DROPPED_SETS)
-def test_misidentified_set_is_removed(order: int, ion: str, wavelength: float) -> None:
+def test_misidentified_set_is_removed_from_both_tables(order: int, ion: str, wavelength: float) -> None:
     # ARRANGE
-    clean = _uncurated_rows(SPH_TABLE)
+    single = _uncurated_rows(SPH_TABLE)
     curated = read_table(MPH_TABLE)
 
     # ACT
-    inClean = set_mask(clean, order, ion, wavelength, DROPPED_SET_ATOL_NM).sum()
+    inSingle = set_mask(single, order, ion, wavelength, DROPPED_SET_ATOL_NM).sum()
     inCurated = set_mask(curated, order, ion, wavelength, DROPPED_SET_ATOL_NM).sum()
 
     # ASSERT
-    assert inClean == PINHOLES_PER_LINE
+    assert inSingle == 0
     assert inCurated == 0
 
 
@@ -524,6 +515,22 @@ def test_orders_outside_the_curation_keep_the_clean_list_geometry() -> None:
     assert len(curatedRest) == len(shippedRest)
     for column in columns:
         assert np.array_equal(np.asarray(curatedRest[column]), np.asarray(shippedRest[column])), column
+
+
+@pytest.mark.parametrize("ion", ["XeI", "HgI"])
+def test_single_pinhole_table_carries_the_same_xei_and_hgi_wavelengths_outside_the_curated_orders(ion: str) -> None:
+    # ARRANGE
+    curated = _stable_sorted(_uncurated_rows(MPH_TABLE))
+    single = _stable_sorted(_clean_list_rows_kept())
+    isIon = ions(curated) == ion
+
+    # ACT
+    shift = np.asarray(curated["wavelength"], dtype=float)[isIon] - np.asarray(single["wavelength"], dtype=float)[isIon]
+
+    # ASSERT
+    assert isIon.any()
+    assert set(ions(single)[isIon]) == {ion}
+    assert np.max(np.abs(shift)) == 0
 
 
 def test_only_ritz_ion_wavelengths_differ_from_the_clean_list() -> None:
