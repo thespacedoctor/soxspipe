@@ -65,16 +65,17 @@ def test_required_suite_runs_only_when_the_changes_job_says_so() -> None:
 
     assert workflow["jobs"]["tests"]["needs"] == "changes"
     assert workflow["jobs"]["tests"]["if"] == (
-        "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}"
+        "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}"
     )
     for trigger in workflow["on"].values():
         assert "paths" not in trigger
         assert "paths-ignore" not in trigger
 
 
-def test_changes_job_checks_out_the_full_history() -> None:
-    """The diff needs both pull request tips and their merge base; a shallow clone would always run the suite."""
-    checkoutStep = load_workflow()["jobs"]["changes"]["steps"][0]
+def test_changes_job_uses_the_shared_change_scope_workflow() -> None:
+    """The skip decision lives in the shared change-scope workflow, which finds earlier runs itself (DY-2452)."""
+    changesJob = load_workflow()["jobs"]["changes"]
 
-    assert checkoutStep["uses"].startswith("actions/checkout@")
-    assert checkoutStep["with"]["fetch-depth"] == "0"
+    assert changesJob["uses"] == "thespacedoctor/reusable-workflows/.github/workflows/change-scope.yml@main"
+    assert "with" not in changesJob
+    assert changesJob["permissions"] == {"contents": "read", "actions": "read"}
