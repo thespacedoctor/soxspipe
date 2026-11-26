@@ -95,6 +95,8 @@ def _fitted_orders(log: Any, edgeFraction: float = EDGE_FRACTION, **kwargs: Any)
                 # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
                 "object_wing_correction": False,
                 "sky_model_qc_plot": False,
+                # THE FIT STAGES ARE STUBBED, SO THE ERROR INFLATION (DY-1973) HAS NO CLIPPING COLUMNS TO READ
+                "sky_error_inflation": False,
                 "percentile_clipping_sigma": 5,
                 "percentile_clipping_iterations": 1,
                 "percentile_rolling_window_size": 3,

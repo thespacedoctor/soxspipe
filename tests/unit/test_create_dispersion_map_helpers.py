@@ -488,6 +488,7 @@ def test_multipinhole_shift_corrects_the_axis_with_the_larger_end_shift(
             "x_diff": [-0.8] * 25 + [0.1] * 25,
             "y_diff": [0.0] * 50,
             "detector_x_shifted": np.arange(50.0),
+            "detector_y_shifted": np.arange(50.0),
         }
     )
     mapper._find_cluster_center_with_fallback = lambda x, y, fallback: (
@@ -503,6 +504,7 @@ def test_multipinhole_shift_corrects_the_axis_with_the_larger_end_shift(
     )
 
     np.testing.assert_allclose(result["detector_x_shifted"], np.arange(50.0) + 0.8)
+    np.testing.assert_allclose(result["detector_y_shifted"], np.arange(50.0))
 
 
 def test_straighten_mph_sets_projects_points_without_mutating_input(log: object) -> None:
@@ -806,6 +808,7 @@ def test_multipinhole_shift_corrects_larger_first_iteration_offset(
             "x_diff": [1.0] * 25 + [0.2] * 25,
             "y_diff": [0.0] * 50,
             "detector_x_shifted": [20.0] * 50,
+            "detector_y_shifted": [30.0] * 50,
         }
     )
     mapper._find_cluster_center_with_fallback = lambda xData, yData, fallbackMedian: (float(xData.iloc[0]), 0.0)
@@ -818,6 +821,7 @@ def test_multipinhole_shift_corrects_larger_first_iteration_offset(
     )
 
     np.testing.assert_array_equal(result["detector_x_shifted"], [19.0] * 50)
+    np.testing.assert_array_equal(result["detector_y_shifted"], [30.0] * 50)
 
 
 @pytest.mark.parametrize("includeClipped", [False, True])
