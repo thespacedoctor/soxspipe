@@ -126,6 +126,57 @@ def test_spectral_binning_raises_naming_the_file_and_card_when_the_card_is_missi
         common.spectral_binning(_header(), "VIS", path)
 
 
+def test_spectral_binning_is_one_for_a_nir_frame_with_no_binning_card(tmp_path: Path) -> None:
+    # ARRANGE: THE NIR DETECTOR DOES NOT BIN, SO ITS FRAMES CARRY NO ESO DET BINX OR BINY CARD (DY-2456)
+    header = _header(ESO_SEQ_ARM="NIR")
+
+    # ACT
+    result = common.spectral_binning(header, "NIR", tmp_path / "a.fits")
+
+    # ASSERT
+    assert result == 1
+
+
+def test_binning_along_is_one_for_a_nir_frame_with_no_card_on_either_axis() -> None:
+    # ARRANGE
+    header = _header(ESO_SEQ_ARM="NIR")
+
+    # ACT
+    binnings = [common.binning_along(header, axis, arm="NIR") for axis in ("x", "y")]
+
+    # ASSERT
+    assert binnings == [1, 1]
+
+
+def test_binning_along_still_reads_a_nir_binning_card_that_is_present() -> None:
+    # ARRANGE
+    header = _header(ESO_DET_BINY=2)
+
+    # ACT
+    binning = common.binning_along(header, "y", arm="NIR")
+
+    # ASSERT
+    assert binning == 2
+
+
+def test_binning_along_still_rejects_a_bad_nir_binning_card() -> None:
+    # ARRANGE
+    header = _header(ESO_DET_BINY=0)
+
+    # ACT / ASSERT
+    with pytest.raises(common.ToolError, match="ESO DET BINY"):
+        common.binning_along(header, "y", arm="NIR")
+
+
+def test_binning_along_raises_for_a_vis_frame_with_no_card_when_the_arm_is_given(tmp_path: Path) -> None:
+    # ARRANGE
+    path = tmp_path / "a.fits"
+
+    # ACT / ASSERT
+    with pytest.raises(common.ToolError, match=re.escape(f"{path} has no ESO DET BINY card")):
+        common.binning_along(_header(), "y", path, arm="VIS")
+
+
 def test_spectral_binning_raises_when_the_card_is_below_one() -> None:
     # ARRANGE
     header = _header(ESO_DET_BINX=0)

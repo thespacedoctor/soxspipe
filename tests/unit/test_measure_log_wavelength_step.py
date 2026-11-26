@@ -33,13 +33,20 @@ def _log_grid(startNm: float, stepKms: float, size: int) -> np.ndarray:
 
 
 def _write_extracted_orders(
-    path: Path, arm: str, binning: int, mjd: float, orders: np.ndarray, wavelengths: np.ndarray
+    path: Path,
+    arm: str,
+    binning: int,
+    mjd: float,
+    orders: np.ndarray,
+    wavelengths: np.ndarray,
+    hasBinningCards: bool = True,
 ) -> Path:
     """*write a table like a `_EXTRACTED_ORDERS` product: cards in the primary header, the rows in extension 1*"""
     primary = fits.PrimaryHDU()
     primary.header["ESO SEQ ARM"] = arm
-    primary.header["ESO DET BINX"] = binning if arm == "VIS" else 1
-    primary.header["ESO DET BINY"] = binning if arm == "NIR" else 1
+    if hasBinningCards:
+        primary.header["ESO DET BINX"] = binning if arm == "VIS" else 1
+        primary.header["ESO DET BINY"] = binning if arm == "NIR" else 1
     primary.header["MJD-OBS"] = mjd
     table = fits.BinTableHDU.from_columns(
         [
@@ -150,6 +157,20 @@ def test_read_product_raises_when_the_table_lacks_the_columns(tmp_path: Path) ->
     # ACT / ASSERT
     with pytest.raises(step_tool.ToolError, match="wavelengthMean"):
         step_tool.read_product(path)
+
+
+def test_read_product_treats_a_nir_table_with_no_binning_cards_as_unbinned(tmp_path: Path) -> None:
+    # ARRANGE: THE NIR DETECTOR DOES NOT BIN, SO ITS PRODUCTS CARRY NO ESO DET BINX OR BINY CARD (DY-2456)
+    orders, wavelengths = np.repeat([1, 2], 5), np.concatenate([_log_grid(500.0, 10.0, 5), _log_grid(600.0, 10.0, 5)])
+    path = _write_extracted_orders(
+        tmp_path / "a_EXTRACTED_ORDERS.fits", "NIR", 1, 60001.25, orders, wavelengths, hasBinningCards=False
+    )
+
+    # ACT
+    product = step_tool.read_product(path)
+
+    # ASSERT
+    assert (product.arm, product.binning) == ("NIR", 1)
 
 
 @pytest.mark.parametrize("missingCard", ["ESO DET BINX", "MJD-OBS"])

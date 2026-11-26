@@ -30,6 +30,8 @@ VERSION_PATH = REPO_ROOT / "soxspipe" / "__version__.py"
 ARM_CARD = "ESO SEQ ARM"
 MJD_CARD = "MJD-OBS"
 SPECTRAL_BINNING_CARDS = {"x": "ESO DET BINX", "y": "ESO DET BINY"}
+# THE NIR DETECTOR DOES NOT BIN, SO ITS RAW FRAMES AND PRODUCTS CARRY NO BINNING CARD (DY-2456)
+UNBINNED_ARMS = frozenset({"NIR"})
 EXIT_INPUT_ERROR = 2
 UNKNOWN_VERSION = "unknown"
 YAML_INDENT = "  "
@@ -305,7 +307,7 @@ def dispersion_axis(arm: str) -> str:
     return detector_parameters()[arm]["dispersion-axis"]
 
 
-def binning_along(header: fits.Header, axis: str, path: Path | None = None) -> int:
+def binning_along(header: fits.Header, axis: str, path: Path | None = None, arm: str | None = None) -> int:
     """*the binning factor along a detector axis, from its ``ESO DET BIN<axis>`` card*
 
     **Key Arguments:**
@@ -313,6 +315,8 @@ def binning_along(header: fits.Header, axis: str, path: Path | None = None) -> i
     - ``header`` -- the FITS header of the frame
     - ``axis`` -- ``x`` or ``y``
     - ``path`` -- the file the header came from, named in the error. Default *None*
+    - ``arm`` -- the arm of the frame. A card that is missing on an arm in ``UNBINNED_ARMS`` (NIR) counts as 1. Default
+      *None*, which makes a missing card an error
 
     **Return:**
 
@@ -320,15 +324,17 @@ def binning_along(header: fits.Header, axis: str, path: Path | None = None) -> i
 
     **Raises:**
 
-    - ``ToolError`` -- if the card is missing, not a whole number, or below 1
+    - ``ToolError`` -- if the card is missing (except on an unbinned arm), not a whole number, or below 1
 
     **Usage:**
 
     ```python
-    binX = binning_along(header, "x", path)
+    binX = binning_along(header, "x", path, arm="VIS")
     ```
     """
     card = SPECTRAL_BINNING_CARDS[axis]
+    if card not in header and arm in UNBINNED_ARMS:
+        return 1
     value = required_card(header, card, path)
     notWhole = ToolError(f"{_where(path)} has a {card} card that is not a whole number: {value!r}")
     if isinstance(value, bool):
@@ -359,7 +365,8 @@ def spectral_binning(header: fits.Header, arm: str, path: Path | None = None) ->
 
     **Raises:**
 
-    - ``ToolError`` -- if the binning card is missing, not a whole number, or below 1
+    - ``ToolError`` -- if the binning card is missing (a NIR frame without one counts as unbinned), not a whole number,
+      or below 1
 
     **Usage:**
 
@@ -367,7 +374,7 @@ def spectral_binning(header: fits.Header, arm: str, path: Path | None = None) ->
     binning = spectral_binning(header, "VIS", path)
     ```
     """
-    return binning_along(header, dispersion_axis(arm), path)
+    return binning_along(header, dispersion_axis(arm), path, arm)
 
 
 def soxspipe_version(path: Path = VERSION_PATH) -> str:

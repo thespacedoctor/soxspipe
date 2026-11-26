@@ -88,6 +88,26 @@ def test_read_arc_ref_returns_the_arm_slit_mjd_and_binning(tmp_path: Path) -> No
     assert (arc.arm, arc.slit, arc.mjd, arc.binX, arc.binY) == ("VIS", "SLIT1.5", 60003.25, 1, 1)
 
 
+def test_read_arc_ref_treats_a_nir_arc_with_no_binning_cards_as_unbinned(tmp_path: Path) -> None:
+    # ARRANGE: THE NIR DETECTOR DOES NOT BIN, SO ITS RAW FRAMES CARRY NO ESO DET BINX OR BINY CARD (DY-2456)
+    path = write_raw_arc(tmp_path / "arc.fits", Scene(arm="NIR"), raw_header(arm="NIR", binning=None))
+
+    # ACT
+    arc = frames_tool.read_arc_ref(path)
+
+    # ASSERT
+    assert (arc.arm, arc.binX, arc.binY) == ("NIR", 1, 1)
+
+
+def test_read_arc_ref_names_the_file_and_the_card_when_a_vis_arc_has_no_binning_cards(tmp_path: Path) -> None:
+    # ARRANGE
+    path = write_raw_arc(tmp_path / "arc.fits", Scene(), raw_header(binning=None))
+
+    # ACT / ASSERT
+    with pytest.raises(frames_tool.ToolError, match=re.escape(f"{path} has no ESO DET BINX card")):
+        frames_tool.read_arc_ref(path)
+
+
 def test_read_arc_ref_returns_none_for_a_frame_that_is_not_a_slit_arc(tmp_path: Path) -> None:
     # ARRANGE
     path = write_raw_arc(tmp_path / "pin.fits", Scene(), raw_header(tech="ECHELLE,PINHOLE"))

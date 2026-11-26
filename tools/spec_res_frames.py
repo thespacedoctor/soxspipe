@@ -150,7 +150,7 @@ def read_arc_ref(path: Path) -> ArcRef | None:
     if not is_slit_arc(header):
         return None
     arm, slit, mjd = _identity(header, path)
-    binX, binY = common.binning_along(header, "x", path), common.binning_along(header, "y", path)
+    binX, binY = common.binning_along(header, "x", path, arm), common.binning_along(header, "y", path, arm)
     return ArcRef(Path(path), arm, slit, mjd, binX, binY)
 
 

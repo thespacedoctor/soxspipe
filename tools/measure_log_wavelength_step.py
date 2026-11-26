@@ -15,8 +15,8 @@ measures that value so it can replace the provisional 18 km/s (VIS) and 11 km/s 
 2. Per order and frame, take the steps `c ln(lambda_{i+1} / lambda_i)` between adjacent bins, in km/s. Pool the steps of
    each order over all frames and take their median. The bins of two frames differ, so wavelengths are never pooled.
 3. Per arm, take the smallest per-order median and divide it by the spectral binning factor of the frames (the
-   `ESO DET BINX` card for VIS, `ESO DET BINY` for NIR). Use unbinned (1x1) frames where you can, because every input
-   of an arm must share one binning.
+   `ESO DET BINX` card for VIS, `ESO DET BINY` for NIR; a NIR frame with no binning card counts as unbinned). Use
+   unbinned (1x1) frames where you can, because every input of an arm must share one binning.
 
 The printed value is per unbinned pixel; the reduction multiplies it by BINX (VIS) or BINY (NIR).
 

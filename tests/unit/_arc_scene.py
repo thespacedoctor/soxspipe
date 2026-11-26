@@ -135,15 +135,16 @@ def raw_header(
     mjd: float = 60000.4,
     tech: str = "ECHELLE,SLIT",
     dprType: str = "LAMP,WAVE",
-    binning: tuple[int, int] = (1, 1),
+    binning: tuple[int, int] | None = (1, 1),
 ) -> fits.Header:
-    """*the header of a raw frame with the cards the SPEC_RES script reads*"""
+    """*the header of a raw frame with the cards the SPEC_RES script reads; no binning cards if ``binning`` is None*"""
     header = fits.Header()
     header["ESO SEQ ARM"] = arm
     header["ESO INS VISE NAME" if arm == "VIS" else "ESO INS NISE NAME"] = slit
     header["ESO DPR TECH"] = tech
     header["ESO DPR TYPE"] = dprType
-    header["ESO DET BINX"], header["ESO DET BINY"] = binning
+    if binning is not None:
+        header["ESO DET BINX"], header["ESO DET BINY"] = binning
     header["MJD-OBS"] = mjd
     return header
 
