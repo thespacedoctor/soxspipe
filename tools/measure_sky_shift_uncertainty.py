@@ -25,6 +25,20 @@ arc: the frame's `DISP_TAB` is the one named by its `ESO PRO REC1 CAL<i> NAME` c
 The printed value is the largest over orders of the per-order RMS, because `SPEC_SYE` is a maximum over orders. The RMS
 pooled over all orders and frames is printed as a yaml comment, with the per-order values.
 
+An order that was neither measured nor modelled is left out of the RMS, because the pipeline records it as a shift of
+exactly 0.000 nm. The script names each order it leaves out on stderr. These cards mark such an order (a measured shift
+of exactly zero has none of them, and counts):
+
+- VIS r (order 1): `ESO QC R SHIFT SOURCE = none`. `measured`, `combined` and `predicted` all count.
+- VIS u and g (orders 2 and 3): `ESO QC UG SHIFT SOURCE = none`. `model` counts.
+- VIS i (order 4) has no source card. The pipeline applies no i shift from fewer than `MIN_SHIFT_LINES` sky lines or a
+  sky-line SNR under `MIN_SKY_LINE_SNR`, so the script leaves i out when `ESO QC SKY LINE SNR O4` is missing or under
+  that limit, or when the comment of `UG SHIFT SOURCE` says that order 4 kept fewer lines than the limit. A product
+  with no `UG SHIFT SOURCE` card (a build before DY-1608) has no such evidence, so its i shift counts.
+- Any arm, NIR orders included: a shift of exactly 0 with no `ESO QC SKY SHIFT O<n> PX` card. The pipeline writes the
+  PX card whenever it knows the dispersion of the order, and the NIR global fit writes a bare 0 for an order that has
+  no correction.
+
 The shifts include the noise of the sky-line measurement, so both values are upper limits. A frame that skipped tuning
 (`SKY TUNING = skipped: attached arc`) holds no shift. The `attached-arc` value needs frames that were tuned although
 their arc is attached, which means products from a build before DY-1665 (soxspipe 9d0d450c) or a run with the skip
@@ -77,6 +91,13 @@ SKY_SHIFT_PATTERN = re.compile(r"^ESO QC SKY SHIFT O(\d+)$")
 TUNING_CARD = "ESO QC SKY TUNING"
 CALIBRATION_CATG_PATTERN = re.compile(r"^ESO PRO REC1 CAL(\d+) CATG$")
 DISP_TAB_CATG_PREFIX = "DISP_TAB"
+VIS_ARM = "VIS"
+R_SOURCE_CARD = "ESO QC R SHIFT SOURCE"
+UG_SOURCE_CARD = "ESO QC UG SHIFT SOURCE"
+SOURCE_NONE = "none"
+# THE REASON THE PIPELINE GIVES IN THE COMMENT OF THE UG SHIFT SOURCE CARD, E.G. "order 4: 0 sky lines (min 10)"
+# (``_order_guard_reason`` IN ug_wavelength_transfer.py)
+SKY_LINES_REASON_PATTERN = re.compile(r"^order (\d+): (\d+) sky lines")
 VALUE_COMMENT = "# VALUE: LARGEST PER-ORDER RMS ABOUT ZERO OF THE SKY SHIFTS (SPEC_SYE IS A MAXIMUM OVER ORDERS)"
 
 
@@ -132,6 +153,66 @@ def read_sky_shifts(header: fits.Header) -> dict[int, float]:
         if match is not None and isinstance(header[key], int | float) and math.isfinite(header[key]):
             shifts[int(match.group(1))] = float(header[key])
     return shifts
+
+
+def _unmeasured_vis_orders(header: fits.Header) -> dict[int, str]:
+    """*the VIS orders that the source and sky-line cards of a product mark as not measured and not modelled*"""
+    common.ensure_repo_on_path()
+    from soxspipe.commonutils.ug_wavelength_transfer import (
+        MIN_SHIFT_LINES,
+        MIN_SKY_LINE_SNR,
+        PREDICTED_ORDERS,
+        VIS_I_ORDER,
+        VIS_R_ORDER,
+    )
+
+    leftOut: dict[int, str] = {}
+    if header.get(R_SOURCE_CARD) == SOURCE_NONE:
+        leftOut[VIS_R_ORDER] = f"{R_SOURCE_CARD} is {SOURCE_NONE}"
+    ugSource = header.get(UG_SOURCE_CARD)
+    if ugSource == SOURCE_NONE:
+        leftOut.update(dict.fromkeys(PREDICTED_ORDERS, f"{UG_SOURCE_CARD} is {SOURCE_NONE}"))
+    if ugSource is None:
+        return leftOut
+    snr = header.get(f"ESO QC SKY LINE SNR O{VIS_I_ORDER}")
+    if not isinstance(snr, int | float) or not math.isfinite(snr):
+        leftOut[VIS_I_ORDER] = "no finite sky-line SNR card, so no sky shift was measured"
+    elif snr < MIN_SKY_LINE_SNR:
+        leftOut[VIS_I_ORDER] = f"sky-line SNR {snr:.1f} is below {MIN_SKY_LINE_SNR}"
+    else:
+        match = SKY_LINES_REASON_PATTERN.match(header.comments[UG_SOURCE_CARD])
+        if match and int(match.group(1)) == VIS_I_ORDER and int(match.group(2)) < MIN_SHIFT_LINES:
+            leftOut[VIS_I_ORDER] = f"{match.group(2)} sky lines kept (min {MIN_SHIFT_LINES})"
+    return leftOut
+
+
+def unmeasured_orders(header: fits.Header, arm: str, shifts: Mapping[int, float]) -> dict[int, str]:
+    """*the orders of a product whose shift is a recorded zero, not a measured or modelled shift*
+
+    A measured or modelled shift of exactly 0.000 nm has none of the marks, so it is not named. See the module
+    docstring for the cards.
+
+    **Key Arguments:**
+
+    - ``header`` -- the product's primary header
+    - ``arm`` -- the arm of the product, ``VIS`` or ``NIR``
+    - ``shifts`` -- ``{order: shift in nm}`` of the product (``read_sky_shifts``)
+
+    **Return:**
+
+    - ``leftOut`` -- ``{order: reason}`` for each order of ``shifts`` that is not a measurement
+
+    **Usage:**
+
+    ```python
+    leftOut = unmeasured_orders(header, "VIS", read_sky_shifts(header))
+    ```
+    """
+    leftOut = _unmeasured_vis_orders(header) if arm.upper() == VIS_ARM else {}
+    for order, shift in shifts.items():
+        if shift == 0 and f"ESO QC SKY SHIFT O{order} PX" not in header:
+            leftOut.setdefault(order, f"a shift of 0 and no SKY SHIFT O{order} PX card")
+    return {order: leftOut[order] for order in sorted(leftOut) if order in shifts}
 
 
 def rms_about_zero(values: Sequence[float]) -> float:
@@ -320,11 +401,23 @@ def _read_or_skip(path: Path) -> fits.Header | None:
         return None
 
 
+def _measured_shifts(path: Path, header: fits.Header, arm: str, shifts: Mapping[int, float]) -> dict[int, float]:
+    """*the shifts of a product without its unmeasured orders, each of which is named on stderr*"""
+    common.ensure_repo_on_path()
+    from soxspipe.commonutils.toolkit import order_label
+
+    leftOut = unmeasured_orders(header, arm, shifts)
+    for order, reason in leftOut.items():
+        print(f"left out order {order_label(order, arm)} of {path}: {reason}", file=sys.stderr)
+    return {order: shift for order, shift in shifts.items() if order not in leftOut}
+
+
 def build_samples(productPaths: Sequence[Path], arcPaths: Sequence[Path]) -> list[ShiftSample]:
     """*read the sky shifts of each product and sort the frame by its arc*
 
     A product that cannot be read, a product with no shift and a product whose named arc is not among ``arcPaths`` are
-    named on stderr and left out.
+    named on stderr and left out. So is each order that is not a measurement (``unmeasured_orders``), and a product
+    with no measured order.
 
     **Key Arguments:**
 
@@ -355,6 +448,11 @@ def build_samples(productPaths: Sequence[Path], arcPaths: Sequence[Path]) -> lis
         if not shifts:
             print(f"skipped {path}: no sky shifts (SKY TUNING = {header.get(TUNING_CARD)!r})", file=sys.stderr)
             continue
+        arm = common.arm_of(header, path)
+        shifts = _measured_shifts(path, header, arm, shifts)
+        if not shifts:
+            print(f"skipped {path}: no sky shift was measured", file=sys.stderr)
+            continue
         arcPath = find_arc(header, arcPaths)
         if arcPath is None:
             print(f"skipped {path}: the DISP_TAB it names is not among the --arcs", file=sys.stderr)
@@ -364,7 +462,7 @@ def build_samples(productPaths: Sequence[Path], arcPaths: Sequence[Path]) -> lis
         if arcHeaders[arcPath] is None:
             continue
         kind = classify_frame(header, arcHeaders[arcPath])
-        samples.append(ShiftSample(common.arm_of(header, path), kind, common.read_mjd_obs(header, path), shifts))
+        samples.append(ShiftSample(arm, kind, common.read_mjd_obs(header, path), shifts))
     if not samples:
         raise ToolError("no sky shift was found in any product")
     return samples

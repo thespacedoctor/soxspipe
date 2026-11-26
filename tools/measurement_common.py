@@ -439,8 +439,12 @@ def soxspipe_version(path: Path = VERSION_PATH) -> str:
     return match.group(1) if match else UNKNOWN_VERSION
 
 
-def night_count(mjds: Iterable[float]) -> int:
-    """*the number of distinct UTC dates among observation MJDs*
+def night_start_dates(mjds: Iterable[float]) -> list[str]:
+    """*the observing-night date of each observation MJD, as soxspipe's data organiser defines it*
+
+    The night is dated by the UTC day that began 15 hours before the observation, so one night that crosses UT midnight
+    is one date. This is ``start_night_date`` of ``soxspipe.commonutils.toolkit``, the function behind the
+    ``night start date`` column of the data organiser.
 
     **Key Arguments:**
 
@@ -448,7 +452,32 @@ def night_count(mjds: Iterable[float]) -> int:
 
     **Return:**
 
-    - ``count`` -- the number of distinct integer MJDs
+    - ``dates`` -- one ``YYYY-MM-DD`` night-start date per MJD, in the order given
+
+    **Usage:**
+
+    ```python
+    dates = night_start_dates([60000.9, 60001.1])
+    ```
+    """
+    ensure_repo_on_path()
+    from astropy.time import Time
+
+    from soxspipe.commonutils.toolkit import start_night_date
+
+    return [str(date) for date in start_night_date(Time(list(mjds), format="mjd", scale="utc"))]
+
+
+def night_count(mjds: Iterable[float]) -> int:
+    """*the number of distinct observing nights among observation MJDs*
+
+    **Key Arguments:**
+
+    - ``mjds`` -- the observation MJDs
+
+    **Return:**
+
+    - ``count`` -- the number of distinct night-start dates (``night_start_dates``)
 
     **Usage:**
 
@@ -456,7 +485,7 @@ def night_count(mjds: Iterable[float]) -> int:
     nights = night_count([60000.1, 60001.4])
     ```
     """
-    return len({math.floor(mjd) for mjd in mjds})
+    return len(set(night_start_dates(mjds)))
 
 
 def provenance_comments(subject: str, mjds: Sequence[float], version: str, today: str) -> list[str]:

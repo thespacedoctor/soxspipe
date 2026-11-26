@@ -175,6 +175,182 @@ def test_classify_frame_calls_an_arc_with_no_usable_rotator_angle_untuned() -> N
     assert kind == "untuned"
 
 
+def _vis_header(
+    shifts: dict[int, float],
+    rSource: str | None = "measured",
+    ugSource: str | None = "model",
+    ugComment: str = "predicted from r/i shifts and ABSROT",
+    iSnr: float | None = 12.0,
+    **kwargs: object,
+) -> fits.Header:
+    """*a VIS product with the cards that say where each order's shift came from*"""
+    header = _science_header(shifts=shifts, **kwargs)
+    if rSource is not None:
+        header["ESO QC R SHIFT SOURCE"] = rSource
+    if ugSource is not None:
+        header["ESO QC UG SHIFT SOURCE"] = (ugSource, ugComment)
+    if iSnr is not None:
+        header["ESO QC SKY LINE SNR O4"] = iSnr
+    return header
+
+
+VIS_SHIFTS = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+
+
+def test_unmeasured_orders_names_the_r_order_when_its_source_is_none() -> None:
+    # ARRANGE
+    header = _vis_header(VIS_SHIFTS, rSource="none", ugSource="none", ugComment="order 1: 0 sky lines (min 2)")
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert 1 in leftOut
+    assert "R SHIFT SOURCE" in leftOut[1]
+
+
+def test_unmeasured_orders_names_the_u_and_g_orders_when_their_source_is_none() -> None:
+    # ARRANGE
+    header = _vis_header({1: 0.02, 2: 0.0, 3: 0.0, 4: 0.03}, ugSource="none", ugComment="order 4: 6 sky lines (min 10)")
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [2, 3]
+    assert "UG SHIFT SOURCE" in leftOut[2]
+
+
+def test_unmeasured_orders_names_the_i_order_when_its_sky_line_snr_is_below_the_minimum() -> None:
+    # ARRANGE
+    header = _vis_header(
+        {1: 0.01, 2: 0.0, 3: 0.0, 4: 0.0}, ugSource="none", ugComment="order 4: sky-line SNR 1.5 (min 5.4)", iSnr=1.5
+    )
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [2, 3, 4]
+    assert "SNR" in leftOut[4]
+
+
+def test_unmeasured_orders_names_the_i_order_when_it_has_no_sky_line_snr_card() -> None:
+    # ARRANGE
+    header = _vis_header(
+        {1: 0.01, 2: 0.0, 3: 0.0, 4: 0.0}, ugSource="none", ugComment="order 4: no sky shift", iSnr=None
+    )
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert 4 in leftOut
+
+
+def test_unmeasured_orders_names_the_i_order_when_the_pipeline_kept_too_few_sky_lines_for_it() -> None:
+    # ARRANGE: THE SNR IS HIGH, BUT 0 LINES WERE KEPT, SO THE PIPELINE APPLIED NO SHIFT (THE EG274 FRAME OF DY-2378)
+    header = _vis_header(
+        {1: -0.002, 2: 0.0, 3: 0.0, 4: 0.0}, ugSource="none", ugComment="order 4: 0 sky lines (min 10)", iSnr=8.6
+    )
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [2, 3, 4]
+    assert "sky lines" in leftOut[4]
+
+
+def test_unmeasured_orders_keeps_an_i_order_with_a_few_lines_that_the_pipeline_applied() -> None:
+    # ARRANGE: 7 LINES ARE BELOW THE 10 THE U/G MODEL NEEDS, BUT ABOVE THE 2 THAT APPLY THE i SHIFT ITSELF
+    header = _vis_header(
+        {1: -0.049, 2: 0.0, 3: 0.0, 4: -0.043},
+        ugSource="none",
+        ugComment="order 4: 7 sky lines (min 10)",
+        iSnr=7.7,
+    )
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [2, 3]
+
+
+def test_unmeasured_orders_counts_a_measured_shift_of_exactly_zero() -> None:
+    # ARRANGE: r MEASURED, u/g MODELLED AND i MEASURED, EACH AT EXACTLY 0.000 nm
+    header = _vis_header(VIS_SHIFTS, rSource="measured", ugSource="model", iSnr=40.0)
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert leftOut == {}
+
+
+def test_unmeasured_orders_counts_a_predicted_and_a_combined_r_shift() -> None:
+    # ARRANGE
+    predicted = _vis_header({1: 0.05, 2: 0.0, 3: 0.0, 4: 0.04}, rSource="predicted")
+    combined = _vis_header({1: 0.05, 2: 0.0, 3: 0.0, 4: 0.04}, rSource="combined")
+
+    # ACT
+    leftOutPredicted = shift_tool.unmeasured_orders(predicted, "VIS", shift_tool.read_sky_shifts(predicted))
+    leftOutCombined = shift_tool.unmeasured_orders(combined, "VIS", shift_tool.read_sky_shifts(combined))
+
+    # ASSERT
+    assert leftOutPredicted == {}
+    assert leftOutCombined == {}
+
+
+def test_unmeasured_orders_leaves_out_nothing_for_a_vis_product_that_records_no_source() -> None:
+    # ARRANGE: A BUILD BEFORE THE SOURCE CARDS GIVES NO WAY TO TELL, SO EVERY SHIFT COUNTS
+    header = _vis_header(VIS_SHIFTS, rSource=None, ugSource=None, iSnr=None)
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert leftOut == {}
+
+
+def test_unmeasured_orders_names_a_nir_order_with_a_zero_shift_and_no_px_card() -> None:
+    # ARRANGE: THE NIR GLOBAL FIT RECORDS 0 AND NO PX CARD FOR AN ORDER WITHOUT A CORRECTION
+    header = _science_header(arm="NIR", shifts={11: 0.02})
+    header["ESO QC SKY SHIFT O12"] = 0.0
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "NIR", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [12]
+    assert "PX" in leftOut[12]
+
+
+def test_unmeasured_orders_counts_a_nir_zero_shift_that_has_a_px_card() -> None:
+    # ARRANGE: A SHIFT UNDER 0.0005 nm ROUNDS TO 0.0, WITH THE PX CARD STILL HOLDING THE MEASUREMENT
+    header = _science_header(arm="NIR", shifts={11: 0.02, 12: 0.0})
+    header["ESO QC SKY SHIFT O12 PX"] = 0.008
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "NIR", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert leftOut == {}
+
+
+def test_unmeasured_orders_counts_a_nir_shift_that_has_no_px_card_but_is_not_zero() -> None:
+    # ARRANGE
+    header = _science_header(arm="NIR", shifts={11: 0.02})
+    del header["ESO QC SKY SHIFT O11 PX"]
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "NIR", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert leftOut == {}
+
+
 def test_uncertainty_by_arm_takes_the_largest_per_order_rms_as_the_value_and_keeps_the_pooled_rms() -> None:
     # ARRANGE
     samples = [
@@ -283,6 +459,93 @@ def test_main_prints_the_untuned_and_attached_arc_values(
     assert status == 0
     assert values == {"untuned": pytest.approx(0.4), "attached-arc": 0.01}
     assert "d_SPECTRUM.fits" in captured.err
+
+
+def _attached_workspace(tmp_path: Path, frames: dict[str, fits.Header]) -> list[str]:
+    """*the given products, each with the near (attached) arc, and the command line that reads them*"""
+    products, arcs = tmp_path / "products", tmp_path / "arcs"
+    products.mkdir()
+    arcs.mkdir()
+    _write_product(arcs / "near_SSOL.fits", _arc_header(minutesAfterScience=3.0, rotator=41.0))
+    for name, header in frames.items():
+        _write_product(products / name, header)
+    return ["--products", str(products / "*.fits"), "--arcs", str(arcs / "*.fits")]
+
+
+NEAR = {"arcName": "near_SSOL.fits"}
+
+
+def test_main_leaves_unmeasured_orders_out_of_the_rms_and_names_each_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # ARRANGE: THE FIRST FRAME HAS u, g AND i UNMEASURED (EXACTLY 0), THE SECOND MEASURED 0.01 nm IN EVERY ORDER
+    unmeasured = _vis_header(
+        {1: -0.002, 2: 0.0, 3: 0.0, 4: 0.0},
+        ugSource="none",
+        ugComment="order 4: 0 sky lines (min 10)",
+        iSnr=8.6,
+        **NEAR,
+    )
+    measured = _vis_header({1: 0.01, 2: 0.01, 3: 0.01, 4: 0.01}, **NEAR)
+    arguments = _attached_workspace(tmp_path, {"a_SPECTRUM.fits": unmeasured, "b_SPECTRUM.fits": measured})
+
+    # ACT
+    shift_tool.main(arguments)
+
+    # ASSERT
+    captured = capsys.readouterr()
+    assert yaml.safe_load(captured.out)["VIS"]["sky-shift-uncertainty-nm"]["attached-arc"] == 0.01
+    assert "# ATTACHED-ARC: 5 SHIFTS FROM 2 FRAMES" in captured.out
+    for order in (2, 3, 4):
+        assert re.search(rf"left out order {order} .*a_SPECTRUM\.fits", captured.err)
+    assert "b_SPECTRUM.fits" not in captured.err
+
+
+def test_main_counts_a_measured_shift_of_exactly_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # ARRANGE: THE SECOND FRAME MEASURED OR MODELLED EVERY ORDER AT EXACTLY 0.000 nm
+    shifted = _vis_header({1: 0.01, 2: 0.01, 3: 0.01, 4: 0.01}, **NEAR)
+    zero = _vis_header(VIS_SHIFTS, iSnr=40.0, **NEAR)
+    arguments = _attached_workspace(tmp_path, {"a_SPECTRUM.fits": shifted, "b_SPECTRUM.fits": zero})
+
+    # ACT
+    shift_tool.main(arguments)
+
+    # ASSERT
+    captured = capsys.readouterr()
+    assert yaml.safe_load(captured.out)["VIS"]["sky-shift-uncertainty-nm"]["attached-arc"] == round(0.01 / 2**0.5, 4)
+    assert "left out" not in captured.err
+
+
+def test_main_skips_a_frame_with_no_measured_order_and_names_its_orders(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # ARRANGE: THE SECOND FRAME IS A FAINT-SKY FRAME WHERE r, u, g AND i ARE ALL UNMEASURED (EXACT ZEROS)
+    measured = _vis_header({1: 0.01, 2: 0.01, 3: 0.01, 4: 0.01}, **NEAR)
+    faint = _vis_header(
+        VIS_SHIFTS, rSource="none", ugSource="none", ugComment="order 1: 0 sky lines (min 2)", iSnr=0.1, **NEAR
+    )
+    arguments = _attached_workspace(tmp_path, {"a_SPECTRUM.fits": measured, "b_SPECTRUM.fits": faint})
+
+    # ACT
+    shift_tool.main(arguments)
+
+    # ASSERT
+    captured = capsys.readouterr()
+    assert "# ATTACHED-ARC: 4 SHIFTS FROM 1 FRAMES" in captured.out
+    assert re.search(r"skipped .*b_SPECTRUM\.fits: no sky shift was measured", captured.err)
+    assert len(re.findall(r"left out order \d .*b_SPECTRUM\.fits", captured.err)) == 4
+
+
+def test_main_raises_when_every_order_of_every_product_is_unmeasured(tmp_path: Path) -> None:
+    # ARRANGE
+    faint = _vis_header(
+        VIS_SHIFTS, rSource="none", ugSource="none", ugComment="order 1: 0 sky lines (min 2)", iSnr=0.1, **NEAR
+    )
+    arguments = _attached_workspace(tmp_path, {"a_SPECTRUM.fits": faint})
+
+    # ACT / ASSERT
+    with pytest.raises(shift_tool.ToolError, match="no sky shift"):
+        shift_tool.main(arguments)
 
 
 def test_main_raises_when_no_product_holds_a_sky_shift(tmp_path: Path) -> None:
