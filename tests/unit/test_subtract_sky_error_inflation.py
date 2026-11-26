@@ -193,11 +193,15 @@ def _stub_fit_stages(subtractor: subtract_sky) -> None:
     )
 
 
-def _order_subtractor(log: Any, *, arm: str, inflationSetting: Any, scatter: np.ndarray) -> subtract_sky:
+def _order_subtractor(
+    log: Any, *, arm: str, inflationSetting: Any, scatter: np.ndarray, instrument: str | None = "soxs"
+) -> subtract_sky:
     """Build a subtractor whose fit returns one order whose residuals (in stated errors) have the given scatter."""
     subtractor = object.__new__(subtract_sky)
     subtractor.log = log
     subtractor.arm = arm
+    # AN INSTRUMENT OF None MEANS A SETTINGS FILE WITH NO instrument KEY, WHICH IS SOXS
+    subtractor.settings = {} if instrument is None else {"instrument": instrument}
     subtractor.axisA = "x"
     subtractor.axisB = "y"
     subtractor.debug = False
@@ -232,16 +236,20 @@ def _line_in_second_half() -> np.ndarray:
     return scatter
 
 
-def _subtracted_errors(log: Any, arm: str, inflationSetting: Any) -> np.ndarray:
-    subtractor = _order_subtractor(log, arm=arm, inflationSetting=inflationSetting, scatter=_line_in_second_half())
+def _subtracted_errors(log: Any, arm: str, inflationSetting: Any, instrument: str | None = "soxs") -> np.ndarray:
+    subtractor = _order_subtractor(
+        log, arm=arm, inflationSetting=inflationSetting, scatter=_line_in_second_half(), instrument=instrument
+    )
     _, subtracted, _, _, _ = subtractor.subtract()
     return subtracted.uncertainty.array[0]
 
 
-@pytest.mark.parametrize("arm", ["NIR", "VIS"])
-def test_nir_and_vis_inflate_the_errors_where_the_sky_residuals_scatter_by_default(log: Any, arm: str) -> None:
+@pytest.mark.parametrize(("instrument", "arm"), [("soxs", "NIR"), ("soxs", "VIS"), (None, "VIS"), ("xsh", "NIR")])
+def test_the_errors_are_inflated_where_the_sky_residuals_scatter_when_the_key_is_missing(
+    log: Any, instrument: str | None, arm: str
+) -> None:
     # ACT
-    errors = _subtracted_errors(log, arm, _MISSING)
+    errors = _subtracted_errors(log, arm, _MISSING, instrument)
 
     # ASSERT
     quietEnd = errors[: FRAME_COLUMNS // 4]
@@ -251,10 +259,21 @@ def test_nir_and_vis_inflate_the_errors_where_the_sky_residuals_scatter_by_defau
     assert lineEnd.mean() == pytest.approx(STATED_ERROR * LINE_SCATTER, rel=SCATTER_TOLERANCE)
 
 
-@pytest.mark.parametrize(("arm", "inflationSetting"), [("NIR", False), ("VIS", False), ("UVB", _MISSING)])
-def test_errors_are_untouched_when_the_inflation_is_off(log: Any, arm: str, inflationSetting: Any) -> None:
+@pytest.mark.parametrize(
+    ("instrument", "arm", "inflationSetting"),
+    [
+        ("soxs", "NIR", False),
+        ("soxs", "VIS", False),
+        ("soxs", "UVB", _MISSING),
+        ("xsh", "VIS", _MISSING),
+        ("xsh", "UVB", _MISSING),
+    ],
+)
+def test_errors_are_untouched_when_the_inflation_is_off(
+    log: Any, instrument: str, arm: str, inflationSetting: Any
+) -> None:
     # ACT
-    errors = _subtracted_errors(log, arm, inflationSetting)
+    errors = _subtracted_errors(log, arm, inflationSetting, instrument)
 
     # ASSERT
     np.testing.assert_array_equal(errors, np.full(FRAME_COLUMNS, STATED_ERROR))

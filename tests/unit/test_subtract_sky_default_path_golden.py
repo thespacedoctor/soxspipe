@@ -48,11 +48,12 @@ Only the VIS sky model and sky-subtracted frame change, in 76145 and 76144 of 76
 -0.019 e- in the subtracted frame, and no pixel moves by more than 10 e-. The model still holds every sky line in both
 orders.
 
-DY-2436 turned the DY-1973 error inflation on for the shipped VIS stare settings (and for a VIS arm whose settings lack
-the key), so only the VIS ``ERRS`` array was re-recorded, on the DY-2436 branch. The VIS sky model, sky-subtracted frame
-and mask are unchanged (largest difference 6.1e-05 e- in the model, 3.0e-05 e- in the subtracted frame, which is float32
-rounding). The VIS ``ERRS`` are now at most 1.43 times the input error, 48% of the pixels are above 1.01 times it (as
-NIR), and the median ratio is 1.007. The NIR arrays are unchanged.
+DY-2436 turned the DY-1973 error inflation on for the shipped VIS stare settings (and for a SOXS VIS arm whose
+settings lack the key), so only the VIS ``ERRS`` array was re-recorded, on the DY-2436 branch. The VIS model,
+sky-subtracted and mask arrays and all the NIR arrays are bit-identical to the stored file, and only ``VIS_errs``
+changed. (Re-running the synthetic frame gives the VIS model and subtracted frame to within 6.1e-05 e- and 3.0e-05 e-,
+which is float32 rounding.) The VIS ``ERRS`` are now at most 1.43 times the input error, 48% of the pixels are above
+1.01 times it (as NIR), and the median ratio is 1.007.
 
 The file pins the default sky subtraction. To re-record it, run ``record_golden(path, log, workDir)`` with ``soxspipe``
 imported from a checkout of the commit that is the new reference and this module imported from its file path. ``log`` is

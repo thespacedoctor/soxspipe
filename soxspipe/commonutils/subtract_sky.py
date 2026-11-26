@@ -128,9 +128,11 @@ SKYLINE_DILATE_SAMPLES = 50
 FLAT_SLIT_GRADIENT_KEY = "flat-slit-gradient"
 
 # THE ARMS THAT INFLATE THE SKY-SUBTRACTED ERRORS BY THE SKY-RESIDUAL SCATTER WHEN A WORKSPACE'S SETTINGS PREDATE THE
-# sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML.
-# VIS IS ON AS A STOPGAP FOR THE LOW VIS ERRS PLANE (DY-2436): REVISIT IT WHEN THE DY-2437 PRESCAN READ-NOISE FIX LANDS
-ERROR_INFLATION_ARMS = frozenset({"VIS", "NIR"})
+# sky_error_inflation KEY (DY-1973). THE DEFAULT LIVES HERE BECAUSE A WORKSPACE KEEPS ITS OWN COPY OF THE YAML. THE
+# SOXS-ONLY ARMS ARE ON FOR SOXS ALONE: SOXS VIS IS ON AS A STOPGAP FOR THE LOW VIS ERRS PLANE (DY-2436), WHICH IS
+# MEASURED ON SOXS ONLY, SO X-SHOOTER VIS STAYS OFF. REVISIT IT WHEN THE DY-2437 PRESCAN READ-NOISE FIX LANDS
+ERROR_INFLATION_ARMS = frozenset({"NIR"})
+ERROR_INFLATION_SOXS_ONLY_ARMS = frozenset({"VIS"})
 ERROR_INFLATION_KEY = "sky_error_inflation"
 # THE SAMPLES OF THE ROLLING WINDOW (SORTED BY WAVELENGTH) THAT MEASURES THE SCATTER OF THE SKY-FIT RESIDUALS (DY-1973).
 # A NIR ORDER HAS ABOUT 35 SLIT PIXELS PER COLUMN, SO 100 SAMPLES SPAN ABOUT 3 COLUMNS, THE WIDTH OF A SKYLINE. A WIDER
@@ -3552,26 +3554,32 @@ class subtract_sky:
         self.log.debug("completed the ``clip_object_slit_positions`` method")
         return order_dataframes
 
-    def _arm_default_flag(self, key, defaultArms):
+    def _arm_default_flag(self, key, defaultArms, soxsOnlyArms=frozenset()):
         """*a boolean sky-subtraction setting, with a default by arm for a workspace whose settings predate the key*
 
         **Key Arguments:**
 
         - ``key`` -- the name of the ``sky-subtraction`` setting
         - ``defaultArms`` -- the arms (upper case) for which the setting is True when the key is absent
+        - ``soxsOnlyArms`` -- more arms for which it is True when the key is absent and the ``instrument`` setting is
+          ``soxs`` (``soxs`` when that setting is absent too)
 
         **Return:**
 
         - ``isOn`` -- the value of the setting
             - the value must be a bool (or a numpy bool): any other value (a quoted ``"False"``, a number, null)
               raises a ``ValueError``
-            - when the key is absent it is True for the arms in ``defaultArms`` and False for the rest
+            - when the key is absent it is True for the arms in ``defaultArms``, for the arms in ``soxsOnlyArms``
+              when the instrument is SOXS, and False for the rest
         """
         import numpy as np
 
         skySettings = self.recipeSettings["sky-subtraction"]
         if key not in skySettings:
-            return self.arm.upper() in defaultArms
+            arm = self.arm.upper()
+            if arm in defaultArms:
+                return True
+            return arm in soxsOnlyArms and str(self.settings.get("instrument", "soxs")).lower() == "soxs"
         isOn = skySettings[key]
         if not isinstance(isOn, (bool, np.bool_)):
             raise ValueError(f"the sky-subtraction setting `{key}` must be true or false, not {isOn!r}")
@@ -3593,9 +3601,10 @@ class subtract_sky:
         **Return:**
 
         - ``isOn`` -- the ``sky_error_inflation`` sky-subtraction setting, True by default for the arms in
-          ``ERROR_INFLATION_ARMS`` (VIS and NIR). See ``_arm_default_flag``
+          ``ERROR_INFLATION_ARMS`` (NIR) and, for SOXS only, ``ERROR_INFLATION_SOXS_ONLY_ARMS`` (VIS). See
+          ``_arm_default_flag``
         """
-        return self._arm_default_flag(ERROR_INFLATION_KEY, ERROR_INFLATION_ARMS)
+        return self._arm_default_flag(ERROR_INFLATION_KEY, ERROR_INFLATION_ARMS, ERROR_INFLATION_SOXS_ONLY_ARMS)
 
     def _flat_slit_gradient_enabled(self):
         """*whether the along-slit illumination of the sky is taken from the master flat (DY-2147)*
