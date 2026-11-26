@@ -375,9 +375,9 @@ def record_telluric_qcs(
 ) -> pd.DataFrame:
     """*append the telluric-shift QCs to a QC table*
 
-    ``TELL SHIFT`` (nm), ``TELL SHIFT ERR`` (nm) and ``TELL NLINES`` go to the FITS header. When no band is
-    measured the two shift rows read ``not measured`` and stay out of the header, so a repeated extraction cannot leave
-    an older value behind. Each band adds ``TELL SHIFT <band>``,
+    ``TELL SHIFT`` (nm), ``TELL SHIFT ERR`` (nm) and ``TELL NLINES`` always go to the FITS header. When no band is
+    measured the two shift rows read ``not measured``, as ``SKY TUNING`` reads when it is switched off. Each band adds
+    ``TELL SHIFT <band>``,
     ``TELL SHIFT ERR <band>`` and ``TELL NLINES <band>`` to the QC table only. The values are informational and have
     no acceptable range.
 
@@ -410,32 +410,32 @@ def record_telluric_qcs(
             toHeader=toHeader,
         )
 
+    def shift_row(
+        table: pd.DataFrame, name: str, value: float, comment: str, isMeasured: bool, toHeader: bool
+    ) -> pd.DataFrame:
+        text = round(value, QC_DECIMALS) if isMeasured else NOT_MEASURED
+        return add(table, name, text, comment, "nm" if isMeasured else None, toHeader)
+
     isMeasured = bool(result.nLines)
-    qcTable = add(
-        qcTable,
-        "TELL SHIFT",
-        round(result.shiftNm, QC_DECIMALS) if isMeasured else NOT_MEASURED,
-        "Median telluric-line shift of the star",
-        "nm",
-        isMeasured,
+    qcTable = shift_row(
+        qcTable, "TELL SHIFT", result.shiftNm, "Median telluric-line shift of the star", isMeasured, True
     )
-    qcTable = add(
-        qcTable,
-        "TELL SHIFT ERR",
-        round(result.errorNm, QC_DECIMALS) if isMeasured else NOT_MEASURED,
-        "Robust scatter of the line shifts over sqrt(N)",
-        "nm",
-        isMeasured,
+    qcTable = shift_row(
+        qcTable, "TELL SHIFT ERR", result.errorNm, "Robust scatter of the line shifts over sqrt(N)", isMeasured, True
     )
     qcTable = add(qcTable, "TELL NLINES", result.nLines, "Telluric lines used for the shift", None, True)
     for band in result.bands.itertuples():
-        for name, value, comment in (
-            (f"TELL SHIFT {band.band}", band.shiftNm, "Telluric-line shift in the band"),
-            (f"TELL SHIFT ERR {band.band}", band.errorNm, "Robust scatter over sqrt(N) in the band"),
-        ):
-            qcTable = add(
-                qcTable, name, round(value, QC_DECIMALS) if band.isMeasured else NOT_MEASURED, comment, "nm", False
-            )
+        qcTable = shift_row(
+            qcTable, f"TELL SHIFT {band.band}", band.shiftNm, "Telluric-line shift in the band", band.isMeasured, False
+        )
+        qcTable = shift_row(
+            qcTable,
+            f"TELL SHIFT ERR {band.band}",
+            band.errorNm,
+            "Robust scatter over sqrt(N) in the band",
+            band.isMeasured,
+            False,
+        )
         qcTable = add(
             qcTable,
             f"TELL NLINES {band.band}",

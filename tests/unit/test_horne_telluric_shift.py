@@ -204,7 +204,7 @@ def test_a_band_with_too_little_signal_is_reported_not_measured_and_the_recipe_g
     qc = extractor.qc.set_index("qc_name")
     assert qc.loc["TELL NLINES", "qc_value"] == 0
     assert qc.loc["TELL SHIFT", "qc_value"] == "not measured"
-    assert not qc.loc["TELL SHIFT", "to_header"]
+    assert qc.loc[["TELL SHIFT", "TELL SHIFT ERR", "TELL NLINES"], "to_header"].all()
     assert qc.loc[f"TELL SHIFT {BAND}", "qc_value"] == "not measured"
 
 

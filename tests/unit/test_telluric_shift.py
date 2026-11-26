@@ -421,19 +421,51 @@ def test_the_header_gets_the_three_cards_and_no_band_card() -> None:
     assert not [key for key in header if "H2O_" in key]
 
 
-def test_a_run_with_no_measured_band_writes_a_zero_line_count_and_no_header_shift() -> None:
+def test_a_run_with_no_measured_band_writes_a_zero_line_count_and_not_measured_shifts_to_the_header_rows() -> None:
     # ARRANGE
-    result = summarise_telluric_shift(_line_rows("O2_A", [0.1, 0.1]))
+    result = summarise_telluric_shift(_line_rows("O2_B", [0.1, 0.1]))
 
     # ACT
     qc = _recorded(result)
 
     # ASSERT
     assert qc.loc["TELL NLINES", "qc_value"] == 0
-    assert qc.loc["TELL NLINES", "to_header"]
+    for name in ("TELL NLINES", "TELL SHIFT", "TELL SHIFT ERR"):
+        assert qc.loc[name, "to_header"]
     for name in ("TELL SHIFT", "TELL SHIFT ERR"):
         assert qc.loc[name, "qc_value"] == "not measured"
-        assert not qc.loc[name, "to_header"]
+
+
+def test_a_not_measured_row_carries_no_unit_so_the_qc_plot_table_reads_not_measured() -> None:
+    # ARRANGE
+    lines = pd.concat(
+        [_line_rows("H2O_1130", [0.08, 0.09, 0.10, 0.11, 0.12]), _line_rows("H2O_1450", [0.9, 0.95])], ignore_index=True
+    )
+
+    # ACT
+    qc = _recorded(summarise_telluric_shift(lines))
+    noShift = _recorded(summarise_telluric_shift(_line_rows("O2_B", [0.1])))
+
+    # ASSERT
+    assert pd.isna(qc.loc["TELL SHIFT H2O_1450", "qc_unit"])
+    assert pd.isna(noShift.loc["TELL SHIFT", "qc_unit"])
+    assert qc.loc["TELL SHIFT H2O_1130", "qc_unit"] == "nm"
+
+
+def test_the_header_gets_all_three_cards_when_no_band_is_measured() -> None:
+    # ARRANGE
+    from soxspipe.commonutils.phase3 import add_qc_to_header
+
+    qc = _recorded(summarise_telluric_shift(_line_rows("O2_B", [0.1, 0.1]))).reset_index()
+
+    # ACT
+    header = add_qc_to_header(fits.Header(), qc)
+
+    # ASSERT
+    assert header["ESO QC TELL SHIFT"] == "not measured"
+    assert header["ESO QC TELL SHIFT ERR"] == "not measured"
+    assert header["ESO QC TELL NLINES"] == 0
+    assert not [key for key in header if "O2_B" in key]
 
 
 NIR_BANDS = {"H2O_1130", "H2O_1450", "H2O_1800", "CO2_2000"}
@@ -528,13 +560,13 @@ def test_the_summary_line_gives_the_shift_in_angstrom_and_names_the_bands_not_me
 
 def test_the_summary_line_says_so_when_no_band_is_measured() -> None:
     # ARRANGE
-    result = summarise_telluric_shift(_line_rows("O2_A", [0.1, 0.1]))
+    result = summarise_telluric_shift(_line_rows("O2_B", [0.1, 0.1]))
 
     # ACT
     summary = telluric_shift_summary(result)
 
     # ASSERT
-    assert summary == "\tTelluric-line shift not measured: no band has enough lines (not measured: O2_A)"
+    assert summary == "\tTelluric-line shift not measured: no band has enough lines (not measured: O2_B)"
 
 
 def test_the_qc_plot_is_written_and_leaves_no_figure_open(tmp_path: Path) -> None:
