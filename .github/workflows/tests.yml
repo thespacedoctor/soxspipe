@@ -17,53 +17,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # DECIDES WHETHER THE REQUIRED SUITE NEEDS TO RUN. A CHANGE THAT TOUCHES ONLY CHANGES.md
-  # SKIPS THE SUITE. THE WORKFLOW ITSELF STILL RUNS, BECAUSE `tests` IS A REQUIRED CHECK ON
-  # main: A JOB SKIPPED BY `if` COUNTS AS PASSED, BUT A WORKFLOW SKIPPED BY `paths-ignore`
-  # LEAVES THE CHECK PENDING AND BLOCKS THE MERGE. ANY DOUBT (NEW BRANCH, FAILED DIFF,
-  # EMPTY DIFF) RUNS THE SUITE
+  # DECIDES WHETHER THE REQUIRED SUITE NEEDS TO RUN, WITH THE SHARED change-scope WORKFLOW IN
+  # thespacedoctor/reusable-workflows. THE SUITE IS SKIPPED WHEN THE CHANGE TOUCHES ONLY
+  # CHANGES.md, OR WHEN A PUSH TO A PULL REQUEST ONLY MOVED ITS BASE (A MERGE FROM, OR REBASE
+  # ONTO, develop THAT LEFT THE PULL REQUEST'S OWN CODE DIFF UNCHANGED) AND THE RUN ON THE
+  # PREVIOUS HEAD PASSED (DY-2452). THE SECOND RULE ACCEPTS THAT THE PULL REQUEST'S CODE IS NOT
+  # RE-TESTED ON TOP OF THE NEW develop. THE WORKFLOW ITSELF STILL RUNS, BECAUSE `tests` IS A
+  # REQUIRED CHECK ON main: A JOB SKIPPED BY `if` COUNTS AS PASSED, BUT A WORKFLOW SKIPPED BY
+  # `paths-ignore` LEAVES THE CHECK PENDING AND BLOCKS THE MERGE. ANY DOUBT RUNS THE SUITE
   changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      code: ${{ steps.diff.outputs.code }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
-        with:
-          fetch-depth: 0
-
-      - name: Detect changes outside CHANGES.md
-        id: diff
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PUSH_BEFORE_SHA: ${{ github.event.before }}
-          PUSH_SHA: ${{ github.sha }}
-        run: |
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            range="$PR_BASE_SHA...$PR_HEAD_SHA"
-          elif [[ -n "$PUSH_BEFORE_SHA" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
-            range="$PUSH_BEFORE_SHA..$PUSH_SHA"
-          else
-            echo "No usable diff base; running the suite."
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! changed="$(git diff --name-only "$range")"; then
-            echo "git diff $range failed; running the suite."
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "Changed files:"
-          echo "$changed"
-          if [[ -n "$changed" ]] && ! grep -qvxF 'CHANGES.md' <<< "$changed"; then
-            echo "Only CHANGES.md changed; skipping the suite."
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          fi
+    permissions:
+      contents: read
+      actions: read
+    uses: thespacedoctor/reusable-workflows/.github/workflows/change-scope.yml@main
 
   # RUNS ON EVERY CHANGE, INCLUDING A CHANGES.md-ONLY ONE. THE SCRIPT USES THE STANDARD
   # LIBRARY ONLY, SO IT NEEDS NO PACKAGE INSTALL
@@ -86,7 +52,7 @@ jobs:
     needs: changes
     # RUNS UNLESS `changes` SUCCEEDED AND SAID `false`: A FAILED `changes` JOB MUST NOT SKIP
     # THE SUITE, BECAUSE A SKIPPED `tests` JOB PASSES THE REQUIRED CHECK
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true') }}
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code != 'false') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
