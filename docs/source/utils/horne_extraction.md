@@ -159,11 +159,20 @@ The line list is `telluric_lines.fits` in the static calibrations. It holds tell
 | VIS | O₂ B (686 to 697 nm), H₂O (714 to 735 nm), O₂ A (758 to 772 nm), H₂O (920 to 980 nm) |
 | NIR | H₂O (1110 to 1160 nm), H₂O (1400 to 1500 nm), H₂O (1750 to 1850 nm), CO₂ (2000 to 2060 nm) |
 
-The VIS arm ends at 850 nm, so the 920 to 980 nm band of the VIS list is never covered and always reads `not measured`. One list serves every slit width. A line is in the list only if it stays isolated at the lowest resolution SOXS uses. To test this, a model of the atmosphere is smoothed to resolving powers of 3500 and 5000, at three water columns, and the fit described below runs on each line of the model. The line is kept if the fitted centre moves by 0.15 Å or less over those models. The wavelength in the list is the mean fitted centre. It is the position that the fit returns on the HITRAN model, and it can differ by a few hundredths of a nm from the HITRAN wavelength of a line that has a close neighbour. The `LINE_NM` column holds the HITRAN wavelength. The script that builds the list is in the pull request of DY-1969.
+The VIS arm ends at 850 nm, so the 920 to 980 nm band of the VIS list is never covered and always reads `not measured`. One list serves every slit width.
+
+The list was built from the HITRAN database. The lines were fetched with the `hapi` module from hitran.org on 2026-11-26. The fetch holds the main isotopologues of H₂O, O₂ and CO₂. The header of the `TELLURIC_LINES` extension of the file holds the selection settings (`RESPOWS`, `MINDEPTH`, `MAXDEPTH`, `MAXSPRD`, `MAXOFFS`). The lines were chosen like this:
+
+1. A model of the atmosphere is made for each band. It is one layer at 270 K and 0.75 atm, with Voigt line profiles, at airmass 1.3. H₂O is modelled at three columns (0.6, 1.0 and 1.6 times 1.3e22 molecules/cm²) because the water vapour changes from night to night.
+2. The model is smoothed to resolving powers of 3500 and 5000. These cover the range at which SOXS measures a star.
+3. The fit described below runs on each HITRAN line of the band, in every smoothed model.
+4. A line is kept only if the fit works in every model, the line depth is between 0.04 and 0.85, and the fitted centre moves by 0.15 Å or less between the models. A line that fails this is blended with a neighbour, or is too weak, or is saturated. The centre must also lie within 0.5 Å of the HITRAN wavelength. Of two kept lines closer than 0.3 Å, only the stronger stays.
+
+The `WAVELENGTH` column of the list (nm, air) is the mean fitted centre of the model blend, which is what the fit returns on the HITRAN model. The `LINE_NM` column is the HITRAN wavelength of the line in air. The two differ by a few hundredths of a nm for a line that has a close neighbour. The star is compared with `WAVELENGTH`, so a blend does not bias the shift.
 
 For each line in an order, the utility fits a Gaussian absorption line on a straight continuum in a window of ±2.5 times the width of a line at a resolving power of 4000. The shift of the line is the fitted centre minus the catalogue wavelength. A fit is rejected when the centre or the width reaches the edge of its allowed range, when the line is shallower than 3 percent, or when the shift is more than 3 Å. When two orders overlap, the fit with the smaller centroid error is used.
 
-A band counts as measured when it has at least 5 lines with a centroid error below 0.3 Å. Any other band is reported as `not measured`. The values are:
+A band counts as measured when it has at least 5 lines with a centroid error below 0.2 Å. Any other band is reported as `not measured`. The values are:
 
 - `TELL SHIFT` (nm): the median shift of all lines in the measured bands.
 - `TELL SHIFT ERR` (nm): 1.4826 times the median absolute deviation of the line shifts, divided by √N.
@@ -171,7 +180,7 @@ A band counts as measured when it has at least 5 lines with a centroid error bel
 
 These three QCs go to the header of the products. The QC table also holds `TELL SHIFT <band>`, `TELL SHIFT ERR <band>` and `TELL NLINES <band>` for each band. When no band is measured, `TELL SHIFT` and `TELL SHIFT ERR` read `not measured` and stay out of the header. The values have no acceptable range and never fail a recipe. A QC plot (`TELLURIC_SHIFT_QC_PLOT`) shows the shift of each line against wavelength, coloured by band, with the median marked.
 
-Set `measure-telluric-shift: False` in the recipe block of the settings file to switch the measurement off. The default is `True`. A settings file without the key measures. Any value other than `True` or `False` stops the recipe with an error. An error inside the measurement is logged as a warning and the recipe goes on. X-Shooter has no telluric line list, so it measures nothing.
+Set `measure-telluric-shift: False` in the recipe block of the settings file to switch the measurement off. The default is `True`. A settings file without the key measures. Any value other than `True` or `False` logs a warning, and the utility measures as if the value were `True`. An error inside the measurement is logged as a warning and the recipe goes on. A missing or malformed line list is logged as an error and the recipe also goes on. X-Shooter has no telluric line list, so it measures nothing.
 
 ### Utility API
 
