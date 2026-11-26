@@ -14,7 +14,7 @@ import pytest
 from astropy.io import fits
 
 from tests.unit._arc_scene import (
-    LINE_COLUMNS,
+    LINE_INDICES,
     Scene,
     raw_header,
     sky_header,
@@ -86,6 +86,17 @@ def test_read_arc_ref_returns_the_arm_slit_mjd_and_binning(tmp_path: Path) -> No
 
     # ASSERT
     assert (arc.arm, arc.slit, arc.mjd, arc.binX, arc.binY) == ("VIS", "SLIT1.5", 60003.25, 1, 1)
+
+
+def test_read_arc_ref_returns_binx_as_the_binning_of_the_columns_and_biny_as_that_of_the_rows(tmp_path: Path) -> None:
+    # ARRANGE: A VIS 2X1 FRAME IS 429 COLUMNS (NAXIS1, BINX 2) BY 4096 ROWS (NAXIS2, BINY 1)
+    path = write_raw_arc(tmp_path / "arc.fits", Scene(), raw_header(binning=(2, 1)))
+
+    # ACT
+    arc = frames_tool.read_arc_ref(path)
+
+    # ASSERT
+    assert (arc.binX, arc.binY) == (2, 1)
 
 
 def test_read_arc_ref_treats_a_nir_arc_with_no_binning_cards_as_unbinned(tmp_path: Path) -> None:
@@ -187,7 +198,7 @@ def test_measure_arc_fits_the_lines_along_the_dispersion_of_the_arm_in_the_real_
     lines = frames_tool.measure_arc(arc, mapRef, saturation=40000.0)
 
     # ASSERT
-    assert len(lines) == len(LINE_COLUMNS)
+    assert len(lines) == len(LINE_INDICES)
     assert np.median([line.resolvingPower for line in lines]) == pytest.approx(
         scene.expected_resolving_power(np.median(scene.centres)), rel=0.03
     )
@@ -263,7 +274,7 @@ def test_measure_sky_adds_the_sky_model_back_and_measures_lines_2_to_5_arcsec_fr
     lines = frames_tool.measure_sky(sky, mapRef)
 
     # ASSERT
-    assert len(lines) == len(LINE_COLUMNS)
+    assert len(lines) == len(LINE_INDICES)
     assert np.median([line.resolvingPower for line in lines]) == pytest.approx(
         scene.expected_resolving_power(np.median(scene.centres)), rel=0.03
     )
@@ -272,8 +283,8 @@ def test_measure_sky_adds_the_sky_model_back_and_measures_lines_2_to_5_arcsec_fr
 def test_measure_sky_leaves_out_a_line_that_the_quality_extension_flags(tmp_path: Path) -> None:
     # ARRANGE: ONE FLAGGED PIXEL AT +3 ARCSEC, INSIDE THE FIT WINDOW OF THE FOURTH LINE
     scene = Scene(fwhmPx=3.0, minSlit=1.9)
-    row = scene.slit_row(3.0)
-    badPixel = scene.pixel_at(scene.centres[3] + 0.02, row)
+    slitIndex = scene.slit_index(3.0)
+    badPixel = scene.pixel_at(scene.centres[3] + 0.02, slitIndex)
     sky = frames_tool.read_sky_ref(write_sky_pair(tmp_path / "stare_SKYSUB.fits", scene, sky_header(), badPixel))
     mapRef = frames_tool.read_map_ref(write_disp_image(tmp_path / "map_DISP_IMAGE.fits", scene))
 
@@ -281,7 +292,7 @@ def test_measure_sky_leaves_out_a_line_that_the_quality_extension_flags(tmp_path
     lines = frames_tool.measure_sky(sky, mapRef)
 
     # ASSERT
-    assert len(lines) == len(LINE_COLUMNS) - 1
+    assert len(lines) == len(LINE_INDICES) - 1
 
 
 def test_measure_sky_ignores_lines_that_sit_inside_2_arcsec_of_the_slit_centre(tmp_path: Path) -> None:
@@ -333,4 +344,4 @@ def test_measure_sky_finds_the_lines_of_the_positive_side_of_the_slit(tmp_path: 
     lines = frames_tool.measure_sky(sky, mapRef)
 
     # ASSERT
-    assert len(lines) == len(LINE_COLUMNS)
+    assert len(lines) == len(LINE_INDICES)

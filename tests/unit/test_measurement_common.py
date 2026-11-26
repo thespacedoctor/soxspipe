@@ -100,10 +100,13 @@ def test_arm_of_names_the_file_when_the_arm_card_is_missing(tmp_path: Path) -> N
 @pytest.mark.parametrize(
     ("arm", "cards", "binning"),
     [
-        ("VIS", {"ESO_DET_BINX": 2, "ESO_DET_BINY": 1}, 2),
+        # RAW VIS FRAMES: BINX BINS NAXIS1 (NUMPY AXIS 1) AND BINY BINS NAXIS2 (AXIS 0), WHICH IS THE VIS DISPERSION
+        ("VIS", {"ESO_DET_BINX": 2, "ESO_DET_BINY": 1}, 1),
+        ("VIS", {"ESO_DET_BINX": 1, "ESO_DET_BINY": 2}, 2),
+        ("VIS", {"ESO_DET_BINX": 2, "ESO_DET_BINY": 2}, 2),
+        # THE NIR ARM DISPERSES ALONG NAXIS1, SO ITS SPECTRAL BINNING WOULD BE BINX
+        ("NIR", {"ESO_DET_BINX": 4, "ESO_DET_BINY": 2}, 4),
         ("NIR", {"ESO_DET_BINX": 1, "ESO_DET_BINY": 1}, 1),
-        # THE NIR ARM DISPERSES ALONG y, SO ITS SPECTRAL BINNING IS BINY
-        ("NIR", {"ESO_DET_BINX": 4, "ESO_DET_BINY": 2}, 2),
     ],
 )
 def test_spectral_binning_reads_the_card_of_the_dispersion_axis(arm: str, cards: dict, binning: int) -> None:
@@ -122,8 +125,8 @@ def test_spectral_binning_raises_naming_the_file_and_card_when_the_card_is_missi
     path = tmp_path / "a.fits"
 
     # ACT / ASSERT
-    with pytest.raises(common.ToolError, match=re.escape(f"{path} has no ESO DET BINX card")):
-        common.spectral_binning(_header(), "VIS", path)
+    with pytest.raises(common.ToolError, match=re.escape(f"{path} has no ESO DET BINY card")):
+        common.spectral_binning(_header(ESO_DET_BINX=1), "VIS", path)
 
 
 def test_spectral_binning_is_one_for_a_nir_frame_with_no_binning_card(tmp_path: Path) -> None:
@@ -142,7 +145,7 @@ def test_binning_along_is_one_for_a_nir_frame_with_no_card_on_either_axis() -> N
     header = _header(ESO_SEQ_ARM="NIR")
 
     # ACT
-    binnings = [common.binning_along(header, axis, arm="NIR") for axis in ("x", "y")]
+    binnings = [common.binning_along(header, numpyAxis, "NIR") for numpyAxis in (0, 1)]
 
     # ASSERT
     assert binnings == [1, 1]
@@ -153,7 +156,7 @@ def test_binning_along_still_reads_a_nir_binning_card_that_is_present() -> None:
     header = _header(ESO_DET_BINY=2)
 
     # ACT
-    binning = common.binning_along(header, "y", arm="NIR")
+    binning = common.binning_along(header, 0, "NIR")
 
     # ASSERT
     assert binning == 2
@@ -165,24 +168,24 @@ def test_binning_along_still_rejects_a_bad_nir_binning_card() -> None:
 
     # ACT / ASSERT
     with pytest.raises(common.ToolError, match="ESO DET BINY"):
-        common.binning_along(header, "y", arm="NIR")
+        common.binning_along(header, 0, "NIR")
 
 
-def test_binning_along_raises_for_a_vis_frame_with_no_card_when_the_arm_is_given(tmp_path: Path) -> None:
+def test_binning_along_raises_for_a_vis_frame_with_no_card(tmp_path: Path) -> None:
     # ARRANGE
     path = tmp_path / "a.fits"
 
     # ACT / ASSERT
     with pytest.raises(common.ToolError, match=re.escape(f"{path} has no ESO DET BINY card")):
-        common.binning_along(_header(), "y", path, arm="VIS")
+        common.binning_along(_header(), 0, "VIS", path)
 
 
 def test_spectral_binning_raises_when_the_card_is_below_one() -> None:
     # ARRANGE
-    header = _header(ESO_DET_BINX=0)
+    header = _header(ESO_DET_BINY=0)
 
     # ACT / ASSERT
-    with pytest.raises(common.ToolError, match="ESO DET BINX"):
+    with pytest.raises(common.ToolError, match="ESO DET BINY"):
         common.spectral_binning(header, "VIS")
 
 
@@ -372,10 +375,10 @@ def test_run_main_reports_a_tool_error_on_stderr_and_returns_two(capsys: pytest.
 def test_spectral_binning_raises_when_the_card_is_not_a_whole_number(tmp_path: Path) -> None:
     # ARRANGE
     path = tmp_path / "a.fits"
-    header = _header(ESO_DET_BINX="two")
+    header = _header(ESO_DET_BINY="two")
 
     # ACT / ASSERT
-    with pytest.raises(common.ToolError, match=re.escape(f"{path} has a ESO DET BINX card that is not a whole number")):
+    with pytest.raises(common.ToolError, match=re.escape(f"{path} has a ESO DET BINY card that is not a whole number")):
         common.spectral_binning(header, "VIS", path)
 
 
@@ -386,19 +389,28 @@ def test_binning_along_rejects_a_card_that_is_not_an_integer(value: object) -> N
 
     # ACT / ASSERT
     with pytest.raises(common.ToolError, match="not a whole number"):
-        common.binning_along(header, "x")
+        common.binning_along(header, 1, "VIS")
 
 
-@pytest.mark.parametrize(("axis", "expected"), [("x", 3), ("y", 5)])
-def test_binning_along_reads_the_card_of_the_axis(axis: str, expected: int) -> None:
-    # ARRANGE
+@pytest.mark.parametrize(("numpyAxis", "expected"), [(1, 3), (0, 5)])
+def test_binning_along_reads_binx_for_numpy_axis_1_and_biny_for_numpy_axis_0(numpyAxis: int, expected: int) -> None:
+    # ARRANGE: BINX BINS NAXIS1 (NUMPY AXIS 1) AND BINY BINS NAXIS2 (NUMPY AXIS 0) ON RAW FRAMES
     header = _header(ESO_DET_BINX=3, ESO_DET_BINY=5)
 
     # ACT
-    binning = common.binning_along(header, axis)
+    binning = common.binning_along(header, numpyAxis, "VIS")
 
     # ASSERT
     assert binning == expected
+
+
+@pytest.mark.parametrize(("arm", "axis"), [("VIS", 0), ("NIR", 1)])
+def test_disp_image_axis_is_the_numpy_axis_the_wavelength_runs_along(arm: str, axis: int) -> None:
+    # ARRANGE / ACT
+    result = common.disp_image_axis(arm)
+
+    # ASSERT
+    assert result == axis
 
 
 def test_the_cached_yaml_reads_are_read_only_all_the_way_down() -> None:

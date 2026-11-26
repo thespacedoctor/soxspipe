@@ -35,9 +35,6 @@ MAX_FWHM_PIXELS = 8.0
 MAX_CENTRE_DRIFT_PIXELS = 2.0
 ARC_PROMINENCE = 30.0
 MAD_TO_SIGMA = 1.4826
-# THE KEYS ARE THE DETECTOR PARAMETER dispersion-axis OF THE ARM (VIS x, NIR y). THE VALUES ARE THE NUMPY AXIS OF THE
-# DISP_IMAGE MAPS: THE WAVELENGTH RUNS ALONG AXIS 0 FOR VIS AND AXIS 1 FOR NIR (DY-2455). SO THE KEY "x" IS NUMPY AXIS 0
-DISPERSION_AXIS_INDEX = {"x": 0, "y": 1}
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -258,7 +255,7 @@ def measure_lines(
     wavelength: FloatArray,
     slit: FloatArray,
     order: npt.NDArray[np.integer],
-    dispersionAxis: str,
+    axis: int,
     slitRange: tuple[float, float] = ARC_SLIT_RANGE_ARCSEC,
     prominence: float = ARC_PROMINENCE,
 ) -> list[LineFit]:
@@ -271,8 +268,7 @@ def measure_lines(
     - ``wavelength`` -- the ``WAVELENGTH`` map of the ``DISP_IMAGE``, in nm
     - ``slit`` -- the ``SLIT`` map, in arcsec
     - ``order`` -- the ``ORDER`` map; 0 is no order
-    - ``dispersionAxis`` -- ``x`` or ``y``, the ``dispersion-axis`` of the arm in the detector parameters. ``x`` is
-      numpy axis 0 of the maps (VIS) and ``y`` is numpy axis 1 (NIR)
+    - ``axis`` -- the numpy axis of the maps that the wavelength runs along, 0 for VIS and 1 for NIR
     - ``slitRange`` -- the open interval of slit positions to use, in arcsec. Default ``ARC_SLIT_RANGE_ARCSEC``, within
       3 arcsec of the centre
     - ``prominence`` -- the peak prominence, in units of the profile's noise. Default ``ARC_PROMINENCE``, 30
@@ -284,10 +280,9 @@ def measure_lines(
     **Usage:**
 
     ```python
-    lines = measure_lines(data, good, wavelength, slit, order, "x")
+    lines = measure_lines(data, good, wavelength, slit, order, axis=0)
     ```
     """
-    axis = DISPERSION_AXIS_INDEX[dispersionAxis]
     inSlit = (slit > slitRange[0]) & (slit < slitRange[1]) & np.isfinite(data) & (wavelength > 0)
     lines: list[LineFit] = []
     for orderNumber in np.unique(order[order > 0]):

@@ -45,8 +45,9 @@ def _write_extracted_orders(
     primary = fits.PrimaryHDU()
     primary.header["ESO SEQ ARM"] = arm
     if hasBinningCards:
-        primary.header["ESO DET BINX"] = binning if arm == "VIS" else 1
-        primary.header["ESO DET BINY"] = binning if arm == "NIR" else 1
+        # THE VIS WAVELENGTH RUNS ALONG NAXIS2, WHICH BINY BINS, AND THE NIR WAVELENGTH ALONG NAXIS1, WHICH BINX BINS
+        primary.header["ESO DET BINX"] = binning if arm == "NIR" else 1
+        primary.header["ESO DET BINY"] = binning if arm == "VIS" else 1
     primary.header["MJD-OBS"] = mjd
     table = fits.BinTableHDU.from_columns(
         [
@@ -173,7 +174,7 @@ def test_read_product_treats_a_nir_table_with_no_binning_cards_as_unbinned(tmp_p
     assert (product.arm, product.binning) == ("NIR", 1)
 
 
-@pytest.mark.parametrize("missingCard", ["ESO DET BINX", "MJD-OBS"])
+@pytest.mark.parametrize("missingCard", ["ESO DET BINY", "MJD-OBS"])
 def test_read_product_names_the_file_and_the_card_when_a_header_card_is_missing(
     tmp_path: Path, missingCard: str
 ) -> None:
@@ -273,7 +274,7 @@ def test_format_yaml_prints_the_provenance_the_binning_note_and_the_step(tmp_pat
     assert text == (
         "VIS:\n"
         "  # MEASURED 2026-11-22 WITH soxspipe 0.19.1 FROM 2 FRAMES ON 2 NIGHTS (MJD 60000 TO 60002)\n"
-        "  # PER UNBINNED PIXEL; THE REDUCTION MULTIPLIES IT BY BINX (VIS) OR BINY (NIR)\n"
+        "  # PER UNBINNED PIXEL; THE REDUCTION MULTIPLIES IT BY BINY (VIS) OR BINX (NIR)\n"
         "  # SMALLEST PER-ORDER MEDIAN STEP; ORDER 1 20.00, ORDER 2 18.00 km/s\n"
         "  log-wavelength-step-kms: 18.0\n"
     )

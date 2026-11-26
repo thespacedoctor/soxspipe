@@ -29,7 +29,14 @@ KEYWORDS_PATH = REPO_ROOT / "soxspipe" / "resources" / "soxs_keywords.yaml"
 VERSION_PATH = REPO_ROOT / "soxspipe" / "__version__.py"
 ARM_CARD = "ESO SEQ ARM"
 MJD_CARD = "MJD-OBS"
-SPECTRAL_BINNING_CARDS = {"x": "ESO DET BINX", "y": "ESO DET BINY"}
+# THE VALUE OF dispersion-axis IN soxs_detector_parameters.yaml ("x" OR "y") -> THE NUMPY AXIS THE WAVELENGTH RUNS ALONG
+# IN THE ARRAYS OF A DISP_IMAGE. HERE "x" MEANS NUMPY AXIS 0, WHICH IS FITS NAXIS2, THE OPPOSITE OF THE FITS x AXIS
+# (NAXIS1, NUMPY AXIS 1). VERIFIED ON THE 2026-01-12 MAPS: THE WAVELENGTH STEP IS 0.0335 nm ALONG AXIS 0 FOR VIS AND
+# 0.0498 nm ALONG AXIS 1 FOR NIR (DY-2455)
+DISP_IMAGE_AXIS_BY_DISPERSION_AXIS_VALUE = {"x": 0, "y": 1}
+# THE ESO DET BIN CARD THAT BINS EACH NUMPY AXIS OF A RAW FRAME: BINX BINS NAXIS1 (AXIS 1), BINY BINS NAXIS2 (AXIS 0).
+# VIS 1X1 RAW FRAMES ARE 858 BY 4096 (NAXIS1 BY NAXIS2) AND 2X1 FRAMES ARE 429 BY 4096 (BINX 2, BINY 1)
+BINNING_CARD_BY_NUMPY_AXIS = {0: "ESO DET BINY", 1: "ESO DET BINX"}
 # THE NIR DETECTOR DOES NOT BIN, SO ITS RAW FRAMES AND PRODUCTS CARRY NO BINNING CARD (DY-2456)
 UNBINNED_ARMS = frozenset({"NIR"})
 EXIT_INPUT_ERROR = 2
@@ -288,7 +295,10 @@ def arm_of(header: fits.Header, path: Path | None = None) -> str:
 
 
 def dispersion_axis(arm: str) -> str:
-    """*the detector axis the arm disperses along, ``x`` or ``y``, from the detector parameters*
+    """*the ``dispersion-axis`` value of the arm in the detector parameters, ``x`` or ``y``*
+
+    This is not a numpy axis, and for the arrays of a ``DISP_IMAGE`` it is the opposite of the FITS axis name. Use
+    ``disp_image_axis`` for the numpy axis.
 
     **Key Arguments:**
 
@@ -307,16 +317,40 @@ def dispersion_axis(arm: str) -> str:
     return detector_parameters()[arm]["dispersion-axis"]
 
 
-def binning_along(header: fits.Header, axis: str, path: Path | None = None, arm: str | None = None) -> int:
-    """*the binning factor along a detector axis, from its ``ESO DET BIN<axis>`` card*
+def disp_image_axis(arm: str) -> int:
+    """*the numpy axis that the wavelength runs along in the ``DISP_IMAGE`` arrays and the raw frame of an arm*
+
+    The detector parameter ``dispersion-axis`` of VIS is ``x``, and that is numpy axis 0 (FITS ``NAXIS2``). The one of
+    NIR is ``y``, and that is numpy axis 1 (FITS ``NAXIS1``).
+
+    **Key Arguments:**
+
+    - ``arm`` -- ``VIS`` or ``NIR``
+
+    **Return:**
+
+    - ``axis`` -- 0 or 1
+
+    **Usage:**
+
+    ```python
+    axis = disp_image_axis("VIS")
+    ```
+    """
+    return DISP_IMAGE_AXIS_BY_DISPERSION_AXIS_VALUE[dispersion_axis(arm)]
+
+
+def binning_along(header: fits.Header, numpyAxis: int, arm: str, path: Path | None = None) -> int:
+    """*the binning factor along a numpy axis of a raw frame, from its ``ESO DET BINX`` or ``BINY`` card*
+
+    ``BINX`` bins numpy axis 1 (``NAXIS1``) and ``BINY`` bins numpy axis 0 (``NAXIS2``).
 
     **Key Arguments:**
 
     - ``header`` -- the FITS header of the frame
-    - ``axis`` -- ``x`` or ``y``
+    - ``numpyAxis`` -- 0 or 1
+    - ``arm`` -- the arm of the frame. A card that is missing on an arm in ``UNBINNED_ARMS`` (NIR) counts as 1
     - ``path`` -- the file the header came from, named in the error. Default *None*
-    - ``arm`` -- the arm of the frame. A card that is missing on an arm in ``UNBINNED_ARMS`` (NIR) counts as 1. Default
-      *None*, which makes a missing card an error
 
     **Return:**
 
@@ -329,10 +363,10 @@ def binning_along(header: fits.Header, axis: str, path: Path | None = None, arm:
     **Usage:**
 
     ```python
-    binX = binning_along(header, "x", path, arm="VIS")
+    binColumns = binning_along(header, 1, "VIS", path)
     ```
     """
-    card = SPECTRAL_BINNING_CARDS[axis]
+    card = BINNING_CARD_BY_NUMPY_AXIS[numpyAxis]
     if card not in header and arm in UNBINNED_ARMS:
         return 1
     value = required_card(header, card, path)
@@ -351,7 +385,9 @@ def binning_along(header: fits.Header, axis: str, path: Path | None = None, arm:
 
 
 def spectral_binning(header: fits.Header, arm: str, path: Path | None = None) -> int:
-    """*the binning factor along the dispersion axis of a product*
+    """*the binning factor along the dispersion of a product: ``BINY`` for VIS, ``BINX`` for NIR*
+
+    The card follows the numpy axis the wavelength runs along (``disp_image_axis``).
 
     **Key Arguments:**
 
@@ -374,7 +410,7 @@ def spectral_binning(header: fits.Header, arm: str, path: Path | None = None) ->
     binning = spectral_binning(header, "VIS", path)
     ```
     """
-    return binning_along(header, dispersion_axis(arm), path, arm)
+    return binning_along(header, disp_image_axis(arm), arm, path)
 
 
 def soxspipe_version(path: Path = VERSION_PATH) -> str:

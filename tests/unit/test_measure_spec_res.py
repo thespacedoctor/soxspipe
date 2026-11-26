@@ -359,9 +359,7 @@ def test_main_prints_the_arc_table_when_a_sky_frame_does_not_match_its_maps(
     monkeypatch.setattr(spec_tool, "today_iso", lambda: "2026-11-22")
     stareDir = tmp_path / "stare"
     stareDir.mkdir()
-    shortScene = Scene(minSlit=1.9)
-    for name in ("wavelength", "slit", "order", "data", "good"):
-        setattr(shortScene, name, getattr(shortScene, name)[:-1])
+    shortScene = Scene(minSlit=1.9).with_axis_0_one_short()
     skyPath = write_sky_pair(stareDir / "obs1_SKYSUB.fits", shortScene, sky_header())
 
     # ACT
