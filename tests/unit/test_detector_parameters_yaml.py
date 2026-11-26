@@ -366,7 +366,7 @@ def test_only_the_soxs_vis_arm_has_a_prescan_window(instrument: str, arm: str) -
 
 # THE SLITS OF THE SOXS SPEC_RES TABLE, NARROWEST FIRST (DY-2378)
 SPEC_RES_SLITS = ("SLIT0.5", "SLIT1.0", "SLIT1.5", "SLIT5.0")
-SOXS_ARMS = ["VIS", "NIR"]
+SOXS_ARMS = ("VIS", "NIR")
 # PLAUSIBLE RANGES THAT CATCH A WRONG UNIT OR A SWAPPED ARM (DY-2378)
 LOG_STEP_RANGE_KMS = {"VIS": (15.0, 21.0), "NIR": (11.0, 16.0)}
 SKY_SHIFT_RANGE_NM = (0.001, 0.5)
