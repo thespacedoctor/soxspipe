@@ -362,3 +362,78 @@ def test_only_the_soxs_vis_arm_has_a_prescan_window(instrument: str, arm: str) -
 
     # ACT / ASSERT
     assert "prescan-pixels" not in parameters
+
+
+# THE SLITS OF THE SOXS SPEC_RES TABLE, NARROWEST FIRST, WITH THEIR WIDTH IN ARCSEC (DY-2378)
+SPEC_RES_SLITS = {"SLIT0.5": 0.5, "SLIT1.0": 1.0, "SLIT1.5": 1.5, "SLIT5.0": 5.0}
+
+# THE SKY-SHIFT UNCERTAINTY KINDS EACH SOXS ARM CARRIES. NIR HAS NO attached-arc VALUE: NO NIR FRAME HAS AN ARC
+# ATTACHED (DY-2378)
+SKY_SHIFT_KINDS = {"VIS": {"untuned", "attached-arc"}, "NIR": {"untuned"}}
+
+
+def _soxs_arm_parameters(arm: str) -> dict:
+    return yaml.safe_load(_yaml_path("soxs").read_text())[arm]
+
+
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_soxs_arm_has_a_positive_log_wavelength_step(arm: str) -> None:
+    # ARRANGE / ACT (A MISSING KEY RAISES KeyError AND FAILS THE TEST)
+    step = _soxs_arm_parameters(arm)["log-wavelength-step-kms"]
+
+    # ASSERT
+    assert isinstance(step, float)
+    assert step > 0
+
+
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_soxs_arm_spec_res_table_holds_exactly_the_four_slits_with_positive_values(arm: str) -> None:
+    # ARRANGE / ACT
+    table = _soxs_arm_parameters(arm)["spec-res"]
+
+    # ASSERT
+    assert set(table) == set(SPEC_RES_SLITS)
+    assert all(value > 0 for value in table.values())
+
+
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_soxs_arm_spec_res_falls_as_the_slit_widens(arm: str) -> None:
+    # ARRANGE
+    table = _soxs_arm_parameters(arm)["spec-res"]
+
+    # ACT
+    values = [table[slit] for slit in sorted(SPEC_RES_SLITS, key=SPEC_RES_SLITS.get)]
+
+    # ASSERT
+    assert values == sorted(values, reverse=True)
+    assert len(set(values)) == len(values)
+
+
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_soxs_arm_spec_res_of_the_5_arcsec_slit_is_the_1_arcsec_value_divided_by_5(arm: str) -> None:
+    # ARRANGE
+    table = _soxs_arm_parameters(arm)["spec-res"]
+
+    # ACT
+    nominal = table["SLIT1.0"] / 5
+
+    # ASSERT: THE MEASUREMENT SCRIPT ROUNDS THE NOMINAL VALUE TO AN INTEGER
+    assert table["SLIT5.0"] == pytest.approx(nominal, abs=0.5)
+
+
+@pytest.mark.parametrize("arm", ["VIS", "NIR"])
+def test_soxs_arm_sky_shift_uncertainty_holds_only_the_measured_kinds_as_positive_floats(arm: str) -> None:
+    # ARRANGE / ACT
+    uncertainty = _soxs_arm_parameters(arm)["sky-shift-uncertainty-nm"]
+
+    # ASSERT
+    assert set(uncertainty) == SKY_SHIFT_KINDS[arm]
+    assert all(isinstance(value, float) and value > 0 for value in uncertainty.values())
+
+
+def test_soxs_vis_attached_arc_sky_shift_uncertainty_is_below_the_untuned_value() -> None:
+    # ARRANGE
+    uncertainty = _soxs_arm_parameters("VIS")["sky-shift-uncertainty-nm"]
+
+    # ACT / ASSERT
+    assert uncertainty["attached-arc"] < uncertainty["untuned"]
