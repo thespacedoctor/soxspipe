@@ -436,6 +436,7 @@ def _two_order_subtractor(
     subtractor.axisB = "y"
     subtractor.detectorParams = {"dispersion-axis": "x"}
     subtractor.dateObs = "2024-01-02T03:04:05"
+    subtractor.settings = {"instrument": "soxs"}
     subtractor.recipeSettings = {
         "sky-subtraction": {
             "bspline_order": 3,

@@ -813,7 +813,11 @@ class create_dispersion_map:
         return orderPixelTable, centrex, centrey
 
     def _handle_multipin_hole_big_shift(self, orderPixelTable, order_num, mask, iteration):
-        """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*"""
+        """*DETECT AND CORRECT LARGE SHIFTS BETWEEN SINGLE/MULTI-PINHOLE FRAMES*
+
+        On the first iteration only, the order's line sets move along the slit when the end shifts show a pinhole
+        offset (above 0.4 px), and always move along the other axis by the group's sigma-clipped median offset.
+        """
         from astropy.stats import sigma_clipped_stats
 
         # ONLY CHECK ON FIRST ITERATION
@@ -877,6 +881,15 @@ class create_dispersion_map:
                 _plot_slit_index_comparisons(orderPixelTable.loc[(mask & (orderPixelTable["slit_index"] == 0))])
         elif self.debug:
             _plot_slit_index_comparisons(orderPixelTable.loc[mask])
+
+        # THE FIRST PASS ALSO MOVES THE GROUP ALONG THE OTHER AXIS BY ITS MEDIAN OFFSET, SO THE NARROW LATER WINDOWS
+        # START ON THE LINES RATHER THAN ON NOISE A FEW PIXELS AWAY (DY-1928)
+        _, offsetB, _ = sigma_clipped_stats(
+            orderPixelTable.loc[mask][f"{self.axisB}_diff"], sigma=3.0, cenfunc="median", stdfunc="mad_std", maxiters=5
+        )
+        orderPixelTable.loc[mask, f"detector_{self.axisB}_shifted"] = (
+            orderPixelTable.loc[mask][f"detector_{self.axisB}_shifted"] - offsetB
+        )
 
         return orderPixelTable
 
