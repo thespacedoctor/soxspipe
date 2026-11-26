@@ -26,18 +26,28 @@ The printed value is the largest over orders of the per-order RMS, because `SPEC
 pooled over all orders and frames is printed as a yaml comment, with the per-order values.
 
 An order that was neither measured nor modelled is left out of the RMS, because the pipeline records it as a shift of
-exactly 0.000 nm. The script names each order it leaves out on stderr. These cards mark such an order (a measured shift
-of exactly zero has none of them, and counts):
+exactly 0.000 nm. The script names each order it leaves out on stderr. Only an order with a recorded shift of exactly 0
+can be left out, and a non-zero shift is always a measurement. These cards mark such an order (a measured shift of
+exactly zero has none of them, and counts):
 
 - VIS r (order 1): `ESO QC R SHIFT SOURCE = none`. `measured`, `combined` and `predicted` all count.
 - VIS u and g (orders 2 and 3): `ESO QC UG SHIFT SOURCE = none`. `model` counts.
 - VIS i (order 4) has no source card. The pipeline applies no i shift from fewer than `MIN_SHIFT_LINES` sky lines or a
-  sky-line SNR under `MIN_SKY_LINE_SNR`, so the script leaves i out when `ESO QC SKY LINE SNR O4` is missing or under
-  that limit, or when the comment of `UG SHIFT SOURCE` says that order 4 kept fewer lines than the limit. A product
-  with no `UG SHIFT SOURCE` card (a build before DY-1608) has no such evidence, so its i shift counts.
+  sky-line SNR under `MIN_SKY_LINE_SNR`. The card holds the SNR rounded to 0.1, so a card at the limit may come from a
+  refused SNR just under it. The script therefore leaves i out when `ESO QC SKY LINE SNR O4` is missing or at most that
+  limit, or when the comment of `UG SHIFT SOURCE` says that order 4 kept fewer lines than the limit. A product with no
+  `UG SHIFT SOURCE` card (a build before DY-1608) has no such evidence, so its i shift counts.
 - Any arm, NIR orders included: a shift of exactly 0 with no `ESO QC SKY SHIFT O<n> PX` card. The pipeline writes the
   PX card whenever it knows the dispersion of the order, and the NIR global fit writes a bare 0 for an order that has
   no correction.
+
+**Known gaps.** The script does not leave these zeros out, because no card marks them:
+
+- The NIR per-order fallback (`SKY TUNING = skylines-per-order`) writes 0.0 with a PX card for an order that matched no
+  sky line. The script cannot tell it from a measured zero.
+- VIS i is missed when r fails its guards first and i kept fewer than 2 lines with an SNR above the limit. The comment
+  of `UG SHIFT SOURCE` then names order 1, not order 4.
+- A VIS arm with no r coefficients writes no `R SHIFT SOURCE` card, so an unmeasured r there is not marked either.
 
 The shifts include the noise of the sky-line measurement, so both values are upper limits. A frame that skipped tuning
 (`SKY TUNING = skipped: attached arc`) holds no shift. The `attached-arc` value needs frames that were tuned although
@@ -87,7 +97,8 @@ ATTACHED_ARC = "attached-arc"
 KINDS = (UNTUNED, ATTACHED_ARC)
 YAML_KEY = "sky-shift-uncertainty-nm"
 VALUE_DECIMALS = 4
-SKY_SHIFT_PATTERN = re.compile(r"^ESO QC SKY SHIFT O(\d+)$")
+SKY_SHIFT_CARD_FORMAT = "ESO QC SKY SHIFT O{order}"
+SKY_SHIFT_PATTERN = re.compile(r"^" + SKY_SHIFT_CARD_FORMAT.format(order=r"(\d+)") + r"$")
 TUNING_CARD = "ESO QC SKY TUNING"
 CALIBRATION_CATG_PATTERN = re.compile(r"^ESO PRO REC1 CAL(\d+) CATG$")
 DISP_TAB_CATG_PREFIX = "DISP_TAB"
@@ -98,6 +109,23 @@ SOURCE_NONE = "none"
 # THE REASON THE PIPELINE GIVES IN THE COMMENT OF THE UG SHIFT SOURCE CARD, E.G. "order 4: 0 sky lines (min 10)"
 # (``_order_guard_reason`` IN ug_wavelength_transfer.py)
 SKY_LINES_REASON_PATTERN = re.compile(r"^order (\d+): (\d+) sky lines")
+
+
+def shift_card(order: int) -> str:
+    """*the keyword of the ``SKY SHIFT`` QC (nm) of an order*"""
+    return SKY_SHIFT_CARD_FORMAT.format(order=order)
+
+
+def shift_px_card(order: int) -> str:
+    """*the keyword of the ``SKY SHIFT ... PX`` QC (px) of an order*"""
+    return f"{shift_card(order)} PX"
+
+
+def line_snr_card(order: int) -> str:
+    """*the keyword of the ``SKY LINE SNR`` QC of an order*"""
+    return f"ESO QC SKY LINE SNR O{order}"
+
+
 VALUE_COMMENT = "# VALUE: LARGEST PER-ORDER RMS ABOUT ZERO OF THE SKY SHIFTS (SPEC_SYE IS A MAXIMUM OVER ORDERS)"
 
 
@@ -156,7 +184,10 @@ def read_sky_shifts(header: fits.Header) -> dict[int, float]:
 
 
 def _unmeasured_vis_orders(header: fits.Header) -> dict[int, str]:
-    """*the VIS orders that the source and sky-line cards of a product mark as not measured and not modelled*"""
+    """*the VIS orders that the source and sky-line cards of a product mark as not measured and not modelled*
+
+    The result may name an order whose shift is not 0. ``unmeasured_orders`` drops those.
+    """
     common.ensure_repo_on_path()
     from soxspipe.commonutils.ug_wavelength_transfer import (
         MIN_SHIFT_LINES,
@@ -174,11 +205,12 @@ def _unmeasured_vis_orders(header: fits.Header) -> dict[int, str]:
         leftOut.update(dict.fromkeys(PREDICTED_ORDERS, f"{UG_SOURCE_CARD} is {SOURCE_NONE}"))
     if ugSource is None:
         return leftOut
-    snr = header.get(f"ESO QC SKY LINE SNR O{VIS_I_ORDER}")
+    snr = header.get(line_snr_card(VIS_I_ORDER))
     if not isinstance(snr, int | float) or not math.isfinite(snr):
         leftOut[VIS_I_ORDER] = "no finite sky-line SNR card, so no sky shift was measured"
-    elif snr < MIN_SKY_LINE_SNR:
-        leftOut[VIS_I_ORDER] = f"sky-line SNR {snr:.1f} is below {MIN_SKY_LINE_SNR}"
+    elif snr <= MIN_SKY_LINE_SNR:
+        # THE CARD IS ROUNDED TO 0.1, SO A CARD AT THE LIMIT CAN HOLD AN SNR THE PIPELINE REFUSED
+        leftOut[VIS_I_ORDER] = f"sky-line SNR {snr:.1f} is not above {MIN_SKY_LINE_SNR}"
     else:
         match = SKY_LINES_REASON_PATTERN.match(header.comments[UG_SOURCE_CARD])
         if match and int(match.group(1)) == VIS_I_ORDER and int(match.group(2)) < MIN_SHIFT_LINES:
@@ -195,7 +227,7 @@ def unmeasured_orders(header: fits.Header, arm: str, shifts: Mapping[int, float]
     **Key Arguments:**
 
     - ``header`` -- the product's primary header
-    - ``arm`` -- the arm of the product, ``VIS`` or ``NIR``
+    - ``arm`` -- the arm of the product, ``VIS`` or ``NIR`` (``common.arm_of``)
     - ``shifts`` -- ``{order: shift in nm}`` of the product (``read_sky_shifts``)
 
     **Return:**
@@ -208,11 +240,12 @@ def unmeasured_orders(header: fits.Header, arm: str, shifts: Mapping[int, float]
     leftOut = unmeasured_orders(header, "VIS", read_sky_shifts(header))
     ```
     """
-    leftOut = _unmeasured_vis_orders(header) if arm.upper() == VIS_ARM else {}
-    for order, shift in shifts.items():
-        if shift == 0 and f"ESO QC SKY SHIFT O{order} PX" not in header:
-            leftOut.setdefault(order, f"a shift of 0 and no SKY SHIFT O{order} PX card")
-    return {order: leftOut[order] for order in sorted(leftOut) if order in shifts}
+    leftOut = _unmeasured_vis_orders(header) if arm == VIS_ARM else {}
+    for order in shifts:
+        if shift_px_card(order) not in header:
+            leftOut.setdefault(order, f"a shift of 0 and no {shift_px_card(order)} card")
+    # ONLY A RECORDED ZERO CAN BE A NON-MEASUREMENT: A NON-ZERO SHIFT IS ALWAYS A MEASUREMENT
+    return {order: reason for order, reason in sorted(leftOut.items()) if shifts.get(order) == 0}
 
 
 def rms_about_zero(values: Sequence[float]) -> float:
