@@ -152,7 +152,7 @@ The sky fills the slit evenly, so the tuning makes the wavelength scale right fo
 
 The utility uses the sky-tuned orders of the flattened extraction, before the orders are merged, before the flux calibration and before any barycentric correction. The not-flattened extraction measures nothing.
 
-The line list is `telluric_lines.fits` in the static calibrations. It holds telluric absorption lines from HITRAN2020 (H₂O, O₂ and CO₂), in air wavelengths, for these bands:
+The line list is `telluric_lines.fits` in the static calibrations. It holds telluric absorption lines from the HITRAN database (H₂O, O₂ and CO₂), in air wavelengths, for these bands:
 
 | Arm | Bands |
 | --- | --- |

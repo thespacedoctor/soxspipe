@@ -102,6 +102,21 @@ def test_a_setting_that_is_not_true_or_false_stops_the_recipe(log: object, tmp_p
         extractor._measure_telluric_shift(orders, "NIR")
 
 
+def test_an_instrument_without_a_telluric_line_list_measures_nothing_and_says_so(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    orders, _ = _telluric_orders(log, SHIFT_NM)
+    extractor = _extractor(log, tmp_path)
+    extractor.settings = {"instrument": "xsh"}
+
+    # ACT
+    extractor._measure_telluric_shift(orders, "NIR")
+
+    # ASSERT
+    assert _qc_names(extractor) == []
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("No telluric line list for this instrument" in message for message in printed)
+
+
 def test_the_not_flattened_extraction_measures_nothing(log: object, tmp_path: Path) -> None:
     # ARRANGE
     orders, _ = _telluric_orders(log, SHIFT_NM)
