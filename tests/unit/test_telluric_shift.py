@@ -204,37 +204,37 @@ def test_a_band_one_line_short_of_the_minimum_is_not_measured() -> None:
 
 def test_lines_with_a_centroid_error_above_the_limit_do_not_count_towards_the_gate() -> None:
     # ARRANGE
-    good = _line_rows("CO2_2000", [0.0] * (MIN_BAND_LINES - 1))
-    noisy = _line_rows("CO2_2000", [0.5], errorNm=0.05)
+    good = _line_rows("H2O_1800", [0.0] * (MIN_BAND_LINES - 1))
+    noisy = _line_rows("H2O_1800", [0.5], errorNm=0.05)
 
     # ACT
     bands = summarise_bands(pd.concat([good, noisy], ignore_index=True))
 
     # ASSERT
-    row = bands.set_index("band").loc["CO2_2000"]
+    row = bands.set_index("band").loc["H2O_1800"]
     assert bool(row["isMeasured"]) is False
     assert row["nLines"] == MIN_BAND_LINES - 1
 
 
 def test_a_line_just_under_the_error_limit_counts_towards_the_gate() -> None:
     # ARRANGE
-    lines = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=MAX_LINE_ERROR_NM * 0.99)
+    lines = _line_rows("H2O_1800", [0.0] * MIN_BAND_LINES, errorNm=MAX_LINE_ERROR_NM * 0.99)
 
     # ACT
     bands = summarise_bands(lines)
 
     # ASSERT
-    assert bool(bands.set_index("band").loc["CO2_2000", "isMeasured"]) is True
+    assert bool(bands.set_index("band").loc["H2O_1800", "isMeasured"]) is True
 
 
 def test_the_error_limit_is_0_3_angstrom() -> None:
     # ARRANGE
-    below = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.025)
-    above = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.035)
+    below = _line_rows("H2O_1800", [0.0] * MIN_BAND_LINES, errorNm=0.025)
+    above = _line_rows("H2O_1800", [0.0] * MIN_BAND_LINES, errorNm=0.035)
 
     # ACT
-    measuredBelow = summarise_bands(below).set_index("band").loc["CO2_2000", "isMeasured"]
-    measuredAbove = summarise_bands(above).set_index("band").loc["CO2_2000", "isMeasured"]
+    measuredBelow = summarise_bands(below).set_index("band").loc["H2O_1800", "isMeasured"]
+    measuredAbove = summarise_bands(above).set_index("band").loc["H2O_1800", "isMeasured"]
 
     # ASSERT
     assert bool(measuredBelow) is True
