@@ -92,14 +92,52 @@ def test_the_setting_switches_the_measurement_off(log: object, tmp_path: Path) -
     assert _qc_names(extractor) == []
 
 
-def test_a_setting_that_is_not_true_or_false_stops_the_recipe(log: object, tmp_path: Path) -> None:
+def test_a_setting_that_is_not_true_or_false_warns_and_measures_as_if_on(log: object, tmp_path: Path) -> None:
     # ARRANGE
     orders, _ = _telluric_orders(log, SHIFT_NM)
     extractor = _extractor(log, tmp_path, {SETTING: "yes"})
 
-    # ACT AND ASSERT
-    with pytest.raises(ValueError, match=SETTING):
-        extractor._measure_telluric_shift(orders, "NIR")
+    # ACT
+    extractor._measure_telluric_shift(orders, "NIR")
+
+    # ASSERT
+    assert "TELL SHIFT" in _qc_names(extractor)
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert any(SETTING in message and "'yes'" in message for message in warnings)
+
+
+def test_a_packaging_defect_in_the_line_list_is_logged_as_an_error_and_never_stops_the_recipe(
+    log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    orders, _ = _telluric_orders(log, SHIFT_NM)
+    extractor = _extractor(log, tmp_path)
+    monkeypatch.setattr(
+        "soxspipe.commonutils.toolkit.get_calibrations_path", lambda log, settings: str(tmp_path / "nowhere")
+    )
+
+    # ACT
+    extractor._measure_telluric_shift(orders, "NIR")
+
+    # ASSERT
+    assert _qc_names(extractor) == []
+    errors = [message for level, message in log.messages if level == "error"]
+    assert any("telluric_lines.fits" in message for message in errors)
+
+
+def test_a_non_table_qc_skips_the_measurement_and_logs_a_debug_line(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    orders, _ = _telluric_orders(log, SHIFT_NM)
+    extractor = _extractor(log, tmp_path)
+    extractor.qc = False
+
+    # ACT
+    extractor._measure_telluric_shift(orders, "NIR")
+
+    # ASSERT
+    assert extractor.qc is False
+    debugs = [message for level, message in log.messages if level == "debug"]
+    assert any("no QC table" in message for message in debugs)
 
 
 def test_an_instrument_without_a_telluric_line_list_measures_nothing_and_says_so(log: object, tmp_path: Path) -> None:

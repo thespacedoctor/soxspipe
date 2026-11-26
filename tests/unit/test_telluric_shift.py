@@ -9,10 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 from astropy.io import fits
+from astropy.table import Table
 
 from soxspipe.commonutils.telluric_shift import (
     MAX_LINE_ERROR_NM,
     MIN_BAND_LINES,
+    TelluricLineListError,
     fit_line_centroid,
     load_telluric_lines,
     measure_line_shifts,
@@ -21,6 +23,7 @@ from soxspipe.commonutils.telluric_shift import (
     record_telluric_qcs,
     summarise_bands,
     summarise_telluric_shift,
+    telluric_shift_summary,
 )
 
 pytestmark = pytest.mark.unit
@@ -38,12 +41,18 @@ def _spectrum(centreNm: float, depth: float, noise: float, seed: int, slope: flo
     return wavelength, flux
 
 
+def _fit(
+    wavelength: np.ndarray, flux: np.ndarray, sigmaGuessNm: float = LINE_SIGMA_NM, maxShiftNm: float = HALF_WINDOW_NM
+) -> object:
+    return fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM, sigmaGuessNm=sigmaGuessNm, maxShiftNm=maxShiftNm)
+
+
 def test_fit_recovers_the_known_shift_of_a_line_within_its_error() -> None:
     # ARRANGE
     wavelength, flux = _spectrum(1500.05, depth=0.4, noise=0.005, seed=1)
 
     # ACT
-    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
+    fit = _fit(wavelength, flux)
 
     # ASSERT
     assert fit is not None
@@ -56,7 +65,7 @@ def test_fit_recovers_the_shift_on_a_sloped_continuum() -> None:
     wavelength, flux = _spectrum(1499.96, depth=0.3, noise=0.004, seed=2, slope=0.4)
 
     # ACT
-    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
+    fit = _fit(wavelength, flux)
 
     # ASSERT
     assert fit is not None
@@ -68,7 +77,7 @@ def test_a_fit_that_runs_into_the_shift_limit_is_rejected() -> None:
     wavelength, flux = _spectrum(1500.35, depth=0.4, noise=0.005, seed=8)
 
     # ACT
-    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM, maxShiftNm=0.2)
+    fit = _fit(wavelength, flux, maxShiftNm=0.2)
 
     # ASSERT
     assert fit is None
@@ -79,7 +88,7 @@ def test_a_fit_whose_width_runs_into_its_limit_is_rejected() -> None:
     wavelength, flux = _spectrum(1500.0, depth=0.4, noise=0.005, seed=9)
 
     # ACT
-    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM, sigmaGuessNm=0.02)
+    fit = _fit(wavelength, flux, sigmaGuessNm=0.02)
 
     # ASSERT
     assert fit is None
@@ -90,7 +99,7 @@ def test_fit_returns_none_when_the_window_holds_too_few_samples() -> None:
     wavelength = np.array([1499.9, 1500.0, 1500.1])
 
     # ACT
-    fit = fit_line_centroid(wavelength, np.ones(3), 1500.0, HALF_WINDOW_NM)
+    fit = _fit(wavelength, np.ones(3))
 
     # ASSERT
     assert fit is None
@@ -101,7 +110,7 @@ def test_fit_returns_none_when_the_window_has_no_positive_continuum() -> None:
     wavelength, flux = _spectrum(1500.0, depth=0.4, noise=0.005, seed=10)
 
     # ACT
-    fit = fit_line_centroid(wavelength, -flux, 1500.0, HALF_WINDOW_NM)
+    fit = _fit(wavelength, -flux)
 
     # ASSERT
     assert fit is None
@@ -117,7 +126,7 @@ def test_fit_returns_none_when_the_optimiser_fails(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("scipy.optimize.curve_fit", failing)
 
     # ACT
-    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
+    fit = _fit(wavelength, flux)
 
     # ASSERT
     assert fit is None
@@ -134,7 +143,7 @@ def test_fit_returns_none_when_the_centre_has_no_finite_error(monkeypatch: pytes
     monkeypatch.setattr("scipy.optimize.curve_fit", unconstrained)
 
     # ACT
-    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
+    fit = _fit(wavelength, flux)
 
     # ASSERT
     assert fit is None
@@ -145,7 +154,7 @@ def test_a_noise_only_window_gives_no_usable_centroid() -> None:
     wavelength, flux = _spectrum(1500.0, depth=0.0, noise=0.05, seed=3)
 
     # ACT
-    fit = fit_line_centroid(wavelength, flux, 1500.0, HALF_WINDOW_NM)
+    fit = _fit(wavelength, flux)
 
     # ASSERT
     assert fit is None or fit.errorNm > MAX_LINE_ERROR_NM or fit.depth < 0.05
@@ -215,6 +224,20 @@ def test_a_line_just_under_the_error_limit_counts_towards_the_gate() -> None:
 
     # ASSERT
     assert bool(bands.set_index("band").loc["CO2_2000", "isMeasured"]) is True
+
+
+def test_the_error_limit_is_0_2_angstrom() -> None:
+    # ARRANGE
+    below = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.015)
+    above = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.025)
+
+    # ACT
+    measuredBelow = summarise_bands(below).set_index("band").loc["CO2_2000", "isMeasured"]
+    measuredAbove = summarise_bands(above).set_index("band").loc["CO2_2000", "isMeasured"]
+
+    # ASSERT
+    assert bool(measuredBelow) is True
+    assert bool(measuredAbove) is False
 
 
 def test_overall_shift_is_the_median_of_the_lines_in_measured_bands_only() -> None:
@@ -443,6 +466,75 @@ def test_an_instrument_without_a_line_list_has_no_telluric_lines(log: object) ->
 
     # ASSERT
     assert lines is None
+
+
+def _ship_line_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, table: Table | None) -> Path:
+    """Point the loader at a folder that holds ``telluric_lines.fits`` (or nothing, when ``table`` is None)."""
+    if table is not None:
+        table.write(tmp_path / "telluric_lines.fits", format="fits")
+    monkeypatch.setattr("soxspipe.commonutils.toolkit.get_calibrations_path", lambda log, settings: str(tmp_path))
+    return tmp_path / "telluric_lines.fits"
+
+
+def test_a_missing_line_list_file_raises_an_error_that_names_the_path(
+    log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    expected = _ship_line_list(tmp_path, monkeypatch, None)
+
+    # ACT AND ASSERT
+    with pytest.raises(TelluricLineListError, match=str(expected)):
+        load_telluric_lines(log, {"instrument": "soxs"}, "NIR")
+
+
+def test_an_unreadable_line_list_file_raises_an_error_that_names_the_path(
+    log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    expected = _ship_line_list(tmp_path, monkeypatch, None)
+    expected.write_text("this is not a FITS file")
+
+    # ACT AND ASSERT
+    with pytest.raises(TelluricLineListError, match=rf"{expected} cannot be read"):
+        load_telluric_lines(log, {"instrument": "soxs"}, "NIR")
+
+
+def test_a_line_list_without_a_required_column_raises_an_error_that_names_the_path_and_column(
+    log: object, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    table = Table({"BAND": ["H2O_1130"], "ARM": ["NIR"], "WAVELENGTH": [1130.0], "SPECIES": ["H2O"]})
+    expected = _ship_line_list(tmp_path, monkeypatch, table)
+
+    # ACT AND ASSERT
+    with pytest.raises(TelluricLineListError, match=rf"{expected}.*LINE_NM"):
+        load_telluric_lines(log, {"instrument": "soxs"}, "NIR")
+
+
+def test_the_summary_line_gives_the_shift_in_angstrom_and_names_the_bands_not_measured() -> None:
+    # ARRANGE
+    lines = pd.concat(
+        [_line_rows("H2O_1130", [0.08, 0.09, 0.10, 0.11, 0.12]), _line_rows("H2O_1450", [0.9, 0.95])],
+        ignore_index=True,
+    )
+    result = summarise_telluric_shift(lines)
+
+    # ACT
+    summary = telluric_shift_summary(result)
+
+    # ASSERT
+    assert summary == "\tTelluric-line shift +1.00 A (± 0.07) from 5 lines; not measured: H2O_1450"
+
+
+def test_the_summary_line_says_so_when_no_band_is_measured() -> None:
+    # ARRANGE
+    result = summarise_telluric_shift(_line_rows("O2_A", [0.1, 0.1]))
+
+    # ACT
+    summary = telluric_shift_summary(result)
+
+    # ASSERT
+    assert summary == "\tTelluric-line shift not measured: no band has enough lines (not measured: O2_A)"
 
 
 def test_the_qc_plot_is_written_and_leaves_no_figure_open(tmp_path: Path) -> None:

@@ -9,10 +9,32 @@ Date Created
 : November 26, 2026
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
 
-import numpy as np
-import pandas as pd
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+
+# A BAND COUNTS AS MEASURED WHEN IT HAS AT LEAST THIS MANY LINES WHOSE CENTROID ERROR IS BELOW THE LIMIT (nm; 0.02 nm IS
+# 0.2 A, AS RULED IN DY-1969)
+MIN_BAND_LINES = 5
+MAX_LINE_ERROR_NM = 0.02
+# THE QC VALUE OF A SHIFT THAT COULD NOT BE MEASURED
+NOT_MEASURED = "not measured"
+# THE FACTOR THAT TURNS A MEDIAN ABSOLUTE DEVIATION INTO A GAUSSIAN SIGMA
+MAD_TO_SIGMA = 1.4826
+# ANGSTROM PER NANOMETRE: THE QCs ARE IN nm, THE LOG AND THE PLOT IN A
+ANGSTROM_PER_NM = 10.0
+# DECIMALS OF A SHIFT OR ITS ERROR (nm) WRITTEN TO THE QC TABLE; 1e-5 nm IS FAR BELOW THE 0.02 nm GATE
+QC_DECIMALS = 5
+# THE COLUMNS THE SHIPPED LINE LIST MUST HOLD
+LINE_LIST_COLUMNS = ("BAND", "ARM", "WAVELENGTH", "SPECIES", "LINE_NM")
+# THE COLOURS THE QC PLOT CYCLES THROUGH, ONE PER BAND
+PLOT_COLOUR_COUNT = 10
 
 # THE FEWEST FINITE SAMPLES A LINE WINDOW MUST HOLD FOR THE FIT (CENTRE, WIDTH, DEPTH AND 2 CONTINUUM TERMS)
 MIN_WINDOW_SAMPLES = 8
@@ -20,6 +42,8 @@ MIN_WINDOW_SAMPLES = 8
 REFERENCE_RESOLVING_POWER = 4000.0
 HALF_WINDOW_FWHM = 2.5
 FWHM_PER_SIGMA = 2.3548200450309493
+# THE FRACTIONAL DEPTH THE FIT STARTS FROM; THE FIT MOVES FREELY BETWEEN 0 AND 1
+INITIAL_DEPTH_GUESS = 0.3
 # A LINE SHALLOWER THAN THIS (FRACTION OF THE CONTINUUM) IS NOT TREATED AS DETECTED
 MIN_LINE_DEPTH = 0.03
 # THE LARGEST SHIFT (nm) FROM THE CATALOGUE WAVELENGTH THE FIT MAY REACH; 0.3 nm IS 3 A
@@ -28,6 +52,10 @@ MAX_SHIFT_NM = 0.3
 BOUND_MARGIN = 0.02
 # THE LINE WIDTH MAY MOVE THIS FACTOR EITHER SIDE OF THE STARTING GUESS
 SIGMA_BOUND_FACTOR = 3.0
+
+
+class TelluricLineListError(Exception):
+    """*the shipped telluric line list is missing or malformed, which is a packaging defect*"""
 
 
 @dataclass(frozen=True)
@@ -48,7 +76,9 @@ class line_fit:
     sigmaNm: float
 
 
-def _absorption_line(wavelength, centre, sigma, depth, level, slope, reference):
+def _absorption_line(
+    wavelength: np.ndarray, centre: float, sigma: float, depth: float, level: float, slope: float, reference: float
+) -> np.ndarray:
     """*a straight continuum, anchored at ``reference``, times one Gaussian absorption line*
 
     **Key Arguments:**
@@ -65,11 +95,13 @@ def _absorption_line(wavelength, centre, sigma, depth, level, slope, reference):
 
     - ``flux`` -- the model flux at ``wavelength``
     """
+    import numpy as np
+
     line = 1.0 - depth * np.exp(-0.5 * ((wavelength - centre) / sigma) ** 2)
     return (level + slope * (wavelength - reference)) * line
 
 
-def _hits_a_bound(params, lower, upper):
+def _hits_a_bound(params: Sequence[float], lower: Sequence[float], upper: Sequence[float]) -> bool:
     """*whether the fitted centre or width sits on the edge of its allowed range, so the fit found no line there*
 
     **Key Arguments:**
@@ -89,7 +121,9 @@ def _hits_a_bound(params, lower, upper):
     return False
 
 
-def fit_line_centroid(wavelength, flux, lineNm, halfWindowNm, sigmaGuessNm=0.1, maxShiftNm=None):
+def fit_line_centroid(
+    wavelength: np.ndarray, flux: np.ndarray, lineNm: float, halfWindowNm: float, sigmaGuessNm: float, maxShiftNm: float
+) -> line_fit | None:
     """*fit one absorption line with a Gaussian on a straight continuum and return its centre*
 
     **Key Arguments:**
@@ -98,14 +132,14 @@ def fit_line_centroid(wavelength, flux, lineNm, halfWindowNm, sigmaGuessNm=0.1, 
     - ``flux`` -- the spectrum flux
     - ``lineNm`` -- the catalogue wavelength of the line (nm), the centre of the fit window
     - ``halfWindowNm`` -- the half-width of the fit window (nm)
-    - ``sigmaGuessNm`` -- the starting line width (nm). Default *0.1*
-    - ``maxShiftNm`` -- the largest distance (nm) the fitted centre may lie from ``lineNm``. Default *None*
-      (the half-window)
+    - ``sigmaGuessNm`` -- the starting line width (nm)
+    - ``maxShiftNm`` -- the largest distance (nm) the fitted centre may lie from ``lineNm``. The half-window caps it
 
     **Return:**
 
     - ``fit`` -- the ``line_fit``, or *None* when the window has too few samples or the fit fails or has no absorption
     """
+    import numpy as np
     from scipy.optimize import curve_fit
 
     wavelength = np.asarray(wavelength, dtype=float)
@@ -117,8 +151,8 @@ def fit_line_centroid(wavelength, flux, lineNm, halfWindowNm, sigmaGuessNm=0.1, 
     level = float(np.median(y))
     if level <= 0.0:
         return None
-    start = [lineNm, sigmaGuessNm, 0.3, level, 0.0]
-    reachNm = halfWindowNm if maxShiftNm is None else min(maxShiftNm, halfWindowNm)
+    start = [lineNm, sigmaGuessNm, INITIAL_DEPTH_GUESS, level, 0.0]
+    reachNm = min(maxShiftNm, halfWindowNm)
     lower = [lineNm - reachNm, sigmaGuessNm / SIGMA_BOUND_FACTOR, 0.0, 0.0, -np.inf]
     upper = [lineNm + reachNm, sigmaGuessNm * SIGMA_BOUND_FACTOR, 1.0, np.inf, np.inf]
     try:
@@ -140,18 +174,7 @@ def fit_line_centroid(wavelength, flux, lineNm, halfWindowNm, sigmaGuessNm=0.1, 
     return line_fit(centroidNm=float(params[0]), errorNm=errorNm, depth=float(params[2]), sigmaNm=float(params[1]))
 
 
-# A BAND COUNTS AS MEASURED WHEN IT HAS AT LEAST THIS MANY LINES WHOSE CENTROID ERROR IS BELOW THE LIMIT
-# (nm; 0.03 nm = 0.3 A). TUNED ON REAL NIR NOD STANDARDS AND VIS FRAMES (DY-1969). THE TICKET SAID 0.2 A, WHICH LEAVES
-# THE FRAMES AT SNR 2 TO 13 NOT MEASURED THOUGH THEIR LINES AGREE ON ONE SHIFT
-MIN_BAND_LINES = 5
-MAX_LINE_ERROR_NM = 0.03
-# THE QC VALUE OF A SHIFT THAT COULD NOT BE MEASURED
-NOT_MEASURED = "not measured"
-# THE FACTOR THAT TURNS A MEDIAN ABSOLUTE DEVIATION INTO A GAUSSIAN SIGMA
-MAD_TO_SIGMA = 1.4826
-
-
-def robust_error(shiftsNm):
+def robust_error(shiftsNm: Sequence[float] | np.ndarray) -> float:
     """*the robust scatter of the line shifts divided by the square root of their number*
 
     **Key Arguments:**
@@ -162,12 +185,14 @@ def robust_error(shiftsNm):
 
     - ``errorNm`` -- 1.4826 times the median absolute deviation, over the square root of N
     """
+    import numpy as np
+
     shiftsNm = np.asarray(shiftsNm, dtype=float)
     scatter = MAD_TO_SIGMA * np.median(np.abs(shiftsNm - np.median(shiftsNm)))
     return float(scatter / np.sqrt(shiftsNm.size))
 
 
-def good_lines(lineShifts):
+def good_lines(lineShifts: pd.DataFrame) -> pd.DataFrame:
     """*the lines whose centroid error is below ``MAX_LINE_ERROR_NM``*
 
     **Key Arguments:**
@@ -181,7 +206,7 @@ def good_lines(lineShifts):
     return lineShifts.loc[lineShifts["errorNm"] < MAX_LINE_ERROR_NM]
 
 
-def summarise_bands(lineShifts, bandNames=()):
+def summarise_bands(lineShifts: pd.DataFrame, bandNames: Sequence[str] = ()) -> pd.DataFrame:
     """*summarise the line shifts of each band and apply the measurement gate*
 
     **Key Arguments:**
@@ -194,6 +219,7 @@ def summarise_bands(lineShifts, bandNames=()):
     - ``bands`` -- one row per band: ``nLines`` (lines under the error limit), ``shiftNm`` and ``errorNm`` (NaN
       when the band is not measured) and ``isMeasured``
     """
+    import numpy as np
     import pandas as pd
 
     good = good_lines(lineShifts)
@@ -238,7 +264,7 @@ class telluric_shift_result:
     __hash__ = None
 
 
-def summarise_telluric_shift(lineShifts, bandNames=()):
+def summarise_telluric_shift(lineShifts: pd.DataFrame, bandNames: Sequence[str] = ()) -> telluric_shift_result:
     """*combine the fitted lines of an extraction into the overall shift, its error and the per-band table*
 
     **Key Arguments:**
@@ -250,6 +276,8 @@ def summarise_telluric_shift(lineShifts, bandNames=()):
 
     - ``result`` -- the ``telluric_shift_result``
     """
+    import numpy as np
+
     bands = summarise_bands(lineShifts, bandNames)
     measuredBands = bands.loc[bands["isMeasured"], "band"]
     used = good_lines(lineShifts)
@@ -259,7 +287,7 @@ def summarise_telluric_shift(lineShifts, bandNames=()):
     return telluric_shift_result(float(np.median(used)), robust_error(used), int(used.size), bands, lineShifts)
 
 
-def _line_window(lineNm):
+def _line_window(lineNm: float) -> tuple[float, float]:
     """*the fit half-window and the starting line width of a line, from the reference resolving power*
 
     **Key Arguments:**
@@ -275,7 +303,7 @@ def _line_window(lineNm):
     return HALF_WINDOW_FWHM * fwhmNm, fwhmNm / FWHM_PER_SIGMA
 
 
-def _fit_lines_in_order(wavelength, flux, lines):
+def _fit_lines_in_order(wavelength: np.ndarray, flux: np.ndarray, lines: pd.DataFrame) -> list[dict[str, Any]]:
     """*fit every line whose whole window lies inside one order*
 
     **Key Arguments:**
@@ -309,7 +337,7 @@ def _fit_lines_in_order(wavelength, flux, lines):
     return rows
 
 
-def measure_line_shifts(orderSpectra, lines):
+def measure_line_shifts(orderSpectra: pd.DataFrame, lines: pd.DataFrame) -> pd.DataFrame:
     """*fit every catalogue line in the order spectra and return each line's shift from its catalogue wavelength*
 
     A line that two overlapping orders both cover is reported once, from the order with the smaller centroid error.
@@ -324,6 +352,8 @@ def measure_line_shifts(orderSpectra, lines):
     - ``lineShifts`` -- one row per fitted line (``band``, ``lineNm``, ``shiftNm``, ``errorNm``, ``depth``, ``sigmaNm``,
       ``order``)
     """
+    import pandas as pd
+
     rows = []
     for order, orderDF in orderSpectra.groupby("order", sort=True):
         orderDF = orderDF.sort_values("wavelengthMean", kind="stable")
@@ -340,7 +370,9 @@ def measure_line_shifts(orderSpectra, lines):
     return table.drop_duplicates("lineNm", keep="first").reset_index(drop=True)
 
 
-def record_telluric_qcs(qcTable, result, recipeName, dateObs, reductionDateUtc):
+def record_telluric_qcs(
+    qcTable: pd.DataFrame, result: telluric_shift_result, recipeName: str, dateObs: str, reductionDateUtc: str
+) -> pd.DataFrame:
     """*append the telluric-shift QCs to a QC table*
 
     ``TELL SHIFT`` (nm), ``TELL SHIFT ERR`` (nm) and ``TELL NLINES`` go to the FITS header. When no band is
@@ -363,7 +395,9 @@ def record_telluric_qcs(qcTable, result, recipeName, dateObs, reductionDateUtc):
     """
     from soxspipe.commonutils.toolkit import append_qc
 
-    def add(table, name, value, comment, unit, toHeader):
+    def add(
+        table: pd.DataFrame, name: str, value: float | int | str, comment: str, unit: str | None, toHeader: bool
+    ) -> pd.DataFrame:
         return append_qc(
             table,
             recipeName=recipeName,
@@ -380,7 +414,7 @@ def record_telluric_qcs(qcTable, result, recipeName, dateObs, reductionDateUtc):
     qcTable = add(
         qcTable,
         "TELL SHIFT",
-        round(result.shiftNm, 5) if isMeasured else NOT_MEASURED,
+        round(result.shiftNm, QC_DECIMALS) if isMeasured else NOT_MEASURED,
         "Median telluric-line shift of the star",
         "nm",
         isMeasured,
@@ -388,7 +422,7 @@ def record_telluric_qcs(qcTable, result, recipeName, dateObs, reductionDateUtc):
     qcTable = add(
         qcTable,
         "TELL SHIFT ERR",
-        round(result.errorNm, 5) if isMeasured else NOT_MEASURED,
+        round(result.errorNm, QC_DECIMALS) if isMeasured else NOT_MEASURED,
         "Robust scatter of the line shifts over sqrt(N)",
         "nm",
         isMeasured,
@@ -399,7 +433,9 @@ def record_telluric_qcs(qcTable, result, recipeName, dateObs, reductionDateUtc):
             (f"TELL SHIFT {band.band}", band.shiftNm, "Telluric-line shift in the band"),
             (f"TELL SHIFT ERR {band.band}", band.errorNm, "Robust scatter over sqrt(N) in the band"),
         ):
-            qcTable = add(qcTable, name, round(value, 5) if band.isMeasured else NOT_MEASURED, comment, "nm", False)
+            qcTable = add(
+                qcTable, name, round(value, QC_DECIMALS) if band.isMeasured else NOT_MEASURED, comment, "nm", False
+            )
         qcTable = add(
             qcTable,
             f"TELL NLINES {band.band}",
@@ -411,7 +447,7 @@ def record_telluric_qcs(qcTable, result, recipeName, dateObs, reductionDateUtc):
     return qcTable
 
 
-def load_telluric_lines(log, settings, arm):
+def load_telluric_lines(log: Any, settings: Mapping[str, Any], arm: str) -> pd.DataFrame | None:
     """*load the shipped telluric line list for one arm*
 
     **Key Arguments:**
@@ -422,9 +458,16 @@ def load_telluric_lines(log, settings, arm):
 
     **Return:**
 
-    - ``lines`` -- the lines of the arm (``BAND``, ``WAVELENGTH`` in nm, ``STRENGTH``, ``SPECIES``), sorted by
-      wavelength, or *None* when the instrument ships no telluric line list
+    - ``lines`` -- the lines of the arm (``BAND``, ``WAVELENGTH`` in nm, ``LINE_NM``, ``STRENGTH``, ``SPECIES``),
+      sorted by wavelength, or *None* when the instrument ships no telluric line list
+
+    **Raises:**
+
+    - ``TelluricLineListError`` -- if the shipped file is missing, cannot be read or lacks a required column. The
+      message names the path
     """
+    import os
+
     from astropy.table import Table
 
     from soxspipe.commonutils import detector_lookup
@@ -434,7 +477,15 @@ def load_telluric_lines(log, settings, arm):
     if "telluric-lines" not in detector:
         return None
     path = get_calibrations_path(log=log, settings=settings) + "/" + detector["telluric-lines"]
-    lines = Table.read(path, format="fits").to_pandas()
+    if not os.path.isfile(path):
+        raise TelluricLineListError(f"The telluric line list {path} does not exist")
+    try:
+        lines = Table.read(path, format="fits").to_pandas()
+    except (OSError, ValueError) as error:
+        raise TelluricLineListError(f"The telluric line list {path} cannot be read: {error}") from error
+    missing = [column for column in LINE_LIST_COLUMNS if column not in lines.columns]
+    if missing:
+        raise TelluricLineListError(f"The telluric line list {path} lacks the columns {', '.join(missing)}")
     for column in ("BAND", "ARM", "SPECIES"):
         lines[column] = (
             lines[column].map(lambda value: value.decode() if isinstance(value, bytes) else value).str.strip()
@@ -444,7 +495,26 @@ def load_telluric_lines(log, settings, arm):
     return lines.loc[inArm].sort_values("WAVELENGTH").reset_index(drop=True)
 
 
-def plot_telluric_shift_qc(result, filePath, title):
+def telluric_shift_summary(result: telluric_shift_result) -> str:
+    """*one log line with the telluric-line shift in A and the bands that were not measured*
+
+    **Key Arguments:**
+
+    - ``result`` -- the ``telluric_shift_result``
+
+    **Return:**
+
+    - ``summary`` -- the text to log
+    """
+    missed = ", ".join(result.bands.loc[~result.bands["isMeasured"], "band"])
+    if not result.nLines:
+        return f"\tTelluric-line shift not measured: no band has enough lines (not measured: {missed})"
+    shiftA, errorA = result.shiftNm * ANGSTROM_PER_NM, result.errorNm * ANGSTROM_PER_NM
+    text = f"\tTelluric-line shift {shiftA:+0.2f} A (± {errorA:0.2f}) from {result.nLines} lines"
+    return f"{text}; not measured: {missed}" if missed else text
+
+
+def plot_telluric_shift_qc(result: telluric_shift_result, filePath: str, title: str) -> str:
     """*plot every line's shift against wavelength, coloured by band, with the median marked*
 
     **Key Arguments:**
@@ -465,43 +535,33 @@ def plot_telluric_shift_qc(result, filePath, title):
     ```
     """
     import matplotlib.pyplot as plt
+    import numpy as np
 
-    angstromPerNm = 10.0
     fig, axis = plt.subplots(figsize=(14, 5))
     try:
         measured = set(result.bands.loc[result.bands["isMeasured"], "band"])
-        colours = plt.cm.tab10(np.linspace(0, 1, 10))
+        colours = plt.cm.tab10(np.linspace(0, 1, PLOT_COLOUR_COUNT))
         for index, (band, rows) in enumerate(result.lines.groupby("band", sort=False)):
-            good = rows["errorNm"] < MAX_LINE_ERROR_NM
+            good = good_lines(rows)
+            others = rows.drop(good.index)
             label = band if band in measured else f"{band} (not measured)"
             axis.errorbar(
-                rows.loc[good, "lineNm"],
-                rows.loc[good, "shiftNm"] * angstromPerNm,
-                yerr=rows.loc[good, "errorNm"] * angstromPerNm,
+                good["lineNm"],
+                good["shiftNm"] * ANGSTROM_PER_NM,
+                yerr=good["errorNm"] * ANGSTROM_PER_NM,
                 fmt="o",
                 ms=4,
-                color=colours[index % 10],
+                color=colours[index % PLOT_COLOUR_COUNT],
                 alpha=1.0 if band in measured else 0.4,
                 label=label,
             )
-            axis.plot(
-                rows.loc[~good, "lineNm"],
-                rows.loc[~good, "shiftNm"] * angstromPerNm,
-                "x",
-                color="grey",
-                alpha=0.4,
-                ms=4,
-            )
+            axis.plot(others["lineNm"], others["shiftNm"] * ANGSTROM_PER_NM, "x", color="grey", alpha=0.4, ms=4)
         axis.axhline(0.0, color="grey", lw=0.5)
         if result.nLines:
-            medianA = result.shiftNm * angstromPerNm
+            medianA = result.shiftNm * ANGSTROM_PER_NM
+            errorA = result.errorNm * ANGSTROM_PER_NM
             axis.axhline(medianA, color="black", ls="--", lw=1.2, label=f"median {medianA:+.2f} A, N = {result.nLines}")
-            axis.axhspan(
-                medianA - result.errorNm * angstromPerNm,
-                medianA + result.errorNm * angstromPerNm,
-                color="black",
-                alpha=0.12,
-            )
+            axis.axhspan(medianA - errorA, medianA + errorA, color="black", alpha=0.12)
         else:
             axis.text(0.5, 0.9, "no band measured", transform=axis.transAxes, ha="center")
         axis.set_xlabel("catalogue wavelength of the telluric line, in air (nm)")
@@ -515,7 +575,7 @@ def plot_telluric_shift_qc(result, filePath, title):
     return filePath
 
 
-def measure_telluric_shift(orderSpectra, lines):
+def measure_telluric_shift(orderSpectra: pd.DataFrame, lines: pd.DataFrame) -> telluric_shift_result:
     """*measure the telluric-line shift of the extracted orders of a star*
 
     **Key Arguments:**
