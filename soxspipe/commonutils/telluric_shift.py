@@ -287,7 +287,7 @@ def summarise_telluric_shift(lineShifts: pd.DataFrame, bandNames: Sequence[str] 
     return telluric_shift_result(float(np.median(used)), robust_error(used), int(used.size), bands, lineShifts)
 
 
-def _line_window(lineNm: float) -> tuple[float, float]:
+def line_window(lineNm: float) -> tuple[float, float]:
     """*the fit half-window and the starting line width of a line, from the reference resolving power*
 
     **Key Arguments:**
@@ -318,7 +318,7 @@ def _fit_lines_in_order(wavelength: np.ndarray, flux: np.ndarray, lines: pd.Data
     """
     rows = []
     for band, lineNm in zip(lines["BAND"], lines["WAVELENGTH"], strict=True):
-        halfWindowNm, sigmaNm = _line_window(lineNm)
+        halfWindowNm, sigmaNm = line_window(lineNm)
         if lineNm - halfWindowNm < wavelength[0] or lineNm + halfWindowNm > wavelength[-1]:
             continue
         fit = fit_line_centroid(wavelength, flux, lineNm, halfWindowNm, sigmaGuessNm=sigmaNm, maxShiftNm=MAX_SHIFT_NM)

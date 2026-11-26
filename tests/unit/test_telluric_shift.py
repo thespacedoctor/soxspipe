@@ -17,6 +17,7 @@ from soxspipe.commonutils.telluric_shift import (
     MIN_BAND_LINES,
     TelluricLineListError,
     fit_line_centroid,
+    line_window,
     load_telluric_lines,
     measure_line_shifts,
     measure_telluric_shift,
@@ -172,6 +173,18 @@ def _line_rows(band: str, shiftsNm: list[float], errorNm: float = 0.005) -> pd.D
             "order": 10,
         }
     )
+
+
+def test_the_fit_window_and_start_width_follow_the_line_width_at_the_reference_resolving_power() -> None:
+    # ARRANGE
+    fwhmNm = 1130.0 / 4000.0
+
+    # ACT
+    halfWindowNm, sigmaNm = line_window(1130.0)
+
+    # ASSERT
+    assert halfWindowNm == pytest.approx(2.5 * fwhmNm)
+    assert sigmaNm == pytest.approx(fwhmNm / 2.3548200450309493)
 
 
 def test_a_band_with_the_minimum_number_of_good_lines_is_measured() -> None:
@@ -470,7 +483,7 @@ def test_the_header_gets_all_three_cards_when_no_band_is_measured() -> None:
 
 
 NIR_BANDS = {"H2O_940", "H2O_1130", "H2O_1450", "H2O_1800"}
-VIS_BANDS = {"O2_B", "H2O_720"}
+VIS_BANDS = {"O2_B"}
 
 
 @pytest.mark.parametrize(("arm", "bands"), [("NIR", NIR_BANDS), ("VIS", VIS_BANDS)])
@@ -485,14 +498,42 @@ def test_the_shipped_line_list_holds_only_the_bands_of_the_requested_arm(
 
     # ASSERT
     assert lines is not None
-    assert set(lines["BAND"]) <= bands
+    assert set(lines["BAND"]) == bands
     assert lines["WAVELENGTH"].is_monotonic_increasing
     assert lines["WAVELENGTH"].dtype == float
 
 
+SHIPPED_LINE_LIST = (
+    Path(soxspipe.__file__).parent / "resources" / "static_calibrations" / "soxs" / "telluric_lines.fits"
+)
+EXPECTED_HEADER = {
+    "MODEL TEMPERATURE": 270.0,
+    "MODEL PRESSURE": 0.75,
+    "MODEL AIRMASS": 1.3,
+    "MODEL H2O COLUMN": 1.3e22,
+    "MODEL H2O COLUMN FACTORS": "0.6,1,1.6",
+    "MODEL O2 COLUMN": 4.5e24,
+    "MODEL RESOLVING POWERS VIS": "2811,3749,5000",
+    "MODEL RESOLVING POWERS NIR": "3462,4161,5000",
+    "SELECT MIN DEPTH": 0.04,
+    "SELECT MAX DEPTH": 0.85,
+    "SELECT MAX SPREAD": 0.015,
+    "SELECT MAX OFFSET": 0.05,
+    "SELECT MERGE DISTANCE": 0.03,
+    "SELECT MIN BAND LINES": 5,
+    "SELECT DROPPED BANDS": "H2O_720",
+}
+RULED_BANDS = {
+    ("O2_B", "VIS"),
+    ("H2O_940", "NIR"),
+    ("H2O_1130", "NIR"),
+    ("H2O_1450", "NIR"),
+    ("H2O_1800", "NIR"),
+}
+
+
 def _shipped_line_list() -> pd.DataFrame:
-    path = Path(soxspipe.__file__).parent / "resources" / "static_calibrations" / "soxs" / "telluric_lines.fits"
-    lines = Table.read(path, format="fits").to_pandas()
+    lines = Table.read(SHIPPED_LINE_LIST, format="fits").to_pandas()
     for column in ("BAND", "ARM"):
         lines[column] = (
             lines[column].map(lambda value: value.decode() if isinstance(value, bytes) else value).str.strip()
@@ -500,50 +541,30 @@ def _shipped_line_list() -> pd.DataFrame:
     return lines
 
 
-def test_the_shipped_line_list_has_the_ruled_bands_each_with_enough_lines() -> None:
+def test_the_shipped_line_list_holds_exactly_the_ruled_bands_each_in_its_arm() -> None:
     # ACT
     lines = _shipped_line_list()
-    perBand = lines.groupby("BAND").size()
 
     # ASSERT
-    assert set(perBand.index) <= NIR_BANDS | VIS_BANDS
+    assert set(zip(lines["BAND"], lines["ARM"], strict=True)) == RULED_BANDS
+
+
+def test_every_band_of_the_shipped_line_list_has_enough_lines_to_be_measured() -> None:
+    # ACT
+    perBand = _shipped_line_list().groupby("BAND").size()
+
+    # ASSERT
     assert perBand.min() >= MIN_BAND_LINES
 
 
-def test_the_h2o_940_band_belongs_to_the_nir_arm() -> None:
-    # ACT
-    lines = _shipped_line_list()
-    arms = lines.groupby("BAND")["ARM"].unique()
-
-    # ASSERT
-    assert list(arms["H2O_940"]) == ["NIR"]
-
-
 def test_the_shipped_line_list_header_records_the_model_settings_and_the_selection_limits() -> None:
-    # ARRANGE
-    path = Path(soxspipe.__file__).parent / "resources" / "static_calibrations" / "soxs" / "telluric_lines.fits"
-
     # ACT
-    with fits.open(path) as hdus:
+    with fits.open(SHIPPED_LINE_LIST) as hdus:
         header = hdus["TELLURIC_LINES"].header
+        recorded = {keyword: header[keyword] for keyword in EXPECTED_HEADER}
 
     # ASSERT
-    for keyword in (
-        "MODEL TEMPERATURE",
-        "MODEL PRESSURE",
-        "MODEL AIRMASS",
-        "MODEL H2O COLUMN",
-        "MODEL H2O COLUMN FACTORS",
-        "MODEL RESOLVING POWERS VIS",
-        "MODEL RESOLVING POWERS NIR",
-        "SELECT MIN DEPTH",
-        "SELECT MAX DEPTH",
-        "SELECT MAX SPREAD",
-        "SELECT MAX OFFSET",
-        "SELECT MERGE DISTANCE",
-        "SELECT DROPPED BANDS",
-    ):
-        assert keyword in header
+    assert recorded == EXPECTED_HEADER
 
 
 def test_an_instrument_without_a_line_list_has_no_telluric_lines(log: object) -> None:

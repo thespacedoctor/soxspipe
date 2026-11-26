@@ -5,14 +5,17 @@ The HITRAN fetch is replaced by a synthetic span with one isolated water line, s
 
 from __future__ import annotations
 
+import re
 import sys
 import types
+import warnings
 from pathlib import Path
 
 import numpy as np
 import pytest
 from astropy.io import fits
 from astropy.table import Table
+from scipy.optimize import OptimizeWarning
 
 from tests.unit._tools_loader import load_tool
 
@@ -23,18 +26,15 @@ pytestmark = pytest.mark.unit
 LINE_NM = 1130.0
 # A WATER LINE OF ABOUT 15 PERCENT DEPTH AFTER SMOOTHING TO R = 3500, SO IT PASSES THE DEPTH LIMITS AT EVERY COLUMN
 LINE_STRENGTH = 3e-23
+BAND_1130 = build_tool.Band("H2O_1130", 1110.0, 1160.0, "NIR", ("H2O_NIR",))
 RESOLVING_POWERS = {"VIS": (3500.0, 5000.0), "NIR": (3500.0, 5000.0)}
 
 
 def _selection(minBandLines: int = 1, resolvingPowers: dict | None = None) -> object:
     return build_tool.Selection(
         resolvingPowers=RESOLVING_POWERS if resolvingPowers is None else resolvingPowers,
-        minDepth=0.04,
-        maxDepth=0.85,
-        maxSpreadNm=0.015,
-        maxOffsetNm=0.05,
-        mergeNm=0.03,
         minBandLines=minBandLines,
+        **build_tool.SELECTION_DEFAULTS,
     )
 
 
@@ -130,13 +130,17 @@ def test_only_the_strong_lines_inside_the_band_are_candidates() -> None:
 
 def test_of_two_features_closer_than_the_merge_distance_only_the_stronger_stays() -> None:
     # ARRANGE
-    features = [(1130.00, 1130.0, 1.0, "H2O"), (1130.01, 1130.01, 3.0, "H2O"), (1131.0, 1131.0, 1.0, "H2O")]
+    features = [
+        build_tool.Feature(1130.00, 1130.0, 1.0, "H2O"),
+        build_tool.Feature(1130.01, 1130.01, 3.0, "H2O"),
+        build_tool.Feature(1131.0, 1131.0, 1.0, "H2O"),
+    ]
 
     # ACT
     kept = build_tool.merge_close_features(features, 0.03)
 
     # ASSERT
-    assert [feature[1] for feature in kept] == [1130.01, 1131.0]
+    assert [feature.lineNm for feature in kept] == [1130.01, 1131.0]
 
 
 @pytest.mark.parametrize(
@@ -161,7 +165,7 @@ def test_a_line_passes_when_its_depth_spread_and_offset_are_inside_the_limits(
 
 def test_an_isolated_line_is_kept_at_its_own_wavelength() -> None:
     # ACT
-    kept = build_tool.select_band(_tables(), ("H2O_1130", 1110.0, 1160.0, "NIR", ("H2O_NIR",)), _selection())
+    kept = build_tool.select_band(_tables(), BAND_1130, _selection())
 
     # ASSERT
     assert len(kept) == 1
@@ -173,21 +177,22 @@ def test_an_isolated_line_is_kept_at_its_own_wavelength() -> None:
 
 def test_a_band_with_no_hitran_line_keeps_nothing() -> None:
     # ACT
-    kept = build_tool.select_band(_tables([]), ("H2O_1130", 1110.0, 1160.0, "NIR", ("H2O_NIR",)), _selection())
+    kept = build_tool.select_band(_tables([]), BAND_1130, _selection())
 
     # ASSERT
     assert kept == []
 
 
-def test_two_lines_that_blend_move_the_fitted_centre_and_are_not_kept_as_isolated_lines() -> None:
+def test_two_lines_that_blend_are_rejected_while_an_isolated_line_of_the_same_table_is_kept() -> None:
     # ARRANGE
-    tables = _tables([LINE_NM, LINE_NM + 0.35], [LINE_STRENGTH, LINE_STRENGTH * 0.6])
+    controlNm = 1145.0
+    tables = _tables([LINE_NM, LINE_NM + 0.35, controlNm], [LINE_STRENGTH, LINE_STRENGTH * 0.6, LINE_STRENGTH])
 
     # ACT
-    kept = build_tool.select_band(tables, ("H2O_1130", 1110.0, 1160.0, "NIR", ("H2O_NIR",)), _selection())
+    kept = build_tool.select_band(tables, BAND_1130, _selection())
 
     # ASSERT
-    assert kept == []
+    assert [feature.lineNm for feature in kept] == pytest.approx([controlNm], abs=1e-6)
 
 
 def test_a_band_with_fewer_lines_than_the_minimum_is_dropped_and_named() -> None:
@@ -267,7 +272,7 @@ def test_hapi_fetches_only_the_spans_that_the_cache_lacks(monkeypatch: pytest.Mo
     tables = build_tool.fetch_tables(str(tmp_path / "cache"))
 
     # ASSERT
-    assert fetched == ["O2_VIS", "H2O_NIR"]
+    assert fetched == ["H2O_NIR", "O2_VIS"]
     assert tables["O2_VIS"]["molecule"] == 7
     assert tables["H2O_VIS"]["nu"].tolist() == [10000.0]
 
@@ -288,6 +293,78 @@ def test_the_command_line_builds_the_file_and_prints_the_bands_and_the_resolving
     printed = capsys.readouterr().out
     assert status == 0
     assert "NIR resolving powers: 3500, 4183, 5000" in printed
-    assert "H2O_1130" in printed
+    assert re.search(r"H2O_1130\s+1110\.0-\s*1160\.0 nm\s+1 lines", printed)
+    assert re.search(r"H2O_1450\s+1400\.0-\s*1500\.0 nm\s+0 lines", printed)
     assert "dropped bands: O2_B, H2O_720, H2O_940, H2O_1450, H2O_1800" in printed
     assert len(Table.read(out, format="fits")) == 1
+
+
+ONE_LINE = {"nu": [10000.0], "sw": [1e-24], "gamma_air": [0.08], "n_air": [0.7], "elower": [1.0], "delta_air": [0.0]}
+
+
+def _fake_hapi(fetch: object, columns: dict | None = None, cached: set | None = None) -> types.SimpleNamespace:
+    """A stand-in for ``hapi`` that records the tables it is told to drop."""
+    dropped: list[str] = []
+    return types.SimpleNamespace(
+        db_begin=lambda path: None,
+        tableList=lambda: list(cached or ()),
+        fetch=fetch,
+        getColumn=lambda name, column: (ONE_LINE if columns is None else columns)[column],
+        dropTable=dropped.append,
+        dropped=dropped,
+    )
+
+
+def test_a_failed_fetch_deletes_the_partial_table_and_names_the_molecule_and_the_range(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    def fetch(name: str, *args: object) -> None:
+        for suffix in (".data", ".header"):
+            (tmp_path / f"{name}{suffix}").write_text("partial")
+        raise ConnectionError("server closed the connection")
+
+    fakeHapi = _fake_hapi(fetch)
+    monkeypatch.setitem(sys.modules, "hapi", fakeHapi)
+
+    # ACT AND ASSERT
+    with pytest.raises(build_tool.HitranFetchError, match=r"H2O.*10000\.0 to 14700\.0 cm-1.*server closed"):
+        build_tool.fetch_tables(str(tmp_path))
+    assert fakeHapi.dropped == ["H2O_VIS"]
+    assert not list(tmp_path.glob("H2O_VIS.*"))
+
+
+def test_a_table_with_no_lines_is_deleted_and_refused_so_it_is_not_taken_as_cached(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # ARRANGE
+    (tmp_path / "H2O_VIS.data").write_text("")
+    empty = {name: [] for name in ("nu", "sw", "gamma_air", "n_air", "elower", "delta_air")}
+    fakeHapi = _fake_hapi(lambda *args: None, columns=empty, cached={"H2O_VIS"})
+    monkeypatch.setitem(sys.modules, "hapi", fakeHapi)
+
+    # ACT AND ASSERT
+    with pytest.raises(build_tool.HitranFetchError, match=r"no H2O lines.*10000\.0 to 14700\.0 cm-1"):
+        build_tool.fetch_tables(str(tmp_path))
+    assert fakeHapi.dropped == ["H2O_VIS"]
+    assert not (tmp_path / "H2O_VIS.data").exists()
+
+
+def test_a_curve_fit_covariance_warning_is_ignored_and_every_other_warning_stays_visible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # ARRANGE
+    def noisy_select(tables: object, band: object, selection: object) -> list:
+        warnings.warn("covariance could not be estimated", OptimizeWarning, stacklevel=2)
+        warnings.warn("overflow in exp", RuntimeWarning, stacklevel=2)
+        return []
+
+    monkeypatch.setattr(build_tool, "select_band", noisy_select)
+
+    # ACT
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        build_tool.build_line_list(_tables(), _selection())
+
+    # ASSERT
+    assert {warning.category for warning in caught} == {RuntimeWarning}
