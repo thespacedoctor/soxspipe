@@ -226,10 +226,10 @@ def test_a_line_just_under_the_error_limit_counts_towards_the_gate() -> None:
     assert bool(bands.set_index("band").loc["CO2_2000", "isMeasured"]) is True
 
 
-def test_the_error_limit_is_0_2_angstrom() -> None:
+def test_the_error_limit_is_0_3_angstrom() -> None:
     # ARRANGE
-    below = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.015)
-    above = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.025)
+    below = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.025)
+    above = _line_rows("CO2_2000", [0.0] * MIN_BAND_LINES, errorNm=0.035)
 
     # ACT
     measuredBelow = summarise_bands(below).set_index("band").loc["CO2_2000", "isMeasured"]
