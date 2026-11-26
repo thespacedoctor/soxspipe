@@ -65,7 +65,7 @@ The bspline fit is used to estimate the sky flux level in every pixel in the ori
 The uncertainties written with the products are not yet a full error budget:
 
 - The `ERRS` extension of the sky-model product (`SKYMODEL`) is a copy of the object frame's uncertainty. It is not the uncertainty of the model.
-- The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model. For the NIR arm, the pipeline scales it by the scatter of the sky-fit residuals (see [Sky-residual error inflation](#sky-residual-error-inflation)).
+- The `ERRS` extension of the sky-subtracted product (`SKYSUB`) is the object frame's uncertainty. It does not include the uncertainty of the sky model. For the SOXS NIR and VIS arms, the pipeline scales it by the scatter of the sky-fit residuals (see [Sky-residual error inflation](#sky-residual-error-inflation)).
 
 ### Sky-residual error inflation
 
@@ -82,7 +82,13 @@ Where the sky model fits well, r is noise with a scatter of 1 and the errors do 
 
 The inflation changes only the `ERRS` extension of the sky-subtracted product (`SKYSUB`). The data, the sky model and the residuals product are not changed. An order with fewer than 30 usable pixels is not inflated, and neither is an order that is too bright to be modelled.
 
-The `sky_error_inflation` setting in the `sky-subtraction` block of the stare recipe settings turns the inflation on or off. It must be `True` or `False`. A workspace settings file that does not have the key uses the default: on for the NIR arm and off for the VIS arm. The VIS default is off because its effect on the VIS arm is not yet measured.
+The `sky_error_inflation` setting in the `sky-subtraction` block of the stare recipe settings turns the inflation on or off. It must be `True` or `False`. The shipped settings turn it on for the SOXS NIR and SOXS VIS arms of `soxs-stare` and `soxs-stare-std`, and off for the X-Shooter VIS arm.
+
+The SOXS VIS setting is a stopgap. The VIS `ERRS` plane is about 20% too low, because the read noise of the science frame is too low (DY-2408). The inflation absorbs this deficit. Revisit the VIS setting when the prescan read-noise fix (DY-2437) lands.
+
+A workspace settings file that does not have the key uses a default for each instrument and arm. The default is on for SOXS VIS, SOXS NIR, and X-Shooter NIR. It is off for all other arms, including X-Shooter VIS. The `instrument` setting names the instrument. It is `soxs` when it is absent.
+
+The nod and offset recipes do not subtract a sky model, so they do not use this setting. A nod reduced as stare (`--stare` or `reduce-as-stare`) uses the stare settings, so the inflation applies to it too.
 
 ### Object-wing correction
 

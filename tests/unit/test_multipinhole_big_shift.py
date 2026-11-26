@@ -91,11 +91,13 @@ def _line_table(
     order: int = 2,
     lineRows: np.ndarray = LINE_ROWS,
     observedOffset: float = 0.0,
+    yDiff: float = 0.0,
 ) -> pd.DataFrame:
     """Return 9-pinhole line sets for ``order`` whose predictions are centred on ``predictedCentre``.
 
-    ``observedSlitIndex`` maps each predicted slit index to the index of the real pinhole its window detected, and
-    ``observedOffset`` moves every detection along the axis.
+    ``observedSlitIndex`` maps each predicted slit index to the index of the real pinhole its window detected,
+    ``observedOffset`` moves every detection along the axis, and ``yDiff`` is how far the prediction lies above the
+    detection across the slit-normal (dispersion) axis.
     """
     rows = []
     for wavelengthIndex, y in enumerate(lineRows):
@@ -110,9 +112,9 @@ def _line_table(
                     "detector_x_shifted": predictedX,
                     "detector_y_shifted": y,
                     "observed_x": observedX,
-                    "observed_y": y,
+                    "observed_y": y - yDiff,
                     "x_diff": predictedX - observedX,
-                    "y_diff": 0.0,
+                    "y_diff": yDiff,
                 }
             )
     return pd.DataFrame(rows)
@@ -159,6 +161,69 @@ def test_real_one_pinhole_offset_is_still_corrected(log: object, tmp_path: Path)
 
     # ASSERT
     np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] + PINHOLE_SPACING)
+
+
+def test_first_pass_moves_the_order_along_the_dispersion_axis_with_the_slit_shift(log: object, tmp_path: Path) -> None:
+    """The first guess sits one pinhole low and 4.3 px off in y: both offsets move the order (DY-1928)."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    yOffset = 4.3
+    observed = {0: 0} | {slitIndex: slitIndex - 1 for slitIndex in range(1, 9)}
+    table = _line_table(SLIT_CENTRE - PINHOLE_SPACING, observed, yDiff=yOffset)
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"] + PINHOLE_SPACING)
+    np.testing.assert_allclose(result["detector_y_shifted"], table["detector_y_shifted"] - yOffset)
+
+
+def test_first_pass_applies_the_y_offset_when_the_slit_shift_is_too_small_to_apply(log: object, tmp_path: Path) -> None:
+    """All pinholes sit on their predictions along the slit but 5.1 px off in y: only the y offset moves the order."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    yOffset = 5.1
+    table = _line_table(SLIT_CENTRE, ALL_PINHOLES, yDiff=yOffset)
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_x_shifted"], table["detector_x_shifted"])
+    np.testing.assert_allclose(result["detector_y_shifted"], table["detector_y_shifted"] - yOffset)
+
+
+def test_first_pass_y_offset_ignores_a_minority_of_noise_detections(log: object, tmp_path: Path) -> None:
+    """A few detections 20 px off in y do not move the group's y offset away from the 4.3 px of the pinholes."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    yOffset = 4.3
+    table = _line_table(SLIT_CENTRE, ALL_PINHOLES, yDiff=yOffset)
+    # A 0.1 PX ALTERNATING SCATTER ABOUT THE PINHOLE OFFSET: THE MEASURED OFFSET MUST LIE WITHIN IT
+    # (A MEAN WOULD NOT)
+    table["y_diff"] = yOffset + np.where(table.index % 2 == 0, 0.1, -0.1)
+    noiseRows = table.index[1::25]
+    table.loc[noiseRows, "y_diff"] = 20.0
+
+    # ACT
+    result = _run(mapper, table)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_y_shifted"], table["detector_y_shifted"] - yOffset, atol=0.11)
+
+
+def test_first_pass_leaves_a_later_iteration_unshifted_in_y(log: object, tmp_path: Path) -> None:
+    """The shift is a first-pass step: from iteration 2 on the y positions stay as predicted."""
+    # ARRANGE
+    mapper = _mapper(log, _order_table(tmp_path))
+    table = _line_table(SLIT_CENTRE, ALL_PINHOLES, yDiff=4.3)
+
+    # ACT
+    result = mapper._handle_multipin_hole_big_shift(table.copy(), 2, table["order"] == 2, 2)
+
+    # ASSERT
+    np.testing.assert_allclose(result["detector_y_shifted"], table["detector_y_shifted"])
 
 
 def test_sub_spacing_offset_is_measured_when_the_end_shifts_have_opposite_signs(log: object, tmp_path: Path) -> None:

@@ -169,6 +169,8 @@ def test_subtract_runs_one_order_workflow_and_returns_finite_product_frames(
             "aggressive_object_masking": False,
             # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
             "object_wing_correction": False,
+            # THE FIT STAGES ARE STUBBED, SO THE ERROR INFLATION (DY-1973) HAS NO CLIPPING COLUMNS TO READ
+            "sky_error_inflation": False,
             "sky_model_qc_plot": False,
         }
     }
@@ -225,6 +227,8 @@ def test_subtract_records_order_and_frame_qc_products_when_requested(
             "aggressive_object_masking": False,
             # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
             "object_wing_correction": False,
+            # THE FIT STAGES ARE STUBBED, SO THE ERROR INFLATION (DY-1973) HAS NO CLIPPING COLUMNS TO READ
+            "sky_error_inflation": False,
             "sky_model_qc_plot": True,
         }
     }
@@ -636,6 +640,8 @@ def test_subtract_assembles_modelled_order_and_optionally_registers_qc_plot(
             "aggressive_object_masking": False,
             # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
             "object_wing_correction": False,
+            # THE FIT STAGES ARE STUBBED, SO THE ERROR INFLATION (DY-1973) HAS NO CLIPPING COLUMNS TO READ
+            "sky_error_inflation": False,
             "bspline_order": 3,
             "clip-slit-edge-fraction": 0.1,
             "sky_model_qc_plot": writeQCPlot,
@@ -749,6 +755,8 @@ def _one_order_subtractor(log: object) -> subtract_sky:
             "aggressive_object_masking": False,
             # THE FIT STAGES ARE STUBBED, SO THE OBJECT-WING REFIT (DY-1279) HAS NO CLIPPING COLUMNS TO READ
             "object_wing_correction": False,
+            # THE FIT STAGES ARE STUBBED, SO THE ERROR INFLATION (DY-1973) HAS NO CLIPPING COLUMNS TO READ
+            "sky_error_inflation": False,
             "sky_model_qc_plot": False,
         }
     }
