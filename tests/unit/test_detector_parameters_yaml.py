@@ -338,3 +338,27 @@ def test_xsh_uvb_and_vis_line_atlas_holds_air_wavelengths_in_nm(arm: str) -> Non
     assert waves.max() <= XSH_THAR_ATLAS_MAX_NM
     assert [air for air, _ in AR_I_AIR_VACUUM_NM if not _has_line_near(argonWaves, air)] == []
     assert [vacuum for _, vacuum in AR_I_AIR_VACUUM_NM if _has_line_near(argonWaves, vacuum)] == []
+
+
+def test_the_soxs_vis_prescan_window_lies_left_of_the_science_pixels() -> None:
+    # ARRANGE
+    parameters = yaml.safe_load((RESOURCES_DIR / "soxs_detector_parameters.yaml").read_text())["VIS"]
+
+    # ACT
+    prescan = parameters["prescan-pixels"]
+    science = parameters["science-pixels"]
+
+    # ASSERT: COLUMNS 8 TO 45 OF THE RAW FRAME, ON ROWS THAT THE SCIENCE PIXELS COVER
+    assert (prescan["columns"]["start"], prescan["columns"]["end"]) == (8, 46)
+    assert prescan["columns"]["end"] <= science["columns"]["start"]
+    assert prescan["rows"]["start"] >= science["rows"]["start"]
+    assert prescan["rows"]["end"] <= science["rows"]["end"]
+
+
+@pytest.mark.parametrize(("instrument", "arm"), [("soxs", "NIR"), ("xsh", "UVB"), ("xsh", "VIS"), ("xsh", "NIR")])
+def test_only_the_soxs_vis_arm_has_a_prescan_window(instrument: str, arm: str) -> None:
+    # ARRANGE
+    parameters = yaml.safe_load((RESOURCES_DIR / f"{instrument}_detector_parameters.yaml").read_text())[arm]
+
+    # ACT / ASSERT
+    assert "prescan-pixels" not in parameters

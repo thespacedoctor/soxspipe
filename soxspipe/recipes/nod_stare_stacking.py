@@ -495,6 +495,7 @@ class nod_stare_stacking:
         reference = kept or extractions
         first, last = reference[next(iter(reference))], reference[next(reversed(reference))]
         self.masterHeaderFrame = first.combinedObject
+        self._record_position_read_noise(reference)
         stackedSpectrum, extractionPath = self.stack_extractions(
             [
                 None if position not in kept else extraction.mergedSpectrum
@@ -516,6 +517,23 @@ class nod_stare_stacking:
             slitEdgeSpill=any(extraction.slitEdgeSpill for extraction in reference.values()),
             extractionNotes=notes,
         )
+
+    def _record_position_read_noise(self, reference: dict[str, stack_extraction]) -> None:
+        """*record the root mean square of the prescan read noises of the nod positions as the ``SCI RON`` QC*
+
+        The combined spectrum is built from every position that is kept, so its QC is not that of the last position
+        reduced. A position with no prescan read noise is skipped. With none, the QC stays as it is.
+
+        **Key Arguments:**
+
+        - ``reference`` -- the ``stack_extraction`` of each position that is kept
+        """
+        from soxspipe.commonutils.read_noise import rms_read_noise
+
+        rons = [self._prescan_read_noise_of(extraction.combinedObject) for extraction in reference.values()]
+        measured = [ron for ron in rons if ron is not None]
+        if measured:
+            self._set_science_read_noise_qc(rms_read_noise(measured))
 
     def _combined_notes(
         self, extractions: dict[str, stack_extraction], kept: dict[str, stack_extraction]
