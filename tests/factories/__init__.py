@@ -22,6 +22,7 @@ from .files import (
     response_product_fits,
     sof_file,
 )
+from .log_grid import VIS_GRID_STEP_KMS, grid_point_nm
 from .frames import StubInputFrames, instrument_header, noise_frame_pair, synthetic_ccd
 from .late_frames import (
     calibration_chain_frames,
@@ -37,6 +38,8 @@ from .slit_illumination import illumination_scene, synthetic_illumination_scene
 from .workspaces import WorkspaceLayout, session_workspace, workspace_layout, workspace_organiser
 
 __all__ = [
+    "VIS_GRID_STEP_KMS",
+    "grid_point_nm",
     "calibration_chain_frames",
     "flux_standard_stare",
     "insert_frames",

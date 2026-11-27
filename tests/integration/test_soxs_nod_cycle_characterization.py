@@ -727,6 +727,8 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_f
 
     asciiLines = Path(fitsPath.replace(".fits", ".txt")).read_text().splitlines()
     assert asciiLines[0] == "WAVE FLUX_COUNTS VARIANCE FLUX_DENSITY_COUNTS SNR"
+    # THE LITERAL IS INDEPENDENT OF THE GRID CODE: THE GRID POINT 1000 NM * EXP(-11650 * 17.83 / C) = 500.1348 NM
+    assert asciiLines[1].startswith("5001.35 ")
     assert asciiLines[1].startswith(f"{GRID_WAVELENGTHS[0] * 10:.2f} ")
     assert asciiLines[3].startswith(f"{GRID_WAVELENGTHS[2] * 10:.2f} ")
 

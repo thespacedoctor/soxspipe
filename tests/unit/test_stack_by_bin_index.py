@@ -253,3 +253,40 @@ def test_median_stack_variance_leaves_a_row_with_no_flux_out_of_its_group() -> N
 
     # ASSERT: N = 2, SO THE VARIANCE OF THE MEAN IS (3 + 5) / 4
     assert list(variance) == pytest.approx([2.0])
+
+
+def test_a_wavelength_that_is_not_on_the_grid_of_the_stack_is_refused(nod: soxs_nod) -> None:
+    # ARRANGE: THE SPECTRA WERE MERGED ON THE GRID OF 1X BINNING, BUT THE MASTER HEADER GIVES 2X, A GRID TWICE AS COARSE
+    unbinned = grid_step_kms({"log-wavelength-step-kms": STEP_PER_PIXEL_KMS}, 1)
+    waves = grid_wavelength(_bins(FIRST_BIN * BINNING + 1, 6), unbinned)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="not on the 35.660 km/s log-wavelength grid"):
+        nod.stack_extractions([_spectrum(waves, np.ones(6))])
+
+
+def test_a_wavelength_half_a_bin_off_the_grid_is_refused_but_a_rounding_step_is_not(nod: soxs_nod) -> None:
+    # ARRANGE
+    centre = float(grid_wavelength(FIRST_BIN, STEP_KMS))
+    halfBin = centre * (math.exp(0.5 * STEP_KMS / 299792.458) - 1.0)
+
+    # ACT
+    stacked, _ = nod.stack_extractions([_spectrum([centre + 5e-5], [1.0])])
+
+    # ASSERT
+    assert len(stacked) == 1
+    with pytest.raises(ValueError, match="log-wavelength grid"):
+        nod.stack_extractions([_spectrum([centre + halfBin], [1.0])])
+
+
+def test_the_stack_leaves_the_concatenated_spectra_it_was_given_unchanged(nod: soxs_nod) -> None:
+    # ARRANGE
+    first, second = _spectrum(_grid(FIRST_BIN, 3), np.ones(3)), _spectrum(_grid(FIRST_BIN, 3), np.ones(3))
+    waveUnits = [type(wave) for wave in first["WAVE"]]
+
+    # ACT
+    nod.stack_extractions([first, second])
+
+    # ASSERT: THE CALLER'S FRAMES STILL HOLD QUANTITIES
+    assert [type(wave) for wave in first["WAVE"]] == waveUnits
+    assert all(hasattr(wave, "unit") for wave in first["WAVE"])

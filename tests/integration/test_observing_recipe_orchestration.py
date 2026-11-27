@@ -17,6 +17,7 @@ from soxspipe.recipes import soxs_nod, soxs_offset, soxs_stare
 from soxspipe.recipes.soxs_offset import STACKED_LOCATION_SET
 from tests.factories.offset_frames import fixed_sky_run
 from tests.factories import (
+    grid_point_nm,
     pipeline_settings,
     product_table,
     qc_row,
@@ -495,7 +496,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
     )
     first = pd.DataFrame(
         {
-            "WAVE": [500.12344 * u.nm, 501.0 * u.nm],
+            "WAVE": [grid_point_nm(500.12344) * u.nm, grid_point_nm(501.0) * u.nm],
             "FLUX_COUNTS": [9.0, 16.0],
             "VARIANCE": [9.0, 4.0],
             "FLUX_DENSITY_COUNTS": [1.0, 2.0],
@@ -503,7 +504,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
     )
     second = pd.DataFrame(
         {
-            "WAVE": [500.12345 * u.nm, 501.0 * u.nm],
+            "WAVE": [grid_point_nm(500.12345) * u.nm, grid_point_nm(501.0) * u.nm],
             "FLUX_COUNTS": [15.0, 20.0],
             "VARIANCE": [9.0, 4.0],
             "FLUX_DENSITY_COUNTS": [3.0, 4.0],

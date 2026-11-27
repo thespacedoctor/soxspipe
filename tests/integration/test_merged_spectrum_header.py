@@ -19,21 +19,26 @@ from astropy.io import fits
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.recipes import soxs_nod, soxs_offset
-from tests.factories import pipeline_settings, qc_table, response_product_fits, synthetic_ccd
+from tests.factories import (
+    VIS_GRID_STEP_KMS,
+    grid_point_nm,
+    pipeline_settings,
+    qc_table,
+    response_product_fits,
+    synthetic_ccd,
+)
 from tests.factories.on_target_frames import raw_frame_summary, raw_science_header
 
 pytestmark = pytest.mark.integration
 
 NOD_NAMES = ["nod-A1.fits", "nod-B1.fits", "nod-A2.fits", "nod-B2.fits"]
 OFFSET_NAMES = ["off-ON1.fits", "off-OFF1.fits", "off-ON2.fits", "off-OFF2.fits"]
-# THE STACK READS THE BINNING OF ITS FRAMES TO FIND THE STEP OF THE LOG-WAVELENGTH GRID
-BINNING_CARD = {"ESO DET BINY": 1}
 
 
 def _frame(index: int) -> Any:
     """Return a prepared frame whose ``ARCFILE`` differs from its file name, with an exposure time."""
     header = raw_science_header("VIS", mjd=61000.0 + index / 10, arcfile=f"SOXS.2026-01-02T03:04:0{index}.fits")
-    return synthetic_ccd(prepared=True, headerOverrides={**{key: header[key] for key in header}, **BINNING_CARD})
+    return synthetic_ccd(prepared=True, headerOverrides={**{key: header[key] for key in header}})
 
 
 def _recipe(recipeClass: type, tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch, names: list[str]) -> Any:
@@ -53,7 +58,7 @@ def _recipe(recipeClass: type, tmp_path: Path, log: Any, monkeypatch: pytest.Mon
     recipe.startNightDate = "2024-01-02"
     recipe.productDir = str(tmp_path)
     recipe.imageType = "OBJECT"
-    recipe.detectorParams = {"extinction": "extinction.dat", "log-wavelength-step-kms": 17.83}
+    recipe.detectorParams = {"extinction": "extinction.dat", "log-wavelength-step-kms": VIS_GRID_STEP_KMS}
     recipe.rawFrames = raw_frame_summary(names)
     recipe.debug = False
     recipe.qc = qc_table().iloc[0:0].copy()
@@ -63,7 +68,7 @@ def _recipe(recipeClass: type, tmp_path: Path, log: Any, monkeypatch: pytest.Mon
 
 
 def _spectrum() -> pd.DataFrame:
-    return pd.DataFrame({"WAVE": [500.0 * u.nm], "FLUX_COUNTS": [10.0], "VARIANCE": [4.0], "SNR": [0.0]})
+    return pd.DataFrame({"WAVE": [grid_point_nm(500.0) * u.nm], "FLUX_COUNTS": [10.0], "VARIANCE": [4.0], "SNR": [0.0]})
 
 
 def _capture_flux_calibration(monkeypatch: pytest.MonkeyPatch, recipeModule: str) -> list[dict[str, Any]]:
@@ -194,7 +199,7 @@ def _target_frame(index: int) -> Any:
         OBJECT="SN2026ob",
         **(TARGET_CARDS if index == 1 else {}),
     )
-    return synthetic_ccd(prepared=True, headerOverrides={**{key: header[key] for key in header}, **BINNING_CARD})
+    return synthetic_ccd(prepared=True, headerOverrides={**{key: header[key] for key in header}})
 
 
 def _with_target_list(recipe: Any, log: Any, names: list[str]) -> Any:

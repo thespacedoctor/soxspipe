@@ -11,7 +11,8 @@ Date Created
 from __future__ import annotations
 
 import math
-from typing import Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.log_wavelength_grid import grid_index, grid_step_kms, grid_wavelength
@@ -21,15 +22,21 @@ from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_S
 from soxspipe.commonutils.toolkit import utcnow_string
 from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
 
+if TYPE_CHECKING:
+    import pandas as pd
+
 # UP TO THIS MANY SPECTRA, THE MEDIAN IS THE MEAN, SO ITS VARIANCE IS SUM(VAR) / N**2
 MEDIAN_IS_MEAN_MAX_SPECTRA = 2
 # THE LARGE-N VARIANCE OF THE MEDIAN OF GAUSSIAN SAMPLES IS THIS FACTOR TIMES THE VARIANCE OF THEIR MEAN
 MEDIAN_VARIANCE_FACTOR = math.pi / 2
 # X-SHOOTER, WHICH KEEPS LINEAR GRIDS, GROUPS THE BINS OF A STACK BY THEIR WAVELENGTH TO THIS MANY DECIMALS (NM)
 LINEAR_GRID_GROUPING_DECIMALS = 4
+# THE INPUT WAVELENGTHS OF A SOXS STACK ARE GRID POINTS ALREADY. ONE THAT IS FARTHER FROM ITS GRID POINT THAN THIS
+# (RELATIVE) WAS MADE ON ANOTHER GRID, SUCH AS ONE WITH A DIFFERENT BINNING
+GRID_POINT_TOLERANCE = 1.0e-6
 
 
-def median_stack_variance(spectra, groupKeys):
+def median_stack_variance(spectra: pd.DataFrame, groupKeys: Sequence[float]) -> pd.Series:
     """*the variance of the per-bin median of a set of stacked spectra*
 
     A row contributes to its bin when it has a flux, as for the flux median, so N is counted per bin. For N <= 2 the
@@ -142,29 +149,41 @@ class extraction_stacking:
         binning = dispersion_binning(self.masterHeaderFrame.header, self.arm, kw)
         return grid_step_kms(self.detectorParams, binning)
 
-    def _median_by_bin(self, mergedDataframe):
+    def _median_by_bin(self, mergedDataframe: pd.DataFrame) -> pd.DataFrame:
         """*the median of each column of the concatenated spectra in each bin, with the variance of that median*
 
         A SOXS bin is the integer index on the log-wavelength grid of the arm, and its ``WAVE`` is the grid wavelength
-        of the index. An X-Shooter bin is the wavelength rounded to 4 decimals. The ``WAVE`` column of
-        ``mergedDataframe`` is replaced by plain floats in nm. A copy of the frame would consolidate its astropy
-        quantity columns, which fails on their mixed units.
+        of the index. An X-Shooter bin is the wavelength rounded to 4 decimals. The frame is not changed.
 
         **Key Arguments:**
 
-        - ``mergedDataframe`` -- the concatenated spectra (dataframe) with a quantity ``WAVE`` and a ``VARIANCE``
+        - ``mergedDataframe`` -- the concatenated spectra (dataframe) with ``WAVE`` as plain floats in nm, and a
+          ``VARIANCE``
 
         **Return:**
 
         - ``medians`` -- one row per bin, sorted by wavelength, with ``WAVE`` and the median of every other column,
           except ``VARIANCE``, which is the variance of the median (see ``median_stack_variance``)
+
+        **Raises:**
+
+        - ``ValueError`` -- if a SOXS wavelength is not on the log-wavelength grid of the stack, which happens when the
+          spectra were merged with another binning than the one the stack reads
         """
         import numpy as np
 
-        waves = np.array([float(x.value) for x in mergedDataframe["WAVE"]])
-        mergedDataframe["WAVE"] = waves
+        waves = mergedDataframe["WAVE"].to_numpy(dtype=float)
         stepKms = self._stack_grid_step_kms()
-        groupKeys = np.round(waves, LINEAR_GRID_GROUPING_DECIMALS) if stepKms is None else grid_index(waves, stepKms)
+        if stepKms is None:
+            groupKeys = np.round(waves, LINEAR_GRID_GROUPING_DECIMALS)
+        else:
+            groupKeys = grid_index(waves, stepKms)
+            if not np.allclose(grid_wavelength(groupKeys, stepKms), waves, rtol=GRID_POINT_TOLERANCE, atol=0.0):
+                raise ValueError(
+                    f"The wavelengths to stack are not on the {stepKms:.3f} km/s log-wavelength grid the binning of "
+                    "the master header gives, so the spectra were merged with another binning. Please check the "
+                    "binning cards of the frames."
+                )
         medians = mergedDataframe.groupby(by=groupKeys).median()
         binKeys = medians.index.to_numpy()
         medians = medians.reset_index(drop=True)
@@ -238,6 +257,9 @@ class extraction_stacking:
         # GROUP BY BIN AND TAKE THE MEDIAN OF EACH COLUMN
 
         merged_dataframe = pd.concat(dataFrameList)
+        # PLAIN FLOATS IN NM. COPYING THE FRAME WOULD CONSOLIDATE ITS ASTROPY QUANTITY COLUMNS, WHICH FAILS ON THEIR
+        # MIXED UNITS, SO THE CONCATENATED FRAME ITSELF TAKES THE FLOAT WAVELENGTHS
+        merged_dataframe["WAVE"] = [float(x.value) for x in merged_dataframe["WAVE"]]
         groupedDataframe = self._median_by_bin(merged_dataframe)
 
         self.filenameTemplate = self.productStem + ".fits"

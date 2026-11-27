@@ -19,7 +19,7 @@ from astropy.table import Table
 from soxspipe.commonutils.on_target_frames import build_on_target_frames
 from soxspipe.recipes import soxs_nod, soxs_stare
 from soxspipe.recipes.extraction_stacking import extraction_stacking
-from tests.factories import pipeline_settings, qc_table, synthetic_ccd
+from tests.factories import VIS_GRID_STEP_KMS, grid_point_nm, pipeline_settings, qc_table, synthetic_ccd
 from tests.factories.on_target_frames import raw_science_header
 
 pytestmark = pytest.mark.unit
@@ -46,8 +46,7 @@ def _recipe(recipeClass: type, log: Any, tmpPath: Path, monkeypatch: pytest.Monk
     _, recipe.products = recipe._empty_qc_and_product_tables(pd)
     recipe.qc = qc_table().iloc[0:0].copy()
     recipe.masterHeaderFrame = synthetic_ccd(shape=(3, 3), prepared=True)
-    recipe.masterHeaderFrame.header["ESO DET BINY"] = 1
-    recipe.detectorParams = {"log-wavelength-step-kms": 17.83}
+    recipe.detectorParams = {"log-wavelength-step-kms": VIS_GRID_STEP_KMS}
     recipe.update_fits_keywords = lambda **_: None
     return recipe
 
@@ -66,7 +65,7 @@ def _spectrum(flux: float, sky: float = 1.0, variance: float = 4.0) -> pd.DataFr
     """Return an order-merged spectrum of one wavelength, shaped like the extraction's output."""
     return pd.DataFrame(
         {
-            "WAVE": [500.0 * u.nm],
+            "WAVE": [grid_point_nm(500.0) * u.nm],
             "FLUX_COUNTS": [flux],
             "VARIANCE": [variance],
             "SKY_COUNTS": [sky],

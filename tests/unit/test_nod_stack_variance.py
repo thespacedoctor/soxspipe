@@ -26,11 +26,11 @@ from astropy.io import fits
 from soxspipe.commonutils.log_wavelength_grid import grid_index, grid_wavelength
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from soxspipe.recipes import soxs_nod
-from tests.factories import pipeline_settings, qc_table, synthetic_ccd
+from tests.factories import VIS_GRID_STEP_KMS, grid_point_nm, pipeline_settings, qc_table, synthetic_ccd
 
 pytestmark = pytest.mark.unit
 
-STEP_KMS = 17.83
+STEP_KMS = VIS_GRID_STEP_KMS
 
 
 @pytest.fixture
@@ -51,17 +51,16 @@ def recipe(log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> soxs_no
     _, nod.products = nod._empty_qc_and_product_tables(pd)
     nod.qc = qc_table().iloc[0:0].copy()
     nod.masterHeaderFrame = synthetic_ccd(shape=(3, 3), prepared=True)
-    nod.masterHeaderFrame.header["ESO DET BINY"] = 1
     nod.detectorParams = {"log-wavelength-step-kms": STEP_KMS}
     nod.update_fits_keywords = lambda **_: None
     return nod
 
 
-def _spectrum(waves: list[float], fluxes: list[float], variances: list[float]) -> pd.DataFrame:
-    """Return an order-merged spectrum shaped like the extraction's output."""
+def _spectrum(waves: list[float], fluxes: list[float], variances: list[float], onGrid: bool = True) -> pd.DataFrame:
+    """Return an order-merged spectrum shaped like the extraction's output, on the log grid unless ``onGrid`` is off."""
     return pd.DataFrame(
         {
-            "WAVE": [wave * u.nm for wave in waves],
+            "WAVE": [(grid_point_nm(wave) if onGrid else wave) * u.nm for wave in waves],
             "FLUX_COUNTS": fluxes,
             "VARIANCE": variances,
             "SKY_COUNTS": [0.0] * len(waves),
@@ -194,7 +193,7 @@ def test_the_variance_column_keeps_the_extraction_float32_type(recipe: soxs_nod)
 def _extraction_spectrum(waves: list[float], fluxes: list[float], variances: list[float]) -> pd.DataFrame:
     """Return a spectrum built the way `horne_extraction` builds its merged orders: float32 astropy quantities."""
     spectrum = pd.DataFrame()
-    spectrum["WAVE"] = np.array(waves) * u.nm
+    spectrum["WAVE"] = np.array([grid_point_nm(wave) for wave in waves]) * u.nm
     spectrum["FLUX_COUNTS"] = np.array(fluxes, dtype=np.float32) * u.electron
     spectrum["VARIANCE"] = np.array(variances, dtype=np.float32) * u.electron
     spectrum["SKY_COUNTS"] = np.zeros(len(waves), dtype=np.float32) * u.electron
@@ -276,7 +275,10 @@ def test_the_x_shooter_stack_keeps_its_two_decimal_wave(recipe: soxs_nod) -> Non
 
     # ACT
     stacked, _ = recipe.stack_extractions(
-        [_spectrum(waves, [10.0, 12.0], [4.0, 4.0]), _spectrum(waves, [20.0, 22.0], [4.0, 4.0])]
+        [
+            _spectrum(waves, [10.0, 12.0], [4.0, 4.0], onGrid=False),
+            _spectrum(waves, [20.0, 22.0], [4.0, 4.0], onGrid=False),
+        ]
     )
 
     # ASSERT
