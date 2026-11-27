@@ -15,6 +15,7 @@ from soxspipe.commonutils.log_wavelength_grid import (
     SPEED_OF_LIGHT_KMS,
     bin_edges,
     covered_bin_range,
+    grid_index,
     grid_step_kms,
     grid_wavelength,
     overlap_weights,
@@ -82,6 +83,46 @@ def test_grid_step_refuses_a_value_that_is_not_a_positive_number(badValue: objec
 def test_grid_step_refuses_detector_parameters_without_the_key() -> None:
     with pytest.raises(ValueError, match="log-wavelength-step-kms"):
         grid_step_kms({"ron": 3.0}, 1)
+
+
+@pytest.mark.parametrize("stepKms", [13.16, 17.83, 26.32, 35.66])
+def test_grid_index_recovers_the_index_of_every_grid_point_exactly(stepKms: float) -> None:
+    # ARRANGE
+    indices = np.arange(-300, 2500)
+
+    # ACT
+    recovered = grid_index(grid_wavelength(indices, stepKms), stepKms)
+
+    # ASSERT
+    np.testing.assert_array_equal(recovered, indices)
+    assert recovered.dtype.kind == "i"
+
+
+def test_grid_index_gives_the_bin_that_holds_a_wavelength_off_the_grid_point() -> None:
+    # ARRANGE: JUST INSIDE EACH EDGE OF BIN 40, AND JUST OUTSIDE IT
+    lowerEdge, upperEdge = bin_edges(40, 40, STEP_KMS)
+    inside = np.array([lowerEdge * (1 + 1e-9), upperEdge * (1 - 1e-9)])
+    outside = np.array([lowerEdge * (1 - 1e-9), upperEdge * (1 + 1e-9)])
+
+    # ACT / ASSERT
+    np.testing.assert_array_equal(grid_index(inside, STEP_KMS), [40, 40])
+    np.testing.assert_array_equal(grid_index(outside, STEP_KMS), [39, 41])
+
+
+def test_grid_index_ignores_a_shift_of_a_grid_point_by_the_old_four_decimal_rounding() -> None:
+    # ARRANGE: THE LARGEST SHIFT THE OLD ROUNDING GAVE A WAVELENGTH IS 5E-5 NM
+    wavelength = grid_wavelength(np.arange(0, 800), STEP_KMS)
+
+    # ACT / ASSERT
+    np.testing.assert_array_equal(grid_index(wavelength + 5e-5, STEP_KMS), np.arange(0, 800))
+    np.testing.assert_array_equal(grid_index(wavelength - 5e-5, STEP_KMS), np.arange(0, 800))
+
+
+@pytest.mark.parametrize("badValue", [np.nan, np.inf, 0.0, -500.0])
+def test_grid_index_refuses_a_wavelength_that_is_not_a_positive_finite_number(badValue: float) -> None:
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match="positive, finite"):
+        grid_index(np.array([500.0, badValue]), STEP_KMS)
 
 
 def test_snap_to_edge_index_picks_the_nearest_edge_in_log_wavelength() -> None:

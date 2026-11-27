@@ -126,6 +126,32 @@ def _edge_position(wavelength: Any, stepKms: float) -> np.ndarray:
     return np.log(np.asarray(wavelength, dtype=float) / LOG_GRID_ORIGIN_NM) / _velocity_fraction(stepKms) + 0.5
 
 
+def grid_index(wavelength: Any, stepKms: float) -> np.ndarray:
+    """*the integer index of the bin that holds each wavelength*
+
+    The inverse of ``grid_wavelength`` on the grid points: ``grid_index(grid_wavelength(k, step), step) == k``. A
+    wavelength between two grid points belongs to the bin whose edges enclose it, so a wavelength that rounding moved
+    off its grid point by much less than half a bin keeps its index. Stacks group by this index (DY-2349).
+
+    **Key Arguments:**
+
+    - ``wavelength`` -- the wavelength in nm, or an array of them
+    - ``stepKms`` -- the step of the grid in km/s
+
+    **Return:**
+
+    - ``index`` -- the integer bin index of each wavelength
+
+    **Raises:**
+
+    - ``ValueError`` -- if a wavelength is not a positive, finite number
+    """
+    wavelength = np.asarray(wavelength, dtype=float)
+    if not (np.isfinite(wavelength).all() and (wavelength > 0).all()):
+        raise ValueError("Every wavelength needs to be a positive, finite number to find its bin on the log grid.")
+    return np.floor(_edge_position(wavelength, stepKms)).astype(np.int64)
+
+
 def snap_to_edge_index(wavelength: float, stepKms: float) -> int:
     """*the index of the bin edge nearest to a wavelength, measured in log wavelength*
 

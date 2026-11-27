@@ -19,7 +19,7 @@ from astropy.table import Table
 from soxspipe.commonutils.toolkit import append_qc
 from soxspipe.recipes import soxs_stare
 from soxspipe.recipes.nod_stare_stacking import position_stack, reduction_inputs, stack_extraction
-from tests.factories import synthetic_ccd
+from tests.factories import grid_point_nm, synthetic_ccd
 from tests.integration.test_soxs_stare_nod_mode import MARKER, SOF_NAME, _tail_inputs, _tail_recipe
 
 pytestmark = pytest.mark.integration
@@ -37,7 +37,7 @@ def _spectrum(flux: float) -> pd.DataFrame:
     """Return an order-merged spectrum of one wavelength, shaped like the extraction's output."""
     return pd.DataFrame(
         {
-            "WAVE": [500.0 * u.nm],
+            "WAVE": [grid_point_nm(500.0) * u.nm],
             "FLUX_COUNTS": [flux],
             "VARIANCE": [4.0],
             "SKY_COUNTS": [1.0],

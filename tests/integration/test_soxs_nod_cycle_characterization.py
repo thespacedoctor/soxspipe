@@ -18,11 +18,13 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 from astropy import units as u
 from astropy.io import fits
 
+from soxspipe.commonutils.log_wavelength_grid import grid_index, grid_wavelength
 from soxspipe.recipes import soxs_nod
 from tests.factories import pipeline_settings, qc_row, qc_table, synthetic_ccd
 
@@ -30,6 +32,8 @@ pytestmark = pytest.mark.integration
 
 # THE READ NOISE (E-) THE RECIPE HOLDS IN ITS DETECTOR PARAMETERS, AS THE NDSAMPLES LOOKUP LEAVES IT
 NOD_RECIPE_READ_NOISE = 5.5
+# THE STEP OF THE LOG-WAVELENGTH GRID OF THE VIS ARM, WHICH A STACK READS (KM/S PER UNBINNED PIXEL)
+LOG_STEP_KMS = 17.83
 
 
 def _cycle_recipe(
@@ -587,7 +591,7 @@ def _stack_recipe(log: Any, tmp_path: Path, *, recipeName: str = "soxs-nod") -> 
     recipe = soxs_nod.__new__(soxs_nod)
     recipe.log = log
     recipe.arm = "VIS"
-    recipe.detectorParams = {"ron": NOD_RECIPE_READ_NOISE * u.electron}
+    recipe.detectorParams = {"ron": NOD_RECIPE_READ_NOISE * u.electron, "log-wavelength-step-kms": LOG_STEP_KMS}
     recipe.recipeName = recipeName
     recipe.sofName = "SYNTHETIC"
     recipe.settings = pipeline_settings(tmp_path)
@@ -601,11 +605,21 @@ def _stack_recipe(log: Any, tmp_path: Path, *, recipeName: str = "soxs-nod") -> 
     return recipe
 
 
+# THE BINS OF THE LOG-WAVELENGTH GRID THE SPECTRA OF `_spectrum_frames` SIT ON: TWO NEIGHBOURS NEAR 500.1 NM, AND 700 NM
+BIN_INDICES = grid_index(np.array([500.12, 700.0]), LOG_STEP_KMS)
+GRID_WAVELENGTHS = grid_wavelength(np.array([BIN_INDICES[0], BIN_INDICES[0] + 1, BIN_INDICES[1]]), LOG_STEP_KMS)
+
+
 def _spectrum_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Return the two order-merged spectra whose medians and roundings this file pins."""
+    """Return the two order-merged spectra whose medians and roundings this file pins.
+
+    Each wavelength is a grid point of the arm moved by 1e-5 nm, as the old 4-decimal rounding left it, so the two
+    spectra agree on the bin of the first and the last wavelength and not on the middle one.
+    """
+    low, middle, high = GRID_WAVELENGTHS
     first = pd.DataFrame(
         {
-            "WAVE": [500.12344 * u.nm, 500.12346 * u.nm, 700.0 * u.nm],
+            "WAVE": [(low - 1e-5) * u.nm, middle * u.nm, high * u.nm],
             "FLUX_COUNTS": [9.0, 55.0, 42.0],
             "VARIANCE": [9.0, 4.0, 49.0],
             "FLUX_DENSITY_COUNTS": [1.111, 3.001, 9.5],
@@ -613,7 +627,7 @@ def _spectrum_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
     )
     second = pd.DataFrame(
         {
-            "WAVE": [500.12345 * u.nm, 700.0 * u.nm],
+            "WAVE": [(low + 1e-5) * u.nm, high * u.nm],
             "FLUX_COUNTS": [15.6913, 58.0],
             "VARIANCE": [9.0, 49.0],
             "FLUX_DENSITY_COUNTS": [3.3334, 10.5],
@@ -627,13 +641,13 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
     tmp_path: Path,
     passthrough_snr_qcs: None,
 ) -> None:
-    """4-dp WAVE rounding decides merge-vs-split, then each column keeps its own decimal precision.
+    """The bin index decides merge-vs-split, then each column keeps its own decimal precision.
 
-    500.12344 and 500.12345 round to the same 4-dp key and merge (median); 500.12344 and 500.12346 do not
-    and stay as two rows. WAVE keeps the 4-dp key: it is no longer rounded to 2 dp, which moved a log-grid point
-    by up to half a bin (DY-2348). FLUX_COUNTS at 3 dp, SNR at 2 dp and FLUX_DENSITY_COUNTS at 3 dp each keep their
-    own decimals rather than any other column's: the raw FLUX_COUNTS median 12.34565 would round to 12.35 at
-    SNR's 2 dp, not the pinned 12.346.
+    The first wavelength of each spectrum is in the same bin and merges (median), although the two values differ by
+    2e-5 nm; the middle wavelength is in a bin of its own. WAVE is the exact grid wavelength of the bin (DY-2349), not
+    rounded to 2 dp, which moved a log-grid point by up to half a bin (DY-2348). FLUX_COUNTS at 3 dp, SNR at 2 dp and
+    FLUX_DENSITY_COUNTS at 3 dp each keep their own decimals rather than any other column's: the raw FLUX_COUNTS median
+    12.34565 would round to 12.35 at SNR's 2 dp, not the pinned 12.346.
     """
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
@@ -641,7 +655,7 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
     stacked, _ = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert len(stacked) == 3
-    assert stacked["WAVE"].tolist() == pytest.approx([500.1234, 500.1235, 700.0], rel=1e-12)
+    assert stacked["WAVE"].tolist() == GRID_WAVELENGTHS.tolist()
     assert stacked["FLUX_COUNTS"].tolist() == pytest.approx([12.346, 55.0, 50.0], rel=1e-12)
     assert stacked["FLUX_DENSITY_COUNTS"].tolist() == pytest.approx([2.222, 3.001, 10.0], rel=1e-12)
     # THE VARIANCE OF A TWO-SPECTRUM MEDIAN IS SUM(VAR) / 4 (DY-1675): 12.34565 / SQRT(4.5) AND 50 / SQRT(24.5)
@@ -705,7 +719,7 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_f
     tmp_path: Path,
     passthrough_snr_qcs: None,
 ) -> None:
-    """The NOTFLAT ASCII companion converts the 4-decimal nm WAVE to Angstrom (x10) and formats it to 2 decimals."""
+    """The NOTFLAT ASCII companion converts the nm WAVE to Angstrom (x10) and formats it to 2 decimals."""
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
@@ -713,8 +727,10 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_f
 
     asciiLines = Path(fitsPath.replace(".fits", ".txt")).read_text().splitlines()
     assert asciiLines[0] == "WAVE FLUX_COUNTS VARIANCE FLUX_DENSITY_COUNTS SNR"
-    assert asciiLines[1].startswith("5001.23 ")
-    assert asciiLines[3].startswith("7000.00 ")
+    # THE LITERAL IS INDEPENDENT OF THE GRID CODE: THE GRID POINT 1000 NM * EXP(-11650 * 17.83 / C) = 500.1348 NM
+    assert asciiLines[1].startswith("5001.35 ")
+    assert asciiLines[1].startswith(f"{GRID_WAVELENGTHS[0] * 10:.2f} ")
+    assert asciiLines[3].startswith(f"{GRID_WAVELENGTHS[2] * 10:.2f} ")
 
 
 def test_stack_extractions_appends_product_rows_that_push_desc_to_the_last_column(
