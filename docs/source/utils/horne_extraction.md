@@ -99,7 +99,7 @@ For a SOXS VIS spectrum, every order gets a `SKY SHIFT O<N> ERR` QC (in nm). It 
 | No shift applied (`none`), and every order when the tuning is switched off | `untuned` in `sky-shift-uncertainty-nm` of the VIS detector parameters |
 | Every order when an arc is attached | `attached-arc` in `sky-shift-uncertainty-nm` |
 
-The dispersion is the absolute value of the signed dispersion of the order (nm/px). The QC is rounded to 4 decimals. A nod or offset recipe extracts more than once (each nod position, each cycle), and the QC table keeps the largest value of each order over those extractions.
+The dispersion is the absolute value of the signed dispersion of the order (nm/px). The QC is rounded to 5 decimals. A nod or offset recipe extracts more than once (each nod position, each cycle), and the QC table keeps the largest value of each order over those extractions.
 
 The merged spectrum gets `SPEC_SYE`, the largest `SKY SHIFT O<N> ERR` of its orders. In the VIS arm the g order usually sets it, so the gap in the u and g validation shows in the header. A NIR spectrum has no `SKY SHIFT O<N> ERR` QCs yet, so it has no `SPEC_SYE`, and the recipe log has one warning for it. `SPEC_SYE` is recommended, not mandatory, in the ESO Phase 3 standard, so `soxspipe check-phase3` gives a warning for a spectrum without it. The checker fails a negative `SPEC_SYE`.
 

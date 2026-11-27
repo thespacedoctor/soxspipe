@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
 
 from soxspipe.commonutils.sky_shift_error import (
     ATTACHED_ARC_KEY,
+    SKY_SHIFT_ERROR_QC_PATTERN,
     UNTUNED_KEY,
     median_standard_error_nm,
+    sky_shift_error_qc_name,
     uncertainty_of_untuned_order_nm,
 )
 from soxspipe.commonutils.ug_wavelength_transfer import (
@@ -122,3 +125,21 @@ def test_an_unusable_yaml_value_raises(bad: object) -> None:
     # ACT AND ASSERT
     with pytest.raises(ValueError, match="untuned"):
         uncertainty_of_untuned_order_nm({"sky-shift-uncertainty-nm": {"untuned": bad}}, UNTUNED_KEY)
+
+
+@pytest.mark.parametrize("order", [1, 15, np.int64(4)])
+def test_the_error_qc_name_is_found_again_by_its_pattern(order: object) -> None:
+    # ACT
+    name = sky_shift_error_qc_name(order)
+
+    # ASSERT
+    assert name == f"SKY SHIFT O{int(order)} ERR"
+    assert SKY_SHIFT_ERROR_QC_PATTERN.fullmatch(name)
+
+
+@pytest.mark.parametrize(
+    "other", ["SKY SHIFT O4", "SKY SHIFT O4 PX", "SKY SHIFT O4 SRC", "TELL SHIFT ERR", "SKY SHIFT OX ERR"]
+)
+def test_the_pattern_matches_no_other_qc(other: str) -> None:
+    # ASSERT
+    assert SKY_SHIFT_ERROR_QC_PATTERN.fullmatch(other) is None

@@ -23,17 +23,42 @@ Date Created
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Mapping
 from typing import Any
 
 # THE STANDARD ERROR OF THE MEDIAN OF A NORMAL SAMPLE IS THIS FACTOR TIMES THE STANDARD ERROR OF THE MEAN (1.2533)
 MEDIAN_ERROR_FACTOR = math.sqrt(math.pi / 2)
 
+# THE NAME OF THE PER-ORDER QC, AND THE PATTERN THAT FINDS IT AGAIN: ONE SOURCE, SO A RENAME CANNOT DROP SPEC_SYE
+SKY_SHIFT_ERROR_QC_PATTERN = re.compile(r"SKY SHIFT O\d+ ERR")
+
 UNCERTAINTY_KEY = "sky-shift-uncertainty-nm"
 # THE TWO WAYS A SOLUTION CAN BE LEFT UNTUNED: TUNING SWITCHED OFF OR AN ORDER THAT FAILED (untuned), AND TUNING
 # SKIPPED BECAUSE AN ARC IS ATTACHED TO THE SCIENCE FRAME (attached-arc, DY-1665)
 UNTUNED_KEY = "untuned"
 ATTACHED_ARC_KEY = "attached-arc"
+
+
+def sky_shift_error_qc_name(order: Any) -> str:
+    """*the name of the* ``SKY SHIFT O<n> ERR`` *QC of an order*
+
+    **Key Arguments:**
+
+    - ``order`` -- the echelle order, an int or an integer-valued numpy type
+
+    **Return:**
+
+    - ``name`` -- for example ``SKY SHIFT O4 ERR``, which ``SKY_SHIFT_ERROR_QC_PATTERN`` matches
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.sky_shift_error import sky_shift_error_qc_name
+    name = sky_shift_error_qc_name(4)
+    ```
+    """
+    return f"SKY SHIFT O{int(order)} ERR"
 
 
 def median_standard_error_nm(scatterNm: float, nLines: int) -> float:

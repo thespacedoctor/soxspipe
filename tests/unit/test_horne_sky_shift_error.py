@@ -13,9 +13,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils.horne_extraction import horne_extraction
+from soxspipe.commonutils.horne_extraction import horne_extraction, shift_error, shift_source
 from soxspipe.commonutils.phase3 import fit_card_comment
-from soxspipe.commonutils.sky_shift_error import MEDIAN_ERROR_FACTOR
+from soxspipe.commonutils.sky_shift_error import MEDIAN_ERROR_FACTOR, SKY_SHIFT_ERROR_QC_PATTERN
 from soxspipe.commonutils.ug_wavelength_transfer import combine_r_sigma_px
 from tests.unit._horne_nir_scene import build_extractor as build_nir_extractor
 from tests.unit._horne_nir_scene import build_orders as build_nir_orders
@@ -41,7 +41,7 @@ ATTACHED_ARC_NM = 0.0051
 R_FROM_I_RMS_PX = 0.364
 U_RMS_PX = 0.96
 G_RMS_PX = 1.14
-ERROR_DECIMALS = 4
+ERROR_DECIMALS = 5
 
 
 def _errors(extractor: horne_extraction) -> dict[int, float]:
@@ -406,3 +406,36 @@ def test_tuning_all_orders_together_writes_no_error_cards(log: object, tmp_path:
 
     # ASSERT
     assert _errors(extractor) == {}
+
+
+def test_a_small_measured_error_keeps_two_significant_figures(log: object, tmp_path: Path) -> None:
+    # ARRANGE: A MEASURED i ORDER CAN HAVE AN ERROR OF ABOUT 0.0008 nm
+    extractor = build_extractor(log, tmp_path, night_header())
+
+    # ACT
+    extractor._record_order_error_qc(4, shift_error(0.000834567, "c"))
+
+    # ASSERT
+    assert qc_by_name(extractor, "SKY SHIFT O4 ERR")["qc_value"] == 0.00083
+
+
+def test_a_modelled_u_or_g_order_of_an_arm_without_the_transfer_block_is_an_error(log: object, tmp_path: Path) -> None:
+    # ARRANGE: THE ORDER CANNOT BE `model` WITHOUT THE BLOCK, SO THIS STATE MEANS THE CLASSIFICATION IS WRONG
+    parameters = {key: value for key, value in vis_parameters().items() if key != "ug-wavelength-transfer"}
+    extractor = build_extractor(log, tmp_path, night_header(), detectorParams=parameters)
+
+    # ACT AND ASSERT
+    with pytest.raises(ValueError, match="ug-wavelength-transfer"):
+        extractor._vis_order_error(2, shift_source("model", "c"), None, {2: UG_DISPERSION})
+
+
+def test_the_error_qc_name_matches_the_pattern_that_spec_sye_reads(log: object, tmp_path: Path) -> None:
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path, night_header())
+
+    # ACT
+    _tune(extractor, build_sky_scene())
+
+    # ASSERT
+    names = [name for name in extractor.qc["qc_name"] if SKY_SHIFT_ERROR_QC_PATTERN.fullmatch(name)]
+    assert sorted(names) == [f"SKY SHIFT O{order} ERR" for order in (1, 2, 3, 4)]

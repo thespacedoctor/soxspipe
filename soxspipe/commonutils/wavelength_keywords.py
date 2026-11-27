@@ -32,8 +32,9 @@ from __future__ import annotations
 
 import copy
 import math
-import re
 from typing import Any
+
+from soxspipe.commonutils.sky_shift_error import SKY_SHIFT_ERROR_QC_PATTERN
 
 SOXS_INSTRUMENT = "soxs"
 
@@ -43,9 +44,6 @@ SPEC_ERR_CARD = "SPEC_ERR"
 SPEC_RES_CARD = "SPEC_RES"
 SPEC_SYE_CARD = "SPEC_SYE"
 ACCURACY_CARDS = (LAMRMS_CARD, LAMNLIN_CARD, SPEC_ERR_CARD)
-
-# THE PER-ORDER QC THE SKYLINE TUNING WRITES: THE UNCERTAINTY (nm) OF THE SHIFT APPLIED TO AN ORDER
-SKY_SHIFT_ERROR_QC = re.compile(r"SKY SHIFT O\d+ ERR")
 
 # THE QC CARDS OF A DISP_TAB THAT `create_dispersion_map.calculate_residuals` WRITES
 WAVE_RMS_QC_CARD = "ESO QC WAVE RMS"
@@ -172,7 +170,7 @@ def _largest_sky_shift_error_nm(qcTable: Any) -> float | None:
 
     if not isinstance(qcTable, pd.DataFrame) or not {"qc_name", "qc_value"} <= set(qcTable.columns):
         return None
-    rows = qcTable.loc[qcTable["qc_name"].astype(str).str.fullmatch(SKY_SHIFT_ERROR_QC), "qc_value"]
+    rows = qcTable.loc[qcTable["qc_name"].astype(str).str.fullmatch(SKY_SHIFT_ERROR_QC_PATTERN), "qc_value"]
     values = pd.to_numeric(rows, errors="coerce")
     values = values[values.map(math.isfinite)]
     return float(values.max()) if len(values) else None
