@@ -2628,6 +2628,9 @@ class horne_extraction(base_util):
 
         self.log.debug("starting the ``merge_extracted_orders`` method")
 
+        # CLEAR THE NO-DATA MASK OF ANY EARLIER MERGE; ONLY THE SOXS LOG-GRID MERGE SETS IT AGAIN
+        self.noDataBins = None
+
         # THINGS TO TRY
         # - experiment with FluxConserving, Linear and Spline resampling
         # - need to dynamically define the ends of each order (possibly from order centre traces) and don't extract beyong these points

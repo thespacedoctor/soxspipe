@@ -275,3 +275,18 @@ def test_the_x_shooter_stack_keeps_its_two_decimal_wave(recipe: soxs_nod) -> Non
 
     # ASSERT
     assert list(stacked["WAVE"]) == [500.01, 500.03]
+
+
+def test_an_upper_case_soxs_setting_keeps_the_four_decimal_wave(recipe: soxs_nod) -> None:
+    """The instrument check ignores case, so ``SOXS`` keeps the log-grid WAVE (DY-2348)."""
+    # ARRANGE
+    recipe.settings["instrument"] = "SOXS"
+    waves = [500.01234, 500.03358]
+
+    # ACT
+    stacked, _ = recipe.stack_extractions(
+        [_spectrum(waves, [10.0, 12.0], [4.0, 4.0]), _spectrum(waves, [20.0, 22.0], [4.0, 4.0])]
+    )
+
+    # ASSERT
+    assert list(stacked["WAVE"]) == [500.0123, 500.0336]
