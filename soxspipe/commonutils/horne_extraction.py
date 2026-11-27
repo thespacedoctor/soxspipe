@@ -1355,6 +1355,11 @@ class horne_extraction(base_util):
                 extractedOrdersDF, arm, orders, shiftsNm, orderStats, dispersions, True
             )
             return tuned, SKY_TUNING_PER_ORDER_QC_VALUE
+        if result.velocityFallbackReason is not None:
+            self._print_and_note(
+                f"Velocity sky-line fit not used ({result.velocityFallbackReason}): "
+                "every order takes the pixel-shift correction"
+            )
         return self._apply_global_fit(extractedOrdersDF, orders, result), SKY_TUNING_GLOBAL_QC_VALUE
 
     def _print_and_note(self, message):

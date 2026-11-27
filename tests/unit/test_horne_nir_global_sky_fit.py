@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils import nir_sky_refit
+from soxspipe.commonutils import nir_sky_refit, nir_sky_velocity
 from soxspipe.commonutils.horne_extraction import horne_extraction
 from soxspipe.commonutils.nir_sky_refit import MAX_TIGHT_TOLERANCE_NM, MIN_GLOBAL_LINES
 from tests.unit._horne_nir_scene import (
@@ -133,6 +133,25 @@ def test_a_velocity_order_records_the_shift_at_its_centre_in_nm_and_px(log, tmp_
     shiftPx = qc_by_name(extractor, f"SKY SHIFT O{order} PX")["qc_value"]
     assert shiftNm == pytest.approx(true_shift_nm(order), abs=SHIFT_TOLERANCE_NM)
     assert shiftPx == pytest.approx(true_shift_px(order), abs=SHIFT_TOLERANCE_NM / abs(DISPERSION))
+
+
+def test_a_velocity_fallback_logs_its_reason_and_tunes_every_order_with_the_pixel_model(log, tmp_path, monkeypatch):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    monkeypatch.setattr(
+        nir_sky_velocity,
+        "fit_velocity_model",
+        lambda lines, geometry, settings: nir_sky_refit.fallback_result(lines, "forced velocity fallback"),
+    )
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    assert qc_by_name(extractor, "SKY TUNING")["qc_value"] == "skylines-global"
+    assert all(extractor.skyCorrections[o].velocity is None for o in ORDERS)
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("Velocity sky-line fit not used (forced velocity fallback)" in message for message in printed)
 
 
 def test_x_shooter_nir_keeps_the_per_order_tuning(log, tmp_path, monkeypatch):

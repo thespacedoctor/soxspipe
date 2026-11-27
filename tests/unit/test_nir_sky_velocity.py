@@ -9,10 +9,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from soxspipe.commonutils import nir_sky_velocity
 from soxspipe.commonutils.nir_sky_refit import (
     MAX_GLOBAL_RMS_PX,
     MAX_TIGHT_TOLERANCE_NM,
     MIN_GLOBAL_LINES,
+    fallback_result,
     fit_with_iterated_matching,
     nir_order_sky_lines,
     order_geometry,
@@ -574,7 +576,7 @@ def test_lines_beyond_the_tolerance_of_the_rigid_seed_are_matched_about_the_fitt
     assert result.corrections[17].nLines == 12
 
 
-def test_too_few_lines_for_the_velocity_falls_back_with_a_reason():
+def test_no_line_left_for_the_velocity_leaves_every_order_with_the_pixel_correction():
     # ARRANGE: EVERY ORDER KEEPS ITS OWN CORRECTION, SO NO LINE IS LEFT FOR THE VELOCITY
     settings = sky_tuning_settings(ownCorrectionOrders=tuple(ENTRY_ORDERS))
 
@@ -582,17 +584,80 @@ def test_too_few_lines_for_the_velocity_falls_back_with_a_reason():
     result = fit_nir_sky_corrections(_entry_scene(), _entry_geometry(), SEED_PX, settings)
 
     # ASSERT
-    assert result.corrections == {}
-    assert "sky lines matched" in result.fallbackReason
+    assert sorted(result.corrections) == ENTRY_ORDERS
+    assert result.fallbackReason is None
+    assert "sky lines matched" in result.velocityFallbackReason
 
 
-def test_a_pixel_fit_that_falls_back_makes_the_whole_correction_fall_back():
+def test_without_a_seed_the_whole_correction_falls_back():
     # ACT
     result = fit_nir_sky_corrections(_entry_scene(), _entry_geometry(), None, ENTRY_SETTINGS)
 
     # ASSERT
     assert result.corrections == {}
     assert result.fallbackReason == "no order gave a seed shift"
+
+
+def test_a_pixel_fit_that_falls_back_makes_the_whole_correction_fall_back():
+    # ARRANGE: THREE LINES IN ALL, SO THE PIXEL FIT HAS TOO FEW, WHATEVER THE VELOCITY WOULD DO
+    orderLines = {14: _entry_order_lines(14, perOrder=3)}
+
+    # ACT
+    result = fit_nir_sky_corrections(orderLines, _entry_geometry(), SEED_PX, ENTRY_SETTINGS)
+
+    # ASSERT
+    assert result.corrections == {}
+    assert f"3 sky lines matched (min {MIN_GLOBAL_LINES})" in result.fallbackReason
+    assert result.velocityFallbackReason is None
+
+
+def _few_velocity_lines_scene() -> dict[int, nir_order_sky_lines]:
+    """*12 lines in each own-correction order, 1 in every other: enough for the pixel fit, too few for the velocity*"""
+    return {o: _entry_order_lines(o, perOrder=12 if o in OWN_ORDERS else 1) for o in ENTRY_ORDERS}
+
+
+def test_a_velocity_fit_that_falls_back_leaves_every_order_with_develops_pixel_correction():
+    # ARRANGE
+    orderLines = _few_velocity_lines_scene()
+    develop = fit_with_iterated_matching(orderLines, _entry_geometry(), SEED_PX, ENTRY_SETTINGS)
+
+    # ACT
+    result = fit_nir_sky_corrections(orderLines, _entry_geometry(), SEED_PX, ENTRY_SETTINGS)
+
+    # ASSERT
+    assert develop.fallbackReason is None
+    assert result.fallbackReason is None
+    assert result.corrections == develop.corrections
+    assert result.velocity is None
+    assert f"sky lines matched (min {MIN_GLOBAL_LINES})" in result.velocityFallbackReason
+    assert (result.nLines, result.rmsPx, result.coefficients) == (develop.nLines, develop.rmsPx, develop.coefficients)
+
+
+def test_a_velocity_fit_that_falls_back_with_no_own_correction_orders_takes_the_pixel_fit():
+    # ARRANGE: THE VELOCITY FIT IS REPLACED BY ONE THAT FALLS BACK, AND NO ORDER KEEPS ITS OWN CORRECTION
+    settings = sky_tuning_settings(ownCorrectionOrders=())
+    develop = fit_with_iterated_matching(_entry_scene(), _entry_geometry(), SEED_PX, settings)
+
+    # ACT
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            nir_sky_velocity,
+            "fit_velocity_model",
+            lambda lines, geometry, settings: fallback_result(lines, "forced velocity fallback"),
+        )
+        result = fit_nir_sky_corrections(_entry_scene(), _entry_geometry(), SEED_PX, settings)
+
+    # ASSERT
+    assert result.corrections == develop.corrections
+    assert result.velocityFallbackReason == "forced velocity fallback"
+
+
+def test_a_fit_without_a_velocity_fallback_has_no_velocity_fallback_reason():
+    # ACT
+    result = fit_nir_sky_corrections(_entry_scene(), _entry_geometry(), SEED_PX, ENTRY_SETTINGS)
+
+    # ASSERT
+    assert result.velocityFallbackReason is None
 
 
 def test_without_a_seed_the_velocity_alone_falls_back_too():

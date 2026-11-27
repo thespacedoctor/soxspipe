@@ -10,6 +10,7 @@ part. The orders named by the ``own-correction-orders`` setting are the exceptio
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -20,20 +21,24 @@ from soxspipe.commonutils.nir_sky_refit import (
     MATCH_ITERATIONS,
     MAX_GLOBAL_RMS_PX,
     MIN_GLOBAL_LINES,
-    _empty_lines,
-    _fallback,
-    _is_usable_geometry,
-    _match_order_lines,
-    _robust_fit,
-    _usable_lines,
+    check_lines_have_geometry,
+    empty_lines,
+    fallback_result,
+    is_usable_geometry,
+    match_order_lines,
+    nir_order_sky_lines,
+    order_geometry,
     order_sky_correction,
+    robust_fit,
     seed_matches,
     sky_refit_result,
+    sky_tuning_settings,
+    usable_lines,
 )
 from soxspipe.commonutils.ug_wavelength_transfer import detector_px_to_nm_shift, nm_shift_to_detector_px
 
 
-def detector_px_to_velocity(shiftPx, dispersionNmPerPx, wavelengthNm):
+def detector_px_to_velocity(shiftPx: float, dispersionNmPerPx: float, wavelengthNm: float) -> float:
     """*the velocity (``Δλ/λ``, unitless) that moves a wavelength as a detector motion does*
 
     A detector motion of ``shiftPx`` corrects the wavelength by ``-dispersion * shiftPx`` nm
@@ -53,11 +58,17 @@ def detector_px_to_velocity(shiftPx, dispersionNmPerPx, wavelengthNm):
     **Raises:**
 
     - ``ValueError`` -- if the dispersion is zero or not finite
+
+    **Usage:**
+
+    ```python
+    velocity = detector_px_to_velocity(2.0, -0.06, 1200.0)
+    ```
     """
     return detector_px_to_nm_shift(shiftPx, dispersionNmPerPx) / wavelengthNm
 
 
-def velocity_to_detector_px(velocity, dispersionNmPerPx, wavelengthNm):
+def velocity_to_detector_px(velocity: float, dispersionNmPerPx: float, wavelengthNm: float) -> float:
     """*the detector motion (px) that moves a wavelength by a velocity; the inverse of ``detector_px_to_velocity``*
 
     **Key Arguments:**
@@ -73,6 +84,12 @@ def velocity_to_detector_px(velocity, dispersionNmPerPx, wavelengthNm):
     **Raises:**
 
     - ``ValueError`` -- if the dispersion is zero or not finite
+
+    **Usage:**
+
+    ```python
+    shiftPx = velocity_to_detector_px(1.0e-4, -0.06, 1200.0)
+    ```
     """
     return nm_shift_to_detector_px(velocity * wavelengthNm, dispersionNmPerPx)
 
@@ -90,6 +107,12 @@ class sky_velocity:
     **Raises:**
 
     - ``ValueError`` -- if the half-range is not a finite number above 0, or there are no coefficients
+
+    **Usage:**
+
+    ```python
+    velocity = sky_velocity(centreNm=1400.0, halfRangeNm=500.0, coefficients=(1.0e-4, 2.0e-5))
+    ```
     """
 
     centreNm: float
@@ -103,7 +126,7 @@ class sky_velocity:
                 f"got {self.halfRangeNm!r} and {self.coefficients!r}"
             )
 
-    def fraction_at(self, wavelengthNm) -> np.ndarray:
+    def fraction_at(self, wavelengthNm: float | np.ndarray) -> np.ndarray:
         """*the velocity ``Δλ/λ`` at each wavelength*
 
         **Key Arguments:**
@@ -113,13 +136,24 @@ class sky_velocity:
         **Return:**
 
         - ``velocity`` -- the velocity at each wavelength, unitless
+
+        **Usage:**
+
+        ```python
+        shiftNm = wavelengthNm * velocity.fraction_at(wavelengthNm)
+        ```
         """
-        x = (np.asarray(wavelengthNm, dtype=float) - self.centreNm) / self.halfRangeNm
-        return np.polynomial.polynomial.polyval(x, self.coefficients)
+        position = (np.asarray(wavelengthNm, dtype=float) - self.centreNm) / self.halfRangeNm
+        return np.polynomial.polynomial.polyval(position, self.coefficients)
 
 
 def velocity_correction(
-    order, velocity, geometry, nLines, globalSeedLines=None, ownSeedLines=None
+    order: int,
+    velocity: sky_velocity,
+    geometry: order_geometry,
+    nLines: int,
+    globalSeedLines: int | None = None,
+    ownSeedLines: int | None = None,
 ) -> order_sky_correction:
     """*the ``order_sky_correction`` of an order that takes the velocity ``velocity``*
 
@@ -139,14 +173,21 @@ def velocity_correction(
     **Return:**
 
     - ``correction`` -- the ``order_sky_correction``, whose ``velocity`` is set
+
+    **Usage:**
+
+    ```python
+    correction = velocity_correction(17, velocity, geometry[17], nLines=9)
+    ```
     """
-    ends = geometry.centreNm + np.array([-1.0, 0.0, 1.0]) * geometry.halfRangeNm
-    shiftsNm = ends * velocity.fraction_at(ends)
-    shiftsPx = nm_shift_to_detector_px(shiftsNm, geometry.dispersionNmPerPx)
+    # THE BLUE END, CENTRE AND RED END OF THE ORDER
+    sampleNm = geometry.centreNm + np.array([-1.0, 0.0, 1.0]) * geometry.halfRangeNm
+    shiftsNm = sampleNm * velocity.fraction_at(sampleNm)
+    blueShiftPx, centreShiftPx, redShiftPx = nm_shift_to_detector_px(shiftsNm, geometry.dispersionNmPerPx)
     return order_sky_correction(
         order=int(order),
-        shiftPx=float(shiftsPx[1]),
-        alongPx=(float((shiftsPx[2] - shiftsPx[0]) / 2),),
+        shiftPx=float(centreShiftPx),
+        alongPx=(float((redShiftPx - blueShiftPx) / 2),),
         perOrderSlopePx=0.0,
         nLines=int(nLines),
         geometry=geometry,
@@ -156,7 +197,7 @@ def velocity_correction(
     )
 
 
-def _velocity_range(geometry) -> tuple[float, float]:
+def _velocity_range(geometry: Mapping[int, order_geometry]) -> tuple[float, float]:
     """*the centre and half-range (nm) of the wavelengths that the orders of ``geometry`` cover*
 
     **Key Arguments:**
@@ -167,12 +208,12 @@ def _velocity_range(geometry) -> tuple[float, float]:
 
     - ``(centreNm, halfRangeNm)`` -- the middle and half the width of the range
     """
-    low = min(g.centreNm - g.halfRangeNm for g in geometry.values())
-    high = max(g.centreNm + g.halfRangeNm for g in geometry.values())
-    return (high + low) / 2, (high - low) / 2
+    lowNm = min(g.centreNm - g.halfRangeNm for g in geometry.values())
+    highNm = max(g.centreNm + g.halfRangeNm for g in geometry.values())
+    return (highNm + lowNm) / 2, (highNm - lowNm) / 2
 
 
-def _px_weights(lines, geometry) -> np.ndarray:
+def _px_weights(lines: pd.DataFrame, geometry: Mapping[int, order_geometry]) -> np.ndarray:
     """*the factor that turns a line's offset in nm into detector motion (px) on its own order's signed pixel scale*
 
     **Key Arguments:**
@@ -193,7 +234,9 @@ def _px_weights(lines, geometry) -> np.ndarray:
     return -signs / scales
 
 
-def fit_velocity_model(lines, geometry, settings) -> sky_refit_result:
+def fit_velocity_model(
+    lines: pd.DataFrame, geometry: Mapping[int, order_geometry], settings: sky_tuning_settings
+) -> sky_refit_result:
     """*fit one velocity polynomial in wavelength to the matched sky lines of the orders in ``geometry``*
 
     A line at ``observedNm`` is ``catalogueNm - observedNm`` from where it belongs, which the model takes as
@@ -219,45 +262,57 @@ def fit_velocity_model(lines, geometry, settings) -> sky_refit_result:
     **Raises:**
 
     - ``ValueError`` -- if a line belongs to an order that has no geometry
+
+    **Usage:**
+
+    ```python
+    result = fit_velocity_model(matchedLines, geometry, read_sky_tuning_settings(None))
+    ```
     """
     lines = lines.reset_index(drop=True)
-    unknown = sorted(set(lines["order"]) - set(geometry))
-    if unknown:
-        raise ValueError(f"order {unknown[0]} has sky lines but no geometry")
-    geometry = {o: g for o, g in geometry.items() if _is_usable_geometry(g)}
-    lines = _usable_lines(lines, geometry)
+    check_lines_have_geometry(lines["order"], geometry)
+    geometry = {o: g for o, g in geometry.items() if is_usable_geometry(g)}
+    lines = usable_lines(lines, geometry)
     if len(lines) < MIN_GLOBAL_LINES:
-        return _fallback(lines, f"{len(lines)} sky lines matched (min {MIN_GLOBAL_LINES})")
+        return fallback_result(lines, f"{len(lines)} sky lines matched (min {MIN_GLOBAL_LINES})")
 
     centreNm, halfRangeNm = _velocity_range(geometry)
-    observed = lines["observedNm"].to_numpy(dtype=float)
-    x = (observed - centreNm) / halfRangeNm
+    observedNm = lines["observedNm"].to_numpy(dtype=float)
+    position = (observedNm - centreNm) / halfRangeNm
     weights = _px_weights(lines, geometry)
-    design = np.column_stack([weights * observed * x**k for k in range(settings.velocityDeg + 1)])
-    residualPx = weights * (lines["catalogueNm"].to_numpy(dtype=float) - observed)
+    design = np.column_stack([weights * observedNm * position**k for k in range(settings.velocityDeg + 1)])
+    residualPx = weights * (lines["catalogueNm"].to_numpy(dtype=float) - observedNm)
 
-    fit = _robust_fit(design, residualPx, settings.clipSigma)
+    fit = robust_fit(design, residualPx, settings.clipSigma)
     if fit is None:
-        return _fallback(lines, "the velocity model is rank-deficient (too few distinct wavelengths)")
+        return fallback_result(lines, "the velocity model is rank-deficient (too few distinct wavelengths)")
     coefficients, kept = fit
     modelPx = design @ coefficients
     rmsPx = float(np.sqrt(np.mean((residualPx - modelPx)[kept] ** 2)))
     clipFraction = float(1.0 - kept.mean())
     if rmsPx > MAX_GLOBAL_RMS_PX:
-        return _fallback(lines, f"fit rms {rmsPx:0.2f} px (max {MAX_GLOBAL_RMS_PX})", rmsPx, clipFraction)
+        return fallback_result(lines, f"fit rms {rmsPx:0.2f} px (max {MAX_GLOBAL_RMS_PX})", rmsPx, clipFraction)
 
-    velocity = sky_velocity(centreNm, halfRangeNm, tuple(float(c) for c in coefficients))
+    velocity = sky_velocity(centreNm, halfRangeNm, tuple(float(coefficient) for coefficient in coefficients))
     lines = lines.assign(residualPx=residualPx, modelPx=modelPx, clipped=~kept)
-    counts = lines.loc[~lines["clipped"], "order"].value_counts()
+    keptCounts = lines.loc[~lines["clipped"], "order"].value_counts()
     corrections = {
-        int(o): velocity_correction(o, velocity, g, nLines=int(counts.get(o, 0))) for o, g in geometry.items()
+        int(order): velocity_correction(order, velocity, orderGeometry, nLines=int(keptCounts.get(order, 0)))
+        for order, orderGeometry in geometry.items()
     }
     return sky_refit_result(
         corrections, velocity.coefficients, int(kept.sum()), rmsPx, clipFraction, lines, None, velocity
     )
 
 
-def _fit_velocity_with_iterated_matching(orderLines, geometry, seedPx, settings, iterations, ownSeedsPx):
+def _fit_velocity_with_iterated_matching(
+    orderLines: Mapping[int, nir_order_sky_lines],
+    geometry: Mapping[int, order_geometry],
+    seedPx: float,
+    settings: sky_tuning_settings,
+    iterations: int,
+    ownSeedsPx: Mapping[int, float],
+) -> sky_refit_result:
     """*match the lines of the velocity orders and fit their velocity, matching again about each fit*
 
     The first match moves the peaks of each order by the rigid seed, or by the order's own seed when that matches more
@@ -278,25 +333,27 @@ def _fit_velocity_with_iterated_matching(orderLines, geometry, seedPx, settings,
 
     - ``result`` -- the ``sky_refit_result`` of the last round, or of the first one that fell back
     """
-    orderLines = {o: lines for o, lines in orderLines.items() if _is_usable_geometry(geometry[o])}
+    orderLines = {o: lines for o, lines in orderLines.items() if is_usable_geometry(geometry[o])}
     matches = seed_matches(orderLines, geometry, seedPx, ownSeedsPx)
     frames = [match.matched for match in matches.values()]
     result = None
     for _ in range(iterations):
         result = fit_velocity_model(
-            pd.concat(frames, ignore_index=True) if frames else _empty_lines(), geometry, settings
+            pd.concat(frames, ignore_index=True) if frames else empty_lines(), geometry, settings
         )
         if result.fallbackReason is not None:
             return result
-        frames = [_match_order_lines(lines, result.corrections[o]) for o, lines in orderLines.items()]
+        frames = [match_order_lines(lines, result.corrections[order]) for order, lines in orderLines.items()]
     corrections = {
-        o: replace(c, globalSeedLines=matches[o].globalLines, ownSeedLines=matches[o].ownLines) if o in matches else c
-        for o, c in result.corrections.items()
+        order: replace(correction, globalSeedLines=matches[order].globalLines, ownSeedLines=matches[order].ownLines)
+        if order in matches
+        else correction
+        for order, correction in result.corrections.items()
     }
     return replace(result, corrections=corrections)
 
 
-def _joined_result(velocity, pixel, ownOrders) -> sky_refit_result:
+def _joined_result(velocity: sky_refit_result, pixel: sky_refit_result, ownOrders: set[int]) -> sky_refit_result:
     """*the velocity result with the pixel corrections of ``ownOrders`` added, counting the lines of both fits*
 
     **Key Arguments:**
@@ -309,7 +366,7 @@ def _joined_result(velocity, pixel, ownOrders) -> sky_refit_result:
 
     - ``result`` -- the joined ``sky_refit_result``
     """
-    ownCorrections = {o: c for o, c in pixel.corrections.items() if o in ownOrders}
+    ownCorrections = {o: correction for o, correction in pixel.corrections.items() if o in ownOrders}
     ownLines = pixel.lines[pixel.lines["order"].isin(ownOrders)]
     lines = pd.concat([velocity.lines, ownLines], ignore_index=True)
     kept = ~lines["clipped"].to_numpy(dtype=bool)
@@ -325,15 +382,25 @@ def _joined_result(velocity, pixel, ownOrders) -> sky_refit_result:
 
 
 def fit_nir_sky_corrections(
-    orderLines, geometry, seedPx, settings, iterations=MATCH_ITERATIONS, ownSeedsPx=None
+    orderLines: Mapping[int, nir_order_sky_lines],
+    geometry: Mapping[int, order_geometry],
+    seedPx: float | None,
+    settings: sky_tuning_settings,
+    iterations: int = MATCH_ITERATIONS,
+    ownSeedsPx: Mapping[int, float] | None = None,
 ) -> sky_refit_result:
     """*match the sky lines and fit the NIR correction: one velocity, and pixel models for the own-correction orders*
 
     The orders named by ``settings.ownCorrectionOrders`` keep the correction of ``fit_with_iterated_matching``: the
     pixel model fitted to the lines of every order, with the order's own offset and slope, unchanged. Every other order
     gets the velocity polynomial that ``fit_velocity_model`` fits to the lines of those orders alone, so the same
-    wavelength has the same correction in two overlapping orders. A fallback of either fit is the fallback of the
-    whole, and the pixel fit only runs when an own-correction order is in the frame.
+    wavelength has the same correction in two overlapping orders.
+
+    There are two fallbacks. When the pixel fit falls back, so does the whole correction, as it did before the velocity
+    fit existed. When only the velocity fit falls back (too few lines, a rank-deficient model, too much scatter), every
+    order takes the pixel correction, which is the result before the velocity fit existed, and the reason is in
+    ``velocityFallbackReason``. The pixel fit runs up front when an own-correction order is in the frame, and only
+    after a velocity fallback otherwise.
 
     **Key Arguments:**
 
@@ -348,31 +415,37 @@ def fit_nir_sky_corrections(
 
     - ``result`` -- the ``sky_refit_result``. Its ``velocity`` and ``coefficients`` are those of the velocity fit, its
       ``nLines``, ``rmsPx``, ``clipFraction`` and ``lines`` count the lines of both fits, and its corrections hold every
-      order with a geometry
+      order with a geometry. After a velocity-only fallback it is the pixel fit's result with ``velocity`` *None*
 
     **Raises:**
 
     - ``ValueError`` -- if an order with lines has no geometry
+
+    **Usage:**
+
+    ```python
+    result = fit_nir_sky_corrections(orderLines, geometry, seedPx, settings, ownSeedsPx=ownSeedsPx)
+    ```
     """
     if seedPx is None:
-        return _fallback(_empty_lines(), "no order gave a seed shift")
+        return fallback_result(empty_lines(), "no order gave a seed shift")
     ownOrders = set(settings.ownCorrectionOrders) & set(geometry)
     ownSeedsPx = {} if ownSeedsPx is None else ownSeedsPx
-    pixel = None
-    if ownOrders:
-        pixel = nir_sky_refit.fit_with_iterated_matching(
+
+    def pixel_fit() -> sky_refit_result:
+        return nir_sky_refit.fit_with_iterated_matching(
             orderLines, geometry, seedPx, settings, iterations=iterations, ownSeedsPx=ownSeedsPx
         )
-        if pixel.fallbackReason is not None:
-            return pixel
-    missing = sorted(set(orderLines) - set(geometry))
-    if missing:
-        raise ValueError(f"order {missing[0]} has sky lines but no geometry")
+
+    pixel = pixel_fit() if ownOrders else None
+    if pixel is not None and pixel.fallbackReason is not None:
+        return pixel
+    check_lines_have_geometry(orderLines, geometry)
     velocityGeometry = {o: g for o, g in geometry.items() if o not in ownOrders}
     velocityLines = {o: lines for o, lines in orderLines.items() if o in velocityGeometry}
     velocity = _fit_velocity_with_iterated_matching(
         velocityLines, velocityGeometry, seedPx, settings, iterations, ownSeedsPx
     )
-    if velocity.fallbackReason is not None or pixel is None:
-        return velocity
-    return _joined_result(velocity, pixel, ownOrders)
+    if velocity.fallbackReason is None:
+        return velocity if pixel is None else _joined_result(velocity, pixel, ownOrders)
+    return replace(pixel if pixel is not None else pixel_fit(), velocityFallbackReason=velocity.fallbackReason)
