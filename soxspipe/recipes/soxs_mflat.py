@@ -1376,7 +1376,8 @@ class soxs_mflat(base_recipe):
 
         **Return:**
 
-        - ``ratio`` -- ``frameData / flatData``, NaN where the flat is zero, negative or not finite (DY-2279)
+        - ``ratio`` -- ``frameData / flatData``, NaN where the flat is unusable: below float32 epsilon (zero and
+          negative included) or not finite (DY-2279, DY-2440)
         """
         import numpy as np
 

@@ -8,16 +8,16 @@ flip, and a ``RuntimeWarning`` as well.
 The master flat is normalised to about 1 on the orders. Its background-subtracted inter-order pixels scatter around
 zero, so some hold a tiny positive residue, as small as 1e-12. Dividing a frame by one gives an uncertainty above
 1.8e19, whose float32 square overflows in the nod slit alignment and shift-and-add (DY-2440). Such a residue is zero
-to float32 precision, so the floor is the float32 machine epsilon (about 1.2e-7). Above the floor the largest
-uncertainty of a flat-fielded frame stays near 1e17, and its float32 square stays finite.
+to float32 precision, so the floor is the float32 machine epsilon (about 1.2e-7). Above the floor, a frame value of
+65535 with a flat error of 0.014 (the largest in the VIS and NIR master flats checked) gives an uncertainty of about
+6e16, whose float32 square stays finite.
 """
 
 from __future__ import annotations
 
-import numpy as np
-
-# THE SMALLEST MASTER-FLAT FLUX THAT CAN FLAT-FIELD A FRAME. SMALLER VALUES ARE ZERO TO FLOAT32 PRECISION (DY-2440)
-MIN_USABLE_FLAT_FLUX = float(np.finfo(np.float32).eps)
+# THE SMALLEST MASTER-FLAT FLUX THAT CAN FLAT-FIELD A FRAME: THE FLOAT32 MACHINE EPSILON, np.finfo(np.float32).eps.
+# SMALLER VALUES ARE ZERO TO FLOAT32 PRECISION (DY-2440)
+MIN_USABLE_FLAT_FLUX = 1.1920928955078125e-07
 
 
 def unusable_flat_pixel_mask(flatData):
@@ -38,6 +38,8 @@ def unusable_flat_pixel_mask(flatData):
     unusable = unusable_flat_pixel_mask(master_flat.data)
     ```
     """
+    import numpy as np
+
     return ~(np.isfinite(flatData) & (flatData >= MIN_USABLE_FLAT_FLUX))
 
 

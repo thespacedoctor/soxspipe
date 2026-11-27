@@ -1,4 +1,7 @@
-"""Factory for a master flat that holds every kind of unusable pixel (DY-2279)."""
+"""Factory for a master flat that holds the zero, negative and non-finite unusable pixels (DY-2279).
+
+The tiny positive flux that DY-2440 made unusable is built by its own tests.
+"""
 
 from __future__ import annotations
 

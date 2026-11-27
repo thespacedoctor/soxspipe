@@ -2557,7 +2557,8 @@ class base_recipe:
             utcnow = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")  # noqa: F841
 
         if master_flat != False:  # noqa: E712
-            # A FLAT PIXEL THAT IS ZERO, NEGATIVE OR NOT FINITE CANNOT FLAT-FIELD THE FRAME (DY-2279)
+            # A FLAT PIXEL BELOW FLOAT32 EPSILON (ZERO AND NEGATIVE INCLUDED) OR NOT FINITE CANNOT FLAT-FIELD THE
+            # FRAME (DY-2279, DY-2440)
             unusableFlat = unusable_flat_pixel_mask(master_flat.data)
             processedFrame = ccdproc.flat_correct(
                 processedFrame,
