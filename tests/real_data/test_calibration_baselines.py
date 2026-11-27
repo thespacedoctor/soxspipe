@@ -111,6 +111,22 @@ The NIR standard-star `SNR MEDIAN` was re-recorded on 2026-11-20 from six bit-id
 DY-2341 branch at e5776edb. It fell from 99.22 to 98.73 (-0.49%). The 150 s standard has 96 up-the-ramp samples, so
 its read noise is now 7.59 e- from the NDSAMPLES table, not the nominal 7.3 e-. Develop run 44829384479 gave 99.22, so
 the move is DY-2341's. The NIR response moved by 0.014% or less and was left as it is.
+
+The four dispersion solution entries were re-recorded on 2026-11-27 from six bit-identical CI runs (RUNIDS) of
+the DY-2441 branch on develop 17286ad6. Gate run 45993387529 of 2c169e33 was green, and one gate run per merge into
+develop since then named each cause (DY-2441):
+
+- Arc-line detection measures from the first guess and rejects ambiguous stamps (DY-2207). `DETLINES NUM` fell from
+  605 to 594 and from 597 to 583 on NIR (2025-05-14 and 2025-11-28), and from 127 to 121 and from 126 to 123 on VIS
+  (2025-08-31 and 2025-09-01). `XY RES MEDIAN` went from 0.2334 to 0.22989 and from 0.2664 to 0.26025 on NIR, from
+  0.23581 to 0.21701 on VIS 2025-08-31, and rose from 0.19831 to 0.21022 on VIS 2025-09-01. `GOODLINES FRAC` fell by
+  0.015 to 0.031.
+- The Ar II 2002.881 set left order 10 of the NIR single-pinhole table (DY-2448): `DETLINES NUM` -1 on both NIR arcs.
+- The NIST Ritz wavelengths and the 7 DY-2084 set removals in the NIR single-pinhole table (DY-2172): `DETLINES NUM`
+  -7 on both NIR arcs, `XY RES MEDIAN` from 0.22989 to 0.19957 and from 0.26025 to 0.24295, and `GOODLINES FRAC` from
+  0.821538 to 0.793157 and from 0.823077 to 0.800933.
+
+DY-1717, DY-2173, DY-2171, DY-2170, DY-1928, DY-2424 and DY-2358 did not move them.
 """
 
 from __future__ import annotations
@@ -248,38 +264,40 @@ QC_BASELINES: tuple[QcBaseline, ...] = (
         recipe="soxs-disp-solution",
         sofName="20250514T121150_NIR_3_DSOL_PINHOLE_15_0S_SOXS.sof",
         values={
-            # 0.25505 AND 611 UNTIL 2026-11-20 (DY-1970)
-            "XY RES MEDIAN": level(0.2334),
-            "GOODLINES FRAC": fraction(0.835616),
-            "DETLINES NUM": count(605),
+            # 0.25505 AND 611 UNTIL 2026-11-20 (DY-1970); 0.2334, 0.835616 AND 605 UNTIL 2026-11-27 (DY-2441)
+            "XY RES MEDIAN": level(0.19957),
+            "GOODLINES FRAC": fraction(0.793157),
+            "DETLINES NUM": count(586),
         },
     ),
     QcBaseline(
         recipe="soxs-disp-solution",
         sofName="20250831T030313_VIS_1X1_1_DSOL_PINHOLE_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.23581),
-            "GOODLINES FRAC": fraction(0.931298),
-            "DETLINES NUM": count(127),
+            # 0.23581, 0.931298 AND 127 UNTIL 2026-11-27 (DY-2441)
+            "XY RES MEDIAN": level(0.21701),
+            "GOODLINES FRAC": fraction(0.900763),
+            "DETLINES NUM": count(121),
         },
     ),
     QcBaseline(
         recipe="soxs-disp-solution",
         sofName="20250901T105805_VIS_1X1_1_DSOL_PINHOLE_30_0S_SOXS.sof",
         values={
-            "XY RES MEDIAN": level(0.19831),
-            "GOODLINES FRAC": fraction(0.931298),
-            "DETLINES NUM": count(126),
+            # 0.19831, 0.931298 AND 126 UNTIL 2026-11-27 (DY-2441)
+            "XY RES MEDIAN": level(0.21022),
+            "GOODLINES FRAC": fraction(0.908397),
+            "DETLINES NUM": count(123),
         },
     ),
     QcBaseline(
         recipe="soxs-disp-solution",
         sofName="20251128T122146_NIR_3_DSOL_PINHOLE_15_0S_SOXS.sof",
         values={
-            # 0.29097 AND 603 UNTIL 2026-11-20 (DY-1970)
-            "XY RES MEDIAN": level(0.2664),
-            "GOODLINES FRAC": fraction(0.838661),
-            "DETLINES NUM": count(597),
+            # 0.29097 AND 603 UNTIL 2026-11-20 (DY-1970); 0.2664, 0.838661 AND 597 UNTIL 2026-11-27 (DY-2441)
+            "XY RES MEDIAN": level(0.24295),
+            "GOODLINES FRAC": fraction(0.800933),
+            "DETLINES NUM": count(575),
         },
     ),
     QcBaseline(
