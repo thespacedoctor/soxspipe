@@ -1,0 +1,67 @@
+# DEFAULT VALUES THAT A LATER RELEASE REPLACED, PER INSTRUMENT (DY-2475)
+#
+# `soxspipe prep` rewrites a value in a session `soxspipe.yaml` only when it equals `old` exactly. A value the user
+# chose, or any other value, stays as it is. `path` is the key path with `/` between the levels. Each `old` was a
+# shipped default of the instrument's default settings file, checked in its git history, and `ticket` names the change
+# that replaced it. When a default changes again, add a new entry that starts from the previous `new`: the entries of
+# one path are applied in order. The last `new` of every path must equal the current default.
+
+soxs:
+  - path: soxs-spat-solution/nir/order-deg
+    old: [4, 4]
+    new: [5, 4]
+    ticket: DY-1989
+  - path: soxs-spat-solution/nir/wavelength-deg
+    old: [5, 4]
+    new: [6, 4]
+    ticket: DY-1989
+  - path: soxs-spat-solution/nir/qc-acceptable-ranges/xy-res-sd
+    old: [0, 0.4]
+    new: [0, 0.5]
+    ticket: DY-1609
+  - path: soxs-spat-solution/nir/qc-acceptable-ranges/y-res-sd
+    old: [0, 0.12]
+    new: [0, 0.2]
+    ticket: DY-1609
+  - path: soxs-disp-solution/nir/qc-acceptable-ranges/detlines-frac
+    old: [0.9, 1.01]
+    new: [0.85, 1.01]
+    ticket: DY-2207
+  - path: soxs-mflat/nir/qc-acceptable-ranges/ordexp90
+    old: [30000, 60000]
+    new: [30000, 70000]
+    ticket: DY-2318
+  - path: soxs-stare/nir/slit-illumination/overlap-margin-arcsec
+    old: 0.3
+    new: 0.45
+    ticket: DY-1958
+  - path: soxs-stare/vis/slit-illumination/overlap-margin-arcsec
+    old: 0.3
+    new: 0.45
+    ticket: DY-1958
+  - path: soxs-stare-std/nir/slit-illumination/overlap-margin-arcsec
+    old: 0.3
+    new: 0.45
+    ticket: DY-1958
+  - path: soxs-stare-std/vis/slit-illumination/overlap-margin-arcsec
+    old: 0.3
+    new: 0.45
+    ticket: DY-1958
+  - path: soxs-stare/vis/sky-subtraction/starting_points_per_knot
+    old: 1000
+    new: 500
+    ticket: DY-1977
+  - path: soxs-stare-std/vis/sky-subtraction/starting_points_per_knot
+    old: 1000
+    new: 500
+    ticket: DY-1977
+  - path: soxs-stare/vis/sky-subtraction/min_points_per_knot
+    old: 15
+    new: 20
+    ticket: DY-1977
+  - path: soxs-stare-std/vis/sky-subtraction/min_points_per_knot
+    old: 155
+    new: 77
+    ticket: DY-1977
+
+xsh: []

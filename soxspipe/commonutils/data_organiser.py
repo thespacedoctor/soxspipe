@@ -702,6 +702,9 @@ class data_organiser:
         # OTHERWISE USE CURRENT SESSION
         self._select_session()
 
+        # BRING THE SESSION YAML UP TO DATE WITH THE CURRENT DEFAULTS BEFORE ANYTHING READS IT
+        self._migrate_session_settings()
+
         # GET SETTINGS
         self._load_session_settings()
 
@@ -721,6 +724,24 @@ class data_organiser:
             self._print_prepare_report(basename)
 
         self.log.debug("completed the ``prepare`` method")
+        return
+
+    def _migrate_session_settings(self):
+        """*bring the `soxspipe.yaml` of the active session up to date with the current default settings*
+
+        Rewrites the values that equal a superseded default and adds the keys that the instrument's default settings
+        file has and the yaml lacks (see `settings_migration.migrate_session_settings`). A session without a yaml is
+        left as it is. A session that `prepare` has just created is already current, so nothing changes in it.
+        """
+        from .settings_migration import migrate_session_settings
+
+        self.log.debug("starting the ``_migrate_session_settings`` method")
+
+        yamlPath = Path(self.sessionPath) / "soxspipe.yaml"
+        if yamlPath.is_file():
+            migrate_session_settings(yamlPath, getattr(self, "instrument", "soxs"), self.log)
+
+        self.log.debug("completed the ``_migrate_session_settings`` method")
         return
 
     def _load_session_settings(self):

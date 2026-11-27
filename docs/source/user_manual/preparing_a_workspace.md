@@ -35,6 +35,26 @@ Your workspace is now prepared, and you are now ready to reduce your data.
 :::{include} sessions.inc
 :::
 
+## Update the settings of an existing workspace
+
+Each time you run `soxspipe prep` on a workspace, it brings the `soxspipe.yaml` of the active session up to date with the default settings of the installed `soxspipe`. The file is written once, when the session is created, so without this step a change to a default never reaches an old workspace.
+
+`soxspipe prep` changes the file before it reads the settings. It does two things:
+
+1. **Superseded values.** The package keeps a list of default values that a later release replaced. If a setting in your file has exactly the old value of one of these, `soxspipe prep` writes the new default. For example, the NIR spatial solution `order-deg` of `[4, 4]` becomes `[5, 4]`. A value that differs from both the old and the new default is a choice you made, and it stays as it is.
+2. **Missing keys.** If the default settings file has a key that your file does not have, at any depth, `soxspipe prep` adds it with its default value.
+
+`soxspipe prep` does not remove keys. A key that the defaults no longer have stays in your file, and so does a per-workspace value such as the log file path.
+
+`soxspipe prep` writes one log line for each change, with the setting path, the old value (or `missing`), the new value, and the ticket for a superseded value. It also prints one line with the counts, for example `14 superseded and 138 missing settings changed`. If nothing needs to change, it prints nothing and does not rewrite the file.
+
+Two limits apply:
+
+- The file is rewritten without its comments. `soxspipe prep` does not make a backup copy of the old file.
+- Only the active session is changed. Other sessions keep their files until you switch to them and run `soxspipe prep`.
+
+To list the superseded values, read `soxspipe/resources/settings_migrations.yaml` in the installed package. Each entry has the setting path, the old value, the new value, and the ticket. Workspace tools can call `migrate_session_settings(yamlPath, instrument, log)` from `soxspipe.commonutils.settings_migration` to do the same on any `soxspipe.yaml`.
+
 ## Listing The Content of a Workspace
 
 ### List OBs
