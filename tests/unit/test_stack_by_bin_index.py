@@ -200,15 +200,17 @@ def test_a_stare_recipe_stacks_its_nod_positions_by_bin_index(stare: soxs_stare)
 def test_the_instrument_name_is_matched_without_regard_to_case(
     log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, instrument: str
 ) -> None:
-    # ARRANGE
+    # ARRANGE: THE BIN MEDIAN IS CALLED DIRECTLY, BECAUSE THE STACK HEADER OPENS <instrument>_detector_parameters.yaml,
+    # WHICH ONLY THE LOWER-CASE NAME OPENS ON A CASE-SENSITIVE FILE SYSTEM
     recipe = _recipe(soxs_nod, log, tmp_path, monkeypatch, instrument)
     below, above = _four_decimal_boundary_around(FIRST_BIN)
+    frame = pd.DataFrame({"WAVE": [below, above], "FLUX_COUNTS": [10.0, 20.0], "VARIANCE": [4.0, 4.0]})
 
     # ACT
-    stacked, _ = recipe.stack_extractions([_spectrum([below], [10.0]), _spectrum([above], [20.0])])
+    medians = recipe._median_by_bin(frame)
 
-    # ASSERT
-    assert len(stacked) == 1
+    # ASSERT: ONE BIN ON THE GRID, AS FOR "soxs"
+    assert list(medians["WAVE"]) == [float(grid_wavelength(FIRST_BIN, STEP_KMS))]
 
 
 @pytest.mark.parametrize("instrument", ["xsh", "XSH", "Xsh"])
