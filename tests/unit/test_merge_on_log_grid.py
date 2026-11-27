@@ -449,3 +449,38 @@ def test_the_merged_bins_lie_inside_the_extracted_wavelength_range(log: object) 
     assert wave.min() >= 1000.004 - 0.025
     assert wave.max() <= 1000.004 + 0.05 * 399 + 0.025
     assert (_column(merged, "VARIANCE") > 0).all()
+
+
+def test_a_constant_flux_density_is_flat_across_a_join_of_orders_with_different_pixel_scales(log: object) -> None:
+    # ARRANGE: THE RED ORDER HAS 0.06 NM PIXELS AND THE BLUE ORDER 0.04 NM PIXELS. 200 E-/NM IS 12 E- IN A 0.06 NM
+    # PIXEL AND 8 E- IN A 0.04 NM PIXEL, SO THE DENSITY IS THE SAME ON BOTH SIDES OF THE JOIN (DY-2339)
+    extractor = _extractor(log, "NIR", notFlattened="_NOTFLAT")
+    red = _order(11, 1010.0, 300, 12.0, scale=0.06)
+    blue = _order(12, 1000.0, 400, 8.0, scale=0.04)
+
+    # ACT
+    merged, joins = extractor.merge_extracted_orders(pd.concat([red, blue], ignore_index=True))
+
+    # ASSERT: THE FLUX COUNTS STEP AT THE JOIN, THE DENSITY DOES NOT
+    wave = _wave(merged)
+    assert wave.min() < joins["11-12"] < wave.max()
+    np.testing.assert_allclose(_column(merged, "FLUX_DENSITY_COUNTS"), 200.0, rtol=1e-6)
+    assert _column(merged, "FLUX_COUNTS").max() / _column(merged, "FLUX_COUNTS").min() > 1.4
+
+
+def test_the_no_data_bins_stay_reachable_after_the_merge_without_a_new_column(log: object) -> None:
+    # ARRANGE: THE SAME GAP AS test_the_gap_between_orders_is_left_empty_and_not_interpolated
+    extractor = _extractor(log, "NIR")
+    orders = pd.concat([_order(10, 1031.5, 400, 150.0), _order(11, 1000.0, 400, 0.0)], ignore_index=True)
+
+    # ACT
+    merged, _ = extractor.merge_extracted_orders(orders)
+
+    # ASSERT: THE MASK IS THE SAME LENGTH AS THE SPECTRUM, TRUE EXACTLY WHERE NO PIXEL OVERLAPS THE BIN
+    wave = _wave(merged)
+    assert extractor.noDataBins.shape == wave.shape
+    inGap = (wave > 1020.1) & (wave < 1031.4)
+    assert extractor.noDataBins[inGap].all()
+    assert (_column(merged, "VARIANCE")[extractor.noDataBins] == 0.0).all()
+    assert (_column(merged, "VARIANCE")[~extractor.noDataBins] > 0.0).all()
+    assert list(merged.columns) == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR"]

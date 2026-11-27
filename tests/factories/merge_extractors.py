@@ -28,6 +28,16 @@ def soxs_merge_extractor(
     - ``cards`` -- the header cards of the sky-subtracted frame, such as ``ESO DET BINY``
     - ``notFlattened`` -- ``_NOTFLAT`` for the not-flattened spectrum, which carries a flux density column
     - ``carrySkyCounts`` -- whether the merge carries the sky column
+
+    **Return:**
+
+    - ``extractor`` -- a ``horne_extraction`` object that has no other state than ``merge_extracted_orders`` needs
+
+    **Usage:**
+
+    ```python
+    merged, joins = soxs_merge_extractor(log, "NIR").merge_extracted_orders(extractedOrdersDF)
+    ```
     """
     extractor = object.__new__(horne_extraction)
     extractor.log = log

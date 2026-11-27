@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
 
+    from .log_grid_merge import OrderPixels
     from .nir_sky_refit import order_sky_correction
 
 os.environ["TERM"] = "vt100"
@@ -254,6 +255,8 @@ class horne_extraction(base_util):
     orderPixelTable = None
     # THE ON-TARGET FRAMES THAT GIVE THE MERGED SPECTRUM ITS FRAME-ACCOUNTING CARDS, OR None WHEN IT GETS NONE
     onTargetFrames = None
+    # THE MASK OF THE MERGED BINS THAT NO PIXEL OVERLAPS, SET BY THE SOXS LOG-GRID MERGE FOR THE QUAL COLUMN (DY-2352)
+    noDataBins = None
 
     def __init__(
         self,
@@ -2460,7 +2463,9 @@ class horne_extraction(base_util):
         return np.arange(firstIndex, lastIndex + 1) / ratio
 
     @staticmethod
-    def _order_joins(extractedOrdersDF, orderPairs):
+    def _order_joins(
+        extractedOrdersDF: "pd.DataFrame", orderPairs: "list[tuple[int, int]]"
+    ) -> "tuple[dict[str, float], dict[str, float]]":
         """*the join wavelength and the overlap of each pair of neighbouring orders*
 
         **Key Arguments:**
@@ -2474,27 +2479,35 @@ class horne_extraction(base_util):
           between its orders has the midpoint of the gap
         - ``orderGaps`` -- the overlap of each pair (nm), negative for a gap
         """
+        from soxspipe.commonutils.toolkit import order_join_key
+
         orderJoins = {}
         orderGaps = {}
         for red, blue in orderPairs:
             redMin = extractedOrdersDF.loc[extractedOrdersDF["order"] == red]["wavelengthMean"].min()
             blueMax = extractedOrdersDF.loc[extractedOrdersDF["order"] == blue]["wavelengthMean"].max()
-            orderJoins[f"{red}-{blue}"] = (blueMax + redMin) / 2.0
-            orderGaps[f"{red}-{blue}"] = blueMax - redMin
+            orderJoins[order_join_key(red, blue)] = (blueMax + redMin) / 2.0
+            orderGaps[order_join_key(red, blue)] = blueMax - redMin
         return orderJoins, orderGaps
 
-    def _uses_log_wavelength_grid(self):
-        """Return whether the merge puts the spectrum on the fixed log-wavelength grid, which every SOXS arm does."""
+    def _uses_log_wavelength_grid(self) -> bool:
+        """*whether the merge puts the spectrum on the fixed log-wavelength grid, which every SOXS arm does*
+
+        **Return:**
+
+        - ``usesGrid`` -- *True* for a SOXS extraction, *False* for any other instrument
+        """
         return self.inst.upper() == "SOXS"
 
-    def _merge_on_log_grid(self, extractedOrdersDF):
+    def _merge_on_log_grid(self, extractedOrdersDF: "pd.DataFrame") -> "tuple[pd.DataFrame, dict[str, float]]":
         """*merge the extracted orders onto the fixed log-wavelength grid of a SOXS arm (DY-2348)*
 
         The step of the grid is ``log-wavelength-step-kms`` of the arm per unbinned pixel, times the binning along the
         dispersion axis of the frame. Each order is cut at its join with the next order, the join snapped to a bin
         edge, and bins that an order covers only in part are dropped. A bin that no pixel overlaps, such as a bin in
-        the gap between two orders, has flux 0 and no SNR: nothing is interpolated across it. The extracted-orders
-        table is not changed.
+        the gap between two orders, has flux 0, variance 0 and SNR NaN: nothing is interpolated across it. The
+        ``noDataBins`` attribute keeps the mask of these bins for the QUAL column (bit 1, DY-2352); the merged
+        spectrum has no column for it. The extracted-orders table is not changed.
 
         **Key Arguments:**
 
@@ -2511,9 +2524,10 @@ class horne_extraction(base_util):
         import numpy as np
         import pandas as pd
 
-        from soxspipe.commonutils.log_grid_merge import merge_orders_on_log_grid
+        from soxspipe.commonutils.log_grid_merge import DENSITY_KEY, FLUX_KEY, SKY_KEY, merge_orders_on_log_grid
         from soxspipe.commonutils.log_wavelength_grid import grid_step_kms
         from soxspipe.commonutils.response_basis import dispersion_binning
+        from soxspipe.commonutils.toolkit import order_join_key
 
         binning = dispersion_binning(self.skySubtractedFrame.header, self.arm, self.kw)
         stepKms = grid_step_kms(self.detectorParams, binning)
@@ -2529,15 +2543,18 @@ class horne_extraction(base_util):
         keepMask = self._variance_keep_mask(sortedOrdersDF["varianceSpectrum"].values)
         orders = self._log_grid_order_pixels(sortedOrdersDF, keepMask, orderSequence)
 
-        merged = merge_orders_on_log_grid(orders, [unsnappedJoins[f"{r}-{b}"] for r, b in orderPairs], stepKms)
+        merged = merge_orders_on_log_grid(
+            orders, [unsnappedJoins[order_join_key(r, b)] for r, b in orderPairs], stepKms
+        )
+        self.noDataBins = ~merged.hasData
 
         mergedOrders = pd.DataFrame()
         mergedOrders["WAVE"] = merged.wavelength * u.nm
-        mergedOrders["FLUX_COUNTS"] = merged.values["flux"].astype(np.float32) * u.electron
+        mergedOrders["FLUX_COUNTS"] = merged.values[FLUX_KEY].astype(np.float32) * u.electron
         mergedOrders["VARIANCE"] = merged.variance.astype(np.float32) * u.electron
         if self.carrySkyCounts:
             # THE SKY IS RESAMPLED WITH THE SAME KEPT ROWS AND WEIGHTS AS THE FLUX. A RUN WITH NO SKY MODEL STAYS NAN
-            sky = merged.values["sky"].astype(np.float32)
+            sky = merged.values[SKY_KEY].astype(np.float32)
             if np.isnan(sortedOrdersDF["skyFlux"].values).all():
                 sky = np.full_like(sky, np.nan)
             mergedOrders["SKY_COUNTS"] = sky * u.electron
@@ -2545,11 +2562,14 @@ class horne_extraction(base_util):
             snr = mergedOrders["FLUX_COUNTS"].values / np.sqrt(mergedOrders["VARIANCE"].values)
         mergedOrders["SNR"] = np.where(merged.hasData, snr, np.nan * snr.unit)
         if self.notFlattened:
-            mergedOrders["FLUX_DENSITY_COUNTS"] = merged.values["density"].astype(np.float32) * u.electron / u.nm
+            mergedOrders["FLUX_DENSITY_COUNTS"] = merged.values[DENSITY_KEY].astype(np.float32) * u.electron / u.nm
 
-        return mergedOrders, {f"{r}-{b}": j for (r, b), j in zip(orderPairs, merged.joinWavelengths, strict=True)}
+        snappedJoins = {order_join_key(r, b): j for (r, b), j in zip(orderPairs, merged.joinWavelengths, strict=True)}
+        return mergedOrders, snappedJoins
 
-    def _log_grid_order_pixels(self, sortedOrdersDF, keepMask, orderSequence):
+    def _log_grid_order_pixels(
+        self, sortedOrdersDF: "pd.DataFrame", keepMask: "np.ndarray", orderSequence: "list[int]"
+    ) -> "list[OrderPixels]":
         """*the pixels of each order, reddest first, as the inputs of the log-grid merge*
 
         **Key Arguments:**
@@ -2565,7 +2585,7 @@ class horne_extraction(base_util):
         """
         import numpy as np
 
-        from soxspipe.commonutils.log_grid_merge import OrderPixels
+        from soxspipe.commonutils.log_grid_merge import DENSITY_KEY, FLUX_KEY, SKY_KEY, OrderPixels
 
         orders = []
         for order in orderSequence:
@@ -2573,12 +2593,12 @@ class horne_extraction(base_util):
             rows = sortedOrdersDF.loc[isOrder]
             flux = rows["extractedFluxOptimal"].to_numpy(dtype=float)
             pixelScale = rows["pixelScaleNm"].to_numpy(dtype=float)
-            values = {"flux": flux}
+            values = {FLUX_KEY: flux}
             if self.carrySkyCounts:
-                values["sky"] = rows["skyFlux"].to_numpy(dtype=float)
+                values[SKY_KEY] = rows["skyFlux"].to_numpy(dtype=float)
             if self.notFlattened:
                 with np.errstate(divide="ignore", invalid="ignore"):
-                    values["density"] = flux / pixelScale
+                    values[DENSITY_KEY] = flux / pixelScale
             orders.append(
                 OrderPixels(
                     wavelength=rows["wavelengthMean"].to_numpy(dtype=float),
@@ -2625,7 +2645,7 @@ class horne_extraction(base_util):
         from astropy.nddata import VarianceUncertainty
 
         from soxspipe.commonutils.specutils_calls import spectrum1d_quietly
-        from soxspipe.commonutils.toolkit import plot_merged_spectrum_qc
+        from soxspipe.commonutils.toolkit import order_join_key, plot_merged_spectrum_qc
 
         logging.getLogger().setLevel(logging.INFO + 5)
 
@@ -2654,12 +2674,12 @@ class horne_extraction(base_util):
         # A FIX FOR THE UV XSHOOTER DATA (FLATS TAKEN WITH DIFFERENT LAMPS)
         # GET UNIQUE VALUES IN COLUMN
         if self.arm.upper() == "UVB":
-            orderJoins["20-21"] = 363.5
+            orderJoins[order_join_key(20, 21)] = 363.5
 
         stepRatio = 20
 
         for red, blue in orderPairs:
-            thisKey = f"{red}-{blue}"
+            thisKey = order_join_key(red, blue)
             gap = orderGaps[thisKey]
             if gap > stepWavelengthOrderMerge * stepRatio * 2.1:
                 mask = (extractedOrdersDF["order"] == red) & (

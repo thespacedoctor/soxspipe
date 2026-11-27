@@ -260,3 +260,18 @@ def test_the_stacked_wave_is_not_rounded_to_two_decimals(recipe: soxs_nod, tmp_p
     assert list(stacked["WAVE"]) == [500.0123, 500.0336, 500.0548]
     with fits.open(filePath) as hdus:
         assert list(hdus["SPECTRUM"].data["WAVE"]) == [500.0123, 500.0336, 500.0548]
+
+
+def test_the_x_shooter_stack_keeps_its_two_decimal_wave(recipe: soxs_nod) -> None:
+    """The 2-decimal WAVE rounding goes only for SOXS; X-Shooter output is unchanged (DY-2348)."""
+    # ARRANGE
+    recipe.settings["instrument"] = "xsh"
+    waves = [500.01234, 500.03358]
+
+    # ACT
+    stacked, _ = recipe.stack_extractions(
+        [_spectrum(waves, [10.0, 12.0], [4.0, 4.0]), _spectrum(waves, [20.0, 22.0], [4.0, 4.0])]
+    )
+
+    # ASSERT
+    assert list(stacked["WAVE"]) == [500.01, 500.03]

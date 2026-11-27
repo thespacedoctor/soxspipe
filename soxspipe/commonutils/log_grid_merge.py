@@ -5,8 +5,8 @@
 Each order is cut at its join with the next order, and the join is snapped to the nearest bin edge, so no bin takes
 flux from two orders and there is no overlap-weighted sum between orders. Within its cut, an order gives every bin
 that its pixels cover wholly. A bin that the order covers only in part at an end is dropped. A bin that no pixel
-overlaps, such as a bin in the gap between two orders, has no data: it holds 0 and is flagged, and nothing is
-interpolated across it. See ``log_wavelength_grid`` for the grid and the resampling weights.
+overlaps, such as a bin in the gap between two orders, has no data: it holds 0 and its ``hasData`` entry is *False*, and
+nothing is interpolated across it. See ``log_wavelength_grid`` for the grid and the resampling weights.
 
 The module holds no recipe state: every function takes and returns numbers and arrays.
 
@@ -19,6 +19,7 @@ The module holds no recipe state: every function takes and returns numbers and a
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 
@@ -28,7 +29,13 @@ from soxspipe.commonutils.log_wavelength_grid import (
     grid_wavelength,
     overlap_weights,
     snap_to_edge_index,
+    usable_pixel_mask,
 )
+
+# THE NAMES OF THE DENSITY COLUMNS THE MERGE RESAMPLES
+FLUX_KEY = "flux"
+SKY_KEY = "sky"
+DENSITY_KEY = "density"
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,17 @@ class OrderPixels:
     keep: np.ndarray
     values: Mapping[str, np.ndarray]
     variance: np.ndarray
+
+    def pixel_edges(self) -> tuple[np.ndarray, np.ndarray]:
+        """*the lower and upper edge of each pixel*
+
+        **Return:**
+
+        - ``lower``, ``upper`` -- the edges in nm: the centre minus and plus half the pixel width
+        """
+        halfWidth = np.asarray(self.pixelScale, dtype=float) / 2.0
+        wavelength = np.asarray(self.wavelength, dtype=float)
+        return wavelength - halfWidth, wavelength + halfWidth
 
 
 @dataclass(frozen=True)
@@ -73,6 +91,14 @@ class MergedOnGrid:
     joinWavelengths: tuple[float, ...]
 
 
+class _Segment(NamedTuple):
+    """The bins ``firstIndex`` to ``lastIndex`` that one order gives."""
+
+    order: OrderPixels
+    firstIndex: int
+    lastIndex: int
+
+
 def _order_bin_range(
     order: OrderPixels, lowerCutEdge: int | None, upperCutEdge: int | None, stepKms: float
 ) -> tuple[int, int]:
@@ -90,10 +116,8 @@ def _order_bin_range(
     - ``firstIndex``, ``lastIndex`` -- the grid indices of the first and last bin. ``lastIndex`` is below
       ``firstIndex`` when the order gives no bin
     """
-    halfWidth = np.asarray(order.pixelScale, dtype=float) / 2.0
-    lower = np.asarray(order.wavelength, dtype=float) - halfWidth
-    upper = np.asarray(order.wavelength, dtype=float) + halfWidth
-    isUsable = np.isfinite(lower) & np.isfinite(upper) & (upper > lower)
+    lower, upper = order.pixel_edges()
+    isUsable = usable_pixel_mask(lower, upper)
     if not isUsable.any():
         return 0, -1
     firstIndex, lastIndex = covered_bin_range(lower[isUsable].min(), upper[isUsable].max(), stepKms)
@@ -103,6 +127,72 @@ def _order_bin_range(
     if upperCutEdge is not None:
         lastIndex = min(lastIndex, upperCutEdge - 1)
     return firstIndex, lastIndex
+
+
+def _order_segments(orders: Sequence[OrderPixels], joinEdges: Sequence[int], stepKms: float) -> list[_Segment]:
+    """*the bins each order gives between its cuts, leaving out an order that gives none*
+
+    **Key Arguments:**
+
+    - ``orders`` -- the orders from the reddest to the bluest
+    - ``joinEdges`` -- the edge index of each join, red pair first
+    - ``stepKms`` -- the step of the grid in km/s
+
+    **Return:**
+
+    - ``segments`` -- one ``_Segment`` for each order that gives at least one bin
+
+    **Raises:**
+
+    - ``ValueError`` -- if no bin of the grid lies wholly inside the pixels of any order
+    """
+    segments = []
+    for position, order in enumerate(orders):
+        upperCut = joinEdges[position - 1] if position > 0 else None
+        lowerCut = joinEdges[position] if position < len(joinEdges) else None
+        firstIndex, lastIndex = _order_bin_range(order, lowerCut, upperCut, stepKms)
+        if lastIndex >= firstIndex:
+            segments.append(_Segment(order, firstIndex, lastIndex))
+    if not segments:
+        raise ValueError("No bin of the log-wavelength grid lies inside the extracted wavelength range.")
+    return segments
+
+
+def _fill_segments(
+    segments: Sequence[_Segment], stepKms: float
+) -> tuple[int, np.ndarray, dict[str, np.ndarray], np.ndarray]:
+    """*resample each segment onto its bins and place them on one unbroken grid*
+
+    A bin that two segments both claim keeps the first one's value. Bins no segment claims keep 0 and no data.
+
+    **Key Arguments:**
+
+    - ``segments`` -- the segments from the reddest order to the bluest
+    - ``stepKms`` -- the step of the grid in km/s
+
+    **Return:**
+
+    - ``firstIndex`` -- the grid index of the first bin
+    - ``hasData`` -- *True* for each bin that at least one pixel overlaps
+    - ``values`` -- the resampled density columns by name
+    - ``variance`` -- the resampled variance
+    """
+    firstIndex = min(segment.firstIndex for segment in segments)
+    binCount = max(segment.lastIndex for segment in segments) - firstIndex + 1
+    hasData = np.zeros(binCount, dtype=bool)
+    variance = np.zeros(binCount)
+    values = {name: np.zeros(binCount) for name in segments[0].order.values}
+
+    for order, segmentFirst, segmentLast in segments:
+        lower, upper = order.pixel_edges()
+        weights = overlap_weights(lower, upper, bin_edges(segmentFirst, segmentLast, stepKms), order.keep)
+        window = slice(segmentFirst - firstIndex, segmentLast - firstIndex + 1)
+        fill = weights.hasData & ~hasData[window]
+        for name, column in order.values.items():
+            values[name][window][fill] = weights.mean(column)[fill]
+        variance[window][fill] = weights.propagate_variance(order.variance)[fill]
+        hasData[window] |= fill
+    return firstIndex, hasData, values, variance
 
 
 def merge_orders_on_log_grid(
@@ -131,40 +221,10 @@ def merge_orders_on_log_grid(
             f"got {len(joinWavelengths)}."
         )
     joinEdges = [snap_to_edge_index(wavelength, stepKms) for wavelength in joinWavelengths]
-
-    segments = []
-    for position, order in enumerate(orders):
-        upperCut = joinEdges[position - 1] if position > 0 else None
-        lowerCut = joinEdges[position] if position < len(joinEdges) else None
-        firstIndex, lastIndex = _order_bin_range(order, lowerCut, upperCut, stepKms)
-        if lastIndex >= firstIndex:
-            segments.append((order, firstIndex, lastIndex))
-    if not segments:
-        raise ValueError("No bin of the log-wavelength grid lies inside the extracted wavelength range.")
-
-    firstIndex = min(segment[1] for segment in segments)
-    lastIndex = max(segment[2] for segment in segments)
-    binCount = lastIndex - firstIndex + 1
-    hasData = np.zeros(binCount, dtype=bool)
-    variance = np.zeros(binCount)
-    values = {name: np.zeros(binCount) for name in segments[0][0].values}
-
-    for order, segmentFirst, segmentLast in segments:
-        halfWidth = np.asarray(order.pixelScale, dtype=float) / 2.0
-        wavelength = np.asarray(order.wavelength, dtype=float)
-        weights = overlap_weights(
-            wavelength - halfWidth, wavelength + halfWidth, bin_edges(segmentFirst, segmentLast, stepKms), order.keep
-        )
-        window = slice(segmentFirst - firstIndex, segmentLast - firstIndex + 1)
-        fill = weights.hasData & ~hasData[window]
-        for name, column in order.values.items():
-            values[name][window][fill] = weights.mean(column)[fill]
-        variance[window][fill] = weights.propagate_variance(order.variance)[fill]
-        hasData[window] |= fill
-
+    firstIndex, hasData, values, variance = _fill_segments(_order_segments(orders, joinEdges, stepKms), stepKms)
     return MergedOnGrid(
         firstIndex=firstIndex,
-        wavelength=grid_wavelength(firstIndex + np.arange(binCount), stepKms),
+        wavelength=grid_wavelength(firstIndex + np.arange(len(hasData)), stepKms),
         hasData=hasData,
         values=values,
         variance=variance,

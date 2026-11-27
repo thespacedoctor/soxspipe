@@ -11,7 +11,7 @@ Every column the merge resamples is a density (flat-fielded electrons per pixel,
 scale), so a bin takes the weighted mean of the pixels that overlap it. The weights are the overlaps, normalized to 1
 over the bin. The variance of a bin is the sum of the squared weights times the variances of the pixels (Sum w^2
 sigma^2), which ignores the covariance between neighbouring bins. A bin that no pixel overlaps has no data: the
-resampler returns 0 for it and flags it, and never interpolates across it.
+resampler returns 0 for it, reports it in ``OverlapWeights.hasData``, and never interpolates across it.
 
 The module holds no recipe state: every function takes and returns numbers and arrays.
 
@@ -215,6 +215,25 @@ class OverlapWeights:
         return np.bincount(self.binIndex, weights=self.weight**2 * variance[self.pixelIndex], minlength=self.binCount)
 
 
+def usable_pixel_mask(pixelLower: np.ndarray, pixelUpper: np.ndarray, keep: np.ndarray | None = None) -> np.ndarray:
+    """*flag the pixels that can contribute: finite edges, a positive width, and kept*
+
+    **Key Arguments:**
+
+    - ``pixelLower`` -- the lower edge of each pixel (nm)
+    - ``pixelUpper`` -- the upper edge of each pixel (nm)
+    - ``keep`` -- *True* for each pixel to use (default: all of them)
+
+    **Return:**
+
+    - ``isUsable`` -- boolean array, *True* for each usable pixel
+    """
+    isUsable = np.isfinite(pixelLower) & np.isfinite(pixelUpper) & (pixelUpper > pixelLower)
+    if keep is not None:
+        isUsable &= np.asarray(keep, dtype=bool)
+    return isUsable
+
+
 def overlap_weights(
     pixelLower: np.ndarray, pixelUpper: np.ndarray, binEdges: np.ndarray, keep: np.ndarray | None = None
 ) -> OverlapWeights:
@@ -239,9 +258,7 @@ def overlap_weights(
     binEdges = np.asarray(binEdges, dtype=float)
     binCount = len(binEdges) - 1
 
-    isUsable = np.isfinite(pixelLower) & np.isfinite(pixelUpper) & (pixelUpper > pixelLower)
-    if keep is not None:
-        isUsable &= np.asarray(keep, dtype=bool)
+    isUsable = usable_pixel_mask(pixelLower, pixelUpper, keep)
     lower = np.where(isUsable, pixelLower, 0.0)
     upper = np.where(isUsable, pixelUpper, 0.0)
 

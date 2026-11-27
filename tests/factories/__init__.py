@@ -23,7 +23,6 @@ from .files import (
     sof_file,
 )
 from .frames import StubInputFrames, instrument_header, noise_frame_pair, synthetic_ccd
-from .merge_extractors import soxs_merge_extractor
 from .late_frames import (
     calibration_chain_frames,
     flux_standard_stare,
@@ -31,6 +30,7 @@ from .late_frames import (
     pinhole_frame,
     spatial_solution_arc,
 )
+from .merge_extractors import soxs_merge_extractor
 from .settings import logging_settings, pipeline_settings
 from .signals import synthetic_signal
 from .slit_illumination import illumination_scene, synthetic_illumination_scene
@@ -59,7 +59,6 @@ __all__ = [
     "pipeline_settings",
     "prepared_fits",
     "product_table",
-    "soxs_merge_extractor",
     "qc_row",
     "qc_table",
     "raw_fits",
@@ -69,6 +68,7 @@ __all__ = [
     "response_product_fits",
     "session_workspace",
     "sof_file",
+    "soxs_merge_extractor",
     "synthetic_ccd",
     "synthetic_illumination_scene",
     "synthetic_signal",
