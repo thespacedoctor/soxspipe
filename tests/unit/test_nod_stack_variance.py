@@ -328,7 +328,7 @@ def test_a_soxs_stack_refuses_spectra_with_a_variance_column(recipe: soxs_nod) -
     stale = _spectrum([500.0], [10.0], [4.0], hasVarianceColumn=True)
 
     # ACT / ASSERT
-    with pytest.raises(ValueError, match=r"holds VARIANCE, but a SOXS spectrum holds ERR_COUNTS"):
+    with pytest.raises(ValueError, match=r"holds VARIANCE, but SOXS spectra hold ERR_COUNTS"):
         recipe.stack_extractions([stale])
 
 

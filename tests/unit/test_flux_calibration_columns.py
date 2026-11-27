@@ -158,7 +158,7 @@ def test_fluxcal_refuses_a_soxs_run_given_a_variance_spectrum(tmp_path, log, mon
     spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY, hasVarianceColumn=True)
 
     # ACT / ASSERT: NO TABLE WITH X-SHOOTER NAMES IS WRITTEN FOR A SOXS RUN
-    with pytest.raises(ValueError, match=r"holds VARIANCE, but a SOXS spectrum holds ERR_COUNTS"):
+    with pytest.raises(ValueError, match=r"holds VARIANCE, but SOXS spectra hold ERR_COUNTS"):
         calibrate_spectrum(tmp_path, log, monkeypatch, spectrum, settings={"instrument": "soxs"})
 
 
@@ -167,7 +167,7 @@ def test_fluxcal_refuses_an_xshooter_run_given_an_err_counts_spectrum(tmp_path, 
     spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY)
 
     # ACT / ASSERT
-    with pytest.raises(ValueError, match=r"holds ERR_COUNTS, but a X-Shooter spectrum holds VARIANCE"):
+    with pytest.raises(ValueError, match=r"holds ERR_COUNTS, but X-Shooter spectra hold VARIANCE"):
         calibrate_spectrum(tmp_path, log, monkeypatch, spectrum, settings={"instrument": "xsh"})
 
 

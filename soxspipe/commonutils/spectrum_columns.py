@@ -67,11 +67,11 @@ def require_error_column(columns: Iterable[str], isSoxs: bool) -> str:
     instrument = "SOXS" if isSoxs else "X-Shooter"
     if other in names:
         raise ValueError(
-            f"The spectrum holds {other}, but a {instrument} spectrum holds {needed}. It may have been written "
+            f"The spectrum holds {other}, but {instrument} spectra hold {needed}. It may have been written "
             "before soxspipe changed the SOXS columns (DY-2350), or the instrument setting may be wrong. "
             "Please reduce the spectrum again with this release."
         )
-    raise ValueError(f"The spectrum is missing the column {needed} that a {instrument} spectrum holds.")
+    raise ValueError(f"The spectrum is missing the column {needed} that {instrument} spectra hold.")
 
 
 def error_column_name(columns: Iterable[str]) -> str | None:

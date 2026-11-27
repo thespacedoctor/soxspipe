@@ -99,8 +99,8 @@ def test_the_error_column_the_instrument_needs_is_returned_when_the_spectrum_has
 @pytest.mark.parametrize(
     ("isSoxs", "columns", "message"),
     [
-        (True, ["WAVE", "VARIANCE"], "holds VARIANCE, but a SOXS spectrum holds ERR_COUNTS"),
-        (False, ["WAVE", "ERR_COUNTS"], "holds ERR_COUNTS, but a X-Shooter spectrum holds VARIANCE"),
+        (True, ["WAVE", "VARIANCE"], "holds VARIANCE, but SOXS spectra hold ERR_COUNTS"),
+        (False, ["WAVE", "ERR_COUNTS"], "holds ERR_COUNTS, but X-Shooter spectra hold VARIANCE"),
         (True, ["WAVE"], "missing the column ERR_COUNTS"),
         (False, ["WAVE"], "missing the column VARIANCE"),
     ],
