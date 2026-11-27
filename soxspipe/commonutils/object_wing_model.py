@@ -65,11 +65,14 @@ MIN_PIXELS_PER_PROFILE_BIN = 20
 WING_BIAS_SIGNIFICANCE = 5
 # AN ORDER WHOSE MEDIAN SKY FIT IS AT OR BELOW THIS MANY TIMES THE NOISE OF A FAINT-SKY PIXEL IS NOT CORRECTED (DY-1975)
 DEFAULT_MIN_SKY_SIGMA = 1.0
-# AN ORDER WHOSE MEDIAN SKY-TO-CORE RATIO S/G OF THE PROFILE PIXELS IS ABOVE THIS IS NOT CORRECTED. THE ZERO POINT IS
-# MEASURED IN UNITS OF THE CORE SPECTRUM G, SO WHERE THE SKY S IS MANY TIMES G, A SLIT-ILLUMINATION MISMATCH OF A
-# FRACTION F MOVES IT BY ABOUT F * S/G AND A PEDESTAL C BY C/G. THE ZERO POINT THEN CANNOT BE TOLD FROM THOSE TERMS
-# (DY-2120)
-MAX_SKY_TO_CORE_RATIO = 1
+# THE ZERO POINT IS MEASURED IN UNITS OF THE CORE SPECTRUM G, SO WHERE THE SKY S IS MANY TIMES G, A SLIT-ILLUMINATION
+# MISMATCH OF A FRACTION F MOVES IT BY ABOUT F * S/G AND A PEDESTAL C BY C/G. THE ZERO POINT THEN CANNOT BE TOLD FROM
+# THOSE TERMS (DY-2120). THE CORRECTION OF AN ORDER IS THEREFORE SCALED BY A WEIGHT THAT FALLS LINEARLY FROM 1 AT A
+# MEDIAN S/G OF THE PROFILE PIXELS OF SKY_TO_CORE_TAPER_START TO 0 AT SKY_TO_CORE_TAPER_END, AND AN ORDER AT OR ABOVE
+# THE END IS NOT CORRECTED. A HARD LIMIT AT 1 TURNED A CHANGE OF S/G BY A FEW HUNDREDTHS INTO A 7% STEP IN THE FLUX OF
+# AN ORDER (DY-2453)
+SKY_TO_CORE_TAPER_START = 0.8
+SKY_TO_CORE_TAPER_END = 1.2
 # A SOURCE IS A PROFILE PEAK WHOSE PROMINENCE IS ABOVE THIS MANY TIMES ITS BIN NOISE (DY-1933)
 SOURCE_SIGNIFICANCE = 5
 # ... AND ABOVE THIS FRACTION OF THE PROFILE'S PEAK ABOVE ITS MEDIAN, SO A FAINT HALO BUMP NEXT TO A BRIGHT STAR IS NOT
@@ -130,7 +133,9 @@ class object_wing_estimate:
       core spectrum. NaN if the order did not get as far as the profile, or no profile pixel has a positive core
       spectrum (DY-2120)
     - ``isSkyToCoreHigh`` -- True if every other gate, the crowded-slit test included, passed but the order is not
-      corrected because ``skyToCoreRatio`` is above ``MAX_SKY_TO_CORE_RATIO`` (DY-2120)
+      corrected because ``skyToCoreRatio`` is at or above ``SKY_TO_CORE_TAPER_END`` (DY-2120, DY-2453)
+    - ``wingWeight`` -- the factor the wing model is scaled by: ``sky_to_core_weight`` of ``skyToCoreRatio`` if
+      ``isCorrected``, else 0. Below 1, the order is only partly corrected (DY-2453)
     - ``wavelength`` -- a copy of the wavelength of every input pixel, for the chunks of the wing model (DY-2079)
     - ``chunks`` -- the ``wing_chunk`` of each wavelength chunk, from blue to red. Empty if ``isCorrected`` is False.
       A single chunk, with ``isFallback`` True, if ``isThermalSingleProfile``
@@ -154,6 +159,7 @@ class object_wing_estimate:
     isThermalSingleProfile: bool = False
     skyToCoreRatio: float = float("nan")
     isSkyToCoreHigh: bool = False
+    wingWeight: float = 0.0
     wavelength: np.ndarray | None = None
     chunks: tuple[wing_chunk, ...] = ()
 
@@ -560,6 +566,30 @@ def sky_to_core_ratio(skyModel, coreSpectrum, isProfile):
     return float(np.median(skyModel[isRatio] / coreSpectrum[isRatio]))
 
 
+def sky_to_core_weight(skyToCoreRatio):
+    """*the share of the object-wing correction that an order with this sky-to-core ratio S/G gets (DY-2453)*
+
+    The weight is 1 at and below ``SKY_TO_CORE_TAPER_START``, 0 at and above ``SKY_TO_CORE_TAPER_END``, and falls
+    linearly between them, so the corrected flux does not step when S/G crosses a limit.
+
+    **Key Arguments:**
+
+    - ``skyToCoreRatio`` -- the median sky-to-core ratio S/G of the profile pixels, from ``sky_to_core_ratio``
+
+    **Return:**
+
+    - ``weight`` -- the weight, from 0 to 1. A NaN ratio, of an order with no profile pixel with a positive core
+      spectrum, gets 1, as it was never stopped by the hard limit this taper replaces
+    """
+    import math
+
+    if math.isnan(skyToCoreRatio) or skyToCoreRatio <= SKY_TO_CORE_TAPER_START:
+        return 1.0
+    if skyToCoreRatio >= SKY_TO_CORE_TAPER_END:
+        return 0.0
+    return (SKY_TO_CORE_TAPER_END - skyToCoreRatio) / (SKY_TO_CORE_TAPER_END - SKY_TO_CORE_TAPER_START)
+
+
 def _blank_estimate(reason, nPixels):
     """*build an estimate that makes no correction and holds no measurements*
 
@@ -704,12 +734,13 @@ def estimate_object_wings(
         )
     # RUNS AFTER THE CROWDED-SLIT TEST SO THAT AN ORDER THE EARLIER GATES ALREADY STOP KEEPS ITS REASON
     skyToCoreRatio = sky_to_core_ratio(skyModel, spectrum, isProfile)
-    isSkyToCoreHigh = reason == "" and skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
+    skyToCoreWeight = sky_to_core_weight(skyToCoreRatio)
+    isSkyToCoreHigh = reason == "" and skyToCoreWeight == 0
     if isSkyToCoreHigh:
         reason = (
-            f"the median sky-to-core ratio S/G of the profile pixels {skyToCoreRatio:.3g} is above "
-            f"{MAX_SKY_TO_CORE_RATIO:g}, so the zero point cannot be told from a slit-illumination mismatch or a "
-            "pedestal over a small core spectrum"
+            f"the median sky-to-core ratio S/G of the profile pixels {skyToCoreRatio:.3g} is at or above "
+            f"{SKY_TO_CORE_TAPER_END:g}, the end of the taper, so the zero point cannot be told from a "
+            "slit-illumination mismatch or a pedestal over a small core spectrum"
         )
     chunks = ()
     isThermalSingleProfile = False
@@ -738,6 +769,7 @@ def estimate_object_wings(
         isThermalSingleProfile=isThermalSingleProfile,
         skyToCoreRatio=skyToCoreRatio,
         isSkyToCoreHigh=isSkyToCoreHigh,
+        wingWeight=skyToCoreWeight if reason == "" else 0.0,
         chunks=chunks,
     )
 
@@ -749,7 +781,8 @@ def wing_model(estimate, slitPosition):
     (each less its zero point) weighted by ``chunk_weight``, and each chunk profile is linearly interpolated over slit
     position from its finite bins. Empty bins are bridged, and a chunk profile is constant beyond its first and last
     finite bin. With one chunk, the weight is 1 at every pixel and the model is the single profile G(λ)·(P(s) − P0).
-    The model is zero everywhere if the estimate is not corrected, and a value that is not finite becomes zero.
+    The model is scaled by the estimate's ``wingWeight``, the sky-to-core taper weight (DY-2453). It is zero everywhere
+    if the estimate is not corrected, and a value that is not finite becomes zero.
 
     **Key Arguments:**
 
@@ -772,4 +805,4 @@ def wing_model(estimate, slitPosition):
         isFinite = np.isfinite(chunk.profile)
         weights = chunk_weight(estimate.wavelength, chunkWavelengths, index)
         wingProfile += weights * np.interp(slitPosition, chunk.binCentres[isFinite], chunk.profile[isFinite])
-    return np.nan_to_num(estimate.coreSpectrum * wingProfile, nan=0.0, posinf=0.0, neginf=0.0)
+    return np.nan_to_num(estimate.wingWeight * estimate.coreSpectrum * wingProfile, nan=0.0, posinf=0.0, neginf=0.0)

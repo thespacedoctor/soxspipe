@@ -10,8 +10,9 @@ import pytest
 
 from soxspipe.commonutils.object_wing_model import (
     DEFAULT_MIN_SKY_SIGMA,
-    MAX_SKY_TO_CORE_RATIO,
     SINGLE_PROFILE_MIN_WAVELENGTH_NM,
+    SKY_TO_CORE_TAPER_END,
+    SKY_TO_CORE_TAPER_START,
     WING_CHUNKS,
     chunk_weight,
     core_spectrum,
@@ -20,6 +21,7 @@ from soxspipe.commonutils.object_wing_model import (
     profile_peak,
     profile_sources,
     sky_to_core_ratio,
+    sky_to_core_weight,
     slit_profile,
     wing_chunk,
     wing_chunks,
@@ -1663,8 +1665,112 @@ MODERATE_SKY_LEVEL = 1.0e4
 SKY_DOMINATED_BIAS_FRACTION = 50.0
 
 
-def test_sky_to_core_limit_is_one():
-    assert MAX_SKY_TO_CORE_RATIO == 1
+def test_sky_to_core_taper_runs_from_0_8_to_1_2():
+    taper = (SKY_TO_CORE_TAPER_START, SKY_TO_CORE_TAPER_END)
+
+    assert taper == pytest.approx((0.8, 1.2))
+
+
+# ----- THE SKY-TO-CORE TAPER (DY-2453) -----
+
+TAPER_EPSILON = 1.0e-6
+
+
+@pytest.mark.parametrize("ratio", [0.0, 0.1, 0.5, SKY_TO_CORE_TAPER_START])
+def test_sky_to_core_weight_is_one_at_and_below_the_start_of_the_taper(ratio):
+    assert sky_to_core_weight(ratio) == 1.0
+
+
+@pytest.mark.parametrize("ratio", [SKY_TO_CORE_TAPER_END, 1.5, 2.0, 50.0, float("inf")])
+def test_sky_to_core_weight_is_zero_at_and_above_the_end_of_the_taper(ratio):
+    assert sky_to_core_weight(ratio) == 0.0
+
+
+@pytest.mark.parametrize("fraction", [0.1, 0.25, 0.5, 0.75, 0.9])
+def test_sky_to_core_weight_falls_linearly_inside_the_taper(fraction):
+    # ARRANGE
+    ratio = SKY_TO_CORE_TAPER_START + fraction * (SKY_TO_CORE_TAPER_END - SKY_TO_CORE_TAPER_START)
+
+    # ACT
+    weight = sky_to_core_weight(ratio)
+
+    # ASSERT
+    assert weight == pytest.approx(1.0 - fraction)
+
+
+@pytest.mark.parametrize("edge", [SKY_TO_CORE_TAPER_START, SKY_TO_CORE_TAPER_END])
+def test_sky_to_core_weight_is_continuous_at_both_edges_of_the_taper(edge):
+    below = sky_to_core_weight(edge - TAPER_EPSILON)
+    above = sky_to_core_weight(edge + TAPER_EPSILON)
+
+    assert above == pytest.approx(below, abs=1.0e-5)
+
+
+def test_sky_to_core_weight_of_an_unmeasured_ratio_is_one():
+    # A NAN S/G NEVER STOPPED AN ORDER BEFORE THE TAPER, SO IT STILL DOES NOT
+    assert sky_to_core_weight(float("nan")) == 1.0
+
+
+def _with_taper(monkeypatch, start, end):
+    """Move the taper edges of the module, which ``sky_to_core_weight`` reads at call time."""
+    import soxspipe.commonutils.object_wing_model as module
+
+    monkeypatch.setattr(module, "SKY_TO_CORE_TAPER_START", start)
+    monkeypatch.setattr(module, "SKY_TO_CORE_TAPER_END", end)
+
+
+def test_order_whose_sky_to_core_ratio_is_inside_the_taper_is_partly_corrected(monkeypatch):
+    # ARRANGE
+    order = _build_order(skyLevel=MODERATE_SKY_LEVEL, biasFraction=SKY_DOMINATED_BIAS_FRACTION)
+    full = order.estimate()
+    fullWings = wing_model(full, order.slitPosition)
+    _with_taper(monkeypatch, full.skyToCoreRatio - 0.05, full.skyToCoreRatio + 0.15)
+
+    # ACT
+    estimate = order.estimate()
+    wings = wing_model(estimate, order.slitPosition)
+
+    # ASSERT
+    assert estimate.isCorrected, estimate.reason
+    assert not estimate.isSkyToCoreHigh
+    assert estimate.skyToCoreRatio == full.skyToCoreRatio
+    assert estimate.wingWeight == pytest.approx(0.75)
+    np.testing.assert_allclose(wings, 0.75 * fullWings, rtol=1e-12, atol=1e-12)
+
+
+def test_wing_model_is_continuous_in_the_sky_to_core_ratio_across_the_end_of_the_taper(monkeypatch):
+    # ARRANGE
+    order = _build_order(skyLevel=MODERATE_SKY_LEVEL, biasFraction=SKY_DOMINATED_BIAS_FRACTION)
+    ratio = order.estimate().skyToCoreRatio
+    fullScale = np.abs(wing_model(order.estimate(), order.slitPosition)).max()
+
+    # ACT
+    _with_taper(monkeypatch, ratio - 0.4, ratio + TAPER_EPSILON)
+    justInside = wing_model(order.estimate(), order.slitPosition)
+    _with_taper(monkeypatch, ratio - 0.4, ratio - TAPER_EPSILON)
+    justOutside = order.estimate()
+
+    # ASSERT
+    assert not justOutside.isCorrected
+    assert justOutside.isSkyToCoreHigh
+    assert justOutside.wingWeight == 0.0
+    np.testing.assert_allclose(justInside, wing_model(justOutside, order.slitPosition), atol=1.0e-4 * fullScale)
+
+
+def test_wing_model_is_continuous_in_the_sky_to_core_ratio_across_the_start_of_the_taper(monkeypatch):
+    # ARRANGE
+    order = _build_order(skyLevel=MODERATE_SKY_LEVEL, biasFraction=SKY_DOMINATED_BIAS_FRACTION)
+    ratio = order.estimate().skyToCoreRatio
+    fullScale = np.abs(wing_model(order.estimate(), order.slitPosition)).max()
+
+    # ACT
+    _with_taper(monkeypatch, ratio + TAPER_EPSILON, ratio + 0.4)
+    justBelow = wing_model(order.estimate(), order.slitPosition)
+    _with_taper(monkeypatch, ratio - TAPER_EPSILON, ratio + 0.4 - 2 * TAPER_EPSILON)
+    justInside = wing_model(order.estimate(), order.slitPosition)
+
+    # ASSERT
+    np.testing.assert_allclose(justInside, justBelow, atol=1.0e-4 * fullScale)
 
 
 def test_sky_to_core_ratio_is_the_median_sky_over_core_spectrum_of_the_profile_pixels():
@@ -1717,7 +1823,8 @@ def test_order_whose_sky_is_deeper_than_its_core_spectrum_is_not_corrected_and_t
     assert estimate.isSkyToCoreHigh
     # THE SKY IS FLAT, SO S/G IS THE SKY OVER THE CORE SPECTRUM, WHICH RIPPLES BY +-30% AROUND THE PEAK
     assert estimate.skyToCoreRatio == pytest.approx(THERMAL_SKY_LEVEL / BRIGHT_PEAK, rel=0.2)
-    assert estimate.skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
+    assert estimate.skyToCoreRatio > SKY_TO_CORE_TAPER_END
+    assert estimate.wingWeight == 0.0
     assert "sky-to-core ratio" in estimate.reason
     assert f"{estimate.skyToCoreRatio:.3g}" in estimate.reason
     assert estimate.chunks == ()
@@ -1734,6 +1841,7 @@ def test_order_whose_sky_is_well_below_its_core_spectrum_is_corrected_as_before(
     assert estimate.isCorrected, estimate.reason
     assert not estimate.isSkyToCoreHigh
     assert estimate.skyToCoreRatio == pytest.approx(MODERATE_SKY_LEVEL / BRIGHT_PEAK, rel=0.2)
+    assert estimate.wingWeight == 1.0
     assert estimate.biasLevel == pytest.approx(order.visibleBias, rel=0.1)
     assert len(estimate.chunks) == WING_CHUNKS
 
@@ -1748,7 +1856,7 @@ def test_crowded_slit_with_a_deep_sky_is_still_reported_as_crowded_not_as_sky_to
     # ASSERT
     assert not estimate.isCorrected
     assert estimate.isCrowdedSlit
-    assert estimate.skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
+    assert estimate.skyToCoreRatio > SKY_TO_CORE_TAPER_END
     assert not estimate.isSkyToCoreHigh
     assert "sources" in estimate.reason
 
@@ -1762,6 +1870,6 @@ def test_order_that_another_gate_stops_does_not_set_the_sky_to_core_flag():
 
     # ASSERT
     assert not estimate.isCorrected
-    assert estimate.skyToCoreRatio > MAX_SKY_TO_CORE_RATIO
+    assert estimate.skyToCoreRatio > SKY_TO_CORE_TAPER_END
     assert not estimate.isSkyToCoreHigh
     assert "noise of a faint-sky pixel" in estimate.reason
