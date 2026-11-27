@@ -32,6 +32,8 @@
 | `FWHM PIN MEDIAN` |  Median FWHM of detected lines in pinhole frames (global) | pixels    | VIS: [1.60,1.72], NIR: [1.55,1.85] |
 | `FWHM PIN SD` | Standard deviation in FWHM of detected lines in pinhole frames (global) | pixels | VIS: [0.0,0.16], NIR: [0.0,0.145] |
 | `R PIN MEDIAN` | Median spectral resolution measured from detected lines in pinhole frames  (global) | | - |
+| `WAVE RMS` | RMS of the arc-line residuals along the dispersion axis, over all fitted detections (global). It gives `LAMRMS` | nm | - |
+| `WAVE NLINES` | Number of distinct arc lines in the solution, one per order and wavelength however many pinholes detect it (global). It gives `LAMNLIN` | lines | - |
 | `X RES MAX O<N>`              | Maximum residual in fitting of pinholes along x-axis (order N)  | pixels    | - |
 | `X RES MIN O<N>`              | Minimum residual in fitting of pinholes along x-axis (order N)  | pixels    | - |
 | `X RES MEDIAN O<N>` | Median of absolute residuals in fitting of pinholes along x-axis (order N) | pixels | - |

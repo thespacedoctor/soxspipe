@@ -2621,6 +2621,19 @@ class create_dispersion_map:
             if len(qc_units) != len(qc_names) or len(qc_comments) != len(qc_names) or len(qc_values) != len(qc_names):
                 raise ValueError("Mismatch in lengths of QC arrays")
 
+            # THE WAVELENGTH ACCURACY THE PHASE 3 KEYWORDS LAMRMS AND LAMNLIN ARE READ FROM (DY-2358)
+            waveRmsNm, waveLineCount = self._wavelength_accuracy(orderPixelTable)
+            qc_names.extend(["WAVE RMS", "WAVE NLINES"])
+            qc_values.extend([waveRmsNm, waveLineCount])
+            qc_units.extend(["nm", "lines"])
+            qc_comments.extend(
+                [
+                    "[nm] RMS of the arc-line residuals along the dispersion axis",
+                    "Number of distinct arc lines in the dispersion solution",
+                ]
+            )
+            qc_order.extend([None, None])
+
             uniqueOrders = orderPixelTable["order"].unique()
             for o in uniqueOrders:
                 thisOrder = orderPixelTable.loc[orderPixelTable["order"] == o]
@@ -2742,6 +2755,30 @@ class create_dispersion_map:
 
         self.log.debug("completed the ``calculate_residuals`` method")
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
+
+    def _wavelength_accuracy(self, orderPixelTable):
+        """*the RMS (nm) of the dispersion-axis residuals of the fitted lines, and the number of distinct lines*
+
+        Each residual is converted to nm with the pixel scale of its own line. The RMS is over every detection in the
+        table, which holds the lines that survived the clipping. A line seen through several pinholes is one line, so
+        the count is of distinct (order, wavelength) pairs (DY-2307).
+
+        **Key Arguments:**
+
+        - ``orderPixelTable`` -- the fitted line table, with ``residuals_x``, ``residuals_y`` and ``pixelScaleNm``
+
+        **Return:**
+
+        - ``waveRmsNm`` -- the RMS of the residuals in nm, NaN for an empty table
+        - ``waveLineCount`` -- the number of distinct arc lines
+        """
+        import numpy as np
+
+        residualsNm = orderPixelTable[f"residuals_{self.axisA}"] * orderPixelTable["pixelScaleNm"]
+        residualsNm = residualsNm[np.isfinite(residualsNm)]
+        waveRmsNm = float(np.sqrt(np.mean(np.square(residualsNm)))) if len(residualsNm) else float("nan")
+        waveLineCount = len(orderPixelTable[["order", "wavelength"]].drop_duplicates())
+        return waveRmsNm, int(waveLineCount)
 
     def _measure_slit_resolutions(self, orderPixelTable):
         """*measure the slit resolution and FWHM of every arc line*

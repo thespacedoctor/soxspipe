@@ -41,6 +41,8 @@ def _mapper(log: object) -> create_dispersion_map:
     mapper.dateObs = "2024-01-01T00:00:00"
     mapper.arm = "VIS"
     mapper.inst = "SOXS"
+    # THE DISPERSION AXIS OF THE VIS DETECTOR; THE REAL CLASS SETS IT FROM THE DETECTOR PARAMETERS
+    mapper.axisA = "x"
     return mapper
 
 
@@ -922,8 +924,10 @@ def test_calculate_residuals_returns_analytic_pixel_scale_and_resolution(
     assert {"fit_x_high", "fit_y_high", "fit_x_low", "fit_y_low"}.isdisjoint(table.columns)
     np.testing.assert_allclose(table["R_slit"], [0.0, 0.0])
     np.testing.assert_allclose(table["fwhm_slit_px"], [0.0, 0.0])
-    assert len(mapper.qc.index) == 38
+    assert len(mapper.qc.index) == 40
     assert set(mapper.qc["qc_name"]) >= {
+        "WAVE RMS",
+        "WAVE NLINES",
         "XY RES MEDIAN",
         "XY RES MEDIAN O1",
         "FWHM PIN MEDIAN O1",

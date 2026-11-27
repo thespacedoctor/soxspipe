@@ -1189,6 +1189,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
     def _locate_calibration_tables(self, kw, arm):
         """*locate the order table, the dispersion map table and image, and the response table*
 
+        Sets ``self.dispMap``, the dispersion map table that the merged spectrum takes its wavelength accuracy from.
+
         **Key Arguments:**
 
         - ``kw`` -- the keyword lookup
@@ -1205,9 +1207,10 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
         filterDict = {kw("PRO_CATG"): f"ORDER_TAB_{arm}"}
         orderTablePath = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
 
-        # FIND THE 2D MAP TABLE
+        # FIND THE 2D MAP TABLE. THE MERGED SPECTRUM TAKES ITS WAVELENGTH ACCURACY FROM IT (DY-2358)
         filterDict = {kw("PRO_CATG"): f"DISP_TAB_{arm}"}
         dispMap = self.inputFrames.filter(**filterDict).files_filtered(include_path=True)[0]
+        self.dispMap = dispMap
 
         # FIND THE 2D MAP IMAGE
         filterDict = {kw("PRO_CATG"): f"DISP_IMAGE_{arm}"}
@@ -1744,7 +1747,9 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
             arm=self.arm,
             # THE HEADER OF THE SPECTRUM CARRIES THE SUMMED EXPOSURE TIME. THE EXPTIME ABOVE IS THAT OF ONE FRAME
-            header=with_frame_accounting(combined_object.header, self.onTargetFrames, self.log),
+            header=self._with_wavelength_keywords(
+                with_frame_accounting(combined_object.header, self.onTargetFrames, self.log)
+            ),
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
             sofName=self.productStem,
