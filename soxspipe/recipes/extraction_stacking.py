@@ -207,13 +207,12 @@ class extraction_stacking:
 
         groupedDataframe["SNR"] = groupedDataframe["FLUX_COUNTS"].values / np.sqrt(groupedDataframe["VARIANCE"].values)
 
-        # PREPARING THE HDU
-        for col, decimals in [
-            ("WAVE", 2),
-            ("FLUX_COUNTS", 3),
-            ("SNR", 2),
-            ("FLUX_DENSITY_COUNTS", 3),
-        ]:
+        # PREPARING THE HDU. WAVE IS ALREADY ROUNDED TO 4 DECIMALS BY THE GROUPING ABOVE. ROUNDING IT TO 2 WOULD MOVE A
+        # LOG-GRID POINT BY UP TO HALF OF A BIN, SO ONLY THE LINEAR X-SHOOTER GRIDS KEEP THE 2-DECIMAL WAVE (DY-2348)
+        roundingDecimals = [("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]
+        if str(self.settings.get("instrument", "soxs")).lower() != "soxs":
+            roundingDecimals.insert(0, ("WAVE", 2))
+        for col, decimals in roundingDecimals:
             # ONLY A NOT-FLATTENED STACK HAS A FLUX DENSITY COLUMN (DY-1622)
             if col not in groupedDataframe.columns:
                 continue

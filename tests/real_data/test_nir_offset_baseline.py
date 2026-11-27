@@ -28,7 +28,8 @@ from six bit-identical CI runs (42199793267, 42199797269, 42199800679, 421998048
 multi-pinhole lines and the higher NIR x fit degrees (DY-1989) moved the red end from
 2031.96 to 2030.76 nm, outside its band. The row count fell from 20612 to 20592 and the
 flux-calibrated median rose 0.13%. The SNR median and the detected fraction moved inside
-their bands and were left as they are.
+their bands and were left as they are. Since the `_SPECTRUM` rename (DY-2346) the recipe log is
+`<stem>_SPECTRUM.log`, as for stare (DY-2441).
 """
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ def _offset_product_directory(workspace_path: Path) -> Path:
 def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path) -> None:
     product_directory = _offset_product_directory(reduced_workspace)
     expected_products = {
-        f"{_PRODUCT_STEM}.log",
+        f"{_PRODUCT_STEM}_SPECTRUM.log",
         f"{_PRODUCT_STEM}_SPECTRUM.fits",
         f"{_PRODUCT_STEM}_SPECTRUM.txt",
         f"{_PRODUCT_STEM}_OBJTRACE_STACK.fits",

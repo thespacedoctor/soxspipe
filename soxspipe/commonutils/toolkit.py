@@ -3495,6 +3495,28 @@ def frame_to_32(frame):
     return frame
 
 
+def order_join_key(redOrder: int, blueOrder: int) -> str:
+    """*build the key of the join between two neighbouring orders*
+
+    **Key Arguments:**
+
+    - ``redOrder`` -- the order on the red side of the join
+    - ``blueOrder`` -- the order on the blue side of the join
+
+    **Return:**
+
+    - ``key`` -- the join key, ``"<red order>-<blue order>"``, which ``parse_order_join_key`` reads back
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.toolkit import order_join_key
+    key = order_join_key(4, 1)
+    ```
+    """
+    return f"{redOrder}-{blueOrder}"
+
+
 def parse_order_join_key(key: str) -> tuple[int, int]:
     """*split an order-join key into the two orders it joins*
 
