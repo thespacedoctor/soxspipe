@@ -1,6 +1,6 @@
 """Contracts for the packaged SOXS NIR multi-pinhole predicted-line table.
 
-DY-1989, DY-2084, DY-1970, DY-2173, DY-2171 and DY-2424.
+DY-1989, DY-2084, DY-1970, DY-2173, DY-2171, DY-2424 and DY-2470.
 """
 
 from __future__ import annotations
@@ -21,6 +21,8 @@ from tests.unit._nir_line_tables import (
     MPH_O10_ROWS_BEFORE,
     MPH_TABLE,
     NEI_NM,
+    O11_HGI_OBSERVED_LINES,
+    OBSERVED_WAVELENGTH_ATOL_NM,
     PINHOLES_PER_LINE,
     POSITION_ATOL_PX,
     SLIT_INDEX_AT_CENTRE,
@@ -34,6 +36,7 @@ from tests.unit._nir_line_tables import (
     set_mask,
     set_rows,
     untouched_rows_checksum,
+    with_ritz_wavelengths,
 )
 
 pytestmark = pytest.mark.unit
@@ -54,7 +57,8 @@ NIR_X_ORDER_DEG = 5
 NIR_X_WAVELENGTH_DEG = 6
 # DY-2084: XeI AND HgI WAVELENGTHS ARE NIST RITZ VALUES, NOT NIST OBSERVED VALUES; DY-2173: SO ARE THE Ar I AND Ar II
 # WAVELENGTHS. DY-2172: THE SINGLE-PINHOLE TABLE CARRIES THE SAME XeI AND HgI VALUES OUTSIDE ORDERS 10 AND 11
-# (ORDER, ION, NIST OBSERVED nm, NIST RITZ nm). THE ARC MEASURES THE RITZ VALUE FOR THE FIRST SIX
+# (ORDER, ION, NIST OBSERVED nm, NIST RITZ nm). THE ARC MEASURES THE RITZ VALUE FOR THE FIRST SIX. DY-2470 MOVED THE O11
+# HgI 1719.828 AND 1732.896 SETS TO THEIR NIST OBSERVED WAVELENGTHS (O11_HGI_OBSERVED_LINES)
 RITZ_LINES = [
     (12, "XeI", 1605.203, 1605.329),
     (13, "XeI", 1465.985, 1466.080),
@@ -62,11 +66,7 @@ RITZ_LINES = [
     (16, "XeI", 1227.289, 1227.1902),
     (16, "HgI", 1215.9, 1216.008),
     (14, "HgI", 1342.658, 1342.635),
-    # THE ARC PREFERS NIST OBSERVED FOR 1719.868 AND 1732.942 (BY 0.3 A), BUT LEFT THERE THEY MAKE THE SET-OFFSET GUARD
-    # CLIP 1692.017, AND THE O11 SKY GETS WORSE, SO ALL O11 HgI LINES TAKE RITZ
     (11, "HgI", 1692.017, 1692.027),
-    (11, "HgI", 1719.868, 1719.828),
-    (11, "HgI", 1732.942, 1732.896),
 ]
 # DY-2173: (ORDER, ION, nm) SETS REMOVED BECAUSE NO NIST Ar I OR Ar II LINE MATCHES THEM. EACH WAS EITHER MEASURED ON
 # BOTH NIR ARCS WITH NO NIST LINE WITHIN 0.25 A OF ITS ARC POSITION, OR MEASURED ON NEITHER ARC WITH NO NIST LINE NEAR
@@ -306,11 +306,11 @@ TOUCHED_SETS = [(ion, wavelength) for ion, wavelength, _ in O10_ADDED_OR_RESTORE
 # REGENERATE WITH untouched_rows_checksum(read_table(MPH_TABLE), EDITED_ORDER, TOUCHED_SETS);
 # A LATER LEGITIMATE EDIT TO ORDER 10 MUST RE-RECORD IT
 UNTOUCHED_O10_CHECKSUM = "d45813e7c8681c928001a6c97b436547ab43ab38561116ef4cf60b0cc742d462"
-# SHA-256 OF EVERY ROW OF EACH ORDER OTHER THAN 10, IN FILE ORDER, RE-RECORDED IN DY-2173 (ORDER 9 HELD ONLY THE BARE
-# 'Ar' 2073.36 SET, SO IT IS GONE). REGENERATE WITH order_checksums(read_table(MPH_TABLE));
+# SHA-256 OF EVERY ROW OF EACH ORDER OTHER THAN 10 AND 11 (ORDER 11: DEVELOP_O11_CHECKSUM), IN FILE ORDER, RE-RECORDED
+# IN DY-2173 (ORDER 9 HELD ONLY THE BARE 'Ar' 2073.36 SET, SO IT IS GONE).
+# REGENERATE WITH order_checksums(read_table(MPH_TABLE));
 # A LATER LEGITIMATE EDIT TO ANY OF THESE ORDERS MUST RE-RECORD IT
 UNEDITED_ORDER_CHECKSUMS = {
-    11: "448f47fce8b45d467d500d9633311fcedcf7394191cd594b565b71bd1ecd5eca",
     12: "03ecde37d579c0f24d44cc0f099cd90114742bd9f238d3b056adb9361728bf8f",
     13: "ce3eb3217399b0aed9684425d99cd665730c7d0a08c56b0749b028fc00316ed8",
     14: "f6d049bc5f51ec1ef12fe854692b02d8da64726464255c7743bea10314849860",
@@ -325,6 +325,11 @@ UNEDITED_ORDER_CHECKSUMS = {
     23: "ed364e57809d2596408af2ea1d7afd1f31ad6ac19f1996b963a2d90273d3edeb",
     24: "866fe14d5f2bf67fcc0bcee0c37a8d3f408c55170d4524996bccb1dde572a2fb",
 }
+
+
+# SHA-256 OF EVERY ORDER 11 ROW ON DEVELOP 17286ad6, BEFORE DY-2470. ORDER 11 MUST MATCH IT ONCE THE TWO HgI SETS OF
+# O11_HGI_OBSERVED_LINES ARE MOVED BACK TO RITZ, SO THEIR PINHOLE POSITIONS AND EVERY OTHER ORDER 11 ROW ARE UNCHANGED
+DEVELOP_O11_CHECKSUM = "448f47fce8b45d467d500d9633311fcedcf7394191cd594b565b71bd1ecd5eca"
 
 
 def _uncurated_rows(name: str) -> Table:
@@ -594,6 +599,31 @@ def test_line_carries_its_nist_ritz_wavelength(order: int, ion: str, observed: f
     assert not np.any(np.isclose(wavelengths, observed, rtol=0, atol=WAVELENGTH_ATOL_NM))
 
 
+@pytest.mark.parametrize(("order", "ion", "ritz", "observed"), O11_HGI_OBSERVED_LINES)
+def test_o11_hgi_set_carries_its_nist_observed_wavelength(order: int, ion: str, ritz: float, observed: float) -> None:
+    # ARRANGE
+    table = read_table(MPH_TABLE)
+
+    # ACT
+    observedRows = set_rows(table, order, ion, observed, OBSERVED_WAVELENGTH_ATOL_NM)
+    ritzRows = set_rows(table, order, ion, ritz)
+
+    # ASSERT
+    assert sorted(observedRows["slit_index"]) == list(range(PINHOLES_PER_LINE))
+    assert len(ritzRows) == 0
+
+
+def test_order_11_differs_from_develop_only_by_the_observed_hgi_wavelengths() -> None:
+    # ARRANGE
+    table = with_ritz_wavelengths(read_table(MPH_TABLE), O11_HGI_OBSERVED_LINES)
+
+    # ACT
+    checksums = order_checksums(table)
+
+    # ASSERT
+    assert checksums[11] == DEVELOP_O11_CHECKSUM
+
+
 @pytest.mark.parametrize("wavelength", O10_REMOVED_ARII_NM)
 def test_mislabelled_arii_set_is_absent_from_order_10(wavelength: float) -> None:
     # ARRANGE
@@ -671,7 +701,7 @@ def test_order_10_rows_the_edit_did_not_touch_match_the_recorded_checksum() -> N
 
 
 @pytest.mark.parametrize("order", sorted(UNEDITED_ORDER_CHECKSUMS))
-def test_orders_other_than_10_match_develop_row_for_row(order: int) -> None:
+def test_orders_other_than_10_and_11_match_develop_row_for_row(order: int) -> None:
     # ARRANGE
     table = read_table(MPH_TABLE)
 

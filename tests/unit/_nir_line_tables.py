@@ -40,6 +40,14 @@ DROPPED_SETS = [
     (16, "ArII", 1202.71),
 ]
 DROPPED_SET_ATOL_NM = 0.006
+# DY-2470: (ORDER, ION, NIST RITZ nm, NIST OBSERVED nm) OF THE O11 HgI SETS THAT BOTH PINHOLE TABLES CARRY AT THEIR NIST
+# OBSERVED AIR WAVELENGTH (NIST ASD Hg I, OBSERVED +- 0.02 nm). THE ARC PUTS BOTH LINES 0.4 A FROM RITZ AND ON OBSERVED
+O11_HGI_OBSERVED_LINES = [
+    (11, "HgI", 1719.828, 1719.867),
+    (11, "HgI", 1732.896, 1732.941),
+]
+# THE MOVED ROWS CARRY THE NIST VALUE EXACTLY, AS NIST PRINTS IT
+OBSERVED_WAVELENGTH_ATOL_NM = 1e-9
 COLUMNS = ["ion", "wavelength", "order", "slit_index", "slit_position", "detector_x", "detector_y"]
 
 
@@ -177,3 +185,22 @@ def untouched_rows_checksum(table: Table, order: int, touchedSets: list[tuple[st
     for ion, wavelength in touchedSets:
         keep &= ~set_mask(table, order, ion, wavelength)
     return rows_checksum(table[keep])
+
+
+def with_ritz_wavelengths(table: Table, lines: list[tuple[int, str, float, float]]) -> Table:
+    """*return a copy of a table with each line moved from its observed back to its Ritz wavelength*
+
+    **Key Arguments:**
+
+    - ``table`` -- a line table
+    - ``lines`` -- ``(order, ion, ritz nm, observed nm)`` of each line to move back
+
+    **Return:**
+
+    - ``reverted`` -- a copy of ``table`` in which the rows of each line carry its Ritz wavelength
+    """
+    reverted = table.copy()
+    for order, ion, ritz, observed in lines:
+        rows = set_mask(reverted, order, ion, observed, OBSERVED_WAVELENGTH_ATOL_NM)
+        reverted["wavelength"][rows] = ritz
+    return reverted
