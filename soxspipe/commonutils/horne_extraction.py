@@ -1319,8 +1319,9 @@ class horne_extraction(base_util):
         and to have a per-order fallback. The sky lines of every order are then matched with a tight tolerance and
         fitted together (``nir_sky_velocity``): one velocity (``Δλ/λ``) that is a polynomial in wavelength for every
         order except those of the ``own-correction-orders`` setting, which keep their own pixel correction
-        (``nir_sky_refit``). A frame with too few lines, or lines that do not fit, is tuned order by order and the
-        ``SKY TUNING`` QC says so.
+        (``nir_sky_refit``). If only the velocity fit fails, every order keeps its pixel correction, the reason is
+        logged and the ``SKY TUNING`` QC stays ``skylines-global``. If the pixel fit itself falls back, or no order
+        gives a seed, the frame is tuned order by order and the QC says ``skylines-per-order``.
 
         **Key Arguments:**
 
