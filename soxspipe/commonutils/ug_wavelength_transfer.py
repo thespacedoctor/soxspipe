@@ -60,6 +60,7 @@ SECONDS_PER_DAY = 86400.0
 MINUTES_DECIMALS = 6
 COEFFICIENTS_KEY = "ug-wavelength-transfer"
 MODEL_TERMS = ("m", "cos", "sin")
+RMS_TERM = "rms_px"
 R_COEFFICIENTS_KEY = "r-from-i-transfer"
 R_MODEL_TERMS = ("i", "cos", "sin", "rms_px")
 
@@ -101,6 +102,48 @@ def load_ug_transfer_coefficients(detectorParams):
         if not all(math.isfinite(value) for value in coeffs[order].values()):
             raise ValueError(f"the {COEFFICIENTS_KEY} detector parameters hold a non-finite term for order {order}")
     return coeffs
+
+
+def load_ug_rms_px(detectorParams):
+    """*read the leave-one-night-out rms (px) of the u/g transfer model from the arm's detector parameters (DY-2359)*
+
+    It is the uncertainty of a u or g shift that the model predicts.
+
+    **Key Arguments:**
+
+    - ``detectorParams`` -- the arm's detector parameters (the ``VIS`` block of ``soxs_detector_parameters.yaml``)
+
+    **Return:**
+
+    - ``rmsPx`` -- ``{order: rms_px}`` for orders 2 and 3, or *None* if the arm has no ``ug-wavelength-transfer`` block
+
+    A block that is present but lacks an ``rms_px``, or holds one that is not a finite positive number, raises
+    ``ValueError``.
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.ug_wavelength_transfer import load_ug_rms_px
+    rmsPx = load_ug_rms_px(self.detectorParams)
+    ```
+    """
+    block = detectorParams.get(COEFFICIENTS_KEY)
+    if block is None:
+        return None
+    orders = block.get("orders") or {}
+    rmsPx = {}
+    for order in PREDICTED_ORDERS:
+        try:
+            rmsPx[order] = float(orders[order][RMS_TERM])
+        except (KeyError, TypeError, ValueError) as e:
+            raise ValueError(
+                f"the {COEFFICIENTS_KEY} detector parameters need a numeric {RMS_TERM} for order {order} ({e})"
+            ) from e
+        if not math.isfinite(rmsPx[order]) or rmsPx[order] <= 0:
+            raise ValueError(
+                f"the {COEFFICIENTS_KEY} detector parameters need a finite positive {RMS_TERM} for order {order}"
+            )
+    return rmsPx
 
 
 def predict_ug_detector_shifts(deltaRpx, deltaIpx, scienceAngleDeg, calibrationAngleDeg, coeffs):
@@ -223,6 +266,25 @@ def combine_r_shift_px(measuredPx, measuredSigmaPx, predictedPx, predictionSigma
     weightMeasured = 1 / max(measuredSigmaPx, MIN_MEASURED_SIGMA_PX) ** 2
     weightPredicted = 1 / predictionSigmaPx**2
     return (weightMeasured * measuredPx + weightPredicted * predictedPx) / (weightMeasured + weightPredicted)
+
+
+def combine_r_sigma_px(measuredSigmaPx, predictionSigmaPx):
+    """*the uncertainty of the inverse-variance combination of the measured and predicted r shifts (DY-2359)*
+
+    It uses the weights ``combine_r_shift_px`` uses, so the measured sigma is floored at ``MIN_MEASURED_SIGMA_PX``.
+
+    **Key Arguments:**
+
+    - ``measuredSigmaPx`` -- the uncertainty (px) of the r shift measured from the sky lines
+    - ``predictionSigmaPx`` -- the model's rms (px)
+
+    **Return:**
+
+    - ``sigmaPx`` -- the uncertainty of the combined shift (px), ``1 / sqrt(1 / measured^2 + 1 / predicted^2)``
+    """
+    weightMeasured = 1 / max(measuredSigmaPx, MIN_MEASURED_SIGMA_PX) ** 2
+    weightPredicted = 1 / predictionSigmaPx**2
+    return 1 / math.sqrt(weightMeasured + weightPredicted)
 
 
 def usable_rotator_angle(header, kw):

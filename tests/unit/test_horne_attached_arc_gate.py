@@ -351,7 +351,8 @@ def test_an_attached_soxs_arc_skips_tuning_and_records_it(log: object, tmp_path:
     assert extractor.calls == []
     assert "tuned" not in result.columns
     assert qc_by_name(extractor, TUNING_QC)["qc_value"] == SKIPPED_QC
-    assert not [name for name in extractor.qc["qc_name"] if name.startswith("SKY SHIFT")]
+    # NO SHIFT, PX OR SRC CARD: THE ORDERS ARE NOT SHIFTED. A SOXS VIS FRAME STILL GETS THE ERROR CARDS (DY-2359)
+    assert not [name for name in extractor.qc["qc_name"] if name.startswith("SKY SHIFT") and not name.endswith(" ERR")]
     printed = [message for level, message in log.messages if level == "print"]
     assert any("Attached arc (Δt 4.0 min, Δrot 0.5°): skyline wavelength tuning skipped" in m for m in printed)
 

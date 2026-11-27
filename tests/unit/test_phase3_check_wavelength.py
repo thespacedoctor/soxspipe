@@ -120,3 +120,34 @@ def test_a_non_integer_line_count_fails(tmp_path: Path, log: object) -> None:
 
     # ASSERT
     assert any("LAMNLIN" in message and "must be int" in message for message in messages)
+
+
+def test_a_negative_spec_sye_fails(tmp_path: Path, log: object) -> None:
+    # ACT
+    messages = _mentioning(failure_messages(tmp_path, log, primary={"SPEC_SYE": -0.001}), "SPEC_SYE")
+
+    # ASSERT
+    assert any("outside its allowed range" in message and "house rule, DY-2359" in message for message in messages)
+
+
+@pytest.mark.parametrize("value", [0.0, 0.0285])
+def test_a_spec_sye_of_zero_or_more_passes(tmp_path: Path, log: object, value: float) -> None:
+    # ARRANGE: THE STANDARD ALLOWS 0 WHEN THE SYSTEMATIC ERROR IS KNOWN TO BE INSIGNIFICANT
+
+    # ACT
+    messages = failure_messages(tmp_path, log, primary={"SPEC_SYE": value})
+
+    # ASSERT
+    assert _mentioning(messages, "SPEC_SYE") == []
+
+
+def test_a_missing_spec_sye_is_a_warning_and_the_range_rule_is_not_applied(tmp_path: Path, log: object) -> None:
+    # ARRANGE: A NIR PRODUCT HAS NO SPEC_SYE UNTIL ITS ERROR FORMULAS EXIST
+    product = phase3_spectrum_file(tmp_path / PRODUCT_NAME, log, primary={"SPEC_SYE": None})
+
+    # ACT
+    findings = check_phase3(product)
+
+    # ASSERT
+    assert _mentioning(finding_messages(findings, "failure"), "SPEC_SYE") == []
+    assert any("SPEC_SYE" in message and "missing" in message for message in finding_messages(findings, "warning"))

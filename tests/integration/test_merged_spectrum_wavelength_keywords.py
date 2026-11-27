@@ -220,3 +220,77 @@ def test_the_stare_flux_calibration_header_has_the_cards_of_the_map_the_extracti
     stamped = arguments[0]["header"]
     assert stamped["SPEC_RES"] == _nominal_spec_res(log, "SLIT1.5")
     assert (stamped["LAMRMS"], stamped["LAMNLIN"]) == (WAVE_RMS_NM, WAVE_NLINES)
+
+
+SKY_SHIFT_ERRORS_NM = {1: 0.0182, 2: 0.024, 3: 0.0285, 4: 0.0031}
+
+
+def _with_sky_shift_errors(recipe: Any, errors: dict[int, float]) -> Any:
+    """Give the recipe the ``SKY SHIFT O<n> ERR`` QCs that its extractions wrote."""
+    from soxspipe.commonutils.toolkit import append_qc
+
+    for order, errorNm in errors.items():
+        recipe.qc = append_qc(
+            recipe.qc, recipe.recipeName, f"SKY SHIFT O{order} ERR", errorNm, "c", "d", "d", qcUnit="nm", qcOrder=order
+        )
+    return recipe
+
+
+@pytest.mark.parametrize(
+    ("recipeClass", "names"), [(soxs_nod, NOD_NAMES), (soxs_offset, OFFSET_NAMES)], ids=["nod", "offset"]
+)
+def test_the_stacked_spectrum_file_has_spec_sye_and_the_checker_accepts_it(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch, recipeClass: type, names: list[str]
+) -> None:
+    # ARRANGE
+    recipe = _with_slit_and_map(
+        _recipe(recipeClass, tmp_path, log, monkeypatch, names), "SLIT1.5", disp_tab_with_qcs(tmp_path, **_wave_qcs())
+    )
+    _with_sky_shift_errors(recipe, SKY_SHIFT_ERRORS_NM)
+
+    # ACT
+    _, filePath = recipe.stack_extractions([_spectrum()])
+
+    # ASSERT
+    assert fits.getheader(filePath)["SPEC_SYE"] == max(SKY_SHIFT_ERRORS_NM.values())
+    assert [f.message for f in check_phase3(filePath) if "SPEC_SYE" in f.message] == []
+
+
+def test_the_header_given_to_the_nod_flux_calibration_has_spec_sye(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    recipe = _with_slit_and_map(
+        _recipe(soxs_nod, tmp_path, log, monkeypatch, NOD_NAMES), "SLIT1.0", disp_tab_with_qcs(tmp_path, **_wave_qcs())
+    )
+    _with_sky_shift_errors(recipe, SKY_SHIFT_ERRORS_NM)
+    captured = _capture_flux_calibration(monkeypatch, "soxspipe.recipes.soxs_nod")
+    stacked, _ = recipe.stack_extractions([_spectrum()])
+    responsePath = str(response_product_fits(tmp_path / "RESP_TAB_VIS.fits"))
+
+    # ACT
+    recipe._flux_calibrate_nod_stack(responsePath, stacked, [_frame(1), _frame(3)], [_frame(2), _frame(4)])
+
+    # ASSERT
+    assert captured[0]["header"]["SPEC_SYE"] == max(SKY_SHIFT_ERRORS_NM.values())
+
+
+def test_a_nir_spectrum_has_no_spec_sye_one_warning_and_only_a_checker_warning(
+    tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from soxspipe.commonutils.phase3_check import WARNING
+
+    # ARRANGE: THE NIR ARM WRITES NO SKY SHIFT ERROR QCs YET
+    recipe = _with_slit_and_map(
+        _recipe(soxs_nod, tmp_path, log, monkeypatch, NOD_NAMES), "SLIT1.0", disp_tab_with_qcs(tmp_path, **_wave_qcs())
+    )
+    recipe.arm = "NIR"
+
+    # ACT
+    _, filePath = recipe.stack_extractions([_spectrum()])
+
+    # ASSERT
+    assert "SPEC_SYE" not in fits.getheader(filePath)
+    assert len([m for m in _warnings(log) if "SPEC_SYE" in m]) == 1
+    findings = [f for f in check_phase3(filePath) if "SPEC_SYE" in f.message]
+    assert [f.severity for f in findings] == [WARNING]
