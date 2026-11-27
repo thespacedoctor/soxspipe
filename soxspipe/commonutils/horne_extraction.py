@@ -52,13 +52,14 @@ class shift_source(NamedTuple):
     comment: str
 
 
-# THE VALUES OF THE SKY SHIFT O<n> SRC CARD: THE SHIFT COMES FROM THE ORDER'S OWN SKY LINES, FROM A PREDICTION (VIS r
-# AND u/g, OR NIR), OR WAS NEVER APPLIED, SO THE 0 IN ITS SKY SHIFT O<n> CARD IS A PLACEHOLDER
+# THE VALUES OF THE SKY SHIFT O<n> SRC CARD: THE SHIFT COMES FROM THE ORDER'S OWN SKY LINES OR FROM THE NIR GLOBAL FIT
+# (MEASURED), FROM A PREDICTION (MODEL: VIS r PREDICTED OR COMBINED, AND VIS u/g), OR WAS NEVER APPLIED, SO THE 0 IN ITS
+# SKY SHIFT O<n> CARD IS A PLACEHOLDER (NONE)
 SHIFT_SOURCE_MEASURED = "measured"
 SHIFT_SOURCE_MODEL = "model"
 SHIFT_SOURCE_NONE = "none"
 # AN ORDER THE TUNING NEVER MEASURED (NO DATA OR NO MATCHED LINE) HAS NO STATISTICS TO CARRY ITS SOURCE
-UNMEASURED_ORDER_SOURCE = shift_source(SHIFT_SOURCE_NONE, "no sky line matched")
+NO_SKY_LINE_SHIFT_SOURCE = shift_source(SHIFT_SOURCE_NONE, "no sky line matched")
 # THE 80-CHARACTER FITS CARD LEAVES ABOUT 31 CHARACTERS FOR THE COMMENT OF A SKY SHIFT O<n> SRC CARD
 SNR_REFUSAL_COMMENT = "sky-line SNR below threshold"
 SECOND_LINE_REFUSAL_COMMENT = "2nd sky line SNR below min"
@@ -1656,16 +1657,21 @@ class horne_extraction(base_util):
         }
 
     @staticmethod
-    def _with_shift_source(stats, source):
+    def _with_shift_source(stats: dict[str, Any] | None, source: shift_source) -> dict[str, Any] | None:
         """Return the order's sky-line statistics with the source of its shift added, or None if it has no data."""
         return None if stats is None else {**stats, "shiftSource": source}
 
     @staticmethod
-    def _per_order_shift_source(stats):
+    def _kept_line_count(stats: dict[str, Any] | None) -> int:
+        """Return the sky lines an order kept, 0 if it has no statistics."""
+        return 0 if stats is None else stats["nLines"]
+
+    @staticmethod
+    def _per_order_shift_source(stats: dict[str, Any] | None) -> shift_source:
         """Return the source of an order tuned on its own without guards: measured if it kept a sky line."""
-        nLines = 0 if stats is None else stats["nLines"]
+        nLines = horne_extraction._kept_line_count(stats)
         if nLines < 1:
-            return UNMEASURED_ORDER_SOURCE
+            return NO_SKY_LINE_SHIFT_SOURCE
         return shift_source(SHIFT_SOURCE_MEASURED, f"{nLines} sky lines kept")
 
     def _measure_order_shift(self, orderDF, o, seedNm=0.0, tolerances=SKYLINE_TOLERANCES_NM):
@@ -1843,7 +1849,7 @@ class horne_extraction(base_util):
         return sky_line_snr_reason(o, stats["lineSnr"])
 
     @staticmethod
-    def _refused_shift_source(stats):
+    def _refused_shift_source(stats: dict[str, Any] | None) -> shift_source:
         """Return the ``none`` source of an order that ``_unusable_shift_reason`` refuses, naming the guard.
 
         The SNR is not quoted: ``SKY LINE SNR O<n>`` is rounded to 0.1, so a refusal just below the threshold reads as
@@ -1851,7 +1857,7 @@ class horne_extraction(base_util):
         """
         from soxspipe.commonutils.ug_wavelength_transfer import MIN_SHIFT_LINES
 
-        nLines = 0 if stats is None else stats["nLines"]
+        nLines = horne_extraction._kept_line_count(stats)
         if nLines < MIN_SHIFT_LINES:
             return shift_source(SHIFT_SOURCE_NONE, f"{nLines} sky lines kept (min {MIN_SHIFT_LINES})")
         return shift_source(SHIFT_SOURCE_NONE, SNR_REFUSAL_COMMENT)
@@ -2188,7 +2194,7 @@ class horne_extraction(base_util):
                 qcOrder=int(order),
             )
 
-    def _record_order_source_qc(self, order, source):
+    def _record_order_source_qc(self, order: "int | np.integer", source: shift_source) -> None:
         """Append the ``SKY SHIFT O<n> SRC`` QC: ``measured``, ``model`` or ``none``, with the reason as the comment."""
         from soxspipe.commonutils.toolkit import append_qc, utcnow_string
 
@@ -2240,7 +2246,7 @@ class horne_extraction(base_util):
         """
         from soxspipe.commonutils.ug_wavelength_transfer import nm_shift_to_detector_px
 
-        sources = {o: orderStats.get(o, {}).get("shiftSource", UNMEASURED_ORDER_SOURCE) for o in uniqueOrders}
+        sources = {o: orderStats.get(o, {}).get("shiftSource", NO_SKY_LINE_SHIFT_SOURCE) for o in uniqueOrders}
         if arm.upper() == "VIS":
             shiftsNm, ugSources = self._apply_ug_transfer(shiftsNm, orderStats, dispersions)
             sources.update(ugSources)
