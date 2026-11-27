@@ -399,12 +399,15 @@ def _star_sky_with_weight(log: Any, monkeypatch: pytest.MonkeyPatch, weight: flo
 def test_a_correction_weight_near_zero_gives_the_sky_model_of_no_correction(
     log: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # ARRANGE
     order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
     uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order).sort_index()["sky_model"]
     corrected = _star_sky_with_weight(log, monkeypatch, 1.0)
 
+    # ACT
     nearlyOff = _star_sky_with_weight(log, monkeypatch, 1.0e-6)
 
+    # ASSERT
     step = np.abs(corrected - uncorrected.to_numpy()).max()
     assert step > 0
     np.testing.assert_allclose(nearlyOff, uncorrected.to_numpy(), atol=1.0e-3 * step)
@@ -413,12 +416,15 @@ def test_a_correction_weight_near_zero_gives_the_sky_model_of_no_correction(
 def test_a_half_weight_correction_takes_half_the_wing_light_out_of_the_sky_model(
     log: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # ARRANGE
     order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
     uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order).sort_index()["sky_model"]
     corrected = _star_sky_with_weight(log, monkeypatch, 1.0)
 
+    # ACT
     half = _star_sky_with_weight(log, monkeypatch, 0.5)
 
+    # ASSERT
     # THE REFIT CLIPS A FEW PIXELS DIFFERENTLY, SO THE SHIFT IS COMPARED BY ITS MEDIAN, NOT PIXEL BY PIXEL
     fullShift = np.median(corrected - uncorrected.to_numpy())
     halfShift = np.median(half - uncorrected.to_numpy())
@@ -437,8 +443,10 @@ def test_a_partly_corrected_order_is_logged_with_its_ratio_weight_and_scaled_flu
         wingWeight=0.475,
     )
 
+    # ACT
     line = subtractSkyModule._object_wing_log_line(13, estimate)
 
+    # ASSERT
     assert "PARTIAL" in line
     assert "S/G 1.01" in line
     assert "WEIGHT 0.475" in line
@@ -451,11 +459,33 @@ def test_a_fully_corrected_order_is_logged_with_its_ratio_and_not_as_partial() -
         biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16, chunks=(), isThermalSingleProfile=False, **FULL_WEIGHT
     )
 
+    # ACT
     line = subtractSkyModule._object_wing_log_line(16, estimate)
 
+    # ASSERT
     assert "PARTIAL" not in line
     assert "S/G 0.1" in line
     assert "REMOVING ABOUT 16.00% OF THE OBJECT FLUX" in line
+
+
+def test_a_corrected_order_without_a_measured_ratio_is_logged_as_unmeasured() -> None:
+    # ARRANGE
+    estimate = SimpleNamespace(
+        biasLevel=0.6,
+        skyLevel=24.0,
+        slitLossFraction=0.16,
+        chunks=(),
+        isThermalSingleProfile=False,
+        skyToCoreRatio=float("nan"),
+        wingWeight=1.0,
+    )
+
+    # ACT
+    line = subtractSkyModule._object_wing_log_line(16, estimate)
+
+    # ASSERT
+    assert "S/G UNMEASURED" in line
+    assert "nan" not in line.lower()
 
 
 @pytest.mark.parametrize("skyLevel", [0.0, -5.0, 1e-12])

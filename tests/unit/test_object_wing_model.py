@@ -1700,9 +1700,11 @@ def test_sky_to_core_weight_falls_linearly_inside_the_taper(fraction):
 
 @pytest.mark.parametrize("edge", [SKY_TO_CORE_TAPER_START, SKY_TO_CORE_TAPER_END])
 def test_sky_to_core_weight_is_continuous_at_both_edges_of_the_taper(edge):
+    # ACT
     below = sky_to_core_weight(edge - TAPER_EPSILON)
     above = sky_to_core_weight(edge + TAPER_EPSILON)
 
+    # ASSERT
     assert above == pytest.approx(below, abs=1.0e-5)
 
 

@@ -354,7 +354,8 @@ def _object_wing_log_line(order, estimate):
         chunkText = (
             f" (THERMAL ORDER ABOVE {SINGLE_PROFILE_MIN_WAVELENGTH_NM:g} nm, SO IT USED THE SINGLE WHOLE-ORDER PROFILE)"
         )
-    ratioText = f"S/G {estimate.skyToCoreRatio:0.3g}"
+    ratio = estimate.skyToCoreRatio
+    ratioText = f"S/G {ratio:0.3g}" if math.isfinite(ratio) else "S/G UNMEASURED"
     if estimate.wingWeight < 1:
         ratioText = (
             f"PARTIAL CORRECTION: {ratioText} IS INSIDE THE TAPER {SKY_TO_CORE_TAPER_START:g} TO "
