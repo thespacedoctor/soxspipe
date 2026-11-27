@@ -831,6 +831,7 @@ def test_skyline_tuning_after_the_no_trace_fallback_knows_the_instrument(
     extractor._order_sky_line_snrs = lambda *args: np.array([100.0, 100.0])
     extractor._signed_order_dispersions = lambda *args: {}
     extractor._record_order_shift_qc = lambda *args, **kwargs: None
+    extractor._record_order_source_qc = lambda *args, **kwargs: None
     extractor._record_line_snr_qc = lambda *args: None
     extraction = pd.DataFrame(
         {"order": [1, 4], "wavelengthMean": [600.0, 750.0], "pixelScaleNm": [0.1, 0.1]},
@@ -1791,6 +1792,7 @@ def test_skyline_tuning_recovers_the_offset_of_a_flat_topped_line_with_a_central
     extractor._get_local_skylines_for_order = lambda *args: (np.array([catalogueLine]), np.array([catalogueLine]))
     recordedShifts: list[float] = []
     extractor._record_order_shift_qc = lambda order, shift, shiftPx=None: recordedShifts.append(shift)
+    extractor._record_order_source_qc = lambda *args, **kwargs: None
     extractor._signed_order_dispersions = lambda *args: {}
     extractor.detectorParams = {}
 
@@ -2606,6 +2608,7 @@ def test_wavelength_tuning_shifts_only_the_orders_it_measures_and_leaves_vis_u_a
         np.array([0.0, 0.0]),
     )
     extractor._record_order_shift_qc = lambda order, shift, shiftPx=None: recordedOrders.append((order, shift))
+    extractor._record_order_source_qc = lambda *args, **kwargs: None
     # A BRIGHT SKY, SO THE DY-1663 SKY-LINE SNR GATE PASSES
     extractor._order_sky_line_snrs = lambda *args: np.array([100.0, 100.0])
     extractor._record_line_snr_qc = lambda *args: None

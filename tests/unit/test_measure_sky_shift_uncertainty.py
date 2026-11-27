@@ -409,6 +409,90 @@ def test_unmeasured_orders_counts_a_nir_shift_that_has_no_px_card_but_is_not_zer
     assert leftOut == {}
 
 
+def _with_source_cards(header: fits.Header, sources: dict[int, str], comment: str = "reason") -> fits.Header:
+    """*the header with a ``SKY SHIFT O<n> SRC`` card for each order, as the pipeline writes them (DY-2461)*"""
+    for order, source in sources.items():
+        header[shift_tool.shift_source_card(order)] = (source, comment)
+    return header
+
+
+def test_the_source_card_names_and_values_are_the_ones_the_pipeline_writes() -> None:
+    # ARRANGE: THE SCRIPT READS WORDING THE PIPELINE WRITES, SO A CHANGE THERE MUST FAIL HERE
+    common.ensure_repo_on_path()
+    from soxspipe.commonutils.horne_extraction import SHIFT_SOURCE_NONE
+
+    # ACT / ASSERT
+    assert shift_tool.shift_source_card(4) == "ESO QC SKY SHIFT O4 SRC"
+    assert shift_tool.SOURCE_NONE == SHIFT_SOURCE_NONE
+
+
+def test_read_sky_shifts_skips_the_source_cards() -> None:
+    # ARRANGE
+    header = _with_source_cards(_science_header(shifts={1: 0.1}), {1: "measured"})
+
+    # ACT
+    shifts = shift_tool.read_sky_shifts(header)
+
+    # ASSERT
+    assert shifts == {1: 0.1}
+
+
+def test_unmeasured_orders_names_each_order_whose_source_card_is_none() -> None:
+    # ARRANGE: A VIS i ORDER REFUSED AT AN SNR THE ROUNDED CARD CANNOT SHOW, WITH NO UG SHIFT SOURCE CARD TO SAY SO
+    header = _vis_header(VIS_SHIFTS, rSource=None, ugSource=None, iSnr=9.0)
+    _with_source_cards(header, {1: "measured", 2: "model", 3: "model", 4: "none"}, "sky-line SNR below threshold")
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [4]
+    assert "SKY SHIFT O4 SRC" in leftOut[4]
+    assert "sky-line SNR below threshold" in leftOut[4]
+
+
+def test_unmeasured_orders_names_a_nir_per_order_fallback_order_that_has_a_px_card() -> None:
+    # ARRANGE: THE FALLBACK WRITES 0.0 WITH A PX CARD FOR AN ORDER THAT MATCHED NO SKY LINE
+    header = _science_header(arm="NIR", shifts={11: 0.02, 12: 0.0})
+    _with_source_cards(header, {11: "measured", 12: "none"}, "no sky line matched")
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "NIR", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [12]
+
+
+def test_unmeasured_orders_counts_a_measured_zero_that_the_source_card_vouches_for() -> None:
+    # ARRANGE: A NIR ORDER WITH NO PX CARD AND A VIS i AT THE SNR LIMIT, EACH MEASURED AT EXACTLY 0.000 nm. THE OLD
+    # INFERENCE WOULD LEAVE BOTH OUT
+    nir = _with_source_cards(_science_header(arm="NIR", shifts={11: 0.02}), {11: "measured", 12: "measured"})
+    nir[shift_tool.shift_card(12)] = 0.0
+    vis = _vis_header({1: 0.01, 2: 0.0, 3: 0.0, 4: 0.0}, ugSource="none", ugComment="order 4: 12 sky lines", iSnr=5.4)
+    _with_source_cards(vis, {1: "measured", 2: "none", 3: "none", 4: "measured"})
+
+    # ACT
+    leftOutNir = shift_tool.unmeasured_orders(nir, "NIR", shift_tool.read_sky_shifts(nir))
+    leftOutVis = shift_tool.unmeasured_orders(vis, "VIS", shift_tool.read_sky_shifts(vis))
+
+    # ASSERT
+    assert leftOutNir == {}
+    assert sorted(leftOutVis) == [2, 3]
+
+
+def test_unmeasured_orders_falls_back_to_the_old_inference_for_an_order_without_a_source_card() -> None:
+    # ARRANGE: ONLY ORDER 4 HAS A SOURCE CARD, SO r STILL FOLLOWS ITS ARM-LEVEL CARD
+    header = _vis_header({1: 0.0, 2: 0.0, 3: 0.0, 4: 0.03}, rSource="none", ugSource="model", iSnr=12.0)
+    _with_source_cards(header, {4: "measured"})
+
+    # ACT
+    leftOut = shift_tool.unmeasured_orders(header, "VIS", shift_tool.read_sky_shifts(header))
+
+    # ASSERT
+    assert sorted(leftOut) == [1]
+    assert "R SHIFT SOURCE" in leftOut[1]
+
+
 def test_uncertainty_by_arm_takes_the_largest_per_order_rms_as_the_value_and_keeps_the_pooled_rms() -> None:
     # ARRANGE
     samples = [
