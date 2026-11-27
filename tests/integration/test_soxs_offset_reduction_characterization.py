@@ -441,7 +441,7 @@ def test_a_response_table_flux_calibrates_the_stack_and_returns_the_calibrated_p
             calls.append("calibrate")
             fluxPath = Path(recipe.productDir) / recipe.filenameTemplate.replace(".fits", "_SPECTRUM.fits")
             fluxPath.parent.mkdir(parents=True, exist_ok=True)
-            Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5], "SNR": [9.0]}).write(fluxPath, overwrite=True)
+            Table({"WAVE": [500.0], "FLUX": [2.5], "SNR": [9.0]}).write(fluxPath, overwrite=True)
             calibratedPaths.append(str(fluxPath))
             return str(fluxPath), _empty_products()
 

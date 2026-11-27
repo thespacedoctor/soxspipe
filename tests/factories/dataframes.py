@@ -256,21 +256,29 @@ def merged_spectrum(
     sky: Sequence[float] | None = None,
     *,
     asTable: bool = False,
+    hasVarianceColumn: bool = False,
 ) -> pd.DataFrame | Table:
     """Return an order-merged spectrum built like production.
 
     Each column is assigned from an astropy Quantity array (``u.nm`` and ``u.electron``), one at a time, as
-    ``merge_extracted_orders`` does; the frame's dtypes are plain floats (float64 ``WAVE``, float32 counts, variance
-    and sky). ``SNR`` is the flux over the square root of the variance. With ``asTable`` the result is a table of
-    plain arrays that keep those dtypes. ``sky`` is optional: nod and offset spectra carry no ``SKY_COUNTS``.
+    ``merge_extracted_orders`` does; the frame's dtypes are plain floats (float64 ``WAVE``, float32 counts, error and
+    sky). A SOXS spectrum holds ``ERR_COUNTS``, the square root of ``variance``, as the SOXS merge writes it. With
+    ``hasVarianceColumn`` it holds ``VARIANCE`` instead, as the X-Shooter merge does. ``SNR`` is the flux over the
+    error. With ``asTable`` the result is a table of plain arrays that keep those dtypes. ``sky`` is optional: nod
+    and offset spectra carry no ``SKY_COUNTS``.
     """
     spectrum = pd.DataFrame()
     spectrum["WAVE"] = np.asarray(waves, dtype=np.float64) * u.nm
     spectrum["FLUX_COUNTS"] = np.asarray(flux, dtype=np.float32) * u.electron
-    spectrum["VARIANCE"] = np.asarray(variance, dtype=np.float32) * u.electron
+    varianceCounts = np.asarray(variance, dtype=np.float32)
+    errorCounts = np.sqrt(varianceCounts)
+    if hasVarianceColumn:
+        spectrum["VARIANCE"] = varianceCounts * u.electron
+    else:
+        spectrum["ERR_COUNTS"] = errorCounts * u.electron
     if sky is not None:
         spectrum["SKY_COUNTS"] = np.asarray(sky, dtype=np.float32) * u.electron
-    spectrum["SNR"] = spectrum["FLUX_COUNTS"].values / np.sqrt(spectrum["VARIANCE"].values)
+    spectrum["SNR"] = spectrum["FLUX_COUNTS"].values / (errorCounts * u.electron)
     if not asTable:
         return spectrum
     columns = {name: np.asarray(spectrum[name]) for name in spectrum.columns}

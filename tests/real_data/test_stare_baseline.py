@@ -218,10 +218,10 @@ def _measure_stare_reduction(
         spectrum_table = spectrum_hdus[1].data
         assert spectrum_table.names == [
             "WAVE",
-            "FLUX_CALIBRATED",
-            "ERR_CALIBRATED",
+            "FLUX",
+            "ERR",
             "FLUX_COUNTS",
-            "VARIANCE",
+            "ERR_COUNTS",
             "SKY_COUNTS",
             "SNR",
         ]
@@ -231,7 +231,7 @@ def _measure_stare_reduction(
             "snr median": float(np.nanmedian(spectrum_table["SNR"])),
             "sky counts median": float(np.nanmedian(spectrum_table["SKY_COUNTS"])),
             "fluxcal rows": len(spectrum_table),
-            "fluxcal median": float(np.nanmedian(spectrum_table["FLUX_CALIBRATED"])),
+            "fluxcal median": float(np.nanmedian(spectrum_table["FLUX"])),
         }
     measured["wave min"] = float(np.nanmin(merged_wave))
     measured["wave max"] = float(np.nanmax(merged_wave))

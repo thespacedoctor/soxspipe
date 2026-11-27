@@ -52,13 +52,20 @@ def recipe(log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> soxs_no
     return nod
 
 
-def _spectrum(waves: list[float], fluxes: list[float], variances: list[float]) -> pd.DataFrame:
-    """Return an order-merged spectrum shaped like the extraction's output."""
+def _spectrum(
+    waves: list[float], fluxes: list[float], variances: list[float], hasVarianceColumn: bool = False
+) -> pd.DataFrame:
+    """Return an order-merged spectrum shaped like the extraction's output.
+
+    A SOXS spectrum holds ``ERR_COUNTS``, the square root of the variances. With ``hasVarianceColumn`` it holds
+    ``VARIANCE``, as an X-Shooter spectrum does.
+    """
+    errorColumn = {"VARIANCE": variances} if hasVarianceColumn else {"ERR_COUNTS": np.sqrt(variances)}
     return pd.DataFrame(
         {
             "WAVE": [wave * u.nm for wave in waves],
             "FLUX_COUNTS": fluxes,
-            "VARIANCE": variances,
+            **errorColumn,
             "SKY_COUNTS": [0.0] * len(waves),
             "SNR": [0.0] * len(waves),
             "FLUX_DENSITY_COUNTS": fluxes,
@@ -67,9 +74,10 @@ def _spectrum(waves: list[float], fluxes: list[float], variances: list[float]) -
 
 
 def _row(stacked: Any, wave: float) -> dict[str, float]:
-    """Return the stacked row at `wave` as plain floats."""
+    """Return the stacked row at `wave` as plain floats, with the variance as the square of ``ERR_COUNTS``."""
     index = list(stacked["WAVE"]).index(wave)
-    return {name: float(stacked[name][index]) for name in ("FLUX_COUNTS", "VARIANCE", "SNR")}
+    row = {name: float(stacked[name][index]) for name in ("FLUX_COUNTS", "ERR_COUNTS", "SNR")}
+    return {"FLUX_COUNTS": row["FLUX_COUNTS"], "VARIANCE": row["ERR_COUNTS"] ** 2, "SNR": row["SNR"]}
 
 
 def test_a_single_spectrum_keeps_its_own_variance(recipe: soxs_nod) -> None:
@@ -175,14 +183,14 @@ def test_a_wavelength_no_spectrum_covers_has_no_variance(recipe: soxs_nod) -> No
     assert math.isnan(row["SNR"])
 
 
-def test_the_variance_column_keeps_the_extraction_float32_type(recipe: soxs_nod) -> None:
-    """The extraction writes float32 variances; the stacked column keeps that type, as the median of it did."""
-    first = _spectrum([500.0], [10.0], [9.0]).astype({"VARIANCE": np.float32})
-    second = _spectrum([500.0], [20.0], [16.0]).astype({"VARIANCE": np.float32})
+def test_the_error_column_keeps_the_extraction_float32_type(recipe: soxs_nod) -> None:
+    """The extraction writes float32 errors; the stacked column keeps that type, as the median of it did."""
+    first = _spectrum([500.0], [10.0], [9.0]).astype({"ERR_COUNTS": np.float32})
+    second = _spectrum([500.0], [20.0], [16.0]).astype({"ERR_COUNTS": np.float32})
 
     stacked, _ = recipe.stack_extractions([first, second])
 
-    assert stacked["VARIANCE"].dtype == np.float32
+    assert stacked["ERR_COUNTS"].dtype == np.float32
     assert _row(stacked, 500.0)["VARIANCE"] == pytest.approx(6.25)
 
 
@@ -191,9 +199,9 @@ def _extraction_spectrum(waves: list[float], fluxes: list[float], variances: lis
     spectrum = pd.DataFrame()
     spectrum["WAVE"] = np.array(waves) * u.nm
     spectrum["FLUX_COUNTS"] = np.array(fluxes, dtype=np.float32) * u.electron
-    spectrum["VARIANCE"] = np.array(variances, dtype=np.float32) * u.electron
+    spectrum["ERR_COUNTS"] = np.sqrt(np.array(variances, dtype=np.float32)) * u.electron
     spectrum["SKY_COUNTS"] = np.zeros(len(waves), dtype=np.float32) * u.electron
-    spectrum["SNR"] = spectrum["FLUX_COUNTS"].values / np.sqrt(spectrum["VARIANCE"].values)
+    spectrum["SNR"] = spectrum["FLUX_COUNTS"].values / spectrum["ERR_COUNTS"].values
     spectrum["FLUX_DENSITY_COUNTS"] = np.array(fluxes, dtype=np.float32) * u.electron / u.nm
     return spectrum
 
@@ -270,11 +278,67 @@ def test_the_x_shooter_stack_keeps_its_two_decimal_wave(recipe: soxs_nod) -> Non
 
     # ACT
     stacked, _ = recipe.stack_extractions(
-        [_spectrum(waves, [10.0, 12.0], [4.0, 4.0]), _spectrum(waves, [20.0, 22.0], [4.0, 4.0])]
+        [
+            _spectrum(waves, [10.0, 12.0], [4.0, 4.0], hasVarianceColumn=True),
+            _spectrum(waves, [20.0, 22.0], [4.0, 4.0], hasVarianceColumn=True),
+        ]
     )
 
     # ASSERT
     assert list(stacked["WAVE"]) == [500.01, 500.03]
+
+
+def test_the_soxs_stack_holds_err_counts_in_electrons_and_no_variance(recipe: soxs_nod) -> None:
+    """The stack writes ``ERR_COUNTS``, the root of its variance, where it used to write ``VARIANCE`` (DY-2350)."""
+    # ARRANGE: TWO SPECTRA OF VARIANCES 9 AND 16, WHOSE MEAN HAS THE VARIANCE (9 + 16) / 4 = 6.25
+    first = _extraction_spectrum([500.0], [10.0], [9.0])
+    second = _extraction_spectrum([500.0], [20.0], [16.0])
+
+    # ACT
+    stacked, filePath = recipe.stack_extractions([first, second])
+
+    # ASSERT
+    assert "VARIANCE" not in stacked.colnames
+    assert stacked.colnames == ["WAVE", "FLUX_COUNTS", "ERR_COUNTS", "SKY_COUNTS", "SNR", "FLUX_DENSITY_COUNTS"]
+    assert float(stacked["ERR_COUNTS"][0]) == pytest.approx(2.5, rel=1e-6)
+    with fits.open(filePath) as hdus:
+        assert float(hdus["SPECTRUM"].data["ERR_COUNTS"][0]) == pytest.approx(2.5, rel=1e-6)
+
+
+def test_the_soxs_stack_keeps_the_counts_at_full_precision_and_rounds_only_the_snr(recipe: soxs_nod) -> None:
+    """SOXS drops the 3-decimal rounding of ``FLUX_COUNTS`` and ``FLUX_DENSITY_COUNTS``; ``SNR`` keeps 2 (DY-2350)."""
+    # ARRANGE: THE MEAN OF 1.23456 AND 1.23457 IS 1.234565, WHICH ROUNDING TO 3 DECIMALS WOULD MAKE 1.235
+    first = _spectrum([500.0], [1.23456], [4.0])
+    second = _spectrum([500.0], [1.23457], [4.0])
+    first["FLUX_DENSITY_COUNTS"] = [1.23456]
+    second["FLUX_DENSITY_COUNTS"] = [1.23457]
+
+    # ACT
+    stacked, _ = recipe.stack_extractions([first, second])
+
+    # ASSERT
+    assert float(stacked["FLUX_COUNTS"][0]) == pytest.approx(1.234565, abs=1e-9)
+    assert float(stacked["FLUX_DENSITY_COUNTS"][0]) == pytest.approx(1.234565, abs=1e-9)
+    assert float(stacked["SNR"][0]) == round(float(stacked["SNR"][0]), 2)
+
+
+def test_the_x_shooter_stack_keeps_its_variance_column_and_its_three_decimal_counts(recipe: soxs_nod) -> None:
+    """X-Shooter output is unchanged: ``VARIANCE`` stays and the counts keep their 3 decimals (DY-2350)."""
+    # ARRANGE
+    recipe.settings["instrument"] = "xsh"
+    first = _spectrum([500.0], [1.23456], [9.0], hasVarianceColumn=True)
+    second = _spectrum([500.0], [1.23457], [16.0], hasVarianceColumn=True)
+    first["FLUX_DENSITY_COUNTS"] = [1.23456]
+    second["FLUX_DENSITY_COUNTS"] = [1.23457]
+
+    # ACT
+    stacked, _ = recipe.stack_extractions([first, second])
+
+    # ASSERT
+    assert "ERR_COUNTS" not in stacked.colnames
+    assert float(stacked["VARIANCE"][0]) == pytest.approx(6.25)
+    assert float(stacked["FLUX_COUNTS"][0]) == 1.235
+    assert float(stacked["FLUX_DENSITY_COUNTS"][0]) == 1.235
 
 
 def test_an_upper_case_soxs_setting_keeps_the_four_decimal_wave(

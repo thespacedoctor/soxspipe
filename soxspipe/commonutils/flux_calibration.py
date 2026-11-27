@@ -14,6 +14,16 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
+from soxspipe.commonutils.spectrum_columns import (
+    ERR_COLUMN,
+    ERR_COUNTS_COLUMN,
+    FLUX_COLUMN,
+    VARIANCE_COLUMN,
+    XSH_ERR_COLUMN,
+    XSH_FLUX_COLUMN,
+    error_column_name,
+    error_counts,
+)
 from soxspipe.commonutils.spectrum_names import SPECTRUM_SUFFIX
 
 if TYPE_CHECKING:
@@ -21,8 +31,7 @@ if TYPE_CHECKING:
 
 os.environ["TERM"] = "vt100"
 
-# THE COLUMNS OF THE EXTRACTED SPECTRUM THE FLUX CALIBRATION READS, AND THE ONE IT CARRIES WHEN THE SPECTRUM HAS IT
-REQUIRED_SPECTRUM_COLUMNS = ("WAVE", "FLUX_COUNTS", "VARIANCE", "SNR")
+# THE COLUMN OF THE EXTRACTED SPECTRUM THE FLUX CALIBRATION CARRIES WHEN THE SPECTRUM HAS IT
 OPTIONAL_SPECTRUM_COLUMNS = ("SKY_COUNTS",)
 
 
@@ -37,12 +46,16 @@ def _calculate_flux_calibration(
 
 
 def _require_spectrum_columns(spectrum: Any) -> None:
-    """Raise a ValueError that names the columns of the extracted spectrum the flux calibration needs and lacks."""
-    missing = [name for name in REQUIRED_SPECTRUM_COLUMNS if name not in spectrum.columns]
+    """Raise a ValueError that names the columns of the extracted spectrum the flux calibration needs and lacks.
+
+    The spectrum needs its error column, ``ERR_COUNTS`` for SOXS or ``VARIANCE`` for X-Shooter, as well.
+    """
+    needed = ("WAVE", "FLUX_COUNTS", error_column_name(spectrum.columns) or ERR_COUNTS_COLUMN, "SNR")
+    missing = [name for name in needed if name not in spectrum.columns]
     if missing:
         raise ValueError(
             f"The extracted spectrum is missing the column(s) {', '.join(missing)}, so it cannot be flux calibrated; "
-            f"it needs {', '.join(REQUIRED_SPECTRUM_COLUMNS)}."
+            f"it needs {', '.join(needed)}."
         )
 
 
@@ -65,18 +78,22 @@ def _column_values(spectrum: Any, name: str, dtype: Any = None) -> Any:
 def _flux_calibrated_columns(spectrum: Any, fluxCalibrated: Any, errorCalibrated: Any) -> dict[str, Any]:
     """Return the columns of the flux-calibrated table, in order.
 
-    The calibrated flux and error come first. The counts, variance, sky and SNR of the extracted spectrum follow
-    unchanged, so the sky stays in electrons per pixel. ``SKY_COUNTS`` is carried only when the spectrum has it: the
-    nod and offset recipes extract no sky model.
+    A SOXS spectrum gives ``FLUX`` and ``ERR``, then the counts and their error (``FLUX_COUNTS`` and ``ERR_COUNTS``),
+    the sky and the SNR of the extracted spectrum unchanged, so the sky stays in electrons per pixel. An X-Shooter
+    spectrum, which has ``VARIANCE`` in place of ``ERR_COUNTS``, keeps its older ``FLUX_CALIBRATED`` and
+    ``ERR_CALIBRATED`` names and its ``VARIANCE``. ``SKY_COUNTS`` is carried only when the spectrum has it: the nod and
+    offset recipes extract no sky model.
     """
     import numpy as np
 
+    errorName = error_column_name(spectrum.columns)
+    isXshooterLayout = errorName == VARIANCE_COLUMN
     columns = {
         "WAVE": _column_values(spectrum, "WAVE", float),
-        "FLUX_CALIBRATED": np.asarray(fluxCalibrated, dtype=float),
-        "ERR_CALIBRATED": np.asarray(errorCalibrated, dtype=float),
+        XSH_FLUX_COLUMN if isXshooterLayout else FLUX_COLUMN: np.asarray(fluxCalibrated, dtype=float),
+        XSH_ERR_COLUMN if isXshooterLayout else ERR_COLUMN: np.asarray(errorCalibrated, dtype=float),
         "FLUX_COUNTS": _column_values(spectrum, "FLUX_COUNTS"),
-        "VARIANCE": _column_values(spectrum, "VARIANCE"),
+        errorName: _column_values(spectrum, errorName),
     }
     for name in OPTIONAL_SPECTRUM_COLUMNS:
         if name in spectrum.columns:
@@ -243,7 +260,10 @@ class flux_calibration:
         *flux calibrate the science spectrum*
 
         The calibrated spectrum is written to ``<SOF stem>_SPECTRUM.fits``. That file already holds the counts the
-        extraction wrote, so the calibrated table replaces it and carries the same columns plus the calibrated ones.
+        extraction wrote, so the calibrated table replaces it and carries the same columns plus the calibrated ones:
+        ``FLUX`` and ``ERR``, in front of ``FLUX_COUNTS`` and ``ERR_COUNTS``. ``ERR`` is ``ERR_COUNTS`` through exactly
+        the factors of ``FLUX``. An X-Shooter spectrum, which has ``VARIANCE``, keeps ``FLUX_CALIBRATED``,
+        ``ERR_CALIBRATED`` and ``VARIANCE``.
 
         **Return:**
 
@@ -307,9 +327,9 @@ class flux_calibration:
             responseFactors,
             extinctionCorrectionFactor,
         )
-        # THE ERROR IS THE SQUARE ROOT OF THE VARIANCE, PASSED THROUGH THE SAME FACTOR AS THE FLUX
+        # THE ERROR IS THE ERROR OF THE COUNTS, PASSED THROUGH THE SAME FACTORS AS THE FLUX
         errorCalibrated = _calculate_flux_calibration(
-            np.sqrt(np.asarray(self.extractedSpectrum["VARIANCE"], dtype=float)) / binning,
+            error_counts(self.extractedSpectrum) / binning,
             self.exptime,
             responseFactors,
             extinctionCorrectionFactor,

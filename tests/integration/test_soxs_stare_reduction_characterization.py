@@ -1261,7 +1261,7 @@ def test_the_fluxcal_plot_reads_snr_and_sky_from_the_fluxcal_table(
         lambda **kwargs: plotKwargs.append(kwargs) or (kwargs["products"], str(tmp_path / "merged.pdf")),
     )
     fluxCalPath = tmp_path / "fluxcal.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [1.0], "SKY_COUNTS": [7.0], "SNR": [9.0]}).write(fluxCalPath)
+    Table({"WAVE": [500.0], "FLUX": [1.0], "SKY_COUNTS": [7.0], "SNR": [9.0]}).write(fluxCalPath)
     merged = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [1.0]})
 
     # ACT
@@ -1293,7 +1293,7 @@ def test_both_merged_spectrum_plots_are_told_whether_the_spectrum_is_a_boxcar(
         lambda **kwargs: plotKwargs.append(kwargs) or (kwargs["products"], str(tmp_path / "merged.pdf")),
     )
     fluxCalPath = tmp_path / "fluxcal.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [1.0]}).write(fluxCalPath)
+    Table({"WAVE": [500.0], "FLUX": [1.0]}).write(fluxCalPath)
     merged = pd.DataFrame({"WAVE": [500.0], "SNR": [20.0], "SKY_COUNTS": [1.0]})
 
     recipe._plot_merged_spectrum_qcs(merged, {"10-11": 11}, str(fluxCalPath), [], isBoxcar)

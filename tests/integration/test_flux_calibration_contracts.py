@@ -130,7 +130,7 @@ def test_calibrate_writes_the_analytic_nir_flux_and_product_row(
     assert captured["phase3"] == PER_ARM_MODE
     assert captured["extname"] == "SPECTRUM"
     expected = calibration.extractedSpectrum["FLUX_COUNTS"] / calibration.exptime * np.array([7.0, 8.0]) * 1e-17
-    np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], expected, rtol=1e-14, atol=0)
+    np.testing.assert_allclose(outputTable["FLUX"], expected, rtol=1e-14, atol=0)
     np.testing.assert_array_equal(outputTable["WAVE"], [500.0, 600.0])
     assert originalHeader == fits.Header({"DATE-OBS": "2024-01-02T03:04:05.678"})
     assert products.empty
@@ -168,9 +168,7 @@ def test_calibrate_writes_a_real_spectrum_file_with_the_calibrated_and_counts_co
         assert hdus[0].header["HIERARCH ESO PRO CATG"] == "SCI_SLIT_FLUX_NIR"
         assert hdus[0].header["HIERARCH ESO QC RON"] == 3.2
         assert hdus[1].name == "SPECTRUM"
-        assert {"WAVE", "FLUX_CALIBRATED", "ERR_CALIBRATED", "FLUX_COUNTS", "VARIANCE", "SNR"} <= set(
-            hdus[1].columns.names
-        )
+        assert {"WAVE", "FLUX", "ERR", "FLUX_COUNTS", "ERR_COUNTS", "SNR"} <= set(hdus[1].columns.names)
     assert not list(tmp_path.glob("*FLUXCAL*"))
 
 
@@ -272,7 +270,7 @@ def test_calibrate_applies_vis_extinction_factor(
     outputPath, _ = calibration.calibrate()
 
     outputTable = captured["tables"][0]
-    np.testing.assert_allclose(outputTable["FLUX_CALIBRATED"], [6.0e-17, 16.0e-17], rtol=1e-14, atol=0)
+    np.testing.assert_allclose(outputTable["FLUX"], [6.0e-17, 16.0e-17], rtol=1e-14, atol=0)
     assert outputPath == str(tmp_path / "synthetic_SPECTRUM.fits")
 
 
@@ -406,7 +404,7 @@ def test_calibrate_uses_the_response_table_and_logs_no_fallback_warning(
         _nir_calibration(tmp_path, log, responsePath).calibrate()
 
     # ASSERT
-    np.testing.assert_allclose(captured[0]["FLUX_CALIBRATED"].to_numpy(), [20 / 10 * 252e-17, 40 / 10 * 302e-17])
+    np.testing.assert_allclose(captured[0]["FLUX"].to_numpy(), [20 / 10 * 252e-17, 40 / 10 * 302e-17])
     assert not any(level == "warning" for level, _ in log.messages)
 
 
@@ -428,7 +426,7 @@ def test_calibrate_sets_samples_outside_the_response_table_to_nan_and_logs_the_c
     _nir_calibration(tmp_path, log, responsePath).calibrate()
 
     # ASSERT: BOTH SCIENCE SAMPLES (500 AND 600 NM) LIE OUTSIDE 520-580 NM
-    assert captured[0]["FLUX_CALIBRATED"].isna().all()
+    assert captured[0]["FLUX"].isna().all()
     assert any(level == "info" and "2 " in message for level, message in log.messages)
 
 
@@ -457,5 +455,5 @@ def test_calibrate_counts_only_science_samples_outside_the_valid_response_range(
         _nir_calibration(tmp_path, log, responsePath).calibrate()
 
     # ASSERT: THE SCIENCE SAMPLES AT 500 AND 600 NM ARE OUTSIDE 520-580 NM
-    assert captured[0]["FLUX_CALIBRATED"].isna().all()
+    assert captured[0]["FLUX"].isna().all()
     assert any(level == "info" and message.startswith("2 science samples") for level, message in log.messages)

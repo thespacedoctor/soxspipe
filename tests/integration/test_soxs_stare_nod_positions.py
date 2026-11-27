@@ -39,7 +39,7 @@ def _spectrum(flux: float) -> pd.DataFrame:
         {
             "WAVE": [500.0 * u.nm],
             "FLUX_COUNTS": [flux],
-            "VARIANCE": [4.0],
+            "ERR_COUNTS": [2.0],
             "SKY_COUNTS": [1.0],
             "SNR": [0.0],
             "FLUX_DENSITY_COUNTS": [flux],

@@ -795,11 +795,12 @@ class horne_extraction(base_util):
             # ROUND INTO A NEW FRAME SO THE SPECTRUM RETURNED TO THE CALLER KEEPS ITS QUANTITY COLUMNS AT FULL
             # PRECISION. BUILD IT ONE COLUMN AT A TIME: DataFrame.copy() CONSOLIDATES THE MIXED-UNIT QUANTITY
             # COLUMNS AND RAISES UnitConversionError. ONLY THE NOT-FLATTENED SPECTRUM HAS A FLUX DENSITY COLUMN.
-            # WAVE IS NOT ROUNDED ON THE LOG GRID, WHERE ROUNDING WOULD MOVE A POINT BY UP TO 0.005 NM. X-SHOOTER KEEPS
-            # THE 2-DECIMAL WAVE OF ITS LINEAR GRID
-            roundingDecimals = {"FLUX_COUNTS": 3, "SNR": 2, "FLUX_DENSITY_COUNTS": 3}
+            # ON THE LOG GRID ONLY SNR IS ROUNDED: ROUNDING WAVE WOULD MOVE A POINT BY UP TO 0.005 NM, AND THE COUNTS
+            # KEEP THEIR FULL PRECISION (DY-2350). X-SHOOTER KEEPS THE 2-DECIMAL WAVE OF ITS LINEAR GRID AND ITS
+            # 3-DECIMAL COUNTS
+            roundingDecimals = {"SNR": 2}
             if not self._uses_log_wavelength_grid():
-                roundingDecimals["WAVE"] = 2
+                roundingDecimals.update({"WAVE": 2, "FLUX_COUNTS": 3, "FLUX_DENSITY_COUNTS": 3})
             roundedMergedDF = pd.DataFrame(index=mergedSpectumDF.index)
             for col in mergedSpectumDF.columns:
                 values = mergedSpectumDF[col]
@@ -2633,7 +2634,7 @@ class horne_extraction(base_util):
         The step of the grid is ``log-wavelength-step-kms`` of the arm per unbinned pixel, times the binning along the
         dispersion axis of the frame. Each order is cut at its join with the next order, the join snapped to a bin
         edge, and bins that an order covers only in part are dropped. A bin that no pixel overlaps, such as a bin in
-        the gap between two orders, has flux 0, variance 0 and SNR NaN: nothing is interpolated across it. The
+        the gap between two orders, has flux 0, error 0 and SNR NaN: nothing is interpolated across it. The
         ``noDataBins`` attribute keeps the mask of these bins for the QUAL column (bit 1, DY-2352); the merged
         spectrum has no column for it. The extracted-orders table is not changed.
 
@@ -2643,8 +2644,9 @@ class horne_extraction(base_util):
 
         **Return:**
 
-        - ``merged_orders`` -- the merged spectrum, with the quantity columns ``WAVE``, ``FLUX_COUNTS``, ``VARIANCE``,
-          ``SKY_COUNTS`` (if carried), ``SNR`` and, for the not-flattened spectrum, ``FLUX_DENSITY_COUNTS``
+        - ``merged_orders`` -- the merged spectrum, with the quantity columns ``WAVE``, ``FLUX_COUNTS``,
+          ``ERR_COUNTS`` (the square root of the variance, in electrons), ``SKY_COUNTS`` (if carried), ``SNR`` and, for
+          the not-flattened spectrum, ``FLUX_DENSITY_COUNTS``
         - ``orderJoins`` -- the wavelength (nm) of each join after it was snapped to a bin edge, keyed
           ``"<red order>-<blue order>"``
         """
@@ -2679,7 +2681,8 @@ class horne_extraction(base_util):
         mergedOrders = pd.DataFrame()
         mergedOrders["WAVE"] = merged.wavelength * u.nm
         mergedOrders["FLUX_COUNTS"] = merged.values[FLUX_KEY].astype(np.float32) * u.electron
-        mergedOrders["VARIANCE"] = merged.variance.astype(np.float32) * u.electron
+        # THE ERROR, NOT THE VARIANCE, SO THE COLUMN IS IN ELECTRONS (DY-2350)
+        mergedOrders["ERR_COUNTS"] = np.sqrt(merged.variance.astype(np.float32)) * u.electron
         if self.carrySkyCounts:
             # THE SKY IS RESAMPLED WITH THE SAME KEPT ROWS AND WEIGHTS AS THE FLUX. A RUN WITH NO SKY MODEL STAYS NAN
             sky = merged.values[SKY_KEY].astype(np.float32)
@@ -2687,7 +2690,7 @@ class horne_extraction(base_util):
                 sky = np.full_like(sky, np.nan)
             mergedOrders["SKY_COUNTS"] = sky * u.electron
         with np.errstate(divide="ignore", invalid="ignore"):
-            snr = mergedOrders["FLUX_COUNTS"].values / np.sqrt(mergedOrders["VARIANCE"].values)
+            snr = mergedOrders["FLUX_COUNTS"].values / mergedOrders["ERR_COUNTS"].values
         mergedOrders["SNR"] = np.where(merged.hasData, snr, np.nan * snr.unit)
         if self.notFlattened:
             mergedOrders["FLUX_DENSITY_COUNTS"] = merged.values[DENSITY_KEY].astype(np.float32) * u.electron / u.nm

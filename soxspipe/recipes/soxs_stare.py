@@ -1933,10 +1933,12 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             from astropy import units as u
             from astropy.table import Table
 
+            from soxspipe.commonutils.spectrum_columns import calibrated_flux_column_name
+
             fluxcal_spec = Table.read(filePathFluxcal, format="fits")
             fluxcal_spec["WAVE"] = fluxcal_spec["WAVE"] * u.nm
             # THE PLOT DRAWS THE CALIBRATED FLUX FROM THE COUNTS COLUMN. SNR AND SKY_COUNTS ARE IN THE TABLE ALREADY
-            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec["FLUX_CALIBRATED"]
+            fluxcal_spec["FLUX_COUNTS"] = fluxcal_spec[calibrated_flux_column_name(fluxcal_spec.colnames)]
             self.products, filePath = plot_merged_spectrum_qc(
                 merged_orders=fluxcal_spec,
                 products=self.products,

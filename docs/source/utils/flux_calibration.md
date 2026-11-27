@@ -25,6 +25,8 @@ $$
 
 where $F(\lambda)$ is the desired 1D scientific spectrum flux calibrated in $erg$ $cm^{-2}$ $s^{-1}$ ${A^{-1}}$, $C(\lambda)$ is the scientific spectrum in counts and $S(\lambda)$ is the response function.
 
+The utility writes the calibrated spectrum to `<SOF stem>_SPECTRUM.fits`, in place of the counts spectrum. The table has the columns `WAVE`, `FLUX` and `ERR`, then the columns of the counts spectrum: `FLUX_COUNTS`, `ERR_COUNTS`, `SKY_COUNTS` (when the spectrum has a sky model) and `SNR`. `ERR_COUNTS` is the statistical error of `FLUX_COUNTS`, in electrons. `ERR` is `ERR_COUNTS` multiplied by exactly the same factors as `FLUX`: the binning, the exposure time, the extinction and the response. The sky is not calibrated. An X-Shooter spectrum keeps its older columns `FLUX_CALIBRATED`, `ERR_CALIBRATED` and `VARIANCE`.
+
 
 <!-- ### Utility API
 

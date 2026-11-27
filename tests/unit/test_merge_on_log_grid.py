@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import yaml
+from astropy import units as u
 from astropy.io import fits
 
 from soxspipe.commonutils.horne_extraction import horne_extraction
@@ -185,11 +186,11 @@ def test_the_gap_between_orders_is_left_empty_and_not_interpolated(log: object) 
     # ASSERT: THE GAP BINS HOLD 0, WHERE LINEAR INTERPOLATION BETWEEN THE ORDER ENDS WOULD GIVE A RAMP FROM 0 TO 150
     wave = _wave(merged)
     flux = _column(merged, "FLUX_COUNTS")
-    variance = _column(merged, "VARIANCE")
+    error = _column(merged, "ERR_COUNTS")
     inGap = (wave > 1020.1) & (wave < 1031.4)
     assert inGap.sum() > 200
     assert (flux[inGap] == 0.0).all()
-    assert (variance[inGap] == 0.0).all()
+    assert (error[inGap] == 0.0).all()
     assert (_column(merged, "SKY_COUNTS")[inGap] == 0.0).all()
     assert np.isnan(_column(merged, "SNR")[inGap]).all()
     np.testing.assert_allclose(flux[wave > 1031.6], 150.0, rtol=1e-6)
@@ -208,7 +209,7 @@ def test_the_merge_keeps_the_extracted_orders_table_untouched(log: object) -> No
     pd.testing.assert_frame_equal(orders, before)
 
 
-def test_the_merged_variance_is_the_sum_of_the_squared_weights_times_the_variances(log: object) -> None:
+def test_the_merged_error_is_the_root_of_the_sum_of_the_squared_weights_times_the_variances(log: object) -> None:
     # ARRANGE: PIXELS 0.05 NM WIDE ON A GRID OF ABOUT 0.044 NM BINS: A BIN TAKES 1 OR 2 PIXELS
     extractor = _extractor(log, "NIR")
 
@@ -216,13 +217,13 @@ def test_the_merged_variance_is_the_sum_of_the_squared_weights_times_the_varianc
     merged, _ = extractor.merge_extracted_orders(_order(10, 1000.0, 400, 50.0, variance=9.0))
 
     # ASSERT: ONE PIXEL GIVES 9, TWO PIXELS WITH WEIGHTS a AND 1 - a GIVE 9 * (a^2 + (1 - a)^2), BETWEEN 4.5 AND 9
-    variance = _column(merged, "VARIANCE")
+    variance = _column(merged, "ERR_COUNTS") ** 2
     assert variance.max() <= 9.0 * (1 + 1e-6)
     assert variance.min() >= 4.5 * (1 - 1e-6)
     assert variance.min() < 9.0
 
 
-def test_snr_is_the_flux_over_the_square_root_of_the_variance(log: object) -> None:
+def test_snr_is_the_flux_over_the_error(log: object) -> None:
     # ARRANGE
     extractor = _extractor(log, "NIR")
 
@@ -231,8 +232,37 @@ def test_snr_is_the_flux_over_the_square_root_of_the_variance(log: object) -> No
 
     # ASSERT
     np.testing.assert_allclose(
-        _column(merged, "SNR"), _column(merged, "FLUX_COUNTS") / np.sqrt(_column(merged, "VARIANCE")), rtol=1e-6
+        _column(merged, "SNR"), _column(merged, "FLUX_COUNTS") / _column(merged, "ERR_COUNTS"), rtol=1e-6
     )
+
+
+def test_the_merged_error_is_in_electrons_and_replaces_the_variance_column(log: object) -> None:
+    # ARRANGE
+    extractor = _extractor(log, "NIR")
+
+    # ACT
+    merged, _ = extractor.merge_extracted_orders(_order(10, 1000.0, 400, 50.0, variance=9.0))
+
+    # ASSERT: THE ERROR IS A ROOT, SO IT IS IN ELECTRONS, NOT THE ELECTRONS OF A VARIANCE
+    assert "VARIANCE" not in merged.columns
+    assert merged["ERR_COUNTS"].values.unit == u.electron
+    assert merged["ERR_COUNTS"].values.dtype == np.float32
+
+
+def test_the_merged_error_squared_is_the_variance_the_merge_resampled(log: object) -> None:
+    # ARRANGE: A GAUSSIAN PEAK IN THE VARIANCE, SO THE VARIANCE DIFFERS FROM BIN TO BIN
+    extractor = _extractor(log, "NIR")
+    orders = _order(10, 1000.0, 400, 50.0)
+    orders["varianceSpectrum"] = 4.0 + 100.0 * np.exp(-(((orders["wavelengthMean"] - 1010.0) / 3.0) ** 2))
+
+    # ACT
+    merged, _ = extractor.merge_extracted_orders(orders)
+
+    # ASSERT: THE VARIANCE OF A BIN IS Σ w² σ² OF ITS PIXELS, BETWEEN HALF THE LEAST AND THE GREATEST PIXEL VARIANCE
+    variance = _column(merged, "ERR_COUNTS").astype(np.float64) ** 2
+    assert variance.min() >= 4.0 / 2 * (1 - 1e-5)
+    assert variance.max() <= 104.0 * (1 + 1e-5)
+    np.testing.assert_allclose(_column(merged, "SNR") ** 2, _column(merged, "FLUX_COUNTS") ** 2 / variance, rtol=1e-5)
 
 
 def test_a_pixel_with_a_huge_variance_is_dropped_and_leaves_no_flux_behind(log: object) -> None:
@@ -248,7 +278,7 @@ def test_a_pixel_with_a_huge_variance_is_dropped_and_leaves_no_flux_behind(log: 
     flux = _column(merged, "FLUX_COUNTS")
     assert flux.min() >= 0.0
     assert flux.max() == pytest.approx(1000.0, rel=1e-6)
-    assert _column(merged, "VARIANCE").max() < 1.0e4
+    assert _column(merged, "ERR_COUNTS").max() < 100.0
     assert _column(merged, "SKY_COUNTS").max() < 10.0
 
 
@@ -273,7 +303,7 @@ def test_no_sky_column_is_made_when_the_extractor_carries_no_sky_counts(log: obj
     merged, _ = extractor.merge_extracted_orders(_order(10, 1000.0, 400, 50.0))
 
     # ASSERT
-    assert list(merged.columns) == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SNR"]
+    assert list(merged.columns) == ["WAVE", "FLUX_COUNTS", "ERR_COUNTS", "SNR"]
 
 
 @pytest.mark.parametrize(("notFlattened", "hasDensity"), [("", False), ("_NOTFLAT", True)])
@@ -431,7 +461,7 @@ def test_an_order_with_no_pixel_left_changes_nothing_in_the_orders_beside_it(log
     without, _ = extractor.merge_extracted_orders(pd.concat([low, high], ignore_index=True))
 
     # ASSERT: EVERY COLUMN THE FLUX CALIBRATION READS IS FINITE
-    for column in ("WAVE", "FLUX_COUNTS", "VARIANCE"):
+    for column in ("WAVE", "FLUX_COUNTS", "ERR_COUNTS"):
         assert np.isfinite(_column(withEmpty, column)).all()
         np.testing.assert_array_equal(_column(withEmpty, column), _column(without, column))
 
@@ -444,11 +474,11 @@ def test_the_merged_bins_lie_inside_the_extracted_wavelength_range(log: object) 
     # ACT
     merged, _ = extractor.merge_extracted_orders(orders)
 
-    # ASSERT: ALL THE MERGED BINS (CENTRES) LIE INSIDE THE PIXEL EDGES, AND EVERY BIN HAS DATA AND VARIANCE
+    # ASSERT: ALL THE MERGED BINS (CENTRES) LIE INSIDE THE PIXEL EDGES, AND EVERY BIN HAS DATA AND AN ERROR
     wave = _wave(merged)
     assert wave.min() >= 1000.004 - 0.025
     assert wave.max() <= 1000.004 + 0.05 * 399 + 0.025
-    assert (_column(merged, "VARIANCE") > 0).all()
+    assert (_column(merged, "ERR_COUNTS") > 0).all()
 
 
 def test_a_constant_flux_density_is_flat_across_a_join_of_orders_with_different_pixel_scales(log: object) -> None:
@@ -481,6 +511,6 @@ def test_the_no_data_bins_stay_reachable_after_the_merge_without_a_new_column(lo
     assert extractor.noDataBins.shape == wave.shape
     inGap = (wave > 1020.1) & (wave < 1031.4)
     assert extractor.noDataBins[inGap].all()
-    assert (_column(merged, "VARIANCE")[extractor.noDataBins] == 0.0).all()
-    assert (_column(merged, "VARIANCE")[~extractor.noDataBins] > 0.0).all()
-    assert list(merged.columns) == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR"]
+    assert (_column(merged, "ERR_COUNTS")[extractor.noDataBins] == 0.0).all()
+    assert (_column(merged, "ERR_COUNTS")[~extractor.noDataBins] > 0.0).all()
+    assert list(merged.columns) == ["WAVE", "FLUX_COUNTS", "ERR_COUNTS", "SKY_COUNTS", "SNR"]

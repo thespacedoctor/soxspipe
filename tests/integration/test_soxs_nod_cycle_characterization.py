@@ -607,7 +607,7 @@ def _spectrum_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
         {
             "WAVE": [500.12344 * u.nm, 500.12346 * u.nm, 700.0 * u.nm],
             "FLUX_COUNTS": [9.0, 55.0, 42.0],
-            "VARIANCE": [9.0, 4.0, 49.0],
+            "ERR_COUNTS": [3.0, 2.0, 7.0],
             "FLUX_DENSITY_COUNTS": [1.111, 3.001, 9.5],
         }
     )
@@ -615,25 +615,24 @@ def _spectrum_frames() -> tuple[pd.DataFrame, pd.DataFrame]:
         {
             "WAVE": [500.12345 * u.nm, 700.0 * u.nm],
             "FLUX_COUNTS": [15.6913, 58.0],
-            "VARIANCE": [9.0, 49.0],
+            "ERR_COUNTS": [3.0, 7.0],
             "FLUX_DENSITY_COUNTS": [3.3334, 10.5],
         }
     )
     return first, second
 
 
-def test_stack_extractions_computes_column_specific_rounded_medians(
+def test_stack_extractions_takes_per_column_medians_and_rounds_only_the_snr(
     log: Any,
     tmp_path: Path,
     passthrough_snr_qcs: None,
 ) -> None:
-    """4-dp WAVE rounding decides merge-vs-split, then each column keeps its own decimal precision.
+    """4-dp WAVE rounding decides merge-vs-split, then SNR is rounded and the counts are not.
 
     500.12344 and 500.12345 round to the same 4-dp key and merge (median); 500.12344 and 500.12346 do not
     and stay as two rows. WAVE keeps the 4-dp key: it is no longer rounded to 2 dp, which moved a log-grid point
-    by up to half a bin (DY-2348). FLUX_COUNTS at 3 dp, SNR at 2 dp and FLUX_DENSITY_COUNTS at 3 dp each keep their
-    own decimals rather than any other column's: the raw FLUX_COUNTS median 12.34565 would round to 12.35 at
-    SNR's 2 dp, not the pinned 12.346.
+    by up to half a bin (DY-2348). SOXS keeps FLUX_COUNTS and FLUX_DENSITY_COUNTS at full precision (DY-2350), so
+    the median 12.34565 stays as it is, and only SNR is rounded to 2 dp.
     """
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
@@ -642,8 +641,8 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
 
     assert len(stacked) == 3
     assert stacked["WAVE"].tolist() == pytest.approx([500.1234, 500.1235, 700.0], rel=1e-12)
-    assert stacked["FLUX_COUNTS"].tolist() == pytest.approx([12.346, 55.0, 50.0], rel=1e-12)
-    assert stacked["FLUX_DENSITY_COUNTS"].tolist() == pytest.approx([2.222, 3.001, 10.0], rel=1e-12)
+    assert stacked["FLUX_COUNTS"].tolist() == pytest.approx([12.34565, 55.0, 50.0], rel=1e-12)
+    assert stacked["FLUX_DENSITY_COUNTS"].tolist() == pytest.approx([2.2222, 3.001, 10.0], rel=1e-12)
     # THE VARIANCE OF A TWO-SPECTRUM MEDIAN IS SUM(VAR) / 4 (DY-1675): 12.34565 / SQRT(4.5) AND 50 / SQRT(24.5)
     assert stacked["SNR"].tolist() == pytest.approx([5.82, 27.5, 10.10], rel=1e-12)
 
@@ -712,7 +711,7 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_f
     _, fitsPath = recipe.stack_extractions([first, second], notFlattened=True, orderJoins={"10-11": 1})
 
     asciiLines = Path(fitsPath.replace(".fits", ".txt")).read_text().splitlines()
-    assert asciiLines[0] == "WAVE FLUX_COUNTS VARIANCE FLUX_DENSITY_COUNTS SNR"
+    assert asciiLines[0] == "WAVE FLUX_COUNTS ERR_COUNTS FLUX_DENSITY_COUNTS SNR"
     assert asciiLines[1].startswith("5001.23 ")
     assert asciiLines[3].startswith("7000.00 ")
 

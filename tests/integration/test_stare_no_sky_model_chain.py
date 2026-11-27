@@ -98,7 +98,7 @@ def test_a_stare_extraction_with_no_sky_model_keeps_nan_sky_counts_in_the_spectr
     fluxcal = Table.read(fluxcalPath, hdu=1)
     assert len(fluxcal) > 0
     assert np.isnan(np.asarray(fluxcal["SKY_COUNTS"], dtype=float)).all()
-    assert np.isfinite(np.asarray(fluxcal["FLUX_CALIBRATED"], dtype=float)).all()
+    assert np.isfinite(np.asarray(fluxcal["FLUX"], dtype=float)).all()
     lines = Path(products.loc[0, "file_path"]).read_text().splitlines()
     skyColumn = lines[0].split().index("SKY_COUNTS")
     assert {line.split()[skyColumn].lower() for line in lines[1:]} == {"nan"}
