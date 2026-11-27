@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from astropy import units as u
+from astropy.io import fits
 
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from soxspipe.recipes import soxs_nod
@@ -240,3 +241,22 @@ def test_the_stacked_spectrum_of_a_long_named_sof_is_written(recipe: soxs_nod, t
     # ASSERT
     assert Path(filePath).name == f"{'S' * 70}_SPECTRUM.fits"
     assert Path(filePath).exists()
+
+
+def test_the_stacked_wave_is_not_rounded_to_two_decimals(recipe: soxs_nod, tmp_path: Path) -> None:
+    """Log-grid bins are 0.02 to 0.09 nm wide, so rounding WAVE to 0.01 nm moves a point by up to half of one (DY-2348).
+
+    The stack still groups by WAVE rounded to 4 decimals (DY-2349 changes that to the bin index), so WAVE keeps 4.
+    """
+    # ARRANGE: TWO CYCLES ON THE SAME GRID POINTS
+    waves = [500.01234, 500.03358, 500.05484]
+    first = _spectrum(waves, [10.0, 12.0, 14.0], [4.0, 4.0, 4.0])
+    second = _spectrum(waves, [20.0, 22.0, 24.0], [4.0, 4.0, 4.0])
+
+    # ACT
+    stacked, filePath = recipe.stack_extractions([first, second])
+
+    # ASSERT: THE TABLE AND THE FILE ON DISK BOTH HOLD THE 4-DECIMAL WAVE
+    assert list(stacked["WAVE"]) == [500.0123, 500.0336, 500.0548]
+    with fits.open(filePath) as hdus:
+        assert list(hdus["SPECTRUM"].data["WAVE"]) == [500.0123, 500.0336, 500.0548]

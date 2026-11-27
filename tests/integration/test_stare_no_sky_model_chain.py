@@ -11,9 +11,9 @@ import pytest
 from astropy.io import fits
 from astropy.table import Table
 
-from soxspipe.commonutils.horne_extraction import extract_single_order, horne_extraction
+from soxspipe.commonutils.horne_extraction import extract_single_order
 from soxspipe.commonutils.spectrum_ascii import write_ascii_spectrum_product
-from tests.factories import pipeline_settings, product_table, response_product_fits
+from tests.factories import pipeline_settings, product_table, response_product_fits, soxs_merge_extractor
 from tests.factories.flux_calibration import bare_flux_calibration
 
 pytestmark = pytest.mark.integration
@@ -59,13 +59,7 @@ def _orders_without_a_sky_model() -> pd.DataFrame:
 
 def _merge(log: object, orders: pd.DataFrame) -> pd.DataFrame:
     """Order-merge ``orders`` with the real merge, as the stare extraction does."""
-    extractor = object.__new__(horne_extraction)
-    extractor.log = log
-    extractor.arm = "NIR"
-    extractor.kw = lambda key: key
-    extractor.notFlattened = ""
-    extractor.recipeSettings = {}
-    merged, _ = extractor.merge_extracted_orders(orders)
+    merged, _ = soxs_merge_extractor(log, "NIR").merge_extracted_orders(orders)
     return merged
 
 

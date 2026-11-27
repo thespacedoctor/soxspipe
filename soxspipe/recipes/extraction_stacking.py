@@ -189,9 +189,10 @@ class extraction_stacking:
 
         groupedDataframe["SNR"] = groupedDataframe["FLUX_COUNTS"].values / np.sqrt(groupedDataframe["VARIANCE"].values)
 
-        # PREPARING THE HDU
+        # PREPARING THE HDU. WAVE IS ALREADY ROUNDED TO 4 DECIMALS BY THE GROUPING ABOVE. ROUNDING IT TO 2 WOULD MOVE A
+        # LOG-GRID POINT BY UP TO HALF OF A BIN, AND CHANGES NOTHING FOR THE LINEAR X-SHOOTER GRIDS, WHOSE STEPS (0.02
+        # AND 0.06 NM) ARE ALREADY MULTIPLES OF 0.01 NM
         for col, decimals in [
-            ("WAVE", 2),
             ("FLUX_COUNTS", 3),
             ("SNR", 2),
             ("FLUX_DENSITY_COUNTS", 3),

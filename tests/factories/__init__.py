@@ -23,6 +23,7 @@ from .files import (
     sof_file,
 )
 from .frames import StubInputFrames, instrument_header, noise_frame_pair, synthetic_ccd
+from .merge_extractors import soxs_merge_extractor
 from .late_frames import (
     calibration_chain_frames,
     flux_standard_stare,
@@ -58,6 +59,7 @@ __all__ = [
     "pipeline_settings",
     "prepared_fits",
     "product_table",
+    "soxs_merge_extractor",
     "qc_row",
     "qc_table",
     "raw_fits",

@@ -630,8 +630,8 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
     """4-dp WAVE rounding decides merge-vs-split, then each column keeps its own decimal precision.
 
     500.12344 and 500.12345 round to the same 4-dp key and merge (median); 500.12344 and 500.12346 do not
-    and stay as two rows — even though both display as WAVE 500.12 at 2 dp, proving the two-row split, not
-    just the displayed value. FLUX_COUNTS at 3 dp, SNR at 2 dp and FLUX_DENSITY_COUNTS at 3 dp each keep their
+    and stay as two rows. WAVE keeps the 4-dp key: it is no longer rounded to 2 dp, which moved a log-grid point
+    by up to half a bin (DY-2348). FLUX_COUNTS at 3 dp, SNR at 2 dp and FLUX_DENSITY_COUNTS at 3 dp each keep their
     own decimals rather than any other column's: the raw FLUX_COUNTS median 12.34565 would round to 12.35 at
     SNR's 2 dp, not the pinned 12.346.
     """
@@ -641,7 +641,7 @@ def test_stack_extractions_computes_column_specific_rounded_medians(
     stacked, _ = recipe.stack_extractions([first, second], orderJoins={"10-11": 1})
 
     assert len(stacked) == 3
-    assert stacked["WAVE"].tolist() == pytest.approx([500.12, 500.12, 700.0], rel=1e-12)
+    assert stacked["WAVE"].tolist() == pytest.approx([500.1234, 500.1235, 700.0], rel=1e-12)
     assert stacked["FLUX_COUNTS"].tolist() == pytest.approx([12.346, 55.0, 50.0], rel=1e-12)
     assert stacked["FLUX_DENSITY_COUNTS"].tolist() == pytest.approx([2.222, 3.001, 10.0], rel=1e-12)
     # THE VARIANCE OF A TWO-SPECTRUM MEDIAN IS SUM(VAR) / 4 (DY-1675): 12.34565 / SQRT(4.5) AND 50 / SQRT(24.5)
@@ -705,7 +705,7 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_f
     tmp_path: Path,
     passthrough_snr_qcs: None,
 ) -> None:
-    """The NOTFLAT ASCII companion converts WAVE to Angstrom (x10) and formats it to 2 decimal places."""
+    """The NOTFLAT ASCII companion converts the 4-decimal nm WAVE to Angstrom (x10) and formats it to 2 decimals."""
     recipe = _stack_recipe(log, tmp_path)
     first, second = _spectrum_frames()
 
@@ -713,7 +713,7 @@ def test_stack_extractions_writes_wave_in_angstrom_with_two_decimal_formatting_f
 
     asciiLines = Path(fitsPath.replace(".fits", ".txt")).read_text().splitlines()
     assert asciiLines[0] == "WAVE FLUX_COUNTS VARIANCE FLUX_DENSITY_COUNTS SNR"
-    assert asciiLines[1].startswith("5001.20 ")
+    assert asciiLines[1].startswith("5001.23 ")
     assert asciiLines[3].startswith("7000.00 ")
 
 
