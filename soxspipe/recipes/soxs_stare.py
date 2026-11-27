@@ -1692,7 +1692,8 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
 
         if self.subtractSky:
             if master_flat:
-                # A FLAT PIXEL THAT IS ZERO, NEGATIVE OR NOT FINITE CANNOT BE MULTIPLIED BACK IN (DY-2279)
+                # A FLAT PIXEL BELOW FLOAT32 EPSILON (ZERO AND NEGATIVE INCLUDED) OR NOT FINITE CANNOT BE MULTIPLIED
+                # BACK IN (DY-2279, DY-2440)
                 unusableFlat = unusable_flat_pixel_mask(master_flat.data)
                 neutralFlat = neutralise_unusable_flat(master_flat, unusableFlat)
                 unflattenedSkySubtractedCCDData = skySubtractedCCDData.multiply(neutralFlat)

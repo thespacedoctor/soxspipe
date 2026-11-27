@@ -10,6 +10,7 @@ from astropy import units as u
 from astropy.nddata import CCDData, StdDevUncertainty
 
 from soxspipe.commonutils.unusable_flat_pixels import (
+    MIN_USABLE_FLAT_FLUX,
     flag_unusable_pixels,
     neutralise_unusable_flat,
     unusable_flat_pixel_mask,
@@ -31,6 +32,30 @@ def test_a_flat_pixel_is_unusable_when_it_is_zero_negative_or_not_finite() -> No
 
     # ASSERT
     np.testing.assert_array_equal(unusable, [False, False, True, True, True, True, True, True])
+
+
+def test_a_flat_pixel_below_float32_epsilon_is_unusable() -> None:
+    """An inter-order master-flat pixel holds background-subtracted noise, so some hold a tiny positive residue.
+
+    Dividing a frame by one gives an uncertainty above 1.8e19, whose float32 square overflows (DY-2440).
+    """
+    # ARRANGE
+    epsilon = MIN_USABLE_FLAT_FLUX
+    flatData = np.array([1.4551915e-12, 7.45e-9, epsilon / 2, epsilon, 2 * epsilon, 1e-6], dtype=np.float32)
+
+    # ACT
+    unusable = unusable_flat_pixel_mask(flatData)
+
+    # ASSERT
+    np.testing.assert_array_equal(unusable, [True, True, True, False, False, False])
+
+
+def test_the_usable_flat_floor_is_the_float32_machine_epsilon() -> None:
+    # ACT
+    floor = MIN_USABLE_FLAT_FLUX
+
+    # ASSERT
+    assert floor == np.finfo(np.float32).eps
 
 
 def test_neutralising_the_flat_sets_the_unusable_pixels_to_one_with_no_error() -> None:
