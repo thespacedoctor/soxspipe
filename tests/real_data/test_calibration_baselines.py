@@ -112,8 +112,9 @@ DY-2341 branch at e5776edb. It fell from 99.22 to 98.73 (-0.49%). The 150 s stan
 its read noise is now 7.59 e- from the NDSAMPLES table, not the nominal 7.3 e-. Develop run 44829384479 gave 99.22, so
 the move is DY-2341's. The NIR response moved by 0.014% or less and was left as it is.
 
-The four dispersion solution entries were re-recorded on 2026-11-27 from six bit-identical CI runs (RUNIDS) of
-the DY-2441 branch on develop 17286ad6. Gate run 45993387529 of 2c169e33 was green, and one gate run per merge into
+The four dispersion solution entries were re-recorded on 2026-11-27 from six bit-identical CI runs
+(45996048991, 45996053912, 45996065538, 45996069891, 45996074178 and 45996078465) of the DY-2441 branch on
+develop 17286ad6. Gate run 45993387529 of 2c169e33 was green, and one gate run per merge into
 develop since then named each cause (DY-2441):
 
 - Arc-line detection measures from the first guess and rejects ambiguous stamps (DY-2207). `DETLINES NUM` fell from
