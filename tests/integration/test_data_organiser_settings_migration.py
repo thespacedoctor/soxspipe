@@ -37,7 +37,11 @@ def _rewrite_yaml(path: Path, edit: Any) -> None:
 
 
 def _migration_lines(log: Any) -> list[str]:
-    return [message for level, message in log.messages if "settings migration" in message or "up to date" in message]
+    return [
+        message
+        for level, message in log.messages
+        if level != "debug" and ("settings migration" in message.lower() or "superseded and" in message.lower())
+    ]
 
 
 def test_prepare_rewrites_a_superseded_default_and_the_loaded_settings_are_the_new_value(
@@ -140,3 +144,22 @@ def test_an_xshooter_session_is_migrated_with_the_xshooter_defaults(log: Any, tm
     # ASSERT
     del xshDefaults["logging settings"]["handlers"]["file"]["filename"]
     assert yaml.safe_load(yamlPath.read_text()) == xshDefaults
+
+
+@pytest.mark.parametrize("content", ["", "- a\n- list\n", "key: [unclosed\n"])
+def test_prepare_carries_on_with_a_warning_when_the_session_yaml_cannot_be_migrated(
+    log: Any, tmp_path: Path, content: str
+) -> None:
+    # ARRANGE
+    organiser, yamlPath = _organiser_with_session_yaml(tmp_path, log, {"version": 1})
+    organiser.instrument = "SOXS"
+    yamlPath.write_text(content)
+
+    # ACT
+    organiser._migrate_session_settings()
+
+    # ASSERT
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert str(yamlPath) in warnings[0]
+    assert yamlPath.read_text() == content

@@ -50,7 +50,8 @@ Each time you run `soxspipe prep` on a workspace, it brings the `soxspipe.yaml` 
 
 Two limits apply:
 
-- The file is rewritten without its comments. `soxspipe prep` does not make a backup copy of the old file.
+- The file is rewritten without its comments. `soxspipe prep` does not make a backup copy of the old file. The rewritten file keeps its permission bits but not its owner or group.
+- If the file cannot be read or written, `soxspipe prep` logs a warning with the error, uses the file as it is, and carries on.
 - Only the active session is changed. Other sessions keep their files until you switch to them and run `soxspipe prep`.
 
 To list the superseded values, read `soxspipe/resources/settings_migrations.yaml` in the installed package. Each entry has the setting path, the old value, the new value, and the ticket. Workspace tools can call `migrate_session_settings(yamlPath, instrument, log)` from `soxspipe.commonutils.settings_migration` to do the same on any `soxspipe.yaml`.

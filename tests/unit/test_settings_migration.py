@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import copy
+import datetime
+import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -623,3 +626,192 @@ def test_a_yaml_with_non_ascii_text_keeps_it(log: Any, tmp_path: Path) -> None:
 
     # ASSERT
     assert yaml.safe_load(yamlPath.read_text(encoding="utf-8"))["note"] == "Å and é"
+    assert "Å".encode() in yamlPath.read_bytes()
+
+
+def test_a_failed_replace_leaves_the_original_file_and_no_temporary_file(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    sessionDir = tmp_path / "session"
+    sessionDir.mkdir()
+    yamlPath = _write_yaml(sessionDir / "soxspipe.yaml", settings)
+    before = yamlPath.read_bytes()
+
+    def failing_replace(*args: Any, **kwargs: Any) -> None:
+        raise OSError("replace refused")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    # ACT
+    with pytest.raises(OSError, match="replace refused"):
+        migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    assert yamlPath.read_bytes() == before
+    assert [path.name for path in sessionDir.iterdir()] == ["soxspipe.yaml"]
+
+
+def test_the_permission_bits_of_the_yaml_survive_the_rewrite(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+    yamlPath.chmod(0o640)
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    assert stat.S_IMODE(yamlPath.stat().st_mode) == 0o640
+
+
+def test_the_temporary_file_has_the_final_permissions_before_the_replace(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+    yamlPath.chmod(0o640)
+    modesAtReplace: list[int] = []
+    realReplace = os.replace
+
+    def recording_replace(source: Any, destination: Any) -> None:
+        modesAtReplace.append(stat.S_IMODE(os.stat(source).st_mode))
+        realReplace(source, destination)
+
+    monkeypatch.setattr(os, "replace", recording_replace)
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    assert modesAtReplace == [0o640]
+
+
+def test_the_directory_of_the_yaml_is_synced_after_the_replace(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+    events: list[str] = []
+    realReplace, realFsync, realOpen = os.replace, os.fsync, os.open
+
+    def recording_replace(source: Any, destination: Any) -> None:
+        events.append("replace")
+        realReplace(source, destination)
+
+    def recording_open(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        fd = realOpen(path, flags, *args, **kwargs)
+        if Path(path) == tmp_path.resolve():
+            events.append("open-directory")
+        return fd
+
+    def recording_fsync(fd: int) -> None:
+        events.append("fsync")
+        realFsync(fd)
+
+    monkeypatch.setattr(os, "replace", recording_replace)
+    monkeypatch.setattr(os, "open", recording_open)
+    monkeypatch.setattr(os, "fsync", recording_fsync)
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    assert events[-3:] == ["replace", "open-directory", "fsync"]
+
+
+def test_a_platform_that_refuses_to_sync_a_directory_does_not_fail_the_migration(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+    realOpen = os.open
+
+    def refusing_open(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        if Path(path) == tmp_path.resolve():
+            raise PermissionError("no directory handles")
+        return realOpen(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", refusing_open)
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    assert yaml.safe_load(yamlPath.read_text())["nir-max-detector-temp-k"] == 80
+
+
+def test_a_failed_fdopen_closes_the_raw_descriptor_and_removes_the_temporary_file(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    sessionDir = tmp_path / "session"
+    sessionDir.mkdir()
+    yamlPath = _write_yaml(sessionDir / "soxspipe.yaml", settings)
+    closed: list[int] = []
+    realClose = os.close
+
+    def failing_fdopen(*args: Any, **kwargs: Any) -> None:
+        raise OSError("fdopen refused")
+
+    def recording_close(fd: int) -> None:
+        closed.append(fd)
+        realClose(fd)
+
+    monkeypatch.setattr(os, "fdopen", failing_fdopen)
+    monkeypatch.setattr(os, "close", recording_close)
+
+    # ACT
+    with pytest.raises(OSError, match="fdopen refused"):
+        migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    assert len(closed) == 1
+    assert [path.name for path in sessionDir.iterdir()] == ["soxspipe.yaml"]
+
+
+def test_a_cleanup_that_finds_the_temporary_file_gone_does_not_mask_the_original_error(
+    log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+
+    def failing_replace(source: Any, destination: Any) -> None:
+        os.unlink(source)
+        raise OSError("replace refused")
+
+    monkeypatch.setattr(os, "replace", failing_replace)
+
+    # ACT
+    with pytest.raises(OSError, match="replace refused"):
+        migrate_session_settings(yamlPath, "soxs", log)
+
+
+def test_a_date_value_in_the_settings_is_compared_without_error() -> None:
+    # ARRANGE
+    defaults = {"observed": datetime.date(2026, 11, 27), "limit": 9}
+    settings = {"observed": datetime.date(2026, 1, 12), "limit": 1}
+    registry = [
+        entry("limit", 1, 9, "DY-1"),
+        entry("observed", datetime.date(2026, 1, 12), defaults["observed"], "DY-2"),
+    ]
+
+    # ACT
+    result = apply_migration(settings, defaults, registry)
+
+    # ASSERT
+    assert result.settings == defaults
+    assert [c.path for c in result.changes] == ["limit", "observed"]

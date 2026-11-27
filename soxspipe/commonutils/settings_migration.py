@@ -93,7 +93,7 @@ def _same_value(left: Any, right: Any) -> bool:
     """Return True when two settings values are equal and of the same YAML types (`True` is not `1`)."""
     import json
 
-    return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
+    return json.dumps(left, sort_keys=True, default=str) == json.dumps(right, sort_keys=True, default=str)
 
 
 def _parent_and_key(settings: Mapping[str, Any], path: str) -> tuple[Any, str] | None:
@@ -204,7 +204,12 @@ def apply_migration(
 
 
 def _write_yaml_atomically(yamlPath: Path, settings: Mapping[str, Any]) -> None:
-    """Write `settings` to `yamlPath` through a temporary file, so a failed write leaves the old file."""
+    """Write `settings` to `yamlPath` through a temporary file, so a failed write leaves the old file.
+
+    The temporary file takes the permission bits of the old file before it is synced, and the directory is synced after
+    the replace. The owner and group of the file are not kept.
+    """
+    import contextlib
     import shutil
     import tempfile
 
@@ -212,15 +217,36 @@ def _write_yaml_atomically(yamlPath: Path, settings: Mapping[str, Any]) -> None:
 
     handle, tempName = tempfile.mkstemp(dir=yamlPath.parent, prefix=f".{yamlPath.name}.", suffix=".tmp")
     try:
-        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+        try:
+            stream = os.fdopen(handle, "w", encoding="utf-8")
+        except BaseException:
+            os.close(handle)
+            raise
+        with stream:
             yaml.safe_dump(settings, stream, sort_keys=False, default_flow_style=None, width=1000, allow_unicode=True)
+            shutil.copymode(yamlPath, tempName)
             stream.flush()
             os.fsync(stream.fileno())
-        shutil.copymode(yamlPath, tempName)
         os.replace(tempName, yamlPath)
     except BaseException:
-        Path(tempName).unlink(missing_ok=True)
+        with contextlib.suppress(FileNotFoundError):
+            Path(tempName).unlink()
         raise
+    _sync_directory(yamlPath.parent)
+
+
+def _sync_directory(directory: Path) -> None:
+    """Flush a directory entry to disk, so a replaced file survives a crash. Platforms that refuse are skipped."""
+    try:
+        descriptor = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
 
 
 def _log_result(log: Any, result: migration_result, yamlPath: Path) -> None:
@@ -261,6 +287,7 @@ def migrate_session_settings(yamlPath: str | os.PathLike[str], instrument: str, 
     **Raises:**
 
     - `ValueError` when the instrument is unknown or the yaml is not a mapping. The file is left as it is.
+    - `yaml.YAMLError` when the yaml cannot be parsed, and `OSError` when it cannot be read or written.
 
     **Usage:**
 
@@ -274,16 +301,16 @@ def migrate_session_settings(yamlPath: str | os.PathLike[str], instrument: str, 
 
     key = _instrument_key(instrument)
     # RESOLVE THE PATH, SO THE REWRITE REPLACES THE TARGET OF A SYMLINK AND NOT THE LINK
-    yamlPath = Path(yamlPath).resolve()
-    with open(yamlPath, encoding="utf-8") as stream:
+    resolvedPath = Path(yamlPath).resolve()
+    with open(resolvedPath, encoding="utf-8") as stream:
         settings = yaml.safe_load(stream)
     if not isinstance(settings, dict):
-        raise ValueError(f"`{yamlPath}` is not a mapping of settings")
+        raise ValueError(f"`{resolvedPath}` is not a mapping of settings")
     with open(PACKAGE_DIR / f"{key}_default_settings.yaml", encoding="utf-8") as stream:
         defaults = yaml.safe_load(stream)
 
     result = apply_migration(settings, defaults, superseded_defaults(key))
     if result.changes:
-        _write_yaml_atomically(yamlPath, result.settings)
-    _log_result(log, result, yamlPath)
+        _write_yaml_atomically(resolvedPath, result.settings)
+    _log_result(log, result, resolvedPath)
     return result
