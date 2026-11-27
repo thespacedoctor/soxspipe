@@ -4,7 +4,7 @@
 
 The standard already rates ``SPEC_RES`` as mandatory, ``SPEC_ERR`` and ``SPEC_SYE`` as recommended, and ``LAMRMS`` and
 ``LAMNLIN`` as optional. ``phase3_check_headers`` checks their presence, their type, and that ``SPEC_RES`` is above 0.
-These checks add the house rules of the spec (DY-2393): ``LAMRMS`` and ``SPEC_ERR`` are above 0, ``LAMNLIN`` is at
+These checks add house rules of this ticket (DY-2358): ``LAMRMS`` and ``SPEC_ERR`` are above 0, ``LAMNLIN`` is at
 least 1, and ``SPEC_ERR = LAMRMS / sqrt(LAMNLIN)``. ESO's own X-Shooter products use ``LAMRMS / LAMNLIN``, which the
 standard does not say.
 
@@ -20,7 +20,9 @@ from __future__ import annotations
 import math
 
 from soxspipe.commonutils.phase3_check_framework import PRIMARY, Finding, Phase3Product, fail, register_check
-from soxspipe.commonutils.phase3_check_headers import HOUSE_RANGE, HOUSE_RULE
+
+# WHERE THESE RULES COME FROM, NAMED IN THE MESSAGES: THE STANDARD GIVES THESE KEYWORDS NO RANGE AND NO FORMULA CHECK
+WAVELENGTH_RULE = "house rule, DY-2358"
 
 # SPEC_ERR IS WRITTEN AT FULL PRECISION, SO THIS ONLY ALLOWS FOR A WRITER THAT ROUNDS IT
 SPEC_ERR_TOLERANCE = 1e-4
@@ -59,7 +61,7 @@ def check_wavelength_keyword_ranges(product: Phase3Product) -> list[Finding]:
         ("LAMNLIN", lambda value: value >= MIN_LINE_COUNT, f"at least {MIN_LINE_COUNT}"),
     )
     return [
-        fail(f"{keyword} is {header[keyword]}, outside its allowed range ({HOUSE_RANGE}): it must be {text}")
+        fail(f"{keyword} is {header[keyword]}, outside its allowed range ({WAVELENGTH_RULE}): it must be {text}")
         for keyword, isValid, text in rules
         if keyword in header and _is_number(header[keyword]) and not isValid(header[keyword])
     ]
@@ -97,6 +99,6 @@ def check_spec_err_is_lamrms_over_the_root_of_lamnlin(product: Phase3Product) ->
     return [
         fail(
             f"SPEC_ERR is {specErr:.6g}, it must be LAMRMS / sqrt(LAMNLIN) = {expected:.6g} "
-            f"(LAMRMS {lamrms:.6g}, LAMNLIN {lamnlin}) ({HOUSE_RULE})"
+            f"(LAMRMS {lamrms:.6g}, LAMNLIN {lamnlin}) ({WAVELENGTH_RULE})"
         )
     ]

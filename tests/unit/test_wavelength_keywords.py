@@ -21,6 +21,7 @@ from soxspipe.commonutils.wavelength_keywords import (
     wavelength_accuracy_cards,
     with_wavelength_keywords,
 )
+from tests.factories.disp_tab import disp_tab_with_qcs
 
 pytestmark = pytest.mark.unit
 
@@ -38,14 +39,6 @@ def _warnings(log: Any) -> list[str]:
     return [message for level, message in log.messages if level == "warning"]
 
 
-def _disp_tab(tmp_path: Path, **qcCards: Any) -> str:
-    """Write a `DISP_TAB` with the given `ESO QC` cards, and return its path."""
-    header = fits.Header({f"HIERARCH ESO QC {name}": value for name, value in qcCards.items()})
-    path = tmp_path / "SOXS_DISP_TAB_VIS.fits"
-    fits.HDUList([fits.PrimaryHDU(header=header), fits.BinTableHDU.from_columns([])]).writeto(path)
-    return str(path)
-
-
 def _nominal(arm: str, slit: str) -> int:
     log = type("Quiet", (), {"debug": staticmethod(lambda *a, **k: None)})()
     return detector_lookup(log=log, settings=SOXS_SETTINGS).get(arm)["spec-res"][slit]
@@ -53,7 +46,7 @@ def _nominal(arm: str, slit: str) -> int:
 
 def test_the_accuracy_cards_come_from_the_wave_qcs_of_the_dispersion_map(tmp_path: Path, log: Any) -> None:
     # ARRANGE
-    path = _disp_tab(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
+    path = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
 
     # ACT
     cards = wavelength_accuracy_cards(path, log)
@@ -69,7 +62,7 @@ def test_the_accuracy_cards_come_from_the_wave_qcs_of_the_dispersion_map(tmp_pat
 
 def test_a_float_line_count_is_written_as_an_integer(tmp_path: Path, log: Any) -> None:
     # ARRANGE: THE QC TABLE HOLDS ITS NUMBERS AS FLOATS, SO THE CARD MAY READ 121.0
-    path = _disp_tab(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": 121.0})
+    path = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": 121.0})
 
     # ACT
     values = _values(wavelength_accuracy_cards(path, log))
@@ -81,7 +74,7 @@ def test_a_float_line_count_is_written_as_an_integer(tmp_path: Path, log: Any) -
 
 def test_a_dispersion_map_without_the_wave_qcs_gives_no_cards_and_one_warning(tmp_path: Path, log: Any) -> None:
     # ARRANGE: A MAP MADE BEFORE THE QCs EXISTED HAS OTHER QCs BUT NOT THESE
-    path = _disp_tab(tmp_path, **{"X RES MEDIAN": 0.1})
+    path = disp_tab_with_qcs(tmp_path, **{"X RES MEDIAN": 0.1})
 
     # ACT
     cards = wavelength_accuracy_cards(path, log)
@@ -115,7 +108,7 @@ def test_an_unreadable_dispersion_map_gives_no_cards_and_one_warning(tmp_path: P
 @pytest.mark.parametrize("nlines", [0, -3])
 def test_a_line_count_below_one_gives_no_cards_and_one_warning(tmp_path: Path, log: Any, nlines: int) -> None:
     # ARRANGE
-    path = _disp_tab(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": nlines})
+    path = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": nlines})
 
     # ACT
     cards = wavelength_accuracy_cards(path, log)
@@ -127,7 +120,7 @@ def test_a_line_count_below_one_gives_no_cards_and_one_warning(tmp_path: Path, l
 
 def test_a_wave_qc_that_is_not_a_number_gives_no_cards_and_one_warning(tmp_path: Path, log: Any) -> None:
     # ARRANGE
-    path = _disp_tab(tmp_path, **{"WAVE RMS": "n/a", "WAVE NLINES": WAVE_NLINES})
+    path = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": "n/a", "WAVE NLINES": WAVE_NLINES})
 
     # ACT
     cards = wavelength_accuracy_cards(path, log)
@@ -169,10 +162,54 @@ def test_a_slit_with_no_table_row_gives_no_spec_res_and_one_warning_that_fails_t
     assert "SPEC_RES" in warnings[0] and "arm fails" in warnings[0]
 
 
+def _lookup_returning(monkeypatch: pytest.MonkeyPatch, arms: dict[str, Any]) -> None:
+    """Make the detector lookup return ``arms`` as its table of detector parameters."""
+    import importlib
+
+    class FakeLookup:
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        def get(self, arm: str) -> Any:
+            if arm not in arms:
+                raise LookupError(f"the detector '{arm}' cannot be found in the detector parameters lookup file")
+            return arms[arm]
+
+    monkeypatch.setattr(importlib.import_module("soxspipe.commonutils.detector_lookup"), "detector_lookup", FakeLookup)
+
+
+@pytest.mark.parametrize(
+    "arms",
+    [
+        {},
+        {"VIS": {}},
+        {"VIS": None},
+        {"VIS": {"spec-res": {"SLIT1.0": "n/a"}}},
+        {"VIS": {"spec-res": {"SLIT1.0": None}}},
+        {"VIS": {"spec-res": None}},
+    ],
+    ids=["no-arm", "no-table", "arm-is-none", "text-value", "none-value", "table-is-none"],
+)
+def test_a_broken_detector_table_gives_no_spec_res_and_one_warning_that_fails_the_arm(
+    log: Any, monkeypatch: pytest.MonkeyPatch, arms: dict[str, Any]
+) -> None:
+    # ARRANGE
+    _lookup_returning(monkeypatch, arms)
+
+    # ACT
+    cards = spec_res_cards("VIS", "SLIT1.0", SOXS_SETTINGS, log)
+
+    # ASSERT
+    assert cards == []
+    warnings = _warnings(log)
+    assert len(warnings) == 1
+    assert "SPEC_RES" in warnings[0] and "arm fails" in warnings[0]
+
+
 def test_spec_res_is_never_the_pinhole_resolving_power(tmp_path: Path, log: Any) -> None:
     # ARRANGE: THE MAP CARRIES A PINHOLE RESOLVING POWER, WHICH IS FAR ABOVE THE SLIT VALUE
     kw = keyword_lookup(log=log, settings=SOXS_SETTINGS).get
-    path = _disp_tab(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES, "R PIN MEDIAN": 9400.0})
+    path = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES, "R PIN MEDIAN": 9400.0})
     header = fits.Header({kw("SLIT_VIS"): "SLIT1.0"})
 
     # ACT
@@ -186,7 +223,7 @@ def test_spec_res_is_never_the_pinhole_resolving_power(tmp_path: Path, log: Any)
 def test_the_stamp_gives_a_copy_with_every_card_and_leaves_the_header_alone(tmp_path: Path, log: Any) -> None:
     # ARRANGE
     kw = keyword_lookup(log=log, settings=SOXS_SETTINGS).get
-    path = _disp_tab(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
+    path = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
     header = fits.Header({kw("SLIT_VIS"): "SLIT1.5"})
 
     # ACT
@@ -203,7 +240,7 @@ def test_the_stamp_gives_a_copy_with_every_card_and_leaves_the_header_alone(tmp_
 def test_the_stamp_removes_a_stale_card_that_it_cannot_recompute(tmp_path: Path, log: Any) -> None:
     # ARRANGE: THE HEADER ALREADY HOLDS CARDS FROM AN EARLIER STAMP, AND THIS MAP HAS NO WAVE QCs
     kw = keyword_lookup(log=log, settings=SOXS_SETTINGS).get
-    path = _disp_tab(tmp_path)
+    path = disp_tab_with_qcs(tmp_path)
     header = fits.Header({kw("SLIT_VIS"): "SLIT1.0", "LAMRMS": 1.0, "LAMNLIN": 5, "SPEC_ERR": 0.4})
 
     # ACT
@@ -217,7 +254,7 @@ def test_the_stamp_removes_a_stale_card_that_it_cannot_recompute(tmp_path: Path,
 def test_the_stamp_reads_the_slit_card_of_the_arm(tmp_path: Path, log: Any) -> None:
     # ARRANGE
     kw = keyword_lookup(log=log, settings=SOXS_SETTINGS).get
-    path = _disp_tab(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
+    path = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
     header = fits.Header({kw("SLIT_VIS"): "SLIT1.0", kw("SLIT_NIR"): "SLIT0.5"})
 
     # ACT
@@ -248,7 +285,7 @@ def test_the_cards_survive_a_strict_phase_3_write_with_their_comments_whole(tmp_
 
     # ARRANGE: A REAL TABLE FILE WRITTEN THE WAY A PHASE 3 PRODUCT IS, WHERE A CARD THAT DOES NOT FIT RAISES
     kw = keyword_lookup(log=log, settings=SOXS_SETTINGS).get
-    dispMap = _disp_tab(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
+    dispMap = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": WAVE_RMS_NM, "WAVE NLINES": WAVE_NLINES})
     header = with_wavelength_keywords(fits.Header({kw("SLIT_VIS"): "SLIT1.0"}), dispMap, "VIS", kw, SOXS_SETTINGS, log)
     filePath = tmp_path / "SOXS_20260102T030405_STARE_ph3.fits"
 

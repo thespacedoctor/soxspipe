@@ -30,6 +30,7 @@ from soxspipe.commonutils.horne_extraction import (
 )
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from tests.factories import instrument_header, product_table, qc_table
+from tests.factories.disp_tab import disp_tab_with_qcs
 from tests.factories.flux_calibration import calibrate_spectrum
 from tests.unit._plot_spies import probe_on_savefig
 
@@ -1128,14 +1129,6 @@ def test_extract_gives_the_merged_spectrum_the_target_position_and_the_uncalibra
     assert "FLUXCAL" not in ordersHeader and ordersHeader["RA"] == 7.9
 
 
-def _disp_tab_with_wave_qcs(directory: Path) -> str:
-    """Write a `DISP_TAB` with the `WAVE RMS` and `WAVE NLINES` QCs, and return its path."""
-    header = fits.Header({"HIERARCH ESO QC WAVE RMS": 0.0036, "HIERARCH ESO QC WAVE NLINES": 121})
-    path = directory / "DISP_TAB_VIS.fits"
-    fits.HDUList([fits.PrimaryHDU(header=header), fits.BinTableHDU.from_columns([])]).writeto(path)
-    return str(path)
-
-
 def test_extract_gives_the_merged_spectrum_alone_the_resolution_and_wavelength_accuracy_cards(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -1149,7 +1142,7 @@ def test_extract_gives_the_merged_spectrum_alone_the_resolution_and_wavelength_a
     extractor.filenameTemplate = "SYNTHETIC.fits"
     extractor.productDir = str(tmp_path)
     extractor.noddingSequence = ""
-    extractor.dispersionMap = _disp_tab_with_wave_qcs(tmp_path)
+    extractor.dispersionMap = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": 0.0036, "WAVE NLINES": 121})
     extractor.scienceHeaders = []
     extractor.skySubtractedFrame.header["SLIT_VIS"] = "SLIT1.0"
     calls: list[dict[str, object]] = []
@@ -1180,7 +1173,7 @@ def test_extract_gives_the_not_flattened_spectrum_no_resolution_or_accuracy_card
     extractor.productDir = str(tmp_path)
     extractor.noddingSequence = ""
     extractor.notFlattened = "_NOTFLAT"
-    extractor.dispersionMap = _disp_tab_with_wave_qcs(tmp_path)
+    extractor.dispersionMap = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": 0.0036, "WAVE NLINES": 121})
     extractor.scienceHeaders = []
     extractor.skySubtractedFrame.header["SLIT_VIS"] = "SLIT1.0"
     calls: list[dict[str, object]] = []

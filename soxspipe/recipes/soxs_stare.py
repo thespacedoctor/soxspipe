@@ -22,7 +22,6 @@ from soxspipe.commonutils import detector_lookup, filenamer, subtract_sky
 from soxspipe.commonutils.on_target_frames import (
     build_on_target_frames,
     frames_named,
-    with_frame_accounting,
 )
 from soxspipe.commonutils.slit_illumination_qc import read_rotator_angle
 from soxspipe.commonutils.stare_mode import NOD_STARE_MARKER
@@ -1747,9 +1746,7 @@ class soxs_stare(nod_stare_stacking, extraction_stacking, base_recipe):
             extinctionPath=calibrationRootPath + "/" + detectorParams["extinction"],
             arm=self.arm,
             # THE HEADER OF THE SPECTRUM CARRIES THE SUMMED EXPOSURE TIME. THE EXPTIME ABOVE IS THAT OF ONE FRAME
-            header=self._with_wavelength_keywords(
-                with_frame_accounting(combined_object.header, self.onTargetFrames, self.log)
-            ),
+            header=self._merged_spectrum_header(combined_object.header),
             recipeName=self.recipeName,
             startNightDate=self.startNightDate,
             sofName=self.productStem,

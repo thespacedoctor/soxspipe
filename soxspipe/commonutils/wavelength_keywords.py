@@ -145,15 +145,16 @@ def spec_res_cards(arm: str, slitName: Any, settings: Any, log: Any) -> Cards:
     """
     from soxspipe.commonutils.detector_lookup import detector_lookup
 
-    table = detector_lookup(log=log, settings=settings).get(arm).get("spec-res", {})
     slit = _slit_key(slitName)
-    if slit not in table:
+    try:
+        value = int(detector_lookup(log=log, settings=settings).get(arm)["spec-res"][slit])
+    except (LookupError, AttributeError, TypeError, ValueError) as error:
         log.warning(
-            f"The {arm} slit {slitName!r} has no row in the spec-res table, so the spectrum has no {SPEC_RES_CARD} "
-            "and the arm fails."
+            f"The {arm} slit {slitName!r} has no usable row in the spec-res table ({type(error).__name__}: {error}), "
+            f"so the spectrum has no {SPEC_RES_CARD} and the arm fails."
         )
         return []
-    return [(SPEC_RES_CARD, int(table[slit]), "Nominal resolving power from slit arcs")]
+    return [(SPEC_RES_CARD, value, "Nominal resolving power from slit arcs")]
 
 
 def with_wavelength_keywords(header: Any, dispMapPath: Any, arm: str, kw: Any, settings: Any, log: Any) -> Any:
@@ -195,3 +196,40 @@ def with_wavelength_keywords(header: Any, dispMapPath: Any, arm: str, kw: Any, s
     for keyword, value, comment in cards:
         set_header_card(stamped, keyword, value, comment)
     return stamped
+
+
+def with_merged_spectrum_cards(
+    header: Any, entries: Any, dispMapPath: Any, arm: str, kw: Any, settings: Any, log: Any
+) -> Any:
+    """*give a header every card a merged spectrum takes from its recipe, on a copy*
+
+    The frame-accounting and target position cards of the on-target list, then the wavelength-calibration and
+    resolution cards. The three places that write a merged spectrum header use this one composition.
+
+    **Key Arguments:**
+
+    - ``header`` -- the header to stamp. It is not changed
+    - ``entries`` -- the on-target list of the recipe, or None
+    - ``dispMapPath`` -- the path to the ``DISP_TAB`` of the science frames
+    - ``arm`` -- the arm of the spectrum
+    - ``kw`` -- the keyword lookup (``keyword_lookup(...).get``)
+    - ``settings`` -- the settings dictionary
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``stamped`` -- a stamped copy of ``header``
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
+    header = with_merged_spectrum_cards(
+        header, self.onTargetFrames, self.dispMap, self.arm, self.kw, self.settings, self.log
+    )
+    ```
+    """
+    from soxspipe.commonutils.on_target_frames import with_frame_accounting
+
+    stamped = with_frame_accounting(header, entries, log)
+    return with_wavelength_keywords(stamped, dispMapPath, arm, kw, settings, log)

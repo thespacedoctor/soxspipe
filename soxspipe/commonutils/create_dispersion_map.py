@@ -2618,21 +2618,15 @@ class create_dispersion_map:
                 "Std-dev spectral resolution measured from detected lines in pinhole frames",
             ]
 
+            # THE WAVELENGTH ACCURACY THE PHASE 3 KEYWORDS LAMRMS AND LAMNLIN ARE READ FROM (DY-2358). EVERY LIST GROWS
+            # BY THE SAME ROWS, SO THE LENGTH CHECK BELOW COVERS THEM
+            accuracyRows = self._wavelength_accuracy_qc_rows(orderPixelTable)
+            for row in accuracyRows:
+                for column, item in zip((qc_names, qc_values, qc_units, qc_comments, qc_order), row, strict=True):
+                    column.append(item)
+
             if len(qc_units) != len(qc_names) or len(qc_comments) != len(qc_names) or len(qc_values) != len(qc_names):
                 raise ValueError("Mismatch in lengths of QC arrays")
-
-            # THE WAVELENGTH ACCURACY THE PHASE 3 KEYWORDS LAMRMS AND LAMNLIN ARE READ FROM (DY-2358)
-            waveRmsNm, waveLineCount = self._wavelength_accuracy(orderPixelTable)
-            qc_names.extend(["WAVE RMS", "WAVE NLINES"])
-            qc_values.extend([waveRmsNm, waveLineCount])
-            qc_units.extend(["nm", "lines"])
-            qc_comments.extend(
-                [
-                    "[nm] RMS of the arc-line residuals along the dispersion axis",
-                    "Number of distinct arc lines in the dispersion solution",
-                ]
-            )
-            qc_order.extend([None, None])
 
             uniqueOrders = orderPixelTable["order"].unique()
             for o in uniqueOrders:
@@ -2756,12 +2750,14 @@ class create_dispersion_map:
         self.log.debug("completed the ``calculate_residuals`` method")
         return combined_res_mean, combined_res_std, combined_res_median, orderPixelTable
 
-    def _wavelength_accuracy(self, orderPixelTable):
-        """*the RMS (nm) of the dispersion-axis residuals of the fitted lines, and the number of distinct lines*
+    def _wavelength_accuracy_qc_rows(
+        self, orderPixelTable: "pd.DataFrame"
+    ) -> list[tuple[str, float | int, str, str, None]]:
+        """*the* ``WAVE RMS`` *and* ``WAVE NLINES`` *QC rows of the fitted lines*
 
-        Each residual is converted to nm with the pixel scale of its own line. The RMS is over every detection in the
-        table, which holds the lines that survived the clipping. A line seen through several pinholes is one line, so
-        the count is of distinct (order, wavelength) pairs (DY-2307).
+        Each residual along the dispersion axis is converted to nm with the pixel scale of its own line. The RMS is over
+        every detection in the table, which holds the lines that survived the clipping. A line seen through several
+        pinholes is one line, so the count is of distinct (order, wavelength) pairs (DY-2307).
 
         **Key Arguments:**
 
@@ -2769,16 +2765,22 @@ class create_dispersion_map:
 
         **Return:**
 
-        - ``waveRmsNm`` -- the RMS of the residuals in nm, NaN for an empty table
-        - ``waveLineCount`` -- the number of distinct arc lines
+        - ``rows`` -- ``(name, value, unit, comment, order)`` for each QC. Empty, with a warning, when no detection
+          has a finite residual, so the header never holds a NaN
         """
         import numpy as np
 
         residualsNm = orderPixelTable[f"residuals_{self.axisA}"] * orderPixelTable["pixelScaleNm"]
         residualsNm = residualsNm[np.isfinite(residualsNm)]
-        waveRmsNm = float(np.sqrt(np.mean(np.square(residualsNm)))) if len(residualsNm) else float("nan")
-        waveLineCount = len(orderPixelTable[["order", "wavelength"]].drop_duplicates())
-        return waveRmsNm, int(waveLineCount)
+        if not len(residualsNm):
+            self.log.warning("No fitted line has a finite residual, so the WAVE RMS and WAVE NLINES QCs are left out.")
+            return []
+        waveRmsNm = float(np.sqrt(np.mean(np.square(residualsNm))))
+        waveLineCount = int(len(orderPixelTable[["order", "wavelength"]].drop_duplicates()))
+        return [
+            ("WAVE RMS", waveRmsNm, "nm", "[nm] RMS of the arc-line residuals along the dispersion axis", None),
+            ("WAVE NLINES", waveLineCount, "lines", "Number of distinct arc lines in the dispersion solution", None),
+        ]
 
     def _measure_slit_resolutions(self, orderPixelTable):
         """*measure the slit resolution and FWHM of every arc line*

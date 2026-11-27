@@ -45,13 +45,13 @@ def _line_table() -> pd.DataFrame:
     )
 
 
-def _written_qcs(log: object, dispersionAxis: str) -> pd.DataFrame:
+def _written_qcs(log: object, dispersionAxis: str, xcoeff: tuple[float, float] = (0.0, 2.0)) -> pd.DataFrame:
     mapper = _mapper(log)
     mapper.arcFrame = False
     mapper.axisA = dispersionAxis
     mapper.calculate_residuals(
         _line_table(),
-        xcoeff=[0.0, 2.0],
+        xcoeff=list(xcoeff),
         ycoeff=[5.0, 0.0],
         orderDeg=0,
         wavelengthDeg=1,
@@ -90,3 +90,15 @@ def test_wave_nlines_counts_each_order_and_wavelength_once_however_many_pinholes
     assert qc.loc["WAVE NLINES", "qc_value"] == 2
     assert qc.loc["WAVE NLINES", "qc_unit"] == "lines"
     assert bool(qc.loc["WAVE NLINES", "to_header"])
+
+
+def test_a_table_with_no_finite_residual_writes_neither_qc_and_warns(log: object) -> None:
+    # ARRANGE: AN x SOLUTION THAT DOES NOT CHANGE WITH WAVELENGTH GIVES EVERY LINE AN INFINITE PIXEL SCALE, SO NO
+    # RESIDUAL IN nm IS FINITE
+    # ACT
+    qc = _written_qcs(log, "x", xcoeff=(0.0, 0.0))
+
+    # ASSERT: THE HEADER MUST NEVER HOLD A NaN, AND THE OTHER QCs ARE STILL WRITTEN
+    assert "WAVE RMS" not in qc.index and "WAVE NLINES" not in qc.index
+    assert "X RES MEDIAN" in qc.index
+    assert [message for level, message in log.messages if level == "warning" and "WAVE RMS" in message]

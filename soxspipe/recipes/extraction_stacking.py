@@ -14,10 +14,10 @@ import math
 from typing import Any
 
 from soxspipe.commonutils import keyword_lookup
-from soxspipe.commonutils.on_target_frames import with_frame_accounting, without_pointing
+from soxspipe.commonutils.on_target_frames import without_pointing
 from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from soxspipe.commonutils.toolkit import utcnow_string
-from soxspipe.commonutils.wavelength_keywords import with_wavelength_keywords
+from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
 
 # UP TO THIS MANY SPECTRA, THE MEDIAN IS THE MEAN, SO ITS VARIANCE IS SUM(VAR) / N**2
 MEDIAN_IS_MEAN_MAX_SPECTRA = 2
@@ -83,38 +83,34 @@ class extraction_stacking:
     # MERGED SPECTRUM ITS LAMRMS, LAMNLIN AND SPEC_ERR CARDS (DY-2358)
     dispMap = None
 
-    def _with_wavelength_keywords(self, header: Any) -> Any:
-        """*give a header the wavelength-calibration and resolution cards of the recipe's* ``DISP_TAB`` *and slit*
-
-        **Key Arguments:**
-
-        - ``header`` -- the header of the merged spectrum. It is not changed
-
-        **Return:**
-
-        - ``stamped`` -- a copy of ``header`` with ``SPEC_RES``, ``LAMRMS``, ``LAMNLIN`` and ``SPEC_ERR``, less any that
-          cannot be computed (see ``with_wavelength_keywords``)
-        """
-        kw = keyword_lookup(log=self.log, settings=self.settings).get
-        return with_wavelength_keywords(header, self.dispMap, self.arm, kw, self.settings, self.log)
-
-    def _merged_spectrum_header(self) -> Any:
-        """*the header of the merged spectrum: the master header with the frame-accounting cards of the on-target list*
+    def _merged_spectrum_header(self, header: Any = None) -> Any:
+        """*the header of the merged spectrum: a frame header with the frame-accounting, target and wavelength cards*
 
         ``stack_extractions`` stamps ``masterHeaderFrame`` with every raw frame of the recipe, so the calibrated
         spectrum lists them all. The header of one input frame lists the raw frames of its own cycle only, or none. The
         cards go on a copy, because flux calibration and the response divide the counts by the exposure time of one
-        frame, which is the ``EXPTIME`` of the master header. With no on-target list a copy of the master header comes
-        back with only its pointing ``RA`` and ``DEC`` removed. The wavelength-calibration and resolution cards are
-        added either way (DY-2358).
+        frame, which is the ``EXPTIME`` of the master header. With no on-target list the copy has only its pointing
+        ``RA`` and ``DEC`` removed. The wavelength-calibration and resolution cards are added either way (DY-2358).
+
+        **Key Arguments:**
+
+        - ``header`` -- the header to stamp. Default *None*, the header of ``masterHeaderFrame``
 
         **Return:**
 
-        - ``header`` -- a copy of the header of ``masterHeaderFrame``, with the frame-accounting and target position
-          cards when there is an on-target list
+        - ``header`` -- a stamped copy of the header, with the frame-accounting and target position cards when there is
+          an on-target list, and ``SPEC_RES``, ``LAMRMS``, ``LAMNLIN`` and ``SPEC_ERR`` where they can be computed
         """
-        stamped = with_frame_accounting(self.masterHeaderFrame.header, self.onTargetFrames, self.log)
-        return self._with_wavelength_keywords(stamped)
+        kw = keyword_lookup(log=self.log, settings=self.settings).get
+        return with_merged_spectrum_cards(
+            self.masterHeaderFrame.header if header is None else header,
+            self.onTargetFrames,
+            self.dispMap,
+            self.arm,
+            kw,
+            self.settings,
+            self.log,
+        )
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
         """*merge the extractions of the nodding cycles, or of the nod positions of a stare-mode nodding SOF*

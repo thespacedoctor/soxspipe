@@ -21,6 +21,7 @@ from soxspipe.commonutils.detector_lookup import detector_lookup
 from soxspipe.commonutils.phase3_check import FAILURE, check_phase3
 from soxspipe.recipes import soxs_nod, soxs_offset
 from tests.factories import response_product_fits, synthetic_ccd
+from tests.factories.disp_tab import disp_tab_with_qcs
 from tests.integration.test_merged_spectrum_header import (
     NOD_NAMES,
     OFFSET_NAMES,
@@ -43,14 +44,6 @@ WAVELENGTH_CARDS = ("SPEC_RES", "LAMRMS", "LAMNLIN", "SPEC_ERR")
 
 def _nominal_spec_res(log: Any, slit: str) -> int:
     return detector_lookup(log=log, settings={"instrument": "soxs"}).get("VIS")["spec-res"][slit]
-
-
-def _disp_tab(directory: Path, **qcCards: Any) -> str:
-    """Write a `DISP_TAB` that holds the given `ESO QC` cards, and return its path."""
-    header = fits.Header({f"HIERARCH ESO QC {name}": value for name, value in qcCards.items()})
-    path = directory / "DISP_TAB_VIS.fits"
-    fits.HDUList([fits.PrimaryHDU(header=header), fits.BinTableHDU.from_columns([])]).writeto(path, overwrite=True)
-    return str(path)
 
 
 def _wave_qcs() -> dict[str, Any]:
@@ -79,7 +72,7 @@ def test_the_stacked_spectrum_file_has_the_resolution_and_wavelength_accuracy_ca
 ) -> None:
     # ARRANGE
     recipe = _with_slit_and_map(
-        _recipe(recipeClass, tmp_path, log, monkeypatch, names), "SLIT1.5", _disp_tab(tmp_path, **_wave_qcs())
+        _recipe(recipeClass, tmp_path, log, monkeypatch, names), "SLIT1.5", disp_tab_with_qcs(tmp_path, **_wave_qcs())
     )
 
     # ACT
@@ -118,7 +111,7 @@ def test_the_header_given_to_the_flux_calibration_has_the_same_cards(
 ) -> None:
     # ARRANGE
     recipe = _with_slit_and_map(
-        _recipe(recipeClass, tmp_path, log, monkeypatch, names), "SLIT1.0", _disp_tab(tmp_path, **_wave_qcs())
+        _recipe(recipeClass, tmp_path, log, monkeypatch, names), "SLIT1.0", disp_tab_with_qcs(tmp_path, **_wave_qcs())
     )
     captured = _capture_flux_calibration(monkeypatch, f"soxspipe.recipes.{recipeClass.__name__}")
     stacked, _ = recipe.stack_extractions([_spectrum()])
@@ -140,7 +133,7 @@ def test_a_dispersion_map_with_no_wave_qcs_leaves_out_the_accuracy_cards_with_a_
     recipe = _with_slit_and_map(
         _recipe(soxs_nod, tmp_path, log, monkeypatch, NOD_NAMES),
         "SLIT1.0",
-        _disp_tab(tmp_path, **{"X RES MEDIAN": 0.1}),
+        disp_tab_with_qcs(tmp_path, **{"X RES MEDIAN": 0.1}),
     )
 
     # ACT
@@ -160,7 +153,7 @@ def test_a_slit_with_no_resolution_leaves_out_spec_res_and_the_checker_fails_the
 ) -> None:
     # ARRANGE
     recipe = _with_slit_and_map(
-        _recipe(soxs_nod, tmp_path, log, monkeypatch, NOD_NAMES), slit, _disp_tab(tmp_path, **_wave_qcs())
+        _recipe(soxs_nod, tmp_path, log, monkeypatch, NOD_NAMES), slit, disp_tab_with_qcs(tmp_path, **_wave_qcs())
     )
 
     # ACT
@@ -192,7 +185,7 @@ def test_the_stare_flux_calibration_header_has_the_cards_of_the_map_the_extracti
     tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # ARRANGE: THE STARE RECIPE FINDS ITS DISP_TAB IN THE SOF, AND THE SLIT IS ON THE DETRENDED FRAME
-    dispMap = _disp_tab(tmp_path, **_wave_qcs())
+    dispMap = disp_tab_with_qcs(tmp_path, **_wave_qcs())
     routes = {
         _route(PRO_CATG="RESP_TAB_VIS"): [str(response_product_fits(tmp_path / "RESP_TAB_VIS.fits"))],
         _route(PRO_CATG="DISP_TAB_VIS"): [dispMap],

@@ -2,7 +2,7 @@
 
 Every good product is written by the real Phase 3 table writer, then one fault is put in. The presence and type of
 `SPEC_RES`, `SPEC_ERR`, `SPEC_SYE`, `LAMRMS` and `LAMNLIN` are rules of the standard, which the header checks hold.
-These tests cover that the severities follow the standard for these keywords, and the house rules of DY-2393 on their
+These tests cover that the severities follow the standard for these keywords, and the house rules of DY-2358 on their
 values.
 """
 
@@ -93,7 +93,7 @@ def test_a_spec_err_that_is_not_lamrms_over_the_root_of_lamnlin_fails(tmp_path: 
     )
 
     # ASSERT
-    assert any("sqrt(LAMNLIN)" in message and "house rule, DY-2393" in message for message in messages)
+    assert any("sqrt(LAMNLIN)" in message and "house rule, DY-2358" in message for message in messages)
 
 
 def test_a_spec_err_that_follows_from_lamrms_and_lamnlin_passes(tmp_path: Path, log: object) -> None:
