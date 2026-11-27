@@ -61,7 +61,7 @@ def _recipe(recipeClass: type, tmp_path: Path, log: Any, monkeypatch: pytest.Mon
 
 
 def _spectrum() -> pd.DataFrame:
-    return pd.DataFrame({"WAVE": [500.0 * u.nm], "FLUX_COUNTS": [10.0], "VARIANCE": [4.0], "SNR": [0.0]})
+    return pd.DataFrame({"WAVE": [500.0 * u.nm], "FLUX_COUNTS": [10.0], "ERR_COUNTS": [2.0], "SNR": [0.0]})
 
 
 def _capture_flux_calibration(monkeypatch: pytest.MonkeyPatch, recipeModule: str) -> list[dict[str, Any]]:

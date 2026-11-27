@@ -1330,21 +1330,18 @@ def test_a_nod_mode_extraction_of_one_position_registers_no_merged_table(
     assert labels == ["EXTRACTED_ORDERS_TABLE_A"]
 
 
-@pytest.mark.parametrize(
-    ("instrument", "writtenWave"),
-    [("SOXS", [500.12345, 502.98765]), ("XSHOOTER", [500.12, 502.99])],
-    ids=["soxs-wave-unrounded", "xshooter-wave-2-decimals"],
-)
-def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged_product(
-    log: object,
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    instrument: str,
-    writtenWave: list[float],
-) -> None:
-    """Round only the written merged product, so the returned spectrum keeps its Quantity columns at full precision.
+WRITE_WAVE_GRID = np.array([500.12345, 502.98765])
+WRITE_FLUX_COUNTS = np.array([1.23456, 3.65432], dtype=np.float32)
+WRITE_VARIANCE = np.array([4.0, 9.0], dtype=np.float32)
+WRITE_FLUX_DENSITY = np.array([0.123456, 0.345678])
 
-    The SOXS log grid is written with its exact WAVE (DY-2348); X-Shooter keeps the 2 decimals of its linear grid.
+
+def _extract_and_snapshot_merged_table(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, instrument: str, errorColumn: str
+) -> tuple[object, pd.DataFrame]:
+    """Run ``extract`` on a merge that returns known columns and return the table written and the spectrum returned.
+
+    ``errorColumn`` is ``ERR_COUNTS`` (the SOXS layout, holding the error) or ``VARIANCE`` (the X-Shooter layout).
     """
     import soxspipe.commonutils.phase3 as phase3
 
@@ -1353,19 +1350,17 @@ def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged
     extractor.filenameTemplate = "SYNTHETIC.fits"
     extractor.productDir = str(tmp_path)
     extractor.noddingSequence = ""
-    waveGrid = np.array([500.12345, 502.98765])
-    fluxCounts = np.array([1.23456, 3.65432], dtype=np.float32)
-    variance = np.array([4.0, 9.0], dtype=np.float32)
+    error = np.sqrt(WRITE_VARIANCE) if errorColumn == "ERR_COUNTS" else WRITE_VARIANCE
 
     def build_merged_spectrum(_: object) -> tuple[pd.DataFrame, dict[str, float]]:
         # BUILT ONE COLUMN AT A TIME WITH MIXED UNITS, AS merge_extracted_orders BUILDS IT
         merged = pd.DataFrame()
-        merged["WAVE"] = waveGrid * u.nm
-        merged["FLUX_COUNTS"] = fluxCounts * u.electron
-        merged["VARIANCE"] = variance * u.electron
-        merged["SKY_COUNTS"] = variance * u.electron
-        merged["SNR"] = merged["FLUX_COUNTS"].values / np.sqrt(merged["VARIANCE"].values)
-        merged["FLUX_DENSITY_COUNTS"] = np.array([0.123456, 0.345678]) * u.electron / u.nm
+        merged["WAVE"] = WRITE_WAVE_GRID * u.nm
+        merged["FLUX_COUNTS"] = WRITE_FLUX_COUNTS * u.electron
+        merged[errorColumn] = error * u.electron
+        merged["SKY_COUNTS"] = WRITE_VARIANCE * u.electron
+        merged["SNR"] = merged["FLUX_COUNTS"].values / np.sqrt(WRITE_VARIANCE)
+        merged["FLUX_DENSITY_COUNTS"] = WRITE_FLUX_DENSITY * u.electron / u.nm
         return merged, {"10-11": 501.0}
 
     extractor.merge_extracted_orders = build_merged_spectrum
@@ -1377,19 +1372,53 @@ def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged
     monkeypatch.setattr(phase3, "write_fits_table_to_disk", snapshot_written_table)
 
     _, _, mergedSpectrum, _, _ = extractor.extract()
+    return writtenTables[str(tmp_path / "SYNTHETIC_SPECTRUM.fits")], mergedSpectrum
 
-    mergedTable = writtenTables[str(tmp_path / "SYNTHETIC_SPECTRUM.fits")]
-    assert mergedTable["WAVE"].tolist() == writtenWave
-    assert mergedTable["FLUX_COUNTS"].tolist() == [1.235, 3.654]
-    assert mergedTable["FLUX_DENSITY_COUNTS"].tolist() == [0.123, 0.346]
-    assert mergedTable.colnames == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR", "FLUX_DENSITY_COUNTS"]
-    assert np.asarray(mergedTable["VARIANCE"]).tolist() == variance.tolist()
-    assert np.asarray(mergedTable["SKY_COUNTS"]).tolist() == variance.tolist()
+
+def test_extract_writes_the_soxs_merged_counts_without_rounding(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The SOXS merged table keeps the counts and the flux density at full precision; only the SNR is rounded (DY-2350).
+
+    The wavelength of the log grid is not rounded either (DY-2348). The returned spectrum keeps its Quantity columns.
+    """
+    # ACT
+    mergedTable, mergedSpectrum = _extract_and_snapshot_merged_table(log, monkeypatch, tmp_path, "SOXS", "ERR_COUNTS")
+
+    # ASSERT
+    assert mergedTable.colnames == ["WAVE", "FLUX_COUNTS", "ERR_COUNTS", "SKY_COUNTS", "SNR", "FLUX_DENSITY_COUNTS"]
+    assert mergedTable["WAVE"].tolist() == WRITE_WAVE_GRID.tolist()
+    assert np.asarray(mergedTable["FLUX_COUNTS"]).tolist() == WRITE_FLUX_COUNTS.tolist()
+    assert np.asarray(mergedTable["FLUX_DENSITY_COUNTS"]).tolist() == WRITE_FLUX_DENSITY.tolist()
+    assert np.asarray(mergedTable["ERR_COUNTS"]).tolist() == np.sqrt(WRITE_VARIANCE).tolist()
+    assert np.asarray(mergedTable["SKY_COUNTS"]).tolist() == WRITE_VARIANCE.tolist()
+    assert mergedTable["SNR"].tolist() == [round(float(snr), 2) for snr in WRITE_FLUX_COUNTS / np.sqrt(WRITE_VARIANCE)]
+    assert np.asarray(mergedSpectrum["SNR"].values.value) == pytest.approx(
+        WRITE_FLUX_COUNTS / np.sqrt(WRITE_VARIANCE), rel=1e-6
+    )
     assert all(hasattr(wave, "value") for wave in mergedSpectrum["WAVE"])
-    assert [wave.value for wave in mergedSpectrum["WAVE"]] == pytest.approx(waveGrid.tolist(), rel=1e-12)
-    assert np.asarray(mergedSpectrum["SNR"].values.value) == pytest.approx(fluxCounts / np.sqrt(variance), rel=1e-6)
+    assert [wave.value for wave in mergedSpectrum["WAVE"]] == pytest.approx(WRITE_WAVE_GRID.tolist(), rel=1e-12)
     # THE NOD STACKER READS EACH WAVE AS A QUANTITY
     assert mergedSpectrum["WAVE"].apply(lambda x: round(float(x.value), 4)).tolist() == [500.1234, 502.9876]
+
+
+def test_extract_rounds_the_xshooter_merged_table_and_keeps_its_variance_column(
+    log: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """X-Shooter keeps the 2-decimal wavelength, the 3-decimal counts and its VARIANCE column (DY-2350)."""
+    # ACT
+    mergedTable, mergedSpectrum = _extract_and_snapshot_merged_table(log, monkeypatch, tmp_path, "XSHOOTER", "VARIANCE")
+
+    # ASSERT
+    assert mergedTable.colnames == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR", "FLUX_DENSITY_COUNTS"]
+    assert mergedTable["WAVE"].tolist() == [500.12, 502.99]
+    assert mergedTable["FLUX_COUNTS"].tolist() == [1.235, 3.654]
+    assert mergedTable["FLUX_DENSITY_COUNTS"].tolist() == [0.123, 0.346]
+    assert np.asarray(mergedTable["VARIANCE"]).tolist() == WRITE_VARIANCE.tolist()
+    assert np.asarray(mergedSpectrum["SNR"].values.value) == pytest.approx(
+        WRITE_FLUX_COUNTS / np.sqrt(WRITE_VARIANCE), rel=1e-6
+    )
+    assert [wave.value for wave in mergedSpectrum["WAVE"]] == pytest.approx(WRITE_WAVE_GRID.tolist(), rel=1e-12)
 
 
 @pytest.mark.parametrize("recipeName", ["soxs-stare", "soxs-nod", "soxs-offset"])
@@ -3904,5 +3933,7 @@ def test_extract_merges_an_order_with_no_pixel_left_beside_its_neighbours_withou
     assert len(merged) > 0
 
     # THE FLUX CALIBRATION OF THE MERGED SPECTRUM IS FINITE TOO
-    calibrated = calibrate_spectrum(tmp_path, log, monkeypatch, merged, responseWave=RESPONSE_WAVES)
+    calibrated = calibrate_spectrum(
+        tmp_path, log, monkeypatch, merged, responseWave=RESPONSE_WAVES, settings={"instrument": "xsh"}
+    )
     assert np.isfinite(np.asarray(calibrated["FLUX_CALIBRATED"], dtype=float)).all()

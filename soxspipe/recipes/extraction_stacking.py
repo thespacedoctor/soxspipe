@@ -15,6 +15,12 @@ from typing import Any
 
 from soxspipe.commonutils import keyword_lookup
 from soxspipe.commonutils.on_target_frames import without_pointing
+from soxspipe.commonutils.spectrum_columns import (
+    error_counts,
+    is_soxs_instrument,
+    require_error_column,
+    variance_counts,
+)
 from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from soxspipe.commonutils.toolkit import utcnow_string
 from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
@@ -35,7 +41,9 @@ def median_stack_variance(spectra):
 
     **Key Arguments:**
 
-    - ``spectra`` -- the concatenated spectra (dataframe) with rounded ``WAVE``, ``FLUX_COUNTS`` and ``VARIANCE``
+    - ``spectra`` -- the concatenated spectra (dataframe) with ``WAVE`` rounded to 4 decimals, ``FLUX_COUNTS`` and
+      ``ERR_COUNTS`` (``VARIANCE`` for an X-Shooter spectrum). Nothing is rounded here: the stack rounds ``SNR`` when it
+      writes, and X-Shooter also rounds its ``WAVE`` and counts
 
     **Return:**
 
@@ -54,7 +62,7 @@ def median_stack_variance(spectra):
     # WHICH FAILS ON THEIR MIXED UNITS, AND CONCATENATED SPECTRA REPEAT INDEX LABELS, WHICH BREAKS ALIGNMENT
     flux = np.asarray(spectra["FLUX_COUNTS"].to_numpy(), dtype=np.float64)
     contributing = pd.Series(~np.isnan(flux))
-    variance = pd.Series(np.asarray(spectra["VARIANCE"].to_numpy(), dtype=np.float64)).where(contributing)
+    variance = pd.Series(variance_counts(spectra)).where(contributing)
     byWave = pd.Series(np.asarray(spectra["WAVE"].to_numpy(), dtype=np.float64))
     contributorCount = contributing.groupby(byWave).sum()
     hasMissingVariance = (contributing & variance.isna()).groupby(byWave).any()
@@ -173,12 +181,17 @@ class extraction_stacking:
         # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGTH TO THE 4 DIGITS
         merged_dataframe["WAVE"] = merged_dataframe["WAVE"].apply(lambda x: round(float(x.value), 4))
         groupedDataframe = merged_dataframe.groupby(by="WAVE", as_index=False).median()
-        # THE FLUX IS THE MEDIAN, BUT THE MEDIAN OF THE INPUT VARIANCES IS THE ERROR OF ONE SPECTRUM, NOT OF THE STACK
-        # KEEP THE EXTRACTION'S FLOAT32 VARIANCE COLUMN TYPE; INTEGER OR FLOAT64 INPUT GIVES FLOAT64
-        varianceType = np.promote_types(np.asarray(merged_dataframe["VARIANCE"].to_numpy()).dtype, np.float32)
-        groupedDataframe["VARIANCE"] = (
-            groupedDataframe["WAVE"].map(median_stack_variance(merged_dataframe)).astype(varianceType)
-        )
+        # THE FLUX IS THE MEDIAN, BUT THE MEDIAN OF THE INPUT ERRORS IS THE ERROR OF ONE SPECTRUM, NOT OF THE STACK
+        # KEEP THE EXTRACTION'S FLOAT32 ERROR COLUMN TYPE; INTEGER OR FLOAT64 INPUT GIVES FLOAT64
+        isSoxs = is_soxs_instrument(self.settings.get("instrument", "soxs"))
+        errorName = require_error_column(merged_dataframe.columns, isSoxs)
+        errorType = np.promote_types(np.asarray(merged_dataframe[errorName].to_numpy()).dtype, np.float32)
+        stackVariance = groupedDataframe["WAVE"].map(median_stack_variance(merged_dataframe))
+        if isSoxs:
+            # SOXS HOLDS THE ERROR (DY-2350). THE STACK IS COMBINED AS A VARIANCE, AND ITS ROOT IS WRITTEN
+            groupedDataframe[errorName] = np.sqrt(stackVariance.astype(errorType))
+        else:
+            groupedDataframe[errorName] = stackVariance.astype(errorType)
 
         self.filenameTemplate = self.productStem + ".fits"
 
@@ -205,13 +218,15 @@ class extraction_stacking:
             bin_specification="center",
         )
 
-        groupedDataframe["SNR"] = groupedDataframe["FLUX_COUNTS"].values / np.sqrt(groupedDataframe["VARIANCE"].values)
+        groupedDataframe["SNR"] = groupedDataframe["FLUX_COUNTS"].values / error_counts(groupedDataframe)
 
         # PREPARING THE HDU. WAVE IS ALREADY ROUNDED TO 4 DECIMALS BY THE GROUPING ABOVE. ROUNDING IT TO 2 WOULD MOVE A
-        # LOG-GRID POINT BY UP TO HALF OF A BIN, SO ONLY THE LINEAR X-SHOOTER GRIDS KEEP THE 2-DECIMAL WAVE (DY-2348)
-        roundingDecimals = [("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]
-        if str(self.settings.get("instrument", "soxs")).lower() != "soxs":
-            roundingDecimals.insert(0, ("WAVE", 2))
+        # LOG-GRID POINT BY UP TO HALF OF A BIN, SO ONLY THE LINEAR X-SHOOTER GRIDS KEEP THE 2-DECIMAL WAVE (DY-2348).
+        # THE SOXS COUNTS KEEP THEIR FULL PRECISION AND ONLY SNR IS ROUNDED; X-SHOOTER KEEPS ITS 3-DECIMAL COUNTS
+        # (DY-2350)
+        roundingDecimals = [("SNR", 2)]
+        if not isSoxs:
+            roundingDecimals = [("WAVE", 2), ("FLUX_COUNTS", 3), *roundingDecimals, ("FLUX_DENSITY_COUNTS", 3)]
         for col, decimals in roundingDecimals:
             # ONLY A NOT-FLATTENED STACK HAS A FLUX DENSITY COLUMN (DY-1622)
             if col not in groupedDataframe.columns:

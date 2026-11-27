@@ -497,7 +497,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
         {
             "WAVE": [500.12344 * u.nm, 501.0 * u.nm],
             "FLUX_COUNTS": [9.0, 16.0],
-            "VARIANCE": [9.0, 4.0],
+            "ERR_COUNTS": [3.0, 2.0],
             "FLUX_DENSITY_COUNTS": [1.0, 2.0],
         }
     )
@@ -505,7 +505,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
         {
             "WAVE": [500.12345 * u.nm, 501.0 * u.nm],
             "FLUX_COUNTS": [15.0, 20.0],
-            "VARIANCE": [9.0, 4.0],
+            "ERR_COUNTS": [3.0, 2.0],
             "FLUX_DENSITY_COUNTS": [3.0, 4.0],
         }
     )
@@ -1551,7 +1551,7 @@ def test_stare_flux_calibrates_an_extracted_spectrum_when_response_exists(
 
         def calibrate(self) -> tuple[str, pd.DataFrame]:
             calls.append("calibrate")
-            Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(spectrumPath, overwrite=True)
+            Table({"WAVE": [500.0], "FLUX": [2.5]}).write(spectrumPath, overwrite=True)
             return str(spectrumPath), _empty_products()
 
     commonutils = import_module("soxspipe.commonutils")
@@ -1762,7 +1762,7 @@ def test_nod_and_offset_merged_plots_both_receive_the_collected_notes(
     from astropy.table import Table
 
     fluxPath = tmp_path / "FLUXCAL.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    Table({"WAVE": [500.0], "FLUX": [2.5]}).write(fluxPath)
     recipe = recipeClass.__new__(recipeClass)
     recipe.log = log
     recipe.products = _empty_products()
@@ -1795,7 +1795,7 @@ def test_stare_merged_plots_receive_the_extractors_notes(
     from astropy.table import Table
 
     fluxPath = tmp_path / "FLUXCAL.fits"
-    Table({"WAVE": [500.0], "FLUX_CALIBRATED": [2.5]}).write(fluxPath)
+    Table({"WAVE": [500.0], "FLUX": [2.5]}).write(fluxPath)
     recipe = soxs_stare.__new__(soxs_stare)
     recipe.log = log
     recipe.products = _empty_products()

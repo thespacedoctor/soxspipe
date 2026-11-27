@@ -76,12 +76,12 @@ def test_nir_offset_reduction_matches_approved_baseline(reduced_workspace: Path)
         assert spectrum_hdus[0].header["ESO PRO CATG"] == "SCI_SLIT_FLUX_NIR"
         dateObs = spectrum_hdus[0].header["DATE-OBS"]
         spectrum_table = spectrum_hdus[1].data
-        assert spectrum_table.names == ["WAVE", "FLUX_CALIBRATED", "ERR_CALIBRATED", "FLUX_COUNTS", "VARIANCE", "SNR"]
+        assert spectrum_table.names == ["WAVE", "FLUX", "ERR", "FLUX_COUNTS", "ERR_COUNTS", "SNR"]
         mergedRows = len(spectrum_table)
         mergedWave = np.asarray(spectrum_table["WAVE"], dtype=float)
         snrMedian = float(np.nanmedian(spectrum_table["SNR"]))
         fluxcalRows = len(spectrum_table)
-        fluxcalMedian = float(np.nanmedian(spectrum_table["FLUX_CALIBRATED"]))
+        fluxcalMedian = float(np.nanmedian(spectrum_table["FLUX"]))
     waveMin = float(np.nanmin(mergedWave))
     waveMax = float(np.nanmax(mergedWave))
     waveStep = float(np.nanmedian(np.diff(mergedWave)))

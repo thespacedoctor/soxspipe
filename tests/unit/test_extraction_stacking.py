@@ -66,7 +66,7 @@ def _spectrum(flux: float, sky: float = 1.0, variance: float = 4.0) -> pd.DataFr
         {
             "WAVE": [500.0 * u.nm],
             "FLUX_COUNTS": [flux],
-            "VARIANCE": [variance],
+            "ERR_COUNTS": [variance**0.5],
             "SKY_COUNTS": [sky],
             "SNR": [0.0],
             "FLUX_DENSITY_COUNTS": [flux],
@@ -104,7 +104,7 @@ def test_two_extractions_combine_to_their_mean(stare: soxs_stare) -> None:
 
     # ASSERT
     assert list(stacked["FLUX_COUNTS"]) == pytest.approx([15.0])
-    assert list(stacked["VARIANCE"]) == pytest.approx([2.0])
+    assert list(stacked["ERR_COUNTS"]) == pytest.approx([2.0**0.5])
     assert list(Table.read(filePath)["FLUX_COUNTS"]) == pytest.approx([15.0])
 
 
@@ -122,7 +122,7 @@ def test_a_position_with_no_spectrum_is_left_out_of_the_combination(stare: soxs_
 
     # ASSERT
     assert list(stacked["FLUX_COUNTS"]) == pytest.approx([20.0])
-    assert list(stacked["VARIANCE"]) == pytest.approx([4.0])
+    assert list(stacked["ERR_COUNTS"]) == pytest.approx([2.0])
 
 
 def test_no_spectrum_at_either_position_is_an_error(stare: soxs_stare, log: Any) -> None:

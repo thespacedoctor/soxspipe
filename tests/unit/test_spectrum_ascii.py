@@ -17,8 +17,8 @@ from tests.factories import merged_spectrum, product_table
 
 pytestmark = pytest.mark.unit
 
-MERGED_HEADER = "WAVE FLUX_COUNTS VARIANCE SKY_COUNTS SNR"
-FLUXCAL_HEADER = "WAVE FLUX_CALIBRATED ERR_CALIBRATED FLUX_COUNTS VARIANCE SKY_COUNTS SNR"
+MERGED_HEADER = "WAVE FLUX_COUNTS ERR_COUNTS SKY_COUNTS SNR"
+FLUXCAL_HEADER = "WAVE FLUX ERR FLUX_COUNTS ERR_COUNTS SKY_COUNTS SNR"
 
 
 def _write_merged_fits(directory: Path, *, withSky: bool = True) -> Path:
@@ -35,10 +35,10 @@ def _write_fluxcal_fits(directory: Path) -> Path:
     table = Table(
         {
             "WAVE": [500.0, 500.02],
-            "FLUX_CALIBRATED": [1.4e-16, 3.2e-16],
-            "ERR_CALIBRATED": [2.8e-17, 6.4e-17],
+            "FLUX": [1.4e-16, 3.2e-16],
+            "ERR": [2.8e-17, 6.4e-17],
             "FLUX_COUNTS": [20.0, 40.0],
-            "VARIANCE": [16.0, 64.0],
+            "ERR_COUNTS": [4.0, 8.0],
             "SKY_COUNTS": [3.0, 5.0],
             "SNR": [5.0, 5.0],
         }
@@ -98,7 +98,7 @@ def test_ascii_of_a_spectrum_with_no_sky_has_no_sky_column(tmp_path):
 
     # ASSERT
     header = (tmp_path / "STEM_SPECTRUM.txt").read_text().splitlines()[0]
-    assert header == "WAVE FLUX_COUNTS VARIANCE SNR"
+    assert header == "WAVE FLUX_COUNTS ERR_COUNTS SNR"
 
 
 def test_ascii_records_one_product_row_with_the_spectrum_ascii_label(tmp_path):
@@ -138,10 +138,10 @@ def test_ascii_keeps_a_nan_sky_as_nan_not_zero(tmp_path):
     fluxcal = Table(
         {
             "WAVE": [500.0],
-            "FLUX_CALIBRATED": [1.4e-16],
-            "ERR_CALIBRATED": [2.8e-17],
+            "FLUX": [1.4e-16],
+            "ERR": [2.8e-17],
             "FLUX_COUNTS": [20.0],
-            "VARIANCE": [16.0],
+            "ERR_COUNTS": [4.0],
             "SKY_COUNTS": [float("nan")],
             "SNR": [5.0],
         }

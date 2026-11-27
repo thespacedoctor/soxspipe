@@ -131,7 +131,7 @@ def _calibrate(tmp_path: Path, log: object, responsePath: Path, dispersionBinnin
         kw=_keyword,
     )
     outputPath, _ = calibration.calibrate()
-    return Table.read(outputPath)["FLUX_CALIBRATED"].data
+    return Table.read(outputPath)["FLUX"].data
 
 
 def test_science_binned_along_the_dispersion_axis_calibrates_like_unbinned_science(
