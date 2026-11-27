@@ -214,7 +214,7 @@ def test_migration_does_not_change_its_inputs_or_share_default_values() -> None:
     assert defaults == {"stare": {"nir": {"orders": [1, 2]}}}
 
 
-def test_a_value_that_is_not_a_mapping_where_the_defaults_have_one_is_left_alone() -> None:
+def test_a_value_that_is_not_a_mapping_where_the_defaults_have_one_is_left_alone_and_reported() -> None:
     # ARRANGE
     defaults = {"stare": {"clip-sigma": 3.0}}
 
@@ -224,6 +224,7 @@ def test_a_value_that_is_not_a_mapping_where_the_defaults_have_one_is_left_alone
     # ASSERT
     assert result.settings == {"stare": None}
     assert result.changes == ()
+    assert result.not_mappings == ("stare",)
 
 
 # THE REGISTRY
@@ -449,7 +450,9 @@ def test_the_instrument_name_of_the_data_organiser_selects_the_defaults(log: Any
     migrate_session_settings(yamlPath, "XSH", log)
 
     # ASSERT
-    assert yaml.safe_load(yamlPath.read_text()) == _shipped_defaults("xsh")
+    expected = _shipped_defaults("xsh")
+    _delete_at(expected, "logging settings/handlers/file/filename")
+    assert yaml.safe_load(yamlPath.read_text()) == expected
 
 
 def test_a_yaml_that_is_not_a_mapping_is_refused_and_left_alone(log: Any, tmp_path: Path) -> None:
@@ -509,3 +512,114 @@ def test_a_failed_write_leaves_the_original_file_and_no_temporary_file(
     # ASSERT
     assert yamlPath.read_bytes() == before
     assert [path.name for path in sessionDir.iterdir()] == ["soxspipe.yaml"]
+
+
+def test_a_value_that_is_not_a_mapping_where_the_defaults_have_one_is_logged_as_a_warning(
+    log: Any, tmp_path: Path
+) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    settings["soxs-mbias"] = None
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert len(warnings) == 1
+    assert "soxs-mbias" in warnings[0]
+    assert yaml.safe_load(yamlPath.read_text())["soxs-mbias"] is None
+
+
+def test_a_nested_xshooter_key_is_added_beside_the_keys_that_are_present(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    defaults = _shipped_defaults("xsh")
+    settings = copy.deepcopy(defaults)
+    path = "soxs-disp-solution/uvb/order-deg"
+    expected = _value_at(defaults, path)
+    _delete_at(settings, path)
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+
+    # ACT
+    migrate_session_settings(yamlPath, "xsh", log)
+
+    # ASSERT
+    migrated = yaml.safe_load(yamlPath.read_text())
+    assert _value_at(migrated, path) == expected
+    assert migrated == defaults
+    assert [line for line in _info_lines(log) if path in line]
+
+
+def test_a_missing_per_workspace_key_is_not_added(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "logging settings/handlers/file/filename")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    migrated = yaml.safe_load(yamlPath.read_text())
+    assert "filename" not in migrated["logging settings"]["handlers"]["file"]
+    assert migrated["nir-max-detector-temp-k"] == 80
+
+
+def test_a_missing_per_workspace_key_is_not_added_inside_a_missing_subtree(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    del settings["logging settings"]
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", settings)
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    migrated = yaml.safe_load(yamlPath.read_text())
+    assert "filename" not in migrated["logging settings"]["handlers"]["file"]
+    assert "level" in migrated["logging settings"]["handlers"]["file"]
+
+
+def test_an_up_to_date_yaml_logs_a_zero_count_summary_at_debug_level(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    yamlPath = _write_yaml(tmp_path / "soxspipe.yaml", _shipped_defaults("soxs"))
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    debugLines = [message for level, message in log.messages if level == "debug"]
+    assert any("0 superseded and 0 missing" in line for line in debugLines)
+
+
+def test_a_symlinked_yaml_stays_a_symlink_and_its_target_is_rewritten(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    _delete_at(settings, "nir-max-detector-temp-k")
+    target = _write_yaml(tmp_path / "target.yaml", settings)
+    link = tmp_path / "soxspipe.yaml"
+    link.symlink_to(target)
+
+    # ACT
+    migrate_session_settings(link, "soxs", log)
+
+    # ASSERT
+    assert link.is_symlink()
+    assert yaml.safe_load(target.read_text())["nir-max-detector-temp-k"] == 80
+
+
+def test_a_yaml_with_non_ascii_text_keeps_it(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    settings = _shipped_defaults("soxs")
+    settings["note"] = "Å and é"
+    _delete_at(settings, "nir-max-detector-temp-k")
+    yamlPath = tmp_path / "soxspipe.yaml"
+    yamlPath.write_text(yaml.safe_dump(settings, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    # ACT
+    migrate_session_settings(yamlPath, "soxs", log)
+
+    # ASSERT
+    assert yaml.safe_load(yamlPath.read_text(encoding="utf-8"))["note"] == "Å and é"

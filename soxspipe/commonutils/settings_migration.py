@@ -11,10 +11,7 @@ Date Created
 
 from __future__ import annotations
 
-import copy
-import json
 import os
-import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -23,9 +20,11 @@ PACKAGE_DIR = Path(__file__).resolve().parent.parent
 REGISTRY_PATH = PACKAGE_DIR / "resources" / "settings_migrations.yaml"
 INSTRUMENTS = ("soxs", "xsh")
 PATH_SEPARATOR = "/"
-MISSING = "missing"
 SUPERSEDED_KIND = "superseded"
-MISSING_KIND = "missing"
+# THE KIND OF A KEY ADDED AT ITS DEFAULT, AND THE `old` VALUE LOGGED FOR IT
+MISSING = "missing"
+# VALUES THAT BELONG TO ONE WORKSPACE, SO THE DEFAULTS MUST NEVER FILL THEM IN
+PER_WORKSPACE_PATHS = frozenset({"logging settings/handlers/file/filename"})
 
 
 class superseded_default(NamedTuple):
@@ -48,10 +47,11 @@ class settings_change(NamedTuple):
 
 
 class migration_result(NamedTuple):
-    """A migrated settings mapping and the edits that produced it."""
+    """A migrated settings mapping, the edits that produced it, and the paths left alone for not being a mapping."""
 
     settings: dict[str, Any]
     changes: tuple[settings_change, ...]
+    not_mappings: tuple[str, ...] = ()
 
 
 def _instrument_key(instrument: str) -> str:
@@ -84,13 +84,15 @@ def superseded_defaults(instrument: str) -> tuple[superseded_default, ...]:
     import yaml
 
     key = _instrument_key(instrument)
-    with open(REGISTRY_PATH) as stream:
+    with open(REGISTRY_PATH, encoding="utf-8") as stream:
         registry = yaml.safe_load(stream)
     return tuple(superseded_default(item["path"], item["old"], item["new"], item["ticket"]) for item in registry[key])
 
 
 def _same_value(left: Any, right: Any) -> bool:
     """Return True when two settings values are equal and of the same YAML types (`True` is not `1`)."""
+    import json
+
     return json.dumps(left, sort_keys=True) == json.dumps(right, sort_keys=True)
 
 
@@ -109,6 +111,8 @@ def _parent_and_key(settings: Mapping[str, Any], path: str) -> tuple[Any, str] |
 
 def _rewrite_superseded(settings: dict[str, Any], superseded: Sequence[superseded_default]) -> list[settings_change]:
     """Replace each value that equals a superseded default with the new default, in registry order."""
+    import copy
+
     changes = []
     for item in superseded:
         found = _parent_and_key(settings, item.path)
@@ -121,17 +125,45 @@ def _rewrite_superseded(settings: dict[str, Any], superseded: Sequence[supersede
     return changes
 
 
-def _add_missing(settings: dict[str, Any], defaults: Mapping[str, Any], prefix: str = "") -> list[settings_change]:
-    """Add every key of `defaults` that `settings` lacks, at any depth, with a copy of its default value."""
-    changes = []
+def _without_per_workspace(default: Any, path: str) -> Any:
+    """Return a copy of a default value without the per-workspace paths beneath `path`."""
+    import copy
+
+    if not isinstance(default, dict):
+        return copy.deepcopy(default)
+    return {
+        key: _without_per_workspace(value, f"{path}{PATH_SEPARATOR}{key}")
+        for key, value in default.items()
+        if f"{path}{PATH_SEPARATOR}{key}" not in PER_WORKSPACE_PATHS
+    }
+
+
+def _add_missing(
+    settings: dict[str, Any], defaults: Mapping[str, Any], prefix: str = ""
+) -> tuple[list[settings_change], list[str]]:
+    """Add every key of `defaults` that `settings` lacks, at any depth, with a copy of its default value.
+
+    Per-workspace paths are never added. Returns the changes and the paths where the settings hold a value that
+    is not a mapping while the defaults hold one, which are left as they are.
+    """
+    changes: list[settings_change] = []
+    notMappings: list[str] = []
     for key, default in defaults.items():
         path = f"{prefix}{key}"
+        if path in PER_WORKSPACE_PATHS:
+            continue
         if key not in settings:
-            settings[key] = copy.deepcopy(default)
-            changes.append(settings_change(MISSING_KIND, path, MISSING, default, None))
-        elif isinstance(default, dict) and isinstance(settings[key], dict):
-            changes.extend(_add_missing(settings[key], default, f"{path}{PATH_SEPARATOR}"))
-    return changes
+            value = _without_per_workspace(default, path)
+            settings[key] = value
+            changes.append(settings_change(MISSING, path, MISSING, value, None))
+        elif isinstance(default, dict):
+            if isinstance(settings[key], dict):
+                nested, nestedNotMappings = _add_missing(settings[key], default, f"{path}{PATH_SEPARATOR}")
+                changes.extend(nested)
+                notMappings.extend(nestedNotMappings)
+            else:
+                notMappings.append(path)
+    return changes, notMappings
 
 
 def apply_migration(
@@ -151,24 +183,39 @@ def apply_migration(
 
     **Return:**
 
-    - a `migration_result` with the migrated settings and the `settings_change` of every edit
+    - a `migration_result` with the migrated settings, the `settings_change` of every edit, and the paths whose
+      value is not a mapping where the defaults have one
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.settings_migration import apply_migration, superseded_defaults
+
+    result = apply_migration(settings, defaults, superseded_defaults("soxs"))
+    ```
     """
+    import copy
+
     migrated = copy.deepcopy(dict(settings))
     changes = _rewrite_superseded(migrated, superseded)
-    changes.extend(_add_missing(migrated, defaults))
-    return migration_result(migrated, tuple(changes))
+    added, notMappings = _add_missing(migrated, defaults)
+    changes.extend(added)
+    return migration_result(migrated, tuple(changes), tuple(notMappings))
 
 
 def _write_yaml_atomically(yamlPath: Path, settings: Mapping[str, Any]) -> None:
     """Write `settings` to `yamlPath` through a temporary file, so a failed write leaves the old file."""
     import shutil
+    import tempfile
 
     import yaml
 
     handle, tempName = tempfile.mkstemp(dir=yamlPath.parent, prefix=f".{yamlPath.name}.", suffix=".tmp")
     try:
-        with os.fdopen(handle, "w") as stream:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
             yaml.safe_dump(settings, stream, sort_keys=False, default_flow_style=None, width=1000, allow_unicode=True)
+            stream.flush()
+            os.fsync(stream.fileno())
         shutil.copymode(yamlPath, tempName)
         os.replace(tempName, yamlPath)
     except BaseException:
@@ -176,14 +223,22 @@ def _write_yaml_atomically(yamlPath: Path, settings: Mapping[str, Any]) -> None:
         raise
 
 
-def _log_changes(log: Any, changes: Sequence[settings_change], yamlPath: Path) -> None:
-    """Log each change at info level and one summary line with the counts."""
-    for change in changes:
+def _log_result(log: Any, result: migration_result, yamlPath: Path) -> None:
+    """Log each change at info level, a warning for each value left alone, and one summary line with the counts."""
+    for change in result.changes:
         ticket = f" ({change.ticket})" if change.ticket else ""
         log.info(f"settings migration: `{change.path}` was {change.old}, now {change.new}{ticket}")
-    superseded = sum(change.kind == SUPERSEDED_KIND for change in changes)
-    missing = len(changes) - superseded
-    log.print(f"Brought `{yamlPath}` up to date: {superseded} superseded and {missing} missing settings changed")
+    for path in result.not_mappings:
+        log.warning(
+            f"settings migration: `{path}` in `{yamlPath}` is not a mapping, so its default keys were not added"
+        )
+    superseded = sum(change.kind == SUPERSEDED_KIND for change in result.changes)
+    missing = len(result.changes) - superseded
+    summary = f"`{yamlPath}`: {superseded} superseded and {missing} missing settings changed"
+    if result.changes:
+        log.print(f"Brought {summary}")
+    else:
+        log.debug(f"Settings migration found nothing to change in {summary}")
 
 
 def migrate_session_settings(yamlPath: str | os.PathLike[str], instrument: str, log: Any) -> migration_result:
@@ -197,7 +252,7 @@ def migrate_session_settings(yamlPath: str | os.PathLike[str], instrument: str, 
 
     - ``yamlPath`` -- path to the session `soxspipe.yaml`
     - ``instrument`` -- `soxs` or `xsh` (any letter case), selecting the default settings file and the registry
-    - ``log`` -- logger with `info` and `print` methods
+    - ``log`` -- logger with `debug`, `info`, `warning` and `print` methods
 
     **Return:**
 
@@ -218,16 +273,17 @@ def migrate_session_settings(yamlPath: str | os.PathLike[str], instrument: str, 
     import yaml
 
     key = _instrument_key(instrument)
-    yamlPath = Path(yamlPath)
-    with open(yamlPath) as stream:
+    # RESOLVE THE PATH, SO THE REWRITE REPLACES THE TARGET OF A SYMLINK AND NOT THE LINK
+    yamlPath = Path(yamlPath).resolve()
+    with open(yamlPath, encoding="utf-8") as stream:
         settings = yaml.safe_load(stream)
     if not isinstance(settings, dict):
         raise ValueError(f"`{yamlPath}` is not a mapping of settings")
-    with open(PACKAGE_DIR / f"{key}_default_settings.yaml") as stream:
+    with open(PACKAGE_DIR / f"{key}_default_settings.yaml", encoding="utf-8") as stream:
         defaults = yaml.safe_load(stream)
 
     result = apply_migration(settings, defaults, superseded_defaults(key))
     if result.changes:
         _write_yaml_atomically(yamlPath, result.settings)
-        _log_changes(log, result.changes, yamlPath)
+    _log_result(log, result, yamlPath)
     return result

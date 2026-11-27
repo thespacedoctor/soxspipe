@@ -726,20 +726,26 @@ class data_organiser:
         self.log.debug("completed the ``prepare`` method")
         return
 
-    def _migrate_session_settings(self):
+    def _migrate_session_settings(self) -> None:
         """*bring the `soxspipe.yaml` of the active session up to date with the current default settings*
 
         Rewrites the values that equal a superseded default and adds the keys that the instrument's default settings
         file has and the yaml lacks (see `settings_migration.migrate_session_settings`). A session without a yaml is
-        left as it is. A session that `prepare` has just created is already current, so nothing changes in it.
+        left as it is, and so is one whose instrument is not known yet (a warning says so). A session that `prepare` has
+        just created is already current, so nothing changes in it.
         """
         from .settings_migration import migrate_session_settings
 
         self.log.debug("starting the ``_migrate_session_settings`` method")
 
         yamlPath = Path(self.sessionPath) / "soxspipe.yaml"
-        if yamlPath.is_file():
-            migrate_session_settings(yamlPath, getattr(self, "instrument", "soxs"), self.log)
+        instrument = getattr(self, "instrument", None)
+        if yamlPath.is_file() and instrument:
+            migrate_session_settings(yamlPath, instrument, self.log)
+        elif yamlPath.is_file():
+            self.log.warning(
+                f"settings migration skipped for `{yamlPath}`: the instrument is not known, as no raw frame is indexed"
+            )
 
         self.log.debug("completed the ``_migrate_session_settings`` method")
         return

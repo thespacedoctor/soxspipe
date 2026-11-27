@@ -8,10 +8,11 @@ from typing import Any
 import pytest
 import yaml
 
+import soxspipe
 from soxspipe.commonutils.data_organiser import data_organiser
 from tests.factories import harvestable_raw_fits, workspace_organiser
 
-pytestmark = pytest.mark.unit
+pytestmark = pytest.mark.integration
 
 SPECTRAL_DEG = ("soxs-spat-solution", "nir", "order-deg")
 
@@ -102,3 +103,40 @@ def test_prepare_leaves_an_up_to_date_session_yaml_alone_and_logs_no_migration(l
     assert _session_yaml(root).read_bytes() == before
     assert _session_yaml(root).stat().st_mtime_ns == modifiedBefore
     assert _migration_lines(log) == []
+
+
+def _organiser_with_session_yaml(tmp_path: Path, log: Any, settings: dict[str, Any]) -> tuple[data_organiser, Path]:
+    organiser = workspace_organiser(tmp_path, log=log)
+    sessionPath = Path(organiser.rootDir) / "sessions" / "base"
+    sessionPath.mkdir(parents=True)
+    organiser.sessionPath = str(sessionPath)
+    yamlPath = sessionPath / "soxspipe.yaml"
+    yamlPath.write_text(yaml.safe_dump(settings, sort_keys=False))
+    return organiser, yamlPath
+
+
+def test_a_session_without_a_known_instrument_is_not_migrated_and_a_warning_says_so(log: Any, tmp_path: Path) -> None:
+    # ARRANGE: NO RAW FRAME HAS SET `instrument`, SO THE DEFAULTS TO MIGRATE TO ARE UNKNOWN
+    organiser, yamlPath = _organiser_with_session_yaml(tmp_path, log, {"version": 1})
+    before = yamlPath.read_bytes()
+
+    # ACT
+    organiser._migrate_session_settings()
+
+    # ASSERT
+    assert yamlPath.read_bytes() == before
+    assert any(level == "warning" and "instrument" in message for level, message in log.messages)
+
+
+def test_an_xshooter_session_is_migrated_with_the_xshooter_defaults(log: Any, tmp_path: Path) -> None:
+    # ARRANGE
+    organiser, yamlPath = _organiser_with_session_yaml(tmp_path, log, {"version": 1})
+    organiser.instrument = "XSH"
+    xshDefaults = yaml.safe_load((Path(soxspipe.__file__).parent / "xsh_default_settings.yaml").read_text())
+
+    # ACT
+    organiser._migrate_session_settings()
+
+    # ASSERT
+    del xshDefaults["logging settings"]["handlers"]["file"]["filename"]
+    assert yaml.safe_load(yamlPath.read_text()) == xshDefaults

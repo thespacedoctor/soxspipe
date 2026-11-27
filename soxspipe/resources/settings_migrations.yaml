@@ -1,10 +1,10 @@
 # DEFAULT VALUES THAT A LATER RELEASE REPLACED, PER INSTRUMENT (DY-2475)
 #
-# `soxspipe prep` rewrites a value in a session `soxspipe.yaml` only when it equals `old` exactly. A value the user
-# chose, or any other value, stays as it is. `path` is the key path with `/` between the levels. Each `old` was a
-# shipped default of the instrument's default settings file, checked in its git history, and `ticket` names the change
-# that replaced it. When a default changes again, add a new entry that starts from the previous `new`: the entries of
-# one path are applied in order. The last `new` of every path must equal the current default.
+# `SOXSPIPE PREP` REWRITES A VALUE IN A SESSION `SOXSPIPE.YAML` ONLY WHEN IT EQUALS `OLD` EXACTLY. A VALUE THE USER
+# CHOSE, OR ANY OTHER VALUE, STAYS AS IT IS. `PATH` IS THE KEY PATH WITH `/` BETWEEN THE LEVELS. EACH `OLD` WAS A
+# SHIPPED DEFAULT OF THE INSTRUMENT'S DEFAULT SETTINGS FILE, CHECKED IN ITS GIT HISTORY, AND `TICKET` NAMES THE CHANGE
+# THAT REPLACED IT. WHEN A DEFAULT CHANGES AGAIN, ADD A NEW ENTRY THAT STARTS FROM THE PREVIOUS `NEW`: THE ENTRIES OF
+# ONE PATH ARE APPLIED IN ORDER. THE LAST `NEW` OF EVERY PATH MUST EQUAL THE CURRENT DEFAULT.
 
 soxs:
   - path: soxs-spat-solution/nir/order-deg
