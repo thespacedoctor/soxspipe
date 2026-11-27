@@ -86,6 +86,16 @@ The science exposures are all the raw science frames of the observation block: o
 
 The wavelength solution of an attached arc is accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned, unless the tuning is switched off.
 
+#### SOXS NIR: one velocity across the orders
+
+For SOXS NIR, the utility does not tune each order alone. It matches the sky lines of all orders to the catalogue and fits them together, so that an order with few lines takes the shift that its neighbours give it. The shift of a frame is a velocity, not a motion of the detector. Each row of an order is moved by $\Delta\lambda = \lambda \, v(\lambda)$. The velocity $v$ is one polynomial in wavelength that is the same for all orders, so two orders that overlap in wavelength get the same correction at the same wavelength, whatever their pixel scales. The polynomial has the degree `velocity-deg` (default 1). The fit works in pixels, so each line counts by its own pixel scale. It clips lines that are more than `clip-sigma` robust standard deviations from the fit.
+
+The orders in `own-correction-orders` (default `[10, 11]`) are not part of the velocity fit. These orders have an arc solution that sits several pixels from the others. They keep a correction in pixels: a polynomial in the order number (`order-deg`) and in the position along the order (`along-order-deg`), fitted to the lines of all orders, plus an offset of their own and, when they have `slope-min-lines` lines or more that span half the order, a slope of their own. An order that is not in the frame is ignored. An empty list puts every order on the velocity.
+
+The settings are in the `sky-tuning` block of the NIR part of each SOXS stare, nod, and offset recipe block. A `sky-tuning` block without a key uses the default. If a frame has fewer than 10 matched lines, the velocity or the pixel model is rank-deficient, or the lines scatter by more than 0.6 px after the fit, the utility does not use the fit. It prints the reason, tunes each order alone, and writes the `SKY TUNING` QC as `skylines-per-order`. Otherwise the QC is `skylines-global`.
+
+The `SKY SHIFT O<N>` QC of an order in the velocity fit is $\lambda v(\lambda)$ at the centre of the order, in nm. `SKY SHIFT O<N> PX` is the same shift as detector motion, using the signed dispersion of the order. `SKY FIT RMS PX` and `SKY FIT NLINES` count the lines of the velocity fit and of the pixel fit together.
+
 #### VIS r and i orders: sky-line signal-to-noise gate
 
 On a faint sky, the sky lines of a SOXS VIS order are too weak to centre, and the median shift of the matched lines is then a noise value. For each order that the utility measures from its own sky lines (the SOXS VIS r and i orders), it first computes the signal-to-noise ratio (SNR) of every catalogue calibration line in the `skyFlux` column, at the position the arc solution gives for the line:

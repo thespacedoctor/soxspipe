@@ -14,6 +14,11 @@ offset that is statistically significant. ``s_o`` is a per-order slope, fitted o
 span enough of it, and shrunk towards zero by its line count, so that an order with a shape error in its arc solution
 (order 10) is corrected where the data support it.
 
+This pixel model is the correction of the orders named by the ``own-correction-orders`` setting (orders 10 and 11,
+whose arc solution sits several px from the others). Every other order takes one velocity (``Δλ/λ``) that is a
+polynomial in wavelength, so that an overlap of two orders gets the same correction in both, whatever their pixel
+scales (DY-2477). That fit, and the entry point that joins the two, live in ``nir_sky_velocity``.
+
 Every function here is pure: it reads arrays and returns new objects, and holds no recipe state. The wiring that
 detects and matches the sky lines lives in ``horne_extraction``.
 """
@@ -23,13 +28,16 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import pandas as pd
 
 from soxspipe.commonutils.polynomials import solve_linear_poly_coefficients
 from soxspipe.commonutils.ug_wavelength_transfer import detector_px_to_nm_shift, nm_shift_to_detector_px
+
+if TYPE_CHECKING:
+    from soxspipe.commonutils.nir_sky_velocity import sky_velocity
 
 # THE SKY-TUNING SETTINGS KEYS AND THEIR DEFAULTS, USED WHEN A (OLDER) WORKSPACE SETTINGS FILE HAS NO BLOCK
 DEFAULT_SETTINGS = {
@@ -38,6 +46,8 @@ DEFAULT_SETTINGS = {
     "along-order-deg": 1,
     "slope-min-lines": 8,
     "clip-sigma": 3.0,
+    "own-correction-orders": [10, 11],
+    "velocity-deg": 1,
 }
 MAX_POLY_DEGREE = 3
 # A STRAIGHT LINE THROUGH TWO POINTS FITS EXACTLY, SO A PER-ORDER SLOPE NEEDS AT LEAST THREE LINES
@@ -95,6 +105,10 @@ class sky_tuning_settings:
     - ``alongOrderDeg`` -- degree of the polynomial in the position along the order
     - ``slopeMinLines`` -- the fewest lines an order needs for its own slope
     - ``clipSigma`` -- the robust sigma clipping limit
+    - ``ownCorrectionOrders`` -- the orders left out of the velocity fit. They keep the pixel model with their own
+      offset and slope (``nir_sky_velocity``). Default the arc-solution outliers, orders 10 and 11
+    - ``velocityDeg`` -- degree of the polynomial in wavelength that gives the velocity (``Δλ/λ``) of the other
+      orders
     """
 
     globalFit: bool = True
@@ -102,6 +116,8 @@ class sky_tuning_settings:
     alongOrderDeg: int = 1
     slopeMinLines: int = 8
     clipSigma: float = 3.0
+    ownCorrectionOrders: tuple[int, ...] = (10, 11)
+    velocityDeg: int = 1
 
 
 @dataclass(frozen=True)
@@ -143,6 +159,10 @@ class order_sky_correction:
     - ``globalSeedLines`` -- the lines the order matched about the global seed within ``MAX_TIGHT_TOLERANCE_NM`` in the
       first round, or *None* if it supplied none. Default *None*
     - ``ownSeedLines`` -- the same about the order's own seed, or *None* if it had no usable own seed. Default *None*
+    - ``velocity`` -- the ``nir_sky_velocity.sky_velocity`` of an order corrected as one velocity shift (DY-2477), or
+      *None* for an order that keeps the pixel model above. For a velocity order ``shiftPx`` and ``alongPx`` are the
+      detector motion at its centre and its linear change along it that the velocity amounts to, kept for the logs
+      and QCs. Default *None*
     """
 
     order: int
@@ -155,6 +175,7 @@ class order_sky_correction:
     source: str = "global"
     globalSeedLines: int | None = None
     ownSeedLines: int | None = None
+    velocity: sky_velocity | None = None
 
     @property
     def shift_nm(self) -> float:
@@ -169,8 +190,9 @@ class order_sky_correction:
     def correction_nm(self, wavelengthNm, pixelScaleNm=None) -> np.ndarray:
         """*the wavelength shift (nm) to add to each row of the order*
 
-          The detector motion at the row's position along the order, times the row's local signed dispersion. The local
-          dispersion is the order's median dispersion scaled by the row's ``pixelScaleNm`` over the median.
+          For a velocity order, the row's wavelength times the velocity at that wavelength, whatever the pixel scale.
+          Otherwise the detector motion at the row's position along the order, times the row's local signed dispersion.
+          The local dispersion is the order's median dispersion scaled by the row's ``pixelScaleNm`` over the median.
 
           **Key Arguments:**
 
@@ -184,6 +206,8 @@ class order_sky_correction:
         """
         geometry = self.geometry
         wavelengths = np.asarray(wavelengthNm, dtype=float)
+        if self.velocity is not None:
+            return wavelengths * self.velocity.fraction_at(wavelengths)
         t = (wavelengths - geometry.centreNm) / geometry.halfRangeNm
         shiftPx = self.shiftPx + sum(c * t ** (j + 1) for j, c in enumerate(self.alongPx))
         if pixelScaleNm is None:
@@ -211,6 +235,8 @@ class sky_refit_result:
     - ``lines`` -- one row per line offered: ``order``, ``catalogueNm``, ``observedNm``, and once fitted ``residualPx``
       (the offset before the model), ``modelPx`` (the model at the line) and ``clipped``
     - ``fallbackReason`` -- why the fit cannot be used, or *None*
+    - ``velocity`` -- the ``nir_sky_velocity.sky_velocity`` that the orders without their own pixel correction share
+      (DY-2477), or *None* for a pixel-model fit or a fallback. Default *None*
     """
 
     corrections: dict[int, order_sky_correction]
@@ -220,6 +246,7 @@ class sky_refit_result:
     clipFraction: float
     lines: pd.DataFrame
     fallbackReason: str | None
+    velocity: sky_velocity | None = None
 
 
 def _integer_setting(block, key, lowest, highest=None):
@@ -230,6 +257,19 @@ def _integer_setting(block, key, lowest, highest=None):
         bounds = f">= {lowest}" if highest is None else f"between {lowest} and {highest}"
         raise ValueError(f"the sky-tuning setting {key} must be a whole number {bounds}, got {value!r}")
     return value
+
+
+def _order_list_setting(block, key) -> tuple[int, ...]:
+    """*the list setting ``key`` of the block as a sorted tuple of whole order numbers, or raise ``ValueError``*"""
+    value = block.get(key, DEFAULT_SETTINGS[key])
+    isList = isinstance(value, (list, tuple))
+    if (
+        not isList
+        or not all(isinstance(o, int) and not isinstance(o, bool) for o in value)
+        or len(set(value)) != len(value)
+    ):
+        raise ValueError(f"the sky-tuning setting {key} must be a list of different whole order numbers, got {value!r}")
+    return tuple(sorted(value))
 
 
 def read_sky_tuning_settings(block) -> sky_tuning_settings:
@@ -266,6 +306,8 @@ def read_sky_tuning_settings(block) -> sky_tuning_settings:
         alongOrderDeg=_integer_setting(block, "along-order-deg", 0, MAX_POLY_DEGREE),
         slopeMinLines=_integer_setting(block, "slope-min-lines", MIN_SLOPE_LINES),
         clipSigma=float(clipSigma),
+        ownCorrectionOrders=_order_list_setting(block, "own-correction-orders"),
+        velocityDeg=_integer_setting(block, "velocity-deg", 0, MAX_POLY_DEGREE),
     )
 
 
@@ -869,6 +911,11 @@ def _seeded_match(orderLines, geometry, seedPx, ownSeedPx) -> seed_match:
     return seed_match(_match_order_lines(orderLines, corrections[chosen]), counts[0], ownLines, keepsOwn)
 
 
+def seed_matches(orderLines, geometry, seedPx, ownSeedsPx) -> dict[int, seed_match]:
+    """*the ``seed_match`` of every order: its lines matched about the global or its own seed (``_seeded_match``)*"""
+    return {o: _seeded_match(lines, geometry[o], seedPx, ownSeedsPx.get(o)) for o, lines in orderLines.items()}
+
+
 def _kept_own_seed_corrections(orderLines, geometry, seedPx, ownSeedsPx):
     """*match the first round and set aside the orders that keep their own seed*
 
@@ -883,8 +930,7 @@ def _kept_own_seed_corrections(orderLines, geometry, seedPx, ownSeedsPx):
     - ``seedLines`` -- ``{order: (lines matched about the global seed, about the own seed or None)}``
     """
     frames, kept, seedLines = [], {}, {}
-    for o, lines in orderLines.items():
-        match = _seeded_match(lines, geometry[o], seedPx, ownSeedsPx.get(o))
+    for o, match in seed_matches(orderLines, geometry, seedPx, ownSeedsPx).items():
         seedLines[o] = (match.globalLines, match.ownLines)
         if match.keepsOwnSeed and len(match.matched) < MIN_OFFSET_LINES:
             rigid = _rigid_correction(o, ownSeedsPx[o], geometry[o])
