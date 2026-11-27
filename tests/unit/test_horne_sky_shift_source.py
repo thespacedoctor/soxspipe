@@ -306,7 +306,7 @@ def test_nir_global_fit_orders_with_a_correction_are_model(log: object, tmp_path
 
 def test_nir_global_fit_own_offset_order_is_model(log: object, tmp_path: Path) -> None:
     # ARRANGE: AN ORDER WITH ENOUGH SKY LINES AND AN 8 px ARC-SOLUTION OFFSET TAKES THE MODEL PLUS ITS OWN OFFSET
-    offsetOrder = 12
+    offsetOrder = 11
     extractor = build_nir_extractor(log, tmp_path)
     scene = build_nir_orders(offsets={offsetOrder: 8.0})
 
@@ -340,7 +340,7 @@ def test_nir_global_fit_order_without_a_correction_is_none(log: object, tmp_path
 
 def test_nir_global_fit_own_seed_order_is_measured(log: object, tmp_path: Path) -> None:
     # ARRANGE: LIKE THE REAL O10, WITH 3 SKY LINES AND AN ARC-SOLUTION OFFSET OF 8 px, THE ORDER KEEPS ITS OWN SHIFT
-    offsetOrder = 12
+    offsetOrder = 11
     extractor = build_nir_extractor(log, tmp_path)
     scene = build_nir_orders(offsets={offsetOrder: 8.0}, lineCounts={offsetOrder: 3})
 

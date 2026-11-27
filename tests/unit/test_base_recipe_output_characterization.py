@@ -291,6 +291,24 @@ def test_measure_raw_frame_ron_reads_only_the_first_two_frames(log: Any) -> None
     assert consumed == [0, 1]
 
 
+def test_a_list_inside_a_settings_block_is_stamped_as_one_comma_separated_record(tmp_path: Path, log: Any) -> None:
+    """The NIR ``sky-tuning`` block holds a list (``own-correction-orders``), which a header card cannot."""
+    # ARRANGE
+    calibrationPath = tmp_path / "master_bias.fits"
+    calibrationPath.write_bytes(b"synthetic calibration payload")
+    recipe = _keyword_recipe(tmp_path, log, _raw_frame_table(tmp_path, calibrationPath))
+    recipe.recipeSettings = {"sky-tuning": {"global-fit": True, "own-correction-orders": [10, 11]}}
+    frame = CCDData(np.zeros((2, 2)), unit=u.electron, meta=instrument_header())
+
+    # ACT
+    recipe.update_fits_keywords(frame)
+
+    # ASSERT
+    header = frame.header
+    assert header["ESO PRO REC1 PARAM2 NAME"] == "own-correction-orders"
+    assert header["ESO PRO REC1 PARAM2 VALUE"] == "10, 11"
+
+
 def test_update_fits_keywords_stamps_raw_calibration_and_parameter_records(
     tmp_path: Path,
     log: Any,

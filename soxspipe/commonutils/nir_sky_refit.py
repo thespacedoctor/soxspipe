@@ -14,6 +14,11 @@ offset that is statistically significant. ``s_o`` is a per-order slope, fitted o
 span enough of it, and shrunk towards zero by its line count, so that an order with a shape error in its arc solution
 (order 10) is corrected where the data support it.
 
+This pixel model is the correction of the orders named by the ``own-correction-orders`` setting (orders 10 and 11,
+whose arc solution sits several px from the others). Every other order takes one velocity (``Δλ/λ``) that is a
+polynomial in wavelength, so that an overlap of two orders gets the same correction in both, whatever their pixel
+scales (DY-2477). That fit, and the entry point that joins the two, live in ``nir_sky_velocity``.
+
 Every function here is pure: it reads arrays and returns new objects, and holds no recipe state. The wiring that
 detects and matches the sky lines lives in ``horne_extraction``.
 """
@@ -23,13 +28,16 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import pandas as pd
 
 from soxspipe.commonutils.polynomials import solve_linear_poly_coefficients
 from soxspipe.commonutils.ug_wavelength_transfer import detector_px_to_nm_shift, nm_shift_to_detector_px
+
+if TYPE_CHECKING:
+    from soxspipe.commonutils.nir_sky_velocity import sky_velocity
 
 # THE SKY-TUNING SETTINGS KEYS AND THEIR DEFAULTS, USED WHEN A (OLDER) WORKSPACE SETTINGS FILE HAS NO BLOCK
 DEFAULT_SETTINGS = {
@@ -38,6 +46,8 @@ DEFAULT_SETTINGS = {
     "along-order-deg": 1,
     "slope-min-lines": 8,
     "clip-sigma": 3.0,
+    "own-correction-orders": [10, 11],
+    "velocity-deg": 1,
 }
 MAX_POLY_DEGREE = 3
 # A STRAIGHT LINE THROUGH TWO POINTS FITS EXACTLY, SO A PER-ORDER SLOPE NEEDS AT LEAST THREE LINES
@@ -95,6 +105,10 @@ class sky_tuning_settings:
     - ``alongOrderDeg`` -- degree of the polynomial in the position along the order
     - ``slopeMinLines`` -- the fewest lines an order needs for its own slope
     - ``clipSigma`` -- the robust sigma clipping limit
+    - ``ownCorrectionOrders`` -- the orders left out of the velocity fit. They keep the pixel model with their own
+      offset and slope (``nir_sky_velocity``). Default the arc-solution outliers, orders 10 and 11
+    - ``velocityDeg`` -- degree of the polynomial in wavelength that gives the velocity (``Δλ/λ``) of the other
+      orders
     """
 
     globalFit: bool = True
@@ -102,6 +116,8 @@ class sky_tuning_settings:
     alongOrderDeg: int = 1
     slopeMinLines: int = 8
     clipSigma: float = 3.0
+    ownCorrectionOrders: tuple[int, ...] = (10, 11)
+    velocityDeg: int = 1
 
 
 @dataclass(frozen=True)
@@ -143,6 +159,10 @@ class order_sky_correction:
     - ``globalSeedLines`` -- the lines the order matched about the global seed within ``MAX_TIGHT_TOLERANCE_NM`` in the
       first round, or *None* if it supplied none. Default *None*
     - ``ownSeedLines`` -- the same about the order's own seed, or *None* if it had no usable own seed. Default *None*
+    - ``velocity`` -- the ``nir_sky_velocity.sky_velocity`` of an order corrected as one velocity shift (DY-2477), or
+      *None* for an order that keeps the pixel model above. For a velocity order ``shiftPx`` and ``alongPx`` are the
+      detector motion at its centre and its linear change along it that the velocity amounts to, kept for the logs
+      and QCs. Default *None*
     """
 
     order: int
@@ -155,6 +175,7 @@ class order_sky_correction:
     source: str = "global"
     globalSeedLines: int | None = None
     ownSeedLines: int | None = None
+    velocity: sky_velocity | None = None
 
     @property
     def shift_nm(self) -> float:
@@ -169,8 +190,9 @@ class order_sky_correction:
     def correction_nm(self, wavelengthNm, pixelScaleNm=None) -> np.ndarray:
         """*the wavelength shift (nm) to add to each row of the order*
 
-          The detector motion at the row's position along the order, times the row's local signed dispersion. The local
-          dispersion is the order's median dispersion scaled by the row's ``pixelScaleNm`` over the median.
+          For a velocity order, the row's wavelength times the velocity at that wavelength, whatever the pixel scale.
+          Otherwise the detector motion at the row's position along the order, times the row's local signed dispersion.
+          The local dispersion is the order's median dispersion scaled by the row's ``pixelScaleNm`` over the median.
 
           **Key Arguments:**
 
@@ -184,6 +206,8 @@ class order_sky_correction:
         """
         geometry = self.geometry
         wavelengths = np.asarray(wavelengthNm, dtype=float)
+        if self.velocity is not None:
+            return wavelengths * self.velocity.fraction_at(wavelengths)
         t = (wavelengths - geometry.centreNm) / geometry.halfRangeNm
         shiftPx = self.shiftPx + sum(c * t ** (j + 1) for j, c in enumerate(self.alongPx))
         if pixelScaleNm is None:
@@ -211,6 +235,10 @@ class sky_refit_result:
     - ``lines`` -- one row per line offered: ``order``, ``catalogueNm``, ``observedNm``, and once fitted ``residualPx``
       (the offset before the model), ``modelPx`` (the model at the line) and ``clipped``
     - ``fallbackReason`` -- why the fit cannot be used, or *None*
+    - ``velocity`` -- the ``nir_sky_velocity.sky_velocity`` that the orders without their own pixel correction share
+      (DY-2477), or *None* for a pixel-model fit or a fallback. Default *None*
+    - ``velocityFallbackReason`` -- why the velocity fit was not used when it fell back and the pixel model took every
+      order instead, or *None*. Default *None*
     """
 
     corrections: dict[int, order_sky_correction]
@@ -220,6 +248,8 @@ class sky_refit_result:
     clipFraction: float
     lines: pd.DataFrame
     fallbackReason: str | None
+    velocity: sky_velocity | None = None
+    velocityFallbackReason: str | None = None
 
 
 def _integer_setting(block, key, lowest, highest=None):
@@ -230,6 +260,19 @@ def _integer_setting(block, key, lowest, highest=None):
         bounds = f">= {lowest}" if highest is None else f"between {lowest} and {highest}"
         raise ValueError(f"the sky-tuning setting {key} must be a whole number {bounds}, got {value!r}")
     return value
+
+
+def _order_list_setting(block, key) -> tuple[int, ...]:
+    """*the list setting ``key`` of the block as a sorted tuple of whole order numbers, or raise ``ValueError``*"""
+    value = block.get(key, DEFAULT_SETTINGS[key])
+    isList = isinstance(value, (list, tuple))
+    if (
+        not isList
+        or not all(isinstance(o, int) and not isinstance(o, bool) for o in value)
+        or len(set(value)) != len(value)
+    ):
+        raise ValueError(f"the sky-tuning setting {key} must be a list of different whole order numbers, got {value!r}")
+    return tuple(sorted(value))
 
 
 def read_sky_tuning_settings(block) -> sky_tuning_settings:
@@ -266,6 +309,8 @@ def read_sky_tuning_settings(block) -> sky_tuning_settings:
         alongOrderDeg=_integer_setting(block, "along-order-deg", 0, MAX_POLY_DEGREE),
         slopeMinLines=_integer_setting(block, "slope-min-lines", MIN_SLOPE_LINES),
         clipSigma=float(clipSigma),
+        ownCorrectionOrders=_order_list_setting(block, "own-correction-orders"),
+        velocityDeg=_integer_setting(block, "velocity-deg", 0, MAX_POLY_DEGREE),
     )
 
 
@@ -298,13 +343,28 @@ def geometry_from_rows(wavelengths, pixelScales, dispersionNmPerPx) -> order_geo
         dispersionNmPerPx=float(dispersionNmPerPx),
         medianPixelScaleNm=float(np.median(scales)) if scales.size else float("nan"),
     )
-    if not _is_usable_geometry(geometry):
+    if not is_usable_geometry(geometry):
         raise ValueError("the order has no positive pixel scale or no usable dispersion to place sky lines with")
     return geometry
 
 
-def _is_usable_geometry(geometry) -> bool:
-    """*whether every number of an ``order_geometry`` is finite, with a non-zero dispersion and positive scales*"""
+def is_usable_geometry(geometry) -> bool:
+    """*whether every number of an ``order_geometry`` is finite, with a non-zero dispersion and positive scales*
+
+    **Key Arguments:**
+
+    - ``geometry`` -- the ``order_geometry`` to check
+
+    **Return:**
+
+    - ``isUsable`` -- *True* if the geometry can place sky lines
+
+    **Usage:**
+
+    ```python
+    usable = {o: g for o, g in geometry.items() if is_usable_geometry(g)}
+    ```
+    """
     values = (geometry.centreNm, geometry.halfRangeNm, geometry.dispersionNmPerPx, geometry.medianPixelScaleNm)
     return bool(
         all(math.isfinite(v) for v in values)
@@ -490,8 +550,26 @@ def _is_within_clip(design, y, coefficients, kept, clipSigma):
     return np.abs(residual) <= clipSigma * max(MAD_TO_SIGMA * mad, MIN_CLIP_SCALE_PX)
 
 
-def _robust_fit(design, y, clipSigma):
-    """*fit by least squares with iterative clipping; return the coefficients and the kept lines, or None*"""
+def robust_fit(design, y, clipSigma):
+    """*fit by least squares with iterative clipping; return the coefficients and the kept lines, or None*
+
+    **Key Arguments:**
+
+    - ``design`` -- the design matrix, one row per line
+    - ``y`` -- the value of each line
+    - ``clipSigma`` -- the robust sigma clipping limit
+
+    **Return:**
+
+    - ``(coefficients, kept)`` -- the fitted coefficients and a boolean mask of the lines kept, or *None* if the design
+      matrix is rank-deficient
+
+    **Usage:**
+
+    ```python
+    fit = robust_fit(design, residualPx, settings.clipSigma)
+    ```
+    """
     kept = np.ones(len(y), dtype=bool)
     coefficients = _solve(design, y)
     if coefficients is None:
@@ -539,7 +617,7 @@ def _order_slope(t, residual, settings):
     none = (0.0, np.zeros(len(t), dtype=bool))
     if len(t) < settings.slopeMinLines:
         return none
-    fit = _robust_fit(np.column_stack([np.ones(len(t)), t]), residual, settings.clipSigma)
+    fit = robust_fit(np.column_stack([np.ones(len(t)), t]), residual, settings.clipSigma)
     if fit is None:
         return none
     coefficients, kept = fit
@@ -600,14 +678,14 @@ def _fit_with_offsets(design, y, lineOrders, clipSigma):
 
     - ``(coefficients, kept, offsets)`` -- or *None* if the design matrix is rank-deficient
     """
-    fit = _robust_fit(design, y, clipSigma)
+    fit = robust_fit(design, y, clipSigma)
     offsets = {}
     for _ in range(OFFSET_ITERATIONS):
         if fit is None:
             return None
         offsets = _order_offsets(lineOrders, y - design @ fit[0])
         offsetPx = np.array([offsets.get(o, 0.0) for o in lineOrders])
-        fit = _robust_fit(design, y - offsetPx, clipSigma)
+        fit = robust_fit(design, y - offsetPx, clipSigma)
     if fit is None:
         return None
     return fit[0], fit[1], offsets
@@ -638,13 +716,47 @@ def _build_corrections(lines, coefficients, slopes, offsets, kept, geometry, nor
     return corrections
 
 
-def _fallback(lines, reason, rmsPx=float("nan"), clipFraction=float("nan")):
-    """*a result with no corrections, naming why the global fit cannot be used*"""
+def fallback_result(lines, reason, rmsPx=float("nan"), clipFraction=float("nan")) -> sky_refit_result:
+    """*a result with no corrections, naming why the global fit cannot be used*
+
+    **Key Arguments:**
+
+    - ``lines`` -- the lines the fit was offered
+    - ``reason`` -- why the fit cannot be used
+    - ``rmsPx`` -- the rms (px) of the fit, if it got that far. Default NaN
+    - ``clipFraction`` -- the fraction of lines clipped, if it got that far. Default NaN
+
+    **Return:**
+
+    - ``result`` -- a ``sky_refit_result`` with no corrections and ``fallbackReason`` set
+
+    **Usage:**
+
+    ```python
+    result = fallback_result(lines, "3 sky lines matched (min 10)")
+    ```
+    """
     return sky_refit_result({}, (), len(lines), rmsPx, clipFraction, lines.copy(), reason)
 
 
-def _usable_lines(lines, geometry):
-    """*the lines whose values are finite, with a positive pixel scale, and whose order has a usable geometry*"""
+def usable_lines(lines, geometry) -> pd.DataFrame:
+    """*the lines whose values are finite, with a positive pixel scale, and whose order has a usable geometry*
+
+    **Key Arguments:**
+
+    - ``lines`` -- one row per matched line: ``order``, ``catalogueNm``, ``observedNm`` and optionally ``pixelScaleNm``
+    - ``geometry`` -- ``{order: order_geometry}`` of the orders that can take lines
+
+    **Return:**
+
+    - ``usable`` -- the usable rows, with a new index
+
+    **Usage:**
+
+    ```python
+    lines = usable_lines(lines, geometry)
+    ```
+    """
     isUsable = np.isfinite(lines["catalogueNm"].to_numpy(dtype=float)) & np.isfinite(
         lines["observedNm"].to_numpy(dtype=float)
     )
@@ -653,6 +765,29 @@ def _usable_lines(lines, geometry):
         isUsable &= np.isfinite(scale) & (scale > 0)
     isUsable &= lines["order"].isin(list(geometry)).to_numpy()
     return lines.loc[isUsable].reset_index(drop=True)
+
+
+def check_lines_have_geometry(orders, geometry) -> None:
+    """*raise ``ValueError`` if any of the orders has no entry in ``geometry``*
+
+    **Key Arguments:**
+
+    - ``orders`` -- the orders that have sky lines
+    - ``geometry`` -- ``{order: order_geometry}``
+
+    **Raises:**
+
+    - ``ValueError`` -- naming the lowest order that has sky lines but no geometry
+
+    **Usage:**
+
+    ```python
+    check_lines_have_geometry(set(orderLines), geometry)
+    ```
+    """
+    missing = sorted(set(orders) - set(geometry))
+    if missing:
+        raise ValueError(f"order {missing[0]} has sky lines but no geometry")
 
 
 def fit_nir_sky_model(lines, geometry, settings) -> sky_refit_result:
@@ -682,13 +817,11 @@ def fit_nir_sky_model(lines, geometry, settings) -> sky_refit_result:
     - ``ValueError`` -- if a line belongs to an order that has no geometry
     """
     lines = lines.reset_index(drop=True)
-    unknown = sorted(set(lines["order"]) - set(geometry))
-    if unknown:
-        raise ValueError(f"order {unknown[0]} has sky lines but no geometry")
-    geometry = {o: g for o, g in geometry.items() if _is_usable_geometry(g)}
-    lines = _usable_lines(lines, geometry)
+    check_lines_have_geometry(lines["order"], geometry)
+    geometry = {o: g for o, g in geometry.items() if is_usable_geometry(g)}
+    lines = usable_lines(lines, geometry)
     if len(lines) < MIN_GLOBAL_LINES:
-        return _fallback(lines, f"{len(lines)} sky lines matched (min {MIN_GLOBAL_LINES})")
+        return fallback_result(lines, f"{len(lines)} sky lines matched (min {MIN_GLOBAL_LINES})")
 
     normalise = _normalised_orders(list(geometry))
     orderCentre = np.array([geometry[o].centreNm for o in lines["order"]])
@@ -700,7 +833,7 @@ def fit_nir_sky_model(lines, geometry, settings) -> sky_refit_result:
 
     fit = _fit_with_offsets(design, residual, lineOrders, settings.clipSigma)
     if fit is None:
-        return _fallback(lines, "the global model is rank-deficient (too few distinct orders or positions)")
+        return fallback_result(lines, "the global model is rank-deficient (too few distinct orders or positions)")
     coefficients, kept, offsets = fit
     offsetPx = np.array([offsets.get(o, 0.0) for o in lineOrders])
     slopes, kept = _fit_order_slopes(lines, t, residual - design @ coefficients - offsetPx, kept, settings)
@@ -709,7 +842,7 @@ def fit_nir_sky_model(lines, geometry, settings) -> sky_refit_result:
     rmsPx = float(np.sqrt(np.mean((residual - modelPx)[kept] ** 2)))
     clipFraction = float(1.0 - kept.mean())
     if rmsPx > MAX_GLOBAL_RMS_PX:
-        return _fallback(lines, f"fit rms {rmsPx:0.2f} px (max {MAX_GLOBAL_RMS_PX})", rmsPx, clipFraction)
+        return fallback_result(lines, f"fit rms {rmsPx:0.2f} px (max {MAX_GLOBAL_RMS_PX})", rmsPx, clipFraction)
 
     lines = lines.assign(residualPx=residual, modelPx=modelPx, clipped=~kept)
     corrections = _build_corrections(lines, coefficients, slopes, offsets, kept, geometry, normalise, settings)
@@ -784,15 +917,43 @@ class nir_order_sky_lines:
             object.__setattr__(self, "halfWidthNm", widths)
 
 
-def _empty_lines() -> pd.DataFrame:
+def empty_lines() -> pd.DataFrame:
+    """*a table of matched lines with the right columns and no rows*
+
+    **Return:**
+
+    - ``lines`` -- the empty ``order``, ``catalogueNm``, ``observedNm`` table that ``fit_nir_sky_model`` reads
+
+    **Usage:**
+
+    ```python
+    lines = empty_lines()
+    ```
+    """
     return pd.DataFrame({"order": [], "catalogueNm": [], "observedNm": []})
 
 
-def _match_order_lines(orderLines, correction, toleranceNm=None) -> pd.DataFrame:
+def match_order_lines(orderLines, correction, toleranceNm=None) -> pd.DataFrame:
     """*the lines of one order matched once the peaks are moved by the correction, as rows for ``fit_nir_sky_model``*
 
     A peak with a non-finite centre or pixel scale takes no part. The tolerance is the order's own unless
     ``toleranceNm`` is given.
+
+    **Key Arguments:**
+
+    - ``orderLines`` -- the ``nir_order_sky_lines`` of the order
+    - ``correction`` -- the ``order_sky_correction`` that moves the peaks
+    - ``toleranceNm`` -- the match tolerance (nm). Default *None* takes the order's own
+
+    **Return:**
+
+    - ``matched`` -- one row per matched line: ``order``, ``catalogueNm``, ``observedNm`` and ``pixelScaleNm``
+
+    **Usage:**
+
+    ```python
+    frames = [match_order_lines(lines, result.corrections[o]) for o, lines in orderLines.items()]
+    ```
     """
     peaks, scales = orderLines.peakNm, orderLines.pixelScaleNm
     usable = np.flatnonzero(np.isfinite(peaks) & np.isfinite(scales) & (scales > 0))
@@ -860,13 +1021,18 @@ def _seeded_match(orderLines, geometry, seedPx, ownSeedPx) -> seed_match:
     corrections = [
         _rigid_correction(orderLines.order, seed, geometry) for seed in (seedPx, ownSeedPx) if seed is not None
     ]
-    atCap = [_match_order_lines(orderLines, c, MAX_TIGHT_TOLERANCE_NM) for c in corrections]
+    atCap = [match_order_lines(orderLines, c, MAX_TIGHT_TOLERANCE_NM) for c in corrections]
     scores = [(len(m), -_seed_scatter_nm(m, c)) for m, c in zip(atCap, corrections, strict=True)]
     chosen = 1 if len(scores) > 1 and scores[1] > scores[0] else 0
     counts = [len(m) for m in atCap]
     ownLines = counts[1] if len(counts) > 1 else None
     keepsOwn = ownLines is not None and (ownLines > counts[0] or ownLines == counts[0] == 0)
-    return seed_match(_match_order_lines(orderLines, corrections[chosen]), counts[0], ownLines, keepsOwn)
+    return seed_match(match_order_lines(orderLines, corrections[chosen]), counts[0], ownLines, keepsOwn)
+
+
+def seed_matches(orderLines, geometry, seedPx, ownSeedsPx) -> dict[int, seed_match]:
+    """*the ``seed_match`` of every order: its lines matched about the global or its own seed (``_seeded_match``)*"""
+    return {o: _seeded_match(lines, geometry[o], seedPx, ownSeedsPx.get(o)) for o, lines in orderLines.items()}
 
 
 def _kept_own_seed_corrections(orderLines, geometry, seedPx, ownSeedsPx):
@@ -883,8 +1049,7 @@ def _kept_own_seed_corrections(orderLines, geometry, seedPx, ownSeedsPx):
     - ``seedLines`` -- ``{order: (lines matched about the global seed, about the own seed or None)}``
     """
     frames, kept, seedLines = [], {}, {}
-    for o, lines in orderLines.items():
-        match = _seeded_match(lines, geometry[o], seedPx, ownSeedsPx.get(o))
+    for o, match in seed_matches(orderLines, geometry, seedPx, ownSeedsPx).items():
         seedLines[o] = (match.globalLines, match.ownLines)
         if match.keepsOwnSeed and len(match.matched) < MIN_OFFSET_LINES:
             rigid = _rigid_correction(o, ownSeedsPx[o], geometry[o])
@@ -924,21 +1089,19 @@ def fit_with_iterated_matching(orderLines, geometry, seedPx, settings, iteration
     - ``ValueError`` -- if an order with lines has no geometry
     """
     if seedPx is None:
-        return _fallback(_empty_lines(), "no order gave a seed shift")
-    missing = sorted(set(orderLines) - set(geometry))
-    if missing:
-        raise ValueError(f"order {missing[0]} has sky lines but no geometry")
-    orderLines = {o: lines for o, lines in orderLines.items() if _is_usable_geometry(geometry[o])}
+        return fallback_result(empty_lines(), "no order gave a seed shift")
+    check_lines_have_geometry(orderLines, geometry)
+    orderLines = {o: lines for o, lines in orderLines.items() if is_usable_geometry(geometry[o])}
     ownSeedsPx = {} if ownSeedsPx is None else ownSeedsPx
     frames, kept, seedLines = _kept_own_seed_corrections(orderLines, geometry, seedPx, ownSeedsPx)
     result = None
     for _ in range(iterations):
         result = fit_nir_sky_model(
-            pd.concat(frames, ignore_index=True) if frames else _empty_lines(), geometry, settings
+            pd.concat(frames, ignore_index=True) if frames else empty_lines(), geometry, settings
         )
         if result.fallbackReason is not None:
             return result
-        frames = [_match_order_lines(lines, result.corrections[o]) for o, lines in orderLines.items() if o not in kept]
+        frames = [match_order_lines(lines, result.corrections[o]) for o, lines in orderLines.items() if o not in kept]
     corrections = {**result.corrections, **kept}
     corrections = {
         o: replace(c, globalSeedLines=seedLines[o][0], ownSeedLines=seedLines[o][1]) if o in seedLines else c

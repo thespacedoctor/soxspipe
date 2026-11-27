@@ -92,20 +92,50 @@ def test_settings_default_to_the_shipped_values_when_the_block_is_missing():
     settings = read_sky_tuning_settings(None)
 
     # ASSERT
-    assert settings == sky_tuning_settings(globalFit=True, orderDeg=1, alongOrderDeg=1, slopeMinLines=8, clipSigma=3.0)
+    assert settings == sky_tuning_settings(
+        globalFit=True,
+        orderDeg=1,
+        alongOrderDeg=1,
+        slopeMinLines=8,
+        clipSigma=3.0,
+        ownCorrectionOrders=(10, 11),
+        velocityDeg=1,
+    )
 
 
 def test_settings_read_every_key_of_the_block():
     # ARRANGE
-    block = {"global-fit": False, "order-deg": 2, "along-order-deg": 0, "slope-min-lines": 12, "clip-sigma": 2.5}
+    block = {
+        "global-fit": False,
+        "order-deg": 2,
+        "along-order-deg": 0,
+        "slope-min-lines": 12,
+        "clip-sigma": 2.5,
+        "own-correction-orders": [12, 10],
+        "velocity-deg": 2,
+    }
 
     # ACT
     settings = read_sky_tuning_settings(block)
 
     # ASSERT
     assert settings == sky_tuning_settings(
-        globalFit=False, orderDeg=2, alongOrderDeg=0, slopeMinLines=12, clipSigma=2.5
+        globalFit=False,
+        orderDeg=2,
+        alongOrderDeg=0,
+        slopeMinLines=12,
+        clipSigma=2.5,
+        ownCorrectionOrders=(10, 12),
+        velocityDeg=2,
     )
+
+
+def test_settings_accept_an_empty_list_of_own_correction_orders():
+    # ACT
+    settings = read_sky_tuning_settings({"own-correction-orders": []})
+
+    # ASSERT
+    assert settings.ownCorrectionOrders == ()
 
 
 @pytest.mark.parametrize(
@@ -122,6 +152,14 @@ def test_settings_read_every_key_of_the_block():
         {"along-order-deg": 9},
         {"slope-min-lines": 2},
         {"unknown-key": 1},
+        {"own-correction-orders": 10},
+        {"own-correction-orders": "10, 11"},
+        {"own-correction-orders": [10, 11.5]},
+        {"own-correction-orders": [10, True]},
+        {"own-correction-orders": [10, 10]},
+        {"velocity-deg": -1},
+        {"velocity-deg": 4},
+        {"velocity-deg": 1.5},
     ],
 )
 def test_settings_reject_values_that_cannot_drive_a_fit(block):

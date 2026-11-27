@@ -3296,7 +3296,7 @@ class base_recipe:
         """*record the recipe's own settings in the product header*
 
         Arm-specific settings and the QC ranges are skipped; a nested settings
-        block is flattened into one record per inner key.
+        block is flattened into one record per inner key. A list value is written as its items joined by commas.
 
         **Key Arguments:**
 
@@ -3310,23 +3310,19 @@ class base_recipe:
         """
         from soxspipe.commonutils.fits_headers import set_header_card
 
+        def card_value(value):
+            return ", ".join(map(str, value)).strip() if isinstance(value, list) else value
+
         iterator = 1
         for k, v in self.recipeSettings.items():
             if k.lower() in ["uvb", "vis", "nir", "qc-acceptable-ranges"]:
                 continue
 
-            if not isinstance(v, dict):
-                if isinstance(v, list):
-                    v = ", ".join(map(str, v)).strip()
-
-                set_header_card(frame.header, f"ESO PRO REC1 PARAM{iterator} NAME", k[:40])
-                set_header_card(frame.header, f"ESO PRO REC1 PARAM{iterator} VALUE", v)
+            records = v.items() if isinstance(v, dict) else [(k, v)]
+            for name, value in records:
+                set_header_card(frame.header, f"ESO PRO REC1 PARAM{iterator} NAME", name[:40])
+                set_header_card(frame.header, f"ESO PRO REC1 PARAM{iterator} VALUE", card_value(value))
                 iterator += 1
-            else:
-                for k2, v2 in v.items():
-                    set_header_card(frame.header, f"ESO PRO REC1 PARAM{iterator} NAME", k2[:40])
-                    set_header_card(frame.header, f"ESO PRO REC1 PARAM{iterator} VALUE", v2)
-                    iterator += 1
         return
 
     def update_fits_keywords(self, frame, rawFrames=False):

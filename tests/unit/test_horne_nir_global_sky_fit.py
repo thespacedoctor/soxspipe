@@ -6,11 +6,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from soxspipe.commonutils import nir_sky_refit
+from soxspipe.commonutils import nir_sky_refit, nir_sky_velocity
 from soxspipe.commonutils.horne_extraction import horne_extraction
 from soxspipe.commonutils.nir_sky_refit import MAX_TIGHT_TOLERANCE_NM, MIN_GLOBAL_LINES
 from tests.unit._horne_nir_scene import (
     BLEND_GAP_NM,
+    DISPERSION,
     ORDERS,
     applied_shift,
     build_catalogue_extractor,
@@ -91,6 +92,66 @@ def test_global_tuning_keeps_the_corrections_for_the_not_flattened_pass(log, tmp
     # ASSERT
     assert set(extractor.skyCorrections) == set(ORDERS)
     assert extractor.skyShiftsNm[ORDERS[0]] == pytest.approx(true_shift_nm(ORDERS[0]), abs=SHIFT_TOLERANCE_NM)
+
+
+def test_the_orders_of_the_setting_keep_a_pixel_correction_and_every_other_order_takes_the_velocity(log, tmp_path):
+    # ARRANGE: THE SHIPPED SETTING NAMES ORDERS 10 AND 11, AND THE SCENE HOLDS ORDERS 11 TO 18
+    extractor = build_extractor(log, tmp_path)
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    corrections = extractor.skyCorrections
+    assert corrections[11].velocity is None
+    assert {corrections[o].velocity for o in ORDERS if o != 11} == {corrections[12].velocity}
+    assert corrections[12].velocity is not None
+
+
+def test_the_orders_that_keep_a_pixel_correction_are_named_in_the_settings(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path, sky_tuning={"own-correction-orders": [15]})
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    corrections = extractor.skyCorrections
+    assert [o for o in ORDERS if corrections[o].velocity is None] == [15]
+
+
+def test_a_velocity_order_records_the_shift_at_its_centre_in_nm_and_px(log, tmp_path):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    order = ORDERS[3]
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    shiftNm = qc_by_name(extractor, f"SKY SHIFT O{order}")["qc_value"]
+    shiftPx = qc_by_name(extractor, f"SKY SHIFT O{order} PX")["qc_value"]
+    assert shiftNm == pytest.approx(true_shift_nm(order), abs=SHIFT_TOLERANCE_NM)
+    assert shiftPx == pytest.approx(true_shift_px(order), abs=SHIFT_TOLERANCE_NM / abs(DISPERSION))
+
+
+def test_a_velocity_fallback_logs_its_reason_and_tunes_every_order_with_the_pixel_model(log, tmp_path, monkeypatch):
+    # ARRANGE
+    extractor = build_extractor(log, tmp_path)
+    monkeypatch.setattr(
+        nir_sky_velocity,
+        "fit_velocity_model",
+        lambda lines, geometry, settings: nir_sky_refit.fallback_result(lines, "forced velocity fallback"),
+    )
+
+    # ACT
+    _tune(extractor, build_orders())
+
+    # ASSERT
+    assert qc_by_name(extractor, "SKY TUNING")["qc_value"] == "skylines-global"
+    assert all(extractor.skyCorrections[o].velocity is None for o in ORDERS)
+    printed = [message for level, message in log.messages if level == "print"]
+    assert any("Velocity sky-line fit not used (forced velocity fallback)" in message for message in printed)
 
 
 def test_x_shooter_nir_keeps_the_per_order_tuning(log, tmp_path, monkeypatch):
@@ -485,12 +546,13 @@ def test_an_order_with_no_detectable_peaks_supplies_no_lines(log, tmp_path, monk
 # PER-ORDER OFFSETS AND OWN SEEDS
 
 
-OFFSET_ORDER = 12
+# AN ORDER OF THE own-correction-orders SETTING, THE ONLY KIND THAT CAN TAKE AN OFFSET OF ITS OWN (DY-2477)
+OFFSET_ORDER = 11
 GENUINE_OFFSETS = {OFFSET_ORDER: 8.0}
 
 
 def test_an_order_with_a_genuine_arc_offset_is_tuned_from_its_own_measurement(log, tmp_path):
-    # ARRANGE: ORDER 12 SITS 8 px FROM THE DETECTOR SHIFT OF ITS NEIGHBOURS, 4 TIMES THE TIGHT TOLERANCE
+    # ARRANGE: ORDER 11 SITS 8 px FROM THE DETECTOR SHIFT OF ITS NEIGHBOURS, 4 TIMES THE TIGHT TOLERANCE
     extractor = build_extractor(log, tmp_path)
     scene = build_orders(offsets=GENUINE_OFFSETS)
 
@@ -499,7 +561,7 @@ def test_an_order_with_a_genuine_arc_offset_is_tuned_from_its_own_measurement(lo
 
     # ASSERT
     assert qc_by_name(extractor, "SKY TUNING")["qc_value"] == "skylines-global"
-    assert extractor.skyCorrections[OFFSET_ORDER].perOrderOffsetPx > 6.0
+    assert extractor.skyCorrections[OFFSET_ORDER].source == "own-offset"
     for order in ORDERS:
         expected = true_shift_nm(order, GENUINE_OFFSETS)
         assert applied_shift(scene, tuned, order) == pytest.approx(
@@ -706,7 +768,7 @@ def test_an_order_with_curved_lines_that_match_about_neither_seed_keeps_its_own_
     assert (correction.globalSeedLines, correction.ownSeedLines) == (0, 2)
     assert correction.shiftPx == pytest.approx(ownSeed, abs=1e-9)
     assert ownSeed != pytest.approx(calls[0]["seedPx"], abs=1.0)
-    assert applied_shift(scene, tuned, ORDERS[0]) == pytest.approx(true_shift_nm(ORDERS[0]), abs=SHIFT_TOLERANCE_NM)
+    assert applied_shift(scene, tuned, ORDERS[-1]) == pytest.approx(true_shift_nm(ORDERS[-1]), abs=SHIFT_TOLERANCE_NM)
 
 
 def test_the_log_gives_the_seed_match_counts_of_each_order(log, tmp_path):

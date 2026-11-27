@@ -1313,12 +1313,15 @@ class horne_extraction(base_util):
         return self.tune_wavelength_calibration_to_skylines(extractedOrdersDF, arm=arm), "skylines"
 
     def _tune_nir_globally(self, extractedOrdersDF, arm):
-        """*tune the SOXS NIR orders with one fit over all their sky lines (DY-1968)*
+        """*tune the SOXS NIR orders with one fit over all their sky lines (DY-1968, DY-2477)*
 
         Each order is first measured on its own, as before, to seed the matching with the shift of the line-rich orders
         and to have a per-order fallback. The sky lines of every order are then matched with a tight tolerance and
-        fitted together (``nir_sky_refit``). A frame with too few lines, or lines that do not fit, is tuned order by
-        order and the ``SKY TUNING`` QC says so.
+        fitted together (``nir_sky_velocity``): one velocity (``Δλ/λ``) that is a polynomial in wavelength for every
+        order except those of the ``own-correction-orders`` setting, which keep their own pixel correction
+        (``nir_sky_refit``). If only the velocity fit fails, every order keeps its pixel correction, the reason is
+        logged and the ``SKY TUNING`` QC stays ``skylines-global``. If the pixel fit itself falls back, or no order
+        gives a seed, the frame is tuned order by order and the QC says ``skylines-per-order``.
 
         **Key Arguments:**
 
@@ -1332,14 +1335,14 @@ class horne_extraction(base_util):
         """
         import numpy as np
 
-        from soxspipe.commonutils import nir_sky_refit
+        from soxspipe.commonutils import nir_sky_refit, nir_sky_velocity
 
         orders = np.sort(extractedOrdersDF["order"].unique())
         dispersions = self._signed_order_dispersions(extractedOrdersDF, orders)
         shiftsNm, orderStats = self._measure_orders(extractedOrdersDF, orders, arm, False, dispersions)
         geometry, orderLines = self._nir_order_lines(extractedOrdersDF, orders, dispersions)
         lineCounts = {o: stats["nLines"] for o, stats in orderStats.items()}
-        result = nir_sky_refit.fit_with_iterated_matching(
+        result = nir_sky_velocity.fit_nir_sky_corrections(
             orderLines,
             geometry,
             nir_sky_refit.global_seed_px(shiftsNm, lineCounts, dispersions),
@@ -1353,6 +1356,11 @@ class horne_extraction(base_util):
                 extractedOrdersDF, arm, orders, shiftsNm, orderStats, dispersions, True
             )
             return tuned, SKY_TUNING_PER_ORDER_QC_VALUE
+        if result.velocityFallbackReason is not None:
+            self._print_and_note(
+                f"Velocity sky-line fit not used ({result.velocityFallbackReason}): "
+                "every order takes the pixel-shift correction"
+            )
         return self._apply_global_fit(extractedOrdersDF, orders, result), SKY_TUNING_GLOBAL_QC_VALUE
 
     def _print_and_note(self, message):
