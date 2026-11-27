@@ -29,7 +29,7 @@ from soxspipe.commonutils.horne_extraction import (
     profile_clip_cap_rows,
 )
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
-from tests.factories import instrument_header, product_table, qc_table
+from tests.factories import instrument_header, product_table, qc_table, soxs_merge_extractor
 from tests.factories.disp_tab import disp_tab_with_qcs
 from tests.factories.flux_calibration import calibrate_spectrum
 from tests.unit._plot_spies import probe_on_savefig
@@ -41,8 +41,11 @@ RESPONSE_WAVES = [900.0, 1100.0]
 
 
 def _extractor(log: object) -> horne_extraction:
+    """A bare extractor. It is an X-Shooter one, so the order merge tests here pin the linear grid and ``np.interp``
+    that X-Shooter keeps; the SOXS log-wavelength merge is tested in ``test_merge_on_log_grid`` (DY-2348)."""
     extractor = object.__new__(horne_extraction)
     extractor.log = log
+    extractor.inst = "XSHOOTER"
     extractor.notFlattened = ""
     extractor.recipeSettings = {}
     return extractor
@@ -1327,15 +1330,26 @@ def test_a_nod_mode_extraction_of_one_position_registers_no_merged_table(
     assert labels == ["EXTRACTED_ORDERS_TABLE_A"]
 
 
+@pytest.mark.parametrize(
+    ("instrument", "writtenWave"),
+    [("SOXS", [500.12345, 502.98765]), ("XSHOOTER", [500.12, 502.99])],
+    ids=["soxs-wave-unrounded", "xshooter-wave-2-decimals"],
+)
 def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged_product(
     log: object,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    instrument: str,
+    writtenWave: list[float],
 ) -> None:
-    """Round only the written merged product, so the returned spectrum keeps its Quantity columns at full precision."""
+    """Round only the written merged product, so the returned spectrum keeps its Quantity columns at full precision.
+
+    The SOXS log grid is written with its exact WAVE (DY-2348); X-Shooter keeps the 2 decimals of its linear grid.
+    """
     import soxspipe.commonutils.phase3 as phase3
 
     extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.inst = instrument
     extractor.filenameTemplate = "SYNTHETIC.fits"
     extractor.productDir = str(tmp_path)
     extractor.noddingSequence = ""
@@ -1365,7 +1379,7 @@ def test_extract_returns_unrounded_quantity_spectrum_when_writing_rounded_merged
     _, _, mergedSpectrum, _, _ = extractor.extract()
 
     mergedTable = writtenTables[str(tmp_path / "SYNTHETIC_SPECTRUM.fits")]
-    assert mergedTable["WAVE"].tolist() == [500.12, 502.99]
+    assert mergedTable["WAVE"].tolist() == writtenWave
     assert mergedTable["FLUX_COUNTS"].tolist() == [1.235, 3.654]
     assert mergedTable["FLUX_DENSITY_COUNTS"].tolist() == [0.123, 0.346]
     assert mergedTable.colnames == ["WAVE", "FLUX_COUNTS", "VARIANCE", "SKY_COUNTS", "SNR", "FLUX_DENSITY_COUNTS"]
@@ -2477,10 +2491,7 @@ def _vis_trace_orders() -> pd.DataFrame:
 
 
 def _vis_extractor(log: object) -> horne_extraction:
-    extractor = _extractor(log)
-    extractor.arm = "VIS"
-    extractor.kw = lambda key: key
-    return extractor
+    return soxs_merge_extractor(log, "VIS", {"ESO DET BINX": 1, "ESO DET BINY": 1})
 
 
 def test_order_merge_joins_soxs_vis_orders_red_to_blue_under_their_trace_numbers(log: object) -> None:
@@ -2488,8 +2499,9 @@ def test_order_merge_joins_soxs_vis_orders_red_to_blue_under_their_trace_numbers
 
     _, joins = extractor.merge_extracted_orders(_vis_trace_orders())
 
+    # EACH JOIN IS SNAPPED TO A BIN EDGE, WITHIN HALF A BIN (ABOUT 0.02 NM) OF THE MIDPOINT OF THE OVERLAP
     assert list(joins) == ["4-1", "1-3", "3-2"]
-    assert joins == pytest.approx({"4-1": 650.02, "1-3": 550.02, "3-2": 450.02})
+    assert joins == pytest.approx({"4-1": 650.02, "1-3": 550.02, "3-2": 450.02}, abs=0.03)
 
 
 def test_orders_red_to_blue_sorts_by_median_wavelength_whatever_the_numbering() -> None:
@@ -3860,6 +3872,7 @@ def test_extract_merges_an_order_with_no_pixel_left_beside_its_neighbours_withou
     extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=False)
     del extractor.merge_extracted_orders
     extractor.arm = "NIR"
+    extractor.inst = "XSHOOTER"
     lowOrder = _spectrum_rows(10, [1000.00, 1000.06, 1000.12, 1000.18], [10.0, 12.0, 14.0, 16.0])
     emptyOrder = lowOrder.iloc[0:0].assign(order=11)
     highOrder = _spectrum_rows(12, [1000.24, 1000.30, 1000.36, 1000.42], [18.0, 20.0, 22.0, 24.0])

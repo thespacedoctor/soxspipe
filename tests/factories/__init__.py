@@ -30,6 +30,7 @@ from .late_frames import (
     pinhole_frame,
     spatial_solution_arc,
 )
+from .merge_extractors import soxs_merge_extractor
 from .settings import logging_settings, pipeline_settings
 from .signals import synthetic_signal
 from .slit_illumination import illumination_scene, synthetic_illumination_scene
@@ -67,6 +68,7 @@ __all__ = [
     "response_product_fits",
     "session_workspace",
     "sof_file",
+    "soxs_merge_extractor",
     "synthetic_ccd",
     "synthetic_illumination_scene",
     "synthetic_signal",
