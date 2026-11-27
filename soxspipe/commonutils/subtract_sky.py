@@ -326,19 +326,25 @@ def _object_wing_log_line(order, estimate):
 
     - ``order`` -- the order number
     - ``estimate`` -- the ``object_wing_estimate`` the correction used. A count of its wavelength chunks that took the
-      whole-order profile is added when it is not 0, and a thermal order says it used the single profile (DY-2079)
+      whole-order profile is added when it is not 0, and a thermal order says it used the single profile (DY-2079).
+      The line gives the sky-to-core ratio S/G, scales the removed share of the object flux by the wing weight, and
+      says when the order is only partly corrected inside the sky-to-core taper (DY-2453)
 
     **Return:**
 
     - ``line`` -- the message, framed by newlines because the fit's progress line erases the line above it
     """
-    from soxspipe.commonutils.object_wing_model import SINGLE_PROFILE_MIN_WAVELENGTH_NM
+    from soxspipe.commonutils.object_wing_model import (
+        SINGLE_PROFILE_MIN_WAVELENGTH_NM,
+        SKY_TO_CORE_TAPER_END,
+        SKY_TO_CORE_TAPER_START,
+    )
 
     skyText = ""
     # A SKY AT OR BELOW ZERO HAS NO SHARE TO REPORT (DY-1975)
     if estimate.skyLevel > MIN_LOGGED_SKY_LEVEL:
         skyText = f" ({estimate.biasLevel / estimate.skyLevel * 100:0.0f}% OF THE SKY)"
-    loss = estimate.slitLossFraction
+    loss = estimate.slitLossFraction * estimate.wingWeight
     lossText = f"ABOUT {loss * 100:0.2f}%" if math.isfinite(loss) else "AN UNKNOWN SHARE"
     nFallback = sum(chunk.isFallback for chunk in estimate.chunks)
     chunkText = (
@@ -348,9 +354,16 @@ def _object_wing_log_line(order, estimate):
         chunkText = (
             f" (THERMAL ORDER ABOVE {SINGLE_PROFILE_MIN_WAVELENGTH_NM:g} nm, SO IT USED THE SINGLE WHOLE-ORDER PROFILE)"
         )
+    ratio = estimate.skyToCoreRatio
+    ratioText = f"S/G {ratio:0.3g}" if math.isfinite(ratio) else "S/G UNMEASURED"
+    if estimate.wingWeight < 1:
+        ratioText = (
+            f"PARTIAL CORRECTION: {ratioText} IS INSIDE THE TAPER {SKY_TO_CORE_TAPER_START:g} TO "
+            f"{SKY_TO_CORE_TAPER_END:g}, SO THE WING MODEL HAS WEIGHT {estimate.wingWeight:0.3f}"
+        )
     return (
         f"\n\tORDER {order}: OBJECT-WING CORRECTION - THE FIRST SKY MODEL CARRIED {estimate.biasLevel:0.1f} e- OF "
-        f"OBJECT LIGHT{skyText}, REMOVING {lossText} OF THE OBJECT FLUX{chunkText}\n"
+        f"OBJECT LIGHT{skyText}, REMOVING {lossText} OF THE OBJECT FLUX ({ratioText}){chunkText}\n"
     )
 
 

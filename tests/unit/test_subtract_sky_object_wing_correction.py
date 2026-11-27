@@ -383,10 +383,120 @@ def test_an_order_whose_sky_is_deeper_than_the_core_is_not_corrected_and_the_ski
     assert not any("FIRST SKY MODEL CARRIED" in message for message in printed)
 
 
+# A FULLY CORRECTED ORDER BELOW THE START OF THE SKY-TO-CORE TAPER (DY-2453)
+FULL_WEIGHT = {"skyToCoreRatio": 0.1, "wingWeight": 1.0}
+
+
+def _star_sky_with_weight(log: Any, monkeypatch: pytest.MonkeyPatch, weight: float) -> np.ndarray:
+    """The sky model of the bright-star order when the sky-to-core taper gives ``weight``."""
+    from soxspipe.commonutils import object_wing_model
+
+    monkeypatch.setattr(object_wing_model, "sky_to_core_weight", lambda ratio: weight)
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    return _modelled(_bare_subtractor(log), order).sort_index()["sky_model"].to_numpy()
+
+
+def test_a_correction_weight_near_zero_gives_the_sky_model_of_no_correction(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order).sort_index()["sky_model"]
+    corrected = _star_sky_with_weight(log, monkeypatch, 1.0)
+
+    # ACT
+    nearlyOff = _star_sky_with_weight(log, monkeypatch, 1.0e-6)
+
+    # ASSERT
+    step = np.abs(corrected - uncorrected.to_numpy()).max()
+    assert step > 0
+    np.testing.assert_allclose(nearlyOff, uncorrected.to_numpy(), atol=1.0e-3 * step)
+
+
+def test_a_half_weight_correction_takes_half_the_wing_light_out_of_the_sky_model(
+    log: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ARRANGE
+    order = _order(STAR_ORDER, BRIGHT_STAR_FLUX_PER_COLUMN)
+    uncorrected = _modelled(_bare_subtractor(log, object_wing_correction=False), order).sort_index()["sky_model"]
+    corrected = _star_sky_with_weight(log, monkeypatch, 1.0)
+
+    # ACT
+    half = _star_sky_with_weight(log, monkeypatch, 0.5)
+
+    # ASSERT
+    # THE REFIT CLIPS A FEW PIXELS DIFFERENTLY, SO THE SHIFT IS COMPARED BY ITS MEDIAN, NOT PIXEL BY PIXEL
+    fullShift = np.median(corrected - uncorrected.to_numpy())
+    halfShift = np.median(half - uncorrected.to_numpy())
+    assert fullShift < 0
+    assert halfShift / fullShift == pytest.approx(0.5, abs=0.02)
+
+
+def test_a_partly_corrected_order_is_logged_with_its_ratio_weight_and_scaled_flux_share() -> None:
+    estimate = SimpleNamespace(
+        biasLevel=0.6,
+        skyLevel=24.0,
+        slitLossFraction=0.16,
+        chunks=(),
+        isThermalSingleProfile=False,
+        skyToCoreRatio=1.01,
+        wingWeight=0.475,
+    )
+
+    # ACT
+    line = subtractSkyModule._object_wing_log_line(13, estimate)
+
+    # ASSERT
+    assert "PARTIAL" in line
+    assert "S/G 1.01" in line
+    assert "WEIGHT 0.475" in line
+    assert "0.8 TO 1.2" in line
+    assert "REMOVING ABOUT 7.60% OF THE OBJECT FLUX" in line
+
+
+def test_a_fully_corrected_order_is_logged_with_its_ratio_and_not_as_partial() -> None:
+    estimate = SimpleNamespace(
+        biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16, chunks=(), isThermalSingleProfile=False, **FULL_WEIGHT
+    )
+
+    # ACT
+    line = subtractSkyModule._object_wing_log_line(16, estimate)
+
+    # ASSERT
+    assert "PARTIAL" not in line
+    assert "S/G 0.1" in line
+    assert "REMOVING ABOUT 16.00% OF THE OBJECT FLUX" in line
+
+
+def test_a_corrected_order_without_a_measured_ratio_is_logged_as_unmeasured() -> None:
+    # ARRANGE
+    estimate = SimpleNamespace(
+        biasLevel=0.6,
+        skyLevel=24.0,
+        slitLossFraction=0.16,
+        chunks=(),
+        isThermalSingleProfile=False,
+        skyToCoreRatio=float("nan"),
+        wingWeight=1.0,
+    )
+
+    # ACT
+    line = subtractSkyModule._object_wing_log_line(16, estimate)
+
+    # ASSERT
+    assert "S/G UNMEASURED" in line
+    assert "nan" not in line.lower()
+
+
 @pytest.mark.parametrize("skyLevel", [0.0, -5.0, 1e-12])
 def test_the_log_line_reports_the_leak_in_electrons_only_when_the_sky_is_near_zero(skyLevel: float) -> None:
     estimate = SimpleNamespace(
-        biasLevel=14.7, skyLevel=skyLevel, slitLossFraction=0.98, chunks=(), isThermalSingleProfile=False
+        biasLevel=14.7,
+        skyLevel=skyLevel,
+        slitLossFraction=0.98,
+        chunks=(),
+        isThermalSingleProfile=False,
+        **FULL_WEIGHT,
     )
 
     line = subtractSkyModule._object_wing_log_line(23, estimate)
@@ -398,7 +508,12 @@ def test_the_log_line_reports_the_leak_in_electrons_only_when_the_sky_is_near_ze
 
 def test_the_log_line_gives_the_leak_as_a_share_of_a_real_sky() -> None:
     estimate = SimpleNamespace(
-        biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16, chunks=(), isThermalSingleProfile=False
+        biasLevel=0.6,
+        skyLevel=24.0,
+        slitLossFraction=0.16,
+        chunks=(),
+        isThermalSingleProfile=False,
+        **FULL_WEIGHT,
     )
 
     line = subtractSkyModule._object_wing_log_line(16, estimate)
@@ -409,7 +524,12 @@ def test_the_log_line_gives_the_leak_as_a_share_of_a_real_sky() -> None:
 def test_the_log_line_counts_the_wavelength_chunks_that_use_the_whole_order_profile() -> None:
     chunks = tuple(SimpleNamespace(isFallback=isFallback) for isFallback in (True, False, False, True, False, False))
     estimate = SimpleNamespace(
-        biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16, chunks=chunks, isThermalSingleProfile=False
+        biasLevel=0.6,
+        skyLevel=24.0,
+        slitLossFraction=0.16,
+        chunks=chunks,
+        isThermalSingleProfile=False,
+        **FULL_WEIGHT,
     )
 
     line = subtractSkyModule._object_wing_log_line(16, estimate)
@@ -420,7 +540,12 @@ def test_the_log_line_counts_the_wavelength_chunks_that_use_the_whole_order_prof
 def test_the_log_line_says_a_thermal_order_used_the_single_profile() -> None:
     chunks = (SimpleNamespace(isFallback=True),)
     estimate = SimpleNamespace(
-        biasLevel=0.6, skyLevel=24.0, slitLossFraction=0.16, chunks=chunks, isThermalSingleProfile=True
+        biasLevel=0.6,
+        skyLevel=24.0,
+        slitLossFraction=0.16,
+        chunks=chunks,
+        isThermalSingleProfile=True,
+        **FULL_WEIGHT,
     )
 
     line = subtractSkyModule._object_wing_log_line(10, estimate)
