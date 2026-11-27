@@ -479,7 +479,7 @@ def test_nod_stack_extractions_writes_the_merged_fits_and_leaves_the_ascii_to_th
     recipe = soxs_nod.__new__(soxs_nod)
     recipe.log = log
     recipe.arm = "VIS"
-    recipe.detectorParams = {"ron": 3.0}
+    recipe.detectorParams = {"ron": 3.0, "log-wavelength-step-kms": 17.83}
     recipe.recipeName = "soxs-nod"
     recipe.sofName = "SYNTHETIC"
     recipe.settings = pipeline_settings(tmp_path)

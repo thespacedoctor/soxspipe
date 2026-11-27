@@ -14,7 +14,9 @@ import math
 from typing import Any
 
 from soxspipe.commonutils import keyword_lookup
+from soxspipe.commonutils.log_wavelength_grid import grid_index, grid_step_kms, grid_wavelength
 from soxspipe.commonutils.on_target_frames import without_pointing
+from soxspipe.commonutils.response_basis import dispersion_binning
 from soxspipe.commonutils.spectrum_names import SPECTRUM_ASCII_LABEL, SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from soxspipe.commonutils.toolkit import utcnow_string
 from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
@@ -23,28 +25,32 @@ from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
 MEDIAN_IS_MEAN_MAX_SPECTRA = 2
 # THE LARGE-N VARIANCE OF THE MEDIAN OF GAUSSIAN SAMPLES IS THIS FACTOR TIMES THE VARIANCE OF THEIR MEAN
 MEDIAN_VARIANCE_FACTOR = math.pi / 2
+# X-SHOOTER, WHICH KEEPS LINEAR GRIDS, GROUPS THE BINS OF A STACK BY THEIR WAVELENGTH TO THIS MANY DECIMALS (NM)
+LINEAR_GRID_GROUPING_DECIMALS = 4
 
 
-def median_stack_variance(spectra):
-    """*the variance of the per-wavelength median of a set of stacked spectra*
+def median_stack_variance(spectra, groupKeys):
+    """*the variance of the per-bin median of a set of stacked spectra*
 
-    A row contributes at its wavelength when it has a flux, as for the flux median, so N is counted per
-    wavelength. For N <= 2 the median is the mean and the variance is sum(var) / N**2. For larger N it is
-    (pi / 2) * mean(var) / N, the large-N variance of the median of Gaussian samples. The variance is NaN where
-    no row contributes, or where a contributing row has no variance.
+    A row contributes to its bin when it has a flux, as for the flux median, so N is counted per bin. For N <= 2 the
+    median is the mean and the variance is sum(var) / N**2. For larger N it is (pi / 2) * mean(var) / N, the large-N
+    variance of the median of Gaussian samples. The variance is NaN where no row contributes, or where a contributing
+    row has no variance.
 
     **Key Arguments:**
 
-    - ``spectra`` -- the concatenated spectra (dataframe) with rounded ``WAVE``, ``FLUX_COUNTS`` and ``VARIANCE``
+    - ``spectra`` -- the concatenated spectra (dataframe) with ``FLUX_COUNTS`` and ``VARIANCE``
+    - ``groupKeys`` -- the key of the bin of each row of ``spectra``, in the order of its rows: the integer bin index on
+      the log-wavelength grid for SOXS, the rounded wavelength for X-Shooter
 
     **Return:**
 
-    - ``variance`` -- the variance of the median at each ``WAVE`` (series indexed by ``WAVE``, sorted ascending)
+    - ``variance`` -- the variance of the median in each bin (series indexed by the group key, sorted ascending)
 
     **Usage:**
 
     ```python
-    variance = median_stack_variance(mergedDataframe)
+    variance = median_stack_variance(mergedDataframe, groupKeys)
     ```
     """
     import numpy as np
@@ -55,10 +61,10 @@ def median_stack_variance(spectra):
     flux = np.asarray(spectra["FLUX_COUNTS"].to_numpy(), dtype=np.float64)
     contributing = pd.Series(~np.isnan(flux))
     variance = pd.Series(np.asarray(spectra["VARIANCE"].to_numpy(), dtype=np.float64)).where(contributing)
-    byWave = pd.Series(np.asarray(spectra["WAVE"].to_numpy(), dtype=np.float64))
-    contributorCount = contributing.groupby(byWave).sum()
-    hasMissingVariance = (contributing & variance.isna()).groupby(byWave).any()
-    varianceSum = variance.groupby(byWave).sum(min_count=1).mask(hasMissingVariance)
+    byBin = pd.Series(np.asarray(groupKeys))
+    contributorCount = contributing.groupby(byBin).sum()
+    hasMissingVariance = (contributing & variance.isna()).groupby(byBin).any()
+    varianceSum = variance.groupby(byBin).sum(min_count=1).mask(hasMissingVariance)
     meanVariance = varianceSum / contributorCount**2
     medianVariance = MEDIAN_VARIANCE_FACTOR * (varianceSum / contributorCount) / contributorCount
     return meanVariance.where(contributorCount <= MEDIAN_IS_MEAN_MAX_SPECTRA, medianVariance)
@@ -112,10 +118,72 @@ class extraction_stacking:
             self.log,
         )
 
+    def _is_soxs(self) -> bool:
+        """*whether the recipe reduces SOXS data, whatever the case of the ``instrument`` setting*
+
+        **Return:**
+
+        - ``isSoxs`` -- *True* for SOXS, *False* for X-Shooter, which keeps its linear grids
+        """
+        return str(self.settings.get("instrument", "soxs")).lower() == "soxs"
+
+    def _stack_grid_step_kms(self) -> float | None:
+        """*the log-wavelength step of the grid the spectra to stack sit on (km/s), or *None* for X-Shooter*
+
+        It is the step of the arm per unbinned pixel times the binning of the frames, as the merge used (DY-2348).
+
+        **Return:**
+
+        - ``stepKms`` -- the step per bin, or *None* when the instrument has no log-wavelength grid
+        """
+        if not self._is_soxs():
+            return None
+        kw = keyword_lookup(log=self.log, settings=self.settings).get
+        binning = dispersion_binning(self.masterHeaderFrame.header, self.arm, kw)
+        return grid_step_kms(self.detectorParams, binning)
+
+    def _median_by_bin(self, mergedDataframe):
+        """*the median of each column of the concatenated spectra in each bin, with the variance of that median*
+
+        A SOXS bin is the integer index on the log-wavelength grid of the arm, and its ``WAVE`` is the grid wavelength
+        of the index. An X-Shooter bin is the wavelength rounded to 4 decimals. The ``WAVE`` column of
+        ``mergedDataframe`` is replaced by plain floats in nm. A copy of the frame would consolidate its astropy
+        quantity columns, which fails on their mixed units.
+
+        **Key Arguments:**
+
+        - ``mergedDataframe`` -- the concatenated spectra (dataframe) with a quantity ``WAVE`` and a ``VARIANCE``
+
+        **Return:**
+
+        - ``medians`` -- one row per bin, sorted by wavelength, with ``WAVE`` and the median of every other column,
+          except ``VARIANCE``, which is the variance of the median (see ``median_stack_variance``)
+        """
+        import numpy as np
+
+        waves = np.array([float(x.value) for x in mergedDataframe["WAVE"]])
+        mergedDataframe["WAVE"] = waves
+        stepKms = self._stack_grid_step_kms()
+        groupKeys = np.round(waves, LINEAR_GRID_GROUPING_DECIMALS) if stepKms is None else grid_index(waves, stepKms)
+        medians = mergedDataframe.groupby(by=groupKeys).median()
+        binKeys = medians.index.to_numpy()
+        medians = medians.reset_index(drop=True)
+        medians["WAVE"] = binKeys if stepKms is None else grid_wavelength(binKeys, stepKms)
+        # THE FLUX IS THE MEDIAN, BUT THE MEDIAN OF THE INPUT VARIANCES IS THE ERROR OF ONE SPECTRUM, NOT OF THE STACK
+        # KEEP THE EXTRACTION'S FLOAT32 VARIANCE COLUMN TYPE; INTEGER OR FLOAT64 INPUT GIVES FLOAT64
+        varianceType = np.promote_types(np.asarray(mergedDataframe["VARIANCE"].to_numpy()).dtype, np.float32)
+        medians["VARIANCE"] = (
+            median_stack_variance(mergedDataframe, groupKeys).reindex(binKeys).to_numpy().astype(varianceType)
+        )
+        return medians
+
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):
         """*merge the extractions of the nodding cycles, or of the nod positions of a stare-mode nodding SOF*
 
-        The spectra are grouped by wavelength and combined by their median, which is the mean for two spectra.
+        The spectra are grouped by bin and combined by their median, which is the mean for two spectra. A SOXS bin is
+        its integer index on the log-wavelength grid of the arm, so no bin is split or merged by rounding, and the
+        ``WAVE`` of the stack is the grid wavelength of the index (DY-2349). X-Shooter groups by the wavelength to 4
+        decimals.
 
         **Key Arguments:**
 
@@ -167,18 +235,10 @@ class extraction_stacking:
             raise Exception(error)
 
         # MERGE THE PANDAS DATAFRAMES MERDGED_ORDERS_A AND MERGEDSPECTRUMDF_B INTO A SINGLE DATAFRAME, THEN
-        # GROUP BY WAVE AND TAKE THE MEDIAN OF EACH COLUMN
+        # GROUP BY BIN AND TAKE THE MEDIAN OF EACH COLUMN
 
         merged_dataframe = pd.concat(dataFrameList)
-        # BEFORE GROUPING, WE NEED TO TRUNCATE THE WAVELENGTH TO THE 4 DIGITS
-        merged_dataframe["WAVE"] = merged_dataframe["WAVE"].apply(lambda x: round(float(x.value), 4))
-        groupedDataframe = merged_dataframe.groupby(by="WAVE", as_index=False).median()
-        # THE FLUX IS THE MEDIAN, BUT THE MEDIAN OF THE INPUT VARIANCES IS THE ERROR OF ONE SPECTRUM, NOT OF THE STACK
-        # KEEP THE EXTRACTION'S FLOAT32 VARIANCE COLUMN TYPE; INTEGER OR FLOAT64 INPUT GIVES FLOAT64
-        varianceType = np.promote_types(np.asarray(merged_dataframe["VARIANCE"].to_numpy()).dtype, np.float32)
-        groupedDataframe["VARIANCE"] = (
-            groupedDataframe["WAVE"].map(median_stack_variance(merged_dataframe)).astype(varianceType)
-        )
+        groupedDataframe = self._median_by_bin(merged_dataframe)
 
         self.filenameTemplate = self.productStem + ".fits"
 
@@ -207,10 +267,11 @@ class extraction_stacking:
 
         groupedDataframe["SNR"] = groupedDataframe["FLUX_COUNTS"].values / np.sqrt(groupedDataframe["VARIANCE"].values)
 
-        # PREPARING THE HDU. WAVE IS ALREADY ROUNDED TO 4 DECIMALS BY THE GROUPING ABOVE. ROUNDING IT TO 2 WOULD MOVE A
-        # LOG-GRID POINT BY UP TO HALF OF A BIN, SO ONLY THE LINEAR X-SHOOTER GRIDS KEEP THE 2-DECIMAL WAVE (DY-2348)
+        # PREPARING THE HDU. WAVE IS A GRID POINT (SOXS) OR ROUNDED TO 4 DECIMALS (X-SHOOTER) BY THE GROUPING ABOVE.
+        # ROUNDING IT TO 2 WOULD MOVE A LOG-GRID POINT BY UP TO HALF OF A BIN, SO ONLY THE LINEAR X-SHOOTER GRIDS KEEP
+        # THE 2-DECIMAL WAVE (DY-2348)
         roundingDecimals = [("FLUX_COUNTS", 3), ("SNR", 2), ("FLUX_DENSITY_COUNTS", 3)]
-        if str(self.settings.get("instrument", "soxs")).lower() != "soxs":
+        if not self._is_soxs():
             roundingDecimals.insert(0, ("WAVE", 2))
         for col, decimals in roundingDecimals:
             # ONLY A NOT-FLATTENED STACK HAS A FLUX DENSITY COLUMN (DY-1622)

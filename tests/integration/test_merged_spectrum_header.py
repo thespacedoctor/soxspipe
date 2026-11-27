@@ -26,12 +26,14 @@ pytestmark = pytest.mark.integration
 
 NOD_NAMES = ["nod-A1.fits", "nod-B1.fits", "nod-A2.fits", "nod-B2.fits"]
 OFFSET_NAMES = ["off-ON1.fits", "off-OFF1.fits", "off-ON2.fits", "off-OFF2.fits"]
+# THE STACK READS THE BINNING OF ITS FRAMES TO FIND THE STEP OF THE LOG-WAVELENGTH GRID
+BINNING_CARD = {"ESO DET BINY": 1}
 
 
 def _frame(index: int) -> Any:
     """Return a prepared frame whose ``ARCFILE`` differs from its file name, with an exposure time."""
     header = raw_science_header("VIS", mjd=61000.0 + index / 10, arcfile=f"SOXS.2026-01-02T03:04:0{index}.fits")
-    return synthetic_ccd(prepared=True, headerOverrides={key: header[key] for key in header})
+    return synthetic_ccd(prepared=True, headerOverrides={**{key: header[key] for key in header}, **BINNING_CARD})
 
 
 def _recipe(recipeClass: type, tmp_path: Path, log: Any, monkeypatch: pytest.MonkeyPatch, names: list[str]) -> Any:
@@ -51,7 +53,7 @@ def _recipe(recipeClass: type, tmp_path: Path, log: Any, monkeypatch: pytest.Mon
     recipe.startNightDate = "2024-01-02"
     recipe.productDir = str(tmp_path)
     recipe.imageType = "OBJECT"
-    recipe.detectorParams = {"extinction": "extinction.dat"}
+    recipe.detectorParams = {"extinction": "extinction.dat", "log-wavelength-step-kms": 17.83}
     recipe.rawFrames = raw_frame_summary(names)
     recipe.debug = False
     recipe.qc = qc_table().iloc[0:0].copy()
@@ -192,7 +194,7 @@ def _target_frame(index: int) -> Any:
         OBJECT="SN2026ob",
         **(TARGET_CARDS if index == 1 else {}),
     )
-    return synthetic_ccd(prepared=True, headerOverrides={key: header[key] for key in header})
+    return synthetic_ccd(prepared=True, headerOverrides={**{key: header[key] for key in header}, **BINNING_CARD})
 
 
 def _with_target_list(recipe: Any, log: Any, names: list[str]) -> Any:

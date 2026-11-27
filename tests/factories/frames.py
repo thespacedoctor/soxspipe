@@ -37,6 +37,8 @@ _KEYWORDS = {
     },
 }
 
+_BINNING_CARDS = {"soxs": "ESO DET BINY", "xsh": "ESO DET WIN1 BINY"}
+
 
 def instrument_header(
     *,
@@ -59,6 +61,8 @@ def instrument_header(
         "OBS_ID": 42,
         "SEQ_ARM": arm.upper(),
     }
+    # THE BINNING CARD A STACK READS TO FIND ITS LOG-WAVELENGTH STEP, BY ITS FITS NAME BECAUSE NO TEST SETS IT BY ALIAS
+    semanticValues[_BINNING_CARDS[normalizedInstrument]] = 1
     semanticValues = {**semanticValues, **(overrides or {})}
     return Header({keywordMap.get(key, key): value for key, value in semanticValues.items()})
 

@@ -50,6 +50,8 @@ pytestmark = pytest.mark.integration
 STARE_TECHNIQUE = "ECHELLE,SLIT,STARE"
 # THE READ NOISE (E-) THE RECIPE HOLDS IN ITS DETECTOR PARAMETERS, AS THE NDSAMPLES LOOKUP LEAVES IT
 RECIPE_READ_NOISE = 5.5
+# THE STEP OF THE LOG-WAVELENGTH GRID OF THE VIS ARM, WHICH A STACK READS (KM/S PER UNBINNED PIXEL)
+LOG_STEP_KMS = 17.83
 
 # SEEDS OF THE CALIBRATION FRAMES, SO A TEST CAN TELL WHICH FILE WAS READ.
 BIAS_SEED = 501
@@ -90,7 +92,7 @@ def _stare_recipe(
     recipe.log = log
     recipe.arm = arm
     recipe.kw = _keyword
-    recipe.detectorParams = {"ron": RECIPE_READ_NOISE * u.electron}
+    recipe.detectorParams = {"ron": RECIPE_READ_NOISE * u.electron, "log-wavelength-step-kms": LOG_STEP_KMS}
     recipe.inputFrames = RouteCollection(routes)
     recipe.recipeName = "soxs-stare"
     recipe.recipeSettings = (

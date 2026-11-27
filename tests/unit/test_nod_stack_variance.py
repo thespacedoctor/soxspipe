@@ -23,11 +23,14 @@ import pytest
 from astropy import units as u
 from astropy.io import fits
 
+from soxspipe.commonutils.log_wavelength_grid import grid_index, grid_wavelength
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from soxspipe.recipes import soxs_nod
 from tests.factories import pipeline_settings, qc_table, synthetic_ccd
 
 pytestmark = pytest.mark.unit
+
+STEP_KMS = 17.83
 
 
 @pytest.fixture
@@ -48,6 +51,8 @@ def recipe(log: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> soxs_no
     _, nod.products = nod._empty_qc_and_product_tables(pd)
     nod.qc = qc_table().iloc[0:0].copy()
     nod.masterHeaderFrame = synthetic_ccd(shape=(3, 3), prepared=True)
+    nod.masterHeaderFrame.header["ESO DET BINY"] = 1
+    nod.detectorParams = {"log-wavelength-step-kms": STEP_KMS}
     nod.update_fits_keywords = lambda **_: None
     return nod
 
@@ -67,8 +72,8 @@ def _spectrum(waves: list[float], fluxes: list[float], variances: list[float]) -
 
 
 def _row(stacked: Any, wave: float) -> dict[str, float]:
-    """Return the stacked row at `wave` as plain floats."""
-    index = list(stacked["WAVE"]).index(wave)
+    """Return the stacked row of the bin that holds `wave` as plain floats."""
+    index = list(grid_index(np.asarray(stacked["WAVE"]), STEP_KMS)).index(int(grid_index(wave, STEP_KMS)))
     return {name: float(stacked[name][index]) for name in ("FLUX_COUNTS", "VARIANCE", "SNR")}
 
 
@@ -243,23 +248,24 @@ def test_the_stacked_spectrum_of_a_long_named_sof_is_written(recipe: soxs_nod, t
     assert Path(filePath).exists()
 
 
-def test_the_stacked_wave_is_not_rounded_to_two_decimals(recipe: soxs_nod, tmp_path: Path) -> None:
+def test_the_stacked_wave_is_the_grid_wavelength_not_rounded(recipe: soxs_nod, tmp_path: Path) -> None:
     """Log-grid bins are 0.02 to 0.09 nm wide, so rounding WAVE to 0.01 nm moves a point by up to half of one (DY-2348).
 
-    The stack still groups by WAVE rounded to 4 decimals (DY-2349 changes that to the bin index), so WAVE keeps 4.
+    The stack groups by bin index (DY-2349), so its WAVE is the grid wavelength of the bin to the last bit.
     """
-    # ARRANGE: TWO CYCLES ON THE SAME GRID POINTS
-    waves = [500.01234, 500.03358, 500.05484]
-    first = _spectrum(waves, [10.0, 12.0, 14.0], [4.0, 4.0, 4.0])
-    second = _spectrum(waves, [20.0, 22.0, 24.0], [4.0, 4.0, 4.0])
+    # ARRANGE: TWO CYCLES ON THE SAME GRID POINTS, KEPT TO 4 DECIMALS AS THE OLD STACK LEFT THEM
+    expected = grid_wavelength(np.arange(300, 303), STEP_KMS)
+    waves = np.round(expected, 4)
+    first = _spectrum(list(waves), [10.0, 12.0, 14.0], [4.0, 4.0, 4.0])
+    second = _spectrum(list(waves), [20.0, 22.0, 24.0], [4.0, 4.0, 4.0])
 
     # ACT
     stacked, filePath = recipe.stack_extractions([first, second])
 
-    # ASSERT: THE TABLE AND THE FILE ON DISK BOTH HOLD THE 4-DECIMAL WAVE
-    assert list(stacked["WAVE"]) == [500.0123, 500.0336, 500.0548]
+    # ASSERT: THE TABLE AND THE FILE ON DISK BOTH HOLD THE EXACT GRID WAVELENGTH
+    assert np.array_equal(np.asarray(stacked["WAVE"]), expected)
     with fits.open(filePath) as hdus:
-        assert list(hdus["SPECTRUM"].data["WAVE"]) == [500.0123, 500.0336, 500.0548]
+        assert np.array_equal(np.asarray(hdus["SPECTRUM"].data["WAVE"]), expected)
 
 
 def test_the_x_shooter_stack_keeps_its_two_decimal_wave(recipe: soxs_nod) -> None:
@@ -277,10 +283,8 @@ def test_the_x_shooter_stack_keeps_its_two_decimal_wave(recipe: soxs_nod) -> Non
     assert list(stacked["WAVE"]) == [500.01, 500.03]
 
 
-def test_an_upper_case_soxs_setting_keeps_the_four_decimal_wave(
-    recipe: soxs_nod, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The instrument check ignores case, so ``SOXS`` keeps the log-grid WAVE (DY-2348)."""
+def test_an_upper_case_soxs_setting_keeps_the_log_grid_wave(recipe: soxs_nod, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The instrument check ignores case, so ``SOXS`` keeps the log-grid WAVE (DY-2348) and its bin-index grouping."""
     # ARRANGE: THE HEADER READS <instrument>_detector_parameters.yaml, WHICH ONLY THE LOWER-CASE NAME OPENS ON A
     # CASE-SENSITIVE FILE SYSTEM, SO THE HEADER IS BUILT WITH IT; ONLY THE WAVE ROUNDING SEES "SOXS"
     realHeader = recipe._merged_spectrum_header
@@ -294,7 +298,8 @@ def test_an_upper_case_soxs_setting_keeps_the_four_decimal_wave(
 
     monkeypatch.setattr(recipe, "_merged_spectrum_header", header_with_the_lower_case_instrument)
     recipe.settings["instrument"] = "SOXS"
-    waves = [500.01234, 500.03358]
+    expected = grid_wavelength(np.arange(300, 302), STEP_KMS)
+    waves = list(np.round(expected, 4))
 
     # ACT
     stacked, _ = recipe.stack_extractions(
@@ -302,4 +307,4 @@ def test_an_upper_case_soxs_setting_keeps_the_four_decimal_wave(
     )
 
     # ASSERT
-    assert list(stacked["WAVE"]) == [500.0123, 500.0336]
+    assert np.array_equal(np.asarray(stacked["WAVE"]), expected)

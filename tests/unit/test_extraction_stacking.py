@@ -46,6 +46,8 @@ def _recipe(recipeClass: type, log: Any, tmpPath: Path, monkeypatch: pytest.Monk
     _, recipe.products = recipe._empty_qc_and_product_tables(pd)
     recipe.qc = qc_table().iloc[0:0].copy()
     recipe.masterHeaderFrame = synthetic_ccd(shape=(3, 3), prepared=True)
+    recipe.masterHeaderFrame.header["ESO DET BINY"] = 1
+    recipe.detectorParams = {"log-wavelength-step-kms": 17.83}
     recipe.update_fits_keywords = lambda **_: None
     return recipe
 
