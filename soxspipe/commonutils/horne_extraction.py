@@ -20,6 +20,7 @@ from .extraction_notes import extraction_note_logger, format_extraction_notes
 from .figure_guard import closes_its_figures
 from .filenamer import filenamer
 from .on_target_frames import with_frame_accounting
+from .spectrum_columns import ERR_COUNTS_COLUMN, is_soxs_instrument
 from .spectrum_names import SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from .wavelength_keywords import with_merged_spectrum_cards
 
@@ -2626,7 +2627,7 @@ class horne_extraction(base_util):
 
         - ``usesGrid`` -- *True* for a SOXS extraction, *False* for any other instrument
         """
-        return self.inst.upper() == "SOXS"
+        return is_soxs_instrument(self.inst)
 
     def _merge_on_log_grid(self, extractedOrdersDF: "pd.DataFrame") -> "tuple[pd.DataFrame, dict[str, float]]":
         """*merge the extracted orders onto the fixed log-wavelength grid of a SOXS arm (DY-2348)*
@@ -2682,7 +2683,7 @@ class horne_extraction(base_util):
         mergedOrders["WAVE"] = merged.wavelength * u.nm
         mergedOrders["FLUX_COUNTS"] = merged.values[FLUX_KEY].astype(np.float32) * u.electron
         # THE ERROR, NOT THE VARIANCE, SO THE COLUMN IS IN ELECTRONS (DY-2350)
-        mergedOrders["ERR_COUNTS"] = np.sqrt(merged.variance.astype(np.float32)) * u.electron
+        mergedOrders[ERR_COUNTS_COLUMN] = np.sqrt(merged.variance.astype(np.float32)) * u.electron
         if self.carrySkyCounts:
             # THE SKY IS RESAMPLED WITH THE SAME KEPT ROWS AND WEIGHTS AS THE FLUX. A RUN WITH NO SKY MODEL STAYS NAN
             sky = merged.values[SKY_KEY].astype(np.float32)
@@ -2690,7 +2691,7 @@ class horne_extraction(base_util):
                 sky = np.full_like(sky, np.nan)
             mergedOrders["SKY_COUNTS"] = sky * u.electron
         with np.errstate(divide="ignore", invalid="ignore"):
-            snr = mergedOrders["FLUX_COUNTS"].values / mergedOrders["ERR_COUNTS"].values
+            snr = mergedOrders["FLUX_COUNTS"].values / mergedOrders[ERR_COUNTS_COLUMN].values
         mergedOrders["SNR"] = np.where(merged.hasData, snr, np.nan * snr.unit)
         if self.notFlattened:
             mergedOrders["FLUX_DENSITY_COUNTS"] = merged.values[DENSITY_KEY].astype(np.float32) * u.electron / u.nm

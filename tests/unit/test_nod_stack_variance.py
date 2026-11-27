@@ -322,6 +322,16 @@ def test_the_soxs_stack_keeps_the_counts_at_full_precision_and_rounds_only_the_s
     assert float(stacked["SNR"][0]) == round(float(stacked["SNR"][0]), 2)
 
 
+def test_a_soxs_stack_refuses_spectra_with_a_variance_column(recipe: soxs_nod) -> None:
+    """A SOXS stack of spectra in the layout of before DY-2350 stops with a clear error, not X-Shooter columns."""
+    # ARRANGE
+    stale = _spectrum([500.0], [10.0], [4.0], hasVarianceColumn=True)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"holds VARIANCE, but a SOXS spectrum holds ERR_COUNTS"):
+        recipe.stack_extractions([stale])
+
+
 def test_the_x_shooter_stack_keeps_its_variance_column_and_its_three_decimal_counts(recipe: soxs_nod) -> None:
     """X-Shooter output is unchanged: ``VARIANCE`` stays and the counts keep their 3 decimals (DY-2350)."""
     # ARRANGE

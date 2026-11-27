@@ -11,6 +11,8 @@ from soxspipe.commonutils.spectrum_columns import (
     calibrated_flux_column_name,
     error_column_name,
     error_counts,
+    is_soxs_instrument,
+    require_error_column,
     variance_counts,
 )
 from tests.factories import merged_spectrum
@@ -71,3 +73,42 @@ def test_the_calibrated_flux_column_is_flux_for_soxs_and_flux_calibrated_for_xsh
     assert (
         calibrated_flux_column_name(Table(names=["WAVE", "FLUX_CALIBRATED", "VARIANCE"]).colnames) == "FLUX_CALIBRATED"
     )
+
+
+@pytest.mark.parametrize(
+    ("instrument", "isSoxs"),
+    [("SOXS", True), ("soxs", True), ("Soxs", True), ("XSHOOTER", False), ("xsh", False), ("", False), (None, False)],
+)
+def test_the_instrument_name_selects_the_soxs_layout_without_regard_to_case(instrument: object, isSoxs: bool) -> None:
+    # ACT / ASSERT
+    assert is_soxs_instrument(instrument) is isSoxs
+
+
+@pytest.mark.parametrize(
+    ("isSoxs", "columns", "expected"),
+    [(True, ["WAVE", "ERR_COUNTS"], "ERR_COUNTS"), (False, ["WAVE", "VARIANCE"], "VARIANCE")],
+    ids=["soxs", "xshooter"],
+)
+def test_the_error_column_the_instrument_needs_is_returned_when_the_spectrum_has_it(
+    isSoxs: bool, columns: list[str], expected: str
+) -> None:
+    # ACT / ASSERT
+    assert require_error_column(columns, isSoxs) == expected
+
+
+@pytest.mark.parametrize(
+    ("isSoxs", "columns", "message"),
+    [
+        (True, ["WAVE", "VARIANCE"], "holds VARIANCE, but a SOXS spectrum holds ERR_COUNTS"),
+        (False, ["WAVE", "ERR_COUNTS"], "holds ERR_COUNTS, but a X-Shooter spectrum holds VARIANCE"),
+        (True, ["WAVE"], "missing the column ERR_COUNTS"),
+        (False, ["WAVE"], "missing the column VARIANCE"),
+    ],
+    ids=["soxs-stale", "xshooter-soxs-columns", "soxs-none", "xshooter-none"],
+)
+def test_a_spectrum_of_the_other_layout_or_with_no_error_column_is_refused(
+    isSoxs: bool, columns: list[str], message: str
+) -> None:
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=message):
+        require_error_column(columns, isSoxs)

@@ -137,7 +137,7 @@ def test_fluxcal_keeps_the_variance_layout_of_an_xshooter_spectrum(tmp_path, log
     spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY, hasVarianceColumn=True)
 
     # ACT
-    table = calibrate_spectrum(tmp_path, log, monkeypatch, spectrum)
+    table = calibrate_spectrum(tmp_path, log, monkeypatch, spectrum, settings={"instrument": "xsh"})
 
     # ASSERT
     assert list(table.columns) == [
@@ -151,6 +151,24 @@ def test_fluxcal_keeps_the_variance_layout_of_an_xshooter_spectrum(tmp_path, log
     ]
     np.testing.assert_allclose(table["ERR_CALIBRATED"], [4 / 10 * 7e-17, 8 / 10 * 8e-17], rtol=1e-14, atol=0)
     np.testing.assert_array_equal(np.asarray(table["VARIANCE"]), VARIANCE)
+
+
+def test_fluxcal_refuses_a_soxs_run_given_a_variance_spectrum(tmp_path, log, monkeypatch):
+    # ARRANGE: A SOXS RUN HOLDING THE LAYOUT OF BEFORE DY-2350, SUCH AS A STALE FILE
+    spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY, hasVarianceColumn=True)
+
+    # ACT / ASSERT: NO TABLE WITH X-SHOOTER NAMES IS WRITTEN FOR A SOXS RUN
+    with pytest.raises(ValueError, match=r"holds VARIANCE, but a SOXS spectrum holds ERR_COUNTS"):
+        calibrate_spectrum(tmp_path, log, monkeypatch, spectrum, settings={"instrument": "soxs"})
+
+
+def test_fluxcal_refuses_an_xshooter_run_given_an_err_counts_spectrum(tmp_path, log, monkeypatch):
+    # ARRANGE
+    spectrum = merged_spectrum(WAVES, FLUX, VARIANCE, SKY)
+
+    # ACT / ASSERT
+    with pytest.raises(ValueError, match=r"holds ERR_COUNTS, but a X-Shooter spectrum holds VARIANCE"):
+        calibrate_spectrum(tmp_path, log, monkeypatch, spectrum, settings={"instrument": "xsh"})
 
 
 def test_fluxcal_copies_counts_error_sky_and_snr_unchanged(tmp_path, log, monkeypatch):

@@ -5,7 +5,8 @@
 A SOXS merged spectrum holds ``FLUX_COUNTS`` and ``ERR_COUNTS`` (the error in electrons), and, once a response was
 applied, ``FLUX`` and ``ERR``. An X-Shooter merged spectrum keeps the older layout: ``FLUX_COUNTS`` and ``VARIANCE``,
 and ``FLUX_CALIBRATED`` and ``ERR_CALIBRATED`` once calibrated. The layout follows the columns, so code that reads a
-spectrum finds the error and the calibrated flux whichever instrument made it.
+spectrum finds the error and the calibrated flux whichever instrument made it. A writer decides its layout by the
+instrument, with ``is_soxs_instrument``, and ``require_error_column`` checks that the spectrum it was given agrees.
 
 Author
 : David Young
@@ -26,6 +27,51 @@ ERR_COLUMN = "ERR"
 # THE X-SHOOTER NAMES OF THE CALIBRATED FLUX AND ERROR
 XSH_FLUX_COLUMN = "FLUX_CALIBRATED"
 XSH_ERR_COLUMN = "ERR_CALIBRATED"
+
+
+def is_soxs_instrument(instrument: Any) -> bool:
+    """*decide whether an instrument name is SOXS, which selects the SOXS column layout and the log-wavelength grid*
+
+    **Key Arguments:**
+
+    - ``instrument`` -- the instrument name, in any case, from a header (``INSTRUME``) or the ``instrument`` setting
+
+    **Return:**
+
+    - ``isSoxs`` -- *True* for SOXS, *False* for any other instrument
+    """
+    return str(instrument).lower() == "soxs"
+
+
+def require_error_column(columns: Iterable[str], isSoxs: bool) -> str:
+    """*return the name of the error column the instrument's layout needs, or raise when the spectrum lacks it*
+
+    **Key Arguments:**
+
+    - ``columns`` -- the column names of a merged spectrum
+    - ``isSoxs`` -- *True* when the instrument is SOXS (see ``is_soxs_instrument``)
+
+    **Return:**
+
+    - ``name`` -- ``ERR_COUNTS`` for SOXS, ``VARIANCE`` for any other instrument
+
+    **Raises:**
+
+    - ``ValueError`` -- if the spectrum holds the error column of the other layout (a SOXS spectrum with ``VARIANCE`` is
+      a file from before DY-2350), or holds neither
+    """
+    names = list(columns)
+    needed, other = (ERR_COUNTS_COLUMN, VARIANCE_COLUMN) if isSoxs else (VARIANCE_COLUMN, ERR_COUNTS_COLUMN)
+    if needed in names:
+        return needed
+    instrument = "SOXS" if isSoxs else "X-Shooter"
+    if other in names:
+        raise ValueError(
+            f"The spectrum holds {other}, but a {instrument} spectrum holds {needed}. It may have been written "
+            "before soxspipe changed the SOXS columns (DY-2350), or the instrument setting may be wrong. "
+            "Please reduce the spectrum again with this release."
+        )
+    raise ValueError(f"The spectrum is missing the column {needed} that a {instrument} spectrum holds.")
 
 
 def error_column_name(columns: Iterable[str]) -> str | None:

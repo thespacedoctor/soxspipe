@@ -65,6 +65,7 @@ def calibrate_and_capture_write(
     responseWave: list[float] | None = None,
     extinction: np.ndarray | None = None,
     header: fits.Header | None = None,
+    settings: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Run ``calibrate`` on ``spectrum`` and return the keyword arguments it hands to the writer."""
     import soxspipe.commonutils.toolkit as toolkit
@@ -77,6 +78,7 @@ def calibrate_and_capture_write(
     )
     calibration = bare_flux_calibration(
         log=log,
+        settings=settings if settings is not None else {},
         responseFunction=str(responsePath),
         extractedSpectrum=spectrum,
         exptime=EXPOSURE_TIME,

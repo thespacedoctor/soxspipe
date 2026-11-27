@@ -1393,6 +1393,9 @@ def test_extract_writes_the_soxs_merged_counts_without_rounding(
     assert np.asarray(mergedTable["ERR_COUNTS"]).tolist() == np.sqrt(WRITE_VARIANCE).tolist()
     assert np.asarray(mergedTable["SKY_COUNTS"]).tolist() == WRITE_VARIANCE.tolist()
     assert mergedTable["SNR"].tolist() == [round(float(snr), 2) for snr in WRITE_FLUX_COUNTS / np.sqrt(WRITE_VARIANCE)]
+    assert np.asarray(mergedSpectrum["SNR"].values.value) == pytest.approx(
+        WRITE_FLUX_COUNTS / np.sqrt(WRITE_VARIANCE), rel=1e-6
+    )
     assert all(hasattr(wave, "value") for wave in mergedSpectrum["WAVE"])
     assert [wave.value for wave in mergedSpectrum["WAVE"]] == pytest.approx(WRITE_WAVE_GRID.tolist(), rel=1e-12)
     # THE NOD STACKER READS EACH WAVE AS A QUANTITY
@@ -1412,6 +1415,9 @@ def test_extract_rounds_the_xshooter_merged_table_and_keeps_its_variance_column(
     assert mergedTable["FLUX_COUNTS"].tolist() == [1.235, 3.654]
     assert mergedTable["FLUX_DENSITY_COUNTS"].tolist() == [0.123, 0.346]
     assert np.asarray(mergedTable["VARIANCE"]).tolist() == WRITE_VARIANCE.tolist()
+    assert np.asarray(mergedSpectrum["SNR"].values.value) == pytest.approx(
+        WRITE_FLUX_COUNTS / np.sqrt(WRITE_VARIANCE), rel=1e-6
+    )
     assert [wave.value for wave in mergedSpectrum["WAVE"]] == pytest.approx(WRITE_WAVE_GRID.tolist(), rel=1e-12)
 
 
@@ -3927,5 +3933,7 @@ def test_extract_merges_an_order_with_no_pixel_left_beside_its_neighbours_withou
     assert len(merged) > 0
 
     # THE FLUX CALIBRATION OF THE MERGED SPECTRUM IS FINITE TOO
-    calibrated = calibrate_spectrum(tmp_path, log, monkeypatch, merged, responseWave=RESPONSE_WAVES)
+    calibrated = calibrate_spectrum(
+        tmp_path, log, monkeypatch, merged, responseWave=RESPONSE_WAVES, settings={"instrument": "xsh"}
+    )
     assert np.isfinite(np.asarray(calibrated["FLUX_CALIBRATED"], dtype=float)).all()
