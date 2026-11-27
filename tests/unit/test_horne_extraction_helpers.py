@@ -30,6 +30,7 @@ from soxspipe.commonutils.horne_extraction import (
 )
 from soxspipe.commonutils.phase3 import PER_ARM_MODE
 from tests.factories import instrument_header, product_table, qc_table, soxs_merge_extractor
+from tests.factories.disp_tab import disp_tab_with_qcs
 from tests.factories.flux_calibration import calibrate_spectrum
 from tests.unit._plot_spies import probe_on_savefig
 
@@ -1129,6 +1130,63 @@ def test_extract_gives_the_merged_spectrum_the_target_position_and_the_uncalibra
     assert (mergedHeader["RADESYS"], mergedHeader["EQUINOX"], mergedHeader["OBJECT"]) == ("FK5", 2000.0, "SN2026ob")
     assert (mergedHeader["FLUXCAL"], mergedHeader["TOT_FLUX"], mergedHeader["FLUXERR"]) == ("UNCALIBRATED", False, -1.0)
     assert "FLUXCAL" not in ordersHeader and ordersHeader["RA"] == 7.9
+
+
+def test_extract_gives_the_merged_spectrum_alone_the_resolution_and_wavelength_accuracy_cards(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The cards come from the `DISP_TAB` the extraction used and the slit of the frame (DY-2358)."""
+    import soxspipe.commonutils.phase3 as phase3
+
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    extractor.dispersionMap = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": 0.0036, "WAVE NLINES": 121})
+    extractor.scienceHeaders = []
+    extractor.skySubtractedFrame.header["SLIT_VIS"] = "SLIT1.0"
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    ordersHeader, mergedHeader = calls[0]["header"], calls[1]["header"]
+    assert mergedHeader["SPEC_RES"] == 4770
+    assert (mergedHeader["LAMRMS"], mergedHeader["LAMNLIN"]) == (0.0036, 121)
+    assert mergedHeader["SPEC_ERR"] == pytest.approx(0.0036 / 11.0)
+    assert not {"SPEC_RES", "LAMRMS", "LAMNLIN", "SPEC_ERR"} & set(ordersHeader)
+
+
+def test_extract_gives_the_not_flattened_spectrum_no_resolution_or_accuracy_cards(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The not-flattened spectrum feeds the response only, so it is not stamped with the keywords of a product."""
+    import soxspipe.commonutils.phase3 as phase3
+
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    extractor.notFlattened = "_NOTFLAT"
+    extractor.dispersionMap = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": 0.0036, "WAVE NLINES": 121})
+    extractor.scienceHeaders = []
+    extractor.skySubtractedFrame.header["SLIT_VIS"] = "SLIT1.0"
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    assert not {"SPEC_RES", "LAMRMS", "LAMNLIN", "SPEC_ERR"} & set(calls[1]["header"])
 
 
 def test_the_merged_spectrum_extract_writes_passes_the_frame_accounting_checks_of_the_phase_3_checker(

@@ -877,6 +877,9 @@ def test_stack_extractions_writes_the_product_and_warns_when_the_extraction_foun
 
     assert Path(fitsPath).exists()
     assert recipe.qc.empty
-    assert [message for level, message in log.messages if level == "warning"] == [
+    # THIS RECIPE HAS NO SLIT CARD AND NO DISPERSION MAP, SO IT ALSO WARNS THAT SPEC_RES AND THE WAVELENGTH ACCURACY ARE
+    # LEFT OUT. THOSE WARNINGS HAVE THEIR OWN TESTS (DY-2358)
+    warnings = [message for level, message in log.messages if level == "warning"]
+    assert [message for message in warnings if "SNR and efficiency" in message] == [
         "The SNR and efficiency QCs were skipped: no order joins were supplied (no object trace found)."
     ]

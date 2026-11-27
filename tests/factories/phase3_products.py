@@ -60,7 +60,8 @@ PRIMARY_CARDS: dict[str, object] = {
     "SPEC_BIN": WAVE_STEP_NM,
     "SNR": 12.5,
     "SPEC_RES": 5500.0,
-    "SPEC_ERR": 0.002,
+    # LAMRMS / sqrt(LAMNLIN), AS THE STANDARD DEFINES SPEC_ERR
+    "SPEC_ERR": 0.004 / 120**0.5,
     "SPEC_SYE": 0.003,
     "RA_ERR": 0.0001,
     "DEC_ERR": 0.0001,

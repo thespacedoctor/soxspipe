@@ -21,10 +21,12 @@ from .figure_guard import closes_its_figures
 from .filenamer import filenamer
 from .on_target_frames import with_frame_accounting
 from .spectrum_names import SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
+from .wavelength_keywords import with_merged_spectrum_cards
 
 if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
+    from astropy.io.fits import Header
 
     from .log_grid_merge import OrderPixels
     from .nir_sky_refit import order_sky_correction
@@ -780,9 +782,7 @@ class horne_extraction(base_util):
             write_fits_table_to_disk(
                 log=self.log,
                 settings=self.settings,
-                header=with_flux_calibration_cards(
-                    with_frame_accounting(header, self.onTargetFrames, self.log), isCalibrated=False
-                ),
+                header=with_flux_calibration_cards(self._merged_spectrum_header(header), isCalibrated=False),
                 tables=[mergedTable],
                 filePath=filePath,
                 qc=self.qc,
@@ -822,6 +822,26 @@ class horne_extraction(base_util):
 
         self.log.debug("completed the ``extract`` method")
         return self.qc, self.products, mergedSpectumDF, orderJoins, extractionFilepath
+
+    def _merged_spectrum_header(self, header: "Header") -> "Header":
+        """*the header of the merged spectrum: the frame header with the on-target list and wavelength solution cards*
+
+        The not-flattened spectrum feeds the response only, so it gets no wavelength-calibration or resolution cards
+        (DY-2358). The cards go on a copy.
+
+        **Key Arguments:**
+
+        - ``header`` -- the header of the sky-subtracted frame, without the cards the product drops
+
+        **Return:**
+
+        - ``stamped`` -- a stamped copy of ``header``
+        """
+        if self.notFlattened:
+            return with_frame_accounting(header, self.onTargetFrames, self.log)
+        return with_merged_spectrum_cards(
+            header, self.onTargetFrames, self.dispersionMap, self.arm, self.kw, self.settings, self.log
+        )
 
     def _is_stare_recipe(self) -> bool:
         """*decide whether a stare recipe runs this extraction, as opposed to a nod or offset recipe*
