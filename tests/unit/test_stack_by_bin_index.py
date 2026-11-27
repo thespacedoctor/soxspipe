@@ -279,14 +279,30 @@ def test_a_wavelength_half_a_bin_off_the_grid_is_refused_but_a_rounding_step_is_
         nod.stack_extractions([_spectrum([centre + halfBin], [1.0])])
 
 
-def test_the_stack_leaves_the_concatenated_spectra_it_was_given_unchanged(nod: soxs_nod) -> None:
-    # ARRANGE
-    first, second = _spectrum(_grid(FIRST_BIN, 3), np.ones(3)), _spectrum(_grid(FIRST_BIN, 3), np.ones(3))
-    waveUnits = [type(wave) for wave in first["WAVE"]]
+def test_the_bin_median_leaves_the_frame_it_was_given_unchanged(nod: soxs_nod) -> None:
+    # ARRANGE: THE CONCATENATED FRAME, WITH WAVE AS PLAIN FLOATS JUST OFF ITS GRID POINTS, AS THE STACK HANDS IT OVER
+    waves = np.asarray(_grid(FIRST_BIN, 3)) * (1.0 + 1.0e-7)
+    frame = pd.DataFrame({"WAVE": waves, "FLUX_COUNTS": [1.0, 2.0, 3.0], "VARIANCE": [4.0, 4.0, 4.0]})
+    columnsBefore = list(frame.columns)
+    wavesBefore = frame["WAVE"].to_numpy().copy()
 
     # ACT
-    nod.stack_extractions([first, second])
+    medians = nod._median_by_bin(frame)
 
-    # ASSERT: THE CALLER'S FRAMES STILL HOLD QUANTITIES
-    assert [type(wave) for wave in first["WAVE"]] == waveUnits
-    assert all(hasattr(wave, "unit") for wave in first["WAVE"])
+    # ASSERT: THE RESULT HOLDS THE GRID WAVELENGTHS, BUT THE INPUT FRAME KEEPS ITS OWN
+    assert list(medians["WAVE"]) == list(grid_wavelength(np.arange(FIRST_BIN, FIRST_BIN + 3), STEP_KMS))
+    assert list(frame.columns) == columnsBefore
+    assert np.array_equal(frame["WAVE"].to_numpy(), wavesBefore)
+
+
+def test_a_wavelength_just_beyond_the_grid_tolerance_is_refused(nod: soxs_nod) -> None:
+    # ARRANGE
+    centre = float(grid_wavelength(FIRST_BIN, STEP_KMS))
+
+    # ACT
+    stacked, _ = nod.stack_extractions([_spectrum([centre * (1.0 + 0.5e-6)], [1.0])])
+
+    # ASSERT: HALF THE TOLERANCE STACKS, TWICE THE TOLERANCE IS REFUSED
+    assert len(stacked) == 1
+    with pytest.raises(ValueError, match="log-wavelength grid"):
+        nod.stack_extractions([_spectrum([centre * (1.0 + 2.0e-6)], [1.0])])

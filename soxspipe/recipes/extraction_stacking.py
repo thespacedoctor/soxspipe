@@ -11,7 +11,6 @@ Date Created
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from soxspipe.commonutils import keyword_lookup
@@ -23,6 +22,7 @@ from soxspipe.commonutils.toolkit import utcnow_string
 from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
 
 if TYPE_CHECKING:
+    import numpy as np
     import pandas as pd
 
 # UP TO THIS MANY SPECTRA, THE MEDIAN IS THE MEAN, SO ITS VARIANCE IS SUM(VAR) / N**2
@@ -36,7 +36,7 @@ LINEAR_GRID_GROUPING_DECIMALS = 4
 GRID_POINT_TOLERANCE = 1.0e-6
 
 
-def median_stack_variance(spectra: pd.DataFrame, groupKeys: Sequence[float]) -> pd.Series:
+def median_stack_variance(spectra: pd.DataFrame, groupKeys: np.ndarray) -> pd.Series:
     """*the variance of the per-bin median of a set of stacked spectra*
 
     A row contributes to its bin when it has a flux, as for the flux median, so N is counted per bin. For N <= 2 the
