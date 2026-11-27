@@ -52,9 +52,9 @@ class shift_source(NamedTuple):
     comment: str
 
 
-# THE VALUES OF THE SKY SHIFT O<n> SRC CARD: THE SHIFT COMES FROM THE ORDER'S OWN SKY LINES OR FROM THE NIR GLOBAL FIT
-# (MEASURED), FROM A PREDICTION (MODEL: VIS r PREDICTED OR COMBINED, AND VIS u/g), OR WAS NEVER APPLIED, SO THE 0 IN ITS
-# SKY SHIFT O<n> CARD IS A PLACEHOLDER (NONE)
+# THE VALUES OF THE SKY SHIFT O<n> SRC CARD: THE SHIFT COMES FROM THE ORDER'S OWN SKY LINES, INCLUDING A NIR OWN-SEED
+# ORDER (MEASURED), FROM A PREDICTION (MODEL: VIS r PREDICTED OR COMBINED, VIS u/g, AND NIR GLOBAL-FIT ORDERS WITH
+# SOURCE global OR own-offset), OR WAS NEVER APPLIED, SO THE 0 IN ITS SKY SHIFT O<n> CARD IS A PLACEHOLDER (NONE)
 SHIFT_SOURCE_MEASURED = "measured"
 SHIFT_SOURCE_MODEL = "model"
 SHIFT_SOURCE_NONE = "none"
@@ -1467,9 +1467,9 @@ class horne_extraction(base_util):
                     "so the order keeps its own measured shift"
                 )
             self._record_order_shift_qc(o, correction.shift_nm, correction.shiftPx)
-            sources[int(o)] = shift_source(
-                SHIFT_SOURCE_MEASURED, f"{correction.source} fit, {correction.nLines} sky lines"
-            )
+            # ONLY AN OWN-SEED ORDER KEEPS ITS MEASURED SHIFT; GLOBAL AND OWN-OFFSET SHIFTS COME FROM THE MODEL
+            sourceValue = SHIFT_SOURCE_MEASURED if correction.source == "own-seed" else SHIFT_SOURCE_MODEL
+            sources[int(o)] = shift_source(sourceValue, f"{correction.source} fit, {correction.nLines} sky lines")
             self._record_order_source_qc(o, sources[int(o)])
         self.skyShiftSources = {o: source.value for o, source in sources.items()}
         self._record_global_fit_qcs(result)

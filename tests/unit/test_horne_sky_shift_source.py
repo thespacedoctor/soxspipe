@@ -292,7 +292,7 @@ def test_vis_u_and_g_are_none_when_the_arm_has_no_transfer_coefficients(log: obj
 # NIR
 
 
-def test_nir_global_fit_orders_with_a_correction_are_measured(log: object, tmp_path: Path) -> None:
+def test_nir_global_fit_orders_with_a_correction_are_model(log: object, tmp_path: Path) -> None:
     # ARRANGE
     extractor = build_nir_extractor(log, tmp_path)
 
@@ -300,8 +300,23 @@ def test_nir_global_fit_orders_with_a_correction_are_measured(log: object, tmp_p
     _tune_nir(extractor, build_nir_orders())
 
     # ASSERT
-    assert _sources(extractor) == dict.fromkeys(NIR_ORDERS, "measured")
+    assert _sources(extractor) == dict.fromkeys(NIR_ORDERS, "model")
     assert qc_by_name(extractor, f"SKY SHIFT O{NIR_ORDERS[0]} SRC")["qc_comment"] == "global fit, 10 sky lines"
+
+
+def test_nir_global_fit_own_offset_order_is_model(log: object, tmp_path: Path) -> None:
+    # ARRANGE: AN ORDER WITH ENOUGH SKY LINES AND AN 8 px ARC-SOLUTION OFFSET TAKES THE MODEL PLUS ITS OWN OFFSET
+    offsetOrder = 12
+    extractor = build_nir_extractor(log, tmp_path)
+    scene = build_nir_orders(offsets={offsetOrder: 8.0})
+
+    # ACT
+    _tune_nir(extractor, scene)
+
+    # ASSERT
+    assert extractor.skyCorrections[offsetOrder].source == "own-offset"
+    assert _sources(extractor)[offsetOrder] == "model"
+    assert "own-offset" in qc_by_name(extractor, f"SKY SHIFT O{offsetOrder} SRC")["qc_comment"]
 
 
 def test_nir_global_fit_order_without_a_correction_is_none(log: object, tmp_path: Path) -> None:
@@ -320,7 +335,7 @@ def test_nir_global_fit_order_without_a_correction_is_none(log: object, tmp_path
     assert qc_by_name(extractor, f"SKY SHIFT O{unsigned}")["qc_value"] == 0.0
     assert _sources(extractor)[unsigned] == "none"
     assert qc_by_name(extractor, f"SKY SHIFT O{unsigned} SRC")["qc_comment"] == "no global-fit correction"
-    assert _sources(extractor)[NIR_ORDERS[0]] == "measured"
+    assert _sources(extractor)[NIR_ORDERS[0]] == "model"
 
 
 def test_nir_global_fit_own_seed_order_is_measured(log: object, tmp_path: Path) -> None:
@@ -446,7 +461,7 @@ def test_the_nir_global_fit_keeps_its_classification_beside_the_corrections(log:
     _tune_nir(extractor, build_nir_orders())
 
     # ASSERT
-    assert extractor.skyShiftSources == dict.fromkeys(NIR_ORDERS, "measured")
+    assert extractor.skyShiftSources == dict.fromkeys(NIR_ORDERS, "model")
 
 
 def test_tuning_all_orders_together_writes_no_shift_and_no_source_cards(log: object, tmp_path: Path) -> None:

@@ -27,7 +27,7 @@ pooled over all orders and frames is printed as a yaml comment, with the per-ord
 
 An order that was neither measured nor modelled is left out of the RMS, because the pipeline records it as a shift of
 exactly 0.000 nm. The script names each order it leaves out on stderr. Only an order with a recorded shift of exactly 0
-can be left out, and a non-zero shift is always a measurement.
+can be left out, and a non-zero shift always counts.
 
 A product from a build with DY-2461 has an `ESO QC SKY SHIFT O<n> SRC` card for every order that has a shift card. It is
 `measured`, `model` or `none`, and `none` marks an order whose 0.000 nm is a placeholder. The script reads that card
