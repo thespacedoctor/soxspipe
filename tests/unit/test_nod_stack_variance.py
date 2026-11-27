@@ -277,9 +277,22 @@ def test_the_x_shooter_stack_keeps_its_two_decimal_wave(recipe: soxs_nod) -> Non
     assert list(stacked["WAVE"]) == [500.01, 500.03]
 
 
-def test_an_upper_case_soxs_setting_keeps_the_four_decimal_wave(recipe: soxs_nod) -> None:
+def test_an_upper_case_soxs_setting_keeps_the_four_decimal_wave(
+    recipe: soxs_nod, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The instrument check ignores case, so ``SOXS`` keeps the log-grid WAVE (DY-2348)."""
-    # ARRANGE
+    # ARRANGE: THE HEADER READS <instrument>_detector_parameters.yaml, WHICH ONLY THE LOWER-CASE NAME OPENS ON A
+    # CASE-SENSITIVE FILE SYSTEM, SO THE HEADER IS BUILT WITH IT; ONLY THE WAVE ROUNDING SEES "SOXS"
+    realHeader = recipe._merged_spectrum_header
+
+    def header_with_the_lower_case_instrument(*args: Any, **kwargs: Any) -> fits.Header:
+        monkeypatch.setitem(recipe.settings, "instrument", "soxs")
+        try:
+            return realHeader(*args, **kwargs)
+        finally:
+            monkeypatch.setitem(recipe.settings, "instrument", "SOXS")
+
+    monkeypatch.setattr(recipe, "_merged_spectrum_header", header_with_the_lower_case_instrument)
     recipe.settings["instrument"] = "SOXS"
     waves = [500.01234, 500.03358]
 
