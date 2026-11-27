@@ -1,11 +1,23 @@
-"""The rule for the master-flat pixels that cannot flat-field or unflatten a frame (DY-2279).
+"""The rule for the master-flat pixels that cannot flat-field or unflatten a frame (DY-2279, DY-2440).
 
-A master-flat pixel is unusable when its flux is zero, negative or not finite. Every step that divides by the
-master flat, or multiplies a frame back by it, uses this rule, so the steps cannot disagree about which pixels to
-drop. Dividing by such a pixel gives ``inf``, a huge value or a sign flip, and a ``RuntimeWarning`` as well.
+A master-flat pixel is unusable when its flux is not finite or is below ``MIN_USABLE_FLAT_FLUX``, which covers zero
+and negative flux. Every step that divides by the master flat, or multiplies a frame back by it, uses this rule, so
+the steps cannot disagree about which pixels to drop. Dividing by such a pixel gives ``inf``, a huge value or a sign
+flip, and a ``RuntimeWarning`` as well.
+
+The master flat is normalised to about 1 on the orders. Its background-subtracted inter-order pixels scatter around
+zero, so some hold a tiny positive residue, as small as 1e-12. Dividing a frame by one gives an uncertainty above
+1.8e19, whose float32 square overflows in the nod slit alignment and shift-and-add (DY-2440). Such a residue is zero
+to float32 precision, so the floor is the float32 machine epsilon (about 1.2e-7). Above the floor, a frame value of
+65535 with a flat error of 0.014 (the largest in the VIS and NIR master flats checked) gives an uncertainty of about
+6e16, whose float32 square stays finite.
 """
 
 from __future__ import annotations
+
+# THE SMALLEST MASTER-FLAT FLUX THAT CAN FLAT-FIELD A FRAME: THE FLOAT32 MACHINE EPSILON, np.finfo(np.float32).eps.
+# SMALLER VALUES ARE ZERO TO FLOAT32 PRECISION (DY-2440)
+MIN_USABLE_FLAT_FLUX = 1.1920928955078125e-07
 
 
 def unusable_flat_pixel_mask(flatData):
@@ -17,7 +29,8 @@ def unusable_flat_pixel_mask(flatData):
 
     **Return:**
 
-    - ``unusable`` -- boolean array, True where the flux is zero, negative, NaN or infinite
+    - ``unusable`` -- boolean array, True where the flux is NaN, infinite, or below ``MIN_USABLE_FLAT_FLUX`` (so
+      zero and negative flux too)
 
     **Usage:**
 
@@ -27,7 +40,7 @@ def unusable_flat_pixel_mask(flatData):
     """
     import numpy as np
 
-    return ~(np.isfinite(flatData) & (flatData > 0))
+    return ~(np.isfinite(flatData) & (flatData >= MIN_USABLE_FLAT_FLUX))
 
 
 def neutralise_unusable_flat(flat, unusable):

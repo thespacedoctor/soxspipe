@@ -27,7 +27,12 @@ pooled over all orders and frames is printed as a yaml comment, with the per-ord
 
 An order that was neither measured nor modelled is left out of the RMS, because the pipeline records it as a shift of
 exactly 0.000 nm. The script names each order it leaves out on stderr. Only an order with a recorded shift of exactly 0
-can be left out, and a non-zero shift is always a measurement. These cards mark such an order (a measured shift of
+can be left out, and a non-zero shift always counts.
+
+A product from a build with DY-2461 has an `ESO QC SKY SHIFT O<n> SRC` card for every order that has a shift card. It is
+`measured`, `model` or `none`, and `none` marks an order whose 0.000 nm is a placeholder. The script reads that card
+for each order that has one, so a measured zero counts. Only an order with no `SRC` card, which means every order of a
+product from an older build, goes through the inference below. These cards mark such an order (a measured shift of
 exactly zero has none of them, and counts):
 
 - VIS r (order 1): `ESO QC R SHIFT SOURCE = none`. `measured`, `combined` and `predicted` all count.
@@ -41,7 +46,8 @@ exactly zero has none of them, and counts):
   PX card whenever it knows the dispersion of the order, and the NIR global fit writes a bare 0 for an order that has
   no correction.
 
-**Known gaps.** The script does not leave these zeros out, because no card marks them:
+**Known gaps** of the inference for products with no `SRC` card. The script does not leave these zeros out, because no
+card marks them:
 
 - The NIR per-order fallback (`SKY TUNING = skylines-per-order`) writes 0.0 with a PX card for an order that matched no
   sky line. The script cannot tell it from a measured zero.
@@ -108,6 +114,7 @@ VIS_ARM = "VIS"
 R_SOURCE_CARD = "ESO QC R SHIFT SOURCE"
 UG_SOURCE_CARD = "ESO QC UG SHIFT SOURCE"
 SOURCE_NONE = "none"
+SHIFT_SOURCE_PATTERN = re.compile(r"^" + SKY_SHIFT_CARD_FORMAT.format(order=r"(\d+)") + r" SRC$")
 # THE REASON THE PIPELINE GIVES IN THE COMMENT OF THE UG SHIFT SOURCE CARD, E.G. "order 4: 0 sky lines (min 10)"
 # (``_order_guard_reason`` IN ug_wavelength_transfer.py)
 SKY_LINES_REASON_PATTERN = re.compile(r"^order (\d+): (\d+) sky lines")
@@ -122,6 +129,11 @@ def shift_card(order: int) -> str:
 def shift_px_card(order: int) -> str:
     """*the keyword of the ``SKY SHIFT ... PX`` QC (px) of an order*"""
     return f"{shift_card(order)} PX"
+
+
+def shift_source_card(order: int) -> str:
+    """*the keyword of the ``SKY SHIFT ... SRC`` QC of an order: ``measured``, ``model`` or ``none`` (DY-2461)*"""
+    return f"{shift_card(order)} SRC"
 
 
 def line_snr_card(order: int) -> str:
@@ -183,6 +195,31 @@ def read_sky_shifts(header: fits.Header) -> dict[int, float]:
     return shifts
 
 
+def read_shift_sources(header: fits.Header) -> dict[int, tuple[str, str]]:
+    """*the ``SKY SHIFT O<n> SRC`` QCs of a product, by order, as ``(source, reason)``*
+
+    **Key Arguments:**
+
+    - ``header`` -- the product's primary header
+
+    **Return:**
+
+    - ``sources`` -- ``{order: (source, reason)}``; empty for a product from a build before DY-2461
+
+    **Usage:**
+
+    ```python
+    sources = read_shift_sources(header)
+    ```
+    """
+    sources = {}
+    for key in header:
+        match = SHIFT_SOURCE_PATTERN.match(key)
+        if match is not None and isinstance(header[key], str):
+            sources[int(match.group(1))] = (header[key], header.comments[key])
+    return sources
+
+
 def _unmeasured_vis_orders(header: fits.Header) -> dict[int, str]:
     """*the VIS orders that the source and sky-line cards of a product mark as not measured and not modelled*
 
@@ -221,8 +258,9 @@ def _unmeasured_vis_orders(header: fits.Header) -> dict[int, str]:
 def unmeasured_orders(header: fits.Header, arm: str, shifts: Mapping[int, float]) -> dict[int, str]:
     """*the orders of a product whose shift is a recorded zero, not a measured or modelled shift*
 
-    A measured or modelled shift of exactly 0.000 nm has none of the marks, so it is not named. See the module
-    docstring for the cards.
+    A measured or modelled shift of exactly 0.000 nm has none of the marks, so it is not named. An order with a
+    ``SKY SHIFT O<n> SRC`` card is decided by that card alone. See the module docstring for the cards of the older
+    inference.
 
     **Key Arguments:**
 
@@ -240,8 +278,16 @@ def unmeasured_orders(header: fits.Header, arm: str, shifts: Mapping[int, float]
     leftOut = unmeasured_orders(header, "VIS", read_sky_shifts(header))
     ```
     """
-    leftOut = _unmeasured_vis_orders(header) if arm == VIS_ARM else {}
-    for order in shifts:
+    sources = read_shift_sources(header)
+    leftOut = {
+        order: f"{shift_source_card(order)} is {source} ({reason})"
+        for order, (source, reason) in sources.items()
+        if source == SOURCE_NONE
+    }
+    unsourced = {order: shift for order, shift in shifts.items() if order not in sources}
+    inferred = _unmeasured_vis_orders(header) if arm == VIS_ARM else {}
+    leftOut.update({order: reason for order, reason in inferred.items() if order not in sources})
+    for order in unsourced:
         if shift_px_card(order) not in header:
             leftOut.setdefault(order, f"a shift of 0 and no {shift_px_card(order)} card")
     # ONLY A RECORDED ZERO CAN BE A NON-MEASUREMENT: A NON-ZERO SHIFT IS ALWAYS A MEASUREMENT

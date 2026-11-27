@@ -33,8 +33,11 @@ SETTING = "merge-variance-clip-factor"
 
 
 def _extractor(log: object, arm: str = "NIR", recipeSettings: dict | None = None) -> horne_extraction:
+    """An X-Shooter extractor: these tests pin the linear merge that X-Shooter keeps. The SOXS merge applies the same
+    variance mask before it resamples onto the log grid (see ``test_merge_on_log_grid``)."""
     extractor = object.__new__(horne_extraction)
     extractor.log = log
+    extractor.inst = "XSHOOTER"
     extractor.arm = arm
     extractor.kw = lambda key: key
     extractor.notFlattened = ""

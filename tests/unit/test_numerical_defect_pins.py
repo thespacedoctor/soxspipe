@@ -196,6 +196,7 @@ def test_clip_and_stack_ignore_input_masks_changes_the_stacked_value(
 def _merge_one_order(log: object, firstWavelength: float) -> tuple[np.ndarray, pd.DataFrame, pd.DataFrame]:
     extractor = object.__new__(horne_extraction)
     extractor.log = log
+    extractor.inst = "XSHOOTER"
     extractor.arm = "VIS"
     extractor.kw = lambda key: key
     extractor.notFlattened = ""

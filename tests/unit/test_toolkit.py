@@ -678,6 +678,14 @@ def test_parse_order_join_key_returns_the_red_and_blue_orders(key: str, expected
     assert toolkit.parse_order_join_key(key) == expected
 
 
+@pytest.mark.parametrize(
+    ("red", "blue", "key"), [(11, 12, "11-12"), (4, 1, "4-1"), (np.int16(9), np.int64(10), "9-10")]
+)
+def test_order_join_key_builds_the_key_that_parse_order_join_key_reads(red: int, blue: int, key: str) -> None:
+    assert toolkit.order_join_key(red, blue) == key
+    assert toolkit.parse_order_join_key(toolkit.order_join_key(red, blue)) == (int(red), int(blue))
+
+
 @pytest.mark.parametrize("key", ["1112", "11-", "-12", "a-b", "1-2-3", "", "²-3"])
 def test_parse_order_join_key_rejects_keys_that_are_not_red_dash_blue(key: str) -> None:
     with pytest.raises(ValueError, match="order join key"):
