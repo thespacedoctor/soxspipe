@@ -43,6 +43,32 @@ class profile_clip_cap_rows(NamedTuple):
     zeroed: int = 0
 
 
+class shift_source(NamedTuple):
+    """Where one order's applied sky shift came from (DY-2461): ``value`` is ``SHIFT_SOURCE_MEASURED``,
+    ``SHIFT_SOURCE_MODEL`` or ``SHIFT_SOURCE_NONE``, and ``comment`` is the short reason, which fits the header comment
+    of the ``SKY SHIFT O<n> SRC`` card."""
+
+    value: str
+    comment: str
+
+
+# THE VALUES OF THE SKY SHIFT O<n> SRC CARD: THE SHIFT COMES FROM THE ORDER'S OWN SKY LINES, FROM A PREDICTION (VIS r
+# AND u/g, OR NIR), OR WAS NEVER APPLIED, SO THE 0 IN ITS SKY SHIFT O<n> CARD IS A PLACEHOLDER
+SHIFT_SOURCE_MEASURED = "measured"
+SHIFT_SOURCE_MODEL = "model"
+SHIFT_SOURCE_NONE = "none"
+# AN ORDER THE TUNING NEVER MEASURED (NO DATA OR NO MATCHED LINE) HAS NO STATISTICS TO CARRY ITS SOURCE
+UNMEASURED_ORDER_SOURCE = shift_source(SHIFT_SOURCE_NONE, "no sky line matched")
+# THE 80-CHARACTER FITS CARD LEAVES ABOUT 31 CHARACTERS FOR THE COMMENT OF A SKY SHIFT O<n> SRC CARD
+SNR_REFUSAL_COMMENT = "sky-line SNR below threshold"
+SECOND_LINE_REFUSAL_COMMENT = "2nd sky line SNR below min"
+R_PREDICTED_COMMENT = "predicted from i and ABSROT"
+R_COMBINED_COMMENT = "combined with i prediction"
+UG_MODEL_COMMENT = "predicted from r/i and ABSROT"
+UG_SKIPPED_COMMENT = "u/g transfer model not applied"
+UG_NO_MODEL_COMMENT = "no u/g transfer model"
+NO_GLOBAL_CORRECTION_COMMENT = "no global-fit correction"
+
 # WIDTH IN COLUMNS OVER WHICH THE LOCAL FRACTION OF USABLE PIXELS IS MEASURED IN EACH SLIT ROW
 PROFILE_SUPPORT_WINDOW = 51
 # A MASKED PIXEL IN A ROW WITH LESS LOCAL USABLE FRACTION THAN THIS HAS AN UNCONSTRAINED PROFILE
@@ -243,6 +269,8 @@ class horne_extraction(base_util):
     flatPassHandoff = None
     # {ORDER: SHIFT (nm)} APPLIED BY THE LAST SKYLINE TUNING, OR None WHEN TUNING WAS SKIPPED
     skyShiftsNm = None
+    # {ORDER: shift_source} OF THE SHIFTS IN skyShiftsNm (DY-2461), OR None WHEN TUNING WAS SKIPPED OR NOT BY ORDER
+    skyShiftSources = None
     # THE NIR GLOBAL SKY-FIT SETTINGS (``sky_tuning_settings``), OR None OUTSIDE SOXS NIR. A DOUBLE BUILT WITHOUT
     # __init__ THEREFORE KEEPS THE PER-ORDER TUNING
     nirSkyTuning = None
@@ -966,6 +994,7 @@ class horne_extraction(base_util):
             return self._apply_flat_pass_shifts(extractedOrdersDF, arm)
         # CLEARED FIRST, SO A REPEATED extract() NEVER HANDS ON AN EARLIER CALL'S SHIFTS
         self.skyShiftsNm = None
+        self.skyShiftSources = None
         self.skyCorrections = None
         tuned = self._tune_or_skip(extractedOrdersDF, arm)
         self.flatPassHandoff = FlatPassHandoff(
@@ -1207,6 +1236,7 @@ class horne_extraction(base_util):
         if isinstance(self.log, extraction_note_logger):
             self.log.note(message)
         self.skyShiftsNm = None
+        self.skyShiftSources = None
         return extractedOrdersDF
 
     def _read_nir_sky_tuning(self):
@@ -1408,10 +1438,13 @@ class horne_extraction(base_util):
         corrections = result.corrections
         self.skyCorrections = corrections
         self.skyShiftsNm = {o: c.shift_nm for o, c in corrections.items()}
+        sources = {}
         for o in orders:
             correction = corrections.get(int(o))
             if correction is None:
                 self._record_order_shift_qc(o, 0.0)
+                sources[int(o)] = shift_source(SHIFT_SOURCE_NONE, NO_GLOBAL_CORRECTION_COMMENT)
+                self._record_order_source_qc(o, sources[int(o)])
                 continue
             orderText = order_label(o, self.arm)
             ownLines = "none" if correction.ownSeedLines is None else correction.ownSeedLines
@@ -1433,6 +1466,11 @@ class horne_extraction(base_util):
                     "so the order keeps its own measured shift"
                 )
             self._record_order_shift_qc(o, correction.shift_nm, correction.shiftPx)
+            sources[int(o)] = shift_source(
+                SHIFT_SOURCE_MEASURED, f"{correction.source} fit, {correction.nLines} sky lines"
+            )
+            self._record_order_source_qc(o, sources[int(o)])
+        self.skyShiftSources = {o: source.value for o, source in sources.items()}
         self._record_global_fit_qcs(result)
         if self.debug:
             self._plot_nir_sky_fit(result)
@@ -1511,7 +1549,9 @@ class horne_extraction(base_util):
         **Return:**
 
         - ``shiftsNm`` -- ``{order: measured wavelength shift (nm)}``, 0 for an order that was not measured
-        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float, ...}}`` for each measured order
+        - ``orderStats`` -- ``{order: {"nLines": int, "scatterNm": float, "shiftSource": shift_source, ...}}`` for each
+          measured order. ``shiftSource`` is where the returned shift comes from (DY-2461); an order with no entry
+          was not measured
         """
         from soxspipe.commonutils.ug_wavelength_transfer import PREDICTED_ORDERS, VIS_I_ORDER
 
@@ -1531,6 +1571,7 @@ class horne_extraction(base_util):
             else:
                 shiftsNm[o], keptShifts = self._measure_order_shift(orderDF, o)
                 stats = self._order_stats(keptShifts)
+                stats = self._with_shift_source(stats, self._per_order_shift_source(stats))
             if stats is not None:
                 orderStats[o] = stats
         return shiftsNm, orderStats
@@ -1553,9 +1594,11 @@ class horne_extraction(base_util):
         - ``extractedOrdersDF`` -- the shifted data-frame
         """
         if byOrder:
-            orderShifts = self._finalise_order_shifts(arm, uniqueOrders, shiftsNm, orderStats, dispersions)
+            orderShifts, sources = self._finalise_order_shifts(arm, uniqueOrders, shiftsNm, orderStats, dispersions)
+            self.skyShiftSources = {int(o): source.value for o, source in sources.items()}
         else:
             orderShifts = [shiftsNm[o] for o in uniqueOrders]
+            self.skyShiftSources = None
 
         # APPLY PER-ORDER SHIFTS TO WAVELENGTH COLUMN IN FULL DATAFRAME
         self.skyShiftsNm = {
@@ -1611,6 +1654,19 @@ class horne_extraction(base_util):
             "nLines": int(keptShifts.size),
             "scatterNm": float(np.std(keptShifts)) if keptShifts.size else float("nan"),
         }
+
+    @staticmethod
+    def _with_shift_source(stats, source):
+        """Return the order's sky-line statistics with the source of its shift added, or None if it has no data."""
+        return None if stats is None else {**stats, "shiftSource": source}
+
+    @staticmethod
+    def _per_order_shift_source(stats):
+        """Return the source of an order tuned on its own without guards: measured if it kept a sky line."""
+        nLines = 0 if stats is None else stats["nLines"]
+        if nLines < 1:
+            return UNMEASURED_ORDER_SOURCE
+        return shift_source(SHIFT_SOURCE_MEASURED, f"{nLines} sky lines kept")
 
     def _measure_order_shift(self, orderDF, o, seedNm=0.0, tolerances=SKYLINE_TOLERANCES_NM):
         """*measure one order's wavelength shift from the sky lines*
@@ -1728,7 +1784,7 @@ class horne_extraction(base_util):
         **Return:**
 
         - ``shiftNm`` -- the order's wavelength shift (nm)
-        - ``stats`` -- the order's sky-line statistics, or *None* if no data
+        - ``stats`` -- the order's sky-line statistics with the ``shiftSource`` of its shift, or *None* if no data
         """
         from soxspipe.commonutils.ug_wavelength_transfer import VIS_R_ORDER
 
@@ -1739,8 +1795,8 @@ class horne_extraction(base_util):
         reason = self._unusable_shift_reason(o, stats)
         if reason is not None:
             self.log.info(f"{reason}; no shift applied")
-            shiftNm = 0.0
-        return shiftNm, stats
+            return 0.0, self._with_shift_source(stats, self._refused_shift_source(stats))
+        return shiftNm, self._with_shift_source(stats, self._per_order_shift_source(stats))
 
     def _with_line_snr(self, orderDF, o, stats):
         """*return the order's sky-line statistics with its sky-line SNRs added, or None if it has no data*
@@ -1786,6 +1842,20 @@ class horne_extraction(base_util):
             return f"order {o}: {nLines} sky lines kept (min {MIN_SHIFT_LINES})"
         return sky_line_snr_reason(o, stats["lineSnr"])
 
+    @staticmethod
+    def _refused_shift_source(stats):
+        """Return the ``none`` source of an order that ``_unusable_shift_reason`` refuses, naming the guard.
+
+        The SNR is not quoted: ``SKY LINE SNR O<n>`` is rounded to 0.1, so a refusal just below the threshold reads as
+        the threshold itself.
+        """
+        from soxspipe.commonutils.ug_wavelength_transfer import MIN_SHIFT_LINES
+
+        nLines = 0 if stats is None else stats["nLines"]
+        if nLines < MIN_SHIFT_LINES:
+            return shift_source(SHIFT_SOURCE_NONE, f"{nLines} sky lines kept (min {MIN_SHIFT_LINES})")
+        return shift_source(SHIFT_SOURCE_NONE, SNR_REFUSAL_COMMENT)
+
     def _tune_vis_r_order(self, orderDF, shiftsNm, orderStats, dispersions):
         """*decide the VIS r shift from its own sky lines and the shift predicted from i (DY-1645)*
 
@@ -1805,7 +1875,8 @@ class horne_extraction(base_util):
         **Return:**
 
         - ``shiftNm`` -- the r wavelength shift (nm)
-        - ``stats`` -- the r sky-line statistics, flagged ``transferred`` when the i prediction contributed
+        - ``stats`` -- the r sky-line statistics with the ``shiftSource`` of the shift, flagged ``transferred`` when the
+          i prediction contributed
         """
         from soxspipe.commonutils import ug_wavelength_transfer as ug_transfer
 
@@ -1827,19 +1898,21 @@ class horne_extraction(base_util):
         nLines = stats["nLines"]
         snrReason = ug_transfer.sky_line_snr_reason(ug_transfer.VIS_R_ORDER, stats["lineSnr"])
         if nLines < ug_transfer.MIN_SHIFT_LINES:
-            source, shiftNm = "predicted", predictedNm
+            source, shiftNm, sourceComment = "predicted", predictedNm, R_PREDICTED_COMMENT
             comment = f"predicted from i and ABSROT; {nLines} sky lines kept"
         elif snrReason is not None:
-            source, shiftNm = "predicted", predictedNm
+            source, shiftNm, sourceComment = "predicted", predictedNm, R_PREDICTED_COMMENT
             comment = f"predicted from i and ABSROT; {snrReason}"
         else:
             measuredPx = ug_transfer.nm_shift_to_detector_px(measuredNm, dispersion)
             sigmaPx = stats["scatterNm"] / abs(dispersion) / nLines**0.5
             combinedPx = ug_transfer.combine_r_shift_px(measuredPx, sigmaPx, predictedPx, coeffs["rms_px"])
             source, shiftNm = "combined", ug_transfer.detector_px_to_nm_shift(combinedPx, dispersion)
+            sourceComment = R_COMBINED_COMMENT
             comment = f"measured ({nLines} lines) combined with i prediction"
         self._record_shift_source_qc("R SHIFT SOURCE", source, comment)
-        return shiftNm, {**stats, "transferred": True}
+        shiftSource = shift_source(SHIFT_SOURCE_MODEL, sourceComment)
+        return shiftNm, {**stats, "transferred": True, "shiftSource": shiftSource}
 
     def _measure_r_alone(self, orderDF, hasCoefficients, reason):
         """Measure the VIS r order without a prediction, applying it only when two or more sky lines are kept from a
@@ -1849,19 +1922,24 @@ class horne_extraction(base_util):
         shiftNm, keptShifts = self._measure_order_shift(orderDF, VIS_R_ORDER)
         stats = self._with_line_snr(orderDF, VIS_R_ORDER, self._order_stats(keptShifts))
         # NO STATS GIVES A "0 SKY LINES" REASON, SO THE SECOND-LINE CHECK ONLY EVER READS A MEASURED ORDER
-        unusableReason = self._unusable_shift_reason(VIS_R_ORDER, stats) or r_second_line_snr_reason(
-            stats["secondLineSnr"]
-        )
+        guardReason = self._unusable_shift_reason(VIS_R_ORDER, stats)
+        unusableReason = guardReason or r_second_line_snr_reason(stats["secondLineSnr"])
         if hasCoefficients:
             self.log.info(f"r shift not predicted from i: {reason}")
         if unusableReason is None:
             source, comment = "measured", f"measured from {stats['nLines']} sky lines"
+            shiftSource = self._per_order_shift_source(stats)
         else:
             self.log.info(f"{unusableReason}; no shift applied")
             source, comment, shiftNm = "none", unusableReason, 0.0
+            shiftSource = (
+                self._refused_shift_source(stats)
+                if guardReason
+                else shift_source(SHIFT_SOURCE_NONE, SECOND_LINE_REFUSAL_COMMENT)
+            )
         if hasCoefficients:
             self._record_shift_source_qc("R SHIFT SOURCE", source, comment)
-        return shiftNm, stats
+        return shiftNm, self._with_shift_source(stats, shiftSource)
 
     def _predict_r_shift_px(self, shiftsNm, orderStats, dispersions, coeffs):
         """*predict the r detector shift (px) from the i shift, or explain why it cannot be*
@@ -2110,6 +2188,23 @@ class horne_extraction(base_util):
                 qcOrder=int(order),
             )
 
+    def _record_order_source_qc(self, order, source):
+        """Append the ``SKY SHIFT O<n> SRC`` QC: ``measured``, ``model`` or ``none``, with the reason as the comment."""
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName=f"SKY SHIFT O{int(order)} SRC",
+            qcValue=source.value,
+            qcComment=source.comment,
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow_string(),
+            qcUnit=None,
+            toHeader=True,
+            qcOrder=int(order),
+        )
+
     def _record_line_snr_qc(self, order, lineSnr):
         """Append the ``SKY LINE SNR O<n>`` QC: the order's combined sky-line signal-to-noise (DY-1663)."""
         from soxspipe.commonutils.toolkit import append_qc, utcnow_string
@@ -2141,18 +2236,22 @@ class horne_extraction(base_util):
         **Return:**
 
         - ``orderShifts`` -- a list of per-order wavelength shifts (nm), with u/g modelled when the guards pass
+        - ``sources`` -- ``{order: shift_source}``, where each of those shifts came from (DY-2461)
         """
         from soxspipe.commonutils.ug_wavelength_transfer import nm_shift_to_detector_px
 
+        sources = {o: orderStats.get(o, {}).get("shiftSource", UNMEASURED_ORDER_SOURCE) for o in uniqueOrders}
         if arm.upper() == "VIS":
-            shiftsNm = self._apply_ug_transfer(shiftsNm, orderStats, dispersions)
+            shiftsNm, ugSources = self._apply_ug_transfer(shiftsNm, orderStats, dispersions)
+            sources.update(ugSources)
         for o in uniqueOrders:
             shiftPx = nm_shift_to_detector_px(shiftsNm[o], dispersions[o]) if o in dispersions else None
             self._record_order_shift_qc(o, shiftsNm[o], shiftPx)
+            self._record_order_source_qc(o, sources[o])
             lineSnr = orderStats.get(o, {}).get("lineSnr")
             if lineSnr is not None:
                 self._record_line_snr_qc(o, lineSnr)
-        return [shiftsNm[o] for o in uniqueOrders]
+        return [shiftsNm[o] for o in uniqueOrders], sources
 
     def _apply_ug_transfer(self, shiftsNm, orderStats, dispersions):
         """*predict the VIS u and g shifts from the r/i sky shifts and the rotator angles (DY-1608)*
@@ -2171,12 +2270,15 @@ class horne_extraction(base_util):
         **Return:**
 
         - ``shiftsNm`` -- a new dictionary with the u/g shifts replaced when the model applies
+        - ``sources`` -- ``{order: shift_source}`` of the u and g orders in ``shiftsNm``: ``model`` when the shift was
+          predicted, ``none`` when it was left unshifted (DY-2461)
         """
         from soxspipe.commonutils import ug_wavelength_transfer as ug_transfer
 
+        predicted = [o for o in ug_transfer.PREDICTED_ORDERS if o in shiftsNm]
         coeffs = ug_transfer.load_ug_transfer_coefficients(self.detectorParams)
         if coeffs is None:
-            return shiftsNm
+            return shiftsNm, dict.fromkeys(predicted, shift_source(SHIFT_SOURCE_NONE, UG_NO_MODEL_COMMENT))
 
         statsPx = {
             o: {
@@ -2197,7 +2299,7 @@ class horne_extraction(base_util):
         if reason is not None:
             self.log.info(f"u/g orders left unshifted: {reason}")
             self._record_ug_source_qc("none", reason)
-            return shiftsNm
+            return shiftsNm, dict.fromkeys(predicted, shift_source(SHIFT_SOURCE_NONE, UG_SKIPPED_COMMENT))
 
         calibrationAngle = ug_transfer.calibration_rotator_angle(self._dispersion_map_header() or {}, self.kw)
         predictedPx = ug_transfer.predict_ug_detector_shifts(
@@ -2212,7 +2314,7 @@ class horne_extraction(base_util):
             if o in updated:
                 updated[o] = ug_transfer.detector_px_to_nm_shift(predictedPx[o], dispersions[o])
         self._record_ug_source_qc("model", "predicted from r/i shifts and ABSROT")
-        return updated
+        return updated, dict.fromkeys(predicted, shift_source(SHIFT_SOURCE_MODEL, UG_MODEL_COMMENT))
 
     def _record_ug_source_qc(self, source, comment):
         """Append the ``UG SHIFT SOURCE`` QC: ``model`` or ``none``, with the reason as the comment."""
