@@ -115,3 +115,22 @@ def qc_by_name(extractor: horne_extraction, name: str) -> pd.Series:
 def applied_shift(before: pd.DataFrame, after: pd.DataFrame, order: int) -> float:
     mask = before["order"] == order
     return float((after.loc[mask, "wavelengthMean"] - before.loc[mask, "wavelengthMean"]).mean())
+
+
+def build_sky_scene(rHeight: float = 20.0, iHeight: float = 20.0) -> pd.DataFrame:
+    """*the VIS scene with the r and i sky-line heights set; u and g carry no sky lines (DY-2359)*"""
+    wavelength = np.arange(500.0, 520.0, PIXEL_NM)
+    frames = []
+    for order, centres, height in [
+        (1, CATALOGUE + R_LINE_OFFSET_NM, rHeight),
+        (2, None, 0.0),
+        (3, None, 0.0),
+        (4, CATALOGUE + I_LINE_OFFSET_NM, iHeight),
+    ]:
+        skyFlux = np.ones_like(wavelength)
+        if centres is not None:
+            skyFlux = skyFlux + height * sum(np.exp(-0.5 * ((wavelength - c) / 0.08) ** 2) for c in centres)
+        frames.append(
+            pd.DataFrame({"order": order, "wavelengthMean": wavelength, "pixelScaleNm": PIXEL_NM, "skyFlux": skyFlux})
+        )
+    return pd.concat(frames, ignore_index=True)

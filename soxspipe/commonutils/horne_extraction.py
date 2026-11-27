@@ -20,6 +20,14 @@ from .extraction_notes import extraction_note_logger, format_extraction_notes
 from .figure_guard import closes_its_figures
 from .filenamer import filenamer
 from .on_target_frames import with_frame_accounting
+from .sky_shift_error import (
+    ATTACHED_ARC_KEY,
+    UNCERTAINTY_KEY,
+    UNTUNED_KEY,
+    median_standard_error_nm,
+    sky_shift_error_qc_name,
+    uncertainty_of_untuned_order_nm,
+)
 from .spectrum_names import SPECTRUM_SUFFIX, SPECTRUM_TABLE_LABEL
 from .wavelength_keywords import with_merged_spectrum_cards
 
@@ -55,6 +63,14 @@ class shift_source(NamedTuple):
     comment: str
 
 
+class shift_error(NamedTuple):
+    """The uncertainty of one order's applied sky shift (DY-2359): ``valueNm`` is the ``SKY SHIFT O<n> ERR`` value and
+    ``comment`` says which formula gave it, short enough for the ``SKY SHIFT O<n> ERR`` header card."""
+
+    valueNm: float
+    comment: str
+
+
 # THE VALUES OF THE SKY SHIFT O<n> SRC CARD: THE SHIFT COMES FROM THE ORDER'S OWN SKY LINES, INCLUDING A NIR OWN-SEED
 # ORDER (MEASURED), FROM A PREDICTION (MODEL: VIS r PREDICTED OR COMBINED, VIS u/g, AND NIR GLOBAL-FIT ORDERS WITH
 # SOURCE global OR own-offset), OR WAS NEVER APPLIED, SO THE 0 IN ITS SKY SHIFT O<n> CARD IS A PLACEHOLDER (NONE)
@@ -72,6 +88,17 @@ UG_MODEL_COMMENT = "predicted from r/i and ABSROT"
 UG_SKIPPED_COMMENT = "u/g transfer model not applied"
 UG_NO_MODEL_COMMENT = "no u/g transfer model"
 NO_GLOBAL_CORRECTION_COMMENT = "no global-fit correction"
+# THE COMMENTS OF THE SKY SHIFT O<n> ERR CARD, ONE PER FORMULA (DY-2359)
+ERROR_MEASURED_COMMENT = "SE of median of sky lines"
+ERROR_R_PREDICTED_COMMENT = "r-from-i model rms"
+ERROR_R_COMBINED_COMMENT = "measured + r-from-i model"
+ERROR_UG_MODEL_COMMENT = "u/g model rms"
+ERROR_UNTUNED_COMMENT = "untuned arm value"
+ERROR_ATTACHED_ARC_COMMENT = "attached-arc arm value"
+# THE ERROR CARD IS WRITTEN TO THE 5TH DECIMAL (0.01 pm): THE VALUES ARE 0.0008 TO 0.08 nm
+SHIFT_ERROR_DECIMALS = 5
+# THE COMMENT OF THE ERROR CARD OF AN ORDER THE TUNING LEFT UNSHIFTED, BY THE KEY OF ITS sky-shift-uncertainty-nm VALUE
+UNTUNED_ERROR_COMMENTS = {UNTUNED_KEY: ERROR_UNTUNED_COMMENT, ATTACHED_ARC_KEY: ERROR_ATTACHED_ARC_COMMENT}
 
 # WIDTH IN COLUMNS OVER WHICH THE LOCAL FRACTION OF USABLE PIXELS IS MEASURED IN EACH SLIT ROW
 PROFILE_SUPPORT_WINDOW = 51
@@ -855,8 +882,9 @@ class horne_extraction(base_util):
     def _merged_spectrum_header(self, header: "Header") -> "Header":
         """*the header of the merged spectrum: the frame header with the on-target list and wavelength solution cards*
 
-        The not-flattened spectrum feeds the response only, so it gets no wavelength-calibration or resolution cards
-        (DY-2358). The cards go on a copy.
+        The not-flattened spectrum feeds the response only, so it gets no wavelength-calibration, resolution or
+        ``SPEC_SYE`` cards (DY-2358, DY-2359). ``SPEC_SYE`` is the largest ``SKY SHIFT O<n> ERR`` in the QC table. The
+        cards go on a copy.
 
         **Key Arguments:**
 
@@ -869,7 +897,7 @@ class horne_extraction(base_util):
         if self.notFlattened:
             return with_frame_accounting(header, self.onTargetFrames, self.log)
         return with_merged_spectrum_cards(
-            header, self.onTargetFrames, self.dispersionMap, self.arm, self.kw, self.settings, self.log
+            header, self.onTargetFrames, self.dispersionMap, self.arm, self.kw, self.settings, self.log, self.qc
         )
 
     def _is_stare_recipe(self) -> bool:
@@ -1203,9 +1231,10 @@ class horne_extraction(base_util):
         """
         from soxspipe.commonutils.toolkit import append_qc, utcnow_string
 
+        untunedKind = None
         if not self._skyline_tuning_switched_on():
             tuned = self._skip_tuning(extractedOrdersDF, "Skyline wavelength tuning is switched off in the settings")
-            qcValue = SKY_TUNING_SWITCHED_OFF_QC_VALUE
+            qcValue, untunedKind = SKY_TUNING_SWITCHED_OFF_QC_VALUE, UNTUNED_KEY
         elif (attachment := self._arc_attachment()) is None:
             tuned, qcValue = self._tune_to_skylines(extractedOrdersDF, arm)
         else:
@@ -1214,7 +1243,7 @@ class horne_extraction(base_util):
                 "skyline wavelength tuning skipped"
             )
             tuned = self._skip_tuning(extractedOrdersDF, message)
-            qcValue = SKY_TUNING_SKIPPED_QC_VALUE
+            qcValue, untunedKind = SKY_TUNING_SKIPPED_QC_VALUE, ATTACHED_ARC_KEY
 
         if not isinstance(self.qc, bool):
             self.qc = append_qc(
@@ -1228,6 +1257,8 @@ class horne_extraction(base_util):
                 qcUnit=None,
                 toHeader=True,
             )
+            if untunedKind is not None:
+                self._record_untuned_error_qcs(extractedOrdersDF, arm, untunedKind)
         return tuned
 
     def _skyline_tuning_switched_on(self):
@@ -1933,19 +1964,24 @@ class horne_extraction(base_util):
         if nLines < ug_transfer.MIN_SHIFT_LINES:
             source, shiftNm, sourceComment = "predicted", predictedNm, R_PREDICTED_COMMENT
             comment = f"predicted from i and ABSROT; {nLines} sky lines kept"
+            errorPx, errorComment = coeffs[ug_transfer.RMS_TERM], ERROR_R_PREDICTED_COMMENT
         elif snrReason is not None:
             source, shiftNm, sourceComment = "predicted", predictedNm, R_PREDICTED_COMMENT
             comment = f"predicted from i and ABSROT; {snrReason}"
+            errorPx, errorComment = coeffs[ug_transfer.RMS_TERM], ERROR_R_PREDICTED_COMMENT
         else:
             measuredPx = ug_transfer.nm_shift_to_detector_px(measuredNm, dispersion)
             sigmaPx = stats["scatterNm"] / abs(dispersion) / nLines**0.5
-            combinedPx = ug_transfer.combine_r_shift_px(measuredPx, sigmaPx, predictedPx, coeffs["rms_px"])
+            combinedPx = ug_transfer.combine_r_shift_px(measuredPx, sigmaPx, predictedPx, coeffs[ug_transfer.RMS_TERM])
             source, shiftNm = "combined", ug_transfer.detector_px_to_nm_shift(combinedPx, dispersion)
             sourceComment = R_COMBINED_COMMENT
             comment = f"measured ({nLines} lines) combined with i prediction"
+            errorPx = ug_transfer.combine_r_sigma_px(sigmaPx, coeffs[ug_transfer.RMS_TERM])
+            errorComment = ERROR_R_COMBINED_COMMENT
         self._record_shift_source_qc("R SHIFT SOURCE", source, comment)
         shiftSource = shift_source(SHIFT_SOURCE_MODEL, sourceComment)
-        return shiftNm, {**stats, "transferred": True, "shiftSource": shiftSource}
+        shiftError = shift_error(errorPx * abs(dispersion), errorComment)
+        return shiftNm, {**stats, "transferred": True, "shiftSource": shiftSource, "shiftError": shiftError}
 
     def _measure_r_alone(self, orderDF, hasCoefficients, reason):
         """Measure the VIS r order without a prediction, applying it only when two or more sky lines are kept from a
@@ -2238,6 +2274,145 @@ class horne_extraction(base_util):
             qcOrder=int(order),
         )
 
+    def _record_order_error_qc(self, order: "int | np.integer", error: shift_error) -> None:
+        """Append the ``SKY SHIFT O<n> ERR`` QC (nm): the uncertainty of the order's applied sky shift (DY-2359).
+
+        The QC table may already hold the error of the same order from an earlier extraction of the recipe (a nod
+        position or cycle, an offset cycle). The larger of the two is kept, in one row, so a stack reports the largest
+        error over its frames and cycles.
+        """
+        from soxspipe.commonutils.toolkit import append_qc, utcnow_string
+
+        name = sky_shift_error_qc_name(order)
+        valueNm = round(error.valueNm, SHIFT_ERROR_DECIMALS)
+        if {"qc_name", "qc_value"} <= set(self.qc.columns):
+            earlier = self.qc.loc[self.qc["qc_name"] == name, "qc_value"]
+            valueNm = max([valueNm, *(float(value) for value in earlier)])
+            self.qc = self.qc.loc[self.qc["qc_name"] != name]
+        self.qc = append_qc(
+            self.qc,
+            recipeName=self.recipeName,
+            qcName=name,
+            qcValue=valueNm,
+            qcComment=error.comment,
+            obsDateUtc=self.dateObs,
+            reductionDateUtc=utcnow_string(),
+            qcUnit="nm",
+            toHeader=True,
+            qcOrder=int(order),
+        )
+
+    def _order_errors(
+        self,
+        arm: str,
+        uniqueOrders: Sequence[Any],
+        sources: Mapping[Any, shift_source],
+        orderStats: Mapping[Any, dict[str, Any]],
+        dispersions: Mapping[Any, float],
+    ) -> dict[Any, shift_error]:
+        """*the uncertainty of the sky shift of each order, from where its shift came from (DY-2359, DY-2307)*
+
+        Only the SOXS VIS arm has these formulas so far. An order whose uncertainty cannot be found, because the arm
+        has no ``untuned`` value, gets no error and one warning names it.
+
+        **Key Arguments:**
+
+        - ``arm`` -- the arm of the instrument
+        - ``uniqueOrders`` -- the orders that got a shift
+        - ``sources`` -- ``{order: shift_source}``, the classification returned with the shifts
+        - ``orderStats`` -- per measured order, its sky-line statistics; the r order also holds its ``shiftError``
+        - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
+
+        **Return:**
+
+        - ``errors`` -- ``{order: shift_error}``, empty for an arm with no error formulas
+        """
+        if not self._is_soxs_vis(arm):
+            return {}
+        found = {o: self._vis_order_error(o, sources[o], orderStats.get(o), dispersions) for o in uniqueOrders}
+        errors = {o: error for o, error in found.items() if error is not None}
+        missing = [o for o in uniqueOrders if o not in errors]
+        if missing:
+            self._warn_of_missing_untuned_value(UNTUNED_KEY, f"orders {', '.join(str(int(o)) for o in missing)}")
+        return errors
+
+    def _warn_of_missing_untuned_value(self, kind: str, affected: str) -> None:
+        """Warn that the arm has no ``kind`` value in ``sky-shift-uncertainty-nm``, so ``affected`` get no error QC."""
+        self.log.warning(
+            f"The detector parameters have no `{kind}` value in `{UNCERTAINTY_KEY}`, "
+            f"so these have no SKY SHIFT O<n> ERR QC: {affected}"
+        )
+
+    def _vis_order_error(
+        self,
+        order: Any,
+        source: shift_source,
+        stats: dict[str, Any] | None,
+        dispersions: Mapping[Any, float],
+    ) -> shift_error | None:
+        """*the uncertainty of one VIS order's sky shift: its standard error, the model's rms or the untuned value*
+
+        - ``measured``: the standard error of the median of the kept sky-line offsets
+        - ``model``: the r order's own error (``_tune_vis_r_order``), or for u and g the leave-one-night-out rms of
+          the transfer model times the dispersion
+        - ``none``: the per-arm untuned value, as the shift is a placeholder; *None* if the arm has no such value
+
+        **Key Arguments:**
+
+        - ``order`` -- the order
+        - ``source`` -- the ``shift_source`` of the order's applied shift
+        - ``stats`` -- the order's sky-line statistics, or *None* if it was not measured
+        - ``dispersions`` -- ``{order: signed dispersion (nm/px)}``
+
+        **Return:**
+
+        - ``error`` -- the order's ``shift_error``, or *None* when the arm has no ``untuned`` value for it
+
+        **Raises:**
+
+        - ``ValueError`` -- if a u or g order has a modelled shift but the arm has no ``ug-wavelength-transfer`` block.
+          That cannot happen in a reduction, so unlike an absent ``untuned`` value it is not tolerated
+        """
+        from soxspipe.commonutils.ug_wavelength_transfer import load_ug_rms_px
+
+        if source.value == SHIFT_SOURCE_MEASURED:
+            return shift_error(median_standard_error_nm(stats["scatterNm"], stats["nLines"]), ERROR_MEASURED_COMMENT)
+        if source.value == SHIFT_SOURCE_MODEL and stats is not None:
+            return stats["shiftError"]
+        if source.value == SHIFT_SOURCE_MODEL:
+            rmsPx = load_ug_rms_px(self.detectorParams)
+            if rmsPx is None:
+                raise ValueError(f"order {order} has a modelled shift, but the arm has no ug-wavelength-transfer block")
+            return shift_error(rmsPx[order] * abs(dispersions[order]), ERROR_UG_MODEL_COMMENT)
+        return self._untuned_error(UNTUNED_KEY)
+
+    def _untuned_error(self, kind: str) -> shift_error | None:
+        """Return the arm's fixed uncertainty of an untuned order as a ``shift_error``, or *None* if it has none."""
+        valueNm = uncertainty_of_untuned_order_nm(self.detectorParams, kind)
+        return None if valueNm is None else shift_error(valueNm, UNTUNED_ERROR_COMMENTS[kind])
+
+    def _record_untuned_error_qcs(self, extractedOrdersDF: "pd.DataFrame", arm: str, kind: str) -> None:
+        """*write the per-arm untuned uncertainty as the ``SKY SHIFT O<n> ERR`` QC of every order, for a SOXS VIS frame
+        whose tuning was skipped (DY-2359)*
+
+        **Key Arguments:**
+
+        - ``extractedOrdersDF`` -- a data-frame containing the extracted orders
+        - ``arm`` -- the arm of the instrument
+        - ``kind`` -- ``UNTUNED_KEY`` for tuning switched off, ``ATTACHED_ARC_KEY`` for an attached arc
+        """
+        import numpy as np
+
+        if not self._is_soxs_vis(arm):
+            return
+        orders = np.sort(extractedOrdersDF["order"].unique())
+        error = self._untuned_error(kind)
+        if error is None:
+            self._warn_of_missing_untuned_value(kind, "every order")
+            return
+        for o in orders:
+            self._record_order_error_qc(o, error)
+
     def _record_line_snr_qc(self, order, lineSnr):
         """Append the ``SKY LINE SNR O<n>`` QC: the order's combined sky-line signal-to-noise (DY-1663)."""
         from soxspipe.commonutils.toolkit import append_qc, utcnow_string
@@ -2277,10 +2452,13 @@ class horne_extraction(base_util):
         if arm.upper() == "VIS":
             shiftsNm, ugSources = self._apply_ug_transfer(shiftsNm, orderStats, dispersions)
             sources.update(ugSources)
+        errors = self._order_errors(arm, uniqueOrders, sources, orderStats, dispersions)
         for o in uniqueOrders:
             shiftPx = nm_shift_to_detector_px(shiftsNm[o], dispersions[o]) if o in dispersions else None
             self._record_order_shift_qc(o, shiftsNm[o], shiftPx)
             self._record_order_source_qc(o, sources[o])
+            if o in errors:
+                self._record_order_error_qc(o, errors[o])
             lineSnr = orderStats.get(o, {}).get("lineSnr")
             if lineSnr is not None:
                 self._record_line_snr_qc(o, lineSnr)

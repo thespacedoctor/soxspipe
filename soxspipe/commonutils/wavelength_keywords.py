@@ -9,6 +9,10 @@ already holds the path of that map, so the merged spectrum always reports the ma
 detector parameters, by arm and slit name. It is never the pinhole value ``R PIN MEDIAN``, which is for a 0.5 arcsec
 aperture and is far above the value for the slit.
 
+``SPEC_SYE`` is the largest of the per-order ``SKY SHIFT O<n> ERR`` QCs, the uncertainty of the sky shift applied to
+each order (DY-2307, DY-2359). The extraction writes those QCs, and for a stack each one is already the largest over
+the frames or cycles. Only the VIS arm writes them so far, so a NIR spectrum has no ``SPEC_SYE`` yet.
+
 A card that cannot be computed is left out, with one warning in the recipe log. ``SPEC_RES`` is mandatory, so the
 warning says the arm fails: the Phase 3 checker fails the missing card, and ``soxs-join`` treats the arm as a failed
 arm (DY-2336). ``LAMRMS``, ``LAMNLIN`` and ``SPEC_ERR`` are optional or recommended, so the product ships without them.
@@ -30,12 +34,15 @@ import copy
 import math
 from typing import Any
 
+from soxspipe.commonutils.sky_shift_error import SKY_SHIFT_ERROR_QC_PATTERN
+
 SOXS_INSTRUMENT = "soxs"
 
 LAMRMS_CARD = "LAMRMS"
 LAMNLIN_CARD = "LAMNLIN"
 SPEC_ERR_CARD = "SPEC_ERR"
 SPEC_RES_CARD = "SPEC_RES"
+SPEC_SYE_CARD = "SPEC_SYE"
 ACCURACY_CARDS = (LAMRMS_CARD, LAMNLIN_CARD, SPEC_ERR_CARD)
 
 # THE QC CARDS OF A DISP_TAB THAT `create_dispersion_map.calculate_residuals` WRITES
@@ -157,7 +164,52 @@ def spec_res_cards(arm: str, slitName: Any, settings: Any, log: Any) -> Cards:
     return [(SPEC_RES_CARD, value, "Nominal resolving power from slit arcs")]
 
 
-def with_wavelength_keywords(header: Any, dispMapPath: Any, arm: str, kw: Any, settings: Any, log: Any) -> Any:
+def _largest_sky_shift_error_nm(qcTable: Any) -> float | None:
+    """*the largest finite ``SKY SHIFT O<n> ERR`` value in a QC table, or None when it has none*"""
+    import pandas as pd
+
+    if not isinstance(qcTable, pd.DataFrame) or not {"qc_name", "qc_value"} <= set(qcTable.columns):
+        return None
+    rows = qcTable.loc[qcTable["qc_name"].astype(str).str.fullmatch(SKY_SHIFT_ERROR_QC_PATTERN), "qc_value"]
+    values = pd.to_numeric(rows, errors="coerce")
+    values = values[values.map(math.isfinite)]
+    return float(values.max()) if len(values) else None
+
+
+def spec_sye_cards(qcTable: Any, arm: str, log: Any) -> Cards:
+    """*the* ``SPEC_SYE`` *card: the largest* ``SKY SHIFT O<n> ERR`` *QC of the spectrum*
+
+    **Key Arguments:**
+
+    - ``qcTable`` -- the QC table of the recipe, which holds the per-order ``SKY SHIFT O<n> ERR`` rows
+    - ``arm`` -- the arm of the spectrum, named in the warning
+    - ``log`` -- logger
+
+    **Return:**
+
+    - ``cards`` -- one ``SPEC_SYE`` tuple (nm). Empty, with one warning, when the table holds no finite error row: the
+      arm writes none (NIR, until its error formulas exist), or there is no QC table
+
+    **Usage:**
+
+    ```python
+    from soxspipe.commonutils.wavelength_keywords import spec_sye_cards
+    cards = spec_sye_cards(self.qc, self.arm, self.log)
+    ```
+    """
+    largestNm = _largest_sky_shift_error_nm(qcTable)
+    if largestNm is None:
+        log.warning(
+            f"The {arm} spectrum has no SKY SHIFT O<n> ERR QC to take {SPEC_SYE_CARD} from, so {SPEC_SYE_CARD} is "
+            "left out."
+        )
+        return []
+    return [(SPEC_SYE_CARD, largestNm, "[nm] Systematic error of wavelengths")]
+
+
+def with_wavelength_keywords(
+    header: Any, dispMapPath: Any, arm: str, kw: Any, settings: Any, log: Any, qc: Any = None
+) -> Any:
     """*give a header the wavelength-calibration and resolution cards, on a copy*
 
     The cards an earlier stamp left go first, so a card that cannot be computed now does not survive from before. A
@@ -171,17 +223,18 @@ def with_wavelength_keywords(header: Any, dispMapPath: Any, arm: str, kw: Any, s
     - ``kw`` -- the keyword lookup (``keyword_lookup(...).get``), which names the slit card of the arm
     - ``settings`` -- the settings dictionary
     - ``log`` -- logger
+    - ``qc`` -- the QC table of the recipe, which gives ``SPEC_SYE``. Default *None*, which gives no ``SPEC_SYE``
 
     **Return:**
 
-    - ``stamped`` -- a copy of ``header`` with ``SPEC_RES``, ``LAMRMS``, ``LAMNLIN`` and ``SPEC_ERR``, less any that
-      could not be computed
+    - ``stamped`` -- a copy of ``header`` with ``SPEC_RES``, ``LAMRMS``, ``LAMNLIN``, ``SPEC_ERR`` and ``SPEC_SYE``,
+      less any that could not be computed
 
     **Usage:**
 
     ```python
     from soxspipe.commonutils.wavelength_keywords import with_wavelength_keywords
-    header = with_wavelength_keywords(header, self.dispMap, self.arm, self.kw, self.settings, self.log)
+    header = with_wavelength_keywords(header, self.dispMap, self.arm, self.kw, self.settings, self.log, self.qc)
     ```
     """
     from soxspipe.commonutils.fits_headers import set_header_card
@@ -189,17 +242,18 @@ def with_wavelength_keywords(header: Any, dispMapPath: Any, arm: str, kw: Any, s
     stamped = copy.deepcopy(header)
     if not _is_soxs(settings):
         return stamped
-    for keyword in (SPEC_RES_CARD, *ACCURACY_CARDS):
+    for keyword in (SPEC_RES_CARD, SPEC_SYE_CARD, *ACCURACY_CARDS):
         stamped.pop(keyword, None)
     cards = spec_res_cards(arm, header.get(kw(f"SLIT_{arm}".upper())), settings, log)
     cards += wavelength_accuracy_cards(dispMapPath, log)
+    cards += spec_sye_cards(qc, arm, log)
     for keyword, value, comment in cards:
         set_header_card(stamped, keyword, value, comment)
     return stamped
 
 
 def with_merged_spectrum_cards(
-    header: Any, entries: Any, dispMapPath: Any, arm: str, kw: Any, settings: Any, log: Any
+    header: Any, entries: Any, dispMapPath: Any, arm: str, kw: Any, settings: Any, log: Any, qc: Any = None
 ) -> Any:
     """*give a header every card a merged spectrum takes from its recipe, on a copy*
 
@@ -215,6 +269,7 @@ def with_merged_spectrum_cards(
     - ``kw`` -- the keyword lookup (``keyword_lookup(...).get``)
     - ``settings`` -- the settings dictionary
     - ``log`` -- logger
+    - ``qc`` -- the QC table of the recipe, which gives ``SPEC_SYE``. Default *None*, which gives no ``SPEC_SYE``
 
     **Return:**
 
@@ -225,11 +280,11 @@ def with_merged_spectrum_cards(
     ```python
     from soxspipe.commonutils.wavelength_keywords import with_merged_spectrum_cards
     header = with_merged_spectrum_cards(
-        header, self.onTargetFrames, self.dispMap, self.arm, self.kw, self.settings, self.log
+        header, self.onTargetFrames, self.dispMap, self.arm, self.kw, self.settings, self.log, self.qc
     )
     ```
     """
     from soxspipe.commonutils.on_target_frames import with_frame_accounting
 
     stamped = with_frame_accounting(header, entries, log)
-    return with_wavelength_keywords(stamped, dispMapPath, arm, kw, settings, log)
+    return with_wavelength_keywords(stamped, dispMapPath, arm, kw, settings, log, qc)

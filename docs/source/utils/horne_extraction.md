@@ -69,11 +69,11 @@ On 10 recorded VIS and NIR stare, nod and offset frames, the lowest unmasked pro
 
 ### 3 Tuning the wavelength solution to the sky lines
 
-The dispersion map is made from daytime calibration frames. At night, flexure moves the spectra on the detector by a small amount. After extraction, the utility corrects for this order by order. It matches the sky lines in each extracted order to the catalogue of sky lines, measures the offset of every matched line, clips the outliers, and adds the median offset to the wavelength solution of the order. Each order gets a `SKY SHIFT O<N>` QC (in nm) and a `SKY SHIFT O<N> PX` QC (the same shift in detector pixels along the dispersion axis).
+The dispersion map is made from daytime calibration frames. At night, flexure moves the spectra on the detector by a small amount. After extraction, the utility corrects for this order by order. It matches the sky lines in each extracted order to the catalogue of sky lines, measures the offset of every matched line, clips the outliers, and adds the median offset to the wavelength solution of the order. Each order gets a `SKY SHIFT O<N>` QC (in nm), a `SKY SHIFT O<N> PX` QC (the same shift in detector pixels along the dispersion axis), and a `SKY SHIFT O<N> SRC` QC (where the shift came from). A SOXS VIS order also gets a `SKY SHIFT O<N> ERR` QC (the uncertainty of the shift).
 
 #### Switching the tuning off
 
-Set `tune-wavelength-to-skylines: False` in the recipe block of the settings file (for example `soxs-stare`) to keep the arc wavelength solution as it is. The default is `True`. A settings file without the key tunes. When the tuning is switched off, the utility prints a line in the log, adds a note to the QC plot, and writes the `SKY TUNING` QC as `skipped: switched off`. No `SKY SHIFT` QCs are written. Any value other than `True` or `False` stops the recipe with an error.
+Set `tune-wavelength-to-skylines: False` in the recipe block of the settings file (for example `soxs-stare`) to keep the arc wavelength solution as it is. The default is `True`. A settings file without the key tunes. When the tuning is switched off, the utility prints a line in the log, adds a note to the QC plot, and writes the `SKY TUNING` QC as `skipped: switched off`. No `SKY SHIFT` QCs are written, but a SOXS VIS frame still gets the `SKY SHIFT O<N> ERR` QCs (see "Uncertainty of the sky shift"). Any value other than `True` or `False` stops the recipe with an error.
 
 #### Attached arc: no tuning
 
@@ -84,7 +84,24 @@ For SOXS, the utility skips this step when the arc is attached to the science ex
 
 The science exposures are all the raw science frames of the observation block: one frame for a single stare frame, or every frame of a nod, offset, or stacked stare sequence. Each exposure starts at `MJD-OBS`. It ends `ESO DET SEQ1 EXPTIME` seconds later when the frame has that keyword (NIR, where `EXPTIME` is one DIT and not the whole exposure), and `EXPTIME` seconds later when it does not (VIS). A frame with no usable rotator angle, start time or exposure time is never attached.
 
-The wavelength solution of an attached arc is accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped. X-Shooter is always tuned, unless the tuning is switched off.
+The wavelength solution of an attached arc is accurate enough that the tuning only adds noise. The utility prints the arc offsets, adds a note to the QC plot, and writes the `SKY TUNING` QC (`skylines`, or `skipped: attached arc`). No `SKY SHIFT` QCs are written when the step is skipped, but a SOXS VIS frame still gets the `SKY SHIFT O<N> ERR` QCs. X-Shooter is always tuned, unless the tuning is switched off.
+
+#### Uncertainty of the sky shift: `SKY SHIFT O<N> ERR` and `SPEC_SYE`
+
+For a SOXS VIS spectrum, every order gets a `SKY SHIFT O<N> ERR` QC (in nm). It is the uncertainty of the shift that the tuning applied to the order. The formula depends on where the shift came from. This is the `SKY SHIFT O<N> SRC` value, which the utility reads and does not work out again from the shift values.
+
+| Shift of the order | `SKY SHIFT O<N> ERR` |
+| --- | --- |
+| Measured from the sky lines (`measured`: the i order, and the r order when it is not predicted) | The standard error of the median of the kept sky-line offsets: the scatter of the offsets (nm) times 1.2533, divided by the square root of the number of kept lines |
+| r order predicted from i (`model`, `predicted`) | The rms of the r-from-i model (`rms_px` of `r-from-i-transfer`, 0.364 px) times the dispersion of the order |
+| r order measured and predicted (`model`, `combined`) | The uncertainty of the inverse-variance combination of the measured shift and the prediction, times the dispersion |
+| u and g orders from the transfer model (`model`) | The leave-one-night-out rms of the model (`rms_px` of `ug-wavelength-transfer`: 0.96 px for u and 1.14 px for g) times the dispersion of the order. The rms comes from arcs only |
+| No shift applied (`none`), and every order when the tuning is switched off | `untuned` in `sky-shift-uncertainty-nm` of the VIS detector parameters |
+| Every order when an arc is attached | `attached-arc` in `sky-shift-uncertainty-nm` |
+
+The dispersion is the absolute value of the signed dispersion of the order (nm/px). The QC is rounded to 5 decimals. A nod or offset recipe extracts more than once (each nod position, each cycle), and the QC table keeps the largest value of each order over those extractions.
+
+The merged spectrum gets `SPEC_SYE`, the largest `SKY SHIFT O<N> ERR` of its orders. In the VIS arm the g order usually sets it, so the gap in the u and g validation shows in the header. A NIR spectrum has no `SKY SHIFT O<N> ERR` QCs yet, so it has no `SPEC_SYE`, and the recipe log has one warning for it. `SPEC_SYE` is recommended, not mandatory, in the ESO Phase 3 standard, so `soxspipe check-phase3` gives a warning for a spectrum without it. The checker fails a negative `SPEC_SYE`.
 
 #### VIS r and i orders: sky-line signal-to-noise gate
 

@@ -835,6 +835,7 @@ def test_skyline_tuning_after_the_no_trace_fallback_knows_the_instrument(
     extractor._signed_order_dispersions = lambda *args: {}
     extractor._record_order_shift_qc = lambda *args, **kwargs: None
     extractor._record_order_source_qc = lambda *args, **kwargs: None
+    extractor._record_order_error_qc = lambda *args, **kwargs: None
     extractor._record_line_snr_qc = lambda *args: None
     extraction = pd.DataFrame(
         {"order": [1, 4], "wavelengthMean": [600.0, 750.0], "pixelScaleNm": [0.1, 0.1]},
@@ -1188,6 +1189,65 @@ def test_extract_gives_the_not_flattened_spectrum_no_resolution_or_accuracy_card
 
     # ASSERT
     assert not {"SPEC_RES", "LAMRMS", "LAMNLIN", "SPEC_ERR"} & set(calls[1]["header"])
+
+
+def test_extract_gives_the_merged_spectrum_alone_spec_sye_from_its_sky_shift_error_qcs(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``SPEC_SYE`` is the largest ``SKY SHIFT O<n> ERR`` of the extraction's QC table (DY-2359)."""
+    import soxspipe.commonutils.phase3 as phase3
+    from soxspipe.commonutils.toolkit import append_qc
+
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    extractor.dispersionMap = disp_tab_with_qcs(tmp_path, **{"WAVE RMS": 0.0036, "WAVE NLINES": 121})
+    extractor.scienceHeaders = []
+    extractor.skySubtractedFrame.header["SLIT_VIS"] = "SLIT1.0"
+    for order, errorNm in {1: 0.0182, 3: 0.0285, 4: 0.0031}.items():
+        extractor.qc = append_qc(
+            extractor.qc, "soxs-stare", f"SKY SHIFT O{order} ERR", errorNm, "c", "d", "d", qcUnit="nm", qcOrder=order
+        )
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    ordersHeader, mergedHeader = calls[0]["header"], calls[1]["header"]
+    assert mergedHeader["SPEC_SYE"] == 0.0285
+    assert "SPEC_SYE" not in ordersHeader
+
+
+def test_extract_gives_the_not_flattened_spectrum_no_spec_sye(
+    log: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The not-flattened spectrum feeds the response only, so it gets no ``SPEC_SYE`` and no warning for it."""
+    import soxspipe.commonutils.phase3 as phase3
+
+    # ARRANGE
+    extractor, _, _ = _configure_synthetic_orchestration(log, monkeypatch, products=product_table().iloc[0:0])
+    extractor.filenameTemplate = "SYNTHETIC.fits"
+    extractor.productDir = str(tmp_path)
+    extractor.noddingSequence = ""
+    extractor.notFlattened = "_NOTFLAT"
+    extractor.scienceHeaders = []
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(phase3, "write_fits_table_to_disk", lambda **kwargs: calls.append(kwargs))
+
+    # ACT
+    extractor.extract()
+
+    # ASSERT
+    assert "SPEC_SYE" not in calls[1]["header"]
+    assert not [message for level, message in log.messages if level == "warning" and "SPEC_SYE" in message]
 
 
 def test_the_merged_spectrum_extract_writes_passes_the_frame_accounting_checks_of_the_phase_3_checker(
@@ -2621,6 +2681,7 @@ def test_wavelength_tuning_shifts_only_the_orders_it_measures_and_leaves_vis_u_a
     )
     extractor._record_order_shift_qc = lambda order, shift, shiftPx=None: recordedOrders.append((order, shift))
     extractor._record_order_source_qc = lambda *args, **kwargs: None
+    extractor._record_order_error_qc = lambda *args, **kwargs: None
     # A BRIGHT SKY, SO THE DY-1663 SKY-LINE SNR GATE PASSES
     extractor._order_sky_line_snrs = lambda *args: np.array([100.0, 100.0])
     extractor._record_line_snr_qc = lambda *args: None

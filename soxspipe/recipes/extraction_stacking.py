@@ -90,7 +90,8 @@ class extraction_stacking:
         spectrum lists them all. The header of one input frame lists the raw frames of its own cycle only, or none. The
         cards go on a copy, because flux calibration and the response divide the counts by the exposure time of one
         frame, which is the ``EXPTIME`` of the master header. With no on-target list the copy has only its pointing
-        ``RA`` and ``DEC`` removed. The wavelength-calibration and resolution cards are added either way (DY-2358).
+        ``RA`` and ``DEC`` removed. The wavelength-calibration and resolution cards are added either way (DY-2358). So
+        is ``SPEC_SYE``, the largest ``SKY SHIFT O<n> ERR`` in the recipe's QC table (DY-2359).
 
         **Key Arguments:**
 
@@ -99,7 +100,8 @@ class extraction_stacking:
         **Return:**
 
         - ``header`` -- a stamped copy of the header, with the frame-accounting and target position cards when there is
-          an on-target list, and ``SPEC_RES``, ``LAMRMS``, ``LAMNLIN`` and ``SPEC_ERR`` where they can be computed
+          an on-target list, and ``SPEC_RES``, ``LAMRMS``, ``LAMNLIN``, ``SPEC_ERR`` and ``SPEC_SYE`` where they can be
+          computed
         """
         kw = keyword_lookup(log=self.log, settings=self.settings).get
         return with_merged_spectrum_cards(
@@ -110,6 +112,7 @@ class extraction_stacking:
             kw,
             self.settings,
             self.log,
+            self.qc,
         )
 
     def stack_extractions(self, dataFrameList, notFlattened=False, orderJoins=None):

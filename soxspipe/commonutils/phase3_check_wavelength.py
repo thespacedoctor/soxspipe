@@ -8,6 +8,10 @@ These checks add house rules of this ticket (DY-2358): ``LAMRMS`` and ``SPEC_ERR
 least 1, and ``SPEC_ERR = LAMRMS / sqrt(LAMNLIN)``. ESO's own X-Shooter products use ``LAMRMS / LAMNLIN``, which the
 standard does not say.
 
+``SPEC_SYE`` is recommended, so a product without it (every NIR product until its sky-shift error formulas exist,
+DY-2359) gets a warning from the presence check and no failure. The standard lets ``SPEC_SYE`` be 0 when the systematic
+error is insignificant, so the house rule of DY-2359 is only that it is not negative.
+
 Author
 : David Young
 
@@ -23,6 +27,7 @@ from soxspipe.commonutils.phase3_check_framework import PRIMARY, Finding, Phase3
 
 # WHERE THESE RULES COME FROM, NAMED IN THE MESSAGES: THE STANDARD GIVES THESE KEYWORDS NO RANGE AND NO FORMULA CHECK
 WAVELENGTH_RULE = "house rule, DY-2358"
+SPEC_SYE_RULE = "house rule, DY-2359"
 
 # SPEC_ERR IS WRITTEN AT FULL PRECISION, SO THIS ONLY ALLOWS FOR A WRITER THAT ROUNDS IT
 SPEC_ERR_TOLERANCE = 1e-4
@@ -102,3 +107,30 @@ def check_spec_err_is_lamrms_over_the_root_of_lamnlin(product: Phase3Product) ->
             f"(LAMRMS {lamrms:.6g}, LAMNLIN {lamnlin}) ({WAVELENGTH_RULE})"
         )
     ]
+
+
+@register_check
+def check_spec_sye_is_not_negative(product: Phase3Product) -> list[Finding]:
+    """*report a* ``SPEC_SYE`` *below 0*
+
+    Zero is allowed: the standard sets ``SPEC_SYE`` to 0 when the systematic error is insignificant. A value that is not
+    a number is left to ``check_keyword_value_types``, and a missing keyword to the presence check.
+
+    **Key Arguments:**
+
+    - ``product`` -- the ``Phase3Product`` to check
+
+    **Return:**
+
+    - ``findings`` -- a list of ``Finding`` records, empty when the product is fine
+
+    **Usage:**
+
+    ```python
+    findings = check_spec_sye_is_not_negative(product)
+    ```
+    """
+    value = product.header(PRIMARY).get("SPEC_SYE")
+    if not _is_number(value) or value >= 0:
+        return []
+    return [fail(f"SPEC_SYE is {value}, outside its allowed range ({SPEC_SYE_RULE}): it must be at least 0")]
